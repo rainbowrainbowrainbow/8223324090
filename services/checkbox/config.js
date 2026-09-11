@@ -53,6 +53,10 @@ function isCashierProEnabled(env = process.env) {
     return productionGateEnv(env.EVENTGENIX_CASHIER_PRO_ENABLED);
 }
 
+function isParkDarTestServiceOutEnabled(env = process.env) {
+    return productionGateEnv(env.PARK_DAR_TEST_SERVICE_OUT_ENABLED);
+}
+
 function normalizeCredentialRef(value) {
     const ref = String(value || '').trim();
     if (!ref || !/^[A-Za-z0-9_:-]+$/.test(ref)) return '';
@@ -354,6 +358,7 @@ module.exports = {
     assertNoCredentialRefCollisions,
     assertRuntimeBaseUrl,
     isCashierProEnabled,
+    isParkDarTestServiceOutEnabled,
     isCheckboxIntegrationEnabled,
     isCheckboxPaymentAcceptanceEnabled,
     isCheckboxWebhookEnabled,

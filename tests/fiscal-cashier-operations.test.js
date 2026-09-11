@@ -11,6 +11,7 @@ function read(rel) {
 const service = read('services/payments/cashierOperationsService.js');
 const paymentService = read('services/payments/paymentService.js');
 const worker = read('services/payments/paymentOutboxWorker.js');
+const bindingAdmin = read('services/payments/cashierBindingAdminService.js');
 const approvals = read('services/payments/fiscalApprovals.js');
 const migration316 = read('db/migrations/316_payment_fiscal_ledger_foundation.sql');
 const migration319 = read('db/migrations/319_cashier_operations_hardening.sql');
@@ -209,8 +210,14 @@ test('every provider-mutating Cashier PRO operation is created with a complete i
     assert.match(body, /provider_organization_id, provider_outlet_id, provider_register_id, provider_cashier_id/);
     assert.match(body, /register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash/);
     assert.match(body, /fiscal_location_id, external_stage/);
-    assert.match(body, /fiscal_configuration_hash: fiscalConfig\.hash/);
-    assert.match(body, /provider_context: fiscalConfig\.snapshot/);
+    if (start === 'async function createServiceOutRequest') {
+      assert.match(body, /serviceOutSnapshot\(\{/);
+      assert.match(service, /function serviceOutSnapshot[\s\S]*fiscal_configuration_hash: fiscalConfig\.hash/);
+      assert.match(service, /function serviceOutSnapshot[\s\S]*provider_context: fiscalConfig\.snapshot/);
+    } else {
+      assert.match(body, /fiscal_configuration_hash: fiscalConfig\.hash/);
+      assert.match(body, /provider_context: fiscalConfig\.snapshot/);
+    }
   }
 });
 
@@ -219,7 +226,8 @@ test('service-out approval consumes approval with CAS and never mutates its seal
   const approval = service.slice(service.indexOf('async function approveServiceOut'), service.indexOf('async function persistApprovalPinResult'));
   assert.match(request, /const providerRequestUuid = crypto\.randomUUID\(\)/);
   assert.match(request, /provider_operation_id/);
-  assert.match(request, /provider_request_uuid: providerRequestUuid/);
+  assert.match(request, /serviceOutSnapshot\(\{/);
+  assert.match(service, /function serviceOutSnapshot[\s\S]*provider_request_uuid: providerRequestUuid/);
   assert.match(approval, /const providerRequestUuid = String\(operation\.provider_operation_id/);
   assert.doesNotMatch(approval, /crypto\.randomUUID\(\)/);
   assert.doesNotMatch(approval, /SET status = 'pending',[\s\S]*?provider_operation_id\s*=\s*\$2,/);
@@ -230,6 +238,39 @@ test('service-out approval consumes approval with CAS and never mutates its seal
   assert.match(approval, /AND provider_operation_id = \$4/);
   assert.match(approval, /RETURNING id/);
   assert.match(approval, /service_out_approval_conflict/);
+  assert.match(approval, /operation: projectServiceOutOperation\(operation, \{ user \}\)/);
+});
+
+test('service-out request recovery returns the existing operation and detects idempotency drift', () => {
+  const request = service.slice(service.indexOf('async function createServiceOutRequest'), service.indexOf('async function approveServiceOut'));
+  assert.match(request, /requestFingerprint = fingerprint/);
+  assert.match(service, /function serviceOutSnapshot[\s\S]*request_fingerprint: requestFingerprint/);
+  assert.match(request, /service_out_idempotency_conflict/);
+  assert.match(request, /const existing = await loadServiceOutOperationRow\(client, \{ idempotencyKey: key \}\)/);
+  assert.match(request, /Number\(existing\.initiated_by_user_id\) !== Number\(user\?\.id\)/);
+  assert.match(request, /operation: projectServiceOutOperation\(existing, \{ user \}\)/);
+  assert.match(request, /Number\(replayed\.initiated_by_user_id\) !== Number\(user\?\.id\)/);
+  assert.match(request, /operation: projectServiceOutOperation\(replayed, \{ user \}\)/);
+});
+
+test('own service-out cancellation is requester-only, row-locked, pre-provider, and audited', () => {
+  const cancel = service.slice(service.indexOf('async function cancelServiceOutRequest'), service.indexOf('async function persistApprovalPinResult'));
+  assert.match(cancel, /pg_advisory_xact_lock\(hashtext\(\$1\)\)/);
+  assert.match(cancel, /forUpdate: true/);
+  assert.match(cancel, /access\.role !== 'requester'/);
+  assert.match(cancel, /service_out_cancel_denied/);
+  assert.match(cancel, /service_out_cancel_forbidden/);
+  assert.match(cancel, /status = 'cancelled'/);
+  assert.match(cancel, /server_approval_status = 'revoked'/);
+  assert.match(cancel, /fo\.approval_id IS NULL/);
+  assert.match(cancel, /fo\.approved_by_user_id IS NULL/);
+  assert.match(cancel, /fo\.sent_at IS NULL/);
+  assert.match(cancel, /job\.job_type = 'service_receipt'/);
+  assert.match(cancel, /fiscal_service_out_cancelled/);
+  assert.match(service, /SERVICE_OUT_OPEN_STATUSES/);
+  const closeBlockers = read('services/payments/shiftCloseBlockers.js');
+  const operationBlockers = closeBlockers.slice(closeBlockers.indexOf('blocking_operations'), closeBlockers.indexOf('blocking_jobs'));
+  assert.doesNotMatch(operationBlockers, /'cancelled'/);
 });
 
 test('refund MVP is full-only, split status, linked to original receipt, and original receipt is immutable', () => {
@@ -371,17 +412,42 @@ test('PIN enrollment is a configure-only server flow and never stores raw PIN in
   assert.match(routes, /\/fiscal-bindings\/:bindingId\/action-pin/);
   assert.match(routes, /requireAction\('fiscal\.configure'\)/);
   assert.match(service, /async function enrollFiscalActionPin/);
+  assert.match(service, /route = await routeResolver/);
+  assert.match(service, /AND b\.fiscal_profile_id = \$2 AND b\.fiscal_location_id = \$3 AND b\.fiscal_register_id = \$4/);
   assert.match(service, /action_pin_self_enrollment_denied/);
   assert.match(service, /createActionPinHash\(rawPin\)/);
   assert.match(service, /action_pin_hash = \$2/);
   assert.doesNotMatch(service, /pinEnrolled:[\s\S]*rawPin/);
+  assert.match(bindingAdmin, /actionPin:\s*\{[\s\S]*configured: pinConfigured,[\s\S]*lockedUntil:/);
+  assert.doesNotMatch(bindingAdmin, /credentialReference/);
 });
 
-test('worker keeps Cashier PRO jobs disabled unless PRO flag is explicitly enabled', () => {
+test('worker keeps broad Cashier PRO jobs disabled and allows only exact PARK/DAR test service-out under the narrow flag', () => {
   assert.match(worker, /CASHIER_PRO_JOB_TYPES = new Set\(\['receipt_return', 'service_receipt'\]\)/);
+  assert.match(worker, /isParkDarTestServiceOutEnabled/);
+  assert.match(worker, /PARK_DAR_TEST_SERVICE_OUT_ROUTES = new Set\(\['park_test', 'dar_test'\]\)/);
   assert.match(worker, /const claimableJobTypes = cashierProEnabled/);
   assert.match(worker, /claimableJobTypes,/);
+  assert.match(worker, /type === 'service_receipt' && parkDarTestServiceOutEnabled/);
+  assert.match(worker, /fo\.operation_type = 'service_out'/);
+  assert.match(worker, /fo\.expected_is_test IS TRUE/);
+  assert.match(worker, /fo\.request_snapshot->>'route_option_id' IN \('park_test', 'dar_test'\)/);
+  assert.match(worker, /fo\.request_snapshot->>'shared_test_register' = 'true'/);
+  assert.match(worker, /assertServiceReceiptRuntimeGate\(context\)/);
   assert.match(worker, /job\.payload->>'phase' = 'thin_mvp_shift_close'/);
+});
+
+test('service-out read/create/approve gates stay narrow while recovery and cancel remain safe exact reads', () => {
+  assert.match(routes, /router\.get\('\/service-out', requireServiceOutReadAccess/);
+  assert.match(routes, /listServiceOutRequests\(\{[\s\S]*requireServiceOutRuntimeEnabled: true/);
+  assert.match(routes, /getServiceOutRequest\(\{[\s\S]*requireServiceOutRuntimeEnabled: true/);
+  assert.match(routes, /createServiceOutRequest\(\{[\s\S]*requireServiceOutRuntimeEnabled: true/);
+  assert.match(routes, /approveServiceOut\(\{[\s\S]*requireServiceOutRuntimeEnabled: true/);
+  const recoveryRoute = routes.slice(routes.indexOf("router.get('/service-out/recovery'"), routes.indexOf("router.get('/service-out/:operationId'"));
+  const cancelRoute = routes.slice(routes.indexOf("router.post('/service-out/:operationId/cancel'"), routes.indexOf("router.post('/service-out'"));
+  assert.doesNotMatch(recoveryRoute, /requireServiceOutRuntimeEnabled: true/);
+  assert.doesNotMatch(cancelRoute, /requireServiceOutRuntimeEnabled: true/);
+  assert.match(service, /delete result\.route/);
 });
 
 test('outbox shift jobs resolve only the immutable shift-operation cashier identity', () => {

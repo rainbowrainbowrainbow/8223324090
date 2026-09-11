@@ -3,7 +3,7 @@
 const router = require('express').Router();
 const { requestSharedTestDrain, requestSharedTestResume } = require('../services/payments/sharedTestDayService');
 const authMiddleware = require('../middleware/auth');
-const { authenticateToken, requireAction } = authMiddleware;
+const { authenticateToken, requireAction, canUseAction } = authMiddleware;
 const {
     cancelDraftPaymentOrder,
     confirmPaymentOrder,
@@ -17,14 +17,18 @@ const {
     approveServiceOut,
     autoCloseShift,
     cashierOperationsErrorResponse,
+    cancelServiceOutRequest,
     closeShift,
     createFullRefund,
     createReconciliationRevision,
     createServiceIn,
     createServiceOutRequest,
     enrollFiscalActionPin,
+    getServiceOutRequest,
     getOperationalReport,
+    listServiceOutRequests,
     loadPilotRegisterState,
+    recoverServiceOutRequest,
     applyPhase1CloseReadiness
 } = require('../services/payments/cashierOperationsService');
 const {
@@ -40,7 +44,7 @@ const {
     requestPhase1ShiftClose,
     updateOperationalIncidentStatus
 } = require('../services/payments/paymentReadinessService');
-const { isCashierProEnabled, isCheckboxIntegrationEnabled } = require('../services/checkbox/config');
+const { isCashierProEnabled, isParkDarTestServiceOutEnabled, isCheckboxIntegrationEnabled } = require('../services/checkbox/config');
 const {
     assertNoClientFiscalRouteOverride,
     listFiscalSaleRouteOptions,
@@ -90,6 +94,7 @@ function routeOptionIdFromRequest(req) {
         ?? req.body?.route_option_id
         ?? req.query?.routeOptionId
         ?? req.query?.route_option_id
+        ?? req.get('X-Fiscal-Route-Option')
         ?? null;
 }
 
@@ -411,6 +416,15 @@ function projectPhase1CloseResultForViewer(_user, result = {}) {
     };
 }
 
+function projectServiceOutResultForViewer(_user, result = {}) {
+    const {
+        providerRequestUuid,
+        approvalId,
+        ...publicResult
+    } = result || {};
+    return publicResult;
+}
+
 function requireCashierProEnabled(req, res, next) {
     if (!isCashierProEnabled(process.env)) {
         return res.status(403).json({
@@ -420,6 +434,42 @@ function requireCashierProEnabled(req, res, next) {
         });
     }
     return next();
+}
+
+function requireServiceOutReadAccess(req, res, next) {
+    if (!canUseAction(req.user, 'fiscal.service_out.request')
+        && !canUseAction(req.user, 'fiscal.service_out.approve')) {
+        return res.status(403).json({
+            success: false,
+            code: 'fiscal_capability_denied',
+            error: 'Service-out access is not available'
+        });
+    }
+    return next();
+}
+
+function requireServiceOutMutationEnabled(req, res, next) {
+    if (!isCashierProEnabled(process.env) && !isParkDarTestServiceOutEnabled(process.env)) {
+        return res.status(403).json({
+            success: false,
+            code: 'cashier_pro_disabled',
+            error: 'Cashier PRO operations are disabled'
+        });
+    }
+    return next();
+}
+
+function serviceOutBodyFromRequest(req) {
+    const body = { ...(req.body || {}) };
+    if (body.routeOptionId == null && body.route_option_id == null) {
+        const routeOptionId = routeOptionIdFromRequest(req);
+        if (routeOptionId) body.routeOptionId = routeOptionId;
+    }
+    if (body.businessContext == null && body.business_context == null) {
+        const businessContext = req.query?.businessContext ?? req.query?.business_context ?? null;
+        if (businessContext) body.businessContext = businessContext;
+    }
+    return body;
 }
 
 router.post('/admission-ticket/orders', requireAction('payments.create'), async (req, res) => {
@@ -561,7 +611,11 @@ router.get('/catalog/cashiers', requireAction('payments.create'), async (req, re
 
 router.get('/fiscal-bindings/cashiers', requireAction('fiscal.configure'), async (req, res) => {
     try {
-        const cashiers = await listCashierBindings({ businessContext: req.query.businessContext || req.query.business_context });
+        const cashiers = await listCashierBindings({
+            user: req.user,
+            businessContext: req.query.businessContext || req.query.business_context,
+            routeOptionId: routeOptionIdFromRequest(req)
+        });
         return res.status(200).json({ success: true, cashiers });
     } catch (error) {
         const response = paymentErrorResponse(error);
@@ -823,7 +877,13 @@ router.post('/fiscal-bindings/:bindingId/action-pin', requireAction('fiscal.conf
         const result = await enrollFiscalActionPin({
             user: req.user,
             bindingId: req.params.bindingId,
-            body: req.body || {}
+            body: req.body || {},
+            routeOptionId: routeOptionIdFromRequest(req),
+            businessContext: req.body?.businessContext
+                ?? req.body?.business_context
+                ?? req.query?.businessContext
+                ?? req.query?.business_context
+                ?? null
         });
         return res.status(200).json({ success: true, ...result });
     } catch (error) {
@@ -846,29 +906,87 @@ router.post('/service-in', requireCashierProEnabled, requireAction('fiscal.servi
     }
 });
 
-router.post('/service-out', requireCashierProEnabled, requireAction('fiscal.service_out.request'), async (req, res) => {
+router.get('/service-out', requireServiceOutReadAccess, async (req, res) => {
     try {
-        const result = await createServiceOutRequest({
+        const result = await listServiceOutRequests({
             user: req.user,
-            body: req.body || {},
-            idempotencyKey: idempotencyKeyFromRequest(req)
+            businessContext: req.query.businessContext || req.query.business_context,
+            routeOptionId: routeOptionIdFromRequest(req),
+            requireServiceOutRuntimeEnabled: true
         });
-        return res.status(result.replayed ? 200 : 201).json({ success: true, ...result });
+        return res.status(200).json({ success: true, ...projectServiceOutResultForViewer(req.user, result) });
     } catch (error) {
         const response = cashierOperationsErrorResponse(error);
         return res.status(response.status).json(response.body);
     }
 });
 
-router.post('/service-out/:operationId/approve', requireCashierProEnabled, requireAction('fiscal.service_out.approve'), async (req, res) => {
+router.get('/service-out/recovery', requireServiceOutReadAccess, async (req, res) => {
+    try {
+        const result = await recoverServiceOutRequest({
+            user: req.user,
+            idempotencyKey: idempotencyKeyFromRequest(req) || req.query.idempotencyKey || req.query.idempotency_key
+        });
+        return res.status(200).json({ success: true, ...projectServiceOutResultForViewer(req.user, result) });
+    } catch (error) {
+        const response = cashierOperationsErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/service-out/:operationId', requireServiceOutReadAccess, async (req, res) => {
+    try {
+        const result = await getServiceOutRequest({
+            user: req.user,
+            operationId: req.params.operationId,
+            requireServiceOutRuntimeEnabled: true
+        });
+        return res.status(200).json({ success: true, ...projectServiceOutResultForViewer(req.user, result) });
+    } catch (error) {
+        const response = cashierOperationsErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/service-out/:operationId/cancel', requireAction('fiscal.service_out.request'), async (req, res) => {
+    try {
+        const result = await cancelServiceOutRequest({
+            user: req.user,
+            operationId: req.params.operationId,
+            idempotencyKey: idempotencyKeyFromRequest(req)
+        });
+        return res.status(200).json({ success: true, ...projectServiceOutResultForViewer(req.user, result) });
+    } catch (error) {
+        const response = cashierOperationsErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/service-out', requireServiceOutMutationEnabled, requireAction('fiscal.service_out.request'), async (req, res) => {
+    try {
+        const result = await createServiceOutRequest({
+            user: req.user,
+            body: serviceOutBodyFromRequest(req),
+            idempotencyKey: idempotencyKeyFromRequest(req),
+            requireServiceOutRuntimeEnabled: true
+        });
+        return res.status(result.replayed ? 200 : 201).json({ success: true, ...projectServiceOutResultForViewer(req.user, result) });
+    } catch (error) {
+        const response = cashierOperationsErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/service-out/:operationId/approve', requireServiceOutMutationEnabled, requireAction('fiscal.service_out.approve'), async (req, res) => {
     try {
         const result = await approveServiceOut({
             user: req.user,
             operationId: req.params.operationId,
             body: req.body || {},
-            idempotencyKey: idempotencyKeyFromRequest(req)
+            idempotencyKey: idempotencyKeyFromRequest(req),
+            requireServiceOutRuntimeEnabled: true
         });
-        return res.status(200).json({ success: true, ...result });
+        return res.status(200).json({ success: true, ...projectServiceOutResultForViewer(req.user, result) });
     } catch (error) {
         const response = cashierOperationsErrorResponse(error);
         return res.status(response.status).json(response.body);

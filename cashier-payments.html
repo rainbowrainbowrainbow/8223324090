@@ -258,6 +258,38 @@
                 <p id="phase1ShiftCloseNotice" class="cashier-help" role="status" aria-live="polite">Стан зміни ще не завантажено.</p>
                 <button type="button" id="phase1CloseShiftBtn" class="btn-page-secondary cashier-primary-action" disabled aria-describedby="phase1ShiftCloseNotice">Закрити зміну Checkbox</button>
             </section>
+            <section id="serviceOutPanel" class="cashier-shift-action hidden" aria-labelledby="serviceOutTitle" aria-hidden="true">
+                <div class="cashier-card-head">
+                    <div><p class="cashier-kicker">Службова видача</p><h2 id="serviceOutTitle">Service-out</h2></div>
+                    <span id="serviceOutStatus" class="cashier-status">—</span>
+                </div>
+                <form id="serviceOutForm" class="cashier-service-out-form" autocomplete="off">
+                    <label class="cashier-field"><span>Сума, грн</span><input id="serviceOutAmount" name="amount" type="text" inputmode="decimal" placeholder="0,00" aria-describedby="serviceOutNotice"></label>
+                    <label class="cashier-field cashier-service-out-reason"><span>Причина</span><textarea id="serviceOutReason" name="reason" rows="3" maxlength="240" aria-describedby="serviceOutNotice"></textarea></label>
+                    <div class="cashier-action-row">
+                        <button type="submit" id="createServiceOutBtn" class="btn-page-secondary cashier-primary-action" disabled aria-describedby="serviceOutNotice">Створити запит</button>
+                        <button type="button" id="refreshServiceOutBtn" class="btn-page-secondary btn-page-toolbar" aria-controls="serviceOutList">Оновити</button>
+                    </div>
+                </form>
+                <label id="serviceOutApprovalPinField" class="cashier-field cashier-service-out-pin hidden"><span>PIN відповідального</span><input id="serviceOutApprovalPin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" aria-describedby="serviceOutNotice"></label>
+                <p id="serviceOutNotice" class="cashier-help" role="status" aria-live="polite">Запити ще не завантажено.</p>
+                <div id="serviceOutList" class="cashier-service-out-list" aria-live="polite">Запитів немає.</div>
+            </section>
+            <section id="actionPinPanel" class="cashier-shift-action hidden" aria-labelledby="actionPinTitle" aria-hidden="true">
+                <div class="cashier-card-head">
+                    <div><p class="cashier-kicker">PIN lifecycle</p><h2 id="actionPinTitle">Action PIN касира</h2></div>
+                    <span id="actionPinStatus" class="cashier-status">—</span>
+                </div>
+                <form id="actionPinForm" class="cashier-pin-form" autocomplete="off">
+                    <label class="cashier-field"><span>Касир</span><select id="actionPinBindingSelect" aria-describedby="actionPinNotice"></select></label>
+                    <div class="cashier-pin-grid">
+                        <label class="cashier-field"><span>Новий PIN</span><input id="actionPinValue" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="12" autocomplete="new-password" aria-describedby="actionPinNotice"></label>
+                        <label class="cashier-field"><span>Повтор PIN</span><input id="actionPinConfirm" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="12" autocomplete="new-password" aria-describedby="actionPinNotice"></label>
+                    </div>
+                    <button type="submit" id="saveActionPinBtn" class="btn-page-secondary cashier-primary-action" disabled aria-describedby="actionPinNotice">Зберегти PIN</button>
+                </form>
+                <p id="actionPinNotice" class="cashier-help" role="status" aria-live="polite">Доступні касири ще не завантажені.</p>
+            </section>
                 </div>
             </details>
 

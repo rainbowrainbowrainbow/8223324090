@@ -155,6 +155,15 @@
         phase1ClosePollingStartedAt: 0,
         phase1CloseTargetShiftId: null,
         phase1ClosePollingPaused: false,
+        serviceOutOperations: [],
+        serviceOutLoadInFlight: false,
+        serviceOutCreateInFlight: false,
+        serviceOutApproveInFlight: false,
+        serviceOutCancelInFlight: false,
+        serviceOutLastError: null,
+        actionPinBindings: [],
+        actionPinLoadInFlight: false,
+        actionPinSaveInFlight: false,
         tender: 'cash',
         interactionGeneration: 0,
         orderLoadGeneration: 0,
@@ -191,7 +200,12 @@
         state.reportRequest = null;
         state.unresolvedInFlight = false;
         state.reportInFlight = false;
+        state.serviceOutLoadInFlight = false;
+        state.actionPinLoadInFlight = false;
+        state.serviceOutLastError = null;
         syncUnresolvedControls();
+        renderServiceOutPanel();
+        renderActionPinPanel();
         const reportButton = $('loadCheckboxSalesReportBtn');
         setButtonBusy(reportButton, false, '');
         if (reportButton) reportButton.disabled = false;
@@ -631,6 +645,69 @@
         return state.routeOptions.find(route => route.id === PILOT_SCOPE.routeOptionId) || null;
     }
 
+    function hasServiceOutRequestAccess() {
+        return hasAction('fiscal.service_out.request');
+    }
+
+    function hasServiceOutApproveAccess() {
+        return hasAction('fiscal.service_out.approve');
+    }
+
+    function serviceOutVisible() {
+        return hasServiceOutRequestAccess() || hasServiceOutApproveAccess();
+    }
+
+    function actionPinVisible() {
+        return hasAction('fiscal.configure');
+    }
+
+    function currentShiftStatus() {
+        const phaseContext = phase1CloseContext();
+        return normalizeStatus(phaseContext?.status || state.registerState?.shift?.status || state.registerState?.shiftStatus);
+    }
+
+    function serviceOutUnavailableReason() {
+        if (!serviceOutVisible()) return 'Немає дозволу на службову видачу.';
+        if (!state.routeReady) return 'Каса або маршрут ще не готові.';
+        if (state.registerState?.integrationReady !== true) return 'Готовність Checkbox ще не підтверджена.';
+        if (!unresolvedQueueIsFresh()) return queueUnavailableReason();
+        const shiftStatus = currentShiftStatus();
+        if (!['open', 'opened'].includes(shiftStatus)) return 'Потрібна відкрита зміна Checkbox.';
+        return '';
+    }
+
+    function serviceOutScopePayload() {
+        const result = {
+            businessContext: PILOT_SCOPE.crmProfileKey,
+            routeOptionId: PILOT_SCOPE.routeOptionId
+        };
+        const registerState = state.registerState || {};
+        const profileId = registerState.fiscalProfileId ?? registerState.fiscal_profile_id;
+        const locationId = registerState.fiscalLocationId ?? registerState.fiscal_location_id;
+        const registerId = registerState.fiscalRegisterId ?? registerState.fiscal_register_id;
+        if (profileId != null) result.fiscalProfileId = profileId;
+        if (locationId != null) result.fiscalLocationId = locationId;
+        if (registerId != null) result.fiscalRegisterId = registerId;
+        return result;
+    }
+
+    function serviceOutDraftScope() {
+        return JSON.stringify({
+            routeOptionId: PILOT_SCOPE.routeOptionId,
+            businessContext: PILOT_SCOPE.crmProfileKey,
+            amount: String($('serviceOutAmount')?.value || '').trim().replace(',', '.'),
+            reason: String($('serviceOutReason')?.value || '').trim()
+        });
+    }
+
+    function serviceOutCreateIdempotencyKey(scope = serviceOutDraftScope()) {
+        return getOperationIdempotencyKey('service-out-request', scope);
+    }
+
+    function clearServiceOutCreateIdempotencyKey(scope = serviceOutDraftScope()) {
+        clearOperationIdempotencyKey('service-out-request', scope);
+    }
+
     async function apiRequest(path, options = {}) {
         const timeoutMs = Number(options.timeoutMs || 0);
         const controller = timeoutMs > 0 ? new AbortController() : null;
@@ -655,6 +732,296 @@
             return payload;
         } finally {
             if (timeoutId) window.clearTimeout(timeoutId);
+        }
+    }
+
+    function normalizeServiceOutPayload(result = {}) {
+        if (Array.isArray(result.operations)) return result.operations;
+        if (result.operation) return [result.operation];
+        return [];
+    }
+
+    function upsertServiceOutOperation(operation) {
+        if (!operation?.operationId) return;
+        const id = String(operation.operationId);
+        const existing = state.serviceOutOperations.filter(item => String(item.operationId) !== id);
+        state.serviceOutOperations = [operation, ...existing].sort((a, b) => {
+            const bTime = new Date(b.createdAt || 0).getTime();
+            const aTime = new Date(a.createdAt || 0).getTime();
+            if (bTime !== aTime) return bTime - aTime;
+            return Number(b.operationId || 0) - Number(a.operationId || 0);
+        }).slice(0, 50);
+    }
+
+    function serviceOutOperationById(operationId) {
+        return state.serviceOutOperations.find(item => String(item.operationId) === String(operationId)) || null;
+    }
+
+    async function loadServiceOutRequests({ silent = false } = {}) {
+        if (!serviceOutVisible()) {
+            state.serviceOutOperations = [];
+            renderServiceOutPanel();
+            return [];
+        }
+        const contextKey = interactionContextKey();
+        state.serviceOutLoadInFlight = true;
+        renderServiceOutPanel();
+        try {
+            const params = routeQueryParams();
+            const result = await apiRequest(`/api/payments/service-out?${params.toString()}`, {
+                method: 'GET',
+                headers: apiHeaders()
+            });
+            if (contextKey !== interactionContextKey()) return state.serviceOutOperations;
+            state.serviceOutOperations = normalizeServiceOutPayload(result);
+            state.serviceOutLastError = null;
+            if (!silent) notify('Список service-out оновлено.', 'success');
+            return state.serviceOutOperations;
+        } catch (error) {
+            if (contextKey !== interactionContextKey()) return state.serviceOutOperations;
+            state.serviceOutLastError = error;
+            if (!silent) notify(paymentUiError(error), 'error');
+            return state.serviceOutOperations;
+        } finally {
+            state.serviceOutLoadInFlight = false;
+            renderServiceOutPanel();
+        }
+    }
+
+    async function recoverServiceOutRequest(idempotencyKey) {
+        const key = String(idempotencyKey || '').trim();
+        if (!key) throw new Error('idempotency_key_required');
+        const result = await apiRequest('/api/payments/service-out/recovery', {
+            method: 'GET',
+            headers: apiHeaders(key)
+        });
+        const operation = normalizeServiceOutPayload(result)[0] || null;
+        if (operation) upsertServiceOutOperation(operation);
+        return result;
+    }
+
+    function serviceOutRecoverableError(error) {
+        const status = Number(error?.status || 0);
+        return error?.name === 'AbortError' || status === 0 || status >= 500 || error?.code === 'provider_unavailable';
+    }
+
+    async function createServiceOutRequest(event) {
+        event?.preventDefault?.();
+        if (state.serviceOutCreateInFlight) return;
+        const unavailable = serviceOutUnavailableReason();
+        if (unavailable) {
+            notify(unavailable, 'error');
+            $('serviceOutAmount')?.focus?.({ preventScroll: false });
+            return;
+        }
+        let minor;
+        try {
+            minor = parseUahToMinor($('serviceOutAmount')?.value || '');
+        } catch (error) {
+            notify(paymentUiError(error), 'error');
+            $('serviceOutAmount')?.focus?.({ preventScroll: false });
+            return;
+        }
+        if (minor <= 0n) {
+            notify(paymentUiError(new Error('service_out_amount_required')), 'error');
+            $('serviceOutAmount')?.focus?.({ preventScroll: false });
+            return;
+        }
+        const reason = String($('serviceOutReason')?.value || '').trim();
+        if (!reason) {
+            notify(paymentUiError(new Error('service_out_reason_required')), 'error');
+            $('serviceOutReason')?.focus?.({ preventScroll: false });
+            return;
+        }
+        const draftScope = serviceOutDraftScope();
+        const idempotencyKey = serviceOutCreateIdempotencyKey(draftScope);
+        const run = async () => {
+            state.serviceOutCreateInFlight = true;
+            renderServiceOutPanel();
+            try {
+                const result = await apiRequest('/api/payments/service-out', {
+                    method: 'POST',
+                    headers: apiHeaders(idempotencyKey),
+                    body: JSON.stringify({
+                        ...serviceOutScopePayload(),
+                        amountMinor: minor.toString(),
+                        reason
+                    }),
+                    timeoutMs: READINESS_REQUEST_TIMEOUT_MS
+                });
+                const operation = normalizeServiceOutPayload(result)[0] || null;
+                if (operation) upsertServiceOutOperation(operation);
+                clearServiceOutCreateIdempotencyKey(draftScope);
+                if ($('serviceOutAmount')) $('serviceOutAmount').value = '';
+                if ($('serviceOutReason')) $('serviceOutReason').value = '';
+                notify(result.replayed ? 'Service-out уже був створений. Стан відновлено.' : 'Service-out запит створено й очікує погодження.', 'success');
+                await loadServiceOutRequests({ silent: true });
+                await loadPilotRegisterState({ silent: true });
+            } catch (error) {
+                if (serviceOutRecoverableError(error)) {
+                    try {
+                        const recovered = await recoverServiceOutRequest(idempotencyKey);
+                        clearServiceOutCreateIdempotencyKey(draftScope);
+                        notify(recovered?.operation ? 'Service-out відновлено після втраченої відповіді.' : 'Стан service-out уточнено.', 'success');
+                        return;
+                    } catch (recoverError) {
+                        if (Number(recoverError?.status || 0) !== 404) error = recoverError;
+                    }
+                }
+                state.serviceOutLastError = error;
+                notify(paymentUiError(error), 'error');
+            } finally {
+                state.serviceOutCreateInFlight = false;
+                renderServiceOutPanel();
+            }
+        };
+        if (window.navigator.locks?.request) {
+            return window.navigator.locks.request(storageKey('service-out-request'), run).catch(error => notify(paymentUiError(error), 'error'));
+        }
+        return run();
+    }
+
+    async function cancelServiceOutOperation(operationId) {
+        const operation = serviceOutOperationById(operationId);
+        if (!operation?.canCancel || state.serviceOutCancelInFlight) return;
+        state.serviceOutCancelInFlight = true;
+        renderServiceOutPanel();
+        try {
+            const result = await apiRequest(`/api/payments/service-out/${encodeURIComponent(operationId)}/cancel`, {
+                method: 'POST',
+                headers: apiHeaders(getOperationIdempotencyKey('service-out-cancel', operationId)),
+                body: JSON.stringify({})
+            });
+            const nextOperation = normalizeServiceOutPayload(result)[0] || null;
+            if (nextOperation) upsertServiceOutOperation(nextOperation);
+            clearOperationIdempotencyKey('service-out-cancel', operationId);
+            notify(result.replayed ? 'Скасування service-out уже зафіксовано.' : 'Service-out запит скасовано. Запит до Checkbox не надсилався.', 'success');
+            await loadPilotRegisterState({ silent: true });
+        } catch (error) {
+            notify(paymentUiError(error), 'error');
+        } finally {
+            state.serviceOutCancelInFlight = false;
+            renderServiceOutPanel();
+        }
+    }
+
+    async function approveServiceOutOperation(operationId) {
+        const operation = serviceOutOperationById(operationId);
+        if (!operation?.canApprove || state.serviceOutApproveInFlight) return;
+        const pinInput = $('serviceOutApprovalPin');
+        const pin = String(pinInput?.value || '').trim();
+        if (!pin) {
+            notify(paymentUiError(new Error('action_pin_required')), 'error');
+            pinInput?.focus?.({ preventScroll: false });
+            return;
+        }
+        state.serviceOutApproveInFlight = true;
+        renderServiceOutPanel();
+        try {
+            const result = await apiRequest(`/api/payments/service-out/${encodeURIComponent(operationId)}/approve`, {
+                method: 'POST',
+                headers: apiHeaders(getOperationIdempotencyKey('service-out-approve', operationId)),
+                body: JSON.stringify({ pin })
+            });
+            const nextOperation = normalizeServiceOutPayload(result)[0] || null;
+            if (nextOperation) upsertServiceOutOperation(nextOperation);
+            clearOperationIdempotencyKey('service-out-approve', operationId);
+            notify('Service-out погоджено. Подальшу відправку контролює серверна черга.', 'success');
+            await loadServiceOutRequests({ silent: true });
+        } catch (error) {
+            notify(paymentUiError(error), 'error');
+        } finally {
+            if (pinInput) pinInput.value = '';
+            state.serviceOutApproveInFlight = false;
+            renderServiceOutPanel();
+        }
+    }
+
+    async function loadActionPinBindings({ silent = false } = {}) {
+        if (!actionPinVisible()) {
+            state.actionPinBindings = [];
+            renderActionPinPanel();
+            return [];
+        }
+        state.actionPinLoadInFlight = true;
+        renderActionPinPanel();
+        try {
+            const params = routeQueryParams();
+            const result = await apiRequest(`/api/payments/fiscal-bindings/cashiers?${params.toString()}`, {
+                method: 'GET',
+                headers: apiHeaders()
+            });
+            state.actionPinBindings = Array.isArray(result.cashiers) ? result.cashiers : [];
+            if (!silent) notify('Список касирів для PIN оновлено.', 'success');
+            return state.actionPinBindings;
+        } catch (error) {
+            state.actionPinBindings = [];
+            if (!silent) notify(paymentUiError(error), 'error');
+            return state.actionPinBindings;
+        } finally {
+            state.actionPinLoadInFlight = false;
+            renderActionPinPanel();
+        }
+    }
+
+    function clearActionPinFields() {
+        if ($('actionPinValue')) $('actionPinValue').value = '';
+        if ($('actionPinConfirm')) $('actionPinConfirm').value = '';
+    }
+
+    function changeActionPinBinding() {
+        clearActionPinFields();
+        renderActionPinPanel();
+    }
+
+    async function saveActionPin(event) {
+        event?.preventDefault?.();
+        if (state.actionPinSaveInFlight) return;
+        const select = $('actionPinBindingSelect');
+        const bindingId = select?.value || '';
+        const binding = state.actionPinBindings.find(item => String(item.id) === String(bindingId));
+        const pin = String($('actionPinValue')?.value || '').trim();
+        const confirmation = String($('actionPinConfirm')?.value || '').trim();
+        if (!binding) {
+            notify(paymentUiError(new Error('cashier_binding_required')), 'error');
+            select?.focus?.({ preventScroll: false });
+            return;
+        }
+        if (Number(binding.targetUserId) === Number(state.user?.id)) {
+            notify(paymentUiError(new Error('action_pin_self_enrollment_denied')), 'error');
+            select?.focus?.({ preventScroll: false });
+            return;
+        }
+        if (!/^\d{4,12}$/.test(pin)) {
+            notify(paymentUiError(new Error('action_pin_format_invalid')), 'error');
+            $('actionPinValue')?.focus?.({ preventScroll: false });
+            return;
+        }
+        if (pin !== confirmation) {
+            notify(paymentUiError(new Error('action_pin_confirmation_mismatch')), 'error');
+            $('actionPinConfirm')?.focus?.({ preventScroll: false });
+            return;
+        }
+        state.actionPinSaveInFlight = true;
+        renderActionPinPanel();
+        try {
+            await apiRequest(`/api/payments/fiscal-bindings/${encodeURIComponent(binding.id)}/action-pin`, {
+                method: 'POST',
+                headers: apiHeaders(),
+                body: JSON.stringify({
+                    actionPin: pin,
+                    businessContext: PILOT_SCOPE.crmProfileKey,
+                    routeOptionId: PILOT_SCOPE.routeOptionId
+                })
+            });
+            clearActionPinFields();
+            notify('Action PIN збережено для обраної прив’язки.', 'success');
+            await loadActionPinBindings({ silent: true });
+        } catch (error) {
+            notify(paymentUiError(error), 'error');
+        } finally {
+            state.actionPinSaveInFlight = false;
+            renderActionPinPanel();
         }
     }
 
@@ -780,9 +1147,16 @@
         state.unresolvedOrders = [];
         state.unresolvedQueueState = 'unknown';
         state.unresolvedFastRefreshStartedAt = 0;
+        state.serviceOutOperations = [];
+        state.serviceOutLastError = null;
+        state.actionPinBindings = [];
         resetReceiptHistoryForScope();
         $('catalogSaleLines')?.replaceChildren();
         $('paymentCashierBinding')?.replaceChildren(new Option('Завантаження касирів…', ''));
+        $('serviceOutApprovalPin') && ($('serviceOutApprovalPin').value = '');
+        clearActionPinFields();
+        renderServiceOutPanel();
+        renderActionPinPanel();
     }
 
     async function activateSelectedRoute(routeOptionId) {
@@ -821,6 +1195,8 @@
             state.routeReady = false;
             renderReadinessState();
             syncCreateAvailability();
+            renderServiceOutPanel();
+            renderActionPinPanel();
             return;
         }
         await loadSelectableCashiers();
@@ -829,6 +1205,8 @@
         state.draftRevision = storageGet('draftRevision') || '';
         state.unresolvedAutoRefreshEnabled = true;
         await loadUnresolvedOrders({ silent: true });
+        await loadServiceOutRequests({ silent: true });
+        await loadActionPinBindings({ silent: true });
         scheduleReadinessRefresh();
         loadReceiptHistoryOnOpen();
     }
@@ -1415,6 +1793,7 @@
             renderReadinessState();
             syncCreateAvailability();
             syncConfirmationAvailability();
+            renderServiceOutPanel();
             scheduleReadinessRefresh();
         }
     }
@@ -1551,6 +1930,22 @@
                 ? `Checkbox не повідомив право касира на ${permissionLabels.join(' і ')}. Оновлення сторінки це не виправить; потрібна перевірка прав у Checkbox.`
                 : 'Checkbox не повідомив право касира на вибраний спосіб оплати. Потрібна перевірка прав у Checkbox.',
             fiscal_binding_capability_denied: 'Локальна прив’язка касира не дозволяє цю фіскальну дію. Потрібна перевірка прив’язки касира.',
+            service_out_amount_required: 'Вкажіть суму службової видачі у гривнях.',
+            service_out_reason_required: 'Вкажіть причину службової видачі.',
+            service_out_not_found: 'Service-out запит не знайдено або він недоступний для цього користувача.',
+            service_out_not_pending_approval: 'Цей service-out уже не очікує погодження.',
+            service_out_cancel_denied: 'Скасувати service-out може лише касир, який створив цей запит.',
+            service_out_cancel_forbidden: 'Service-out уже погоджений або переданий у чергу Checkbox; скасування заблоковано.',
+            service_out_cancel_conflict: 'Стан service-out змінився під час скасування. Оновіть список.',
+            service_out_idempotency_conflict: 'Повторний service-out запит не збігається з попереднім. Оновіть сторінку перед новою дією.',
+            service_out_route_scope_mismatch: 'Service-out не збігається з обраною касою або напрямком.',
+            park_dar_test_service_out_scope_invalid: 'Service-out у test-only режимі дозволений тільки для точної тестової каси PARK/ДАР.',
+            action_pin_required: 'Введіть Action PIN відповідального.',
+            action_pin_format_invalid: 'PIN має містити тільки 4–12 цифр.',
+            action_pin_confirmation_mismatch: 'Повтор PIN не збігається.',
+            action_pin_self_enrollment_denied: 'Адміністратор не може встановити PIN для власної прив’язки.',
+            action_pin_locked: 'PIN тимчасово заблокований після невдалих спроб.',
+            action_pin_invalid: 'PIN не підтверджено. Перевірте введення або зверніться до відповідального.',
             payment_tender_required: 'Оберіть спосіб оплати перед перевіркою готовності або підтвердженням.',
             payment_tender_unsupported: 'Обраний спосіб оплати не підтримується для цієї каси.',
             payment_confirmation_outcome_unknown: 'Результат підтвердження уточнюється. Не повторюйте оплату і не скасовуйте чернетку, доки відповідальний не звірить стан.',
@@ -2122,6 +2517,7 @@
             renderReadinessState();
             syncCreateAvailability();
             syncConfirmationAvailability();
+            renderServiceOutPanel();
             if (!silent) notify('Чергу незавершених чеків оновлено.', 'success');
             return state.unresolvedOrders;
         } catch (error) {
@@ -2138,11 +2534,13 @@
             if (!silent) notify(paymentUiError(error), 'error');
             renderUnresolvedOrders();
             renderReadinessState();
+            renderServiceOutPanel();
             return state.unresolvedOrders;
         } finally {
             if (unresolvedRequestIsCurrent(requestContext)) {
                 state.unresolvedInFlight = false;
                 syncUnresolvedControls();
+                renderServiceOutPanel();
                 if (restartAfterSnapshotChange && state.unresolvedSnapshotRestartPending) {
                     state.unresolvedSnapshotRestartPending = false;
                     window.setTimeout(() => { void loadUnresolvedOrders({ silent: true }); }, 0);
@@ -2553,6 +2951,8 @@
             syncCreateAvailability();
             syncConfirmationAvailability();
             renderPhase1ShiftState();
+            renderServiceOutPanel();
+            renderActionPinPanel();
             renderCompactContext();
             return;
         }
@@ -2569,6 +2969,8 @@
         syncCreateAvailability();
         syncConfirmationAvailability();
         renderPhase1ShiftState();
+        renderServiceOutPanel();
+        renderActionPinPanel();
         renderCompactContext();
     }
 
@@ -2906,6 +3308,127 @@
 
     function hasAction(action) {
         return typeof canAccess === 'function' ? canAccess(action) : false;
+    }
+
+    function renderServiceOutList() {
+        const list = $('serviceOutList');
+        if (!list) return;
+        if (state.serviceOutLoadInFlight && !state.serviceOutOperations.length) {
+            list.textContent = 'Завантажуємо service-out запити…';
+            return;
+        }
+        if (!state.serviceOutOperations.length) {
+            list.textContent = state.serviceOutLastError
+                ? 'Список тимчасово недоступний. Оновіть стан каси.'
+                : 'Активних service-out запитів немає.';
+            return;
+        }
+        const busy = state.serviceOutApproveInFlight || state.serviceOutCancelInFlight;
+        list.innerHTML = state.serviceOutOperations.map(operation => {
+            const amount = formatMoneyMinor(operation.amountMinor);
+            const status = formatStatus(operation.status);
+            const requestedAt = formatKyivDateTime(operation.createdAt);
+            const ownership = operation.isMine ? 'Мій запит' : 'Інший касир';
+            const actions = [
+                operation.canCancel
+                    ? `<button type="button" class="btn-page-secondary btn-page-toolbar" data-service-out-cancel="${escapeAttribute(operation.operationId)}"${busy ? ' disabled' : ''}>Скасувати</button>`
+                    : '',
+                operation.canApprove
+                    ? `<button type="button" class="btn-page-secondary btn-page-toolbar" data-service-out-approve="${escapeAttribute(operation.operationId)}"${busy ? ' disabled' : ''}>Погодити</button>`
+                    : ''
+            ].filter(Boolean).join('');
+            return `<article class="cashier-service-out-item">
+                <div><strong>${escapeHtml(amount)}</strong><small>${escapeHtml(operation.reason || 'Причину не вказано')}</small></div>
+                <div><strong>${escapeHtml(status)}</strong><small>${escapeHtml(ownership)} · ${escapeHtml(requestedAt)}</small></div>
+                <div class="cashier-service-out-actions">${actions || '<span class="cashier-muted">Дій немає</span>'}</div>
+            </article>`;
+        }).join('');
+    }
+
+    function renderServiceOutPanel() {
+        const panel = $('serviceOutPanel');
+        if (!panel) return;
+        const visible = serviceOutVisible();
+        panel.classList.toggle('hidden', !visible);
+        panel.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        panel.setAttribute('aria-busy', state.serviceOutLoadInFlight || state.serviceOutCreateInFlight ? 'true' : 'false');
+        if (!visible) return;
+        const requestAllowed = hasServiceOutRequestAccess();
+        const approvePending = state.serviceOutOperations.some(operation => operation.canApprove);
+        const unavailable = serviceOutUnavailableReason();
+        const createBusy = state.serviceOutCreateInFlight;
+        const loadBusy = state.serviceOutLoadInFlight;
+        const createButton = $('createServiceOutBtn');
+        const refreshButton = $('refreshServiceOutBtn');
+        const form = $('serviceOutForm');
+        const pinField = $('serviceOutApprovalPinField');
+        if (form) form.classList.toggle('hidden', !requestAllowed);
+        if ($('serviceOutAmount')) $('serviceOutAmount').disabled = createBusy || !requestAllowed;
+        if ($('serviceOutReason')) $('serviceOutReason').disabled = createBusy || !requestAllowed;
+        pinField?.classList.toggle('hidden', !approvePending);
+        if ($('serviceOutApprovalPin')) $('serviceOutApprovalPin').disabled = !approvePending || state.serviceOutApproveInFlight;
+        setStatus('serviceOutStatus', loadBusy ? 'pending' : (unavailable ? 'blocked' : 'ready'));
+        setButtonBusy(createButton, createBusy, 'Створюємо запит…');
+        if (!createBusy) {
+            setDisabledReason(createButton, !requestAllowed || Boolean(unavailable), requestAllowed ? unavailable : 'Немає дозволу на створення service-out.');
+        }
+        setButtonBusy(refreshButton, loadBusy, 'Оновлюємо…');
+        if (!loadBusy) setDisabledReason(refreshButton, false, '');
+        const notice = state.serviceOutLastError
+            ? paymentUiError(state.serviceOutLastError)
+            : (unavailable || (approvePending
+                ? 'Введіть PIN відповідального лише перед погодженням конкретного запиту.'
+                : 'Service-out створюється як запит на погодження; до Checkbox він іде тільки після approve.'));
+        setText('serviceOutNotice', notice);
+        renderServiceOutList();
+    }
+
+    function renderActionPinPanel() {
+        const panel = $('actionPinPanel');
+        if (!panel) return;
+        const visible = actionPinVisible();
+        panel.classList.toggle('hidden', !visible);
+        panel.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        panel.setAttribute('aria-busy', state.actionPinLoadInFlight || state.actionPinSaveInFlight ? 'true' : 'false');
+        if (!visible) return;
+        const select = $('actionPinBindingSelect');
+        const previousValue = select?.value || '';
+        if (select) {
+            select.replaceChildren();
+            if (state.actionPinLoadInFlight) {
+                select.append(new Option('Завантаження касирів…', ''));
+            } else if (!state.actionPinBindings.length) {
+                select.append(new Option('Немає доступних прив’язок', ''));
+            } else {
+                select.append(new Option('Оберіть касира', ''));
+                state.actionPinBindings.forEach(binding => {
+                    const pinState = binding.actionPin?.configured || binding.pinConfigured ? 'PIN є' : 'PIN немає';
+                    const locked = binding.actionPin?.lockedUntil || binding.pinLockedUntil
+                        ? ` · lock до ${formatKyivDateTime(binding.actionPin?.lockedUntil || binding.pinLockedUntil)}`
+                        : '';
+                    const option = new Option(`${binding.cashierName || binding.cashierLogin || `Касир ${binding.id}`} · ${pinState}${locked}`, String(binding.id));
+                    if (Number(binding.targetUserId) === Number(state.user?.id)) option.disabled = true;
+                    select.append(option);
+                });
+                if ([...select.options].some(option => option.value === previousValue && !option.disabled)) select.value = previousValue;
+            }
+        }
+        const selected = state.actionPinBindings.find(binding => String(binding.id) === String(select?.value || ''));
+        const selfSelected = selected && Number(selected.targetUserId) === Number(state.user?.id);
+        const disabled = state.actionPinLoadInFlight || state.actionPinSaveInFlight || !selected || selfSelected;
+        if (select) select.disabled = state.actionPinLoadInFlight || state.actionPinSaveInFlight;
+        if ($('actionPinValue')) $('actionPinValue').disabled = disabled;
+        if ($('actionPinConfirm')) $('actionPinConfirm').disabled = disabled;
+        setStatus('actionPinStatus', state.actionPinLoadInFlight ? 'pending' : (disabled ? 'blocked' : 'ready'));
+        setButtonBusy($('saveActionPinBtn'), state.actionPinSaveInFlight, 'Зберігаємо…');
+        if (!state.actionPinSaveInFlight) {
+            setDisabledReason($('saveActionPinBtn'), disabled, selfSelected
+                ? 'Не можна встановити PIN для власної прив’язки.'
+                : (!selected ? 'Оберіть прив’язку іншого касира.' : ''));
+        }
+        setText('actionPinNotice', selfSelected
+            ? 'Самостійне встановлення PIN для власної прив’язки заблоковане.'
+            : 'PIN встановлює адміністратор для іншого касира цієї самої route-aware binding.');
     }
 
     function phase1CloseContext() {
@@ -3518,6 +4041,8 @@
             syncCreateAvailability();
             await loadPilotRegisterState({ silent: true });
             await loadUnresolvedOrders({ silent: true });
+            await loadServiceOutRequests({ silent: true });
+            await loadActionPinBindings({ silent: true });
         });
         $('addCatalogLineBtn')?.addEventListener('click', () => {
             const open = Boolean($('catalogPicker')?.hidden);
@@ -3580,6 +4105,21 @@
         $('phase1CloseShiftBtn')?.addEventListener('click', () => { void closePhase1Shift(); });
         $('sharedTestDrainBtn')?.addEventListener('click', () => { void changeSharedTestDay('drain'); });
         $('sharedTestResumeBtn')?.addEventListener('click', () => { void changeSharedTestDay('resume'); });
+        $('serviceOutForm')?.addEventListener('submit', createServiceOutRequest);
+        $('refreshServiceOutBtn')?.addEventListener('click', () => { void loadServiceOutRequests({ silent: false }); });
+        $('serviceOutList')?.addEventListener('click', event => {
+            const cancelTarget = event.target?.closest?.('[data-service-out-cancel]');
+            const approveTarget = event.target?.closest?.('[data-service-out-approve]');
+            if (cancelTarget) {
+                void cancelServiceOutOperation(cancelTarget.getAttribute('data-service-out-cancel'));
+                return;
+            }
+            if (approveTarget) void approveServiceOutOperation(approveTarget.getAttribute('data-service-out-approve'));
+        });
+        $('actionPinForm')?.addEventListener('submit', saveActionPin);
+        $('actionPinBindingSelect')?.addEventListener('change', changeActionPinBinding);
+        $('actionPinValue')?.addEventListener('input', renderActionPinPanel);
+        $('actionPinConfirm')?.addEventListener('input', renderActionPinPanel);
         $('unresolvedOrdersBody')?.addEventListener('click', event => {
             const target = event.target?.closest?.('[data-order-id]');
             const orderId = target?.getAttribute?.('data-order-id');
@@ -3672,6 +4212,8 @@
         state.unresolvedAutoRefreshEnabled = false;
         clearUnresolvedRefreshTimer();
         pauseOrderPolling();
+        if ($('serviceOutApprovalPin')) $('serviceOutApprovalPin').value = '';
+        clearActionPinFields();
     });
     document.addEventListener('visibilitychange', () => {
         if (!pageIsVisible()) {
@@ -3679,6 +4221,7 @@
             pauseOrderPolling();
             return;
         }
+        if (serviceOutVisible()) void loadServiceOutRequests({ silent: true });
         const order = state.orderDetails?.order;
         if (shouldPollOrder(order)) {
             void loadPaymentOrder(order.id, { silent: true }).catch(() => {
@@ -3706,6 +4249,12 @@
         loadPaymentOrder,
         loadPilotRegisterState,
         closePhase1Shift,
+        loadServiceOutRequests,
+        createServiceOutRequest,
+        cancelServiceOutOperation,
+        approveServiceOutOperation,
+        loadActionPinBindings,
+        saveActionPin,
         isTrustedCheckboxUrl,
         unresolvedOrderAccessibleLabel
     };

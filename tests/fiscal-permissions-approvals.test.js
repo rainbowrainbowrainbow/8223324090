@@ -22,6 +22,14 @@ const {
     consumeFiscalApprovalInTransaction,
     assertTestPinModeSafe
 } = require('../services/payments/fiscalApprovals');
+const {
+    assertServiceOutMutationRuntimeEnabled,
+    projectServiceOutOperation
+} = require('../services/payments/cashierOperationsService');
+const {
+    assertServiceReceiptRuntimeGate,
+    isParkDarTestServiceOutJob
+} = require('../services/payments/paymentOutboxWorker');
 
 function differentPin(pin) {
     return pin.split('').map(digit => String((Number(digit) + 1) % 10)).join('');
@@ -246,6 +254,120 @@ test('service_out approval requires a distinct approver and approval payload doe
     const serialized = JSON.stringify(approved);
     assert.equal(serialized.includes(pin), false, 'approval result and audit metadata must not contain raw PIN');
     assert.equal(Object.hasOwn(approved.approval.approval_context, 'pinEcho'), false);
+});
+
+test('service-out projection is safe and narrow runtime gate accepts only PARK/DAR test operations without PRO', () => {
+    const serviceOutOperation = {
+        id: 70,
+        fiscal_shift_id: 80,
+        fiscal_profile_id: 20,
+        fiscal_register_id: 40,
+        operation_type: 'service_out',
+        status: 'blocked',
+        server_approval_status: 'required',
+        approval_required: true,
+        amount_minor: '12345',
+        currency: 'UAH',
+        initiated_by_user_id: 50,
+        expected_is_test: true,
+        outbox_count: 0,
+        external_stage: 'auth',
+        request_snapshot: {
+            reason: 'synthetic fixture',
+            business_context: 'event_genix',
+            route_option_id: 'park_test',
+            register_mode: 'test',
+            shared_test_register: true,
+            provider_request_uuid: 'provider-secret',
+            provider_context: {
+                expected_is_test: true,
+                cashier_credential_ref: 'cashier-secret'
+            }
+        }
+    };
+
+    const requesterView = projectServiceOutOperation(serviceOutOperation, {
+        user: baseUser({ id: 50, role: 'creator' })
+    });
+    assert.equal(requesterView.canCancel, true);
+    assert.equal(requesterView.canApprove, false);
+    assert.equal(JSON.stringify(requesterView).includes('provider-secret'), false);
+    assert.equal(JSON.stringify(requesterView).includes('cashier-secret'), false);
+    assert.equal(Object.hasOwn(requesterView, 'actionPin'), false);
+
+    const approverView = projectServiceOutOperation(serviceOutOperation, {
+        user: baseUser({ id: 60, role: 'creator' })
+    });
+    assert.equal(approverView.canCancel, false);
+    assert.equal(approverView.canApprove, true);
+
+    assert.doesNotThrow(() => assertServiceOutMutationRuntimeEnabled({
+        env: {
+            EVENTGENIX_CASHIER_PRO_ENABLED: 'false',
+            PARK_DAR_TEST_SERVICE_OUT_ENABLED: 'true'
+        },
+        operation: serviceOutOperation
+    }));
+
+    assert.throws(
+        () => assertServiceOutMutationRuntimeEnabled({
+            env: {
+                EVENTGENIX_CASHIER_PRO_ENABLED: 'false',
+                PARK_DAR_TEST_SERVICE_OUT_ENABLED: 'true'
+            },
+            operation: {
+                ...serviceOutOperation,
+                expected_is_test: false,
+                request_snapshot: {
+                    ...serviceOutOperation.request_snapshot,
+                    route_option_id: 'park_production',
+                    register_mode: 'production',
+                    shared_test_register: false,
+                    provider_context: { expected_is_test: false }
+                }
+            }
+        }),
+        error => error.code === 'park_dar_test_service_out_scope_invalid'
+    );
+});
+
+test('service receipt worker gate runs provider action only for exact PARK/DAR test service-out when PRO is off', () => {
+    const job = {
+        job_type: 'service_receipt',
+        operation_type: 'service_out',
+        expected_is_test: true,
+        fiscal_request_snapshot: {
+            business_context: 'dar',
+            route_option_id: 'dar_test',
+            register_mode: 'test',
+            shared_test_register: true,
+            provider_context: { expected_is_test: true }
+        }
+    };
+    assert.equal(isParkDarTestServiceOutJob(job), true);
+    assert.doesNotThrow(() => assertServiceReceiptRuntimeGate({ job }, {
+        EVENTGENIX_CASHIER_PRO_ENABLED: 'false',
+        PARK_DAR_TEST_SERVICE_OUT_ENABLED: 'true'
+    }));
+    assert.throws(
+        () => assertServiceReceiptRuntimeGate({
+            job: {
+                ...job,
+                expected_is_test: false,
+                fiscal_request_snapshot: {
+                    ...job.fiscal_request_snapshot,
+                    route_option_id: 'dar_production',
+                    register_mode: 'production',
+                    shared_test_register: false,
+                    provider_context: { expected_is_test: false }
+                }
+            }
+        }, {
+            EVENTGENIX_CASHIER_PRO_ENABLED: 'false',
+            PARK_DAR_TEST_SERVICE_OUT_ENABLED: 'true'
+        }),
+        error => error.code === 'cashier_pro_disabled'
+    );
 });
 
 test('operation-bound approvals are one-time and replay attempts fail closed', () => {

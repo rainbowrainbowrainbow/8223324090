@@ -23,15 +23,23 @@ function clean(value, field) {
 }
 
 function project(row) {
+    const pinConfigured = Boolean(row.action_pin_set_at || row.action_pin_hash);
     return {
         id: Number(row.id),
-        cashierName: row.cashier_name || null,
+        cashierName: row.cashier_name || row.user_name || row.username || null,
         cashierLogin: row.cashier_login || null,
         status: row.status,
-        businessContext: row.crm_profile_key,
+        businessContext: row.route_business_context || row.crm_profile_key,
         registerDisplayName: row.register_display_name,
         mode: row.expected_is_test === true ? 'test' : 'production',
-        credentialReference: row.provider_cashier_login_ref || null
+        targetUserId: Number(row.user_id),
+        actionPin: {
+            configured: pinConfigured,
+            lockedUntil: row.pin_locked_until || null
+        },
+        pinConfigured,
+        pinLockedUntil: row.pin_locked_until || null,
+        pinSetAt: row.action_pin_set_at || null
     };
 }
 
@@ -44,11 +52,72 @@ function projectSelectable(row) {
     };
 }
 
-async function listCashierBindings({ dbPool = pool, businessContext } = {}) {
+async function listCashierBindings({
+    dbPool = pool,
+    businessContext,
+    routeOptionId = null,
+    user,
+    authorizer = authorizeFiscalActorAction,
+    routeResolver = resolveFiscalSaleRoute
+} = {}) {
     const scope = BUSINESS_SCOPES[String(businessContext || '').trim().toLowerCase()];
     if (!scope) throw new PaymentServiceError('catalog_business_context_invalid', 'Unknown catalog business context', { status: 422 });
-    const result = await dbPool.query(`SELECT fcb.id,fcb.cashier_name,fcb.cashier_login,fcb.status,fcb.provider_cashier_login_ref,fp.crm_profile_key,fr.display_name AS register_display_name,COALESCE(NULLIF(BTRIM(fr.metadata->>'expected_is_test'),'')::boolean,NULLIF(BTRIM(fr.metadata->>'expectedIsTest'),'')::boolean,FALSE) AS expected_is_test FROM fiscal_cashier_bindings fcb JOIN fiscal_profiles fp ON fp.id=fcb.fiscal_profile_id JOIN fiscal_registers fr ON fr.id=fcb.fiscal_register_id AND fr.fiscal_profile_id=fcb.fiscal_profile_id JOIN fiscal_locations fl ON fl.id=fr.fiscal_location_id WHERE fp.crm_profile_key=$1 AND fl.location_alias=$2 AND fr.register_alias=$3 AND fcb.status <> 'archived' ORDER BY fcb.cashier_name NULLS LAST,fcb.id`, [scope.crmProfileKey,scope.locationAlias,scope.registerAlias]);
-    return result.rows.map(project);
+    const client = await dbPool.connect();
+    try {
+        const route = await routeResolver({
+            client,
+            user,
+            routeOptionId: routeOptionId || defaultRouteOptionIdForBusiness(scope.crmProfileKey),
+            businessContext: scope.crmProfileKey
+        });
+        await authorizer(client, {
+            user,
+            action: 'fiscal.configure',
+            crmProfileKey: route.businessContext
+        });
+        const mapping = route.mapping;
+        const result = await client.query(
+            `SELECT fcb.id,
+                    fcb.user_id,
+                    fcb.cashier_name,
+                    fcb.cashier_login,
+                    fcb.status,
+                    fcb.action_pin_hash,
+                    fcb.action_pin_set_at,
+                    fcb.pin_locked_until,
+                    fp.crm_profile_key,
+                    $4::text AS route_business_context,
+                    fr.display_name AS register_display_name,
+                    COALESCE(
+                        NULLIF(BTRIM(fr.metadata->>'expected_is_test'), '')::boolean,
+                        NULLIF(BTRIM(fr.metadata->>'expectedIsTest'), '')::boolean,
+                        FALSE
+                    ) AS expected_is_test,
+                    u.name AS user_name,
+                    u.username
+               FROM fiscal_cashier_bindings fcb
+               JOIN fiscal_profiles fp
+                 ON fp.id = fcb.fiscal_profile_id
+               JOIN fiscal_registers fr
+                 ON fr.id = fcb.fiscal_register_id
+                AND fr.fiscal_profile_id = fcb.fiscal_profile_id
+               JOIN fiscal_locations fl
+                 ON fl.id = fcb.fiscal_location_id
+                AND fl.fiscal_profile_id = fcb.fiscal_profile_id
+               LEFT JOIN users u
+                 ON u.id = fcb.user_id
+              WHERE fcb.fiscal_profile_id = $1
+                AND fcb.fiscal_location_id = $2
+                AND fcb.fiscal_register_id = $3
+                AND fcb.provider = 'checkbox'
+                AND fcb.status <> 'archived'
+              ORDER BY fcb.cashier_name NULLS LAST, u.name NULLS LAST, u.username NULLS LAST, fcb.id`,
+            [mapping.fiscal_profile_id, mapping.fiscal_location_id, mapping.fiscal_register_id, route.businessContext]
+        );
+        return result.rows.map(project);
+    } finally {
+        client.release();
+    }
 }
 
 async function listSelectableCashiers({

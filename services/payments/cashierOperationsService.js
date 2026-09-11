@@ -4,6 +4,7 @@ const { TestDrainError, lockFiscalRegister, assertRegisterAccepting } = require(
 const crypto = require('node:crypto');
 const { pool } = require('../../db');
 const { canUseAction } = require('../../middleware/auth');
+const { canAccessBusinessContext } = require('../businessContext');
 const { publishInTransaction } = require('../eventBus');
 const {
     FiscalAccessError,
@@ -22,17 +23,22 @@ const {
 const { toPostgresBigint } = require('./money');
 const {
     isCashierProEnabled,
+    isParkDarTestServiceOutEnabled,
     isCheckboxIntegrationEnabled,
     loadCheckboxRuntimeConfig
 } = require('../checkbox/config');
 const { safeCheckboxArtifactUrl } = require('../checkbox/provider');
 const { countFiscalShiftCloseBlockers } = require('./shiftCloseBlockers');
 const { buildFiscalConfigurationSnapshot } = require('./paymentReadinessService');
+const { resolveFiscalSaleRoute } = require('./fiscalSaleRouteService');
 
 const OPEN_SHIFT_STATUSES = Object.freeze(['opening', 'open']);
 const UNRESOLVED_SHIFT_LIFECYCLE_STAGES = Object.freeze(['CREATED', 'OPENING', 'OPENED', 'CLOSING']);
 const CLOSE_BLOCKER_STATUSES = Object.freeze(['pending', 'unknown', 'validating', 'ready_to_send', 'sending', 'failed', 'blocked']);
 const AUTO_CLOSE_FLAG = 'EVENTGENIX_FISCAL_AUTO_CLOSE_ENABLED';
+const PARK_DAR_TEST_SERVICE_OUT_ROUTES = Object.freeze(new Set(['park_test', 'dar_test']));
+const SERVICE_OUT_OPEN_STATUSES = Object.freeze(['blocked', 'pending', 'validating', 'ready_to_send', 'sending', 'failed', 'unknown']);
+const SERVICE_OUT_PROVIDER_MUTATION_STAGES = Object.freeze(new Set(['service_submit', 'service_lookup', 'complete']));
 
 class CashierOperationsError extends Error {
     constructor(code, message, { status = 400, details = {} } = {}) {
@@ -73,6 +79,27 @@ function normalizeBoolean(value) {
     return null;
 }
 
+function safeJsonObject(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function stableJson(value) {
+    if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+}
+
+function fingerprint(value) {
+    return crypto.createHash('sha256').update(stableJson(value)).digest('hex');
+}
+
+function normalizeOptionalPositiveId(value, code = 'invalid_id') {
+    if (value == null || value === '') return null;
+    return normalizePositiveId(value, code);
+}
+
 function assertCompleteFiscalCredentialRefs(mapping = {}, binding = {}) {
     const registerCredentialRef = String(mapping?.provider_license_ref ?? '').trim() || null;
     const cashierCredentialRef = String(binding?.provider_cashier_login_ref ?? '').trim() || null;
@@ -107,6 +134,380 @@ function assertBindingAllowsAction(binding, action) {
     if (!scope.includes(action)) {
         throw new FiscalAccessError('fiscal_binding_capability_denied', 'Fiscal cashier binding does not allow the requested capability', { action });
     }
+}
+
+function requireBusinessContextAccess(user, crmProfileKey, action) {
+    const businessContext = String(crmProfileKey || '').trim().toLowerCase();
+    if (!user?.id) {
+        throw new FiscalAccessError('fiscal_authentication_required', 'Authenticated user is required');
+    }
+    if (!canUseAction(user, action)) {
+        throw new FiscalAccessError('fiscal_capability_denied', 'User lacks the required payment/fiscal capability', { action });
+    }
+    if (!/^[a-z0-9_]+$/.test(businessContext) || !canAccessBusinessContext(user, businessContext)) {
+        throw new FiscalAccessError('fiscal_business_context_denied', 'User cannot access the requested CRM profile', {
+            crmProfileKey: businessContext
+        });
+    }
+    return businessContext;
+}
+
+function serviceOutRouteInput(body = {}) {
+    const routeOptionId = String(body.routeOptionId ?? body.route_option_id ?? '').trim().toLowerCase();
+    const businessContext = String(body.businessContext ?? body.business_context ?? '').trim().toLowerCase();
+    return {
+        routeOptionId,
+        businessContext,
+        provided: Boolean(routeOptionId || businessContext)
+    };
+}
+
+function assertExplicitServiceOutScopeMatchesRoute(body = {}, route = {}) {
+    const mapping = route.mapping || {};
+    const checks = [
+        ['fiscalProfileId', 'fiscal_profile_id', mapping.fiscal_profile_id, 'fiscal_profile_required'],
+        ['fiscalLocationId', 'fiscal_location_id', mapping.fiscal_location_id, 'fiscal_location_required'],
+        ['fiscalRegisterId', 'fiscal_register_id', mapping.fiscal_register_id, 'fiscal_register_required']
+    ];
+    for (const [camelKey, snakeKey, expected, code] of checks) {
+        const value = body[camelKey] ?? body[snakeKey];
+        const actual = normalizeOptionalPositiveId(value, code);
+        if (actual != null && Number(actual) !== Number(expected)) {
+            throw new CashierOperationsError('service_out_route_scope_mismatch', 'Service-out scope does not match the selected fiscal route', { status: 409 });
+        }
+    }
+    const providedCrmProfileKey = String(body.crmProfileKey ?? body.crm_profile_key ?? '').trim().toLowerCase();
+    if (providedCrmProfileKey
+        && providedCrmProfileKey !== String(mapping.crm_profile_key || '').trim().toLowerCase()
+        && providedCrmProfileKey !== String(route.businessContext || '').trim().toLowerCase()) {
+        throw new CashierOperationsError('service_out_route_scope_mismatch', 'Service-out CRM profile does not match the selected fiscal route', { status: 409 });
+    }
+}
+
+function assertParkDarTestServiceOutRoute(route = {}) {
+    const mapping = route.mapping || {};
+    if (
+        !PARK_DAR_TEST_SERVICE_OUT_ROUTES.has(String(route.routeOptionId || '').trim())
+        || !['event_genix', 'dar'].includes(String(route.businessContext || '').trim())
+        || route.mode !== 'test'
+        || route.expectedIsTest !== true
+        || route.sharedTestRegister !== true
+        || mapping.route_status !== 'active'
+        || mapping.route_feature_enabled !== true
+        || mapping.fiscal_register_status !== 'active'
+        || mapping.feature_enabled !== true
+        || String(mapping.provider || '').trim() !== 'checkbox'
+        || !String(mapping.shared_register_group || '').trim()
+    ) {
+        throw new CashierOperationsError(
+            'park_dar_test_service_out_scope_invalid',
+            'Narrow service-out test gate requires the exact PARK/DAR test Checkbox route',
+            { status: 403 }
+        );
+    }
+}
+
+function assertServiceOutMutationRuntimeEnabled({ env = process.env, route = null, operation = null } = {}) {
+    if (isCashierProEnabled(env)) return;
+    if (!isParkDarTestServiceOutEnabled(env)) {
+        throw new CashierOperationsError('cashier_pro_disabled', 'Cashier PRO operations are disabled', { status: 403 });
+    }
+    if (route) {
+        assertParkDarTestServiceOutRoute(route);
+        return;
+    }
+    const snapshot = safeJsonObject(operation?.request_snapshot);
+    const providerContext = safeJsonObject(snapshot.provider_context);
+    const routeOptionId = String(snapshot.route_option_id || snapshot.routeOptionId || '').trim();
+    const businessContext = String(snapshot.business_context || snapshot.businessContext || '').trim();
+    const registerMode = String(snapshot.register_mode || snapshot.registerMode || '').trim();
+    const expectedIsTest = normalizeBoolean(operation?.expected_is_test ?? providerContext.expected_is_test);
+    if (
+        !PARK_DAR_TEST_SERVICE_OUT_ROUTES.has(routeOptionId)
+        || !['event_genix', 'dar'].includes(businessContext)
+        || registerMode !== 'test'
+        || snapshot.shared_test_register !== true
+        || expectedIsTest !== true
+    ) {
+        throw new CashierOperationsError(
+            'park_dar_test_service_out_scope_invalid',
+            'Narrow service-out test gate requires a sealed PARK/DAR test Checkbox operation',
+            { status: 403 }
+        );
+    }
+}
+
+async function resolveServiceOutRequestScope(client, {
+    user,
+    body = {},
+    action,
+    routeResolver = resolveFiscalSaleRoute
+} = {}) {
+    const routeInput = serviceOutRouteInput(body);
+    if (routeInput.provided) {
+        if (!routeInput.routeOptionId || !routeInput.businessContext) {
+            throw new CashierOperationsError('fiscal_route_option_required', 'Business context and route option are required', { status: 422 });
+        }
+        const route = await routeResolver({
+            client,
+            user,
+            routeOptionId: routeInput.routeOptionId,
+            businessContext: routeInput.businessContext
+        });
+        assertExplicitServiceOutScopeMatchesRoute(body, route);
+        await authorizeFiscalActorAction(client, {
+            user,
+            action,
+            crmProfileKey: route.businessContext
+        });
+        const binding = await loadFiscalCashierBinding(client, {
+            userId: user?.id,
+            fiscalProfileId: route.mapping.fiscal_profile_id,
+            fiscalRegisterId: route.mapping.fiscal_register_id
+        });
+        if (Number(binding.fiscal_location_id) !== Number(route.mapping.fiscal_location_id)
+            || Number(binding.register_fiscal_location_id) !== Number(route.mapping.fiscal_location_id)) {
+            throw new CashierOperationsError('cashier_binding_scope_invalid', 'Selected cashier is not active for this register location', { status: 409 });
+        }
+        assertBindingAllowsAction(binding, action);
+        return {
+            fiscalProfileId: Number(route.mapping.fiscal_profile_id),
+            fiscalLocationId: Number(route.mapping.fiscal_location_id),
+            fiscalRegisterId: Number(route.mapping.fiscal_register_id),
+            crmProfileKey: String(route.mapping.crm_profile_key || '').trim(),
+            authorizationCrmProfileKey: route.businessContext,
+            route,
+            binding
+        };
+    }
+
+    const fiscalProfileId = normalizePositiveId(body.fiscalProfileId || body.fiscal_profile_id, 'fiscal_profile_required');
+    const fiscalRegisterId = normalizePositiveId(body.fiscalRegisterId || body.fiscal_register_id, 'fiscal_register_required');
+    const fiscalLocationId = normalizePositiveId(body.fiscalLocationId || body.fiscal_location_id, 'fiscal_location_required');
+    const crmProfileKey = String(body.crmProfileKey || body.crm_profile_key || '').trim();
+    await authorizeFiscalAction(client, {
+        user,
+        action,
+        fiscalProfileId,
+        crmProfileKey,
+        fiscalLocationId,
+        fiscalRegisterId
+    });
+    return {
+        fiscalProfileId,
+        fiscalLocationId,
+        fiscalRegisterId,
+        crmProfileKey,
+        authorizationCrmProfileKey: crmProfileKey,
+        route: null,
+        binding: null
+    };
+}
+
+function serviceOutSnapshot({ scope, reason, providerRequestUuid, fiscalConfig, requestFingerprint }) {
+    const route = scope.route || null;
+    return {
+        reason,
+        provider_request_uuid: providerRequestUuid,
+        external_stage: 'auth',
+        fiscal_configuration_hash: fiscalConfig.hash,
+        provider_context: fiscalConfig.snapshot,
+        request_fingerprint: requestFingerprint,
+        business_context: route?.businessContext || scope.authorizationCrmProfileKey || scope.crmProfileKey,
+        route_option_id: route?.routeOptionId || null,
+        register_mode: route?.mode || (fiscalConfig.snapshot.expected_is_test === true ? 'test' : 'production'),
+        shared_test_register: route?.sharedTestRegister === true
+    };
+}
+
+function serviceOutAuthorizationBusiness(operation = {}) {
+    const snapshot = safeJsonObject(operation.request_snapshot);
+    return String(snapshot.business_context || snapshot.businessContext || operation.crm_profile_key || '').trim().toLowerCase();
+}
+
+function serviceOutProviderMutationStarted(operation = {}) {
+    const outboxCount = Number(operation.outbox_count || 0);
+    const stage = String(operation.external_stage || safeJsonObject(operation.request_snapshot).external_stage || '').trim();
+    return outboxCount > 0
+        || Boolean(operation.sent_at)
+        || Boolean(operation.approval_id)
+        || Boolean(operation.approved_by_user_id)
+        || SERVICE_OUT_PROVIDER_MUTATION_STAGES.has(stage);
+}
+
+function canCancelServiceOutOperation(operation = {}, user = {}) {
+    return Number(operation.initiated_by_user_id) === Number(user?.id)
+        && operation.operation_type === 'service_out'
+        && operation.status === 'blocked'
+        && operation.server_approval_status === 'required'
+        && serviceOutProviderMutationStarted(operation) === false;
+}
+
+function projectServiceOutOperation(operation = {}, { user } = {}) {
+    const snapshot = safeJsonObject(operation.request_snapshot);
+    const mine = Number(operation.initiated_by_user_id) === Number(user?.id);
+    const canApprove = !mine
+        && operation.operation_type === 'service_out'
+        && operation.status === 'blocked'
+        && operation.server_approval_status === 'required'
+        && canUseAction(user, 'fiscal.service_out.approve');
+    return {
+        operationId: Number(operation.id),
+        fiscalShiftId: operation.fiscal_shift_id == null ? null : Number(operation.fiscal_shift_id),
+        status: operation.status || null,
+        serverApprovalStatus: operation.server_approval_status || null,
+        approvalRequired: operation.approval_required === true,
+        amountMinor: operation.amount_minor == null ? null : String(operation.amount_minor),
+        currency: operation.currency || 'UAH',
+        reason: String(snapshot.reason || '').trim() || null,
+        businessContext: snapshot.business_context || operation.crm_profile_key || null,
+        routeOptionId: snapshot.route_option_id || null,
+        registerMode: snapshot.register_mode || (operation.expected_is_test === true ? 'test' : 'production'),
+        isMine: mine,
+        canCancel: canCancelServiceOutOperation(operation, user),
+        canApprove,
+        requestedByUserId: operation.initiated_by_user_id == null ? null : Number(operation.initiated_by_user_id),
+        approvedByUserId: operation.approved_by_user_id == null ? null : Number(operation.approved_by_user_id),
+        createdAt: operation.created_at || null,
+        sentAt: operation.sent_at || null,
+        completedAt: operation.completed_at || null,
+        lastErrorCode: operation.last_error_code || null
+    };
+}
+
+async function loadServiceOutOperationRow(client, { operationId = null, idempotencyKey = null, forUpdate = false } = {}) {
+    const byOperation = operationId != null;
+    const key = idempotencyKey ? `fiscal_operation:service_out:${String(idempotencyKey || '').trim()}` : null;
+    const result = await client.query(
+        `SELECT fo.*,
+                fp.crm_profile_key,
+                fr.fiscal_location_id,
+                COALESCE(outbox.outbox_count, 0) AS outbox_count
+           FROM fiscal_operations fo
+           JOIN fiscal_profiles fp
+             ON fp.id = fo.fiscal_profile_id
+           JOIN fiscal_registers fr
+             ON fr.id = fo.fiscal_register_id
+            AND fr.fiscal_profile_id = fo.fiscal_profile_id
+           LEFT JOIN LATERAL (
+                SELECT COUNT(*)::int AS outbox_count
+                  FROM payment_outbox_jobs job
+                 WHERE job.fiscal_profile_id = fo.fiscal_profile_id
+                   AND job.fiscal_operation_id = fo.id
+                   AND job.job_type = 'service_receipt'
+           ) outbox ON TRUE
+          WHERE fo.operation_type = 'service_out'
+            AND ${byOperation ? 'fo.id = $1' : 'fo.idempotency_key = $1'}
+          ${forUpdate ? 'FOR UPDATE OF fo' : ''}`,
+        [byOperation ? normalizePositiveId(operationId, 'fiscal_operation_required') : key]
+    );
+    return result.rows[0] || null;
+}
+
+async function assertServiceOutOperationAccess(client, { user, operation, action = 'view' } = {}) {
+    if (!operation || operation.operation_type !== 'service_out') {
+        throw new CashierOperationsError('service_out_not_found', 'Service-out operation not found', { status: 404 });
+    }
+    const businessContext = serviceOutAuthorizationBusiness(operation);
+    const userIsRequester = Number(operation.initiated_by_user_id) === Number(user?.id);
+    if (userIsRequester) {
+        requireBusinessContextAccess(user, businessContext, 'fiscal.service_out.request');
+        const binding = await loadFiscalCashierBinding(client, {
+            userId: user?.id,
+            fiscalProfileId: operation.fiscal_profile_id,
+            fiscalRegisterId: operation.fiscal_register_id
+        });
+        assertBindingAllowsAction(binding, 'fiscal.service_out.request');
+        return { role: 'requester', binding };
+    }
+    if (action !== 'cancel' && canUseAction(user, 'fiscal.service_out.approve')) {
+        requireBusinessContextAccess(user, businessContext, 'fiscal.service_out.approve');
+        const binding = await loadFiscalCashierBinding(client, {
+            userId: user?.id,
+            fiscalProfileId: operation.fiscal_profile_id,
+            fiscalRegisterId: operation.fiscal_register_id
+        });
+        assertBindingAllowsAction(binding, 'fiscal.service_out.approve');
+        return { role: 'approver', binding };
+    }
+    throw new FiscalAccessError('service_out_operation_denied', 'Service-out operation is not available to this user');
+}
+
+async function listServiceOutOperationsForRoute(client, { user, businessContext, routeOptionId } = {}) {
+    const route = await resolveFiscalSaleRoute({
+        client,
+        user,
+        routeOptionId,
+        businessContext
+    });
+    const canRequest = canUseAction(user, 'fiscal.service_out.request');
+    const canApprove = canUseAction(user, 'fiscal.service_out.approve');
+    if (!canRequest && !canApprove) {
+        throw new FiscalAccessError('fiscal_capability_denied', 'User lacks a service-out capability');
+    }
+    const binding = await loadFiscalCashierBinding(client, {
+        userId: user?.id,
+        fiscalProfileId: route.mapping.fiscal_profile_id,
+        fiscalRegisterId: route.mapping.fiscal_register_id
+    });
+    const bindingCapabilities = normalizeCapabilityScope(binding.capability_scope ?? binding.capabilityScope);
+    const bindingCanRequest = canRequest && bindingCapabilities.includes('fiscal.service_out.request');
+    const bindingCanApprove = canApprove && bindingCapabilities.includes('fiscal.service_out.approve');
+    if (!bindingCanRequest && !bindingCanApprove) {
+        throw new FiscalAccessError('fiscal_binding_capability_denied', 'Fiscal cashier binding does not allow the requested capability');
+    }
+    requireBusinessContextAccess(
+        user,
+        route.businessContext,
+        bindingCanRequest ? 'fiscal.service_out.request' : 'fiscal.service_out.approve'
+    );
+    const result = await client.query(
+        `SELECT fo.*,
+                fp.crm_profile_key,
+                fr.fiscal_location_id,
+                COALESCE(outbox.outbox_count, 0) AS outbox_count
+           FROM fiscal_operations fo
+           JOIN fiscal_profiles fp
+             ON fp.id = fo.fiscal_profile_id
+           JOIN fiscal_registers fr
+             ON fr.id = fo.fiscal_register_id
+            AND fr.fiscal_profile_id = fo.fiscal_profile_id
+           LEFT JOIN LATERAL (
+                SELECT COUNT(*)::int AS outbox_count
+                  FROM payment_outbox_jobs job
+                 WHERE job.fiscal_profile_id = fo.fiscal_profile_id
+                   AND job.fiscal_operation_id = fo.id
+                   AND job.job_type = 'service_receipt'
+           ) outbox ON TRUE
+          WHERE fo.operation_type = 'service_out'
+            AND fo.fiscal_profile_id = $1
+            AND fo.fiscal_register_id = $2
+            AND fo.status = ANY($3::text[])
+            AND fo.request_snapshot->>'route_option_id' = $4
+            AND fo.request_snapshot->>'business_context' = $5
+            AND (
+                ($6::boolean = TRUE AND fo.initiated_by_user_id = $8)
+                OR ($7::boolean = TRUE AND fo.initiated_by_user_id IS DISTINCT FROM $8)
+            )
+          ORDER BY fo.created_at DESC, fo.id DESC
+          LIMIT 50`,
+        [
+            route.mapping.fiscal_profile_id,
+            route.mapping.fiscal_register_id,
+            SERVICE_OUT_OPEN_STATUSES,
+            route.routeOptionId,
+            route.businessContext,
+            bindingCanRequest,
+            bindingCanApprove,
+            user?.id || null
+        ]
+    );
+    return {
+        businessContext: route.businessContext,
+        routeOptionId: route.routeOptionId,
+        route,
+        operations: result.rows.map(operation => projectServiceOutOperation(operation, { user }))
+    };
 }
 
 function integrationOwnerMatchesUser(metadata = {}, user = {}) {
@@ -1099,25 +1500,58 @@ async function createServiceIn({ user, body = {}, idempotencyKey }) {
     });
 }
 
-async function createServiceOutRequest({ user, body = {}, idempotencyKey }) {
+async function createServiceOutRequest({
+    user,
+    body = {},
+    idempotencyKey,
+    requireServiceOutRuntimeEnabled = false,
+    env = process.env,
+    routeResolver = resolveFiscalSaleRoute
+} = {}) {
     const key = String(idempotencyKey || '').trim();
     if (!key) throw new CashierOperationsError('idempotency_key_required', 'Idempotency-Key is required');
     const reason = requireReason(body.reason, 'service_out_reason_required');
-    const fiscalProfileId = normalizePositiveId(body.fiscalProfileId || body.fiscal_profile_id, 'fiscal_profile_required');
-    const fiscalRegisterId = normalizePositiveId(body.fiscalRegisterId || body.fiscal_register_id, 'fiscal_register_required');
-    const fiscalLocationId = normalizePositiveId(body.fiscalLocationId || body.fiscal_location_id, 'fiscal_location_required');
-    const crmProfileKey = String(body.crmProfileKey || body.crm_profile_key || '').trim();
     const minor = amountMinor(body.amountMinor ?? body.amount_minor, 'service_out_amount_required');
 
     return withTransaction(async client => {
-        await authorizeFiscalAction(client, {
+        await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`fiscal_operation:service_out:${key}`]);
+        const scope = await resolveServiceOutRequestScope(client, {
             user,
             action: 'fiscal.service_out.request',
-            fiscalProfileId,
-            crmProfileKey,
-            fiscalLocationId,
-            fiscalRegisterId
+            body,
+            routeResolver
         });
+        if (requireServiceOutRuntimeEnabled) {
+            assertServiceOutMutationRuntimeEnabled({ env, route: scope.route });
+        }
+        const { fiscalProfileId, fiscalRegisterId, fiscalLocationId, crmProfileKey } = scope;
+        const requestFingerprint = fingerprint({
+            endpoint: 'create_service_out_request',
+            fiscalProfileId,
+            fiscalLocationId,
+            fiscalRegisterId,
+            crmProfileKey,
+            businessContext: scope.authorizationCrmProfileKey,
+            routeOptionId: scope.route?.routeOptionId || null,
+            amountMinor: minor.toString(),
+            reason
+        });
+        const existing = await loadServiceOutOperationRow(client, { idempotencyKey: key });
+        if (existing) {
+            await assertServiceOutOperationAccess(client, { user, operation: existing });
+            const existingSnapshot = safeJsonObject(existing.request_snapshot);
+            if (Number(existing.initiated_by_user_id) !== Number(user?.id)
+                || existingSnapshot.request_fingerprint !== requestFingerprint) {
+                throw new CashierOperationsError('service_out_idempotency_conflict', 'Same service-out idempotency key was used with different request data', { status: 409 });
+            }
+            return {
+                replayed: true,
+                operationId: Number(existing.id),
+                fiscalShiftId: existing.fiscal_shift_id == null ? null : Number(existing.fiscal_shift_id),
+                providerRequestUuid: existing.provider_operation_id || null,
+                operation: projectServiceOutOperation(existing, { user })
+            };
+        }
         const shift = await assertOpenShift(client, { fiscalProfileId, fiscalRegisterId });
         const { fiscalConfig } = await loadImmutableProviderConfiguration(client, {
             user,
@@ -1147,13 +1581,13 @@ async function createServiceOutRequest({ user, body = {}, idempotencyKey }) {
                 `fiscal_operation:service_out:${key}`,
                 providerRequestUuid,
                 toPostgresBigint(minor, { allowZero: false }),
-                JSON.stringify({
+                JSON.stringify(serviceOutSnapshot({
+                    scope,
                     reason,
-                    provider_request_uuid: providerRequestUuid,
-                    external_stage: 'auth',
-                    fiscal_configuration_hash: fiscalConfig.hash,
-                    provider_context: fiscalConfig.snapshot
-                }),
+                    providerRequestUuid,
+                    fiscalConfig,
+                    requestFingerprint
+                })),
                 user?.id || null,
                 fiscalConfig.snapshot.provider_organization_id,
                 fiscalConfig.snapshot.provider_outlet_id,
@@ -1167,7 +1601,23 @@ async function createServiceOutRequest({ user, body = {}, idempotencyKey }) {
             ]
         );
         if (!operation.rows.length) {
-            return { replayed: true };
+            const replayed = await loadServiceOutOperationRow(client, { idempotencyKey: key });
+            if (!replayed) {
+                throw new CashierOperationsError('service_out_idempotency_conflict', 'Service-out idempotency replay could not be recovered', { status: 409 });
+            }
+            await assertServiceOutOperationAccess(client, { user, operation: replayed });
+            const replayedSnapshot = safeJsonObject(replayed.request_snapshot);
+            if (Number(replayed.initiated_by_user_id) !== Number(user?.id)
+                || replayedSnapshot.request_fingerprint !== requestFingerprint) {
+                throw new CashierOperationsError('service_out_idempotency_conflict', 'Same service-out idempotency key was used with different request data', { status: 409 });
+            }
+            return {
+                replayed: true,
+                operationId: Number(replayed.id),
+                fiscalShiftId: replayed.fiscal_shift_id == null ? null : Number(replayed.fiscal_shift_id),
+                providerRequestUuid: replayed.provider_operation_id || null,
+                operation: projectServiceOutOperation(replayed, { user })
+            };
         }
         await insertAudit(client, {
             fiscalProfileId,
@@ -1178,11 +1628,24 @@ async function createServiceOutRequest({ user, body = {}, idempotencyKey }) {
             idempotencyKey: `fiscal_service_out_requested:${operation.rows[0].id}`,
             afterSnapshot: { amount_minor: minor.toString(), fiscal_shift_id: Number(shift.id), reason }
         });
-        return { replayed: false, operationId: Number(operation.rows[0].id), fiscalShiftId: Number(shift.id), providerRequestUuid };
+        return {
+            replayed: false,
+            operationId: Number(operation.rows[0].id),
+            fiscalShiftId: Number(shift.id),
+            providerRequestUuid,
+            operation: projectServiceOutOperation(operation.rows[0], { user })
+        };
     });
 }
 
-async function approveServiceOut({ user, operationId, body = {}, idempotencyKey }) {
+async function approveServiceOut({
+    user,
+    operationId,
+    body = {},
+    idempotencyKey,
+    requireServiceOutRuntimeEnabled = false,
+    env = process.env
+} = {}) {
     const key = String(idempotencyKey || '').trim();
     if (!key) throw new CashierOperationsError('idempotency_key_required', 'Idempotency-Key is required');
     const targetOperationId = normalizePositiveId(operationId, 'fiscal_operation_required');
@@ -1209,6 +1672,10 @@ async function approveServiceOut({ user, operationId, body = {}, idempotencyKey 
         }
         if (operation.status !== 'blocked') {
             throw new CashierOperationsError('service_out_not_pending_approval', 'Service-out is not pending approval', { status: 409 });
+        }
+        requireBusinessContextAccess(user, serviceOutAuthorizationBusiness(operation), 'fiscal.service_out.approve');
+        if (requireServiceOutRuntimeEnabled) {
+            assertServiceOutMutationRuntimeEnabled({ env, operation });
         }
         const binding = await loadFiscalCashierBinding(client, {
             userId: user?.id,
@@ -1285,7 +1752,143 @@ async function approveServiceOut({ user, operationId, body = {}, idempotencyKey 
     if (transactionResult.pinFailureCode) {
         throw new FiscalApprovalError(transactionResult.pinFailureCode, transactionResult.pinFailureCode);
     }
-    return transactionResult;
+    return withTransaction(async client => {
+        const operation = await loadServiceOutOperationRow(client, { operationId: transactionResult.operationId });
+        await assertServiceOutOperationAccess(client, { user, operation });
+        return {
+            ...transactionResult,
+            operation: projectServiceOutOperation(operation, { user })
+        };
+    });
+}
+
+async function listServiceOutRequests({
+    user,
+    businessContext,
+    routeOptionId,
+    requireServiceOutRuntimeEnabled = false,
+    env = process.env
+} = {}) {
+    return withTransaction(async client => {
+        const result = await listServiceOutOperationsForRoute(client, {
+            user,
+            businessContext,
+            routeOptionId
+        });
+        if (requireServiceOutRuntimeEnabled) {
+            assertServiceOutMutationRuntimeEnabled({ env, route: result.route });
+        }
+        delete result.route;
+        return result;
+    });
+}
+
+async function getServiceOutRequest({
+    user,
+    operationId,
+    requireServiceOutRuntimeEnabled = false,
+    env = process.env
+} = {}) {
+    return withTransaction(async client => {
+        const operation = await loadServiceOutOperationRow(client, { operationId });
+        await assertServiceOutOperationAccess(client, { user, operation });
+        if (requireServiceOutRuntimeEnabled) {
+            assertServiceOutMutationRuntimeEnabled({ env, operation });
+        }
+        return { operation: projectServiceOutOperation(operation, { user }) };
+    });
+}
+
+async function recoverServiceOutRequest({ user, idempotencyKey } = {}) {
+    const key = String(idempotencyKey || '').trim();
+    if (!key) throw new CashierOperationsError('idempotency_key_required', 'Idempotency-Key is required');
+    return withTransaction(async client => {
+        const operation = await loadServiceOutOperationRow(client, { idempotencyKey: key });
+        if (!operation) {
+            throw new CashierOperationsError('service_out_not_found', 'Service-out operation not found', { status: 404 });
+        }
+        await assertServiceOutOperationAccess(client, { user, operation });
+        return {
+            replayed: true,
+            operationId: Number(operation.id),
+            fiscalShiftId: operation.fiscal_shift_id == null ? null : Number(operation.fiscal_shift_id),
+            operation: projectServiceOutOperation(operation, { user })
+        };
+    });
+}
+
+async function cancelServiceOutRequest({ user, operationId, idempotencyKey } = {}) {
+    const key = String(idempotencyKey || '').trim();
+    if (!key) throw new CashierOperationsError('idempotency_key_required', 'Idempotency-Key is required');
+    return withTransaction(async client => {
+        const targetOperationId = normalizePositiveId(operationId, 'fiscal_operation_required');
+        await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`fiscal_operation:service_out_cancel:${targetOperationId}`]);
+        const operation = await loadServiceOutOperationRow(client, { operationId: targetOperationId, forUpdate: true });
+        const access = await assertServiceOutOperationAccess(client, { user, operation, action: 'cancel' });
+        if (access.role !== 'requester') {
+            throw new FiscalAccessError('service_out_cancel_denied', 'Only the service-out requester may cancel the request');
+        }
+        if (operation.status === 'cancelled') {
+            return {
+                replayed: true,
+                cancelled: true,
+                operationId: Number(operation.id),
+                fiscalShiftId: operation.fiscal_shift_id == null ? null : Number(operation.fiscal_shift_id),
+                operation: projectServiceOutOperation(operation, { user })
+            };
+        }
+        if (!canCancelServiceOutOperation(operation, user)) {
+            throw new CashierOperationsError('service_out_cancel_forbidden', 'Service-out request cannot be cancelled after approval or provider handoff', { status: 409 });
+        }
+        const cancelled = await client.query(
+            `UPDATE fiscal_operations fo
+                SET status = 'cancelled',
+                    server_approval_status = 'revoked',
+                    completed_at = NOW(),
+                    last_error_code = NULL,
+                    last_error_message = NULL
+              WHERE fo.id = $1
+                AND fo.operation_type = 'service_out'
+                AND fo.initiated_by_user_id = $2
+                AND fo.status = 'blocked'
+                AND fo.server_approval_status = 'required'
+                AND fo.approval_id IS NULL
+                AND fo.approved_by_user_id IS NULL
+                AND fo.sent_at IS NULL
+                AND NOT EXISTS (
+                    SELECT 1
+                      FROM payment_outbox_jobs job
+                     WHERE job.fiscal_profile_id = fo.fiscal_profile_id
+                       AND job.fiscal_operation_id = fo.id
+                       AND job.job_type = 'service_receipt'
+                )
+              RETURNING fo.*,
+                    (SELECT fp.crm_profile_key FROM fiscal_profiles fp WHERE fp.id = fo.fiscal_profile_id) AS crm_profile_key,
+                    (SELECT fr.fiscal_location_id FROM fiscal_registers fr WHERE fr.id = fo.fiscal_register_id AND fr.fiscal_profile_id = fo.fiscal_profile_id) AS fiscal_location_id,
+                    0::int AS outbox_count`,
+            [operation.id, user?.id || null]
+        );
+        if (!cancelled.rows.length) {
+            throw new CashierOperationsError('service_out_cancel_conflict', 'Service-out request changed before cancellation completed', { status: 409 });
+        }
+        await insertAudit(client, {
+            fiscalProfileId: operation.fiscal_profile_id,
+            actorUserId: user?.id,
+            eventType: 'fiscal_service_out_cancelled',
+            entityTable: 'fiscal_operations',
+            entityId: operation.id,
+            idempotencyKey: `fiscal_service_out_cancelled:${operation.id}:${key}`,
+            beforeSnapshot: { status: operation.status, server_approval_status: operation.server_approval_status },
+            afterSnapshot: { status: 'cancelled', server_approval_status: 'revoked' }
+        });
+        return {
+            replayed: false,
+            cancelled: true,
+            operationId: Number(cancelled.rows[0].id),
+            fiscalShiftId: cancelled.rows[0].fiscal_shift_id == null ? null : Number(cancelled.rows[0].fiscal_shift_id),
+            operation: projectServiceOutOperation(cancelled.rows[0], { user })
+        };
+    });
 }
 
 
@@ -2054,7 +2657,14 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
     return transactionResult;
 }
 
-async function enrollFiscalActionPin({ user, bindingId, body = {} }) {
+async function enrollFiscalActionPin({
+    user,
+    bindingId,
+    body = {},
+    routeOptionId = null,
+    businessContext = null,
+    routeResolver = resolveFiscalSaleRoute
+} = {}) {
     if (!canUseAction(user, 'fiscal.configure')) {
         throw new FiscalAccessError('fiscal_capability_denied', 'User lacks the required payment/fiscal capability', { action: 'fiscal.configure' });
     }
@@ -2064,6 +2674,25 @@ async function enrollFiscalActionPin({ user, bindingId, body = {} }) {
         throw new FiscalApprovalError('action_pin_required', 'Action PIN is required');
     }
     return withTransaction(async client => {
+        const routeBody = {
+            ...body,
+            routeOptionId: routeOptionId ?? body.routeOptionId ?? body.route_option_id,
+            businessContext: businessContext ?? body.businessContext ?? body.business_context
+        };
+        const routeInput = serviceOutRouteInput(routeBody);
+        let route = null;
+        if (routeInput.provided) {
+            if (!routeInput.routeOptionId || !routeInput.businessContext) {
+                throw new CashierOperationsError('fiscal_route_option_required', 'Business context and route option are required', { status: 422 });
+            }
+            route = await routeResolver({
+                client,
+                user,
+                routeOptionId: routeInput.routeOptionId,
+                businessContext: routeInput.businessContext
+            });
+            requireBusinessContextAccess(user, route.businessContext, 'fiscal.configure');
+        }
         const result = await client.query(
             `SELECT b.*, fp.crm_profile_key, fr.register_alias
                FROM fiscal_cashier_bindings b
@@ -2073,8 +2702,11 @@ async function enrollFiscalActionPin({ user, bindingId, body = {} }) {
                  ON fr.id = b.fiscal_register_id
                 AND fr.fiscal_profile_id = b.fiscal_profile_id
               WHERE b.id = $1
+                ${route ? 'AND b.fiscal_profile_id = $2 AND b.fiscal_location_id = $3 AND b.fiscal_register_id = $4' : ''}
               FOR UPDATE OF b`,
-            [normalizedBindingId]
+            route
+                ? [normalizedBindingId, route.mapping.fiscal_profile_id, route.mapping.fiscal_location_id, route.mapping.fiscal_register_id]
+                : [normalizedBindingId]
         );
         const binding = result.rows[0];
         if (!binding) {
@@ -2165,6 +2797,12 @@ module.exports = {
     createServiceIn,
     createServiceOutRequest,
     approveServiceOut,
+    listServiceOutRequests,
+    getServiceOutRequest,
+    recoverServiceOutRequest,
+    cancelServiceOutRequest,
+    projectServiceOutOperation,
+    assertServiceOutMutationRuntimeEnabled,
     createReconciliationRevision,
     closeShift,
     autoCloseShift,

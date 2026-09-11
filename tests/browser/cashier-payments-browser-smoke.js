@@ -72,6 +72,10 @@ const state = {
     reportLoaded: false
 };
 
+function broadCashierProCalls() {
+    return state.operationCalls.filter(call => ['service_in', 'refund', 'reconcile', 'close'].includes(call.type));
+}
+
 function json(res, status, body) {
     res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(body));
@@ -316,6 +320,38 @@ function registerStatePayload(requiredTender = 'cash', scope = routeScope({ busi
     };
 }
 
+function serviceOutOperationPayload(operation) {
+    return {
+        operationId: operation.id,
+        fiscalShiftId: operation.fiscalShiftId || state.shift?.id || 501,
+        status: operation.status,
+        serverApprovalStatus: operation.serverApprovalStatus || (operation.status === 'cancelled' ? 'revoked' : 'required'),
+        approvalRequired: operation.approvalRequired !== false,
+        amountMinor: String(operation.amountMinor || '0'),
+        currency: 'UAH',
+        reason: operation.reason || 'Тестова службова видача',
+        businessContext: operation.businessContext || 'event_genix',
+        routeOptionId: operation.routeOptionId || 'park_production',
+        registerMode: operation.registerMode || 'production',
+        isMine: operation.isMine === true,
+        canCancel: operation.status === 'blocked' && operation.isMine === true && operation.providerStarted !== true,
+        canApprove: operation.status === 'blocked' && operation.isMine !== true && operation.providerStarted !== true,
+        requestedByUserId: operation.isMine === true ? 50 : 47,
+        approvedByUserId: operation.approvedByUserId || null,
+        createdAt: operation.createdAt || '2026-08-04T10:05:00.000Z',
+        sentAt: operation.sentAt || null,
+        completedAt: operation.completedAt || null,
+        lastErrorCode: operation.lastErrorCode || null
+    };
+}
+
+function routeOperations(scope) {
+    return [...state.serviceOutOperations.values()]
+        .filter(operation => operation.businessContext === scope.businessContext && operation.routeOptionId === scope.routeOptionId)
+        .map(serviceOutOperationPayload)
+        .sort((left, right) => Number(right.operationId) - Number(left.operationId));
+}
+
 function assertKnownRouteScope(input) {
     return routeScope(input);
 }
@@ -329,6 +365,40 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/payments/catalog/cashiers' && req.method === 'GET') {
         const scope = assertKnownRouteScope(url.searchParams);
         return json(res, 200, { success: true, cashiers: [{ id: 77, cashierName: 'Касир UI', status: 'active', mode: scope.routeOptionId.endsWith('_test') ? 'test' : 'production' }] });
+    }
+    if (url.pathname === '/api/payments/fiscal-bindings/cashiers' && req.method === 'GET') {
+        const scope = assertKnownRouteScope(url.searchParams);
+        return json(res, 200, {
+            success: true,
+            cashiers: [
+                {
+                    id: 78,
+                    cashierName: 'Старша зміни',
+                    cashierLogin: 'senior.shift',
+                    status: 'active',
+                    businessContext: scope.businessContext,
+                    registerDisplayName: scope.registerDisplayName,
+                    mode: scope.routeOptionId.endsWith('_test') ? 'test' : 'production',
+                    targetUserId: 47,
+                    actionPin: { configured: true, lockedUntil: null },
+                    pinConfigured: true,
+                    pinLockedUntil: null
+                },
+                {
+                    id: 77,
+                    cashierName: 'Smoke Cashier',
+                    cashierLogin: 'smoke.cashier',
+                    status: 'active',
+                    businessContext: scope.businessContext,
+                    registerDisplayName: scope.registerDisplayName,
+                    mode: scope.routeOptionId.endsWith('_test') ? 'test' : 'production',
+                    targetUserId: 50,
+                    actionPin: { configured: false, lockedUntil: null },
+                    pinConfigured: false,
+                    pinLockedUntil: null
+                }
+            ]
+        });
     }
     if (url.pathname === '/api/payments/catalog/items' && req.method === 'GET') {
         const scope = assertKnownRouteScope(url.searchParams);
@@ -493,22 +563,99 @@ async function handleApi(req, res, url) {
         state.operationCalls.push({ type: 'service_in', key });
         return json(res, 201, { success: true, replayed: false, operationId: 601, fiscalShiftId: state.shift.id });
     }
+    const actionPinMatch = url.pathname.match(/^\/api\/payments\/fiscal-bindings\/(\d+)\/action-pin$/);
+    if (actionPinMatch && req.method === 'POST') {
+        await readBody(req);
+        const bindingId = Number(actionPinMatch[1]);
+        if (bindingId === 77) return json(res, 403, { success: false, code: 'action_pin_self_enrollment_denied' });
+        state.operationCalls.push({ type: 'action_pin_enroll', bindingId });
+        return json(res, 200, { success: true, bindingId, actionPin: { configured: true, lockedUntil: null } });
+    }
+    if (url.pathname === '/api/payments/service-out' && req.method === 'GET') {
+        const scope = assertKnownRouteScope(url.searchParams);
+        return json(res, 200, {
+            success: true,
+            businessContext: scope.businessContext,
+            routeOptionId: scope.routeOptionId,
+            operations: routeOperations(scope)
+        });
+    }
+    if (url.pathname === '/api/payments/service-out/recovery' && req.method === 'GET') {
+        const key = req.headers['idempotency-key'] || url.searchParams.get('idempotencyKey');
+        const operation = [...state.serviceOutOperations.values()].find(item => item.key === key);
+        if (!operation) return json(res, 404, { success: false, code: 'service_out_not_found' });
+        return json(res, 200, { success: true, replayed: true, operationId: operation.id, fiscalShiftId: state.shift?.id || 501, operation: serviceOutOperationPayload(operation) });
+    }
     if (url.pathname === '/api/payments/service-out' && req.method === 'POST') {
         ensureShift();
+        const body = await readBody(req);
+        const scope = assertKnownRouteScope(body);
         const key = req.headers['idempotency-key'];
+        const replay = [...state.serviceOutOperations.values()].find(operation => operation.key === key);
+        if (replay) {
+            return json(res, 200, {
+                success: true,
+                replayed: true,
+                operationId: replay.id,
+                fiscalShiftId: state.shift.id,
+                operation: serviceOutOperationPayload(replay)
+            });
+        }
         const operationId = 700 + state.serviceOutOperations.size;
-        state.serviceOutOperations.set(operationId, { key, status: 'blocked' });
+        const operation = {
+            id: operationId,
+            key,
+            status: 'blocked',
+            serverApprovalStatus: 'required',
+            fiscalShiftId: state.shift.id,
+            amountMinor: body.amountMinor || body.amount_minor || '0',
+            reason: body.reason || 'Тестова службова видача',
+            businessContext: scope.businessContext,
+            routeOptionId: scope.routeOptionId,
+            registerMode: scope.routeOptionId.endsWith('_test') ? 'test' : 'production',
+            isMine: true,
+            createdAt: '2026-08-04T10:05:00.000Z'
+        };
+        state.serviceOutOperations.set(operationId, operation);
         state.operationCalls.push({ type: 'service_out_request', key });
-        return json(res, 201, { success: true, replayed: false, operationId, fiscalShiftId: state.shift.id });
+        return json(res, 201, {
+            success: true,
+            replayed: false,
+            operationId,
+            fiscalShiftId: state.shift.id,
+            operation: serviceOutOperationPayload(operation)
+        });
+    }
+    const serviceOutCancelMatch = url.pathname.match(/^\/api\/payments\/service-out\/(\d+)\/cancel$/);
+    if (serviceOutCancelMatch && req.method === 'POST') {
+        const operationId = Number(serviceOutCancelMatch[1]);
+        const operation = state.serviceOutOperations.get(operationId);
+        if (!operation) return json(res, 404, { success: false, code: 'service_out_not_found' });
+        if (!serviceOutOperationPayload(operation).canCancel) return json(res, 409, { success: false, code: 'service_out_cancel_forbidden' });
+        operation.status = 'cancelled';
+        operation.serverApprovalStatus = 'revoked';
+        operation.completedAt = '2026-08-04T10:06:00.000Z';
+        state.operationCalls.push({ type: 'service_out_cancel', key: req.headers['idempotency-key'] });
+        return json(res, 200, {
+            success: true,
+            replayed: false,
+            cancelled: true,
+            operationId,
+            fiscalShiftId: operation.fiscalShiftId,
+            operation: serviceOutOperationPayload(operation)
+        });
     }
     const serviceOutApproveMatch = url.pathname.match(/^\/api\/payments\/service-out\/(\d+)\/approve$/);
     if (serviceOutApproveMatch && req.method === 'POST') {
+        await readBody(req);
         const operationId = Number(serviceOutApproveMatch[1]);
         const operation = state.serviceOutOperations.get(operationId);
         if (!operation) return json(res, 404, { success: false, code: 'service_out_not_found' });
         operation.status = 'pending';
+        operation.serverApprovalStatus = 'approved';
+        operation.approvedByUserId = 50;
         state.operationCalls.push({ type: 'service_out_approve', key: req.headers['idempotency-key'] });
-        return json(res, 200, { success: true, replayed: false, operationId, fiscalShiftId: state.shift.id });
+        return json(res, 200, { success: true, replayed: false, operationId, fiscalShiftId: state.shift.id, operation: serviceOutOperationPayload(operation) });
     }
     const refundMatch = url.pathname.match(/^\/api\/payments\/orders\/(\d+)\/refund$/);
     if (refundMatch && req.method === 'POST') {
@@ -616,6 +763,9 @@ async function assertCanonicalCashierButtons(page) {
             'refreshUnresolvedOrdersBtn',
             'loadMoreUnresolvedOrdersBtn',
             'phase1CloseShiftBtn',
+            'createServiceOutBtn',
+            'refreshServiceOutBtn',
+            'saveActionPinBtn',
             'loadCheckboxSalesReportBtn'
         ];
         const bodyFont = getComputedStyle(document.body).fontFamily;
@@ -828,6 +978,22 @@ async function run() {
         await selectorPage.setViewportSize({ width: 1440, height: 1000 });
         await selectorPage.goto(`${base}/cashier-payments?businessContext=event_genix&routeOptionId=park_production`, { waitUntil: 'domcontentloaded' });
         await selectorPage.waitForFunction(() => document.querySelector('#catalogSaleSummary')?.textContent.includes('140 активних позицій'));
+        await selectorPage.locator('#cashierShiftConsole').evaluate(panel => { panel.open = true; });
+        await selectorPage.waitForSelector('#actionPinPanel:not(.hidden)');
+        await selectorPage.waitForSelector('#actionPinBindingSelect option[value="78"]', { state: 'attached' });
+        await selectorPage.selectOption('#actionPinBindingSelect', '78');
+        await selectorPage.fill('#actionPinValue', '2468');
+        await selectorPage.fill('#actionPinConfirm', '2468');
+        await selectorPage.selectOption('#actionPinBindingSelect', '');
+        assert.equal(await selectorPage.inputValue('#actionPinValue'), '', 'draft Action PIN is cleared when the target binding changes');
+        assert.equal(await selectorPage.inputValue('#actionPinConfirm'), '', 'draft Action PIN confirmation is cleared when the target binding changes');
+        await selectorPage.selectOption('#actionPinBindingSelect', '78');
+        await selectorPage.fill('#actionPinValue', '2468');
+        await selectorPage.fill('#actionPinConfirm', '2468');
+        await selectorPage.click('#saveActionPinBtn');
+        await selectorPage.waitForFunction(() => document.querySelector('#cashierGlobalStatus')?.textContent.includes('Action PIN збережено'));
+        assert.equal(state.operationCalls.some(call => call.type === 'action_pin_enroll' && call.bindingId === 78), true, 'PIN enrollment targets a selected non-self binding');
+        assert.equal(await selectorPage.evaluate(() => Object.entries(localStorage).some(([key, value]) => /pin|actionpin/i.test(`${key}:${value}`) || value === '2468')), false, 'Action PIN is not persisted in browser storage');
         assert.deepEqual(
             await selectorPage.locator('#paymentRegisterRoute option').allTextContents(),
             ['Середня каса · готова', 'Тестова каса · приймання вимкнено'],
@@ -945,9 +1111,9 @@ async function run() {
         await assertPaymentStepState(page, { 1: 'active', 2: 'inactive', 3: 'inactive' });
         assert.equal(await page.isHidden('#cashierReadinessDetails'), true, 'ordinary cashier does not see fiscal configuration diagnostics');
         assert.equal(await page.textContent('#cashierReadinessTechnicalList'), '', 'ordinary cashier receives no rendered technical checklist');
-        const cashierProSelector = '[data-cashier-pro-page], [data-cashier-pro], #operationalContourPanel, #serviceInForm, #serviceOutForm, #serviceOutApprovalPanel, #refundForm, #reconciliationForm, #closeShiftBtn, #loadOperationalReportBtn, script[src*="cashier-payments-pro"]';
-        assert.equal(await page.locator(cashierProSelector).count(), 0, 'thin page does not load any Cashier PRO markup or module');
-        assert.equal(state.operationCalls.length, 0, 'opening the thin page performs no Cashier PRO request');
+        const cashierProSelector = '[data-cashier-pro-page], [data-cashier-pro], #operationalContourPanel, #serviceInForm, #refundForm, #reconciliationForm, #closeShiftBtn, #loadOperationalReportBtn, script[src*="cashier-payments-pro"]';
+        assert.equal(await page.locator(cashierProSelector).count(), 0, 'thin page does not load any broad Cashier PRO markup or module');
+        assert.equal(broadCashierProCalls().length, 0, 'opening the thin page performs no broad Cashier PRO request');
         assert.deepEqual(await page.evaluate(() => ({
             apiUa: window.CashierPaymentsPage.isTrustedCheckboxUrl('https://api.checkbox.ua/receipt'),
             apiInUa: window.CashierPaymentsPage.isTrustedCheckboxUrl('https://api.checkbox.in.ua/receipt'),
@@ -1170,8 +1336,8 @@ async function run() {
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
         assert.equal(await page.isDisabled('#confirmCardBtn'), true, 'reload keeps pending payment blocked');
-        assert.equal(await page.locator(cashierProSelector).count(), 0, 'reload still contains no Cashier PRO surface');
-        assert.equal(state.operationCalls.length, 0, 'thin payment flow performs no Cashier PRO request');
+        assert.equal(await page.locator(cashierProSelector).count(), 0, 'reload still contains no broad Cashier PRO surface');
+        assert.equal(broadCashierProCalls().length, 0, 'thin payment flow performs no broad Cashier PRO request');
         assert.equal(await page.isDisabled('#phase1CloseShiftBtn'), true, 'Phase-1 close is blocked while the register has an unresolved receipt');
         const readinessCallsBeforeFiscalizedNextCustomer = state.readinessRequestCount;
         await page.click('#startNextOrderBtn');
@@ -1276,6 +1442,18 @@ async function run() {
 
         await page.waitForSelector('#phase1ShiftPanel:not(.hidden)');
         await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
+        await page.waitForSelector('#serviceOutPanel:not(.hidden)');
+        await page.waitForSelector('#createServiceOutBtn:not([disabled])');
+        const serviceOutCallsBefore = state.operationCalls.length;
+        await page.fill('#serviceOutAmount', '123,45');
+        await page.fill('#serviceOutReason', 'Synthetic service-out smoke');
+        await page.click('#createServiceOutBtn');
+        await page.waitForFunction(() => document.querySelector('#serviceOutList')?.textContent.includes('Synthetic service-out smoke'));
+        assert.equal(state.operationCalls.slice(serviceOutCallsBefore).some(call => call.type === 'service_out_request'), true, 'thin service-out creates exactly the narrow service-out request');
+        await page.click('[data-service-out-cancel]');
+        await page.waitForFunction(() => document.querySelector('#serviceOutList')?.textContent.includes('скасовано'));
+        assert.equal(state.operationCalls.slice(serviceOutCallsBefore).some(call => call.type === 'service_out_cancel'), true, 'own unapproved service-out request can be cancelled before provider handoff');
+        assert.equal(await page.evaluate(() => Object.entries(localStorage).some(([key, value]) => /pin|actionpin/i.test(`${key}:${value}`) || value === '1357')), false, 'service-out flow does not persist approval PINs');
         state.unresolvedAvailable = false;
         await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="queue_unavailable"]');

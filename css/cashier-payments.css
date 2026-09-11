@@ -671,14 +671,18 @@
 }
 
 .cashier-field input,
+.cashier-field select,
+.cashier-field textarea,
 .cashier-tender-group,
 .cashier-checkbox-row {
     border: 1px solid var(--gray-200);
     border-radius: 8px;
-    background: var(--white);
+    background-color: var(--white);
 }
 
-.cashier-field input {
+.cashier-field input,
+.cashier-field select,
+.cashier-field textarea {
     min-height: 42px;
     padding: 10px 12px;
     color: var(--gray-900);
@@ -686,15 +690,23 @@
 }
 
 .cashier-field input:focus-visible,
+.cashier-field select:focus-visible,
+.cashier-field textarea:focus-visible,
 .cashier-tender-group input:focus-visible,
 .cashier-checkbox-row input:focus-visible,
 .cashier-primary-action:focus-visible,
 .cashier-status:focus-visible,
 .cashier-table-wrap:focus-visible,
 .cashier-provider-links a:focus-visible,
-.cashier-history-actions a:focus-visible {
+.cashier-history-actions a:focus-visible,
+.cashier-service-out-item button:focus-visible {
     outline: 3px solid rgba(99,102,241,.35);
     outline-offset: 2px;
+}
+
+.cashier-field textarea {
+    min-height: 86px;
+    resize: vertical;
 }
 
 .cashier-two-cols {
@@ -1277,6 +1289,8 @@ body.dark-mode .cashier-card,
 body.dark-mode .cashier-scope-card,
 body.dark-mode .cashier-flow-node,
 body.dark-mode .cashier-field input,
+body.dark-mode .cashier-field select,
+body.dark-mode .cashier-field textarea,
 body.dark-mode .cashier-tender-group,
 body.dark-mode .cashier-checkbox-row,
 body.dark-mode .cashier-catalog-line,
@@ -1294,7 +1308,9 @@ body.dark-mode #catalogDiscountRule {
 
 body.dark-mode .cashier-route-card select:disabled,
 body.dark-mode .cashier-catalog-filters select:disabled,
-body.dark-mode .cashier-catalog-filters input:disabled {
+body.dark-mode .cashier-catalog-filters input:disabled,
+body.dark-mode .cashier-field select:disabled,
+body.dark-mode .cashier-field textarea:disabled {
     background-color: rgba(30,41,59,.72);
     color: #cbd5e1;
 }
@@ -1378,6 +1394,8 @@ body.dark-mode .cashier-disclosure-heading [role="heading"],
 body.dark-mode .cashier-scope-card strong,
 body.dark-mode .cashier-meta-grid dd,
 body.dark-mode .cashier-field input,
+body.dark-mode .cashier-field select,
+body.dark-mode .cashier-field textarea,
 body.dark-mode .cashier-route-card select,
 body.dark-mode .cashier-catalog-filters select,
 body.dark-mode .cashier-catalog-filters input,
@@ -1878,6 +1896,66 @@ body.dark-mode .cashier-cart-summary {
     font-size: 18px;
 }
 
+.cashier-service-out-form,
+.cashier-pin-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.cashier-pin-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.cashier-service-out-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 44px;
+    margin-top: 10px;
+}
+
+.cashier-service-out-item {
+    display: grid;
+    grid-template-columns: minmax(150px, 1.1fr) minmax(110px, .7fr) minmax(120px, .8fr);
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid var(--gray-100);
+    border-radius: 8px;
+    background: var(--white);
+    color: var(--gray-800);
+    overflow-wrap: anywhere;
+}
+
+.cashier-service-out-item strong,
+.cashier-service-out-item small {
+    display: block;
+}
+
+.cashier-service-out-item small {
+    margin-top: 2px;
+    color: var(--gray-500);
+    font-size: 12px;
+}
+
+.cashier-service-out-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.cashier-service-out-actions button {
+    min-height: 38px;
+}
+
+.cashier-service-out-pin {
+    margin-top: 10px;
+}
+
 body.dark-mode .cashier-scope-card,
 body.dark-mode .cashier-catalog-results {
     background: transparent;
@@ -1885,9 +1963,20 @@ body.dark-mode .cashier-catalog-results {
 
 body.dark-mode .cashier-tender-group label,
 body.dark-mode .cashier-confirm-panel,
-body.dark-mode .cashier-shift-action {
+body.dark-mode .cashier-shift-action,
+body.dark-mode .cashier-service-out-item,
+body.dark-mode .cashier-field select,
+body.dark-mode .cashier-field textarea {
     border-color: rgba(255,255,255,.10);
-    background: rgba(15,23,42,.68);
+    background-color: rgba(15,23,42,.68);
+}
+
+body.dark-mode .cashier-service-out-item {
+    color: #e2e8f0;
+}
+
+body.dark-mode .cashier-service-out-item small {
+    color: #94a3b8;
 }
 
 @media (max-width: 1180px) {
@@ -1914,8 +2003,14 @@ body.dark-mode .cashier-shift-action {
     .cashier-route-card,
     .cashier-sale-settings,
     .cashier-checkout-column,
-    .cashier-shift-console-body {
+    .cashier-shift-console-body,
+    .cashier-pin-grid,
+    .cashier-service-out-item {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cashier-service-out-actions {
+        justify-content: flex-start;
     }
 
     .cashier-route-card .cashier-help,

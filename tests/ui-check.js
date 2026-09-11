@@ -7243,7 +7243,7 @@ const cashierCanonicalButtonIds = [
     'refreshReadinessBtn', 'createPaymentOrderBtn', 'startNextOrderBtn', 'cancelDraftOrderBtn',
     'confirmCashBtn', 'confirmCardBtn', 'providerTaxUrl', 'providerPdfUrl', 'providerQrUrl',
     'refreshUnresolvedOrdersBtn', 'loadMoreUnresolvedOrdersBtn', 'phase1CloseShiftBtn',
-    'loadCheckboxSalesReportBtn'
+    'createServiceOutBtn', 'refreshServiceOutBtn', 'saveActionPinBtn', 'loadCheckboxSalesReportBtn'
 ];
 const cashierButtonUsesCanonicalClass = id => {
     const tag = cashierPaymentsHtml.match(new RegExp(`<[^>]+id=["']${id}["'][^>]*>`, 'i'))?.[0] || '';
@@ -7285,7 +7285,9 @@ check('Cashier thin UI exposes server-backed unresolved queue and read-only Chec
     && !cashierPaymentsHtml.includes('id="serviceInForm"')
     && !cashierPaymentsHtml.includes('id="refundForm"')
     && !cashierPaymentsHtml.includes('id="reconciliationForm"')
-    && !cashierPaymentsHtml.includes('type="password"'));
+    && cashierPaymentsHtml.includes('id="serviceOutPanel"')
+    && cashierPaymentsHtml.includes('id="actionPinPanel"')
+    && cashierPaymentsHtml.includes('autocomplete="new-password"'));
 check('Cashier thin UI exposes a separate fail-closed Phase-1 Checkbox shift close surface',
     cashierPaymentsHtml.includes('id="phase1ShiftPanel"')
     && cashierPaymentsHtml.includes('id="phase1ShiftStatus"')
@@ -7421,17 +7423,24 @@ check('Cashier timestamps use one explicit Europe/Kyiv formatter',
     cashierPaymentsJs.includes('function formatKyivDateTime(value)')
     && cashierPaymentsJs.includes("timeZone: 'Europe/Kyiv'")
     && !/new Date\([^\n]+\)\.toLocaleString\('uk-UA'\)/.test(cashierPaymentsJs));
-check('Cashier thin page contains no Cashier PRO handlers, markup or module',
+check('Cashier thin page exposes only narrow service-out/PIN operations outside broad Cashier PRO',
     !cashierPaymentsJs.includes('bindCashierProEvents')
     && !cashierPaymentsJs.includes('submitServiceIn')
-    && !cashierPaymentsJs.includes('submitServiceOut')
     && !cashierPaymentsJs.includes('submitRefund')
     && !cashierPaymentsJs.includes('submitReconciliation')
     && !cashierPaymentsJs.includes('refundOrderId')
     && !cashierPaymentsJs.includes('service_in_amount_required')
-    && !cashierPaymentsJs.includes('service_out_amount_required')
     && !cashierPaymentsJs.includes('refund_reason_required')
     && !cashierPaymentsJs.includes('cashierProEnabled')
+    && cashierPaymentsJs.includes('function createServiceOutRequest')
+    && cashierPaymentsJs.includes('/api/payments/service-out/recovery')
+    && cashierPaymentsJs.includes('function cancelServiceOutOperation')
+    && cashierPaymentsJs.includes('function saveActionPin')
+    && cashierPaymentsJs.includes("hasAction('fiscal.service_out.request')")
+    && cashierPaymentsJs.includes("hasAction('fiscal.service_out.approve')")
+    && cashierPaymentsJs.includes("hasAction('fiscal.configure')")
+    && cashierPaymentsJs.includes('binding.actionPin?.configured')
+    && !/localStorage\.setItem\([^)]*(pin|actionPin)/i.test(cashierPaymentsJs)
     && !cashierPaymentsHtml.includes('data-cashier-pro-page="true"')
     && !cashierPaymentsHtml.includes('id="operationalContourPanel"')
     && !cashierPaymentsHtml.includes('cashier-payments-pro'));

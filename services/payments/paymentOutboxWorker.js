@@ -5,7 +5,7 @@ const { pool } = require('../../db');
 const { publishInTransaction } = require('../eventBus');
 const { CheckboxClientError } = require('../checkbox/errors');
 const { createCheckboxProviderFactory } = require('../checkbox/provider');
-const { isCashierProEnabled } = require('../checkbox/config');
+const { isCashierProEnabled, isParkDarTestServiceOutEnabled } = require('../checkbox/config');
 const { PENDING_WAIT_KEY, PENDING_WAIT_MAX_DELAY_MS, nextPendingWait, pendingWaitStopCode } = require('./paymentPendingWait');
 const {
     CLOSED_SHIFT_PRE_SUBMIT_ERROR_CODE,
@@ -66,6 +66,7 @@ const SHIFT_LIFECYCLE_TRANSITIONS = Object.freeze({
     CLOSED: []
 });
 const CASHIER_PRO_JOB_TYPES = new Set(['receipt_return', 'service_receipt']);
+const PARK_DAR_TEST_SERVICE_OUT_ROUTES = new Set(['park_test', 'dar_test']);
 
 function normalizedLockExpiryMs(value) {
     return Math.max(30_000, Math.floor(Number(value) || DEFAULT_LOCK_EXPIRY_MS));
@@ -128,6 +129,36 @@ function safeJsonObject(value) {
         }
     }
     return {};
+}
+
+function isParkDarTestServiceOutJob(job = {}) {
+    if (String(job.job_type || '').trim() !== 'service_receipt'
+        || String(job.operation_type || '').trim() !== 'service_out') {
+        return false;
+    }
+    const request = safeJsonObject(job.fiscal_request_snapshot);
+    const providerContext = safeJsonObject(request.provider_context);
+    const routeOptionId = String(request.route_option_id || request.routeOptionId || '').trim();
+    const businessContext = String(request.business_context || request.businessContext || '').trim();
+    const registerMode = String(request.register_mode || request.registerMode || '').trim();
+    const expectedIsTest = normalizeBoolean(job.expected_is_test ?? providerContext.expected_is_test);
+    return PARK_DAR_TEST_SERVICE_OUT_ROUTES.has(routeOptionId)
+        && ['event_genix', 'dar'].includes(businessContext)
+        && registerMode === 'test'
+        && request.shared_test_register === true
+        && expectedIsTest === true;
+}
+
+function assertServiceReceiptRuntimeGate(context = {}, env = process.env) {
+    const job = context.job || {};
+    if (String(job.job_type || '').trim() !== 'service_receipt') return;
+    if (isCashierProEnabled(env)) return;
+    if (isParkDarTestServiceOutEnabled(env) && isParkDarTestServiceOutJob(job)) return;
+    throw new PaymentOutboxWorkerError(
+        'cashier_pro_disabled',
+        'Cashier PRO service receipt jobs are disabled outside the narrow PARK/DAR test service-out gate',
+        { retryable: false }
+    );
 }
 
 function stableJson(value) {
@@ -262,9 +293,13 @@ async function claimPaymentOutboxJobs(client, {
         return [];
     }
     const token = lockToken();
+    const parkDarTestServiceOutEnabled = isParkDarTestServiceOutEnabled(process.env);
     const claimableJobTypes = cashierProEnabled
         ? RETRYABLE_JOB_TYPES
-        : RETRYABLE_JOB_TYPES.filter(type => !CASHIER_PRO_JOB_TYPES.has(type));
+        : RETRYABLE_JOB_TYPES.filter(type => (
+            !CASHIER_PRO_JOB_TYPES.has(type)
+            || (type === 'service_receipt' && parkDarTestServiceOutEnabled)
+        ));
     const result = await client.query(
         `WITH candidate_registers AS MATERIALIZED (
              SELECT
@@ -334,8 +369,21 @@ async function claimPaymentOutboxJobs(client, {
                                    AND eligible.cashier_credential_ref = fo.cashier_credential_ref
                             )
                         )
-                        AND job.job_type = ANY($1::text[])
+                       AND job.job_type = ANY($1::text[])
                        AND ($8::boolean = TRUE OR job.job_type <> 'shift_close' OR job.payload->>'phase' = 'thin_mvp_shift_close')
+                       AND (
+                           $8::boolean = TRUE
+                           OR job.job_type <> 'service_receipt'
+                           OR (
+                               $9::boolean = TRUE
+                               AND fo.operation_type = 'service_out'
+                               AND fo.expected_is_test IS TRUE
+                               AND fo.request_snapshot->>'route_option_id' IN ('park_test', 'dar_test')
+                               AND fo.request_snapshot->>'business_context' IN ('event_genix', 'dar')
+                               AND fo.request_snapshot->>'register_mode' = 'test'
+                               AND fo.request_snapshot->>'shared_test_register' = 'true'
+                           )
+                       )
                        AND COALESCE(job.payload->>'provider', fo.provider, fr.provider) = 'checkbox'
                        AND (
                            job.job_type <> 'receipt_sell'
@@ -408,7 +456,8 @@ async function claimPaymentOutboxJobs(client, {
             Array.isArray(eligibleFiscalProfileIds) ? eligibleFiscalProfileIds.map(id => Number(id)) : null,
             Array.isArray(runtimeContexts) ? JSON.stringify(runtimeContexts) : null,
             token,
-            cashierProEnabled === true
+            cashierProEnabled === true,
+            parkDarTestServiceOutEnabled === true
         ]
     );
     return result.rows;
@@ -2628,6 +2677,7 @@ async function processOnePaymentOutboxJob({ dbPool, provider, job, lockExpiryMs 
                 return await finalizeJobSuccess(dbPool, context, result);
             }
             if (context.job.job_type === 'service_receipt') {
+                assertServiceReceiptRuntimeGate(context);
                 result = await runServiceReceiptJob(effectiveProvider, context);
                 return await finalizeJobSuccess(dbPool, context, result);
             }
@@ -2725,6 +2775,7 @@ module.exports = {
     PaymentOutboxWorkerError,
     RETRYABLE_JOB_TYPES,
     assertImmutableProviderContext,
+    assertServiceReceiptRuntimeGate,
     claimPaymentOutboxJobs,
     classifyWorkerError,
     computeBackoffMs,
@@ -2732,6 +2783,7 @@ module.exports = {
     externalStage,
     finalizeJobFailure,
     finalizeJobSuccess,
+    isParkDarTestServiceOutJob,
     processOnePaymentOutboxJob,
     processPaymentOutboxJobs,
     resolveCompletedTestSalePendingIncidents,

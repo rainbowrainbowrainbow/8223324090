@@ -17,12 +17,11 @@ router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
             const client = await pool.connect();
             try {
                 await client.query('BEGIN');
-                await client.query(
-                    'INSERT INTO game_wallets (user_id, coins, total_earned) VALUES ($1, 500, 500) ON CONFLICT (user_id) DO NOTHING',
+                const created = await client.query(
+                    'INSERT INTO game_wallets (user_id, coins, total_earned) VALUES ($1, 500, 500) ON CONFLICT (user_id) DO NOTHING RETURNING user_id',
                     [req.user.id]
                 );
                 // Only insert bonus if wallet was actually created (not already exists)
-                const created = await client.query('SELECT coins FROM game_wallets WHERE user_id = $1 AND coins = 500 AND total_earned = 500', [req.user.id]);
                 if (created.rows.length > 0) {
                     await client.query(
                         'INSERT INTO coin_transactions (user_id, username, amount, type, description) VALUES ($1, (SELECT username FROM users WHERE id = $1), 500, $2, $3)',
@@ -30,7 +29,10 @@ router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
                     );
                 }
                 await client.query('COMMIT');
-            } catch (e) { await client.query('ROLLBACK').catch(() => {}); } finally { client.release(); }
+            } catch (e) {
+                await client.query('ROLLBACK').catch(() => {});
+                throw e;
+            } finally { client.release(); }
             wallet = await pool.query('SELECT * FROM game_wallets WHERE user_id = $1', [req.user.id]);
         }
         const w = wallet.rows[0];
@@ -56,7 +58,7 @@ router.post('/daily-login', requireRole(...ANY_ROLE), async (req, res) => {
         await client.query('BEGIN');
 
         const wallet = await client.query(
-            'SELECT * FROM game_wallets WHERE user_id = $1 FOR UPDATE',
+            'SELECT *, last_login_reward::text AS last_login_reward_day FROM game_wallets WHERE user_id = $1 FOR UPDATE',
             [req.user.id]
         );
 
@@ -66,17 +68,21 @@ router.post('/daily-login', requireRole(...ANY_ROLE), async (req, res) => {
         }
 
         const w = wallet.rows[0];
-        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
 
-        if (w.last_login_reward === today || String(w.last_login_reward) === today) {
+        if (w.last_login_reward_day === today) {
             await client.query('ROLLBACK');
             return res.json({ alreadyClaimed: true, loginStreak: w.login_streak, reward: 0 });
         }
 
         // Double-check via coin_transactions to prevent duplicate claims
         const alreadyClaimed = await client.query(
-            "SELECT 1 FROM coin_transactions WHERE user_id = $1 AND type = 'daily_login' AND created_at::date = CURRENT_DATE LIMIT 1",
-            [req.user.id]
+            `SELECT 1 FROM coin_transactions WHERE user_id = $1 AND type = 'daily_login'
+                AND created_at >= (($2::date::timestamp AT TIME ZONE 'UTC') AT TIME ZONE current_setting('TimeZone'))
+                AND created_at < ((($2::date + 1)::timestamp AT TIME ZONE 'UTC') AT TIME ZONE current_setting('TimeZone'))
+                LIMIT 1`,
+            [req.user.id, today]
         );
         if (alreadyClaimed.rows.length > 0) {
             await client.query('ROLLBACK');
@@ -84,8 +90,8 @@ router.post('/daily-login', requireRole(...ANY_ROLE), async (req, res) => {
         }
 
         // Check if streak continues (yesterday) or resets
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-        let streak = (w.last_login_reward === yesterday) ? (w.login_streak || 0) : 0;
+        const yesterday = new Date(now.getTime() - 86400000).toISOString().split('T')[0];
+        let streak = (w.last_login_reward_day === yesterday) ? (w.login_streak || 0) : 0;
         const dayIndex = streak % 7; // 0-6
         const reward = DAILY_REWARDS[dayIndex];
         streak++;
@@ -171,12 +177,20 @@ router.get('/history', requireRole(...ANY_ROLE), async (req, res) => {
 });
 
 // POST /api/wallet/transfer — send coins to another user
+function walletPositiveInteger(value) {
+    if (typeof value !== 'number' && !(typeof value === 'string' && /^\d+$/.test(value.trim()))) return null;
+    const number = Number(value);
+    // Wallet amounts and user IDs are PostgreSQL INTEGER columns.
+    return Number.isSafeInteger(number) && number > 0 && number <= 2147483647 ? number : null;
+}
+
 router.post('/transfer', requireRole(...ANY_ROLE), async (req, res) => {
-    const { to_user_id, amount } = req.body;
-    if (!to_user_id || !amount || amount < 1) {
+    const to_user_id = walletPositiveInteger(req.body?.to_user_id);
+    const amount = walletPositiveInteger(req.body?.amount);
+    if (to_user_id === null || amount === null) {
         return res.status(400).json({ error: 'to_user_id та amount (>0) обов\'язкові' });
     }
-    if (to_user_id === req.user.id) {
+    if (to_user_id === Number(req.user.id)) {
         return res.status(400).json({ error: 'Не можна переказати монети собі' });
     }
 

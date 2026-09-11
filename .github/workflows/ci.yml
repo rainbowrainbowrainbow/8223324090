@@ -196,6 +196,21 @@ jobs:
             output/playwright/hr-checklists/postgres
             output/hr-checklists-quality/access/runtime-matrix.json
 
+      - name: Run Wallet ledger hardening PostgreSQL regression
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_my_day_browser_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: |
+          PGOPTIONS='-c timezone=UTC' node tests/integration/wallet-ledger.integration.test.js --isolated
+          PGOPTIONS='-c timezone=America/Los_Angeles' node tests/integration/wallet-ledger.integration.test.js --isolated
+
+      - name: Upload Wallet PostgreSQL evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: wallet-ledger-postgres
+          path: output/wallet-ledger
+
   hr-payroll-postgres:
     name: HR and payroll PostgreSQL integration
     runs-on: ubuntu-latest

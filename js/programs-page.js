@@ -361,6 +361,7 @@ let productsLoadGeneration = 0;
 let productsLoadState = 'ready';
 let productRouteNavigationBound = false;
 let productCatalogs = [];
+let graduationCatalogPackageCount = null;
 let catalogEntriesLoaded = false;
 let editingDocumentProductId = null;
 let productDocumentSaving = false;
@@ -2107,6 +2108,15 @@ async function loadCatalogEntries() {
     if (grid) grid.innerHTML = '<div class="loading-spinner">Завантаження каталогів…</div>';
     try {
         productCatalogs = await apiGetProductCatalogs();
+        graduationCatalogPackageCount = null;
+        if (productCatalogs.some(catalog => catalog.id === 'graduation')) {
+            try {
+                const packages = await apiCall('GET', '/graduation/packages');
+                if (Array.isArray(packages)) graduationCatalogPackageCount = packages.length;
+            } catch (err) {
+                console.warn('Graduation catalog count unavailable');
+            }
+        }
         catalogEntriesLoaded = true;
         renderCatalogEntries();
     } catch (err) {
@@ -2137,8 +2147,9 @@ function renderCatalogEntries() {
                 <div class="product-catalog-title">${escapeHtml(catalog.title)}</div>
                 <div class="product-catalog-desc">${escapeHtml(catalog.description || 'Каталог продуктового блоку')}</div>
                 <div class="product-catalog-meta">
-                    <span>${Number(catalog.pageCount || 0)} стор.</span>
-                    <span>${Number(catalog.itemCount || 0)} елементів</span>
+                    ${catalog.id === 'graduation'
+                        ? `<span>${graduationCatalogPackageCount === null ? 'Кількість пакетів недоступна' : `Пакетів: ${graduationCatalogPackageCount}`}</span>`
+                        : `<span>${Number(catalog.pageCount || 0)} стор.</span><span>${Number(catalog.itemCount || 0)} елементів</span>`}
                     <span class="product-catalog-status ${escapeHtml(catalog.status || 'draft')}">${escapeHtml(getCatalogStatusLabel(catalog.status))}</span>
                 </div>
             </div>

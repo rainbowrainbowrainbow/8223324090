@@ -138,7 +138,7 @@
     <script src="js/components/sidebar.js?v=0.81.104"></script>
     <script src="js/graduation.js?v=0.81.104"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const isEmbedded = new URLSearchParams(location.search).get('embedded') === '1'
                 || window.self !== window.top;
             if (isEmbedded) {
@@ -170,6 +170,42 @@
                     }
                 } catch (e) { /* cross-origin — token should already be shared via same-origin localStorage */ }
             } else {
+                try {
+                    const user = await apiVerifyToken();
+                    if (!user) {
+                        if (handleTransientAuthSessionBootstrap({ containerId: 'main-content' })) return;
+                        clearAuthStorage();
+                        clearAuthenticatedPageShell();
+                        window.location.href = '/';
+                        return;
+                    }
+                    await hydrateBusinessOperatingProfile(user);
+                    const permissions = await hydrateActionPermissions(user);
+                    if (!permissions) {
+                        showAuthenticatedPageShell({ markRuntimeReady: false });
+                        renderPermissionBootstrapError({
+                            containerId: 'main-content',
+                            retry: () => window.location.reload()
+                        });
+                        return;
+                    }
+                    AppState.currentUser = user;
+                    window.WorkingRole?.hydrate?.();
+                    if (!enforceCurrentPageAccess(user)) return;
+                    showAuthenticatedPageShell();
+                    bindLogoutButton();
+                } catch (error) {
+                    if (handleTransientAuthSessionBootstrap({ containerId: 'main-content' })) return;
+                    handleStandaloneInitError('graduation', error, () => {
+                        renderStandaloneFatalError({
+                            containerId: 'main-content',
+                            title: 'Не вдалося відкрити конструктор випускного',
+                            message: 'Не вдалося підготувати сторінку. Спробуйте оновити її.',
+                            moduleName: 'graduation', error
+                        });
+                    });
+                    return;
+                }
                 if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
             }
             try {
@@ -183,7 +219,7 @@
             } catch (err) {
                 console.error('[Graduation] Init error:', err);
                 const content = document.getElementById('gradContent');
-                if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#999">Помилка: ' + err.message + '</div>';
+                if (content) content.textContent = 'Не вдалося завантажити конструктор. Спробуйте оновити сторінку.';
             }
         });
     </script>

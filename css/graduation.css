@@ -22,6 +22,9 @@
 /* The shared page container already supplies the outer content spacing. */
 .page-container > .grad-page { padding: 0; }
 
+/* Use the existing dark-gold text tone on light surfaces. */
+body:not(.dark-mode) .grad-page { --grad-accent: #8a641c; }
+
 /* === TABS === */
 .grad-tabs {
     display: flex;

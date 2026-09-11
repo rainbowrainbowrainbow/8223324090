@@ -25,7 +25,7 @@ router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
                 const created = await client.query('SELECT coins FROM game_wallets WHERE user_id = $1 AND coins = 500 AND total_earned = 500', [req.user.id]);
                 if (created.rows.length > 0) {
                     await client.query(
-                        'INSERT INTO coin_transactions (user_id, amount, type, description) VALUES ($1, 500, $2, $3)',
+                        'INSERT INTO coin_transactions (user_id, username, amount, type, description) VALUES ($1, (SELECT username FROM users WHERE id = $1), 500, $2, $3)',
                         [req.user.id, 'starter_bonus', 'Стартовий бонус']
                     );
                 }
@@ -96,7 +96,7 @@ router.post('/daily-login', requireRole(...ANY_ROLE), async (req, res) => {
             [reward, streak, today, req.user.id]
         );
         await client.query(
-            'INSERT INTO coin_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)',
+            'INSERT INTO coin_transactions (user_id, username, amount, type, description) VALUES ($1, (SELECT username FROM users WHERE id = $1), $2, $3, $4)',
             [req.user.id, reward, 'daily_login', `Щоденний бонус (день ${streak})`]
         );
 
@@ -231,11 +231,11 @@ router.post('/transfer', requireRole(...ANY_ROLE), async (req, res) => {
 
         // Transaction records
         await client.query(
-            'INSERT INTO coin_transactions (user_id, amount, type, description, reference_id) VALUES ($1, $2, $3, $4, $5)',
+            'INSERT INTO coin_transactions (user_id, username, amount, type, description, reference_id) VALUES ($1, (SELECT username FROM users WHERE id = $1), $2, $3, $4, $5)',
             [req.user.id, -amount, 'gift', `Подарунок для ${recipient.rows[0].name}`, to_user_id]
         );
         await client.query(
-            'INSERT INTO coin_transactions (user_id, amount, type, description, reference_id) VALUES ($1, $2, $3, $4, $5)',
+            'INSERT INTO coin_transactions (user_id, username, amount, type, description, reference_id) VALUES ($1, (SELECT username FROM users WHERE id = $1), $2, $3, $4, $5)',
             [to_user_id, amount, 'gift', `Подарунок від ${req.user.name || req.user.username}`, req.user.id]
         );
 

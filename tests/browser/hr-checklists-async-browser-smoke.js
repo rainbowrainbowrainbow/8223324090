@@ -6,7 +6,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const ROOT = path.resolve(__dirname, '../..');
-const OUT = path.join(ROOT, 'output/hr-checklists-quality/async');
+const browserOption = process.argv.indexOf('--browser');
+const browserName = browserOption < 0 ? 'chromium' : process.argv[browserOption + 1];
+assert.ok(['chromium', 'firefox', 'webkit'].includes(browserName), 'Use chromium, firefox or webkit');
+const OUT = path.join(ROOT, 'output/hr-checklists-quality', browserName === 'chromium' ? 'async' : `async-${browserName}`);
 const VERIFY_LOCAL_FIXES = process.argv.includes('--verify-local-fixes');
 const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');
 function requirePlaywright() {
@@ -26,19 +29,24 @@ const authSource = read('js/auth.js');
 const themeStart = authSource.indexOf('function isCrmDarkThemeActive()');
 const themeEnd = authSource.indexOf('function initHeaderThemeToggle()', themeStart);
 
-async function install(page, dark) {
+async function install(page, dark, { userId = 9901, reload = false, storageBlocked = false } = {}) {
+    await page.unroute('**/*');
     await page.route('**/*', route => {
         const url = new URL(route.request().url());
         if (url.href === 'http://127.0.0.1:47849/hr') return route.fulfill({ contentType: 'text/html', body: html });
         if (url.origin === 'http://127.0.0.1:47849' && /^\/css\/[a-z0-9-]+\.css$/i.test(url.pathname)) return route.fulfill({ contentType: 'text/css', body: read(url.pathname.slice(1)) });
         return route.abort();
     });
-    await page.goto('http://127.0.0.1:47849/hr');
-    await page.evaluate(() => {
-        window.AppState = { currentUser: { id: 9901, role: 'creator', name: 'QA Synthetic' } };
+    if (reload) await page.reload();
+    else await page.goto('http://127.0.0.1:47849/hr');
+    await page.evaluate(({ userId, storageBlocked }) => {
+        if (storageBlocked) {
+            Storage.prototype.getItem = Storage.prototype.setItem = Storage.prototype.removeItem = () => { throw new DOMException('QA blocked storage', 'SecurityError'); };
+        }
+        window.AppState = { currentUser: { id: userId, role: 'creator', name: 'QA Synthetic' } };
         window.canAccess = () => true;
         window.resolveCapability = () => ({ allowed: true });
-    });
+    }, { userId, storageBlocked });
     await page.addScriptTag({ content: read('js/ui.js') });
     await page.addScriptTag({ content: authSource.slice(themeStart, themeEnd) });
     await page.addScriptTag({ content: read('js/hr-pulse-switcher.js') });
@@ -57,6 +65,7 @@ async function install(page, dark) {
                 if (qa.count === undefined) return { success: true, data: { summary: {}, assignments: [], professionsWithoutTemplate: qa.professions.map(p => ({ professionKey: p.key, professionTitle: p.title, department: p.department, status: 'without_template' })), archived: [], orphaned: [] } };
                 const query = new URLSearchParams(request.split('?')[1]);
                 const offset = Number(query.get('offset')) || 0;
+                if (qa.dashboardCounts?.length) qa.count = qa.dashboardCounts.shift();
                 const count = query.get('search') ? Math.min(1, qa.count) : qa.count;
                 const historyCount = qa.historyCount || 0;
                 const rows = (total, status) => Array.from({ length: total }, (_, i) => ({ staffId: i + 1, staffName: `QA Person ${i + 1}`, professionKey: 'qa_a', professionTitle: 'QA Profession', status, total: 2, completed: 0, percent: 0 })).slice(offset, offset + 200);
@@ -65,7 +74,7 @@ async function install(page, dark) {
                     assignments: rows(count, 'not_started'), archived: rows(historyCount, 'archived'), orphaned: [], professionsWithoutTemplate: [],
                     pagination: Object.fromEntries([['assignments', count], ['archived', historyCount], ['orphaned', 0]].map(([feed, total]) => [feed, { limit: 200, offset, total }]))
                 };
-                if (qa.failDashboard) { qa.failDashboard = false; return { success: false, error: 'QA dashboard failure' }; }
+                if (qa.failDashboard || qa.failDashboardOffset === offset) { qa.failDashboard = false; delete qa.failDashboardOffset; return { success: false, error: 'QA dashboard failure' }; }
                 if (qa.holdDashboard) {
                     qa.holdDashboard = false;
                     await new Promise(resolve => { qa.releaseDashboard = resolve; });
@@ -116,20 +125,26 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, `${name}.png
 
 async function run() {
     fs.mkdirSync(OUT, { recursive: true });
-    const browser = await requirePlaywright().chromium.launch({ headless: true });
-    const results = { scope: 'Synthetic local requests; real HTML/CSS/UI handlers and Chromium. No production or PostgreSQL.', node: process.version, browser: browser.version(), verifiedLocalFixes: VERIFY_LOCAL_FIXES, checks: [], pageErrors: [] };
+    const browser = await requirePlaywright()[browserName].launch({ headless: true });
+    const results = { scope: 'Synthetic local requests; real HTML/CSS/UI handlers. No production or PostgreSQL.', node: process.version, engine: browserName, browser: browser.version(), verifiedLocalFixes: VERIFY_LOCAL_FIXES, checks: [], pageErrors: [] };
+    let activePage;
     const record = (theme, name, passed, evidence) => results.checks.push({ theme, name, status: passed ? 'PASS' : 'DEFECT', evidence });
     try {
         for (const dark of [false, true]) {
             const theme = dark ? 'dark' : 'light';
             const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
             const page = await context.newPage();
+            activePage = page;
             page.on('pageerror', error => results.pageErrors.push(error.message));
             await install(page, dark);
             const trigger = page.locator('[data-checklist-open-profession]').first();
             await trigger.focus();
             await open(page);
             await page.waitForFunction(() => document.activeElement.closest('#professionWorkspace'));
+            record(theme, 'workspace_covers_viewport', await page.locator('#professionWorkspaceOverlay').evaluate(el => {
+                const rect = el.getBoundingClientRect();
+                return rect.top === 0 && rect.bottom === innerHeight && rect.left === 0 && rect.right === innerWidth;
+            }), {});
             record(theme, 'workspace_initial_focus', (await focused(page)).insideWorkspace, await focused(page));
             await page.locator('[data-profession-workspace-tab="checklist"]').focus();
             await page.keyboard.press('ArrowRight');
@@ -232,6 +247,27 @@ async function run() {
             await page.waitForFunction(() => qa.activeConfirmation === true);
             record(theme, 'shared_confirmation_replacement_resolves_once', await page.evaluate(() => qa.replacedConfirmation === false && qa.activeConfirmation === true), {});
             await page.locator('.confirm-overlay').waitFor({ state: 'detached' });
+            await page.evaluate(() => { void confirmModal('QA content deletion', { confirmText: 'Видалити', danger: true }).then(value => { qa.legacyConfirmed = value; }); });
+            record(theme, 'shared_confirmation_accessible_name', await page.getByRole('dialog', { name: 'QA content deletion', exact: true }).count() === 1, {});
+            record(theme, 'shared_confirmation_legacy_content_options', await page.locator('.confirm-ok').textContent() === 'Видалити' && await page.locator('.confirm-dialog').evaluate(el => el.classList.contains('danger')), {});
+            await page.locator('.confirm-cancel').click();
+            await page.waitForFunction(() => qa.legacyConfirmed === false);
+            await page.locator('.confirm-overlay').waitFor({ state: 'detached' });
+            await page.evaluate(() => { void confirmModal('QA explicit options', { okText: 'Continue', confirmText: 'Ignored', type: 'success', danger: true }); });
+            record(theme, 'shared_confirmation_explicit_options_precedence', await page.locator('.confirm-ok').textContent() === 'Continue' && await page.locator('.confirm-dialog').evaluate(el => el.classList.contains('success')), {});
+            await page.locator('.confirm-cancel').click();
+            await page.locator('.confirm-overlay').waitFor({ state: 'detached' });
+            const deferredFocus = await page.evaluate(async () => {
+                void confirmModal('QA deferred initial focus');
+                const cancel = document.querySelector('.confirm-cancel');
+                cancel.focus();
+                await new Promise(requestAnimationFrame);
+                const retained = document.activeElement === cancel;
+                cancel.click();
+                return retained;
+            });
+            record(theme, 'shared_dialog_respects_focus_before_animation_frame', deferredFocus, {});
+            await page.locator('.confirm-overlay').waitFor({ state: 'detached' });
             for (const count of [0, 1, 199, 200, 201, 401]) {
                 await page.evaluate(async count => { qa.count = count; await loadProfessionChecklists({ preserveCatalog: true }); }, count);
                 const ids = [];
@@ -258,6 +294,33 @@ async function run() {
             await page.locator('#professionChecklistDashboardRetry').click();
             await page.waitForFunction(() => professionChecklistDashboardState.loadState === 'ready' && professionChecklistDashboardState.data.pagination.assignments.offset === 400);
             record(theme, 'pagination_failed_page_retry', await page.evaluate(() => professionChecklistDashboardState.data.assignments.length === 1 && professionChecklistDashboardState.data.archived.length === 1), {});
+            for (const [count, expectedOffset] of [[201, 200], [200, 0], [0, 0]]) {
+                const before = await page.evaluate(() => qa.requests.length);
+                await page.evaluate(async count => { qa.count = count; await loadProfessionChecklists({ feed: 'assignments', offset: 400, preserveCatalog: true }); }, count);
+                record(theme, `pagination_shrink_${count}`, await page.evaluate(({ count, expectedOffset }) => {
+                    const data = professionChecklistDashboardState.data;
+                    return data.pagination.assignments.offset === expectedOffset && data.assignments.length === Math.min(200, count - expectedOffset) && data.archived.length === 1;
+                }, { count, expectedOffset }), { requests: await page.evaluate(() => qa.requests.length) - before });
+            }
+            const shrinkingRequests = await page.evaluate(async () => {
+                qa.dashboardCounts = [201, 1, 0];
+                const before = qa.requests.length;
+                await loadProfessionChecklists({ feed: 'assignments', offset: 400, preserveCatalog: true });
+                return qa.requests.length - before;
+            });
+            record(theme, 'pagination_continuous_shrink_is_bounded', shrinkingRequests === 3 && await page.evaluate(() => professionChecklistDashboardState.data.pagination.assignments.offset === 0 && professionChecklistDashboardState.data.assignments.length === 0), { requests: shrinkingRequests });
+            await page.evaluate(async () => {
+                qa.count = 401;
+                await loadProfessionChecklists({ feed: 'assignments', offset: 400, preserveCatalog: true });
+                qa.count = 200;
+                qa.failDashboardOffset = 0;
+                await loadProfessionChecklists({ feed: 'assignments', offset: 400, preserveCatalog: true });
+            });
+            record(theme, 'failed_recovery_preserves_data_and_retry_offset', await page.evaluate(() => professionChecklistDashboardState.loadState === 'error' && professionChecklistDashboardState.data.assignments.length === 1 && professionChecklistDashboardState.retry.offset === 0), {});
+            await page.locator('#professionChecklistDashboardRetry').click();
+            await page.waitForFunction(() => professionChecklistDashboardState.loadState === 'ready');
+            record(theme, 'failed_recovery_can_retry', await page.evaluate(() => professionChecklistDashboardState.data.assignments.length === 200 && professionChecklistDashboardState.data.pagination.assignments.offset === 0), {});
+            await page.evaluate(() => { qa.count = 401; });
             const search = page.locator('#professionChecklistDashboardSearch');
             const beforeTyping = await page.evaluate(() => qa.requests.filter(r => r.request.startsWith('/checklists/dashboard')).length);
             await search.pressSequentially('hello', { delay: 10 });
@@ -273,6 +336,38 @@ async function run() {
             await page.waitForFunction(() => professionChecklistDashboardState.loadState === 'ready');
             record(theme, 'stale_dashboard_response_ignored', await page.evaluate(() => professionChecklistDashboardState.data.filters.search === 'latest'), {});
             await shot(page, `dashboard-pagination-${theme}`);
+            await open(page);
+            await add.fill('QA reload draft');
+            await install(page, dark, { reload: true });
+            await open(page);
+            record(theme, 'draft_survives_reload', await add.inputValue() === 'QA reload draft', {});
+            await install(page, dark, { reload: true, userId: 9902 });
+            await open(page);
+            record(theme, 'draft_account_isolation', await add.inputValue() === '', {});
+            await add.fill('QA other account');
+            await install(page, dark, { reload: true });
+            await open(page);
+            record(theme, 'draft_original_account_restored', await add.inputValue() === 'QA reload draft', {});
+            await add.fill('QA submitted draft');
+            await add.press('Enter');
+            await settleMutation(page);
+            await install(page, dark, { reload: true });
+            await open(page);
+            record(theme, 'saved_draft_does_not_return_after_reload', await add.inputValue() === '', {});
+            await add.fill('QA discarded draft');
+            await add.fill('');
+            await install(page, dark, { reload: true });
+            await open(page);
+            record(theme, 'cleared_draft_does_not_return_after_reload', await add.inputValue() === '', {});
+            await install(page, dark, { reload: true, storageBlocked: true });
+            await open(page);
+            await add.fill('QA memory fallback');
+            await close(page);
+            await open(page);
+            record(theme, 'blocked_storage_keeps_in_page_draft', await add.inputValue() === 'QA memory fallback', await page.evaluate(() => ({ value: document.getElementById('professionWorkspaceChecklistNewTitle').value, owner: professionChecklistDraftOwner, workspaceOwner: professionWorkspaceState.draftOwner, drafts: [...professionChecklistDrafts], open: professionWorkspaceState.open })));
+            await add.press('Enter');
+            await settleMutation(page);
+            record(theme, 'blocked_storage_does_not_prevent_save', await add.inputValue() === '' && await page.evaluate(() => qa.writes.length === 1), await page.evaluate(() => ({ value: document.getElementById('professionWorkspaceChecklistNewTitle').value, writes: qa.writes, state: document.getElementById('professionWorkspaceChecklistState').textContent })));
             await context.close();
         }
         assert.deepEqual(results.pageErrors, [], 'No uncaught browser errors');
@@ -280,6 +375,17 @@ async function run() {
             const failures = results.checks.filter(check => check.status !== 'PASS');
             assert.deepEqual(failures, [], 'All checklist interaction and pagination regressions must pass');
         }
+    } catch (error) {
+        if (activePage && !activePage.isClosed()) {
+            await shot(activePage, 'failure');
+            results.failure = await activePage.evaluate(() => {
+                const button = document.getElementById('professionWorkspaceChecklistAddButton');
+                const rect = button.getBoundingClientRect();
+                return { message: 'Pointer hit test and viewport at failure', button: rect.toJSON(), scrollY,
+                    hits: document.elementsFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2).slice(0, 8).map(el => ({ tag: el.tagName, id: el.id, className: el.className, zIndex: getComputedStyle(el).zIndex })) };
+            });
+        }
+        throw error;
     } finally {
         fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify(results, null, 2));
         await browser.close();

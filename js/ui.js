@@ -1526,7 +1526,9 @@ function openModal(modalEl, triggerEl, options = {}) {
 
     // Focus first focusable element after DOM renders
     requestAnimationFrame(() => {
-        if (!_focusTrapStack.includes(trapState)) return;
+        if (_focusTrapStack[_focusTrapStack.length - 1] !== trapState) return;
+        // Respect focus explicitly placed inside the dialog since it opened.
+        if (modalEl.contains(document.activeElement) && document.activeElement !== trapState.trigger) return;
         const preferred = resolveModalLifecycleTarget(options.initialFocus, modalEl);
         if (preferred && !preferred.disabled && preferred.offsetParent !== null && typeof preferred.focus === 'function') {
             preferred.focus();
@@ -1787,7 +1789,9 @@ function confirmModal(message, options = {}) {
     return new Promise((resolve) => {
         closeActiveConfirmModal(false);
         document.querySelectorAll('.confirm-overlay[data-confirm-kind="confirm"]').forEach(el => el.remove());
-        const { okText = 'Підтвердити', cancelText = 'Скасувати', type = 'warning' } = options;
+        const { cancelText = 'Скасувати' } = options;
+        const okText = options.okText ?? options.confirmText ?? 'Підтвердити';
+        const type = options.type ?? (options.danger ? 'danger' : 'warning');
         const icons = { danger: '🗑️', success: '✅', warning: '⚠️' };
         const icon = icons[type] || '❓';
         const safeMsg = String(message).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/\n/g,'<br>');
@@ -1797,10 +1801,11 @@ function confirmModal(message, options = {}) {
         overlay.dataset.confirmKind = 'confirm';
         overlay.setAttribute('role', 'dialog');
         overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-labelledby', 'confirmModalMessage');
         overlay.innerHTML = `
             <div class="confirm-dialog ${type}">
-                <div class="confirm-icon">${icon}</div>
-                <div class="confirm-message">${safeMsg}</div>
+                <div class="confirm-icon" aria-hidden="true">${icon}</div>
+                <div class="confirm-message" id="confirmModalMessage">${safeMsg}</div>
                 <div class="confirm-actions">
                     <button class="confirm-btn confirm-cancel">${cancelText}</button>
                     <button class="confirm-btn confirm-ok ${type}">${okText}</button>

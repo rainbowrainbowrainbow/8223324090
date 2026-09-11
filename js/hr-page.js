@@ -623,6 +623,7 @@ let professionChecklistShowArchived = false;
 let professionChecklistMutationPromise = null;
 const professionChecklistPendingControls = new WeakMap();
 const professionChecklistDrafts = new Map();
+let professionChecklistDraftOwner = null;
 let activePeopleBucket = null;
 let pendingPeopleBucket = null;
 let draggedTeamStaffId = null;
@@ -4510,6 +4511,7 @@ function bindProfessionWorkspaceControls() {
         if (button) handleProfessionChecklistItemAction(button);
     });
     document.getElementById('professionWorkspaceChecklistAddButton')?.addEventListener('click', addProfessionChecklistItem);
+    document.getElementById('professionWorkspaceChecklistNewTitle')?.addEventListener('input', rememberProfessionChecklistDraft);
     document.getElementById('professionWorkspaceChecklistNewTitle')?.addEventListener('keydown', event => {
         if (event.key !== 'Enter') return;
         event.preventDefault();
@@ -4782,7 +4784,7 @@ async function loadProfessionChecklists(options = {}) {
     professionChecklistDashboardSearchTimer = null;
     const requestSeq = ++professionChecklistDashboardRequestSeq;
     const feed = ['assignments', 'archived', 'orphaned'].includes(options.feed) ? options.feed : null;
-    const offset = feed ? Math.max(0, Number(options.offset) || 0) : 0;
+    let offset = feed ? Math.max(0, Number(options.offset) || 0) : 0;
     const previousData = professionChecklistDashboardState.data;
     bindProfessionWorkspaceControls();
     bindProfessionChecklistDashboardControls();
@@ -4794,8 +4796,21 @@ async function loadProfessionChecklists(options = {}) {
     if (requestSeq !== professionChecklistDashboardRequestSeq) return;
     professionChecklistDashboardState = { loadState: 'loading', data: professionChecklistDashboardState.data, error: '' };
     renderProfessionChecklists();
-    const query = professionChecklistDashboardQuery(offset);
-    const response = await hrFetch(`/checklists/dashboard${query ? `?${query}` : ''}`).catch(() => null);
+    let response;
+    for (let recovery = 0; recovery <= 2; recovery += 1) {
+        const query = professionChecklistDashboardQuery(offset);
+        response = await hrFetch(`/checklists/dashboard${query ? `?${query}` : ''}`).catch(() => null);
+        if (requestSeq !== professionChecklistDashboardRequestSeq) return;
+        const paging = response?.data?.pagination?.[feed];
+        const total = Number(paging?.total);
+        const limit = Number(paging?.limit);
+        if (!response?.success || !feed || !offset || response.data?.[feed]?.length
+            || !Number.isSafeInteger(total) || total < 0 || !Number.isSafeInteger(limit) || limit <= 0
+            || offset < total) break;
+        // A concurrent deletion can remove the requested page. Recover once to
+        // the last page, then to the first if the list continues shrinking.
+        offset = recovery === 0 && total > 0 ? Math.floor((total - 1) / limit) * limit : 0;
+    }
     if (requestSeq !== professionChecklistDashboardRequestSeq) return;
     if (!response?.success) {
         professionChecklistDashboardState = {
@@ -5358,10 +5373,46 @@ async function refreshProfessionChecklistTemplate(professionKey = professionWork
     return template;
 }
 
+function currentProfessionChecklistDraftOwner() {
+    const id = window.AppState?.currentUser?.id;
+    return typeof id === 'number' || typeof id === 'string' ? String(id) : '';
+}
+
+function loadProfessionChecklistDrafts() {
+    const owner = currentProfessionChecklistDraftOwner();
+    if (owner === professionChecklistDraftOwner) return;
+    professionChecklistDrafts.clear();
+    professionChecklistDraftOwner = owner;
+    if (!owner) return;
+    try {
+        const entries = JSON.parse(sessionStorage.getItem(`hr.checklistDrafts:${owner}`) || '[]');
+        if (!Array.isArray(entries)) return;
+        for (const entry of entries.slice(-50)) {
+            if (Array.isArray(entry) && typeof entry[0] === 'string' && typeof entry[1] === 'string') {
+                professionChecklistDrafts.set(entry[0], entry[1].slice(0, 500));
+            }
+        }
+    } catch (_) { /* Unavailable storage must not block the editor. */ }
+}
+
+function persistProfessionChecklistDrafts() {
+    if (!professionChecklistDraftOwner || professionChecklistDraftOwner !== currentProfessionChecklistDraftOwner()) return;
+    while (professionChecklistDrafts.size > 50) professionChecklistDrafts.delete(professionChecklistDrafts.keys().next().value);
+    try {
+        const key = `hr.checklistDrafts:${professionChecklistDraftOwner}`;
+        if (professionChecklistDrafts.size) sessionStorage.setItem(key, JSON.stringify([...professionChecklistDrafts]));
+        else sessionStorage.removeItem(key);
+    } catch (_) { /* Keep the in-memory draft when browser storage is blocked. */ }
+}
+
 function rememberProfessionChecklistDraft() {
+    if (professionWorkspaceState.draftOwner !== currentProfessionChecklistDraftOwner()) return;
     const key = professionWorkspaceState.data?.profession?.key;
     const input = document.getElementById('professionWorkspaceChecklistNewTitle');
-    if (key && input) professionChecklistDrafts.set(key, input.value);
+    if (!key || !input) return;
+    professionChecklistDrafts.delete(key);
+    if (input.value) professionChecklistDrafts.set(key, input.value.slice(0, 500));
+    persistProfessionChecklistDrafts();
 }
 
 function setProfessionChecklistBusy(busy) {
@@ -5489,6 +5540,8 @@ async function runProfessionChecklistMutation(path, options, successMessage) {
 }
 
 async function addProfessionChecklistItem() {
+    rememberProfessionChecklistDraft();
+    const draftOwner = professionWorkspaceState.draftOwner;
     const input = document.getElementById('professionWorkspaceChecklistNewTitle');
     const requestSeq = professionWorkspaceRequestSeq;
     const submittedValue = input?.value;
@@ -5504,8 +5557,13 @@ async function addProfessionChecklistItem() {
         { method: 'POST', body: { title } },
         'Пункт додано.'
     );
-    if (saved && professionChecklistDrafts.get(key) === submittedValue) professionChecklistDrafts.delete(key);
+    if (saved && draftOwner === professionChecklistDraftOwner && draftOwner === currentProfessionChecklistDraftOwner()
+        && professionChecklistDrafts.get(key) === submittedValue) {
+        professionChecklistDrafts.delete(key);
+        persistProfessionChecklistDrafts();
+    }
     if (saved && input && professionWorkspaceState.open
+        && draftOwner === professionWorkspaceState.draftOwner && draftOwner === currentProfessionChecklistDraftOwner()
         && professionWorkspaceState.data?.profession?.key === key && input.value === submittedValue) {
         input.value = '';
         if (requestSeq === professionWorkspaceRequestSeq) input.focus();
@@ -5664,6 +5722,7 @@ function renderProfessionWorkspace() {
 async function openProfessionWorkspace({ id = null, key = null, initialTab = 'main', returnContext = null, historyMode = 'push', defaults = {} } = {}) {
     bindProfessionWorkspaceControls();
     rememberProfessionChecklistDraft();
+    loadProfessionChecklistDrafts();
     document.getElementById('professionWorkspaceChecklistNewTitle').value = '';
     setProfessionChecklistState(professionChecklistMutationPromise ? 'Очікуємо завершення попереднього збереження…' : '', professionChecklistMutationPromise ? 'saving' : '');
     professionConditionRowStates.clear();
@@ -5672,6 +5731,7 @@ async function openProfessionWorkspace({ id = null, key = null, initialTab = 'ma
     const context = returnContext || captureProfessionReturnContext();
     professionWorkspaceState = {
         open: true,
+        draftOwner: professionChecklistDraftOwner,
         loadState: 'loading',
         data: null,
         tab: normalizeProfessionWorkspaceTab(initialTab),
@@ -5685,7 +5745,12 @@ async function openProfessionWorkspace({ id = null, key = null, initialTab = 'ma
         history.pushState({ professionWorkspace: true, returnContext: context }, '', professionWorkspaceHash(key || 'new', professionWorkspaceState.tab));
     }
     renderProfessionWorkspace();
-    openModal(document.getElementById('professionWorkspaceOverlay'), document.activeElement, {
+    const overlay = document.getElementById('professionWorkspaceOverlay');
+    // The animated page container clips fixed descendants in WebKit.
+    // Use the existing body-level modal pattern for the profession workspace.
+    if (overlay.parentElement !== document.body) document.body.appendChild(overlay);
+    window.ModalLayer?.ensureTopLayer(overlay);
+    openModal(overlay, document.activeElement, {
         initialFocus: '[data-profession-workspace-tab].active',
         onRequestClose: () => closeProfessionWorkspace()
     });

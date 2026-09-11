@@ -8,14 +8,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '../..');
+const browserOption = process.argv.indexOf('--browser');
+const browserName = browserOption < 0 ? 'chromium' : process.argv[browserOption + 1];
+assert.ok(['chromium', 'firefox', 'webkit'].includes(browserName), 'Use chromium, firefox or webkit');
 const BASELINE = process.argv.includes('--baseline');
 const baselineRefIndex = process.argv.indexOf('--baseline-ref');
 const baselineRef = baselineRefIndex >= 0 ? process.argv[baselineRefIndex + 1] : null;
 assert.ok(!BASELINE || baselineRef, 'Baseline capture requires --baseline-ref <commit>; HEAD is not an implicit historical baseline');
 assert.ok(!BASELINE || /^[a-f0-9]{7,40}$/i.test(baselineRef), 'Use a commit SHA for baseline provenance');
 const NATIVE_ZOOM = process.argv.includes('--native-zoom');
+assert.ok(!NATIVE_ZOOM || browserName === 'chromium', 'Native zoom extension requires Chromium');
 const SHELL = process.argv.includes('--shell') || NATIVE_ZOOM;
-const OUT = path.join(ROOT, 'output/playwright/hr-checklists', (BASELINE ? 'before' : 'after') + (SHELL ? '-shell' : '') + (NATIVE_ZOOM ? '-zoom' : ''));
+const OUT = path.join(ROOT, 'output/playwright/hr-checklists', (BASELINE ? 'before' : 'after') + (SHELL ? '-shell' : '') + (NATIVE_ZOOM ? '-zoom' : '') + (browserName === 'chromium' ? '' : `-${browserName}`));
 const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');
 function requirePlaywright() {
     try { return require('playwright'); } catch (error) {
@@ -186,12 +190,12 @@ async function run() {
             channel: 'chromium', headless: true, viewport: { width: 1440, height: 900 },
             args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`]
         })
-        : await requirePlaywright().chromium.launch({ headless: true });
+        : await requirePlaywright()[browserName].launch({ headless: true });
     const page = NATIVE_ZOOM ? await browser.newPage() : await browser.newPage({ viewport: { width: 1440, height: 900 } });
     page.setDefaultTimeout(8000);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    const evidence = { mode: BASELINE ? 'baseline' : 'verification', shell: SHELL, provenance: { cssBaselineCommit: baselineCommit, htmlAndJavaScript: 'current working tree', head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim() }, themes: {} };
+    const evidence = { mode: BASELINE ? 'baseline' : 'verification', engine: browserName, shell: SHELL, provenance: { cssBaselineCommit: baselineCommit, htmlAndJavaScript: 'current working tree', head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim() }, themes: {} };
     try {
         await install(page);
         evidence.stylesheets = await page.evaluate(() => {
@@ -240,6 +244,10 @@ async function run() {
             evidence.themes[name].input = await colors(page, '[data-checklist-item-title]');
             evidence.themes[name].contrast.editorInput = await contrast(page, '[data-checklist-item-title]');
             evidence.themes[name].contrast.activeChecklistTab = await contrast(page, '[data-profession-workspace-tab="checklist"].active');
+            evidence.themes[name].contrast.professionSourceBadge = await contrast(page, '#professionWorkspaceSource');
+            await page.locator('#professionWorkspaceSource').evaluate(el => el.classList.add('is-system'));
+            evidence.themes[name].contrast.systemSourceBadge = await contrast(page, '#professionWorkspaceSource');
+            await page.locator('#professionWorkspaceSource').evaluate(el => el.classList.remove('is-system'));
             await shot(page, `editor-${name}`);
             await page.locator('[data-checklist-item-title]').first().focus();
             evidence.themes[name].inputFocusOutline = await page.locator('[data-checklist-item-title]').first().evaluate(el => getComputedStyle(el).outlineStyle);
@@ -471,6 +479,8 @@ async function verifyFlow(page, evidence) {
             assert.equal(toolbar.clipped, false, `${name}: checklist filters clipped by page overflow rules`);
             await shot(page, `dashboard-${name}`);
             await open();
+            const footer = await page.locator('#professionWorkspaceArchive, #professionWorkspaceSave').evaluateAll(buttons => buttons.map(button => ({ height: button.getBoundingClientRect().height, radius: getComputedStyle(button).borderRadius })));
+            assert.ok(footer.every(button => button.height >= 44 && button.radius === '10px'), `${name}: workspace footer preserves HR button styles`);
             const geometry = await page.locator('[data-profession-workspace-panel="checklist"]').evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth }));
             assert.ok(geometry.scroll <= geometry.width + 1, `${name}: editor horizontal overflow ${JSON.stringify(geometry)}`);
             await shot(page, `editor-${name}`);

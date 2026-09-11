@@ -646,18 +646,18 @@ async function runWorkerUntilIdle(provider = null, maxRounds = 80) {
     return results;
 }
 
-async function forceRetryNow(operationId) {
+async function forceRetryNow(operationId, { includeQueued = false } = {}) {
     await pool.query(
         `UPDATE payment_outbox_jobs
             SET next_run_at = NOW() - INTERVAL '1 second',
-                status = 'failed',
+                status = CASE WHEN status = 'failed' THEN 'failed' ELSE status END,
                 locked_at = NULL,
                 locked_by = NULL,
                 lock_token = NULL,
                 heartbeat_at = NULL
           WHERE fiscal_operation_id = $1
-            AND status = 'failed'`,
-        [operationId]
+            AND (status = 'failed' OR ($2::boolean = TRUE AND status = 'queued'))`,
+        [operationId, includeQueued]
     );
 }
 
@@ -4247,7 +4247,7 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             mock.state.modes.set(providerRequestUuid, mode);
             const batches = await runWorkerUntilIdle(createHttpProvider(mock));
             const failedJob = await pool.query(
-                `SELECT status, attempts, max_attempts, external_stage, last_error_code, next_run_at
+                `SELECT status, attempts, max_attempts, external_stage, last_error_code, next_run_at, payload
                    FROM payment_outbox_jobs
                   WHERE fiscal_operation_id = $1
                   ORDER BY id DESC
@@ -4279,28 +4279,21 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
                 );
                 continue;
             }
+            const state = await pool.query('SELECT fiscal_status FROM payment_orders WHERE id = $1', [order.order.id]);
             if (mode === 'pending_unresolved') {
-                assert.equal(failedJob.rows[0]?.last_error_code, 'checkbox_receipt_pending');
+                assert.equal(failedJob.rows[0]?.status, 'queued');
+                assert.equal(failedJob.rows[0].attempts, 0, 'provider-pending wait refunds the in-flight claim');
+                assert.equal(failedJob.rows[0].last_error_code, null);
                 // The provider's grace GET retains the committed submit boundary.
                 assert.equal(failedJob.rows[0].external_stage, 'sale_submit');
-            }
-            assert.ok(
-                ['failed', 'dead'].includes(failedJob.rows[0]?.status)
-                    && Number(failedJob.rows[0]?.attempts || 0) >= 1,
-                `${mode} response must leave the exact job durably failed: ${JSON.stringify({
-                    batches,
-                    job: failedJob.rows[0] || null
-                })}`
-            );
-            const state = await pool.query('SELECT fiscal_status FROM payment_orders WHERE id = $1', [order.order.id]);
-            assert.notEqual(state.rows[0].fiscal_status, 'fiscalized');
-            assert.equal(
-                await countRows('SELECT COUNT(*)::integer AS count FROM fiscal_receipts WHERE payment_order_id = $1', [order.order.id]),
-                0
-            );
-            if (mode === 'pending_unresolved') {
+                assert.equal(failedJob.rows[0].payload?.provider_pending_wait?.checkCount, 1);
+                assert.notEqual(state.rows[0].fiscal_status, 'fiscalized');
+                assert.equal(
+                    await countRows('SELECT COUNT(*)::integer AS count FROM fiscal_receipts WHERE payment_order_id = $1', [order.order.id]),
+                    0
+                );
                 mock.state.receipts.set(providerRequestUuid, { ...mock.state.receipts.get(providerRequestUuid), status: 'DONE' });
-                await forceRetryNow(confirmed.fiscalOperationId);
+                await forceRetryNow(confirmed.fiscalOperationId, { includeQueued: true });
                 const recovery = await runWorkerUntilIdle(createHttpProvider(mock));
                 assert.ok(recovery.some(batch => batch.results.some(result => result.ok && result.source === 'lookup')));
                 assert.equal(
@@ -4319,7 +4312,21 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
                     await countRows('SELECT COUNT(*)::integer AS count FROM fiscal_receipts WHERE payment_order_id = $1', [order.order.id]),
                     1
                 );
+                continue;
             }
+            assert.ok(
+                ['failed', 'dead'].includes(failedJob.rows[0]?.status)
+                    && Number(failedJob.rows[0]?.attempts || 0) >= 1,
+                `${mode} response must leave the exact job durably failed: ${JSON.stringify({
+                    batches,
+                    job: failedJob.rows[0] || null
+                })}`
+            );
+            assert.notEqual(state.rows[0].fiscal_status, 'fiscalized');
+            assert.equal(
+                await countRows('SELECT COUNT(*)::integer AS count FROM fiscal_receipts WHERE payment_order_id = $1', [order.order.id]),
+                0
+            );
         }
 
         const invalidAmountOrder = await createOrder({

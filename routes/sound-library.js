@@ -4,6 +4,7 @@ const router = express.Router();
 const { pool } = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const { readSoundProjects } = require('../services/soundProjects');
 const logger = createLogger('SoundLibrary');
 
 router.use(authenticateToken);
@@ -59,16 +60,8 @@ router.delete('/:id', async (req, res) => {
 // GET /api/sound-library/projects
 router.get('/projects', async (req, res) => {
     try {
-        const projects = await pool.query('SELECT * FROM sound_projects ORDER BY created_at DESC');
-        const result = [];
-        for (const p of projects.rows) {
-            const tracks = await pool.query(
-                `SELECT s.* FROM sounds s
-                 JOIN sound_project_tracks t ON t.sound_id = s.id
-                 WHERE t.project_id = $1 ORDER BY t.sort_order`, [p.id]);
-            result.push({ ...p, tracks: tracks.rows });
-        }
-        res.json({ projects: result });
+        const projects = await readSoundProjects(pool);
+        res.json({ projects });
     } catch (err) {
         logger.error('Get projects error', err);
         res.status(500).json({ error: 'Internal server error' });

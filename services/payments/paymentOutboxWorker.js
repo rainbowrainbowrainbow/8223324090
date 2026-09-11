@@ -1352,6 +1352,64 @@ async function markFiscalized(client, context, receipt) {
     );
 }
 
+async function resolveCompletedTestSalePendingIncidents(client, context) {
+    const job = context.job;
+    // Limit this lifecycle repair to the shared PARK/DAR test register.
+    // The caller has already validated and persisted the immutable DONE receipt.
+    if (job.operation_type !== 'sale'
+        || !['receipt_sell', 'receipt_status_lookup'].includes(job.job_type)
+        || job.expected_is_test !== true
+        || String(job.current_expected_is_test) !== 'true'
+        || job.register_alias !== 'shared_test'
+        || job.current_crm_profile_key !== 'event_genix'
+        || job.current_profile_crm_profile_key !== 'event_genix'
+        || !job.payment_order_id) return;
+
+    await client.query(
+        `WITH resolved_receipt_pending AS (
+            UPDATE fiscal_operational_incidents AS incident
+               SET status = 'resolved',
+                   resolved_at = NOW(),
+                   details = incident.details || jsonb_build_object(
+                       'auto_resolved_at', NOW(),
+                       'auto_resolved_reason', 'verified_sale_receipt_completed',
+                       'resolution_job_id', $5::bigint
+                   )
+             WHERE incident.fiscal_profile_id = $1
+               AND incident.fiscal_register_id = $2
+               AND incident.fiscal_operation_id = $3
+               AND incident.payment_order_id = $4
+               AND incident.status IN ('open', 'acknowledged')
+               AND incident.incident_type IN ('fiscal.unknown', 'payment_outbox.failed')
+               AND incident.details->>'error_code' IN ('checkbox_receipt_pending', 'provider_receipt_pending')
+               AND incident.details->>'external_stage' IN ('sale_submit', 'receipt_lookup')
+               AND EXISTS (
+                   SELECT 1 FROM payment_outbox_jobs AS source_job
+                    WHERE source_job.fiscal_profile_id = incident.fiscal_profile_id
+                      AND source_job.fiscal_operation_id = incident.fiscal_operation_id
+                      AND source_job.payment_order_id = incident.payment_order_id
+                      AND source_job.job_type IN ('receipt_sell', 'receipt_status_lookup')
+                      AND incident.details->>'job_id' = source_job.id::text
+                      AND incident.idempotency_key = 'payment_outbox_incident:' || source_job.id::text || ':' || (incident.details->>'error_code')
+               )
+             RETURNING incident.id, incident.fiscal_profile_id, incident.recurrence_count,
+                       incident.resolved_at, incident.details
+        )
+        INSERT INTO fiscal_audit_events (
+            fiscal_profile_id, actor_user_id, event_type, entity_table, entity_id,
+            idempotency_key, after_snapshot, metadata
+        )
+        SELECT fiscal_profile_id, NULL, 'fiscal_incident_resolved', 'fiscal_operational_incidents', id,
+               'receipt_pending_resolved:' || id::text || ':' || recurrence_count::text,
+               jsonb_build_object('status', 'resolved', 'resolved_at', resolved_at),
+               jsonb_build_object('reason', 'verified_sale_receipt_completed',
+                   'fiscal_operation_id', $3::bigint, 'payment_order_id', $4::bigint,
+                   'resolution_job_id', $5::bigint, 'original_error_code', details->>'error_code')
+          FROM resolved_receipt_pending`,
+        [job.fiscal_profile_id, job.fiscal_register_id, job.fiscal_operation_id, job.payment_order_id, job.id]
+    );
+}
+
 async function markJobSucceeded(client, job) {
     await client.query(
         `UPDATE payment_outbox_jobs
@@ -2428,6 +2486,7 @@ async function finalizeReceiptJobInTransaction(client, context, result, { record
         await recordExternalStageInTransaction(client, context, 'complete');
     }
     await markJobSucceeded(client, context.job);
+    await resolveCompletedTestSalePendingIncidents(client, context);
     return { ok: true, jobId: Number(context.job.id), source: result.source };
 }
 
@@ -2583,6 +2642,7 @@ module.exports = {
     finalizeJobSuccess,
     processOnePaymentOutboxJob,
     processPaymentOutboxJobs,
+    resolveCompletedTestSalePendingIncidents,
     runReceiptReturnJob,
     runReceiptSaleJob,
     runServiceReceiptJob,

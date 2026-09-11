@@ -545,6 +545,26 @@ class FakeWorkerClient {
             return { rows: isProviderOpened ? [{ id: operation.fiscal_shift_id }] : [] };
         }
 
+        if (
+            normalized.startsWith('UPDATE payment_outbox_jobs')
+            && normalized.includes("SET status = 'queued', attempts = GREATEST(attempts - 1, 0)")
+        ) {
+            const job = this.db.jobs.find(row => row.id === params[0] && row.fiscal_profile_id === params[1]);
+            if (job) {
+                job.status = 'queued';
+                job.attempts = Math.max(Number(job.attempts) - 1, 0);
+                job.payload = { ...(job.payload || {}), ...JSON.parse(params[2]) };
+                job.next_run_at = params[3];
+                job.locked_at = null;
+                job.locked_by = null;
+                job.lock_token = null;
+                job.heartbeat_at = null;
+                job.last_error_code = null;
+                job.last_error_message = null;
+            }
+            return { rows: [] };
+        }
+
         if (normalized.startsWith('UPDATE payment_outbox_jobs') && normalized.includes('payload = payload || $3::jsonb')) {
             const job = this.db.jobs.find(row => row.id === params[0] && row.fiscal_profile_id === params[1]);
             if (job) {
@@ -572,6 +592,20 @@ class FakeWorkerClient {
             return { rows: [] };
         }
 
+        if (
+            normalized.startsWith('UPDATE fiscal_operations')
+            && normalized.includes("SET status = 'pending', next_status_check_at = $3::timestamptz")
+        ) {
+            const operation = this.db.operations.find(row => row.id === params[0] && row.fiscal_profile_id === params[1]);
+            if (operation && operation.status !== 'fiscalized') {
+                operation.status = 'pending';
+                operation.next_status_check_at = params[2];
+                operation.last_error_code = null;
+                operation.last_error_message = null;
+            }
+            return { rows: [] };
+        }
+
         if (normalized.startsWith("SELECT * FROM fiscal_receipts WHERE provider = 'checkbox' AND provider_receipt_id = $1")) {
             return {
                 rows: this.db.receipts
@@ -593,6 +627,12 @@ class FakeWorkerClient {
         if (normalized.startsWith('UPDATE payment_orders') && normalized.includes("fiscal_status = 'fiscalized'")) {
             const order = this.db.orders.find(row => row.id === params[0] && row.fiscal_profile_id === params[1]);
             order.fiscal_status = 'fiscalized';
+            return { rows: [] };
+        }
+
+        if (normalized.startsWith('UPDATE payment_orders') && normalized.includes("SET fiscal_status = 'pending'")) {
+            const order = this.db.orders.find(row => row.id === params[0] && row.fiscal_profile_id === params[1]);
+            if (order && order.fiscal_status !== 'fiscalized') order.fiscal_status = 'pending';
             return { rows: [] };
         }
 
@@ -880,15 +920,19 @@ describe('payment outbox worker reconciliation', () => {
         const provider = createProvider({ receiptOverrides: { status: 'CREATED' } });
         const result = await processPaymentOutboxJobs({ dbPool, provider, batchSize: 1, lockedBy: 'worker-pending-retry' });
 
-        assert.equal(result.failed, 1);
+        assert.equal(result.failed, 0);
+        assert.equal(result.pending, 1);
         assert.equal(provider.calls.create.length, 1);
         assert.equal(provider.calls.lookup.length, 0);
-        assert.equal(dbPool.jobs[0].status, 'failed');
-        assert.equal(dbPool.jobs[0].last_error_code, 'provider_receipt_pending');
-        assert.equal(dbPool.operations[0].status, 'unknown');
-        assert.equal(result.results[0].retryWakeupDelayMs, 2000);
+        assert.equal(dbPool.jobs[0].status, 'queued');
+        assert.equal(dbPool.jobs[0].attempts, 0);
+        assert.equal(dbPool.jobs[0].last_error_code, null);
+        assert.equal(dbPool.jobs[0].payload.provider_pending_wait.checkCount, 1);
+        assert.equal(dbPool.operations[0].status, 'pending');
+        assert.equal(dbPool.orders[0].fiscal_status, 'pending');
+        assert.equal(result.results[0].retryWakeupDelayMs, 5000);
         const retryDelayMs = new Date(dbPool.jobs[0].next_run_at).getTime() - startedAt;
-        assert.ok(retryDelayMs >= 1000 && retryDelayMs <= 6000, `expected short receipt retry delay, got ${retryDelayMs}ms`);
+        assert.ok(retryDelayMs >= 4000 && retryDelayMs <= 6000, `expected short receipt retry delay, got ${retryDelayMs}ms`);
     });
 
     it('reconciles timeout-after-provider-success through lookup without a second receipt UUID', async () => {

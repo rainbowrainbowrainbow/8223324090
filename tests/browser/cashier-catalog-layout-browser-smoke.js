@@ -9,7 +9,10 @@ async function run() {
     const output = path.resolve(process.env.CASHIER_LAYOUT_OUTPUT || 'output/playwright/park-dar/summary-layout');
     fs.mkdirSync(output, { recursive: true });
     const server = await startServer();
-    const browser = await requirePlaywright().chromium.launch({ headless: true });
+    const browser = await requirePlaywright().chromium.launch({
+        headless: true,
+        args: ['--host-resolver-rules=MAP * 0.0.0.0, EXCLUDE 127.0.0.1']
+    });
     const report = { browser: browser.version(), kind: 'CSS viewport layout; NOT native browser zoom', cases: [] };
     try {
         const context = await browser.newContext({ viewport: { width: 1152, height: 800 } });
@@ -41,9 +44,8 @@ async function run() {
         });
         await page.goto(`http://127.0.0.1:${server.address().port}/cashier-payments?businessContext=event_genix&routeOptionId=park_production`);
         await page.waitForSelector('#addCatalogLineBtn:not([disabled])');
-        assert.equal(await page.locator('#catalogPicker').isVisible(), false);
-        assert.equal(await page.getAttribute('#addCatalogLineBtn', 'aria-expanded'), 'false');
-        await page.click('#addCatalogLineBtn');
+        assert.equal(await page.locator('#catalogPicker').isVisible(), true);
+        assert.equal(await page.getAttribute('#addCatalogLineBtn', 'aria-expanded'), 'true');
         await page.evaluate(() => {
             const names = [
                 'Англійська мова — абонемент на 8 занять',
@@ -79,7 +81,11 @@ async function run() {
                         return t.top >= r.top && t.bottom <= r.bottom && t.left >= r.left && t.right <= r.right;
                     })),
                     singleColumn: rows.every((row, index) => !index || box(rows[index - 1]).bottom <= box(row).top),
-                    priceSeparated: rows.every(row => box(row.children[0]).right + 4 <= box(row.children[1]).left),
+                    priceSeparated: rows.every(row => {
+                        const title = box(row.children[0]);
+                        const price = box(row.children[1]);
+                        return title.right + 4 <= price.left || title.bottom <= price.top + 1;
+                    }),
                     fits: list.scrollWidth <= list.clientWidth + 1 && rows.every(row => row.scrollWidth <= row.clientWidth + 1)
                 };
             });
@@ -173,7 +179,6 @@ async function run() {
         report.polling = { result: 'PASS', orderReads, final: 'fiscalized', paymentPosts: mutations.length };
 
         await page.goto(`http://127.0.0.1:${server.address().port}/cashier-payments?businessContext=dar&routeOptionId=dar_production`);
-        await page.click('#addCatalogLineBtn');
         await page.waitForSelector('[data-catalog-add]');
         await page.fill('#catalogSearch', 'dar_010');
         await page.locator('[data-catalog-add="dar_010"]').click();

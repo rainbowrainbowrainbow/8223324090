@@ -1517,7 +1517,7 @@ test('cashier readiness endpoints and cached readiness are tender aware', () => 
 
 test('cashier UI strictly validates unresolved responses and fails closed while checking or stale', () => {
     const js = read('js/cashier-payments-page.js');
-    const loadBlock = js.slice(js.indexOf('async function loadUnresolvedOrders'), js.indexOf('function renderCheckboxSalesReport'));
+    const loadBlock = js.slice(js.indexOf('function loadUnresolvedOrders'), js.indexOf('function renderCheckboxSalesReport'));
     const checkingIndex = loadBlock.indexOf("state.unresolvedQueueState = 'checking'");
     const requestIndex = loadBlock.indexOf('await apiRequest(`/api/payments/unresolved-orders');
     assert.ok(checkingIndex >= 0, 'load should enter checking state');
@@ -1606,9 +1606,10 @@ test('Checkbox sales report is filterable, paginated, and totals are not limited
     const html = read('cashier-payments.html');
     const service = read('services/payments/paymentReadinessService.js');
     const js = read('js/cashier-payments-page.js');
-    for (const id of ['checkboxReportDateFrom', 'checkboxReportDateTo', 'checkboxReportShiftId', 'checkboxReportCashierUserId', 'checkboxReportPage']) {
+    for (const id of ['checkboxReportDateFrom', 'checkboxReportDateTo', 'checkboxReportShiftId', 'checkboxReportCashierUserId', 'checkboxReportPreviousPage', 'checkboxReportRange', 'checkboxReportNextPage']) {
         assert.match(html, new RegExp(`id="${id}"`), `${id} filter must exist`);
     }
+    assert.doesNotMatch(html, /id="checkboxReportPage"/, 'manual page input is replaced by previous/next navigation');
     assert.match(service, /dateFrom = null/);
     assert.match(service, /dateTo = null/);
     assert.match(service, /shiftId = null/);
@@ -1625,8 +1626,8 @@ test('Checkbox sales report is filterable, paginated, and totals are not limited
     assert.doesNotMatch(service, /outbox_status IN \('failed', 'claimed', 'running'\)/, 'In-flight jobs must remain pending rather than appear retryable-failed');
     assert.match(service, /totalCount: Number\(totalsRow\.total_count \|\| 0\)/);
     assert.match(js, /params\.set\('cashierUserId', cashierUserId\)/);
-    assert.match(js, /params\.set\('pageSize', '50'\)/);
-    assert.match(js, /Суми пораховані по всьому фільтру/);
+    assert.match(js, /params\.set\('pageSize', pageSize\)/);
+    assert.match(js, /Суми за всім фільтром, не лише за поточною сторінкою/);
     assert.doesNotMatch(js, /Z-звіт[^.]*офіційний/, 'Internal report must not be presented as an official Z-report');
 });
 

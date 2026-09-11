@@ -7262,7 +7262,7 @@ check('Cashier payments production UI exposes the safe business/register selecto
     && cashierPaymentsHtml.includes('id="paymentTotalAmount"')
     && cashierPaymentsHtml.includes('\u0413\u043e\u0442\u0456\u0432\u043a\u0443 \u043e\u0442\u0440\u0438\u043c\u0430\u043d\u043e \u2014 \u0441\u0442\u0432\u043e\u0440\u0438\u0442\u0438 \u0447\u0435\u043a')
     && cashierPaymentsHtml.includes('\u0422\u0435\u0440\u043c\u0456\u043d\u0430\u043b \u043f\u043e\u043a\u0430\u0437\u0430\u0432 \u0443\u0441\u043f\u0456\u0448\u043d\u0443 \u043e\u043f\u043b\u0430\u0442\u0443')
-    && cashierPaymentsHtml.includes('RCP-* \u2014 \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044f \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u044f'));
+    && cashierPaymentsHtml.includes('RCP-* \u00b7 \u043d\u043e\u043c\u0435\u0440 \u043f\u0440\u043e\u0434\u0430\u0436\u0443 CRM'));
 check('Cashier thin UI exposes server-backed unresolved queue and read-only Checkbox sales report',
     cashierPaymentsHtml.includes('id="unresolvedOrdersPanel"')
     && cashierPaymentsHtml.includes('id="unresolvedOrdersBody"')
@@ -7276,7 +7276,10 @@ check('Cashier thin UI exposes server-backed unresolved queue and read-only Chec
     && cashierPaymentsHtml.includes('id="checkboxReportDateFrom"')
     && cashierPaymentsHtml.includes('id="checkboxReportDateTo"')
     && cashierPaymentsHtml.includes('id="checkboxReportShiftId"')
-    && cashierPaymentsHtml.includes('id="checkboxReportPage"')
+    && cashierPaymentsHtml.includes('id="checkboxReportPreviousPage"')
+    && cashierPaymentsHtml.includes('id="checkboxReportRange"')
+    && cashierPaymentsHtml.includes('id="checkboxReportNextPage"')
+    && !cashierPaymentsHtml.includes('id="checkboxReportPage"')
     && cashierPaymentsHtml.includes('aria-live="polite"')
     && !cashierPaymentsHtml.includes('id="operationalContourPanel"')
     && !cashierPaymentsHtml.includes('id="serviceInForm"')
@@ -7374,9 +7377,8 @@ check('Cashier payments exposes concise readiness, semantic steps, and compact n
     && cashierPaymentsJs.includes("setAttribute('aria-disabled', 'true')")
     && cashierPaymentsHtml.includes('<details id="unresolvedOrdersPanel"')
     && cashierPaymentsHtml.includes('<details id="checkboxSalesReportPanel"')
-    && cashierPaymentsHtml.includes('Тут зберігаються всі оплачені чеки цієї каси')
     && cashierPaymentsHtml.includes('Історія чеків')
-    && cashierPaymentsHtml.includes('Внутрішній звіт Event Genix лише для перегляду')
+    && cashierPaymentsHtml.includes('Внутрішня історія, не Z-звіт')
     && !/Оплачені orders|pending \/ unknown|read-only|finance_transaction|placeholder="mine/i.test(cashierPaymentsHtml));
 check('Cashier payment diagnostics stay redacted on ordinary routes and UI details require fiscal.configure',
     cashierPaymentsJs.includes("const canViewTechnicalDetails = hasAction('fiscal.configure')")
@@ -7408,7 +7410,7 @@ check('Cashier actions expose Ukrainian busy feedback and accessible busy state'
     && cashierPaymentsJs.includes('Створюємо оплату…')
     && cashierPaymentsJs.includes('Підтверджуємо оплату…')
     && cashierPaymentsJs.includes('Оновлюємо готовність…')
-    && cashierPaymentsJs.includes('Формуємо звіт…'));
+    && cashierPaymentsJs.includes('Завантажуємо…'));
 check('Cashier unresolved rows hide technical identities, provider states and incident codes',
     cashierPaymentsJs.includes('function formatUnresolvedOwnership(order = {})')
     && cashierPaymentsJs.includes('function formatIncidentReason(value)')

@@ -6,6 +6,7 @@ const { publishInTransaction } = require('../eventBus');
 const { CheckboxClientError } = require('../checkbox/errors');
 const { createCheckboxProviderFactory } = require('../checkbox/provider');
 const { isCashierProEnabled } = require('../checkbox/config');
+const { PENDING_WAIT_KEY, PENDING_WAIT_MAX_DELAY_MS, nextPendingWait, pendingWaitStopCode } = require('./paymentPendingWait');
 const {
     CLOSED_SHIFT_PRE_SUBMIT_ERROR_CODE,
     guardPaidPreSubmitSalesForClosedShift
@@ -159,7 +160,9 @@ function assertLifecycleTransition(current, next) {
 
 function classifyWorkerError(error) {
     if (error instanceof PaymentOutboxWorkerError) {
-        return { retryable: error.retryable !== false, unknown: error.unknown === true, ...sanitizeError(error) };
+        return { retryable: error.retryable !== false, unknown: error.unknown === true, ...sanitizeError(error),
+            providerPending: error.code === 'provider_receipt_pending'
+                || (error.code === 'checkbox_shift_open_pending' && ['CREATED', 'OPENING'].includes(error.details?.providerStatus)) };
     }
     if (error instanceof CheckboxClientError) {
         const sanitized = sanitizeError(error);
@@ -167,6 +170,7 @@ function classifyWorkerError(error) {
             retryable: error.retryable === true,
             unknown: error.unknown === true,
             configuration: error.configuration === true || /^checkbox_(runtime_env|credential_ref|integration_disabled)/.test(sanitized.code),
+            providerPending: error.code === 'checkbox_receipt_pending' && error.details?.providerStatus === 'CREATED',
             ...sanitized
         };
     }
@@ -191,7 +195,7 @@ function computeBackoffMs(attempts, errorInfo = {}) {
 }
 
 function schedulePaymentOutboxRetryWakeup(delayMs, reason = 'receipt_pending_retry') {
-    const safeDelayMs = Math.max(0, Math.min(Number(delayMs) || 0, RECEIPT_PENDING_RETRY_DELAY_MS));
+    const safeDelayMs = Math.max(0, Math.min(Number(delayMs) || 0, PENDING_WAIT_MAX_DELAY_MS));
     if (!safeDelayMs) return false;
     const timer = setTimeout(() => {
         try {
@@ -627,6 +631,12 @@ function createExternalMutationBoundary(context, stage) {
 async function recordExternalStage(dbPool, context, stage) {
     const safeStage = String(stage || '').trim();
     if (!safeStage) return;
+    const stagePatch = {
+        external_stage: safeStage,
+        external_stage_recorded_at: context.job.external_stage === safeStage
+            ? context.job.payload?.external_stage_recorded_at || new Date().toISOString()
+            : new Date().toISOString()
+    };
     const lockExpiryMs = normalizedLockExpiryMs(context.lockExpiryMs);
     await withTransaction(dbPool, async client => {
         if (safeStage === 'sale_submit') {
@@ -672,7 +682,7 @@ async function recordExternalStage(dbPool, context, stage) {
             [
                 context.job.id,
                 context.job.fiscal_profile_id,
-                JSON.stringify({ external_stage: safeStage }),
+                JSON.stringify(stagePatch),
                 context.job.locked_by,
                 safeStage,
                 context.job.lock_token,
@@ -756,7 +766,7 @@ async function recordExternalStage(dbPool, context, stage) {
             );
         }
     });
-    context.job.payload = { ...safeJsonObject(context.job.payload), external_stage: safeStage };
+    context.job.payload = { ...safeJsonObject(context.job.payload), ...stagePatch };
     context.job.fiscal_request_snapshot = { ...safeJsonObject(context.job.fiscal_request_snapshot), external_stage: safeStage };
     context.job.external_stage = safeStage;
 }
@@ -1427,6 +1437,55 @@ async function markJobSucceeded(client, job) {
     );
 }
 
+function canWaitForProvider(context, errorInfo) {
+    const job = context.job;
+    const stage = externalStage(job);
+    return errorInfo.providerPending === true && errorInfo.retryable === true && errorInfo.unknown === true
+        && ((
+            ['receipt_sell', 'receipt_status_lookup'].includes(job.job_type)
+            && job.operation_type === 'sale' && ['sale_submit', 'receipt_lookup'].includes(stage)
+        ) || (
+            job.job_type === 'shift_open' && job.operation_type === 'shift_open'
+            && stage === 'shift_lookup'
+        ));
+}
+
+async function markJobAwaitingProvider(client, context, pending) {
+    const nextRun = new Date(Date.parse(pending.wait.lastCheckAt) + pending.delayMs).toISOString();
+    // Refund only this claim's attempt. Prior failures retain their budget.
+    await client.query(
+        `UPDATE payment_outbox_jobs
+            SET status = 'queued', attempts = GREATEST(attempts - 1, 0),
+                payload = payload || $3::jsonb, next_run_at = $4::timestamptz,
+                locked_at = NULL, locked_by = NULL, lock_token = NULL, heartbeat_at = NULL,
+                last_error_code = NULL, last_error_message = NULL, updated_at = NOW()
+          WHERE id = $1 AND fiscal_profile_id = $2`,
+        [context.job.id, context.job.fiscal_profile_id, JSON.stringify({ [PENDING_WAIT_KEY]: pending.wait }), nextRun]
+    );
+    await client.query(
+        `UPDATE fiscal_operations
+            SET status = 'pending', next_status_check_at = $3::timestamptz,
+                last_error_code = NULL, last_error_message = NULL
+          WHERE id = $1 AND fiscal_profile_id = $2 AND status <> 'fiscalized'`,
+        [context.job.fiscal_operation_id, context.job.fiscal_profile_id, nextRun]
+    );
+    if (context.job.operation_type === 'sale' && context.job.payment_order_id) {
+        await client.query(
+            `UPDATE payment_orders SET fiscal_status = 'pending', updated_at = NOW()
+              WHERE id = $1 AND fiscal_profile_id = $2 AND fiscal_status <> 'fiscalized'`,
+            [context.job.payment_order_id, context.job.fiscal_profile_id]
+        );
+    }
+    await client.query(
+        `INSERT INTO fiscal_audit_events (
+             fiscal_profile_id, actor_user_id, event_type, entity_table, entity_id, idempotency_key, metadata
+         ) VALUES ($1, NULL, 'payment_outbox_provider_pending', 'payment_outbox_jobs', $2, $3, $4::jsonb)`,
+        [context.job.fiscal_profile_id, context.job.id,
+            `provider_pending:${context.job.id}:${pending.wait.startedAt}:${pending.wait.checkCount}`,
+            JSON.stringify(pending.wait)]
+    );
+}
+
 async function markJobFailed(client, context, errorInfo) {
     const dead = Number(context.job.attempts || 0) >= Number(context.job.max_attempts || 1) || errorInfo.retryable === false;
     const retryDelayMs = computeBackoffMs(context.job.attempts, {
@@ -1476,7 +1535,7 @@ async function markJobFailed(client, context, errorInfo) {
               WHERE id = $1
                 AND fiscal_profile_id = $2
                 AND status <> 'fiscalized'`,
-            [context.job.fiscal_operation_id, context.job.fiscal_profile_id, nextStatus, errorInfo.code, errorInfo.message, nextRun]
+            [context.job.fiscal_operation_id, context.job.fiscal_profile_id, nextStatus, errorInfo.code, errorInfo.message, dead ? null : nextRun]
         );
         if (context.job.payment_order_id && context.job.operation_type === 'sale') {
             await client.query(
@@ -1960,10 +2019,16 @@ async function runShiftJob(provider, context) {
             const response = provider.lookupShift
                 ? await provider.lookupShift(lookupInput)
                 : await provider.ensureShiftOpened(lookupInput, { allowOpenRequest: false });
+            await assertShiftOpenResponse(context, response);
             return { response, source: 'shift_lookup' };
         } catch (error) {
             const exactShiftNotFound = error instanceof CheckboxClientError && error.status === 404;
             if (!exactShiftNotFound) throw error;
+            if (context.job.payload?.[PENDING_WAIT_KEY]) {
+                throw new PaymentOutboxWorkerError('checkbox_pending_shift_not_found', 'Previously observed shift is no longer visible; automatic OPEN is forbidden', {
+                    retryable: false, unknown: true
+                });
+            }
             if (!confirmedNotFoundStage) {
                 await context.recordStage?.('shift_lookup_not_found');
                 throw new PaymentOutboxWorkerError(
@@ -1983,6 +2048,7 @@ async function runShiftJob(provider, context) {
                     ...lookupInput,
                     beforeExternalMutation: createExternalMutationBoundary(context, 'shift_request_maybe_submitted')
                 });
+                await assertShiftOpenResponse(context, response);
                 const providerStatus = String(response?.status || '').trim().toUpperCase();
                 if (providerStatus !== 'OPENED') {
                     await context.recordStage?.('shift_lookup');
@@ -2149,6 +2215,7 @@ async function runShiftJob(provider, context) {
         throw error;
     }
     const providerStatus = String(response?.status || '').trim().toUpperCase();
+    if (context.job.job_type === 'shift_open') await assertShiftOpenResponse(context, response);
     if (context.job.job_type === 'shift_open' && !['OPENED', 'CLOSED'].includes(providerStatus)) {
         await context.recordStage?.('shift_lookup');
         throw new PaymentOutboxWorkerError('checkbox_shift_open_pending', 'Checkbox shift open has not reached OPENED status', {
@@ -2166,6 +2233,17 @@ async function runShiftJob(provider, context) {
         });
     }
     return { response, source: context.job.job_type };
+}
+
+async function assertShiftOpenResponse(context, response) {
+    requireProviderMatch(response?.id, context.job.provider_operation_id, 'checkbox_shift_open_identity_mismatch', 'shift.id');
+    const providerStatus = String(response?.status || '').trim().toUpperCase();
+    if (['CREATED', 'OPENING'].includes(providerStatus)) {
+        await context.recordStage?.('shift_lookup');
+        throw new PaymentOutboxWorkerError('checkbox_shift_open_pending', 'Exact Checkbox shift is awaiting OPENED status', {
+            retryable: true, unknown: true, details: { providerStatus }
+        });
+    }
 }
 
 async function runReceiptSaleJob(provider, context) {
@@ -2448,6 +2526,14 @@ async function finalizeJobFailure(dbPool, context, errorInfo) {
             await markJobConfigUnavailable(client, context, errorInfo);
             return { ok: false, skipped: true, jobId: Number(context.job.id), error: errorInfo };
         }
+        if (canWaitForProvider(context, errorInfo)) {
+            const pending = nextPendingWait(context.job.payload);
+            if (!pending.stopCode) {
+                await markJobAwaitingProvider(client, context, pending);
+                return { ok: false, pending: true, jobId: Number(context.job.id), retryWakeupDelayMs: pending.delayMs };
+            }
+            errorInfo = { code: pending.stopCode, message: 'Bounded provider wait requires operator attention', retryable: false, unknown: true };
+        }
         if (await requeueActiveShiftJobAfterPortalClose(client, context, errorInfo)) {
             return { ok: false, recoveryQueued: true, jobId: Number(context.job.id), error: errorInfo };
         }
@@ -2524,6 +2610,10 @@ async function processOnePaymentOutboxJob({ dbPool, provider, job, lockExpiryMs 
         context.assertMutationOwnership = () => assertPaymentOutboxJobOwnership(dbPool, context);
         try {
             assertImmutableProviderContext(context);
+            const waitStopCode = pendingWaitStopCode(context.job.payload);
+            if (waitStopCode) {
+                throw new PaymentOutboxWorkerError(waitStopCode, 'Bounded provider wait requires operator attention', { retryable: false, unknown: true });
+            }
             if (!saleStageRequiresLookup(externalStage(context.job))) {
                 await context.recordStage(externalStage(context.job));
             }
@@ -2613,7 +2703,8 @@ async function processPaymentOutboxJobs({
     const summary = {
         claimed: results.length,
         succeeded: results.filter(result => result.ok).length,
-        failed: results.filter(result => !result.ok).length,
+        failed: results.filter(result => !result.ok && !result.pending).length,
+        pending: results.filter(result => result.pending).length,
         results
     };
     if (throwOnDegraded && summary.failed > 0) {
@@ -2639,6 +2730,7 @@ module.exports = {
     computeBackoffMs,
     createUnavailableCheckboxProvider,
     externalStage,
+    finalizeJobFailure,
     finalizeJobSuccess,
     processOnePaymentOutboxJob,
     processPaymentOutboxJobs,

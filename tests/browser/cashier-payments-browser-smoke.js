@@ -29,6 +29,21 @@ function requirePlaywright() {
     }
 }
 
+function monitorBrowserContext(context, errors) {
+    context.on('page', page => {
+        page.on('pageerror', error => errors.push(`pageerror: ${error.message}`));
+        page.on('console', message => {
+            if (message.type() === 'error') errors.push(`console: ${message.text()}`);
+        });
+    });
+    return context;
+}
+
+function actionableBrowserErrors(errors) {
+    return errors.filter(message => !message.startsWith('console: Failed to load resource:')
+        && !message.startsWith("pageerror: Failed to read the 'localStorage' property from 'Window': Access is denied for this document."));
+}
+
 const state = {
     nextOrderId: 100,
     orders: new Map(),
@@ -39,6 +54,7 @@ const state = {
     unresolvedPayloadMode: 'normal',
     unresolvedSnapshotConflictServed: false,
     unresolvedRequestCount: 0,
+    orderGetRequestCount: 0,
     unresolvedDelayMs: 0,
     nextPilotRegisterStateDelayMs: 0,
     nextCreateDelayMs: 0,
@@ -180,6 +196,11 @@ function artDirectorPermissionPayload() {
 }
 
 function orderDetails(order) {
+    const progress = order.paymentStatus !== 'confirmed'
+        ? { stage: 'awaiting_payment', stageUpdatedAt: null, lastCheckAt: null, nextCheckAt: null, waitDeadlineAt: null, attentionReason: null }
+        : order.fiscalStatus === 'fiscalized'
+            ? { stage: 'complete', stageUpdatedAt: '2026-08-04T10:00:01.000Z', lastCheckAt: null, nextCheckAt: null, waitDeadlineAt: null, attentionReason: null }
+            : { stage: 'awaiting_receipt', stageUpdatedAt: '2026-08-04T10:00:00.000Z', lastCheckAt: '2026-08-04T10:00:00.000Z', nextCheckAt: UNRESOLVED_NEXT_RUN_AT, waitDeadlineAt: '2026-08-04T10:02:00.000Z', attentionReason: null };
     return {
         success: true,
         order: {
@@ -211,7 +232,8 @@ function orderDetails(order) {
         fiscalOperation: order.paymentStatus === 'confirmed' ? { id: 8, fiscalShiftId: state.shift?.id || null, status: order.fiscalStatus, provider: 'checkbox', providerOperationId: 'provider-smoke', providerStatus: order.fiscalStatus } : null,
         outboxJob: order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized' ? { id: 77, jobType: 'receipt_sell', status: 'queued', externalStage: 'receipt_lookup', attempts: 0, maxAttempts: 10, nextRunAt: UNRESOLVED_NEXT_RUN_AT, lastErrorCode: null } : null,
         receipts: order.fiscalStatus === 'fiscalized' ? [{ id: 9, fiscalOperationId: 8, paymentOrderId: order.id, receiptType: 'sale', status: 'fiscalized', provider: 'checkbox', providerReceiptId: 'chk-smoke', providerTaxUrl: 'https://api.checkbox.ua/check', providerPdfUrl: 'https://api.checkbox.ua/check.pdf', providerQrUrl: 'https://api.checkbox.ua/qr', totalAmountMinor: '50000', currency: 'UAH', fiscalizedAt: '2026-08-04T10:00:01.000Z' }] : [],
-        artifacts: order.fiscalStatus === 'fiscalized' ? { taxUrl: 'https://api.checkbox.ua/check', pdfUrl: 'https://api.checkbox.ua/check.pdf', qrUrl: 'https://api.checkbox.ua/qr' } : { taxUrl: null, pdfUrl: null, qrUrl: null }
+        artifacts: order.fiscalStatus === 'fiscalized' ? { taxUrl: 'https://api.checkbox.ua/check', pdfUrl: 'https://api.checkbox.ua/check.pdf', qrUrl: 'https://api.checkbox.ua/qr' } : { taxUrl: null, pdfUrl: null, qrUrl: null },
+        progress
     };
 }
 
@@ -528,6 +550,7 @@ async function handleApi(req, res, url) {
     }
     const orderMatch = url.pathname.match(/^\/api\/payments\/orders\/(\d+)(\/confirm)?$/);
     if (orderMatch && req.method === 'GET') {
+        state.orderGetRequestCount += 1;
         const order = state.orders.get(Number(orderMatch[1]));
         if (!order) return json(res, 404, { success: false, code: 'payment_order_not_found' });
         const plan = state.orderGetPlans.shift() || null;
@@ -778,9 +801,13 @@ async function run() {
     const { chromium } = requirePlaywright();
     const server = await startServer();
     const base = `http://127.0.0.1:${server.address().port}`;
-    const browser = await chromium.launch({ headless: HEADLESS });
+    const browser = await chromium.launch({
+        headless: HEADLESS,
+        args: ['--host-resolver-rules=MAP * 0.0.0.0, EXCLUDE 127.0.0.1']
+    });
+    const browserErrors = [];
     try {
-        const selectorContext = await browser.newContext({ timezoneId: 'UTC' });
+        const selectorContext = monitorBrowserContext(await browser.newContext({ timezoneId: 'UTC' }), browserErrors);
         await selectorContext.addInitScript(() => { localStorage.setItem('pzp_token', 'selector-smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
         await selectorContext.route('**/api/auth/verify', route => route.fulfill({
             status: 200,
@@ -810,8 +837,7 @@ async function run() {
         await captureVisualArtifact(selectorPage, '00-catalog-park-production.png');
         assert.equal(await selectorPage.locator('[data-catalog-item]').count(), 0, 'catalog starts with an empty cart');
         assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true);
-        assert.equal(await selectorPage.locator('#catalogPicker').isVisible(), false);
-        await selectorPage.click('#addCatalogLineBtn');
+        assert.equal(await selectorPage.locator('#catalogPicker').isVisible(), true, 'catalog choices are visible without an extra disclosure step');
         await selectorPage.locator('[data-catalog-add]').first().click();
         const longName = 'Абонемент на індивідуальні творчі заняття та розвивальні майстер-класи для дітей';
         await selectorPage.evaluate(name => {
@@ -820,13 +846,39 @@ async function run() {
         }, longName);
         for (const dark of [false, true]) {
             await selectorPage.evaluate(value => document.body.classList.toggle('dark-mode', value), dark);
-            for (const width of [1440, 390]) {
+            for (const width of [1440, 1024, 390]) {
                 await selectorPage.setViewportSize({ width, height: 1000 });
                 await selectorPage.waitForFunction(() => document.querySelector('#paymentOrderForm').getBoundingClientRect().width > 300);
                 assert.equal(await selectorPage.textContent('[data-catalog-name]'), longName);
                 assert.equal(await selectorPage.locator('[data-catalog-name]').evaluate(el => el.scrollWidth <= el.clientWidth), true, 'full selected product name wraps');
                 const nameWidth = await selectorPage.locator('[data-catalog-name]').evaluate(el => el.getBoundingClientRect().width);
                 assert.ok(nameWidth > 200, `product title retains a readable line width: ${nameWidth} at ${width}`);
+                const workbench = await selectorPage.evaluate(() => {
+                    const rect = selector => document.querySelector(selector).getBoundingClientRect();
+                    const picker = rect('#catalogPicker');
+                    const basket = rect('.cashier-catalog-basket');
+                    const list = document.querySelector('#catalogSearchResults');
+                    const action = document.querySelector('#createPaymentOrderBtn');
+                    return {
+                        pickerVisible: picker.width > 0 && picker.height > 0,
+                        listHeight: list.clientHeight,
+                        listScrollable: list.scrollHeight > list.clientHeight,
+                        actionPosition: getComputedStyle(action).position,
+                        actionText: action.textContent.trim(),
+                        scopeItems: document.querySelectorAll('.cashier-scope-card > div').length,
+                        sideBySide: picker.right <= basket.left + 1,
+                        stacked: picker.bottom <= basket.top + 1,
+                        documentFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
+                    };
+                });
+                assert.equal(workbench.pickerVisible, true, `catalog remains visible at ${width}`);
+                assert.equal(workbench.listScrollable, true, `long catalog uses its own bounded scroll at ${width}`);
+                assert.ok(workbench.listHeight <= 371, `catalog height stays bounded at ${width}: ${workbench.listHeight}`);
+                assert.match(workbench.actionText, /Перейти до оплати.*(?:₴|грн)/, `draft handoff includes the current amount at ${width}`);
+                assert.notEqual(workbench.actionPosition, 'fixed', `primary action stays in document flow without covering content at ${width}`);
+                assert.equal(workbench.scopeItems, 6, `compact context keeps six operational facts at ${width}`);
+                assert.equal(width > 820 ? workbench.sideBySide : workbench.stacked, true, `catalog and basket use the expected composition at ${width}`);
+                assert.equal(workbench.documentFits, true, `cashier workbench has no horizontal overflow at ${width}`);
                 for (const id of ['paymentBusinessContext', 'paymentRegisterRoute', 'catalogCategory']) {
                     assert.notEqual(await selectorPage.locator(`#${id}`).evaluate(el => getComputedStyle(el).backgroundImage), 'none', 'select arrow survives theme cascade');
                 }
@@ -842,8 +894,7 @@ async function run() {
         await selectorPage.waitForFunction(() => document.querySelector('#cashierScopeMode')?.textContent.trim() === 'ТЕСТОВИЙ');
         await selectorPage.waitForFunction(() => window.CashierPaymentsPage.state.catalogReady && !window.CashierPaymentsPage.state.routeLoading);
         assert.equal(await selectorPage.inputValue('#catalogSearch'), '', 'PARK initial catalog needs no search');
-        assert.equal(await selectorPage.locator('#catalogPicker').isVisible(), false, 'route change collapses the PARK picker');
-        await selectorPage.click('#addCatalogLineBtn');
+        assert.equal(await selectorPage.locator('#catalogPicker').isVisible(), true, 'route change keeps the PARK catalog directly available');
         assert.equal(await selectorPage.locator('#catalogSearchResults .cashier-catalog-result').first().isVisible(), true, 'PARK picker opens without requiring search');
         assert.match(await selectorPage.textContent('#cashierTestModeBanner'), /ТЕСТОВА КАСА/i, 'test route has a prominent warning');
         assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'test route remains blocked while its acceptance gate is disabled');
@@ -860,8 +911,7 @@ async function run() {
         await selectorPage.waitForFunction(() => document.querySelector('#catalogSaleSummary')?.textContent.includes('140 активних позицій'));
         await selectorPage.waitForFunction(() => window.CashierPaymentsPage.state.catalogReady && !window.CashierPaymentsPage.state.routeLoading);
         assert.equal(await selectorPage.inputValue('#catalogSearch'), '', 'DAR initial catalog needs no search');
-        assert.equal(await selectorPage.locator('#catalogPicker').isVisible(), false, 'route change collapses the DAR picker');
-        await selectorPage.click('#addCatalogLineBtn');
+        assert.equal(await selectorPage.locator('#catalogPicker').isVisible(), true, 'route change keeps the DAR catalog directly available');
         assert.equal(await selectorPage.locator('#catalogSearchResults .cashier-catalog-result').first().isVisible(), true, 'DAR picker opens without requiring search');
         assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'DAR test route remains blocked while its acceptance gate is disabled');
         await selectorPage.fill('#catalogSearch', 'Послуга ДАР 10');
@@ -873,7 +923,7 @@ async function run() {
         await captureVisualArtifact(selectorPage, '00-catalog-dar-test-disabled.png');
         await selectorContext.close();
 
-        let context = await browser.newContext({ timezoneId: 'UTC' });
+        let context = monitorBrowserContext(await browser.newContext({ timezoneId: 'UTC' }), browserErrors);
         await context.addInitScript(() => {
             localStorage.setItem('pzp_token', 'smoke-token');
             localStorage.setItem('pzp_dark_mode', 'false');
@@ -935,34 +985,37 @@ async function run() {
         assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('#unresolvedOrdersPanel > summary')), true, 'unresolved disclosure keeps focus on its summary');
         await page.keyboard.press('Enter');
         assert.equal(await page.getAttribute('#unresolvedOrdersPanel', 'open'), null, 'unresolved disclosure closes from the keyboard');
+        const reportCallsBefore = state.salesReportRequestCount;
+        state.nextSalesReportDelayMs = 300;
         await page.focus('#checkboxSalesReportPanel > summary');
         await page.keyboard.press('Enter');
         assert.equal(await page.getAttribute('#checkboxSalesReportPanel', 'open'), '', 'sales report opens from the keyboard');
         assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('#checkboxSalesReportPanel > summary')), true, 'sales report keeps focus on its summary');
-        const reportCallsBefore = state.salesReportRequestCount;
-        state.nextSalesReportDelayMs = 300;
-        await page.click('#loadCheckboxSalesReportBtn');
         await page.waitForFunction(() => {
             const button = document.getElementById('loadCheckboxSalesReportBtn');
             return button?.disabled === true
                 && button.getAttribute('aria-busy') === 'true'
-                && button.textContent.trim() === 'Формуємо звіт…';
+                && button.textContent.trim() === 'Оновлюємо…';
         });
         assert.equal(await page.getAttribute('#checkboxSalesReportBody', 'aria-busy'), 'true', 'report region exposes its busy state');
-        assert.equal((await page.textContent('#checkboxSalesReportBody')).trim(), 'Формуємо звіт…', 'report region explains the active request');
+        assert.equal((await page.textContent('#checkboxSalesReportBody')).trim(), 'Завантажуємо історію чеків…', 'report region explains the active request');
         await page.waitForFunction(() => {
             const button = document.getElementById('loadCheckboxSalesReportBtn');
             return button?.disabled === false
                 && button.getAttribute('aria-busy') === 'false'
-                && button.textContent.trim() === 'Завантажити історію чеків';
+                && button.textContent.trim() === 'Оновити';
         });
-        assert.equal(state.salesReportRequestCount, reportCallsBefore + 1, 'one report click sends one report request');
-        assert.match(await page.textContent('#checkboxSalesReportBody'), /Історія чеків|Оплати всього|офіційний артефакт/i, 'receipt history renders cashier-facing labels');
+        assert.equal(state.salesReportRequestCount, reportCallsBefore + 1, 'first disclosure open sends one report request');
+        assert.match(await page.textContent('#checkboxSalesReportBody'), /Всього|Суми за всім фільтром/i, 'receipt history renders cashier-facing labels');
         await assertCanonicalCashierButtons(page);
         await assertNoCashierPageOverflow(page);
         await page.focus('#checkboxSalesReportPanel > summary');
         await page.keyboard.press('Enter');
         assert.equal(await page.getAttribute('#checkboxSalesReportPanel', 'open'), null, 'sales report closes from the keyboard');
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(50);
+        assert.equal(state.salesReportRequestCount, reportCallsBefore + 1, 'reopening a loaded disclosure does not duplicate the request');
+        await page.keyboard.press('Enter');
 
         await page.fill('#paymentKidsCount', '1');
         state.nextPilotRegisterStateDelayMs = 400;
@@ -986,7 +1039,9 @@ async function run() {
         await page.waitForSelector('#cashReceivedAmount:not([disabled])');
         state.unresolvedDelayMs = 0;
         assert.equal(await page.getAttribute('#createPaymentOrderBtn', 'aria-busy'), 'false', 'create busy state clears after the request');
-        assert.equal((await page.textContent('#createPaymentOrderBtn')).trim(), 'Створити оплату', 'create button restores its Ukrainian label');
+        assert.equal((await page.textContent('#createPaymentOrderBtn')).trim(), 'Продаж відкрито', 'create button reflects the opened draft instead of offering another sale');
+        assert.equal((await page.textContent('#paymentSnapshotTitle')).trim(), 'Підтвердження грошей', 'an opened draft clearly separates money confirmation from draft creation');
+        assert.match(await page.textContent('#internalReceiptLabel'), /номер продажу CRM/, 'RCP is identified as the CRM sale number rather than a fiscal receipt');
         await assertPaymentStepState(page, { 1: 'complete', 2: 'active', 3: 'inactive' });
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'cashReceivedAmount', 'creating a cash draft focuses the received amount');
         assert.equal((await page.textContent('#cashierRegister')).trim(), 'ПАРК / Середня каса', 'order snapshot keeps the localized PARK and middle register context');
@@ -1006,6 +1061,7 @@ async function run() {
         await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
         assert.equal(await page.getAttribute('#confirmCashBtn', 'aria-busy'), 'false', 'confirmation busy state clears after the request');
         assert.equal((await page.textContent('#confirmCashBtn')).trim(), 'Готівку отримано — створити чек', 'confirmation button restores its Ukrainian label');
+        assert.equal((await page.textContent('#paymentSnapshotTitle')).trim(), 'Поточний продаж', 'confirmed money keeps the sale visible while the receipt is pending');
         const unresolvedAccessibleName = await page.getAttribute('#unresolvedOrdersBody [data-order-id]', 'aria-label');
         assert.match(unresolvedAccessibleName, new RegExp(`RCP-${state.nextOrderId}`), 'unresolved accessible name identifies the order');
         assert.match(unresolvedAccessibleName, /сума.+оплата.+фіскалізація.+наступна спроба.+причин/i, 'unresolved accessible name preserves amount, statuses, retry and incident context');
@@ -1040,6 +1096,7 @@ async function run() {
         await assertPaymentStepState(page, { 1: 'complete', 2: 'complete', 3: 'active' });
         assert.equal(await page.locator('#fiscalReceiptBadge').evaluate(element => element.classList.contains('is-warn')), true, 'pending receipt exposes a visual warning status');
         assert.equal(await page.locator('#unresolvedOrdersPanel').evaluate(element => element.classList.contains('has-warning')), true, 'unresolved disclosure exposes a visual warning state');
+        assert.match(await page.textContent('#fiscalPendingMessage'), /Checkbox ще обробляє чек/, 'the current sale renders the canonical server progress stage');
         await captureVisualArtifact(page, '02-light-pending-unresolved.png');
         assert.equal(await page.getAttribute('#unresolvedOrdersPanel', 'open'), '', 'a paid unresolved receipt opens the safety disclosure');
         assert.equal(await page.isDisabled('#confirmCashBtn'), true, 'cash repeat submit is blocked after fiscal pending');
@@ -1058,7 +1115,7 @@ async function run() {
         );
         await context.close();
 
-        context = await browser.newContext({ timezoneId: 'UTC' });
+        context = monitorBrowserContext(await browser.newContext({ timezoneId: 'UTC' }), browserErrors);
         await context.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
         page = await context.newPage();
         await page.goto(`${base}/cashier-payments?saleMode=admission`, { waitUntil: 'domcontentloaded' });
@@ -1127,8 +1184,12 @@ async function run() {
         );
         assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(`RCP-${currentOrderId}`), 'next customer keeps unresolved previous receipt visible');
 
-        for (const order of state.orders.values()) order.fiscalStatus = 'fiscalized';
         const current = state.orders.get(currentOrderId);
+        current.fiscalStatus = 'fiscalized';
+        const unselectedQueueRefreshStartedAt = Date.now();
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]', { state: 'attached', timeout: 3500 });
+        assert.ok(Date.now() - unselectedQueueRefreshStartedAt <= 3000, 'a completed pending receipt disappears promptly even when no order is selected');
+        for (const order of state.orders.values()) order.fiscalStatus = 'fiscalized';
         await page.goto(`${base}/cashier-payments?orderId=${currentOrderId}&saleMode=admission`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#providerReceiptLinks:not(.hidden)');
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]', { state: 'attached' });
@@ -1164,19 +1225,19 @@ async function run() {
         state.unresolvedAvailable = true;
         await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]', { state: 'attached' });
-        state.orderGetPlans.push(
-            { delayMs: 250, orderPatch: { fiscalStatus: 'pending' } },
-            { delayMs: 0, orderPatch: { fiscalStatus: 'fiscalized' } }
-        );
+        const orderReadsBeforeSingleFlight = state.orderGetRequestCount;
+        state.orderGetPlans.push({ delayMs: 250, orderPatch: { fiscalStatus: 'pending' } });
         await page.evaluate(async orderId => {
-            const stale = window.CashierPaymentsPage.loadPaymentOrder(orderId, { silent: true });
+            const first = window.CashierPaymentsPage.loadPaymentOrder(orderId, { silent: true });
             await new Promise(resolve => setTimeout(resolve, 40));
-            const current = window.CashierPaymentsPage.loadPaymentOrder(orderId, { silent: true });
-            await Promise.all([stale, current]);
+            const duplicate = window.CashierPaymentsPage.loadPaymentOrder(orderId, { silent: true });
+            await Promise.all([first, duplicate]);
         }, currentOrderId);
-        assert.equal((await page.textContent('#fiscalReceiptBadge')).trim(), 'чек створено', 'a delayed stale pending response cannot overwrite a newer fiscalized response');
-        assert.equal(await page.evaluate(() => window.CashierPaymentsPage.state.pollingOrderId), null, 'a delayed stale pending response cannot restart receipt polling');
+        assert.equal(state.orderGetRequestCount, orderReadsBeforeSingleFlight + 1, 'concurrent reads of the same order share one HTTP request');
+        assert.equal((await page.textContent('#fiscalReceiptBadge')).trim(), 'чек створено', 'a delayed pending response cannot regress a completed receipt');
+        assert.equal(await page.evaluate(() => window.CashierPaymentsPage.state.pollingOrderId), null, 'a delayed pending response cannot restart receipt polling');
         await page.waitForSelector('#startNextOrderBtn:not(.hidden)');
+        await page.locator('#cashierShiftConsole').evaluate(panel => { panel.open = true; });
         await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
         await page.setViewportSize({ width: 1440, height: 1000 });
         await captureVisualArtifact(page, '05-light-fiscalized-receipt.png');
@@ -1278,7 +1339,7 @@ async function run() {
         assert.ok(state.phase1CloseKeys[0], 'Phase-1 close uses a stable Idempotency-Key');
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'phase1ShiftStatus', 'focus moves to the confirmed CLOSED status');
 
-        const disabledContext = await browser.newContext({ timezoneId: 'UTC' });
+        const disabledContext = monitorBrowserContext(await browser.newContext({ timezoneId: 'UTC' }), browserErrors);
         await disabledContext.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'true'); });
         await disabledContext.route('**/api/auth/verify', route => route.fulfill({
             status: 200,
@@ -1369,7 +1430,7 @@ async function run() {
 
         state.unresolvedAvailable = true;
         state.unresolvedPayloadMode = 'normal';
-        const artDirectorContext = await browser.newContext({ timezoneId: 'UTC', viewport: { width: 1440, height: 1000 } });
+        const artDirectorContext = monitorBrowserContext(await browser.newContext({ timezoneId: 'UTC', viewport: { width: 1440, height: 1000 } }), browserErrors);
         await artDirectorContext.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
         await artDirectorContext.route('**/api/auth/verify', route => route.fulfill({
             status: 200,
@@ -1405,7 +1466,7 @@ async function run() {
 
         state.unresolvedAvailable = true;
         state.unresolvedPayloadMode = 'normal';
-        const freshnessContext = await browser.newContext({ timezoneId: 'UTC' });
+        const freshnessContext = monitorBrowserContext(await browser.newContext({ timezoneId: 'UTC' }), browserErrors);
         await freshnessContext.addInitScript(() => {
             localStorage.setItem('pzp_token', 'smoke-token');
             localStorage.setItem('pzp_dark_mode', 'false');
@@ -1424,7 +1485,7 @@ async function run() {
         assert.ok(state.unresolvedRequestCount > requestsBeforeExpiry + 1, 'bounded backoff automatically recovers the queue after an outage');
         await freshnessContext.close();
 
-        const deniedContext = await browser.newContext({ timezoneId: 'UTC' });
+        const deniedContext = monitorBrowserContext(await browser.newContext({ timezoneId: 'UTC' }), browserErrors);
         await deniedContext.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
         await deniedContext.route('**/api/auth/permissions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(permissionPayload(false)) }));
         const deniedPage = await deniedContext.newPage();
@@ -1434,6 +1495,8 @@ async function run() {
             const button = document.getElementById('createPaymentOrderBtn');
             return denied && !denied.classList.contains('hidden') && denied.offsetParent !== null && button && button.disabled === true;
         });
+        const actionableErrors = actionableBrowserErrors(browserErrors);
+        assert.deepEqual(actionableErrors, [], `cashier browser emitted errors: ${actionableErrors.join(' | ')}`);
         await deniedContext.close();
         await context.close().catch(() => {});
     } finally {
@@ -1448,4 +1511,4 @@ if (require.main === module) run().catch(error => {
     process.exit(1);
 });
 
-module.exports = { startServer, requirePlaywright, state, permissionPayload };
+module.exports = { actionableBrowserErrors, startServer, requirePlaywright, state, permissionPayload };

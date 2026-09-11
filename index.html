@@ -50,7 +50,7 @@
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <div class="login-release-badge" aria-label="Поточний реліз 0.81.111">✨ 0.81.111</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.81.111 — HR чеклісти та сумісність Wallet</p>
+                <p class="tagline">AI First CRM v0.81.111 — Scheduler claims без дублювання</p>
             </div>
             <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.81.111</button>
             <form id="loginForm" class="login-form">
@@ -1820,12 +1820,11 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                                 <div class="changelog-section">
-                    <h4>v0.81.111 — HR чеклісти та сумісність Wallet</h4>
+                    <h4>v0.81.111 — Scheduler claims без дублювання</h4>
                     <ul>
-                        <li><b>Чеклісти HR</b> — збереження чернетки у вкладці, надійний фокус діалогів, відновлення пагінації та читабельна темна тема.</li>
-                        <li><b>Монети</b> — захист стартового бонусу від дублювання, перевірка переказів та коректне продовження streak.</li>
-                        <li><b>Бонус сьомого дня</b> — сумісний запис монет і предмета з повним відкатом при помилці.</li>
-                        <li><b>Перевірки</b> — світла й темна теми HR та обидві підтримувані схеми Wallet у CI.</li>
+                        <li><b>Atomic scheduler claims</b> — guarded jobs беруть ownership до side effect, щоб два app instances не виконували один scheduler key паралельно.</li>
+                        <li><b>Менше not-due polling</b> — daily/hourly/5min jobs не перевіряють базу щохвилини без потреби, а null-dedup polling лишається контрактно незакешованим.</li>
+                        <li><b>Agent tracker без блокування</b> — git history scan працює через bounded async child process із timeout та overlap guard.</li>
                     </ul>
                 </div>
 <div class="changelog-section">

@@ -8,10 +8,12 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getCached } = require('./contextCache');
 const { callUnifiedChatCompletion, hasAnySharedAIKey } = require('./ai-config');
-const { execSync } = require('child_process');
+const { execFile } = require('node:child_process');
 
 const log = createLogger('AgentTracker');
 let syncAgentActivitiesRunning = false;
+const GIT_LOG_TIMEOUT_MS = 10_000;
+const GIT_LOG_MAX_BUFFER = 2 * 1024 * 1024;
 
 // Agent tag patterns in commit messages
 const AGENT_TAG_PATTERNS = [
@@ -39,8 +41,12 @@ const ACTION_TYPE_PATTERNS = [
  * Log an agent activity.
  */
 async function logActivity(agentTag, actionType, summary, details = {}, sessionId = null) {
+    return logActivityWithDb(pool, agentTag, actionType, summary, details, sessionId);
+}
+
+async function logActivityWithDb(db, agentTag, actionType, summary, details = {}, sessionId = null) {
     try {
-        const result = await pool.query(
+        const result = await db.query(
             `INSERT INTO agent_activities (agent_tag, action_type, summary, details, session_id)
              VALUES ($1, $2, $3, $4, $5) RETURNING id`,
             [agentTag, actionType, summary, JSON.stringify(details), sessionId]
@@ -52,33 +58,91 @@ async function logActivity(agentTag, actionType, summary, details = {}, sessionI
     }
 }
 
+function runGitLog(since, options = {}) {
+    const execFileImpl = options.execFileImpl || execFile;
+    const cwd = options.cwd || process.cwd();
+    const args = [
+        'log',
+        `--since=${since}`,
+        '--format=%x1e%H%x1f%an%x1f%s%x1f%ai',
+        '--shortstat',
+        '--no-merges'
+    ];
+
+    return new Promise((resolve, reject) => {
+        execFileImpl('git', args, {
+            cwd,
+            encoding: 'utf8',
+            timeout: GIT_LOG_TIMEOUT_MS,
+            maxBuffer: GIT_LOG_MAX_BUFFER,
+            windowsHide: true
+        }, (error, stdout) => {
+            if (error) {
+                // Git's stderr can contain local paths or commit content. Do not
+                // attach it to the propagated error or scheduler logs.
+                const safeError = new Error('Git activity snapshot unavailable');
+                safeError.code = error.code || 'GIT_LOG_FAILED';
+                safeError.killed = Boolean(error.killed);
+                reject(safeError);
+                return;
+            }
+            resolve(String(stdout || ''));
+        });
+    });
+}
+
+function parseGitLogSnapshot(snapshot) {
+    return String(snapshot || '')
+        .split('\x1e')
+        .slice(1)
+        .map(record => {
+            const lines = record.trim().split(/\r?\n/);
+            const [hash, author, message, date] = String(lines.shift() || '').split('\x1f');
+            const diffStat = lines.map(line => line.trim()).find(Boolean) || '';
+            return { hash, author, message, date, diffStat };
+        })
+        .filter(commit => commit.hash && commit.message);
+}
+
 /**
  * Parse git log and create agent_activities for new commits.
  * Idempotent — skips commits already tracked (by commit hash in details).
  */
-async function parseGitLog(sinceHours = 24) {
+async function parseGitLog(sinceHours = 24, options = {}) {
+    const db = options.db || pool;
+    const logger = options.logger || log;
+    const collectGitLog = options.runGitLog || runGitLog;
     try {
         const since = new Date(Date.now() - sinceHours * 3600000).toISOString();
-        const gitLog = execSync(
-            `git log --since="${since}" --format="%H|%an|%s|%ai" --no-merges 2>/dev/null || true`,
-            { encoding: 'utf-8', timeout: 10000 }
-        ).trim();
+        let snapshot;
+        try {
+            snapshot = await collectGitLog(since, {
+                cwd: options.cwd,
+                execFileImpl: options.execFileImpl
+            });
+        } catch (error) {
+            logger.warn('Git activity snapshot unavailable', {
+                code: error.code || 'GIT_LOG_FAILED',
+                timedOut: Boolean(error.killed)
+            });
+            return 0;
+        }
 
-        if (!gitLog) return 0;
+        const commits = parseGitLogSnapshot(snapshot);
+        if (commits.length === 0) return 0;
 
-        const lines = gitLog.split('\n').filter(Boolean);
+        const hashes = commits.map(commit => commit.hash);
+        const existing = await db.query(
+            `SELECT details->>'commit_hash' AS commit_hash
+               FROM agent_activities
+              WHERE details->>'commit_hash' = ANY($1::text[])`,
+            [hashes]
+        );
+        const trackedHashes = new Set(existing.rows.map(row => row.commit_hash));
         let added = 0;
 
-        for (const line of lines) {
-            const [hash, author, message, date] = line.split('|');
-            if (!hash || !message) continue;
-
-            // Check if already tracked
-            const exists = await pool.query(
-                `SELECT 1 FROM agent_activities WHERE details->>'commit_hash' = $1 LIMIT 1`,
-                [hash]
-            );
-            if (exists.rows.length > 0) continue;
+        for (const { hash, author, message, date, diffStat } of commits) {
+            if (trackedHashes.has(hash)) continue;
 
             // Detect agent tag
             let agentTag = 'unknown';
@@ -98,16 +162,7 @@ async function parseGitLog(sinceHours = 24) {
                 }
             }
 
-            // Get diff stats for this commit
-            let diffStat = '';
-            try {
-                diffStat = execSync(
-                    `git diff --shortstat ${hash}~1 ${hash} 2>/dev/null || true`,
-                    { encoding: 'utf-8', timeout: 5000 }
-                ).trim();
-            } catch { /* ignore */ }
-
-            await logActivity(agentTag, actionType, message, {
+            await logActivityWithDb(db, agentTag, actionType, message, {
                 commit_hash: hash,
                 author,
                 date,
@@ -117,11 +172,11 @@ async function parseGitLog(sinceHours = 24) {
         }
 
         if (added > 0) {
-            log.info(`Parsed ${added} new commits from git log`);
+            logger.info(`Parsed ${added} new commits from git log`);
         }
         return added;
     } catch (err) {
-        log.error('parseGitLog failed', err.message);
+        logger.error('parseGitLog failed', err.message);
         return 0;
     }
 }
@@ -346,5 +401,9 @@ module.exports = {
     getAgentStatus,
     generateSummary,
     getLastSummary,
-    __resetAgentTrackerSchedulerStateForTests
+    __resetAgentTrackerSchedulerStateForTests,
+    __agentTrackerTest: Object.freeze({
+        parseGitLogSnapshot,
+        runGitLog
+    })
 };

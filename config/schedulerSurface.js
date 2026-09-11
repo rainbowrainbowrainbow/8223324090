@@ -55,6 +55,53 @@ const GUARDED_SCHEDULER_JOBS = [
     { name: 'cleanupRefreshTokens', functionName: 'cleanupRefreshTokens', sourceFile: 'middleware/auth.js', owner: 'auth', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] }
 ];
 
+// These jobs already claim durable work inside their owner implementation. The
+// outer guard must retain pause/error accounting without serializing the
+// owner's SKIP LOCKED, advisory-lock, or lease-based concurrency.
+const OWNER_MANAGED_SCHEDULER_CLAIMS = Object.freeze({
+    recheckActiveOmniConnections: 'session_advisory_lock',
+    checkScheduledChatMessages: 'for_update_skip_locked',
+    checkAttendanceReviewTasks: 'transaction_advisory_lock_and_source_key',
+    checkHrAttendancePrintAutomations: 'unique_key_and_build_lease',
+    processPaymentOutboxJobs: 'for_update_skip_locked_and_lease',
+    runTrustedQaCleanupWatchdog: 'for_update_skip_locked'
+});
+
+// These runners can legitimately cross the default lease window. Guard-owned
+// claims use a longer recovery lease plus heartbeat; owner-managed jobs retain
+// their own lease/retry policy.
+const LONG_RUNNING_SCHEDULER_JOBS = new Set([
+    'checkAutoBackup',
+    'checkAutoDigest',
+    'checkAutoReminder',
+    'checkRecurringAnnouncements',
+    'checkGraduationOpsAutomation',
+    'checkTrainingPrompts',
+    'checkTrainingSummary',
+    'checkGuardianReports',
+    'flushGuardianLearn',
+    'syncAgentActivities',
+    'runCheckboxReadinessProbeScheduler',
+    'processPaymentOutboxJobs',
+    'checkHrAttendancePrintAutomations',
+    'runTrustedQaCleanupWatchdog'
+]);
+
+const DEFAULT_SCHEDULER_LEASE_MS = 5 * 60 * 1000;
+const LONG_RUNNING_SCHEDULER_LEASE_MS = 30 * 60 * 1000;
+
+function schedulerExecutionPolicy(name) {
+    const ownerClaim = OWNER_MANAGED_SCHEDULER_CLAIMS[name] || null;
+    return {
+        claimMode: ownerClaim ? 'owner' : 'lease',
+        ownerClaim,
+        longRunning: LONG_RUNNING_SCHEDULER_JOBS.has(name),
+        leaseMs: LONG_RUNNING_SCHEDULER_JOBS.has(name)
+            ? LONG_RUNNING_SCHEDULER_LEASE_MS
+            : DEFAULT_SCHEDULER_LEASE_MS
+    };
+}
+
 const RAW_SCHEDULER_INTERVALS = [
     { name: 'openclawBridgeStaleMessages', kind: 'setInterval', sourceFile: 'server.js', functionName: 'processStaleMessages', interval: '30000', owner: 'kleshnya', fragment: 'processStaleMessages(generateChatResponse, addChatMessage, getChatHistory, sendToUsername)', tests: ['tests/openclaw-bridge-stale-messages-hardening.test.js'] },
     { name: 'cleanupKleshnyaMessages', kind: 'setInterval', sourceFile: 'server.js', functionName: 'cleanupKleshnyaMessages', interval: '30 * 60 * 1000', owner: 'kleshnya', fragment: 'setInterval(cleanupKleshnyaMessages, 30 * 60 * 1000)', tests: ['tests/kleshnya-cleanup-hardening.test.js'] },
@@ -72,7 +119,9 @@ const SCHEDULER_SURFACE_DOC = 'docs/SCHEDULER_SURFACE.md';
 
 module.exports = {
     GUARDED_SCHEDULER_JOBS,
+    OWNER_MANAGED_SCHEDULER_CLAIMS,
     RAW_SCHEDULER_INTERVALS,
     STATIC_ONLY_SCHEDULER_JOBS,
-    SCHEDULER_SURFACE_DOC
+    SCHEDULER_SURFACE_DOC,
+    schedulerExecutionPolicy
 };

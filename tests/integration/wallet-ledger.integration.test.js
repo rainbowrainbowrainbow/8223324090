@@ -18,8 +18,15 @@ if (process.argv.includes('--isolated')) {
         const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
         assert.equal(target.isLocal, true, 'Wallet QA requires loopback PostgreSQL');
         const lock = await acquireIsolatedDatabaseLock(target);
-        try { await runSuite(target, 'tests/integration/wallet-ledger.integration.test.js', 'wallet-ledger'); }
-        finally { await lock.release(); }
+        const failures = [];
+        try {
+            for (const variant of ['migrated', 'deployed']) {
+                process.env.WALLET_SCHEMA_VARIANT = variant;
+                try { await runSuite(target, 'tests/integration/wallet-ledger.integration.test.js', 'wallet-ledger'); }
+                catch { failures.push(variant); }
+            }
+        } finally { delete process.env.WALLET_SCHEMA_VARIANT; await lock.release(); }
+        if (failures.length) throw new Error(`Wallet schema variants failed: ${failures.join(', ')}`);
     })().catch(error => { console.error(error.message); process.exitCode = 1; });
 } else {
     test('Wallet ledger: real routes and transaction ownership', {
@@ -32,7 +39,10 @@ if (process.argv.includes('--isolated')) {
         const db = new Pool({ connectionString: target.url.toString(), max: 2, ssl: false });
         const base = new URL(process.env.TEST_URL).origin;
         const timezone = (await db.query('SHOW TimeZone')).rows[0].TimeZone;
-        const evidence = { scope: 'Disposable loopback app, actual auth/Wallet routes/PostgreSQL', timezone, checks: [], blockers: [] };
+        const variant = process.env.WALLET_SCHEMA_VARIANT;
+        assert.ok(['migrated', 'deployed'].includes(variant));
+        const deployed = variant === 'deployed';
+        const evidence = { scope: 'Disposable loopback app, actual auth/Wallet routes/PostgreSQL', timezone, variant, checks: [], blockers: [] };
         const request = async (user, endpoint, body, expected = 200) => {
             const response = await fetch(`${base}/api/${endpoint}`, {
                 method: body ? 'POST' : 'GET',
@@ -56,7 +66,7 @@ if (process.argv.includes('--isolated')) {
             return { id, username, token };
         };
         const balance = async user => (await db.query('SELECT coins, total_earned, total_spent, login_streak, last_login_reward FROM game_wallets WHERE user_id = $1', [user.id])).rows[0];
-        const ledger = async user => (await db.query('SELECT user_id, username, amount, type, reference_id FROM coin_transactions WHERE user_id = $1 ORDER BY id', [user.id])).rows;
+        const ledger = async user => (await db.query(`SELECT ct.user_id, ${deployed ? 'u.username' : 'ct.username'}, ct.amount, ct.type, ct.reference_id FROM coin_transactions ct JOIN users u ON u.id=ct.user_id WHERE ct.user_id = $1 ORDER BY ct.id`, [user.id])).rows;
         const check = async (name, fn) => t.test(name, async () => { await fn(); evidence.checks.push({ name, status: 'PASS' }); });
         const rejectLedger = async (user, type, fn) => {
             assert.ok(Number.isSafeInteger(user.id));
@@ -67,6 +77,18 @@ if (process.argv.includes('--isolated')) {
             try { await fn(); } finally { await db.query(`ALTER TABLE coin_transactions DROP CONSTRAINT ${name}`); }
         };
         try {
+            if (deployed) {
+                // Reproduce verified live contracts only in the runner-owned disposable DB.
+                await db.query('ALTER TABLE coin_transactions DROP COLUMN username');
+                await db.query('ALTER TABLE shop_items ADD COLUMN is_available BOOLEAN DEFAULT true');
+                await db.query('ALTER TABLE user_inventory RENAME TO qa_wallet_migrated_inventory');
+                await db.query(`CREATE TABLE user_inventory (
+                    id SERIAL, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    item_id INTEGER NOT NULL REFERENCES shop_items(id), quantity INTEGER DEFAULT 1,
+                    is_equipped BOOLEAN DEFAULT false, obtained_from VARCHAR(50), obtained_at TIMESTAMP DEFAULT NOW(),
+                    username VARCHAR(50), CONSTRAINT qa_wallet_inventory_pk PRIMARY KEY(id),
+                    CONSTRAINT qa_wallet_inventory_owner_item UNIQUE(user_id,item_id))`);
+            }
             await check('concurrent first wallet reads create exactly one starter ledger entry', async () => {
                 const user = await fixture();
                 const blocker = await db.connect();
@@ -136,25 +158,75 @@ if (process.argv.includes('--isolated')) {
                 await check(`legacy ledger UTC boundary ${dayOffset}/${time}`, async () => {
                     const user = await fixture(100);
                     const today = new Date().toISOString().slice(0, 10);
-                    await db.query(`INSERT INTO coin_transactions (user_id, username, amount, type, created_at)
-                        VALUES ($1, $2, 10, 'daily_login', (($3::date + $4::int + $5::time) AT TIME ZONE 'UTC') AT TIME ZONE current_setting('TimeZone'))`, [user.id, user.username, today, dayOffset, time]);
+                    await db.query(`INSERT INTO coin_transactions (user_id, ${deployed ? '' : 'username,'} amount, type, created_at)
+                        SELECT $1, ${deployed ? '' : '$2::text,'} 10, 'daily_login', (($3::date + $4::int + $5::time) AT TIME ZONE 'UTC') AT TIME ZONE current_setting('TimeZone') FROM users WHERE id=$1 AND username=$2::text`, [user.id, user.username, today, dayOffset, time]);
                     const result = await request(user, 'wallet/daily-login', {});
                     assert.equal(result.alreadyClaimed, claimed);
                     assert.equal((await balance(user)).coins, claimed ? 100 : 110);
                 });
             }
-            await check('day 7 inventory schema failure preserves wallet and ledger atomically', async () => {
+            await db.query('UPDATE shop_items SET equip_slot=NULL');
+            const character = (await db.query("INSERT INTO character_items(name,type) VALUES ('QA day seven','hat') RETURNING id")).rows[0];
+            const item = (await db.query(`INSERT INTO shop_items(id,item_id,name,rarity,equip_slot,code) SELECT COALESCE(MAX(id),0)+10000,$1,'QA day seven','common','hat','qa_wallet_day7' FROM shop_items RETURNING id,name`, [character.id])).rows[0];
+            assert.notEqual(item.id, character.id, 'Shop ID and character ID must not be interchangeable');
+            const inventory = async user => (await db.query(`SELECT * FROM user_inventory WHERE ${deployed ? 'user_id' : 'username'}=$1`, [deployed ? user.id : user.username])).rows;
+            const daySevenUser = async () => {
                 const user = await fixture(100);
-                const today = new Date().toISOString().slice(0, 10);
-                await db.query('UPDATE game_wallets SET last_login_reward = $2::date - 1, login_streak = 6 WHERE user_id = $1', [user.id, today]);
+                await db.query("UPDATE game_wallets SET last_login_reward=$2::date-1,login_streak=6 WHERE user_id=$1", [user.id,new Date().toISOString().slice(0,10)]);
+                return user;
+            };
+            await check('day 7 concurrent claims award one item and 50 coins; day 8 wraps to 10', async () => {
+                const user = await daySevenUser();
+                const results = await Promise.all([request(user,'wallet/daily-login',{}),request(user,'wallet/daily-login',{})]);
+                assert.equal(results.filter(result => result.reward===50 && result.bonusItem===item.name).length,1);
+                assert.equal(results.filter(result => result.alreadyClaimed).length,1);
+                assert.equal((await balance(user)).coins,150);
+                const owned = await inventory(user);
+                assert.equal(owned.length,1);
+                assert.equal(owned[0].item_id,deployed ? item.id : character.id);
+                assert.equal(owned[0].username,user.username);
+                assert.equal(deployed ? owned[0].obtained_from : owned[0].acquired_via,'daily_login');
+                assert.equal((await ledger(user)).length,1);
+                await db.query("UPDATE game_wallets SET last_login_reward=$2::date-1 WHERE user_id=$1",[user.id,new Date().toISOString().slice(0,10)]);
+                await db.query("UPDATE coin_transactions SET created_at=created_at-INTERVAL '1 day' WHERE user_id=$1",[user.id]);
+                const next = await request(user,'wallet/daily-login',{});
+                assert.equal(next.reward,10);
+                assert.equal(next.loginStreak,8);
+                assert.equal((await inventory(user)).length,1);
+            });
+            await check('day 7 repeat item preserves the supported inventory ownership model', async () => {
+                const user = await daySevenUser();
+                await request(user,'wallet/daily-login',{});
+                await db.query("UPDATE game_wallets SET last_login_reward=$2::date-1,login_streak=13 WHERE user_id=$1",[user.id,new Date().toISOString().slice(0,10)]);
+                await db.query("UPDATE coin_transactions SET created_at=created_at-INTERVAL '1 day' WHERE user_id=$1",[user.id]);
+                const reward = await request(user,'wallet/daily-login',{});
+                assert.equal(reward.reward,50);
+                const owned = await inventory(user);
+                assert.equal(owned.length,1);
+                if (deployed) { assert.equal(owned[0].quantity,2); assert.equal(reward.bonusItem,item.name); }
+                else assert.equal(reward.bonusItem,null);
+                assert.equal((await balance(user)).coins,200);
+            });
+            await check('day 7 unavailable or non-equippable catalog awards coins without an item', async () => {
+                for (const unavailable of [true,false]) {
+                    const user = await daySevenUser();
+                    await db.query(`UPDATE shop_items SET ${deployed ? 'is_available' : 'is_active'}=$1,equip_slot=$2 WHERE id=$3`,[!unavailable,unavailable?'hat':null,item.id]);
+                    const reward = await request(user,'wallet/daily-login',{});
+                    assert.equal(reward.reward,50);
+                    assert.equal(reward.bonusItem,null);
+                    assert.deepEqual(await inventory(user),[]);
+                }
+                await db.query(`UPDATE shop_items SET ${deployed ? 'is_available' : 'is_active'}=true,equip_slot='hat' WHERE id=$1`,[item.id]);
+            });
+            await check('day 7 inventory insert failure rolls back coins, date, streak and ledger', async () => {
+                const user = await daySevenUser();
                 const before = await balance(user);
-                const columns = (await db.query("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('shop_items', 'user_inventory')")).rows;
-                assert.ok(!columns.some(row => row.table_name === 'shop_items' && row.column_name === 'is_available'), 'Canonical schema reproduces the known catalog mismatch');
-                await request(user, 'wallet/daily-login', {}, 500);
-                assert.deepEqual(await balance(user), before);
-                assert.deepEqual(await ledger(user), []);
-                // This is rollback evidence, not successful day-seven product verification.
-                evidence.blockers.push({ id: 'WALLET-INVENTORY-03', status: 'BLOCKED', scenario: 'Day 7 reward returns 500: catalog/inventory contract requires a separate approved repair; Wallet release must remain on hold.' });
+                await db.query(`ALTER TABLE user_inventory ADD CONSTRAINT qa_wallet_inventory_failure CHECK(item_id<>${deployed ? item.id : character.id}) NOT VALID`);
+                try { await request(user,'wallet/daily-login',{},500); }
+                finally { await db.query('ALTER TABLE user_inventory DROP CONSTRAINT qa_wallet_inventory_failure'); }
+                assert.deepEqual(await balance(user),before);
+                assert.deepEqual(await ledger(user),[]);
+                assert.deepEqual(await inventory(user),[]);
             });
             await check('starter bonus records canonical username once on sequential reads', async () => {
                 const user = await fixture();
@@ -232,7 +304,7 @@ if (process.argv.includes('--isolated')) {
             const out = path.resolve(__dirname, '../../output/wallet-ledger');
             fs.mkdirSync(out, { recursive: true });
             fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify(evidence, null, 2));
-            fs.writeFileSync(path.join(out, `results-${timezone.replace(/[^a-z0-9_-]/gi, '_')}.json`), JSON.stringify(evidence, null, 2));
+            fs.writeFileSync(path.join(out, `results-${variant}-${timezone.replace(/[^a-z0-9_-]/gi, '_')}.json`), JSON.stringify(evidence, null, 2));
         }
     });
 }

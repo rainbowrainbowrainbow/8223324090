@@ -8,6 +8,30 @@ const { requireRole, ANY_ROLE } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Wallet');
 
+// Existing deployments and fresh migrations use two supported inventory/ledger layouts.
+const walletColumnCache = new Map();
+async function walletTableColumns(client, tableName) {
+    if (walletColumnCache.has(tableName)) return walletColumnCache.get(tableName);
+    const result = await client.query(
+        'SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1',
+        [tableName]
+    );
+    const columns = new Set(result.rows.map(row => row.column_name));
+    if (!columns.size) throw new Error(`Wallet table unavailable: ${tableName}`);
+    walletColumnCache.set(tableName, columns);
+    return columns;
+}
+
+async function recordWalletTransaction(client, userId, amount, type, description, referenceId = null) {
+    const columns = await walletTableColumns(client, 'coin_transactions');
+    const withUsername = columns.has('username');
+    await client.query(
+        `INSERT INTO coin_transactions (user_id, ${withUsername ? 'username,' : ''} amount, type, description, reference_id)
+         VALUES ($1, ${withUsername ? '(SELECT username FROM users WHERE id = $1),' : ''} $2, $3, $4, $5)`,
+        [userId, amount, type, description, referenceId]
+    );
+}
+
 // GET /api/wallet — current user balance
 router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
     try {
@@ -23,10 +47,7 @@ router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
                 );
                 // Only insert bonus if wallet was actually created (not already exists)
                 if (created.rows.length > 0) {
-                    await client.query(
-                        'INSERT INTO coin_transactions (user_id, username, amount, type, description) VALUES ($1, (SELECT username FROM users WHERE id = $1), 500, $2, $3)',
-                        [req.user.id, 'starter_bonus', 'Стартовий бонус']
-                    );
+                    await recordWalletTransaction(client, req.user.id, 500, 'starter_bonus', 'Стартовий бонус');
                 }
                 await client.query('COMMIT');
             } catch (e) {
@@ -101,26 +122,39 @@ router.post('/daily-login', requireRole(...ANY_ROLE), async (req, res) => {
             'UPDATE game_wallets SET coins = coins + $1, total_earned = total_earned + $1, login_streak = $2, last_login_reward = $3, updated_at = NOW() WHERE user_id = $4',
             [reward, streak, today, req.user.id]
         );
-        await client.query(
-            'INSERT INTO coin_transactions (user_id, username, amount, type, description) VALUES ($1, (SELECT username FROM users WHERE id = $1), $2, $3, $4)',
-            [req.user.id, reward, 'daily_login', `Щоденний бонус (день ${streak})`]
-        );
+        await recordWalletTransaction(client, req.user.id, reward, 'daily_login', `Щоденний бонус (день ${streak})`);
 
         // Day 7 bonus: random common item
         let bonusItem = null;
         if (dayIndex === 6) {
+            const inventoryColumns = await walletTableColumns(client, 'user_inventory');
+            const usesShopInventory = inventoryColumns.has('user_id');
             const items = await client.query(
-                "SELECT id, name FROM shop_items WHERE rarity = 'common' AND is_available = true AND equip_slot IS NOT NULL ORDER BY RANDOM() LIMIT 1"
+                usesShopInventory
+                    ? "SELECT id, name FROM shop_items WHERE rarity = 'common' AND is_available = true AND equip_slot IS NOT NULL ORDER BY RANDOM() LIMIT 1"
+                    : "SELECT item_id AS id, name FROM shop_items WHERE rarity = 'common' AND is_active = true AND equip_slot IS NOT NULL AND item_id IS NOT NULL ORDER BY RANDOM() LIMIT 1"
             );
             if (items.rows.length > 0) {
                 const item = items.rows[0];
-                await client.query(
-                    `INSERT INTO user_inventory (user_id, item_id, quantity, obtained_from)
-                     VALUES ($1, $2, 1, 'daily_login')
-                     ON CONFLICT (user_id, item_id) DO UPDATE SET quantity = user_inventory.quantity + 1`,
-                    [req.user.id, item.id]
-                );
-                bonusItem = item.name;
+                if (usesShopInventory) {
+                    const withUsername = inventoryColumns.has('username');
+                    await client.query(
+                        `INSERT INTO user_inventory (user_id, item_id, quantity, obtained_from${withUsername ? ', username' : ''})
+                         VALUES ($1, $2, 1, 'daily_login'${withUsername ? ', (SELECT username FROM users WHERE id = $1)' : ''})
+                         ON CONFLICT (user_id, item_id) DO UPDATE SET quantity = user_inventory.quantity + 1`,
+                        [req.user.id, item.id]
+                    );
+                    bonusItem = item.name;
+                } else {
+                    // Match the canonical achievement writer: unique owned character items.
+                    const granted = await client.query(
+                        `INSERT INTO user_inventory (username, item_id, acquired_via)
+                         VALUES ((SELECT username FROM users WHERE id = $1), $2, 'daily_login')
+                         ON CONFLICT (username, item_id) DO NOTHING RETURNING id`,
+                        [req.user.id, item.id]
+                    );
+                    if (granted.rows.length) bonusItem = item.name;
+                }
             }
         }
 
@@ -244,14 +278,8 @@ router.post('/transfer', requireRole(...ANY_ROLE), async (req, res) => {
         );
 
         // Transaction records
-        await client.query(
-            'INSERT INTO coin_transactions (user_id, username, amount, type, description, reference_id) VALUES ($1, (SELECT username FROM users WHERE id = $1), $2, $3, $4, $5)',
-            [req.user.id, -amount, 'gift', `Подарунок для ${recipient.rows[0].name}`, to_user_id]
-        );
-        await client.query(
-            'INSERT INTO coin_transactions (user_id, username, amount, type, description, reference_id) VALUES ($1, (SELECT username FROM users WHERE id = $1), $2, $3, $4, $5)',
-            [to_user_id, amount, 'gift', `Подарунок від ${req.user.name || req.user.username}`, req.user.id]
-        );
+        await recordWalletTransaction(client, req.user.id, -amount, 'gift', `Подарунок для ${recipient.rows[0].name}`, to_user_id);
+        await recordWalletTransaction(client, to_user_id, amount, 'gift', `Подарунок від ${req.user.name || req.user.username}`, req.user.id);
 
         await client.query('COMMIT');
         res.json({ success: true, message: `Переказано ${amount} монет` });

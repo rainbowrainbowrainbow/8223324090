@@ -587,20 +587,30 @@ describe('agent activity scheduler wrapper behavior', () => {
     it('runs one bounded async git log process without a shell or event-loop blocking', async () => {
         const { __agentTrackerTest: { runGitLog } } = loadAgentTracker();
         let invocation;
-        let eventLoopAdvanced = false;
+        let completeGitLog;
+        let invocations = 0;
+        let settled = false;
         const resultPromise = runGitLog('2026-09-10T00:00:00.000Z', {
             cwd: process.cwd(),
             execFileImpl: (command, args, options, callback) => {
+                invocations++;
                 invocation = { command, args, options };
-                setTimeout(() => callback(null, 'snapshot', ''), 25);
+                completeGitLog = callback;
             }
         });
-        setImmediate(() => { eventLoopAdvanced = true; });
+        resultPromise.then(() => { settled = true; }, () => { settled = true; });
+
+        // Advance the event loop while the process is explicitly still pending.
+        // A fixed timer can finish first under load, regardless of async correctness.
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(settled, false);
+        assert.equal(invocations, 1);
+        assert.equal(typeof completeGitLog, 'function');
+        completeGitLog(null, 'snapshot', '');
 
         const result = await resultPromise;
 
         assert.equal(result, 'snapshot');
-        assert.equal(eventLoopAdvanced, true);
         assert.equal(invocation.command, 'git');
         assert.ok(invocation.args.includes('--shortstat'));
         assert.ok(invocation.args.includes('--no-merges'));

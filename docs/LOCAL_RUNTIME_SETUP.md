@@ -35,6 +35,18 @@ npx -y -p node@22 -p npm@10 -c "npm run test:ui"
 npx -y -p node@22 -p npm@10 -c "node --test tests/<file>.test.js"
 ```
 
+## Unit Test Concurrency On Windows
+
+`npm run test:unit` uses `scripts/run-unit-tests.js` and the explicit test-file
+list in `package.json`. On Windows, the runner limits concurrency to two test
+files to reduce socket exhaustion (`listen ENOBUFS`) when many isolated HTTP
+tests run together. Other platforms retain Node's default concurrency.
+
+`npm test` uses this same runner automatically. No separate bounded-run helper
+is needed. The runner does not retry failures or skip tests, and returns the
+child process's exit status. A launch error or interrupted child fails the run.
+Focused `node --test tests/<file>.test.js` commands remain available.
+
 ## What Not To Do
 
 - Do not report Node 18, Node 20, Node 24, or npm 11 results as representative.

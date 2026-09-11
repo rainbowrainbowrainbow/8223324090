@@ -11,11 +11,14 @@ module.exports = async function auditChecklistScale({ api, db, evidence, page, b
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
     const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     assert.equal(target.isLocal, true, 'Scale fixtures require loopback PostgreSQL');
-    const connected = (await db.query(
-        'SELECT current_database() AS database_name, host(inet_server_addr()) AS server_address'
-    )).rows[0];
-    assert.equal(connected.database_name, decodeURIComponent(target.url.pathname.slice(1)), 'Use the runner-owned database');
-    assert.ok(['127.0.0.1', '::1'].includes(connected.server_address), 'Use a loopback database connection');
+    const connection = await db.connect();
+    try {
+        // A container's server address differs from the loopback endpoint used by the runner.
+        assert.equal(connection.connectionParameters.host, target.hostname, 'Use the verified loopback database endpoint');
+        assert.equal(Number(connection.connectionParameters.port), Number(target.url.port || 5432), 'Use the runner-owned database port');
+        const connected = (await connection.query('SELECT current_database() AS database_name')).rows[0];
+        assert.equal(connected.database_name, target.databaseName, 'Use the runner-owned database');
+    } finally { connection.release(); }
     assert.ok(Array.isArray(evidence.findings));
 
     const suffix = randomBytes(4).toString('hex');

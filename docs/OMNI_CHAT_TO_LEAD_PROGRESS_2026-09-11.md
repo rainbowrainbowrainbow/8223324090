@@ -149,14 +149,17 @@ Notes for OMNI-L4/AI:
 
 ## OMNI-L5 — WhatsApp in shared Omni inbox
 
-Status: complete locally on top of L1–L3; ready for OMNI-L4/WhatsApp. Commit/push/deploy were not run because the L5 activator explicitly leaves them for L4/WhatsApp.
+Status: released to production through OMNI-L4/WhatsApp. Code, migration, CI, Railway deploy and live QA are complete. Real WhatsApp account activation remains ACTIVATION_PENDING until a concrete test WABA/number/secrets/subscription scope is provided and approved.
 
 Worktree / branch:
 
 - Worktree: `C:/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/omni-l1-chat-to-lead`
 - Branch: `codex/omni-l1-chat-to-lead`
 - Base SHA before L5: `bcf1bfac59812a254c3ac23b54abd48df7f792a3`
-- Commit SHA: none yet
+- L5 implementation commit SHA: `3b33ec209dcccb8bb7dd68b1fe3ec6760e47a31f`
+- L4/WhatsApp release fix commit SHA: `a786c8d75ea567cc21093bb910a485be16c1b913`
+- Production release branch: `codex/eventgenix-production`
+- Production release version: `v0.81.122 — Omni: WhatsApp inbox`
 
 Implemented:
 
@@ -195,9 +198,37 @@ Verification performed:
 - `npm run check:api-surface` — passed.
 - `npm run check:static-surface` — passed.
 
-ACTIVATION_PENDING for L4/WhatsApp:
+OMNI-L4/WhatsApp release evidence:
+
+- Commit/push: implementation `3b33ec209dcccb8bb7dd68b1fe3ec6760e47a31f`, release fix `a786c8d75ea567cc21093bb910a485be16c1b913`, pushed to `codex/eventgenix-production`.
+- CI exact SHA: GitHub Actions run `34647934730` passed all jobs for `a786c8d75ea567cc21093bb910a485be16c1b913`.
+- Railway deploy: production deployment `7ab9ddf9-5804-411c-b1a9-6674e42eaa96` completed through `npm run release:railway-up`.
+- Version smoke: live `/api/version` returned `v0.81.122 — Omni: WhatsApp inbox @ a786c8d75ea5`, branch `codex/eventgenix-production`, deployment metadata `manifest`.
+- Live QA: production health `200`; test-auth verify passed; `omni.html` exposes WhatsApp filter/channel surface; `/api/omni/accounts` exposes WhatsApp as `disconnected`, `sendCapable=false`, `receiveCapable=false`; `/api/omni/conversations?channel=whatsapp&limit=1` returned success with `0` conversations; unsigned `/api/omni/webhook/whatsapp` was blocked with `401`.
+- CI issue fixed before deploy: initial Fast baseline failed because `omni.html` exceeded theme-surface debt budget by WhatsApp-specific duplicate colors. Fixed by reusing the existing green channel style for WhatsApp avatar/badge/dot; no product logic changed.
+
+ACTIVATION_PENDING for real WhatsApp account:
 
 - No real WhatsApp secrets, env vars, Meta subscriptions, business settings or numbers were changed.
 - No external WhatsApp messages were sent.
-- Live activation still needs a concrete test WABA ID, Phone Number ID, Meta app secret, verify token, access token, public webhook URL subscription to WhatsApp `messages`, and an explicitly approved test recipient/number.
-- L4/WhatsApp should release the code/migration, verify existing channels, verify truthful disconnected/misconfigured WhatsApp state if credentials are absent, and avoid claiming `LIVE_CONNECTED` until a signed test webhook and safe test exchange are completed with approved test credentials.
+- Live production status is intentionally truthful: WhatsApp code is present, but the channel is not connected to a real account yet.
+- To move from `ACTIVATION_PENDING` to `LIVE_CONNECTED`, provide and approve a scoped test activation packet:
+  - business context to bind (`event_genix`, `maysternya_doli`, `dar`, or another supported context);
+  - Meta WABA ID;
+  - WhatsApp Phone Number ID;
+  - permanent/system-user WhatsApp access token;
+  - Meta app secret for `X-Hub-Signature-256` verification;
+  - webhook verify token;
+  - optional display phone number/account name for admins;
+  - exact public callback URL: `https://8223324090-production.up.railway.app/api/omni/webhook/whatsapp`;
+  - explicit approval to set/rotate production secrets and subscribe Meta Webhooks to WhatsApp `messages`;
+  - one safe test recipient/number and approved test message text for the control exchange.
+- Activation QA checklist after credentials exist:
+  - verify `GET /api/omni/accounts` changes WhatsApp from `disconnected` to connected/send/receive capable only for the intended business context;
+  - verify Meta GET webhook challenge with the provided verify token;
+  - send one signed synthetic WhatsApp webhook payload and confirm mismatched WABA/Phone Number ID is ignored before persistence;
+  - receive one real inbound test message from the approved test number;
+  - send one manual reply only inside the 24-hour customer-care window;
+  - verify receipts update provider lifecycle without creating inbound messages;
+  - create one test lead from the WhatsApp test conversation through the shared reviewed draft flow;
+  - keep evidence redacted and do not expose tokens, app secret, phone ownership data or recipient details in logs/docs.

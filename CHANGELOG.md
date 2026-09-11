@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.123 - Omni: докази релізу WhatsApp
+
+### Omni / WhatsApp / (12.09.2026) [codex]
+- **Докази релізу WhatsApp зафіксовані** — handoff оновлено фактичними commit SHA, green CI, Railway deployment, version smoke і live QA результатами.
+- **Активаційний checklist уточнено** — задокументовано, що потрібно для переходу з `ACTIVATION_PENDING` у `LIVE_CONNECTED`: WABA, Phone Number ID, secrets, Meta subscription і тестовий обмін.
+- **Версійні маркери синхронізовані** — cache tags, service worker і видима версія оновлені до `v0.81.123` без зміни реального WhatsApp номера чи Meta subscriptions.
+
+---
+
 ## v0.81.122 - Omni: WhatsApp inbox
 
 ### Omni / WhatsApp / (12.09.2026) [codex]

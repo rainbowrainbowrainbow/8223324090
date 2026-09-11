@@ -3,7 +3,7 @@ const path = require('node:path');
 const os = require('node:os');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../..');
-const artifactDir = path.join(root, 'output', 'omni-completion-browser');
+const artifactDir = path.join(root, 'output', 'playwright', 'omni-completion');
 fs.mkdirSync(artifactDir, { recursive: true });
 function playwright() {
   for (const entry of process.env.PATH.split(path.delimiter)) {
@@ -184,13 +184,27 @@ function playwright() {
     await page.waitForFunction(()=>document.querySelector('#omniMessages').textContent.includes('Завантажити · fixture.pdf'));
     assert.equal(await page.locator('#omniSelectedFile').textContent(),'');
     assert.equal(await page.locator('#omniCancelFile').isVisible(),false);
+    await page.locator('#omniInput').fill('Перша строка\nДруга строка\nТретя строка\nЧетверта строка');
+    const draftHeight = await page.locator('#omniInput').evaluate(el => el.clientHeight);
+    await select(9001); await select(9002);
+    assert.equal(await page.locator('#omniInput').evaluate(el => el.clientHeight), draftHeight, 'multiline_draft_height_lost');
+    await page.locator('#omniInput').fill('');
     const metrics=[];
-    for(const width of [1440,390]) {
-      await page.setViewportSize({width,height:width===390?844:1000});await page.waitForTimeout(500);
+    for(const [width,height] of [[1440,900],[1024,768],[390,844],[360,640],[390,420]]) {
+      await page.setViewportSize({width,height});await page.waitForTimeout(250);
+      if (height < 540) await page.locator('#omniInput').focus();
       const measurement=await page.evaluate(()=>({viewport:innerWidth,width:document.documentElement.scrollWidth,textWrap:getComputedStyle(document.querySelector('.omni-msg-content')).whiteSpace}));
       assert.ok(measurement.width<=width+1);assert.equal(measurement.textWrap,'pre-wrap');metrics.push(measurement);
-      await page.screenshot({path:path.join(artifactDir,'fixture-omni-'+width+'.png'),mask:[page.locator('#sidebarNav,.header-user')],animations:'disabled'});
+      const bounds = await page.locator('#omniInput').boundingBox();
+      assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= height + 1, 'composer_outside_viewport');
+      if (width <= 1100) {
+        const historyBounds = await page.locator('#omniMessages').boundingBox();
+        assert.ok(historyBounds.height >= 64, 'history_collapsed');
+        assert.ok(await page.locator('#omniBackToList').isVisible());
+      }
+      await page.screenshot({path:path.join(artifactDir,'fixture-omni-'+width+'x'+height+'.png'),mask:[page.locator('#sidebarNav,.header-user')],animations:'disabled'});
     }
+    await page.setViewportSize({width:390,height:844});
     await page.locator('#omniInput').scrollIntoViewIfNeeded();
     const composer = await page.locator('#omniInput').boundingBox();
     assert.ok(composer.width >= 200 && composer.y >= 0 && composer.y + composer.height <= 844);
@@ -198,7 +212,7 @@ function playwright() {
     await page.locator('#omniBackToList').click();
     assert.ok(await page.locator('.omni-sidebar').isVisible());
     await select(9002);
-    await page.evaluate(()=>{document.body.classList.remove('dark-mode');document.documentElement.classList.remove('dark-mode');});
+    await page.evaluate(()=>{document.body.classList.remove('dark-mode');document.documentElement.classList.remove('dark-mode');document.documentElement.setAttribute('data-theme','light');document.documentElement.style.colorScheme='light';});
     await page.locator('#omniInput').scrollIntoViewIfNeeded();
     await page.screenshot({path:path.join(artifactDir,'fixture-omni-mobile-light.png'),mask:[page.locator('#sidebarNav,.header-user')],animations:'disabled'});
     assert.deepEqual(errors,[]);

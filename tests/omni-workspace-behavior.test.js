@@ -66,6 +66,45 @@ test('an inbound failure requires attention even when sending still works', t =>
     assert.equal(h.app.accountNeedsAttention({ channel: 'sms', connected: true, sendCapable: true, receiveCapable: false }), false);
 });
 
+test('search typing rejects an older response immediately and clear keeps the channel filter', async t => {
+    const h = harness(t);
+    const pending = deferred();
+    const requests = [];
+    h.app.setApi(async requestPath => { requests.push(requestPath); return pending.promise; });
+    const previous = h.app.loadConversations();
+    const search = h.document.getElementById('omniSearch');
+    search.value = 'New query';
+    search.dispatchEvent(new h.window.Event('input'));
+    pending.resolve({ success: true, data: { conversations: [conversation(99)], total: 1 } });
+    await previous;
+    assert.notEqual(h.app.state().conversations[0]?.id, 99);
+    h.app.setApi(h.defaultApi);
+    h.document.querySelector('[data-channel="telegram"]').click();
+    await h.flush();
+    h.app.setApi(async requestPath => { requests.push(requestPath); return h.defaultApi(requestPath); });
+    h.document.getElementById('omniClearSearch').click();
+    await new Promise(resolve => setTimeout(resolve, 350));
+    assert.equal(search.value, '');
+    assert.equal(h.document.getElementById('omniClearSearch').hidden, true);
+    assert.ok(requests.at(-1).includes('channel=telegram'));
+    assert.ok(!requests.at(-1).includes('search='));
+});
+
+test('IME confirmation and Shift+Enter do not send a draft', async t => {
+    const h = harness(t);
+    h.app.selectConversation(1);
+    await h.flush();
+    let sends = 0;
+    h.app.setApi(async requestPath => { if (requestPath.endsWith('/send')) sends++; return h.defaultApi(requestPath); });
+    const input = h.document.getElementById('omniInput');
+    input.value = 'Draft being composed';
+    input.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }));
+    input.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+    await h.flush();
+    assert.equal(sends, 0);
+    assert.equal(input.value, 'Draft being composed');
+});
+
 test('manager refresh updates open status and assignee without replacing a draft', async t => {
     let record = { ...conversation(1), status: 'open', assignedTo: 'first' };
     const h = harness(t, [record]);

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.118 - Випускні: ізоляція бізнесів
+
+### Release / Versioning / (11.09.2026) [codex]
+- **Випускні: ізоляція бізнесів** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.117 - PARK/DAR PIN і service-out
 
 ### Release / Versioning / (11.09.2026) [codex]

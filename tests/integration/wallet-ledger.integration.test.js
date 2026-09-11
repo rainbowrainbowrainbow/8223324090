@@ -412,6 +412,74 @@ if (process.argv.includes('--isolated')) {
                     syntheticExample: dates
                 };
             });
+            const historyOwner = await fixture();
+            const historyOther = await fixture();
+            const seedHistory = async (user, size) => (await db.query(`
+                INSERT INTO coin_transactions(user_id, ${deployed ? '' : 'username,'} amount, type, description, created_at)
+                SELECT $1, ${deployed ? '' : '$2::text,'} 1, 'gift', 'QA history fixture',
+                    CASE WHEN n<=45 THEN '2026-09-10 12:00:00'::timestamp ELSE '2026-09-09 12:00:00'::timestamp END
+                FROM generate_series(1,$3::int) n JOIN users u ON u.id=$1 AND u.username=$2::text
+                RETURNING id`, [user.id, user.username, size])).rows.map(row => row.id);
+            const historyIds = await seedHistory(historyOwner, 61);
+            await seedHistory(historyOther, 3);
+            const historyCases = [
+                ['defaults', '', 1, 20],
+                ['regular page', 'page=2&limit=7', 2, 7],
+                ['negative page', 'page=-1&limit=5', 1, 5],
+                ['negative limit', 'page=1&limit=-5', 1, 20],
+                ['zero values', 'page=0&limit=0', 1, 20],
+                ['non-numeric values', 'page=nope&limit=oops', 1, 20],
+                ['overflowing page', `page=${'9'.repeat(400)}&limit=5`, 1, 5],
+                ['unsafe page integer', 'page=9007199254740992&limit=5', 1, 5],
+                ['unsafe offset product', 'page=9007199254740991&limit=50', 1, 50],
+                ['largest safe page with unit limit', 'page=9007199254740991&limit=1', 9007199254740991, 1],
+                ['clamped limit', 'limit=999', 1, 50],
+                ['overflowing limit remains capped', `limit=${'9'.repeat(400)}`, 1, 50],
+                ['legacy decimal parsing', 'page=2.9&limit=7.9', 2, 7],
+                ['legacy numeric prefix parsing', 'page=2tail&limit=7tail', 2, 7],
+                ['structured values', 'page[x]=2&limit[x]=5', 1, 20],
+                ['repeated values preserve the first value', 'page=2&page=3&limit=5&limit=6', 2, 5],
+                ['query object with shadowed coercion', 'page[toString]=2&limit[toString]=5', 1, 20],
+                ['last partial page', 'page=4&limit=20', 4, 20],
+                ['past final page', 'page=5&limit=20', 5, 20],
+                ['owner cannot be overridden', `user_id=${historyOther.id}&limit=5`, 1, 5]
+            ];
+            for (const [label, query, page, limit] of historyCases) {
+                await check(`history pagination: ${label}`, async () => {
+                    const result = await request(historyOwner, `wallet/history?${query}`);
+                    assert.deepEqual(Object.keys(result).sort(), ['limit', 'page', 'total', 'transactions']);
+                    assert.equal(result.page, page);
+                    assert.equal(result.limit, limit);
+                    assert.equal(result.total, 61);
+                    assert.equal(result.transactions.length, Math.min(limit, Math.max(0, 61 - (page - 1) * limit)));
+                    assert.ok(result.transactions.every(row => historyIds.includes(row.id)));
+                    for (const row of result.transactions) {
+                        assert.deepEqual(Object.keys(row).sort(), ['amount', 'createdAt', 'description', 'id', 'referenceId', 'type']);
+                        assert.equal(row.amount, 1);
+                        assert.equal(row.type, 'gift');
+                        assert.equal(row.referenceId, null);
+                    }
+                    assert.equal(await balance(historyOwner), undefined, 'History reads must not create a wallet or starter bonus');
+                });
+            }
+            await check('history tied timestamps use descending IDs across repeated pages without gaps or duplicates', async () => {
+                const expected = [...historyIds.slice(0, 45).sort((a, b) => b - a), ...historyIds.slice(45).sort((a, b) => b - a)];
+                for (let pass = 0; pass < 2; pass++) {
+                    const seen = [];
+                    for (let page = 1; page <= 4; page++) {
+                        const result = await request(historyOwner, `wallet/history?page=${page}&limit=20`);
+                        seen.push(...result.transactions.map(row => row.id));
+                    }
+                    assert.deepEqual(seen, expected);
+                    assert.equal(new Set(seen).size, 61);
+                }
+            });
+            await check('empty history preserves pagination metadata and does not create a wallet', async () => {
+                const user = await fixture();
+                assert.deepEqual(await request(user, 'wallet/history?page=3&limit=5'), { transactions: [], total: 0, page: 3, limit: 5 });
+                assert.equal(await balance(user), undefined);
+                assert.deepEqual(await ledger(user), []);
+            });
             await check('rejected insufficient funds and numeric self-transfer do not create ledger entries', async () => {
                 const sender = await fixture(5);
                 const recipient = await fixture(0);

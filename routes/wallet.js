@@ -177,16 +177,25 @@ router.post('/daily-login', requireRole(...ANY_ROLE), async (req, res) => {
     }
 });
 
+function parseWalletHistoryInteger(value) {
+    // Preserve scalar/first repeated-value parsing without coercing query objects.
+    const raw = Array.isArray(value) ? value[0] : value;
+    return typeof raw === 'string' ? parseInt(raw) : NaN;
+}
+
 // GET /api/wallet/history — transaction history
 router.get('/history', requireRole(...ANY_ROLE), async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+        const parsedLimit = parseWalletHistoryInteger(req.query.limit);
+        const limit = parsedLimit > 0 ? Math.min(parsedLimit, 50) : 20;
+        const parsedPage = parseWalletHistoryInteger(req.query.page);
+        const page = Number.isSafeInteger(parsedPage) && parsedPage > 0
+            && Number.isSafeInteger((parsedPage - 1) * limit) ? parsedPage : 1;
         const offset = (page - 1) * limit;
 
         const [txns, count] = await Promise.all([
             pool.query(
-                'SELECT * FROM coin_transactions WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+                'SELECT * FROM coin_transactions WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3',
                 [req.user.id, limit, offset]
             ),
             pool.query('SELECT COUNT(*) FROM coin_transactions WHERE user_id = $1', [req.user.id])

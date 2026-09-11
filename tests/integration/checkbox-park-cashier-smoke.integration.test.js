@@ -108,6 +108,19 @@ function withParkMiddleScope(options = {}) {
     };
 }
 
+async function withTemporaryEnv(values, callback) {
+    const prior = new Map(Object.keys(values).map(name => [name, process.env[name]]));
+    Object.assign(process.env, values);
+    try {
+        return await callback();
+    } finally {
+        for (const [name, previous] of prior.entries()) {
+            if (previous == null) delete process.env[name];
+            else process.env[name] = previous;
+        }
+    }
+}
+
 function createAdmissionTicketPaymentOrder(options = {}) {
     return createAdmissionTicketPaymentOrderBase({
         ...options,
@@ -4643,6 +4656,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
                 fiscalLocationId: scope.fiscalLocationId,
                 fiscalRegisterId: scope.fiscalRegisterId,
                 crmProfileKey: CRM_PROFILE_KEY,
+                businessContext: CRM_PROFILE_KEY,
+                routeOptionId: 'park_test',
                 amountMinor: '100',
                 reason: 'Disposable PostgreSQL immutable snapshot regression'
             }
@@ -4715,11 +4730,17 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
                 [scope.fiscalProfileId, operationId, `phase2-service-worker-${process.pid}`, lockToken]
             );
             assert.equal(claimed.rowCount, 1);
-            const processed = await processOnePaymentOutboxJob({
-                dbPool: pool,
-                provider: fakeProvider,
-                job: claimed.rows[0]
-            });
+            const processed = operationId === serviceIn.operationId
+                ? await withTemporaryEnv({ EVENTGENIX_CASHIER_PRO_ENABLED: 'true' }, () => processOnePaymentOutboxJob({
+                    dbPool: pool,
+                    provider: fakeProvider,
+                    job: claimed.rows[0]
+                }))
+                : await processOnePaymentOutboxJob({
+                    dbPool: pool,
+                    provider: fakeProvider,
+                    job: claimed.rows[0]
+                });
             assert.equal(processed.ok, true, JSON.stringify(processed));
             assert.equal(processed.source, 'service_submit');
         }
@@ -4933,6 +4954,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
                 fiscalLocationId: scope.fiscalLocationId,
                 fiscalRegisterId: scope.fiscalRegisterId,
                 crmProfileKey: CRM_PROFILE_KEY,
+                businessContext: CRM_PROFILE_KEY,
+                routeOptionId: 'park_test',
                 amountMinor: '100',
                 reason: `Concurrent wrong PIN regression ${index}`
             }

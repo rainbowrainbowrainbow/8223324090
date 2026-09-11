@@ -584,6 +584,9 @@ async function runSuite(testDb, testFile, suiteMode) {
         serverEnv.CHECKBOX_FULLSTACK_TESTMODE_STAGE = stage;
         serverEnv.CHECKBOX_FULLSTACK_TESTMODE_CONFIG_FILE = String(process.env.CHECKBOX_FULLSTACK_TESTMODE_CONFIG_FILE || process.env.CHECKBOX_PILOT_CONFIG_FILE || '').trim();
     }
+    if (testFile.includes('checkbox-park-cashier-smoke.integration')) {
+        serverEnv.PARK_DAR_TEST_SERVICE_OUT_ENABLED = 'true';
+    }
     const testEnv = {
         ...serverEnv,
         TEST_URL: baseUrl,

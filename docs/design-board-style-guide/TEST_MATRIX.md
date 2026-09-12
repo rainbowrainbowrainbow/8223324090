@@ -34,7 +34,7 @@ Browser перевіряв actual deployed UI, але блокував external 
 | ID | Сценарій / acceptance | Доказ зараз | Майбутній тест / залежність |
 |---|---|---|---|
 | M01 | Точна база і live SHA; owned diff без чужих файлів | PASS snapshot, checkout stale | Перед T1/G0 і integration повторити git/version read-only |
-| M02 | Metadata→blob/key/disk/backup source inventory | BLOCKED: endpoints 404, storage source невідомий | T5/B1, read-only manifest без payload; apply тільки окремо |
+| M02 | Metadata→blob/key/disk/backup source inventory | READ-ONLY PASS: scanned 3, ok 0, `SOURCE_MISSING: 3`, recoverableFromLocal 0 | T5/B1, потрібен external backup/source root; apply тільки окремо |
 | M03 | Board auth + 200 items,total → картки | LIVE PASS для одного QA role | T1, tests/designs-page-ui.test.js; не proof усіх grants |
 | M04 | Порожній список відрізняється від помилки | SOURCE empty існує; UX не перевірений | T1, 200 items=[]/total=0; ясний empty без new manager logic |
 | M05 | 500/malformed/network → error/retry; shell доступний | SYNTHETIC FAIL, TypeError | T1, реальний loadDesigns/initPage з fake API; retry→200 |
@@ -45,15 +45,15 @@ Browser перевіряв actual deployed UI, але блокував external 
 | M10 | Authorized download: header, MIME/name, no token URL, cleanup | SOURCE mismatch; live anonymous HEAD401/authorized404 | T2, fake endpoint bytes + 401/403/404/500, desktop/touch; 401 policy auth owner не переписувати |
 | M11 | Theme state після reload/toggle, card/filter/picker/catalog/viewer/error | LIVE main card switch PASS, selector FAIL | T3, modes dark/light, computed styles + visual review, no global changes |
 | M12 | Responsive 390/768/1440, zoom і focus visibility | Вузький live overflow smoke PASS | T3, всі змінені surfaces; не тільки closed gallery |
-| M13 | Board internal Style Guide entry → styleguide panel → Board | NOT IMPLEMENTED | T4, tests/designer-navigation.test.js + browser smoke |
-| M14 | /designer, fragments, refresh, Back/Forward, unknown hash | LIVE #styleguide FAIL, default catalogs працює | T4: five allowed fragments; unknown safe fallback; /designer route лишається |
-| M15 | Різні персональні grants designs/designer, deny і pending | Один LIVE акаунт має обидва; решта UNVERIFIED | T4, stub existing canAccessPage + тестові акаунти без role/grant mutation |
+| M13 | Board internal Style Guide entry → styleguide panel → Board | READY локально: `tests/designer-navigation.test.js` PASS | Browser smoke після deploy/live target |
+| M14 | /designer, fragments, refresh, Back/Forward, unknown hash | READY локально: `/designer#styleguide` і fallback covered | Browser smoke після deploy/live target |
+| M15 | Різні персональні grants designs/designer, deny і pending | PARTIAL READY: entry visibility uses existing `canAccessPage('/designer')`; multi-account live grants UNVERIFIED | Тестові акаунти без role/grant mutation або approved disposable fixture |
 | M16 | Board hashes і catalog viewer/deep links не регресують | SOURCE існують, origin fixes новіші | T4/T6: #gallery/#collections/#price/#calendar/#catalogs/#catalog-graduation/#catalog-* |
 | M17 | A/B однакова роль, різні company/account: list/count/tags/collections/calendar | SOURCE scope відсутній; BLOCKED | T5/B10, disposable PostgreSQL ownership fixtures; no frontend filter |
 | M18 | B id/filename через download/preview/update/delete/Telegram не доступний A | SOURCE public bytes/unscoped; BLOCKED | T5/B10, server негативні 401/403/404; live mutations заборонені |
 | M19 | Logout/account/context switch, browser cache/public legacy URL | UNVERIFIED, policy BLOCKED | T5/B10, два isolated contexts + private cache acceptance, public catalog compatibility |
 | M20 | Pin/unpin preserves date/collection; explicit null clears | SOURCE data-loss defect; live не натискали | T5/B6, tests/designs-update-contract.test.js, fake/disposable DB |
-| M21 | Єдиний default main-nav Board, internal Guide, direct route/search/favorites | BLOCKED до T4 й інтегратора; deletion alone втрачає search/favorite | T6, expanded/compact/mobile/rail; compatibility descriptor, saved /designer лишається usable і не зникає після save |
+| M21 | Єдиний default main-nav Board, internal Guide, direct route/search/favorites | INTEGRATION PLAN READY; product removal BLOCKED | T6 shared hunk за `SHARED_INTEGRATION.md`; compatibility descriptor, saved /designer лишається usable і не зникає після save |
 | M22 | Registry/sidebar parity, актуальний count, grants без змін, HR profiles збережено | Baseline PASS; prospective deletion needs coordination | T6, check:access, full registry tests, ui-check, new integration test за потреби |
 | M23 | Unit/DOM tests wired у CI, operator browser smoke, syntax/theme/CSS/static guards | READY локально: `test:unit` wiring додано, targeted tests і UI/surface checks PASS; browser smoke лишається operator-run | npm test/CI після дозволеного push |
 
@@ -112,8 +112,10 @@ npm run test:ui
 - `node --check tests/designs-page-ui.test.js`
 - `node --check tests/designer-navigation.test.js`
 - `node --check tests/ui-check.js`
+- `node --test --experimental-test-isolation=none tests/designer-navigation.test.js` — PASS 5/5 для T4/T5 route continuity.
 - `node --test --experimental-test-isolation=none tests/design-material-storage-audit.test.js tests/designs-page-ui.test.js tests/designer-navigation.test.js tests/design-storage.test.js` — PASS 14/14.
-- `npm run test:ui` — PASS 1294/1294.
+- `npm run test:ui` — PASS 1312/1312 після T4/T5/T3 updates.
+- `node scripts/audit-design-material-storage.js --limit 500` — READ ONLY PASS; scanned 3, ok 0, `SOURCE_MISSING: 3`, recoverableFromLocal 0, keyMismatches 0, manifestHash `6ee18d80c03ab89775a31652b562704f18bf93eda5bb5864b1fb7668d5cb282c`.
 - `npm run check:storage-surface` — PASS.
 - `npm run check:static-surface` — PASS.
 - `npm run check:theme-surface` — PASS.

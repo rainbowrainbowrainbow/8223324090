@@ -1,6 +1,6 @@
 # Shared integration: Style Guide navigation
 
-**Статус: BLOCKED до прийняття integration owner.**
+**Статус: integration plan READY; product application BLOCKED до прийняття integration owner.**
 Це інструкція й reviewable illustrative diff; вона не застосована до продукту. Sidebar паралельно редагує інший потік.
 
 ## Мета й порядок
@@ -8,7 +8,7 @@
 Після Board → internal «Стайлгайд» → /designer#styleguide → Board PASS прибрати окремий default пункт «Стайлгайд» із головної навігації. Зберегти /designer, прямі URL, пошук, page grants, статичний content owner.
 
 1. Взяти актуальну agreed branch/SHA, прочитати всі dirty diffs. Показаний нижче local контекст не є patch для сліпого git apply.
-2. Використати локальний T4 PASS як попередній доказ internal entry, але перед removal повторити M13–M16 на актуальній agreed base/users із обома та різними grants; не прибирати меню раніше.
+2. Використати локальний T4/T5 PASS як попередній доказ internal entry, але перед removal повторити M13–M16 на актуальній agreed base/users із обома та різними grants; не прибирати меню раніше.
 3. Інтегрувати sidebar, navigation metadata і tests атомарно.
 4. Перевірити expanded/mobile/utility rail і saved favorites; виконати M21–M23.
 5. Якщо тест нового internal entry не проходить — лишити/відновити старий sidebar пункт. Не міняти auth для зелених тестів.

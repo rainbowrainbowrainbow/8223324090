@@ -145,12 +145,12 @@ READY нижче означає локально реалізовану або �
 | Частина | Статус | Підстава / наступний gate |
 |---|---|---|
 | 1. Презентабельний наявний Board | READY для T1–T3 | Без API/DB/auth змін; загальний working-files acceptance залежить від B1 |
-| 2. Доступ до збережених матеріалів | BLOCKED для виправлення end-to-end | Перевірку виконано: 3/3 preview/download 404; local transport T2 READY, recovery B1 окремо |
+| 2. Доступ до збережених матеріалів | BLOCKED для виправлення end-to-end | Read-only audit повторено: scanned 3, ok 0, `SOURCE_MISSING: 3`; local transport T2 READY, recovery B1 окремо |
 | 3. Company/account isolation | BLOCKED | Відсутня в schema/SQL/public preview; потрібне окреме ownership/security рішення B10 |
 | 4. Локальні light/dark проблеми | READY | Встановлено конкретний selector defect, T3 |
 | 5. Style Guide усередині IA Design Board | READY | Native internal entry + canonical дочірня сторінка, T4 |
 | 6. Збереження Style Guide route/deep links | READY | /designer зберегти; підтримку fragment tabs явно додати, T4 |
-| 7. Прибрати default main-nav дубль | BLOCKED до T4 QA + shared integration | T6; окремі sidebar/registry/test hunks |
+| 7. Прибрати default main-nav дубль | INTEGRATION PLAN READY; product removal BLOCKED | T6; окремі sidebar/registry/search/test hunks, sidebar не включати в UI patch |
 | Додатково: pin/unpin без втрати metadata | BLOCKED | B6, потрібен API дозвіл; не включати frontend workaround |
 
 Рекомендований наступний крок: передати GPT-5.5 T1–T4 на узгодженій актуальній базі, залишивши T5/T6 gates явними.
@@ -165,9 +165,9 @@ T3 local light/dark UI: **READY локально**. Виправлено лок�
 
 T4 Style Guide internal child + route continuity: **READY локально**. Board має internal entry, `/designer#styleguide` відкриває Style Guide, `/designer` лишається default catalogs, breadcrumb повертає до `/designs`.
 
-T5 storage investigation: **READY як read-only audit; recovery BLOCKED**. Додано `scripts/audit-design-material-storage.js` і unit tests. Production read-only manifest показав 3 metadata rows без bytes/source. Наступна дія потребує source backup або operator-provided restored snapshot.
+T5 storage investigation: **READY як read-only audit; recovery BLOCKED**. Додано `scripts/audit-design-material-storage.js` і unit tests. Повторний production read-only audit показав scanned 3, ok 0, `SOURCE_MISSING: 3`, recoverableFromLocal 0, keyMismatches 0. Наступна дія потребує source backup або operator-provided restored snapshot.
 
-T6 sidebar duplicate removal: **BLOCKED/не виконано**. `js/components/sidebar.js` dirty у паралельному HR потоці, а removal потребує shared integration у `js/components/sidebar.js`, `js/search.js`, `config/permissionRegistry.js` navigation metadata і tests. Використати `SHARED_INTEGRATION.md`; не включати sidebar автоматично в UI patch.
+T6 sidebar duplicate removal: **INTEGRATION PLAN READY; product code BLOCKED/не виконано**. Поточна база має `/designer` у `js/components/sidebar.js` `NAV_ITEMS`, `config/permissionRegistry.js` `sidebarLinks`, `tests/ui-check.js` guard і search/favorites залежність від `NAV_ITEMS`. Removal потребує shared integration у `js/components/sidebar.js`, `js/search.js`, `config/permissionRegistry.js` navigation metadata і tests. Використати `SHARED_INTEGRATION.md`; не включати sidebar автоматично в UI patch.
 
 B6 pin partial update: **BLOCKED/не виконано**. Вимагає API contract fix у protected backend route; не обходити full-row frontend PUT без окремого scope.
 

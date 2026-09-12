@@ -22,6 +22,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         .designer-page { padding: 20px 24px; min-height: 100vh; }
+        .designer-breadcrumb {
+            display: inline-flex; align-items: center; min-height: 36px; margin-bottom: 14px;
+            color: var(--gray-500); font-size: 13px; font-weight: 700; text-decoration: none;
+        }
+        .designer-breadcrumb:hover { color: var(--primary); }
         .designer-header { margin-bottom: 24px; }
         .designer-header h1 { font-size: 28px; font-weight: 800; margin: 0 0 4px; }
         .designer-header .subtitle { font-size: 14px; color: var(--gray-500); }
@@ -51,6 +56,8 @@
         body.dark-mode .designer-tab.active { background: rgba(255,255,255,0.08); color: #E2E8F0; }
         body.dark-mode .designer-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.06); }
         body.dark-mode .color-swatch { border-color: rgba(255,255,255,0.06); }
+        body.dark-mode .designer-breadcrumb { color: var(--gray-400); }
+        body.dark-mode .designer-breadcrumb:hover { color: #6EE7B7; }
     </style>
 </head>
 <body data-page-group="designer">
@@ -109,8 +116,9 @@
             </div>
         </header>
 
-        <main class="main-content">
+        <main class="main-content" id="main-content">
             <div class="designer-page">
+                <a class="designer-breadcrumb" href="/designs">← Design Board</a>
                 <div class="designer-header">
                     <h1>📐 Дизайнер</h1>
                     <p class="subtitle">Каталоги, гайдлайни, брендбук, стайлгайд</p>
@@ -306,15 +314,34 @@
     })();
     </script>
     <script>
-    // Tab switching
-    document.querySelectorAll('.designer-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.designer-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.designer-tab-content').forEach(c => c.classList.remove('active'));
-            tab.classList.add('active');
-            const tabId = 'tab' + tab.dataset.tab.charAt(0).toUpperCase() + tab.dataset.tab.slice(1);
-            document.getElementById(tabId)?.classList.add('active');
+    const DESIGNER_TABS = ['catalogs', 'guideline', 'brand', 'styleguide', 'templates'];
+    function showDesignerTab(tabName, options) {
+        var target = DESIGNER_TABS.includes(tabName) ? tabName : 'catalogs';
+        document.querySelectorAll('.designer-tab').forEach(function(tab) {
+            var active = tab.dataset.tab === target;
+            tab.classList.toggle('active', active);
+            tab.setAttribute('aria-selected', active ? 'true' : 'false');
         });
+        document.querySelectorAll('.designer-tab-content').forEach(function(content) {
+            content.classList.remove('active');
+        });
+        var tabId = 'tab' + target.charAt(0).toUpperCase() + target.slice(1);
+        document.getElementById(tabId)?.classList.add('active');
+        if (!options || options.updateHash !== false) {
+            var nextHash = target === 'catalogs' ? '' : '#' + target;
+            if (window.location.hash !== nextHash) {
+                history.pushState({ designerTab: target }, '', window.location.pathname + nextHash);
+            }
+        }
+    }
+    document.querySelectorAll('.designer-tab').forEach(function(tab) {
+        tab.setAttribute('role', 'tab');
+        tab.addEventListener('click', function() { showDesignerTab(tab.dataset.tab); });
+    });
+    document.querySelector('.designer-tabs')?.setAttribute('role', 'tablist');
+    showDesignerTab(window.location.hash.replace('#', ''), { updateHash: false });
+    window.addEventListener('hashchange', function() {
+        showDesignerTab(window.location.hash.replace('#', ''), { updateHash: false });
     });
     </script>
 <script src="js/ui.js?v=0.81.143"></script>

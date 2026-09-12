@@ -1,9 +1,11 @@
 'use strict';
 
 const router = require('express').Router();
+const { pool } = require('../db');
 const { requestSharedTestDrain, requestSharedTestResume } = require('../services/payments/sharedTestDayService');
 const authMiddleware = require('../middleware/auth');
 const { authenticateToken, requireAction, canUseAction } = authMiddleware;
+const { canAccessBusinessContext } = require('../services/businessContext');
 const {
     cancelDraftPaymentOrder,
     confirmPaymentOrder,
@@ -48,7 +50,12 @@ const {
     requestPhase1ShiftClose,
     updateOperationalIncidentStatus
 } = require('../services/payments/paymentReadinessService');
-const { isCashierProEnabled, isParkDarTestServiceOutEnabled, isCheckboxIntegrationEnabled } = require('../services/checkbox/config');
+const {
+    isCashierProEnabled,
+    isParkDarTestServiceOutEnabled,
+    isParkDarTestXzEnabled,
+    isCheckboxIntegrationEnabled
+} = require('../services/checkbox/config');
 const {
     assertNoClientFiscalRouteOverride,
     listFiscalSaleRouteOptions,
@@ -438,6 +445,134 @@ function requireCashierProEnabled(req, res, next) {
         });
     }
     return next();
+}
+
+class CashierProGateError extends Error {
+    constructor(code, message, status = 403) {
+        super(message || code);
+        this.name = 'CashierProGateError';
+        this.code = code;
+        this.status = status;
+    }
+}
+
+function booleanText(value) {
+    if (typeof value === 'boolean') return value;
+    const text = String(value ?? '').trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(text)) return true;
+    if (['false', '0', 'no', 'off'].includes(text)) return false;
+    return null;
+}
+
+function assertParkDarTestXzScope(row, { requestedRouteOptionId = null, user = null } = {}) {
+    const routeOptionId = String(row?.route_option_id || '').trim();
+    const businessContext = String(row?.business_context || '').trim();
+    const requestedRoute = String(requestedRouteOptionId || '').trim();
+    const routeExpectedIsTest = booleanText(row?.expected_is_test);
+    const registerExpectedIsTest = booleanText(row?.register_expected_is_test);
+    if (
+        !['park_test', 'dar_test'].includes(routeOptionId)
+        || !['event_genix', 'dar'].includes(businessContext)
+        || String(row?.mode || '').trim() !== 'test'
+        || routeExpectedIsTest !== true
+        || registerExpectedIsTest !== true
+        || String(row?.route_status || '').trim() !== 'active'
+        || row?.route_feature_enabled !== true
+        || row?.route_acceptance_enabled !== true
+        || String(row?.register_status || '').trim() !== 'active'
+        || row?.register_feature_enabled !== true
+        || String(row?.provider || '').trim() !== 'checkbox'
+        || !String(row?.shared_register_group || '').trim()
+    ) {
+        throw new CashierProGateError(
+            'park_dar_test_xz_scope_invalid',
+            'Narrow X/Z test gate requires the exact active PARK/DAR shared test Checkbox route'
+        );
+    }
+    if (requestedRoute && requestedRoute !== routeOptionId) {
+        throw new CashierProGateError(
+            'park_dar_test_xz_route_mismatch',
+            'Requested fiscal route does not match the shift test route'
+        );
+    }
+    if (!canAccessBusinessContext(user, businessContext)) {
+        throw new CashierProGateError(
+            'fiscal_route_business_denied',
+            'Business context is not available to this user'
+        );
+    }
+    return { routeOptionId, businessContext };
+}
+
+async function loadParkDarTestXzScope({ shiftId, requestedRouteOptionId = null, user = null } = {}) {
+    const numericShiftId = Number(shiftId);
+    if (!Number.isSafeInteger(numericShiftId) || numericShiftId <= 0) {
+        throw new CashierProGateError('shift_id_invalid', 'Fiscal shift id is invalid', 422);
+    }
+    const result = await pool.query(
+        `SELECT
+             fs.id AS shift_id,
+             fs.business_context,
+             fs.fiscal_profile_id,
+             fs.fiscal_register_id,
+             fsr.route_option_id,
+             fsr.mode,
+             fsr.expected_is_test,
+             fsr.status AS route_status,
+             fsr.feature_enabled AS route_feature_enabled,
+             fsr.acceptance_enabled AS route_acceptance_enabled,
+             fsr.shared_register_group,
+             fr.provider,
+             fr.status AS register_status,
+             fr.feature_enabled AS register_feature_enabled,
+             COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS register_expected_is_test
+           FROM fiscal_shifts fs
+           JOIN fiscal_registers fr
+             ON fr.id = fs.fiscal_register_id
+            AND fr.fiscal_profile_id = fs.fiscal_profile_id
+           JOIN fiscal_sale_routes fsr
+             ON fsr.fiscal_profile_id = fs.fiscal_profile_id
+            AND fsr.fiscal_register_id = fs.fiscal_register_id
+            AND fsr.business_context = fs.business_context
+          WHERE fs.id = $1
+            AND fsr.route_option_id IN ('park_test', 'dar_test')
+            AND fsr.business_context IN ('event_genix', 'dar')
+            AND fsr.mode = 'test'
+            AND fsr.expected_is_test IS TRUE`,
+        [numericShiftId]
+    );
+    if (result.rows.length !== 1) {
+        throw new CashierProGateError(
+            result.rows.length > 1 ? 'park_dar_test_xz_scope_ambiguous' : 'park_dar_test_xz_scope_missing',
+            'Fiscal shift is not an exact PARK/DAR shared test X/Z scope'
+        );
+    }
+    return assertParkDarTestXzScope(result.rows[0], { requestedRouteOptionId, user });
+}
+
+async function requireCashierProOrParkDarTestXzEnabled(req, res, next) {
+    if (isCashierProEnabled(process.env)) return next();
+    if (!isParkDarTestXzEnabled(process.env)) {
+        return res.status(403).json({
+            success: false,
+            code: 'cashier_pro_disabled',
+            error: 'Cashier PRO operations are disabled'
+        });
+    }
+    try {
+        await loadParkDarTestXzScope({
+            shiftId: req.params.shiftId,
+            requestedRouteOptionId: routeOptionIdFromRequest(req),
+            user: req.user
+        });
+        return next();
+    } catch (error) {
+        return res.status(error.status || 403).json({
+            success: false,
+            code: error.code || 'park_dar_test_xz_scope_invalid',
+            error: error.message || 'Narrow X/Z test gate denied this operation'
+        });
+    }
 }
 
 function requireServiceOutReadAccess(req, res, next) {
@@ -1027,7 +1162,7 @@ router.post('/shifts/:shiftId/reconcile', requireCashierProEnabled, requireActio
     }
 });
 
-router.post('/shifts/:shiftId/x-report', requireCashierProEnabled, requireAction('fiscal.shift.close'), async (req, res) => {
+router.post('/shifts/:shiftId/x-report', requireCashierProOrParkDarTestXzEnabled, requireAction('fiscal.shift.close'), async (req, res) => {
     try {
         const result = await createXReport({
             user: req.user,
@@ -1041,7 +1176,7 @@ router.post('/shifts/:shiftId/x-report', requireCashierProEnabled, requireAction
     }
 });
 
-router.get('/shifts/:shiftId/x-report', requireCashierProEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
+router.get('/shifts/:shiftId/x-report', requireCashierProOrParkDarTestXzEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
     try {
         const result = await getXReportStatus({
             user: req.user,
@@ -1055,7 +1190,7 @@ router.get('/shifts/:shiftId/x-report', requireCashierProEnabled, requireAction(
     }
 });
 
-router.get('/shifts/:shiftId/x-report/text', requireCashierProEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
+router.get('/shifts/:shiftId/x-report/text', requireCashierProOrParkDarTestXzEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
     try {
         const result = await getXReportText({
             user: req.user,
@@ -1070,7 +1205,7 @@ router.get('/shifts/:shiftId/x-report/text', requireCashierProEnabled, requireAc
     }
 });
 
-router.get('/shifts/:shiftId/z-report/text', requireCashierProEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
+router.get('/shifts/:shiftId/z-report/text', requireCashierProOrParkDarTestXzEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
     try {
         const result = await getZReportText({
             user: req.user,
@@ -1115,7 +1250,7 @@ router.post('/shifts/:shiftId/auto-close', requireCashierProEnabled, requireActi
     }
 });
 
-router.get('/shifts/:shiftId/report', requireCashierProEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
+router.get('/shifts/:shiftId/report', requireCashierProOrParkDarTestXzEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
     try {
         const result = await getOperationalReport({
             user: req.user,
@@ -1139,6 +1274,10 @@ router.__cashierProjectionTest = Object.freeze({
     projectOperationalHealthForViewer,
     projectPhase1CloseResultForViewer,
     projectReadinessErrorForViewer
+});
+router.__cashierProGateTest = Object.freeze({
+    assertParkDarTestXzScope,
+    booleanText
 });
 
 module.exports = router;

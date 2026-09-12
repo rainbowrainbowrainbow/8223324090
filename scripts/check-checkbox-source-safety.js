@@ -79,7 +79,9 @@ const PRODUCTION_GATES = new Set([
     'CHECKBOX_ACCEPT_PAYMENTS_ENABLED',
     'CHECKBOX_WEBHOOK_ENABLED',
     'CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS',
-    'EVENTGENIX_CASHIER_PRO_ENABLED'
+    'EVENTGENIX_CASHIER_PRO_ENABLED',
+    'PARK_DAR_TEST_SERVICE_OUT_ENABLED',
+    'PARK_DAR_TEST_XZ_ENABLED'
 ]);
 const SENSITIVE_ENV_KEY = /(?:^|_)(?:LOGIN|USERNAME|PASSWORD|PASSCODE|PIN(?:_CODE)?|LICENSE_KEY|ACCESS_KEY|WEBHOOK_SECRET|ACCESS_TOKEN|TOKEN|DEVICE_ID)$/i;
 const pinPattern = /\b(?:pin|PIN|ПІН|пін)[^.\n]{0,40}\b1234\b|\b1234\b[^.\n]{0,40}(?:pin|PIN|ПІН|пін)/;
@@ -166,7 +168,7 @@ function isApprovedSyntheticTestProviderId(rel, value) {
 
 function parseEnvAssignment(line) {
     const match = String(line || '').match(
-        /^\s*(?:export\s+|\$env:)?["']?(CHECKBOX_[A-Z0-9_<>-]+|EVENTGENIX_CASHIER_PRO_ENABLED)["']?\s*[:=]\s*(.*?)\s*(?:#.*)?$/i
+        /^\s*(?:export\s+|\$env:)?["']?(CHECKBOX_[A-Z0-9_<>-]+|EVENTGENIX_CASHIER_PRO_ENABLED|PARK_DAR_TEST_SERVICE_OUT_ENABLED|PARK_DAR_TEST_XZ_ENABLED)["']?\s*[:=]\s*(.*?)\s*(?:#.*)?$/i
     );
     if (!match) return null;
     return { name: match[1].toUpperCase(), value: normalizeAssignmentValue(match[2]) };

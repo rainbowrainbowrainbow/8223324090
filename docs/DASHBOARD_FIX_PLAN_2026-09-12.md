@@ -225,3 +225,47 @@ Request-budget evidence:
 - API contracts, financial permissions, booking sources, external integrations, roles, middleware, migrations and dependencies were not changed.
 - Production data was not read or mutated. Live-site QA remains for DASH-05 with test credentials and read-only comparison against canonical Tasks/Alerts screens.
 - Synthetic fixture errors in tests prove UI state handling; they are not production defect evidence.
+
+## DASH-04: локальний результат
+
+Статус: виконано локально після DASH-03 у гілці `codex/dashboard-visibility-20260912`; push/deploy залишено для DASH-05.
+
+Коміт фіксу mobile/fallback: `46f08b183a415d9e0ab8e9e73591ae82e11c158e` (`fix: improve dashboard mobile fallback`).
+
+Що змінено:
+
+- `renderDashboardOpenFallback` більше не ховає всі віджети й не лишає тільки safe-mode текст: при render-помилці він показує резервну плоску сітку.
+- Джерело fallback — видимі дозволені widget items з поточного підтвердженого `boardState` плюс legacy `_config.widgets`; віджети, додані через board constructor і відсутні у старому списку widgets, тепер не губляться.
+- Hidden board widgets не потрапляють у fallback; `canUseWidget` лишається чинним gate для ролі/доступу.
+- Якщо початковий GET config невдалий або config не підтверджений, fallback не відкриває дані з невідомого стану й делегує до retry surface з DASH-02.
+- Додано `retryDashboardBoardRender()`: повторює тільки малювання board, без повторного логіну, autosave, reset дошки або серверного запису.
+- Успішний retry прибирає fallback marker, ховає compatibility grid і повертає ту саму board scene.
+- CSS прибирає mobile horizontal overflow на shell/header/toolbar/actions, зберігає внутрішній scroll великого canvas і робить fallback warning/grid придатними для 360–390 px.
+- Додано реальний Chromium smoke `tests/browser/dashboard-mobile-fallback-browser-smoke.js` для viewport/theme/sidebar/fallback/retry.
+- Додано JSDOM regression `tests/dashboard-mobile-fallback.test.js` для fallback source, no-mutation, retry і failed GET guard.
+- Оновлено існуючий `tests/dashboard-board-ergonomics.test.js` під актуальний DASH-02 save queue contract і DASH-03 explicit denied widget state.
+
+Перевірка DASH-04:
+
+- `node --check js/dashboard-page.js` — PASS.
+- `node --check tests/browser/dashboard-mobile-fallback-browser-smoke.js` — PASS.
+- `node -e "require('./tests/dashboard-mobile-fallback.test.js')"` — PASS, 3/3. Стандартний `node --test` у sandbox блокується на `spawn EPERM` до виконання тесту; прямий запуск того самого файлу пройшов.
+- `node -e "require('./tests/dashboard-board-ergonomics.test.js')"` — PASS, 16/16. Стандартний `node --test` у sandbox блокується на `spawn EPERM`; прямий запуск пройшов.
+- `npx --yes --package playwright node tests/browser/dashboard-mobile-fallback-browser-smoke.js` — PASS: 16 layout combinations (`360/390/768/1440` × light/dark × sidebar expanded/collapsed) плюс forced render fallback/retry. Browser smoke запускався поза sandbox, бо локальний npm cache не мав Playwright і sandbox давав `ENOTCACHED`.
+- `npm run check:runtime` — PASS, Node 22.23.1 / npm 10.9.8.
+- `npm run check:css-surface` — PASS, 93 CSS files / 93 referenced files / 5 Service Worker precache entries.
+- `npm run check:syntax` — PASS, 1149 files. Sandboxed запуск спочатку впав системно на `spawnSync ... node.exe EPERM` для всіх файлів; повторний запуск поза sandbox завершився успішно.
+- `git diff --check` — PASS.
+
+Browser QA evidence:
+
+- Основні дії на 360/390/768/1440 px не виходять за viewport: header actions, `Додати віджет`, `Налаштувати`, toolbar, rail, save status і board shell лишаються видимими.
+- Великий canvas лишається scrollable всередині board shell; page-level horizontal overflow не з’являється.
+- Перевірено фокус/Enter/Escape на board tool і введення у note textarea на mobile viewport.
+- Forced render error показує корисні widgets (`weather` з board-only item і `tasks` з config.widgets), не мутує `boardState`, а retry повертає board widget на canvas.
+
+Межі й ризики:
+
+- Auth/permission policy, backend API, ролі, permission registry, business allowlists, міграції, залежності й production config не змінювалися.
+- Fallback не є новим збереженим режимом і не створює паралельну модель дошки; це тільки read-only аварійне відображення поточних дозволених віджетів.
+- Live-site QA на реальних test credentials, mobile device emulation і production deploy залишено для DASH-05.

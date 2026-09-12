@@ -111,6 +111,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(first, repeated)
         self.assertEqual(self.core.diagnostics()["inbound_pending"], 1)
         self.assertEqual(self.core.ack_events([first["event_id"], first["event_id"]]), 1)
+        self.assertIsNotNone(self.core.diagnostics()["last_ack_at"])
         self.assertEqual(self.core.ack_events([first["event_id"]]), 0)
         self.assertEqual(self.core.list_pending_events(), [])
         self.core.close()
@@ -177,16 +178,35 @@ class BridgeCoreTests(unittest.TestCase):
         self.ready()
         self.core.accept_command(command())
         started = self.core.begin_dispatch(COMMAND, observed_source_chat_ref=SOURCE_CHAT,
-                                           observed_peer_ref=PEER)
+                                           observed_peer_ref=PEER,
+                                           outbound_baseline_event_id=50)
         self.assertEqual((started["status"], started["dispatch_count"]), ("dispatch_started", 1))
+        self.assertEqual(started["outbound_baseline_event_id"], 50)
         repeated = self.core.begin_dispatch(COMMAND, observed_source_chat_ref=SOURCE_CHAT,
                                             observed_peer_ref=PEER)
         self.assertEqual((repeated["status"], repeated["dispatch_count"]),
                          ("dispatch_started", 1))
-        finished = self.core.finish_dispatch(COMMAND, submitted=True)
+        finished = self.core.finish_dispatch(COMMAND, status="submitted_unconfirmed",
+                                             outbound_baseline_event_id=50,
+                                             outbound_source_event_id=51)
         self.assertEqual(finished["status"], "submitted_unconfirmed")
+        self.assertEqual(finished["outbound_source_event_id"], 51)
+        self.assertEqual(finished["outbound_chat_confirmed"], 1)
         self.assertEqual(self.core.begin_dispatch(COMMAND, observed_source_chat_ref=SOURCE_CHAT,
                                                   observed_peer_ref=PEER)["dispatch_count"], 1)
+
+    def test_outbound_occurrence_must_be_newer_than_command_baseline(self):
+        self.ready()
+        self.core.accept_command(command())
+        self.core.begin_dispatch(COMMAND, observed_source_chat_ref=SOURCE_CHAT,
+                                 observed_peer_ref=PEER,
+                                 outbound_baseline_event_id=50)
+        with self.assertRaises(BridgeCoreError) as caught:
+            self.core.finish_dispatch(COMMAND, status="submitted_unconfirmed",
+                                      outbound_baseline_event_id=50,
+                                      outbound_source_event_id=50)
+        self.assertEqual(caught.exception.code, "OUTBOUND_OCCURRENCE_INVALID")
+        self.assertEqual(self.core.command(COMMAND)["status"], "dispatch_started")
 
     def test_different_commands_cannot_overlap_one_ui_operation(self):
         self.ready()

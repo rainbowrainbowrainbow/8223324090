@@ -366,7 +366,8 @@ def _build_dispatch_adapter(config: Mapping[str, Any]) -> PowerShellViberSender 
     run_id = sender.get("run_id") or _run_id_from_live(live)
     try:
         return PowerShellViberSender(state_path=config["state_path"], run_id=run_id,
-                                     runtime_dir=Path(__file__).resolve().parent)
+                                     runtime_dir=Path(__file__).resolve().parent,
+                                     reference_key=_reference_key(live["reference_key"]))
     except UiaSenderError as error:
         raise LauncherError(error.code) from error
 

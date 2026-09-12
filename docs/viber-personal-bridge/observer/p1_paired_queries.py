@@ -35,10 +35,12 @@ LIMIT :row_cap
 """
 
 RECONCILE_SQL = """
+-- command-scoped outbound reconciliation
 SELECT e.EventID, e.ChatID, e.Direction
 FROM Events e
 JOIN Messages m ON m.EventID = e.EventID
 WHERE m.Body COLLATE BINARY = :text
+  AND e.EventID > :after_event_id
 ORDER BY e.EventID
 LIMIT 2
 """
@@ -145,22 +147,26 @@ def scan_inbound(reader: Callable, anchor: dict[str, int], after_event_id: int,
     return result
 
 
-def reconcile_outbound(reader: Callable, anchor: dict[str, int], exact_text: str) -> dict[str, Any]:
+def reconcile_outbound(reader: Callable, anchor: dict[str, int], exact_text: str,
+                       after_event_id: int) -> dict[str, Any]:
     if (not isinstance(anchor, dict) or set(anchor) != {"chat_id", "peer_contact_id", "inbound_code",
                                                         "outbound_code", "anchor_event_id"}
             or not isinstance(exact_text, str) or not exact_text or len(exact_text) > 500
             or "\x00" in exact_text or "\r" in exact_text):
         raise PairedQueryError("RECONCILE_ARGUMENT_INVALID")
-    rows = _rows(reader, RECONCILE_SQL, {"text": exact_text}, 3, 2)
+    baseline = _id(after_event_id)
+    if baseline < _id(anchor["anchor_event_id"]):
+        raise PairedQueryError("RECONCILE_BASELINE_BEFORE_ANCHOR")
+    rows = _rows(reader, RECONCILE_SQL, {"text": exact_text, "after_event_id": baseline}, 3, 2)
     if len(rows) > 1:
         raise PairedQueryError("RECONCILE_AMBIGUOUS")
     if not rows:
         return {"observed": False}
     event_id, chat_id, direction = rows[0]
-    if (_id(event_id) <= _id(anchor["anchor_event_id"]) or _id(chat_id) != _id(anchor["chat_id"])
+    if (_id(event_id) <= baseline or _id(chat_id) != _id(anchor["chat_id"])
             or direction != anchor["outbound_code"]):
         raise PairedQueryError("RECONCILE_IDENTITY_MISMATCH")
-    return {"observed": True}
+    return {"observed": True, "source_event_id": _id(event_id)}
 
 
 def latest_inbound(reader: Callable, anchor: dict[str, int]) -> str | None:

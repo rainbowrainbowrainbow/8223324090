@@ -1,5 +1,5 @@
-param(
-  [ValidateSet('status','preflight','start','stop','restart','install','rollback-latest','once')]
+﻿param(
+  [ValidateSet('status','preflight','health','start','stop','restart','install','rollback-latest','once','enable-autostart','disable-autostart')]
   [string]$Action = 'status',
   [string]$InstallRoot = "$env:USERPROFILE\.eventgenix\viber-personal-bridge",
   [string]$PythonExe = "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe",
@@ -21,6 +21,8 @@ $ConfigPath = [System.IO.Path]::GetFullPath($ConfigPath)
 $RuntimeRoot = Join-Path $InstallRoot 'runtime'
 $EntryPoint = Join-Path $RuntimeRoot 'run_p1_daemon.py'
 $ManifestPath = Join-Path $RuntimeRoot 'runtime_manifest.json'
+$AutostartName = 'EventGenix Viber Personal Bridge.cmd'
+$AutostartPath = Join-Path ([Environment]::GetFolderPath('Startup')) $AutostartName
 
 function ConvertTo-SafeId {
   param([object]$Value)
@@ -118,6 +120,33 @@ function Read-ManifestSummary {
   }
 }
 
+function Get-AutostartSummary {
+  $present = Test-Path -LiteralPath $AutostartPath -PathType Leaf
+  return [ordered]@{
+    present = $present
+    path = $AutostartPath
+    userSession = $true
+    session0 = $false
+  }
+}
+
+function Write-AutostartLauncher {
+  if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) { throw 'CONTROL_SCRIPT_NOT_FOUND' }
+  $content = @(
+    '@echo off',
+    'powershell -NoProfile -ExecutionPolicy Bypass -File "' + $ScriptPath + '" -Action start -InstallRoot "' + $InstallRoot + '" -PythonExe "' + $PythonExe + '" -ConfigPath "' + $ConfigPath + '"'
+  ) -join "`r`n"
+  if (-not $DryRun) {
+    Set-Content -LiteralPath $AutostartPath -Value $content -Encoding ASCII
+  }
+}
+
+function Remove-AutostartLauncher {
+  if ((Test-Path -LiteralPath $AutostartPath -PathType Leaf) -and -not $DryRun) {
+    Remove-Item -LiteralPath $AutostartPath -Force
+  }
+}
+
 function Get-StatusPayload {
   $workers = Get-BridgeProcess -Config $ConfigPath
   return [ordered]@{
@@ -127,10 +156,35 @@ function Get-StatusPayload {
     runtimePresent = Test-Path -LiteralPath $EntryPoint -PathType Leaf
     config = Read-ConfigSummary
     manifest = Read-ManifestSummary
+    autostart = Get-AutostartSummary
     processQueryOk = -not [bool]$script:ProcessQueryError
     processQueryError = $script:ProcessQueryError
     workerCount = if ($script:ProcessQueryError) { $null } else { @($workers).Count }
     workerPids = if ($script:ProcessQueryError) { @() } else { @($workers | ForEach-Object { $_.ProcessId }) }
+  }
+}
+
+function Get-HealthPayload {
+  $status = Get-StatusPayload
+  $preflight = $null
+  $preflightOk = $false
+  $preflightError = $null
+  try {
+    $preflight = Invoke-Preflight
+    $preflightOk = $true
+  } catch {
+    $preflightError = $_.Exception.Message
+  }
+  $workerOk = ($status.processQueryOk -eq $true -and $status.workerCount -eq 1)
+  return [ordered]@{
+    ok = ($workerOk -and $preflightOk)
+    action = 'health'
+    workerOk = $workerOk
+    preflightOk = $preflightOk
+    preflightError = $preflightError
+    nextAction = if (-not $workerOk) { 'Run start or restart from the user session.' } elseif (-not $preflightOk) { 'Run preflight and fix the reported blocker.' } else { 'Bridge runtime is present; proceed with controlled live QA.' }
+    status = $status
+    preflight = $preflight
   }
 }
 
@@ -200,6 +254,9 @@ try {
     'preflight' {
       [ordered]@{ ok = $true; action = 'preflight'; status = Get-StatusPayload; preflight = Invoke-Preflight } | ConvertTo-Json -Depth 12
     }
+    'health' {
+      Get-HealthPayload | ConvertTo-Json -Depth 12
+    }
     'stop' {
       $stopped = Stop-BridgeWorker
       [ordered]@{ ok = $true; action = 'stop'; dryRun = [bool]$DryRun; stoppedWorkers = $stopped; status = Get-StatusPayload } | ConvertTo-Json -Depth 8
@@ -219,6 +276,14 @@ try {
       $raw = & powershell @args
       if ($LASTEXITCODE -ne 0) { throw 'INSTALL_FAILED' }
       [ordered]@{ ok = $true; action = 'install'; dryRun = [bool]$DryRun; installer = ($raw | ConvertFrom-Json); status = Get-StatusPayload } | ConvertTo-Json -Depth 10
+    }
+    'enable-autostart' {
+      Write-AutostartLauncher
+      [ordered]@{ ok = $true; action = 'enable-autostart'; dryRun = [bool]$DryRun; autostart = Get-AutostartSummary; status = Get-StatusPayload } | ConvertTo-Json -Depth 8
+    }
+    'disable-autostart' {
+      Remove-AutostartLauncher
+      [ordered]@{ ok = $true; action = 'disable-autostart'; dryRun = [bool]$DryRun; autostart = Get-AutostartSummary; status = Get-StatusPayload } | ConvertTo-Json -Depth 8
     }
     'rollback-latest' {
       $args = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$InstallerPath,'-InstallRoot',$InstallRoot,'-PythonExe',$PythonExe,'-RollbackLatest')

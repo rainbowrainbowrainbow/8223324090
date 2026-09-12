@@ -43,6 +43,8 @@ class FakeAdapter:
             "status": "submitted_unconfirmed",
             "outbound_observed": True,
             "chat_confirmed": True,
+            "outbound_baseline_event_id": 50,
+            "outbound_source_event_id": 51,
         } if result is None else result
         self.active_error = active_error
         self.send_error = send_error
@@ -70,6 +72,9 @@ class FakeAdapter:
         }
         value.update(self.active)
         return value
+
+    def dispatch_baseline(self):
+        return 50
 
     def send_text(self, text):
         if self.events is not None:
@@ -102,6 +107,9 @@ class DispatcherTests(unittest.TestCase):
         first = execute_text(self.core, command(), adapter)
         self.assertEqual((first["status"], first["dispatch_count"]),
                          ("submitted_unconfirmed", 1))
+        self.assertEqual(first["outbound_baseline_event_id"], 50)
+        self.assertEqual(first["outbound_source_event_id"], 51)
+        self.assertEqual(first["outbound_chat_confirmed"], 1)
         repeated = execute_text(self.core, command(), adapter)
         self.assertEqual(repeated["status"], "submitted_unconfirmed")
         self.assertEqual((adapter.active_calls, adapter.send_calls), (1, 1))
@@ -192,6 +200,8 @@ class DispatcherTests(unittest.TestCase):
             {"status": "submitted_unconfirmed", "outbound_observed": False, "chat_confirmed": True},
             {"status": "submitted_unconfirmed", "outbound_observed": True, "chat_confirmed": False},
             {"status": "submitted_unconfirmed"},
+            {"status": "submitted_unconfirmed", "outbound_observed": True, "chat_confirmed": True,
+             "outbound_baseline_event_id": 50, "outbound_source_event_id": 50},
         ]
         for index, result in enumerate(cases, start=20):
             with self.subTest(result=result):
@@ -201,8 +211,13 @@ class DispatcherTests(unittest.TestCase):
                 outcome = execute_text(self.core,
                                        command(command_id=command_id,
                                                client_request_id=request_id), adapter)
+                same_event = (
+                    type(result.get("outbound_source_event_id")) is int
+                    and result.get("outbound_source_event_id") == result.get("outbound_baseline_event_id")
+                )
+                expected_error = "OUTBOUND_RECONCILIATION_INVALID" if same_event else "OUTBOUND_RECONCILIATION_MISSING"
                 self.assertEqual((outcome["status"], outcome["error_code"]),
-                                 ("unknown", "OUTBOUND_RECONCILIATION_MISSING"))
+                                 ("unknown", expected_error))
                 self.assertEqual(adapter.send_calls, 1)
 
     def test_malformed_adapter_success_is_unknown(self):

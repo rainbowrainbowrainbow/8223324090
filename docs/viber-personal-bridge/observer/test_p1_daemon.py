@@ -6,7 +6,7 @@ import unittest
 
 from p1_bridge_core import BridgeCore
 from p1_daemon import BridgeDaemon
-from p1_http_client import BridgeHttpClient
+from p1_http_client import BridgeHttpClient, HttpClientError
 
 
 BRIDGE = "11111111-1111-4111-8111-111111111111"
@@ -60,7 +60,13 @@ class FakeClient(BridgeHttpClient):
 
 class FakeDispatchAdapter:
     def __init__(self, result=None):
-        self.result = result or {"status": "submitted_unconfirmed", "outbound_observed": True, "chat_confirmed": True}
+        self.result = result or {
+            "status": "submitted_unconfirmed",
+            "outbound_observed": True,
+            "chat_confirmed": True,
+            "outbound_baseline_event_id": 50,
+            "outbound_source_event_id": 51,
+        }
         self.sent = []
 
     def active_peer(self, _chat_id):
@@ -77,6 +83,9 @@ class FakeDispatchAdapter:
     def send_text(self, text):
         self.sent.append(text)
         return self.result
+
+    def dispatch_baseline(self):
+        return 50
 
 
 class DaemonDispatchTests(unittest.TestCase):
@@ -122,6 +131,30 @@ class DaemonDispatchTests(unittest.TestCase):
         daemon.send_heartbeat()
         self.assertFalse(client.last_heartbeat["capabilities"]["send_text"])
         self.assertFalse(client.last_heartbeat["capabilities"]["sender_adapter"])
+        self.assertEqual(client.last_heartbeat["capabilities"]["inbound_pending"], 0)
+        self.assertEqual(client.last_heartbeat["capabilities"]["cycle_status"], "starting")
+
+    def test_cycle_records_success_and_error_without_losing_pending_work(self):
+        class FailingClient(FakeClient):
+            def pull_commands(self, _payload):
+                raise HttpClientError("NETWORK_UNAVAILABLE", retryable=True)
+
+        client = FailingClient([])
+        daemon = BridgeDaemon(self.core, client, runtime_id="99999999-9999-4999-8999-999999999999",
+                              clock=lambda: 100.0)
+        with self.assertRaises(HttpClientError):
+            daemon.cycle()
+        daemon._record_cycle_error(HttpClientError("NETWORK_UNAVAILABLE", retryable=True))
+        self.assertEqual(daemon.cycle_status()["status"], "error")
+        self.assertEqual(daemon.cycle_status()["last_error_code"], "NETWORK_UNAVAILABLE")
+
+        ok_client = FakeClient([])
+        ok_daemon = BridgeDaemon(self.core, ok_client, runtime_id="99999999-9999-4999-8999-999999999999",
+                                 clock=lambda: 100.0)
+        result = ok_daemon.cycle()
+        self.assertEqual(result["cycle_status"]["status"], "ok")
+        ok_daemon.send_heartbeat()
+        self.assertEqual(ok_client.last_heartbeat["capabilities"]["cycle_status"], "ok")
 
     def test_pull_reports_existing_terminal_unknown_without_resend(self):
         self.core.accept_command(command())

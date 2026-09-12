@@ -79,18 +79,31 @@ class PairedQueriesTests(unittest.TestCase):
         text = "EGXP1-0B038E78-A1B2C3D4-SEND"
         reader = Reader(reconcile=[(15, 20, 1)])
         anchor = paired.resolve_anchor(reader, PHONE, DESKTOP)
-        self.assertEqual(paired.reconcile_outbound(reader, anchor, text), {"observed": True})
-        self.assertEqual(paired.reconcile_outbound(Reader(), anchor, text), {"observed": False})
+        self.assertEqual(paired.reconcile_outbound(reader, anchor, text, 14),
+                         {"observed": True, "source_event_id": 15})
+        self.assertEqual(paired.reconcile_outbound(Reader(), anchor, text, 14), {"observed": False})
         for rows in ([(15, 21, 1)], [(15, 20, 0)], [(15, 20, 1), (16, 20, 1)]):
             with self.subTest(rows=rows), self.assertRaises(paired.PairedQueryError):
-                paired.reconcile_outbound(Reader(reconcile=rows), anchor, text)
+                paired.reconcile_outbound(Reader(reconcile=rows), anchor, text, 14)
+
+    def test_reconcile_rejects_old_matching_text_before_command_baseline(self):
+        text = "repeat"
+        reader = Reader(reconcile=[])
+        anchor = paired.resolve_anchor(reader, PHONE, DESKTOP)
+        self.assertEqual(paired.reconcile_outbound(Reader(reconcile=[(20, 20, 1)]), anchor, text, 19),
+                         {"observed": True, "source_event_id": 20})
+        self.assertEqual(paired.reconcile_outbound(Reader(), anchor, text, 20), {"observed": False})
+        with self.assertRaises(paired.PairedQueryError) as caught:
+            paired.reconcile_outbound(Reader(reconcile=[(20, 20, 1)]), anchor, text, 10)
+        self.assertEqual(caught.exception.code, "RECONCILE_BASELINE_BEFORE_ANCHOR")
 
 
     def test_reconcile_allows_multiline_text(self):
         text = "Перший рядок\nДругий рядок"
         reader = Reader(reconcile=[(15, 20, 1)])
         anchor = paired.resolve_anchor(reader, PHONE, DESKTOP)
-        self.assertEqual(paired.reconcile_outbound(reader, anchor, text), {"observed": True})
+        self.assertEqual(paired.reconcile_outbound(reader, anchor, text, 14),
+                         {"observed": True, "source_event_id": 15})
 
     def test_latest_inbound_requires_anchor_peer_and_does_not_transform_text(self):
         reader = Reader(latest=[(9, 20, 30, 0, "Привіт")])

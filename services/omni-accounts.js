@@ -137,12 +137,7 @@ const CHANNELS = [
       accountEpoch: 'OMNI_VIBER_PERSONAL_ACCOUNT_EPOCH',
       bridgeToken: 'OMNI_VIBER_PERSONAL_BRIDGE_TOKEN',
     },
-    fields: [
-      { name: 'bridgeId', label: 'Bridge ID', type: 'text', required: true, placeholder: 'UUID', hint: 'Ідентифікатор цієї інсталяції моста.' },
-      { name: 'accountId', label: 'Account ID', type: 'text', required: true, placeholder: 'UUID', hint: 'Ідентифікатор привʼязки персонального Viber-акаунта.' },
-      { name: 'accountEpoch', label: 'Account epoch', type: 'number', required: true, placeholder: '1', hint: 'Збільшується після повної перепривʼязки акаунта.' },
-      { name: 'bridgeToken', label: 'Bridge token', type: 'secret', required: true, placeholder: 'щонайменше 24 символи', hint: 'Окремий секрет лише для HTTPS-зʼєднання цього моста.' },
-    ],
+    fields: [],
     businessImpact: 'Персональний Viber працює через окрему Windows-машину. CRM ставить відповіді в чергу; міст приймає та виконує їх без автоматичних відповідей.',
     webhookNote: 'Міст сам відкриває вихідне HTTPS-зʼєднання до CRM. Публічний Viber Bot webhook для цього конектора не потрібен.',
     localValidation: validateViberPersonal,
@@ -619,8 +614,13 @@ function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
     && Boolean(summary.connected)
     && (!activationPreflight || activationPreflight.ready);
   const configured = activationPreflight ? activationPreflight.ready : Boolean(summary.connected);
-  const sendCapable = Boolean(connected && def.sendSupported && status !== 'history_only' && status !== 'provider_unreachable');
-  const receiveCapable = Boolean(connected && def.receiveSupported && !['webhook_missing', 'limited', 'provider_unreachable'].includes(status));
+  let sendCapable = Boolean(connected && def.sendSupported && status !== 'history_only' && status !== 'provider_unreachable');
+  let receiveCapable = Boolean(connected && def.receiveSupported && !['webhook_missing', 'limited', 'provider_unreachable'].includes(status));
+  if (def.channel === 'viber_personal' && connected) {
+    status = status === 'connected' ? 'limited' : status;
+    sendCapable = false;
+    receiveCapable = false;
+  }
   const limited = status === 'limited' || status === 'webhook_missing' || status === 'history_only' || status === 'provider_unreachable';
 
   const warning = row?.warning
@@ -693,6 +693,7 @@ function warningForStatus(def, status, connected, sendCapable, receiveCapable) {
   if (status === 'misconfigured') return `${def.label}: бракує обовʼязкових полів або налаштування неповне.`;
   if (status === 'webhook_missing') return `${def.label}: відправка можлива, але webhook/прийом подій потребує налаштування.`;
   if (status === 'provider_unreachable') return `${def.label}: CRM зберегла конфігурацію, але провайдер не відповів під час перевірки.`;
+  if (def.channel === 'viber_personal' && (!sendCapable || !receiveCapable)) return `${def.label}: очікуємо фактичний доказ runtime, scan, binding, receive і send adapter.`;
   if (!sendCapable && def.inboundOnly) return def.limitedWarning || `${def.label} працює тільки на прийом/історію.`;
   if (!sendCapable && def.sendSupported) return `${def.label}: відправка з CRM зараз недоступна.`;
   if (!receiveCapable && def.receiveSupported) return `${def.label}: прийом повідомлень потребує перевірки webhook.`;
@@ -705,6 +706,7 @@ function nextActionForStatus(def, status, connected, sendCapable, receiveCapable
   if (status === 'token_expired') return 'Відкрийте налаштування, вставте новий токен і запустіть перевірку.';
   if (status === 'webhook_missing') return 'Скопіюйте webhook URL у кабінет провайдера і натисніть «Перевірити».';
   if (status === 'provider_unreachable') return 'Перевірте інтернет/кабінет провайдера і повторіть «Тест».';
+  if (def.channel === 'viber_personal' && (!sendCapable || !receiveCapable)) return 'Відкрийте Onboarding: перевірте Windows-міст, Viber Desktop, binding, приймання і sender gate.';
   if (!sendCapable && def.inboundOnly) return 'Цей канал не відправляє з CRM. Використовуйте його для історії та вхідних подій.';
   if (!receiveCapable && def.receiveSupported) return 'Перевірте webhook, щоб нові події автоматично приходили в CRM.';
   return 'Можна працювати. Для контролю натисніть «Тест» або «Перевірити».';

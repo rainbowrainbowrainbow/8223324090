@@ -27,7 +27,7 @@ from p1_paired_queries import ANCHOR_SQL, PairedQueryError, resolve_anchor, scan
 
 
 APPLICATION_ID = 0x45564C49  # "EVLI"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_EVENT_ID = (1 << 63) - 1
 MAX_CAPTURE_BATCH = 50
 REQUIRED_SCHEMA = {
@@ -357,9 +357,11 @@ class LiveInboundJournal:
                 if not tables and app_id == 0 and version == 0:
                     self._create_schema(db)
                     self.meta_path.write_text("eventgenix-viber-personal-journal-v1\n", encoding="utf-8")
-                elif app_id != APPLICATION_ID or version != SCHEMA_VERSION or tables != expected:
+                elif app_id != APPLICATION_ID or version not in {1, SCHEMA_VERSION} or tables != expected:
                     raise LiveInboundError("JOURNAL_SCHEMA_MISMATCH")
-                elif not self.meta_path.exists():
+                elif version == 1:
+                    self._migrate_v1_to_v2(db)
+                if not self.meta_path.exists():
                     self.meta_path.write_text("eventgenix-viber-personal-journal-v1\n", encoding="utf-8")
         except LiveInboundError:
             self.close()
@@ -386,7 +388,12 @@ class LiveInboundJournal:
                 schema_fingerprint TEXT,
                 status TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting', 'enrolled', 'blocked')),
                 block_reason TEXT,
-                last_scan_at TEXT
+                last_scan_at TEXT,
+                last_success_at TEXT,
+                last_error_code TEXT,
+                last_error_at TEXT,
+                last_pending_at TEXT,
+                last_import_at TEXT
             )
         """)
         db.execute("INSERT INTO journal_state(id) VALUES(1)")
@@ -406,6 +413,14 @@ class LiveInboundJournal:
         """)
         db.execute("CREATE INDEX captured_events_status ON captured_events(status, source_event_id)")
         db.execute(f"PRAGMA application_id={APPLICATION_ID}")
+        db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+
+    @staticmethod
+    def _migrate_v1_to_v2(db: sqlite3.Connection) -> None:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(journal_state)")}
+        for column in ("last_success_at", "last_error_code", "last_error_at", "last_pending_at", "last_import_at"):
+            if column not in columns:
+                db.execute(f"ALTER TABLE journal_state ADD COLUMN {column} TEXT")
         db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     @contextmanager
@@ -433,8 +448,19 @@ class LiveInboundJournal:
             reason = "CAPTURE_BLOCKED"
         with self._transaction() as db:
             db.execute(
-                "UPDATE journal_state SET status='blocked', block_reason=?, last_scan_at=? WHERE id=1",
-                (reason, now or utc_now()),
+                "UPDATE journal_state SET status='blocked', block_reason=?, last_scan_at=?, "
+                "last_error_code=?, last_error_at=? WHERE id=1",
+                (reason, now or utc_now(), reason, now or utc_now()),
+            )
+
+    def mark_waiting(self, reason: str, *, now: str | None = None) -> None:
+        if not isinstance(reason, str) or not reason:
+            reason = "WAITING_FOR_ENROLLMENT_MARKERS"
+        with self._transaction() as db:
+            db.execute(
+                "UPDATE journal_state SET status='waiting', block_reason=?, last_scan_at=?, "
+                "last_success_at=?, last_error_code=NULL, last_error_at=NULL WHERE id=1",
+                (reason, now or utc_now(), now or utc_now()),
             )
 
     def ensure_baseline(self, current_max_event_id: int, *, now: str | None = None) -> int:
@@ -444,8 +470,8 @@ class LiveInboundJournal:
             if row["baseline_event_id"] is None:
                 db.execute(
                     "UPDATE journal_state SET baseline_event_id=?, cursor_event_id=?, status='waiting', "
-                    "block_reason=NULL, last_scan_at=? WHERE id=1",
-                    (current, current, now or utc_now()),
+                    "block_reason=NULL, last_scan_at=?, last_success_at=?, last_error_code=NULL, last_error_at=NULL WHERE id=1",
+                    (current, current, now or utc_now(), now or utc_now()),
                 )
                 return current
             return row["baseline_event_id"]
@@ -470,11 +496,12 @@ class LiveInboundJournal:
             db.execute(
                 "UPDATE journal_state SET status='enrolled', block_reason=NULL, chat_id=?, peer_contact_id=?, "
                 "inbound_code=?, outbound_code=?, anchor_event_id=?, cursor_event_id=?, source_chat_ref=?, "
-                "peer_ref=?, source_fingerprint=?, schema_fingerprint=?, last_scan_at=? WHERE id=1",
+                "peer_ref=?, source_fingerprint=?, schema_fingerprint=?, last_scan_at=?, "
+                "last_success_at=?, last_error_code=NULL, last_error_at=NULL WHERE id=1",
                 (anchor["chat_id"], anchor["peer_contact_id"], anchor["inbound_code"],
                  anchor["outbound_code"], anchor["anchor_event_id"], anchor["anchor_event_id"],
                  source_chat_ref_value, peer_ref_value, source_fingerprint, schema_fingerprint,
-                 now or utc_now()),
+                 now or utc_now(), now or utc_now()),
             )
 
     def verify_source(self, *, source_fingerprint: str, schema_fingerprint: str) -> None:
@@ -513,10 +540,12 @@ class LiveInboundJournal:
                 )
                 changed += cursor.rowcount
             if max_seen is not None:
-                db.execute("UPDATE journal_state SET cursor_event_id=?, last_scan_at=? WHERE id=1",
-                           (max_seen, observed_at))
+                db.execute("UPDATE journal_state SET cursor_event_id=?, last_scan_at=?, "
+                           "last_success_at=?, last_pending_at=? WHERE id=1",
+                           (max_seen, observed_at, observed_at, observed_at))
             else:
-                db.execute("UPDATE journal_state SET last_scan_at=? WHERE id=1", (observed_at,))
+                db.execute("UPDATE journal_state SET last_scan_at=?, last_success_at=? WHERE id=1",
+                           (observed_at, observed_at))
         return changed
 
     def pending_for_import(self, limit: int = MAX_CAPTURE_BATCH) -> list[dict[str, Any]]:
@@ -536,6 +565,10 @@ class LiveInboundJournal:
             db.execute(
                 "UPDATE captured_events SET status='imported', p1_event_id=? WHERE source_event_id=?",
                 (p1_event_id, source_event_id),
+            )
+            db.execute(
+                "UPDATE journal_state SET last_import_at=? WHERE id=1",
+                (utc_now(),),
             )
 
     def close(self) -> None:
@@ -586,6 +619,12 @@ class LiveInboundAdapter:
             "service_running": True,
             "desktop_authorized": state.get("status") == "enrolled" and not state.get("block_reason"),
             "block_reason": state.get("block_reason") or self._last_result.get("block_reason"),
+            "enrollment_status": state.get("status"),
+            "last_success_at": state.get("last_success_at"),
+            "last_error_code": state.get("last_error_code"),
+            "last_error_at": state.get("last_error_at"),
+            "last_pending_at": state.get("last_pending_at"),
+            "last_import_at": state.get("last_import_at"),
         }
 
     def _block(self, core: BridgeCore, code: str) -> dict[str, Any]:
@@ -623,6 +662,7 @@ class LiveInboundAdapter:
                 except PairedQueryError as error:
                     if error.code == "ANCHOR_AMBIGUOUS":
                         core.set_receive_health(False)
+                        self.journal.mark_waiting("WAITING_FOR_ENROLLMENT_MARKERS")
                         self._last_result = {"enabled": True, "receive_text": False,
                                              "block_reason": "WAITING_FOR_ENROLLMENT_MARKERS"}
                         result = self._last_result

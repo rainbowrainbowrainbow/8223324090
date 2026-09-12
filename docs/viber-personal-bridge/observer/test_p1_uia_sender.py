@@ -57,7 +57,14 @@ class UiaSenderTests(unittest.TestCase):
     def sender(self, runner):
         return PowerShellViberSender(state_path=self.state, run_id="0B038E78",
                                      runtime_dir=Path(self.temp.name), runner=runner,
-                                     powershell="powershell-fixture", python_exe="python-fixture")
+                                     powershell="powershell-fixture", python_exe="python-fixture",
+                                     reference_key=b"0123456789abcdef",
+                                     anchor_probe=lambda: {
+                                         "source_chat_ref": SOURCE_CHAT,
+                                         "peer_ref": PEER,
+                                         "anchor_event_id": 11,
+                                         "max_event_id": 99,
+                                     })
 
     def test_active_peer_uses_verified_binding_and_ui_probes(self):
         adapter = self.sender(FakeRunner())
@@ -77,21 +84,58 @@ class UiaSenderTests(unittest.TestCase):
         self.assertEqual(result["composer_state"], "foreign_text")
 
     def test_send_text_reconciles_outbound_occurrence_without_delivery_claim(self):
-        runner = FakeRunner()
+        runner = FakeRunner(reconcile={"status": "SUBMITTED_UNCONFIRMED",
+                                       "outbound_occurrence_observed": True,
+                                       "outbound_source_event_id": 100})
         adapter = self.sender(runner)
         adapter.prepare_command({"command_id": COMMAND, "chat_id": CHAT, "text": "Привіт 🙂\nДругий рядок"})
+        self.assertTrue(adapter.active_peer(CHAT)["account_verified"])
+        self.assertEqual(adapter.dispatch_baseline(), 99)
         result = adapter.send_text("Привіт 🙂\nДругий рядок")
         self.assertEqual(result, {"status": "submitted_unconfirmed", "outbound_observed": True,
-                                  "chat_confirmed": True})
+                                  "chat_confirmed": True,
+                                  "outbound_baseline_event_id": 99,
+                                  "outbound_source_event_id": 100})
         self.assertTrue(any("Send-P1Controlled.ps1" in call for call in runner.calls))
         self.assertTrue(any("verify_p1_send_reconcile_live.py" in call for call in runner.calls))
+        self.assertTrue(any("--after-event-id 99" in call for call in runner.calls))
 
     def test_missing_reconciliation_is_unknown_not_retry(self):
         adapter = self.sender(FakeRunner(reconcile={"status": "UNKNOWN", "outbound_occurrence_observed": False}))
         adapter.prepare_command({"command_id": COMMAND, "chat_id": CHAT, "text": "hello"})
+        adapter.active_peer(CHAT)
+        adapter.dispatch_baseline()
         result = adapter.send_text("hello")
         self.assertEqual(result["status"], "unknown")
         self.assertEqual(result["error_code"], "OUTBOUND_RECONCILIATION_MISSING")
+
+    def test_old_or_missing_active_peer_does_not_send(self):
+        runner = FakeRunner()
+        adapter = self.sender(runner)
+        adapter.prepare_command({"command_id": COMMAND, "chat_id": CHAT, "text": "hello"})
+        result = adapter.send_text("hello")
+        self.assertEqual(result["status"], "unknown")
+        self.assertEqual(result["error_code"], "ACTIVE_PEER_CHANGED_BEFORE_SEND")
+        self.assertFalse(any("Send-P1Controlled.ps1" in call for call in runner.calls))
+
+    def test_observed_peer_mismatch_blocks_active_peer(self):
+        adapter = PowerShellViberSender(
+            state_path=self.state,
+            run_id="0B038E78",
+            runtime_dir=Path(self.temp.name),
+            runner=FakeRunner(),
+            powershell="powershell-fixture",
+            python_exe="python-fixture",
+            reference_key=b"0123456789abcdef",
+            anchor_probe=lambda: {
+                "source_chat_ref": "e" * 64,
+                "peer_ref": PEER,
+                "anchor_event_id": 11,
+                "max_event_id": 99,
+            },
+        )
+        result = adapter.active_peer(CHAT)
+        self.assertFalse(result["account_verified"])
 
 
 if __name__ == "__main__":

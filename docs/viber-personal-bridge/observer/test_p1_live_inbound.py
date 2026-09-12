@@ -100,6 +100,9 @@ class LiveInboundAdapterTests(unittest.TestCase):
                 self.assertTrue(result["receive_text"])
                 self.assertEqual(result["captured"], 0)
                 self.assertEqual(core.list_pending_events(), [])
+                state = adapter.journal.state()
+                self.assertIsNotNone(state["last_success_at"])
+                self.assertIsNotNone(state["last_import_at"])
                 self.assertEqual(core.diagnostics()["inbound_acked"], 5)
             finally:
                 adapter.close()
@@ -138,6 +141,38 @@ class LiveInboundAdapterTests(unittest.TestCase):
                 self.assertTrue(result["receive_text"])
                 self.assertEqual(result["imported"], 1)
                 self.assertEqual([event["text"] for event in core.list_pending_events()], ["survives restart"])
+            finally:
+                adapter.close()
+                core.close()
+                db.close()
+
+    def test_waiting_for_enrollment_updates_journal_scan_state(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source_path = root / "viber.sqlite"
+            db = init_source(source_path)
+            core = self.make_core(root)
+            adapter = self.make_adapter(root, source_path)
+            try:
+                first = adapter.scan_once(core)
+                self.assertFalse(first["receive_text"])
+                self.assertEqual(first["block_reason"], "WAITING_FOR_ENROLLMENT_MARKERS")
+                with adapter.journal._transaction() as connection:
+                    connection.execute(
+                        "UPDATE journal_state SET last_scan_at='stale', block_reason=NULL WHERE id=1"
+                    )
+
+                second = adapter.scan_once(core)
+                self.assertFalse(second["receive_text"])
+                self.assertEqual(second["block_reason"], "WAITING_FOR_ENROLLMENT_MARKERS")
+                state = adapter.journal.state()
+                self.assertEqual(state["status"], "waiting")
+                self.assertEqual(state["block_reason"], "WAITING_FOR_ENROLLMENT_MARKERS")
+                self.assertNotEqual(state["last_scan_at"], "stale")
+                self.assertIsNotNone(state["last_success_at"])
+                self.assertIsNone(state["last_error_code"])
+                self.assertIsNotNone(state["baseline_event_id"])
+                self.assertIsNotNone(state["cursor_event_id"])
             finally:
                 adapter.close()
                 core.close()
@@ -187,6 +222,9 @@ class LiveInboundAdapterTests(unittest.TestCase):
                 result = adapter.scan_once(core)
                 self.assertFalse(result["receive_text"])
                 self.assertEqual(result["block_reason"], "SOURCE_DB_CHANGED")
+                state = adapter.journal.state()
+                self.assertEqual(state["last_error_code"], "SOURCE_DB_CHANGED")
+                self.assertIsNotNone(state["last_error_at"])
             finally:
                 adapter.close()
                 core.close()

@@ -10,6 +10,7 @@ const {
   createService,
   payloadHash,
   sanitizeCapabilities,
+  bridgeRuntimeHealth,
   scopeFromRuntime,
   validateEvent,
 } = require('../services/omni-viber-personal-bridge');
@@ -85,6 +86,29 @@ test('event contract preserves occurrences and rejects ambiguous identity', () =
   assert.notEqual(payloadHash(event()), payloadHash(event({ event_id: '00000000-0000-4000-8000-000000000102' })));
   assert.equal(bridgeErrorCode(() => validateEvent(event({ identity: { level: 'heuristic', peer_ref: 'a'.repeat(64) } }), parsedScope)), 'IDENTITY_INVALID');
   assert.equal(bridgeErrorCode(() => validateEvent(event({ message: { direction: 'inbound', origin: 'external_viber', text: '' } }), parsedScope)), 'MESSAGE_INVALID');
+});
+
+test('runtime health treats enrollment waiting as onboarding state instead of adapter failure', () => {
+  const state = bridgeRuntimeHealth({
+    last_heartbeat_at: '2026-09-12T09:00:00.000Z',
+    last_receive_at: null,
+    last_error_code: null,
+    capabilities: {
+      service_running: true,
+      last_scan_at: '2026-09-12T09:00:20.000Z',
+      block_reason: 'WAITING_FOR_ENROLLMENT_MARKERS',
+      receive_text: false,
+      send_text: false,
+    },
+  }, new Date('2026-09-12T09:00:30.000Z'));
+  assert.equal(state.online, true);
+  assert.equal(state.scanHealthy, true);
+  assert.equal(state.desktopVerified, true);
+  assert.equal(state.waitingForEnrollment, true);
+  assert.equal(state.adapterError, null);
+  assert.equal(state.receiveCapability, false);
+  assert.equal(state.sendCapability, false);
+  assert.equal(state.blockReason, 'WAITING_FOR_ENROLLMENT_MARKERS');
 });
 
 test('heartbeat authenticates before writing and exposes only scoped runtime state', async () => {

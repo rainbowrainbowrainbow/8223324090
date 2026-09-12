@@ -99,6 +99,12 @@ function sanitizeCapabilities(value) {
   const stringKeys = [
     'last_scan_at', 'lastScanAt', 'viber_desktop_version', 'viberDesktopVersion',
     'block_reason', 'blockReason', 'adapter_error', 'adapterError',
+    'enrollment_status', 'enrollmentStatus', 'last_success_at', 'lastSuccessAt',
+    'last_error_code', 'lastErrorCode', 'last_error_at', 'lastErrorAt',
+    'last_pending_at', 'lastPendingAt', 'last_import_at', 'lastImportAt',
+    'last_ack_at', 'lastAckAt', 'cycle_status', 'cycleStatus',
+    'last_cycle_success_at', 'lastCycleSuccessAt', 'last_cycle_error_code',
+    'lastCycleErrorCode', 'last_cycle_error_at', 'lastCycleErrorAt',
   ];
   for (const key of stringKeys) {
     if (typeof input[key] === 'string' && input[key].length <= 255 && !/[\u0000\r\n]/.test(input[key])) output[key] = input[key];
@@ -116,6 +122,8 @@ function firstBoolean(values) {
   return values.find(value => typeof value === 'boolean') ?? null;
 }
 
+const ENROLLMENT_WAITING_BLOCKERS = new Set(['WAITING_FOR_ENROLLMENT_MARKERS']);
+
 function bridgeRuntimeHealth(row, currentTime = new Date()) {
   const capabilities = sanitizeCapabilities(row?.capabilities || {});
   const current = parseTime(currentTime) || new Date();
@@ -123,6 +131,13 @@ function bridgeRuntimeHealth(row, currentTime = new Date()) {
   const online = Boolean(heartbeat && current - heartbeat <= 90_000);
   const lastScanAt = parseTime(capabilities.last_scan_at || capabilities.lastScanAt);
   const lastReceiveAt = parseTime(row?.last_receive_at);
+  const lastSuccessAt = parseTime(capabilities.last_success_at || capabilities.lastSuccessAt);
+  const lastErrorAt = parseTime(capabilities.last_error_at || capabilities.lastErrorAt);
+  const lastPendingAt = parseTime(capabilities.last_pending_at || capabilities.lastPendingAt);
+  const lastImportAt = parseTime(capabilities.last_import_at || capabilities.lastImportAt);
+  const lastAckAt = parseTime(capabilities.last_ack_at || capabilities.lastAckAt);
+  const lastCycleSuccessAt = parseTime(capabilities.last_cycle_success_at || capabilities.lastCycleSuccessAt);
+  const lastCycleErrorAt = parseTime(capabilities.last_cycle_error_at || capabilities.lastCycleErrorAt);
   const serviceRunning = firstBoolean([capabilities.service_running, online]) === true;
   const desktopAuthorized = firstBoolean([
     capabilities.desktop_authorized,
@@ -133,30 +148,52 @@ function bridgeRuntimeHealth(row, currentTime = new Date()) {
   const explicitCaptureGap = firstBoolean([capabilities.capture_gap, capabilities.captureGap]) === true;
   const scanStale = Boolean(online && receiveConfigured && (!lastScanAt || current - lastScanAt > 90_000));
   const captureGap = Boolean(explicitCaptureGap || scanStale);
-  const adapterError = row?.last_error_code || capabilities.adapter_error || capabilities.adapterError
-    || capabilities.block_reason || capabilities.blockReason || null;
+  const capabilityBlockReason = capabilities.block_reason || capabilities.blockReason || null;
+  const waitingForEnrollment = ENROLLMENT_WAITING_BLOCKERS.has(capabilityBlockReason)
+    || Boolean(online && lastScanAt && !receiveConfigured && !row?.last_error_code
+      && !capabilities.adapter_error && !capabilities.adapterError);
+  const rawAdapterError = row?.last_error_code || capabilities.adapter_error || capabilities.adapterError || null;
+  const adapterError = rawAdapterError || (!waitingForEnrollment ? capabilityBlockReason : null);
+  const desktopVerified = Boolean(desktopAuthorized || (online && serviceRunning && lastScanAt && !rawAdapterError));
+  const scanHealthy = Boolean(online && serviceRunning && lastScanAt && !rawAdapterError);
+  const bindingReady = Boolean(desktopVerified && receiveConfigured && !waitingForEnrollment && !adapterError);
   const blockReason = adapterError
     || (!online ? 'BRIDGE_OFFLINE' : null)
     || (!serviceRunning ? 'BRIDGE_SERVICE_STOPPED' : null)
-    || (!desktopAuthorized ? 'VIBER_DESKTOP_NOT_VERIFIED' : null)
+    || (!desktopVerified ? 'VIBER_DESKTOP_NOT_VERIFIED' : null)
+    || (waitingForEnrollment ? 'WAITING_FOR_ENROLLMENT_MARKERS' : null)
     || (!receiveConfigured && !lastScanAt ? 'CAPTURE_NOT_CONFIGURED' : null)
     || (captureGap ? 'CAPTURE_GAP' : null)
     || (!sendConfigured ? 'SEND_NOT_CONFIGURED' : null);
   const receiveHealth = Boolean(online && serviceRunning && desktopAuthorized && receiveConfigured && !captureGap && !adapterError);
   const receiveCapability = Boolean(online && serviceRunning && desktopAuthorized && receiveConfigured && !adapterError);
-  const sendCapability = Boolean(online && serviceRunning && desktopAuthorized && sendConfigured && !captureGap && !adapterError);
+  const sendCapability = Boolean(online && serviceRunning && desktopAuthorized && receiveConfigured && sendConfigured && !captureGap && !adapterError && !waitingForEnrollment);
   return {
     online,
     transportHeartbeat: online,
     serviceRunning,
     desktopAuthorized,
+    desktopVerified,
+    scanHealthy,
+    bindingReady,
+    waitingForEnrollment,
     receiveHealth,
     receiveCapability,
     sendCapability,
     lastHeartbeatAt: heartbeat?.toISOString() || null,
     lastReceiveAt: lastReceiveAt?.toISOString() || null,
     lastScanAt: lastScanAt?.toISOString() || null,
-    lastErrorCode: row?.last_error_code || null,
+    lastSuccessAt: lastSuccessAt?.toISOString() || null,
+    lastErrorAt: lastErrorAt?.toISOString() || null,
+    lastPendingAt: lastPendingAt?.toISOString() || null,
+    lastImportAt: lastImportAt?.toISOString() || null,
+    lastAckAt: lastAckAt?.toISOString() || null,
+    lastCycleSuccessAt: lastCycleSuccessAt?.toISOString() || null,
+    lastCycleErrorAt: lastCycleErrorAt?.toISOString() || null,
+    enrollmentStatus: capabilities.enrollment_status || capabilities.enrollmentStatus || null,
+    cycleStatus: capabilities.cycle_status || capabilities.cycleStatus || null,
+    lastCycleErrorCode: capabilities.last_cycle_error_code || capabilities.lastCycleErrorCode || null,
+    lastErrorCode: row?.last_error_code || capabilities.last_error_code || capabilities.lastErrorCode || null,
     captureGap,
     adapterError,
     blockReason,

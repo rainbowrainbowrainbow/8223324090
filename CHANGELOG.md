@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.147 - Omni: Viber Bridge paired-only release
+
+### Omni / Viber Personal Bridge / (12.09.2026) [codex]
+- **Paired-only готовність** - реліз готує один явно прив’язаний текстовий Viber-чат до end-to-end перевірки: receive journal, CRM ACK, Inbox, send command і reconciliation працюють тільки через підтверджений binding.
+- **Діагностика відновлення** - Omni окремо показує heartbeat, scan/enrollment, pending/import/ACK, останній успішний цикл daemon і безпечний код помилки без текстів листування або секретів.
+- **Операторське відновлення** - control script має `health`, user-session autostart, rollback програмних файлів і one-worker guard; Session 0 для UI worker не використовується.
+- **Межі релізу** - повний Viber inbox, нові невідомі контакти, вкладення і 24-годинний soak не оголошуються готовими без окремого live-доказу.
+
+---
+
 ## v0.81.146 - Omni: Viber Bridge fault QA
 
 ### Omni / Viber Personal Bridge / (12.09.2026) [codex]

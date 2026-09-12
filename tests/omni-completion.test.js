@@ -199,8 +199,11 @@ test('health metadata keeps explicit bridge direction capabilities fail-closed',
     providerError: null, sendCapable: false, receiveCapable: false,
     bridge: {
       online: null, transportHeartbeat: null, receiveHealth: null, receiveCapability: false,
-      sendCapability: false,
+      sendCapability: false, desktopVerified: null, scanHealthy: null,
+      bindingReady: null, waitingForEnrollment: null,
       lastHeartbeatAt: null, lastReceiveAt: null, lastScanAt: null,
+      lastSuccessAt: null, lastErrorAt: null, lastPendingAt: null, lastImportAt: null,
+      lastAckAt: null, cycleStatus: null, enrollmentStatus: null,
       viberDesktopVersion: null, desktopAuthorized: null, serviceRunning: null,
       captureGap: null, adapterError: null, blockReason: null,
     } });
@@ -240,10 +243,15 @@ test('Omni UI separates Viber Bot API from Viber Personal Bridge onboarding', ()
   assert.match(omniHtml, /Transport heartbeat/);
   assert.match(omniHtml, /Receive health/);
   assert.match(omniHtml, /Send capability/);
+  assert.match(omniHtml, /Останній успішний цикл/);
+  assert.match(omniHtml, /Останній ACK/);
   assert.match(omniHtml, /data-account-action="bridge-bind-chat"/);
+  assert.doesNotMatch(omniHtml, /data-account-action="bridge-bind-chat"[^>]*disabled/);
   assert.match(omniHtml, /Перевірити Viber Desktop/);
   assert.match(omniHtml, /Перевірити приймання/);
   assert.match(omniHtml, /Перевірити відправку/);
+  assert.match(omniHtml, /Порядок підключення без ручних ID/);
+  assert.match(omniHtml, /WAITING_FOR_ENROLLMENT_MARKERS/);
   assert.match(omniHtml, /if \(acc\?\.channel === 'viber_personal'\)/);
   assert.match(omniHtml, /connectionSubmit\.hidden = acc\.channel === 'viber_personal'/);
   assert.match(omniHtml, /У цій формі немає bot token і webhook/);
@@ -251,6 +259,18 @@ test('Omni UI separates Viber Bot API from Viber Personal Bridge onboarding', ()
     omniHtml.slice(omniHtml.indexOf("function renderViberPersonalOnboarding"), omniHtml.indexOf("function accountActionsHtml")),
     /Bridge ID|Account ID|webhookSecret/i
   );
+});
+
+
+test('Viber Personal Bridge control script exposes user-session recovery commands', () => {
+  const root = path.join(__dirname, '..');
+  const control = fs.readFileSync(path.join(root, 'scripts', 'viber-personal-bridge-control.ps1'), 'utf8');
+  assert.match(control, /'health'/);
+  assert.match(control, /'enable-autostart'/);
+  assert.match(control, /'disable-autostart'/);
+  assert.match(control, /GetFolderPath\('Startup'\)/);
+  assert.doesNotMatch(control, /Session 0/i);
+  assert.match(control, /workerCount -eq 1/);
 });
 
 test('attachment policies reject spoofed files, oversized images and unsupported channels before sending', () => {

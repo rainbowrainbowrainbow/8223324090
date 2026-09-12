@@ -14,9 +14,20 @@ async function saveCheck(channel, businessContext, check, client = pool) {
     receiveHealth: firstBoolean([details.receiveHealth, details.receive_health]),
     receiveCapability: firstBoolean([details.receiveCapability, details.receive_capability, details.receiveCapable]),
     sendCapability: firstBoolean([details.sendCapability, details.send_capability, details.sendCapable]),
+    desktopVerified: firstBoolean([details.desktopVerified, details.desktop_verified]),
+    scanHealthy: firstBoolean([details.scanHealthy, details.scan_healthy]),
+    bindingReady: firstBoolean([details.bindingReady, details.binding_ready]),
+    waitingForEnrollment: firstBoolean([details.waitingForEnrollment, details.waiting_for_enrollment]),
     lastHeartbeatAt: details.lastHeartbeatAt || null,
     lastReceiveAt: details.lastReceiveAt || null,
     lastScanAt: details.lastScanAt || details.last_scan_at || bridgeCapabilities.last_scan_at || bridgeCapabilities.lastScanAt || null,
+    lastSuccessAt: details.lastSuccessAt || details.last_success_at || bridgeCapabilities.lastSuccessAt || bridgeCapabilities.last_success_at || null,
+    lastErrorAt: details.lastErrorAt || details.last_error_at || bridgeCapabilities.lastErrorAt || bridgeCapabilities.last_error_at || null,
+    lastPendingAt: details.lastPendingAt || details.last_pending_at || bridgeCapabilities.lastPendingAt || bridgeCapabilities.last_pending_at || null,
+    lastImportAt: details.lastImportAt || details.last_import_at || bridgeCapabilities.lastImportAt || bridgeCapabilities.last_import_at || null,
+    lastAckAt: details.lastAckAt || details.last_ack_at || bridgeCapabilities.lastAckAt || bridgeCapabilities.last_ack_at || null,
+    cycleStatus: details.cycleStatus || details.cycle_status || bridgeCapabilities.cycleStatus || bridgeCapabilities.cycle_status || null,
+    enrollmentStatus: details.enrollmentStatus || details.enrollment_status || bridgeCapabilities.enrollmentStatus || bridgeCapabilities.enrollment_status || null,
     viberDesktopVersion: details.viberDesktopVersion || details.viber_desktop_version
       || bridgeCapabilities.viberDesktopVersion || bridgeCapabilities.viber_desktop_version || null,
     desktopAuthorized: firstBoolean([
@@ -30,7 +41,7 @@ async function saveCheck(channel, businessContext, check, client = pool) {
     serviceRunning: firstBoolean([details.serviceRunning, details.service_running, details.online]),
     captureGap: firstBoolean([details.captureGap, details.capture_gap, bridgeCapabilities.captureGap, bridgeCapabilities.capture_gap]),
     adapterError: details.adapterError || details.adapter_error || details.lastErrorCode || details.last_error_code
-      || bridgeCapabilities.adapterError || bridgeCapabilities.adapter_error || bridgeCapabilities.blockReason || bridgeCapabilities.block_reason || null,
+      || bridgeCapabilities.adapterError || bridgeCapabilities.adapter_error || null,
     blockReason: details.blockReason || details.block_reason || bridgeCapabilities.blockReason || bridgeCapabilities.block_reason || null,
   } : null;
   const safe = {

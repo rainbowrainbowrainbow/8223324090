@@ -11,13 +11,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.146">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.146">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.146">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.146">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.146">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.146">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.146">
+    <link rel="stylesheet" href="css/base.css?v=0.81.147">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.147">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.147">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.147">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.147">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.147">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.147">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -511,6 +511,60 @@
         .omni-connection-steps ol {
             margin: 8px 0 0 20px;
             padding: 0;
+        }
+
+        .omni-bridge-stages {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 8px;
+            margin: 12px 0;
+        }
+
+        .omni-bridge-stage {
+            border: 1px solid rgba(148,163,184,0.24);
+            border-radius: 12px;
+            padding: 10px;
+            background: rgba(15,23,42,0.04);
+            min-width: 0;
+        }
+
+        .omni-bridge-stage strong,
+        .omni-bridge-next strong {
+            display: block;
+            overflow-wrap: anywhere;
+        }
+
+        .omni-bridge-stage span,
+        .omni-bridge-next span {
+            display: block;
+            margin-top: 4px;
+            color: var(--text-secondary, #64748b);
+            font-size: 12px;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+
+        .omni-bridge-stage.done {
+            border-color: rgba(16,185,129,0.34);
+            background: rgba(16,185,129,0.10);
+        }
+
+        .omni-bridge-stage.waiting {
+            border-color: rgba(245,158,11,0.34);
+            background: rgba(245,158,11,0.12);
+        }
+
+        .omni-bridge-stage.blocked {
+            border-color: rgba(239,68,68,0.28);
+            background: rgba(239,68,68,0.10);
+        }
+
+        .omni-bridge-next {
+            margin: 12px 0;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(16,185,129,0.22);
+            background: rgba(16,185,129,0.08);
         }
 
         .omni-connection-webhook {
@@ -2121,7 +2175,7 @@
             color: #FBBF24;
         }
     </style>
-    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.146">
+    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.147">
 </head>
 <body data-page-group="system">
     <script>
@@ -2350,12 +2404,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.81.146"></script>
-    <script src="js/api.js?v=0.81.146"></script>
-    <script src="js/auth.js?v=0.81.146"></script>
-    <script src="js/components/sidebar.js?v=0.81.146"></script>
+    <script src="js/config.js?v=0.81.147"></script>
+    <script src="js/api.js?v=0.81.147"></script>
+    <script src="js/auth.js?v=0.81.147"></script>
+    <script src="js/components/sidebar.js?v=0.81.147"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.81.146"></script>
+    <script src="js/ws.js?v=0.81.147"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -2876,16 +2930,75 @@
             return unknownText;
         }
 
+        function bridgeBlockReasonLabel(reason) {
+            const labels = {
+                BRIDGE_OFFLINE: 'Windows-міст offline',
+                BRIDGE_SERVICE_STOPPED: 'Служба моста не запущена',
+                VIBER_DESKTOP_NOT_VERIFIED: 'Viber Desktop ще не перевірено',
+                CAPTURE_NOT_CONFIGURED: 'Capture adapter не налаштований',
+                WAITING_FOR_ENROLLMENT_MARKERS: 'Очікуємо PHONE/DESKTOP markers для тестового чату',
+                CAPTURE_GAP: 'Є розрив capture або scan застарів',
+                SEND_NOT_CONFIGURED: 'Sender вимкнений або ще не пройшов gate'
+            };
+            return labels[reason] || reason || 'немає активного blocker';
+        }
+
+        function bridgeNextActionText(state) {
+            const transportReady = state.transportHeartbeat === true || state.serviceRunning === true || state.online === true;
+            const desktopReady = state.desktopVerified === true || state.desktopAuthorized === true || state.scanHealthy === true;
+            const bindingReady = state.bindingReady === true || state.receiveHealth === true || state.receiveCapability === true;
+            const receiveReady = state.receiveHealth === true || state.receiveCapability === true;
+            const sendReady = state.sendCapability === true;
+            if (!transportReady) return 'Запустіть локальний Viber Personal Bridge на Windows-машині й натисніть «Перевірити Viber Desktop».';
+            if (!desktopReady) return 'Відкрийте Viber Desktop на машині моста та натисніть «Перевірити Viber Desktop».';
+            if (state.waitingForEnrollment || state.blockReason === 'WAITING_FOR_ENROLLMENT_MARKERS') return 'Надішліть PHONE marker з телефона і DESKTOP marker з Viber Desktop у той самий чат, потім натисніть «Перевірити приймання».';
+            if (!bindingReady) return 'Натисніть «Привʼязати тестовий чат» і виконайте локальну інструкцію з markers. CRM перевірить результат окремо.';
+            if (!receiveReady) return 'Надішліть нове тестове повідомлення у привʼязаний чат і натисніть «Перевірити приймання».';
+            if (!sendReady) return 'Приймання готове. Відправку можна вмикати тільки після sender gate; поки composer лишається заблокованим.';
+            return 'Paired-only bridge готовий у заявленому scope: перевірений чат може приймати й відправляти текст.';
+        }
+
+        function bridgeStageClass(done, waiting = false) {
+            if (done) return 'done';
+            return waiting ? 'waiting' : 'blocked';
+        }
+
+        function renderBridgeStages(acc) {
+            const state = bridgeDiagnostics(acc);
+            const transportReady = state.transportHeartbeat === true || state.serviceRunning === true || state.online === true;
+            const desktopReady = state.desktopVerified === true || state.desktopAuthorized === true || state.scanHealthy === true;
+            const bindingReady = state.bindingReady === true || state.receiveHealth === true || state.receiveCapability === true;
+            const receiveReady = state.receiveHealth === true || state.receiveCapability === true || acc.receiveCapable === true;
+            const sendReady = state.sendCapability === true || acc.sendCapable === true;
+            const waitingForMarkers = state.waitingForEnrollment === true || state.blockReason === 'WAITING_FOR_ENROLLMENT_MARKERS';
+            const stages = [
+                ['runtime', 'Runtime', transportReady, !transportReady, transportReady ? 'Heartbeat від Windows-служби є.' : 'Немає свіжого heartbeat від служби.'],
+                ['desktop', 'Viber Desktop', desktopReady, transportReady && !desktopReady, desktopReady ? 'Є свіжий scan або Desktop підтверджено.' : 'Потрібен scan локальним адаптером.'],
+                ['binding', 'Binding чату', bindingReady, waitingForMarkers || (desktopReady && !bindingReady), bindingReady ? 'Чат привʼязано до opaque identity.' : 'Потрібні PHONE/DESKTOP markers у тестовому чаті.'],
+                ['receive', 'Receive', receiveReady, bindingReady && !receiveReady, receiveReady ? 'Приймання підтверджено діагностикою.' : 'Ще немає доказу приймання у CRM.'],
+                ['send', 'Send', sendReady, receiveReady && !sendReady, sendReady ? 'Sender gate пройдений.' : 'Відправка заблокована до окремого gate.']
+            ];
+            return '<div class="omni-bridge-stages">' + stages.map(([key, title, done, waiting, hint]) =>
+                '<div class="omni-bridge-stage ' + bridgeStageClass(done, waiting) + '" data-bridge-stage="' + esc(key) + '">' +
+                    '<strong>' + esc(title) + '</strong><span>' + esc(hint) + '</span>' +
+                '</div>'
+            ).join('') + '</div>' +
+                '<div class="omni-bridge-next"><strong>Наступна дія</strong><span>' + esc(bridgeNextActionText(state)) + '</span></div>';
+        }
+
         function renderBridgeStatusGrid(acc) {
             const state = bridgeDiagnostics(acc);
             const rows = [
                 ['Transport heartbeat', bridgeStateLabel(state.transportHeartbeat ?? state.serviceRunning ?? state.online, 'Є', 'Немає')],
-                ['Viber Desktop', bridgeStateLabel(state.desktopAuthorized, 'Авторизований', 'Не підтверджено', 'Потрібна перевірка')],
+                ['Viber Desktop', bridgeStateLabel(state.desktopVerified ?? state.desktopAuthorized, 'Scan/авторизацію підтверджено', 'Не підтверджено', 'Потрібна перевірка')],
                 ['Останній scan', formatAccountTime(state.lastScanAt) || 'ще не підтверджено'],
-                ['Receive health', bridgeStateLabel(state.receiveHealth ?? acc.receiveCapable, 'Здорове', 'Немає підтвердженого scan')],
+                ['Останній успішний цикл', formatAccountTime(state.lastSuccessAt || state.lastCycleSuccessAt) || 'ще немає'],
+                ['Останній ACK', formatAccountTime(state.lastAckAt) || 'ще немає'],
+                ['Binding', bridgeStateLabel(state.bindingReady, 'Чат привʼязано', (state.waitingForEnrollment ? 'Очікуємо markers' : 'Не готовий'))],
+                ['Receive health', bridgeStateLabel(state.receiveHealth ?? acc.receiveCapable, 'Здорове', 'Немає підтвердженого приймання')],
                 ['Send capability', bridgeStateLabel(state.sendCapability ?? acc.sendCapable, 'Доступне', 'Заблоковано')],
                 ['Версія Desktop', state.viberDesktopVersion || 'не передано мостом'],
-                ['Причина блокування', state.blockReason || (acc.connected ? 'немає активного blocker' : 'міст ще не налаштований')]
+                ['Причина блокування', bridgeBlockReasonLabel(state.blockReason || (acc.connected ? '' : 'CAPTURE_NOT_CONFIGURED'))]
             ];
             return '<div class="omni-account-summary">' +
                 rows.map(([label, value]) => '<div class="omni-account-summary-item"><strong>' + esc(value) + '</strong><span>' + esc(label) + '</span></div>').join('') +
@@ -2895,12 +3008,13 @@
         function renderViberPersonalOnboarding(acc) {
             return '<div>' +
                 '<div class="omni-account-impact">Viber Personal Bridge — це окреме підключення звичайного Viber-акаунта на Windows-машині. Тут немає bot token і webhook: міст сам відкриває захищене вихідне HTTPS-зʼєднання до CRM.</div>' +
-                '<ol>' +
+                renderBridgeStages(acc) +
+                '<div class="omni-connection-steps"><strong>Порядок підключення без ручних ID</strong><ol>' +
                     '<li>Запустіть Windows-службу моста на машині з авторизованим Viber Desktop.</li>' +
-                    '<li>Натисніть «Перевірити Viber Desktop», щоб CRM прочитала heartbeat і безпечну діагностику.</li>' +
-                    '<li>Після готовності локального адаптера привʼяжіть тестовий чат і окремо перевірте приймання та відправку.</li>' +
-                    '<li>CRM увімкне робочий канал тільки після фактичного підтвердження адаптерів; кнопки перевірки не створюють автоготовність.</li>' +
-                '</ol>' +
+                    '<li>Натисніть «Перевірити Viber Desktop», щоб CRM прочитала heartbeat, scan і безпечну діагностику.</li>' +
+                    '<li>Натисніть «Привʼязати тестовий чат»: CRM покаже локальну інструкцію, але не проситиме технічні ідентифікатори або token.</li>' +
+                    '<li>Після markers окремо натисніть «Перевірити приймання»; відправку вмикаємо тільки після sender gate.</li>' +
+                '</ol></div>' +
                 renderBridgeStatusGrid(acc) +
             '</div>';
         }
@@ -2914,7 +3028,7 @@
             }
             return '<button type="button" class="omni-account-btn" data-account-action="connect" data-channel="' + esc(acc.channel) + '">Onboarding</button>' +
                 '<button type="button" class="omni-account-btn secondary" data-account-action="recheck" data-channel="' + esc(acc.channel) + '">Перевірити Viber Desktop</button>' +
-                '<button type="button" class="omni-account-btn secondary" data-account-action="bridge-bind-chat" data-channel="' + esc(acc.channel) + '" disabled title="Буде доступно після підключення локального адаптера">Привʼязати тестовий чат</button>' +
+                '<button type="button" class="omni-account-btn secondary" data-account-action="bridge-bind-chat" data-channel="' + esc(acc.channel) + '">Привʼязати тестовий чат</button>' +
                 '<button type="button" class="omni-account-btn secondary" data-account-action="bridge-receive-check" data-channel="' + esc(acc.channel) + '">Перевірити приймання</button>' +
                 '<button type="button" class="omni-account-btn secondary" data-account-action="bridge-send-check" data-channel="' + esc(acc.channel) + '">Перевірити відправку</button>' +
                 (acc.supportedActions && acc.supportedActions.includes('disconnect') ? '<button type="button" class="omni-account-btn secondary" data-account-action="disconnect" data-channel="' + esc(acc.channel) + '">Відключити</button>' : '');
@@ -3282,7 +3396,10 @@
             if (action === 'connect') return openConnectModal(channel);
             if (action === 'disconnect') return openDisconnectModal(channel);
             if (action === 'bridge-bind-chat') {
-                setChannelActionFeedback('Привʼязка тестового чату стане доступною після підключення локального адаптера Viber Desktop.', true);
+                const acc = omniAccountForChannel(channel);
+                const state = bridgeDiagnostics(acc);
+                setChannelActionFeedback(bridgeNextActionText(state));
+                openConnectModal(channel);
                 return;
             }
             const bridgeCheckLabels = {
@@ -5585,7 +5702,7 @@
         });
     })();
     </script>
-<script src="js/ui.js?v=0.81.146"></script>
-    <script src="js/alerts.js?v=0.81.146"></script>
+<script src="js/ui.js?v=0.81.147"></script>
+    <script src="js/alerts.js?v=0.81.147"></script>
 </body>
 </html>

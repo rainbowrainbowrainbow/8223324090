@@ -8,6 +8,7 @@ account, source generation and exact one-to-one peer binding are verified.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -18,7 +19,7 @@ from uuid import uuid4
 
 
 APPLICATION_ID = 0x45565031  # "EVP1"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 BUSINESS_CONTEXTS = frozenset({"event_genix", "dar"})
 COMMAND_STATES = frozenset({
     "accepted", "preparing", "dispatch_started", "submitted_unconfirmed",
@@ -88,6 +89,10 @@ def _text(value: Any) -> str:
     return value
 
 
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 def _payload_hash(command: Mapping[str, Any]) -> str:
     canonical = {
         "bridge_id": command["bridge_id"],
@@ -141,8 +146,13 @@ class BridgeCore:
                         "VALUES(1, ?, ?, ?, ?)",
                         (self.bridge_id, self.account_id, self.account_epoch, self.business_context),
                     )
-                elif app_id != APPLICATION_ID or version != SCHEMA_VERSION or tables != expected:
+                elif app_id != APPLICATION_ID or version not in {2, 3, SCHEMA_VERSION} or tables != expected:
                     raise BridgeCoreError("LEDGER_SCHEMA_MISMATCH")
+                elif version == 2:
+                    self._migrate_v2_to_v3(db)
+                    self._migrate_v3_to_v4(db)
+                elif version == 3:
+                    self._migrate_v3_to_v4(db)
                 self._verify_scope(db)
         except BridgeCoreError:
             self.close()
@@ -184,6 +194,9 @@ class BridgeCore:
                 chat_id TEXT NOT NULL,
                 binding_revision INTEGER NOT NULL,
                 text TEXT NOT NULL,
+                outbound_baseline_event_id INTEGER CHECK(outbound_baseline_event_id IS NULL OR outbound_baseline_event_id >= 0),
+                outbound_source_event_id INTEGER CHECK(outbound_source_event_id IS NULL OR outbound_source_event_id > 0),
+                outbound_chat_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(outbound_chat_confirmed IN (0, 1)),
                 status TEXT NOT NULL CHECK(status IN (
                     'accepted', 'preparing', 'dispatch_started',
                     'submitted_unconfirmed', 'failed', 'unknown', 'rejected')),
@@ -206,11 +219,39 @@ class BridgeCore:
                 origin TEXT NOT NULL CHECK(origin IN ('crm_command', 'external_viber', 'unknown')),
                 text TEXT NOT NULL,
                 observed_at TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'acked'))
+                status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'acked')),
+                acked_at TEXT
             )
         """)
         db.execute("CREATE INDEX inbound_events_pending ON inbound_events(status, sequence)")
         db.execute(f"PRAGMA application_id={APPLICATION_ID}")
+        db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+
+    @staticmethod
+    def _migrate_v2_to_v3(db: sqlite3.Connection) -> None:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(commands)")}
+        if "outbound_baseline_event_id" not in columns:
+            db.execute(
+                "ALTER TABLE commands ADD COLUMN outbound_baseline_event_id INTEGER "
+                "CHECK(outbound_baseline_event_id IS NULL OR outbound_baseline_event_id >= 0)"
+            )
+        if "outbound_source_event_id" not in columns:
+            db.execute(
+                "ALTER TABLE commands ADD COLUMN outbound_source_event_id INTEGER "
+                "CHECK(outbound_source_event_id IS NULL OR outbound_source_event_id > 0)"
+            )
+        if "outbound_chat_confirmed" not in columns:
+            db.execute(
+                "ALTER TABLE commands ADD COLUMN outbound_chat_confirmed INTEGER NOT NULL DEFAULT 0 "
+                "CHECK(outbound_chat_confirmed IN (0, 1))"
+            )
+        db.execute("PRAGMA user_version=3")
+
+    @staticmethod
+    def _migrate_v3_to_v4(db: sqlite3.Connection) -> None:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(inbound_events)")}
+        if "acked_at" not in columns:
+            db.execute("ALTER TABLE inbound_events ADD COLUMN acked_at TEXT")
         db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     @contextmanager
@@ -503,15 +544,17 @@ class BridgeCore:
                 rows[event_id] = row["status"]
             for event_id, status in rows.items():
                 if status == "pending":
-                    db.execute("UPDATE inbound_events SET status='acked' WHERE event_id=?", (event_id,))
+                    db.execute("UPDATE inbound_events SET status='acked', acked_at=? WHERE event_id=?", (utc_now(), event_id))
                     changed += 1
         return changed
 
     def begin_dispatch(self, command_id: str, *, observed_source_chat_ref: str,
-                       observed_peer_ref: str) -> dict[str, Any]:
+                       observed_peer_ref: str, outbound_baseline_event_id: int | None = None) -> dict[str, Any]:
         command = _uuid(command_id, "COMMAND_ID_INVALID")
         source = _ref(observed_source_chat_ref, "SOURCE_CHAT_REF_INVALID")
         peer = _ref(observed_peer_ref, "PEER_REF_INVALID")
+        if outbound_baseline_event_id is not None and (type(outbound_baseline_event_id) is not int or outbound_baseline_event_id < 0):
+            raise BridgeCoreError("OUTBOUND_BASELINE_INVALID")
         with self._transaction() as db:
             state = self._verify_scope(db)
             row = db.execute("SELECT * FROM commands WHERE command_id=?", (command,)).fetchone()
@@ -544,13 +587,16 @@ class BridgeCore:
                            (error, command))
             else:
                 db.execute(
-                    "UPDATE commands SET status='dispatch_started', dispatch_count=1 WHERE command_id=?",
-                    (command,),
+                    "UPDATE commands SET status='dispatch_started', dispatch_count=1, "
+                    "outbound_baseline_event_id=? WHERE command_id=?",
+                    (outbound_baseline_event_id, command),
                 )
             return dict(db.execute("SELECT * FROM commands WHERE command_id=?", (command,)).fetchone())
 
     def finish_dispatch(self, command_id: str, *, submitted: bool | None = None,
-                        status: str | None = None, error_code: str | None = None) -> dict[str, Any]:
+                        status: str | None = None, error_code: str | None = None,
+                        outbound_baseline_event_id: int | None = None,
+                        outbound_source_event_id: int | None = None) -> dict[str, Any]:
         command = _uuid(command_id, "COMMAND_ID_INVALID")
         if submitted is not None:
             if type(submitted) is not bool or status is not None:
@@ -563,6 +609,14 @@ class BridgeCore:
             error = error_code or "DISPATCH_FAILED"
         elif status == "unknown":
             error = error_code or "DISPATCH_RESULT_UNKNOWN"
+        if outbound_baseline_event_id is not None and (type(outbound_baseline_event_id) is not int or outbound_baseline_event_id < 0):
+            raise BridgeCoreError("OUTBOUND_BASELINE_INVALID")
+        if outbound_source_event_id is not None and (type(outbound_source_event_id) is not int or outbound_source_event_id < 1):
+            raise BridgeCoreError("OUTBOUND_OCCURRENCE_INVALID")
+        if outbound_source_event_id is not None and outbound_baseline_event_id is not None and outbound_source_event_id <= outbound_baseline_event_id:
+            raise BridgeCoreError("OUTBOUND_OCCURRENCE_INVALID")
+        if status == "submitted_unconfirmed" and outbound_source_event_id is None:
+            raise BridgeCoreError("OUTBOUND_OCCURRENCE_INVALID")
         with self._transaction() as db:
             self._verify_scope(db)
             row = db.execute("SELECT * FROM commands WHERE command_id=?", (command,)).fetchone()
@@ -572,8 +626,17 @@ class BridgeCore:
                 return dict(row)
             if row["status"] != "dispatch_started":
                 raise BridgeCoreError("COMMAND_NOT_DISPATCHED")
-            db.execute("UPDATE commands SET status=?, error_code=? WHERE command_id=?",
-                       (status, error, command))
+            stored_baseline = row["outbound_baseline_event_id"]
+            baseline = outbound_baseline_event_id if outbound_baseline_event_id is not None else stored_baseline
+            if outbound_source_event_id is not None:
+                if baseline is None or outbound_source_event_id <= int(baseline):
+                    raise BridgeCoreError("OUTBOUND_OCCURRENCE_INVALID")
+            confirmed = 1 if status == "submitted_unconfirmed" and outbound_source_event_id is not None else 0
+            db.execute(
+                "UPDATE commands SET status=?, error_code=?, outbound_baseline_event_id=?, "
+                "outbound_source_event_id=?, outbound_chat_confirmed=? WHERE command_id=?",
+                (status, error, baseline, outbound_source_event_id, confirmed, command),
+            )
             return dict(db.execute("SELECT * FROM commands WHERE command_id=?", (command,)).fetchone())
 
     def recover_interrupted_dispatches_detail(self) -> list[dict[str, Any]]:
@@ -629,6 +692,9 @@ class BridgeCore:
             ).fetchone()[0]
             events = {row[0]: row[1] for row in db.execute(
                 "SELECT status, COUNT(*) FROM inbound_events GROUP BY status")}
+            last_ack_at = db.execute(
+                "SELECT MAX(acked_at) FROM inbound_events WHERE status='acked'"
+            ).fetchone()[0]
             return {
                 "account_verified": bool(state["account_verified"]),
                 "receive_healthy": bool(state["receive_healthy"]),
@@ -636,6 +702,7 @@ class BridgeCore:
                 "verified_one_to_one_chats": verified,
                 "inbound_pending": events.get("pending", 0),
                 "inbound_acked": events.get("acked", 0),
+                "last_ack_at": last_ack_at,
                 "command_counts": {status: counts.get(status, 0) for status in sorted(COMMAND_STATES)},
             }
 

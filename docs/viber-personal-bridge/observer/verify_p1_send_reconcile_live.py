@@ -10,12 +10,13 @@ import g3_process,g3_state,p1_paired_queries,probe_db_schema,probe_key_presence,
 from observe_g3 import QtRows,lock_session,open_source,source_identity,source_path
 from observe_g3_sid import find_single_session
 
-def result(status,code="",observed=False):
+def result(status,code="",observed=False,source_event_id=None):
  return {"status":status,"error_code":code,"outbound_occurrence_observed":observed,
+         "outbound_source_event_id":source_event_id,
          "delivery_verified":False,"private_text_exported":False,"identifiers_exported":False,
          "messages_sent_by_reconciliation":0,"crm_contacted":False}
 
-def run(session_path,test_id,expected_text=None):
+def run(session_path,test_id,expected_text,after_event_id):
  context=db=lock=guard=None;name=None
  try:
   session=g3_state.load_session(session_path);lock=lock_session(g3_state,session_path)
@@ -30,11 +31,11 @@ def run(session_path,test_id,expected_text=None):
   if not db.transaction(): return result("FAILED","SOURCE_UNAVAILABLE")
   try:
    anchor=p1_paired_queries.resolve_anchor(rows,prefix+"-PHONE",prefix+"-DESKTOP")
-   proof=p1_paired_queries.reconcile_outbound(rows,anchor,expected_text or ("EGXP1-"+session["run_id"]+"-"+test_id+"-SEND"))
+   proof=p1_paired_queries.reconcile_outbound(rows,anchor,expected_text,after_event_id)
   finally:
    if not db.rollback(): return result("FAILED","SOURCE_UNAVAILABLE")
   if source_identity(path)!=identity or source_path()!=path or not guard.alive(): return result("FAILED","SOURCE_CHANGED")
-  return result("SUBMITTED_UNCONFIRMED" if proof["observed"] else "UNKNOWN","",proof["observed"])
+  return result("SUBMITTED_UNCONFIRMED" if proof["observed"] else "UNKNOWN","",proof["observed"],proof.get("source_event_id"))
  except Exception:return result("FAILED","RECONCILE_FAILED")
  finally:
   if db is not None:
@@ -53,10 +54,11 @@ def run(session_path,test_id,expected_text=None):
 
 if __name__=="__main__":
  with open(os.devnull,"w",encoding="utf-8") as null:os.dup2(null.fileno(),2)
- p=argparse.ArgumentParser(add_help=False);p.add_argument("--test-id",required=True);p.add_argument("--text-base64")
+ p=argparse.ArgumentParser(add_help=False);p.add_argument("--test-id",required=True);p.add_argument("--text-base64",required=True);p.add_argument("--after-event-id",required=True,type=int)
  try:
   a=p.parse_args();valid=len(a.test_id)==8 and all(c in "0123456789ABCDEF" for c in a.test_id)
-  expected=base64.b64decode(a.text_base64,validate=True).decode("utf-8") if a.text_base64 else None
+  expected=base64.b64decode(a.text_base64,validate=True).decode("utf-8")
   valid=valid and (expected is None or (0<len(expected)<=500 and "\0" not in expected and "\r" not in expected))
-  print(json.dumps(run(find_single_session(),a.test_id,expected) if valid else result("FAILED","ARGUMENT_INVALID"),separators=(",",":")),flush=True)
+  valid=valid and 1<=a.after_event_id<=(1<<63)-1
+  print(json.dumps(run(find_single_session(),a.test_id,expected,a.after_event_id) if valid else result("FAILED","ARGUMENT_INVALID"),separators=(",",":")),flush=True)
  except BaseException:print(json.dumps(result("FAILED","RECONCILE_FAILED"),separators=(",",":")),flush=True)

@@ -39,6 +39,12 @@ class BridgeDaemon:
         self.dispatch_adapter = dispatch_adapter
         self._stop = threading.Event()
         self._last_heartbeat = float("-inf")
+        self._last_cycle: dict[str, Any] = {
+            "status": "starting",
+            "last_success_at": None,
+            "last_error_code": None,
+            "last_error_at": None,
+        }
 
     def envelope(self) -> dict[str, Any]:
         return {
@@ -50,6 +56,32 @@ class BridgeDaemon:
             "runtime_id": self.runtime_id,
         }
 
+    @staticmethod
+    def _utc_now() -> str:
+        return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+    def _record_cycle_success(self) -> None:
+        self._last_cycle = {
+            "status": "ok",
+            "last_success_at": self._utc_now(),
+            "last_error_code": None,
+            "last_error_at": None,
+        }
+
+    def _record_cycle_error(self, error: BaseException) -> None:
+        code = getattr(error, "code", None)
+        if not isinstance(code, str) or not code:
+            code = error.__class__.__name__.upper()
+        self._last_cycle = {
+            "status": "error",
+            "last_success_at": self._last_cycle.get("last_success_at"),
+            "last_error_code": code[:80],
+            "last_error_at": self._utc_now(),
+        }
+
+    def cycle_status(self) -> dict[str, Any]:
+        return dict(self._last_cycle)
+
     def send_heartbeat(self) -> Mapping[str, Any]:
         diagnostics = self.core.diagnostics()
         sender_available = self.dispatch_adapter is not None
@@ -57,6 +89,13 @@ class BridgeDaemon:
             "receive_text": diagnostics["receive_healthy"],
             "send_text": bool(diagnostics["send_text"] and sender_available),
             "sender_adapter": sender_available,
+            "inbound_pending": diagnostics.get("inbound_pending", 0),
+            "inbound_acked": diagnostics.get("inbound_acked", 0),
+            "last_ack_at": diagnostics.get("last_ack_at"),
+            "cycle_status": self._last_cycle.get("status"),
+            "last_cycle_success_at": self._last_cycle.get("last_success_at"),
+            "last_cycle_error_code": self._last_cycle.get("last_error_code"),
+            "last_cycle_error_at": self._last_cycle.get("last_error_at"),
         }
         if self.receive_adapter is not None:
             capabilities.update(self.receive_adapter.capabilities())
@@ -65,7 +104,7 @@ class BridgeDaemon:
         response = self.client.heartbeat({
             **self.envelope(),
             "type": "bridge.heartbeat",
-            "observed_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "observed_at": self._utc_now(),
             "capabilities": capabilities,
         })
         self._last_heartbeat = self._clock()
@@ -136,20 +175,22 @@ class BridgeDaemon:
         events = self.flush_events()
         commands = self.pull_once()
         dispatched = self.dispatch_pending()
+        self._record_cycle_success()
         return {"heartbeat": heartbeat is not None, "receive": receive, "events": events,
-                "commands": len(commands), "dispatched": len(dispatched)}
+                "commands": len(commands), "dispatched": len(dispatched),
+                "cycle_status": self.cycle_status()}
 
     def run(self, *, interval: float = 2.0) -> None:
         for recovered in self.core.recover_interrupted_dispatches_detail():
             try:
                 self.report_result(recovered["command_id"], "unknown", recovered.get("error_code"))
-            except (HttpClientError, DaemonError, BridgeCoreError):
-                pass
+            except (HttpClientError, DaemonError, BridgeCoreError) as error:
+                self._record_cycle_error(error)
         while not self._stop.is_set():
             try:
                 self.cycle()
-            except (HttpClientError, DaemonError, BridgeCoreError):
-                pass
+            except (HttpClientError, DaemonError, BridgeCoreError) as error:
+                self._record_cycle_error(error)
             self._stop.wait(interval)
 
     def stop(self) -> None:

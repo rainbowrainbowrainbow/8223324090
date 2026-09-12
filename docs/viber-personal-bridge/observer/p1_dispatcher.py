@@ -51,27 +51,38 @@ def _active_peer(adapter: UiAdapter, chat_id: str) -> tuple[str, str]:
     return observed["source_chat_ref"], observed["peer_ref"]
 
 
-def _dispatch_result(result: Any) -> tuple[str, str | None]:
+def _dispatch_result(result: Any) -> tuple[str, str | None, dict[str, Any]]:
     if not isinstance(result, Mapping):
-        return "unknown", "DISPATCH_RESULT_INVALID"
-    allowed = {"status", "outbound_observed", "chat_confirmed", "error_code"}
+        return "unknown", "DISPATCH_RESULT_INVALID", {}
+    allowed = {
+        "status", "outbound_observed", "chat_confirmed", "error_code",
+        "outbound_baseline_event_id", "outbound_source_event_id",
+    }
     if not set(result).issubset(allowed) or "status" not in result:
-        return "unknown", "DISPATCH_RESULT_INVALID"
+        return "unknown", "DISPATCH_RESULT_INVALID", {}
     status = result["status"]
     if status not in _TERMINAL_RESULTS:
-        return "unknown", "DISPATCH_RESULT_INVALID"
+        return "unknown", "DISPATCH_RESULT_INVALID", {}
     error = result.get("error_code")
     if error is not None and not isinstance(error, str):
-        return "unknown", "DISPATCH_RESULT_INVALID"
+        return "unknown", "DISPATCH_RESULT_INVALID", {}
     outbound_observed = result.get("outbound_observed")
     chat_confirmed = result.get("chat_confirmed")
     if status == "submitted_unconfirmed":
         if outbound_observed is True and chat_confirmed is True:
-            return "submitted_unconfirmed", None
-        return "unknown", "OUTBOUND_RECONCILIATION_MISSING"
+            baseline = result.get("outbound_baseline_event_id")
+            source_event = result.get("outbound_source_event_id")
+            if type(baseline) is not int or type(source_event) is not int or source_event <= baseline:
+                return "unknown", "OUTBOUND_RECONCILIATION_INVALID", {}
+            metadata = {
+                "outbound_baseline_event_id": baseline,
+                "outbound_source_event_id": source_event,
+            }
+            return "submitted_unconfirmed", None, metadata
+        return "unknown", "OUTBOUND_RECONCILIATION_MISSING", {}
     if status == "failed":
-        return "failed", error or "DISPATCH_FAILED"
-    return "unknown", error or "DISPATCH_RESULT_UNKNOWN"
+        return "failed", error or "DISPATCH_FAILED", {}
+    return "unknown", error or "DISPATCH_RESULT_UNKNOWN", {}
 
 
 def execute_text(core: BridgeCore, command: Mapping[str, Any], adapter: UiAdapter, *,
@@ -104,11 +115,19 @@ def execute_text(core: BridgeCore, command: Mapping[str, Any], adapter: UiAdapte
             raise DispatcherError("UI_ADAPTER_PREPARE_FAILED") from None
 
     source_chat_ref, peer_ref = _active_peer(adapter, accepted["chat_id"])
+    baseline = None
+    read_baseline = getattr(adapter, "dispatch_baseline", None)
+    if callable(read_baseline):
+        try:
+            baseline = read_baseline()
+        except Exception:
+            raise DispatcherError("OUTBOUND_BASELINE_FAILED") from None
     try:
         started = core.begin_dispatch(
             accepted["command_id"],
             observed_source_chat_ref=source_chat_ref,
             observed_peer_ref=peer_ref,
+            outbound_baseline_event_id=baseline,
         )
     except BridgeCoreError as error:
         if error.code == "UI_OPERATION_BUSY":
@@ -129,10 +148,11 @@ def execute_text(core: BridgeCore, command: Mapping[str, Any], adapter: UiAdapte
 
     try:
         result = adapter.send_text(accepted["text"])
-        status, error_code = _dispatch_result(result)
+        status, error_code, metadata = _dispatch_result(result)
     except Exception:
-        status, error_code = "unknown", "DISPATCH_RESULT_UNKNOWN"
+        status, error_code, metadata = "unknown", "DISPATCH_RESULT_UNKNOWN", {}
     try:
-        return core.finish_dispatch(accepted["command_id"], status=status, error_code=error_code)
+        return core.finish_dispatch(accepted["command_id"], status=status, error_code=error_code,
+                                    **metadata)
     except BridgeCoreError as error:
         raise DispatcherError(error.code) from None

@@ -4,11 +4,18 @@
 
 ---
 
-## v0.81.140 - Omni: правдивий стан Viber bridge
+## v0.81.141 - Omni: правдивий стан Viber bridge
 
 ### Release / Versioning / (12.09.2026) [codex]
 - **Безпечний send-gate** - Omni перевіряє останні підтверджені capabilities Viber Personal Bridge перед реальною відправкою і блокує канал, якщо локальний adapter оголосив `send_text=false`.
 - **Узгоджена картка каналу** - результат «Перевірити» одразу показує ті самі можливості, що й повторне завантаження списку, без короткого неправдивого стану.
+
+---
+
+## v0.81.140 - Dashboard: захист від конфліктів вкладок
+
+### Release / Versioning / (12.09.2026) [codex]
+- **Dashboard: захист від конфліктів вкладок** - release marker, cache tags and visible version metadata were prepared automatically.
 
 ---
 

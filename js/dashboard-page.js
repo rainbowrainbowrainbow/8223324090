@@ -505,6 +505,7 @@ const DashboardPage = (() => {
     let _dashboardConfigLoadError = null;
     let _dashboardLocalRevision = 0;
     let _dashboardLastConfirmedRevision = 0;
+    let _dashboardServerRevision = null;
     let _dashboardSaveSequence = Promise.resolve();
     let _dashboardInitPromise = null;
     let _dashboardViewportBound = false;
@@ -932,6 +933,12 @@ const DashboardPage = (() => {
         };
     }
 
+    function normalizeDashboardServerRevision(value) {
+        if (value === null || value === undefined) return null;
+        const text = String(value || '').trim();
+        return text || null;
+    }
+
     function normalizeDashboardConfig(config) {
         const defaults = createDefaultDashboardConfig();
         const source = safeObject(config, {});
@@ -947,7 +954,8 @@ const DashboardPage = (() => {
             roleScenePreset: source.roleScenePreset || layout.roleScenePreset || defaults.roleScenePreset,
             sceneOptions: normalizeSceneOptions(source.sceneOptions || layout.sceneOptions || defaults.sceneOptions),
             boardMeta: normalizeBoardMeta(source.boardMeta || layout.boardMeta || defaults.boardMeta),
-            boardState: normalizeBoardState(source.boardState || layout.boardState || defaults.boardState)
+            boardState: normalizeBoardState(source.boardState || layout.boardState || defaults.boardState),
+            serverRevision: normalizeDashboardServerRevision(source.serverRevision || source.server_revision || source.configRevision || source.updatedAt || source.updated_at)
         };
         next.layout.mode = next.mode;
         next.layout.presentationMode = next.presentationMode;
@@ -956,6 +964,12 @@ const DashboardPage = (() => {
         next.layout.boardMeta = next.boardMeta;
         next.layout.boardState = next.boardState;
         return next;
+    }
+
+    function applyDashboardConfig(config) {
+        _config = normalizeDashboardConfig(config);
+        _dashboardServerRevision = normalizeDashboardServerRevision(_config.serverRevision);
+        return _config;
     }
 
     function dashboardRecoveryKeyForUser(user = AppState.currentUser || {}) {
@@ -1068,6 +1082,7 @@ const DashboardPage = (() => {
         const nextBoardMeta = patch.boardMeta || _config.boardMeta;
         const nextBoardState = patch.boardState || _config.boardState;
         return {
+            baseRevision: _dashboardServerRevision || null,
             widgets: patch.widgets || _config.widgets || [],
             layout: {
                 ...safeObject(_config.layout, {}),
@@ -1122,6 +1137,16 @@ const DashboardPage = (() => {
         }
 
         result.dashboardSaveRevision = job.revision;
+        if (result.conflict || result.status === 409) {
+            return {
+                ...result,
+                success: false,
+                conflict: true,
+                retryable: false,
+                appliedConfig: false,
+                staleServerRevision: true
+            };
+        }
         if (!result.success) return result;
         if (!isDashboardSaveContextCurrent(job.context)) {
             return {
@@ -1140,7 +1165,7 @@ const DashboardPage = (() => {
             };
         }
         if (result.config) {
-            _config = normalizeDashboardConfig(result.config);
+            applyDashboardConfig(result.config);
         }
         _dashboardLastConfirmedRevision = job.revision;
         return {
@@ -1758,7 +1783,7 @@ const DashboardPage = (() => {
             _dashboardConfigWritable = true;
             _dashboardConfigLoadError = null;
             _boardLegacyUpgradePending = false;
-            _config = normalizeDashboardConfig(data.config);
+            applyDashboardConfig(data.config);
             _dashboardLocalRevision = 0;
             _dashboardLastConfirmedRevision = 0;
             const shouldPersistLegacyUpgrade = _boardLegacyUpgradePending;
@@ -1772,7 +1797,7 @@ const DashboardPage = (() => {
             console.error('Dashboard config error:', err);
             _dashboardConfigWritable = false;
             _dashboardConfigLoadError = err instanceof Error ? err : new Error(String(err || 'Dashboard config error'));
-            _config = normalizeDashboardConfig(createDefaultDashboardConfig());
+            applyDashboardConfig(createDefaultDashboardConfig());
             renderDashboardConfigLoadError(_dashboardConfigLoadError);
         }
     }
@@ -3835,7 +3860,7 @@ const DashboardPage = (() => {
     function renderWidgets() {
         const grid = document.getElementById('dashboardGrid');
         if (!grid || !_config) return;
-        _config = normalizeDashboardConfig(_config);
+        applyDashboardConfig(_config);
         syncBoardToolbar();
         updateDashboardRolePreviewControl();
 

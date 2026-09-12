@@ -384,6 +384,40 @@ function countFrom(result) {
     return parseInt(result?.rows?.[0]?.count || 0, 10) || 0;
 }
 
+function normalizeDashboardConfigRevision(value) {
+    if (value == null) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+    const text = String(value || '').trim();
+    return text || null;
+}
+
+function requestedDashboardConfigBaseRevision(body = {}) {
+    return normalizeDashboardConfigRevision(
+        body.baseRevision
+        ?? body.base_revision
+        ?? body.configRevision
+        ?? body.config_revision
+        ?? body.serverRevision
+        ?? body.server_revision
+        ?? body.revision
+        ?? body.updatedAt
+        ?? body.updated_at
+    );
+}
+
+function dashboardConfigConflictPayload(currentRaw, role, reason = 'stale_revision') {
+    const currentRevision = normalizeDashboardConfigRevision(currentRaw?.server_revision || currentRaw?.serverRevision || currentRaw?.updated_at);
+    return {
+        success: false,
+        conflict: true,
+        conflictType: 'dashboard_config_revision',
+        reason,
+        currentRevision,
+        currentConfig: currentRaw ? normalizeDashboardConfig(currentRaw, role) : null,
+        error: 'Dashboard config was changed in another tab. Reload or restore your local draft before saving.'
+    };
+}
+
 const BOARD_SCHEMA_VERSION = 1;
 const BOARD_MAX_ITEMS = 120;
 const BOARD_MAX_DRAWINGS = 500;
@@ -407,12 +441,19 @@ const DASHBOARD_CONFIG_PERSISTENCE = Object.freeze({
     endpoint: '/api/dashboard/config',
     boardStatePath: 'layout.boardState'
 });
-const DASHBOARD_CONFIG_SELECT_SQL = `SELECT layout, widgets, theme FROM ${DASHBOARD_CONFIG_PERSISTENCE.table} WHERE user_id = $1`;
-const DASHBOARD_CONFIG_UPSERT_SQL = `
+const DASHBOARD_CONFIG_REVISION_SQL = `to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+const DASHBOARD_CONFIG_SELECT_SQL = `SELECT layout, widgets, theme, updated_at, ${DASHBOARD_CONFIG_REVISION_SQL} AS server_revision FROM ${DASHBOARD_CONFIG_PERSISTENCE.table} WHERE user_id = $1`;
+const DASHBOARD_CONFIG_INSERT_SQL = `
             INSERT INTO ${DASHBOARD_CONFIG_PERSISTENCE.table} (user_id, layout, widgets, theme, updated_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (user_id)
-            DO UPDATE SET layout = $2, widgets = $3, theme = $4, updated_at = NOW()
+            VALUES ($1, $2, $3, $4, clock_timestamp())
+            ON CONFLICT (user_id) DO NOTHING
+            RETURNING layout, widgets, theme, updated_at, ${DASHBOARD_CONFIG_REVISION_SQL} AS server_revision
+        `;
+const DASHBOARD_CONFIG_UPSERT_SQL = `
+            UPDATE ${DASHBOARD_CONFIG_PERSISTENCE.table}
+            SET layout = $2, widgets = $3, theme = $4, updated_at = clock_timestamp()
+            WHERE user_id = $1 AND ${DASHBOARD_CONFIG_REVISION_SQL} = $5
+            RETURNING layout, widgets, theme, updated_at, ${DASHBOARD_CONFIG_REVISION_SQL} AS server_revision
         `;
 
 function parseJsonObject(value, fallback = {}) {
@@ -668,6 +709,7 @@ function normalizeDashboardConfig(raw, role) {
     const mode = normalizeDashboardMode(raw?.mode || layout.mode);
     const boardMeta = defaultBoardMeta(parseJsonObject(raw?.boardMeta || layout.boardMeta, {}));
     const boardState = sanitizeBoardState(raw?.boardState || layout.boardState, role);
+    const serverRevision = normalizeDashboardConfigRevision(raw?.server_revision || raw?.serverRevision || raw?.updated_at || raw?.updatedAt);
     return {
         layout: {
             ...layout,
@@ -681,7 +723,8 @@ function normalizeDashboardConfig(raw, role) {
         theme: raw?.theme || 'default',
         mode,
         boardMeta,
-        boardState
+        boardState,
+        serverRevision
     };
 }
 
@@ -858,15 +901,32 @@ router.put('/config', async (req, res) => {
             DASHBOARD_CONFIG_SELECT_SQL,
             [req.user.id]
         );
-        const existingRaw = existingResult.rows[0] || {
+        const existingRaw = existingResult.rows[0] || null;
+        const baseRevision = requestedDashboardConfigBaseRevision(req.body || {});
+        if (existingRaw) {
+            const currentRevision = normalizeDashboardConfigRevision(existingRaw.server_revision || existingRaw.updated_at);
+            if (!baseRevision || baseRevision !== currentRevision) {
+                return res.status(409).json(dashboardConfigConflictPayload(existingRaw, req.user.role, baseRevision ? 'stale_revision' : 'missing_revision'));
+            }
+        } else if (baseRevision) {
+            return res.status(409).json(dashboardConfigConflictPayload(null, req.user.role, 'missing_server_config'));
+        }
+        const sourceRaw = existingRaw || {
             layout: {},
             widgets: getDefaultWidgets(req.user.role),
             theme: 'default'
         };
-        const nextConfig = buildPersistedDashboardConfig(existingRaw, req.body || {}, req.user.role);
-        await pool.query(DASHBOARD_CONFIG_UPSERT_SQL, [req.user.id, JSON.stringify(nextConfig.layout), JSON.stringify(nextConfig.widgets), nextConfig.theme || 'default']);
+        const nextConfig = buildPersistedDashboardConfig(sourceRaw, req.body || {}, req.user.role);
+        const params = [req.user.id, JSON.stringify(nextConfig.layout), JSON.stringify(nextConfig.widgets), nextConfig.theme || 'default'];
+        const saveResult = existingRaw
+            ? await pool.query(DASHBOARD_CONFIG_UPSERT_SQL, [...params, baseRevision])
+            : await pool.query(DASHBOARD_CONFIG_INSERT_SQL, params);
+        if (saveResult.rows.length < 1) {
+            const currentResult = await pool.query(DASHBOARD_CONFIG_SELECT_SQL, [req.user.id]);
+            return res.status(409).json(dashboardConfigConflictPayload(currentResult.rows[0] || null, req.user.role, 'concurrent_write'));
+        }
 
-        res.json({ success: true, config: normalizeDashboardConfig(nextConfig, req.user.role) });
+        res.json({ success: true, config: normalizeDashboardConfig(saveResult.rows[0], req.user.role) });
     } catch (err) {
         log.error('Failed to save dashboard config', err);
         res.status(500).json({ error: 'Failed to save dashboard config' });

@@ -168,3 +168,146 @@ test('dashboard staff_today casts legacy staff_schedule date column before date 
         clearModules();
     }
 });
+
+test('dashboard config PUT rejects stale two-tab revision without overwriting server config', async () => {
+    const originalSecret = process.env.JWT_SECRET;
+    process.env.JWT_SECRET = TEST_JWT_SECRET;
+    clearModules();
+
+    let updateCount = 0;
+    const fakePool = {
+        query: async (sql, params = []) => {
+            const text = String(sql).replace(/\s+/g, ' ').trim();
+            if (/SELECT layout, widgets, theme, updated_at/i.test(text) && /FROM dashboard_configs/i.test(text)) {
+                return {
+                    rows: [{
+                        layout: { boardState: { items: [{ id: 'server-note', type: 'note', text: 'server' }] } },
+                        widgets: ['tasks'],
+                        theme: 'default',
+                        server_revision: 'revision-current'
+                    }]
+                };
+            }
+            if (/UPDATE dashboard_configs/i.test(text)) {
+                updateCount += 1;
+                throw new Error(`stale config test must not update: ${text}`);
+            }
+            throw new Error(`Unexpected dashboard config query: ${text}`);
+        }
+    };
+    installMock('../db', { pool: fakePool, query: fakePool.query.bind(fakePool) });
+    installMock('../services/websocket', { getOnlineUserIds: () => new Set() });
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api/dashboard', require('../routes/dashboard'));
+    const { server, baseUrl } = await listen(app);
+
+    try {
+        const res = await fetch(`${baseUrl}/api/dashboard/config`, {
+            method: 'PUT',
+            headers: {
+                Authorization: `Bearer ${tokenFor('manager')}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                baseRevision: 'revision-old',
+                widgets: ['tasks'],
+                layout: {
+                    boardState: {
+                        items: [{ id: 'local-note', type: 'note', text: 'local tab edit' }]
+                    }
+                },
+                theme: 'default'
+            })
+        });
+        const data = await res.json();
+
+        assert.equal(res.status, 409, JSON.stringify(data));
+        assert.equal(data.success, false);
+        assert.equal(data.conflict, true);
+        assert.equal(data.conflictType, 'dashboard_config_revision');
+        assert.equal(data.currentRevision, 'revision-current');
+        assert.equal(data.currentConfig.serverRevision, 'revision-current');
+        assert.equal(updateCount, 0);
+    } finally {
+        await close(server);
+        process.env.JWT_SECRET = originalSecret;
+        clearModules();
+    }
+});
+
+test('dashboard config PUT uses server revision for conditional update and returns next revision', async () => {
+    const originalSecret = process.env.JWT_SECRET;
+    process.env.JWT_SECRET = TEST_JWT_SECRET;
+    clearModules();
+
+    const queries = [];
+    const fakePool = {
+        query: async (sql, params = []) => {
+            const text = String(sql).replace(/\s+/g, ' ').trim();
+            queries.push({ text, params });
+            if (/SELECT layout, widgets, theme, updated_at/i.test(text) && /FROM dashboard_configs/i.test(text)) {
+                return {
+                    rows: [{
+                        layout: { boardState: { items: [{ id: 'server-note', type: 'note', text: 'server' }] } },
+                        widgets: ['tasks'],
+                        theme: 'default',
+                        server_revision: 'revision-current'
+                    }]
+                };
+            }
+            if (/UPDATE dashboard_configs/i.test(text)) {
+                assert.match(text, /WHERE user_id = \$1 AND to_char\(updated_at AT TIME ZONE 'UTC'/);
+                assert.equal(params[4], 'revision-current');
+                return {
+                    rows: [{
+                        layout: JSON.parse(params[1]),
+                        widgets: JSON.parse(params[2]),
+                        theme: params[3],
+                        server_revision: 'revision-next'
+                    }]
+                };
+            }
+            throw new Error(`Unexpected dashboard config query: ${text}`);
+        }
+    };
+    installMock('../db', { pool: fakePool, query: fakePool.query.bind(fakePool) });
+    installMock('../services/websocket', { getOnlineUserIds: () => new Set() });
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api/dashboard', require('../routes/dashboard'));
+    const { server, baseUrl } = await listen(app);
+
+    try {
+        const res = await fetch(`${baseUrl}/api/dashboard/config`, {
+            method: 'PUT',
+            headers: {
+                Authorization: `Bearer ${tokenFor('manager')}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                baseRevision: 'revision-current',
+                widgets: ['tasks'],
+                layout: {
+                    boardState: {
+                        items: [{ id: 'local-note', type: 'note', text: 'local tab edit' }]
+                    }
+                },
+                theme: 'default'
+            })
+        });
+        const data = await res.json();
+
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.success, true);
+        assert.equal(data.config.serverRevision, 'revision-next');
+        assert.equal(data.config.boardState.items[0].text, 'local tab edit');
+        assert.equal(queries.filter(query => /UPDATE dashboard_configs/i.test(query.text)).length, 1);
+    } finally {
+        await close(server);
+        process.env.JWT_SECRET = originalSecret;
+        clearModules();
+    }
+});

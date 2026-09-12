@@ -56,7 +56,7 @@ test('a migrated membership does not block an unmigrated compatibility context',
 });
 
 test('organization migration creates an additive membership schema and scoped default uniqueness', () => {
-    const migration = fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '356_organizations_business_memberships.sql'), 'utf8');
+    const migration = fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '357_organizations_business_memberships.sql'), 'utf8');
     assert.match(migration, /CREATE TABLE IF NOT EXISTS organizations/);
     assert.match(migration, /CREATE TABLE IF NOT EXISTS businesses/);
     assert.match(migration, /CREATE TABLE IF NOT EXISTS organization_memberships/);

@@ -1,6 +1,6 @@
 # Multi-business bootstrap runbook
 
-This runbook activates the membership model only after migration `356_organizations_business_memberships.sql` is present. It does not alter bookings, customers, products, finance, or any other business data.
+This runbook activates the membership model only after migration `357_organizations_business_memberships.sql` is present. It does not alter bookings, customers, products, finance, or any other business data.
 
 ## Preconditions
 

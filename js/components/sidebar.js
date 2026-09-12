@@ -198,7 +198,6 @@ const Sidebar = (() => {
         { href: '/hermes-studio', icon: 'ai', label: 'Hermes Studio', access: 'hermes_studio', group: 'product' },
         { href: '/graduation',   icon: '🎓', label: 'Випускний',     access: 'graduation',     group: 'product' },
         { href: '/designs',      icon: '🖼️', label: 'Дизайн-борд',   access: 'art',            group: 'product' },
-        { href: '/designer',     icon: '📖', label: 'Стайлгайд',     access: 'art',            group: 'product' },
         { href: '/sound#projects',      icon: '🎬', label: 'Звук',   access: 'sound',          group: 'product' },
         { href: '/sound#library',       icon: '🎵', label: 'Бібліотека звуку', access: 'sound', group: 'product' },
         { href: '/sound#announcements', icon: '📢', label: 'Оголошення', access: 'sound',      group: 'product' },
@@ -223,8 +222,17 @@ const Sidebar = (() => {
     // ═══ ACCESS MATRIX ════════════════════════════════════════════
     // Authorization is resolved by js/auth.js from the server capability snapshot.
     // NAV_ITEMS keeps presentation aliases only; it does not own role presets.
-
     const HR_TEAM_BUCKET_IDS = ['workers', 'interns', 'reserve', 'blacklist', 'dismissed'];
+    const INTERNAL_SHORTCUT_ITEMS = Object.freeze([
+        Object.freeze({
+            href: '/designer',
+            icon: '📖',
+            label: 'Стайлгайд',
+            access: 'art',
+            group: 'product',
+            description: 'внутрішній розділ Дизайн-борду'
+        })
+    ]);
     const HR_TEAM_BUCKET_VISIBILITY_MANAGERS = ['creator', 'director', 'vice_director'];
     const HR_TEAM_BUCKET_VISIBILITY = {
         creator: HR_TEAM_BUCKET_IDS,
@@ -638,7 +646,7 @@ const Sidebar = (() => {
     function _getSelectableExtraMenuItems(role) {
         const user = _getCurrentSidebarUser();
         const seen = new Set();
-        return NAV_ITEMS
+        return NAV_ITEMS.concat(INTERNAL_SHORTCUT_ITEMS)
             .filter(item => item.href && item.type !== 'group' && String(item.href).startsWith('/'))
             .filter(item => {
                 const href = _normalizeExtraHref(item.href);
@@ -4909,6 +4917,7 @@ const Sidebar = (() => {
         markShellReady: _markShellReady,
         clearShellReady: _clearShellReady,
         NAV_ITEMS,
+        INTERNAL_SHORTCUT_ITEMS,
         HR_TEAM_BUCKET_VISIBILITY,
         HR_TEAM_BUCKET_VISIBILITY_MANAGERS,
         hasAccess,

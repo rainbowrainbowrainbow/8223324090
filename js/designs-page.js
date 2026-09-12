@@ -20,6 +20,10 @@ let calendarDate = new Date();
 let calendarData = {};
 let editingDesignId = null;
 let editTags = [];
+let designLoadSequence = 0;
+let activeLightboxObjectUrl = null;
+let lastLightboxTrigger = null;
+let lightboxRequestSequence = 0;
 
 // ==========================================
 // AUTH CHECK (same pattern as tasks-page)
@@ -75,8 +79,10 @@ async function initPage() {
     setupEditModal();
     setupCollections();
     setupCalendarNav();
+    setupDesignGridActions();
+    syncDesignGuideEntry();
 
-    await Promise.all([
+    await Promise.allSettled([
         loadDesigns(),
         loadCollections(),
         loadTags()
@@ -176,6 +182,7 @@ async function apiFetch(url, options = {}) {
 }
 
 async function loadDesigns(append = false) {
+    const requestId = ++designLoadSequence;
     const params = new URLSearchParams();
     params.set('limit', PAGE_SIZE);
     params.set('offset', append ? currentOffset : 0);
@@ -189,22 +196,40 @@ async function loadDesigns(append = false) {
     if (activePinFilter) params.set('pinned', 'true');
     if (activeTagFilter) params.set('tag', activeTagFilter);
 
-    const res = await apiFetch(`${API}?${params}`);
-    if (!res) return;
-    const data = await res.json();
+    if (!append) renderDesignLoading();
 
-    if (append) {
-        designs = [...designs, ...data.items];
-    } else {
-        designs = data.items;
-        currentOffset = 0;
+    try {
+        const res = await apiFetch(`${API}?${params}`);
+        if (!res) return;
+        if (!res.ok) throw new Error(`designs_${res.status}`);
+        const data = await res.json();
+        if (!data || !Array.isArray(data.items)) throw new Error('designs_payload');
+        if (requestId !== designLoadSequence) return;
+
+        if (append) {
+            designs = [...designs, ...data.items];
+        } else {
+            designs = data.items;
+            currentOffset = 0;
+        }
+        totalDesigns = Number.isFinite(Number(data.total)) ? Number(data.total) : designs.length;
+        currentOffset = designs.length;
+
+        renderDesignGrid();
+        document.getElementById('countDesigns').textContent = totalDesigns;
+        document.getElementById('loadMore').style.display = currentOffset < totalDesigns ? '' : 'none';
+    } catch (error) {
+        if (requestId !== designLoadSequence) return;
+        if (!append) designs = [];
+        renderDesignError();
+        document.getElementById('loadMore').style.display = 'none';
     }
-    totalDesigns = data.total;
-    currentOffset = designs.length;
+}
 
-    renderDesignGrid();
-    document.getElementById('countDesigns').textContent = totalDesigns;
-    document.getElementById('loadMore').style.display = currentOffset < totalDesigns ? '' : 'none';
+function syncDesignGuideEntry() {
+    const entry = document.getElementById('designGuideEntry');
+    if (!entry || typeof canAccessPage !== 'function') return;
+    entry.classList.toggle('hidden', !canAccessPage('/designer'));
 }
 
 async function loadCollections() {
@@ -223,6 +248,23 @@ async function loadTags() {
 // ==========================================
 // RENDER DESIGN GRID
 // ==========================================
+function renderDesignLoading() {
+    const grid = document.getElementById('designGrid');
+    if (grid) grid.innerHTML = '<div class="empty-state design-grid-state" role="status">Завантаження дизайнів...</div>';
+}
+
+function renderDesignError() {
+    const grid = document.getElementById('designGrid');
+    if (!grid) return;
+    grid.innerHTML = `
+        <div class="empty-state design-grid-state design-grid-error" role="alert">
+            <span>!</span>
+            Не вдалося завантажити дизайни.
+            <button type="button" class="design-retry-btn" data-design-retry>Спробувати ще раз</button>
+        </div>
+    `;
+}
+
 function renderDesignGrid() {
     const grid = document.getElementById('designGrid');
     if (designs.length === 0) {
@@ -237,29 +279,30 @@ function renderDesignGrid() {
             ? (d.fileSize / (1024 * 1024)).toFixed(1) + ' МБ'
             : Math.round(d.fileSize / 1024) + ' КБ';
         const date = new Date(d.createdAt).toLocaleDateString('uk-UA');
-        const tagsHtml = (d.tags || []).map(t => `<span class="mini-tag">#${t}</span>`).join('');
+        const tagsHtml = (d.tags || []).map(t => `<span class="mini-tag">#${esc(t)}</span>`).join('');
         const colHtml = d.collectionName
-            ? `<span class="design-card-collection" style="background:${d.collectionColor || '#6366F1'}">${d.collectionName}</span>`
+            ? `<span class="design-card-collection" style="background:${d.collectionColor || '#6366F1'}">${esc(d.collectionName)}</span>`
             : '';
         const pinHtml = d.isPinned ? '<span class="pin-badge">⭐</span>' : '';
 
         return `
             <div class="design-card ${d.isPinned ? 'pinned' : ''}" data-id="${d.id}">
                 ${pinHtml}
-                <img class="design-card-img" src="${thumb}" alt="${esc(d.title)}" loading="lazy"
-                     onclick="openLightbox(${d.id})">
+                <button type="button" class="design-card-preview" data-design-preview="${esc(d.id)}" aria-label="Відкрити превʼю: ${esc(d.title || d.originalName || 'дизайн')}">
+                    <img class="design-card-img" src="${thumb}" alt="${esc(d.title)}" loading="lazy">
+                </button>
                 <div class="design-card-body">
                     ${colHtml}
                     <div class="design-card-title" title="${esc(d.title)}">${esc(d.title)}</div>
                     <div class="design-card-meta">${size} · ${date}</div>
                     <div class="design-card-tags">${tagsHtml}</div>
                     <div class="design-card-actions">
-                        <button class="btn-download" onclick="downloadDesign(${d.id})" title="Завантажити">⬇</button>
-                        <button onclick="copyDesign(${d.id})" title="Скопіювати">📋</button>
-                        <button onclick="togglePin(${d.id})" title="${d.isPinned ? 'Відкріпити' : 'Закріпити'}">${d.isPinned ? '⭐' : '☆'}</button>
-                        <button onclick="openEditModal(${d.id})" title="Редагувати">✏️</button>
-                        <button class="btn-tg" onclick="sendToTelegram(${d.id})" title="Telegram">📲</button>
-                        <button class="btn-delete" onclick="deleteDesign(${d.id})" title="Видалити">🗑</button>
+                        <button class="btn-download" data-design-download="${esc(d.id)}" title="Завантажити">⬇</button>
+                        <button data-design-copy="${esc(d.id)}" title="Скопіювати">📋</button>
+                        <button data-design-pin="${esc(d.id)}" title="${d.isPinned ? 'Відкріпити' : 'Закріпити'}">${d.isPinned ? '⭐' : '☆'}</button>
+                        <button data-design-edit="${esc(d.id)}" title="Редагувати">✏️</button>
+                        <button class="btn-tg" data-design-telegram="${esc(d.id)}" title="Telegram">📲</button>
+                        <button class="btn-delete" data-design-delete="${esc(d.id)}" title="Видалити">🗑</button>
                     </div>
                 </div>
             </div>
@@ -269,7 +312,27 @@ function renderDesignGrid() {
 
 function esc(str) {
     if (!str) return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function setupDesignGridActions() {
+    const grid = document.getElementById('designGrid');
+    if (!grid || grid.dataset.actionsBound === '1') return;
+    grid.dataset.actionsBound = '1';
+    grid.addEventListener('click', (event) => {
+        const target = event.target.closest('[data-design-preview],[data-design-download],[data-design-copy],[data-design-pin],[data-design-edit],[data-design-telegram],[data-design-delete],[data-design-retry]');
+        if (!target || !grid.contains(target)) return;
+        if (target.dataset.designRetry !== undefined) { loadDesigns(); return; }
+        const id = Number(target.dataset.designPreview || target.dataset.designDownload || target.dataset.designCopy || target.dataset.designPin || target.dataset.designEdit || target.dataset.designTelegram || target.dataset.designDelete);
+        if (!id) return;
+        if (target.dataset.designPreview) { lastLightboxTrigger = target; openLightbox(id); }
+        else if (target.dataset.designDownload) downloadDesign(id);
+        else if (target.dataset.designCopy) copyDesign(id);
+        else if (target.dataset.designPin) togglePin(id);
+        else if (target.dataset.designEdit) openEditModal(id);
+        else if (target.dataset.designTelegram) sendToTelegram(id);
+        else if (target.dataset.designDelete) deleteDesign(id);
+    });
 }
 
 // ==========================================
@@ -333,19 +396,60 @@ async function uploadFiles(files) {
 // ==========================================
 // ACTIONS
 // ==========================================
-function downloadDesign(id) {
+function designDownloadUrl(id) {
+    return `/api/designs/${encodeURIComponent(id)}/download`;
+}
+
+function designFilenameFromDisposition(disposition) {
+    const value = String(disposition || '');
+    const utf8 = value.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8) {
+        try { return decodeURIComponent(utf8[1].trim()); } catch (_) {}
+    }
+    const ascii = value.match(/filename="?([^";]+)"?/i);
+    return ascii ? ascii[1].trim() : '';
+}
+
+async function fetchDesignBlob(design) {
+    const res = await apiFetch(designDownloadUrl(design.id), {
+        method: 'GET',
+        headers: authHeaders(false)
+    });
+    if (!res) throw new Error('auth_session_unavailable');
+    if (!res.ok) throw new Error(`download_${res.status}`);
+    const blob = await res.blob();
+    const filename = designFilenameFromDisposition(res.headers?.get('Content-Disposition'))
+        || design.originalName
+        || design.title
+        || design.filename
+        || 'design';
+    return { blob, filename };
+}
+
+async function downloadDesign(id) {
     const d = designs.find(x => x.id === id);
     if (!d) return;
-    const href = `/api/designs/${d.id}/download`;
-    if (typeof isTouchDownloadDevice === 'function' && isTouchDownloadDevice()) {
-        if (typeof openSafeNewTab === 'function') openSafeNewTab(href);
-        else window.open(href, '_blank', 'noopener,noreferrer');
-        return;
+    const touchWindow = typeof openTouchDownloadWindow === 'function'
+        ? openTouchDownloadWindow(d.originalName || d.title || 'Дизайн')
+        : null;
+    try {
+        const { blob, filename } = await fetchDesignBlob(d);
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Файл підготовлено' });
+            return;
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+        showNotification('Не вдалося завантажити файл', 'error');
     }
-    const a = document.createElement('a');
-    a.href = href;
-    a.download = d.originalName || d.title;
-    a.click();
 }
 
 async function copyDesign(id) {
@@ -442,10 +546,20 @@ function renderTagChips() {
         container.innerHTML = '';
         return;
     }
-    container.innerHTML = allTags.slice(0, 20).map(t =>
-        `<button class="tag-chip ${activeTagFilter === t.tag ? 'active' : ''}"
-                 onclick="filterByTag('${esc(t.tag)}')">#${esc(t.tag)} <span class="tag-count">${t.count}</span></button>`
-    ).join('');
+    container.innerHTML = '';
+    allTags.slice(0, 20).forEach(t => {
+        const tag = String(t.tag || '');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'tag-chip' + (activeTagFilter === tag ? ' active' : '');
+        button.append(document.createTextNode(`#${tag} `));
+        const count = document.createElement('span');
+        count.className = 'tag-count';
+        count.textContent = String(t.count || 0);
+        button.appendChild(count);
+        button.addEventListener('click', () => filterByTag(tag));
+        container.appendChild(button);
+    });
 }
 
 function filterByTag(tag) {
@@ -473,25 +587,88 @@ function updateCollectionFilters() {
 // ==========================================
 function setupLightbox() {
     const lb = document.getElementById('lightbox');
+    const closeLightbox = () => {
+        lightboxRequestSequence += 1;
+        lb.classList.remove('visible');
+        lb.setAttribute('aria-hidden', 'true');
+        clearLightboxPreview();
+        if (lastLightboxTrigger && typeof lastLightboxTrigger.focus === 'function') lastLightboxTrigger.focus();
+        lastLightboxTrigger = null;
+    };
     lb.addEventListener('click', (e) => {
         if (e.target === lb || e.target.classList.contains('lightbox-close')) {
-            lb.classList.remove('visible');
+            closeLightbox();
         }
     });
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') lb.classList.remove('visible');
+        if (e.key === 'Escape' && lb.classList.contains('visible')) closeLightbox();
     });
 }
 
-function openLightbox(id) {
+function clearLightboxPreview() {
+    const img = document.getElementById('lightboxImg');
+    const frame = document.getElementById('lightboxPdf');
+    const error = document.getElementById('lightboxError');
+    if (activeLightboxObjectUrl) {
+        URL.revokeObjectURL(activeLightboxObjectUrl);
+        activeLightboxObjectUrl = null;
+    }
+    if (img) { img.hidden = true; img.removeAttribute('src'); }
+    if (frame) { frame.hidden = true; frame.removeAttribute('src'); }
+    if (error) { error.hidden = true; error.textContent = ''; }
+}
+
+function setLightboxError(message, options = {}) {
+    const error = document.getElementById('lightboxError');
+    const download = document.getElementById('lightboxDownload');
+    clearLightboxPreview();
+    if (error) {
+        error.textContent = message || 'Не вдалося відкрити файл.';
+        error.hidden = false;
+    }
+    if (download) download.hidden = options.keepDownload !== true;
+}
+
+async function openLightbox(id) {
     const d = designs.find(x => x.id === id);
     if (!d) return;
+    const requestId = ++lightboxRequestSequence;
     const lb = document.getElementById('lightbox');
     const img = document.getElementById('lightboxImg');
-    img.onerror = () => { img.src = '/images/favicon-512.png'; };
-    img.src = `/uploads/designs/${d.filename}`;
-    document.getElementById('lightboxInfo').textContent = d.title || d.originalName;
+    const frame = document.getElementById('lightboxPdf');
+    const download = document.getElementById('lightboxDownload');
+    clearLightboxPreview();
+    document.getElementById('lightboxInfo').textContent = d.title || d.originalName || 'Дизайн';
+    if (download) {
+        download.hidden = false;
+        download.onclick = (event) => {
+            event.preventDefault();
+            downloadDesign(d.id);
+        };
+    }
+    lb.setAttribute('aria-hidden', 'false');
     lb.classList.add('visible');
+    document.querySelector('.lightbox-close')?.focus();
+
+    try {
+        const { blob } = await fetchDesignBlob(d);
+        if (requestId !== lightboxRequestSequence || !lb.classList.contains('visible')) return;
+        activeLightboxObjectUrl = URL.createObjectURL(blob);
+        const mime = String(blob.type || d.mimeType || '').toLowerCase();
+        if (mime.includes('pdf') || /\.pdf$/i.test(d.filename || d.originalName || '')) {
+            if (!frame) throw new Error('pdf_preview_unavailable');
+            frame.src = activeLightboxObjectUrl;
+            frame.hidden = false;
+            return;
+        }
+        if (!mime.startsWith('image/')) throw new Error('unsupported_preview');
+        img.onload = () => {};
+        img.onerror = () => setLightboxError('Не вдалося показати превʼю файлу.', { keepDownload: true });
+        img.src = activeLightboxObjectUrl;
+        img.hidden = false;
+    } catch {
+        setLightboxError('Файл недоступний для перегляду. Спробуйте завантажити його або зверніться до адміністратора.');
+    }
 }
 window.openLightbox = openLightbox;
 

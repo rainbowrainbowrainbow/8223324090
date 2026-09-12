@@ -249,7 +249,7 @@ const PAGE_PERMISSIONS = Object.freeze([
     }),
     page({
         key: '/designer', label: 'Стайлгайд', group: 'product', canonicalPath: '/designer',
-        defaultRoles: ART_ACCESS, risk: 'medium', sidebarLinks: ['/designer'],
+        defaultRoles: ART_ACCESS, risk: 'medium', sidebarLinks: [],
         frontendConsumers: [source('designer.html', 'js/auth.js')],
         apiConsumers: [api('routes/designs.js', '/api/designs', null)]
     }),

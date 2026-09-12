@@ -156,7 +156,11 @@ test('sidebar links are fully represented by page permission entries', () => {
     assert.ok(start >= 0 && end > start, 'unable to locate NAV_ITEMS block');
     const navBlock = source.slice(start, end);
     const navHrefs = Array.from(navBlock.matchAll(/href:\s*'([^']+)'/g), match => match[1]);
-    assert.equal(navHrefs.length, 50, 'sidebar link count drift');
+    assert.equal(navHrefs.length, 49, 'sidebar link count drift');
+    assert.equal(navHrefs.includes('/designer'), false, 'Style Guide must stay out of the default sidebar navigation');
+    assert.ok(registry.PAGE_PERMISSION_BY_KEY['/designer'], 'Style Guide route must keep a page permission entry');
+    assert.equal(registry.PAGE_PERMISSION_BY_KEY['/designer'].canonicalPath, '/designer');
+    assert.deepEqual(registry.PAGE_PERMISSION_BY_KEY['/designer'].sidebarLinks, []);
 
     for (const href of navHrefs) {
         if (href === '#settings') continue;

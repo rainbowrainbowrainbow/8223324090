@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.125 - Мультибізнес foundation
+
+### Release / Versioning / (12.09.2026) [codex]
+- **Мультибізнес foundation** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.124 - PARK/DAR каса та знижки
 
 ### Release / Versioning / (12.09.2026) [codex]

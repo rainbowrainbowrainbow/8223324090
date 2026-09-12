@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.124",
+  "version": "0.81.125",
   "eventGenix": {
-    "releaseLabel": "PARK/DAR каса та знижки"
+    "releaseLabel": "Мультибізнес foundation"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

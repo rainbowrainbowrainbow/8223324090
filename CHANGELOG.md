@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.144 - Каса: вузький тестовий X/Z gate
+
+### Release / Versioning / (12.09.2026) [codex]
+- **Каса: вузький тестовий X/Z gate** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.143 - Omni: безпечний Viber bridge
 
 ### Omni / Viber Personal Bridge / (12.09.2026) [codex]

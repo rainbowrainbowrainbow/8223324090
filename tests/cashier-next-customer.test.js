@@ -1240,7 +1240,7 @@ test('history renders filter-wide totals, separate blocker groups, safe links an
     assert.doesNotMatch(f.el('checkboxSalesReportBody').textContent, /Після оновлення.*зникне/);
 });
 
-test('X report affordance is explicit but does not call a provider endpoint', t => {
+test('X report affordance is disabled without an active shift and does not call a provider endpoint', t => {
     const f = fixture(); t.after(() => f.dom.window.close());
     let fetchCalls = 0;
     f.window.fetch = async () => {
@@ -1249,11 +1249,11 @@ test('X report affordance is explicit but does not call a provider endpoint', t 
     };
     f.page.renderFiscalReportsPanel();
     assert.equal(f.el('createXReportBtn').disabled, true);
-    assert.match(f.el('fiscalReportsNotice').textContent, /durable черга provider-report/);
-    f.page.explainXReportUnavailable();
+    assert.match(f.el('fiscalReportsNotice').textContent, /Немає активної зміни/);
+    f.page.createXReportFromPanel();
     assert.equal(fetchCalls, 0);
-    assert.equal(f.window.__notifications.at(-1).type, 'info');
-    assert.match(f.window.__notifications.at(-1).message, /не запускається з CRM/);
+    assert.equal(f.window.__notifications.at(-1).type, 'error');
+    assert.match(f.window.__notifications.at(-1).message, /X-звіт недоступний|Немає активної зміни/);
 });
 
 test('Z report affordance reuses guarded phase1 close instead of a separate report endpoint', async t => {

@@ -27,7 +27,7 @@ const {
     isCheckboxIntegrationEnabled,
     loadCheckboxRuntimeConfig
 } = require('../checkbox/config');
-const { safeCheckboxArtifactUrl } = require('../checkbox/provider');
+const { createProviderFromConfig, safeCheckboxArtifactUrl } = require('../checkbox/provider');
 const { countFiscalShiftCloseBlockers } = require('./shiftCloseBlockers');
 const { buildFiscalConfigurationSnapshot } = require('./paymentReadinessService');
 const { resolveFiscalSaleRoute } = require('./fiscalSaleRouteService');
@@ -754,6 +754,7 @@ async function loadImmutableProviderConfiguration(client, {
              fr.provider_license_ref,
              fr.feature_enabled,
              COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS register_expected_is_test,
+             binding.id AS fiscal_cashier_binding_id,
              binding.provider_cashier_id,
              binding.provider_cashier_login_ref
            FROM fiscal_profiles fp
@@ -844,7 +845,7 @@ async function loadImmutableProviderConfiguration(client, {
         binding: mapping,
         runtimeConfig
     });
-    return { mapping, fiscalConfig };
+    return { mapping, fiscalConfig, runtimeConfig };
 }
 
 async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null }) {
@@ -2447,6 +2448,428 @@ async function closeShift({ user, shiftId, body = {}, idempotencyKey }) {
     return result;
 }
 
+function sanitizeProviderError(error) {
+    const code = String(error?.code || error?.name || 'checkbox_provider_error').slice(0, 120);
+    const message = String(error?.message || code)
+        .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+/gi, '$1[redacted]')
+        .replace(/(token|secret|password|pin|api[_-]?key|authorization)(["'\s:=]+)([^"'\s,}]+)/gi, '$1$2[redacted]')
+        .slice(0, 1000);
+    return {
+        code,
+        message,
+        unknown: error?.unknown === true || error?.name === 'AbortError' || /timeout|aborted|network|fetch|econn|socket/i.test(`${code} ${message}`),
+        retryable: error?.retryable === true
+    };
+}
+
+function createXReportProvider(row = {}, env = process.env) {
+    const runtimeConfig = loadCheckboxRuntimeConfig({
+        env,
+        credentialRef: row.cashier_credential_ref,
+        licenseRef: row.register_credential_ref,
+        expectedIsTest: normalizeBoolean(row.expected_is_test)
+    });
+    return createProviderFromConfig(runtimeConfig);
+}
+
+function xReportProviderInput(row = {}) {
+    return {
+        providerOperationId: row.provider_request_uuid,
+        providerShiftId: row.provider_shift_id,
+        providerRegisterId: row.provider_register_id,
+        providerCashierId: row.provider_cashier_id,
+        providerOrganizationId: row.provider_organization_id,
+        fiscalOperation: {
+            id: row.id,
+            fiscal_operation_id: row.id,
+            fiscal_profile_id: row.fiscal_profile_id,
+            fiscal_register_id: row.fiscal_register_id,
+            fiscal_shift_id: row.fiscal_shift_id,
+            provider_shift_id: row.provider_shift_id,
+            provider_register_id: row.provider_register_id,
+            provider_cashier_id: row.provider_cashier_id,
+            provider_organization_id: row.provider_organization_id
+        }
+    };
+}
+
+function projectXReportRequest(row = {}) {
+    const provider = safeJsonObject(row.provider_snapshot);
+    const report = safeJsonObject(provider.report || provider);
+    return {
+        requestId: row.id == null ? null : Number(row.id),
+        fiscalShiftId: row.fiscal_shift_id == null ? null : Number(row.fiscal_shift_id),
+        status: row.status || null,
+        providerReportId: row.provider_report_id || null,
+        report: row.provider_report_id ? {
+            id: row.provider_report_id,
+            fiscalCode: report.fiscalCode || report.fiscal_code || null,
+            serial: report.serial || null,
+            isZReport: report.isZReport === true || report.is_z_report === true,
+            createdAt: report.createdAt || report.created_at || null,
+            fiscalDate: report.fiscalDate || report.fiscal_date || null
+        } : null,
+        lastErrorCode: row.last_error_code || null,
+        lastErrorMessage: row.last_error_message || null,
+        externalStage: row.external_stage || null,
+        attemptedAt: row.attempted_at || null,
+        submittedAt: row.submitted_at || null,
+        completedAt: row.completed_at || null,
+        nextReconcileAt: row.next_reconcile_at || null,
+        createdAt: row.created_at || null,
+        updatedAt: row.updated_at || null,
+        documentAvailable: Boolean(row.provider_report_id)
+    };
+}
+
+function officialZReportFromShift(shift = {}) {
+    const snapshot = safeJsonObject(shift.provider_snapshot);
+    const closeResult = safeJsonObject(snapshot.close_result || snapshot.closeResult);
+    const report = safeJsonObject(closeResult.zReport || closeResult.z_report || snapshot.zReport || snapshot.z_report);
+    const reportId = String(report.id || report.report_id || '').trim();
+    if (!reportId) return null;
+    return {
+        id: reportId,
+        fiscalCode: report.fiscalCode || report.fiscal_code || null,
+        serial: report.serial || null,
+        isZReport: true,
+        createdAt: report.createdAt || report.created_at || null,
+        fiscalDate: report.fiscalDate || report.fiscal_date || null
+    };
+}
+
+async function loadLatestXReportRequest(client, { user, shiftId, forUpdate = false } = {}) {
+    const shift = await loadShiftForUserAction(client, { user, shiftId, action: 'fiscal.audit.view' });
+    const result = await client.query(
+        `SELECT *
+           FROM fiscal_x_report_requests
+          WHERE fiscal_profile_id = $1
+            AND fiscal_shift_id = $2
+          ORDER BY id DESC
+          LIMIT 1
+          ${forUpdate ? 'FOR UPDATE' : ''}`,
+        [shift.fiscal_profile_id, shift.id]
+    );
+    return { shift, row: result.rows[0] || null };
+}
+
+async function reconcileXReportRow(client, { row, env = process.env } = {}) {
+    if (!row || !['submitting', 'unknown'].includes(String(row.status || '').trim())) return row;
+    let updated = row;
+    try {
+        const provider = createXReportProvider(row, env);
+        let report = null;
+        if (row.provider_report_id) {
+            const lookup = await provider.lookupReport({
+                ...xReportProviderInput(row),
+                reportId: row.provider_report_id,
+                expectedIsZReport: false
+            });
+            report = lookup.found ? lookup.report : null;
+        } else {
+            const search = await provider.searchReports({
+                ...xReportProviderInput(row),
+                expectedIsZReport: false,
+                query: {
+                    'shift_id[]': [row.provider_shift_id],
+                    is_z_report: false,
+                    desc: true,
+                    limit: 20
+                }
+            });
+            report = search.reports.find(item => item.shiftId === row.provider_shift_id && item.isZReport === false) || null;
+        }
+        if (report?.id) {
+            const result = await client.query(
+                `UPDATE fiscal_x_report_requests
+                    SET status = 'succeeded',
+                        provider_report_id = $2,
+                        provider_snapshot = $3::jsonb,
+                        last_error_code = NULL,
+                        last_error_message = NULL,
+                        external_stage = 'report_confirmed',
+                        submitted_at = COALESCE(submitted_at, NOW()),
+                        completed_at = COALESCE(completed_at, NOW()),
+                        next_reconcile_at = NULL
+                  WHERE id = $1
+                  RETURNING *`,
+                [row.id, report.id, JSON.stringify({ report })]
+            );
+            updated = result.rows[0] || updated;
+        } else {
+            const result = await client.query(
+                `UPDATE fiscal_x_report_requests
+                    SET status = 'unknown',
+                        external_stage = 'report_search_no_match',
+                        next_reconcile_at = NOW() + INTERVAL '2 minutes'
+                  WHERE id = $1
+                  RETURNING *`,
+                [row.id]
+            );
+            updated = result.rows[0] || updated;
+        }
+    } catch (error) {
+        const info = sanitizeProviderError(error);
+        const result = await client.query(
+            `UPDATE fiscal_x_report_requests
+                SET status = 'unknown',
+                    last_error_code = $2,
+                    last_error_message = $3,
+                    external_stage = 'report_reconcile_failed',
+                    next_reconcile_at = NOW() + INTERVAL '5 minutes'
+              WHERE id = $1
+              RETURNING *`,
+            [row.id, info.code, info.message]
+        );
+        updated = result.rows[0] || updated;
+    }
+    return updated;
+}
+
+async function createXReport({ user, shiftId, idempotencyKey, env = process.env } = {}) {
+    const key = String(idempotencyKey || '').trim();
+    if (!key) throw new CashierOperationsError('idempotency_key_required', 'Idempotency-Key is required');
+
+    const prepared = await withTransaction(async client => {
+        const shift = await loadShiftForUserAction(client, { user, shiftId, action: 'fiscal.shift.close' });
+        if (shift.status !== 'open' || String(shift.lifecycle_stage || '').trim().toUpperCase() !== 'OPENED') {
+            throw new CashierOperationsError('shift_not_open', 'Only an opened shift can produce an X-report', { status: 409 });
+        }
+        if (!shift.provider_shift_id) {
+            throw new CashierOperationsError('provider_shift_id_missing', 'Provider shift id is required before X-report', { status: 409 });
+        }
+        const binding = await loadFiscalCashierBinding(client, {
+            userId: user?.id,
+            fiscalProfileId: shift.fiscal_profile_id,
+            fiscalRegisterId: shift.fiscal_register_id,
+            forUpdate: true
+        });
+        assertBindingAllowsAction(binding, 'fiscal.shift.close');
+        const { fiscalConfig } = await loadImmutableProviderConfiguration(client, {
+            user,
+            fiscalProfileId: shift.fiscal_profile_id,
+            fiscalLocationId: shift.fiscal_location_id,
+            fiscalRegisterId: shift.fiscal_register_id,
+            crmProfileKey: shift.crm_profile_key,
+            env
+        });
+        const existing = await client.query(
+            `SELECT *
+               FROM fiscal_x_report_requests
+              WHERE fiscal_profile_id = $1
+                AND idempotency_key = $2
+              FOR UPDATE`,
+            [shift.fiscal_profile_id, key]
+        );
+        if (existing.rows[0]) {
+            const row = existing.rows[0];
+            return {
+                row,
+                replayed: true,
+                shouldSubmit: (
+                    row.status === 'pending'
+                    && String(row.external_stage || '') === 'created'
+                    && !row.attempted_at
+                ) || (
+                    row.status === 'submitting'
+                    && String(row.external_stage || '') === 'x_report_submit'
+                    && !row.submitted_at
+                )
+            };
+        }
+        const providerRequestUuid = crypto.randomUUID();
+        const insert = await client.query(
+            `INSERT INTO fiscal_x_report_requests (
+                 fiscal_profile_id, fiscal_location_id, fiscal_register_id, fiscal_shift_id,
+                 fiscal_cashier_binding_id, requested_by_user_id, status, idempotency_key,
+                 provider_request_uuid, provider_shift_id, provider_register_id, provider_cashier_id,
+                 provider_organization_id, register_credential_ref, cashier_credential_ref, expected_is_test,
+                 request_snapshot, external_stage
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, 'created')
+             RETURNING *`,
+            [
+                shift.fiscal_profile_id,
+                shift.fiscal_location_id,
+                shift.fiscal_register_id,
+                shift.id,
+                fiscalConfig.snapshot.fiscal_cashier_binding_id || binding.id,
+                user?.id,
+                key,
+                providerRequestUuid,
+                shift.provider_shift_id,
+                fiscalConfig.snapshot.provider_register_id,
+                fiscalConfig.snapshot.provider_cashier_id,
+                fiscalConfig.snapshot.provider_organization_id,
+                fiscalConfig.snapshot.register_credential_ref,
+                fiscalConfig.snapshot.cashier_credential_ref,
+                fiscalConfig.snapshot.expected_is_test,
+                JSON.stringify({
+                    provider_request_uuid: providerRequestUuid,
+                    provider_context: fiscalConfig.snapshot,
+                    fiscal_configuration_hash: fiscalConfig.hash,
+                    external_stage: 'created'
+                })
+            ]
+        );
+        return { row: insert.rows[0], replayed: false, shouldSubmit: true };
+    });
+
+    if (!prepared.shouldSubmit) {
+        return { replayed: prepared.replayed, xReport: projectXReportRequest(prepared.row) };
+    }
+
+    const submitting = await withTransaction(async client => {
+        const result = await client.query(
+            `UPDATE fiscal_x_report_requests
+                SET status = 'submitting',
+                    external_stage = 'x_report_submit',
+                    attempted_at = COALESCE(attempted_at, NOW())
+              WHERE id = $1
+                AND status = 'pending'
+              RETURNING *`,
+            [prepared.row.id]
+        );
+        return result.rows[0] || prepared.row;
+    });
+
+    let finalRow = submitting;
+    try {
+        const provider = createXReportProvider(submitting, env);
+        const report = await provider.createXReport({
+            ...xReportProviderInput(submitting),
+            beforeExternalMutation: async () => {
+                await withTransaction(async client => {
+                    await client.query(
+                        `UPDATE fiscal_x_report_requests
+                            SET external_stage = 'provider_post_started',
+                                submitted_at = COALESCE(submitted_at, NOW())
+                          WHERE id = $1`,
+                        [submitting.id]
+                    );
+                });
+            }
+        });
+        finalRow = await withTransaction(async client => {
+            const result = await client.query(
+                `UPDATE fiscal_x_report_requests
+                    SET status = 'succeeded',
+                        provider_report_id = $2,
+                        provider_snapshot = $3::jsonb,
+                        last_error_code = NULL,
+                        last_error_message = NULL,
+                        external_stage = 'report_confirmed',
+                        submitted_at = COALESCE(submitted_at, NOW()),
+                        completed_at = NOW(),
+                        next_reconcile_at = NULL
+                  WHERE id = $1
+                  RETURNING *`,
+                [submitting.id, report.id, JSON.stringify({ report })]
+            );
+            return result.rows[0];
+        });
+    } catch (error) {
+        const info = sanitizeProviderError(error);
+        finalRow = await withTransaction(async client => {
+            const status = info.unknown || info.retryable ? 'unknown' : 'failed';
+            const result = await client.query(
+                `UPDATE fiscal_x_report_requests
+                    SET status = $2,
+                        last_error_code = $3,
+                        last_error_message = $4,
+                        external_stage = $5,
+                        next_reconcile_at = CASE WHEN $2 = 'unknown' THEN NOW() + INTERVAL '2 minutes' ELSE NULL END
+                  WHERE id = $1
+                  RETURNING *`,
+                [
+                    submitting.id,
+                    status,
+                    info.code,
+                    info.message,
+                    status === 'unknown' ? 'provider_post_unknown' : 'provider_post_failed'
+                ]
+            );
+            return result.rows[0];
+        });
+    }
+
+    return { replayed: prepared.replayed, xReport: projectXReportRequest(finalRow) };
+}
+
+async function getXReportStatus({ user, shiftId, refresh = false, env = process.env } = {}) {
+    const { row } = await withTransaction(async client => {
+        return loadLatestXReportRequest(client, { user, shiftId, forUpdate: refresh });
+    });
+    if (!row) return { xReport: null };
+    if (!refresh || !['submitting', 'unknown'].includes(String(row.status || '').trim())) {
+        return { xReport: projectXReportRequest(row) };
+    }
+    const reconciled = await withTransaction(async client => {
+        return reconcileXReportRow(client, { row, env });
+    });
+    return { xReport: projectXReportRequest(reconciled) };
+}
+
+async function getXReportText({ user, shiftId, env = process.env } = {}) {
+    const { row } = await withTransaction(async client => {
+        return loadLatestXReportRequest(client, { user, shiftId, forUpdate: false });
+    });
+    if (!row || !row.provider_report_id || row.status !== 'succeeded') {
+        throw new CashierOperationsError('x_report_document_unavailable', 'X-report document is not available yet', { status: 409 });
+    }
+    const provider = createXReportProvider(row, env);
+    const text = await provider.getReportDocument({
+        ...xReportProviderInput(row),
+        reportId: row.provider_report_id,
+        format: 'text',
+        width: 42
+    });
+    return { reportId: row.provider_report_id, format: 'text', contentType: 'text/plain; charset=utf-8', body: String(text || '') };
+}
+
+async function getZReportText({ user, shiftId, env = process.env } = {}) {
+    const { shift, operation } = await withTransaction(async client => {
+        const loadedShift = await loadShiftForUserAction(client, { user, shiftId, action: 'fiscal.audit.view' });
+        const zReport = officialZReportFromShift(loadedShift);
+        if (!zReport?.id) {
+            throw new CashierOperationsError('z_report_document_unavailable', 'Official Z-report document is not available yet', { status: 409 });
+        }
+        const operationResult = await client.query(
+            `SELECT *
+               FROM fiscal_operations
+              WHERE id = $1
+                AND fiscal_profile_id = $2
+                AND operation_type = 'shift_close'
+              LIMIT 1`,
+            [loadedShift.close_operation_id, loadedShift.fiscal_profile_id]
+        );
+        if (!operationResult.rows[0]) {
+            throw new CashierOperationsError('z_report_close_operation_missing', 'Shift close operation is unavailable for Z-report document', { status: 409 });
+        }
+        return { shift: loadedShift, operation: operationResult.rows[0] };
+    });
+    const zReport = officialZReportFromShift(shift);
+    const runtimeConfig = loadCheckboxRuntimeConfig({
+        env,
+        credentialRef: operation.cashier_credential_ref,
+        licenseRef: operation.register_credential_ref,
+        expectedIsTest: normalizeBoolean(operation.expected_is_test)
+    });
+    const provider = createProviderFromConfig(runtimeConfig);
+    const text = await provider.getReportDocument({
+        providerOperationId: zReport.id,
+        providerShiftId: shift.provider_shift_id,
+        providerRegisterId: operation.provider_register_id,
+        providerCashierId: operation.provider_cashier_id,
+        providerOrganizationId: operation.provider_organization_id,
+        fiscalOperation: { ...operation, provider_shift_id: shift.provider_shift_id },
+        reportId: zReport.id,
+        format: 'text',
+        width: 42
+    });
+    return { reportId: zReport.id, format: 'text', contentType: 'text/plain; charset=utf-8', body: String(text || '') };
+}
+
 async function autoCloseShift({ user, shiftId, body = {}, idempotencyKey, env = process.env }) {
     if (String(env[AUTO_CLOSE_FLAG] || '').toLowerCase() !== 'true') {
         throw new CashierOperationsError('auto_close_disabled', 'Fiscal auto-close is disabled by feature flag', { status: 403 });
@@ -2756,6 +3179,22 @@ async function getOperationalReport({ user, shiftId }) {
     return withTransaction(async client => {
         const shift = await loadShiftForUserAction(client, { user, shiftId, action: 'fiscal.audit.view' });
         const checklist = await buildCloseChecklist(client, shift);
+        let latestX = { rows: [] };
+        let xReportSchemaReady = true;
+        try {
+            latestX = await client.query(
+                `SELECT *
+                   FROM fiscal_x_report_requests
+                  WHERE fiscal_profile_id = $1
+                    AND fiscal_shift_id = $2
+                  ORDER BY id DESC
+                  LIMIT 1`,
+                [shift.fiscal_profile_id, shift.id]
+            );
+        } catch (error) {
+            if (error?.code !== '42P01') throw error;
+            xReportSchemaReady = false;
+        }
         const lastReconciliation = await client.query(
             `SELECT *
                FROM fiscal_reconciliation_revisions
@@ -2765,10 +3204,14 @@ async function getOperationalReport({ user, shiftId }) {
               LIMIT 1`,
             [shift.fiscal_profile_id, shift.id]
         );
+        const zReport = officialZReportFromShift(shift);
         return {
             fiscalShiftId: Number(shift.id),
             internalReportLabel: 'Internal operational report',
-            officialZReport: false,
+            officialZReport: Boolean(zReport),
+            zReport,
+            xReportSchemaReady,
+            xReport: latestX.rows[0] ? projectXReportRequest(latestX.rows[0]) : null,
             checkboxZDocumentUrl: safeCheckboxArtifactUrl('https://api.checkbox.ua', shift.provider_snapshot?.z_report_url || shift.provider_snapshot?.document_url || null),
             checklist,
             lastReconciliation: lastReconciliation.rows[0] || null
@@ -2805,6 +3248,10 @@ module.exports = {
     assertServiceOutMutationRuntimeEnabled,
     createReconciliationRevision,
     closeShift,
+    createXReport,
+    getXReportStatus,
+    getXReportText,
+    getZReportText,
     autoCloseShift,
     createFullRefund,
     enrollFiscalActionPin,

@@ -195,6 +195,10 @@
         phase1ClosePollingStartedAt: 0,
         phase1CloseTargetShiftId: null,
         phase1ClosePollingPaused: false,
+        fiscalReportsInFlight: false,
+        fiscalReportsLastError: null,
+        fiscalReport: null,
+        xReportCreateInFlight: false,
         serviceOutOperations: [],
         serviceOutLoadInFlight: false,
         serviceOutCreateInFlight: false,
@@ -244,6 +248,10 @@
         state.unresolvedInFlight = false;
         state.reportInFlight = false;
         state.serviceOutLoadInFlight = false;
+        state.fiscalReportsInFlight = false;
+        state.fiscalReportsLastError = null;
+        state.fiscalReport = null;
+        state.xReportCreateInFlight = false;
         state.actionPinLoadInFlight = false;
         state.serviceOutLastError = null;
         state.serviceOutCapabilityDenied = false;
@@ -1920,6 +1928,7 @@
             }
             state.registerState = result;
             renderRegisterState(result);
+            void loadFiscalReportState({ silent: true });
             if (!silent) notify('Стан каси оновлено.', 'success');
             return result;
         } catch (error) {
@@ -1927,6 +1936,7 @@
                 return state.registerState;
             }
             state.registerState = null;
+            state.fiscalReport = null;
             renderRegisterState(null);
             if (!silent) notify(paymentUiError(error), 'error');
             return null;
@@ -3817,7 +3827,16 @@
     }
 
     function xReportUnavailableReason() {
-        return 'X-звіт Checkbox поки не запускається з CRM: потрібна durable черга provider-report з ідемпотентністю, щоб не створити дубль після перезавантаження.';
+        const loadingReason = fiscalReportsLoadingReason();
+        if (loadingReason) return loadingReason;
+        const context = phase1CloseContext();
+        if (!context?.visible || !context?.shiftId) return 'Немає активної зміни або доступу до звітів цієї каси.';
+        const status = normalizeStatus(context.status);
+        if (!['open', 'opened'].includes(status)) return 'X-звіт доступний тільки для відкритої зміни Checkbox.';
+        if (state.fiscalReport?.xReportSchemaReady === false) return 'Схема durable X-звітів ще не застосована на сервері.';
+        if (state.registerState?.integrationReady !== true) return 'Готовність Checkbox ще не підтверджена.';
+        if (state.xReportCreateInFlight) return 'X-звіт уже створюється. Не повторюйте дію.';
+        return '';
     }
 
     function fiscalReportsLoadingReason() {
@@ -3835,32 +3854,118 @@
         const closeReason = loadingReason || (visible ? phase1CloseUnavailableReason(context) : 'Немає активної зміни або доступу до звітів цієї каси.');
         const closeBusy = state.phase1CloseConfirmationInFlight || state.phase1CloseSafetyRefreshInFlight || state.phase1CloseInFlight;
         const xReason = xReportUnavailableReason();
+        const xBusy = state.xReportCreateInFlight || state.fiscalReportsInFlight;
+        const xReady = visible && !xReason && !xBusy;
         const xButton = $('createXReportBtn');
         const zButton = $('closeZReportBtn');
         const badge = $('fiscalReportsStateBadge');
         const notice = $('fiscalReportsNotice');
+        const details = $('fiscalReportsDetails');
         const statusLabel = context?.status ? formatStatus(context.status) : 'невідомо';
         const canClose = visible && !closeReason && !closeBusy;
         panel.classList.toggle('is-ready', canClose);
         panel.classList.toggle('is-blocked', !canClose);
-        panel.setAttribute('aria-busy', closeBusy || Boolean(loadingReason) ? 'true' : 'false');
-        setDisabledReason(xButton, true, xReason);
+        panel.setAttribute('aria-busy', closeBusy || xBusy || Boolean(loadingReason) ? 'true' : 'false');
+        setButtonBusy(xButton, state.xReportCreateInFlight, 'Створюємо X-звіт…');
+        setDisabledReason(xButton, !xReady, state.xReportCreateInFlight ? 'Створюємо X-звіт…' : xReason);
         setDisabledReason(zButton, !canClose, closeBusy ? 'Очікуємо завершення поточної перевірки зміни.' : closeReason);
         if (badge) {
-            badge.textContent = canClose
+            badge.textContent = state.fiscalReportsInFlight
+                ? 'Оновлюємо звіти'
+                : canClose
                 ? `Зміна ${statusLabel} · можна закривати`
                 : (visible ? `Зміна ${statusLabel}` : 'Звіти недоступні');
         }
         if (notice) {
+            const xText = xReason || 'X-звіт створюється durable-запитом Checkbox і не дублюється після timeout.';
             notice.textContent = canClose
-                ? `${xReason} Z-звіт створюється тільки через чинне закриття зміни з повторною перевіркою черги.`
-                : `${xReason} Z-звіт недоступний: ${closeBusy ? 'триває перевірка зміни.' : closeReason}`;
+                ? `${xText} Z-звіт створюється тільки через чинне закриття зміни з повторною перевіркою черги.`
+                : `${xText} Z-звіт недоступний: ${closeBusy ? 'триває перевірка зміни.' : closeReason}`;
+        }
+        if (details) {
+            const report = state.fiscalReport || {};
+            const xReport = report.xReport || null;
+            const zReport = report.zReport || null;
+            const shiftId = context?.shiftId;
+            const xDoc = shiftId && xReport?.documentAvailable
+                ? `/api/payments/shifts/${encodeURIComponent(shiftId)}/x-report/text`
+                : '';
+            const zDoc = shiftId && zReport?.id
+                ? `/api/payments/shifts/${encodeURIComponent(shiftId)}/z-report/text`
+                : '';
+            details.innerHTML = `
+                <div class="cashier-fiscal-report-row">
+                    <span>X status</span>
+                    <strong>${escapeHtml(xReport ? formatStatus(xReport.status) : 'ще не створювався')}</strong>
+                    ${xDoc ? `<a href="${escapeAttribute(xDoc)}" target="_blank" rel="noopener">Текст X</a>` : '<small>Документ буде доступний після успішного X-звіту.</small>'}
+                </div>
+                <div class="cashier-fiscal-report-row">
+                    <span>Z document</span>
+                    <strong>${escapeHtml(zReport?.id ? 'офіційний документ є' : 'ще немає')}</strong>
+                    ${zDoc ? `<a href="${escapeAttribute(zDoc)}" target="_blank" rel="noopener">Текст Z</a>` : '<small>Перегляд не закриває зміну повторно.</small>'}
+                </div>
+            `;
         }
     }
 
-    function explainXReportUnavailable() {
+    async function loadFiscalReportState({ silent = true, refreshX = false } = {}) {
+        const context = phase1CloseContext();
+        if (!context?.shiftId || !context?.visible) {
+            state.fiscalReport = null;
+            renderFiscalReportsPanel();
+            return null;
+        }
+        state.fiscalReportsInFlight = true;
         renderFiscalReportsPanel();
-        notify(xReportUnavailableReason(), 'info');
+        try {
+            const params = new URLSearchParams();
+            if (refreshX) params.set('refreshX', 'true');
+            const result = await apiRequest(`/api/payments/shifts/${encodeURIComponent(context.shiftId)}/report${params.toString() ? `?${params}` : ''}`, {
+                method: 'GET',
+                headers: apiHeaders()
+            });
+            state.fiscalReport = result;
+            state.fiscalReportsLastError = null;
+            return result;
+        } catch (error) {
+            state.fiscalReportsLastError = error;
+            if (!silent) notify(paymentUiError(error), 'error');
+            return null;
+        } finally {
+            state.fiscalReportsInFlight = false;
+            renderFiscalReportsPanel();
+        }
+    }
+
+    async function createXReportFromPanel() {
+        const context = phase1CloseContext();
+        const reason = xReportUnavailableReason();
+        if (reason || !context?.shiftId) {
+            notify(reason || 'X-звіт недоступний.', 'error');
+            return;
+        }
+        if (state.xReportCreateInFlight) return;
+        const idempotencyKey = getOperationIdempotencyKey('x-report', context.shiftId);
+        state.xReportCreateInFlight = true;
+        renderFiscalReportsPanel();
+        try {
+            const result = await apiRequest(`/api/payments/shifts/${encodeURIComponent(context.shiftId)}/x-report`, {
+                method: 'POST',
+                headers: apiHeaders(idempotencyKey),
+                body: JSON.stringify({})
+            });
+            if (result.xReport) {
+                state.fiscalReport = { ...(state.fiscalReport || {}), xReport: result.xReport };
+            }
+            if (result.xReport?.status === 'succeeded') clearOperationIdempotencyKey('x-report', context.shiftId);
+            notify(result.replayed ? 'X-звіт уже був прийнятий. Стан відновлено.' : 'X-звіт Checkbox створено або взято в durable обробку.', 'success');
+            await loadFiscalReportState({ silent: true, refreshX: true });
+        } catch (error) {
+            notify(paymentUiError(error), 'error');
+        } finally {
+            state.xReportCreateInFlight = false;
+            renderFiscalReportsPanel();
+        }
     }
 
     function requestZReportClose() {
@@ -4376,7 +4481,7 @@
         $('refreshUnresolvedOrdersBtn')?.addEventListener('click', () => { void loadUnresolvedOrders({ silent: false }); });
         $('loadMoreUnresolvedOrdersBtn')?.addEventListener('click', () => { void loadUnresolvedOrders({ silent: false, append: true }); });
         $('loadCheckboxSalesReportBtn')?.addEventListener('click', () => { void loadCheckboxSalesReport({ silent: false }); });
-        $('createXReportBtn')?.addEventListener('click', explainXReportUnavailable);
+        $('createXReportBtn')?.addEventListener('click', createXReportFromPanel);
         $('closeZReportBtn')?.addEventListener('click', requestZReportClose);
         $('checkboxSalesReportPanel')?.addEventListener('toggle', loadReceiptHistoryOnOpen);
         document.querySelectorAll('[data-history-period]').forEach(button => {
@@ -4540,7 +4645,8 @@
         loadPilotRegisterState,
         closePhase1Shift,
         renderFiscalReportsPanel,
-        explainXReportUnavailable,
+        createXReportFromPanel,
+        explainXReportUnavailable: createXReportFromPanel,
         requestZReportClose,
         loadServiceOutRequests,
         createServiceOutRequest,

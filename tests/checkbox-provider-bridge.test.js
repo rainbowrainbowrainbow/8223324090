@@ -11,6 +11,7 @@ const {
     createCheckboxProviderFactory,
     createProviderFromConfig,
     normalizeReceiptArtifacts,
+    normalizeReportResponse,
     normalizeShiftResponse
 } = require('../services/checkbox/provider');
 
@@ -150,6 +151,80 @@ test('shift normalization preserves only valid official opened_at and closed_at 
     }, { expectedShiftId: PROVIDER_SHIFT_ID }, { requireCashier: false });
     assert.equal(malformed.openedAt, null);
     assert.equal(malformed.closedAt, null);
+});
+
+test('report normalization validates X/Z type and shift identity', () => {
+    const xReport = normalizeReportResponse(checkboxReport('report-x'), { expectedShiftId: PROVIDER_SHIFT_ID }, { expectedIsZReport: false });
+    assert.equal(xReport.id, 'report-x');
+    assert.equal(xReport.isZReport, false);
+    const zReport = normalizeReportResponse(checkboxReport('report-z', { is_z_report: true }), { expectedShiftId: PROVIDER_SHIFT_ID }, { expectedIsZReport: true });
+    assert.equal(zReport.isZReport, true);
+    assert.throws(
+        () => normalizeReportResponse(checkboxReport('bad-shift', { shift_id: SECOND_PROVIDER_SHIFT_ID }), { expectedShiftId: PROVIDER_SHIFT_ID }),
+        /does not match expected/
+    );
+    assert.throws(
+        () => normalizeReportResponse(checkboxReport('bad-type', { is_z_report: true }), { expectedShiftId: PROVIDER_SHIFT_ID }, { expectedIsZReport: false }),
+        /report type/
+    );
+});
+
+test('createXReport verifies exact opened shift before one provider report POST', async () => {
+    const mock = await listenMock(async call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: crypto.randomUUID() } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
+        if (call.path === '/api/v1/reports') return { status: 201, body: checkboxReport('x-report-1') };
+        return { status: 404, body: { detail: call.path } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(mock.baseUrl));
+        const boundaries = [];
+        const report = await provider.createXReport({
+            ...saleInput('x-report-request-1', { paymentOrder: {} }),
+            beforeExternalMutation: async marker => boundaries.push(marker.operation)
+        });
+        assert.equal(report.id, 'x-report-1');
+        assert.deepEqual(boundaries, ['x_report']);
+        assert.deepEqual(
+            mock.calls.map(call => `${call.method} ${call.path}`),
+            [
+                'POST /api/v1/cashier/signin',
+                'GET /api/v1/cashier/me',
+                'GET /api/v1/cashier/me',
+                'GET /api/v1/cashier/shift',
+                `GET /api/v1/shifts/${PROVIDER_SHIFT_ID}`,
+                'POST /api/v1/reports'
+            ]
+        );
+        const reportPost = mock.calls.find(call => call.path === '/api/v1/reports');
+        assert.equal(reportPost.headers['x-access-key'], 'access-secret');
+        assert.equal(reportPost.headers['x-device-id'], 'eventgenix-test-device');
+    } finally {
+        await close(mock.server);
+    }
+});
+
+test('report search and text document are read-only provider calls', async () => {
+    const mock = await listenMock(async call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: crypto.randomUUID() } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path.startsWith('/api/v1/reports/search')) return { body: { data: [checkboxReport('x-report-search')] } };
+        if (call.path === '/api/v1/reports/x-report-search/text?width=42') return { body: 'X REPORT TEXT' };
+        return { status: 404, body: { detail: call.path } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(mock.baseUrl));
+        const input = saleInput('x-report-search', { paymentOrder: {} });
+        const search = await provider.searchReports({ ...input, expectedIsZReport: false });
+        assert.equal(search.reports[0].id, 'x-report-search');
+        const text = await provider.getReportDocument({ ...input, reportId: 'x-report-search', format: 'text' });
+        assert.equal(text, 'X REPORT TEXT');
+        assert.equal(mock.calls.some(call => call.method === 'POST' && call.path === '/api/v1/reports'), false);
+    } finally {
+        await close(mock.server);
+    }
 });
 
 function listenMock(handler) {
@@ -295,6 +370,19 @@ function checkboxReceipt(receiptId, overrides = {}) {
         payments: [{ type: 'CASHLESS', value: 12345, label: 'Картка' }],
         context: { eventgenix: true, fiscal_profile_id: 7, fiscal_operation_id: 501, payment_order_id: 301 },
         shift: openedShift(),
+        ...overrides
+    };
+}
+
+function checkboxReport(reportId = crypto.randomUUID(), overrides = {}) {
+    return {
+        id: reportId,
+        shift_id: PROVIDER_SHIFT_ID,
+        fiscal_code: 'XR-1',
+        serial: 7,
+        is_z_report: false,
+        created_at: new Date('2026-09-12T10:15:00.000Z').toISOString(),
+        updated_at: new Date('2026-09-12T10:15:01.000Z').toISOString(),
         ...overrides
     };
 }

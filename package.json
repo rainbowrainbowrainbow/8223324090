@@ -199,6 +199,7 @@
     "test:checkbox-thin": "node --test tests/checkbox-openapi-contract.test.js tests/checkbox-provider-bridge.test.js tests/checkbox-sandbox-harness.test.js tests/checkbox-park-config.test.js tests/checkbox-fullstack-testmode-harness.test.js tests/payment-fiscal-ledger-foundation.test.js tests/payment-readiness.test.js tests/payment-outbox-wakeup.test.js tests/checkbox-shift-db-invariants.test.js tests/closed-shift-sale-guard.test.js tests/payment-outbox-mutation-boundary.test.js tests/payment-outbox-receipt-mismatch.test.js tests/checkbox-release-db-preflight.test.js",
     "test:integration:checkbox-park-cashier-smoke:isolated": "node scripts/run-isolated-postgres-tests.js cashier-smoke",
     "test:integration:checkbox-park-config:isolated": "node scripts/run-isolated-postgres-tests.js checkbox-config",
+    "test:integration:checkbox-x-report:isolated": "node scripts/run-isolated-postgres-tests.js checkbox-x-report",
     "test:integration:checkbox-ui-real:isolated": "npx --yes --package playwright node scripts/run-isolated-postgres-tests.js checkbox-ui-real",
     "smoke:checkbox:testmode:fullstack:preflight": "npx --yes --package playwright node scripts/run-isolated-postgres-tests.js checkbox-ui-testmode-preflight",
     "smoke:checkbox:testmode:fullstack": "npx --yes --package playwright node scripts/run-isolated-postgres-tests.js checkbox-ui-testmode",

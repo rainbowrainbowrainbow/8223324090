@@ -200,6 +200,27 @@ class CheckboxClient {
         });
     }
 
+    async createXReport() {
+        return this.request('/api/v1/reports', {
+            method: 'POST',
+            accessKey: true,
+            device: true,
+            body: {}
+        });
+    }
+
+    async searchReports(query = {}) {
+        const params = new URLSearchParams();
+        for (const [key, value] of Object.entries(query || {})) {
+            if (value == null || value === '') continue;
+            if (Array.isArray(value)) value.forEach(item => {
+                if (item != null && item !== '') params.append(key, String(item));
+            });
+            else params.set(key, String(value));
+        }
+        return this.request(`/api/v1/reports/search${params.toString() ? `?${params}` : ''}`);
+    }
+
     async validateSale(input = {}) {
         const body = input.goods ? input : mapSaleReceipt(input);
         return this.request('/api/v1/receipts/validate', {
@@ -255,6 +276,18 @@ class CheckboxClient {
 
     async getReport({ reportId }) {
         return this.request(`/api/v1/reports/${encodePathSegment(reportId)}`);
+    }
+
+    async getReportDocument({ reportId, format = 'text', width = 42 }) {
+        const safeFormat = String(format || 'text').toLowerCase();
+        if (!['text', 'png'].includes(safeFormat)) {
+            throw new CheckboxClientError('checkbox_report_document_format_invalid', 'Unsupported Checkbox report document format', { status: 400 });
+        }
+        const params = new URLSearchParams();
+        if (safeFormat === 'text') params.set('width', String(Math.max(10, Math.min(Number(width) || 42, 250))));
+        return this.request(`/api/v1/reports/${encodePathSegment(reportId)}/${safeFormat}${params.toString() ? `?${params}` : ''}`, {
+            expectBinary: safeFormat === 'png'
+        });
     }
 }
 

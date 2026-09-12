@@ -23,9 +23,13 @@ const {
     createReconciliationRevision,
     createServiceIn,
     createServiceOutRequest,
+    createXReport,
     enrollFiscalActionPin,
     getServiceOutRequest,
     getOperationalReport,
+    getXReportStatus,
+    getXReportText,
+    getZReportText,
     listServiceOutRequests,
     loadPilotRegisterState,
     recoverServiceOutRequest,
@@ -1017,6 +1021,64 @@ router.post('/shifts/:shiftId/reconcile', requireCashierProEnabled, requireActio
             idempotencyKey: idempotencyKeyFromRequest(req)
         });
         return res.status(201).json({ success: true, ...result });
+    } catch (error) {
+        const response = cashierOperationsErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/shifts/:shiftId/x-report', requireCashierProEnabled, requireAction('fiscal.shift.close'), async (req, res) => {
+    try {
+        const result = await createXReport({
+            user: req.user,
+            shiftId: req.params.shiftId,
+            idempotencyKey: idempotencyKeyFromRequest(req)
+        });
+        return res.status(result.replayed ? 200 : 202).json({ success: true, ...result });
+    } catch (error) {
+        const response = cashierOperationsErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/shifts/:shiftId/x-report', requireCashierProEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
+    try {
+        const result = await getXReportStatus({
+            user: req.user,
+            shiftId: req.params.shiftId,
+            refresh: String(req.query.refresh || '').trim().toLowerCase() === 'true'
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = cashierOperationsErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/shifts/:shiftId/x-report/text', requireCashierProEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
+    try {
+        const result = await getXReportText({
+            user: req.user,
+            shiftId: req.params.shiftId
+        });
+        res.set('Content-Type', result.contentType);
+        res.set('Cache-Control', 'no-store');
+        return res.status(200).send(result.body);
+    } catch (error) {
+        const response = cashierOperationsErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/shifts/:shiftId/z-report/text', requireCashierProEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
+    try {
+        const result = await getZReportText({
+            user: req.user,
+            shiftId: req.params.shiftId
+        });
+        res.set('Content-Type', result.contentType);
+        res.set('Cache-Control', 'no-store');
+        return res.status(200).send(result.body);
     } catch (error) {
         const response = cashierOperationsErrorResponse(error);
         return res.status(response.status).json(response.body);

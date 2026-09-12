@@ -688,11 +688,51 @@ function normalizeShiftResponse(shift = {}, expected = {}, { requireOpened = fal
     if (requireCashier) {
         assertSameText(identity.cashierId, expected.expectedCashierId, 'checkbox_shift_cashier_mismatch', 'shift.cashier_id');
     }
-    return {
+    const normalized = {
         ...identity,
         openedAt: optionalProviderDateTime(shift.opened_at),
         closedAt: optionalProviderDateTime(shift.closed_at),
         raw: redactCheckboxDiagnostics(shift)
+    };
+    if (shift.z_report && typeof shift.z_report === 'object') {
+        normalized.zReport = normalizeReportResponse(shift.z_report, { ...expected, expectedShiftId: identity.id }, { expectedIsZReport: true });
+    }
+    return normalized;
+}
+
+function extractReportIdentity(report = {}) {
+    return {
+        id: textOrNull(report.id || report.report_id),
+        shiftId: textOrNull(report.shift_id || report.shift?.id),
+        fiscalCode: textOrNull(report.fiscal_code || report.fiscalCode),
+        serial: textOrNull(report.serial),
+        isZReport: report.is_z_report === true || String(report.is_z_report ?? report.isZReport ?? '').trim().toLowerCase() === 'true',
+        createdAt: optionalProviderDateTime(report.created_at || report.createdAt),
+        updatedAt: optionalProviderDateTime(report.updated_at || report.updatedAt),
+        fiscalDate: optionalProviderDateTime(report.fiscal_date || report.fiscalDate)
+    };
+}
+
+function normalizeReportResponse(report = {}, expected = {}, { expectedIsZReport = null } = {}) {
+    const identity = extractReportIdentity(report);
+    if (!identity.id) {
+        throw new CheckboxClientError('checkbox_report_response_malformed', 'Checkbox report response is missing id', {
+            status: 502,
+            retryable: true,
+            unknown: true
+        });
+    }
+    assertSameText(identity.shiftId, expected.expectedShiftId, 'checkbox_report_shift_mismatch', 'report.shift_id');
+    if (expectedIsZReport != null && identity.isZReport !== Boolean(expectedIsZReport)) {
+        throw new CheckboxClientError('checkbox_report_type_mismatch', 'Checkbox report type does not match expected report lifecycle', {
+            status: 409,
+            retryable: false,
+            details: { expectedIsZReport: Boolean(expectedIsZReport), actualIsZReport: identity.isZReport }
+        });
+    }
+    return {
+        ...identity,
+        raw: redactCheckboxDiagnostics(report)
     };
 }
 
@@ -1554,6 +1594,98 @@ class CheckboxRuntimeProvider {
         });
     }
 
+    async createXReport(input = {}) {
+        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
+        const missingIdentity = [
+            ['provider_shift_id', expected.expectedShiftId],
+            ['provider_register_id', expected.expectedRegisterId],
+            ['provider_cashier_id', expected.expectedCashierId],
+            ['provider_organization_id', expected.expectedOrganizationId]
+        ].filter(([, value]) => !textOrNull(value)).map(([field]) => field);
+        if (missingIdentity.length) {
+            throw new CheckboxClientError('checkbox_x_report_identity_required', 'Checkbox X-report requires the complete immutable provider identity', {
+                status: 422,
+                retryable: false,
+                details: { missing: missingIdentity }
+            });
+        }
+        return this.withAuth(expected, async () => {
+            const profile = await this.client.getCashierProfile();
+            validateCashierReadiness(profile, { ...expected, expectedIsTest: expected.expectedIsTest ?? this.expectedIsTest });
+            const observed = await getCurrentShiftWithAbsenceProof(this.client, expected);
+            if (observed.absent) {
+                throw new CheckboxClientError('checkbox_shift_not_opened', 'Checkbox shift is not OPENED before X-report', {
+                    status: 409,
+                    retryable: false,
+                    unknown: false
+                });
+            }
+            const current = normalizeShiftResponse(observed.payload, expected, { requireOpened: true, requireCashier: false });
+            await this.loadDetailedShift(current, expected);
+            await input.beforeExternalMutation?.({ operation: 'x_report' });
+            const response = await this.client.createXReport();
+            return normalizeReportResponse(response, { ...expected, expectedShiftId: current.id }, { expectedIsZReport: false });
+        });
+    }
+
+    async lookupReport(input = {}) {
+        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
+        const reportId = textOrNull(input.reportId || input.report_id || input.providerReportId || input.provider_report_id || expected.providerOperationId);
+        if (!reportId) {
+            throw new CheckboxClientError('checkbox_report_id_required', 'Checkbox report lookup requires report id', {
+                status: 422,
+                retryable: false
+            });
+        }
+        return this.withAuth(expected, async () => {
+            try {
+                const report = await this.client.getReport({ reportId });
+                return { found: true, report: normalizeReportResponse(report, expected, { expectedIsZReport: input.expectedIsZReport }) };
+            } catch (error) {
+                if (error instanceof CheckboxClientError && error.status === 404) return { found: false };
+                throw error;
+            }
+        });
+    }
+
+    async searchReports(input = {}) {
+        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
+        return this.withAuth(expected, async () => {
+            const query = { ...(input.query || {}) };
+            if (expected.expectedShiftId && !query['shift_id[]'] && !query.shift_id) query['shift_id[]'] = [expected.expectedShiftId];
+            if (input.expectedIsZReport != null && query.is_z_report == null) query.is_z_report = Boolean(input.expectedIsZReport);
+            const response = await this.client.searchReports(query);
+            const reports = Array.isArray(response)
+                ? response
+                : (Array.isArray(response?.data) ? response.data
+                    : (Array.isArray(response?.results) ? response.results
+                        : (Array.isArray(response?.items) ? response.items
+                            : (Array.isArray(response?.reports) ? response.reports : []))));
+            return {
+                raw: redactCheckboxDiagnostics(response),
+                reports: reports.map(report => normalizeReportResponse(report, expected, { expectedIsZReport: input.expectedIsZReport }))
+            };
+        });
+    }
+
+    async getReportDocument(input = {}) {
+        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
+        const reportId = textOrNull(input.reportId || input.report_id || input.providerReportId || input.provider_report_id || expected.providerOperationId);
+        if (!reportId) {
+            throw new CheckboxClientError('checkbox_report_id_required', 'Checkbox report document requires report id', {
+                status: 422,
+                retryable: false
+            });
+        }
+        return this.withAuth(expected, async () => {
+            return this.client.getReportDocument({
+                reportId,
+                format: input.format || 'text',
+                width: input.width || 42
+            });
+        });
+    }
+
     async closeShift(input = {}) {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
         const missingIdentity = [
@@ -1885,6 +2017,7 @@ module.exports = {
     extractShiftIdentity,
     getCurrentShiftWithAbsenceProof,
     normalizeReceiptArtifacts,
+    normalizeReportResponse,
     normalizeShiftResponse,
     refsFromContext,
     runtimeContextKey,

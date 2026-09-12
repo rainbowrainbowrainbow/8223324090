@@ -2263,6 +2263,36 @@ body.dark-mode .cashier-service-out-item small {
     min-height: 38px;
 }
 
+.cashier-fiscal-report-details {
+    display: grid;
+    gap: 8px;
+}
+
+.cashier-fiscal-report-row {
+    display: grid;
+    grid-template-columns: minmax(74px, auto) minmax(120px, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    background: var(--gray-50);
+}
+
+.cashier-fiscal-report-row span,
+.cashier-fiscal-report-row small {
+    color: var(--gray-500);
+}
+
+.cashier-fiscal-report-row strong {
+    color: var(--gray-900);
+}
+
+.cashier-fiscal-report-row a {
+    font-weight: 800;
+    color: var(--primary);
+}
+
 .cashier-history-toolbar {
     display: flex;
     align-items: center;
@@ -2489,6 +2519,20 @@ body.dark-mode .cashier-fiscal-reports.is-ready {
     border-color: rgba(52,211,153,.30);
 }
 
+body.dark-mode .cashier-fiscal-report-row {
+    border-color: rgba(255,255,255,.10);
+    background: rgba(15,23,42,.56);
+}
+
+body.dark-mode .cashier-fiscal-report-row strong {
+    color: #f8fafc;
+}
+
+body.dark-mode .cashier-fiscal-report-row span,
+body.dark-mode .cashier-fiscal-report-row small {
+    color: #94a3b8;
+}
+
 body.dark-mode .cashier-report-body.is-error:not(.is-stale) {
     color: #fecaca;
     background: rgba(127,29,29,.22);
@@ -2539,6 +2583,10 @@ body.dark-mode .cashier-report-body.is-error:not(.is-stale) {
     .cashier-history-totals,
     .cashier-history-item {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cashier-fiscal-report-row {
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .cashier-history-totals div:nth-child(odd) {

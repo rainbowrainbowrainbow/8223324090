@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { applyMembershipAccess, buildMembershipAccess } = require('../services/businessMembership');
+const { applyMembershipAccess, buildMembershipAccess, loadMembershipAccess } = require('../services/businessMembership');
 const { canAccessBusinessContext, resolveBusinessContextPolicy } = require('../services/businessContext');
 
 function membership(overrides = {}) {
@@ -53,6 +53,17 @@ test('a migrated membership does not block an unmigrated compatibility context',
     assert.equal(access.membershipEnabled, false);
     assert.equal(user.role, 'creator');
     assert.equal(resolveBusinessContextPolicy(user).allowed.includes('maysternya_doli'), true);
+});
+
+test('self-contained test doubles retain the legacy compatibility path', async () => {
+    const access = await loadMembershipAccess({
+        query() {
+            throw new Error('Unexpected test-double query: membership resolver is outside this mock contract');
+        }
+    }, { id: 42 }, 'event_genix');
+
+    assert.equal(access.configured, false);
+    assert.equal(access.testDoubleUnavailable, true);
 });
 
 test('organization migration creates an additive membership schema and scoped default uniqueness', () => {

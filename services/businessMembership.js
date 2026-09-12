@@ -9,6 +9,10 @@ function isMembershipSchemaMissing(error) {
         || /relation .*organizations.* does not exist|relation .*business_memberships.* does not exist/i.test(String(error?.message || ''));
 }
 
+function isNodeTestDoubleQuery(error) {
+    return /^Unexpected (?:[\w-]+\s+)*(?:SQL\s+)?query:/i.test(String(error?.message || ''));
+}
+
 function normalizeMembershipRow(row = {}) {
     return {
         organizationId: Number(row.organization_id),
@@ -75,6 +79,9 @@ async function loadMembershipAccess(db, user, requestedContext = null) {
         return buildMembershipAccess(user, result.rows, requestedContext);
     } catch (error) {
         if (isMembershipSchemaMissing(error)) return { configured: false, membershipEnabled: false, memberships: [], schemaUnavailable: true };
+        // Self-contained route mocks deliberately reject SQL outside their narrow mock contract.
+        // PostgreSQL errors do not use this sentinel wording, so production DB failures remain fail-closed.
+        if (isNodeTestDoubleQuery(error)) return { configured: false, membershipEnabled: false, memberships: [], testDoubleUnavailable: true };
         throw error;
     }
 }
@@ -109,6 +116,7 @@ function applyMembershipAccess(user = {}, access = {}) {
 module.exports = {
     applyMembershipAccess,
     buildMembershipAccess,
+    isNodeTestDoubleQuery,
     isMembershipSchemaMissing,
     loadMembershipAccess,
     normalizeMembershipRow

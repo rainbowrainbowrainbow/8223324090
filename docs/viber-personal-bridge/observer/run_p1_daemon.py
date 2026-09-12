@@ -25,6 +25,7 @@ from p1_http_client import BridgeHttpClient, HttpClientError
 from p1_live_inbound import (
     G3SidReadOnlySource, LiveInboundAdapter, LiveInboundJournal, LiveInboundError, SqliteReadOnlySource,
 )
+from p1_uia_sender import PowerShellViberSender, UiaSenderError
 
 
 class LauncherError(Exception):
@@ -95,7 +96,37 @@ def _load_config(path: Path) -> Mapping[str, Any]:
                 if live.get("session_path") is not None and (not isinstance(live["session_path"], str)
                                                             or not Path(live["session_path"]).is_absolute()):
                     raise LauncherError("LIVE_INBOUND_PATH_INVALID")
+    sender = raw.get("sender")
+    if sender is not None:
+        if not isinstance(sender, dict) or not isinstance(sender.get("enabled"), bool):
+            raise LauncherError("SENDER_CONFIG_INVALID")
+        if sender.get("enabled"):
+            if not isinstance(live, dict) or live.get("enabled") is not True:
+                raise LauncherError("SENDER_REQUIRES_LIVE_INBOUND")
+            if sender.get("adapter") not in {None, "paired_uia"}:
+                raise LauncherError("SENDER_ADAPTER_INVALID")
+            run_id = sender.get("run_id") or _run_id_from_live(live)
+            if not isinstance(run_id, str) or len(run_id) != 8 or any(char not in "0123456789ABCDEF" for char in run_id):
+                raise LauncherError("SENDER_RUN_ID_INVALID")
     return raw
+
+
+def _run_id_from_live(live: Mapping[str, Any]) -> str | None:
+    phone = live.get("phone_marker")
+    desktop = live.get("desktop_marker")
+    if not isinstance(phone, str) or not isinstance(desktop, str):
+        return None
+    prefix = "EGXG3-"
+    suffix_phone = "-PHONE"
+    suffix_desktop = "-DESKTOP"
+    if not phone.startswith(prefix) or not phone.endswith(suffix_phone):
+        return None
+    if not desktop.startswith(prefix) or not desktop.endswith(suffix_desktop):
+        return None
+    run_id = phone[len(prefix):-len(suffix_phone)]
+    if desktop[len(prefix):-len(suffix_desktop)] != run_id:
+        return None
+    return run_id
 
 
 def _reference_key(value: Any) -> bytes:
@@ -221,6 +252,8 @@ def runtime_preflight(config: Mapping[str, Any], *, runtime_dir: Path | None = N
         "p1_live_inbound.py",
         "p1_paired_queries.py",
         "p1_transport.py",
+        "p1_uia_sender.py",
+        "verify_p1_send_reconcile_live.py",
         "probe_db_schema.py",
         "probe_key_presence.py",
         "qt_readonly_fixture.py",
@@ -284,14 +317,58 @@ def runtime_preflight(config: Mapping[str, Any], *, runtime_dir: Path | None = N
                             "CAPTURE_NOT_CONFIGURED" if not live_enabled else "CAPTURE_BLOCKED"),
             **live_checks,
         },
-        "sender": {
-            "enabled": False,
-            "status": "disabled",
-            "blockReason": "SENDER_NOT_CONFIGURED",
-            "adapterModulePresent": modules.get("p1_dispatcher.py", {}).get("present") is True,
-        },
+        "sender": _sender_preflight(config, modules, runtime_root=runtime_root, live_status=live_status),
         "viberDesktop": viber_desktop_preflight(config),
     }
+
+
+def _sender_preflight(config: Mapping[str, Any], modules: Mapping[str, Mapping[str, Any]], *,
+                      runtime_root: Path, live_status: str) -> dict[str, Any]:
+    sender = config.get("sender")
+    enabled = isinstance(sender, Mapping) and sender.get("enabled") is True
+    module_present = modules.get("p1_uia_sender.py", {}).get("present") is True
+    scripts = {name: (runtime_root / name).is_file() for name in (
+        "Send-P1Controlled.ps1",
+        "Verify-ActiveMarkerChat.ps1",
+        "Inspect-ViberComposer.ps1",
+        "verify_p1_send_reconcile_live.py",
+    )}
+    run_id = None
+    if isinstance(sender, Mapping):
+        run_id = sender.get("run_id") or _run_id_from_live(config.get("live_inbound") or {})
+    checks = {
+        "adapterModulePresent": module_present,
+        "controlScriptsPresent": all(scripts.values()),
+        "liveInboundReady": live_status == "ready_for_scan",
+        "runIdConfigured": isinstance(run_id, str) and len(run_id) == 8
+                           and all(char in "0123456789ABCDEF" for char in run_id),
+    }
+    if not enabled:
+        return {"enabled": False, "status": "disabled",
+                "blockReason": "SENDER_NOT_CONFIGURED", **checks}
+    blocked = [key for key, value in checks.items() if value is not True]
+    return {
+        "enabled": True,
+        "status": "ready_for_verified_binding" if not blocked else "blocked",
+        "blockReason": None if not blocked else blocked[0].upper(),
+        "adapter": sender.get("adapter") or "paired_uia" if isinstance(sender, Mapping) else None,
+        **checks,
+    }
+
+
+def _build_dispatch_adapter(config: Mapping[str, Any]) -> PowerShellViberSender | None:
+    sender = config.get("sender")
+    if not isinstance(sender, Mapping) or sender.get("enabled") is not True:
+        return None
+    live = config.get("live_inbound")
+    if not isinstance(live, Mapping) or live.get("enabled") is not True:
+        raise LauncherError("SENDER_REQUIRES_LIVE_INBOUND")
+    run_id = sender.get("run_id") or _run_id_from_live(live)
+    try:
+        return PowerShellViberSender(state_path=config["state_path"], run_id=run_id,
+                                     runtime_dir=Path(__file__).resolve().parent)
+    except UiaSenderError as error:
+        raise LauncherError(error.code) from error
 
 
 def build_daemon(config: Mapping[str, Any]) -> BridgeDaemon:
@@ -305,8 +382,9 @@ def build_daemon(config: Mapping[str, Any]) -> BridgeDaemon:
     try:
         client = BridgeHttpClient(config["crm_base_url"], config["token"])
         receive_adapter = _build_receive_adapter(config)
+        dispatch_adapter = _build_dispatch_adapter(config)
         return BridgeDaemon(core, client, runtime_id=_load_or_create_runtime_id(config),
-                            receive_adapter=receive_adapter)
+                            receive_adapter=receive_adapter, dispatch_adapter=dispatch_adapter)
     except Exception:
         core.close()
         raise

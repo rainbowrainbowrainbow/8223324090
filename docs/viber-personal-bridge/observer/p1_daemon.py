@@ -52,13 +52,16 @@ class BridgeDaemon:
 
     def send_heartbeat(self) -> Mapping[str, Any]:
         diagnostics = self.core.diagnostics()
+        sender_available = self.dispatch_adapter is not None
         capabilities = {
             "receive_text": diagnostics["receive_healthy"],
-            "send_text": diagnostics["send_text"],
+            "send_text": bool(diagnostics["send_text"] and sender_available),
+            "sender_adapter": sender_available,
         }
         if self.receive_adapter is not None:
             capabilities.update(self.receive_adapter.capabilities())
-            capabilities["send_text"] = diagnostics["send_text"]
+            capabilities["send_text"] = bool(diagnostics["send_text"] and sender_available)
+            capabilities["sender_adapter"] = sender_available
         response = self.client.heartbeat({
             **self.envelope(),
             "type": "bridge.heartbeat",
@@ -92,8 +95,8 @@ class BridgeDaemon:
             except BridgeCoreError as error:
                 raise DaemonError(error.code) from None
             accepted.append(saved)
-            if saved["status"] == "rejected":
-                self.report_result(saved["command_id"], "rejected", saved.get("error_code"))
+            if saved["status"] in {"rejected", "submitted_unconfirmed", "failed", "unknown"}:
+                self.report_result(saved["command_id"], saved["status"], saved.get("error_code"))
         return accepted
 
     def report_result(self, command_id: str, status: str, error_code: str | None = None) -> Mapping[str, Any]:
@@ -110,7 +113,12 @@ class BridgeDaemon:
         dispatched = []
         for command in self.core.list_dispatchable_commands(limit=limit):
             try:
-                result = execute_text(self.core, command, self.dispatch_adapter)
+                result = execute_text(
+                    self.core,
+                    command,
+                    self.dispatch_adapter,
+                    on_dispatch_started=lambda command_id: self.report_result(command_id, "dispatch_started"),
+                )
             except DispatcherError as error:
                 raise DaemonError(error.code) from None
             dispatched.append(result)
@@ -132,7 +140,11 @@ class BridgeDaemon:
                 "commands": len(commands), "dispatched": len(dispatched)}
 
     def run(self, *, interval: float = 2.0) -> None:
-        self.core.recover_interrupted_dispatches()
+        for recovered in self.core.recover_interrupted_dispatches_detail():
+            try:
+                self.report_result(recovered["command_id"], "unknown", recovered.get("error_code"))
+            except (HttpClientError, DaemonError, BridgeCoreError):
+                pass
         while not self._stop.is_set():
             try:
                 self.cycle()

@@ -39,9 +39,11 @@ class FakeClient(BridgeHttpClient):
         self.commands = list(commands)
         self.results = []
         self.heartbeats = 0
+        self.last_heartbeat = None
 
-    def heartbeat(self, _payload):
+    def heartbeat(self, payload):
         self.heartbeats += 1
+        self.last_heartbeat = dict(payload)
         return {"protocol_version": "1.0"}
 
     def events(self, _payload):
@@ -102,13 +104,36 @@ class DaemonDispatchTests(unittest.TestCase):
         self.assertEqual(result["commands"], 1)
         self.assertEqual(result["dispatched"], 1)
         self.assertEqual(adapter.sent, ["Synthetic daemon text 💬"])
-        self.assertEqual([entry["payload"]["status"] for entry in client.results], ["submitted_unconfirmed"])
+        self.assertEqual([entry["payload"]["status"] for entry in client.results],
+                         ["dispatch_started", "submitted_unconfirmed"])
 
         result = daemon.cycle()
         self.assertEqual(result["commands"], 0)
         self.assertEqual(result["dispatched"], 0)
         self.assertEqual(adapter.sent, ["Synthetic daemon text 💬"])
-        self.assertEqual([entry["payload"]["status"] for entry in client.results], ["submitted_unconfirmed"])
+        self.assertEqual([entry["payload"]["status"] for entry in client.results],
+                         ["dispatch_started", "submitted_unconfirmed"])
+
+
+    def test_heartbeat_does_not_advertise_send_without_dispatch_adapter(self):
+        client = FakeClient([])
+        daemon = BridgeDaemon(self.core, client, runtime_id="99999999-9999-4999-8999-999999999999",
+                              clock=lambda: 100.0)
+        daemon.send_heartbeat()
+        self.assertFalse(client.last_heartbeat["capabilities"]["send_text"])
+        self.assertFalse(client.last_heartbeat["capabilities"]["sender_adapter"])
+
+    def test_pull_reports_existing_terminal_unknown_without_resend(self):
+        self.core.accept_command(command())
+        self.core.begin_dispatch(COMMAND, observed_source_chat_ref=SOURCE_CHAT, observed_peer_ref=PEER)
+        self.core.finish_dispatch(COMMAND, status="unknown", error_code="DISPATCH_RESULT_UNKNOWN")
+        client = FakeClient([command()])
+        adapter = FakeDispatchAdapter()
+        daemon = BridgeDaemon(self.core, client, runtime_id="99999999-9999-4999-8999-999999999999",
+                              clock=lambda: 100.0, dispatch_adapter=adapter)
+        daemon.cycle()
+        self.assertEqual(adapter.sent, [])
+        self.assertEqual(client.results[-1]["payload"]["status"], "unknown")
 
     def test_failed_dispatch_is_reported_as_failed(self):
         client = FakeClient([command()])
@@ -116,6 +141,8 @@ class DaemonDispatchTests(unittest.TestCase):
         daemon = BridgeDaemon(self.core, client, runtime_id="99999999-9999-4999-8999-999999999999",
                               clock=lambda: 100.0, dispatch_adapter=adapter)
         daemon.cycle()
+        self.assertEqual([entry["payload"]["status"] for entry in client.results],
+                         ["dispatch_started", "failed"])
         self.assertEqual(client.results[-1]["payload"]["status"], "failed")
         self.assertEqual(client.results[-1]["payload"]["error_code"], "COMPOSER_WRITE_FAILED")
 

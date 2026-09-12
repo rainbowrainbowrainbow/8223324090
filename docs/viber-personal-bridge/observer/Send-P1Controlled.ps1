@@ -66,10 +66,10 @@ try{
  $bytes=[Text.Encoding]::ASCII.GetBytes('dispatch_started');$claim.Write($bytes,0,$bytes.Length);$claim.Flush($true);$claim.Close();$claim=$null;$attempt=1
  if($ReplyTextBase64){
   try{$text=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($ReplyTextBase64))}catch{Out 'unknown' 'REPLY_ENCODING_INVALID' 1;exit 0}
-  if($text.Length-lt 1-or $text.Length-gt 500-or $text.Contains("`0")-or $text.Contains("`r")-or $text.Contains("`n")){Out 'unknown' 'REPLY_TEXT_INVALID' 1;exit 0}
+  if($text.Length-lt 1-or $text.Length-gt 500-or $text.Contains("`0")-or $text.Contains("`r")){Out 'unknown' 'REPLY_TEXT_INVALID' 1;exit 0}
  }else{$text='EGXP1-'+$RunId+'-'+$TestId+'-SEND'}
  $edits[0].e.SetFocus();if($ReplyTextBase64){$edits[0].p.SetValue($text)}else{[Windows.Forms.SendKeys]::SendWait($text)}
- if($edits[0].p.Current.Value-ne $text){Out 'unknown' 'DRAFT_NOT_VERIFIED' 1;exit 0}
+ $actual=$edits[0].p.Current.Value;if($actual-ne $text-and $actual.Replace("`r`n","`n")-ne $text){Out 'unknown' 'DRAFT_NOT_VERIFIED' 1;exit 0}
  if([EgForeground]::GetForegroundWindow()-ne $t[0].MainWindowHandle){Out 'unknown' 'FOREGROUND_NOT_VERIFIED' 1;exit 0}
  [Windows.Forms.SendKeys]::SendWait('{ENTER}');Start-Sleep -Milliseconds 250
  Out 'submitted_unconfirmed' '' 1

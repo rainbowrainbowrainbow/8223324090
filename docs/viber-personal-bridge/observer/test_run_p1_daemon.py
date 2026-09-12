@@ -49,6 +49,11 @@ class RunP1DaemonTests(unittest.TestCase):
                 "p1_live_inbound.py",
                 "p1_paired_queries.py",
                 "p1_transport.py",
+                "p1_uia_sender.py",
+                "verify_p1_send_reconcile_live.py",
+                "Send-P1Controlled.ps1",
+                "Verify-ActiveMarkerChat.ps1",
+                "Inspect-ViberComposer.ps1",
                 "probe_db_schema.py",
                 "probe_key_presence.py",
                 "qt_readonly_fixture.py",
@@ -75,6 +80,65 @@ class RunP1DaemonTests(unittest.TestCase):
             self.assertEqual(result["sender"]["status"], "disabled")
             self.assertEqual(result["sender"]["blockReason"], "SENDER_NOT_CONFIGURED")
             self.assertIn("viberDesktop", result)
+            self.assertNotIn("token", json.dumps(result))
+
+
+    def test_sender_enabled_requires_live_inbound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "connector.json"
+            config.write_text(json.dumps({
+                "crm_base_url": "https://crm.example",
+                "bridge_id": "10000000-0000-4000-8000-000000000001",
+                "account_id": "10000000-0000-4000-8000-000000000002",
+                "account_epoch": 1,
+                "business_context": "event_genix",
+                "token": "x" * 32,
+                "state_path": str(root / "bridge.sqlite"),
+                "sender": {"enabled": True, "adapter": "paired_uia", "run_id": "0B038E78"},
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(run_p1_daemon.LauncherError, "SENDER_REQUIRES_LIVE_INBOUND"):
+                run_p1_daemon._load_config(config)
+
+    def test_sender_preflight_is_ready_only_with_runtime_scripts_and_live_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in (
+                "g3_process.py", "g3_state.py", "observe_g3.py", "observe_g3_sid.py",
+                "p1_bridge_core.py", "p1_daemon.py", "p1_dispatcher.py", "p1_http_client.py",
+                "p1_live_inbound.py", "p1_paired_queries.py", "p1_transport.py",
+                "p1_uia_sender.py", "verify_p1_send_reconcile_live.py",
+                "Send-P1Controlled.ps1", "Verify-ActiveMarkerChat.ps1", "Inspect-ViberComposer.ps1",
+                "probe_db_schema.py", "probe_key_presence.py", "qt_readonly_fixture.py",
+                "recover_sid_key.py", "run_p1_daemon.py",
+            ):
+                (root / name).write_text("# fixture\n", encoding="utf-8")
+            state = root / "bridge.sqlite"
+            state.write_text("fixture", encoding="utf-8")
+            source = root / "source.sqlite"
+            source.write_text("fixture", encoding="utf-8")
+            result = run_p1_daemon.runtime_preflight({
+                "crm_base_url": "https://crm.example",
+                "bridge_id": "10000000-0000-4000-8000-000000000001",
+                "account_id": "10000000-0000-4000-8000-000000000002",
+                "account_epoch": 1,
+                "business_context": "event_genix",
+                "token": "x" * 32,
+                "state_path": str(state),
+                "live_inbound": {
+                    "enabled": True,
+                    "source_kind": "sqlite_fixture",
+                    "source_db_path": str(source),
+                    "journal_path": str(root / "capture.sqlite"),
+                    "reference_key": "0" * 64,
+                    "phone_marker": "EGXG3-0B038E78-PHONE",
+                    "desktop_marker": "EGXG3-0B038E78-DESKTOP",
+                },
+                "sender": {"enabled": True, "adapter": "paired_uia"},
+            }, runtime_dir=root)
+            self.assertEqual(result["sender"]["status"], "ready_for_verified_binding")
+            self.assertTrue(result["sender"]["adapterModulePresent"])
+            self.assertTrue(result["sender"]["controlScriptsPresent"])
             self.assertNotIn("token", json.dumps(result))
 
     def test_runtime_id_is_stable_and_private(self):
@@ -127,6 +191,8 @@ class RunP1DaemonTests(unittest.TestCase):
                 "g3_process.py", "g3_state.py", "observe_g3.py", "observe_g3_sid.py",
                 "p1_bridge_core.py", "p1_daemon.py", "p1_dispatcher.py", "p1_http_client.py",
                 "p1_live_inbound.py", "p1_paired_queries.py", "p1_transport.py",
+                "p1_uia_sender.py", "verify_p1_send_reconcile_live.py",
+                "Send-P1Controlled.ps1", "Verify-ActiveMarkerChat.ps1", "Inspect-ViberComposer.ps1",
                 "probe_db_schema.py", "probe_key_presence.py", "qt_readonly_fixture.py",
                 "recover_sid_key.py", "run_p1_daemon.py",
             ):

@@ -576,15 +576,23 @@ class BridgeCore:
                        (status, error, command))
             return dict(db.execute("SELECT * FROM commands WHERE command_id=?", (command,)).fetchone())
 
-    def recover_interrupted_dispatches(self) -> int:
+    def recover_interrupted_dispatches_detail(self) -> list[dict[str, Any]]:
         """Never repeat a gesture after restart once dispatch may have begun."""
         with self._transaction() as db:
             self._verify_scope(db)
-            cursor = db.execute(
-                "UPDATE commands SET status='unknown', error_code='DISPATCH_INTERRUPTED' "
-                "WHERE status='dispatch_started'"
-            )
-            return cursor.rowcount
+            rows = db.execute(
+                "SELECT * FROM commands WHERE status='dispatch_started' ORDER BY rowid"
+            ).fetchall()
+            if rows:
+                db.execute(
+                    "UPDATE commands SET status='unknown', error_code='DISPATCH_INTERRUPTED' "
+                    "WHERE status='dispatch_started'"
+                )
+            return [dict(db.execute("SELECT * FROM commands WHERE command_id=?",
+                                    (row["command_id"],)).fetchone()) for row in rows]
+
+    def recover_interrupted_dispatches(self) -> int:
+        return len(self.recover_interrupted_dispatches_detail())
 
 
     def list_dispatchable_commands(self, *, limit: int = 10) -> list[dict[str, Any]]:

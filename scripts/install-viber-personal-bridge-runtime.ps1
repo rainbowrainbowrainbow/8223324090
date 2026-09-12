@@ -31,15 +31,32 @@ if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
   throw "CONNECTOR_CONFIG_NOT_FOUND"
 }
 
+$script:ProcessEnumerationError = $null
+
 function Get-BridgeProcess {
   param([string]$Config)
+  $script:ProcessEnumerationError = $null
   $escaped = [Regex]::Escape($Config)
-  Get-CimInstance Win32_Process |
-    Where-Object { $_.CommandLine -match 'run_p1_daemon\.py' -and $_.CommandLine -match $escaped }
+  try {
+    Get-CimInstance Win32_Process |
+      Where-Object { $_.CommandLine -match 'run_p1_daemon\.py' -and $_.CommandLine -match $escaped }
+  } catch {
+    $script:ProcessEnumerationError = 'PROCESS_ENUMERATION_FAILED'
+    @()
+  }
+}
+
+function Assert-ProcessEnumerationAvailable {
+  param([string]$Config)
+  $null = Get-BridgeProcess -Config $Config
+  if ($script:ProcessEnumerationError) {
+    throw $script:ProcessEnumerationError
+  }
 }
 
 function Stop-BridgeProcess {
   param([string]$Config)
+  Assert-ProcessEnumerationAvailable -Config $Config
   $processes = @(Get-BridgeProcess -Config $Config)
   foreach ($proc in $processes) {
     Stop-Process -Id $proc.ProcessId -Force
@@ -49,6 +66,7 @@ function Stop-BridgeProcess {
 
 function Start-BridgeProcess {
   param([string]$Runtime, [string]$Config, [string]$Python)
+  Assert-ProcessEnumerationAvailable -Config $Config
   if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
     throw "PYTHON_EXE_NOT_FOUND"
   }
@@ -75,7 +93,10 @@ if ($RollbackLatest) {
     }
   }
   $stopped = 0
-  $workers = @(Get-BridgeProcess -Config $ConfigPath).Count
+  $workers = $null
+  if (-not $DryRun) {
+    $workers = @(Get-BridgeProcess -Config $ConfigPath).Count
+  }
   if ($Restart -and -not $DryRun) {
     $stopped = Stop-BridgeProcess -Config $ConfigPath
     $workers = Start-BridgeProcess -Runtime $RuntimeRoot -Config $ConfigPath -Python $PythonExe
@@ -93,9 +114,19 @@ if ($RollbackLatest) {
   exit 0
 }
 
-$files = Get-ChildItem -LiteralPath $SourceRoot -Filter '*.py' -File |
+$pythonFiles = Get-ChildItem -LiteralPath $SourceRoot -Filter '*.py' -File |
   Where-Object { $_.Name -notlike 'test_*' -and $_.Name -notin @('__init__.py') } |
   Sort-Object Name
+
+$scriptFiles = @(
+  'Send-P1Controlled.ps1',
+  'Verify-ActiveMarkerChat.ps1',
+  'Inspect-ViberComposer.ps1'
+) | ForEach-Object {
+  Get-Item -LiteralPath (Join-Path $SourceRoot $_) -ErrorAction SilentlyContinue
+} | Where-Object { $null -ne $_ }
+
+$files = @($pythonFiles) + @($scriptFiles)
 
 $required = @(
   'g3_process.py',
@@ -109,6 +140,11 @@ $required = @(
   'p1_live_inbound.py',
   'p1_paired_queries.py',
   'p1_transport.py',
+  'p1_uia_sender.py',
+  'verify_p1_send_reconcile_live.py',
+  'Send-P1Controlled.ps1',
+  'Verify-ActiveMarkerChat.ps1',
+  'Inspect-ViberComposer.ps1',
   'probe_db_schema.py',
   'probe_key_presence.py',
   'qt_readonly_fixture.py',
@@ -173,7 +209,10 @@ if (-not $DryRun) {
 }
 
 $stoppedWorkers = 0
-$workerCount = @(Get-BridgeProcess -Config $ConfigPath).Count
+$workerCount = $null
+if (-not $DryRun) {
+  $workerCount = @(Get-BridgeProcess -Config $ConfigPath).Count
+}
 if ($Restart -and -not $DryRun) {
   $stoppedWorkers = Stop-BridgeProcess -Config $ConfigPath
   $workerCount = Start-BridgeProcess -Runtime $RuntimeRoot -Config $ConfigPath -Python $PythonExe

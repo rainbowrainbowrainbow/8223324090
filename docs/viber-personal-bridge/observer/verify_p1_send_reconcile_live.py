@@ -57,6 +57,6 @@ if __name__=="__main__":
  try:
   a=p.parse_args();valid=len(a.test_id)==8 and all(c in "0123456789ABCDEF" for c in a.test_id)
   expected=base64.b64decode(a.text_base64,validate=True).decode("utf-8") if a.text_base64 else None
-  valid=valid and (expected is None or (0<len(expected)<=500 and "\0" not in expected and "\r" not in expected and "\n" not in expected))
+  valid=valid and (expected is None or (0<len(expected)<=500 and "\0" not in expected and "\r" not in expected))
   print(json.dumps(run(find_single_session(),a.test_id,expected) if valid else result("FAILED","ARGUMENT_INVALID"),separators=(",",":")),flush=True)
  except BaseException:print(json.dumps(result("FAILED","RECONCILE_FAILED"),separators=(",",":")),flush=True)

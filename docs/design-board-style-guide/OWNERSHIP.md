@@ -1,7 +1,7 @@
 # Ownership і межі паралельної роботи
 
 Дата: 2026-09-12. Потік: Design Board → Style Guide.
-Після аудиту виконано локальний UI/storage-audit pass. Наведений нижче ownership відділяє вже змінені локальні файли від protected/shared робіт, які не погоджені автоматично.
+Після Task 1 виконано локальний UI/storage-audit pass і shared navigation integration для Style Guide. Наведений нижче ownership відділяє вже змінені файли від protected DB/API/auth/storage робіт, які лишаються поза scope.
 
 ## Власник цього handoff/audit patch
 
@@ -12,7 +12,7 @@
 - `docs/design-board-style-guide/SHARED_INTEGRATION.md`
 - `docs/design-board-style-guide/ISOLATION_TECHNICAL_PLAN.md`
 
-Жодні git commit/push/PR/deploy, release marker або cache-tag зміни не входять до поточного запиту.
+Task 1 включає commit/push/PR/merge у `codex/design-board-material-access` → `codex/eventgenix-production` після зеленого CI. Production deploy, release marker і cache-tag зміни не входять до поточного запиту.
 
 ## Власник локального UI/storage-audit implementation pass
 
@@ -26,7 +26,10 @@
 | `tests/designer-navigation.test.js` | New focused Style Guide route/hash regressions |
 | `scripts/audit-design-material-storage.js` | New read-only redacted storage inventory; no DB writes |
 | `tests/design-material-storage-audit.test.js` | New fake-DB storage audit tests |
-| `tests/ui-check.js` | Only the Design Board download guard belongs here; existing HR hunk remains foreign/shared |
+| `js/components/sidebar.js` | Task 1 integration: default `/designer` removed from main NAV; internal shortcut descriptor preserves search/favorites |
+| `js/search.js` | Task 1 integration: search index includes `Sidebar.INTERNAL_SHORTCUT_ITEMS` |
+| `config/permissionRegistry.js` | Task 1 integration: `/designer` keeps route/capability metadata with `sidebarLinks: []`; no role/grant change |
+| `tests/ui-check.js` | Design Board download guard plus Task 1 internal Style Guide navigation guard |
 
 ## Майбутній продуктовий UI patch GPT-5.5
 
@@ -42,20 +45,20 @@
 
 Усі чотири продуктові файли перевірити на dirty diff і свіжість ще раз перед першим edit. На початку аудиту вони не були dirty, але designs.html/js/designs-page.js відставали від origin.
 
-## Shared — тільки integration owner, не автоматично в UI patch
+## Shared integration applied in Task 1
 
 | Файли | Причина / правило |
 |---|---|
-| `js/components/sidebar.js` | Уже dirty, інший потік HR; entry, utility rail, favorites, navigation для всієї CRM |
-| `js/search.js` | Пошуковий індекс бере NAV_ITEMS; після вилучення /designer потрібен окремий shared compatibility hunk |
-| `tests/ui-check.js` | Уже dirty; shared HR/navigation assertions |
-| `config/permissionRegistry.js` | Захищений permission registry. Для T6 пропонується тільки navigation metadata sidebarLinks, окремо на review; жодної зміни доступу |
-| `tests/permission-registry-contract.test.js` | Bidirectional NAV↔registry parity, fixed link count; зміни лише разом із актуальним integration diff |
+| `js/components/sidebar.js` | Shared surface; Task 1 touched only `/designer` navigation placement and internal shortcut discovery |
+| `js/search.js` | Shared surface; Task 1 added internal shortcut source to the existing search index path |
+| `tests/ui-check.js` | Shared static guard updated for no default `/designer` main-nav item |
+| `config/permissionRegistry.js` | Protected registry file; Task 1 changed only navigation metadata `sidebarLinks`, not default roles/actions/access behavior |
+| `tests/permission-registry-contract.test.js` | Task 1 integration updated NAV link count to 49 and added `/designer` route/no-default-sidebar regression |
 | `tests/sidebar-designs-integration.test.js` | Запропонований новий тест належить інтегратору, якщо потрібен на актуальній базі |
 | `package.json` | Unit/DOM wiring до `test:unit` для нових Design Board tests. Не міняти version/deps |
 | `config/themeSurface.js`, `config/cssSurface.js`, `config/staticSurface.js` | Read-only guards; не піднімати budgets/не регіструвати новий surface для обходу failing check |
 
-Збереження permission registry метаданих і видалення NAV entry не можна роз'єднувати. Якщо protected owner не дозволяє navigation-only hunk, T6 залишається BLOCKED. T1–T4 можуть бути завершені окремо.
+Збереження permission registry метаданих і видалення NAV entry не можна роз'єднувати. Якщо regression з'явиться після merge, rollback має повертати ці shared hunks разом: default `/designer` entry, registry `sidebarLinks: ['/designer']`, search/internal shortcut changes і відповідний ui-check guard.
 
 ## Protected / read-only
 

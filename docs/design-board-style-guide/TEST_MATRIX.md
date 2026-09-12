@@ -53,8 +53,8 @@ Browser перевіряв actual deployed UI, але блокував external 
 | M18 | B id/filename через download/preview/update/delete/Telegram не доступний A | SOURCE public bytes/unscoped; BLOCKED | T5/B10, server негативні 401/403/404; live mutations заборонені |
 | M19 | Logout/account/context switch, browser cache/public legacy URL | UNVERIFIED, policy BLOCKED | T5/B10, два isolated contexts + private cache acceptance, public catalog compatibility |
 | M20 | Pin/unpin preserves date/collection; explicit null clears | SOURCE data-loss defect; live не натискали | T5/B6, tests/designs-update-contract.test.js, fake/disposable DB |
-| M21 | Єдиний default main-nav Board, internal Guide, direct route/search/favorites | INTEGRATION PLAN READY; product removal BLOCKED | T6 shared hunk за `SHARED_INTEGRATION.md`; compatibility descriptor, saved /designer лишається usable і не зникає після save |
-| M22 | Registry/sidebar parity, актуальний count, grants без змін, HR profiles збережено | Baseline PASS; prospective deletion needs coordination | T6, check:access, full registry tests, ui-check, new integration test за потреби |
+| M21 | Єдиний default main-nav Board, internal Guide, direct route/search/favorites | READY після Task 1 verification | T6 shared hunk застосовано; internal shortcut descriptor зберігає explicit /designer для search/favorites |
+| M22 | Registry/sidebar parity, актуальний count, grants без змін, HR profiles збережено | READY після Task 1 verification | T6, check:access, registry tests, ui-check |
 | M23 | Unit/DOM tests wired у CI, operator browser smoke, syntax/theme/CSS/static guards | READY локально: `test:unit` wiring додано, targeted tests і UI/surface checks PASS; browser smoke лишається operator-run | npm test/CI після дозволеного push |
 
 ## Команди майбутньої вузької перевірки
@@ -91,7 +91,7 @@ npm run test:ui
 - test:unit включає `design-storage`, `design-material-storage-audit`, `designs-page-ui` і `designer-navigation`; `tests/designs.test.js` у цьому списку немає.
 - tests/designs.test.js потрапляє до широкого test:integration; окремого designs isolated PostgreSQL target не знайдено.
 - route-smoke для designs перевіряє лише tags: waiter 403 / art_director 200.
-- ui-check перевіряє DOM/кількість tabs та наявність sidebar href. Це не browser navigation/storage/isolation QA.
+- ui-check перевіряє DOM/кількість tabs та internal `/designer` shortcut без default sidebar дубля. Це не browser navigation/storage/isolation QA.
 - Нові unit/DOM tests підключені до `test:unit` без dependencies/lockfile змін.
 - Звичайний npm test job не встановлює Chromium. Наявний browser job встановлює його, але викликає конкретний список scripts, а не всі browser-файли. Новий browser smoke — operator-run на встановленому runtime; окремий approved workflow wiring потрібен лише для додавання його в автоматичний browser CI. Не додавати його до unrelated старого smoke як обхід CI ownership.
 

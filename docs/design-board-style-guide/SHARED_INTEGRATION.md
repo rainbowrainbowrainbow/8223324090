@@ -1,7 +1,7 @@
 # Shared integration: Style Guide navigation
 
-**Статус: integration plan READY; product application BLOCKED до прийняття integration owner.**
-Це інструкція й reviewable illustrative diff; вона не застосована до продукту. Sidebar паралельно редагує інший потік.
+**Статус: integration applied in `codex/design-board-material-access`; pending verification/CI/merge.**
+Цей файл збережено як інтеграційний контекст і rollback guide. Після Task 1 patch semantic diff нижче застосовано атомарно до sidebar/search/navigation metadata/tests без зміни auth/API/schema.
 
 ## Мета й порядок
 
@@ -113,3 +113,14 @@ key/canonicalPath/defaultRoles/risk/frontendConsumers/apiConsumers та server/f
 Internal Style Guide entry і `/designer#styleguide` route continuity реалізовані та covered у `tests/designer-navigation.test.js`. Це знімає тільки product-UI залежність T4 для локального patch. Shared removal лишається окремим, бо `js/components/sidebar.js` уже має чужий HR dirty hunk, а removal без search/favorites/registry compatibility втратить discoverability або зламає existing tests.
 
 Integration owner має починати не з копіювання всього файлу, а з `git diff -- js/components/sidebar.js tests/ui-check.js` і ручного перенесення semantic hunks на актуальну базу. Якщо owner не може зберегти explicit `/designer` shortcut у search/favorites, default sidebar entry краще тимчасово лишити.
+
+## Update after Task 1 integration 2026-09-12
+
+Shared integration застосовано в цій branch:
+
+- `js/components/sidebar.js`: `/designer` вилучено з default `NAV_ITEMS`; додано `INTERNAL_SHORTCUT_ITEMS` з єдиним descriptor для explicit favorites/discovery; `_getSelectableExtraMenuItems` читає `NAV_ITEMS.concat(INTERNAL_SHORTCUT_ITEMS)`; descriptor експортовано через `Sidebar`.
+- `js/search.js`: `getNavigationIndex()` додає `Sidebar.INTERNAL_SHORTCUT_ITEMS`, тому пошук `стайлгайд`/`designer` зберігає прямий `/designer` result без default sidebar дубля.
+- `config/permissionRegistry.js`: `/designer` зберігає capability/canonical route/default roles, але `sidebarLinks: []`, бо це вже внутрішній розділ Design Board.
+- `tests/ui-check.js`: старий guard “Sidebar has /designer” замінено на доказ internal shortcut + відсутності default NAV item.
+
+Rollback: повернути тільки ці four-file hunks разом, якщо regression покаже втрату direct route/search/favorites або default navigation parity.

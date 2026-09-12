@@ -150,7 +150,7 @@ READY нижче означає локально реалізовану або �
 | 4. Локальні light/dark проблеми | READY | Встановлено конкретний selector defect, T3 |
 | 5. Style Guide усередині IA Design Board | READY | Native internal entry + canonical дочірня сторінка, T4 |
 | 6. Збереження Style Guide route/deep links | READY | /designer зберегти; підтримку fragment tabs явно додати, T4 |
-| 7. Прибрати default main-nav дубль | INTEGRATION PLAN READY; product removal BLOCKED | T6; окремі sidebar/registry/search/test hunks, sidebar не включати в UI patch |
+| 7. Прибрати default main-nav дубль | READY після Task 1 verification | T6 integration застосовано в `js/components/sidebar.js`, `js/search.js`, `config/permissionRegistry.js`, `tests/ui-check.js`; `/designer` збережено як direct route/internal shortcut |
 | Додатково: pin/unpin без втрати metadata | BLOCKED | B6, потрібен API дозвіл; не включати frontend workaround |
 
 Рекомендований наступний крок: передати GPT-5.5 T1–T4 на узгодженій актуальній базі, залишивши T5/T6 gates явними.
@@ -167,7 +167,7 @@ T4 Style Guide internal child + route continuity: **READY локально**. Bo
 
 T5 storage investigation: **READY як read-only audit; recovery BLOCKED**. Додано `scripts/audit-design-material-storage.js` і unit tests. Повторний production read-only audit показав scanned 3, ok 0, `SOURCE_MISSING: 3`, recoverableFromLocal 0, keyMismatches 0. Наступна дія потребує source backup або operator-provided restored snapshot.
 
-T6 sidebar duplicate removal: **INTEGRATION PLAN READY; product code BLOCKED/не виконано**. Поточна база має `/designer` у `js/components/sidebar.js` `NAV_ITEMS`, `config/permissionRegistry.js` `sidebarLinks`, `tests/ui-check.js` guard і search/favorites залежність від `NAV_ITEMS`. Removal потребує shared integration у `js/components/sidebar.js`, `js/search.js`, `config/permissionRegistry.js` navigation metadata і tests. Використати `SHARED_INTEGRATION.md`; не включати sidebar автоматично в UI patch.
+T6 sidebar duplicate removal: **READY після Task 1 verification**. Shared integration застосовано атомарно: default `/designer` вилучено з `NAV_ITEMS`, `INTERNAL_SHORTCUT_ITEMS` зберігає explicit favorites/search, `config/permissionRegistry.js` лишає `/designer` capability з `sidebarLinks: []`, `tests/ui-check.js` перевіряє відсутність default дубля та наявність internal shortcut.
 
 B6 pin partial update: **BLOCKED/не виконано**. Вимагає API contract fix у protected backend route; не обходити full-row frontend PUT без окремого scope.
 
@@ -178,7 +178,7 @@ B10 company/account isolation: **BLOCKED/не реалізовано**. Пото
 1. **B1 storage recovery discovery.** Owner/operator має надати explicit external backup root або archive, який може містити старий `uploads/designs`. Без цього не можна довести “material → view” до PASS. Команди починаються з read-only audit; apply backfill тільки після окремого approval.
 2. **B10 isolation technical design.** Обрати ownership model: existing `business_context` чи інша company/account сутність. Мінімальна правильна реалізація потребує schema columns, migration/backfill defaults, route predicates, blob preview/download scope, collection/tag joins і tests із двома contexts. Це protected DB/API/auth scope.
 3. **B6 pin metadata API fix.** Виправити partial update contract у backend або окремому endpoint так, щоб pin/unpin не зануляв collection/date. Не робити full-row frontend workaround.
-4. **T6 sidebar integration.** Після перевіреного internal entry і прийнятого shared owner прибрати default `/designer` з main nav, зберігши direct route, search і explicit favorites. Це окремий diff за `SHARED_INTEGRATION.md`.
+4. **T6 sidebar integration.** Після Task 1 verification/CI цей пункт готовий до merge: default `/designer` прибрано з main nav, direct route/search/explicit favorites збережено через internal shortcut descriptor.
 5. **Release path.** Коли B1/B10/T6 scope буде узгоджений або чесно відкладений як known blocker, тоді окремий delivery owner робить CI/manual deploy/live QA за проектним workflow. Поточний patch не містить commit/push/deploy.
 
 Чому саме так: sidebar cleanup і UI polishing не відновлять файли та не створять tenant boundary. Якщо спочатку прибрати menu duplicate, продукт виглядатиме акуратніше, але головний сценарій saved material preview залишиться червоним, а data isolation — невизначеною. Тому порядок має йти від data availability/security до navigation cleanup.

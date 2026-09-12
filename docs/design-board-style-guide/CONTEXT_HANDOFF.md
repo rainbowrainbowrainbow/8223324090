@@ -110,10 +110,10 @@ Style Guide не читає design/brand API. Окремий `routes/art-directo
 - `designs.html` inline CSS дублює `css/designs.css` і стоїть пізніше. Не виправляти неефективне правило лише в ранньому файлі.
 - `css/designs.css:374` закінчується незакритим comment opener. Перед додаванням CSS локально закрити/прибрати саме цей EOF comment.
 - Style Guide typography prose про Nunito main font не збігається з `css/base.css:151` Inter. За потреби поправити довідковий текст, не змінювати глобальну типографіку.
-- Канонічний deep link — `/designer`. `#catalogs/#guideline/#brand/#styleguide/#templates` будуть новою локальною підтримкою навігації; не називати їх уже реалізованими.
+- Канонічний deep link — `/designer`. `#catalogs/#guideline/#brand/#styleguide/#templates` реалізовані локально як hash-tab navigation; `/designer` лишається catalogs default, `/designer#styleguide` відкриває Style Guide.
 - Рекомендація: видимий внутрішній розділ/картка «Стайлгайд» на Board + canonical `/designer#styleguide` + breadcrumb/return. Один content owner, без iframe і копії бренду.
-- Sidebar cleanup залежить від тестів і registry navigation metadata; див. SHARED_INTEGRATION.
-- Saved favorites також залежать від NAV_ITEMS: `sidebar.js:638–695` відкидає href поза selectable catalog. Видалення /designer приховає saved favorite, а подальше збереження меню може прибрати його зі storage. SHARED_INTEGRATION передбачає окремий descriptor для search/shortcuts, не main-nav.
+- Sidebar cleanup застосовано в Task 1 integration: default `/designer` прибрано з `NAV_ITEMS`, direct `/designer` збережено через `INTERNAL_SHORTCUT_ITEMS` для search/favorites; див. SHARED_INTEGRATION.
+- Saved favorites більше не залежать тільки від default NAV_ITEMS для `/designer`: selectable catalog читає `NAV_ITEMS.concat(INTERNAL_SHORTCUT_ITEMS)`. Не прибирати internal descriptor без повернення default menu entry.
 - У `renderTagChips` (`js/designs-page.js:445–447`) tag вставляється в inline onclick. `esc()` (`:270–272`) — HTML escape, не JavaScript escape. Для змінених місць T1 потрібні DOM listeners/textContent, з тестом апострофів і HTML-подібного тексту.
 
 ## Передача

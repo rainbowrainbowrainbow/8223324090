@@ -262,6 +262,7 @@ function getNavigationIndex() {
 
     getFeatureRegistryNavigationItems().forEach(item => add(item, 'feature-registry'));
     (window.Sidebar?.NAV_ITEMS || []).forEach(item => add(item, 'sidebar'));
+    (window.Sidebar?.INTERNAL_SHORTCUT_ITEMS || []).forEach(item => add(item, 'internal-shortcut'));
     SEARCH_FALLBACK_NAV_ITEMS.forEach(item => add(item, 'fallback'));
     SEARCH_GROUP_SHORTCUTS.forEach(item => add(item, 'group'));
 

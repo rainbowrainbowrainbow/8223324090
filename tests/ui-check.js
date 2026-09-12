@@ -3330,7 +3330,8 @@ check('Legacy header RoleSwitcher does not render DOM controls', authCode.includ
 check('Sidebar role identity is passive and has no preview menu owner', sidebarCode.includes('<span class="sidebar-identity-role" id="sidebarIdentityRole">CRM</span>') && !sidebarCode.includes('sidebarRolePreviewMenu') && !sidebarCode.includes('_hydrateRolePreviewEntry'));
 check('Sidebar has /designs', sidebarCode.includes("href: '/designs'"));
 check('Sidebar exposes product shortcuts for programs, animation, cakes, menu, and catalogs', sidebarCode.includes("href: '/programs'") && sidebarCode.includes("href: '/programs#animation'") && sidebarCode.includes("href: '/programs#kitchen-cakes'") && sidebarCode.includes("href: '/programs#kitchen-menu'") && sidebarCode.includes("href: '/programs#catalogs'"));
-check('Sidebar has /designer', sidebarCode.includes("href: '/designer'"));
+const sidebarNavItemsBlock = sourceBlock(sidebarCode, 'const NAV_ITEMS = [', '// ═══ ACCESS MATRIX');
+check('Style Guide is an internal Design Board shortcut, not a default sidebar item', !sidebarNavItemsBlock.includes("href: '/designer'") && sidebarCode.includes('INTERNAL_SHORTCUT_ITEMS') && sidebarCode.includes("href: '/designer'") && sidebarCode.includes("label: 'Стайлгайд'") && searchCode.includes('INTERNAL_SHORTCUT_ITEMS') && permissionRegistryCode.includes("key: '/designer'") && permissionRegistryCode.includes("sidebarLinks: []"));
 check('Sidebar has /guardian-ops', sidebarCode.includes("href: '/guardian-ops'"));
 check('Sidebar exposes /omni for communications', sidebarCode.includes("href: '/omni'") && sidebarCode.includes('omni:'));
 check('Sidebar has Центр керування', sidebarCode.includes('Центр керування'));

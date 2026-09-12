@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.142 - Каса: захищене відновлення close proof
+
+### Release / Versioning / (12.09.2026) [codex]
+- **Cashier guarded close-proof recovery** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.141 - Omni: правдивий стан Viber bridge
 
 ### Release / Versioning / (12.09.2026) [codex]

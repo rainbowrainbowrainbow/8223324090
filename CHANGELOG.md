@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.138 - Omni: чесні можливості Viber Bridge
+
+### Release / Versioning / (12.09.2026) [codex]
+- **Правдиві напрямки** - актуальний heartbeat більше не видає непідключені capture/Send адаптери за працездатні; картка використовує окремі `receive_text` і `send_text` capabilities.
+- **Безпечний локальний запуск** - додано перевірений launcher із приватним конфігом і SQLite ledger поза репозиторієм для heartbeat, ACK і command pull.
+
+---
+
 ## v0.81.137 - Omni: Viber Personal Bridge
 
 ### Omni / Viber / Reliability / (12.09.2026) [codex]

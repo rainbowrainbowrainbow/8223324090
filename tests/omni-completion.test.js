@@ -179,6 +179,31 @@ test('health metadata retains real freshness and excludes arbitrary provider res
   assert.equal(accounts[0].diagnostics.stale, true);
 });
 
+test('health metadata keeps explicit bridge direction capabilities fail-closed', async () => {
+  let saved;
+  mock('../db', { pool: { query: async (sql, values) => {
+    if (sql.includes('INSERT INTO omni_channel_health')) {
+      saved = JSON.parse(values[2]);
+      return { rows: [] };
+    }
+    return { rows: [{ channel: 'viber_personal', checked_at: '2099-05-15T10:00:00Z',
+      check_result: saved }] };
+  } } });
+  const health = fresh('../services/omni-health');
+  await health.saveCheck('viber_personal', 'event_genix', { status: 'partial', details: {
+    sendCapable: false, receiveCapable: false, token: 'fixture-secret',
+  } });
+  assert.deepEqual(saved, { status: 'partial', pendingUpdates: null, lastProviderErrorAt: null,
+    providerError: null, sendCapable: false, receiveCapable: false });
+  const [account] = await health.attachHealth([{
+    channel: 'viber_personal', source: 'environment', configured: true, status: 'limited',
+    requiredDirections: { send: true, receive: true }, sendCapable: true, receiveCapable: true,
+  }], 'event_genix', new Date('2099-05-15T10:01:00Z'));
+  assert.equal(account.sendCapable, false);
+  assert.equal(account.receiveCapable, false);
+  assert.equal(account.status, 'limited');
+});
+
 test('attachment policies reject spoofed files, oversized images and unsupported channels before sending', () => {
   mock('../db', { pool: {} }); const files = fresh('../services/omni-attachments');
   const png = Buffer.from('89504e470d0a1a0a0000000049454e44ae426082', 'hex');

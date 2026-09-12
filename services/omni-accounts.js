@@ -1672,11 +1672,26 @@ async function verifyViberPersonal(runtime, context = {}) {
         details: state,
       };
     }
+    const receiveCapable = state.capabilities?.receive_text === true;
+    const sendCapable = state.capabilities?.send_text === true;
+    if (!receiveCapable || !sendCapable) {
+      const missing = [
+        !receiveCapable ? 'приймання' : null,
+        !sendCapable ? 'відправлення' : null,
+      ].filter(Boolean).join(' та ');
+      return {
+        status: 'partial',
+        message: `Transport моста підключений, але ${missing} ще не підтверджено локальним адаптером.`,
+        warning: `Viber Personal Bridge: ${missing} недоступне`,
+        displayName: 'Viber Personal Bridge',
+        details: { ...state, receiveCapable, sendCapable },
+      };
+    }
     return {
       status: 'success',
       message: 'Міст підключений. Heartbeat актуальний; приймання підтверджується окремим часом останнього успішного scan.',
       displayName: 'Viber Personal Bridge',
-      details: state,
+      details: { ...state, receiveCapable, sendCapable },
     };
   } catch (error) {
     return {

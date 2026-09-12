@@ -10,6 +10,8 @@ async function saveCheck(channel, businessContext, check, client = pool) {
     pendingUpdates: Number.isFinite(details.pendingUpdates) ? details.pendingUpdates : null,
     lastProviderErrorAt: details.lastProviderErrorAt || null,
     providerError: details.providerError || null,
+    sendCapable: typeof details.sendCapable === 'boolean' ? details.sendCapable : null,
+    receiveCapable: typeof details.receiveCapable === 'boolean' ? details.receiveCapable : null,
   };
   await client.query(
     `INSERT INTO omni_channel_health (business_context, channel, checked_at, check_result)
@@ -51,11 +53,16 @@ async function attachHealth(accounts, businessContext, now = new Date()) {
       const status = account.status === 'history_only' && health.check_result?.status === 'success' ? 'history_only' : statuses[health.check_result?.status] || 'limited';
       const configured = account.configured;
       const labels = { connected: 'Підключено', limited: 'Обмежено', webhook_missing: 'Потрібен webhook', token_expired: 'Токен недійсний', misconfigured: 'Перевірте налаштування', provider_unreachable: 'Провайдер недоступний', history_only: 'Лише історія' };
+      const checkedSend = health.check_result?.sendCapable;
+      const checkedReceive = health.check_result?.receiveCapable;
       account = { ...account, status, statusLabel: labels[status], warning: status === 'connected' ? null : account.warning,
         nextActionHint: status === 'connected' ? 'Канал перевірено. Нові події відображатимуться в діагностиці.' : account.nextActionHint,
         connected: configured && !['token_expired', 'misconfigured'].includes(status),
-        sendCapable: configured && account.requiredDirections?.send && ['connected', 'limited', 'webhook_missing'].includes(status),
-        receiveCapable: configured && account.requiredDirections?.receive && ['connected', 'history_only'].includes(status), limited: status !== 'connected' };
+        sendCapable: configured && account.requiredDirections?.send
+          && (typeof checkedSend === 'boolean' ? checkedSend : ['connected', 'limited', 'webhook_missing'].includes(status)),
+        receiveCapable: configured && account.requiredDirections?.receive
+          && (typeof checkedReceive === 'boolean' ? checkedReceive : ['connected', 'history_only'].includes(status)),
+        limited: status !== 'connected' };
     }
     return { ...account, lastCheckedAt: checkedAt ? new Date(checkedAt).toISOString() : null,
       diagnostics: {

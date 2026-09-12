@@ -12,7 +12,8 @@ async function saveCheck(channel, businessContext, check, client = pool) {
     online: typeof details.online === 'boolean' ? details.online : null,
     transportHeartbeat: firstBoolean([details.transportHeartbeat, details.transport_heartbeat, details.online]),
     receiveHealth: firstBoolean([details.receiveHealth, details.receive_health]),
-    sendCapability: firstBoolean([details.sendCapability, details.send_capability]),
+    receiveCapability: firstBoolean([details.receiveCapability, details.receive_capability, details.receiveCapable]),
+    sendCapability: firstBoolean([details.sendCapability, details.send_capability, details.sendCapable]),
     lastHeartbeatAt: details.lastHeartbeatAt || null,
     lastReceiveAt: details.lastReceiveAt || null,
     lastScanAt: details.lastScanAt || details.last_scan_at || bridgeCapabilities.last_scan_at || bridgeCapabilities.lastScanAt || null,
@@ -37,8 +38,8 @@ async function saveCheck(channel, businessContext, check, client = pool) {
     pendingUpdates: Number.isFinite(details.pendingUpdates) ? details.pendingUpdates : null,
     lastProviderErrorAt: details.lastProviderErrorAt || null,
     providerError: details.providerError || null,
-    sendCapable: typeof details.sendCapable === 'boolean' ? details.sendCapable : null,
-    receiveCapable: typeof details.receiveCapable === 'boolean' ? details.receiveCapable : null,
+    sendCapable: firstBoolean([details.sendCapable, details.sendCapability, bridgeSafe?.sendCapability]),
+    receiveCapable: firstBoolean([details.receiveCapable, details.receiveCapability, details.receiveHealth, bridgeSafe?.receiveCapability, bridgeSafe?.receiveHealth]),
     ...(bridgeSafe ? { bridge: bridgeSafe } : {}),
   };
   await client.query(

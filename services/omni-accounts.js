@@ -669,8 +669,15 @@ function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
 }
 
 function applyVerifiedDirections(account, check) {
-  const sendCapable = check?.details?.sendCapable;
-  const receiveCapable = check?.details?.receiveCapable;
+  const details = check?.details || {};
+  const sendCapable = typeof details.sendCapable === 'boolean'
+    ? details.sendCapable
+    : (typeof details.sendCapability === 'boolean' ? details.sendCapability : null);
+  const receiveCapable = typeof details.receiveCapable === 'boolean'
+    ? details.receiveCapable
+    : (typeof details.receiveCapability === 'boolean'
+      ? details.receiveCapability
+      : (typeof details.receiveHealth === 'boolean' ? details.receiveHealth : null));
   if (typeof sendCapable !== 'boolean' && typeof receiveCapable !== 'boolean') return account;
   return {
     ...account,
@@ -756,6 +763,15 @@ function whatsappActivationPreflight(def, runtime = {}, options = {}) {
 }
 
 function setupSteps(def, options = {}) {
+  if (def.channel === 'viber_personal') {
+    return [
+      'Запустіть встановлений Viber Personal Bridge на Windows-машині з авторизованим Viber Desktop.',
+      'Натисніть «Перевірити Viber Desktop», щоб CRM побачила свіжий heartbeat і версію Desktop.',
+      'Привʼяжіть один тестовий чат контрольними PHONE/DESKTOP markers у програмі моста.',
+      'Натисніть «Перевірити приймання» після тестового повідомлення з привʼязаного чату.',
+      'Відправлення з CRM вмикається тільки після окремої перевірки send adapter; публічний Viber Bot webhook тут не потрібен.',
+    ];
+  }
   const steps = [
     `Вставте обовʼязкові дані для ${def.label}.`,
     'Збережіть підключення. CRM не покаже секрети назад у браузері.',
@@ -1736,8 +1752,8 @@ async function verifyViberPersonal(runtime, context = {}) {
         details: state,
       };
     }
-    const receiveCapable = state.capabilities?.receive_text === true;
-    const sendCapable = state.capabilities?.send_text === true;
+    const receiveCapable = state.receiveCapability === true;
+    const sendCapable = state.sendCapability === true;
     if (!receiveCapable || !sendCapable) {
       const missing = [
         !receiveCapable ? 'приймання' : null,
@@ -1745,8 +1761,10 @@ async function verifyViberPersonal(runtime, context = {}) {
       ].filter(Boolean).join(' та ');
       return {
         status: 'partial',
-        message: `Transport моста підключений, але ${missing} ще не підтверджено локальним адаптером.`,
-        warning: `Viber Personal Bridge: ${missing} недоступне`,
+        message: state.blockReason
+          ? `Transport моста підключений, але ${missing} ще не підтверджено локальним адаптером. Блокер: ${state.blockReason}.`
+          : `Transport моста підключений, але ${missing} ще не підтверджено локальним адаптером.`,
+        warning: state.blockReason || `Viber Personal Bridge: ${missing} недоступне`,
         displayName: 'Viber Personal Bridge',
         details: { ...state, receiveCapable, sendCapable },
       };

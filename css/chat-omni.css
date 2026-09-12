@@ -489,6 +489,57 @@
     font-weight: 800;
 }
 
+.omni-bridge-onboarding {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.omni-bridge-onboarding li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(15,23,42,0.04);
+    color: #334155;
+}
+
+.omni-bridge-onboarding li > span {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: rgba(148,163,184,0.18);
+    color: #64748B;
+    font-weight: 900;
+    flex: 0 0 auto;
+}
+
+.omni-bridge-onboarding li.is-done > span {
+    background: rgba(16,185,129,0.14);
+    color: #059669;
+}
+
+.omni-bridge-onboarding strong,
+.omni-bridge-onboarding small {
+    display: block;
+}
+
+.omni-bridge-onboarding strong {
+    font-size: 13px;
+}
+
+.omni-bridge-onboarding small {
+    margin-top: 2px;
+    color: #64748B;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
 .omni-channel-actions,
 .omni-state-card-actions {
     display: flex;
@@ -746,8 +797,15 @@ body.dark-mode .omni-channel-card.is-alert-target,
 }
 
 body.dark-mode .omni-channel-meta div,
-[data-theme="dark"] .omni-channel-meta div {
+[data-theme="dark"] .omni-channel-meta div,
+body.dark-mode .omni-bridge-onboarding li,
+[data-theme="dark"] .omni-bridge-onboarding li {
     background: rgba(30,41,59,0.78);
+}
+
+body.dark-mode .omni-bridge-onboarding small,
+[data-theme="dark"] .omni-bridge-onboarding small {
+    color: #94A3B8;
 }
 
 body.dark-mode .omni-status-badge--success,

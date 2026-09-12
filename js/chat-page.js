@@ -613,7 +613,8 @@
     function _omniProviderDefaults() {
         return [
             { channel: 'telegram', label: 'Telegram', providerKind: 'bot' },
-            { channel: 'viber', label: 'Viber', providerKind: 'messenger' },
+            { channel: 'viber', label: 'Viber Bot API', providerKind: 'messenger' },
+            { channel: 'viber_personal', label: 'Viber Personal Bridge', providerKind: 'personal_bridge' },
             { channel: 'sms', label: 'SMS', providerKind: 'sms' },
             { channel: 'instagram', label: 'Instagram', providerKind: 'meta' },
             { channel: 'facebook', label: 'Facebook', providerKind: 'meta' },
@@ -672,7 +673,23 @@
         var warning = String(raw.warning || raw.lastErrorHuman || raw.last_error_human || raw.lastTestMessage || raw.last_test_message || raw.error || '').toLowerCase();
         var connected = raw.connected === true || status === 'connected';
         var sendCapable = raw.sendCapable !== false && raw.send_enabled !== false;
-        if (connected && status === 'connected' && sendCapable) {
+        var receiveCapable = raw.receiveCapable !== false && raw.receive_enabled !== false;
+        var bridge = raw.diagnostics && raw.diagnostics.bridge ? raw.diagnostics.bridge : (raw.bridge || null);
+        if (String(raw.channel || '').toLowerCase() === 'viber_personal' && bridge) {
+            if (bridge.online !== true && bridge.transportHeartbeat !== true) {
+                return { tone: 'warning', severity: 'attention', label: 'Міст offline', text: 'Windows bridge не має свіжого heartbeat. Запустіть програму моста на машині з Viber Desktop.' };
+            }
+            if (bridge.desktopAuthorized !== true) {
+                return { tone: 'warning', severity: 'attention', label: 'Desktop не перевірено', text: 'Heartbeat є, але Viber Desktop або привʼязаний чат ще не підтверджені.' };
+            }
+            if (bridge.receiveHealth !== true || raw.receiveCapable === false) {
+                return { tone: 'warning', severity: 'attention', label: 'Приймання не готове', text: 'Міст на звʼязку, але live scan або приймання повідомлень ще не підтверджені.' };
+            }
+            if (bridge.sendCapability !== true || raw.sendCapable === false) {
+                return { tone: 'warning', severity: 'attention', label: 'Відправка заблокована', text: 'Приймання працює, але send adapter ще не підтверджений. Composer у таких діалогах заблоковано.' };
+            }
+        }
+        if (connected && status === 'connected' && sendCapable && receiveCapable) {
             return { tone: 'success', severity: 'stable', label: 'Підключено', text: 'Канал готовий до роботи з повідомленнями.' };
         }
         if (status === 'history_only' || raw.inboundOnly) {
@@ -696,7 +713,28 @@
         if (!sendCapable) {
             return { tone: 'warning', severity: 'attention', label: 'Відправка заблокована', text: 'Канал видно в CRM, але відправка зараз недоступна.' };
         }
+        if (!receiveCapable) {
+            return { tone: 'warning', severity: 'attention', label: 'Приймання не готове', text: 'Канал видно в CRM, але приймання подій ще не підтверджено.' };
+        }
         return { tone: 'neutral', severity: 'attention', label: 'Потребує перевірки', text: 'Є нестандартний стан. Відкрийте деталі каналу або запустіть перевірку.' };
+    }
+
+    function _bridgeOnboardingHtml(account) {
+        if (String(account && account.channel || '').toLowerCase() !== 'viber_personal') return '';
+        var bridge = account.diagnostics && account.diagnostics.bridge ? account.diagnostics.bridge : (account.bridge || {});
+        var steps = [
+            { label: 'Програма на звʼязку', ok: bridge.online === true || bridge.transportHeartbeat === true, hint: 'Запустіть Windows bridge.' },
+            { label: 'Viber Desktop перевірено', ok: bridge.desktopAuthorized === true, hint: 'Відкрийте Desktop і привʼяжіть чат markers.' },
+            { label: 'Чат привʼязано', ok: !!bridge.lastScanAt && bridge.desktopAuthorized === true, hint: 'Зробіть enrollment тестового чату.' },
+            { label: 'Приймання перевірено', ok: bridge.receiveHealth === true || !!bridge.lastReceiveAt, hint: 'Надішліть тестове повідомлення.' },
+            { label: 'Відправлення перевірено', ok: bridge.sendCapability === true, hint: 'Send adapter ще не активований.' },
+        ];
+        return '<ol class="omni-bridge-onboarding">' + steps.map(function (step) {
+            return '<li class="' + (step.ok ? 'is-done' : 'is-blocked') + '">' +
+                '<span>' + (step.ok ? '✓' : '•') + '</span>' +
+                '<div><strong>' + _esc(step.label) + '</strong><small>' + _esc(step.ok ? 'Готово' : step.hint) + '</small></div>' +
+            '</li>';
+        }).join('') + '</ol>';
     }
 
     function _formatOmniDate(value) {
@@ -751,6 +789,17 @@
                         var rawDetails = account.warning || account.lastTestMessage || account.last_test_message || account.nextActionHint || '';
                         var channelKey = String(account.channel || '').toLowerCase();
                         var isTarget = options.focusChannel && channelKey === String(options.focusChannel).toLowerCase();
+                        var isPersonalBridge = channelKey === 'viber_personal';
+                        var bridge = account.diagnostics && account.diagnostics.bridge ? account.diagnostics.bridge : (account.bridge || {});
+                        var bridgeDetails = isPersonalBridge
+                            ? [
+                                bridge.blockReason ? 'Блокер: ' + bridge.blockReason : '',
+                                bridge.adapterError ? 'Adapter error: ' + bridge.adapterError : '',
+                                bridge.lastScanAt ? 'Останній scan: ' + bridge.lastScanAt : '',
+                                bridge.lastReceiveAt ? 'Останній прийом: ' + bridge.lastReceiveAt : '',
+                                bridge.viberDesktopVersion ? 'Viber Desktop: ' + bridge.viberDesktopVersion : ''
+                            ].filter(Boolean).join(' · ')
+                            : '';
                         return '<article class="omni-channel-card omni-channel-card--' + _esc(state.tone) + (isTarget ? ' is-alert-target' : '') + '" data-omni-account-channel="' + _esc(channelKey) + '">' +
                             '<div class="omni-channel-card-head">' +
                                 '<div>' +
@@ -762,13 +811,20 @@
                             '<p class="omni-channel-summary">' + _esc(state.text) + '</p>' +
                             '<dl class="omni-channel-meta">' +
                                 '<div><dt>Відправка</dt><dd>' + (account.sendCapable === false ? 'Недоступна' : 'Доступна') + '</dd></div>' +
+                                '<div><dt>Приймання</dt><dd>' + (account.receiveCapable === false ? 'Не підтверджено' : 'Доступне') + '</dd></div>' +
                                 '<div><dt>Остання перевірка</dt><dd>' + _esc(_formatOmniDate(account.lastCheckedAt || account.last_checked_at || account.lastTestAt || account.last_test_at)) + '</dd></div>' +
                             '</dl>' +
+                            _bridgeOnboardingHtml(account) +
                             '<div class="omni-channel-actions">' +
-                                '<button type="button" class="omni-primary-btn" data-omni-action="open-settings">Підключити</button>' +
-                                '<button type="button" class="omni-secondary-btn" data-omni-action="refresh-omni-health">Перевірити</button>' +
+                                (isPersonalBridge
+                                    ? '<button type="button" class="omni-primary-btn" data-omni-action="refresh-omni-health">Перевірити Viber Desktop</button>' +
+                                      '<button type="button" class="omni-secondary-btn" data-omni-action="refresh-omni-health">Прив’язати тестовий чат</button>' +
+                                      '<button type="button" class="omni-secondary-btn" data-omni-action="refresh-omni-health">Перевірити приймання</button>' +
+                                      '<button type="button" class="omni-secondary-btn" data-omni-action="refresh-omni-health">Перевірити відправку</button>'
+                                    : '<button type="button" class="omni-primary-btn" data-omni-action="open-settings">Підключити</button>' +
+                                      '<button type="button" class="omni-secondary-btn" data-omni-action="refresh-omni-health">Перевірити</button>') +
                             '</div>' +
-                            (rawDetails ? '<details class="omni-technical-details"><summary>Технічні деталі</summary><p>' + _esc(rawDetails) + '</p></details>' : '') +
+                            ((rawDetails || bridgeDetails) ? '<details class="omni-technical-details"><summary>Технічні деталі</summary><p>' + _esc([rawDetails, bridgeDetails].filter(Boolean).join(' · ')) + '</p></details>' : '') +
                         '</article>';
                     }).join('') +
                 '</div>';
@@ -4011,11 +4067,21 @@
             _muteBtn.title = channel.muted ? 'Увімкнути сповіщення' : 'Вимкнути сповіщення';
         }
 
-        // Enable input
+        // Enable input only when the selected conversation can safely send.
         var inputEl = document.getElementById('chatInput');
         var sendBtnEl = document.getElementById('chatSendBtn');
-        if (inputEl) inputEl.disabled = false;
-        if (sendBtnEl) sendBtnEl.disabled = false;
+        var sendBlocked = channel.sendCapable === false;
+        var sendBlockedText = channel.sendReadiness === 'send_capable'
+            ? ''
+            : 'Відправка з цього каналу ще не підтверджена. Відкрийте Канали → Viber Personal Bridge.';
+        if (inputEl) {
+            inputEl.disabled = sendBlocked;
+            inputEl.placeholder = sendBlocked ? sendBlockedText : 'Написати повідомлення...';
+        }
+        if (sendBtnEl) {
+            sendBtnEl.disabled = sendBlocked;
+            sendBtnEl.title = sendBlocked ? sendBlockedText : '';
+        }
 
         // Mark active in sidebar
         document.querySelectorAll('.chat-channel-item').forEach(function (el) {
@@ -4597,6 +4663,10 @@
         if (!input) return;
         var content = input.value.trim();
         if (!content || !_currentChannel) return;
+        if (_currentChannel.sendCapable === false) {
+            _appendSystemMessage('⚠️ Відправка з цього каналу ще не підтверджена. Перевірте стан у Omni → Канали.');
+            return;
+        }
 
         // Close emoji panel on send
         if (_emojiPanelOpen) _toggleEmojiPanel();

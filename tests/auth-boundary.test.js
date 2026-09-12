@@ -89,6 +89,10 @@ describe('API auth boundary middleware', () => {
         app.get('/api/omni/webhook/meta', (req, res) => res.json({ ok: true, public: true, provider: 'meta' }));
         app.post('/api/omni/webhook/meta', (req, res) => res.json({ ok: true, public: true, provider: 'meta' }));
         app.post('/api/omni/webhook/binotel', (req, res) => res.json({ ok: true, public: true, provider: 'binotel' }));
+        app.post('/api/omni/bridge/v1/heartbeat', (req, res) => res.json({ ok: true, public: true, provider: 'viber-personal' }));
+        app.post('/api/omni/bridge/v1/events', (req, res) => res.json({ ok: true, public: true, provider: 'viber-personal' }));
+        app.post('/api/omni/bridge/v1/commands/pull', (req, res) => res.json({ ok: true, public: true, provider: 'viber-personal' }));
+        app.post('/api/omni/bridge/v1/commands/:commandId/result', (req, res) => res.json({ ok: true, public: true, provider: 'viber-personal' }));
         app.use('/api/hermes', createHermesRouter({ authMiddleware: hermesBoundaryTestAuth }));
         app.get('/api/bookings', (req, res) => res.json({ ok: true, protected: true }));
         app.get('/api/graduation/catalog/export', (req, res) => {
@@ -118,6 +122,11 @@ describe('API auth boundary middleware', () => {
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/omni/webhook/meta' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/meta' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/binotel' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/bridge/v1/heartbeat' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/bridge/v1/events' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/bridge/v1/commands/pull' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/bridge/v1/commands/00000000-0000-4000-8000-000000000201/result' }), true);
+        assert.equal(isPublicApiRequest({ method: 'GET', path: '/omni/bridge/v1/commands/pull' }), false);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/checkbox/webhook' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/music/library/generate-music/callback' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/hermes/capabilities' }), true);

@@ -1,0 +1,24 @@
+{
+  "generated_from": [
+    "observer/G3_SID_REOPEN_RESULT.json",
+    "live bounded account verification 2026-09-12",
+    "live controlled PHONE/DESKTOP direction verification 2026-09-12"
+  ],
+  "protocol_version": "1.0",
+  "verdict": "LIMITED",
+  "send_test_allowed": false,
+  "production_send_allowed": false,
+  "checks": {
+    "account_identity": true,
+    "new_contact": false,
+    "direction": true,
+    "duplicate_occurrence": true,
+    "reader_restart": true,
+    "exact_peer": false
+  },
+  "peer_check_count": 0,
+  "blockers": [
+    "NEW_CONTACT_NOT_PROVEN",
+    "EXACT_PEER_NOT_PROVEN"
+  ]
+}

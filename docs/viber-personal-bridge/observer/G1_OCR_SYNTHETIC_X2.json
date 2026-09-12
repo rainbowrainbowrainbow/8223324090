@@ -1,0 +1,130 @@
+{
+    "total":  16,
+    "verified_recipient":  false,
+    "touches_viber":  false,
+    "available_languages":  [
+                                "en-US",
+                                "ru"
+                            ],
+    "failed":  1,
+    "images_written":  false,
+    "scale":  2,
+    "parser_checks":  5,
+    "language":  "en-US",
+    "status":  "synthetic_fail",
+    "protocol":  "local-ocr-feasibility/1",
+    "cases":  [
+                  {
+                      "case_id":  "dark-12-A",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "dark-12-B",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "dark-16-A",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "dark-16-B",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "dark-24-A",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "dark-24-B",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "light-12-A",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "light-12-B",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "light-16-A",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "light-16-B",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "light-24-A",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "light-24-B",
+                      "expected_candidate":  true,
+                      "candidate_present":  true,
+                      "exact_match":  true,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "two_numbers",
+                      "expected_candidate":  false,
+                      "candidate_present":  false,
+                      "exact_match":  false,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "no_number",
+                      "expected_candidate":  false,
+                      "candidate_present":  false,
+                      "exact_match":  false,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "missing_plus",
+                      "expected_candidate":  false,
+                      "candidate_present":  false,
+                      "exact_match":  false,
+                      "passed":  true
+                  },
+                  {
+                      "case_id":  "clipped_number",
+                      "expected_candidate":  false,
+                      "candidate_present":  true,
+                      "exact_match":  false,
+                      "passed":  false
+                  }
+              ]
+}

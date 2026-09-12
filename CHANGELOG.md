@@ -4,6 +4,17 @@
 
 ---
 
+## v0.81.137 - Omni: Viber Personal Bridge
+
+### Omni / Viber / Reliability / (12.09.2026) [codex]
+- **Окремий персональний конектор** - Viber Personal Bridge більше не змішується з Viber Bot API; діалоги лишаються у звичному фільтрі Viber.
+- **Захищений транспорт** - connector Bearer credential, точний business/account scope, один активний runtime, heartbeat і durable ACK для вхідних подій.
+- **Відповіді без дублювання** - CRM ставить текст у PostgreSQL-чергу з `client_request_id`; повторний pull не створює нову команду, а невизначений результат лишається `unknown`.
+- **Чесні можливості** - персональний міст показує власний стан підключення; вкладення заблоковані з поясненням, доки для них немає перевіреного transport.
+- **Windows runtime** - додано локальний SQLite ledger, HTTPS client і supervisor для heartbeat, event ACK, command pull та result reporting без зберігання Viber session у CRM.
+
+---
+
 ## v0.81.136 - Dashboard: стабільність віджета команди
 
 ### Dashboard / Release / Live QA / (12.09.2026) [codex]

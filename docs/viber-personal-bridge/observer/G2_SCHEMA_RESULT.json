@@ -1,0 +1,33 @@
+{
+  "observed_date": "2026-09-11",
+  "report_version": 1,
+  "status": "SCHEMA_READABLE",
+  "target_verified": true,
+  "synthetic_fixture_passed": true,
+  "codec_see_verified": true,
+  "candidate_count": 1,
+  "candidate_limit_reached": false,
+  "candidate_scan_bytes": 259031040,
+  "candidate_scan_complete": false,
+  "database_open_attempts": 2,
+  "private_database_opened": true,
+  "baseline_schema_readable": false,
+  "local_database_readable": true,
+  "expected_schema_present": true,
+  "supplied_key_validated_by_schema": true,
+  "last_sqlite_base_error": 0,
+  "wal_existed_before": true,
+  "shm_existed_before": true,
+  "wal_exists_after": true,
+  "shm_exists_after": true,
+  "database_file_identity_unchanged": true,
+  "schema": {
+    "Events": {"EventID": true, "ChatID": true, "ContactID": true, "TimeStamp": true, "Direction": true},
+    "Messages": {"EventID": true, "Body": true},
+    "Contact": {"ContactID": true, "Number": true},
+    "ChatInfo": {"ChatID": true, "Token": true}
+  },
+  "message_or_contact_rows_queried": false,
+  "keys_exported": false,
+  "messages_sent": 0
+}

@@ -1,0 +1,107 @@
+{
+    "nodes":  [
+                  {
+                      "legacy_status":  "point_target_mismatch",
+                      "depth":  1,
+                      "legacy_value":  {
+                                           "state":  "unavailable",
+                                           "phone_like":  false
+                                       },
+                      "automation_id":  {
+                                            "state":  "present",
+                                            "phone_like":  false
+                                        },
+                      "node":  6,
+                      "control_type_id":  50000,
+                      "legacy_name":  {
+                                          "state":  "unavailable",
+                                          "phone_like":  false
+                                      },
+                      "text_pattern":  {
+                                           "state":  "unsupported",
+                                           "phone_like":  false
+                                       },
+                      "name":  {
+                                   "state":  "empty",
+                                   "phone_like":  false
+                               },
+                      "value_pattern":  {
+                                            "state":  "empty",
+                                            "phone_like":  false
+                                        }
+                  },
+                  {
+                      "legacy_status":  "point_target_mismatch",
+                      "depth":  1,
+                      "legacy_value":  {
+                                           "state":  "unavailable",
+                                           "phone_like":  false
+                                       },
+                      "automation_id":  {
+                                            "state":  "present",
+                                            "phone_like":  false
+                                        },
+                      "node":  7,
+                      "control_type_id":  50002,
+                      "legacy_name":  {
+                                          "state":  "unavailable",
+                                          "phone_like":  false
+                                      },
+                      "text_pattern":  {
+                                           "state":  "unsupported",
+                                           "phone_like":  false
+                                       },
+                      "name":  {
+                                   "state":  "empty",
+                                   "phone_like":  false
+                               },
+                      "value_pattern":  {
+                                            "state":  "empty",
+                                            "phone_like":  false
+                                        }
+                  },
+                  {
+                      "legacy_status":  "read",
+                      "depth":  3,
+                      "legacy_value":  {
+                                           "state":  "empty",
+                                           "phone_like":  false
+                                       },
+                      "automation_id":  {
+                                            "state":  "present",
+                                            "phone_like":  false
+                                        },
+                      "node":  60,
+                      "control_type_id":  50000,
+                      "legacy_name":  {
+                                          "state":  "present",
+                                          "phone_like":  false
+                                      },
+                      "text_pattern":  {
+                                           "state":  "unsupported",
+                                           "phone_like":  false
+                                       },
+                      "name":  {
+                                   "state":  "present",
+                                   "phone_like":  false
+                               },
+                      "value_pattern":  {
+                                            "state":  "empty",
+                                            "phone_like":  false
+                                        }
+                  }
+              ],
+    "errors":  0,
+    "complete":  false,
+    "enumeration_limited":  false,
+    "pruned":  14,
+    "captured_at":  "2026-09-11T11:44:48.9704841Z",
+    "verified_recipient":  false,
+    "region_is_heuristic":  true,
+    "status":  "partial",
+    "region":  "Profile",
+    "protocol":  "viber-uia-observer/1",
+    "visited":  63,
+    "text_limit":  256,
+    "legacy_unresolved":  2
+}

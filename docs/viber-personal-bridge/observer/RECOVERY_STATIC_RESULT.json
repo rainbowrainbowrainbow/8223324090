@@ -1,0 +1,504 @@
+{
+  "report_version": 1,
+  "status": "STATIC_ONLY",
+  "files": [
+    {
+      "file": "Viber.exe",
+      "size_bytes": 106509712,
+      "sha256": "7c6f4f7c463e631f43590a189ee40e3cad733759afd04d89fc80e25ae610f99b",
+      "pe_architecture": "x64",
+      "named_export_count": 5,
+      "sqlite_named_export_count": 0,
+      "qt_plugin_exports": [],
+      "named_import_count": 3446,
+      "named_delay_import_count": 0,
+      "selected_imports": [
+        "CryptUnprotectData"
+      ],
+      "qt_import_class_counts": {
+        "QSqlQuery": 13,
+        "QSqlDatabase": 19,
+        "QSqlDriver": 0,
+        "QSettings": 10
+      },
+      "literal_occurrences": {
+        "hexkey": {
+          "ascii": 2,
+          "utf16le": 0
+        },
+        "textkey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "CODEC=see": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "HAS_CODEC": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "SQLCipher": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "Botan": {
+          "ascii": 281,
+          "utf16le": 0
+        },
+        "sqlite3_key": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_key_v2": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_rekey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_rekey_v2": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3CodecGetKey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_activate_see": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_db_config": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_db_filename": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "CryptProtectData": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "CryptUnprotectData": {
+          "ascii": 1,
+          "utf16le": 0
+        },
+        "NCryptUnprotectSecret": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "BCryptDecrypt": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "QSQLITE_OPEN_READONLY": {
+          "ascii": 0,
+          "utf16le": 0
+        }
+      },
+      "sql_format_occurrences": {
+        "hexkey_percent1_single_quote": {
+          "ascii": 1,
+          "utf16le": 0
+        },
+        "hexkey_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "textkey_percent1_single_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "textkey_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "key_percent1_single_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "key_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        }
+      }
+    },
+    {
+      "file": "Qt6Core.dll",
+      "size_bytes": 6083472,
+      "sha256": "2c9a13c52245d8bcb5252b3c38975cdb2d22503ef7aaa6de161eeac1b6c38416",
+      "pe_architecture": "x64",
+      "named_export_count": 8149,
+      "sqlite_named_export_count": 0,
+      "qt_plugin_exports": [],
+      "named_import_count": 376,
+      "named_delay_import_count": 0,
+      "selected_imports": [],
+      "qt_import_class_counts": {
+        "QSqlQuery": 0,
+        "QSqlDatabase": 0,
+        "QSqlDriver": 0,
+        "QSettings": 0
+      },
+      "literal_occurrences": {
+        "hexkey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "textkey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "CODEC=see": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "HAS_CODEC": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "SQLCipher": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "Botan": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_key": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_key_v2": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_rekey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_rekey_v2": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3CodecGetKey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_activate_see": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_db_config": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_db_filename": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "CryptProtectData": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "CryptUnprotectData": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "NCryptUnprotectSecret": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "BCryptDecrypt": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "QSQLITE_OPEN_READONLY": {
+          "ascii": 0,
+          "utf16le": 0
+        }
+      },
+      "sql_format_occurrences": {
+        "hexkey_percent1_single_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "hexkey_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "textkey_percent1_single_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "textkey_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "key_percent1_single_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "key_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        }
+      }
+    },
+    {
+      "file": "Qt6Sql.dll",
+      "size_bytes": 312208,
+      "sha256": "9b009ed4abc04cf67e83a4724f27615276b78479fd65a443a5c7d89b7509effd",
+      "pe_architecture": "x64",
+      "named_export_count": 545,
+      "sqlite_named_export_count": 0,
+      "qt_plugin_exports": [],
+      "named_import_count": 281,
+      "named_delay_import_count": 0,
+      "selected_imports": [],
+      "qt_import_class_counts": {
+        "QSqlQuery": 0,
+        "QSqlDatabase": 0,
+        "QSqlDriver": 0,
+        "QSettings": 0
+      },
+      "literal_occurrences": {
+        "hexkey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "textkey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "CODEC=see": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "HAS_CODEC": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "SQLCipher": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "Botan": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_key": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_key_v2": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_rekey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_rekey_v2": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3CodecGetKey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_activate_see": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_db_config": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_db_filename": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "CryptProtectData": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "CryptUnprotectData": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "NCryptUnprotectSecret": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "BCryptDecrypt": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "QSQLITE_OPEN_READONLY": {
+          "ascii": 0,
+          "utf16le": 0
+        }
+      },
+      "sql_format_occurrences": {
+        "hexkey_percent1_single_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "hexkey_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "textkey_percent1_single_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "textkey_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "key_percent1_single_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "key_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        }
+      }
+    },
+    {
+      "file": "plugins/sqldrivers/qsqlite.dll",
+      "size_bytes": 1985936,
+      "sha256": "eee36d090b774f3295bea740a8de56fc17d609a617c85e6150ef5ee314eba268",
+      "pe_architecture": "x64",
+      "named_export_count": 2,
+      "sqlite_named_export_count": 0,
+      "qt_plugin_exports": [
+        "qt_plugin_instance",
+        "qt_plugin_query_metadata_v2"
+      ],
+      "named_import_count": 362,
+      "named_delay_import_count": 0,
+      "selected_imports": [],
+      "qt_import_class_counts": {
+        "QSqlQuery": 5,
+        "QSqlDatabase": 0,
+        "QSqlDriver": 13,
+        "QSettings": 0
+      },
+      "literal_occurrences": {
+        "hexkey": {
+          "ascii": 1,
+          "utf16le": 0
+        },
+        "textkey": {
+          "ascii": 1,
+          "utf16le": 0
+        },
+        "CODEC=see": {
+          "ascii": 1,
+          "utf16le": 0
+        },
+        "HAS_CODEC": {
+          "ascii": 1,
+          "utf16le": 0
+        },
+        "SQLCipher": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "Botan": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_key": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_key_v2": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_rekey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_rekey_v2": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3CodecGetKey": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_activate_see": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_db_config": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "sqlite3_db_filename": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "CryptProtectData": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "CryptUnprotectData": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "NCryptUnprotectSecret": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "BCryptDecrypt": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "QSQLITE_OPEN_READONLY": {
+          "ascii": 1,
+          "utf16le": 0
+        }
+      },
+      "sql_format_occurrences": {
+        "hexkey_percent1_single_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "hexkey_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "textkey_percent1_single_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "textkey_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "key_percent1_single_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        },
+        "key_percent1_double_quote": {
+          "ascii": 0,
+          "utf16le": 0
+        }
+      }
+    }
+  ],
+  "account_files_read": false,
+  "process_memory_read": false,
+  "installed_code_executed": false,
+  "private_values_saved": false,
+  "key_recovery_proven": false
+}

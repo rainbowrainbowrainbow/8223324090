@@ -1,0 +1,42 @@
+{
+  "date": "2026-09-11",
+  "external_timeout_seconds": 20,
+  "result": {
+    "scope": "SYNTHETIC_ONLY",
+    "status": "PASS",
+    "hash_matches_preflight_qt_6_8_3": true,
+    "loaded_core_path_verified": true,
+    "static_factories_called": 2,
+    "object_size_bytes": 24,
+    "allocation_header_offset": 0,
+    "data_pointer_offset": 8,
+    "signed_length_offset": 16,
+    "qstring_length_unit": "UTF16_CODE_UNITS",
+    "qbytearray_length_unit": "BYTES",
+    "qstring": {
+      "static_factory_called": true,
+      "return_storage_verified": true,
+      "allocation_header_null": true,
+      "data_pointer_matches_owned_input": true,
+      "length_matches_input_units": true,
+      "output_guards_unchanged": true,
+      "input_unchanged": true
+    },
+    "qbytearray": {
+      "static_factory_called": true,
+      "return_storage_verified": true,
+      "allocation_header_null": true,
+      "data_pointer_matches_owned_input": true,
+      "length_matches_input_units": true,
+      "output_guards_unchanged": true,
+      "input_unchanged": true
+    },
+    "qt_application_created": false,
+    "sql_plugin_loaded_by_probe": false,
+    "viber_process_accessed": false,
+    "private_database_opened": false,
+    "account_keys_used": false,
+    "viber_owner_field_verified": false,
+    "messages_sent": 0
+  }
+}

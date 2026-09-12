@@ -126,6 +126,11 @@ function isSendCapableChannel(channel) {
   return VALID_CHANNELS.includes(normalized) && !INBOUND_ONLY_CHANNELS.has(normalized);
 }
 
+function isViberPersonalConversation(conversation) {
+  return conversation?.channel === 'viber'
+    && conversation?.meta?.connectorType === 'viber_personal_bridge';
+}
+
 async function assertRuntimeSendCapable(channel, options = {}) {
   const normalized = normalizeChannel(channel);
   if (!isSendCapableChannel(normalized)) {
@@ -1747,7 +1752,12 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
   }
 
   const conversation = mapConversationRow(convResult.rows[0]);
-  await assertRuntimeSendCapable(conversation.channel, { businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT });
+  const viberPersonal = isViberPersonalConversation(conversation);
+  if (viberPersonal) {
+    await require('./omni-viber-personal-bridge').createService().assertSendCapable(conversation);
+  } else {
+    await assertRuntimeSendCapable(conversation.channel, { businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT });
+  }
   if (conversation.channel === 'whatsapp') {
     const windowState = whatsappReplyWindowState(conversation.lastInboundAt);
     if (!windowState.open) {
@@ -1770,6 +1780,12 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
   if (commentReply && options.attachmentId) throw Object.assign(new Error('Відповіді на коментарі наразі підтримують текст.'), { statusCode: 400 });
   let attachment = null;
   if (options.attachmentId) {
+    if (viberPersonal) {
+      throw Object.assign(new Error('Viber Personal Bridge у цьому релізі підтримує лише текст.'), {
+        statusCode: 400,
+        code: 'VIBER_PERSONAL_ATTACHMENT_UNSUPPORTED',
+      });
+    }
     attachment = await require('./omni-attachments').getFile(options.attachmentId, conversationId, conversation.businessContext);
     require('./omni-attachments').validateFile({ buffer: attachment.content, mimetype: attachment.mime_type, originalname: attachment.filename }, conversation.channel);
     const captionLimit = conversation.channel === 'telegram' ? 1024 : conversation.channel === 'viber' && attachment.mime_type.startsWith('image/') ? 768 : 0;
@@ -1836,7 +1852,18 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
     });
     let messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || saved;
 
-    try {
+    if (viberPersonal) {
+      const queued = await require('./omni-viber-personal-bridge').createService()
+        .enqueue(conversation, saved.id, text, options.clientRequestId);
+      sendTruth = buildSendTruth('saved', {
+        channel: conversation.channel,
+        providerAttempted: false,
+        providerAccepted: null,
+        providerReference: queued.commandId,
+        message: 'Повідомлення збережено та поставлено в чергу Viber Personal Bridge.',
+      });
+      messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || messageWithTruth;
+    } else try {
       messageWithTruth = await markMessageSendAttempted(saved.id, sendTruth) || messageWithTruth;
       const delivery = commentReply ? await require('./omni-meta-events').sendReply(commentReply, text, conversation.businessContext)
         : attachment ? await require('./omni-attachments').sendAttachment(conversation.channel, conversation.externalId, text, attachment, conversation.businessContext)

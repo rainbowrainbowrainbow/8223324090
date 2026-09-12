@@ -1,0 +1,26 @@
+{
+  "date": "2026-09-11",
+  "external_timeout_seconds": 40,
+  "exit_code": 0,
+  "result": {
+    "status": "SID_RECOVERY_SCHEMA_PASS",
+    "binary_sha256": "7c6f4f7c463e631f43590a189ee40e3cad733759afd04d89fc80e25ae610f99b",
+    "derivation_self_checks": 5,
+    "target_verified": true,
+    "current_user_sid_verified": true,
+    "synthetic_readonly_fixture_passed": true,
+    "baseline_schema_readable": false,
+    "baseline_sqlite_error": 26,
+    "candidate_schema_readable": true,
+    "candidate_sqlite_error": 0,
+    "expected_schema_present": true,
+    "database_file_identity_unchanged": true,
+    "source_process_continuity": true,
+    "candidate_count": 1,
+    "message_or_contact_rows_queried": false,
+    "process_memory_read": false,
+    "cng_key_exported": false,
+    "sid_or_key_persisted": false,
+    "messages_sent": 0
+  }
+}

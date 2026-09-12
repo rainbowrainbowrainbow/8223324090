@@ -2562,6 +2562,7 @@
         const CHANNEL_VISUALS = {
             telegram: { key: 'telegram', label: 'Telegram', short: 'TG', icon: '↗' },
             viber: { key: 'viber', label: 'Viber', short: 'VB', icon: '☎' },
+            viber_personal: { key: 'viber', label: 'Viber Personal', short: 'VB', icon: '☎' },
             sms: { key: 'sms', label: 'SMS', short: 'SMS', icon: '✉' },
             facebook: { key: 'facebook', label: 'Facebook', short: 'FB', icon: 'f' },
             instagram: { key: 'instagram', label: 'Instagram', short: 'IG', icon: '◎' },
@@ -2576,7 +2577,7 @@
         );
 
         const CHANNEL_NAMES = {
-            telegram: 'Telegram', viber: 'Viber', sms: 'SMS',
+            telegram: 'Telegram', viber: 'Viber', viber_personal: 'Viber Personal Bridge', sms: 'SMS',
             facebook: 'Facebook', instagram: 'Instagram', whatsapp: 'WhatsApp', binotel: 'Binotel',
             report_bot: 'Бот звітів'
         };
@@ -3351,7 +3352,9 @@
         function canSendConversation(conv) {
             if (!conv) return false;
             const channel = String(conv.channel || '').toLowerCase();
-            const account = omniAccountForChannel(channel) || conv.accountStatus || null;
+            const connectorChannel = channel === 'viber' && conv.meta?.connectorType === 'viber_personal_bridge'
+                ? 'viber_personal' : channel;
+            const account = omniAccountForChannel(connectorChannel) || conv.accountStatus || null;
             if (account && (!account.connected || account.sendCapable === false)) return false;
             return Boolean(conv.sendCapable !== false && !SEND_DISABLED_CHANNELS.has(channel));
         }
@@ -4730,6 +4733,7 @@
                 '<button type="button" class="omni-secondary-action" data-comment-reply="private_reply" data-message-id="' + Number(message.id) + '">Написати приватно</button></div>';
         }
         function filePolicy(conv) {
+            if (conv?.channel === 'viber' && conv.meta?.connectorType === 'viber_personal_bridge') return [];
             const advertised = omniAccountForChannel(conv?.channel)?.attachmentTypes;
             if (Array.isArray(advertised)) return advertised;
             return ['telegram', 'viber', 'facebook', 'instagram'].includes(conv?.channel)

@@ -1,0 +1,22 @@
+{
+  "observed_at": "2026-09-12",
+  "mode": "paired_only",
+  "account_verified": true,
+  "direction_verified": true,
+  "active_anchor_chat_verified": true,
+  "paired_receive_query_verified": true,
+  "post_anchor_inbound_occurrences_observed": 0,
+  "send_attempts": 3,
+  "unknown_attempts": 2,
+  "submitted_unconfirmed_attempts": 1,
+  "reconciled_outbound_occurrences": 1,
+  "duplicate_command_retries": 0,
+  "owned_test_draft_cleared": true,
+  "provider_delivery_verified": false,
+  "arbitrary_chat_addressing_verified": false,
+  "new_contact_discovery_verified": false,
+  "production_send_enabled": false,
+  "private_text_exported": false,
+  "identifiers_exported": false,
+  "crm_contacted": false
+}

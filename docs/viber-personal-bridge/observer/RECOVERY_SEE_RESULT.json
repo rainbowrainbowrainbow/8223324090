@@ -1,0 +1,40 @@
+{
+  "evidence_version": 1,
+  "date": "2026-09-11",
+  "external_timeout_seconds": 35,
+  "result": {
+    "scope": "SYNTHETIC_ONLY",
+    "status": "PASS",
+    "runtime_version_verified": true,
+    "plugin_hash_verified": true,
+    "loaded_plugin_path_verified": true,
+    "codec_see_compile_option": true,
+    "keyed_source_connections": 2,
+    "session_reader_opens": 1,
+    "synthetic_key_submissions": 2,
+    "rekey_calls": 0,
+    "synthetic_application_key_reference_dropped": true,
+    "secure_erasure_verified": false,
+    "key_absence_verified": false,
+    "plaintext_header_absent": true,
+    "fresh_keyless_schema_read_rejected": true,
+    "journal_mode": "wal",
+    "wal_sidecars_present_before_reader": true,
+    "readonly_create_rejected": true,
+    "readonly_sqlite_base_error": 8,
+    "polls": 3,
+    "newly_journaled_per_poll": [
+      0,
+      2,
+      0
+    ],
+    "distinct_duplicate_events": 2,
+    "replay_deduplicated": true,
+    "pending_durable_after_reopen": 2,
+    "provider_cipher_mode_identified": false,
+    "private_database_opened": false,
+    "viber_process_accessed": false,
+    "account_keys_used": false,
+    "messages_sent": 0
+  }
+}

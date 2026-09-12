@@ -111,6 +111,25 @@ function getNormalizer() {
     return normalizer;
 }
 
+let viberPersonalBridge = null;
+function getViberPersonalBridge() {
+    if (!viberPersonalBridge) viberPersonalBridge = require('../services/omni-viber-personal-bridge').createService();
+    return viberPersonalBridge;
+}
+
+async function viberPersonalRuntime(req) {
+    const businessContext = req.body?.business_context || req.body?.events?.[0]?.business_context;
+    return resolveOmniRuntimeConfig('viber_personal', { businessContext });
+}
+
+function bridgeFailure(res, error) {
+    log.warn('Viber Personal Bridge request rejected', { code: error.code || 'BRIDGE_REQUEST_FAILED' });
+    return res.status(error.statusCode || 500).json({
+        protocol_version: '1.0',
+        error: error.code || 'BRIDGE_REQUEST_FAILED',
+    });
+}
+
 // ═══════════════════════════════════════════════
 // Webhook signature verification helpers
 // ═══════════════════════════════════════════════
@@ -461,6 +480,40 @@ router.post('/webhook/binotel', async (req, res) => {
         log.error('Binotel webhook error:', err.message);
         res.status(503).json({ ok: false, error: 'processing_failed' });
     }
+});
+
+// Viber Personal Bridge machine API. JWT is intentionally replaced by the
+// connector-scoped Bearer credential and exact bridge/account/business tuple.
+router.post('/bridge/v1/heartbeat', async (req, res) => {
+    try {
+        res.json(await getViberPersonalBridge().heartbeat(
+            req.body, await viberPersonalRuntime(req), req.headers.authorization
+        ));
+    } catch (error) { bridgeFailure(res, error); }
+});
+
+router.post('/bridge/v1/events', async (req, res) => {
+    try {
+        res.json(await getViberPersonalBridge().ingest(
+            req.body, await viberPersonalRuntime(req), req.headers.authorization
+        ));
+    } catch (error) { bridgeFailure(res, error); }
+});
+
+router.post('/bridge/v1/commands/pull', async (req, res) => {
+    try {
+        res.json(await getViberPersonalBridge().pull(
+            req.body, await viberPersonalRuntime(req), req.headers.authorization
+        ));
+    } catch (error) { bridgeFailure(res, error); }
+});
+
+router.post('/bridge/v1/commands/:commandId/result', async (req, res) => {
+    try {
+        res.json(await getViberPersonalBridge().commandResult(
+            req.params.commandId, req.body, await viberPersonalRuntime(req), req.headers.authorization
+        ));
+    } catch (error) { bridgeFailure(res, error); }
 });
 
 // ═══════════════════════════════════════════════

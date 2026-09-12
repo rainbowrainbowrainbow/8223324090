@@ -1,0 +1,114 @@
+{
+    "nodes":  [
+                  {
+                      "legacy_status":  "read",
+                      "depth":  1,
+                      "legacy_value":  {
+                                           "state":  "empty",
+                                           "phone_like":  false
+                                       },
+                      "automation_id":  {
+                                            "state":  "present",
+                                            "phone_like":  false
+                                        },
+                      "node":  6,
+                      "control_type_id":  50000,
+                      "legacy_name":  {
+                                          "state":  "empty",
+                                          "phone_like":  false
+                                      },
+                      "text_pattern":  {
+                                           "state":  "unsupported",
+                                           "phone_like":  false
+                                       },
+                      "name":  {
+                                   "state":  "empty",
+                                   "phone_like":  false
+                               },
+                      "legacy_same_runtime_id":  true,
+                      "legacy_same_process":  true,
+                      "value_pattern":  {
+                                            "state":  "empty",
+                                            "phone_like":  false
+                                        }
+                  },
+                  {
+                      "legacy_status":  "read",
+                      "depth":  1,
+                      "legacy_value":  {
+                                           "state":  "empty",
+                                           "phone_like":  false
+                                       },
+                      "automation_id":  {
+                                            "state":  "present",
+                                            "phone_like":  false
+                                        },
+                      "node":  7,
+                      "control_type_id":  50002,
+                      "legacy_name":  {
+                                          "state":  "empty",
+                                          "phone_like":  false
+                                      },
+                      "text_pattern":  {
+                                           "state":  "unsupported",
+                                           "phone_like":  false
+                                       },
+                      "name":  {
+                                   "state":  "empty",
+                                   "phone_like":  false
+                               },
+                      "legacy_same_runtime_id":  true,
+                      "legacy_same_process":  true,
+                      "value_pattern":  {
+                                            "state":  "empty",
+                                            "phone_like":  false
+                                        }
+                  },
+                  {
+                      "legacy_status":  "read",
+                      "depth":  3,
+                      "legacy_value":  {
+                                           "state":  "empty",
+                                           "phone_like":  false
+                                       },
+                      "automation_id":  {
+                                            "state":  "present",
+                                            "phone_like":  false
+                                        },
+                      "node":  60,
+                      "control_type_id":  50000,
+                      "legacy_name":  {
+                                          "state":  "present",
+                                          "phone_like":  false
+                                      },
+                      "text_pattern":  {
+                                           "state":  "unsupported",
+                                           "phone_like":  false
+                                       },
+                      "name":  {
+                                   "state":  "present",
+                                   "phone_like":  false
+                               },
+                      "legacy_same_runtime_id":  true,
+                      "legacy_same_process":  true,
+                      "value_pattern":  {
+                                            "state":  "empty",
+                                            "phone_like":  false
+                                        }
+                  }
+              ],
+    "errors":  0,
+    "complete":  true,
+    "enumeration_limited":  false,
+    "pruned":  14,
+    "captured_at":  "2026-09-11T11:54:21.7105189Z",
+    "verified_recipient":  false,
+    "region_is_heuristic":  true,
+    "status":  "observed",
+    "region":  "Profile",
+    "protocol":  "viber-uia-observer/1",
+    "legacy_lookup":  "native_raw_tree_path",
+    "visited":  63,
+    "text_limit":  256,
+    "legacy_unresolved":  0
+}

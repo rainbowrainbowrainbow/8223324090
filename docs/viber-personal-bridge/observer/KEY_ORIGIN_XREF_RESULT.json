@@ -1,0 +1,263 @@
+{
+  "report_version": 1,
+  "status": "STATIC_XREF_CANDIDATES",
+  "binary_sha256": "7c6f4f7c463e631f43590a189ee40e3cad733759afd04d89fc80e25ae610f99b",
+  "runtime_function_count": 67498,
+  "template_rva": "0x5f57d60",
+  "template_xref_count": 1,
+  "dpapi_import_slot_count": 1,
+  "dpapi_xref_count": 2,
+  "candidate_functions": [
+    {
+      "function_begin_rva": "0x340290",
+      "function_end_rva": "0x3408b1",
+      "function_size_bytes": 1569,
+      "references": [
+        {
+          "kind": "hexkey_template",
+          "instruction_rva": "0x3403b9"
+        }
+      ],
+      "selected_import_candidates": [
+        {
+          "instruction_rva": "0x3402c8",
+          "import": "?isOpen@QSqlDatabase@@QEBA_NXZ"
+        },
+        {
+          "instruction_rva": "0x3402dc",
+          "import": "?open@QSqlDatabase@@QEAA_NXZ"
+        },
+        {
+          "instruction_rva": "0x340355",
+          "import": "?lastError@QSqlDatabase@@QEBA?AVQSqlError@@XZ"
+        },
+        {
+          "instruction_rva": "0x3403e1",
+          "import": "?arg@QString@@QEBA?AV1@AEBV1@HVQChar@@@Z"
+        },
+        {
+          "instruction_rva": "0x3403f0",
+          "import": "?exec@QSqlQuery@@QEAA_NAEBVQString@@@Z"
+        },
+        {
+          "instruction_rva": "0x340485",
+          "import": "?lastError@QSqlQuery@@QEBA?AVQSqlError@@XZ"
+        },
+        {
+          "instruction_rva": "0x3404fa",
+          "import": "?arg@QString@@QEBA?AV1@AEBV1@HVQChar@@@Z"
+        },
+        {
+          "instruction_rva": "0x340509",
+          "import": "?exec@QSqlQuery@@QEAA_NAEBVQString@@@Z"
+        },
+        {
+          "instruction_rva": "0x34059e",
+          "import": "?lastError@QSqlQuery@@QEBA?AVQSqlError@@XZ"
+        },
+        {
+          "instruction_rva": "0x3405f0",
+          "import": "?next@QSqlQuery@@QEAA_NXZ"
+        },
+        {
+          "instruction_rva": "0x340606",
+          "import": "?value@QSqlQuery@@QEBA?AVQVariant@@H@Z"
+        },
+        {
+          "instruction_rva": "0x340632",
+          "import": "?toLower@QString@@QEHAA?AV1@XZ"
+        },
+        {
+          "instruction_rva": "0x3406cc",
+          "import": "?exec@QSqlQuery@@QEAA_NAEBVQString@@@Z"
+        },
+        {
+          "instruction_rva": "0x340755",
+          "import": "?lastError@QSqlQuery@@QEBA?AVQSqlError@@XZ"
+        },
+        {
+          "instruction_rva": "0x3407c2",
+          "import": "?constData@QString@@QEBAPEBVQChar@@XZ"
+        },
+        {
+          "instruction_rva": "0x3407dc",
+          "import": "?compare_helper@QString@@CAHPEBVQChar@@_JPEBD1W4CaseSensitivity@Qt@@@Z"
+        }
+      ],
+      "selected_literal_candidates": [
+        {
+          "instruction_rva": "0x3403b9",
+          "literal": "PRAGMA hexkey='%1'"
+        },
+        {
+          "instruction_rva": "0x3404d2",
+          "literal": "PRAGMA hexrekey='%1'"
+        }
+      ]
+    },
+    {
+      "function_begin_rva": "0x82ee00",
+      "function_end_rva": "0x82f577",
+      "function_size_bytes": 1911,
+      "references": [
+        {
+          "kind": "dpapi_import",
+          "instruction_rva": "0x82f369"
+        }
+      ],
+      "selected_import_candidates": [
+        {
+          "instruction_rva": "0x82efa2",
+          "import": "?toUtf8@QString@@QEHAA?AVQByteArray@@XZ"
+        },
+        {
+          "instruction_rva": "0x82f263",
+          "import": "?toUtf8@QString@@QEGBA?AVQByteArray@@XZ"
+        },
+        {
+          "instruction_rva": "0x82f274",
+          "import": "?fromBase64@QByteArray@@SA?AV1@AEBV1@V?$QFlags@W4Base64Option@QByteArray@@@@@Z"
+        },
+        {
+          "instruction_rva": "0x82f31e",
+          "import": "?remove@QByteArray@@QEAAAEAV1@_J0@Z"
+        },
+        {
+          "instruction_rva": "0x82f328",
+          "import": "?data@QByteArray@@QEAAPEADXZ"
+        },
+        {
+          "instruction_rva": "0x82f369",
+          "import": "CryptUnprotectData"
+        }
+      ],
+      "selected_literal_candidates": [
+        {
+          "instruction_rva": "0x82f00c",
+          "literal": "os_crypt"
+        },
+        {
+          "instruction_rva": "0x82f101",
+          "literal": "encrypted_key"
+        }
+      ]
+    },
+    {
+      "function_begin_rva": "0x82f580",
+      "function_end_rva": "0x82fc39",
+      "function_size_bytes": 1721,
+      "references": [
+        {
+          "kind": "dpapi_import",
+          "instruction_rva": "0x82fadc"
+        }
+      ],
+      "selected_import_candidates": [
+        {
+          "instruction_rva": "0x82f5ee",
+          "import": "?startsWith@QByteArray@@QEBA_NVQByteArrayView@@@Z"
+        },
+        {
+          "instruction_rva": "0x82f607",
+          "import": "?remove@QByteArray@@QEAAAEAV1@_J0@Z"
+        },
+        {
+          "instruction_rva": "0x82f7ed",
+          "import": "?data@QByteArray@@QEAAPEADXZ"
+        },
+        {
+          "instruction_rva": "0x82f84d",
+          "import": "?remove@QByteArray@@QEAAAEAV1@_J0@Z"
+        },
+        {
+          "instruction_rva": "0x82f85a",
+          "import": "?data@QByteArray@@QEBAPEBDXZ"
+        },
+        {
+          "instruction_rva": "0x82f928",
+          "import": "?constData@QByteArray@@QEBAPEBDXZ"
+        },
+        {
+          "instruction_rva": "0x82f952",
+          "import": "?fromStdString@QByteArray@@SA?AV1@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z"
+        },
+        {
+          "instruction_rva": "0x82faa9",
+          "import": "?data@QByteArray@@QEAAPEADXZ"
+        },
+        {
+          "instruction_rva": "0x82fadc",
+          "import": "CryptUnprotectData"
+        }
+      ],
+      "selected_literal_candidates": []
+    }
+  ],
+  "template_direct_caller_candidates": [
+    {
+      "call_instruction_rva": "0x32d587",
+      "target_function_rva": "0x340290",
+      "caller_begin_rva": "0x32d550",
+      "caller_end_rva": "0x32d705",
+      "selected_import_candidates": [
+        {
+          "instruction_rva": "0x32d55d",
+          "import": "?isOpen@QSqlDatabase@@QEBA_NXZ"
+        },
+        {
+          "instruction_rva": "0x32d614",
+          "import": "?close@QSqlDatabase@@QEAAXXZ"
+        }
+      ],
+      "selected_literal_candidates": []
+    },
+    {
+      "call_instruction_rva": "0x32d64b",
+      "target_function_rva": "0x340290",
+      "caller_begin_rva": "0x32d550",
+      "caller_end_rva": "0x32d705",
+      "selected_import_candidates": [
+        {
+          "instruction_rva": "0x32d55d",
+          "import": "?isOpen@QSqlDatabase@@QEBA_NXZ"
+        },
+        {
+          "instruction_rva": "0x32d614",
+          "import": "?close@QSqlDatabase@@QEAAXXZ"
+        }
+      ],
+      "selected_literal_candidates": []
+    },
+    {
+      "call_instruction_rva": "0x340a7c",
+      "target_function_rva": "0x340290",
+      "caller_begin_rva": "0x3409e0",
+      "caller_end_rva": "0x340cc6",
+      "selected_import_candidates": [
+        {
+          "instruction_rva": "0x340a30",
+          "import": "?databaseName@QSqlDatabase@@QEBA?AVQString@@XZ"
+        },
+        {
+          "instruction_rva": "0x340a5f",
+          "import": "?setDatabaseName@QSqlDatabase@@QEAAXAEBVQString@@@Z"
+        },
+        {
+          "instruction_rva": "0x340b3d",
+          "import": "?close@QSqlDatabase@@QEAAXXZ"
+        },
+        {
+          "instruction_rva": "0x340c74",
+          "import": "?setDatabaseName@QSqlDatabase@@QEAAXAEBVQString@@@Z"
+        }
+      ],
+      "selected_literal_candidates": []
+    }
+  ],
+  "instruction_boundaries_verified": false,
+  "data_flow_verified": false,
+  "live_key_recovery_verified": false,
+  "account_files_read": false,
+  "process_memory_read": false,
+  "viber_code_executed": false
+}

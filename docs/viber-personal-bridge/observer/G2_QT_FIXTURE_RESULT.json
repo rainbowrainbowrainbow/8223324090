@@ -1,0 +1,38 @@
+{
+  "observed_date": "2026-09-11",
+  "status": "PASS",
+  "runtime_version_verified": true,
+  "plugin_hash_verified": true,
+  "loaded_plugin_path_verified": true,
+  "synthetic_select_verified": true,
+  "insert_rejected_as_readonly": true,
+  "missing_database_open_rejected": true,
+  "missing_database_not_created": true,
+  "fixture_bytes_unchanged": true,
+  "codec_see_compile_option": true,
+  "private_database_opened": false,
+  "account_data_read": false,
+  "keys_used": false,
+  "messages_sent": 0,
+  "plugin": {
+    "file": "qsqlite.dll",
+    "version": "6.8.3.0",
+    "size_bytes": 1985936,
+    "sha256": "eee36d090b774f3295bea740a8de56fc17d609a617c85e6150ef5ee314eba268",
+    "sqlite_version_literal": "3.50.0",
+    "static_codec_markers": ["CODEC=see", "HAS_CODEC", "hexkey", "textkey"],
+    "cipher_identified": false
+  },
+  "isolated_bindings": {
+    "version": "6.8.3",
+    "python_version": "3.13.2",
+    "source": "Qt organization on PyPI; files.pythonhosted.org",
+    "essentials_sha256": "3c0fae5550aff69f2166f46476c36e0ef56ce73d84829eac4559770b0c034b07",
+    "shiboken_sha256": "bca3a94513ce9242f7d4bbdca902072a1631888e0aa3a8711a52cc5dbe93588f",
+    "archive_sizes_and_hashes_verified": true,
+    "setup_hooks_executed": false,
+    "native_qt_code_executed_in_fixture": true,
+    "crm_dependencies_changed": false,
+    "viber_dll_copied_or_redistributed": false
+  }
+}

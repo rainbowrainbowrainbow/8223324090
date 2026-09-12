@@ -1,0 +1,40 @@
+{
+  "date": "2026-09-11",
+  "scope": "local_research_only",
+  "focused_g3_tests": {
+    "executed_by": "collaboration_agent_android_alternatives",
+    "existing_tests": 100,
+    "new_tests": 13,
+    "passed": 113,
+    "failed": 0,
+    "live_account_access": false
+  },
+  "root_verification": {
+    "python_files_parsed": 29,
+    "syntax_passed": true,
+    "relative_markdown_links_passed": true,
+    "actual_four_run_invariants_passed": true,
+    "non_fixture_sid_string_matches": 0
+  },
+  "separate_proofs": {
+    "synthetic_xref_tests_passed": 8,
+    "synthetic_derivation_checks_passed": 5,
+    "synthetic_decoder_instructions_verified": 6,
+    "qt_descriptor_factory_fixture_passed": true,
+    "actual_keyless_schema_error": 26,
+    "actual_keyed_schema_error": 0,
+    "actual_sid_g3_fresh_processes": 4,
+    "actual_new_journal_records_by_run": [2, 0, 0, 0],
+    "actual_total_records_by_run": [2, 2, 2, 2],
+    "actual_pending_records_by_run": [2, 2, 0, 0],
+    "actual_acked_records_by_run": [0, 0, 2, 2]
+  },
+  "new_contact_verified": false,
+  "viber_account_binding_verified": false,
+  "recipient_verified": false,
+  "delivery_verified": false,
+  "viber_or_windows_restarted": false,
+  "viber_process_memory_read_this_block": false,
+  "crm_contacted": false,
+  "messages_sent": 0
+}

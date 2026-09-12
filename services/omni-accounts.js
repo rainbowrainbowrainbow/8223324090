@@ -116,6 +116,40 @@ const CHANNELS = [
     envWarning: 'Viber provider token is not configured',
   },
   {
+    channel: 'viber_personal',
+    label: 'Viber Personal Bridge',
+    provider: 'viber',
+    purpose: 'inbox',
+    purposeLabel: 'Viber personal inbox',
+    providerKind: 'personal_bridge',
+    envKeys: [
+      'OMNI_VIBER_PERSONAL_BRIDGE_ID',
+      'OMNI_VIBER_PERSONAL_ACCOUNT_ID',
+      'OMNI_VIBER_PERSONAL_ACCOUNT_EPOCH',
+      'OMNI_VIBER_PERSONAL_BRIDGE_TOKEN',
+    ],
+    accountEnvKeys: ['OMNI_VIBER_PERSONAL_BRIDGE_ID'],
+    sendSupported: true,
+    receiveSupported: true,
+    credentialMap: {
+      bridgeId: 'OMNI_VIBER_PERSONAL_BRIDGE_ID',
+      accountId: 'OMNI_VIBER_PERSONAL_ACCOUNT_ID',
+      accountEpoch: 'OMNI_VIBER_PERSONAL_ACCOUNT_EPOCH',
+      bridgeToken: 'OMNI_VIBER_PERSONAL_BRIDGE_TOKEN',
+    },
+    fields: [
+      { name: 'bridgeId', label: 'Bridge ID', type: 'text', required: true, placeholder: 'UUID', hint: 'Ідентифікатор цієї інсталяції моста.' },
+      { name: 'accountId', label: 'Account ID', type: 'text', required: true, placeholder: 'UUID', hint: 'Ідентифікатор привʼязки персонального Viber-акаунта.' },
+      { name: 'accountEpoch', label: 'Account epoch', type: 'number', required: true, placeholder: '1', hint: 'Збільшується після повної перепривʼязки акаунта.' },
+      { name: 'bridgeToken', label: 'Bridge token', type: 'secret', required: true, placeholder: 'щонайменше 24 символи', hint: 'Окремий секрет лише для HTTPS-зʼєднання цього моста.' },
+    ],
+    businessImpact: 'Персональний Viber працює через окрему Windows-машину. CRM ставить відповіді в чергу; міст приймає та виконує їх без автоматичних відповідей.',
+    webhookNote: 'Міст сам відкриває вихідне HTTPS-зʼєднання до CRM. Публічний Viber Bot webhook для цього конектора не потрібен.',
+    localValidation: validateViberPersonal,
+    verifier: verifyViberPersonal,
+    envWarning: 'Viber Personal Bridge не налаштований',
+  },
+  {
     channel: 'sms',
     label: 'SMS',
     provider: 'sms',
@@ -1408,6 +1442,16 @@ function validateViber(runtime) {
   return runtime.token && String(runtime.token).length >= 20 ? [] : ['Viber token має бути довшим і схожим на auth token.'];
 }
 
+function validateViberPersonal(runtime) {
+  const errors = [];
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuid.test(String(runtime.bridgeId || ''))) errors.push('Bridge ID має бути UUID.');
+  if (!uuid.test(String(runtime.accountId || ''))) errors.push('Account ID має бути UUID.');
+  if (!/^\d+$/.test(String(runtime.accountEpoch || '')) || Number(runtime.accountEpoch) < 1) errors.push('Account epoch має бути додатним цілим числом.');
+  if (String(runtime.bridgeToken || '').length < 24) errors.push('Bridge token має містити щонайменше 24 символи.');
+  return errors;
+}
+
 function validateSms(runtime) {
   return validateSmsRuntime(runtime);
 }
@@ -1609,6 +1653,38 @@ async function verifyViber(runtime, context = {}) {
     return { status: 'failed_auth', message: result.status_message || `Viber status ${result.status}`, warning: result.status_message || 'Viber token invalid' };
   } catch (err) {
     return verificationErrorToStatus('Viber', err);
+  }
+}
+
+async function verifyViberPersonal(runtime, context = {}) {
+  try {
+    const state = await require('./omni-viber-personal-bridge')
+      .createService()
+      .status(runtime, omniBusinessContext(context));
+    if (!state.online) {
+      return {
+        status: 'partial',
+        message: state.lastHeartbeatAt
+          ? `Міст налаштований, але heartbeat застарів (${state.lastHeartbeatAt}). Запустіть Windows-службу моста.`
+          : 'Міст налаштований, але ще не підключався. Запустіть Windows-службу моста.',
+        warning: 'Viber Personal Bridge offline',
+        displayName: 'Viber Personal Bridge',
+        details: state,
+      };
+    }
+    return {
+      status: 'success',
+      message: 'Міст підключений. Heartbeat актуальний; приймання підтверджується окремим часом останнього успішного scan.',
+      displayName: 'Viber Personal Bridge',
+      details: state,
+    };
+  } catch (error) {
+    return {
+      status: 'provider_unreachable',
+      message: 'Не вдалося прочитати стан Viber Personal Bridge.',
+      warning: 'Viber Personal Bridge diagnostics unavailable',
+      details: { errorCode: 'BRIDGE_STATUS_UNAVAILABLE' },
+    };
   }
 }
 

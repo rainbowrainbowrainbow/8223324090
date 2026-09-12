@@ -33,6 +33,10 @@ focused tests.
 | `GET /omni/webhook/meta` | omnichannel | Meta verification requires the configured provider verify token before returning a challenge. |
 | `POST /omni/webhook/meta` | omnichannel | Omni Meta webhook is guarded by a required provider HMAC signature before inbox processing. |
 | `POST /omni/webhook/binotel` | omnichannel | Omni Binotel webhook is guarded by a required provider secret before inbox processing. |
+| `POST /omni/bridge/v1/heartbeat` | omnichannel | Viber Personal Bridge authenticates with its connector-scoped Bearer credential and exact bridge/account/business tuple. |
+| `POST /omni/bridge/v1/events` | omnichannel | Viber Personal Bridge authenticates before durable event processing; ACKs identify committed event IDs only. |
+| `POST /omni/bridge/v1/commands/pull` | omnichannel | The authenticated bridge can lease commands only from its own account epoch and business. |
+| `POST /omni/bridge/v1/commands/:commandId/result` | omnichannel | The authenticated runtime can update only a command leased to that runtime or return its existing terminal result. |
 | `POST /checkbox/webhook` | checkbox | Checkbox webhook is mounted before the global JSON parser and guarded by route-specific raw-body HMAC before provider audit or fiscal mutation. |
 | `POST /report-bot/webhook` | report-bot | Report-bot webhook is guarded by Telegram webhook secret validation instead of JWT. |
 | `POST /report-bot/submit` | report-bot | Report-bot submit is guarded by the bot API key instead of user JWT. |
@@ -106,6 +110,12 @@ is not an integration credential.
 | `GET /omni/webhook/meta` | omnichannel | Meta verify token, required | Verification challenge only | Installed Meta channel | Challenge or 403 |
 | `POST /omni/webhook/meta` | omnichannel | Meta HMAC, required | Omni canonical inbound persistence | Request-scoped installed channel | Generic acknowledgement or 403 |
 | `POST /omni/webhook/binotel` | omnichannel | Binotel secret, required | Omni lifecycle/inbound canonical persistence | Request-scoped installed channel | Generic acknowledgement or 403 |
+| `POST /omni/bridge/v1/*` | omnichannel | Connector Bearer token + exact bridge/account/business scope | Event ID and command ID ledgers | Credential-bound Viber Personal connector | Protocol-only ACK/result without message content or secrets |
+
+The Viber Personal machine boundary is implemented in
+`services/omni-viber-personal-bridge.js` and its scope, authentication,
+deduplication, and stale-heartbeat behavior are covered by
+`tests/omni-viber-personal-bridge.test.js`.
 | `POST /checkbox/webhook` | checkbox | EventGenix HMAC over raw body, required | Provider event ID + payload hash dedupe; lookup job idempotency | Matched fiscal operation/profile only | Generic accepted/replay/auth error |
 | `POST /report-bot/webhook` | report-bot | Telegram webhook secret, required | Provider retries; submit mutations have their own key | Configured report bot | Empty acknowledgement or 403 |
 | `POST /report-bot/submit` | report-bot | Bot API key, required | Deterministic submit idempotency key | Configured report bot | Scoped acknowledgement or 403 |

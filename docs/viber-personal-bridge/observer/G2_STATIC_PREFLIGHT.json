@@ -1,0 +1,56 @@
+{
+  "report_version": 1,
+  "observed_date": "2026-09-11",
+  "status": "STATIC_PREFLIGHT_ONLY",
+  "production_impact": false,
+  "viber": {
+    "process_count": 1,
+    "file_version": "26.3.2-0-g1354dae28ea"
+  },
+  "libraries": {
+    "Qt6Core.dll": "6.8.3.0",
+    "Qt6Sql.dll": "6.8.3.0",
+    "qsqlite.dll": "6.8.3.0"
+  },
+  "sql_driver_static_pe": {
+    "architecture": "PE32+_64_bit",
+    "exports": ["qt_plugin_instance", "qt_plugin_query_metadata_v2"],
+    "sqlite3_public_api_export_count": 0,
+    "library_loaded": false
+  },
+  "database_header_probe": {
+    "database_count": 1,
+    "bytes_read_per_database": 16,
+    "standard_sqlite_header_count": 0,
+    "nonstandard_header_count": 1,
+    "unreadable_count": 0,
+    "cipher_identified": false,
+    "decryption_attempted": false,
+    "message_rows_read": 0,
+    "keys_read": 0,
+    "raw_headers_saved": false,
+    "account_paths_saved": false
+  },
+  "linux_inventory": {
+    "registered_wsl_entry_count": 2,
+    "wsl_command_present": true,
+    "docker_command_present": true,
+    "wsl_list_result": "Wsl/EnumerateDistros/Service/E_ACCESSDENIED",
+    "linux_runtime_verified": false
+  },
+  "safety": {
+    "upstream_code_executed": false,
+    "process_memory_read": false,
+    "viber_data_modified": false,
+    "viber_restarted": false,
+    "messages_sent": 0,
+    "new_account_connected": false
+  },
+  "gates": {
+    "live_database_read": "NOT_RUN",
+    "new_contact_inbound": "NOT_RUN",
+    "exact_active_peer": "NOT_PROVEN",
+    "safe_send": "NOT_RUN",
+    "delivery": "NOT_RUN"
+  }
+}

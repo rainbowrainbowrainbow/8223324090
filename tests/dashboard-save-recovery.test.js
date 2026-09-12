@@ -37,6 +37,7 @@ function defaultConfig(label = 'server') {
         widgets: ['tasks'],
         layout: {},
         theme: 'default',
+        serverRevision: `revision-${label}`,
         mode: 'workspace',
         presentationMode: 'mixed-scene',
         sceneOptions: { writingLane: true, controlledChaos: true },
@@ -74,10 +75,13 @@ function injectDashboardTestHooks(source) {
     const normalizedMarker = '    return {\n        init,';
     const hook = `    window.__dashboardSaveTest = {
         setConfig(config) {
-            _config = normalizeDashboardConfig(config);
+            applyDashboardConfig(config);
         },
         getConfig() {
             return deepClone(_config);
+        },
+        getServerRevision() {
+            return _dashboardServerRevision;
         },
         setBoardText(value) {
             const state = normalizeBoardState(_config.boardState || {});
@@ -302,6 +306,65 @@ test('board save failure keeps dirty draft and a later retry can clear it', asyn
     assert.equal(api.getBoardDirty(), false);
     assert.equal(api.getSaveStatus(), 'saved');
     assert.equal(harness.dom.window.localStorage.getItem('eg_dashboard_board_draft_77'), null);
+});
+
+test('successful dashboard save sends base revision and adopts returned server revision', async () => {
+    let capturedPayload = null;
+    const harness = createHarness({
+        fetch: async (_url, init) => {
+            capturedPayload = JSON.parse(init.body);
+            return response({
+                success: true,
+                config: {
+                    ...capturedPayload,
+                    serverRevision: 'revision-after-save'
+                }
+            });
+        }
+    });
+    const api = harness.testApi;
+    api.setRecoveryKey('eg_dashboard_board_draft_77');
+    api.setConfig(defaultConfig('initial'));
+
+    api.setBoardText('save-with-revision');
+    api.markBoardDirty('revision-test');
+    await api.saveBoardNow();
+
+    assert.equal(capturedPayload.baseRevision, 'revision-initial');
+    assert.equal(api.getServerRevision(), 'revision-after-save');
+    assert.equal(api.getBoardDirty(), false);
+    assert.equal(api.getSaveStatus(), 'saved');
+});
+
+test('two-tab server revision conflict keeps local dirty draft instead of silently overwriting', async () => {
+    let capturedPayload = null;
+    const harness = createHarness({
+        fetch: async (_url, init) => {
+            capturedPayload = JSON.parse(init.body);
+            return response({
+                success: false,
+                conflict: true,
+                conflictType: 'dashboard_config_revision',
+                currentRevision: 'revision-other-tab',
+                currentConfig: defaultConfig('other-tab'),
+                error: 'Dashboard config was changed in another tab. Reload or restore your local draft before saving.'
+            }, { ok: false, status: 409 });
+        }
+    });
+    const api = harness.testApi;
+    api.setRecoveryKey('eg_dashboard_board_draft_77');
+    api.setConfig(defaultConfig('initial'));
+
+    api.setBoardText('local-tab-edit');
+    api.markBoardDirty('two-tab-conflict');
+    await api.saveBoardNow();
+
+    assert.equal(capturedPayload.baseRevision, 'revision-initial');
+    assert.equal(api.getConfig().boardState.items[0].text, 'local-tab-edit');
+    assert.equal(api.getServerRevision(), 'revision-initial');
+    assert.equal(api.getBoardDirty(), true);
+    assert.equal(api.getSaveStatus(), 'error');
+    assert.equal(JSON.parse(harness.dom.window.localStorage.getItem('eg_dashboard_board_draft_77')).boardState.items[0].text, 'local-tab-edit');
 });
 
 test('choosing not now defers recovery without deleting the draft during later successful saves', async () => {

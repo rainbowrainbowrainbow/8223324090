@@ -98,6 +98,10 @@ $files = Get-ChildItem -LiteralPath $SourceRoot -Filter '*.py' -File |
   Sort-Object Name
 
 $required = @(
+  'g3_process.py',
+  'g3_state.py',
+  'observe_g3.py',
+  'observe_g3_sid.py',
   'p1_bridge_core.py',
   'p1_daemon.py',
   'p1_dispatcher.py',
@@ -105,6 +109,10 @@ $required = @(
   'p1_live_inbound.py',
   'p1_paired_queries.py',
   'p1_transport.py',
+  'probe_db_schema.py',
+  'probe_key_presence.py',
+  'qt_readonly_fixture.py',
+  'recover_sid_key.py',
   'run_p1_daemon.py'
 )
 

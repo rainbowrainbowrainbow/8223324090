@@ -22,7 +22,9 @@ from uuid import UUID, uuid4
 from p1_bridge_core import BridgeCore, BridgeCoreError
 from p1_daemon import BridgeDaemon, DaemonError
 from p1_http_client import BridgeHttpClient, HttpClientError
-from p1_live_inbound import LiveInboundAdapter, LiveInboundJournal, LiveInboundError, SqliteReadOnlySource
+from p1_live_inbound import (
+    G3SidReadOnlySource, LiveInboundAdapter, LiveInboundJournal, LiveInboundError, SqliteReadOnlySource,
+)
 
 
 class LauncherError(Exception):
@@ -76,11 +78,22 @@ def _load_config(path: Path) -> Mapping[str, Any]:
         if not isinstance(live, dict) or not isinstance(live.get("enabled"), bool):
             raise LauncherError("LIVE_INBOUND_CONFIG_INVALID")
         if live.get("enabled"):
-            required_live = {"source_db_path", "journal_path", "reference_key", "phone_marker", "desktop_marker"}
+            source_kind = live.get("source_kind") or ("sqlite_fixture" if live.get("source_db_path") else "g3_sid")
+            if source_kind not in {"g3_sid", "sqlite_fixture"}:
+                raise LauncherError("LIVE_INBOUND_SOURCE_KIND_INVALID")
+            required_live = {"journal_path", "reference_key", "phone_marker", "desktop_marker"}
             if required_live - live.keys():
                 raise LauncherError("LIVE_INBOUND_CONFIG_INVALID")
-            for key in ("source_db_path", "journal_path"):
-                if not isinstance(live[key], str) or not Path(live[key]).is_absolute():
+            if not isinstance(live["journal_path"], str) or not Path(live["journal_path"]).is_absolute():
+                raise LauncherError("LIVE_INBOUND_PATH_INVALID")
+            if source_kind == "sqlite_fixture":
+                if not isinstance(live.get("source_db_path"), str) or not Path(live["source_db_path"]).is_absolute():
+                    raise LauncherError("LIVE_INBOUND_PATH_INVALID")
+            else:
+                if "source_db_path" in live:
+                    raise LauncherError("LIVE_INBOUND_CONFIG_INVALID")
+                if live.get("session_path") is not None and (not isinstance(live["session_path"], str)
+                                                            or not Path(live["session_path"]).is_absolute()):
                     raise LauncherError("LIVE_INBOUND_PATH_INVALID")
     return raw
 
@@ -104,8 +117,24 @@ def _build_receive_adapter(config: Mapping[str, Any]) -> LiveInboundAdapter | No
     live = config.get("live_inbound")
     if not isinstance(live, Mapping) or not live.get("enabled"):
         return None
-    source = SqliteReadOnlySource(live["source_db_path"])
+    source_kind = live.get("source_kind") or ("sqlite_fixture" if live.get("source_db_path") else "g3_sid")
+    if source_kind == "sqlite_fixture":
+        source = SqliteReadOnlySource(live["source_db_path"])
+        account_identity = live.get("account_identity") or config["account_id"]
+        source_identity = live.get("source_identity") or str(Path(live["source_db_path"]).resolve())
+    elif source_kind == "g3_sid":
+        source = G3SidReadOnlySource(session_path=live.get("session_path"),
+                                     auto_session=not bool(live.get("session_path")))
+        account_identity = None
+        source_identity = None
+    else:
+        raise LauncherError("LIVE_INBOUND_SOURCE_KIND_INVALID")
     try:
+        expected_version = live.get("expected_viber_version")
+        if expected_version is not None:
+            desktop = viber_desktop_preflight(config)
+            if desktop.get("version") != expected_version:
+                raise LauncherError("VIBER_BUILD_MISMATCH")
         source.open()
         journal = LiveInboundJournal(live["journal_path"])
         return LiveInboundAdapter(
@@ -114,8 +143,8 @@ def _build_receive_adapter(config: Mapping[str, Any]) -> LiveInboundAdapter | No
             reference_key=_reference_key(live["reference_key"]),
             phone_marker=live["phone_marker"],
             desktop_marker=live["desktop_marker"],
-            account_identity=live.get("account_identity") or config["account_id"],
-            source_identity=live.get("source_identity") or str(Path(live["source_db_path"]).resolve()),
+            account_identity=account_identity or source.account_identity,
+            source_identity=source_identity or source.source_identity,
             source_handle=source,
         )
     except Exception:
@@ -181,6 +210,10 @@ def runtime_preflight(config: Mapping[str, Any], *, runtime_dir: Path | None = N
     live_enabled = isinstance(live, Mapping) and live.get("enabled") is True
     runtime_root = runtime_dir or Path(__file__).resolve().parent
     required_modules = [
+        "g3_process.py",
+        "g3_state.py",
+        "observe_g3.py",
+        "observe_g3_sid.py",
         "p1_bridge_core.py",
         "p1_daemon.py",
         "p1_dispatcher.py",
@@ -188,6 +221,10 @@ def runtime_preflight(config: Mapping[str, Any], *, runtime_dir: Path | None = N
         "p1_live_inbound.py",
         "p1_paired_queries.py",
         "p1_transport.py",
+        "probe_db_schema.py",
+        "probe_key_presence.py",
+        "qt_readonly_fixture.py",
+        "recover_sid_key.py",
         "run_p1_daemon.py",
     ]
     modules = {}
@@ -200,15 +237,36 @@ def runtime_preflight(config: Mapping[str, Any], *, runtime_dir: Path | None = N
     live_status = "disabled"
     live_checks: dict[str, Any] = {}
     if live_enabled:
-        source_path = Path(live["source_db_path"])
+        source_kind = live.get("source_kind") or ("sqlite_fixture" if live.get("source_db_path") else "g3_sid")
         journal_path = Path(live["journal_path"])
+        desktop = viber_desktop_preflight(config)
         live_checks = {
-            "sourceDbExists": source_path.exists() and source_path.is_file(),
+            "sourceKind": source_kind,
             "journalParentExists": journal_path.parent.exists(),
             "phoneMarkerConfigured": isinstance(live.get("phone_marker"), str) and bool(live.get("phone_marker")),
             "desktopMarkerConfigured": isinstance(live.get("desktop_marker"), str) and bool(live.get("desktop_marker")),
+            "viberDesktopPresent": desktop.get("present") is True,
         }
-        live_status = "ready_for_scan" if all(live_checks.values()) else "blocked"
+        if live.get("expected_viber_version") is not None:
+            live_checks["viberBuildMatches"] = desktop.get("version") == live.get("expected_viber_version")
+        if source_kind == "sqlite_fixture":
+            source_path = Path(live["source_db_path"])
+            live_checks["sourceDbExists"] = source_path.exists() and source_path.is_file()
+        elif source_kind == "g3_sid":
+            live_checks["sourceDbPathHidden"] = "source_db_path" not in live
+            live_checks["g3SessionMode"] = "explicit" if live.get("session_path") else "auto"
+            try:
+                from observe_g3_sid import find_single_session
+                if live.get("session_path"):
+                    live_checks["g3SessionAvailable"] = Path(live["session_path"]).is_dir()
+                else:
+                    find_single_session()
+                    live_checks["g3SessionAvailable"] = True
+            except Exception:
+                live_checks["g3SessionAvailable"] = False
+        else:
+            live_checks["sourceKindSupported"] = False
+        live_status = "ready_for_scan" if all(value is not False for value in live_checks.values()) else "blocked"
     return {
         "ok": all(item["present"] for item in modules.values()),
         "bridge_id": config["bridge_id"],
@@ -222,7 +280,8 @@ def runtime_preflight(config: Mapping[str, Any], *, runtime_dir: Path | None = N
         "liveInbound": {
             "enabled": live_enabled,
             "status": live_status,
-            "blockReason": None if live_enabled else "CAPTURE_NOT_CONFIGURED",
+            "blockReason": (None if live_status == "ready_for_scan" else
+                            "CAPTURE_NOT_CONFIGURED" if not live_enabled else "CAPTURE_BLOCKED"),
             **live_checks,
         },
         "sender": {

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.139",
+  "version": "0.81.140",
   "eventGenix": {
-    "releaseLabel": "Каса: X/Z звіти й стійкість Checkbox"
+    "releaseLabel": "Omni: правдивий стан Viber bridge"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

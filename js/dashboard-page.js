@@ -354,6 +354,7 @@ const DashboardPage = (() => {
         'reports_today',
         'director_pnl'
     ]);
+    const WIDGET_DATA_TTL_MS = 90 * 1000;
 
     const ROLE_DASHBOARD_BASE_WIDGETS = {
         creator: ['personal_tasker', 'quick_stats', 'my_focus', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts', 'hr_overview', 'content_pipeline', 'operations'],
@@ -471,8 +472,10 @@ const DashboardPage = (() => {
 
     let _config = createDefaultDashboardConfig();
     let _widgetData = {};
+    let _widgetDataMeta = {};
     const _widgetDataRequests = new Map();
     const _widgetDataContextKeys = new Map();
+    const _widgetInvalidationVersions = new Map();
     let _personalTaskerView = 'assigned_to_me';
     let _boardInteractionMode = BOARD_INTERACTION_MODE;
     let _boardSelectedId = null;
@@ -6261,6 +6264,14 @@ const DashboardPage = (() => {
         };
     }
 
+    function widgetInvalidationVersion(type) {
+        return Number(_widgetInvalidationVersions.get(type) || 0);
+    }
+
+    function bumpWidgetInvalidation(type) {
+        _widgetInvalidationVersions.set(type, widgetInvalidationVersion(type) + 1);
+    }
+
     function dashboardWidgetRequestContext(type) {
         const user = AppState.currentUser || {};
         let sessionGeneration = '';
@@ -6270,13 +6281,15 @@ const DashboardPage = (() => {
         const url = buildWidgetDataUrl(type);
         return {
             url,
+            invalidationVersion: widgetInvalidationVersion(type),
             key: JSON.stringify({
                 type,
                 url,
                 user: String(user.id ?? user.userId ?? user.username ?? ''),
                 role: getEffectiveDashboardRole(),
                 sessionGeneration,
-                business: dashboardBusinessScopeKey()
+                business: dashboardBusinessScopeKey(),
+                invalidationVersion: widgetInvalidationVersion(type)
             })
         };
     }
@@ -6291,7 +6304,7 @@ const DashboardPage = (() => {
         const request = transport.then(async response => ({
             ok: response.ok,
             status: response.status,
-            result: response.ok ? await response.json() : null,
+            result: response.ok ? await response.json().catch(() => ({ success: false, error: 'Invalid JSON' })) : null,
             requestKey: requestContext.key
         })).finally(() => {
             if (_widgetDataRequests.get(requestContext.key) === request) {
@@ -6307,28 +6320,129 @@ const DashboardPage = (() => {
             && Object.prototype.hasOwnProperty.call(_widgetData, type);
     }
 
+    function isWidgetDataFresh(type, requestKey = dashboardWidgetRequestContext(type).key) {
+        if (!hasCurrentWidgetData(type, requestKey)) return false;
+        const fetchedAt = Number(_widgetDataMeta[type]?.fetchedAt || 0);
+        return fetchedAt > 0 && (Date.now() - fetchedAt) <= WIDGET_DATA_TTL_MS;
+    }
+
     function isCurrentWidgetRequest(type, requestKey) {
         return dashboardWidgetRequestContext(type).key === requestKey;
+    }
+
+    function widgetContainersForRender(type, targetContainer = null) {
+        const containers = dashboardWidgetContainers(type);
+        if (targetContainer && !containers.includes(targetContainer)) containers.push(targetContainer);
+        return containers.filter(Boolean);
+    }
+
+    function formatWidgetRefreshTime(timestamp) {
+        if (!timestamp) return '';
+        try {
+            return new Date(timestamp).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+        } catch {
+            return '';
+        }
+    }
+
+    function appendWidgetRefreshMeta(type, container, options = {}) {
+        const timestamp = options.fetchedAt || _widgetDataMeta[type]?.fetchedAt || null;
+        const time = formatWidgetRefreshTime(timestamp);
+        if (!time || !container) return;
+        const staleText = options.stale ? ' · показано останні успішні дані' : '';
+        container.insertAdjacentHTML('beforeend', `<div class="widget-refresh-meta">Оновлено ${escapeHtml(time)}${staleText}</div>`);
+    }
+
+    function renderWidgetData(type, data, container, options = {}) {
+        renderWidgetContent(type, data || {}, container);
+        appendWidgetRefreshMeta(type, container, options);
+        if (options.stale) {
+            container.insertAdjacentHTML('afterbegin', renderWidgetStateMarkup(type, 'stale', {
+                message: options.message || 'Не вдалося оновити. Показано останні успішні дані.',
+                compact: true
+            }));
+        }
+    }
+
+    function renderWidgetDataAcrossContainers(type, data, targetContainer = null, options = {}) {
+        const containers = widgetContainersForRender(type, targetContainer);
+        containers.forEach(container => renderWidgetData(type, data, container, options));
+    }
+
+    function renderWidgetStateMarkup(type, state, options = {}) {
+        const safeType = escapeJsString(type);
+        const labels = {
+            loading: ['Завантаження…', 'Отримую актуальні дані.'],
+            error: ['Не вдалося оновити', 'Це помилка API або мережі, а не порожня статистика.'],
+            denied: ['Недоступно для ролі', 'Цей віджет не відкривається з поточними правами.'],
+            stale: ['Дані можуть бути застарілими', 'Показано останній успішний результат.']
+        };
+        const [title, fallback] = labels[state] || labels.error;
+        const retry = state === 'loading' ? '' : `<button type="button" class="dashboard-btn widget-retry-btn" onclick="DashboardPage.refreshWidget('${safeType}')">Спробувати ще</button>`;
+        const compactClass = options.compact ? ' is-compact' : '';
+        return `
+            <div class="widget-state widget-state-${escapeHtml(state)}${compactClass}" role="${state === 'loading' ? 'status' : 'alert'}">
+                <strong>${escapeHtml(options.title || title)}</strong>
+                <span>${escapeHtml(options.message || fallback)}</span>
+                ${retry}
+            </div>
+        `;
+    }
+
+    function renderWidgetState(type, state, targetContainer = null, options = {}) {
+        widgetContainersForRender(type, targetContainer).forEach(container => {
+            container.innerHTML = renderWidgetStateMarkup(type, state, options);
+        });
+    }
+
+    function updateWidgetSuccess(type, data, requestKey, targetContainer = null) {
+        _widgetData[type] = data || {};
+        _widgetDataContextKeys.set(type, requestKey);
+        _widgetDataMeta[type] = { fetchedAt: Date.now(), error: null };
+        renderWidgetDataAcrossContainers(type, _widgetData[type], targetContainer, { fetchedAt: _widgetDataMeta[type].fetchedAt });
+    }
+
+    function renderWidgetFailure(type, targetContainer, requestKey, error, options = {}) {
+        const hasLastData = Object.prototype.hasOwnProperty.call(_widgetData, type);
+        const message = options.message || error?.message || 'Не вдалося отримати дані.';
+        _widgetDataMeta[type] = {
+            ...(_widgetDataMeta[type] || {}),
+            error: message,
+            failedAt: Date.now()
+        };
+        if (hasLastData) {
+            renderWidgetDataAcrossContainers(type, _widgetData[type], targetContainer, {
+                fetchedAt: _widgetDataMeta[type]?.fetchedAt,
+                stale: true,
+                message
+            });
+            return { staleData: true };
+        }
+        _widgetDataContextKeys.delete(type);
+        delete _widgetDataMeta[type];
+        renderWidgetState(type, options.denied ? 'denied' : 'error', targetContainer, { message });
+        return { staleData: false };
     }
 
     async function loadWidgetData(type, targetContainer = null, options = {}) {
         const container = targetContainer || document.getElementById(`widget-${type}`);
         if (DASHBOARD_REVENUE_WIDGETS.has(type) && !canViewDashboardRevenue()) {
             delete _widgetData[type];
+            delete _widgetDataMeta[type];
             _widgetDataContextKeys.delete(type);
-            if (container) container.innerHTML = '';
-            return;
+            if (container) renderWidgetState(type, 'denied', container, { message: 'Фінансовий віджет недоступний для поточної ролі.' });
+            return { denied: true };
         }
         if (!container) return;
 
         const requestContext = dashboardWidgetRequestContext(type);
-        if (options.force !== true && hasCurrentWidgetData(type, requestContext.key)) {
+        if (options.force !== true && isWidgetDataFresh(type, requestContext.key)) {
             try {
-                renderWidgetContent(type, _widgetData[type], container);
+                renderWidgetData(type, _widgetData[type], container, { fetchedAt: _widgetDataMeta[type]?.fetchedAt });
                 return { cached: true };
             } catch (err) {
                 console.error(`Widget ${type} cached render error:`, err);
-                container.innerHTML = '<div class="widget-empty">Помилка завантаження</div>';
+                renderWidgetState(type, 'error', container, { message: 'Помилка відображення кешованих даних.' });
                 return;
             }
         }
@@ -6337,58 +6451,63 @@ const DashboardPage = (() => {
             return loadFunnelWidget(container, options, requestContext);
         }
 
+        if (!hasCurrentWidgetData(type, requestContext.key)) {
+            renderWidgetState(type, 'loading', container);
+        }
+
         try {
             const response = await requestWidgetData(type, requestContext);
             if (!isCurrentWidgetRequest(type, response.requestKey)) return { stale: true };
+            if (response.status === 403 || response.status === 401) {
+                return renderWidgetFailure(type, container, response.requestKey, new Error('Недоступно для поточної ролі'), { denied: true });
+            }
             if (!response.ok) throw new Error('HTTP ' + response.status);
-            const result = response.result;
+            const result = response.result || {};
 
             if (result.success) {
-                _widgetData[type] = result.data;
-                _widgetDataContextKeys.set(type, response.requestKey);
-                renderWidgetContent(type, result.data, container);
-            } else {
-                _widgetDataContextKeys.delete(type);
-                container.innerHTML = '<div class="widget-empty">Помилка завантаження</div>';
+                updateWidgetSuccess(type, result.data || {}, response.requestKey, container);
+                return { success: true };
             }
+            return renderWidgetFailure(type, container, response.requestKey, new Error(result.error || 'API повернув помилку віджета'));
         } catch (err) {
             if (!isCurrentWidgetRequest(type, requestContext.key)) return { stale: true };
-            _widgetDataContextKeys.delete(type);
             console.error(`Widget ${type} load error:`, err);
-            container.innerHTML = '<div class="widget-empty">Помилка з\'єднання</div>';
+            return renderWidgetFailure(type, container, requestContext.key, err, { message: err.message || 'Помилка з’єднання' });
         }
     }
 
     async function loadFunnelWidget(container, options = {}, requestContext = dashboardWidgetRequestContext('funnel')) {
-        if (options.force !== true && hasCurrentWidgetData('funnel', requestContext.key)) {
+        if (options.force !== true && isWidgetDataFresh('funnel', requestContext.key)) {
             try {
-                renderCompactFunnelWidget(_widgetData.funnel, container);
+                renderWidgetData('funnel', _widgetData.funnel, container, { fetchedAt: _widgetDataMeta.funnel?.fetchedAt });
                 return { cached: true };
             } catch (err) {
                 console.error('Funnel widget cached render error:', err);
-                container.innerHTML = '<div class="widget-empty">Не вдалося завантажити воронку</div>';
+                renderWidgetState('funnel', 'error', container, { message: 'Не вдалося відобразити кеш воронки.' });
                 return;
             }
+        }
+        if (!hasCurrentWidgetData('funnel', requestContext.key)) {
+            renderWidgetState('funnel', 'loading', container);
         }
         try {
             const response = await requestWidgetData('funnel', requestContext);
             if (!isCurrentWidgetRequest('funnel', response.requestKey)) return { stale: true };
             if (response.status === 403 || response.status === 401) {
-                _widgetDataContextKeys.delete('funnel');
-                container.innerHTML = '<div class="widget-empty">Воронка недоступна для вашої ролі</div>';
-                return;
+                return renderWidgetFailure('funnel', container, response.requestKey, new Error('Воронка недоступна для вашої ролі'), { denied: true });
             }
             if (!response.ok) throw new Error('HTTP ' + response.status);
-            const result = response.result;
+            const result = response.result || {};
+            if (result.success === false) {
+                return renderWidgetFailure('funnel', container, response.requestKey, new Error(result.error || 'API повернув помилку воронки'));
+            }
             const queue = result.data || {};
-            _widgetData.funnel = queue;
-            _widgetDataContextKeys.set('funnel', response.requestKey);
-            renderCompactFunnelWidget(queue, container);
+            updateWidgetSuccess('funnel', queue, response.requestKey, container);
+            return { success: true };
         } catch (err) {
             if (!isCurrentWidgetRequest('funnel', requestContext.key)) return { stale: true };
-            _widgetDataContextKeys.delete('funnel');
             console.error('Funnel widget load error:', err);
-            container.innerHTML = '<div class="widget-empty">Не вдалося завантажити воронку</div>';
+            return renderWidgetFailure('funnel', container, requestContext.key, err, { message: err.message || 'Не вдалося завантажити воронку' });
         }
     }
 
@@ -9042,16 +9161,63 @@ const DashboardPage = (() => {
         return containers;
     }
 
-    function refreshWidget(type) {
+    function visibleDashboardWidgetTypes() {
+        const types = new Set();
+        document.querySelectorAll('[data-widget], [data-widget-type]').forEach(element => {
+            const type = element.dataset?.widget || element.dataset?.widgetType;
+            if (!type || !WIDGET_DEFS[type]) return;
+            if (element.closest('.hidden, [hidden], [aria-hidden="true"]')) return;
+            types.add(type);
+        });
+        return [...types];
+    }
+
+    function invalidateWidgetData(types) {
+        const list = types === 'all'
+            ? [...new Set([...Object.keys(WIDGET_DEFS), ...Object.keys(_widgetData)])]
+            : (Array.isArray(types) ? types : [types]);
+        list.filter(Boolean).forEach(type => {
+            bumpWidgetInvalidation(type);
+            delete _widgetData[type];
+            delete _widgetDataMeta[type];
+            _widgetDataContextKeys.delete(type);
+        });
+    }
+
+    function refreshWidget(type, options = {}) {
+        if (!type || !WIDGET_DEFS[type]) return Promise.resolve([]);
+        if (options.invalidate !== false) bumpWidgetInvalidation(type);
+        const containers = dashboardWidgetContainers(type);
+        if (!containers.length) return Promise.resolve([]);
         return Promise.allSettled(
-            dashboardWidgetContainers(type).map(container => loadWidgetData(type, container, { force: true }))
+            containers.map(container => loadWidgetData(type, container, { force: true }))
         );
     }
 
     const TASK_RELATED_WIDGET_TYPES = ['tasks', 'personal_tasker', 'my_focus', 'team_tasks', 'task_health'];
+    const ALERT_RELATED_WIDGET_TYPES = ['alerts', 'exceptions', 'event_risk_summary'];
 
     function refreshTaskRelatedWidgets() {
         return Promise.allSettled(TASK_RELATED_WIDGET_TYPES.map(type => refreshWidget(type)));
+    }
+
+    function refreshAlertRelatedWidgets() {
+        return Promise.allSettled(ALERT_RELATED_WIDGET_TYPES.map(type => refreshWidget(type)));
+    }
+
+    function refreshStaleVisibleWidgets() {
+        if (document.hidden) return Promise.resolve([]);
+        const staleTypes = visibleDashboardWidgetTypes()
+            .filter(type => !isWidgetDataFresh(type, dashboardWidgetRequestContext(type).key));
+        return Promise.allSettled(staleTypes.map(type => {
+            const container = dashboardWidgetContainers(type)[0];
+            return container ? loadWidgetData(type, container) : Promise.resolve();
+        }));
+    }
+
+    function handleDashboardContextChanged() {
+        invalidateWidgetData('all');
+        return refreshStaleVisibleWidgets();
     }
 
     // Helpers
@@ -9110,18 +9276,35 @@ const DashboardPage = (() => {
 
     window.addEventListener('rolePreviewChanged', () => {
         if (!_config) return;
+        invalidateWidgetData('all');
         renderWidgets();
         updateDashboardRolePreviewControl();
         announceDashboardContextToAssistant();
     });
     window.addEventListener('workingRoleChanged', () => {
         if (!_config) return;
+        invalidateWidgetData('all');
         renderWidgets();
         updateDashboardRolePreviewControl();
         announceDashboardContextToAssistant();
     });
     window.addEventListener('crm:tasks-updated', () => {
         refreshTaskRelatedWidgets();
+    });
+    window.addEventListener('crm:alerts-updated', () => {
+        refreshAlertRelatedWidgets();
+    });
+    window.addEventListener('app:user-changed', () => {
+        handleDashboardContextChanged();
+    });
+    window.addEventListener('timeline:business-context-changed', () => {
+        handleDashboardContextChanged();
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refreshStaleVisibleWidgets();
+    });
+    window.addEventListener('pageshow', event => {
+        if (event.persisted) refreshStaleVisibleWidgets();
     });
 
     return {

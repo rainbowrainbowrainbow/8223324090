@@ -21,6 +21,10 @@ function instrumentDashboardSource() {
         refreshWidget,
         loadWidgetData,
         getWidgetData(type) { return _widgetData[type]; },
+        getWidgetMeta(type) { return _widgetDataMeta[type]; },
+        expireWidgetData(type) {
+            if (_widgetDataMeta[type]) _widgetDataMeta[type].fetchedAt = Date.now() - WIDGET_DATA_TTL_MS - 1000;
+        },
         getPendingRequestCount() {
             return typeof _widgetDataRequests === 'undefined' ? -1 : _widgetDataRequests.size;
         }
@@ -246,7 +250,7 @@ test('failed widget reads leave no poisoned in-flight or fulfilled entry and can
     harness.dom.window.document.getElementById('dashboardGrid').innerHTML = '<div id="widget-tasks"></div>';
 
     await harness.api.loadWidgetData('tasks');
-    assert.match(harness.dom.window.document.getElementById('widget-tasks').textContent, /Помилка/);
+    assert.match(harness.dom.window.document.getElementById('widget-tasks').textContent, /Не вдалося|Помилка/);
     assert.equal(harness.api.getPendingRequestCount(), 0);
 
     await harness.api.loadWidgetData('tasks');
@@ -254,6 +258,132 @@ test('failed widget reads leave no poisoned in-flight or fulfilled entry and can
     assert.equal(harness.api.getWidgetData('tasks').marker, 'retry-ok');
     assert.equal(harness.api.getPendingRequestCount(), 0);
     harness.dom.window.close();
+});
+
+test('failed refresh keeps last successful widget data with retry instead of empty statistics', async () => {
+    const harness = loadDashboardHarness();
+    let shouldFail = false;
+    harness.setFetchImplementation(async () => {
+        if (shouldFail) return response({}, { ok: false, status: 503 });
+        return response({ temperature: 11, city: 'Kyiv' });
+    });
+    harness.dom.window.document.getElementById('dashboardGrid').innerHTML = '<div id="widget-weather"></div>';
+
+    await harness.api.loadWidgetData('weather');
+    assert.match(harness.dom.window.document.getElementById('widget-weather').textContent, /11°/);
+
+    shouldFail = true;
+    await harness.api.refreshWidget('weather');
+
+    const text = harness.dom.window.document.getElementById('widget-weather').textContent;
+    assert.match(text, /11°/);
+    assert.match(text, /останн/i);
+    assert.ok(harness.dom.window.document.querySelector('#widget-weather .widget-retry-btn'));
+    harness.dom.window.close();
+});
+
+test('visibility return refreshes only stale visible widgets without request avalanche', async () => {
+    const harness = loadDashboardHarness();
+    harness.api.setConfig(boardConfig(['tasks', 'weather']));
+
+    harness.api.renderWidgets();
+    await flushHydration();
+    harness.api.expireWidgetData('weather');
+    harness.dom.window.document.dispatchEvent(new harness.dom.window.Event('visibilitychange'));
+    await flushHydration();
+
+    const counts = widgetRequestCounts(harness.requests);
+    assert.equal(counts['/api/dashboard/widgets/tasks?businessContext=event_genix'], 1);
+    assert.equal(counts['/api/dashboard/widgets/weather?businessContext=event_genix'], 2);
+    assert.equal(counts['/api/dashboard/widgets/funnel?businessContext=event_genix'], 1);
+    harness.dom.window.close();
+});
+
+test('task and alert CRM events refresh existing visible widgets through current event names', async () => {
+    const harness = loadDashboardHarness();
+    let taskTitle = 'Old task';
+    let alertTitle = 'Old alert';
+    harness.setFetchImplementation(async url => {
+        if (url.includes('/widgets/tasks')) return response({ tasks: [{ id: 1, title: taskTitle, status: 'todo' }] });
+        if (url.includes('/widgets/alerts')) return response({ alerts: [{ title: alertTitle, level: 'warning' }] });
+        return response({});
+    });
+    harness.dom.window.document.getElementById('dashboardGrid').innerHTML = `
+        <section data-widget="tasks"><div id="widget-tasks"></div></section>
+        <section data-widget="alerts"><div id="widget-alerts"></div></section>
+        <section data-widget-type="tasks"><div class="board-widget-live"></div></section>
+        <section data-widget-type="tasks"><div class="board-widget-live"></div></section>
+    `;
+    await Promise.all([
+        harness.api.loadWidgetData('tasks'),
+        harness.api.loadWidgetData('alerts')
+    ]);
+    assert.match(harness.dom.window.document.getElementById('widget-alerts').textContent, /Old alert/);
+
+    taskTitle = 'New task';
+    alertTitle = 'New alert';
+    harness.dom.window.dispatchEvent(new harness.dom.window.CustomEvent('crm:tasks-updated'));
+    harness.dom.window.dispatchEvent(new harness.dom.window.CustomEvent('crm:alerts-updated'));
+    await flushHydration();
+    await flushHydration();
+
+    const taskContainers = [
+        harness.dom.window.document.getElementById('widget-tasks'),
+        ...harness.dom.window.document.querySelectorAll('[data-widget-type="tasks"] .board-widget-live')
+    ];
+    taskContainers.forEach(container => assert.match(container.textContent, /New task/));
+    assert.match(harness.dom.window.document.getElementById('widget-alerts').textContent, /New alert/);
+    const counts = widgetRequestCounts(harness.requests);
+    assert.equal(counts['/api/dashboard/widgets/tasks?businessContext=event_genix'], 2);
+    assert.equal(counts['/api/dashboard/widgets/alerts?businessContext=event_genix'], 2);
+    harness.dom.window.close();
+});
+
+test('stale in-flight widget response after invalidation cannot restore old data', async () => {
+    const harness = loadDashboardHarness();
+    const pending = [];
+    harness.setFetchImplementation(url => {
+        const request = deferred();
+        pending.push({ url, ...request });
+        return request.promise;
+    });
+    harness.dom.window.document.getElementById('dashboardGrid').innerHTML = '<div id="widget-alerts"></div>';
+
+    const oldLoad = harness.api.loadWidgetData('alerts');
+    assert.equal(pending.length, 1);
+    harness.dom.window.dispatchEvent(new harness.dom.window.CustomEvent('crm:alerts-updated'));
+    await flushHydration();
+    assert.equal(pending.length, 2);
+
+    pending[1].resolve(response({ alerts: [{ title: 'fresh alert', level: 'warning' }] }));
+    await pending[1].promise;
+    await flushHydration();
+    pending[0].resolve(response({ alerts: [{ title: 'old alert', level: 'critical' }] }));
+    await oldLoad;
+
+    assert.match(harness.dom.window.document.getElementById('widget-alerts').textContent, /fresh alert/);
+    assert.doesNotMatch(harness.dom.window.document.getElementById('widget-alerts').textContent, /old alert/);
+    harness.dom.window.close();
+});
+
+test('funnel authorization errors render denied state while finance widgets keep access guard', async () => {
+    const harness = loadDashboardHarness();
+    harness.setFetchImplementation(async url => {
+        if (url.includes('/widgets/funnel')) return response({}, { ok: false, status: 403 });
+        return response({});
+    });
+    harness.dom.window.document.getElementById('dashboardGrid').innerHTML = '<div id="widget-funnel"></div>';
+
+    await harness.api.loadWidgetData('funnel');
+    assert.match(harness.dom.window.document.getElementById('widget-funnel').textContent, /Воронка недоступна|Недоступно/);
+
+    const employeeHarness = loadDashboardHarness({ role: 'employee' });
+    employeeHarness.api.setConfig(boardConfig(['finance_today']));
+    employeeHarness.api.renderWidgets();
+    await flushHydration();
+    assert.equal(employeeHarness.requests.some(url => url.includes('/widgets/finance_today')), false);
+    harness.dom.window.close();
+    employeeHarness.dom.window.close();
 });
 
 test('new context gets one fresh request and stale old response cannot overwrite it', async () => {

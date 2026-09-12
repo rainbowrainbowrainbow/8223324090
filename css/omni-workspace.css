@@ -189,3 +189,57 @@
 .omni-account-preflight-grid { display: flex; flex-wrap: wrap; gap: 5px; }
 .omni-account-preflight-item { border-radius: 999px; padding: 3px 7px; background: rgba(239,68,68,0.12); color: #B91C1C; font-size: 10px; font-weight: 900; }
 .omni-account-preflight-item.present { background: rgba(16,185,129,0.16); color: #047857; }
+
+.omni-bridge-stages {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.omni-bridge-stage {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 12px;
+    padding: 10px;
+    background: rgba(15, 23, 42, 0.04);
+    min-width: 0;
+}
+
+.omni-bridge-stage strong,
+.omni-bridge-next strong,
+.omni-bridge-stage span,
+.omni-bridge-next span {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.omni-bridge-stage span,
+.omni-bridge-next span {
+    margin-top: 4px;
+    color: var(--text-secondary, #64748b);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.omni-bridge-stage.done {
+    border-color: rgba(16, 185, 129, 0.34);
+    background: rgba(16, 185, 129, 0.10);
+}
+
+.omni-bridge-stage.waiting {
+    border-color: rgba(245, 158, 11, 0.34);
+    background: rgba(245, 158, 11, 0.12);
+}
+
+.omni-bridge-stage.blocked {
+    border-color: rgba(239, 68, 68, 0.28);
+    background: rgba(239, 68, 68, 0.10);
+}
+
+.omni-bridge-next {
+    margin: 12px 0;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(16, 185, 129, 0.22);
+    background: rgba(16, 185, 129, 0.08);
+}

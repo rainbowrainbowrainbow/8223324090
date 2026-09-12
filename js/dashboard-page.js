@@ -1630,29 +1630,74 @@ const DashboardPage = (() => {
         window.visualViewport?.addEventListener?.('scroll', syncDashboardViewportHeight, { passive: true });
     }
 
+    function collectDashboardFallbackWidgetKeys() {
+        const seen = new Set();
+        const keys = [];
+        const addKey = rawKey => {
+            const key = String(rawKey || '').trim();
+            if (!key || seen.has(key) || !WIDGET_DEFS[key] || !canUseWidget(key)) return;
+            seen.add(key);
+            keys.push(key);
+        };
+        const items = Array.isArray(_config?.boardState?.items) ? _config.boardState.items : [];
+        for (const item of items) {
+            if (!item || item.type !== 'widget' || item.hidden === true) continue;
+            addKey(item.widgetType || item.widget || item.key);
+        }
+        normalizeDashboardWidgets(_config?.widgets || []).forEach(addKey);
+        return keys;
+    }
+
+    function retryDashboardBoardRender() {
+        const shell = document.getElementById('dashboardBoardShell');
+        const grid = document.getElementById('dashboardGrid');
+        if (shell) shell.classList.remove('dashboard-render-fallback');
+        if (grid) {
+            grid.classList.add('dashboard-compat-widget-cache', 'hidden');
+            grid.setAttribute('aria-hidden', 'true');
+        }
+        return renderWidgetsSafely('render-retry');
+    }
+
     function renderDashboardOpenFallback(error, source = 'render') {
+        if (_dashboardConfigWritable === false) {
+            renderDashboardConfigLoadError(_dashboardConfigLoadError || error || new Error('Dashboard config не завантажився'));
+            return;
+        }
         revealDashboardShell();
         const shell = document.getElementById('dashboardBoardShell');
         const canvas = document.getElementById('dashboardBoardCanvas');
         const grid = document.getElementById('dashboardGrid');
-        if (grid) {
-            grid.classList.add('hidden');
-            grid.setAttribute('aria-hidden', 'true');
+        const widgetKeys = collectDashboardFallbackWidgetKeys();
+        if (shell) {
+            shell.classList.remove('hidden');
+            shell.classList.add('dashboard-render-fallback');
         }
-        if (shell) shell.classList.remove('hidden');
         if (canvas) {
             canvas.innerHTML = `
                 <div class="dashboard-board-warning" role="alert" data-dashboard-open-fallback="${escapeHtml(source)}">
-                    <strong>Dashboard відкрився у безпечному режимі</strong>
-                    <span>Board-сцена не змогла повністю відрендеритись на цьому пристрої. Оновіть сторінку або відкрийте з desktop, поки ми зберігаємо доступ до CRM shell.</span>
+                    <strong>Dashboard відкрився у резервному перегляді</strong>
+                    <span>Board-сцена не змогла відрендеритись, але доступні віджети поточної дошки залишаються нижче. Це не змінює дошку й не зберігає новий стан.</span>
+                    <button type="button" class="dashboard-btn primary" onclick="DashboardPage.retryDashboardBoardRender()">Повторити малювання дошки</button>
                 </div>
             `;
+        }
+        if (grid) {
+            renderFlatWidgetGrid(grid, {
+                fallback: true,
+                hydrateData: true,
+                widgetKeys,
+                source,
+                error
+            });
+            grid.classList.remove('hidden', 'dashboard-compat-widget-cache');
+            grid.removeAttribute('aria-hidden');
             return;
         }
         if (typeof renderStandaloneFatalError === 'function') {
             renderStandaloneFatalError({
                 moduleName: 'dashboard',
-                title: 'Dashboard відкрився у безпечному режимі',
+                title: 'Dashboard відкрився у резервному перегляді',
                 message: 'Board-сцена не змогла повністю відрендеритись на цьому пристрої.',
                 error
             });
@@ -3628,18 +3673,34 @@ const DashboardPage = (() => {
     }
 
     function renderFlatWidgetGrid(grid, options = {}) {
-        grid.className = 'dashboard-grid';
-        const widgets = normalizeDashboardWidgets(_config.widgets || []);
+        grid.className = options.fallback ? 'dashboard-grid dashboard-fallback-widget-grid' : 'dashboard-grid';
+        const widgets = Array.isArray(options.widgetKeys)
+            ? normalizeDashboardWidgets(options.widgetKeys)
+            : normalizeDashboardWidgets(_config.widgets || []);
         grid.innerHTML = '';
+        let renderedCount = 0;
+
+        if (options.fallback) {
+            grid.insertAdjacentHTML('beforeend', `
+                <section class="dashboard-fallback-banner" role="status" aria-live="polite">
+                    <div>
+                        <strong>Резервний перегляд віджетів</strong>
+                        <span>Показую видимі дозволені віджети з поточної дошки. Координати, boardState і серверна конфігурація не змінюються.</span>
+                    </div>
+                    <button type="button" class="dashboard-btn" onclick="DashboardPage.retryDashboardBoardRender()">Повторити board</button>
+                </section>
+            `);
+        }
 
         for (const widgetKey of widgets) {
             if (!canUseWidget(widgetKey)) continue;
             grid.insertAdjacentHTML('beforeend', renderSceneWidgetCard(widgetKey, 'default'));
+            renderedCount += 1;
             if (options.hydrateData !== false) loadWidgetData(widgetKey);
         }
 
-        if (grid.children.length === 0) {
-            grid.innerHTML = '<div class="widget-empty">Немає віджетів. Натисніть "Налаштувати", щоб додати.</div>';
+        if (renderedCount === 0) {
+            grid.insertAdjacentHTML('beforeend', '<div class="widget-empty">Немає доступних віджетів для резервного перегляду.</div>');
         }
     }
 
@@ -3865,7 +3926,7 @@ const DashboardPage = (() => {
         const shell = document.getElementById('dashboardBoardShell');
         const canvas = document.getElementById('dashboardBoardCanvas');
         if (!shell || !canvas || !_config) return;
-        shell.classList.remove('hidden');
+        shell.classList.remove('hidden', 'dashboard-render-fallback');
         syncBoardWorkspaceMode();
         const activeTool = normalizeBoardTool(_config.boardState?.activeTool || 'select');
         const activeFamily = getBoardToolFamily(activeTool);
@@ -9370,6 +9431,7 @@ const DashboardPage = (() => {
         restoreDeferredBoardDraft,
         discardDeferredBoardDraft,
         retryConfigLoad,
+        retryDashboardBoardRender,
         duplicateBoardItem,
         deleteBoardItem,
         changeBoardItemZ,

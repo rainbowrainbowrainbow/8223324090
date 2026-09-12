@@ -308,6 +308,63 @@
     line-height: 1.45;
 }
 
+.dashboard-board-shell.dashboard-render-fallback {
+    min-height: 0;
+    overflow: visible;
+    background:
+        radial-gradient(circle at 20% 10%, rgba(16, 185, 129, 0.08), transparent 34%),
+        rgba(248, 250, 252, 0.94);
+}
+
+.dashboard-render-fallback .dashboard-board-canvas {
+    min-width: 0;
+    min-height: 0;
+    padding: 16px;
+}
+
+.dashboard-render-fallback .dashboard-board-warning {
+    position: static;
+    width: min(760px, 100%);
+    margin: 0 auto;
+    transform: none;
+}
+
+.dashboard-fallback-widget-grid {
+    margin-top: 16px;
+}
+
+.dashboard-fallback-banner {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px solid rgba(16, 185, 129, 0.20);
+    border-radius: 16px;
+    background:
+        linear-gradient(135deg, rgba(236, 253, 245, 0.92), rgba(240, 253, 250, 0.76));
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+}
+
+.dashboard-fallback-banner div {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.dashboard-fallback-banner strong {
+    color: #0f766e;
+    font-size: 15px;
+    font-weight: 950;
+}
+
+.dashboard-fallback-banner span {
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
 .dashboard-board-empty-actions {
     display: flex;
     gap: 8px;
@@ -1332,6 +1389,27 @@ body.dark-mode .board-frame-label {
     color: #94a3b8;
 }
 
+body.dark-mode .dashboard-board-shell.dashboard-render-fallback {
+    background:
+        radial-gradient(circle at 20% 10%, rgba(52, 211, 153, 0.10), transparent 34%),
+        rgba(15, 23, 42, 0.82);
+}
+
+body.dark-mode .dashboard-fallback-banner {
+    border-color: rgba(52, 211, 153, 0.18);
+    background:
+        linear-gradient(135deg, rgba(20, 83, 45, 0.46), rgba(15, 23, 42, 0.70));
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+}
+
+body.dark-mode .dashboard-fallback-banner strong {
+    color: #6ee7b7;
+}
+
+body.dark-mode .dashboard-fallback-banner span {
+    color: #cbd5e1;
+}
+
 @media (max-width: 1100px) {
     .dashboard-workspace-toolbar {
         grid-template-columns: 1fr;
@@ -1378,6 +1456,9 @@ body.dark-mode .board-frame-label {
 }
 
 .dashboard-workspace-stage {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     display: grid;
     grid-template-columns: 58px minmax(0, 1fr);
     gap: 10px;
@@ -1386,6 +1467,8 @@ body.dark-mode .board-frame-label {
 }
 
 .dashboard-workspace-stage .dashboard-board-shell {
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
     margin-bottom: 0;
 }
@@ -1747,6 +1830,19 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
         height: 520px;
         height: clamp(420px, calc(var(--eg-viewport-height, 100dvh) - 168px), 560px);
         min-height: 0;
+        overflow-x: auto;
+        overflow-y: auto;
+        touch-action: pan-x pan-y;
+    }
+
+    .dashboard-workspace-stage .dashboard-board-shell.dashboard-render-fallback {
+        height: auto;
+        overflow: visible;
+    }
+
+    .dashboard-fallback-banner {
+        align-items: stretch;
+        flex-direction: column;
     }
 
     .dashboard-board-canvas {
@@ -1790,5 +1886,17 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
         min-width: 44px !important;
         height: 44px !important;
         min-height: 44px !important;
+    }
+
+    .dashboard-actions .dashboard-btn,
+    .dashboard-fallback-banner .dashboard-btn,
+    .dashboard-board-warning .dashboard-btn {
+        flex: 1 1 145px;
+        justify-content: center;
+        text-align: center;
+    }
+
+    .dashboard-render-fallback .dashboard-board-canvas {
+        padding: 12px;
     }
 }

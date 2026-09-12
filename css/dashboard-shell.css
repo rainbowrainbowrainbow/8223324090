@@ -3,7 +3,17 @@
  */
 
 /* Dashboard grid layout */
+.dashboard-page,
+.dashboard-page *,
+.dashboard-page *::before,
+.dashboard-page *::after {
+    box-sizing: border-box;
+}
+
 .dashboard-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     padding: 16px;
     min-height: calc(100vh - 86px);
     min-height: calc(100dvh - 86px);
@@ -15,6 +25,9 @@
 }
 
 .dashboard-header {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -494,6 +507,7 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 }
 
 .dashboard-actions {
+    min-width: 0;
     display: flex;
     gap: 8px;
     align-items: center;
@@ -727,6 +741,9 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 }
 
 .dashboard-workspace-toolbar {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     display: grid;
     grid-template-columns: minmax(190px, 250px) minmax(0, 1fr);
     align-items: stretch;

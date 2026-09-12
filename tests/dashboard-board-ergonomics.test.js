@@ -514,7 +514,10 @@ test('dashboard board persistence path stays canonical Postgres and excludes Sup
     assert.match(migration, /CREATE TABLE IF NOT EXISTS dashboard_configs/);
     assert.match(migration, /layout JSONB DEFAULT '\{\}'/);
     assert.match(pageJs, /fetch\('\/api\/dashboard\/config'/);
-    assert.match(pageJs, /layout:\s*\{[\s\S]*boardState: patch\.boardState \|\| _config\.boardState/);
+    assert.match(pageJs, /function buildDashboardConfigPayload/);
+    assert.match(pageJs, /const nextBoardState = patch\.boardState \|\| _config\.boardState/);
+    assert.match(pageJs, /layout:\s*\{[\s\S]*boardState: nextBoardState/);
+    assert.match(pageJs, /queueDashboardConfigSave\(\{ payload, revision, context \}\)/);
 
     for (const source of [routeJs, pageJs]) {
         assert.doesNotMatch(source, /@supabase\/supabase-js/);
@@ -745,7 +748,8 @@ test('dashboard revenue widgets require real capability and mixed widgets keep o
     deniedContainer.textContent = 'stale financial content';
     await revenueTest.loadWidgetData('director_pnl', deniedContainer);
     assert.equal(fetchCalls, 0);
-    assert.equal(deniedContainer.innerHTML, '');
+    assert.match(deniedContainer.textContent, /Недоступно для ролі/);
+    assert.match(deniedContainer.textContent, /Фінансовий віджет недоступний/);
 
     realAllowed = true;
     previewAllowed = false;

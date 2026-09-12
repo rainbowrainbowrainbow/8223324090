@@ -349,3 +349,75 @@ Boundaries preserved:
 - No Meta subscription, production secret, production env var or provider setting was changed.
 - No external WhatsApp messages were sent.
 - Live QA used test credentials and a synthetic Codex Omni conversation only.
+
+## OMNI-TD7 — post-release cleanup closure
+
+Status: released to production as `v0.81.133 — Omni: закриття post-release хвостів TD7`.
+
+Purpose:
+
+- Close the safe post-release dependency audit tail after OMNI-TD6.
+- Commit the manager operator guide for the Omni chat-to-lead flow.
+- Keep risky major upgrades out of this release.
+
+Released package:
+
+- Safe dependency lock refresh after `npm audit`.
+- `qs` pinned through npm override to stay on Express 4 while resolving the current audit finding; forbidden `express 4 → 5` major upgrade was not performed.
+- Manager guide added at `docs/OMNI_CHAT_TO_LEAD_OPERATOR_GUIDE.md`.
+- Ukrainian changelog and release marker updated.
+
+Evidence:
+
+- Release SHA: `531ab8923f77c06719b51ab386a3368aafa94063`.
+- GitHub Actions CI run `34691030129` passed for the exact SHA.
+- Railway release completed through `release:railway-up`.
+- Live `/api/version` returned `v0.81.133 — Omni: закриття post-release хвостів TD7 @ 531ab8923f77`, branch `codex/eventgenix-production`, metadata `manifest`.
+- Live `/api/health` returned `status=ok`, `database=connected`.
+- Live `omni.html` returned `200` and included `Створити лід`, `AI-помічник`, and `v=0.81.133`.
+
+Verification:
+
+- `npm audit --json` — `0 vulnerabilities`.
+- `npm audit --omit=dev --json` — `0 vulnerabilities`.
+- `npm test` — passed.
+- `git diff --check` — passed.
+
+Boundaries preserved:
+
+- No production secrets/settings were changed.
+- No WhatsApp number, Meta subscription, or production messages were touched.
+- Risky major upgrades remain a separate future task.
+
+## OMNI-WA1 — controlled WhatsApp activation packet
+
+Status: docs-only activation packet completed, committed and pushed. Production WhatsApp account activation remains `ACTIVATION_PENDING`.
+
+Purpose:
+
+- Prepare the operator-facing activation packet for a real WhatsApp Business number.
+- Keep production truthful and disconnected until the owner explicitly approves real activation scope.
+
+Delivered:
+
+- Updated `docs/integrations/whatsapp/ACTIVATION_RUNBOOK.md` with current production preflight evidence, required configuration categories, owner/operator checklist, Codex-after-approval boundaries, code-level fixture gates, controlled inbound/outbound activation scenario, and rollback/hold conditions.
+- Recorded the read-only live preflight for `event_genix` and `maysternya_doli`.
+- Confirmed WhatsApp remains `disconnected`, `sendCapable=false`, `receiveCapable=false` for both contexts.
+- Confirmed preflight remains redacted/read-only: present `callbackUrl`; missing `wabaId`, `phoneNumberId`, `accessToken`, `appSecret`, `verifyToken`.
+- Confirmed unsigned `POST /api/omni/webhook/whatsapp` returns `401`.
+
+Evidence:
+
+- WA1 docs SHA: `c6c5cc48ef9307e05583032cdf7f82de6f743fcc`.
+- GitHub Actions CI run `34692409807` passed for the exact SHA.
+- Targeted local Omni tests passed after rerun outside the Windows sandbox: `node --test tests/omni-hardening.test.js tests/omni-send-truth.test.js tests/omni-provider-lifecycle.test.js`, 71/71.
+- `git diff --check` passed.
+
+Boundaries preserved:
+
+- No Railway env vars, secrets, provider settings, Meta subscriptions, real WhatsApp number, or production messages were changed.
+- No deploy/version bump was required for the WA1 runbook commit because it is docs-only.
+
+Remaining external activation dependency:
+
+To move from `ACTIVATION_PENDING` to `LIVE_CONNECTED`, the owner must provide and explicitly approve the real activation scope: target business context, real WhatsApp number, WABA ID, Phone Number ID, production access token, Meta app secret, webhook verify token, callback URL confirmation, permission to change production secrets/settings, permission to subscribe Meta webhooks, and permission for one inbound plus one outbound controlled test message.

@@ -498,6 +498,11 @@ const DashboardPage = (() => {
     let _boardLegacyUpgradePending = false;
     let _boardKeyboardBound = false;
     let _boardRecoveryKey = 'eg_dashboard_board_draft_guest';
+    let _dashboardConfigWritable = true;
+    let _dashboardConfigLoadError = null;
+    let _dashboardLocalRevision = 0;
+    let _dashboardLastConfirmedRevision = 0;
+    let _dashboardSaveSequence = Promise.resolve();
     let _dashboardInitPromise = null;
     let _dashboardViewportBound = false;
     let _workQueueReplyScope = normalizeWorkQueueReplyScope(localStorage.getItem('eg_reply_backlog_scope'));
@@ -950,10 +955,196 @@ const DashboardPage = (() => {
         return next;
     }
 
-    function setBoardRecoveryKey() {
-        const user = AppState.currentUser || {};
+    function dashboardRecoveryKeyForUser(user = AppState.currentUser || {}) {
         const id = user.id || user.username || user.name || 'guest';
-        _boardRecoveryKey = `eg_dashboard_board_draft_${id}`;
+        return `eg_dashboard_board_draft_${id}`;
+    }
+
+    function setBoardRecoveryKey() {
+        _boardRecoveryKey = dashboardRecoveryKeyForUser(AppState.currentUser || {});
+    }
+
+    function deferredBoardRecoveryKey(key = _boardRecoveryKey) {
+        return `${key}_deferred`;
+    }
+
+    function readBoardDraft(key = _boardRecoveryKey) {
+        try {
+            return JSON.parse(localStorage.getItem(key) || 'null');
+        } catch {
+            try { localStorage.removeItem(key); } catch {}
+            return null;
+        }
+    }
+
+    function writeBoardDraft(key, draft) {
+        try {
+            localStorage.setItem(key, JSON.stringify(draft));
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function removeBoardDraft(key) {
+        try { localStorage.removeItem(key); } catch {}
+    }
+
+    function deferBoardDraft(draft) {
+        if (!draft || !draft.boardState) return;
+        writeBoardDraft(deferredBoardRecoveryKey(), {
+            ...draft,
+            deferredAt: new Date().toISOString()
+        });
+    }
+
+    function touchDashboardConfigRevision() {
+        _dashboardLocalRevision += 1;
+        return _dashboardLocalRevision;
+    }
+
+    function currentDashboardUserIdentity() {
+        const user = AppState.currentUser || {};
+        return {
+            id: user.id == null ? '' : String(user.id),
+            username: String(user.username || ''),
+            name: String(user.name || '')
+        };
+    }
+
+    function captureDashboardSaveContext() {
+        const user = AppState.currentUser || {};
+        const sessionSnapshot = typeof captureApiAuthSessionSnapshot === 'function'
+            ? captureApiAuthSessionSnapshot(user)
+            : typeof captureAuthBootstrapSession === 'function'
+                ? captureAuthBootstrapSession(user)
+                : null;
+        return {
+            authToken: localStorage.getItem('pzp_token') || '',
+            generation: localStorage.getItem('pzp_auth_session_generation') || '',
+            recoveryKey: _boardRecoveryKey,
+            expectedRecoveryKey: dashboardRecoveryKeyForUser(user),
+            userIdentity: currentDashboardUserIdentity(),
+            sessionSnapshot
+        };
+    }
+
+    function isDashboardSaveContextCurrent(context) {
+        if (!context) return false;
+        if (context.recoveryKey !== _boardRecoveryKey) return false;
+        if (context.recoveryKey !== context.expectedRecoveryKey) return false;
+        if (context.expectedRecoveryKey !== dashboardRecoveryKeyForUser(AppState.currentUser || {})) return false;
+        if ((localStorage.getItem('pzp_token') || '') !== context.authToken) return false;
+        if ((localStorage.getItem('pzp_auth_session_generation') || '') !== context.generation) return false;
+        const currentIdentity = currentDashboardUserIdentity();
+        if (context.userIdentity.id && currentIdentity.id && context.userIdentity.id !== currentIdentity.id) return false;
+        if (context.userIdentity.username && currentIdentity.username && context.userIdentity.username !== currentIdentity.username) return false;
+        if (context.sessionSnapshot && typeof isApiAuthSessionSnapshotCurrent === 'function') {
+            return isApiAuthSessionSnapshotCurrent(context.sessionSnapshot, AppState.currentUser || {}) !== false;
+        }
+        if (context.sessionSnapshot && typeof isAuthBootstrapSessionCurrent === 'function') {
+            return isAuthBootstrapSessionCurrent(context.sessionSnapshot, AppState.currentUser || {}) !== false;
+        }
+        return true;
+    }
+
+    function dashboardConfigNotWritableResult() {
+        return {
+            success: false,
+            retryable: true,
+            blockedWrite: true,
+            error: _dashboardConfigLoadError?.message || 'Dashboard config is not loaded. Retry loading before saving.'
+        };
+    }
+
+    function buildDashboardConfigPayload(patch = {}) {
+        if (!_config) _config = createDefaultDashboardConfig();
+        const nextMode = normalizeDashboardMode(patch.mode || _config.mode);
+        const nextPresentationMode = patch.presentationMode || _config.presentationMode || 'mixed-scene';
+        const nextSceneOptions = patch.sceneOptions || _config.sceneOptions || createDefaultDashboardConfig().sceneOptions;
+        const nextBoardMeta = patch.boardMeta || _config.boardMeta;
+        const nextBoardState = patch.boardState || _config.boardState;
+        return {
+            widgets: patch.widgets || _config.widgets || [],
+            layout: {
+                ...safeObject(_config.layout, {}),
+                mode: nextMode,
+                presentationMode: nextPresentationMode,
+                roleScenePreset: Object.prototype.hasOwnProperty.call(patch, 'roleScenePreset') ? patch.roleScenePreset : _config.roleScenePreset,
+                sceneOptions: nextSceneOptions,
+                boardMeta: nextBoardMeta,
+                boardState: nextBoardState
+            },
+            theme: patch.theme || _config.theme || 'default',
+            mode: nextMode,
+            presentationMode: nextPresentationMode,
+            roleScenePreset: Object.prototype.hasOwnProperty.call(patch, 'roleScenePreset') ? patch.roleScenePreset : _config.roleScenePreset,
+            sceneOptions: nextSceneOptions,
+            boardMeta: nextBoardMeta,
+            boardState: nextBoardState
+        };
+    }
+
+    function queueDashboardConfigSave(job) {
+        const run = () => sendDashboardConfigSave(job);
+        const queued = _dashboardSaveSequence.catch(() => {}).then(run);
+        _dashboardSaveSequence = queued.catch(() => {});
+        return queued;
+    }
+
+    async function sendDashboardConfigSave(job) {
+        if (!_dashboardConfigWritable) return dashboardConfigNotWritableResult();
+        if (!isDashboardSaveContextCurrent(job.context)) {
+            return {
+                success: false,
+                retryable: true,
+                staleSession: true,
+                error: 'Dashboard session changed before save completed.'
+            };
+        }
+
+        let result;
+        try {
+            const resp = await fetch('/api/dashboard/config', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + job.context.authToken
+                },
+                body: JSON.stringify(job.payload)
+            });
+            result = await dashboardMutationJson(resp, 'Не вдалося зберегти налаштування dashboard');
+        } catch (err) {
+            result = normalizeDashboardApiResult(err, 'Не вдалося зберегти налаштування dashboard');
+        }
+
+        result.dashboardSaveRevision = job.revision;
+        if (!result.success) return result;
+        if (!isDashboardSaveContextCurrent(job.context)) {
+            return {
+                ...result,
+                success: false,
+                retryable: true,
+                staleSession: true,
+                error: 'Dashboard session changed after save completed.'
+            };
+        }
+        if (job.revision !== _dashboardLocalRevision) {
+            return {
+                ...result,
+                staleLocalChanges: true,
+                appliedConfig: false
+            };
+        }
+        if (result.config) {
+            _config = normalizeDashboardConfig(result.config);
+        }
+        _dashboardLastConfirmedRevision = job.revision;
+        return {
+            ...result,
+            appliedConfig: Boolean(result.config),
+            staleLocalChanges: false
+        };
     }
 
     function boardSnapshot() {
@@ -969,6 +1160,7 @@ const DashboardPage = (() => {
 
     function markBoardDirty(reason = 'change') {
         if (!_config) return;
+        touchDashboardConfigRevision();
         _boardDirty = true;
         _boardSaveStatus = 'dirty';
         _config.mode = DASHBOARD_WORKSPACE_MODE;
@@ -981,22 +1173,20 @@ const DashboardPage = (() => {
     }
 
     function persistBoardDraft(reason = 'change') {
-        try {
-            localStorage.setItem(_boardRecoveryKey, JSON.stringify({
-                updatedAt: new Date().toISOString(),
-                reason,
-                mode: _config.mode,
-                boardState: _config.boardState
-            }));
-        } catch {}
+        if (!_config) return;
+        writeBoardDraft(_boardRecoveryKey, {
+            updatedAt: new Date().toISOString(),
+            reason,
+            mode: _config.mode,
+            boardState: _config.boardState
+        });
     }
 
     async function restoreBoardDraftIfNeeded() {
-        let draft = null;
-        try {
-            draft = JSON.parse(localStorage.getItem(_boardRecoveryKey) || 'null');
-        } catch {
-            localStorage.removeItem(_boardRecoveryKey);
+        let draft = readBoardDraft(_boardRecoveryKey);
+        const activeDraft = draft;
+        if (!draft || !draft.boardState) {
+            draft = readBoardDraft(deferredBoardRecoveryKey());
         }
         if (!draft || !draft.boardState) return;
         const serverSavedAt = _config?.boardMeta?.lastSavedAt ? new Date(_config.boardMeta.lastSavedAt).getTime() : 0;
@@ -1009,59 +1199,45 @@ const DashboardPage = (() => {
             cancelText: 'Не зараз'
         });
         if (!shouldRestore) {
-            localStorage.removeItem(_boardRecoveryKey);
+            deferBoardDraft(draft);
+            if (activeDraft) removeBoardDraft(_boardRecoveryKey);
             return;
         }
         pushBoardUndo('restore-draft');
+        removeBoardDraft(deferredBoardRecoveryKey());
         _config.mode = normalizeDashboardMode(draft.mode || _config.mode);
         _config.boardState = normalizeBoardState(draft.boardState);
         markBoardDirty('restore-draft');
     }
 
-    function clearBoardDraft() {
-        try { localStorage.removeItem(_boardRecoveryKey); } catch {}
+    function clearBoardDraft(options = {}) {
+        removeBoardDraft(_boardRecoveryKey);
+        if (options.includeDeferred) removeBoardDraft(deferredBoardRecoveryKey());
+    }
+
+    function discardDeferredBoardDraft() {
+        removeBoardDraft(deferredBoardRecoveryKey());
+    }
+
+    function restoreDeferredBoardDraft() {
+        const draft = readBoardDraft(deferredBoardRecoveryKey());
+        if (!draft || !draft.boardState) return false;
+        pushBoardUndo('restore-deferred-draft');
+        removeBoardDraft(deferredBoardRecoveryKey());
+        _config.mode = normalizeDashboardMode(draft.mode || _config.mode);
+        _config.boardState = normalizeBoardState(draft.boardState);
+        markBoardDirty('restore-deferred-draft');
+        renderWidgetsSafely('restore-deferred-draft');
+        return true;
     }
 
     async function saveDashboardConfig(patch = {}) {
         if (!_config) _config = createDefaultDashboardConfig();
-        const nextMode = normalizeDashboardMode(patch.mode || _config.mode);
-        const payload = {
-            widgets: patch.widgets || _config.widgets || [],
-            layout: {
-                ...safeObject(_config.layout, {}),
-                mode: nextMode,
-                presentationMode: patch.presentationMode || _config.presentationMode || 'mixed-scene',
-                roleScenePreset: Object.prototype.hasOwnProperty.call(patch, 'roleScenePreset') ? patch.roleScenePreset : _config.roleScenePreset,
-                sceneOptions: patch.sceneOptions || _config.sceneOptions || createDefaultDashboardConfig().sceneOptions,
-                boardMeta: patch.boardMeta || _config.boardMeta,
-                boardState: patch.boardState || _config.boardState
-            },
-            theme: patch.theme || _config.theme || 'default',
-            mode: nextMode,
-            presentationMode: patch.presentationMode || _config.presentationMode || 'mixed-scene',
-            roleScenePreset: Object.prototype.hasOwnProperty.call(patch, 'roleScenePreset') ? patch.roleScenePreset : _config.roleScenePreset,
-            sceneOptions: patch.sceneOptions || _config.sceneOptions || createDefaultDashboardConfig().sceneOptions,
-            boardMeta: patch.boardMeta || _config.boardMeta,
-            boardState: patch.boardState || _config.boardState
-        };
-        let result;
-        try {
-            const resp = await fetch('/api/dashboard/config', {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
-                },
-                body: JSON.stringify(payload)
-            });
-            result = await dashboardMutationJson(resp, 'Не вдалося зберегти налаштування dashboard');
-        } catch (err) {
-            result = normalizeDashboardApiResult(err, 'Не вдалося зберегти налаштування dashboard');
-        }
-        if (result.success && result.config) {
-            _config = normalizeDashboardConfig(result.config);
-        }
-        return result;
+        if (!_dashboardConfigWritable) return dashboardConfigNotWritableResult();
+        const payload = deepClone(buildDashboardConfigPayload(patch));
+        const revision = touchDashboardConfigRevision();
+        const context = captureDashboardSaveContext();
+        return queueDashboardConfigSave({ payload, revision, context });
     }
 
     function scheduleBoardSave() {
@@ -1083,6 +1259,14 @@ const DashboardPage = (() => {
             if (!result?.success) {
                 throw new Error(result?.error || 'Dashboard board save failed');
             }
+            if (result.staleLocalChanges || result.dashboardSaveRevision !== _dashboardLocalRevision) {
+                _boardDirty = true;
+                _boardSaveStatus = 'dirty';
+                persistBoardDraft('stale-save-response');
+                scheduleBoardSave();
+                syncBoardToolbar();
+                return;
+            }
             _boardDirty = false;
             _boardSaveStatus = 'saved';
             _config.boardMeta = normalizeBoardMeta({ ..._config.boardMeta, lastSavedAt, dirty: false });
@@ -1091,6 +1275,7 @@ const DashboardPage = (() => {
         } catch (err) {
             console.error('[dashboard:board] save failed:', err);
             _boardSaveStatus = 'error';
+            persistBoardDraft('save-error');
             notifyDashboardIssue(err.message || 'Не вдалося зберегти dashboard board');
         }
         syncBoardToolbar();
@@ -1482,7 +1667,35 @@ const DashboardPage = (() => {
         }
     }
 
+    function renderDashboardConfigLoadError(error) {
+        const grid = document.getElementById('dashboardGrid');
+        const shell = document.getElementById('dashboardBoardShell');
+        if (shell) shell.classList.add('hidden');
+        if (grid) {
+            grid.innerHTML = `
+                <section class="widget-card dashboard-config-retry" role="alert">
+                    <div class="widget-header">
+                        <div class="widget-title">
+                            <span class="widget-title-icon">⚠️</span>
+                            Dashboard config не завантажився
+                        </div>
+                    </div>
+                    <p>Не записую default-стан поверх ваших налаштувань. Повторіть завантаження, коли API відповість.</p>
+                    <p class="widget-empty">${escapeHtml(error?.message || 'Невідома помилка конфігурації')}</p>
+                    <button type="button" class="dashboard-btn primary" onclick="DashboardPage.retryConfigLoad()">Повторити</button>
+                </section>
+            `;
+        }
+        syncBoardToolbar();
+    }
+
+    async function retryConfigLoad() {
+        return loadConfig();
+    }
+
     async function loadConfig() {
+        _dashboardConfigWritable = false;
+        _dashboardConfigLoadError = null;
         try {
             const resp = await fetch('/api/dashboard/config', {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
@@ -1490,25 +1703,29 @@ const DashboardPage = (() => {
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             const data = await resp.json();
 
-            if (data.success) {
-                _boardLegacyUpgradePending = false;
-                _config = normalizeDashboardConfig(data.config);
-                const shouldPersistLegacyUpgrade = _boardLegacyUpgradePending;
-                await restoreBoardDraftIfNeeded();
-                if (shouldPersistLegacyUpgrade) {
-                    _boardLegacyUpgradePending = false;
-                    markBoardDirty('legacy-note-upgrade');
-                }
-                renderWidgetsSafely('config');
-            } else {
-                _config = normalizeDashboardConfig(createDefaultDashboardConfig());
-                renderWidgetsSafely('empty-config');
+            if (!data.success) {
+                throw new Error(data.error || 'Dashboard config API returned success:false');
             }
+
+            _dashboardConfigWritable = true;
+            _dashboardConfigLoadError = null;
+            _boardLegacyUpgradePending = false;
+            _config = normalizeDashboardConfig(data.config);
+            _dashboardLocalRevision = 0;
+            _dashboardLastConfirmedRevision = 0;
+            const shouldPersistLegacyUpgrade = _boardLegacyUpgradePending;
+            await restoreBoardDraftIfNeeded();
+            if (shouldPersistLegacyUpgrade) {
+                _boardLegacyUpgradePending = false;
+                markBoardDirty('legacy-note-upgrade');
+            }
+            renderWidgetsSafely('config');
         } catch (err) {
             console.error('Dashboard config error:', err);
-            // Render with defaults
+            _dashboardConfigWritable = false;
+            _dashboardConfigLoadError = err instanceof Error ? err : new Error(String(err || 'Dashboard config error'));
             _config = normalizeDashboardConfig(createDefaultDashboardConfig());
-            renderWidgetsSafely('fallback-config');
+            renderDashboardConfigLoadError(_dashboardConfigLoadError);
         }
     }
 
@@ -8967,6 +9184,9 @@ const DashboardPage = (() => {
         addBoardShape,
         seedBoardWidgets,
         saveBoardNow,
+        restoreDeferredBoardDraft,
+        discardDeferredBoardDraft,
+        retryConfigLoad,
         duplicateBoardItem,
         deleteBoardItem,
         changeBoardItemZ,

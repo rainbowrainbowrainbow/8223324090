@@ -99,13 +99,24 @@ function createManualSendPool(conversation) {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             if (/FROM omni_provider_connections WHERE channel = \$1/i.test(text)) {
                 const channel = String(params[0] || conversation.channel || 'telegram');
+                const credentials = channel === 'whatsapp'
+                    ? {
+                        values: { phoneNumberId: '1234567890', wabaId: '9876543210' },
+                        secrets: {
+                            accessToken: 'EAAG_WHATSAPP_FIXTURE_TOKEN_1234567890',
+                            appSecret: 'whatsapp_fixture_app_secret',
+                            verifyToken: 'whatsapp_fixture_verify_token',
+                        },
+                        masks: {},
+                    }
+                    : {};
                 state.connectionStatusQueries.push(channel);
                 return {
                     rows: [{
                         channel,
                         provider_kind: channel === 'binotel' ? 'telephony' : 'bot',
                         status: channel === 'binotel' ? 'history_only' : 'connected',
-                        credentials: {},
+                        credentials,
                         account_display_name: channel,
                         masked_identifier: channel,
                         send_enabled: channel !== 'binotel',
@@ -925,6 +936,8 @@ describe('Communication Send Truth v1', () => {
 
 
     it('persists WhatsApp provider references through the shared send truth flow', async () => {
+        const previousPublicAppUrl = process.env.PUBLIC_APP_URL;
+        process.env.PUBLIC_APP_URL = 'https://crm.example.test';
         const pool = createManualSendPool({
             id: 906,
             channel: 'whatsapp',
@@ -943,21 +956,28 @@ describe('Communication Send Truth v1', () => {
             whatsappReplyWindowState: () => ({ open: true }),
         });
 
-        const result = await hub.sendManualMessage(906, 'Привіт у WhatsApp', 'Manager');
-        assert.equal(calls.length, 1);
-        assert.equal(calls[0][0], '380671112233');
-        assert.equal(calls[0][1], 'Привіт у WhatsApp');
-        assert.equal(result.sendTruth.status, 'provider_attempted');
-        assert.equal(result.message.deliveryStatus, 'accepted');
-        assert.equal(result.message.providerMessageId, 'wamid.outbound-906');
-        assert.equal(pool.state.savedTruth.providerReference, 'wamid.outbound-906');
-        assert.deepEqual(
-            pool.state.deliveryUpdates.map(update => update.deliveryStatus),
-            ['saved', 'attempted', 'accepted']
-        );
+        try {
+            const result = await hub.sendManualMessage(906, 'Привіт у WhatsApp', 'Manager');
+            assert.equal(calls.length, 1);
+            assert.equal(calls[0][0], '380671112233');
+            assert.equal(calls[0][1], 'Привіт у WhatsApp');
+            assert.equal(result.sendTruth.status, 'provider_attempted');
+            assert.equal(result.message.deliveryStatus, 'accepted');
+            assert.equal(result.message.providerMessageId, 'wamid.outbound-906');
+            assert.equal(pool.state.savedTruth.providerReference, 'wamid.outbound-906');
+            assert.deepEqual(
+                pool.state.deliveryUpdates.map(update => update.deliveryStatus),
+                ['saved', 'attempted', 'accepted']
+            );
+        } finally {
+            if (previousPublicAppUrl === undefined) delete process.env.PUBLIC_APP_URL;
+            else process.env.PUBLIC_APP_URL = previousPublicAppUrl;
+        }
     });
 
     it('blocks free-form WhatsApp replies when the customer care window is closed', async () => {
+        const previousPublicAppUrl = process.env.PUBLIC_APP_URL;
+        process.env.PUBLIC_APP_URL = 'https://crm.example.test';
         const pool = createManualSendPool({
             id: 907,
             channel: 'whatsapp',
@@ -972,17 +992,22 @@ describe('Communication Send Truth v1', () => {
             whatsappReplyWindowState: () => ({ open: false, message: 'WhatsApp customer care window is closed.' }),
         });
 
-        await assert.rejects(
-            () => hub.sendManualMessage(907, 'Запізніла відповідь', 'Manager'),
-            error => {
-                assert.equal(error.code, 'WHATSAPP_REPLY_WINDOW_CLOSED');
-                assert.equal(error.statusCode, 400);
-                assert.equal(error.sendTruth.status, 'channel_unavailable');
-                return true;
-            }
-        );
-        assert.equal(pool.state.connectCalled, false);
-        assert.equal(pool.state.deliveryUpdates.length, 0);
+        try {
+            await assert.rejects(
+                () => hub.sendManualMessage(907, 'Запізніла відповідь', 'Manager'),
+                error => {
+                    assert.equal(error.code, 'WHATSAPP_REPLY_WINDOW_CLOSED');
+                    assert.equal(error.statusCode, 400);
+                    assert.equal(error.sendTruth.status, 'channel_unavailable');
+                    return true;
+                }
+            );
+            assert.equal(pool.state.connectCalled, false);
+            assert.equal(pool.state.deliveryUpdates.length, 0);
+        } finally {
+            if (previousPublicAppUrl === undefined) delete process.env.PUBLIC_APP_URL;
+            else process.env.PUBLIC_APP_URL = previousPublicAppUrl;
+        }
     });
 
     it('sends Telegram inbox replies without the global forum thread id', async () => {

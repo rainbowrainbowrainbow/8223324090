@@ -184,3 +184,8 @@
     .omni-compact-input:has(#omniInput:focus) .omni-case-context,
     .omni-compact-input:has(#omniInput:focus) .omni-quick-replies { display: none !important; }
 }
+.omni-account-preflight { margin-top: 8px; padding: 8px; border-radius: 10px; background: rgba(15,23,42,0.04); }
+.omni-account-preflight-title { margin-bottom: 6px; font-size: 11px; font-weight: 900; color: var(--text-secondary, #64748b); text-transform: uppercase; letter-spacing: 0.04em; }
+.omni-account-preflight-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+.omni-account-preflight-item { border-radius: 999px; padding: 3px 7px; background: rgba(239,68,68,0.12); color: #B91C1C; font-size: 10px; font-weight: 900; }
+.omni-account-preflight-item.present { background: rgba(16,185,129,0.16); color: #047857; }

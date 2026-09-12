@@ -4,6 +4,17 @@
 
 ---
 
+## v0.81.131 - Omni: техборг чат-лід
+
+### Omni / Chat-to-lead / WhatsApp readiness / (12.09.2026) [codex]
+- **Єдиний шлях створення ліда з Omni** — ручна дія, старий AI-помічник і AI-заповнення тепер ведуть через одну reviewed draft форму, без створення ліда напряму з неперевіреного AI-result.
+- **Актуальний AI-контекст** — Omni AI-сценарії читають спільне latest-message window, бачать кінець довгого діалогу й не приймають outbound-слова менеджера як підтверджені факти клієнта.
+- **Новий лід для нової події** — той самий чат може створити наступну явну можливість без випадкового дубля першого ліда.
+- **WhatsApp activation readiness** — додано redacted preflight, fixture guards і runbook для контрольованої WABA-активації; реальний номер лишається `ACTIVATION_PENDING`.
+- **Release-докази Omni debt package** — progress-документи оновлено фактичними статусами TD1–TD5 і підготовлено цей пакет до CI/deploy/live QA.
+
+---
+
 ## v0.81.130 - PARK/DAR каса: test-route hotfix
 
 ### Cashier / PARK-DAR / (12.09.2026) [codex]

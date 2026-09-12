@@ -668,6 +668,17 @@ function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
   };
 }
 
+function applyVerifiedDirections(account, check) {
+  const sendCapable = check?.details?.sendCapable;
+  const receiveCapable = check?.details?.receiveCapable;
+  if (typeof sendCapable !== 'boolean' && typeof receiveCapable !== 'boolean') return account;
+  return {
+    ...account,
+    sendCapable: typeof sendCapable === 'boolean' ? sendCapable : account.sendCapable,
+    receiveCapable: typeof receiveCapable === 'boolean' ? receiveCapable : account.receiveCapable,
+  };
+}
+
 function warningForStatus(def, status, connected, sendCapable, receiveCapable) {
   if (status === 'needs_rebind') return `${def.label}: legacy/помилкова привʼязка не може вважатися робочим inbox. Відвʼяжіть її або підключіть правильний канал заново.`;
   if (!connected) return def.envWarning || `${def.label} не налаштований`;
@@ -971,7 +982,10 @@ async function getOmniAccountStatusAsync(channel, options = {}) {
   if (!def) return null;
   const row = await loadConnectionRow(def.channel, options);
   const now = options.now instanceof Date ? options.now : new Date();
-  return statusFromRowOrEnv(def, row, now, options);
+  const account = statusFromRowOrEnv(def, row, now, options);
+  const [withHealth] = await require('./omni-health')
+    .attachHealth([account], omniBusinessContext(options), now);
+  return withHealth;
 }
 
 async function getOmniAccountAlertsAsync(options = {}) {
@@ -1211,7 +1225,10 @@ async function upsertOmniConnection(channel, payload = {}, user = {}, options = 
     ]
   );
 
-  const account = statusFromRowOrEnv(def, result.rows[0], new Date(), scopedOptions);
+  const account = applyVerifiedDirections(
+    statusFromRowOrEnv(def, result.rows[0], new Date(), scopedOptions),
+    check
+  );
   await require('./omni-health').saveCheck(def.channel, businessContext, check, options.ownershipClient || pool);
   return {
     account,
@@ -1272,7 +1289,10 @@ async function recheckOmniConnection(channel, user = {}, options = {}) {
     updatedRow = result.rows[0] || row;
   }
 
-  const account = statusFromRowOrEnv(def, updatedRow, new Date(), scopedOptions);
+  const account = applyVerifiedDirections(
+    statusFromRowOrEnv(def, updatedRow, new Date(), scopedOptions),
+    check
+  );
   await require('./omni-health').saveCheck(def.channel, businessContext, check);
   return {
     account,

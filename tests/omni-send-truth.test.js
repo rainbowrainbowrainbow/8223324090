@@ -13,6 +13,7 @@ function clearModules() {
         '../db',
         '../services/omni-hub',
         '../services/omni-accounts',
+        '../services/omni-health',
         '../services/omni-sms-providers',
         '../services/kleshnya-chat',
         '../services/websocket',
@@ -182,6 +183,7 @@ function createManualSendPool(conversation) {
                     }]
                 };
             }
+            if (/FROM omni_channel_health WHERE business_context = \$1/i.test(text)) return { rows: [] };
             throw new Error(`Unexpected pool query: ${text}`);
         },
         connect: async () => {
@@ -778,6 +780,7 @@ describe('Communication Send Truth v1', () => {
                             }],
                         };
                     }
+                    if (/FROM omni_channel_health WHERE business_context = \$1/i.test(text)) return { rows: [] };
                     throw new Error(`Unexpected query: ${text}`);
                 },
             },
@@ -792,6 +795,52 @@ describe('Communication Send Truth v1', () => {
         assert.ok(telegram.supportedActions.includes('connect'));
         assert.ok(telegram.supportedActions.includes('disconnect'));
         clearModules();
+    });
+
+    it('blocks environment connector sends when the latest health check explicitly denies send capability', async () => {
+        const keys = [
+            'OMNI_VIBER_PERSONAL_BRIDGE_ID',
+            'OMNI_VIBER_PERSONAL_ACCOUNT_ID',
+            'OMNI_VIBER_PERSONAL_ACCOUNT_EPOCH',
+            'OMNI_VIBER_PERSONAL_BRIDGE_TOKEN',
+        ];
+        const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+        Object.assign(process.env, {
+            OMNI_VIBER_PERSONAL_BRIDGE_ID: 'bridge-fixture',
+            OMNI_VIBER_PERSONAL_ACCOUNT_ID: 'account-fixture',
+            OMNI_VIBER_PERSONAL_ACCOUNT_EPOCH: '1',
+            OMNI_VIBER_PERSONAL_BRIDGE_TOKEN: 'fixture-token-at-least-24-characters',
+        });
+        clearModules();
+        installMock('../db', { pool: { query: async sql => {
+            const text = String(sql).replace(/\s+/g, ' ').trim();
+            if (/FROM omni_provider_connections WHERE channel = \$1/i.test(text)) return { rows: [] };
+            if (/FROM omni_channel_health WHERE business_context = \$1/i.test(text)) return { rows: [{
+                channel: 'viber_personal',
+                checked_at: '2099-05-15T10:00:00Z',
+                check_result: { status: 'partial', sendCapable: false, receiveCapable: false },
+            }] };
+            throw new Error(`Unexpected query: ${text}`);
+        } } });
+
+        try {
+            const accounts = require('../services/omni-accounts');
+            const account = await accounts.getOmniAccountStatusAsync('viber_personal', {
+                now: new Date('2099-05-15T10:01:00Z'),
+            });
+            assert.equal(account.connected, true);
+            assert.equal(account.sendCapable, false);
+            assert.equal(account.receiveCapable, false);
+            assert.equal(await accounts.isOmniChannelSendCapableAsync('viber_personal', {
+                now: new Date('2099-05-15T10:01:00Z'),
+            }), false);
+        } finally {
+            Object.entries(previous).forEach(([key, value]) => {
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+            });
+            clearModules();
+        }
     });
 
     it('maintains durable last inbound timestamp when inbound messages are saved', async () => {

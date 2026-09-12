@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.140 - Dashboard: захист від конфліктів вкладок
+
+### Release / Versioning / (12.09.2026) [codex]
+- **Dashboard: захист від конфліктів вкладок** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.139 - Каса: X/Z звіти й стійкість Checkbox
 
 ### Cashier / Checkbox / XZ / (12.09.2026) [codex]

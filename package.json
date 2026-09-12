@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.134",
+  "version": "0.81.135",
   "eventGenix": {
-    "releaseLabel": "Cashier: безпечні стани PARK/DAR"
+    "releaseLabel": "Dashboard: видимість і мобільний fallback"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

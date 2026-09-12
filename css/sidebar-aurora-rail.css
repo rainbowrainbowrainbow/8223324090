@@ -10,11 +10,11 @@
   gap: 8px;
   min-height: 44px;
   padding: 10px 14px;
-  border: 1px solid var(--border-color, #cbd5e1);
+  border: 1px solid var(--border-color);
   border-radius: 14px;
-  background: var(--bg-card, #fff);
-  color: var(--text-primary, #0f172a);
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.14);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-md);
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
@@ -29,11 +29,11 @@
 
 .crm-dashboard-shortcut:hover,
 .crm-dashboard-shortcut[aria-current="page"] {
-  border-color: var(--primary, #10b981);
+  border-color: var(--primary);
 }
 
 .crm-dashboard-shortcut:focus-visible {
-  outline: 3px solid var(--primary, #10b981);
+  outline: 3px solid var(--primary);
   outline-offset: 3px;
 }
 

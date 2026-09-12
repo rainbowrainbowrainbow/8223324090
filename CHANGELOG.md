@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.135 - Dashboard: видимість і мобільний fallback
+
+### Dashboard / Mobile / Reliability / (12.09.2026) [codex]
+- **Дашборд відкривається стабільно** - прямий `/dashboard` і кнопка справа проходять shared auth bootstrap без cached permission snapshot.
+- **Збереження без втрати змін** - serialized save queue, dirty/draft guard і session-generation checks не дають старим PUT перетерти новіші правки.
+- **Актуальні стани віджетів** - visible widgets мають TTL, event refresh, retry, denied/error/stale states і не переносять кеш між акаунтами/контекстами.
+- **Мобільний і fallback сценарій** - 360/390/768/1440 px не мають page overflow; render failure показує дозволену сітку віджетів і retry без reset/autosave.
+
+---
+
 ## v0.81.134 - Cashier: безпечні стани PARK/DAR
 
 ### Cashier / PARK-DAR / (12.09.2026) [codex]

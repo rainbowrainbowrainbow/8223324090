@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.130 - PARK/DAR каса: test-route hotfix
+
+### Cashier / PARK-DAR / (12.09.2026) [codex]
+- **DAR test-route deep link** - каса зберігає `routeOptionId=dar_test` під час відкриття сторінки напряму й не скидає її на неналаштований `dar_production`.
+- **Регресійний smoke** - додано browser-перевірку, що DAR deep link тримає бізнес `dar`, route `dar_test` і не змішує PARK/DAR route choices.
+
+---
+
 ## v0.81.129 - Швидше завантаження HR
 
 ### HR / Performance / (12.09.2026) [codex]

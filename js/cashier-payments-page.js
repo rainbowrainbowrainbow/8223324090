@@ -701,6 +701,19 @@
             || null;
     }
 
+    function defaultRouteOptionIdForBusiness(businessContext) {
+        return `${businessContext === 'dar' ? 'dar' : 'park'}_production`;
+    }
+
+    function routeOptionBelongsToBusiness(routeOptionId, businessContext) {
+        const id = String(routeOptionId || '').trim();
+        if (!id) return false;
+        const route = state.routeOptions.find(item => item.id === id);
+        if (route) return route.businessContext === businessContext;
+        const prefix = businessContext === 'dar' ? 'dar_' : 'park_';
+        return id.startsWith(prefix);
+    }
+
     function applyPilotScopeRoute(route) {
         if (!route || route.businessContext !== PILOT_SCOPE.crmProfileKey || !BUSINESS_SCOPES[route.businessContext]) return false;
         PILOT_SCOPE = {
@@ -723,9 +736,12 @@
             throw error;
         }
         if (businessContext !== PILOT_SCOPE.crmProfileKey) {
+            const requestedRouteOptionId = routeOptionBelongsToBusiness(PILOT_SCOPE.routeOptionId, businessContext)
+                ? PILOT_SCOPE.routeOptionId
+                : defaultRouteOptionIdForBusiness(businessContext);
             PILOT_SCOPE = {
                 ...BUSINESS_SCOPES[businessContext],
-                routeOptionId: `${businessContext === 'dar' ? 'dar' : 'park'}_production`,
+                routeOptionId: requestedRouteOptionId,
                 mode: 'production'
             };
         }

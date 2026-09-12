@@ -974,6 +974,17 @@ async function run() {
             contentType: 'application/json',
             body: JSON.stringify(routeOptionsPayload({ includeTest: true }))
         }));
+        const darDeepLinkPage = await selectorContext.newPage();
+        await darDeepLinkPage.goto(`${base}/cashier-payments?businessContext=dar&routeOptionId=dar_test`, { waitUntil: 'domcontentloaded' });
+        await darDeepLinkPage.waitForFunction(() => window.CashierPaymentsPage?.state?.catalogReady === true && !window.CashierPaymentsPage.state.routeLoading);
+        assert.equal(await darDeepLinkPage.inputValue('#paymentBusinessContext'), 'dar', 'DAR deep link keeps the requested business context');
+        assert.equal(await darDeepLinkPage.inputValue('#paymentRegisterRoute'), 'dar_test', 'DAR deep link keeps the requested test route instead of falling back to production');
+        assert.deepEqual(
+            await darDeepLinkPage.locator('#paymentRegisterRoute option').allTextContents(),
+            ['Студія / Каса ДАР · готова', 'Тестова каса · приймання вимкнено'],
+            'DAR deep link keeps DAR-only route choices'
+        );
+        await darDeepLinkPage.close();
         const selectorPage = await selectorContext.newPage();
         await selectorPage.setViewportSize({ width: 1440, height: 1000 });
         await selectorPage.goto(`${base}/cashier-payments?businessContext=event_genix&routeOptionId=park_production`, { waitUntil: 'domcontentloaded' });

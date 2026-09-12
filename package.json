@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.132",
+  "version": "0.81.133",
   "eventGenix": {
-    "releaseLabel": "Omni: докази релізу техборгу"
+    "releaseLabel": "Omni: закриття post-release хвостів TD7"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -248,6 +248,7 @@
       "archiver": "8.0.0",
       "unzipper": "0.12.5"
     },
-    "uuid": "11.1.1"
+    "uuid": "11.1.1",
+    "qs": "6.16.0"
   }
 }

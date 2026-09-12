@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.133 - Omni: закриття post-release хвостів TD7
+
+### Release / Versioning / (12.09.2026) [codex]
+- **Omni: TD7 post-release cleanup** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.132 - Omni: докази релізу техборгу
 
 ### Release / Versioning / (12.09.2026) [codex]

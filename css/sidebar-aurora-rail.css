@@ -1,4 +1,56 @@
 /* v0.63.42: collapsed sidebar utility rail with preview cards and contextual flyout. */
+/* Keep dashboard navigation reachable independently of the sidebar state. */
+.crm-dashboard-shortcut {
+  position: relative;
+  order: 99;
+  flex-shrink: 0;
+  margin-inline-start: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 14px;
+  background: var(--bg-card, #fff);
+  color: var(--text-primary, #0f172a);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.14);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.crm-dashboard-shortcut .nav-icon,
+.crm-dashboard-shortcut svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+
+.crm-dashboard-shortcut:hover,
+.crm-dashboard-shortcut[aria-current="page"] {
+  border-color: var(--primary, #10b981);
+}
+
+.crm-dashboard-shortcut:focus-visible {
+  outline: 3px solid var(--primary, #10b981);
+  outline-offset: 3px;
+}
+
+body.auth-screen .crm-dashboard-shortcut,
+body:not(.authenticated-shell):not(.shell-ready) .crm-dashboard-shortcut {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .crm-dashboard-shortcut {
+    padding: 12px;
+  }
+  .crm-dashboard-shortcut > span:last-child {
+    display: none;
+  }
+}
+
 @media (min-width: 769px) {
   .sidebar-nav.collapsed,
   .sidebar-nav.collapsed:hover,

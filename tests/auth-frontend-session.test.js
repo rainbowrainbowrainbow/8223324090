@@ -2750,7 +2750,7 @@ test('protected page bootstrap inventory delegates refresh-only sessions to apiV
         ['afisha', 'js/afisha-page.js', 'async function bootstrapAfishaShell()'],
         ['analytics', 'js/analytics-page.js', 'async function initStandaloneAnalyticsPage()'],
         ['warehouse', 'js/warehouse-page.js', 'async function initPage()'],
-        ['dashboard', 'dashboard.html', '// Check session on load'],
+        ['dashboard', 'js/dashboard-page.js', 'async function bootstrapDashboardSession()'],
         ['designer', 'designer.html', '// Auth check — unhide mainApp'],
         ['room', 'room.html', 'async function initRoomPage()'],
         ['quiz', 'quiz.html', 'async function initQuizPage()'],
@@ -2785,6 +2785,7 @@ test('every production apiVerifyToken page bootstrap distinguishes transient fai
     const dedicatedTransientHandlers = new Set([
         'js/auth.js',
         'js/certificates-page.js',
+        'js/dashboard-page.js',
         'js/hermes-studio-page.js',
         'js/leads-page.js'
     ]);

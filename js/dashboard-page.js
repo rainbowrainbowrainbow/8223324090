@@ -1249,47 +1249,146 @@ const DashboardPage = (() => {
 
     async function init() {
         if (_dashboardInitPromise) return _dashboardInitPromise;
-        _dashboardInitPromise = runDashboardInit().catch(err => {
-            console.error('[dashboard:init] fatal openability failure:', err);
-            revealDashboardShell();
-            renderDashboardOpenFallback(err, 'init');
-            return null;
+        _dashboardInitPromise = runDashboardInit()
+            .then(() => true)
+            .catch(err => {
+                console.error('[dashboard:init] fatal openability failure:', err);
+                handleDashboardInitFailure(err);
+                return false;
+            });
+        const initialized = await _dashboardInitPromise;
+        if (!initialized) _dashboardInitPromise = null;
+        return initialized;
+    }
+
+    function dashboardBootstrapError(message, code, options = {}) {
+        const error = new Error(message);
+        error.code = code;
+        Object.assign(error, options);
+        return error;
+    }
+
+    function hasStoredDashboardSession() {
+        if (typeof apiHasStoredAuthSession === 'function') return apiHasStoredAuthSession();
+        return Boolean(
+            localStorage.getItem('pzp_token')
+            || localStorage.getItem('pzp_access_token')
+            || localStorage.getItem('pzp_refresh_token')
+        );
+    }
+
+    function captureDashboardSession(user) {
+        if (typeof captureAuthBootstrapSession === 'function') return captureAuthBootstrapSession(user);
+        if (typeof captureApiAuthSessionSnapshot === 'function') return captureApiAuthSessionSnapshot(user);
+        throw dashboardBootstrapError('Shared authentication session snapshot helper is unavailable', 'auth_bootstrap_unavailable');
+    }
+
+    function isDashboardSessionCurrent(snapshot, user) {
+        if (typeof isAuthBootstrapSessionCurrent === 'function') return isAuthBootstrapSessionCurrent(snapshot, user);
+        if (typeof isApiAuthSessionSnapshotCurrent === 'function') return isApiAuthSessionSnapshotCurrent(snapshot, user);
+        return false;
+    }
+
+    function assertDashboardSessionCurrent(snapshot, user, stage) {
+        if (isDashboardSessionCurrent(snapshot, user)) return;
+        if (typeof authBootstrapSessionChangedError === 'function') throw authBootstrapSessionChangedError(stage);
+        throw dashboardBootstrapError('Authentication session changed during dashboard bootstrap', 'auth_session_transient', {
+            authFailure: { kind: 'transient', transient: true, stage, reason: 'session-changed' }
         });
-        return _dashboardInitPromise;
+    }
+
+    function retryDashboardInit() {
+        _dashboardInitPromise = null;
+        return init();
+    }
+
+    function handleDashboardInitFailure(error) {
+        if (error?.code === 'permission_bootstrap_failed') {
+            if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell({ markRuntimeReady: false });
+            if (typeof renderPermissionBootstrapError === 'function') {
+                renderPermissionBootstrapError({ containerId: 'main-content', retry: retryDashboardInit });
+                return;
+            }
+        }
+
+        const authFailure = error?.authFailure
+            || (typeof getApiAuthSessionFailure === 'function' ? getApiAuthSessionFailure() : null);
+        const isAuthBootstrapFailure = [
+            'auth_session_transient',
+            'auth_session_terminal',
+            'auth_session_changed',
+            'auth_bootstrap_unavailable'
+        ].includes(error?.code)
+            || error?.authFailure?.reason === 'session-changed';
+        if (isAuthBootstrapFailure) {
+            if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell({ markRuntimeReady: false });
+            if (typeof renderAuthSessionBootstrapError === 'function') {
+                renderAuthSessionBootstrapError({
+                    containerId: 'main-content',
+                    failure: authFailure || { status: Number(error?.status || 0), retryable: true, stage: 'dashboard-bootstrap' },
+                    retry: retryDashboardInit
+                });
+                return;
+            }
+        }
+
+        revealDashboardShell();
+        renderDashboardOpenFallback(error, 'init');
+    }
+
+    async function bootstrapDashboardSession() {
+        if (typeof apiVerifyToken !== 'function' || typeof hydrateActionPermissions !== 'function') {
+            throw dashboardBootstrapError('Shared authentication runtime is unavailable', 'auth_bootstrap_unavailable');
+        }
+        if (!hasStoredDashboardSession()) {
+            window.location.href = '/';
+            return null;
+        }
+
+        const user = await apiVerifyToken();
+        if (!user) {
+            const authFailure = typeof getApiAuthSessionFailure === 'function'
+                ? getApiAuthSessionFailure()
+                : null;
+            const isTransient = (typeof navigator !== 'undefined' && navigator.onLine === false)
+                || (typeof isApiAuthSessionFailureTransient === 'function' && isApiAuthSessionFailureTransient(authFailure));
+            if (isTransient) {
+                throw dashboardBootstrapError('Dashboard session verification is temporarily unavailable', 'auth_session_transient', {
+                    authFailure
+                });
+            }
+            if (typeof clearAuthStorage === 'function') clearAuthStorage();
+            else if (typeof clearApiAuthSessionStorage === 'function') clearApiAuthSessionStorage('dashboard-verify-terminal');
+            window.location.href = '/';
+            return null;
+        }
+
+        AppState.currentUser = user;
+        const sessionSnapshot = captureDashboardSession(user);
+        assertDashboardSessionCurrent(sessionSnapshot, user, 'dashboard-verify');
+        if (typeof hydrateBusinessOperatingProfile === 'function') {
+            await hydrateBusinessOperatingProfile(user, { sessionSnapshot });
+            assertDashboardSessionCurrent(sessionSnapshot, user, 'dashboard-profile');
+        }
+        const permissions = await hydrateActionPermissions(user, { sessionSnapshot });
+        assertDashboardSessionCurrent(sessionSnapshot, user, 'dashboard-permissions');
+        if (!permissions) {
+            throw dashboardBootstrapError('Permission catalog is temporarily unavailable', 'permission_bootstrap_failed');
+        }
+        window.WorkingRole?.hydrate?.();
+        if (typeof enforceCurrentPageAccess === 'function' && !enforceCurrentPageAccess(user)) return null;
+        assertDashboardSessionCurrent(sessionSnapshot, user, 'dashboard-access');
+        return { user, sessionSnapshot };
     }
 
     async function runDashboardInit() {
+        const bootstrap = await bootstrapDashboardSession();
+        if (!bootstrap?.user) return;
+        const verified = bootstrap.user;
 
-        // Set username
-        const savedUser = localStorage.getItem('pzp_current_user');
-        if (savedUser) {
-            try {
-                const user = JSON.parse(savedUser);
-                AppState.currentUser = user;
-                const el = document.getElementById('currentUser');
-                if (el) el.textContent = user.name;
-                if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-            } catch {}
-        }
-
-        // Verify session
-        let verified = null;
-        try {
-            verified = await apiVerifyToken();
-        } catch (err) {
-            console.error('[dashboard:init] session verification failed:', err);
-        }
-        if (!verified) {
-            if (typeof handleTransientAuthSessionBootstrap === 'function'
-                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
-                return;
-            }
-            window.location.href = '/';
-            return;
-        }
-        AppState.currentUser = verified;
         const el = document.getElementById('currentUser');
-        if (el) el.textContent = verified.name;
+        if (el) el.textContent = verified.name || verified.username || '';
+        if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
         setBoardRecoveryKey();
         initDashboardViewportHeight();
         initBoardKeyboard();

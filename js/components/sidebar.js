@@ -1447,6 +1447,7 @@ const Sidebar = (() => {
         _ensureAuroraLayer();
         _ensureCommandDeck();
         _ensureSidebarMiniRail(role, currentPath, location.hash.replace('#', ''));
+        _ensureDashboardShortcut(role, currentPath, savedUser);
         _removeSidebarTodayDock();
         _syncGroupSignals();
         _ensureActiveIndicator();
@@ -4524,6 +4525,28 @@ const Sidebar = (() => {
         if (anchor && rail.parentElement !== sidebar) sidebar.insertBefore(rail, anchor);
         else if (!rail.parentElement) sidebar.appendChild(rail);
         _initCollapsedRailInteractions(sidebar);
+    }
+
+    function _ensureDashboardShortcut(role, currentPath, user) {
+        const item = _railPrimaryItems(role, user).find(entry => entry.href === '/dashboard');
+        const header = document.querySelector('.header .header-content');
+        let shortcut = document.getElementById('crmDashboardShortcut');
+        if (!user || !role || !item || !header) {
+            shortcut?.remove();
+            return;
+        }
+        if (!shortcut) {
+            shortcut = document.createElement('a');
+            shortcut.id = 'crmDashboardShortcut';
+            shortcut.className = 'crm-dashboard-shortcut';
+            shortcut.setAttribute('aria-label', 'Відкрити дашборд');
+            shortcut.title = 'Відкрити дашборд';
+            shortcut.innerHTML = `${_renderIcon(item.icon)}<span>Дашборд</span>`;
+        }
+        if (shortcut.parentElement !== header) header.appendChild(shortcut);
+        shortcut.href = _sidebarNavigationHrefForBusinessItem(item, user);
+        if (currentPath === '/dashboard') shortcut.setAttribute('aria-current', 'page');
+        else shortcut.removeAttribute('aria-current');
     }
 
     // ═══ TOGGLE SIDEBAR (mobile/desktop) ══════════════════════════

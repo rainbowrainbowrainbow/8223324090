@@ -300,34 +300,12 @@
             errorEl.textContent = result.error;
             errorEl.classList.remove('hidden');
         } else {
-            // auth.js login() handles redirect; on /dashboard just init
+            // auth.js login() handles redirect; on /dashboard DashboardPage owns the shared auth bootstrap.
             DashboardPage.init();
         }
     });
 
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
-
-    // Check session on load
-    (async function() {
-        const user = await apiVerifyToken();
-        if (user) {
-            AppState.currentUser = user;
-            document.getElementById('loginScreen').classList.add('hidden');
-            document.getElementById('currentUser').textContent = user.name;
-            if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-            DashboardPage.init();
-            return;
-        }
-        if (typeof handleTransientAuthSessionBootstrap === 'function'
-            && handleTransientAuthSessionBootstrap({
-                retry: () => window.location.reload(),
-                containerId: 'main-content'
-            })) {
-            return;
-        }
-        // v31.7.1: Redirect to canonical login page
-        window.location.href = '/';
-    })();
     </script>
     <script src="js/alerts.js?v=0.81.134"></script>
 <!-- Decision Screen overlay -->

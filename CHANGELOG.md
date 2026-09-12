@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.145 - Omni: Viber Personal Bridge onboarding
+
+### Omni / Viber Personal Bridge / (12.09.2026) [codex]
+- **Правдиві capabilities** - top-level стан каналу більше не оголошує `sendCapable=true`, якщо bridge diagnostics або adapter capability блокують відправку.
+- **Onboarding звичайного Viber-акаунта** - картки Viber Bot API і Viber Personal Bridge розділені; Personal Bridge показує кроки Windows service, Viber Desktop, binding чату, приймання й відправлення.
+- **Безпечний composer** - відповіді з Omni блокуються для непідтвердженого або stale Personal Bridge і показують менеджеру конкретну наступну дію.
+
+---
+
 ## v0.81.144 - Каса: вузький тестовий X/Z gate
 
 ### Release / Versioning / (12.09.2026) [codex]

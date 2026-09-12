@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.144",
+  "version": "0.81.145",
   "eventGenix": {
-    "releaseLabel": "Каса: вузький тестовий X/Z gate"
+    "releaseLabel": "Omni: Viber Personal Bridge onboarding"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

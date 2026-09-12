@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.143 - Omni: безпечний Viber bridge
+
+### Omni / Viber Personal Bridge / (12.09.2026) [codex]
+- **Fault QA gates** - Windows bridge journal не втрачає pending events після restart або CRM outage; події повторно доставляються тільки до ACK і не дублюються після відновлення.
+- **Fail-closed health** - Omni окремо показує transport heartbeat, receive health і send capability, а send блокується, якщо bridge не підтвердив `send_text=true`.
+- **At-most-once send** - dispatcher переводить interrupted/timeout send у `unknown` або `failed` без автоматичного повторного кліку у Viber Desktop.
+- **Журнал і schema guard** - втрата local journal, mismatch Viber DB/schema або adapter error переводять bridge у blocked state до повторної перевірки.
+
+---
+
 ## v0.81.142 - Каса: захищене відновлення close proof
 
 ### Release / Versioning / (12.09.2026) [codex]

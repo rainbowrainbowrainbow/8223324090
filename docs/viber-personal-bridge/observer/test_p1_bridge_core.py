@@ -217,7 +217,8 @@ class BridgeCoreTests(unittest.TestCase):
         blocked = self.core.begin_dispatch(COMMAND, observed_source_chat_ref=SOURCE_CHAT,
                                            observed_peer_ref=new_peer)
         self.assertEqual((blocked["status"], blocked["error_code"], blocked["dispatch_count"]),
-                         ("rejected", "PEER_UNVERIFIED", 0))
+                         ("rejected", "BINDING_REVISION_STALE", 0))
+        self.assertEqual(self.core.command(COMMAND)["error_code"], "BINDING_REVISION_STALE")
         self.assertEqual(self.core.verify_peer(chat_id=CHAT,
                                               expected_source_chat_ref=SOURCE_CHAT,
                                               expected_peer_ref=new_peer), 4)
@@ -252,6 +253,30 @@ class BridgeCoreTests(unittest.TestCase):
                 self.core.verify_source(**kwargs)
             self.assertEqual(caught.exception.code, code)
             self.assertFalse(self.core.diagnostics()["send_text"])
+
+
+    def test_failed_dispatch_is_terminal_and_not_dispatchable_again(self):
+        self.ready()
+        self.core.accept_command(command())
+        self.core.begin_dispatch(COMMAND, observed_source_chat_ref=SOURCE_CHAT,
+                                 observed_peer_ref=PEER)
+        failed = self.core.finish_dispatch(COMMAND, status="failed", error_code="COMPOSER_WRITE_FAILED")
+        self.assertEqual((failed["status"], failed["error_code"], failed["dispatch_count"]),
+                         ("failed", "COMPOSER_WRITE_FAILED", 1))
+        self.assertEqual(self.core.list_dispatchable_commands(), [])
+        self.assertEqual(self.core.begin_dispatch(COMMAND, observed_source_chat_ref=SOURCE_CHAT,
+                                                  observed_peer_ref=PEER)["status"], "failed")
+
+    def test_list_dispatchable_commands_excludes_terminal_and_rejected(self):
+        self.ready()
+        self.assertEqual(self.core.list_dispatchable_commands(), [])
+        accepted = self.core.accept_command(command())
+        self.assertEqual([item["command_id"] for item in self.core.list_dispatchable_commands()],
+                         [accepted["command_id"]])
+        self.core.begin_dispatch(COMMAND, observed_source_chat_ref=SOURCE_CHAT,
+                                 observed_peer_ref=PEER)
+        self.core.finish_dispatch(COMMAND, status="unknown")
+        self.assertEqual(self.core.list_dispatchable_commands(), [])
 
     def test_reopen_with_another_business_or_epoch_is_rejected(self):
         self.core.close()

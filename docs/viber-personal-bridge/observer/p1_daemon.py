@@ -14,6 +14,7 @@ from typing import Any, Callable, Mapping
 from uuid import uuid4
 
 from p1_bridge_core import BridgeCore, BridgeCoreError
+from p1_dispatcher import DispatcherError, execute_text
 from p1_http_client import BridgeHttpClient, HttpClientError, PROTOCOL_VERSION
 from p1_transport import deliver_pending
 
@@ -26,13 +27,16 @@ class DaemonError(Exception):
 
 class BridgeDaemon:
     def __init__(self, core: BridgeCore, client: BridgeHttpClient, *,
-                 runtime_id: str | None = None, clock: Callable[[], float] = time.monotonic):
+                 runtime_id: str | None = None, clock: Callable[[], float] = time.monotonic,
+                 receive_adapter: Any | None = None, dispatch_adapter: Any | None = None):
         if not isinstance(core, BridgeCore) or not isinstance(client, BridgeHttpClient):
             raise DaemonError("DAEMON_DEPENDENCY_INVALID")
         self.core = core
         self.client = client
         self.runtime_id = runtime_id or str(uuid4())
         self._clock = clock
+        self.receive_adapter = receive_adapter
+        self.dispatch_adapter = dispatch_adapter
         self._stop = threading.Event()
         self._last_heartbeat = float("-inf")
 
@@ -48,14 +52,18 @@ class BridgeDaemon:
 
     def send_heartbeat(self) -> Mapping[str, Any]:
         diagnostics = self.core.diagnostics()
+        capabilities = {
+            "receive_text": diagnostics["receive_healthy"],
+            "send_text": diagnostics["send_text"],
+        }
+        if self.receive_adapter is not None:
+            capabilities.update(self.receive_adapter.capabilities())
+            capabilities["send_text"] = diagnostics["send_text"]
         response = self.client.heartbeat({
             **self.envelope(),
             "type": "bridge.heartbeat",
             "observed_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "capabilities": {
-                "receive_text": diagnostics["receive_healthy"],
-                "send_text": diagnostics["send_text"],
-            },
+            "capabilities": capabilities,
         })
         self._last_heartbeat = self._clock()
         return response
@@ -89,20 +97,39 @@ class BridgeDaemon:
         return accepted
 
     def report_result(self, command_id: str, status: str, error_code: str | None = None) -> Mapping[str, Any]:
-        if status not in {"dispatch_started", "submitted_unconfirmed", "unknown", "rejected"}:
+        if status not in {"dispatch_started", "submitted_unconfirmed", "failed", "unknown", "rejected"}:
             raise DaemonError("COMMAND_STATUS_INVALID")
         payload = {**self.envelope(), "status": status}
         if error_code:
             payload["error_code"] = error_code
         return self.client.command_result(command_id, payload)
 
+    def dispatch_pending(self, *, limit: int = 5) -> list[dict[str, Any]]:
+        if self.dispatch_adapter is None:
+            return []
+        dispatched = []
+        for command in self.core.list_dispatchable_commands(limit=limit):
+            try:
+                result = execute_text(self.core, command, self.dispatch_adapter)
+            except DispatcherError as error:
+                raise DaemonError(error.code) from None
+            dispatched.append(result)
+            if result.get("status") in {"rejected", "submitted_unconfirmed", "failed", "unknown"}:
+                self.report_result(result["command_id"], result["status"], result.get("error_code"))
+        return dispatched
+
     def cycle(self) -> dict[str, Any]:
+        receive = None
+        if self.receive_adapter is not None:
+            receive = self.receive_adapter.scan_once(self.core)
         heartbeat = None
         if self._clock() - self._last_heartbeat >= 15.0:
             heartbeat = self.send_heartbeat()
         events = self.flush_events()
         commands = self.pull_once()
-        return {"heartbeat": heartbeat is not None, "events": events, "commands": len(commands)}
+        dispatched = self.dispatch_pending()
+        return {"heartbeat": heartbeat is not None, "receive": receive, "events": events,
+                "commands": len(commands), "dispatched": len(dispatched)}
 
     def run(self, *, interval: float = 2.0) -> None:
         self.core.recover_interrupted_dispatches()

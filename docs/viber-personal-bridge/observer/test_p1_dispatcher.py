@@ -27,7 +27,7 @@ def command(**changes):
         "business_context": "event_genix",
         "chat_id": CHAT,
         "binding_revision": 2,
-        "text": "Synthetic dispatcher text",
+        "text": "Synthetic dispatcher text 🚀\nsecond line",
     }
     value.update(changes)
     return value
@@ -35,10 +35,15 @@ def command(**changes):
 
 class FakeAdapter:
     def __init__(self, *, source_chat_ref=SOURCE_CHAT, peer_ref=PEER,
-                 result=None, active_error=None, send_error=None):
+                 active=None, result=None, active_error=None, send_error=None):
         self.source_chat_ref = source_chat_ref
         self.peer_ref = peer_ref
-        self.result = {"submitted": True} if result is None else result
+        self.active = active or {}
+        self.result = {
+            "status": "submitted_unconfirmed",
+            "outbound_observed": True,
+            "chat_confirmed": True,
+        } if result is None else result
         self.active_error = active_error
         self.send_error = send_error
         self.active_calls = 0
@@ -49,7 +54,17 @@ class FakeAdapter:
         self.active_calls += 1
         if self.active_error:
             raise self.active_error
-        return {"source_chat_ref": self.source_chat_ref, "peer_ref": self.peer_ref}
+        value = {
+            "source_chat_ref": self.source_chat_ref,
+            "peer_ref": self.peer_ref,
+            "account_verified": True,
+            "foreground_verified": True,
+            "composer_state": "empty",
+            "layout_verified": True,
+            "dpi_verified": True,
+        }
+        value.update(self.active)
+        return value
 
     def send_text(self, text):
         self.send_calls += 1
@@ -83,7 +98,7 @@ class DispatcherTests(unittest.TestCase):
         repeated = execute_text(self.core, command(), adapter)
         self.assertEqual(repeated["status"], "submitted_unconfirmed")
         self.assertEqual((adapter.active_calls, adapter.send_calls), (1, 1))
-        self.assertEqual(adapter.sent_texts, ["Synthetic dispatcher text"])
+        self.assertEqual(adapter.sent_texts, ["Synthetic dispatcher text 🚀\nsecond line"])
 
     def test_active_peer_mismatch_aborts_before_send(self):
         adapter = FakeAdapter(peer_ref="e" * 64)
@@ -100,6 +115,26 @@ class DispatcherTests(unittest.TestCase):
         self.assertEqual(self.core.command(COMMAND)["status"], "accepted")
         self.assertEqual(adapter.send_calls, 0)
 
+    def test_preflight_blocks_before_dispatch_boundary(self):
+        cases = [
+            ({"account_verified": False}, "VIBER_ACCOUNT_NOT_VERIFIED"),
+            ({"foreground_verified": False}, "VIBER_WINDOW_NOT_FOREGROUND"),
+            ({"composer_state": "foreign_text"}, "COMPOSER_NOT_CONTROLLED"),
+            ({"layout_verified": False}, "VIBER_LAYOUT_NOT_VERIFIED"),
+            ({"dpi_verified": False}, "VIBER_LAYOUT_NOT_VERIFIED"),
+        ]
+        for index, (active, code) in enumerate(cases, start=1):
+            with self.subTest(code=code):
+                command_id = f"{index:08x}-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+                request_id = f"{index:08x}-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+                adapter = FakeAdapter(active=active)
+                with self.assertRaises(DispatcherError) as caught:
+                    execute_text(self.core, command(command_id=command_id,
+                                                    client_request_id=request_id), adapter)
+                self.assertEqual(caught.exception.code, code)
+                self.assertEqual(self.core.command(command_id)["status"], "accepted")
+                self.assertEqual(adapter.send_calls, 0)
+
     def test_timeout_after_dispatch_boundary_becomes_unknown_and_never_retries(self):
         adapter = FakeAdapter(send_error=TimeoutError("synthetic"))
         first = execute_text(self.core, command(), adapter)
@@ -109,11 +144,39 @@ class DispatcherTests(unittest.TestCase):
         self.assertEqual(second["status"], "unknown")
         self.assertEqual((adapter.active_calls, adapter.send_calls), (1, 1))
 
-    def test_malformed_adapter_success_is_unknown(self):
-        for result in [True, {}, {"submitted": False}, {"submitted": True, "delivery": "delivered"}]:
+    def test_dispatch_failed_is_terminal_and_never_retried(self):
+        adapter = FakeAdapter(result={"status": "failed", "error_code": "COMPOSER_WRITE_FAILED"})
+        first = execute_text(self.core, command(), adapter)
+        self.assertEqual((first["status"], first["error_code"], first["dispatch_count"]),
+                         ("failed", "COMPOSER_WRITE_FAILED", 1))
+        second = execute_text(self.core, command(), adapter)
+        self.assertEqual(second["status"], "failed")
+        self.assertEqual((adapter.active_calls, adapter.send_calls), (1, 1))
+
+    def test_missing_outbound_reconciliation_is_unknown(self):
+        cases = [
+            {"status": "submitted_unconfirmed", "outbound_observed": False, "chat_confirmed": True},
+            {"status": "submitted_unconfirmed", "outbound_observed": True, "chat_confirmed": False},
+            {"status": "submitted_unconfirmed"},
+        ]
+        for index, result in enumerate(cases, start=20):
             with self.subTest(result=result):
-                command_id = f"{len(str(result)) + 1:08x}-6666-4666-8666-666666666666"
-                request_id = f"{len(str(result)) + 20:08x}-7777-4777-8777-777777777777"
+                command_id = f"{index:08x}-cccc-4ccc-8ccc-cccccccccccc"
+                request_id = f"{index:08x}-dddd-4ddd-8ddd-dddddddddddd"
+                adapter = FakeAdapter(result=result)
+                outcome = execute_text(self.core,
+                                       command(command_id=command_id,
+                                               client_request_id=request_id), adapter)
+                self.assertEqual((outcome["status"], outcome["error_code"]),
+                                 ("unknown", "OUTBOUND_RECONCILIATION_MISSING"))
+                self.assertEqual(adapter.send_calls, 1)
+
+    def test_malformed_adapter_success_is_unknown(self):
+        cases = [True, {}, {"submitted": True}, {"status": "delivered"}, {"status": "failed", "error_code": 10}]
+        for index, result in enumerate(cases, start=40):
+            with self.subTest(result=result):
+                command_id = f"{index:08x}-6666-4666-8666-666666666666"
+                request_id = f"{index:08x}-7777-4777-8777-777777777777"
                 adapter = FakeAdapter(result=result)
                 outcome = execute_text(self.core,
                                        command(command_id=command_id,
@@ -127,7 +190,8 @@ class DispatcherTests(unittest.TestCase):
                                  observed_peer_ref=PEER)
         adapter = FakeAdapter()
         result = execute_text(self.core, command(), adapter)
-        self.assertEqual((result["status"], result["dispatch_count"]), ("unknown", 1))
+        self.assertEqual((result["status"], result["error_code"], result["dispatch_count"]),
+                         ("unknown", "DISPATCH_INTERRUPTED", 1))
         self.assertEqual((adapter.active_calls, adapter.send_calls), (0, 0))
 
 

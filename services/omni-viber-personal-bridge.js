@@ -9,7 +9,7 @@ const log = createLogger('OmniViberPersonalBridge');
 const PROTOCOL_VERSION = '1.0';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const REF_RE = /^(?:hmac:)?[0-9a-f]{64}$/;
-const TERMINAL_COMMAND_STATES = new Set(['submitted_unconfirmed', 'unknown', 'rejected']);
+const TERMINAL_COMMAND_STATES = new Set(['submitted_unconfirmed', 'failed', 'unknown', 'rejected']);
 const LEASE_SECONDS = 45;
 
 class BridgeError extends Error {
@@ -61,6 +61,21 @@ function bridgeScope(payload) {
   };
 }
 
+function scopeFromRuntime(payload, runtime, firstEvent = null) {
+  const source = firstEvent || payload || {};
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new BridgeError('PAYLOAD_INVALID');
+  if (payload.protocol_version !== PROTOCOL_VERSION) throw new BridgeError('PROTOCOL_VERSION_UNSUPPORTED', 409);
+  const businessContext = normalizeBusinessContext(runtime?.businessContext || runtime?.business_context);
+  if (!businessContext) throw new BridgeError('BUSINESS_CONTEXT_INVALID');
+  return {
+    businessContext,
+    bridgeId: uuid(runtime?.bridgeId, 'BRIDGE_ID_INVALID'),
+    accountId: uuid(runtime?.accountId, 'ACCOUNT_ID_INVALID'),
+    accountEpoch: positiveInteger(Number(runtime?.accountEpoch), 'ACCOUNT_EPOCH_INVALID'),
+    runtimeId: uuid(payload.runtime_id || source.runtime_id, 'RUNTIME_ID_INVALID'),
+  };
+}
+
 function tokenFromHeader(header) {
   const match = String(header || '').match(/^Bearer ([A-Za-z0-9_-]{24,256})$/);
   return match ? match[1] : '';
@@ -70,6 +85,25 @@ function safeEqual(left, right) {
   const a = Buffer.from(String(left || ''), 'utf8');
   const b = Buffer.from(String(right || ''), 'utf8');
   return a.length === b.length && a.length > 0 && crypto.timingSafeEqual(a, b);
+}
+
+
+function sanitizeCapabilities(value) {
+  const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const output = {};
+  const booleanKeys = [
+    'receive_text', 'send_text', 'service_running', 'desktop_authorized',
+    'viber_desktop_authorized', 'capture_gap', 'captureGap',
+  ];
+  for (const key of booleanKeys) if (typeof input[key] === 'boolean') output[key] = input[key];
+  const stringKeys = [
+    'last_scan_at', 'lastScanAt', 'viber_desktop_version', 'viberDesktopVersion',
+    'block_reason', 'blockReason', 'adapter_error', 'adapterError',
+  ];
+  for (const key of stringKeys) {
+    if (typeof input[key] === 'string' && input[key].length <= 255 && !/[\u0000\r\n]/.test(input[key])) output[key] = input[key];
+  }
+  return output;
 }
 
 function authenticate(runtime, authorization, scope) {
@@ -117,7 +151,7 @@ function validateEvent(event, scope) {
 }
 
 function conversationExternalId(scope, chatId) {
-  return `personal:${scope.bridgeId}:${chatId}`;
+  return `personal:${scope.bridgeId}:${scope.accountId}:${scope.accountEpoch}:${chatId}`;
 }
 
 function createService(deps = {}) {
@@ -140,10 +174,9 @@ function createService(deps = {}) {
   }
 
   async function heartbeat(payload, runtime, authorization) {
-    const scope = bridgeScope(payload);
+    const scope = scopeFromRuntime(payload, runtime);
     authenticate(runtime, authorization, scope);
-    const capabilities = payload.capabilities && typeof payload.capabilities === 'object' && !Array.isArray(payload.capabilities)
-      ? payload.capabilities : {};
+    const capabilities = sanitizeCapabilities(payload.capabilities);
     const client = await db.connect();
     try {
       await client.query('BEGIN');
@@ -187,11 +220,12 @@ function createService(deps = {}) {
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
-        [JSON.stringify(['viber-personal-event', scope.businessContext, scope.bridgeId, event.eventId])]);
+        [JSON.stringify(['viber-personal-event', scope.businessContext, scope.bridgeId,
+          scope.accountId, scope.accountEpoch, event.eventId])]);
       const existing = await client.query(
         `SELECT payload_hash, status FROM omni_viber_personal_bridge_events
-          WHERE business_context=$1 AND bridge_id=$2 AND event_id=$3`,
-        [scope.businessContext, scope.bridgeId, event.eventId]
+          WHERE business_context=$1 AND bridge_id=$2 AND account_id=$3 AND account_epoch=$4 AND event_id=$5`,
+        [scope.businessContext, scope.bridgeId, scope.accountId, scope.accountEpoch, event.eventId]
       );
       if (existing.rows[0] && existing.rows[0].payload_hash !== hash) throw new BridgeError('EVENT_ID_CONFLICT', 409);
       if (['processed', 'ignored'].includes(existing.rows[0]?.status)) {
@@ -202,7 +236,8 @@ function createService(deps = {}) {
         `INSERT INTO omni_viber_personal_bridge_events
            (business_context,bridge_id,event_id,account_id,account_epoch,runtime_id,sequence,chat_id,binding_revision,payload_hash,status)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'received')
-         ON CONFLICT (business_context,bridge_id,event_id) DO UPDATE SET status='received',error_code=NULL`,
+         ON CONFLICT (business_context,bridge_id,account_id,account_epoch,event_id)
+         DO UPDATE SET status='received',error_code=NULL`,
         [scope.businessContext, scope.bridgeId, event.eventId, scope.accountId, scope.accountEpoch,
           scope.runtimeId, event.sequence, event.chatId, event.bindingRevision, hash]
       );
@@ -225,36 +260,42 @@ function createService(deps = {}) {
           content: event.text,
           contentType: 'text',
           mediaUrl: null,
-          externalMessageId: `vpb:${scope.bridgeId}:${event.eventId}`,
-          meta: { connectorType: 'viber_personal_bridge', bridgeId: scope.bridgeId,
-            accountId: scope.accountId, accountEpoch: scope.accountEpoch, chatId: event.chatId,
-            bindingRevision: event.bindingRevision, identityLevel: event.identityLevel,
+          externalMessageId: `vpb:${scope.bridgeId}:${scope.accountId}:${scope.accountEpoch}:${event.eventId}`,
+          meta: { connectorType: 'viber_personal_bridge', source: 'viber_personal', externalSource: 'viber_personal',
+            bridgeId: scope.bridgeId, accountId: scope.accountId, accountEpoch: scope.accountEpoch,
+            chatId: event.chatId, bindingRevision: event.bindingRevision, identityLevel: event.identityLevel,
             peerRef: event.peerRef, observedAt: event.observedAt.toISOString() },
         }, { businessContext: scope.businessContext });
         await db.query(
           `UPDATE conversations SET meta=COALESCE(meta,'{}'::jsonb)||$2::jsonb WHERE id=$1`,
           [processed.conversation.id, JSON.stringify({ connectorType: 'viber_personal_bridge',
-            bridgeId: scope.bridgeId, accountId: scope.accountId, accountEpoch: scope.accountEpoch,
-            chatId: event.chatId, bindingRevision: event.bindingRevision,
-            identityLevel: event.identityLevel, peerRef: event.peerRef })]
+            source: 'viber_personal', externalSource: 'viber_personal', bridgeId: scope.bridgeId,
+            accountId: scope.accountId, accountEpoch: scope.accountEpoch, chatId: event.chatId,
+            bindingRevision: event.bindingRevision, identityLevel: event.identityLevel, peerRef: event.peerRef })]
         );
         status = 'processed';
       }
       await db.query(
-        `UPDATE omni_viber_personal_bridge_events SET status=$4,processed_at=NOW(),error_code=NULL
-          WHERE business_context=$1 AND bridge_id=$2 AND event_id=$3`,
-        [scope.businessContext, scope.bridgeId, event.eventId, status]
+        `UPDATE omni_viber_personal_bridge_events SET status=$6,processed_at=NOW(),error_code=NULL
+          WHERE business_context=$1 AND bridge_id=$2 AND account_id=$3 AND account_epoch=$4 AND event_id=$5`,
+        [scope.businessContext, scope.bridgeId, scope.accountId, scope.accountEpoch, event.eventId, status]
       );
       await db.query(
         `UPDATE omni_viber_personal_bridge_runtime SET last_receive_at=NOW(),last_error_code=NULL,updated_at=NOW()
-          WHERE business_context=$1 AND bridge_id=$2`, [scope.businessContext, scope.bridgeId]
+          WHERE business_context=$1 AND bridge_id=$2 AND account_id=$3 AND account_epoch=$4`,
+        [scope.businessContext, scope.bridgeId, scope.accountId, scope.accountEpoch]
       );
       return event.eventId;
     } catch (error) {
       await db.query(
-        `UPDATE omni_viber_personal_bridge_events SET status='failed',error_code=$4
-          WHERE business_context=$1 AND bridge_id=$2 AND event_id=$3`,
-        [scope.businessContext, scope.bridgeId, event.eventId, 'PROCESSING_FAILED']
+        `UPDATE omni_viber_personal_bridge_events SET status='failed',error_code=$6
+          WHERE business_context=$1 AND bridge_id=$2 AND account_id=$3 AND account_epoch=$4 AND event_id=$5`,
+        [scope.businessContext, scope.bridgeId, scope.accountId, scope.accountEpoch, event.eventId, 'PROCESSING_FAILED']
+      ).catch(() => {});
+      await db.query(
+        `UPDATE omni_viber_personal_bridge_runtime SET last_error_code=$5,updated_at=NOW()
+          WHERE business_context=$1 AND bridge_id=$2 AND account_id=$3 AND account_epoch=$4`,
+        [scope.businessContext, scope.bridgeId, scope.accountId, scope.accountEpoch, 'PROCESSING_FAILED']
       ).catch(() => {});
       throw error;
     }
@@ -262,7 +303,7 @@ function createService(deps = {}) {
 
   async function ingest(payload, runtime, authorization) {
     if (!payload || !Array.isArray(payload.events) || payload.events.length > 50) throw new BridgeError('BATCH_INVALID');
-    const scope = bridgeScope({ ...payload, ...(payload.events[0] || {}) });
+    const scope = scopeFromRuntime(payload, runtime, payload.events[0]);
     authenticate(runtime, authorization, scope);
     await assertActiveRuntime(scope);
     const acked = [];
@@ -300,17 +341,18 @@ function createService(deps = {}) {
     if (conversation?.channel !== 'viber' || meta.connectorType !== 'viber_personal_bridge') return false;
     if (meta.identityLevel !== 'verified') throw new BridgeError('PEER_UNVERIFIED', 409);
     const state = await db.query(
-      `SELECT last_heartbeat_at FROM omni_viber_personal_bridge_runtime
+      `SELECT last_heartbeat_at,capabilities FROM omni_viber_personal_bridge_runtime
         WHERE business_context=$1 AND bridge_id=$2 AND account_id=$3 AND account_epoch=$4`,
       [conversation.businessContext, meta.bridgeId, meta.accountId, meta.accountEpoch]
     );
     const heartbeat = state.rows[0]?.last_heartbeat_at ? new Date(state.rows[0].last_heartbeat_at) : null;
     if (!heartbeat || now() - heartbeat > 90_000) throw new BridgeError('BRIDGE_OFFLINE', 409);
+    if (state.rows[0]?.capabilities?.send_text !== true) throw new BridgeError('SEND_CAPABILITY_BLOCKED', 409);
     return true;
   }
 
   async function pull(payload, runtime, authorization) {
-    const scope = bridgeScope(payload);
+    const scope = scopeFromRuntime(payload, runtime);
     authenticate(runtime, authorization, scope);
     await assertActiveRuntime(scope);
     const limit = Math.min(20, positiveInteger(payload.limit || 10, 'LIMIT_INVALID'));
@@ -335,7 +377,7 @@ function createService(deps = {}) {
   }
 
   async function commandResult(commandId, payload, runtime, authorization) {
-    const scope = bridgeScope(payload);
+    const scope = scopeFromRuntime(payload, runtime);
     authenticate(runtime, authorization, scope);
     await assertActiveRuntime(scope);
     commandId = uuid(commandId, 'COMMAND_ID_INVALID');
@@ -361,7 +403,7 @@ function createService(deps = {}) {
         if (String(row.lease_runtime_id || '').toLowerCase() !== scope.runtimeId) throw new BridgeError('COMMAND_LEASE_MISMATCH', 409);
         const transitions = {
           leased: new Set(['dispatch_started', 'rejected']),
-          dispatch_started: new Set(['submitted_unconfirmed', 'unknown']),
+          dispatch_started: new Set(['submitted_unconfirmed', 'failed', 'unknown']),
         };
         if (!transitions[row.status]?.has(payload.status)) throw new BridgeError('COMMAND_TRANSITION_INVALID', 409);
         const updated = await client.query(
@@ -383,9 +425,10 @@ function createService(deps = {}) {
       ? hub().buildSendTruth('provider_attempted', { channel: 'viber', providerAttempted: true,
         providerAccepted: true, providerReference: commandId,
         message: 'Viber Desktop прийняв команду; доставку адресату ще не підтверджено.' })
-      : payload.status === 'rejected'
+      : payload.status === 'rejected' || payload.status === 'failed'
         ? hub().buildSendTruth('provider_failed_immediate', { channel: 'viber', providerAttempted: false,
-          providerAccepted: false, providerReference: commandId, error: payload.error_code || 'BRIDGE_REJECTED' })
+          providerAccepted: false, providerReference: commandId,
+          error: payload.error_code || (payload.status === 'failed' ? 'BRIDGE_DISPATCH_FAILED' : 'BRIDGE_REJECTED') })
         : hub().buildSendTruth('provider_unknown', { channel: 'viber', providerAttempted: true,
           providerAccepted: null, providerReference: commandId, error: payload.error_code || 'BRIDGE_RESULT_UNKNOWN' });
     if (payload.status !== 'dispatch_started') await hub().saveMessageSendTruth(row.message_id, truth);
@@ -400,13 +443,24 @@ function createService(deps = {}) {
     const row = result.rows[0];
     const heartbeat = row?.last_heartbeat_at ? new Date(row.last_heartbeat_at) : null;
     const online = Boolean(heartbeat && now() - heartbeat <= 90_000);
-    return { online, lastHeartbeatAt: heartbeat?.toISOString() || null,
+    const capabilities = sanitizeCapabilities(row?.capabilities || {});
+    const lastScanRaw = capabilities.last_scan_at || capabilities.lastScanAt || null;
+    const lastScanAt = lastScanRaw ? new Date(lastScanRaw) : null;
+    const captureGap = Boolean(online && (!lastScanAt || now() - lastScanAt > 90_000));
+    const adapterError = row?.last_error_code || capabilities.adapter_error || capabilities.adapterError
+      || capabilities.block_reason || capabilities.blockReason || null;
+    const receiveHealth = Boolean(online && capabilities.receive_text === true && !captureGap && !adapterError);
+    const sendCapability = Boolean(online && capabilities.send_text === true && !adapterError);
+    return { online, transportHeartbeat: online, receiveHealth, sendCapability,
+      lastHeartbeatAt: heartbeat?.toISOString() || null,
       lastReceiveAt: row?.last_receive_at ? new Date(row.last_receive_at).toISOString() : null,
-      capabilities: row?.capabilities || {} };
+      lastErrorCode: row?.last_error_code || null,
+      captureGap, adapterError,
+      capabilities };
   }
 
   return { heartbeat, ingest, enqueue, assertSendCapable, pull, commandResult, status };
 }
 
-module.exports = { PROTOCOL_VERSION, BridgeError, bridgeScope, authenticate, validateEvent,
-  payloadHash, conversationExternalId, createService };
+module.exports = { PROTOCOL_VERSION, BridgeError, bridgeScope, scopeFromRuntime, authenticate, validateEvent,
+  payloadHash, conversationExternalId, sanitizeCapabilities, createService };

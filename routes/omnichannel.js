@@ -41,6 +41,7 @@ const {
     testOmniConnection,
     disconnectOmniConnection,
     resolveOmniRuntimeConfig,
+    resolveOmniRuntimeConfigByBearer,
     publicWebhookUrl,
     providerDefinition,
 } = require('../services/omni-accounts');
@@ -118,8 +119,7 @@ function getViberPersonalBridge() {
 }
 
 async function viberPersonalRuntime(req) {
-    const businessContext = req.body?.business_context || req.body?.events?.[0]?.business_context;
-    return resolveOmniRuntimeConfig('viber_personal', { businessContext });
+    return resolveOmniRuntimeConfigByBearer('viber_personal', req.headers.authorization);
 }
 
 function bridgeFailure(res, error) {

@@ -91,10 +91,10 @@ const CHANNELS = [
   },
   {
     channel: 'viber',
-    label: 'Viber',
+    label: 'Viber Bot API',
     provider: 'viber',
     purpose: 'inbox',
-    purposeLabel: 'Viber inbox',
+    purposeLabel: 'Viber bot inbox',
     providerKind: 'messenger',
     envKeys: ['VIBER_TOKEN'],
     accountEnvKeys: ['VIBER_SENDER_NAME'],
@@ -110,7 +110,7 @@ const CHANNELS = [
       { name: 'senderAvatar', label: 'Avatar URL', type: 'url', required: false, placeholder: 'https://...', hint: 'Опційно: HTTPS-посилання на аватар відправника.' },
     ],
     webhookPath: '/api/omni/webhook/viber',
-    businessImpact: 'Без Viber CRM не зможе надсилати відповіді клієнтам у Viber; вхідні події залежать від webhook.',
+    businessImpact: 'Це підключення Viber Bot API для public/bot-акаунта. Для звичайного особистого Viber-акаунта використовуйте окрему картку Viber Personal Bridge.',
     localValidation: validateViber,
     verifier: verifyViber,
     envWarning: 'Viber provider token is not configured',
@@ -1012,6 +1012,50 @@ async function resolveOmniRuntimeConfig(channel, options = {}) {
   return mergeRuntimeConfig(activeDefinitionForRow(def, row), row, options);
 }
 
+
+function tokenFromAuthorizationHeader(header) {
+  const match = String(header || '').match(/^Bearer ([A-Za-z0-9_-]{24,256})$/);
+  return match ? match[1] : '';
+}
+
+function safeSecretEqual(left, right) {
+  const a = Buffer.from(String(left || ''), 'utf8');
+  const b = Buffer.from(String(right || ''), 'utf8');
+  return a.length === b.length && a.length > 0 && crypto.timingSafeEqual(a, b);
+}
+
+async function resolveOmniRuntimeConfigByBearer(channel, authorization, options = {}) {
+  const def = providerDefinition(channel);
+  const token = tokenFromAuthorizationHeader(authorization);
+  if (!def || !token) return {};
+  try {
+    const result = await (options.ownershipClient || pool).query(
+      `SELECT * FROM ${CONNECTION_TABLE}
+        WHERE channel = $1
+          AND status NOT IN ('disconnected', 'needs_rebind')`,
+      [normalizeChannel(def.channel)]
+    );
+    for (const row of result.rows || []) {
+      const scopedOptions = { ...options, businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT };
+      const active = activeDefinitionForRow(def, row);
+      const runtime = mergeRuntimeConfig(active, row, scopedOptions);
+      if (safeSecretEqual(runtime.bridgeToken, token)) {
+        return { ...runtime, businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT };
+      }
+    }
+  } catch (err) {
+    if (options.strict === true) throw err;
+    if (!/omni_provider_connections|does not exist|relation/i.test(err.message || '')) {
+      log.warn('Unable to resolve Omni runtime by Bearer token', { channel, error: err.message });
+    }
+  }
+  const fallback = mergeRuntimeConfig(def, null, options);
+  return safeSecretEqual(fallback.bridgeToken, token)
+    ? { ...fallback, businessContext: omniBusinessContext(options) }
+    : {};
+}
+
+
 async function isTelegramInboxConnectionUsingToken(botToken, options = {}) {
   const owners = await getTelegramTokenOwners(botToken, options.client || pool);
   return owners.some(owner => owner.channel === 'telegram');
@@ -1821,6 +1865,7 @@ module.exports = {
   isOmniChannelSendCapableAsync,
   getOmniUnavailableMessageAsync,
   resolveOmniRuntimeConfig,
+  resolveOmniRuntimeConfigByBearer,
   isTelegramInboxConnectionUsingToken,
   withTelegramOwnership,
   getTelegramTokenOwners,

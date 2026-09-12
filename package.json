@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.131",
+  "version": "0.81.132",
   "eventGenix": {
-    "releaseLabel": "Omni: техборг чат-лід"
+    "releaseLabel": "Omni: докази релізу техборгу"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

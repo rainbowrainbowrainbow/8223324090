@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.132 - Omni: докази релізу техборгу
+
+### Release / Versioning / (12.09.2026) [codex]
+- **Omni: докази релізу техборгу** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.131 - Omni: техборг чат-лід
 
 ### Omni / Chat-to-lead / WhatsApp readiness / (12.09.2026) [codex]

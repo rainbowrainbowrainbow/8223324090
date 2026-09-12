@@ -57,6 +57,10 @@ function isParkDarTestServiceOutEnabled(env = process.env) {
     return productionGateEnv(env.PARK_DAR_TEST_SERVICE_OUT_ENABLED);
 }
 
+function isParkDarTestXzEnabled(env = process.env) {
+    return productionGateEnv(env.PARK_DAR_TEST_XZ_ENABLED);
+}
+
 function normalizeCredentialRef(value) {
     const ref = String(value || '').trim();
     if (!ref || !/^[A-Za-z0-9_:-]+$/.test(ref)) return '';
@@ -359,6 +363,7 @@ module.exports = {
     assertRuntimeBaseUrl,
     isCashierProEnabled,
     isParkDarTestServiceOutEnabled,
+    isParkDarTestXzEnabled,
     isCheckboxIntegrationEnabled,
     isCheckboxPaymentAcceptanceEnabled,
     isCheckboxWebhookEnabled,

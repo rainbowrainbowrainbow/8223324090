@@ -1440,7 +1440,9 @@ test('payments API smoke passes Idempotency-Key and user context into order crea
 
 test('Cashier PRO routes fail closed while EVENTGENIX_CASHIER_PRO_ENABLED is false', async () => {
     const previous = process.env.EVENTGENIX_CASHIER_PRO_ENABLED;
+    const previousTestXz = process.env.PARK_DAR_TEST_XZ_ENABLED;
     process.env.EVENTGENIX_CASHIER_PRO_ENABLED = 'false';
+    process.env.PARK_DAR_TEST_XZ_ENABLED = 'true';
     try {
         await withPaymentRouteApp(async ({ request }) => {
             const res = await request(
@@ -1455,6 +1457,8 @@ test('Cashier PRO routes fail closed while EVENTGENIX_CASHIER_PRO_ENABLED is fal
     } finally {
         if (previous === undefined) delete process.env.EVENTGENIX_CASHIER_PRO_ENABLED;
         else process.env.EVENTGENIX_CASHIER_PRO_ENABLED = previous;
+        if (previousTestXz === undefined) delete process.env.PARK_DAR_TEST_XZ_ENABLED;
+        else process.env.PARK_DAR_TEST_XZ_ENABLED = previousTestXz;
     }
 });
 

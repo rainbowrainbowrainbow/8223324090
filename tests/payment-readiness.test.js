@@ -28,7 +28,9 @@ const {
     isCashierProEnabled,
     isCheckboxIntegrationEnabled,
     isCheckboxPaymentAcceptanceEnabled,
-    isCheckboxWebhookEnabled
+    isCheckboxWebhookEnabled,
+    isParkDarTestServiceOutEnabled,
+    isParkDarTestXzEnabled
 } = require('../services/checkbox/config');
 const { CheckboxClientError } = require('../services/checkbox/errors');
 const { requestPaymentOutboxWakeup } = require('../services/payments/paymentOutboxWakeup');
@@ -593,7 +595,9 @@ test('production Checkbox gates accept only explicit true or 1 and never sandbox
         ['CHECKBOX_INTEGRATION_ENABLED', isCheckboxIntegrationEnabled],
         ['CHECKBOX_ACCEPT_PAYMENTS_ENABLED', isCheckboxPaymentAcceptanceEnabled],
         ['CHECKBOX_WEBHOOK_ENABLED', isCheckboxWebhookEnabled],
-        ['EVENTGENIX_CASHIER_PRO_ENABLED', isCashierProEnabled]
+        ['EVENTGENIX_CASHIER_PRO_ENABLED', isCashierProEnabled],
+        ['PARK_DAR_TEST_SERVICE_OUT_ENABLED', isParkDarTestServiceOutEnabled],
+        ['PARK_DAR_TEST_XZ_ENABLED', isParkDarTestXzEnabled]
     ];
     for (const [name, enabled] of gates) {
         for (const value of ['true', 'TRUE', '1', ' true ']) {
@@ -615,12 +619,14 @@ test('Checkbox source safety scan covers templates and structured config without
     const unsafeYaml = ['access', '_key', ': ', credential].join('');
     const unsafeGate = ['CHECKBOX_INTEGRATION_ENABLED', 'sandbox'].join('=');
     const unsafeTestPermissionGate = ['CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS', 'true'].join('=');
+    const unsafeParkDarTestGate = ['PARK_DAR_TEST_XZ_ENABLED', 'true'].join('=');
     const unsafeJsonGate = JSON.stringify({ CHECKBOX_INTEGRATION_ENABLED: 'sandbox' });
     assert.ok(scanContent('docs/integrations/checkbox/runtime.env.example', unsafeEnv).length > 0);
     assert.ok(scanContent('docs/integrations/checkbox/runtime.json', unsafeJson).length > 0);
     assert.ok(scanContent('docs/integrations/checkbox/runtime.yml', unsafeYaml).length > 0);
     assert.ok(scanContent('docs/integrations/checkbox/runtime.env.example', unsafeGate).length > 0);
     assert.ok(scanContent('docs/integrations/checkbox/runtime.env.example', unsafeTestPermissionGate).length > 0);
+    assert.ok(scanContent('docs/integrations/checkbox/runtime.env.example', unsafeParkDarTestGate).length > 0);
     assert.ok(scanContent('docs/integrations/checkbox/runtime.json', unsafeJsonGate).length > 0);
     assert.deepEqual(scanContent(
         'docs/integrations/checkbox/runtime.env.example',

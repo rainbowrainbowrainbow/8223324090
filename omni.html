@@ -395,6 +395,42 @@
             color: #B91C1C;
         }
 
+        .omni-account-preflight {
+            margin-top: 8px;
+            padding: 8px;
+            border-radius: 10px;
+            background: rgba(15,23,42,0.04);
+        }
+
+        .omni-account-preflight-title {
+            margin-bottom: 6px;
+            font-size: 11px;
+            font-weight: 900;
+            color: var(--text-secondary, #64748b);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .omni-account-preflight-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .omni-account-preflight-item {
+            border-radius: 999px;
+            padding: 3px 7px;
+            background: rgba(239,68,68,0.12);
+            color: #B91C1C;
+            font-size: 10px;
+            font-weight: 900;
+        }
+
+        .omni-account-preflight-item.present {
+            background: rgba(16,185,129,0.16);
+            color: #047857;
+        }
+
         .omni-account-actions {
             display: flex;
             gap: 8px;
@@ -2266,8 +2302,8 @@
                             <div class="omni-chat-header-channel" id="omniChatChannel"></div>
                         </div>
                         <div class="omni-chat-header-actions">
-                            <select id="omniConversationStatus" aria-label="Статус діалогу" title="Статус діалогу"><option value="open">Відкрита</option><option value="pending">Очікує</option><option value="closed">Закрита</option><option value="spam">Спам</option></select><select id="omniAssignee" aria-label="Відповідальний" title="Відповідальний"><option value="">Без відповідального</option></select><button type="button" id="omniCreateLead" class="omni-lead-action" title="Створити лід з діалогу">Створити лід</button><button type="button" id="omniToggleAI" title="AI лід і потреби">AI</button>
-                            <button type="button" id="omniCloseConv" title="Закрити розмову">Закрити</button>
+                            <select id="omniConversationStatus" aria-label="Статус діалогу" title="Статус діалогу"><option value="open">Відкрита</option><option value="pending">Очікує</option><option value="closed">Закрита</option><option value="spam">Спам</option></select><select id="omniAssignee" aria-label="Відповідальний" title="Відповідальний"><option value="">Без відповідального</option></select><button type="button" id="omniCreateLead" class="omni-lead-action" title="Створити лід з діалогу">Створити лід</button><button type="button" id="omniToggleAI" title="AI-помічник для ліда і відповіді">AI-помічник</button>
+                            <button type="button" id="omniCloseConv" title="Закрити діалог">Закрити діалог</button>
                         </div>
                     </div>
                     <div class="omni-case-context" id="omniCaseContext" hidden></div>
@@ -2851,6 +2887,24 @@
             '</div>';
         }
 
+        function accountActivationPreflightHtml(acc) {
+            const preflight = acc?.activationPreflight;
+            const checks = Array.isArray(preflight?.checks) ? preflight.checks : [];
+            if (!checks.length) return '';
+            return '<div class="omni-account-preflight" aria-label="WhatsApp activation preflight">' +
+                '<div class="omni-account-preflight-title">' + esc(preflight.ready ? 'WhatsApp preflight готовий' : 'WhatsApp activation pending') + '</div>' +
+                '<div class="omni-account-preflight-grid">' +
+                    checks.map(check => {
+                        const present = check.status === 'present';
+                        const statusText = present ? 'present' : 'missing';
+                        return '<span class="omni-account-preflight-item ' + (present ? 'present' : 'missing') + '">' +
+                            esc(check.label || check.key || 'config') + ': ' + statusText +
+                        '</span>';
+                    }).join('') +
+                '</div>' +
+            '</div>';
+        }
+
         function formatAccountTime(value) {
             if (!value) return '';
             try { return new Date(value).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); }
@@ -2890,6 +2944,7 @@
                     '</div>' +
                     '<div class="omni-account-meta">' + esc(acc.accountName || acc.maskedIdentifier || 'Акаунт не підключений') + (acc.maskedIdentifier ? ' · ' + esc(acc.maskedIdentifier) : '') + '</div>' +
                     accountCapabilityHtml(acc) +
+                    accountActivationPreflightHtml(acc) +
                     (purposeNote ? '<div class="omni-account-purpose' + (acc.channel === 'telegram' && !acc.connected ? ' warning' : '') + '">' + esc(purposeNote) + '</div>' : '') +
                     '<div class="omni-account-impact">' + esc(accountImpactText(acc)) + '</div>' +
                     '<div class="omni-account-hint">' + esc(accountNextActionText(acc)) + '</div>' +
@@ -3074,6 +3129,7 @@
                     (webhookUrl ? '<div class="omni-connection-webhook">' + esc(webhookUrl) + '</div>' : '') +
                     (webhookNote ? '<small>' + esc(webhookNote) + '</small>' : '') +
                 '</div>' +
+                accountActivationPreflightHtml(acc) +
                 renderProviderSelector(acc, effectiveProvider) +
                 renderConnectionFields(fields) +
                 '<div class="omni-connection-result" id="omniConnectionResult" hidden></div>';
@@ -3592,6 +3648,7 @@
                 error: '',
                 aiPreview: null,
                 aiPreviewError: '',
+                newOpportunity: false,
                 result: null
             };
         }
@@ -3637,6 +3694,36 @@
             draft.aiPreview = { ...(preview || {}), appliedFields };
             draft.aiPreviewError = '';
             return appliedFields;
+        }
+
+        function legacyAnalysisDraftPreview(analysis) {
+            const lead = analysis?.lead || {};
+            if (!lead || typeof lead !== 'object') return null;
+            const notes = [
+                lead.notes,
+                lead.eventDateText && !lead.eventDate ? ('Дата словами: ' + lead.eventDateText) : '',
+                lead.budget ? ('Бюджет зі слів клієнта: ' + lead.budget) : ''
+            ].filter(Boolean).join('\n');
+            return {
+                provider: analysis.provider || null,
+                draft: {
+                    clientName: lead.clientName || '',
+                    phone: lead.phone || '',
+                    instagram: lead.instagram || '',
+                    eventType: lead.eventType || '',
+                    eventDate: lead.eventDate || '',
+                    childrenCount: lead.childrenCount ?? '',
+                    adultsCount: lead.adultsCount ?? '',
+                    childAge: lead.childAge ?? '',
+                    programPreferences: lead.programPreferences || '',
+                    notes
+                },
+                evidence: {},
+                missing: analysis.missingFields || [],
+                conflicts: [],
+                confidence: analysis.confidence ? { overall: analysis.confidence } : {},
+                source: 'legacy-ai-analysis'
+            };
         }
 
         function renderLeadDraftAiPreview(draft) {
@@ -3698,20 +3785,48 @@
             else delete button.dataset.leadId;
         }
 
+        function startNewOpportunityDraft() {
+            const conv = currentConversation();
+            if (!conv) return;
+            const businessContext = getOmniBusinessContext();
+            const key = leadDraftKey(conv.id, businessContext);
+            const current = saveLeadDraftFromForm() || getLeadDraft(conv) || {};
+            const fresh = initialLeadDraft(conv, businessContext);
+            leadDrafts.set(key, {
+                ...fresh,
+                clientName: current.clientName || fresh.clientName,
+                phone: current.phone || fresh.phone,
+                instagram: current.instagram || fresh.instagram,
+                source: current.source || fresh.source,
+                newOpportunity: true,
+                error: '',
+                aiPreview: null,
+                aiPreviewError: '',
+                result: null
+            });
+            leadAssistantState.mode = 'draft';
+            leadAssistantState.error = '';
+            renderLeadAssistant();
+            leadAssistantNotify('Відкрито чернетку нового ліда для нової події', 'info');
+        }
+
         function renderLeadAssistantStatus() {
             if (!leadAssistantStatus) return;
             if (leadAssistantState.mode === 'draft') {
                 const conv = currentConversation();
                 const draft = getLeadDraft(conv);
-                const leadId = linkedLeadIdFromConversation(conv) || draft?.result?.leadId;
+                const linkedLeadId = linkedLeadIdFromConversation(conv);
+                const newOpportunity = !!draft?.newOpportunity;
+                const leadId = newOpportunity ? draft?.result?.leadId : (linkedLeadId || draft?.result?.leadId);
+                const lockedByExistingLead = !!linkedLeadId && !newOpportunity;
                 leadAssistantStatus.innerHTML =
                     '<div class="omni-ai-status">' +
                         '<span>' + esc(conv ? ((conv.customerName || conv.externalId || 'Розмова') + ' · ' + (CHANNEL_NAMES[conv.channel] || conv.channel)) : 'Чернетка ліда') + '</span>' +
-                        '<span class="omni-ai-status-pill">' + esc(leadId ? 'Лід привʼязано' : (leadAssistantState.previewingDraft ? 'AI заповнює чернетку' : 'Чернетка під контролем менеджера')) + '</span>' +
+                        '<span class="omni-ai-status-pill">' + esc(newOpportunity ? 'Нова подія' : (leadId ? 'Лід привʼязано' : (leadAssistantState.previewingDraft ? 'AI заповнює чернетку' : 'Чернетка під контролем менеджера'))) + '</span>' +
                     '</div>' +
                     '<div class="omni-ai-actions omni-ai-row-actions">' +
-                        '<button type="button" class="omni-ai-btn primary" data-ai-action="fill-draft-ai"' + (leadAssistantState.previewingDraft || leadAssistantState.creating || leadId ? ' disabled' : '') + '>' + (leadAssistantState.previewingDraft ? 'Заповнюємо...' : 'Заповнити з чату AI') + '</button>' +
-                        '<button type="button" class="omni-ai-btn accent" data-ai-action="save-draft-lead"' + (leadAssistantState.creating || leadAssistantState.previewingDraft || leadId ? ' disabled' : '') + '>' + (leadAssistantState.creating ? 'Створюємо...' : 'Зберегти лід') + '</button>' +
+                        '<button type="button" class="omni-ai-btn primary" data-ai-action="fill-draft-ai"' + (leadAssistantState.previewingDraft || leadAssistantState.creating || lockedByExistingLead ? ' disabled' : '') + '>' + (leadAssistantState.previewingDraft ? 'Заповнюємо...' : 'Заповнити з чату AI') + '</button>' +
+                        '<button type="button" class="omni-ai-btn accent" data-ai-action="save-draft-lead"' + (leadAssistantState.creating || leadAssistantState.previewingDraft || lockedByExistingLead ? ' disabled' : '') + '>' + (leadAssistantState.creating ? 'Створюємо...' : (newOpportunity ? 'Створити лід для нової події' : 'Зберегти лід')) + '</button>' +
                         (leadId ? '<button type="button" class="omni-ai-btn primary" data-ai-action="open-lead" data-lead-id="' + esc(String(leadId)) + '">Відкрити лід</button>' : '') +
                         '<button type="button" class="omni-ai-btn" data-ai-action="open-ai">AI-помічник</button>' +
                     '</div>';
@@ -3733,7 +3848,7 @@
                 '<div class="omni-ai-actions" style="margin-top:10px">' +
                     '<button type="button" class="omni-ai-btn" data-ai-action="back-to-draft">Чернетка ліда</button>' +
                     '<button type="button" class="omni-ai-btn primary" data-ai-action="reanalyze"' + (leadAssistantState.loading ? ' disabled' : '') + '>Оновити аналіз</button>' +
-                    '<button type="button" class="omni-ai-btn accent" data-ai-action="create-lead"' + (!analysis || leadAssistantState.creating ? ' disabled' : '') + '>Створити лід</button>' +
+                    '<button type="button" class="omni-ai-btn accent" data-ai-action="transfer-to-draft"' + (!analysis || leadAssistantState.creating ? ' disabled' : '') + '>Перенести в чернетку</button>' +
                     '<button type="button" class="omni-ai-btn" data-ai-action="create-followup"' + (!analysis || leadAssistantState.creatingTask ? ' disabled' : '') + '>Follow-up задача</button>' +
                     '<button type="button" class="omni-ai-btn" data-ai-action="insert-reply"' + (!analysis?.suggestedReply ? ' disabled' : '') + '>Вставити відповідь</button>' +
                     '<span class="omni-ai-status" style="margin-left:auto">' + esc(modelText) + '</span>' +
@@ -3807,12 +3922,13 @@
                 return;
             }
             const linkedLeadId = linkedLeadIdFromConversation(conv) || draft.result?.leadId;
+            const newOpportunity = !!draft.newOpportunity;
             leadAssistantContent.innerHTML =
                 (draft.error ? '<div class="omni-ai-summary">' + esc(draft.error) + '</div>' : '') +
-                (linkedLeadId ? '<div class="omni-ai-summary"><strong>Лід #' + esc(String(linkedLeadId)) + ' привʼязано до діалогу.</strong><div class="omni-ai-row-actions"><button type="button" class="omni-ai-btn primary" data-ai-action="open-lead" data-lead-id="' + esc(String(linkedLeadId)) + '">Відкрити лід</button></div></div>' : '') +
+                (linkedLeadId ? '<div class="omni-ai-summary"><strong>Лід #' + esc(String(linkedLeadId)) + ' привʼязано до діалогу.</strong><div>' + esc(newOpportunity ? 'Ви створюєте окремий лід для нової події цього клієнта.' : 'Звичайна дія відкриває вже привʼязаний лід. Для нової події запустіть окрему чернетку.') + '</div><div class="omni-ai-row-actions"><button type="button" class="omni-ai-btn primary" data-ai-action="open-lead" data-lead-id="' + esc(String(linkedLeadId)) + '">Відкрити лід</button>' + (!newOpportunity ? '<button type="button" class="omni-ai-btn accent" data-ai-action="start-new-opportunity">Створити лід для нової події</button>' : '') + '</div></div>' : '') +
                 renderLeadDraftAiPreview(draft) +
                 '<form class="omni-lead-form" id="omniLeadDraftForm">' +
-                    '<div class="omni-ai-summary">Перевірте дані з переписки й збережіть лід. AI може лише підставити чернетку з повідомлень клієнта; запис створюється тільки після «Зберегти лід».</div>' +
+                    '<div class="omni-ai-summary">' + esc(newOpportunity ? 'Перевірте дані нової події. Це створить окремий лід у цьому самому чаті; повтор тієї самої чернетки не створить дубль.' : 'Перевірте дані з переписки й збережіть лід. AI може лише підставити чернетку з повідомлень клієнта; запис створюється тільки після «Зберегти лід».') + '</div>' +
                     '<div class="omni-lead-form-grid">' +
                         '<div class="omni-lead-field full"><label for="omniLeadDraftClientName">Імʼя клієнта</label><input id="omniLeadDraftClientName" maxlength="160" autocomplete="name" value="' + esc(draft.clientName) + '" required></div>' +
                         '<div class="omni-lead-field"><label for="omniLeadDraftPhone">Телефон</label><input id="omniLeadDraftPhone" maxlength="50" autocomplete="tel" value="' + esc(draft.phone) + '"></div>' +
@@ -4379,21 +4495,46 @@
             renderLeadAssistantSettings();
         }
 
+        function leadIdHistoryFromMeta(meta = {}) {
+            const ids = [
+                meta.lead_id,
+                meta.leadId,
+                meta.leadAssistant?.leadId,
+                ...(Array.isArray(meta.leadIds) ? meta.leadIds : []),
+                ...(Array.isArray(meta.leadAssistant?.leadIds) ? meta.leadAssistant.leadIds : [])
+            ].map(value => Number.parseInt(value, 10)).filter(value => Number.isInteger(value) && value > 0);
+            return Array.from(new Set(ids));
+        }
+
         function applyLeadCreationResult(convId, leadId, response) {
             const conv = currentConversation();
             if (!conv || conv.id !== convId || !leadId) return;
+            const newOpportunity = response?.newOpportunity === true;
+            const leadIds = Array.from(new Set([...leadIdHistoryFromMeta(conv.meta), Number.parseInt(leadId, 10)].filter(Boolean)));
             const nextMeta = {
                 ...(conv.meta || {}),
                 lead_id: leadId,
+                leadIds,
                 leadAssistant: {
                     ...((conv.meta || {}).leadAssistant || {}),
                     leadId,
+                    leadIds,
                     linkedAt: new Date().toISOString()
                 }
             };
+            if (newOpportunity) {
+                nextMeta.leadAssistant.currentOpportunity = {
+                    leadId,
+                    intent: 'new_opportunity',
+                    linkedAt: new Date().toISOString()
+                };
+            }
             applyConversationResponse({ ...conv, meta: nextMeta });
             const draft = getLeadDraft(currentConversation());
-            if (draft) draft.result = { leadId, created: response?.created !== false, link: leadUrl(leadId) };
+            if (draft) {
+                draft.result = { leadId, created: response?.created !== false, link: leadUrl(leadId), newOpportunity };
+                draft.newOpportunity = false;
+            }
             updateLeadAction(currentConversation());
         }
 
@@ -4451,7 +4592,7 @@
             const res = await api('/conversations/' + convId + '/lead-assistant/create-lead', {
                 method: 'POST',
                 requestBusinessContext: businessContext,
-                body: JSON.stringify({ draft: payload })
+                body: JSON.stringify({ draft: payload, newOpportunity: !!draft.newOpportunity })
             });
             const stale = requestSeq !== leadDraftRequestSeq || epoch !== workspaceEpoch || convId !== currentConvId || businessContext !== getOmniBusinessContext() || key !== leadDraftKey(currentConvId, getOmniBusinessContext());
             if (stale) {
@@ -4462,7 +4603,9 @@
             if (res.success) {
                 const leadId = res.lead?.id || res.leadId || res.data?.leadId || res.data?.lead?.id;
                 if (leadId) applyLeadCreationResult(convId, leadId, res);
-                leadAssistantNotify(res.created === false ? 'Лід вже був привʼязаний до розмови' : 'Лід створено з діалогу', 'success');
+                leadAssistantNotify(res.created === false
+                    ? (res.newOpportunity ? 'Лід для цієї нової події вже створений' : 'Лід вже був привʼязаний до розмови')
+                    : (res.newOpportunity ? 'Лід для нової події створено' : 'Лід створено з діалогу'), 'success');
                 await loadCaseContext(convId);
             } else {
                 draft.error = res.error || 'Не вдалося створити лід';
@@ -4471,34 +4614,20 @@
             renderLeadAssistant();
         }
 
-        async function createLeadFromAssistant() {
-            if (!currentConvId || !leadAssistantState.analysis || leadAssistantState.creating) return;
-            const convId = currentConvId;
-            const epoch = workspaceEpoch;
-            leadAssistantState.creating = true;
-            renderLeadAssistantStatus();
-            const res = await api('/conversations/' + convId + '/lead-assistant/create-lead', {
-                method: 'POST',
-                body: JSON.stringify({ analysis: leadAssistantState.analysis })
-            });
-            if (epoch !== workspaceEpoch || convId !== currentConvId) {
-                leadAssistantState.creating = false;
-                return;
-            }
-            leadAssistantState.creating = false;
-            renderLeadAssistantStatus();
-            if (res.success) {
-                const leadId = res.lead?.id || res.leadId || res.data?.leadId || res.data?.lead?.id;
-                if (leadId) applyLeadCreationResult(convId, leadId, res);
-                leadAssistantNotify(res.created ? 'Лід створено з Omni-діалогу' : 'Лід вже був привʼязаний до розмови', 'success');
-                await loadCaseContext(convId);
-                await loadConversations();
-                const analytics = await api('/lead-assistant/analytics');
-                if (analytics.success) leadAssistantState.analytics = analytics.analytics || null;
-                renderLeadAssistant();
-            } else {
-                leadAssistantNotify(res.error || 'Не вдалося створити лід', 'error');
-            }
+        async function transferAssistantAnalysisToDraft() {
+            const conv = currentConversation();
+            const draft = getLeadDraft(conv);
+            const preview = legacyAnalysisDraftPreview(leadAssistantState.analysis);
+            if (!conv || !draft || !preview) return;
+            saveLeadDraftFromForm();
+            const appliedFields = applyLeadDraftAiPreview(draft, preview);
+            leadAssistantState.mode = 'draft';
+            leadAssistantState.error = '';
+            renderLeadAssistant();
+            leadAssistantNotify(
+                appliedFields.length ? 'AI переніс знайдені поля в чернетку' : 'Чернетка вже має ці поля для перевірки',
+                appliedFields.length ? 'success' : 'info'
+            );
         }
 
         async function createFollowUpFromAssistant() {
@@ -4760,11 +4889,9 @@
             $('omniChatAvatar').textContent = (conv.customerName || conv.externalId || '?').slice(0, 2).toUpperCase();
 
             const aiBtn = $('omniToggleAI');
-            const aiEnabled = conv.meta && conv.meta.ai_enabled;
             const leadLinked = linkedLeadIdFromConversation(conv);
-            aiBtn.style.background = leadLinked ? '#0F766E' : (aiEnabled ? '#667eea' : '');
-            aiBtn.style.color = (leadLinked || aiEnabled) ? '#fff' : '';
-            aiBtn.title = leadLinked ? 'AI лід привʼязано' : 'AI лід і потреби';
+            aiBtn.textContent = 'AI-помічник';
+            aiBtn.title = leadLinked ? 'AI-помічник; лід уже привʼязано' : 'AI-помічник для ліда і відповіді';
             updateLeadAction(conv);
             if (leadAssistantState.open) {
                 leadAssistantState.analysis = null;
@@ -4774,7 +4901,7 @@
             if (replyExpectedEl) replyExpectedEl.checked = draft.replyExpected;
             updateSendControls(conv);
 
-            $('omniCloseConv').textContent = conv.status === 'closed' ? 'Відкрити знову' : 'Закрити';
+            $('omniCloseConv').textContent = conv.status === 'closed' ? 'Відкрити діалог' : 'Закрити діалог';
             $('omniCloseConv').title = $('omniCloseConv').textContent;
             renderConversations();
             loadMessages(convId);
@@ -4806,7 +4933,7 @@
             }
             const close = $('omniCloseConv');
             close.disabled = pendingConversationFields.has(conversationFieldKey(conv.id, 'status'));
-            close.textContent = conv.status === 'closed' ? 'Відкрити знову' : 'Закрити';
+            close.textContent = conv.status === 'closed' ? 'Відкрити діалог' : 'Закрити діалог';
             close.title = close.textContent;
             updateLeadAction(conv);
         }
@@ -5150,9 +5277,10 @@
                 if (action === 'save-draft-lead') await createLeadFromDraft();
                 if (action === 'fill-draft-ai') await fillLeadDraftFromAi();
                 if (action === 'open-lead') openLeadUrl(btn.dataset.leadId);
+                if (action === 'start-new-opportunity') startNewOpportunityDraft();
                 if (action === 'open-ai') await openLeadAssistantPanel('ai');
                 if (action === 'back-to-draft') await openLeadAssistantPanel('draft');
-                if (action === 'create-lead') await createLeadFromAssistant();
+                if (action === 'transfer-to-draft') await transferAssistantAnalysisToDraft();
                 if (action === 'create-followup') await createFollowUpFromAssistant();
                 if (action === 'insert-reply') insertLeadAssistantReply();
                 if (action === 'copy-question') insertLeadAssistantReply(leadAssistantState.analysis?.nextBestQuestion || '');

@@ -1,8 +1,40 @@
 # OMNI chat to lead progress
 
+## OMNI-TD1 — baseline sync and documentation refresh
+
+Status: complete as docs-only synchronization. No version bump, code change, commit, push, deploy, secret change or real provider activation was performed in this task.
+
+Worktree / branch:
+
+- Worktree: `C:/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/omni-l1-chat-to-lead`
+- Branch: `codex/omni-l1-chat-to-lead`
+- Before sync: `743818bcafccce0f7cda3ee0f261a0db3743b606`
+- Fast-forward target: `origin/codex/eventgenix-production` at `6047facd84b66f8a9b35030d2a2580919368a089`
+- Current package marker after sync: `v0.81.128 — Мультибізнес foundation`
+- Current live production proof during TD1: `v0.81.124 — PARK/DAR каса та знижки`, SHA `ec57e5c9d31461d3c4eec03f4bc943f3f2561cd4`, branch `codex/eventgenix-production`, Railway deployment `4895dbf1-a4c0-4655-8243-71fe3c3e9849`
+
+Read-only evidence captured during TD1:
+
+- `git status --short --branch` in the Omni worktree was clean before sync and clean after the fast-forward.
+- `git merge-base --is-ancestor HEAD origin/codex/eventgenix-production` passed before sync; `git merge --ff-only origin/codex/eventgenix-production` advanced the worktree without merge commits.
+- GitHub Actions: manual release CI `34640743048` passed for `f06524029975ad70d1d7d0ec8d1bd97ebbc1b71b`; AI release CI `34643662228` passed for `bcf1bfac59812a254c3ac23b54abd48df7f792a3`; WhatsApp release fix CI `34647934730` passed for `a786c8d75ea567cc21093bb910a485be16c1b913`; WhatsApp evidence CI `34651007895` passed for `743818bcafccce0f7cda3ee0f261a0db3743b606`.
+- Railway deployment list: manual `v0.81.120` deployment `664200c1-7ccf-4d1a-bd22-0709a65c0404`; AI `v0.81.121` deployment `51ce85b1-c994-4f91-a86c-ffffd3cd3ef5`; WhatsApp code `v0.81.122` deployment `7ab9ddf9-5804-411c-b1a9-6674e42eaa96`; WhatsApp evidence `v0.81.123` deployment `905d7e33-9b40-4760-8260-3da8d0c15b50`; current live `v0.81.124` deployment `4895dbf1-a4c0-4655-8243-71fe3c3e9849`.
+- Live read-only QA: `/api/version` returned `200` with `v0.81.124`, commit `ec57e5c9d31461d3c4eec03f4bc943f3f2561cd4`, branch `codex/eventgenix-production`; `/api/health` returned `200 ok`; `/omni.html` returned `200` and static HTML.
+- Later remote markers `v0.81.126` and `v0.81.127` have failed CI runs `34682309700` and `34682664033`; `v0.81.128` CI run `34683044223` was still in progress during TD1. TD1 records them as remote branch state, not live production proof.
+
+Updated documents:
+
+- `docs/OMNI_CHAT_TO_LEAD_AUDIT_AND_STORIES_2026-09-11.md`
+- `docs/OMNI_CHAT_TO_LEAD_PROGRESS_2026-09-11.md`
+
+Notes:
+
+- WhatsApp remains `ACTIVATION_PENDING` for the real account. No real WhatsApp number, Meta subscription, production secret, env var or external message was changed.
+- The main checkout is dirty and behind/ahead; it was inspected only to avoid touching unrelated work. All TD1 edits are in the clean Omni worktree.
+
 ## OMNI-L1 — backend create/link contract
 
-Status: complete locally; ready for OMNI-L2. Commit/push/deploy were intentionally not run because the L1 activator reserves them for L4/manual.
+Status: released to production through OMNI-L4/manual as part of `v0.81.120 — Omni: ручне створення ліда`.
 
 Worktree: `C:/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/omni-l1-chat-to-lead`
 
@@ -10,7 +42,9 @@ Branch: `codex/omni-l1-chat-to-lead`
 
 Base SHA: `666c806a568602454bc8d523981ea5d1c7621156`
 
-Commit SHA: none yet
+Implementation commit SHA: `237cf26375840c4690d80fe02db24c3543a8646d`
+
+Release commit SHA: `f06524029975ad70d1d7d0ec8d1bd97ebbc1b71b`
 
 Plan copy: `docs/OMNI_CHAT_TO_LEAD_AUDIT_AND_STORIES_2026-09-11.md`
 
@@ -46,17 +80,16 @@ Plan copy: `docs/OMNI_CHAT_TO_LEAD_AUDIT_AND_STORIES_2026-09-11.md`
 - `node --test tests/route-smoke.test.js` — passed, 101/101.
 - `git diff --check` — passed; only existing CRLF conversion warnings from Git were printed.
 
-### Notes for OMNI-L2
+### Release evidence
 
-- Continue in this worktree/branch, not in the original dirty checkout.
-- The L2 UI should call `POST /api/omni/conversations/:id/lead-assistant/create-lead` with a reviewed `draft`/`leadDraft` payload. That path does not call AI.
-- For an existing explicit link or unique-source repeat, expect `created:false` and the linked lead in `lead`.
-- The UI can pass `assignedTo`/`assigned_to` as a user id. If it does not, L1 maps `conversation.assigned_to` username/name to an active assignable lead owner when possible.
-- Live QA is still deferred to L4/manual.
+- L1 and L2 were released together by OMNI-L4/manual.
+- CI exact SHA: GitHub Actions run `34640743048` passed for `f06524029975ad70d1d7d0ec8d1bd97ebbc1b71b`.
+- Railway deploy: production deployment `664200c1-7ccf-4d1a-bd22-0709a65c0404`, message `Release v0.81.120 Omni: ручне створення ліда (f0652402; codex/eventgenix-production)`.
+- Current live read-only proof on 12.09.2026 shows a later deployed SHA `ec57e5c9d31461d3c4eec03f4bc943f3f2561cd4` that descends from this release.
 
 ## OMNI-L2 — create a lead directly from the Omni chat
 
-Status: complete locally on top of L1; ready for OMNI-L3. Commit/push/deploy were not run because this activator is still inside the planned pre-release implementation chain.
+Status: released to production through OMNI-L4/manual as part of `v0.81.120 — Omni: ручне створення ліда`.
 
 Worktree: `C:/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/omni-l1-chat-to-lead`
 
@@ -64,7 +97,9 @@ Branch: `codex/omni-l1-chat-to-lead`
 
 Base SHA: `666c806a568602454bc8d523981ea5d1c7621156`
 
-Commit SHA: none yet
+Implementation commit SHA: `237cf26375840c4690d80fe02db24c3543a8646d`
+
+Release commit SHA: `f06524029975ad70d1d7d0ec8d1bd97ebbc1b71b`
 
 ### Changes
 
@@ -91,21 +126,23 @@ Commit SHA: none yet
 - `npm run check:syntax` — passed after sandbox escalation; 1136 files.
 - `git diff --check` — passed; only Git CRLF conversion warnings were printed.
 
-### Notes for OMNI-L3
+### Release evidence
 
-- The `AI-помічник` button is now a secondary mode. L3 can add a dedicated `Заповнити з чату AI` action that writes AI-proposed fields into the same manual draft instead of creating a lead directly.
-- Keep the stale guard pattern from L2: capture `conversationId`, `businessContext`, `workspaceEpoch` and the draft key before async AI fill/create, then ignore late responses when the user switches chat/business.
-- Live QA is still deferred to L4/manual.
+- L1 and L2 were released together by OMNI-L4/manual.
+- CI exact SHA: GitHub Actions run `34640743048` passed for `f06524029975ad70d1d7d0ec8d1bd97ebbc1b71b`.
+- Railway deploy: production deployment `664200c1-7ccf-4d1a-bd22-0709a65c0404`, message `Release v0.81.120 Omni: ручне створення ліда (f0652402; codex/eventgenix-production)`.
+- Live QA artifact for the original manual release is not separately present in this progress file, but current read-only live QA confirms `/omni.html` is reachable and the later live deployment includes this release by ancestry.
 
 ## OMNI-L3 — AI draft preview fill
 
-Status: complete locally on top of first released manual flow; ready for OMNI-L4/AI. Commit/push/deploy and live OpenAI calls were not run in this activator.
+Status: released to production through OMNI-L4/AI as `v0.81.121 — Omni: AI-заповнення ліда`.
 
 Worktree / branch:
 
 - Worktree: `C:/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/omni-l1-chat-to-lead`
 - Branch: `codex/omni-l1-chat-to-lead`
 - Base release context: first manual release `v0.81.120` on this branch.
+- Release commit SHA: `bcf1bfac59812a254c3ac23b54abd48df7f792a3`
 
 Implemented:
 
@@ -140,12 +177,12 @@ Verification performed:
 - `npm run check:static-surface` — passed.
 - `npm run check:syntax` — first sandbox attempt failed with `spawnSync ... EPERM`; rerun outside sandbox passed: JavaScript syntax check passed for 1136 files.
 
-Notes for OMNI-L4/AI:
+OMNI-L4/AI release evidence:
 
-- Commit/push/CI/deploy/live QA remain pending by design.
-- Live QA should use only test accounts and synthetic Omni conversations; do not send external messages.
-- The L4/AI activator allows up to 5 live AI-preview requests through the existing OpenAI connection. Verify missing-key/provider error handling only if safe in the active environment; do not change secrets or env.
-- Important scenarios: manual create still works; AI preview fills empty fields only; manual values are preserved; evidence/missing/conflicts render; stale preview after chat switch is ignored; outbound manager suggestions are not accepted as client facts.
+- Commit/push: `bcf1bfac59812a254c3ac23b54abd48df7f792a3`, pushed to `codex/eventgenix-production`.
+- CI exact SHA: GitHub Actions run `34643662228` passed for `bcf1bfac59812a254c3ac23b54abd48df7f792a3`.
+- Railway deploy: production deployment `51ce85b1-c994-4f91-a86c-ffffd3cd3ef5`, message `Release v0.81.121 Omni: AI-заповнення ліда (bcf1bfac; codex/eventgenix-production)`.
+- Live QA artifact for the original AI release is not separately present in this progress file. Current read-only live QA confirms `/api/version`, `/api/health` and `/omni.html` on the later live deployment; no live AI-preview request was run during TD1.
 
 ## OMNI-L5 — WhatsApp in shared Omni inbox
 
@@ -158,8 +195,9 @@ Worktree / branch:
 - Base SHA before L5: `bcf1bfac59812a254c3ac23b54abd48df7f792a3`
 - L5 implementation commit SHA: `3b33ec209dcccb8bb7dd68b1fe3ec6760e47a31f`
 - L4/WhatsApp release fix commit SHA: `a786c8d75ea567cc21093bb910a485be16c1b913`
+- L4/WhatsApp evidence release commit SHA: `743818bcafccce0f7cda3ee0f261a0db3743b606`
 - Production release branch: `codex/eventgenix-production`
-- Production release version: `v0.81.122 — Omni: WhatsApp inbox`
+- Production release versions: `v0.81.122 — Omni: WhatsApp inbox`; `v0.81.123 — Omni: докази релізу WhatsApp`
 
 Implemented:
 
@@ -200,11 +238,13 @@ Verification performed:
 
 OMNI-L4/WhatsApp release evidence:
 
-- Commit/push: implementation `3b33ec209dcccb8bb7dd68b1fe3ec6760e47a31f`, release fix `a786c8d75ea567cc21093bb910a485be16c1b913`, pushed to `codex/eventgenix-production`.
-- CI exact SHA: GitHub Actions run `34647934730` passed all jobs for `a786c8d75ea567cc21093bb910a485be16c1b913`.
+- Commit/push: implementation `3b33ec209dcccb8bb7dd68b1fe3ec6760e47a31f`, release fix `a786c8d75ea567cc21093bb910a485be16c1b913`, evidence release `743818bcafccce0f7cda3ee0f261a0db3743b606`, pushed to `codex/eventgenix-production`.
+- CI exact SHA: GitHub Actions run `34647934730` passed all jobs for `a786c8d75ea567cc21093bb910a485be16c1b913`; GitHub Actions run `34651007895` passed all jobs for evidence release `743818bcafccce0f7cda3ee0f261a0db3743b606`.
 - Railway deploy: production deployment `7ab9ddf9-5804-411c-b1a9-6674e42eaa96` completed through `npm run release:railway-up`.
+- Railway evidence deploy: production deployment `905d7e33-9b40-4760-8260-3da8d0c15b50`, message `Release v0.81.123 Omni: докази релізу WhatsApp (743818bc; codex/eventgenix-production)`.
 - Version smoke: live `/api/version` returned `v0.81.122 — Omni: WhatsApp inbox @ a786c8d75ea5`, branch `codex/eventgenix-production`, deployment metadata `manifest`.
 - Live QA: production health `200`; test-auth verify passed; `omni.html` exposes WhatsApp filter/channel surface; `/api/omni/accounts` exposes WhatsApp as `disconnected`, `sendCapable=false`, `receiveCapable=false`; `/api/omni/conversations?channel=whatsapp&limit=1` returned success with `0` conversations; unsigned `/api/omni/webhook/whatsapp` was blocked with `401`.
+- TD1 current live read-only proof: live now runs later `v0.81.124` at `ec57e5c9d31461d3c4eec03f4bc943f3f2561cd4`, branch `codex/eventgenix-production`; `/api/health` returned `200 ok`; `/omni.html` returned `200`. WhatsApp remains intentionally disconnected unless a real activation packet is supplied and approved.
 - CI issue fixed before deploy: initial Fast baseline failed because `omni.html` exceeded theme-surface debt budget by WhatsApp-specific duplicate colors. Fixed by reusing the existing green channel style for WhatsApp avatar/badge/dot; no product logic changed.
 
 ACTIVATION_PENDING for real WhatsApp account:
@@ -232,3 +272,23 @@ ACTIVATION_PENDING for real WhatsApp account:
   - verify receipts update provider lifecycle without creating inbound messages;
   - create one test lead from the WhatsApp test conversation through the shared reviewed draft flow;
   - keep evidence redacted and do not expose tokens, app secret, phone ownership data or recipient details in logs/docs.
+
+## OMNI-TD5 — WhatsApp controlled activation readiness
+
+Status: implemented locally; not released from this worktree yet. Real WhatsApp account activation remains `ACTIVATION_PENDING`.
+
+Implemented:
+
+- Added a read-only WhatsApp activation preflight to account status. It reports only required configuration categories as `present` or `missing`: WABA ID, Phone Number ID, access token, Meta app secret, webhook verify token and callback URL.
+- Kept WhatsApp `disconnected`, `sendCapable=false` and `receiveCapable=false` while any required preflight category is missing.
+- Added Omni account-status UI chips for the WhatsApp activation preflight, including the connection modal.
+- Tightened the WhatsApp webhook guard so unsigned or wrongly signed POST requests return `401` and do not persist inbound messages or receipts.
+- Added fixture coverage for challenge verification, unsigned POST rejection, account mismatch before persistence, receipts and redacted preflight serialization.
+- Added operator runbook: `docs/integrations/whatsapp/ACTIVATION_RUNBOOK.md`.
+
+Activation boundaries:
+
+- No real WABA number was connected.
+- No production secrets, env vars, Meta subscriptions or provider settings were changed.
+- No WhatsApp messages were sent.
+- The runbook documents the controlled inbound/outbound activation scenario, but executing it requires a separate scoped approval with test WABA/number/secrets and a safe test recipient.

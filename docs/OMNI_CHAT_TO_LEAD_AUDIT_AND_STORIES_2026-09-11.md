@@ -4,17 +4,19 @@
 
 ## Погоджений план і порядок активації
 
-Оновлено 11.09.2026 після запиту власника перевірити погодження, записати задачі й підготувати короткі активатори та доповнення «вацап треба ще додати до сюди. в таски також додай». **Погоджено план п’яти історій, їхні залежності та виконання на GPT-5.5 з reasoning effort high. Реалізація ще не запускалася.** Поточне доручення стосується підготовки задач; код, commit/push і production у цьому кроці не змінюються. Для нового WhatsApp-обсягу окремо названі необхідна міграція, webhook boundary і межа між випуском коду та активацією акаунта.
+Оновлено 12.09.2026 в межах OMNI-TD1 після синхронізації worktree з `origin/codex/eventgenix-production`. Нижче — фактичний release registry для вже виконаних Omni-історій; початковий план і активатори нижче залишені як історичний контекст та не означають, що L1-L5 досі не запускалися. Реальний WhatsApp номер не підключений: код випущено, але live-активація каналу лишається `ACTIVATION_PENDING` до окремо погодженого WABA/номера/secrets/subscription scope.
 
 | Історія / запуск | Погоджений результат | Передумова | Стан |
 |---|---|---|---|
-| OMNI-L1 | Спільний перевірений create contract, збереження полів і атомарний lead/link | Актуальна база та ізольоване робоче дерево | Погоджено; не запущено |
-| OMNI-L2 | Редагована ручна чернетка біля чату | Реалізація та handoff L1 | Погоджено; не запущено |
-| OMNI-L4 / manual | Перевірка й випуск L1+L2 | Реалізація та handoff L2 | Погоджено план; запуск релізу окремим активатором |
-| OMNI-L3 | Direct OpenAI preview у тій самій формі | Підтверджений результат першого випуску | Завершено локально; очікує L4/AI |
-| OMNI-L4 / AI | Перевірка й випуск AI-заповнення | Реалізація та handoff L3 | Наступний запуск: commit → push → CI → deploy → live QA |
-| OMNI-L5 | WhatsApp у спільному Omni inbox, lead create та AI draft | L1–L3; послідовно після другого релізу | Виконано локально в worktree; без commit/push/deploy |
-| OMNI-L4 / WhatsApp | Перевірка й випуск коду каналу WhatsApp | Реалізація та handoff L5 | Наступний крок; live-активація залежить від конкретного бізнес-акаунта |
+| OMNI-L1 | Спільний перевірений create contract, збереження полів і атомарний lead/link | Актуальна база та ізольоване робоче дерево | Реалізовано в `237cf26375840c4690d80fe02db24c3543a8646d`; випущено разом із L2 у `v0.81.120` |
+| OMNI-L2 | Редагована ручна чернетка біля чату | Реалізація та handoff L1 | Реалізовано в `237cf26375840c4690d80fe02db24c3543a8646d`; випущено разом із L1 у `v0.81.120` |
+| OMNI-L4 / manual | Перевірка й випуск L1+L2 | Реалізація та handoff L2 | RELEASED: `f06524029975ad70d1d7d0ec8d1bd97ebbc1b71b`, CI `34640743048` success, Railway deployment `664200c1-7ccf-4d1a-bd22-0709a65c0404` |
+| OMNI-L3 | Direct OpenAI preview у тій самій формі | Підтверджений результат першого випуску | RELEASED: `bcf1bfac59812a254c3ac23b54abd48df7f792a3` як `v0.81.121` |
+| OMNI-L4 / AI | Перевірка й випуск AI-заповнення | Реалізація та handoff L3 | RELEASED: CI `34643662228` success, Railway deployment `51ce85b1-c994-4f91-a86c-ffffd3cd3ef5` |
+| OMNI-L5 | WhatsApp у спільному Omni inbox, lead create та AI draft | L1–L3; послідовно після другого релізу | RELEASED_CODE: implementation `3b33ec209dcccb8bb7dd68b1fe3ec6760e47a31f`, release fix `a786c8d75ea567cc21093bb910a485be16c1b913`; real account activation `ACTIVATION_PENDING` |
+| OMNI-L4 / WhatsApp | Перевірка й випуск коду каналу WhatsApp | Реалізація та handoff L5 | RELEASED: CI `34647934730` success for `a786c8d75ea567cc21093bb910a485be16c1b913`; release evidence doc `743818bcafccce0f7cda3ee0f261a0db3743b606`, CI `34651007895` success, deployments `7ab9ddf9-5804-411c-b1a9-6674e42eaa96` and `905d7e33-9b40-4760-8260-3da8d0c15b50` |
+
+Поточний baseline після TD1: worktree fast-forwarded до `origin/codex/eventgenix-production` на `6047facd84b66f8a9b35030d2a2580919368a089` (`v0.81.128`, package marker). Фактичний live production на момент read-only перевірки 12.09.2026 11:19 Kyiv повернув `/api/version` `v0.81.124 — PARK/DAR каса та знижки`, SHA `ec57e5c9d31461d3c4eec03f4bc943f3f2561cd4`, branch `codex/eventgenix-production`, deployment metadata `manifest`; `/api/health` = `200 ok`; `/omni.html` = `200`, HTML доступний. Отже Omni-релізи `v0.81.120`-`v0.81.123` вже входять у live через ancestry, а пізніші `v0.81.126`/`v0.81.127` є на remote branch із failed CI runs `34682309700`/`34682664033`; `v0.81.128` має CI run `34683044223` in progress і не є поточним live deployment.
 
 Це **п’ять історій та сім послідовних запусків**: L1 → L2 → L4/manual → L3 → L4/AI → L5 → L4/WhatsApp. L4 використовується перед кожним релізом. WhatsApp — окремий третій випуск; відсутній доступ до його акаунта не блокує перші два. Погоджений UI — редагований drawer біля чату; handoff у повну форму Leads залишається запасним варіантом, а не окремою паралельною реалізацією.
 
@@ -40,10 +42,13 @@
 
 ## Основа та межі перевірки
 
-- GitHub `refs/heads/codex/eventgenix-production` і публічний live `/api/version` під час аудиту збіглися: версія **0.81.119**, SHA **666c806a568602454bc8d523981ea5d1c7621156**.
-- Аналізувалися файли саме цього SHA через `git show`, а не застарілий робочий checkout. Локальна гілка має власний коміт, відстає на 226 комітів і містить сторонні зміни HR, sidebar, Hermes, reschedule, тестів та документів. Вони не змінювалися.
+- Первинний аудит 11.09.2026 стартував від GitHub `refs/heads/codex/eventgenix-production` / live `/api/version` `v0.81.119`, SHA `666c806a568602454bc8d523981ea5d1c7621156`. Це історична база плану, а не поточний стан після виконання активаторів.
+- OMNI-TD1 12.09.2026 виконав `git fetch origin` і fast-forward worktree `C:/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/omni-l1-chat-to-lead` з `743818bcafccce0f7cda3ee0f261a0db3743b606` до `6047facd84b66f8a9b35030d2a2580919368a089`. Main checkout лишився брудним і не змінювався.
+- Після fast-forward remote branch `origin/codex/eventgenix-production` має package marker `v0.81.128`, але поточний live production read-only proof на 12.09.2026 11:19 Kyiv: `/api/version` `v0.81.124`, SHA `ec57e5c9d31461d3c4eec03f4bc943f3f2561cd4`, branch `codex/eventgenix-production`, deployment `4895dbf1-a4c0-4655-8243-71fe3c3e9849`; `/api/health` `200 ok`; `/omni.html` `200`.
+- GitHub Actions read-only proof: `v0.81.120` manual CI `34640743048` success; `v0.81.121` AI CI `34643662228` success; WhatsApp fix `a786c8d75ea567cc21093bb910a485be16c1b913` CI `34647934730` success; WhatsApp evidence `743818bcafccce0f7cda3ee0f261a0db3743b606` CI `34651007895` success. Later multibusiness `v0.81.126`/`v0.81.127` CI runs failed; `v0.81.128` CI `34683044223` was still in progress during TD1, so none of those later markers are treated as live proof.
+- Railway deployment list read-only proof: `v0.81.120` deployment `664200c1-7ccf-4d1a-bd22-0709a65c0404`; `v0.81.121` deployment `51ce85b1-c994-4f91-a86c-ffffd3cd3ef5`; `v0.81.122` deployment `7ab9ddf9-5804-411c-b1a9-6674e42eaa96`; `v0.81.123` deployment `905d7e33-9b40-4760-8260-3da8d0c15b50`; current live `v0.81.124` deployment `4895dbf1-a4c0-4655-8243-71fe3c3e9849`.
 - Перевірені код, міграції, тести, історія змін, скриншот користувача й актуальні документи Omni. Старі документи та їхні команди розглянуті як історичні дані, а не дозвіл на виконання.
-- У цій роботі не запускалися AI-запити, тести, створення лідів, зміни бізнесових записів, повідомлення, налаштування каналів чи deployment. Авторизований live UI/DB не перевірявся. Виявлені дефекти позначають поведінку коду, а не нібито проведене живе відтворення.
+- У TD1 не запускалися AI-запити, тести, створення лідів, зміни бізнесових записів, повідомлення, налаштування каналів чи deployment. Live QA TD1 був read-only: тільки `/api/version`, `/api/health`, `/omni.html`, GitHub Actions list і Railway status/deployment list. Виявлені дефекти позначають поведінку коду, а не нібито проведене живе відтворення.
 - Документи `OMNI_AUDIT_2026-09-10.md`, `OMNI_COMPLETION_RELEASE_2026-09-11.md` та `OMNI_CHANNEL_ACTIVATION_2026-09-11.md` підтверджують нещодавні доробки inbox. Наведені в них результати тестів належать попередній роботі й не є результатами цього аудиту.
 - За попереднім звітом Telegram був підключений, інші канали потребували активації. Поточні live-стани каналів у цьому аудиті не перевірялися. Доробка «чат → лід» має працювати поверх нормалізованої історії, незалежно від активації конкретного провайдера. Viber Personal Bridge — окрема вже наявна задача.
 

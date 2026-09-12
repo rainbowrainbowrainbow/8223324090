@@ -54,7 +54,7 @@ router.use((req, res, next) => {
         res.on('finish', () => {
             const channel = name === 'meta' ? (req.body?.object === 'instagram' ? 'instagram' : 'facebook') : name;
             const errorCode = res.statusCode >= 500 ? 'processing_failed'
-                : res.statusCode === 403 ? 'invalid_signature' : req.omniUnsupported ? 'unsupported_event' : null;
+                : (res.statusCode === 401 || res.statusCode === 403) ? 'invalid_signature' : req.omniUnsupported ? 'unsupported_event' : null;
             require('../services/omni-health').recordWebhook(channel, webhookBusinessContext(req), {
                 processed: req.omniEventProcessed === true || req.omniInboundAccepted === true,
                 inbound: res.statusCode < 300 && req.omniInboundAccepted === true, errorCode,
@@ -408,7 +408,7 @@ router.post('/webhook/whatsapp', async (req, res) => {
         const businessContext = webhookBusinessContext(req);
         if (!await verifyWhatsAppSignature(req)) {
             log.warn('WhatsApp webhook signature verification failed');
-            return res.status(403).json({ ok: false, error: 'invalid signature' });
+            return res.status(401).json({ ok: false, error: 'invalid signature' });
         }
         const body = req.body;
         if (body.object !== 'whatsapp_business_account') {
@@ -768,7 +768,7 @@ router.post('/conversations/:id/lead-assistant/follow-up-task', auth, async (req
     }
 });
 
-// Fill a reviewed lead draft from the latest Omni chat window. Preview only: no CRM writes.
+// Fill a reviewed lead draft from the shared latest Omni chat window. OpenAI direct; preview only: no CRM writes.
 router.post('/conversations/:id/lead-assistant/preview-draft', auth, requireRole('manager', 'marketer'), omniLeadPreviewLimiter, async (req, res) => {
     try {
         const businessContext = requestBusinessContext(req, res);
@@ -790,7 +790,7 @@ router.post('/conversations/:id/lead-assistant/preview-draft', auth, requireRole
     }
 });
 
-// Analyze an Omni dialogue and return a structured lead draft + needs checklist.
+// Analyze an Omni dialogue through the legacy OpenRouter rail using the shared latest Omni chat window.
 router.post('/conversations/:id/lead-assistant/analyze', auth, async (req, res) => {
     try {
         const businessContext = requestBusinessContext(req, res);
@@ -805,7 +805,7 @@ router.post('/conversations/:id/lead-assistant/analyze', auth, async (req, res) 
     }
 });
 
-// Create and link a CRM lead from a reviewed Omni draft.
+// Create and link a CRM lead from a reviewed Omni draft. Writes happen only after the reviewed draft contract.
 router.post('/conversations/:id/lead-assistant/create-lead', auth, requireRole('manager', 'marketer'), shapeOmniLeadCreateResponse, async (req, res) => {
     try {
         const businessContext = requestBusinessContext(req, res);
@@ -818,12 +818,14 @@ router.post('/conversations/:id/lead-assistant/create-lead', auth, requireRole('
             businessContext,
             user: req.user,
             leadDraft: explicitDraft,
+            newOpportunity: req.body?.newOpportunity === true || req.body?.new_opportunity === true || req.body?.intent === 'new_opportunity',
             assignedTo: req.body?.assignedTo ?? req.body?.assigned_to,
             programId: req.body?.programId ?? req.body?.program_id,
         });
         res.status(result.created ? 201 : 200).json({
             success: true,
             created: result.created,
+            newOpportunity: !!result.newOpportunity,
             lead: result.lead,
             analysis: result.analysis,
             link: result.lead?.id ? `/sales-funnel?lead=${encodeURIComponent(result.lead.id)}` : null,

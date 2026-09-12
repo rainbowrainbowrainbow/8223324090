@@ -176,6 +176,26 @@ async function postJson(router, routePath, payload, headers = {}) {
     }
 }
 
+async function getText(router, routePath, headers = {}) {
+    const app = express();
+    app.use('/api/omni', router);
+
+    const server = await new Promise(resolve => {
+        const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+    });
+
+    try {
+        const address = server.address();
+        const res = await fetch(`http://127.0.0.1:${address.port}/api/omni${routePath}`, {
+            method: 'GET',
+            headers,
+        });
+        return { status: res.status, text: await res.text() };
+    } finally {
+        await new Promise(resolve => server.close(resolve));
+    }
+}
+
 function integrationHeaders(routePath, payload, headers) {
     const next = { ...headers };
     if (routePath === '/webhook/viber' && !next['x-viber-content-signature']) {
@@ -189,13 +209,13 @@ function integrationHeaders(routePath, payload, headers) {
     if (routePath === '/webhook/binotel' && !next['x-webhook-secret']) {
         next['x-webhook-secret'] = TEST_OMNI_WEBHOOK_CONFIG.binotel.webhookSecret;
     }
-    if (routePath === '/webhook/meta' && !next['x-hub-signature-256']) {
+    if (routePath === '/webhook/meta' && !Object.prototype.hasOwnProperty.call(next, 'x-hub-signature-256')) {
         const digest = crypto.createHmac('sha256', TEST_OMNI_WEBHOOK_CONFIG.facebook.appSecret)
             .update(JSON.stringify(payload))
             .digest('hex');
         next['x-hub-signature-256'] = `sha256=${digest}`;
     }
-    if (routePath === '/webhook/whatsapp' && !next['x-hub-signature-256']) {
+    if (routePath === '/webhook/whatsapp' && !Object.prototype.hasOwnProperty.call(next, 'x-hub-signature-256')) {
         const digest = crypto.createHmac('sha256', TEST_OMNI_WEBHOOK_CONFIG.whatsapp.appSecret)
             .update(JSON.stringify(payload))
             .digest('hex');
@@ -472,13 +492,14 @@ describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
             ['/webhook/viber', { event: 'message' }, { 'x-viber-content-signature': 'wrong' }],
             ['/webhook/sms', { message_id: 'sms-denied', status: 'DELIVRD' }, { 'x-webhook-secret': 'wrong' }],
             ['/webhook/meta', { object: 'page', entry: [] }, { 'x-hub-signature-256': 'sha256=wrong' }],
-            ['/webhook/whatsapp', { object: 'whatsapp_business_account', entry: [] }, { 'x-hub-signature-256': 'sha256=wrong' }],
             ['/webhook/binotel', { call_id: 'binotel-denied' }, { 'x-webhook-secret': 'wrong' }]
         ];
         for (const [routePath, payload, headers] of denied) {
             const res = await postJson(router, routePath, payload, headers);
             assert.equal(res.status, 403, routePath);
         }
+        const whatsappDenied = await postJson(router, '/webhook/whatsapp', { object: 'whatsapp_business_account', entry: [] }, { 'x-hub-signature-256': 'sha256=wrong' });
+        assert.equal(whatsappDenied.status, 401);
         assert.equal(calls.inbound.length, 0);
         assert.equal(calls.lifecycle.length, 0);
 
@@ -687,6 +708,54 @@ describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
         assert.equal(events[1].receipt.providerLifecycleSource, 'whatsapp_webhook');
     });
 
+    it('reports WhatsApp activation preflight as redacted present/missing categories only', () => {
+        clearModules();
+        installMock('../db', { pool: { query: async () => ({ rows: [] }) } });
+        const previous = Object.fromEntries([
+            'WHATSAPP_ACCESS_TOKEN',
+            'WHATSAPP_PHONE_NUMBER_ID',
+            'WHATSAPP_WABA_ID',
+            'WHATSAPP_APP_SECRET',
+            'WHATSAPP_VERIFY_TOKEN',
+            'PUBLIC_APP_URL',
+        ].map(key => [key, process.env[key]]));
+        try {
+            process.env.WHATSAPP_ACCESS_TOKEN = 'EAAG_RED_ACTION_TEST_TOKEN_1234567890';
+            delete process.env.WHATSAPP_PHONE_NUMBER_ID;
+            process.env.WHATSAPP_WABA_ID = '123456789012345';
+            process.env.WHATSAPP_APP_SECRET = 'app_secret_value_for_test';
+            process.env.WHATSAPP_VERIFY_TOKEN = 'verify_token_value_for_test';
+            process.env.PUBLIC_APP_URL = 'https://crm.example.test';
+
+            const accounts = require('../services/omni-accounts');
+            const account = accounts.getOmniAccountStatus('whatsapp');
+            const preflight = account.activationPreflight;
+
+            assert.equal(preflight.readOnly, true);
+            assert.equal(preflight.redacted, true);
+            assert.equal(preflight.ready, false);
+            assert.equal(account.connected, false);
+            assert.equal(account.sendCapable, false);
+            assert.equal(account.receiveCapable, false);
+            assert.deepEqual(preflight.missing, ['phoneNumberId']);
+            assert.equal(preflight.checks.find(check => check.key === 'accessToken').status, 'present');
+            assert.equal(preflight.checks.find(check => check.key === 'phoneNumberId').status, 'missing');
+            assert.equal(preflight.checks.find(check => check.key === 'callbackUrl').status, 'present');
+
+            const serialized = JSON.stringify(preflight);
+            assert.doesNotMatch(serialized, /EAAG_RED_ACTION_TEST_TOKEN/);
+            assert.doesNotMatch(serialized, /app_secret_value_for_test/);
+            assert.doesNotMatch(serialized, /verify_token_value_for_test/);
+            assert.doesNotMatch(serialized, /123456789012345/);
+        } finally {
+            for (const [key, value] of Object.entries(previous)) {
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+            }
+            clearModules();
+        }
+    });
+
     it('routes signed WhatsApp webhook events and ignores mismatched accounts before persistence', async () => {
         const calls = { inbound: [], lifecycle: [] };
         const router = loadOmniRouter({
@@ -728,6 +797,29 @@ describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
         assert.equal(ignored.body.reason, 'phone_number_mismatch');
         assert.equal(calls.inbound.length, 1);
         assert.equal(calls.lifecycle.length, 1);
+    });
+
+    it('accepts WhatsApp webhook challenge and rejects unsigned payloads before persistence', async () => {
+        const calls = { inbound: [], lifecycle: [] };
+        const router = loadOmniRouter({
+            processInboundMessage: async normalized => calls.inbound.push(normalized),
+            applyProviderLifecycleReceipt: async receipt => calls.lifecycle.push(receipt),
+        });
+
+        const challenge = await getText(router, '/webhook/whatsapp?hub.mode=subscribe&hub.verify_token=omni-whatsapp-verify&hub.challenge=challenge-123');
+        assert.equal(challenge.status, 200);
+        assert.equal(challenge.text, 'challenge-123');
+
+        const wrongChallenge = await getText(router, '/webhook/whatsapp?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=challenge-123');
+        assert.equal(wrongChallenge.status, 403);
+
+        const unsigned = await postJson(router, '/webhook/whatsapp', {
+            object: 'whatsapp_business_account',
+            entry: [{ id: 'waba-1', changes: [{ field: 'messages', value: { metadata: { phone_number_id: 'phone-1' } } }] }],
+        }, { 'x-hub-signature-256': '' });
+        assert.equal(unsigned.status, 401);
+        assert.equal(calls.inbound.length, 0);
+        assert.equal(calls.lifecycle.length, 0);
     });
 
     it('defines the minimal WhatsApp channel migration without data backfill', () => {

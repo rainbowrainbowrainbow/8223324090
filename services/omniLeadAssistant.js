@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const { pool } = require('../db');
 const { settingsCache } = require('./cache');
 const { createLogger } = require('../utils/logger');
@@ -713,14 +714,24 @@ function findFirst(regex, text) {
   return match ? compactString(match[1] || match[0], 120) : '';
 }
 
+function findPhoneInText(text) {
+  const matches = String(text || '').matchAll(/(\+?\d[\d\s().-]{8,}\d)/g);
+  for (const match of matches) {
+    const raw = compactString(match[1] || match[0], 40);
+    if (normalizeDigits(raw).length >= 9) return normalizePhone(raw);
+  }
+  return '';
+}
+
 function extractFallbackLead(bundle = {}) {
   const conversation = bundle.conversation || {};
   const messages = bundle.messages || [];
   const transcript = buildTranscript(messages);
-  const messageText = messages.map(message => message.content || '').join('\n');
+  const inboundMessages = messages.filter(message => String(message.direction || '').toLowerCase() !== 'outbound');
+  const messageText = inboundMessages.map(message => message.content || '').join('\n');
   const allText = `${conversation.customer_name || ''}\n${conversation.customer_phone || ''}\n${messageText}`;
   const phone = normalizePhone(conversation.customer_phone)
-    || normalizePhone(findFirst(/(\+?\d[\d\s().-]{8,}\d)/, allText));
+    || findPhoneInText(allText);
   const childrenCount = parsePositiveInt(findFirst(/(\d{1,3})\s*(?:дітей|дитини|дит|діток|kids|children)/i, allText));
   const childAge = parsePositiveInt(findFirst(/(\d{1,2})\s*(?:років|роки|р\.?|years|y\.o\.)/i, allText));
   const dateText = findFirst(/(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)/, allText);
@@ -1506,6 +1517,7 @@ async function callOpenRouterForAnalysis(bundle, config, salesContext = null) {
     'Ти — sales intake assistant для Event Genix CRM.',
     'Завдання: з історії Omni-діалогу витягнути дані ліда, визначити незакриті потреби і дати одну готову відповідь менеджеру.',
     'Не вигадуй факти. Якщо поле не прозвучало явно, став null і missing.',
+    'Для полів ліда приймай підтвердженими тільки слова клієнта/вхідні повідомлення або поля самої розмови. Outbound-повідомлення менеджера використовуй лише як контекст, не як факт клієнта.',
     'Визнач сценарій продажу, lead score, наступні дії і релевантні матеріали з availableSalesMaterials.',
     'Рекомендовані матеріали бери тільки з availableSalesMaterials або manualMaterials у конфігу; ціни й посилання не вигадуй.',
     'Якщо матеріал не підходить або даних мало, краще постав уточнююче питання, ніж відправляти випадковий каталог.',
@@ -1585,11 +1597,15 @@ async function getConversationBundle(conversationId, limit = 100, options = {}) 
 
   const messagesResult = await pool.query(
     `SELECT *
-       FROM conversation_messages
-      WHERE conversation_id = $1
-      ORDER BY created_at ASC
-      LIMIT $2`,
-    [id, Math.max(1, Math.min(Number(limit) || 100, 200))]
+       FROM (
+         SELECT *
+           FROM conversation_messages
+          WHERE conversation_id = $1
+          ORDER BY created_at DESC NULLS LAST, id DESC
+          LIMIT $2
+       ) recent_messages
+      ORDER BY created_at ASC NULLS FIRST, id ASC`,
+    [id, Math.max(1, Math.min(Number(limit) || 100, 240))]
   );
 
   return {
@@ -1685,40 +1701,8 @@ function omniLeadPreviewSchema() {
 }
 
 async function getConversationLatestBundle(conversationId, limit = OMNI_LEAD_PREVIEW_MAX_MESSAGES, options = {}) {
-  const id = Number.parseInt(conversationId, 10);
-  if (!Number.isInteger(id) || id <= 0) {
-    const err = new Error('Невалідний ID розмови');
-    err.status = 400;
-    throw err;
-  }
-
-  const businessContext = options.businessContext ? normalizeBusinessContext(options.businessContext) : null;
-  const conversationResult = await pool.query(
-    `SELECT * FROM conversations WHERE id = $1${businessContext ? ` AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2` : ''} LIMIT 1`,
-    businessContext ? [id, businessContext] : [id]
-  );
-  const conversation = conversationResult.rows[0];
-  if (!conversation) {
-    const err = new Error('Розмову не знайдено');
-    err.status = 404;
-    throw err;
-  }
-
   const boundedLimit = Math.max(20, Math.min(Number(limit) || OMNI_LEAD_PREVIEW_MAX_MESSAGES, 240));
-  const messagesResult = await pool.query(
-    `SELECT *
-       FROM (
-         SELECT *
-           FROM conversation_messages
-          WHERE conversation_id = $1
-          ORDER BY created_at DESC NULLS LAST, id DESC
-          LIMIT $2
-       ) recent_messages
-      ORDER BY created_at ASC NULLS FIRST, id ASC`,
-    [id, boundedLimit]
-  );
-
-  return { conversation, messages: messagesResult.rows };
+  return getConversationBundle(conversationId, boundedLimit, options);
 }
 
 function buildLeadDraftPreviewSnapshot(bundle = {}) {
@@ -2042,6 +2026,65 @@ function linkedLeadIdFromMeta(meta) {
   return parsePositiveInt(meta.lead_id || meta.leadId || meta?.crm?.leadId || meta?.leadAssistant?.leadId);
 }
 
+function linkedLeadIdsFromMeta(meta) {
+  if (!meta || typeof meta !== 'object') return [];
+  const ids = [
+    meta.lead_id,
+    meta.leadId,
+    meta?.crm?.leadId,
+    meta?.leadAssistant?.leadId,
+    ...(Array.isArray(meta.leadIds) ? meta.leadIds : []),
+    ...(Array.isArray(meta.lead_ids) ? meta.lead_ids : []),
+    ...(Array.isArray(meta?.leadAssistant?.leadIds) ? meta.leadAssistant.leadIds : []),
+    ...(Array.isArray(meta?.leadAssistant?.lead_ids) ? meta.leadAssistant.lead_ids : []),
+  ].map(parsePositiveInt).filter(Boolean);
+  return Array.from(new Set(ids));
+}
+
+function newOpportunityIntent(options = {}) {
+  return options.newOpportunity === true
+    || options.new_opportunity === true
+    || options.intent === 'new_opportunity'
+    || options.leadIntent === 'new_opportunity'
+    || options.lead_intent === 'new_opportunity';
+}
+
+function opportunityFingerprint(draft = {}) {
+  const parts = [
+    draft.clientName,
+    draft.phone,
+    draft.instagram,
+    draft.eventDate,
+    draft.eventType,
+    draft.childrenCount,
+    draft.adultsCount,
+    draft.childAge,
+    draft.programPreferences,
+    draft.notes,
+  ].map(value => compactString(value, 500).toLowerCase()).filter(Boolean);
+  const source = parts.length ? parts.join('|') : 'manual_new_opportunity';
+  return crypto.createHash('sha256').update(source).digest('hex').slice(0, 16);
+}
+
+function leadExternalIdForConversation(conversation, draft, options = {}) {
+  const base = `omni_conv_${conversation.id}`;
+  if (!newOpportunityIntent(options)) return base;
+  return `${base}_op_${opportunityFingerprint(draft)}`;
+}
+
+async function findExistingLeadByExternalId({ businessContext, sourceChannel, externalId }, db = pool) {
+  const byExternal = await db.query(
+    `SELECT *
+       FROM leads
+      WHERE COALESCE(business_context, $1) = $1
+        AND source_channel = $2
+        AND external_id = $3
+      LIMIT 1`,
+    [businessContext, sourceChannel, externalId]
+  );
+  return byExternal.rows[0] || null;
+}
+
 async function findExistingLinkedLead(conversation, db = pool) {
   const businessContext = normalizeBusinessContext(conversation?.business_context || DEFAULT_BUSINESS_CONTEXT);
   const metaLeadId = linkedLeadIdFromMeta(conversation?.meta);
@@ -2056,17 +2099,11 @@ async function findExistingLinkedLead(conversation, db = pool) {
     if (byMeta.rows[0]) return byMeta.rows[0];
   }
 
-  const externalId = `omni_conv_${conversation.id}`;
-  const byExternal = await db.query(
-    `SELECT *
-       FROM leads
-      WHERE COALESCE(business_context, $1) = $1
-        AND source_channel = $2
-        AND external_id = $3
-      LIMIT 1`,
-    [businessContext, conversation.channel, externalId]
-  );
-  return byExternal.rows[0] || null;
+  return findExistingLeadByExternalId({
+    businessContext,
+    sourceChannel: conversation.channel,
+    externalId: `omni_conv_${conversation.id}`,
+  }, db);
 }
 
 async function recordConversationLeadAssistantAnalysis(conversationId, analysis, db = pool) {
@@ -2097,8 +2134,64 @@ async function recordConversationLeadAssistantAnalysis(conversationId, analysis,
   );
 }
 
-async function markConversationLead(conversationId, leadId, analysis, db = pool) {
+function buildConversationLeadMeta(existingMeta = {}, leadId, analysis, options = {}) {
+  const meta = existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta) ? { ...existingMeta } : {};
+  const previousAssistant = meta.leadAssistant && typeof meta.leadAssistant === 'object' && !Array.isArray(meta.leadAssistant)
+    ? meta.leadAssistant
+    : {};
+  const now = new Date().toISOString();
+  const leadIds = Array.from(new Set([...linkedLeadIdsFromMeta(meta), parsePositiveInt(leadId)].filter(Boolean)));
+  const newOpportunity = newOpportunityIntent(options);
+  const externalId = compactString(options.externalId, 140) || null;
+  const leadAssistant = {
+    ...previousAssistant,
+    leadId,
+    leadIds,
+    linkedAt: now,
+    summary: analysis?.summary || null,
+    missingRequiredKeys: analysis?.missingRequiredKeys || [],
+  };
+
+  if (newOpportunity) {
+    const opportunity = {
+      leadId,
+      externalId,
+      fingerprint: compactString(options.opportunityFingerprint, 40) || null,
+      linkedAt: now,
+      intent: 'new_opportunity',
+    };
+    const previous = Array.isArray(previousAssistant.opportunities) ? previousAssistant.opportunities : [];
+    leadAssistant.currentOpportunity = opportunity;
+    leadAssistant.opportunities = [
+      ...previous.filter(item => item?.externalId !== externalId && parsePositiveInt(item?.leadId) !== parsePositiveInt(leadId)),
+      opportunity,
+    ].slice(-12);
+  }
+
+  return {
+    ...meta,
+    lead_id: leadId,
+    leadIds,
+    leadAssistant,
+  };
+}
+
+async function markConversationLead(conversationOrId, leadId, analysis, db = pool, options = {}) {
+  const conversationId = typeof conversationOrId === 'object' ? conversationOrId?.id : conversationOrId;
   if (!conversationId || !leadId) return;
+  if (conversationOrId && typeof conversationOrId === 'object') {
+    await db.query(
+      `UPDATE conversations
+          SET meta = $2::jsonb,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [
+        conversationId,
+        JSON.stringify(buildConversationLeadMeta(conversationOrId.meta, leadId, analysis, options)),
+      ]
+    );
+    return;
+  }
   await db.query(
     `UPDATE conversations
         SET meta = jsonb_set(
@@ -2172,6 +2265,11 @@ function leadDraftInputFromOptions(analysis, options = {}) {
 }
 
 function leadCreateSource(options = {}) {
+  if (newOpportunityIntent(options)) {
+    return options.leadDraft || options.draft || options.lead
+      ? 'omni_lead_new_opportunity_manual'
+      : 'omni_lead_new_opportunity_assistant';
+  }
   return options.leadDraft || options.draft || options.lead
     ? 'omni_lead_manual'
     : 'omni_lead_assistant';
@@ -2184,7 +2282,6 @@ function buildLeadInsertDraft(analysis, bundle, options = {}) {
   const fallbackName = compactString(conversation.customer_name, 160);
   const clientName = lead.clientName || (fallbackName && !/^unknown$/i.test(fallbackName) ? fallbackName : null) || `Клієнт ${conversation.channel || 'Omni'}`;
   const phone = lead.phone || normalizePhone(conversation.customer_phone) || null;
-  const externalId = `omni_conv_${conversation.id}`;
   const notes = buildLeadNotes({ ...analysis, lead }, bundle);
   const eventPreference = lead.eventPreference || normalizeLeadEventPreference(lead);
   const effectiveEventDate = eventPreference?.preferredDate || lead.eventDate || null;
@@ -2199,7 +2296,21 @@ function buildLeadInsertDraft(analysis, bundle, options = {}) {
     instagram: lead.instagram,
     source: conversation.channel || 'omni',
     sourceChannel: conversation.channel || 'omni',
-    externalId,
+    externalId: leadExternalIdForConversation(conversation, {
+      ...lead,
+      eventDate: effectiveEventDate,
+      childrenCount: effectiveChildrenCount,
+      adultsCount: eventPreference?.adultsCount || lead.adultsCount || 0,
+    }, options),
+    newOpportunity: newOpportunityIntent(options),
+    opportunityFingerprint: newOpportunityIntent(options)
+      ? opportunityFingerprint({
+          ...lead,
+          eventDate: effectiveEventDate,
+          childrenCount: effectiveChildrenCount,
+          adultsCount: eventPreference?.adultsCount || lead.adultsCount || 0,
+        })
+      : null,
     eventDate: effectiveEventDate,
     childrenCount: effectiveChildrenCount,
     adultsCount: eventPreference?.adultsCount || lead.adultsCount || 0,
@@ -2356,11 +2467,16 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
     }
     bundle.conversation = lockedConversation;
 
-    const existing = await findExistingLinkedLead(lockedConversation, client);
+    const createOptions = {
+      newOpportunity: draft.newOpportunity,
+      externalId: draft.externalId,
+      opportunityFingerprint: draft.opportunityFingerprint,
+    };
+    const existing = draft.newOpportunity ? null : await findExistingLinkedLead(lockedConversation, client);
     if (existing) {
-      await markConversationLead(lockedConversation.id, existing.id, analysis, client);
+      await markConversationLead(lockedConversation, existing.id, analysis, client, createOptions);
       await client.query('COMMIT');
-      return { created: false, lead: existing, analysis };
+      return { created: false, lead: existing, analysis, newOpportunity: false };
     }
 
     draft.assignedTo = await resolveLeadAssignedTo(draft, lockedConversation, client);
@@ -2398,11 +2514,13 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
         JSON.stringify({
           source: leadCreateSource(options),
           conversationId: bundle.conversation.id,
+          newOpportunity: draft.newOpportunity,
           draft: {
             eventPreference: draft.eventPreference || null,
             assignedTo: draft.assignedTo || null,
             sourceChannel: draft.sourceChannel,
             externalId: draft.externalId,
+            opportunityFingerprint: draft.opportunityFingerprint || null,
           },
           analysis: {
             summary: analysis?.summary || null,
@@ -2417,15 +2535,17 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
     );
     let lead = result.rows[0];
     if (!lead) {
-      lead = await findExistingLinkedLead(lockedConversation, client);
+      lead = draft.newOpportunity
+        ? await findExistingLeadByExternalId(draft, client)
+        : await findExistingLinkedLead(lockedConversation, client);
       if (!lead) {
         const err = new Error('Лід уже створюється. Оновіть розмову й повторіть дію.');
         err.status = 409;
         throw err;
       }
-      await markConversationLead(lockedConversation.id, lead.id, analysis, client);
+      await markConversationLead(lockedConversation, lead.id, analysis, client, createOptions);
       await client.query('COMMIT');
-      return { created: false, lead, analysis };
+      return { created: false, lead, analysis, newOpportunity: draft.newOpportunity };
     }
 
     if (draft.eventPreference) {
@@ -2438,10 +2558,10 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
       lead.eventPreference = eventPreference;
     }
 
-    await markConversationLead(bundle.conversation.id, lead.id, analysis, client);
+    await markConversationLead(lockedConversation, lead.id, analysis, client, createOptions);
 
     await client.query('COMMIT');
-    return { created: true, lead, analysis };
+    return { created: true, lead, analysis, newOpportunity: draft.newOpportunity };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;

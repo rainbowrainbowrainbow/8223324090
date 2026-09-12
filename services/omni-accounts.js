@@ -302,6 +302,13 @@ const CHANNELS = [
 
 const CHANNEL_MAP = new Map(CHANNELS.map(def => [def.channel, def]));
 const SECRET_FIELD_TYPES = new Set(['secret', 'password', 'token']);
+const WHATSAPP_ACTIVATION_PREFLIGHT = [
+  { key: 'wabaId', label: 'WABA ID', source: 'WhatsApp Business Account', secret: false },
+  { key: 'phoneNumberId', label: 'Phone Number ID', source: 'WhatsApp Business Platform number', secret: false },
+  { key: 'accessToken', label: 'Access token', source: 'Meta system user or permanent token', secret: true },
+  { key: 'appSecret', label: 'Meta app secret', source: 'Meta app settings', secret: true },
+  { key: 'verifyToken', label: 'Webhook verify token', source: 'Operator-defined webhook token', secret: true },
+];
 
 function normalizeChannel(channel) {
   return String(channel || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
@@ -566,14 +573,18 @@ function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
   const scopedOptions = { ...options, businessContext };
   const runtime = mergeRuntimeConfig(def, row, scopedOptions);
   const summary = publicConnectionSummary(def, row, runtime, scopedOptions);
+  const activationPreflight = whatsappActivationPreflight(def, runtime, scopedOptions);
   let status = row?.status || (summary.connected ? (def.inboundOnly ? 'history_only' : 'limited') : 'disconnected');
+  if (activationPreflight && !activationPreflight.ready) status = 'disconnected';
 
   if (status === 'connected' && def.inboundOnly) status = 'history_only';
   const connected = status !== 'disconnected'
     && status !== 'token_expired'
     && status !== 'misconfigured'
     && status !== 'needs_rebind'
-    && Boolean(summary.connected);
+    && Boolean(summary.connected)
+    && (!activationPreflight || activationPreflight.ready);
+  const configured = activationPreflight ? activationPreflight.ready : Boolean(summary.connected);
   const sendCapable = Boolean(connected && def.sendSupported && status !== 'history_only' && status !== 'provider_unreachable');
   const receiveCapable = Boolean(connected && def.receiveSupported && !['webhook_missing', 'limited', 'provider_unreachable'].includes(status));
   const limited = status === 'limited' || status === 'webhook_missing' || status === 'history_only' || status === 'provider_unreachable';
@@ -595,7 +606,7 @@ function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
     status,
     statusLabel: STATUS_COPY[status] || status,
     connected,
-    configured: Boolean(summary.connected),
+    configured,
     requiredDirections: { send: Boolean(def.sendSupported), receive: Boolean(def.receiveSupported && def.channel !== 'sms') },
     sendCapable,
     receiveCapable,
@@ -618,6 +629,7 @@ function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
     setupSteps: setupSteps(def, scopedOptions),
     webhookUrl: publicWebhookUrl(def, scopedOptions),
     connectAvailable: true,
+    activationPreflight,
     source: row ? 'database' : (summary.connected ? 'environment' : 'none'),
   };
 }
@@ -663,6 +675,39 @@ function publicWebhookUrl(def, options = {}) {
     ? path
     : `${path}${path.includes('?') ? '&' : '?'}business_context=${encodeURIComponent(businessContext)}`;
   return base ? `${base.replace(/\/$/, '')}${scopedPath}` : scopedPath;
+}
+
+function whatsappActivationPreflight(def, runtime = {}, options = {}) {
+  if (!def || def.channel !== 'whatsapp') return null;
+  const callbackUrl = publicWebhookUrl(def, options);
+  const checks = WHATSAPP_ACTIVATION_PREFLIGHT.map(item => ({
+    key: item.key,
+    label: item.label,
+    source: item.source,
+    required: true,
+    secret: item.secret === true,
+    status: String(runtime[item.key] || '').trim() ? 'present' : 'missing',
+  }));
+  checks.push({
+    key: 'callbackUrl',
+    label: 'Callback URL',
+    source: 'CRM public HTTPS URL for Meta Webhooks',
+    required: true,
+    secret: false,
+    status: /^https:\/\//i.test(String(callbackUrl || '').trim()) ? 'present' : 'missing',
+  });
+  const missing = checks.filter(check => check.status !== 'present').map(check => check.key);
+  return {
+    provider: 'whatsapp_cloud_api',
+    readOnly: true,
+    redacted: true,
+    ready: missing.length === 0,
+    missing,
+    checks,
+    note: missing.length
+      ? 'WhatsApp activation is pending. CRM shows only present/missing categories and does not expose secret values.'
+      : 'WhatsApp activation prerequisites are present. Meta subscription and controlled live test are still operator actions.',
+  };
 }
 
 function setupSteps(def, options = {}) {
@@ -1676,4 +1721,5 @@ module.exports = {
   disconnectOmniConnection,
   providerDefinition,
   maskSecret,
+  whatsappActivationPreflight,
 };

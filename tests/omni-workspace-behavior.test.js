@@ -238,7 +238,7 @@ test('status filter participates in requests and reset restores the full list', 
     const filter = h.document.getElementById('omniStatusFilter'); filter.value = 'closed'; filter.dispatchEvent(new h.window.Event('change'));
     await h.flush(); assert.ok(calls.some(path => path.includes('status=closed')));
     const closed = { ...conversation(1), status: 'closed' }; h.app.setRecords([closed]); h.app.selectConversation(1);
-    assert.equal(h.document.getElementById('omniCloseConv').textContent, 'Відкрити знову');
+    assert.equal(h.document.getElementById('omniCloseConv').textContent, 'Відкрити діалог');
 });
 
 test('opening visible history clears only the acknowledged unread boundary', async t => {
@@ -532,6 +532,21 @@ test('manual lead draft opens without starting AI analysis', async t => {
     assert.equal(requests.some(item => item.requestPath.endsWith('/lead-assistant/create-lead')), false);
 });
 
+test('conversation header uses reviewed lead and assistant labels without legacy AI styling', async t => {
+    const record = { ...conversation(1), meta: { ai_enabled: true } };
+    const h = harness(t, [record]);
+    h.app.selectConversation(1);
+    await h.flush();
+    const ai = h.document.getElementById('omniToggleAI');
+    const close = h.document.getElementById('omniCloseConv');
+    assert.equal(ai.textContent, 'AI-помічник');
+    assert.equal(ai.title, 'AI-помічник для ліда і відповіді');
+    assert.equal(ai.style.background, '');
+    assert.equal(ai.style.color, '');
+    assert.equal(close.textContent, 'Закрити діалог');
+    assert.equal(close.title, 'Закрити діалог');
+});
+
 test('AI draft fill previews chat data without creating a lead or overwriting manual edits', async t => {
     const h = harness(t);
     const requests = [];
@@ -580,6 +595,46 @@ test('AI draft fill previews chat data without creating a lead or overwriting ma
     assert.match(h.document.getElementById('omniLeadAssistantContent').textContent, /AI заповнення з чату/);
 });
 
+test('legacy AI assistant transfers analysis into reviewed draft instead of creating a lead', async t => {
+    const h = harness(t);
+    const requests = [];
+    h.app.setApi(async (requestPath, options) => {
+        requests.push({ requestPath, options });
+        if (requestPath.endsWith('/lead-assistant/analyze')) {
+            return {
+                success: true,
+                analysis: {
+                    provider: { name: 'openrouter', model: 'legacy-model', status: 'ok' },
+                    summary: 'Клієнт просить день народження',
+                    lead: {
+                        clientName: 'AI Name',
+                        phone: '+380501112233',
+                        eventType: 'birthday',
+                        eventDate: '2026-06-14',
+                        childrenCount: 12,
+                        childAge: 8,
+                        programPreferences: 'квест'
+                    }
+                }
+            };
+        }
+        return h.defaultApi(requestPath, options);
+    });
+    h.app.selectConversation(1);
+    await h.flush();
+    await h.app.openLeadAssistantPanel('ai', { analyze: true });
+    assert.match(h.document.getElementById('omniLeadAssistantStatus').textContent, /Перенести в чернетку/);
+    h.document.querySelector('[data-ai-action="transfer-to-draft"]').click();
+    await h.flush();
+
+    assert.equal(h.app.state().leadMode, 'draft');
+    assert.equal(h.document.getElementById('omniLeadDraftClientName').value, 'Customer 1');
+    assert.equal(h.document.getElementById('omniLeadDraftPhone').value, '+380501112233');
+    assert.equal(h.document.getElementById('omniLeadDraftEventDate').value, '2026-06-14');
+    assert.equal(h.document.getElementById('omniLeadDraftChildrenCount').value, '12');
+    assert.equal(requests.some(item => item.requestPath.endsWith('/lead-assistant/create-lead')), false);
+});
+
 test('stale AI draft preview is ignored after switching chats', async t => {
     const h = harness(t);
     const preview = deferred();
@@ -626,10 +681,44 @@ test('manual lead draft creates a lead from reviewed fields without analysis pay
     assert.equal(sent.requestPath, '/conversations/1/lead-assistant/create-lead');
     assert.equal(sent.options.requestBusinessContext, 'event_genix');
     assert.equal(sent.body.analysis, undefined);
+    assert.equal(sent.body.newOpportunity, false);
     assert.equal(sent.body.draft.clientName, 'Nataly Fedorova');
     assert.equal(sent.body.draft.childrenCount, 12);
     assert.equal(h.document.getElementById('omniCreateLead').textContent, 'Відкрити лід');
     assert.equal(h.app.state().conversations[0].meta.lead_id, 501);
+});
+
+test('linked conversation offers an explicit new opportunity lead draft without changing the header open action', async t => {
+    const h = harness(t, [{ ...conversation(1), meta: { lead_id: 501, leadAssistant: { leadId: 501, leadIds: [501] } } }]);
+    let sent;
+    h.app.setApi(async (requestPath, options) => {
+        if (requestPath.endsWith('/lead-assistant/create-lead')) {
+            sent = { requestPath, options, body: JSON.parse(options.body) };
+            return { success: true, created: true, newOpportunity: true, lead: { id: 802 } };
+        }
+        return h.defaultApi(requestPath, options);
+    });
+
+    h.app.selectConversation(1);
+    await h.flush();
+    assert.equal(h.document.getElementById('omniCreateLead').textContent, 'Відкрити лід');
+    await h.app.openLeadAssistantPanel('draft');
+    assert.match(h.document.getElementById('omniLeadAssistantContent').textContent, /Створити лід для нової події/);
+
+    h.document.querySelector('[data-ai-action="start-new-opportunity"]').click();
+    await h.flush();
+    assert.match(h.document.getElementById('omniLeadAssistantStatus').textContent, /Нова подія/);
+    h.document.getElementById('omniLeadDraftEventDate').value = '2026-07-20';
+    h.document.getElementById('omniLeadDraftChildrenCount').value = '14';
+    await h.app.createLeadFromDraft();
+
+    assert.equal(sent.requestPath, '/conversations/1/lead-assistant/create-lead');
+    assert.equal(sent.body.newOpportunity, true);
+    assert.equal(sent.body.draft.eventDate, '2026-07-20');
+    assert.equal(sent.body.draft.childrenCount, 14);
+    assert.equal(h.document.getElementById('omniCreateLead').textContent, 'Відкрити лід');
+    assert.equal(h.app.state().conversations[0].meta.lead_id, 802);
+    assert.deepEqual(Array.from(h.app.state().conversations[0].meta.leadIds), [501, 802]);
 });
 
 test('stale manual lead creation result is ignored after switching chats', async t => {

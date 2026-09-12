@@ -179,3 +179,49 @@
 - Backend API, auth policy, ролі, permission registry, middleware, токени, міграції, залежності й бізнес allowlists не змінювалися.
 - Поточний захист закриває втрату змін в одній вкладці та stale session/queued request сценарії. Конфлікти двох активних вкладок одного акаунта без серверної версії залишаються обмеженням і мають іти окремим явно погодженим завданням, якщо потрібен повний міжвкладковий conflict editor.
 - `Abort` як і раніше не вважається доказом, що серверний запис не відбувся; клієнт не застосовує stale response до новішого локального стану.
+
+## DASH-03: локальний результат
+
+Статус: виконано локально після DASH-02 у гілці `codex/dashboard-visibility-20260912`; push/deploy залишено для DASH-05.
+
+Коміт фіксу widgets refresh/error states: `b20ad3cb21bd6e11ac179b932c08dd0ac129aa45` (`fix: refresh dashboard widgets safely`).
+
+Що змінено:
+
+- Збережено чинне об’єднання одночасних widget-запитів через `_widgetDataRequests` і чинні ключі `user / role / sessionGeneration / business`.
+- До widget cache додано metadata `fetchedAt`, TTL 90 секунд і `invalidationVersion`, щоб старі відповіді після події або зміни контексту не могли відновити застарілі дані.
+- Повернення до вкладки через `visibilitychange` / persisted `pageshow` оновлює лише застарілі видимі widget types, без polling і без таймерів.
+- Підключено чинні події: `crm:tasks-updated`, `crm:alerts-updated`, `app:user-changed`, `timeline:business-context-changed`, `rolePreviewChanged`, `workingRoleChanged`.
+- `refreshWidget(type)` оновлює всі видимі екземпляри одного віджета, але зберігає один coalesced request на type/context.
+- Loading, denied, API/network error і stale last-successful-data тепер мають окремі стани, retry-кнопку та час останнього успішного оновлення.
+- При failed refresh з уже наявними даними користувач бачить останні успішні дані як stale, а не порожню статистику.
+- Funnel 401/403 лишається окремим denied станом. Financial widgets зберігають чинний `canViewDashboardRevenue()` guard і не роблять forbidden fetch для недозволеної ролі.
+- Додано стилі widget state/retry/meta у `css/dashboard-widgets.css`.
+
+Перевірка DASH-03:
+
+- `node --check js/dashboard-page.js` — PASS.
+- `node --check tests/dashboard-hydration-request-budget.test.js` — PASS.
+- `git diff --check` — PASS; були тільки стандартні CRLF warnings.
+- `npm run check:runtime` — PASS, Node 22.23.1 / npm 10.9.8.
+- `npm run check:css-surface` — PASS, 93 CSS files / 93 referenced files / 5 Service Worker precache entries.
+- `node --test tests/dashboard-hydration-request-budget.test.js` — PASS, 11/11.
+- `node --test tests/dashboard-hydration-request-budget.test.js tests/dashboard-widgets-recovery.test.js tests/dashboard-bootstrap.test.js tests/dashboard-save-recovery.test.js tests/auth-frontend-session.test.js` — PASS, 103/103.
+- `npm run check:syntax` — PASS, 1147 files.
+- `node --test tests/dashboard-hydration-request-budget.test.js tests/dashboard-widgets-recovery.test.js tests/dashboard-widgets.test.js tests/dashboard-bootstrap.test.js tests/dashboard-save-recovery.test.js tests/auth-frontend-session.test.js` — BLOCKED by live/API suite credentials only: `tests/dashboard-widgets.test.js` requires `TEST_USER` and `TEST_PASS`; all self-contained tests in that run passed before the credential-only failures.
+
+Request-budget evidence:
+
+- Cold default-board hydration: each enabled endpoint once.
+- Saved board with duplicate live containers: repeated render reuses current-context data; one request for duplicate widget type.
+- Explicit refresh: compatibility + board containers update through one fresh request.
+- Visibility return: only expired visible widget refreshed; fresh visible widgets were not fetched again.
+- `crm:tasks-updated` and `crm:alerts-updated`: visible task/alert widgets refreshed without full reload.
+- Context/invalidation stale response: older in-flight response did not overwrite newer data.
+- Hidden-tab polling: no polling/timer was added; updates happen on events, manual retry, render, or visible-tab return only.
+
+Межі й ризики:
+
+- API contracts, financial permissions, booking sources, external integrations, roles, middleware, migrations and dependencies were not changed.
+- Production data was not read or mutated. Live-site QA remains for DASH-05 with test credentials and read-only comparison against canonical Tasks/Alerts screens.
+- Synthetic fixture errors in tests prove UI state handling; they are not production defect evidence.

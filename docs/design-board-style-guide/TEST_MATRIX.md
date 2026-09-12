@@ -116,6 +116,7 @@ npm run test:ui
 - `node --test --experimental-test-isolation=none tests/design-material-storage-audit.test.js tests/designs-page-ui.test.js tests/designer-navigation.test.js tests/design-storage.test.js` — PASS 14/14.
 - `npm run test:ui` — PASS 1312/1312 після T4/T5/T3 updates.
 - `node scripts/audit-design-material-storage.js --limit 500` — READ ONLY PASS; scanned 3, ok 0, `SOURCE_MISSING: 3`, recoverableFromLocal 0, keyMismatches 0, manifestHash `6ee18d80c03ab89775a31652b562704f18bf93eda5bb5864b1fb7668d5cb282c`.
+- Після rebase на `origin/codex/eventgenix-production` commit `7de2d4d61`, `npm run test:unit` — PASS 2774/2774. Попередній один failure був upstream payment-progress test harness і зник після `7de2d4d61`.
 - `npm run check:storage-surface` — PASS.
 - `npm run check:static-surface` — PASS.
 - `npm run check:theme-surface` — PASS.

@@ -33,6 +33,11 @@ non-200 or malformed/forged ACK keep the outbox pending. Only explicit event IDs
 from a valid same-version response are acknowledged; partial ACK replays only
 the remaining events.
 
+`run_p1_daemon.py` starts that transport from a private JSON config outside the
+repository. Use `--once` for enrollment/health verification; without it the
+process keeps heartbeat, event ACK and command intake active. It deliberately
+does not enable receive or Send until separate reviewed adapters verify them.
+
 `p1_dispatcher.py` is the Send orchestration boundary for a reviewed UI
 adapter. It revalidates the active peer, persists `dispatch_started` before the
 external gesture, and converts any exception or malformed result after that

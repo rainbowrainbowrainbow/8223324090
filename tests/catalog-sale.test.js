@@ -25,13 +25,40 @@ test('weekend hourly care enforces two-hour minimum', () => {
     assert.equal(line.totalMinor, 70000n);
 });
 
-test('UBD discount produces the final unit price sent to Checkbox snapshot', () => {
+test('explicit discount template produces the final unit price sent to Checkbox snapshot', () => {
     const catalog = new Map([['dar_logic_single', { id: 'dar_logic_single', price_uah: 300, sale_config: {} }]]);
-    const discounts = new Map([['dar_ubd_20', { code: 'dar_ubd_20', rate_bps: 2000 }]]);
+    const discounts = new Map([['ubd_template', { code: 'ubd_template', rate_bps: 2000, eligibility_mode: 'explicit' }]]);
     const [line] = quoteLines([{ itemCode: 'dar_logic_single', quantityMillis: 1000 }], catalog, discounts);
     assert.equal(line.originalUnitMinor, 30000n);
     assert.equal(line.discountMinor, 6000n);
     assert.equal(line.finalUnitMinor, 24000n);
+    assert.equal(line.discount.code, 'ubd_template');
+});
+
+test('second direction discount template applies only after a different club direction', () => {
+    const catalog = new Map([
+        ['logic', { id: 'logic', price_uah: 300, sale_config: { club_direction: 'logic' } }],
+        ['art', { id: 'art', price_uah: 500, sale_config: { club_direction: 'art' } }]
+    ]);
+    const discounts = new Map([['second_direction_template', { code: 'second_direction_template', rate_bps: 1000, eligibility_mode: 'second_club_direction' }]]);
+    const lines = quoteLines([
+        { itemCode: 'logic', quantityMillis: 1000 },
+        { itemCode: 'art', quantityMillis: 1000 }
+    ], catalog, discounts);
+    assert.equal(lines[0].discountMinor, 0n);
+    assert.equal(lines[0].discount, null);
+    assert.equal(lines[1].discountMinor, 5000n);
+    assert.equal(lines[1].finalUnitMinor, 45000n);
+    assert.equal(lines[1].discount.code, 'second_direction_template');
+});
+
+test('discount template rejects invalid rates instead of creating fictional totals', () => {
+    const catalog = new Map([['logic', { id: 'logic', price_uah: 300, sale_config: {} }]]);
+    const discounts = new Map([['bad_template', { code: 'bad_template', rate_bps: 12000, eligibility_mode: 'explicit' }]]);
+    assert.throws(
+        () => quoteLines([{ itemCode: 'logic', quantityMillis: 1000 }], catalog, discounts),
+        error => error.code === 'catalog_discount_invalid'
+    );
 });
 
 test('cashier administration rejects secret material', () => {

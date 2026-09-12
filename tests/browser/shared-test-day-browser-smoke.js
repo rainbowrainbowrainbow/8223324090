@@ -40,9 +40,10 @@ async function run() {
         });
         const page = await context.newPage();
         await page.goto(`http://127.0.0.1:${server.address().port}/cashier-payments?businessContext=event_genix&routeOptionId=park_test`);
+        await page.locator('#cashierShiftConsole').evaluate(panel => { panel.open = true; });
         await page.waitForSelector('#sharedTestDrainBtn:not([disabled])');
-        await page.click('#addCatalogLineBtn');
-        await page.locator('[data-catalog-add]').first().click();
+        if (!await page.locator('#catalogPicker').isVisible()) await page.click('#addCatalogLineBtn');
+        await page.locator('[data-catalog-add]:visible').first().click();
         await page.click('#sharedTestDrainBtn');
         await page.waitForSelector('.confirm-overlay');
         await page.keyboard.press('Escape');
@@ -58,6 +59,7 @@ async function run() {
         state.shift = { ...state.shift, status: 'closed', providerStatus: 'CLOSED' };
         active.status = 'closed';
         await page.reload();
+        await page.locator('#cashierShiftConsole').evaluate(panel => { panel.open = true; });
         await page.waitForSelector('#sharedTestResumeBtn:not([disabled])');
         for (const width of [1152, 390]) for (const dark of [false, true]) {
             await page.setViewportSize({ width, height: 844 });
@@ -69,6 +71,7 @@ async function run() {
         await page.waitForSelector('#sharedTestResumeBtn:not([disabled])');
         assert.equal(active.status, 'closed', 'failed resume preserves stop');
         await page.reload();
+        await page.locator('#cashierShiftConsole').evaluate(panel => { panel.open = true; });
         await page.waitForSelector('#sharedTestResumeBtn:not([disabled])');
         await page.click('#sharedTestResumeBtn');
         await page.getByRole('button', { name: 'Підтвердити', exact: true }).click();

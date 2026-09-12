@@ -6,11 +6,51 @@
         event_genix: Object.freeze({ crmProfileKey: 'event_genix', businessLabel: 'ПАРК', locationLabel: 'ПАРК', registerLabel: 'Середня каса' }),
         dar: Object.freeze({ crmProfileKey: 'dar', businessLabel: 'ДАР', locationLabel: 'ДАР', registerLabel: 'Студія / Каса ДАР' })
     });
+    const DiscountCalculator = window.CatalogDiscountCalculator;
     const pageParams = new URLSearchParams(window.location.search);
     const requestedBusinessContext = pageParams.get('businessContext');
+    function normalizeCashierBusinessContext(value) {
+        const normalized = typeof window.CrmBusinessContext?.normalize === 'function'
+            ? window.CrmBusinessContext.normalize(value)
+            : String(value || '').trim().toLowerCase();
+        return BUSINESS_SCOPES[normalized] ? normalized : 'event_genix';
+    }
+    function storedCashierBusinessContext(user = null) {
+        try {
+            const stored = window.localStorage.getItem('pzp_crm_business_context');
+            if (!stored) return null;
+            const storedUser = String(window.localStorage.getItem('pzp_crm_business_context_user') || '').trim();
+            const currentUser = user ? String(user.id || user.username || user.name || '').trim() : '';
+            if (currentUser && storedUser && storedUser !== currentUser) return null;
+            const normalized = normalizeCashierBusinessContext(stored);
+            if (typeof window.CrmBusinessContext?.canAccess === 'function'
+                && !window.CrmBusinessContext.canAccess(user || undefined, normalized)) return null;
+            return normalized;
+        } catch {
+            return null;
+        }
+    }
+    function currentCrmBusinessScope(user = null) {
+        const scopeUser = user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
+        return typeof window.CrmBusinessContext?.scope === 'function'
+            ? window.CrmBusinessContext.scope(scopeUser || undefined)
+            : null;
+    }
+    function currentCrmBusinessContext(user = null) {
+        const scope = currentCrmBusinessScope(user);
+        if (scope && scope.mode && scope.mode !== 'single') return null;
+        const stored = storedCashierBusinessContext(user);
+        if (stored) return stored;
+        const scopeUser = user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
+        const current = typeof window.CrmBusinessContext?.current === 'function'
+            ? window.CrmBusinessContext.current(scopeUser || undefined)
+            : null;
+        return normalizeCashierBusinessContext(scope?.activeContext || current || requestedBusinessContext);
+    }
+    const initialBusinessContext = currentCrmBusinessContext() || normalizeCashierBusinessContext(requestedBusinessContext);
     let PILOT_SCOPE = {
-        ...(BUSINESS_SCOPES[requestedBusinessContext] || BUSINESS_SCOPES.event_genix),
-        routeOptionId: pageParams.get('routeOptionId') || `${requestedBusinessContext === 'dar' ? 'dar' : 'park'}_production`,
+        ...BUSINESS_SCOPES[initialBusinessContext],
+        routeOptionId: pageParams.get('routeOptionId') || `${initialBusinessContext === 'dar' ? 'dar' : 'park'}_production`,
         mode: 'production'
     };
     const SALE_MODE = PILOT_SCOPE.crmProfileKey === 'dar' || pageParams.get('saleMode') !== 'admission'
@@ -175,7 +215,9 @@
         lastErrorNotificationAt: 0
     };
 
-    function $(id) { return document.getElementById(id); }
+    function $(id) {
+        return typeof document === 'undefined' ? null : document.getElementById(id);
+    }
 
     function pageIsVisible() {
         return document.visibilityState !== 'hidden';
@@ -206,6 +248,7 @@
         syncUnresolvedControls();
         renderServiceOutPanel();
         renderActionPinPanel();
+        renderFiscalReportsPanel();
         const reportButton = $('loadCheckboxSalesReportBtn');
         setButtonBusy(reportButton, false, '');
         if (reportButton) reportButton.disabled = false;
@@ -642,7 +685,63 @@
     }
 
     function selectedRoute() {
-        return state.routeOptions.find(route => route.id === PILOT_SCOPE.routeOptionId) || null;
+        return state.routeOptions.find(route => route.id === PILOT_SCOPE.routeOptionId
+            && route.businessContext === PILOT_SCOPE.crmProfileKey) || null;
+    }
+
+    function routesForActiveBusiness() {
+        return state.routeOptions.filter(route => route.businessContext === PILOT_SCOPE.crmProfileKey);
+    }
+
+    function preferredRouteForActiveBusiness() {
+        const routes = routesForActiveBusiness();
+        return routes.find(route => route.id === PILOT_SCOPE.routeOptionId)
+            || routes.find(route => route.mode === 'production')
+            || routes[0]
+            || null;
+    }
+
+    function applyPilotScopeRoute(route) {
+        if (!route || route.businessContext !== PILOT_SCOPE.crmProfileKey || !BUSINESS_SCOPES[route.businessContext]) return false;
+        PILOT_SCOPE = {
+            ...BUSINESS_SCOPES[route.businessContext],
+            routeOptionId: route.id,
+            mode: route.mode,
+            registerLabel: route.registerLabel
+        };
+        state.saleMode = route.businessContext === 'dar' || pageParams.get('saleMode') !== 'admission'
+            ? 'catalog_sale'
+            : 'admission_ticket';
+        return true;
+    }
+
+    function syncPilotScopeWithCrmBusiness(user = state.user) {
+        const businessContext = currentCrmBusinessContext(user);
+        if (!businessContext) {
+            const error = new Error('business_scope_single_required');
+            error.code = 'business_scope_single_required';
+            throw error;
+        }
+        if (businessContext !== PILOT_SCOPE.crmProfileKey) {
+            PILOT_SCOPE = {
+                ...BUSINESS_SCOPES[businessContext],
+                routeOptionId: `${businessContext === 'dar' ? 'dar' : 'park'}_production`,
+                mode: 'production'
+            };
+        }
+        const route = preferredRouteForActiveBusiness();
+        if (route) applyPilotScopeRoute(route);
+        return PILOT_SCOPE;
+    }
+
+    function assertSelectedRouteScope() {
+        const route = selectedRoute();
+        if (!route) {
+            const error = new Error('fiscal_route_option_invalid');
+            error.code = 'fiscal_route_option_invalid';
+            throw error;
+        }
+        return route;
     }
 
     function hasServiceOutRequestAccess() {
@@ -677,9 +776,10 @@
     }
 
     function serviceOutScopePayload() {
+        const route = assertSelectedRouteScope();
         const result = {
-            businessContext: PILOT_SCOPE.crmProfileKey,
-            routeOptionId: PILOT_SCOPE.routeOptionId
+            businessContext: route.businessContext,
+            routeOptionId: route.id
         };
         const registerState = state.registerState || {};
         const profileId = registerState.fiscalProfileId ?? registerState.fiscal_profile_id;
@@ -1075,7 +1175,8 @@
         const businessSelect = $('paymentBusinessContext');
         const registerSelect = $('paymentRegisterRoute');
         if (!businessSelect || !registerSelect) return;
-        const businesses = [...new Set(state.routeOptions.map(route => route.businessContext))];
+        syncPilotScopeWithCrmBusiness();
+        const businesses = [PILOT_SCOPE.crmProfileKey];
         businessSelect.replaceChildren();
         for (const businessContext of businesses) {
             const option = document.createElement('option');
@@ -1083,9 +1184,11 @@
             option.textContent = businessContext === 'dar' ? 'ДАР' : 'ПАРК';
             businessSelect.appendChild(option);
         }
-        if (businesses.includes(PILOT_SCOPE.crmProfileKey)) businessSelect.value = PILOT_SCOPE.crmProfileKey;
+        businessSelect.value = PILOT_SCOPE.crmProfileKey;
+        businessSelect.disabled = true;
+        businessSelect.title = 'Бізнес каси береться із загального перемикача CRM.';
 
-        const availableRoutes = state.routeOptions.filter(route => route.businessContext === businessSelect.value);
+        const availableRoutes = routesForActiveBusiness();
         registerSelect.replaceChildren();
         for (const route of availableRoutes) {
             const option = document.createElement('option');
@@ -1098,15 +1201,8 @@
         } else if (availableRoutes.length) {
             registerSelect.value = availableRoutes.find(route => route.mode === 'production')?.id || availableRoutes[0].id;
         }
-        const route = state.routeOptions.find(item => item.id === registerSelect.value) || null;
-        if (route) {
-            PILOT_SCOPE = {
-                ...BUSINESS_SCOPES[route.businessContext],
-                routeOptionId: route.id,
-                mode: route.mode,
-                registerLabel: route.registerLabel
-            };
-        }
+        const route = availableRoutes.find(item => item.id === registerSelect.value) || null;
+        if (route) applyPilotScopeRoute(route);
         state.routeReady = Boolean(
             route?.configured
             && route.status === 'active'
@@ -1162,21 +1258,15 @@
     async function activateSelectedRoute(routeOptionId) {
         const route = state.routeOptions.find(item => item.id === routeOptionId);
         if (!route) throw new Error('fiscal_route_option_invalid');
+        if (!BUSINESS_SCOPES[route.businessContext]) throw new Error('fiscal_route_option_invalid');
+        if (route.businessContext !== PILOT_SCOPE.crmProfileKey) throw new Error('fiscal_route_option_invalid');
         if (activeUnfinishedOrder()) {
             renderRouteSelectors();
             throw new Error('fiscal_route_change_blocked_by_order');
         }
         clearRouteData();
-        PILOT_SCOPE = {
-            ...BUSINESS_SCOPES[route.businessContext],
-            routeOptionId: route.id,
-            mode: route.mode,
-            registerLabel: route.registerLabel
-        };
+        applyPilotScopeRoute(route);
         renderReceiptHistoryAppliedFilter();
-        state.saleMode = route.businessContext === 'dar' || pageParams.get('saleMode') !== 'admission'
-            ? 'catalog_sale'
-            : 'admission_ticket';
         renderRouteSelectors();
         const nextUrl = new URL(window.location.href);
         nextUrl.searchParams.set('businessContext', route.businessContext);
@@ -1212,12 +1302,8 @@
     }
 
     async function handleBusinessContextChange() {
-        const businessContext = $('paymentBusinessContext')?.value || 'event_genix';
-        const route = state.routeOptions.find(item => item.businessContext === businessContext && item.mode === 'production')
-            || state.routeOptions.find(item => item.businessContext === businessContext);
-        if (!route) return;
-        try { await activateSelectedRoute(route.id); }
-        catch (error) { notify(paymentUiError(error), 'error'); }
+        renderRouteSelectors();
+        notify('Бізнес каси змінюється через загальний перемикач CRM.', 'info');
     }
 
     async function handleRegisterRouteChange() {
@@ -1225,6 +1311,37 @@
         if (!routeOptionId) return;
         try { await activateSelectedRoute(routeOptionId); }
         catch (error) { notify(paymentUiError(error), 'error'); }
+    }
+
+    async function handleGlobalBusinessContextChanged(event = {}) {
+        const nextBusiness = normalizeCashierBusinessContext(event.detail?.current);
+        if (nextBusiness === PILOT_SCOPE.crmProfileKey) return;
+        if (activeUnfinishedOrder()) {
+            renderRouteSelectors();
+            notify('Завершіть або відновіть поточну оплату перед переходом в інший бізнес.', 'error');
+            return;
+        }
+        try {
+            clearRouteData();
+            PILOT_SCOPE = {
+                ...BUSINESS_SCOPES[nextBusiness],
+                routeOptionId: `${nextBusiness === 'dar' ? 'dar' : 'park'}_production`,
+                mode: 'production'
+            };
+            syncPilotScopeWithCrmBusiness(state.user);
+            renderReceiptHistoryAppliedFilter();
+            renderRouteSelectors();
+            const route = selectedRoute();
+            if (route) {
+                const nextUrl = new URL(window.location.href);
+                nextUrl.searchParams.set('businessContext', route.businessContext);
+                nextUrl.searchParams.set('routeOptionId', route.id);
+                window.history.replaceState({}, '', nextUrl);
+            }
+            await loadSelectedRouteWorkspace();
+        } catch (error) {
+            notify(paymentUiError(error), 'error');
+        }
     }
 
     function catalogItemByCode(itemCode) {
@@ -1332,58 +1449,92 @@
         select.value = categories.includes(selected) ? selected : '';
     }
 
+    function discountRateBps(discount) {
+        return DiscountCalculator.discountRateBps(discount);
+    }
+
+    function discountEligibilityMode(discount) {
+        return DiscountCalculator.discountEligibilityMode(discount);
+    }
+
+    function catalogItemClubDirection(item) {
+        return DiscountCalculator.itemClubDirection(item);
+    }
+
+    function catalogQuoteFromRows(rows, selectedDiscounts) {
+        const catalog = new Map(state.catalogItems.map(item => [item.itemCode, item]));
+        const lines = rows.map(row => ({
+            itemCode: String(row.querySelector('[data-catalog-item]')?.value || '').trim(),
+            quantityMillis: Math.round(Number(row.querySelector('[data-catalog-quantity]')?.value || 0) * 1000)
+        }));
+        return DiscountCalculator.quoteCatalogLines(lines, catalog, selectedDiscounts);
+    }
+
+    function discountDisplayName(discount) {
+        const name = String(discount?.name || discount?.code || '').trim();
+        const rateLabel = `${discountRateBps(discount) / 100}%`;
+        return name.includes(rateLabel) ? name : `${name} ${rateLabel}`.trim();
+    }
+
     function updateCatalogCartSummary() {
-        $('catalogCartEmpty')?.classList.toggle('hidden', Boolean(document.querySelector('#catalogSaleLines .cashier-catalog-line')));
-        let originalTotal = 0;
-        let finalTotal = 0;
+        const rows = [...document.querySelectorAll('#catalogSaleLines .cashier-catalog-line')];
+        $('catalogCartEmpty')?.classList.toggle('hidden', Boolean(rows.length));
+        let originalTotalMinor = 0n;
+        let finalTotalMinor = 0n;
         const discountCode = String($('catalogDiscountRule')?.value || '').trim();
         const discount = state.catalogDiscounts.find(rule => rule.code === discountCode) || null;
-        const rows = [...document.querySelectorAll('#catalogSaleLines .cashier-catalog-line')];
+        const selectedDiscounts = discount ? [discount] : [];
         setText('catalogBasketCount', `${rows.length} ${rows.length === 1 ? 'позиція' : (rows.length >= 2 && rows.length <= 4 ? 'позиції' : 'позицій')}`);
-        const firstDirection = rows
-            .map(row => catalogItemByCode(row.querySelector('[data-catalog-item]')?.value)?.quantityRule?.club_direction)
-            .find(Boolean) || null;
-        for (const row of rows) {
-            const item = catalogItemByCode(row.querySelector('[data-catalog-item]')?.value);
-            const quantity = Number(row.querySelector('[data-catalog-quantity]')?.value || 0);
-            if (!item || !Number.isFinite(quantity) || quantity <= 0) continue;
-            const lineOriginal = minorToNumber(item.priceMinor) * quantity;
-            let rateBps = 0;
-            if (discount?.code === 'dar_ubd_20') rateBps = Number(discount.rateBps || 0);
-            if (discount?.code === 'dar_second_club_direction_10'
-                && item.quantityRule?.club_direction
-                && item.quantityRule.club_direction !== firstDirection) rateBps = Number(discount.rateBps || 0);
-            originalTotal += lineOriginal;
-            finalTotal += lineOriginal * (10000 - rateBps) / 10000;
+        let quotes = [];
+        try {
+            quotes = catalogQuoteFromRows(rows, selectedDiscounts);
+        } catch {
+            quotes = [];
         }
-        setText('catalogOriginalTotal', formatMoneyMinor(Math.round(originalTotal * 100)));
-        setText('catalogDiscountTotal', formatMoneyMinor(Math.round((originalTotal - finalTotal) * 100)));
-        setText('catalogFinalTotal', formatMoneyMinor(Math.round(finalTotal * 100)));
+        quotes.forEach((quote, index) => {
+            originalTotalMinor += quote.originalTotalMinor;
+            finalTotalMinor += quote.totalMinor;
+            const row = rows[index];
+            const total = row?.querySelector('[data-catalog-line-total]');
+            const lineDiscount = row?.querySelector('[data-catalog-line-discount]');
+            if (total) total.textContent = formatMoneyMinor(String(quote.totalMinor));
+            if (lineDiscount) {
+                lineDiscount.hidden = !quote.discount || quote.totalDiscountMinor <= 0n;
+                lineDiscount.textContent = quote.discount && quote.totalDiscountMinor > 0n
+                    ? `${discountDisplayName(quote.discount)} · −${formatMoneyMinor(String(quote.totalDiscountMinor))}`
+                    : '';
+            }
+        });
+        for (let index = quotes.length; index < rows.length; index += 1) {
+            const total = rows[index].querySelector('[data-catalog-line-total]');
+            if (total) total.textContent = '—';
+            const lineDiscount = rows[index].querySelector('[data-catalog-line-discount]');
+            if (lineDiscount) lineDiscount.hidden = true;
+        }
+        const discountTotalMinor = originalTotalMinor - finalTotalMinor;
+        setText('catalogOriginalTotal', formatMoneyMinor(String(originalTotalMinor)));
+        setText('catalogDiscountTotal', formatMoneyMinor(String(discountTotalMinor)));
+        setText('catalogFinalTotal', formatMoneyMinor(String(finalTotalMinor)));
         const createButton = $('createPaymentOrderBtn');
         if (createButton && !state.createInFlight && !createDraft()?.payload) {
             createButton.textContent = rows.length
-                ? `Перейти до оплати · ${formatMoneyMinor(Math.round(finalTotal * 100))}`
+                ? `Перейти до оплати · ${formatMoneyMinor(String(finalTotalMinor))}`
                 : 'Перейти до оплати';
         }
         const explanation = $('catalogDiscountExplanation');
         if (explanation) {
             explanation.hidden = !discount;
-            explanation.textContent = discount?.code === 'dar_second_club_direction_10'
-                ? (originalTotal > finalTotal
-                    ? 'Правило 10% застосовано тільки до другого іншого гурткового напрямку. Перший напрямок лишається за повною ціною.'
-                    : '0 грн знижки зараз коректно: правило 10% спрацює тільки після додавання другого іншого гурткового напрямку.')
-                : (discount ? `Знижка: ${formatMoneyMinor(Math.round((originalTotal - finalTotal) * 100))}.` : '');
+            const discountName = discount ? discountDisplayName(discount) : '';
+            explanation.textContent = discountEligibilityMode(discount) === 'second_club_direction'
+                ? (discountTotalMinor > 0n
+                    ? `${discountName} застосовано тільки до іншого гурткового напрямку. Перший напрямок лишається за повною ціною.`
+                    : `0 грн знижки зараз коректно: ${discountName} спрацює після додавання іншого гурткового напрямку.`)
+                : (discount ? `Знижка: ${formatMoneyMinor(String(discountTotalMinor))}.` : '');
         }
     }
 
     function quantityRule(item) {
-        const source = item?.quantityRule || {};
-        const minimumMillis = Number(source.minimum_quantity_millis ?? source.minimumQuantityMillis ?? 1000);
-        const stepMillis = Number(source.quantity_step_millis ?? source.quantityStepMillis ?? 1000);
-        return {
-            minimumMillis: Number.isSafeInteger(minimumMillis) && minimumMillis > 0 ? minimumMillis : 1000,
-            stepMillis: Number.isSafeInteger(stepMillis) && stepMillis > 0 ? stepMillis : 1000
-        };
+        return DiscountCalculator.quantityRule(item);
     }
 
     function syncCatalogLine(row) {
@@ -1401,9 +1552,18 @@
             }
             quantity.setAttribute('aria-label', `Кількість: ${item?.name || 'позиція'}`);
         }
-        if (price) price.textContent = item ? `${formatMoneyMinor(item.priceMinor)} / ${item.unit || 'шт.'}` : '—';
+        const unitPrice = row.querySelector('[data-catalog-unit-price]');
+        if (price && !unitPrice) price.textContent = item ? `${formatMoneyMinor(item.priceMinor)} / ${item.unit || 'шт.'}` : '—';
+        if (unitPrice) unitPrice.textContent = item ? formatMoneyMinor(item.priceMinor) : '—';
+        const category = row.querySelector('[data-catalog-category]');
+        if (category) {
+            category.hidden = !item?.category;
+            category.textContent = item?.category || '';
+        }
+        const unit = row.querySelector('[data-catalog-unit-label]');
+        if (unit) unit.textContent = item?.unit ? `за ${item.unit}` : 'за позицію';
         const total = row.querySelector('[data-catalog-line-total]');
-        if (total) total.textContent = item ? formatMoneyMinor(Math.round(Number(item.priceMinor) * Number(quantity?.value || 0))) : '—';
+        if (total) total.textContent = item ? formatMoneyMinor(item.priceMinor) : '—';
         const fullName = row.querySelector('[data-catalog-name]');
         if (fullName) fullName.textContent = item?.name || '';
         updateCatalogCartSummary();
@@ -1432,15 +1592,17 @@
         row.innerHTML = `
             <div class="cashier-catalog-item-summary">
                 <div class="cashier-field cashier-catalog-item-field"><select data-catalog-item hidden aria-hidden="true" tabindex="-1"></select><strong class="cashier-catalog-name" data-catalog-name></strong></div>
-                <span class="cashier-catalog-price" data-catalog-price aria-label="Ціна за одиницю">—</span>
+                <span class="cashier-catalog-line-meta"><small data-catalog-category></small><small data-catalog-unit-label>за позицію</small></span>
             </div>
             <div class="cashier-catalog-line-controls">
                 <div class="cashier-catalog-stepper">
+                    <span class="cashier-catalog-control-label">К-сть</span>
                     <button type="button" data-catalog-step="-1" title="Зменшити кількість" aria-label="Зменшити кількість">−</button>
                     <input data-catalog-quantity type="number" inputmode="decimal" value="1">
                     <button type="button" data-catalog-step="1" title="Збільшити кількість" aria-label="Збільшити кількість">+</button>
                 </div>
-                <strong data-catalog-line-total aria-label="Сума позиції до знижки"></strong>
+                <span class="cashier-catalog-price" data-catalog-price aria-label="Ціна за одиницю"><small>Ціна</small><strong data-catalog-unit-price>—</strong></span>
+                <span class="cashier-catalog-line-money"><small>Сума</small><strong data-catalog-line-total aria-label="Сума позиції зі знижкою"></strong><small data-catalog-line-discount hidden></small></span>
                 <button type="button" class="btn-page-secondary cashier-catalog-remove" data-catalog-remove title="Видалити позицію" aria-label="Видалити позицію">×</button>
             </div>`;
         const select = row.querySelector('[data-catalog-item]');
@@ -1480,7 +1642,7 @@
         for (const discount of state.catalogDiscounts) {
             const option = document.createElement('option');
             option.value = discount.code;
-            option.textContent = `${discount.name} (${Number(discount.rateBps || 0) / 100}%)`;
+            option.textContent = discountDisplayName(discount);
             select.appendChild(option);
         }
         field.classList.toggle('hidden', state.catalogDiscounts.length === 0);
@@ -1531,12 +1693,13 @@
     }
 
     function buildCatalogSalePayload() {
+        const route = assertSelectedRouteScope();
         const cashierBindingId = Number($('paymentCashierBinding')?.value || 0);
         if (!Number.isSafeInteger(cashierBindingId) || cashierBindingId <= 0) throw new Error('cashier_binding_required');
         const discountCode = String($('catalogDiscountRule')?.value || '').trim();
         return {
-            businessContext: PILOT_SCOPE.crmProfileKey,
-            routeOptionId: PILOT_SCOPE.routeOptionId,
+            businessContext: route.businessContext,
+            routeOptionId: route.id,
             cashierBindingId,
             tender: state.tender,
             items: catalogLinesPayload(),
@@ -1545,6 +1708,7 @@
     }
 
     function buildAdmissionTicketPayload() {
+        const route = assertSelectedRouteScope();
         const date = $('paymentDate')?.value;
         const kids = Number($('paymentKidsCount')?.value || 0);
         const adults = Number($('paymentAdultsCount')?.value || 0);
@@ -1554,8 +1718,8 @@
         if (!Number.isSafeInteger(adults) || adults < 0) throw new Error('adults_count_invalid');
         if (!Number.isSafeInteger(cashierBindingId) || cashierBindingId <= 0) throw new Error('cashier_binding_required');
         return {
-            businessContext: PILOT_SCOPE.crmProfileKey,
-            routeOptionId: PILOT_SCOPE.routeOptionId,
+            businessContext: route.businessContext,
+            routeOptionId: route.id,
             tender: state.tender,
             cashierBindingId,
             admissionTicket: {
@@ -1570,7 +1734,8 @@
     async function loadSelectableCashiers() {
         const select = $('paymentCashierBinding');
         if (!select) return;
-        const params = routeQueryParams();
+        const route = assertSelectedRouteScope();
+        const params = routeQueryParams({ businessContext: route.businessContext, routeOptionId: route.id });
         const result = await apiRequest(`/api/payments/catalog/cashiers?${params.toString()}`, { method: 'GET', headers: apiHeaders() });
         const cashiers = Array.isArray(result.cashiers) ? result.cashiers : [];
         state.selectableCashiers = cashiers;
@@ -3036,16 +3201,36 @@
         return paymentUiError({ code });
     }
 
+    function sharedTestDayProjection(day = state.registerState?.sharedTestDay) {
+        if (day?.localDrainBlocked !== true) {
+            return {
+                blocked: false,
+                notice: 'Завершення роботи зупиняє нові оплати обох тестових маршрутів. Відновлення не відкриває зміну та не вмикає вимкнені серверні налаштування.',
+                reason: ''
+            };
+        }
+        const specificReason = sharedTestDaySpecificReason(day);
+        const reasonCode = normalizeStatus(day?.reasonCode);
+        const activeStatus = normalizeStatus(day?.activeDrain?.status);
+        if (activeStatus === 'closed') {
+            if (day.canResume === true) {
+                const text = 'Закриття тестової зміни підтверджене. Нові оплати PARK і ДАР зупинено до явної дії «Почати наступний тестовий день».';
+                return { blocked: true, verifiedClosed: true, canResume: true, notice: text, reason: text };
+            }
+            if (reasonCode === 'shared_test_close_not_verified') {
+                const text = `Закриття тестової зміни очікує підтвердження Checkbox. Нові оплати PARK і ДАР зупинено; початок наступного тестового дня недоступний.${specificReason ? ` ${specificReason}` : ''}`;
+                return { blocked: true, pendingCloseProof: true, canResume: false, notice: text, reason: text };
+            }
+            const text = `Закриття тестової зміни зафіксоване локально, але початок наступного тестового дня зараз недоступний.${specificReason ? ` ${specificReason}` : ''}`;
+            return { blocked: true, closedButBlocked: true, canResume: false, notice: text, reason: text };
+        }
+        const text = 'Приймання оплат зупинене для завершення тестового дня. Спочатку дочекайтеся завершення черги та підтвердженого закриття зміни.';
+        return { blocked: true, draining: true, canResume: false, notice: text, reason: text };
+    }
+
     function sharedTestDayBlockReason() {
         const day = state.registerState?.sharedTestDay;
-        if (day?.localDrainBlocked !== true) return '';
-        const specificReason = sharedTestDaySpecificReason(day);
-        if (day.activeDrain?.status === 'closed') {
-            return day.canResume === true
-                ? 'Тестову зміну закрито. Нові оплати зупинено до дії «Почати наступний тестовий день» у блоці спільної тестової каси.'
-                : `Тестову зміну закрито. Нові оплати зупинено; початок наступного тестового дня недоступний.${specificReason ? ` ${specificReason}` : ''}`;
-        }
-        return 'Приймання оплат зупинене для завершення тестового дня. Спочатку дочекайтеся завершення черги та підтвердженого закриття зміни.';
+        return sharedTestDayProjection(day).reason;
     }
 
     function queueUnavailableReason() {
@@ -3249,11 +3434,15 @@
         else if (!cashierSelected) reason = 'Оберіть активного касира Checkbox для цієї каси.';
         else if (!catalogSelectionValid) reason = 'Оберіть доступні позиції та вкажіть дозволену кількість.';
         const createButton = $('createPaymentOrderBtn');
-        if ($('paymentBusinessContext')) $('paymentBusinessContext').disabled = editingDisabled || state.routeLoading;
+        if ($('paymentBusinessContext')) $('paymentBusinessContext').disabled = true;
         if ($('paymentRegisterRoute')) $('paymentRegisterRoute').disabled = editingDisabled || state.routeLoading;
         const form = $('paymentOrderForm');
         if (form) {
             form.querySelectorAll('input, select').forEach(el => {
+                if (el.id === 'paymentBusinessContext') {
+                    el.disabled = true;
+                    return;
+                }
                 const admissionOnly = Boolean(el.closest('#admissionTicketFields'));
                 const catalogOnly = Boolean(el.closest('#catalogSaleFields'));
                 el.disabled = editingDisabled
@@ -3504,16 +3693,8 @@
         panel?.classList.toggle('hidden', !visible);
         panel?.setAttribute('aria-hidden', visible ? 'false' : 'true');
         panel?.setAttribute('aria-busy', sharedTestDayInFlight ? 'true' : 'false');
-        const specificReason = day?.localDrainBlocked && !day?.canResume
-            ? sharedTestDaySpecificReason(day)
-            : '';
-        const notice = day?.localDrainBlocked
-            ? (day.activeDrain?.status === 'closed'
-                ? (day.canResume
-                    ? 'Зміну закрито. Приймання оплат PARK і ДАР зупинено до явного початку наступного тестового дня.'
-                    : `Зміну закрито, але початок наступного тестового дня зараз недоступний.${specificReason ? ` ${specificReason}` : ''}`)
-                : 'Нові оплати PARK і ДАР зупинено. Дочекайтеся завершення черги та окремо закрийте зміну нижче.')
-            : 'Завершення роботи зупиняє нові оплати обох тестових маршрутів. Відновлення не відкриває зміну та не вмикає вимкнені серверні налаштування.';
+        const projection = sharedTestDayProjection(day);
+        const notice = projection.notice;
         setText('sharedTestDayNotice', sharedTestDayInFlight ? 'Перевіряємо стан тестової каси…' : notice);
         setDisabledReason($('sharedTestDrainBtn'), !visible || !day?.canDrain || sharedTestDayInFlight, notice);
         setDisabledReason($('sharedTestResumeBtn'), !visible || !day?.canResume || sharedTestDayInFlight || !unresolvedQueueIsFresh(), notice);
@@ -3569,6 +3750,7 @@
         if (!visible) {
             setDisabledReason(button, true, 'Закриття зміни недоступне для цього користувача або каси.');
             if (notice) notice.textContent = 'Закриття зміни недоступне.';
+            renderFiscalReportsPanel();
             return;
         }
         setStatus('phase1ShiftStatus', context.status);
@@ -3592,6 +3774,59 @@
             && !state.phase1ClosePollingPaused) {
             startPhase1ClosePolling(context.shiftId);
         }
+        renderFiscalReportsPanel();
+    }
+
+    function xReportUnavailableReason() {
+        return 'X-звіт Checkbox поки не запускається з CRM: потрібна durable черга provider-report з ідемпотентністю, щоб не створити дубль після перезавантаження.';
+    }
+
+    function renderFiscalReportsPanel() {
+        const panel = $('fiscalReportsPanel');
+        if (!panel) return;
+        const context = phase1CloseContext();
+        const visible = Boolean(context?.visible);
+        const closeReason = visible ? phase1CloseUnavailableReason(context) : 'Немає активної зміни або доступу до звітів цієї каси.';
+        const closeBusy = state.phase1CloseConfirmationInFlight || state.phase1CloseSafetyRefreshInFlight || state.phase1CloseInFlight;
+        const xReason = xReportUnavailableReason();
+        const xButton = $('createXReportBtn');
+        const zButton = $('closeZReportBtn');
+        const badge = $('fiscalReportsStateBadge');
+        const notice = $('fiscalReportsNotice');
+        const statusLabel = context?.status ? formatStatus(context.status) : 'невідомо';
+        const canClose = visible && !closeReason && !closeBusy;
+        panel.classList.toggle('is-ready', canClose);
+        panel.classList.toggle('is-blocked', !canClose);
+        panel.setAttribute('aria-busy', closeBusy ? 'true' : 'false');
+        setDisabledReason(xButton, true, xReason);
+        setDisabledReason(zButton, !canClose, closeBusy ? 'Очікуємо завершення поточної перевірки зміни.' : closeReason);
+        if (badge) {
+            badge.textContent = canClose
+                ? `Зміна ${statusLabel} · можна закривати`
+                : (visible ? `Зміна ${statusLabel}` : 'Звіти недоступні');
+        }
+        if (notice) {
+            notice.textContent = canClose
+                ? `${xReason} Z-звіт створюється тільки через чинне закриття зміни з повторною перевіркою черги.`
+                : `${xReason} Z-звіт недоступний: ${closeBusy ? 'триває перевірка зміни.' : closeReason}`;
+        }
+    }
+
+    function explainXReportUnavailable() {
+        renderFiscalReportsPanel();
+        notify(xReportUnavailableReason(), 'info');
+    }
+
+    function requestZReportClose() {
+        renderFiscalReportsPanel();
+        const context = phase1CloseContext();
+        const reason = phase1CloseUnavailableReason(context);
+        if (reason) {
+            notify(reason, 'error');
+            $('phase1CloseShiftBtn')?.focus?.({ preventScroll: false });
+            return;
+        }
+        void closePhase1Shift();
     }
 
     function clearPhase1ClosePolling({ preserveTarget = false } = {}) {
@@ -4090,6 +4325,8 @@
         $('refreshUnresolvedOrdersBtn')?.addEventListener('click', () => { void loadUnresolvedOrders({ silent: false }); });
         $('loadMoreUnresolvedOrdersBtn')?.addEventListener('click', () => { void loadUnresolvedOrders({ silent: false, append: true }); });
         $('loadCheckboxSalesReportBtn')?.addEventListener('click', () => { void loadCheckboxSalesReport({ silent: false }); });
+        $('createXReportBtn')?.addEventListener('click', explainXReportUnavailable);
+        $('closeZReportBtn')?.addEventListener('click', requestZReportClose);
         $('checkboxSalesReportPanel')?.addEventListener('toggle', loadReceiptHistoryOnOpen);
         document.querySelectorAll('[data-history-period]').forEach(button => {
             button.addEventListener('click', () => {
@@ -4167,6 +4404,7 @@
                 }
             }
             AppState.currentUser = user;
+            syncPilotScopeWithCrmBusiness(user);
             setText('currentUser', user.name || user.username || '');
             if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
             if (!canAccessPage('/cashier-payments') || !canAccess('payments.view') || !canAccess('payments.create') || !canAccess('payments.confirm_received')) {
@@ -4215,6 +4453,7 @@
         if ($('serviceOutApprovalPin')) $('serviceOutApprovalPin').value = '';
         clearActionPinFields();
     });
+    window.addEventListener('crmBusinessContextChanged', event => { void handleGlobalBusinessContextChanged(event); });
     document.addEventListener('visibilitychange', () => {
         if (!pageIsVisible()) {
             clearUnresolvedRefreshTimer();
@@ -4235,7 +4474,7 @@
     document.addEventListener('DOMContentLoaded', () => { void initCashierPaymentsPage(); });
 
     window.CashierPaymentsPage = {
-        PILOT_SCOPE,
+        get PILOT_SCOPE() { return PILOT_SCOPE; },
         SALE_MODE,
         state,
         formatMoneyMinor,
@@ -4249,6 +4488,9 @@
         loadPaymentOrder,
         loadPilotRegisterState,
         closePhase1Shift,
+        renderFiscalReportsPanel,
+        explainXReportUnavailable,
+        requestZReportClose,
         loadServiceOutRequests,
         createServiceOutRequest,
         cancelServiceOutOperation,

@@ -1777,7 +1777,7 @@ body.dark-mode .cashier-cart-summary {
 .cashier-catalog-item-summary {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 3px;
+    gap: 5px;
     align-items: start;
     min-width: 0;
 }
@@ -1786,24 +1786,88 @@ body.dark-mode .cashier-cart-summary {
     grid-column: auto;
 }
 
+.cashier-catalog-line-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+
+.cashier-catalog-line-meta small,
+.cashier-catalog-control-label,
+.cashier-catalog-line-money > small:first-child,
+.cashier-catalog-line .cashier-catalog-price small {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.cashier-catalog-line-meta small {
+    padding: 2px 7px;
+    border: 1px solid var(--gray-200);
+    border-radius: 999px;
+    background: var(--gray-50);
+}
+
+.cashier-catalog-line-meta small[hidden] {
+    display: none;
+}
+
 .cashier-catalog-line .cashier-catalog-price {
-    grid-column: auto;
-    grid-row: auto;
-    justify-content: flex-start;
-    text-align: left;
+    display: grid;
+    gap: 3px;
+    justify-items: end;
+    min-width: 0;
+    text-align: right;
     white-space: normal;
+}
+
+.cashier-catalog-line .cashier-catalog-price strong {
+    color: var(--gray-900);
+    font-size: 15px;
+    font-weight: 900;
+    overflow-wrap: anywhere;
 }
 
 .cashier-catalog-line-controls {
     display: grid;
-    grid-template-columns: minmax(120px, 150px) minmax(82px, 1fr) 40px;
+    grid-template-columns: minmax(86px, .8fr) minmax(90px, 1fr) 40px;
     gap: 10px;
     align-items: center;
     min-width: 0;
 }
 
+.cashier-catalog-stepper {
+    display: grid;
+    grid-template-columns: 36px minmax(44px, 1fr) 36px;
+    gap: 4px;
+    align-items: center;
+    grid-column: 1 / -1;
+    width: 100%;
+}
+
+.cashier-catalog-control-label {
+    grid-column: 1 / -1;
+}
+
 .cashier-catalog-line-controls [data-catalog-line-total] {
     min-width: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.cashier-catalog-line-money {
+    display: grid;
+    justify-items: end;
+    gap: 3px;
+    min-width: 0;
+}
+
+.cashier-catalog-line-money small {
+    color: var(--muted-text);
+    font-size: 12px;
+    line-height: 1.25;
     text-align: right;
     overflow-wrap: anywhere;
 }
@@ -1961,6 +2025,15 @@ body.dark-mode .cashier-catalog-results {
     background: transparent;
 }
 
+body.dark-mode .cashier-catalog-line-meta small {
+    border-color: rgba(255,255,255,.10);
+    background: rgba(15,23,42,.45);
+}
+
+body.dark-mode .cashier-catalog-line .cashier-catalog-price strong {
+    color: #f8fafc;
+}
+
 body.dark-mode .cashier-tender-group label,
 body.dark-mode .cashier-confirm-panel,
 body.dark-mode .cashier-shift-action,
@@ -1991,6 +2064,15 @@ body.dark-mode .cashier-service-out-item small {
 
     .cashier-workbench {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cashier-catalog-line-controls {
+        grid-template-columns: minmax(86px, .8fr) minmax(90px, 1fr) 40px;
+    }
+
+    .cashier-catalog-stepper {
+        grid-column: 1 / -1;
+        width: 100%;
     }
 
     .cashier-checkout-column {
@@ -2099,12 +2181,8 @@ body.dark-mode .cashier-service-out-item small {
     }
 
     .cashier-catalog-line .cashier-catalog-price {
-        justify-content: flex-start;
+        justify-items: start;
         text-align: left;
-    }
-
-    .cashier-catalog-line-controls {
-        grid-template-columns: minmax(116px, 1fr) minmax(82px, 1fr) 40px;
     }
 
     .cashier-cart-summary,
@@ -2141,6 +2219,29 @@ body.dark-mode .cashier-service-out-item small {
 
 .cashier-history-refresh-status:empty {
     display: none;
+}
+
+.cashier-fiscal-reports {
+    display: grid;
+    gap: 10px;
+}
+
+.cashier-fiscal-reports.is-blocked {
+    border-color: rgba(245,158,11,.28);
+}
+
+.cashier-fiscal-reports.is-ready {
+    border-color: rgba(16,185,129,.30);
+}
+
+.cashier-report-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cashier-report-actions .btn-page-secondary {
+    min-height: 38px;
 }
 
 .cashier-history-toolbar {
@@ -2356,8 +2457,17 @@ body.dark-mode .cashier-history-totals dd {
 
 body.dark-mode .cashier-history-totals,
 body.dark-mode .cashier-history-totals div,
-body.dark-mode .cashier-history-advanced {
+body.dark-mode .cashier-history-advanced,
+body.dark-mode .cashier-fiscal-reports {
     border-color: rgba(255,255,255,.10);
+}
+
+body.dark-mode .cashier-fiscal-reports.is-blocked {
+    border-color: rgba(251,191,36,.30);
+}
+
+body.dark-mode .cashier-fiscal-reports.is-ready {
+    border-color: rgba(52,211,153,.30);
 }
 
 body.dark-mode .cashier-report-body.is-error:not(.is-stale) {
@@ -2383,6 +2493,11 @@ body.dark-mode .cashier-report-body.is-error:not(.is-stale) {
     .cashier-history-toolbar {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .cashier-report-actions {
+        display: grid;
+        grid-template-columns: 1fr;
     }
 
     .cashier-history-periods,

@@ -330,9 +330,24 @@
                     </nav>
                 </div>
             </details>
+
+            <section id="fiscalReportsPanel" class="cashier-card cashier-result-card cashier-fiscal-reports" aria-labelledby="fiscalReportsTitle">
+                <div class="cashier-card-head">
+                    <div>
+                        <p class="cashier-kicker">Checkbox</p>
+                        <h2 id="fiscalReportsTitle">X/Z звіти</h2>
+                    </div>
+                    <span id="fiscalReportsStateBadge" class="cashier-pill">Потрібна перевірка каси</span>
+                </div>
+                <div class="cashier-report-actions" role="group" aria-label="Операції X та Z звітів Checkbox">
+                    <button type="button" id="createXReportBtn" class="btn-page-secondary btn-page-toolbar" aria-describedby="fiscalReportsNotice">X-звіт</button>
+                    <button type="button" id="closeZReportBtn" class="btn-page-secondary btn-page-toolbar" aria-describedby="fiscalReportsNotice">Z-звіт / закрити зміну</button>
+                </div>
+                <p id="fiscalReportsNotice" class="cashier-help" role="status" aria-live="polite">X-звіт потребує окремої durable черги Checkbox. Z-звіт створюється тільки через чинне закриття зміни.</p>
+            </section>
         </main>
     </div>
     <div id="notification" class="notification hidden"><span id="notificationText"></span></div>
-    <script src="js/ui.js?v=0.81.123"></script><script src="js/config.js?v=0.81.123"></script><script src="js/notification.js?v=0.81.123"></script><script src="js/api.js?v=0.81.123"></script><script src="js/auth.js?v=0.81.123"></script><script src="js/components/sidebar.js?v=0.81.123"></script><script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/cashier-payments-page.js?v=0.81.123"></script><script src="js/alerts.js?v=0.81.123"></script>
+    <script src="js/ui.js?v=0.81.123"></script><script src="js/config.js?v=0.81.123"></script><script src="js/notification.js?v=0.81.123"></script><script src="js/api.js?v=0.81.123"></script><script src="js/auth.js?v=0.81.123"></script><script src="js/components/sidebar.js?v=0.81.123"></script><script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/catalog-discount-calculator.js?v=0.81.123"></script><script src="js/cashier-payments-page.js?v=0.81.123"></script><script src="js/alerts.js?v=0.81.123"></script>
 </body>
 </html>

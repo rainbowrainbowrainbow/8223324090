@@ -91,6 +91,11 @@ async function run() {
             contentType: 'application/json',
             body: JSON.stringify(permissionPayload(true, { fiscalConfigure: true }))
         }));
+        await context.route('**/api/auth/verify', route => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ user: { id: 4, name: 'Receipt History QA', role: 'creator', roles: ['creator'], businessProfile: 'event_genix' } })
+        }));
 
         const requests = [];
         const held = [];
@@ -180,7 +185,15 @@ async function run() {
         await waitForRequestCount(requests, 5);
         mode = 'normal';
         responseId = 9010;
-        await page.selectOption('#paymentBusinessContext', 'dar');
+        assert.equal(await page.isDisabled('#paymentBusinessContext'), true, 'business selector is read-only; business changes through the global CRM switch');
+        await page.evaluate(() => {
+            const currentUser = String(window.CashierPaymentsPage?.state?.user?.id || '');
+            localStorage.setItem('pzp_crm_business_context', 'dar');
+            if (currentUser) localStorage.setItem('pzp_crm_business_context_user', currentUser);
+            window.dispatchEvent(new CustomEvent('crmBusinessContextChanged', {
+                detail: { previous: 'event_genix', current: 'dar' }
+            }));
+        });
         await page.waitForFunction(() => window.CashierPaymentsPage?.state?.routeReady === true && document.querySelector('#paymentBusinessContext')?.value === 'dar');
         await waitForRequestCount(requests, 6);
         await page.waitForFunction(() => document.querySelector('#checkboxSalesReportBody')?.textContent.includes('RCP-9010'));

@@ -27,7 +27,7 @@ class StubFiscalAccessError extends Error {
     }
 }
 
-function buildHarness({ drainStatus = 'closed', shiftBusinessContext = 'dar', blockerCount = 0, userAccess = ['event_genix', 'dar'] } = {}) {
+function buildHarness({ drainStatus = 'closed', shiftBusinessContext = 'dar', blockerCount = 0, userAccess = ['event_genix', 'dar'], closeOperationStatus = 'fiscalized' } = {}) {
     const user = { id: 11, actionAllowlist: ['fiscal.shift.close'], businessContexts: userAccess };
     const shift = {
         id: 41,
@@ -98,7 +98,7 @@ function buildHarness({ drainStatus = 'closed', shiftBusinessContext = 'dar', bl
             const text = String(sql);
             if (text.includes('FROM fiscal_sale_routes')) return { rows: routes };
             if (text.includes('FROM fiscal_operations') && text.includes("operation_type = 'shift_close'")) {
-                return { rows: [{ status: 'fiscalized' }] };
+                return { rows: closeOperationStatus ? [{ status: closeOperationStatus }] : [] };
             }
             if (text.includes('FROM fiscal_shifts') && text.includes('id <>')) return { rows: [] };
             return { rows: [] };
@@ -174,6 +174,25 @@ test('closed shared test day can be resumed from the sibling PARK/DAR route by a
         assert.equal(state.canResume, true, JSON.stringify(state));
         assert.equal(state.activeDrain.id, harness.activeDrain.id);
         assert.deepEqual(harness.calls.fiscalActions.sort(), ['dar', 'event_genix']);
+    } finally {
+        harness.restore();
+    }
+});
+
+test('closed drain without fiscalized close operation remains blocked as unverified close', async () => {
+    const harness = buildHarness({ drainStatus: 'closed', shiftBusinessContext: 'dar', closeOperationStatus: 'pending' });
+    try {
+        const state = await harness.service.loadSharedTestDayState(harness.client, {
+            user: harness.user,
+            shift: harness.shift,
+            routeOptionId: 'park_test',
+            profileId: harness.shift.fiscal_profile_id,
+            registerId: harness.shift.fiscal_register_id
+        });
+        assert.equal(state.visible, true, JSON.stringify(state));
+        assert.equal(state.canResume, false, JSON.stringify(state));
+        assert.equal(state.reasonCode, 'shared_test_close_not_verified');
+        assert.equal(state.activeDrain.id, harness.activeDrain.id);
     } finally {
         harness.restore();
     }

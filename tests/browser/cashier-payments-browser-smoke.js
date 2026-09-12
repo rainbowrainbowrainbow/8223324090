@@ -1065,7 +1065,14 @@ async function run() {
         assert.match(await selectorPage.textContent('#cashierTestModeBanner'), /ТЕСТОВА КАСА/i, 'test route has a prominent warning');
         assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'test route remains blocked while its acceptance gate is disabled');
         await captureVisualArtifact(selectorPage, '00-catalog-park-test-disabled.png');
-        await selectorPage.selectOption('#paymentBusinessContext', 'dar');
+        assert.equal(await selectorPage.isDisabled('#paymentBusinessContext'), true, 'business selector is read-only; business changes through the global CRM switch');
+        await selectorPage.evaluate(() => {
+            localStorage.setItem('pzp_crm_business_context', 'dar');
+            localStorage.setItem('pzp_crm_business_context_user', '4');
+            window.dispatchEvent(new CustomEvent('crmBusinessContextChanged', {
+                detail: { previous: 'event_genix', current: 'dar' }
+            }));
+        });
         await selectorPage.waitForFunction(() => document.querySelector('#paymentRegisterRoute')?.value === 'dar_production');
         assert.deepEqual(
             await selectorPage.locator('#paymentRegisterRoute option').allTextContents(),

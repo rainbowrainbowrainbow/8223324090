@@ -6,17 +6,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
-function fixture(business = 'event_genix') {
+function fixture(business = 'event_genix', routeOptionId = '') {
     const root = path.join(__dirname, '..');
+    const routeParam = routeOptionId ? `&routeOptionId=${encodeURIComponent(routeOptionId)}` : '';
     const dom = new JSDOM(fs.readFileSync(path.join(root, 'cashier-payments.html'), 'utf8'), {
-        url: `http://localhost/cashier-payments?saleMode=catalog&businessContext=${business}`, runScripts: 'outside-only'
+        url: `http://localhost/cashier-payments?saleMode=catalog&businessContext=${business}${routeParam}`, runScripts: 'outside-only'
     });
     const { window } = dom;
     Object.defineProperty(window.navigator, 'locks', { value: { request: (_key, callback) => callback() } });
     // Exercise the actual page functions without authentication/bootstrap or external IO.
+    window.eval(fs.readFileSync(path.join(root, 'js/catalog-discount-calculator.js'), 'utf8'));
     const source = fs.readFileSync(path.join(root, 'js/cashier-payments-page.js'), 'utf8')
         .replace("document.addEventListener('DOMContentLoaded', () => { void initCashierPaymentsPage(); });", '')
-        .replace('window.CashierPaymentsPage = {', 'window.CashierPaymentsPage = { loadCatalogData, loadCheckboxSalesReport, renderCheckboxSalesReport, applyReceiptHistoryPeriod, handleReceiptHistoryFilterChange, loadReceiptHistoryOnOpen, changeReceiptHistoryPage, receiptHistorySnapshot, loadUnresolvedOrders, renderReadinessState, renderSharedTestDay, renderOrder, syncCreateAvailability, syncConfirmationAvailability, syncOrderPolling, scheduleUnresolvedRefresh, refreshCatalogSelects, startNextOrder, addCatalogLine, confirmPayment, bindEvents, clearCreateIdempotencyKey, cancelDraftOrder,');
+        .replace('window.CashierPaymentsPage = {', 'window.CashierPaymentsPage = { loadCatalogData, loadCheckboxSalesReport, renderCheckboxSalesReport, applyReceiptHistoryPeriod, handleReceiptHistoryFilterChange, loadReceiptHistoryOnOpen, changeReceiptHistoryPage, receiptHistorySnapshot, loadUnresolvedOrders, renderReadinessState, renderSharedTestDay, renderOrder, syncCreateAvailability, syncConfirmationAvailability, syncOrderPolling, scheduleUnresolvedRefresh, refreshCatalogSelects, startNextOrder, addCatalogLine, confirmPayment, bindEvents, clearCreateIdempotencyKey, cancelDraftOrder, renderRouteSelectors,');
     window.fetch = async () => { throw new Error('offline fixture'); };
     window.showNotification = (message, type) => { window.__notifications.push({ message, type }); };
     window.__notifications = [];
@@ -54,10 +56,39 @@ test('closed shared test day explains the exact resume blocker', t => {
     f.page.renderReadinessState();
     f.page.renderSharedTestDay();
 
-    assert.match(f.el('cashierReadinessSummary').textContent, /початок наступного тестового дня недоступний/);
+    assert.match(f.el('cashierReadinessSummary').textContent, /початок наступного тестового дня зараз недоступний/);
     assert.match(f.el('cashierReadinessTechnicalList').textContent, /відповідальний, який зупинив цю тестову касу/);
     assert.match(f.el('sharedTestDayNotice').textContent, /відповідальний, який зупинив цю тестову касу/);
     assert.equal(f.el('sharedTestResumeBtn').disabled, true);
+});
+
+test('unverified shared test close is shown as pending proof, not as a completed day', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.window.canAccess = () => true;
+    Object.assign(f.page.state.registerState, {
+        readinessCode: 'ready',
+        integrationReady: true,
+        sharedTestDay: {
+            visible: true,
+            localDrainBlocked: true,
+            canResume: false,
+            reasonCode: 'shared_test_close_not_verified',
+            activeDrain: { id: 91, status: 'closed' }
+        }
+    });
+    f.page.addCatalogLine();
+    f.page.renderReadinessState();
+    f.page.renderSharedTestDay();
+
+    const readiness = f.el('cashierReadinessSummary').textContent;
+    const notice = f.el('sharedTestDayNotice').textContent;
+    assert.match(readiness, /очікує підтвердження Checkbox/);
+    assert.match(notice, /очікує підтвердження Checkbox/);
+    assert.match(notice, /Нові оплати PARK і ДАР зупинено/);
+    assert.doesNotMatch(readiness, /Тестову зміну закрито/);
+    assert.doesNotMatch(notice, /Зміну закрито/);
+    assert.equal(f.el('sharedTestResumeBtn').disabled, true);
+    assert.equal(f.el('createPaymentOrderBtn').disabled, true);
 });
 
 test('completed order requires next customer and locks cart editing', t => {
@@ -110,7 +141,7 @@ for (const blocker of ['queue', 'route', 'drain_open', 'drain_closed']) {
         if (blocker === 'queue') f.page.state.unresolvedQueueState = 'unavailable';
         else if (blocker === 'route') {
             f.page.state.routeReady = false;
-            f.page.state.routeOptions = [{ id: f.page.PILOT_SCOPE.routeOptionId, mode: 'test', sequentialReady: false, readinessCode: 'shared_test_register_owned_by_other_business' }];
+            f.page.state.routeOptions = [{ id: f.page.PILOT_SCOPE.routeOptionId, businessContext: f.page.PILOT_SCOPE.crmProfileKey, mode: 'test', sequentialReady: false, readinessCode: 'shared_test_register_owned_by_other_business' }];
         } else {
             f.page.state.registerState.sharedTestDay = {
                 localDrainBlocked: true, canResume: blocker === 'drain_closed',
@@ -126,7 +157,7 @@ for (const blocker of ['queue', 'route', 'drain_open', 'drain_closed']) {
             queue: /Черга незавершених чеків недоступна/,
             route: /Спільну тестову зміну використовує інший напрямок/,
             drain_open: /Приймання оплат зупинене для завершення тестового дня/,
-            drain_closed: /Тестову зміну закрито.*Почати наступний тестовий день/
+            drain_closed: /Закриття тестової зміни підтверджене.*Почати наступний тестовий день/
         };
         assert.match(text, reasons[blocker]);
         if (blocker.startsWith('drain_')) {
@@ -178,6 +209,21 @@ test('last cart row can be removed and does not reappear automatically', t => {
     f.window.document.querySelector('[data-catalog-remove]').click();
     assert.equal(f.el('catalogSaleLines').children.length, 0);
     assert.equal(f.el('createPaymentOrderBtn').disabled, true);
+});
+
+test('basket line renders scan-friendly metadata, quantity, price and total labels', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.page.state.catalogItems[0].unit = 'заняття';
+    f.page.addCatalogLine('same');
+    const row = f.el('catalogSaleLines').firstElementChild;
+    assert.ok(row);
+    assert.match(row.querySelector('[data-catalog-name]').textContent, /Long catalog service name/);
+    assert.equal(row.querySelector('[data-catalog-category]').textContent, 'Services');
+    assert.equal(row.querySelector('[data-catalog-unit-label]').textContent, 'за заняття');
+    assert.match(row.querySelector('[data-catalog-price]').textContent, /Ціна/);
+    assert.match(row.querySelector('[data-catalog-price]').textContent, /10,00/);
+    assert.match(row.querySelector('.cashier-catalog-control-label').textContent, /К-сть/);
+    assert.match(row.querySelector('.cashier-catalog-line-money').textContent, /Сума/);
 });
 
 test('catalog search exposes selectable results before a cart row exists', t => {
@@ -318,14 +364,16 @@ test('second direction discount explains zero eligibility and updates after bask
     const f = fixture('dar'); t.after(() => f.dom.window.close());
     f.page.state.catalogItems[0].quantityRule = { club_direction: 'painting' };
     f.page.state.catalogItems[1].quantityRule = { club_direction: 'logic' };
-    f.page.state.catalogDiscounts = [{ code: 'dar_second_club_direction_10', rateBps: 1000 }];
-    f.el('catalogDiscountRule').innerHTML = '<option value="dar_second_club_direction_10">10%</option>';
+    f.page.state.catalogDiscounts = [{ code: 'second_direction_template', rateBps: 1000, eligibilityMode: 'second_club_direction' }];
+    f.el('catalogDiscountRule').innerHTML = '<option value="second_direction_template">10%</option>';
     f.page.addCatalogLine('same');
     assert.match(f.el('catalogDiscountExplanation').textContent, /0 грн знижки/);
     assert.match(f.el('catalogDiscountTotal').textContent, /0,00/);
     f.page.addCatalogLine('vip');
-    assert.match(f.el('catalogDiscountExplanation').textContent, /другого іншого/);
+    assert.match(f.el('catalogDiscountExplanation').textContent, /іншого гурткового напрямку/);
     assert.match(f.el('catalogDiscountTotal').textContent, /2,50/);
+    assert.equal(f.window.document.querySelector('[data-catalog-line-discount]').hidden, true);
+    assert.match(f.window.document.querySelectorAll('[data-catalog-line-discount]')[1].textContent, /2,50/);
     f.el('catalogSaleLines').lastElementChild.querySelector('[data-catalog-remove]').click();
     assert.match(f.el('catalogDiscountExplanation').textContent, /0 грн знижки/);
 });
@@ -966,7 +1014,7 @@ test('cashier change rejects a late order reply from the previous interaction ge
     assert.equal(f.page.state.orderDetails, null);
 });
 
-test('route change rejects an old order response while loading the new route scope', async t => {
+test('global business context change rejects an old order response while loading the new route scope', async t => {
     const f = fixture(); t.after(() => f.dom.window.close());
     const oldOrderResponse = deferred();
     const calls = installReadCoordinatorFetch(f, {
@@ -985,18 +1033,43 @@ test('route change rejects an old order response while loading the new route sco
         { id: 'park_production', businessContext: 'event_genix', configured: true, status: 'active', featureEnabled: true, acceptanceEnabled: true, sequentialReady: true, mode: 'production', registerLabel: 'Park' },
         { id: 'dar_test', businessContext: 'dar', configured: true, status: 'active', featureEnabled: true, acceptanceEnabled: true, sequentialReady: true, mode: 'test', registerLabel: 'Test' }
     ];
-    f.el('paymentBusinessContext').innerHTML = '<option value="event_genix">PARK</option><option value="dar">DAR</option>';
-    f.el('paymentRegisterRoute').innerHTML = '<option value="park_production">Park</option><option value="dar_test">Test</option>';
+    f.page.renderRouteSelectors();
+    assert.equal(f.el('paymentBusinessContext').disabled, true);
+    assert.equal(f.el('paymentRegisterRoute').value, 'park_production');
     const staleLoad = f.page.loadPaymentOrder(10, { silent: true });
     await new Promise(resolve => setImmediate(resolve));
-    f.el('paymentBusinessContext').value = 'dar';
-    f.el('paymentBusinessContext').dispatchEvent(new f.window.Event('change', { bubbles: true }));
+    f.window.localStorage.setItem('pzp_crm_business_context', 'dar');
+    f.window.localStorage.setItem('pzp_crm_business_context_user', '1');
+    f.window.dispatchEvent(new f.window.CustomEvent('crmBusinessContextChanged', { detail: { previous: 'event_genix', current: 'dar' } }));
     oldOrderResponse.resolve(jsonResponse(200, readDetails(draftOrder(10))));
     await staleLoad;
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(calls.order, 1);
     assert.equal(new URL(f.window.location.href).searchParams.get('routeOptionId'), 'dar_test');
+    assert.equal(f.page.PILOT_SCOPE.crmProfileKey, 'dar');
     assert.equal(f.page.state.orderDetails, null);
+});
+
+test('mixed business and register scope cannot submit another business cashier route', t => {
+    const f = fixture('event_genix', 'dar_test'); t.after(() => f.dom.window.close());
+    f.page.state.routeOptions = [
+        { id: 'park_production', businessContext: 'event_genix', configured: true, status: 'active', featureEnabled: true, acceptanceEnabled: true, sequentialReady: true, mode: 'production', registerLabel: 'Park' },
+        { id: 'dar_test', businessContext: 'dar', configured: true, status: 'active', featureEnabled: true, acceptanceEnabled: true, sequentialReady: true, mode: 'test', registerLabel: 'DAR test' }
+    ];
+
+    assert.throws(() => f.page.buildCatalogSalePayload(), error => error.code === 'fiscal_route_option_invalid');
+
+    f.page.renderRouteSelectors();
+    assert.equal(f.el('paymentBusinessContext').value, 'event_genix');
+    assert.equal(f.el('paymentBusinessContext').disabled, true);
+    assert.equal(f.el('paymentRegisterRoute').value, 'park_production');
+    assert.equal(f.page.PILOT_SCOPE.crmProfileKey, 'event_genix');
+    assert.equal(f.page.PILOT_SCOPE.routeOptionId, 'park_production');
+
+    f.page.addCatalogLine('same');
+    const payload = f.page.buildCatalogSalePayload();
+    assert.equal(payload.businessContext, 'event_genix');
+    assert.equal(payload.routeOptionId, 'park_production');
 });
 
 test('completed order cannot regress to pending and server progress is rendered without invented success', async t => {
@@ -1138,6 +1211,54 @@ test('history renders filter-wide totals, separate blocker groups, safe links an
     assert.equal(f.window.document.querySelectorAll('.cashier-history-link').length, 2);
     assert.doesNotMatch(f.el('checkboxSalesReportBody').innerHTML, /attacker\.test/);
     assert.doesNotMatch(f.el('checkboxSalesReportBody').textContent, /Після оновлення.*зникне/);
+});
+
+test('X report affordance is explicit but does not call a provider endpoint', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    let fetchCalls = 0;
+    f.window.fetch = async () => {
+        fetchCalls += 1;
+        throw new Error('unexpected provider call');
+    };
+    f.page.renderFiscalReportsPanel();
+    assert.equal(f.el('createXReportBtn').disabled, true);
+    assert.match(f.el('fiscalReportsNotice').textContent, /durable черга provider-report/);
+    f.page.explainXReportUnavailable();
+    assert.equal(fetchCalls, 0);
+    assert.equal(f.window.__notifications.at(-1).type, 'info');
+    assert.match(f.window.__notifications.at(-1).message, /не запускається з CRM/);
+});
+
+test('Z report affordance reuses guarded phase1 close instead of a separate report endpoint', async t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.window.canAccess = action => action === 'fiscal.shift.close';
+    let confirmCalls = 0;
+    let fetchCalls = 0;
+    f.window.confirmModal = async () => {
+        confirmCalls += 1;
+        return false;
+    };
+    f.window.fetch = async () => {
+        fetchCalls += 1;
+        throw new Error('unexpected provider call');
+    };
+    Object.assign(f.page.state, {
+        unresolvedQueueState: 'available',
+        unresolvedRegisterCount: 0,
+        unresolvedLastRefreshAt: Date.now(),
+        registerState: {
+            integrationReady: true,
+            shift: { id: 77, status: 'open' },
+            phase1Close: { visible: true, allowed: true, shiftId: 77, status: 'opened' }
+        }
+    });
+    f.page.renderFiscalReportsPanel();
+    assert.equal(f.el('closeZReportBtn').disabled, false);
+    f.page.requestZReportClose();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(confirmCalls, 1);
+    assert.equal(fetchCalls, 0);
+    assert.doesNotMatch(f.el('fiscalReportsNotice').textContent, /окремий report endpoint/i);
 });
 
 test('failed same-filter refresh preserves visibly stale rows instead of reporting zero', async t => {

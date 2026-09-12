@@ -28,6 +28,12 @@ const {
     assertNoClientFiscalRouteOverride,
     resolveFiscalSaleRoute
 } = require('./fiscalSaleRouteService');
+const {
+    discountRateBps,
+    discountEligibilityMode,
+    itemClubDirection,
+    quoteCatalogLines
+} = require('../../js/catalog-discount-calculator');
 
 const CATALOG_SOURCE_TYPE = 'catalog_sale';
 const BUSINESS_SCOPES = Object.freeze({
@@ -120,23 +126,20 @@ async function loadDiscounts(client, businessContext, requested) {
 }
 
 function quoteLines(lines, catalog, discounts) {
-    const secondDirection = discounts.get('dar_second_club_direction_10');
-    const ubd = discounts.get('dar_ubd_20');
-    const firstDirection = lines.map(line => catalog.get(line.itemCode).sale_config?.club_direction).find(Boolean) || null;
-    return lines.map((line, index) => {
-        const product = catalog.get(line.itemCode);
-        const config = product.sale_config || {};
-        const step = Number(config.quantity_step_millis || 1000);
-        const minimum = Number(config.minimum_quantity_millis || 1000);
-        if (line.quantityMillis < minimum || line.quantityMillis % step !== 0) throw new PaymentServiceError('catalog_quantity_invalid', 'Catalog quantity violates item rules', { status: 422, details: { itemCode: line.itemCode, minimumQuantityMillis: minimum, quantityStepMillis: step } });
-        let discount = ubd || null;
-        if (!discount && secondDirection && config.club_direction && config.club_direction !== firstDirection) discount = secondDirection;
-        const originalUnitMinor = BigInt(product.price_uah) * 100n;
-        const rateBps = BigInt(discount?.rate_bps || 0);
-        const finalUnitMinor = (originalUnitMinor * (10000n - rateBps) + 5000n) / 10000n;
-        const totalMinor = finalUnitMinor * BigInt(line.quantityMillis) / 1000n;
-        return { index: index + 1, product, quantityMillis: BigInt(line.quantityMillis), originalUnitMinor, discountMinor: originalUnitMinor - finalUnitMinor, finalUnitMinor, totalMinor, discount };
-    });
+    try {
+        return quoteCatalogLines(lines, catalog, discounts, {
+            strict: true,
+            validateQuantity: true
+        });
+    } catch (error) {
+        if (error?.code === 'catalog_quantity_invalid') {
+            throw new PaymentServiceError('catalog_quantity_invalid', 'Catalog quantity violates item rules', { status: 422, details: error.details });
+        }
+        if (error?.code === 'catalog_discount_invalid') {
+            throw new PaymentServiceError('catalog_discount_invalid', 'Discount rule is unavailable', { status: 422 });
+        }
+        throw error;
+    }
 }
 
 async function listCatalogItems({ dbPool = pool, businessContext, routeOptionId, user, authorizer = authorizeFiscalActorAction, routeResolver = resolveFiscalSaleRoute } = {}) {
@@ -352,6 +355,9 @@ module.exports = {
     CATALOG_SOURCE_TYPE,
     createCatalogSalePaymentOrder,
     defaultRouteOptionIdForBusiness,
+    discountEligibilityMode,
+    discountRateBps,
+    itemClubDirection,
     listCatalogDiscounts,
     listCatalogItems,
     normalizeLines,

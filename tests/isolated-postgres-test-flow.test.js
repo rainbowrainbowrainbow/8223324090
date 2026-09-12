@@ -12,7 +12,8 @@ const {
 } = require('../scripts/test-db-safety');
 const {
     acquireIsolatedDatabaseLock,
-    assertNoPreservedCheckboxMutationState
+    assertNoPreservedCheckboxMutationState,
+    resolveModeEntries
 } = require('../scripts/run-isolated-postgres-tests');
 
 function safeEnv(overrides = {}) {
@@ -250,6 +251,46 @@ describe('isolated PostgreSQL test flow safety', () => {
             packageJson.scripts['test:integration:payroll-profiles:isolated'],
             'node scripts/run-isolated-postgres-tests.js payroll'
         );
+        assert.equal(
+            packageJson.scripts['test:db:isolated'],
+            'node scripts/run-isolated-postgres-tests.js ci'
+        );
+        assert.deepEqual(
+            resolveModeEntries('ci').map(entry => entry.suiteMode),
+            [
+                'api',
+                'attendance',
+                'attendance',
+                'attendance',
+                'attendance',
+                'attendance',
+                'attendance',
+                'attendance',
+                'hr',
+                'permissions',
+                'payroll',
+                'payroll',
+                'payroll',
+                'payroll',
+                'payroll',
+                'admission',
+                'my-day',
+                'my-day-browser',
+                'cashier-smoke',
+                'checkbox-config',
+                'checkbox-ui-real',
+                'onboarding',
+                'onboarding',
+                'onboarding',
+                'backfill',
+                'upload-backfill'
+            ],
+            'ci keeps the previous curated disposable PostgreSQL suite'
+        );
+        const allSuiteModes = new Set(resolveModeEntries('all').map(entry => entry.suiteMode));
+        for (const suiteMode of ['catalog-sale', 'catalog-sale-local-qa', 'redirect-auth', 'redirect-upgrade', 'checkbox-ui-testmode', 'fullstack', 'qa']) {
+            assert.equal(allSuiteModes.has(suiteMode), true, `all should include ${suiteMode}`);
+        }
         assert.match(helper, /Invoke-CheckedProcess[\s\S]+check:runtime/);
         assert.match(helper, /\$PostgresImage = 'postgres:16'/);
         assert.match(helper, /'--publish',\s*'127\.0\.0\.1::5432'/);

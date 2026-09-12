@@ -9,9 +9,9 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'uploads']);
 const TRACKED_DIRS = [
     'routes',
     'services',
@@ -29,29 +29,21 @@ const ACTIVE_ROOT_DOCS = new Set([
     'README.md'
 ]);
 
-function rel(file) {
-    return path.relative(ROOT, file).replace(/\\/g, '/');
-}
-
 function readText(file) {
     return fs.readFileSync(file, 'utf8');
 }
 
-function exists(file) {
-    return fs.existsSync(path.join(ROOT, file));
-}
-
-function walk(dir, out = []) {
-    if (!fs.existsSync(dir)) return out;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-            if (!SKIP_DIRS.has(entry.name)) walk(full, out);
-            continue;
-        }
-        if (entry.isFile()) out.push(full);
-    }
-    return out;
+function loadTrackedFiles() {
+    const output = execFileSync('git', ['ls-files', '-z'], {
+        cwd: ROOT,
+        encoding: 'buffer'
+    });
+    return output
+        .toString('utf8')
+        .split('\0')
+        .filter(Boolean)
+        .map(file => file.replace(/\\/g, '/'))
+        .sort((a, b) => a.localeCompare(b));
 }
 
 function lineCount(file) {
@@ -60,13 +52,26 @@ function lineCount(file) {
     return text.split(/\r?\n/).length;
 }
 
-function dirSnapshot() {
+function hasTrackedPrefix(trackedFiles, dir) {
+    const prefix = `${dir.replace(/\\/g, '/')}/`;
+    return trackedFiles.some(file => file.startsWith(prefix));
+}
+
+function trackedFilesInDir(trackedFiles, dir) {
+    const prefix = `${dir.replace(/\\/g, '/')}/`;
+    return trackedFiles.filter(file => file.startsWith(prefix));
+}
+
+function dirSnapshot(trackedFiles) {
     return TRACKED_DIRS
-        .filter(exists)
+        .filter(dir => hasTrackedPrefix(trackedFiles, dir))
         .map(dir => {
-            const abs = path.join(ROOT, dir);
-            const files = walk(abs, []);
-            const bytes = files.reduce((sum, file) => sum + fs.statSync(file).size, 0);
+            const files = trackedFilesInDir(trackedFiles, dir);
+            const bytes = files.reduce((sum, file) => {
+                const abs = path.join(ROOT, file);
+                if (!fs.existsSync(abs)) return sum;
+                return sum + fs.statSync(abs).size;
+            }, 0);
             return {
                 dir: dir.replace(/\\/g, '/'),
                 files: files.length,
@@ -75,11 +80,10 @@ function dirSnapshot() {
         });
 }
 
-function largestFiles(limit = 25) {
-    return walk(ROOT, [])
+function largestFiles(trackedFiles, limit = 25) {
+    return trackedFiles
         .filter(file => /\.(js|html|css)$/.test(file))
-        .filter(file => !rel(file).startsWith('node_modules/'))
-        .map(file => ({ path: rel(file), lines: lineCount(file) }))
+        .map(file => ({ path: file, lines: lineCount(path.join(ROOT, file)) }))
         .sort((a, b) => b.lines - a.lines || a.path.localeCompare(b.path))
         .slice(0, limit);
 }
@@ -171,18 +175,17 @@ function splitFirstCallArg(line, callName) {
     return null;
 }
 
-function routeFilesNotMounted(routeRequires) {
-    return fs.readdirSync(path.join(ROOT, 'routes'))
-        .filter(name => name.endsWith('.js'))
-        .map(name => `routes/${name}`)
+function routeFilesNotMounted(routeRequires, trackedFiles) {
+    return trackedFiles
+        .filter(file => /^routes\/[^/]+\.js$/.test(file))
         .filter(file => !routeRequires.has(file))
         .sort();
 }
 
-function rootHtmlFiles() {
+function rootHtmlFiles(trackedFiles) {
     const server = readText(path.join(ROOT, 'server.js'));
-    return fs.readdirSync(ROOT)
-        .filter(name => name.endsWith('.html'))
+    return trackedFiles
+        .filter(name => /^[^/]+\.html$/.test(name))
         .sort()
         .map(name => {
             const hasNamedSend = server.includes(`'${name}'`) || server.includes(`"${name}"`);
@@ -193,26 +196,28 @@ function rootHtmlFiles() {
         });
 }
 
-function docsSnapshot() {
-    const rootDocs = fs.readdirSync(ROOT)
-        .filter(name => name.endsWith('.md'))
+function docsSnapshot(trackedFiles) {
+    const rootDocs = trackedFiles
+        .filter(name => /^[^/]+\.md$/.test(name))
         .sort()
         .map(name => ({
             file: name,
             status: ACTIVE_ROOT_DOCS.has(name) ? 'active root doc' : 'review/archive candidate'
         }));
-    const docs = walk(path.join(ROOT, 'docs'), [])
-        .filter(file => file.endsWith('.md'))
-        .map(file => rel(file))
+    const docs = trackedFiles
+        .filter(file => /^docs\/.+\.md$/.test(file))
         .sort();
     return { rootDocs, docs };
 }
 
-function migrationSnapshot() {
+function migrationSnapshot(trackedFiles) {
     const dir = path.join(ROOT, 'db', 'migrations');
     if (!fs.existsSync(dir)) return null;
 
-    const files = fs.readdirSync(dir).filter(name => name.endsWith('.sql')).sort();
+    const files = trackedFiles
+        .filter(file => /^db\/migrations\/[^/]+\.sql$/.test(file))
+        .map(file => path.basename(file))
+        .sort();
     const numbers = files
         .map(name => {
             const match = name.match(/^(\d+)_/);
@@ -320,24 +325,34 @@ function renderMarkdown(data) {
     return `${out.join('\n')}\n`;
 }
 
-function buildInventory() {
+function buildInventory({ trackedFiles = loadTrackedFiles() } = {}) {
     const { apiMounts, pageRoutes, routeRequires } = parseServerMounts();
     return {
-        dirs: dirSnapshot(),
-        largestFiles: largestFiles(),
+        dirs: dirSnapshot(trackedFiles),
+        largestFiles: largestFiles(trackedFiles),
         apiMounts,
         pageRoutes,
-        unmountedRouteFiles: routeFilesNotMounted(routeRequires),
-        rootHtml: rootHtmlFiles(),
-        docs: docsSnapshot(),
-        migrations: migrationSnapshot()
+        unmountedRouteFiles: routeFilesNotMounted(routeRequires, trackedFiles),
+        rootHtml: rootHtmlFiles(trackedFiles),
+        docs: docsSnapshot(trackedFiles),
+        migrations: migrationSnapshot(trackedFiles)
     };
 }
 
-const inventory = buildInventory();
+function main(argv = process.argv) {
+    const inventory = buildInventory();
 
-if (process.argv.includes('--json')) {
-    console.log(JSON.stringify(inventory, null, 2));
-} else {
-    console.log(renderMarkdown(inventory));
+    if (argv.includes('--json')) {
+        console.log(JSON.stringify(inventory, null, 2));
+    } else {
+        console.log(renderMarkdown(inventory));
+    }
 }
+
+if (require.main === module) main();
+
+module.exports = {
+    buildInventory,
+    loadTrackedFiles,
+    renderMarkdown
+};

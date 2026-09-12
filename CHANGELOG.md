@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.128 - Мультибізнес foundation
+
+### Release / Versioning / (12.09.2026) [codex]
+- **Мультибізнес foundation** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.127 - Мультибізнес foundation
 
 ### Release / Versioning / (12.09.2026) [codex]

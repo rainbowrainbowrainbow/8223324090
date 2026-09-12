@@ -106,6 +106,64 @@ function sanitizeCapabilities(value) {
   return output;
 }
 
+function parseTime(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function firstBoolean(values) {
+  return values.find(value => typeof value === 'boolean') ?? null;
+}
+
+function bridgeRuntimeHealth(row, currentTime = new Date()) {
+  const capabilities = sanitizeCapabilities(row?.capabilities || {});
+  const current = parseTime(currentTime) || new Date();
+  const heartbeat = parseTime(row?.last_heartbeat_at);
+  const online = Boolean(heartbeat && current - heartbeat <= 90_000);
+  const lastScanAt = parseTime(capabilities.last_scan_at || capabilities.lastScanAt);
+  const lastReceiveAt = parseTime(row?.last_receive_at);
+  const serviceRunning = firstBoolean([capabilities.service_running, online]) === true;
+  const desktopAuthorized = firstBoolean([
+    capabilities.desktop_authorized,
+    capabilities.viber_desktop_authorized,
+  ]) === true;
+  const receiveConfigured = capabilities.receive_text === true;
+  const sendConfigured = capabilities.send_text === true;
+  const explicitCaptureGap = firstBoolean([capabilities.capture_gap, capabilities.captureGap]) === true;
+  const scanStale = Boolean(online && receiveConfigured && (!lastScanAt || current - lastScanAt > 90_000));
+  const captureGap = Boolean(explicitCaptureGap || scanStale);
+  const adapterError = row?.last_error_code || capabilities.adapter_error || capabilities.adapterError
+    || capabilities.block_reason || capabilities.blockReason || null;
+  const blockReason = adapterError
+    || (!online ? 'BRIDGE_OFFLINE' : null)
+    || (!serviceRunning ? 'BRIDGE_SERVICE_STOPPED' : null)
+    || (!desktopAuthorized ? 'VIBER_DESKTOP_NOT_VERIFIED' : null)
+    || (!receiveConfigured && !lastScanAt ? 'CAPTURE_NOT_CONFIGURED' : null)
+    || (captureGap ? 'CAPTURE_GAP' : null)
+    || (!sendConfigured ? 'SEND_NOT_CONFIGURED' : null);
+  const receiveHealth = Boolean(online && serviceRunning && desktopAuthorized && receiveConfigured && !captureGap && !adapterError);
+  const receiveCapability = Boolean(online && serviceRunning && desktopAuthorized && receiveConfigured && !adapterError);
+  const sendCapability = Boolean(online && serviceRunning && desktopAuthorized && sendConfigured && !captureGap && !adapterError);
+  return {
+    online,
+    transportHeartbeat: online,
+    serviceRunning,
+    desktopAuthorized,
+    receiveHealth,
+    receiveCapability,
+    sendCapability,
+    lastHeartbeatAt: heartbeat?.toISOString() || null,
+    lastReceiveAt: lastReceiveAt?.toISOString() || null,
+    lastScanAt: lastScanAt?.toISOString() || null,
+    lastErrorCode: row?.last_error_code || null,
+    captureGap,
+    adapterError,
+    blockReason,
+    capabilities,
+  };
+}
+
 function authenticate(runtime, authorization, scope) {
   const token = tokenFromHeader(authorization);
   if (!runtime || !safeEqual(token, runtime.bridgeToken)) throw new BridgeError('BRIDGE_AUTH_FAILED', 401);
@@ -341,13 +399,16 @@ function createService(deps = {}) {
     if (conversation?.channel !== 'viber' || meta.connectorType !== 'viber_personal_bridge') return false;
     if (meta.identityLevel !== 'verified') throw new BridgeError('PEER_UNVERIFIED', 409);
     const state = await db.query(
-      `SELECT last_heartbeat_at,capabilities FROM omni_viber_personal_bridge_runtime
+      `SELECT last_heartbeat_at,last_receive_at,last_error_code,capabilities FROM omni_viber_personal_bridge_runtime
         WHERE business_context=$1 AND bridge_id=$2 AND account_id=$3 AND account_epoch=$4`,
       [conversation.businessContext, meta.bridgeId, meta.accountId, meta.accountEpoch]
     );
-    const heartbeat = state.rows[0]?.last_heartbeat_at ? new Date(state.rows[0].last_heartbeat_at) : null;
-    if (!heartbeat || now() - heartbeat > 90_000) throw new BridgeError('BRIDGE_OFFLINE', 409);
-    if (state.rows[0]?.capabilities?.send_text !== true) throw new BridgeError('SEND_CAPABILITY_BLOCKED', 409);
+    const health = bridgeRuntimeHealth(state.rows[0], now());
+    if (!health.online) throw new BridgeError('BRIDGE_OFFLINE', 409);
+    if (health.adapterError) throw new BridgeError(String(health.adapterError), 409);
+    if (health.captureGap) throw new BridgeError('CAPTURE_GAP', 409);
+    if (!health.desktopAuthorized) throw new BridgeError('VIBER_DESKTOP_NOT_VERIFIED', 409);
+    if (!health.sendCapability) throw new BridgeError('SEND_CAPABILITY_BLOCKED', 409);
     return true;
   }
 
@@ -440,27 +501,11 @@ function createService(deps = {}) {
       `SELECT * FROM omni_viber_personal_bridge_runtime WHERE business_context=$1 AND bridge_id=$2`,
       [businessContext, runtime.bridgeId]
     );
-    const row = result.rows[0];
-    const heartbeat = row?.last_heartbeat_at ? new Date(row.last_heartbeat_at) : null;
-    const online = Boolean(heartbeat && now() - heartbeat <= 90_000);
-    const capabilities = sanitizeCapabilities(row?.capabilities || {});
-    const lastScanRaw = capabilities.last_scan_at || capabilities.lastScanAt || null;
-    const lastScanAt = lastScanRaw ? new Date(lastScanRaw) : null;
-    const captureGap = Boolean(online && (!lastScanAt || now() - lastScanAt > 90_000));
-    const adapterError = row?.last_error_code || capabilities.adapter_error || capabilities.adapterError
-      || capabilities.block_reason || capabilities.blockReason || null;
-    const receiveHealth = Boolean(online && capabilities.receive_text === true && !captureGap && !adapterError);
-    const sendCapability = Boolean(online && capabilities.send_text === true && !adapterError);
-    return { online, transportHeartbeat: online, receiveHealth, sendCapability,
-      lastHeartbeatAt: heartbeat?.toISOString() || null,
-      lastReceiveAt: row?.last_receive_at ? new Date(row.last_receive_at).toISOString() : null,
-      lastErrorCode: row?.last_error_code || null,
-      captureGap, adapterError,
-      capabilities };
+    return bridgeRuntimeHealth(result.rows[0], now());
   }
 
   return { heartbeat, ingest, enqueue, assertSendCapable, pull, commandResult, status };
 }
 
 module.exports = { PROTOCOL_VERSION, BridgeError, bridgeScope, scopeFromRuntime, authenticate, validateEvent,
-  payloadHash, conversationExternalId, sanitizeCapabilities, createService };
+  payloadHash, conversationExternalId, sanitizeCapabilities, bridgeRuntimeHealth, createService };

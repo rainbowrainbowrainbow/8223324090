@@ -1339,6 +1339,7 @@ describe('Communication Send Truth v1', () => {
         const repoRoot = path.resolve(__dirname, '..');
         const omniHtml = fs.readFileSync(path.join(repoRoot, 'omni.html'), 'utf8');
         const omniRoute = fs.readFileSync(path.join(repoRoot, 'routes/omnichannel.js'), 'utf8');
+        const chatPage = fs.readFileSync(path.join(repoRoot, 'js/chat-page.js'), 'utf8');
 
         assert.match(omniHtml, /id="omniSendTruth"/);
         assert.match(omniHtml, /SEND_DISABLED_CHANNELS = new Set\(\['binotel'\]\)/);
@@ -1354,6 +1355,11 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniRoute, /replyOwnerUserId = req\.user\?\.id \|\| null/);
         assert.match(omniRoute, /replyOwnerUserId,/);
         assert.match(omniHtml, /Провайдер прийняв запит/);
+        assert.match(chatPage, /Viber Bot API/);
+        assert.match(chatPage, /viber_personal/);
+        assert.match(chatPage, /_bridgeOnboardingHtml/);
+        assert.match(chatPage, /Прив’язати тестовий чат/);
+        assert.match(chatPage, /_currentChannel\.sendCapable === false/);
     });
 
     it('defines the manual connection control-plane persistence surface', () => {

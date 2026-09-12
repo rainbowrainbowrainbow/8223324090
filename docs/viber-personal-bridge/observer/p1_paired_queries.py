@@ -149,7 +149,7 @@ def reconcile_outbound(reader: Callable, anchor: dict[str, int], exact_text: str
     if (not isinstance(anchor, dict) or set(anchor) != {"chat_id", "peer_contact_id", "inbound_code",
                                                         "outbound_code", "anchor_event_id"}
             or not isinstance(exact_text, str) or not exact_text or len(exact_text) > 500
-            or "\x00" in exact_text or "\r" in exact_text or "\n" in exact_text):
+            or "\x00" in exact_text or "\r" in exact_text):
         raise PairedQueryError("RECONCILE_ARGUMENT_INVALID")
     rows = _rows(reader, RECONCILE_SQL, {"text": exact_text}, 3, 2)
     if len(rows) > 1:
@@ -184,7 +184,7 @@ def latest_seeded_reply(reader: Callable, direction_anchor: dict[str, int],
     if (not isinstance(direction_anchor, dict) or set(direction_anchor) != expected
             or not isinstance(exact_outbound_text, str) or not exact_outbound_text
             or len(exact_outbound_text) > 500 or "\x00" in exact_outbound_text
-            or "\r" in exact_outbound_text or "\n" in exact_outbound_text):
+            or "\r" in exact_outbound_text):
         raise PairedQueryError("SEEDED_ARGUMENT_INVALID")
     anchor_event_id = _id(direction_anchor["anchor_event_id"])
     seed_rows = _rows(reader, SEEDED_OUTBOUND_SQL,

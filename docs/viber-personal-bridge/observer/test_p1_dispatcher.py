@@ -35,7 +35,7 @@ def command(**changes):
 
 class FakeAdapter:
     def __init__(self, *, source_chat_ref=SOURCE_CHAT, peer_ref=PEER,
-                 active=None, result=None, active_error=None, send_error=None):
+                 active=None, result=None, active_error=None, send_error=None, events=None):
         self.source_chat_ref = source_chat_ref
         self.peer_ref = peer_ref
         self.active = active or {}
@@ -49,6 +49,11 @@ class FakeAdapter:
         self.active_calls = 0
         self.send_calls = 0
         self.sent_texts = []
+        self.events = events
+
+    def prepare_command(self, command):
+        if self.events is not None:
+            self.events.append(("prepare", command["command_id"]))
 
     def active_peer(self, _chat_id):
         self.active_calls += 1
@@ -67,6 +72,8 @@ class FakeAdapter:
         return value
 
     def send_text(self, text):
+        if self.events is not None:
+            self.events.append(("send", text))
         self.send_calls += 1
         self.sent_texts.append(text)
         if self.send_error:
@@ -134,6 +141,33 @@ class DispatcherTests(unittest.TestCase):
                 self.assertEqual(caught.exception.code, code)
                 self.assertEqual(self.core.command(command_id)["status"], "accepted")
                 self.assertEqual(adapter.send_calls, 0)
+
+
+    def test_dispatch_started_is_reported_before_send(self):
+        events = []
+        adapter = FakeAdapter(events=events)
+
+        def report(command_id):
+            events.append(("dispatch_started", command_id))
+
+        result = execute_text(self.core, command(), adapter, on_dispatch_started=report)
+        self.assertEqual(result["status"], "submitted_unconfirmed")
+        self.assertEqual(events, [
+            ("prepare", COMMAND),
+            ("dispatch_started", COMMAND),
+            ("send", "Synthetic dispatcher text 🚀\nsecond line"),
+        ])
+
+    def test_dispatch_started_report_failure_stops_before_send(self):
+        adapter = FakeAdapter()
+
+        def report(_command_id):
+            raise RuntimeError("synthetic network failure")
+
+        result = execute_text(self.core, command(), adapter, on_dispatch_started=report)
+        self.assertEqual((result["status"], result["error_code"], result["dispatch_count"]),
+                         ("unknown", "DISPATCH_START_REPORT_FAILED", 1))
+        self.assertEqual((adapter.active_calls, adapter.send_calls), (1, 0))
 
     def test_timeout_after_dispatch_boundary_becomes_unknown_and_never_retries(self):
         adapter = FakeAdapter(send_error=TimeoutError("synthetic"))

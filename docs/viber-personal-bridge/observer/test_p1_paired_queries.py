@@ -85,6 +85,13 @@ class PairedQueriesTests(unittest.TestCase):
             with self.subTest(rows=rows), self.assertRaises(paired.PairedQueryError):
                 paired.reconcile_outbound(Reader(reconcile=rows), anchor, text)
 
+
+    def test_reconcile_allows_multiline_text(self):
+        text = "Перший рядок\nДругий рядок"
+        reader = Reader(reconcile=[(15, 20, 1)])
+        anchor = paired.resolve_anchor(reader, PHONE, DESKTOP)
+        self.assertEqual(paired.reconcile_outbound(reader, anchor, text), {"observed": True})
+
     def test_latest_inbound_requires_anchor_peer_and_does_not_transform_text(self):
         reader = Reader(latest=[(9, 20, 30, 0, "Привіт")])
         anchor = paired.resolve_anchor(reader, PHONE, DESKTOP)

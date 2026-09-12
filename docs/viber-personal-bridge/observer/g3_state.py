@@ -93,8 +93,19 @@ def _existing_directory(path):
     return resolved
 
 
+def _repository_root():
+    script = Path(__file__).resolve()
+    for candidate in (script.parent, *script.parents):
+        if (candidate / "package.json").is_file() and (candidate / ".git").exists():
+            return candidate
+    return None
+
+
 def _outside_sync_and_workspace(path):
-    protected = [Path(__file__).resolve().parents[3]]
+    protected = []
+    repository = _repository_root()
+    if repository is not None:
+        protected.append(repository)
     for name in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
         value = os.environ.get(name)
         if value:

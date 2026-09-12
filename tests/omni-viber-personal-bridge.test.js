@@ -106,6 +106,7 @@ test('heartbeat authenticates before writing and exposes only scoped runtime sta
   const state = await service.status({ bridgeId: IDS.bridge }, 'event_genix');
   assert.equal(state.online, true);
   assert.deepEqual(state.capabilities, { send_text: true });
+  assert.equal(state.blockReason, 'VIBER_DESKTOP_NOT_VERIFIED');
 });
 
 test('inbound event is committed, routed as Viber, and duplicate is idempotent', async () => {
@@ -206,7 +207,14 @@ test('heartbeat capabilities are sanitized and send capability gates CRM sends',
   }), { send_text: true, receive_text: false, block_reason: 'SOURCE_SCHEMA_CHANGED' });
 
   const serviceBlocked = createService({ pool: { query: async () => ({ rows: [{
-    last_heartbeat_at: '2026-09-12T09:00:00.000Z', capabilities: { send_text: false },
+    last_heartbeat_at: '2026-09-12T09:00:00.000Z',
+    capabilities: {
+      send_text: false,
+      receive_text: true,
+      desktop_authorized: true,
+      service_running: true,
+      last_scan_at: '2026-09-12T09:00:10.000Z',
+    },
   }] }) }, now: () => new Date('2026-09-12T09:00:30.000Z') });
   await assert.rejects(serviceBlocked.assertSendCapable({ channel: 'viber', businessContext: 'event_genix', meta: {
     connectorType: 'viber_personal_bridge', identityLevel: 'verified', bridgeId: IDS.bridge,
@@ -214,7 +222,14 @@ test('heartbeat capabilities are sanitized and send capability gates CRM sends',
   } }), error => error.code === 'SEND_CAPABILITY_BLOCKED');
 
   const serviceAllowed = createService({ pool: { query: async () => ({ rows: [{
-    last_heartbeat_at: '2026-09-12T09:00:00.000Z', capabilities: { send_text: true },
+    last_heartbeat_at: '2026-09-12T09:00:00.000Z',
+    capabilities: {
+      send_text: true,
+      receive_text: true,
+      desktop_authorized: true,
+      service_running: true,
+      last_scan_at: '2026-09-12T09:00:10.000Z',
+    },
   }] }) }, now: () => new Date('2026-09-12T09:00:30.000Z') });
   assert.equal(await serviceAllowed.assertSendCapable({ channel: 'viber', businessContext: 'event_genix', meta: {
     connectorType: 'viber_personal_bridge', identityLevel: 'verified', bridgeId: IDS.bridge,

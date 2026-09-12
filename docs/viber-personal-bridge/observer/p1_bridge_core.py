@@ -102,6 +102,13 @@ def _payload_hash(command: Mapping[str, Any]) -> str:
                              separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
+def repository_root_for(path: Path) -> Path | None:
+    for candidate in [path, *path.parents]:
+        if (candidate / ".git").exists() and (candidate / "package.json").exists():
+            return candidate
+    return None
+
+
 class BridgeCore:
     """Durable P1 state for one provisioned bridge/account/business tuple."""
 
@@ -114,8 +121,8 @@ class BridgeCore:
         self._connection: sqlite3.Connection | None = None
         try:
             state_path = Path(path).resolve()
-            repository_root = Path(__file__).resolve().parents[3]
-            if state_path.is_relative_to(repository_root):
+            repository_root = repository_root_for(Path(__file__).resolve())
+            if repository_root is not None and state_path.is_relative_to(repository_root):
                 raise BridgeCoreError("STATE_INSIDE_REPOSITORY")
             state_path.parent.mkdir(parents=True, exist_ok=True)
             self._connection = sqlite3.connect(state_path, timeout=5, isolation_level=None)
@@ -569,15 +576,23 @@ class BridgeCore:
                        (status, error, command))
             return dict(db.execute("SELECT * FROM commands WHERE command_id=?", (command,)).fetchone())
 
-    def recover_interrupted_dispatches(self) -> int:
+    def recover_interrupted_dispatches_detail(self) -> list[dict[str, Any]]:
         """Never repeat a gesture after restart once dispatch may have begun."""
         with self._transaction() as db:
             self._verify_scope(db)
-            cursor = db.execute(
-                "UPDATE commands SET status='unknown', error_code='DISPATCH_INTERRUPTED' "
-                "WHERE status='dispatch_started'"
-            )
-            return cursor.rowcount
+            rows = db.execute(
+                "SELECT * FROM commands WHERE status='dispatch_started' ORDER BY rowid"
+            ).fetchall()
+            if rows:
+                db.execute(
+                    "UPDATE commands SET status='unknown', error_code='DISPATCH_INTERRUPTED' "
+                    "WHERE status='dispatch_started'"
+                )
+            return [dict(db.execute("SELECT * FROM commands WHERE command_id=?",
+                                    (row["command_id"],)).fetchone()) for row in rows]
+
+    def recover_interrupted_dispatches(self) -> int:
+        return len(self.recover_interrupted_dispatches_detail())
 
 
     def list_dispatchable_commands(self, *, limit: int = 10) -> list[dict[str, Any]]:

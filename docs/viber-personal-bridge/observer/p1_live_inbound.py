@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
 import hmac
+import os
 from pathlib import Path
 import sqlite3
 from typing import Any, Callable, Iterable, Mapping
@@ -90,6 +91,13 @@ def source_generation_ref(secret: bytes, source_id: str) -> str:
     if not isinstance(source_id, str) or not source_id:
         raise LiveInboundError("SOURCE_ID_INVALID")
     return _hex_hmac(secret, "viber-source-generation", source_id)
+
+
+def repository_root_for(path: Path) -> Path | None:
+    for candidate in [path, *path.parents]:
+        if (candidate / ".git").exists() and (candidate / "package.json").exists():
+            return candidate
+    return None
 
 
 def _single_int(rows: list[tuple]) -> int:
@@ -174,14 +182,159 @@ class SqliteReadOnlySource:
             self._connection = None
 
 
+class G3SidReadOnlySource:
+    """Read-only Qt/SEE source for the current signed Viber Desktop process.
+
+    This source reuses the reviewed G3 SID bootstrap. It never accepts a raw DB
+    path or key, keeps raw identifiers local, and fails closed when the retained
+    process, source file identity, account directory or schema access changes.
+    """
+
+    def __init__(self, *, session_path: str | None = None, auto_session: bool = False):
+        if bool(session_path) == bool(auto_session):
+            raise LiveInboundError("G3_SESSION_CONFIG_INVALID")
+        self.session_path = session_path
+        self.auto_session = auto_session
+        self.session: dict[str, Any] | None = None
+        self.account_identity: str | None = None
+        self.source_identity: str | None = None
+        self._modules: dict[str, Any] = {}
+        self._context = None
+        self._db = None
+        self._connection_name: str | None = None
+        self._rows = None
+        self._lock = None
+        self._guard = None
+        self._source_path: Path | None = None
+        self._source_identity_raw = None
+        self._in_scan = False
+
+    @staticmethod
+    def _load(name: str):
+        try:
+            return __import__(name)
+        except Exception as error:
+            raise LiveInboundError("G3_MODULE_UNAVAILABLE") from error
+
+    def open(self) -> None:
+        try:
+            self._modules = {name: self._load(name) for name in (
+                "g3_process", "g3_state", "observe_g3", "observe_g3_sid", "probe_db_schema",
+                "probe_key_presence", "qt_readonly_fixture", "recover_sid_key")}
+            observe = self._modules["observe_g3"]
+            state = self._modules["g3_state"]
+            session_path = self._modules["observe_g3_sid"].find_single_session() if self.auto_session else self.session_path
+            if not isinstance(session_path, str) or not session_path:
+                raise LiveInboundError("G3_SESSION_UNAVAILABLE")
+            self.session = state.load_session(session_path)
+            self._lock = observe.lock_session(state, session_path)
+            self._guard = self._modules["g3_process"].capture(self._modules["probe_key_presence"])
+            if not self._guard.alive():
+                raise LiveInboundError("SOURCE_TARGET_CHANGED")
+            fixture = self._modules["qt_readonly_fixture"]
+            self._context = fixture.initialize_qt(self.session["bindings_path"])
+            proof = fixture.run_fixture(self._context)
+            if not isinstance(proof, Mapping) or proof.get("status") != "PASS":
+                raise LiveInboundError("SOURCE_QT_UNAVAILABLE")
+            path = observe.source_path()
+            identity = observe.source_identity(path)
+            candidate = self._modules["recover_sid_key"].derive(
+                self._modules["recover_sid_key"].static_prefix(),
+                self._modules["recover_sid_key"].current_sid(),
+            )
+            self._db, self._connection_name = observe.open_source(
+                self._context, fixture, self._modules["probe_db_schema"], path, [candidate])
+            candidate = b""
+            self._rows = observe.QtRows(self._context, self._db)
+            self._source_path = path
+            self._source_identity_raw = identity
+            self.account_identity = "g3-local-account:" + os.path.normcase(str(path.parent))
+            self.source_identity = "g3-source:" + repr(identity)
+        except LiveInboundError:
+            self.close()
+            raise
+        except Exception as error:
+            self.close()
+            code = getattr(error, "code", "G3_SOURCE_OPEN_FAILED")
+            raise LiveInboundError(code if isinstance(code, str) and code else "G3_SOURCE_OPEN_FAILED") from None
+
+    def _verify_continuity(self) -> None:
+        observe = self._modules.get("observe_g3")
+        if self._rows is None or self._db is None or observe is None:
+            raise LiveInboundError("SOURCE_DB_CLOSED")
+        if self._guard is None or not self._guard.alive():
+            raise LiveInboundError("SOURCE_TARGET_CHANGED")
+        try:
+            if observe.source_path() != self._source_path or observe.source_identity(self._source_path) != self._source_identity_raw:
+                raise LiveInboundError("SOURCE_DB_CHANGED")
+        except LiveInboundError:
+            raise
+        except Exception as error:
+            code = getattr(error, "code", "SOURCE_DB_CHANGED")
+            raise LiveInboundError(code if isinstance(code, str) and code else "SOURCE_DB_CHANGED") from None
+
+    def begin_scan(self) -> None:
+        self._verify_continuity()
+        if not self._db.transaction():
+            raise LiveInboundError("SOURCE_TRANSACTION_FAILED")
+        self._in_scan = True
+
+    def end_scan(self) -> None:
+        if self._db is not None and self._in_scan:
+            self._in_scan = False
+            if not self._db.rollback():
+                raise LiveInboundError("SOURCE_TRANSACTION_FAILED")
+        self._verify_continuity()
+
+    def read_rows(self, sql: str, params: Mapping[str, Any] | None, columns: int, limit: int) -> list[tuple]:
+        self._verify_continuity()
+        if not isinstance(sql, str) or not isinstance(params or {}, Mapping):
+            raise LiveInboundError("SOURCE_QUERY_INVALID")
+        if type(columns) is not int or columns < 1 or type(limit) is not int or limit < 1 or limit > 128:
+            raise LiveInboundError("SOURCE_QUERY_INVALID")
+        try:
+            rows = self._rows(sql, dict(params or {}), columns, limit + 1)
+        except Exception as error:
+            code = getattr(error, "code", "SOURCE_QUERY_FAILED")
+            raise LiveInboundError(code if isinstance(code, str) and code else "SOURCE_QUERY_FAILED") from None
+        if len(rows) > limit or any(len(row) != columns for row in rows):
+            raise LiveInboundError("SOURCE_VALUE_UNSUPPORTED")
+        return rows
+
+    def close(self) -> None:
+        self._in_scan = False
+        if self._db is not None:
+            try:
+                self._db.close()
+            except Exception:
+                pass
+        self._db = None
+        if self._context is not None and self._connection_name is not None:
+            try:
+                self._context.sql.QSqlDatabase.removeDatabase(self._connection_name)
+            except Exception:
+                pass
+        self._connection_name = None
+        self._context = None
+        for handle in (self._guard, self._lock):
+            if handle is not None:
+                try:
+                    handle.close()
+                except Exception:
+                    pass
+        self._guard = None
+        self._lock = None
+        self._rows = None
+
+
 class LiveInboundJournal:
     def __init__(self, path: str | Path):
         journal_path = Path(path)
         if not journal_path.is_absolute():
             raise LiveInboundError("JOURNAL_PATH_INVALID")
-        repository_root = Path(__file__).resolve().parents[3]
+        repository_root = repository_root_for(Path(__file__).resolve())
         try:
-            if journal_path.resolve().is_relative_to(repository_root):
+            if repository_root is not None and journal_path.resolve().is_relative_to(repository_root):
                 raise LiveInboundError("JOURNAL_INSIDE_REPOSITORY")
         except OSError as error:
             raise LiveInboundError("JOURNAL_PATH_INVALID") from error
@@ -450,14 +603,19 @@ class LiveInboundAdapter:
             self.source_handle.close()
 
     def scan_once(self, core: BridgeCore) -> dict[str, Any]:
+        scan_open = False
+        result: dict[str, Any] | None = None
         try:
+            if self.source_handle is not None and hasattr(self.source_handle, "begin_scan"):
+                self.source_handle.begin_scan()
+                scan_open = True
             schema = validate_schema(self.reader)
             current_max = max_event_id(self.reader)
             source_fingerprint = sha256(str(self.source_identity).encode("utf-8")).hexdigest()
             state = self.journal.state()
             if state["status"] == "blocked":
-                return self._block(core, state["block_reason"] or "CAPTURE_BLOCKED")
-            if state["status"] != "enrolled":
+                result = self._block(core, state["block_reason"] or "CAPTURE_BLOCKED")
+            elif state["status"] != "enrolled":
                 baseline = self.journal.ensure_baseline(current_max)
                 try:
                     anchor = resolve_anchor_after_baseline(self.reader, self.phone_marker,
@@ -467,45 +625,55 @@ class LiveInboundAdapter:
                         core.set_receive_health(False)
                         self._last_result = {"enabled": True, "receive_text": False,
                                              "block_reason": "WAITING_FOR_ENROLLMENT_MARKERS"}
-                        return self._last_result
-                    raise
-                chat_ref = source_chat_ref(self.reference_key, anchor["chat_id"])
-                peer = peer_ref(self.reference_key, anchor["peer_contact_id"])
-                self.journal.enroll(anchor, source_chat_ref_value=chat_ref, peer_ref_value=peer,
-                                    source_fingerprint=source_fingerprint, schema_fingerprint=schema)
-                core.verify_source(account_ref=account_ref(self.reference_key, self.account_identity),
-                                   source_generation_ref=source_generation_ref(self.reference_key,
-                                                                               self.source_identity),
-                                   receive_healthy=True)
-                binding = core.discover_source_chat(source_chat_ref=chat_ref, peer_ref=peer)
-                core.verify_peer(chat_id=binding["chat_id"], expected_source_chat_ref=chat_ref,
-                                 expected_peer_ref=peer)
-                state = self.journal.state()
+                        result = self._last_result
+                    else:
+                        raise
+                if result is None:
+                    chat_ref = source_chat_ref(self.reference_key, anchor["chat_id"])
+                    peer = peer_ref(self.reference_key, anchor["peer_contact_id"])
+                    self.journal.enroll(anchor, source_chat_ref_value=chat_ref, peer_ref_value=peer,
+                                        source_fingerprint=source_fingerprint, schema_fingerprint=schema)
+                    core.verify_source(account_ref=account_ref(self.reference_key, self.account_identity),
+                                       source_generation_ref=source_generation_ref(self.reference_key,
+                                                                                   self.source_identity),
+                                       receive_healthy=True)
+                    binding = core.discover_source_chat(source_chat_ref=chat_ref, peer_ref=peer)
+                    core.verify_peer(chat_id=binding["chat_id"], expected_source_chat_ref=chat_ref,
+                                     expected_peer_ref=peer)
+                    state = self.journal.state()
             else:
                 self.journal.verify_source(source_fingerprint=source_fingerprint, schema_fingerprint=schema)
                 core.verify_source(account_ref=account_ref(self.reference_key, self.account_identity),
                                    source_generation_ref=source_generation_ref(self.reference_key,
                                                                                self.source_identity),
                                    receive_healthy=True)
-            binding = core.discover_source_chat(source_chat_ref=state["source_chat_ref"],
-                                                peer_ref=state["peer_ref"])
-            core.verify_peer(chat_id=binding["chat_id"], expected_source_chat_ref=state["source_chat_ref"],
-                             expected_peer_ref=state["peer_ref"])
-            anchor = {
-                "chat_id": int(state["chat_id"]),
-                "peer_contact_id": int(state["peer_contact_id"]),
-                "inbound_code": int(state["inbound_code"]),
-                "outbound_code": int(state["outbound_code"]),
-                "anchor_event_id": int(state["anchor_event_id"]),
-            }
-            rows = scan_inbound(self.reader, anchor, int(state["cursor_event_id"]), limit=MAX_CAPTURE_BATCH)
-            captured = self.journal.capture_events(rows, reference_key=self.reference_key,
-                                                   source_chat_ref_value=state["source_chat_ref"],
-                                                   peer_ref_value=state["peer_ref"])
-            imported = import_pending(core, self.journal)
-            core.set_receive_health(True)
-            self._last_result = {"enabled": True, "receive_text": True, "captured": captured,
-                                 "imported": imported, "block_reason": None}
-            return self._last_result
+            if result is None:
+                binding = core.discover_source_chat(source_chat_ref=state["source_chat_ref"],
+                                                    peer_ref=state["peer_ref"])
+                core.verify_peer(chat_id=binding["chat_id"], expected_source_chat_ref=state["source_chat_ref"],
+                                 expected_peer_ref=state["peer_ref"])
+                anchor = {
+                    "chat_id": int(state["chat_id"]),
+                    "peer_contact_id": int(state["peer_contact_id"]),
+                    "inbound_code": int(state["inbound_code"]),
+                    "outbound_code": int(state["outbound_code"]),
+                    "anchor_event_id": int(state["anchor_event_id"]),
+                }
+                rows = scan_inbound(self.reader, anchor, int(state["cursor_event_id"]), limit=MAX_CAPTURE_BATCH)
+                captured = self.journal.capture_events(rows, reference_key=self.reference_key,
+                                                       source_chat_ref_value=state["source_chat_ref"],
+                                                       peer_ref_value=state["peer_ref"])
+                imported = import_pending(core, self.journal)
+                core.set_receive_health(True)
+                self._last_result = {"enabled": True, "receive_text": True, "captured": captured,
+                                     "imported": imported, "block_reason": None}
+                result = self._last_result
         except (LiveInboundError, PairedQueryError, BridgeCoreError) as error:
-            return self._block(core, getattr(error, "code", "CAPTURE_FAILED"))
+            result = self._block(core, getattr(error, "code", "CAPTURE_FAILED"))
+        finally:
+            if scan_open and self.source_handle is not None and hasattr(self.source_handle, "end_scan"):
+                try:
+                    self.source_handle.end_scan()
+                except LiveInboundError as error:
+                    result = self._block(core, getattr(error, "code", "CAPTURE_FAILED"))
+        return result if result is not None else self._block(core, "CAPTURE_FAILED")

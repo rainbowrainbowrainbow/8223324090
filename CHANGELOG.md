@@ -4,6 +4,31 @@
 
 ---
 
+## v0.81.146 - Omni: Viber Bridge fault QA
+
+### Omni / Viber Personal Bridge / (12.09.2026) [codex]
+- **Відтворюваний Windows runtime** - додано operator control-script для status/preflight/install/start/stop/restart/rollback без виводу секретів і без скидання `connector.json`, journal, cursor або account epoch.
+- **Фактична діагностика встановлення** - VBP-05 evidence фіксує розбіжність між live CRM SHA і старим installed bridge runtime, а manifest тепер явно показує наявність sender adapter і UI control scripts.
+- **Fault QA межі** - restart, CRM outage, partial ACK, invalid ACK і `dispatch_started -> unknown` закріплені тестами; 24-годинний soak і live Viber-сценарії не позначаються готовими без реального виконання.
+
+---
+
+## v0.81.145 - Omni: Viber Personal Bridge onboarding
+
+### Omni / Viber Personal Bridge / (12.09.2026) [codex]
+- **Правдиві capabilities** - top-level стан каналу більше не оголошує `sendCapable=true`, якщо bridge diagnostics або adapter capability блокують відправку.
+- **Onboarding звичайного Viber-акаунта** - картки Viber Bot API і Viber Personal Bridge розділені; Personal Bridge показує кроки Windows service, Viber Desktop, binding чату, приймання й відправлення.
+- **Безпечний composer** - відповіді з Omni блокуються для непідтвердженого або stale Personal Bridge і показують менеджеру конкретну наступну дію.
+
+---
+
+## v0.81.144 - Каса: вузький тестовий X/Z gate
+
+### Release / Versioning / (12.09.2026) [codex]
+- **Каса: вузький тестовий X/Z gate** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.143 - Omni: безпечний Viber bridge
 
 ### Omni / Viber Personal Bridge / (12.09.2026) [codex]

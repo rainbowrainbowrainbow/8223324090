@@ -44,13 +44,16 @@ paired chat. It uses the existing PHONE/DESKTOP anchor logic, stores raw source
 IDs only in the private local journal, sends CRM only opaque HMAC identities,
 and reads messages after the anchor cursor. The daemon enables it only when the
 private config contains `live_inbound.enabled=true`; otherwise old transport-only
-behavior is unchanged. Required live fields are `source_db_path`, `journal_path`,
-`reference_key`, `phone_marker`, and `desktop_marker`; optional `account_identity`
-and `source_identity` deliberately let an operator pin the expected account/source
-without exposing them to CRM. `reference_key`, source DB path and journal path
-must stay outside the repository and must not be printed to logs. A failed schema,
-source, peer or direction check marks receive unhealthy and blocks capture instead
-of advancing the cursor.
+behavior is unchanged. Production live capture uses `source_kind="g3_sid"`, which
+opens the current signed Viber Desktop through the reviewed SID/Qt/SEE reader and
+never accepts a public `source_db_path`. Required live fields are `journal_path`,
+`reference_key`, `phone_marker`, and `desktop_marker`; optional `session_path` pins
+an existing private G3 session, while omission uses the single canonical private
+session. `source_db_path` remains allowed only for `source_kind="sqlite_fixture"`
+in synthetic tests and copied fixtures. `reference_key`, session paths and journal
+paths must stay outside the repository and must not be printed to logs. A failed
+process, build, schema, source, peer or direction check marks receive unhealthy
+and blocks capture instead of advancing the cursor.
 
 `p1_dispatcher.py` is the Send orchestration boundary for a reviewed UI
 adapter. It revalidates the Viber account, foreground window, exact peer,

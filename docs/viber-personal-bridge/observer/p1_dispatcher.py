@@ -6,7 +6,7 @@ this module cannot interact with Viber or the desktop.
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 from p1_bridge_core import BridgeCore, BridgeCoreError
 
@@ -74,7 +74,8 @@ def _dispatch_result(result: Any) -> tuple[str, str | None]:
     return "unknown", error or "DISPATCH_RESULT_UNKNOWN"
 
 
-def execute_text(core: BridgeCore, command: Mapping[str, Any], adapter: UiAdapter) -> dict[str, Any]:
+def execute_text(core: BridgeCore, command: Mapping[str, Any], adapter: UiAdapter, *,
+                 on_dispatch_started: Callable[[str], Any] | None = None) -> dict[str, Any]:
     """Run at most one UI send attempt for one durable command identity."""
     if not isinstance(core, BridgeCore):
         raise DispatcherError("CORE_INVALID")
@@ -95,6 +96,13 @@ def execute_text(core: BridgeCore, command: Mapping[str, Any], adapter: UiAdapte
     if accepted["status"] != "accepted":
         return accepted
 
+    prepare = getattr(adapter, "prepare_command", None)
+    if callable(prepare):
+        try:
+            prepare(accepted)
+        except Exception:
+            raise DispatcherError("UI_ADAPTER_PREPARE_FAILED") from None
+
     source_chat_ref, peer_ref = _active_peer(adapter, accepted["chat_id"])
     try:
         started = core.begin_dispatch(
@@ -108,6 +116,16 @@ def execute_text(core: BridgeCore, command: Mapping[str, Any], adapter: UiAdapte
         raise DispatcherError(error.code) from None
     if started["status"] != "dispatch_started":
         return started
+
+    if on_dispatch_started is not None:
+        try:
+            on_dispatch_started(accepted["command_id"])
+        except Exception:
+            try:
+                return core.finish_dispatch(accepted["command_id"], status="unknown",
+                                            error_code="DISPATCH_START_REPORT_FAILED")
+            except BridgeCoreError as error:
+                raise DispatcherError(error.code) from None
 
     try:
         result = adapter.send_text(accepted["text"])

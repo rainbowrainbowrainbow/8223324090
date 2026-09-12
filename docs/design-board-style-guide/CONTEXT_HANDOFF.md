@@ -91,6 +91,8 @@ Style Guide не читає design/brand API. Окремий `routes/art-directo
 
 ## Company/account context
 
+Детальний plan: `docs/design-board-style-guide/ISOLATION_TECHNICAL_PLAN.md`.
+
 - Загальна система має `services/businessContext.js:3–52,84–92`; body/query/x-business-context і доступні контексти користувача в `middleware/auth.js:64–111`.
 - Design router не використовує цей scope. SQL list/count/tags/calendar/collections глобальний; item operations шукають лише id; blob preview — лише filename.
 - designs/design_collections не мають company_id/account_id/business_context. created_by — attribution username, не ізоляція.

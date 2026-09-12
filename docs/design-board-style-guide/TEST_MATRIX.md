@@ -59,6 +59,8 @@ Browser перевіряв actual deployed UI, але блокував external 
 
 ## Команди майбутньої вузької перевірки
 
+Для isolation після окремого protected approval див. `docs/design-board-style-guide/ISOLATION_TECHNICAL_PLAN.md`. Мінімальні майбутні checks: `npm run check:migrations`, `npm run check:auth-boundary`, `npm run check:storage-surface`, `node --test tests/designs-isolation.test.js`, `npm run test:unit`. Не зараховувати frontend-фільтр або одну QA-роль як proof M17–M19.
+
 Спочатку `npm run check:runtime`. Після створення тестів:
 
 ```text

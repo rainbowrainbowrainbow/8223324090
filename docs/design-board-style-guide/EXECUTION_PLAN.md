@@ -104,6 +104,8 @@ Production impact: no — цей пакет. Production impact: yes — будь
 
 **Точні існуючі target areas:** `routes/designs.js`, `services/designStorage.js`, `services/businessContext.js`, `server.js`, `config/storageSurface.js`; read-only schema у `db/index.js` + migrations. Новий `tests/designs-isolation.test.js` потрібен лише в окремому approved backend scope. Номер/ім'я майбутньої migration визначає DB owner після рішення моделі; зараз migration не створювати й номер не резервувати.
 
+Детальний factual audit і мінімальний protected implementation plan зафіксовано в `docs/design-board-style-guide/ISOLATION_TECHNICAL_PLAN.md`. Поточний статус: role-gate існує; company/account/business-context predicates для Design Board metadata і bytes не реалізовані.
+
 **Мінімум після окремого дозволу:** визначити tenant/company/business-context/account contract; зіставити існуючі матеріали/колекції з власниками; additive ownership schema; server-scoped list/count/tags/calendar/collections/item operations і bytes; authorized preview та private cache policy; вирішити compatibility public catalog/file links. Перевірити всі id/filename paths, не лише list.
 
 **Не змінювати:** global roles/defaults/session policy без окремого обґрунтування; не припускати, що creator або однаковий role дає cross-tenant доступ; не frontend-фільтр.

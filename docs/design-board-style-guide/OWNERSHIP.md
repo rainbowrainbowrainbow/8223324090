@@ -10,6 +10,7 @@
 - `docs/design-board-style-guide/OWNERSHIP.md`
 - `docs/design-board-style-guide/TEST_MATRIX.md`
 - `docs/design-board-style-guide/SHARED_INTEGRATION.md`
+- `docs/design-board-style-guide/ISOLATION_TECHNICAL_PLAN.md`
 
 Жодні git commit/push/PR/deploy, release marker або cache-tag зміни не входять до поточного запиту.
 
@@ -63,6 +64,8 @@
 Також read-only shared CSS `css/base.css`, `css/dark-mode.css`, `css/pages-shell.css`, `css/sidebar-*.css`. Ніяких auth/page-role/default grant, API integration, migrations, new dependencies, quota/billing/storage plan/brand editor змін.
 
 B1 data repair, B6 API partial update, B10 ownership/security потребують окремого explicit scope. T5 описує мінімум, не видає дозвіл.
+
+Для B10 поточна дозволена робота завершена як documentation-only audit/plan у `ISOLATION_TECHNICAL_PLAN.md`. Реальні зміни в `routes/designs.js`, `services/designStorage.js`, `db/migrations/**`, `db/index.js`, `middleware/auth.js` або permission/access helpers лишаються protected і не входять у цей patch.
 
 ## Dirty worktree на вході
 

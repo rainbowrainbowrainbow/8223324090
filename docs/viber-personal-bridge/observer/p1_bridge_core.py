@@ -102,6 +102,13 @@ def _payload_hash(command: Mapping[str, Any]) -> str:
                              separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
+def repository_root_for(path: Path) -> Path | None:
+    for candidate in [path, *path.parents]:
+        if (candidate / ".git").exists() and (candidate / "package.json").exists():
+            return candidate
+    return None
+
+
 class BridgeCore:
     """Durable P1 state for one provisioned bridge/account/business tuple."""
 
@@ -114,8 +121,8 @@ class BridgeCore:
         self._connection: sqlite3.Connection | None = None
         try:
             state_path = Path(path).resolve()
-            repository_root = Path(__file__).resolve().parents[3]
-            if state_path.is_relative_to(repository_root):
+            repository_root = repository_root_for(Path(__file__).resolve())
+            if repository_root is not None and state_path.is_relative_to(repository_root):
                 raise BridgeCoreError("STATE_INSIDE_REPOSITORY")
             state_path.parent.mkdir(parents=True, exist_ok=True)
             self._connection = sqlite3.connect(state_path, timeout=5, isolation_level=None)

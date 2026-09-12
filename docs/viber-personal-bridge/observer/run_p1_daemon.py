@@ -1,8 +1,8 @@
 """Start the fail-closed Viber Personal Bridge transport from a private config.
 
-The config and SQLite ledger must remain outside the repository. This launcher
-does not capture Viber messages or dispatch UI actions; it only maintains the
-authenticated CRM transport while those adapters are unavailable.
+The config and SQLite ledger must remain outside the repository. Capture and
+dispatch stay adapter-gated: a missing adapter reports a blocked capability
+instead of pretending the bridge is ready.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -90,6 +91,56 @@ def _build_receive_adapter(config: Mapping[str, Any]) -> LiveInboundAdapter | No
         raise
 
 
+def runtime_preflight(config: Mapping[str, Any], *, runtime_dir: Path | None = None) -> dict[str, Any]:
+    live = config.get("live_inbound")
+    live_enabled = isinstance(live, Mapping) and live.get("enabled") is True
+    runtime_root = runtime_dir or Path(__file__).resolve().parent
+    required_modules = [
+        "p1_bridge_core.py",
+        "p1_daemon.py",
+        "p1_dispatcher.py",
+        "p1_http_client.py",
+        "p1_live_inbound.py",
+        "p1_paired_queries.py",
+        "p1_transport.py",
+        "run_p1_daemon.py",
+    ]
+    modules = {}
+    for name in required_modules:
+        module_path = runtime_root / name
+        modules[name] = {
+            "present": module_path.is_file(),
+            "sha256": hashlib.sha256(module_path.read_bytes()).hexdigest() if module_path.is_file() else None,
+        }
+    live_status = "disabled"
+    live_checks: dict[str, Any] = {}
+    if live_enabled:
+        source_path = Path(live["source_db_path"])
+        journal_path = Path(live["journal_path"])
+        live_checks = {
+            "sourceDbExists": source_path.exists() and source_path.is_file(),
+            "journalParentExists": journal_path.parent.exists(),
+            "phoneMarkerConfigured": isinstance(live.get("phone_marker"), str) and bool(live.get("phone_marker")),
+            "desktopMarkerConfigured": isinstance(live.get("desktop_marker"), str) and bool(live.get("desktop_marker")),
+        }
+        live_status = "ready_for_scan" if all(live_checks.values()) else "blocked"
+    return {
+        "ok": all(item["present"] for item in modules.values()),
+        "bridge_id": config["bridge_id"],
+        "account_id": config["account_id"],
+        "account_epoch": config["account_epoch"],
+        "business_context": config["business_context"],
+        "statePathExists": Path(config["state_path"]).exists(),
+        "modules": modules,
+        "liveInbound": {
+            "enabled": live_enabled,
+            "status": live_status,
+            "blockReason": None if live_enabled else "CAPTURE_NOT_CONFIGURED",
+            **live_checks,
+        },
+    }
+
+
 def build_daemon(config: Mapping[str, Any]) -> BridgeDaemon:
     core = BridgeCore(
         config["state_path"],
@@ -111,10 +162,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="EventGenix Viber Personal Bridge transport")
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--once", action="store_true", help="Run one transport cycle and exit")
+    parser.add_argument("--preflight", action="store_true", help="Validate local runtime and config without contacting CRM")
     args = parser.parse_args(argv)
     daemon = None
     try:
-        daemon = build_daemon(_load_config(args.config.resolve()))
+        config = _load_config(args.config.resolve())
+        if args.preflight:
+            print(json.dumps(runtime_preflight(config), separators=(",", ":")))
+            return 0
+        daemon = build_daemon(config)
         if args.once:
             result = daemon.cycle()
             print(json.dumps({"ok": True, **result}, separators=(",", ":")))

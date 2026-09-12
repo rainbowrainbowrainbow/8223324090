@@ -212,6 +212,24 @@ test('health metadata keeps explicit bridge direction capabilities fail-closed',
   assert.equal(account.status, 'limited');
 });
 
+test('database bridge account also follows explicit failed bridge capabilities', async () => {
+  mock('../db', { pool: { query: async () => ({ rows: [{
+    channel: 'viber_personal',
+    checked_at: '2099-05-15T10:00:00Z',
+    check_result: { status: 'partial', sendCapable: false, receiveCapable: false },
+  }] }) } });
+  const health = fresh('../services/omni-health');
+  const [account] = await health.attachHealth([{
+    channel: 'viber_personal', source: 'database', configured: true, status: 'limited',
+    requiredDirections: { send: true, receive: true }, sendCapable: true, receiveCapable: true,
+    connected: true,
+  }], 'event_genix', new Date('2099-05-15T10:01:00Z'));
+  assert.equal(account.connected, true);
+  assert.equal(account.sendCapable, false);
+  assert.equal(account.receiveCapable, false);
+  assert.equal(account.status, 'limited');
+});
+
 test('Omni UI separates Viber Bot API from Viber Personal Bridge onboarding', () => {
   const root = path.join(__dirname, '..');
   const omniHtml = fs.readFileSync(path.join(root, 'omni.html'), 'utf8');

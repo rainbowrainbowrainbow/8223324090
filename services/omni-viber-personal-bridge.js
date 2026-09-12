@@ -449,13 +449,18 @@ function createService(deps = {}) {
     const captureGap = Boolean(online && (!lastScanAt || now() - lastScanAt > 90_000));
     const adapterError = row?.last_error_code || capabilities.adapter_error || capabilities.adapterError
       || capabilities.block_reason || capabilities.blockReason || null;
+    const blockReason = adapterError
+      || (!online ? 'BRIDGE_OFFLINE' : null)
+      || (capabilities.receive_text !== true && !lastScanAt ? 'CAPTURE_NOT_CONFIGURED' : null)
+      || (captureGap ? 'CAPTURE_GAP' : null)
+      || (capabilities.send_text !== true ? 'SEND_NOT_CONFIGURED' : null);
     const receiveHealth = Boolean(online && capabilities.receive_text === true && !captureGap && !adapterError);
     const sendCapability = Boolean(online && capabilities.send_text === true && !adapterError);
     return { online, transportHeartbeat: online, receiveHealth, sendCapability,
       lastHeartbeatAt: heartbeat?.toISOString() || null,
       lastReceiveAt: row?.last_receive_at ? new Date(row.last_receive_at).toISOString() : null,
       lastErrorCode: row?.last_error_code || null,
-      captureGap, adapterError,
+      captureGap, adapterError, blockReason,
       capabilities };
   }
 

@@ -106,6 +106,7 @@ test('heartbeat authenticates before writing and exposes only scoped runtime sta
   const state = await service.status({ bridgeId: IDS.bridge }, 'event_genix');
   assert.equal(state.online, true);
   assert.deepEqual(state.capabilities, { send_text: true });
+  assert.equal(state.blockReason, 'CAPTURE_NOT_CONFIGURED');
 });
 
 test('inbound event is committed, routed as Viber, and duplicate is idempotent', async () => {

@@ -92,6 +92,13 @@ def source_generation_ref(secret: bytes, source_id: str) -> str:
     return _hex_hmac(secret, "viber-source-generation", source_id)
 
 
+def repository_root_for(path: Path) -> Path | None:
+    for candidate in [path, *path.parents]:
+        if (candidate / ".git").exists() and (candidate / "package.json").exists():
+            return candidate
+    return None
+
+
 def _single_int(rows: list[tuple]) -> int:
     if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], tuple) or len(rows[0]) != 1:
         raise LiveInboundError("SOURCE_VALUE_UNSUPPORTED")
@@ -179,9 +186,9 @@ class LiveInboundJournal:
         journal_path = Path(path)
         if not journal_path.is_absolute():
             raise LiveInboundError("JOURNAL_PATH_INVALID")
-        repository_root = Path(__file__).resolve().parents[3]
+        repository_root = repository_root_for(Path(__file__).resolve())
         try:
-            if journal_path.resolve().is_relative_to(repository_root):
+            if repository_root is not None and journal_path.resolve().is_relative_to(repository_root):
                 raise LiveInboundError("JOURNAL_INSIDE_REPOSITORY")
         except OSError as error:
             raise LiveInboundError("JOURNAL_PATH_INVALID") from error

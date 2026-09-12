@@ -76,13 +76,14 @@ async function attachHealth(accounts, businessContext, now = new Date()) {
     const health = result.rows.find(row => row.channel === account.channel);
     const checkedAt = health?.checked_at || account.lastCheckedAt;
     const checkedMs = checkedAt ? new Date(checkedAt).getTime() : null;
-    if (account.source === 'environment' && health?.checked_at) {
+    const checkedSend = health?.check_result?.sendCapable;
+    const checkedReceive = health?.check_result?.receiveCapable;
+    const hasVerifiedDirections = typeof checkedSend === 'boolean' || typeof checkedReceive === 'boolean';
+    if ((account.source === 'environment' || hasVerifiedDirections) && health?.checked_at) {
       const statuses = { success: 'connected', partial: 'limited', webhook_missing: 'webhook_missing', failed_auth: 'token_expired', missing_config: 'misconfigured', provider_unreachable: 'provider_unreachable' };
       const status = account.status === 'history_only' && health.check_result?.status === 'success' ? 'history_only' : statuses[health.check_result?.status] || 'limited';
       const configured = account.configured;
       const labels = { connected: 'Підключено', limited: 'Обмежено', webhook_missing: 'Потрібен webhook', token_expired: 'Токен недійсний', misconfigured: 'Перевірте налаштування', provider_unreachable: 'Провайдер недоступний', history_only: 'Лише історія' };
-      const checkedSend = health.check_result?.sendCapable;
-      const checkedReceive = health.check_result?.receiveCapable;
       account = { ...account, status, statusLabel: labels[status], warning: status === 'connected' ? null : account.warning,
         nextActionHint: status === 'connected' ? 'Канал перевірено. Нові події відображатимуться в діагностиці.' : account.nextActionHint,
         connected: configured && !['token_expired', 'misconfigured'].includes(status),

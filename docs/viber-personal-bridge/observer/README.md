@@ -35,21 +35,42 @@ the remaining events.
 
 `run_p1_daemon.py` starts that transport from a private JSON config outside the
 repository. Use `--once` for enrollment/health verification; without it the
-process keeps heartbeat, event ACK and command intake active. It deliberately
-does not enable receive or Send until separate reviewed adapters verify them.
+process keeps heartbeat, event ACK, command intake and the optional one-worker
+dispatch loop active. It deliberately does not enable receive or Send until
+separate reviewed adapters verify them.
+
+`p1_live_inbound.py` is the first live receive adapter for exactly one enrolled
+paired chat. It uses the existing PHONE/DESKTOP anchor logic, stores raw source
+IDs only in the private local journal, sends CRM only opaque HMAC identities,
+and reads messages after the anchor cursor. The daemon enables it only when the
+private config contains `live_inbound.enabled=true`; otherwise old transport-only
+behavior is unchanged. Required live fields are `source_db_path`, `journal_path`,
+`reference_key`, `phone_marker`, and `desktop_marker`; optional `account_identity`
+and `source_identity` deliberately let an operator pin the expected account/source
+without exposing them to CRM. `reference_key`, source DB path and journal path
+must stay outside the repository and must not be printed to logs. A failed schema,
+source, peer or direction check marks receive unhealthy and blocks capture instead
+of advancing the cursor.
 
 `p1_dispatcher.py` is the Send orchestration boundary for a reviewed UI
-adapter. It revalidates the active peer, persists `dispatch_started` before the
-external gesture, and converts any exception or malformed result after that
-point to `unknown`. Replaying a terminal or already-started command never calls
-the adapter again. `Send-P1Controlled.ps1` is a bounded, one-shot, paired-chat
+adapter. It revalidates the Viber account, foreground window, exact peer,
+controlled/empty composer, layout and DPI before the irreversible gesture. It
+persists `dispatch_started` before Send, accepts `submitted_unconfirmed` only
+after an outbound occurrence is reconciled in the same ChatID, records local
+`failed` results separately, and converts timeout/crash/malformed outcomes to
+`unknown`. Replaying a terminal or already-started command never calls the
+adapter again. `Send-P1Controlled.ps1` is a bounded, one-shot, paired-chat
 experiment with a durable local claim; it is not a product or production sender.
 
 `p1_gate.py` evaluates only redacted P1 evidence. Synthetic results never enable
 a live capability. A bounded test Send becomes eligible only after live account,
-NEW-contact, direction, duplicate/restart and 30 alternating B/C exact-peer
-checks including rename and reorder. One wrong-recipient observation is
-`NO_GO`; production Send is always false in this gate.
+NEW-contact discovery, direction, duplicate/restart and 30 alternating B/C
+exact-peer checks including same display names, rename and sidebar reorder. The
+gate requires stable opaque source chat/peer refs and rejects evidence that used
+display name or sidebar position as identity. One wrong-recipient or ambiguous
+new-contact observation is `NO_GO`; production Send is always false in this
+gate. If new-contact discovery cannot be proven, the capability matrix remains
+`LIMITED`: verified paired chats may work, but full Viber inbox is not claimed.
 
 `p1_account_identity.py` adds the first concrete account proof. During a future
 controlled enrollment it compares an expected strict E.164 value in memory with

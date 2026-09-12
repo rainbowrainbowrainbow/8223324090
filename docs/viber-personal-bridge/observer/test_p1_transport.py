@@ -17,7 +17,8 @@ CHAT = "44444444-4444-4444-8444-444444444444"
 class TransportTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="eventgenix-viber-p1-transport-")
-        self.core = BridgeCore(Path(self.temp.name) / "bridge.sqlite", bridge_id=BRIDGE,
+        self.path = Path(self.temp.name) / "bridge.sqlite"
+        self.core = BridgeCore(self.path, bridge_id=BRIDGE,
                                account_id=ACCOUNT, account_epoch=1,
                                business_context="event_genix")
         self.core.verify_source(account_ref="a" * 64, source_generation_ref="b" * 64,
@@ -58,6 +59,33 @@ class TransportTests(unittest.TestCase):
                                  post_json=lambda _payload: {"status": 503, "body": {}})
         self.assertEqual((failed["status"], failed["acked"], failed["pending"]),
                          ("retryable", 0, 2))
+
+
+    def test_restart_with_pending_events_and_crm_outage_then_recovery_is_at_most_once(self):
+        first_payloads = []
+        outage = deliver_pending(
+            self.core, runtime_id=RUNTIME,
+            post_json=lambda payload: first_payloads.append(payload) or (_ for _ in ()).throw(TimeoutError("offline")),
+        )
+        self.assertEqual((outage["status"], outage["acked"], outage["pending"]), ("unknown", 0, 2))
+        self.core.close()
+        self.core = BridgeCore(self.path if hasattr(self, "path") else Path(self.temp.name) / "bridge.sqlite",
+                               bridge_id=BRIDGE, account_id=ACCOUNT, account_epoch=1,
+                               business_context="event_genix")
+        recovered_payloads = []
+        recovered = deliver_pending(
+            self.core, runtime_id=RUNTIME,
+            post_json=lambda payload: recovered_payloads.append(payload) or {"status": 200, "body": {
+                "protocol_version": "1.0",
+                "acked_event_ids": [event["event_id"] for event in payload["events"]],
+            }},
+        )
+        self.assertEqual((recovered["status"], recovered["acked"], recovered["pending"]), ("acked", 2, 0))
+        self.assertEqual(
+            [event["event_id"] for event in first_payloads[0]["events"]],
+            [event["event_id"] for event in recovered_payloads[0]["events"]],
+        )
+        self.assertEqual(self.core.list_pending_events(), [])
 
     def test_partial_ack_is_durable_and_replay_contains_only_remaining_event(self):
         first_id = self.core.list_pending_events()[0]["event_id"]

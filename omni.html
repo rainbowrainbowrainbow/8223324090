@@ -11,13 +11,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.141">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.141">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.141">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.141">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.141">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.141">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.141">
+    <link rel="stylesheet" href="css/base.css?v=0.81.142">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.142">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.142">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.142">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.142">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.142">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.142">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -2121,7 +2121,7 @@
             color: #FBBF24;
         }
     </style>
-    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.141">
+    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.142">
 </head>
 <body data-page-group="system">
     <script>
@@ -2350,12 +2350,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.81.141"></script>
-    <script src="js/api.js?v=0.81.141"></script>
-    <script src="js/auth.js?v=0.81.141"></script>
-    <script src="js/components/sidebar.js?v=0.81.141"></script>
+    <script src="js/config.js?v=0.81.142"></script>
+    <script src="js/api.js?v=0.81.142"></script>
+    <script src="js/auth.js?v=0.81.142"></script>
+    <script src="js/components/sidebar.js?v=0.81.142"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.81.141"></script>
+    <script src="js/ws.js?v=0.81.142"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -2561,8 +2561,8 @@
         // ---- Channel icons ----
         const CHANNEL_VISUALS = {
             telegram: { key: 'telegram', label: 'Telegram', short: 'TG', icon: '↗' },
-            viber: { key: 'viber', label: 'Viber', short: 'VB', icon: '☎' },
-            viber_personal: { key: 'viber', label: 'Viber Personal', short: 'VB', icon: '☎' },
+            viber: { key: 'viber', label: 'Viber Bot API', short: 'VB', icon: '☎' },
+            viber_personal: { key: 'viber', label: 'Viber Personal Bridge', short: 'VB', icon: '☎' },
             sms: { key: 'sms', label: 'SMS', short: 'SMS', icon: '✉' },
             facebook: { key: 'facebook', label: 'Facebook', short: 'FB', icon: 'f' },
             instagram: { key: 'instagram', label: 'Instagram', short: 'IG', icon: '◎' },
@@ -2577,7 +2577,7 @@
         );
 
         const CHANNEL_NAMES = {
-            telegram: 'Telegram', viber: 'Viber', viber_personal: 'Viber Personal Bridge', sms: 'SMS',
+            telegram: 'Telegram', viber: 'Viber Bot API', viber_personal: 'Viber Personal Bridge', sms: 'SMS',
             facebook: 'Facebook', instagram: 'Instagram', whatsapp: 'WhatsApp', binotel: 'Binotel',
             report_bot: 'Бот звітів'
         };
@@ -2841,6 +2841,12 @@
             if (acc.channel === 'report_bot') {
                 return 'Бот звітів — окремий Telegram-контур для фінансових/службових звітів. Відвʼязка Telegram inbox не чіпає цей бот.';
             }
+            if (acc.channel === 'viber') {
+                return 'Це Viber Bot API для public/bot-акаунта з webhook. Він не підключає звичайний особистий Viber-акаунт.';
+            }
+            if (acc.channel === 'viber_personal') {
+                return 'Це окремий Personal Bridge для звичайного Viber Desktop. Bot token і webhook тут не використовуються.';
+            }
             return acc.purposeLabel ? ('Контур: ' + acc.purposeLabel) : '';
         }
 
@@ -2850,6 +2856,68 @@
                 '<span class="omni-account-cap ' + (acc.receiveCapable ? 'on' : 'off') + '">' + (acc.receiveCapable ? 'Прийом/історія є' : 'Прийом не підтверджено') + '</span>' +
                 '<span class="omni-account-cap">' + esc(acc.providerLabel || acc.providerKind || 'provider') + '</span>' +
             '</div>';
+        }
+
+        function bridgeDiagnostics(acc) {
+            const diagnostics = acc?.diagnostics || {};
+            const bridge = diagnostics.bridge || {};
+            return {
+                ...bridge,
+                lastInboundAt: diagnostics.lastInboundAt || bridge.lastReceiveAt || null,
+                sendCapable: acc?.sendCapable === true,
+                receiveCapable: acc?.receiveCapable === true,
+                blockReason: bridge.blockReason || acc?.warning || acc?.nextActionHint || ''
+            };
+        }
+
+        function bridgeStateLabel(value, onText, offText, unknownText = 'Невідомо') {
+            if (value === true) return onText;
+            if (value === false) return offText;
+            return unknownText;
+        }
+
+        function renderBridgeStatusGrid(acc) {
+            const state = bridgeDiagnostics(acc);
+            const rows = [
+                ['Transport heartbeat', bridgeStateLabel(state.transportHeartbeat ?? state.serviceRunning ?? state.online, 'Є', 'Немає')],
+                ['Viber Desktop', bridgeStateLabel(state.desktopAuthorized, 'Авторизований', 'Не підтверджено', 'Потрібна перевірка')],
+                ['Останній scan', formatAccountTime(state.lastScanAt) || 'ще не підтверджено'],
+                ['Receive health', bridgeStateLabel(state.receiveHealth ?? acc.receiveCapable, 'Здорове', 'Немає підтвердженого scan')],
+                ['Send capability', bridgeStateLabel(state.sendCapability ?? acc.sendCapable, 'Доступне', 'Заблоковано')],
+                ['Версія Desktop', state.viberDesktopVersion || 'не передано мостом'],
+                ['Причина блокування', state.blockReason || (acc.connected ? 'немає активного blocker' : 'міст ще не налаштований')]
+            ];
+            return '<div class="omni-account-summary">' +
+                rows.map(([label, value]) => '<div class="omni-account-summary-item"><strong>' + esc(value) + '</strong><span>' + esc(label) + '</span></div>').join('') +
+            '</div>';
+        }
+
+        function renderViberPersonalOnboarding(acc) {
+            return '<div>' +
+                '<div class="omni-account-impact">Viber Personal Bridge — це окреме підключення звичайного Viber-акаунта на Windows-машині. Тут немає bot token і webhook: міст сам відкриває захищене вихідне HTTPS-зʼєднання до CRM.</div>' +
+                '<ol>' +
+                    '<li>Запустіть Windows-службу моста на машині з авторизованим Viber Desktop.</li>' +
+                    '<li>Натисніть «Перевірити Viber Desktop», щоб CRM прочитала heartbeat і безпечну діагностику.</li>' +
+                    '<li>Після готовності локального адаптера привʼяжіть тестовий чат і окремо перевірте приймання та відправку.</li>' +
+                    '<li>CRM увімкне робочий канал тільки після фактичного підтвердження адаптерів; кнопки перевірки не створюють автоготовність.</li>' +
+                '</ol>' +
+                renderBridgeStatusGrid(acc) +
+            '</div>';
+        }
+
+        function accountActionsHtml(acc, actionLabel) {
+            if (acc?.channel !== 'viber_personal') {
+                return '<button type="button" class="omni-account-btn" data-account-action="connect" data-channel="' + esc(acc.channel) + '">' + actionLabel + '</button>' +
+                    '<button type="button" class="omni-account-btn secondary" data-account-action="recheck" data-channel="' + esc(acc.channel) + '">Перевірити</button>' +
+                    '<button type="button" class="omni-account-btn secondary" data-account-action="test" data-channel="' + esc(acc.channel) + '">Тест</button>' +
+                    (acc.supportedActions && acc.supportedActions.includes('disconnect') ? '<button type="button" class="omni-account-btn secondary" data-account-action="disconnect" data-channel="' + esc(acc.channel) + '">Відключити</button>' : '');
+            }
+            return '<button type="button" class="omni-account-btn" data-account-action="connect" data-channel="' + esc(acc.channel) + '">Onboarding</button>' +
+                '<button type="button" class="omni-account-btn secondary" data-account-action="recheck" data-channel="' + esc(acc.channel) + '">Перевірити Viber Desktop</button>' +
+                '<button type="button" class="omni-account-btn secondary" data-account-action="bridge-bind-chat" data-channel="' + esc(acc.channel) + '" disabled title="Буде доступно після підключення локального адаптера">Привʼязати тестовий чат</button>' +
+                '<button type="button" class="omni-account-btn secondary" data-account-action="bridge-receive-check" data-channel="' + esc(acc.channel) + '">Перевірити приймання</button>' +
+                '<button type="button" class="omni-account-btn secondary" data-account-action="bridge-send-check" data-channel="' + esc(acc.channel) + '">Перевірити відправку</button>' +
+                (acc.supportedActions && acc.supportedActions.includes('disconnect') ? '<button type="button" class="omni-account-btn secondary" data-account-action="disconnect" data-channel="' + esc(acc.channel) + '">Відключити</button>' : '');
         }
 
         function accountActivationPreflightHtml(acc) {
@@ -2909,6 +2977,7 @@
                     '</div>' +
                     '<div class="omni-account-meta">' + esc(acc.accountName || acc.maskedIdentifier || 'Акаунт не підключений') + (acc.maskedIdentifier ? ' · ' + esc(acc.maskedIdentifier) : '') + '</div>' +
                     accountCapabilityHtml(acc) +
+                    (acc.channel === 'viber_personal' ? renderBridgeStatusGrid(acc) : '') +
                     accountActivationPreflightHtml(acc) +
                     (purposeNote ? '<div class="omni-account-purpose' + (acc.channel === 'telegram' && !acc.connected ? ' warning' : '') + '">' + esc(purposeNote) + '</div>' : '') +
                     '<div class="omni-account-impact">' + esc(accountImpactText(acc)) + '</div>' +
@@ -2916,10 +2985,7 @@
                     (audit ? '<div class="omni-account-hint">' + esc(audit) + '</div>' : '') +
                     '<div class="omni-account-hint">' + esc(accountDiagnosticsText(acc)) + '</div>' +
                     '<div class="omni-account-actions">' +
-                        '<button type="button" class="omni-account-btn" data-account-action="connect" data-channel="' + esc(acc.channel) + '">' + actionLabel + '</button>' +
-                        '<button type="button" class="omni-account-btn secondary" data-account-action="recheck" data-channel="' + esc(acc.channel) + '">Перевірити</button>' +
-                        '<button type="button" class="omni-account-btn secondary" data-account-action="test" data-channel="' + esc(acc.channel) + '">Тест</button>' +
-                        (acc.supportedActions && acc.supportedActions.includes('disconnect') ? '<button type="button" class="omni-account-btn secondary" data-account-action="disconnect" data-channel="' + esc(acc.channel) + '">Відключити</button>' : '') +
+                        accountActionsHtml(acc, actionLabel) +
                     '</div>' +
                 '</div>';
             }).join('');
@@ -3077,6 +3143,12 @@
         }
 
         function renderConnectModalBody(acc, provider) {
+            if (acc?.channel === 'viber_personal') {
+                connectionBody.innerHTML =
+                    renderViberPersonalOnboarding(acc) +
+                    '<div class="omni-connection-result" id="omniConnectionResult" hidden></div>';
+                return;
+            }
             const selectedOption = providerOptionForAccount(acc, provider);
             const effectiveProvider = selectedOption?.value || null;
             const steps = Array.isArray(selectedOption?.setupSteps)
@@ -3106,18 +3178,24 @@
             if (!acc || !connectionModal) return;
             const provider = defaultProviderForAccount(acc);
             connectionModalState = { mode: 'connect', channel: acc.channel, provider };
-            connectionTitle.textContent = acc.channel === 'telegram'
+            connectionTitle.textContent = acc.channel === 'viber_personal'
+                ? 'Viber Personal Bridge'
+                : acc.channel === 'telegram'
                 ? (acc.connected ? 'Перепривʼязати Telegram inbox' : 'Підключити Telegram inbox')
                 : ((acc.connected ? 'Керувати ' : 'Підключити ') + (acc.label || acc.channel));
-            connectionSubtitle.textContent = acc.channel === 'telegram'
+            connectionSubtitle.textContent = acc.channel === 'viber_personal'
+                ? 'Звичайний Viber-акаунт підключається через локальний Windows-міст. У цій формі немає bot token і webhook.'
+                : acc.channel === 'telegram'
                 ? 'Це окремий inbox binding для робочих діалогів OmniClaw. Бот звітів тут не використовується і не блокує повторне підключення.'
                 : (acc.businessImpact || 'Заповніть дані провайдера і запустіть перевірку.');
             connectionSubmit.textContent = 'Зберегти і перевірити';
             connectionSubmit.className = 'primary';
+            connectionSubmit.hidden = acc.channel === 'viber_personal';
             renderConnectModalBody(acc, provider);
             connectionModal.hidden = false;
             const firstInput = connectionBody.querySelector('input');
             if (firstInput) firstInput.focus();
+            else connectionCancel.focus();
         }
 
         function openDisconnectModal(channel) {
@@ -3133,6 +3211,7 @@
                 : 'Потрібне підтвердження, бо це впливає на роботу менеджерів.';
             connectionSubmit.textContent = 'Відключити канал';
             connectionSubmit.className = 'danger';
+            connectionSubmit.hidden = false;
             const disconnectCopy = acc.channel === 'telegram'
                 ? 'Telegram inbox: відправка і прийом робочих діалогів у OmniClaw буде зупинена. Report Bot не видаляється і не скидається. Після відвʼязки кнопка «Підключити inbox» буде доступна одразу.'
                 : (acc.label || acc.channel) + ': відправка з CRM буде зупинена. Якщо канал приймає webhook, нові події можуть перестати коректно оброблятись. Після відключення кнопка «Підключити» залишиться доступною на цій картці.';
@@ -3202,13 +3281,22 @@
         async function runAccountAction(channel, action, button) {
             if (action === 'connect') return openConnectModal(channel);
             if (action === 'disconnect') return openDisconnectModal(channel);
-            if (!['recheck', 'test'].includes(action)) return;
+            if (action === 'bridge-bind-chat') {
+                setChannelActionFeedback('Привʼязка тестового чату стане доступною після підключення локального адаптера Viber Desktop.', true);
+                return;
+            }
+            const bridgeCheckLabels = {
+                'bridge-receive-check': 'Перевіряємо приймання Viber Personal Bridge…',
+                'bridge-send-check': 'Перевіряємо відправку Viber Personal Bridge…'
+            };
+            if (!['recheck', 'test', 'bridge-receive-check', 'bridge-send-check'].includes(action)) return;
             const epoch = workspaceEpoch;
             button.disabled = true;
-            setChannelActionFeedback('Перевіряємо ' + (CHANNEL_NAMES[channel] || channel) + '…');
-            const path = channel === 'telegram' && action === 'test'
+            setChannelActionFeedback(bridgeCheckLabels[action] || ('Перевіряємо ' + (CHANNEL_NAMES[channel] || channel) + '…'));
+            const effectiveAction = action.startsWith('bridge-') ? 'test' : action;
+            const path = channel === 'telegram' && effectiveAction === 'test'
                 ? '/accounts/telegram/inbox/test'
-                : '/accounts/' + encodeURIComponent(channel) + '/' + action;
+                : '/accounts/' + encodeURIComponent(channel) + '/' + effectiveAction;
             const res = await api(path, { method: 'POST' });
             button.disabled = false;
             if (epoch !== workspaceEpoch) return;
@@ -5497,7 +5585,7 @@
         });
     })();
     </script>
-<script src="js/ui.js?v=0.81.141"></script>
-    <script src="js/alerts.js?v=0.81.141"></script>
+<script src="js/ui.js?v=0.81.142"></script>
+    <script src="js/alerts.js?v=0.81.142"></script>
 </body>
 </html>

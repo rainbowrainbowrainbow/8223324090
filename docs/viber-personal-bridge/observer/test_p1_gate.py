@@ -17,6 +17,11 @@ def evidence(level="live_readonly"):
             "ambiguous": False,
             "renamed": index == 10,
             "reordered": index == 20,
+            "display_name_collision": True,
+            "source_chat_ref_stable": True,
+            "peer_ref_stable": True,
+            "used_display_name": False,
+            "used_sidebar_position": False,
         })
     return {
         "protocol_version": "1.0",
@@ -24,6 +29,13 @@ def evidence(level="live_readonly"):
                     "profile_bound_to_source": True},
         "new_contact": {"status": "pass", "evidence": level,
                         "unpaired": True, "distinct_chat": True},
+        "discovery": {"status": "pass", "evidence": level,
+                      "new_contact_observed": True,
+                      "source_chat_ref_created": True,
+                      "peer_ref_created": True,
+                      "uses_display_name": False,
+                      "uses_sidebar_position": False,
+                      "ambiguous": False},
         "direction": {"status": "pass", "evidence": level,
                       "inbound_code": 0, "outbound_code": 1},
         "duplicates": {"status": "pass", "evidence": level,
@@ -41,12 +53,15 @@ class GateTests(unittest.TestCase):
         self.assertTrue(result["send_test_allowed"])
         self.assertFalse(result["production_send_allowed"])
         self.assertEqual(result["blockers"], [])
+        self.assertTrue(result["capability_matrix"]["full_viber_inbox"])
+        self.assertFalse(result["capability_matrix"]["production_send"])
 
     def test_synthetic_evidence_cannot_enable_live_capability(self):
         result = evaluate(evidence("synthetic"))
         self.assertEqual(result["verdict"], "LIMITED")
         self.assertFalse(result["send_test_allowed"])
-        self.assertEqual(len(result["blockers"]), 6)
+        self.assertEqual(len(result["blockers"]), 7)
+        self.assertFalse(result["capability_matrix"]["discover_new_contacts"])
 
     def test_one_wrong_recipient_is_no_go(self):
         value = evidence()
@@ -60,6 +75,8 @@ class GateTests(unittest.TestCase):
             lambda value: value["peer_checks"][5].update(ambiguous=True),
             lambda value: value["peer_checks"][5].update(peer_alias="B"),
             lambda value: [row.update(renamed=False) for row in value["peer_checks"]],
+            lambda value: value["peer_checks"][3].update(used_display_name=True),
+            lambda value: value["peer_checks"][4].update(source_chat_ref_stable=False),
         ]:
             value = evidence()
             mutate(value)
@@ -67,6 +84,28 @@ class GateTests(unittest.TestCase):
                 result = evaluate(value)
                 self.assertEqual(result["verdict"], "LIMITED")
                 self.assertIn("EXACT_PEER_NOT_PROVEN", result["blockers"])
+
+    def test_ambiguous_new_contact_is_no_go_and_blocks_send(self):
+        value = evidence()
+        value["discovery"]["ambiguous"] = True
+        result = evaluate(value)
+        self.assertEqual(result["verdict"], "NO_GO")
+        self.assertFalse(result["send_test_allowed"])
+        self.assertFalse(result["capability_matrix"]["discover_new_contacts"])
+        self.assertFalse(result["capability_matrix"]["send_unverified_or_ambiguous_chats"])
+
+    def test_paired_only_without_new_contact_discovery_stays_limited_but_bound_chats_work(self):
+        value = evidence()
+        value["discovery"] = {"status": "not_run", "evidence": "none",
+                              "new_contact_observed": False, "source_chat_ref_created": False,
+                              "peer_ref_created": False, "uses_display_name": False,
+                              "uses_sidebar_position": False, "ambiguous": False}
+        result = evaluate(value)
+        self.assertEqual(result["verdict"], "LIMITED")
+        self.assertTrue(result["capability_matrix"]["receive_bound_chats"])
+        self.assertTrue(result["capability_matrix"]["send_verified_bound_chats"])
+        self.assertFalse(result["capability_matrix"]["full_viber_inbox"])
+        self.assertIn("NEW_CONTACT_DISCOVERY_NOT_PROVEN", result["blockers"])
 
     def test_existing_redacted_g3_proof_only_closes_duplicate_and_restart(self):
         path = Path(__file__).parent / "G3_SID_REOPEN_RESULT.json"

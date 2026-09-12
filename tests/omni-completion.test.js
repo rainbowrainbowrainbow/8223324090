@@ -3,6 +3,8 @@ const { test, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const https = require('node:https');
 const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
+const path = require('node:path');
 const express = require('express');
 const cache = new Map();
 function mock(name, exports) {
@@ -194,7 +196,13 @@ test('health metadata keeps explicit bridge direction capabilities fail-closed',
     sendCapable: false, receiveCapable: false, token: 'fixture-secret',
   } });
   assert.deepEqual(saved, { status: 'partial', pendingUpdates: null, lastProviderErrorAt: null,
-    providerError: null, sendCapable: false, receiveCapable: false });
+    providerError: null, sendCapable: false, receiveCapable: false,
+    bridge: {
+      online: null, transportHeartbeat: null, receiveHealth: null, sendCapability: null,
+      lastHeartbeatAt: null, lastReceiveAt: null, lastScanAt: null,
+      viberDesktopVersion: null, desktopAuthorized: null, serviceRunning: null,
+      captureGap: null, adapterError: null, blockReason: null,
+    } });
   const [account] = await health.attachHealth([{
     channel: 'viber_personal', source: 'environment', configured: true, status: 'limited',
     requiredDirections: { send: true, receive: true }, sendCapable: true, receiveCapable: true,
@@ -202,6 +210,28 @@ test('health metadata keeps explicit bridge direction capabilities fail-closed',
   assert.equal(account.sendCapable, false);
   assert.equal(account.receiveCapable, false);
   assert.equal(account.status, 'limited');
+});
+
+test('Omni UI separates Viber Bot API from Viber Personal Bridge onboarding', () => {
+  const root = path.join(__dirname, '..');
+  const omniHtml = fs.readFileSync(path.join(root, 'omni.html'), 'utf8');
+  const accountsService = fs.readFileSync(path.join(root, 'services', 'omni-accounts.js'), 'utf8');
+  assert.match(accountsService, /label: 'Viber Bot API'/);
+  assert.match(omniHtml, /Viber Personal Bridge/);
+  assert.match(omniHtml, /Transport heartbeat/);
+  assert.match(omniHtml, /Receive health/);
+  assert.match(omniHtml, /Send capability/);
+  assert.match(omniHtml, /data-account-action="bridge-bind-chat"/);
+  assert.match(omniHtml, /Перевірити Viber Desktop/);
+  assert.match(omniHtml, /Перевірити приймання/);
+  assert.match(omniHtml, /Перевірити відправку/);
+  assert.match(omniHtml, /if \(acc\?\.channel === 'viber_personal'\)/);
+  assert.match(omniHtml, /connectionSubmit\.hidden = acc\.channel === 'viber_personal'/);
+  assert.match(omniHtml, /У цій формі немає bot token і webhook/);
+  assert.doesNotMatch(
+    omniHtml.slice(omniHtml.indexOf("function renderViberPersonalOnboarding"), omniHtml.indexOf("function accountActionsHtml")),
+    /Bridge ID|Account ID|webhookSecret/i
+  );
 });
 
 test('attachment policies reject spoofed files, oversized images and unsupported channels before sending', () => {

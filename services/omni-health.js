@@ -5,6 +5,33 @@ const log = createLogger('OmniHealth');
 
 async function saveCheck(channel, businessContext, check, client = pool) {
   const details = check.details || {};
+  const bridgeCapabilities = details.capabilities && typeof details.capabilities === 'object'
+    ? details.capabilities : {};
+  const firstBoolean = values => values.find(value => typeof value === 'boolean') ?? null;
+  const bridgeSafe = channel === 'viber_personal' ? {
+    online: typeof details.online === 'boolean' ? details.online : null,
+    transportHeartbeat: firstBoolean([details.transportHeartbeat, details.transport_heartbeat, details.online]),
+    receiveHealth: firstBoolean([details.receiveHealth, details.receive_health]),
+    sendCapability: firstBoolean([details.sendCapability, details.send_capability]),
+    lastHeartbeatAt: details.lastHeartbeatAt || null,
+    lastReceiveAt: details.lastReceiveAt || null,
+    lastScanAt: details.lastScanAt || details.last_scan_at || bridgeCapabilities.last_scan_at || bridgeCapabilities.lastScanAt || null,
+    viberDesktopVersion: details.viberDesktopVersion || details.viber_desktop_version
+      || bridgeCapabilities.viberDesktopVersion || bridgeCapabilities.viber_desktop_version || null,
+    desktopAuthorized: firstBoolean([
+      details.desktopAuthorized,
+      details.desktop_authorized,
+      bridgeCapabilities.desktopAuthorized,
+      bridgeCapabilities.desktop_authorized,
+      bridgeCapabilities.viberDesktopAuthorized,
+      bridgeCapabilities.viber_desktop_authorized,
+    ]),
+    serviceRunning: firstBoolean([details.serviceRunning, details.service_running, details.online]),
+    captureGap: firstBoolean([details.captureGap, details.capture_gap, bridgeCapabilities.captureGap, bridgeCapabilities.capture_gap]),
+    adapterError: details.adapterError || details.adapter_error || details.lastErrorCode || details.last_error_code
+      || bridgeCapabilities.adapterError || bridgeCapabilities.adapter_error || bridgeCapabilities.blockReason || bridgeCapabilities.block_reason || null,
+    blockReason: details.blockReason || details.block_reason || bridgeCapabilities.blockReason || bridgeCapabilities.block_reason || null,
+  } : null;
   const safe = {
     status: check.status,
     pendingUpdates: Number.isFinite(details.pendingUpdates) ? details.pendingUpdates : null,
@@ -12,6 +39,7 @@ async function saveCheck(channel, businessContext, check, client = pool) {
     providerError: details.providerError || null,
     sendCapable: typeof details.sendCapable === 'boolean' ? details.sendCapable : null,
     receiveCapable: typeof details.receiveCapable === 'boolean' ? details.receiveCapable : null,
+    ...(bridgeSafe ? { bridge: bridgeSafe } : {}),
   };
   await client.query(
     `INSERT INTO omni_channel_health (business_context, channel, checked_at, check_result)

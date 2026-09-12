@@ -22,9 +22,9 @@ SCHEMA_VERSION = 2
 BUSINESS_CONTEXTS = frozenset({"event_genix", "dar"})
 COMMAND_STATES = frozenset({
     "accepted", "preparing", "dispatch_started", "submitted_unconfirmed",
-    "unknown", "rejected",
+    "failed", "unknown", "rejected",
 })
-TERMINAL_STATES = frozenset({"submitted_unconfirmed", "unknown", "rejected"})
+TERMINAL_STATES = frozenset({"submitted_unconfirmed", "failed", "unknown", "rejected"})
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 _OPAQUE_REF = re.compile(r"^(?:hmac:)?[0-9a-f]{64}$")
 _CLIENT_REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{16,80}$")
@@ -179,7 +179,7 @@ class BridgeCore:
                 text TEXT NOT NULL,
                 status TEXT NOT NULL CHECK(status IN (
                     'accepted', 'preparing', 'dispatch_started',
-                    'submitted_unconfirmed', 'unknown', 'rejected')),
+                    'submitted_unconfirmed', 'failed', 'unknown', 'rejected')),
                 error_code TEXT,
                 dispatch_count INTEGER NOT NULL DEFAULT 0 CHECK(dispatch_count IN (0, 1))
             )
@@ -351,6 +351,11 @@ class BridgeCore:
                 "UPDATE chat_bindings SET peer_ref=?, identity_level='unresolved', "
                 "binding_revision=? WHERE chat_id=?",
                 (peer, revision, chat),
+            )
+            db.execute(
+                "UPDATE commands SET status='rejected', error_code='BINDING_REVISION_STALE' "
+                "WHERE chat_id=? AND status IN ('accepted', 'preparing') AND binding_revision<?",
+                (chat, revision),
             )
             return revision
 
@@ -537,10 +542,20 @@ class BridgeCore:
                 )
             return dict(db.execute("SELECT * FROM commands WHERE command_id=?", (command,)).fetchone())
 
-    def finish_dispatch(self, command_id: str, *, submitted: bool) -> dict[str, Any]:
+    def finish_dispatch(self, command_id: str, *, submitted: bool | None = None,
+                        status: str | None = None, error_code: str | None = None) -> dict[str, Any]:
         command = _uuid(command_id, "COMMAND_ID_INVALID")
-        if type(submitted) is not bool:
+        if submitted is not None:
+            if type(submitted) is not bool or status is not None:
+                raise BridgeCoreError("DISPATCH_RESULT_INVALID")
+            status = "submitted_unconfirmed" if submitted else "unknown"
+        if status not in {"submitted_unconfirmed", "failed", "unknown"}:
             raise BridgeCoreError("DISPATCH_RESULT_INVALID")
+        error = None
+        if status == "failed":
+            error = error_code or "DISPATCH_FAILED"
+        elif status == "unknown":
+            error = error_code or "DISPATCH_RESULT_UNKNOWN"
         with self._transaction() as db:
             self._verify_scope(db)
             row = db.execute("SELECT * FROM commands WHERE command_id=?", (command,)).fetchone()
@@ -550,8 +565,6 @@ class BridgeCore:
                 return dict(row)
             if row["status"] != "dispatch_started":
                 raise BridgeCoreError("COMMAND_NOT_DISPATCHED")
-            status = "submitted_unconfirmed" if submitted else "unknown"
-            error = None if submitted else "DISPATCH_RESULT_UNKNOWN"
             db.execute("UPDATE commands SET status=?, error_code=? WHERE command_id=?",
                        (status, error, command))
             return dict(db.execute("SELECT * FROM commands WHERE command_id=?", (command,)).fetchone())
@@ -565,6 +578,30 @@ class BridgeCore:
                 "WHERE status='dispatch_started'"
             )
             return cursor.rowcount
+
+
+    def list_dispatchable_commands(self, *, limit: int = 10) -> list[dict[str, Any]]:
+        if type(limit) is not int or limit < 1 or limit > 50:
+            raise BridgeCoreError("COMMAND_LIMIT_INVALID")
+        with self._transaction() as db:
+            self._verify_scope(db)
+            rows = db.execute(
+                "SELECT command_id,client_request_id,chat_id,binding_revision,text "
+                "FROM commands WHERE status IN ('accepted', 'preparing') "
+                "ORDER BY rowid LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [{
+                "command_id": row["command_id"],
+                "client_request_id": row["client_request_id"],
+                "bridge_id": self.bridge_id,
+                "account_id": self.account_id,
+                "account_epoch": self.account_epoch,
+                "business_context": self.business_context,
+                "chat_id": row["chat_id"],
+                "binding_revision": row["binding_revision"],
+                "text": row["text"],
+            } for row in rows]
 
     def diagnostics(self) -> dict[str, Any]:
         with self._transaction() as db:

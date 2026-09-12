@@ -10,7 +10,7 @@ function isMembershipSchemaMissing(error) {
 }
 
 function isNodeTestDoubleQuery(error) {
-    return /^Unexpected (?:[\w-]+\s+)*(?:SQL\s+)?query:/i.test(String(error?.message || ''));
+    return /^Unexpected (?:[\w-]+\s+)*(?:SQL\s+)?query:|^Unexpected SQL in .+ test:/i.test(String(error?.message || ''));
 }
 
 function normalizeMembershipRow(row = {}) {

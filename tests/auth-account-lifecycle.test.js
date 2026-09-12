@@ -772,7 +772,7 @@ test('global API boundary and route-local guard authenticate once per request', 
         const authSelects = fakePool.state.queryStatements
             .slice(firstStatement)
             .filter(statement => /^SELECT /i.test(statement));
-        assert.equal(authSelects.length, 2, `expected 2 authentication SELECTs, got ${authSelects.length}`);
+        assert.equal(authSelects.length, 3, `expected identity, session, and membership SELECTs, got ${authSelects.length}`);
 
         const secondRequestStart = fakePool.state.queryStatements.length;
         const secondResponse = await request(
@@ -785,7 +785,7 @@ test('global API boundary and route-local guard authenticate once per request', 
         assert.equal(secondResponse.status, 200, JSON.stringify(secondResponse.data));
         assert.equal(
             fakePool.state.queryStatements.slice(secondRequestStart).filter(statement => /^SELECT /i.test(statement)).length,
-            2,
+            3,
             'a later request must perform its own authentication reads'
         );
 
@@ -810,7 +810,7 @@ test('global API boundary and route-local guard authenticate once per request', 
         assert.deepEqual(tokenSwapResponse.data, { success: true, userId: 2 });
         assert.equal(
             fakePool.state.queryStatements.slice(tokenSwapStart).filter(statement => /^SELECT /i.test(statement)).length,
-            4,
+            6,
             'changing the bearer token on the same request must force fresh authentication'
         );
     } finally {

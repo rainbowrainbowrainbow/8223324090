@@ -66,6 +66,17 @@ test('self-contained test doubles retain the legacy compatibility path', async (
     assert.equal(access.testDoubleUnavailable, true);
 });
 
+test('SQL-in-test sentinels retain the legacy compatibility path', async () => {
+    const access = await loadMembershipAccess({
+        query() {
+            throw new Error('Unexpected SQL in auth lifecycle test: membership resolver is outside this mock contract');
+        }
+    }, { id: 42 }, 'event_genix');
+
+    assert.equal(access.configured, false);
+    assert.equal(access.testDoubleUnavailable, true);
+});
+
 test('organization migration creates an additive membership schema and scoped default uniqueness', () => {
     const migration = fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '357_organizations_business_memberships.sql'), 'utf8');
     assert.match(migration, /CREATE TABLE IF NOT EXISTS organizations/);

@@ -1627,7 +1627,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                     JOIN staff s ON s.id = ss.staff_id
                     LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
                     LEFT JOIN users u ON u.id = ep.user_id
-                    WHERE ss.date IN ($1::date, $2::date) AND s.is_active = true AND ss.status IN ('working', 'remote')
+                    WHERE ss.date::date IN ($1::date, $2::date) AND s.is_active = true AND ss.status IN ('working', 'remote')
                       AND EXISTS (
                           SELECT 1
                           FROM hr_shifts hs_now
@@ -1635,16 +1635,16 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                           WHERE hs_now.staff_id = ss.staff_id
                             AND hs_now.shift_date = ss.date::date
                             AND (
-                                (ss.date = $1::date
+                                (ss.date::date = $1::date
                                  AND hss_now.planned_end > hss_now.planned_start
                                  AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time >= hss_now.planned_start
                                  AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time < hss_now.planned_end)
                                 OR
-                                (ss.date = $1::date
+                                (ss.date::date = $1::date
                                  AND hss_now.planned_end <= hss_now.planned_start
                                  AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time >= hss_now.planned_start)
                                 OR
-                                (ss.date = $2::date
+                                (ss.date::date = $2::date
                                  AND hss_now.planned_end <= hss_now.planned_start
                                  AND (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Kyiv')::time < hss_now.planned_end)
                             )

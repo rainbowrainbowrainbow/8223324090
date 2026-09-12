@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.136 - Dashboard: стабільність віджета команди
+
+### Dashboard / Release / Live QA / (12.09.2026) [codex]
+- **Повний пакет DASH-01–04 у production release** - видимість дашборду, safe save/recovery, актуальні віджети, мобільний сценарій і render fallback випущені одним перевіреним релізом.
+- **Live QA fix для staff_today** - віджет «Хто на зміні» тепер коректно порівнює legacy `staff_schedule.date` як дату й не падає 500 на production-схемі з VARCHAR date.
+- **Окремий release marker** - cache tags, service worker cache і visible version metadata піднято до v0.81.136 після виявленого live QA збою в v0.81.135.
+
+---
+
 ## v0.81.135 - Dashboard: видимість і мобільний fallback
 
 ### Dashboard / Mobile / Reliability / (12.09.2026) [codex]

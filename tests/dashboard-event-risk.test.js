@@ -113,3 +113,58 @@ test('dashboard event risk summary is visible-scope, explainable, and booking-li
         clearModules();
     }
 });
+
+test('dashboard staff_today casts legacy staff_schedule date column before date comparison', async () => {
+    const originalSecret = process.env.JWT_SECRET;
+    process.env.JWT_SECRET = TEST_JWT_SECRET;
+    clearModules();
+
+    const queries = [];
+    const fakePool = {
+        query: async (sql, params = []) => {
+            const text = String(sql).replace(/\s+/g, ' ').trim();
+            queries.push({ text, params });
+
+            assert.doesNotMatch(text, /\bss\.date\s+IN\s+\(\$1::date,\s*\$2::date\)/i);
+            assert.doesNotMatch(text, /\bss\.date\s*=\s*\$1::date\b/i);
+            assert.doesNotMatch(text, /\bss\.date\s*=\s*\$2::date\b/i);
+
+            if (/FROM staff_schedule ss/i.test(text) && /JOIN hr_shift_segments hss_now/i.test(text)) {
+                assert.match(text, /\bss\.date::date\s+IN\s+\(\$1::date,\s*\$2::date\)/i);
+                assert.match(text, /\bss\.date::date\s*=\s*\$1::date\b/i);
+                assert.match(text, /\bss\.date::date\s*=\s*\$2::date\b/i);
+                return { rows: [{ id: 1, name: 'QA Staff', department: 'Ops', position: 'Manager', shift_start: '09:00', shift_end: '18:00', status: 'working', segments: [] }] };
+            }
+
+            if (/FROM staff_schedule ss/i.test(text) && /ss\.status IN \('sick', 'vacation'\)/i.test(text)) {
+                return { rows: [] };
+            }
+
+            throw new Error(`Unexpected staff_today query: ${text}`);
+        }
+    };
+    installMock('../db', { pool: fakePool, query: fakePool.query.bind(fakePool) });
+    installMock('../services/websocket', { getOnlineUserIds: () => new Set() });
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api/dashboard', require('../routes/dashboard'));
+    const { server, baseUrl } = await listen(app);
+
+    try {
+        const res = await fetch(`${baseUrl}/api/dashboard/widgets/staff_today`, {
+            headers: { Authorization: `Bearer ${tokenFor('manager')}` }
+        });
+        const data = await res.json();
+
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.success, true);
+        assert.equal(data.data.onShift.length, 1);
+        assert.equal(data.data.onShift[0].name, 'QA Staff');
+        assert.equal(queries.filter(query => /FROM staff_schedule ss/i.test(query.text)).length, 2);
+    } finally {
+        await close(server);
+        process.env.JWT_SECRET = originalSecret;
+        clearModules();
+    }
+});

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.134 - Cashier: безпечні стани PARK/DAR
+
+### Cashier / PARK-DAR / (12.09.2026) [codex]
+- **Безпечні стани кнопок каси** - payment CTA та X/Z стартують заблокованими до підтвердження readiness/capabilities і не виглядають активними, коли server gates блокують дію.
+- **Service-out без шумного 403** - очікувана відмова `fiscal_binding_capability_denied` тепер показується як scoped unavailable state для поточної прив'язки касира без підвищення прав.
+- **X/Z loading race закрито** - Z-звіт/закриття зміни не активується під час оновлення route/readiness або зі stale close context; X лишається явно недоступним до durable R4 lifecycle.
+- **Локальна QA-доказовість** - додано synthetic checks і browser smoke screenshots для light/dark/mobile/200% станів PARK/DAR cashier UI.
+
+---
+
 ## v0.81.133 - Omni: закриття post-release хвостів TD7
 
 ### Release / Versioning / (12.09.2026) [codex]

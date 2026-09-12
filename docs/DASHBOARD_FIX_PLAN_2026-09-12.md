@@ -145,3 +145,37 @@
 - Локальний Chromium smoke через фікстурний сервер — PASS: `/dashboard`, `/tasks`, `/profile`, `/hr`, `/`; 1440/768/390 px; світла/темна тема; прямий `/dashboard` без cached permissions; порядок API до config; Enter navigation; active state; repeated render без дублів; приховування на auth screen; видалення shortcut за забороненого dashboard access; 0 write-запитів.
 
 Примітка щодо SHA: цей розділ входить у сам DASH-01 commit, тому точний immutable SHA фіксується після створення commit і наведений у фінальному звіті через `git log -1`.
+
+## DASH-02: локальний результат
+
+Статус: виконано локально після DASH-01 у гілці `codex/dashboard-visibility-20260912`; push/deploy залишено для DASH-05.
+
+Коміт фіксу save/recovery: `a11f9183386da82496ceb8931d877a358d7bc8e1` (`fix: prevent dashboard save data loss`).
+
+Що змінено:
+
+- `DashboardPage` більше не запускає конкурентні full PUT для `/api/dashboard/config`: усі збереження проходять через одну послідовну чергу.
+- Кожен save має immutable payload, локальний revision, captured auth/session context і captured board recovery key.
+- Успішна відповідь старого save не замінює новіші локальні правки; dirty/draft очищуються тільки для підтвердженої актуальної редакції.
+- `saveBoardNow` після stale response лишає статус dirty, зберігає draft і планує наступне збереження; після PUT 500/offline dirty draft лишається доступним для retry.
+- Невдалий або некоректний початковий GET конфігурації блокує PUT default-стану і показує retry surface замість перезапису невідомого серверного стану.
+- «Не зараз» при recovery переносить чернетку у deferred storage key і не видаляє її; нові правки й наступний успішний save чистять тільки активний draft, а deferred draft можна відновити або явно видалити окремо.
+- Відкладені/queued save не відправляються, якщо змінився користувач, token, session generation або recovery key.
+- Додано regression suite `tests/dashboard-save-recovery.test.js` для сценаріїв A→B, послідовних board/settings save, PUT retry, GET failure, deferred recovery і зміни акаунта.
+
+Перевірка DASH-02:
+
+- До фіксу `node --test tests/dashboard-save-recovery.test.js` падав на сценарії A→B: фактичний текст повертався до `A` замість `B`.
+- `node --check js/dashboard-page.js` — PASS.
+- `node --check tests/dashboard-save-recovery.test.js` — PASS.
+- `git diff --check` — PASS; були тільки стандартні CRLF warnings.
+- `npm run check:runtime` — PASS, Node 22.23.1 / npm 10.9.8.
+- `node --test tests/dashboard-save-recovery.test.js` — PASS, 6/6.
+- `node --test tests/dashboard-save-recovery.test.js tests/dashboard-bootstrap.test.js tests/auth-frontend-session.test.js` — PASS, 80/80.
+- `npm run check:syntax` — PASS, 1147 files.
+
+Межі й ризики:
+
+- Backend API, auth policy, ролі, permission registry, middleware, токени, міграції, залежності й бізнес allowlists не змінювалися.
+- Поточний захист закриває втрату змін в одній вкладці та stale session/queued request сценарії. Конфлікти двох активних вкладок одного акаунта без серверної версії залишаються обмеженням і мають іти окремим явно погодженим завданням, якщо потрібен повний міжвкладковий conflict editor.
+- `Abort` як і раніше не вважається доказом, що серверний запис не відбувся; клієнт не застосовує stale response до новішого локального стану.

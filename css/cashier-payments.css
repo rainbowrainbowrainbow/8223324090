@@ -746,7 +746,19 @@
 
 .cashier-primary-action[disabled] {
     cursor: not-allowed;
-    opacity: .58;
+    opacity: .62;
+}
+
+.cashier-payments-page #createPaymentOrderBtn.is-blocked,
+.cashier-payments-page #createPaymentOrderBtn:disabled {
+    border-color: var(--gray-300);
+    background: var(--gray-100);
+    color: var(--gray-600);
+    box-shadow: none;
+}
+
+.cashier-payments-page .cashier-primary-action.is-ready:not(:disabled) {
+    cursor: pointer;
 }
 
 .cashier-meta-grid {
@@ -1358,6 +1370,13 @@ body.dark-mode .cashier-alert-danger {
     border-color: rgba(248, 113, 113, .34);
     background: rgba(127, 29, 29, .28);
     color: #fecaca;
+}
+
+body.dark-mode .cashier-payments-page #createPaymentOrderBtn.is-blocked,
+body.dark-mode .cashier-payments-page #createPaymentOrderBtn:disabled {
+    border-color: rgba(148,163,184,.28);
+    background: rgba(30,41,59,.82);
+    color: #cbd5e1;
 }
 
 body.dark-mode .cashier-secondary-disclosure > summary::after {

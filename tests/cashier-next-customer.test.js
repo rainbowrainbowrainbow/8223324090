@@ -91,6 +91,16 @@ test('unverified shared test close is shown as pending proof, not as a completed
     assert.equal(f.el('createPaymentOrderBtn').disabled, true);
 });
 
+test('cashier dangerous actions are fail-closed before async readiness settles', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    assert.equal(f.el('createPaymentOrderBtn').disabled, true);
+    assert.equal(f.el('createPaymentOrderBtn').getAttribute('aria-disabled'), 'true');
+    assert.equal(f.el('createXReportBtn').disabled, true);
+    assert.equal(f.el('createXReportBtn').getAttribute('aria-disabled'), 'true');
+    assert.equal(f.el('closeZReportBtn').disabled, true);
+    assert.equal(f.el('closeZReportBtn').getAttribute('aria-disabled'), 'true');
+});
+
 test('completed order requires next customer and locks cart editing', t => {
     const f = fixture(); t.after(() => f.dom.window.close());
     f.page.addCatalogLine();
@@ -117,6 +127,23 @@ test('completed order exposes next customer beside the fiscal result without unl
     f.page.syncCreateAvailability();
     assert.equal(f.el('startNextOrderBtn').disabled, true);
     assert.match(f.el('paymentRouteHelp').textContent, /Черга незавершених чеків ще не перевірена/);
+});
+
+test('blocked create action looks disabled while ready action keeps semantic availability', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.page.state.routeReady = false;
+    f.page.addCatalogLine();
+    f.page.syncCreateAvailability();
+    assert.equal(f.el('createPaymentOrderBtn').disabled, true);
+    assert.equal(f.el('createPaymentOrderBtn').classList.contains('is-blocked'), true);
+    assert.equal(f.el('createPaymentOrderBtn').classList.contains('is-ready'), false);
+
+    f.page.state.routeReady = true;
+    f.page.state.registerState.integrationReady = true;
+    f.page.syncCreateAvailability();
+    assert.equal(f.el('createPaymentOrderBtn').disabled, false);
+    assert.equal(f.el('createPaymentOrderBtn').classList.contains('is-ready'), true);
+    assert.equal(f.el('createPaymentOrderBtn').classList.contains('is-blocked'), false);
 });
 
 test('seller legal entity and selected test cashier remain distinct when rendering a paid order', t => {
@@ -1259,6 +1286,63 @@ test('Z report affordance reuses guarded phase1 close instead of a separate repo
     assert.equal(confirmCalls, 1);
     assert.equal(fetchCalls, 0);
     assert.doesNotMatch(f.el('fiscalReportsNotice').textContent, /окремий report endpoint/i);
+});
+
+test('service-out binding 403 becomes scoped unavailable state without enabling request', async t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.window.canAccess = action => action === 'fiscal.service_out.request';
+    f.page.state.registerState = {
+        integrationReady: true,
+        shift: { id: 77, status: 'open' }
+    };
+    f.window.fetch = async path => {
+        assert.match(String(path), /^\/api\/payments\/service-out\?/);
+        return jsonResponse(403, {
+            success: false,
+            code: 'fiscal_binding_capability_denied',
+            error: 'binding denied'
+        });
+    };
+
+    await f.page.loadServiceOutRequests({ silent: false });
+
+    assert.equal(f.page.state.serviceOutCapabilityDenied, true);
+    assert.equal(f.page.state.serviceOutLastError, null);
+    assert.equal(f.el('createServiceOutBtn').disabled, true);
+    assert.match(f.el('serviceOutNotice').textContent, /прив’язка касира не дозволяє service-out/);
+    assert.match(f.el('serviceOutList').textContent, /недоступний для поточної прив’язки/);
+    assert.equal(f.window.__notifications.at(-1).type, 'info');
+});
+
+test('Z report stays disabled during route and readiness loading even with stale close context', async t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.window.canAccess = action => action === 'fiscal.shift.close';
+    let confirmCalls = 0;
+    f.window.confirmModal = async () => {
+        confirmCalls += 1;
+        return false;
+    };
+    Object.assign(f.page.state, {
+        unresolvedQueueState: 'available',
+        unresolvedRegisterCount: 0,
+        unresolvedLastRefreshAt: Date.now(),
+        registerState: {
+            integrationReady: true,
+            shift: { id: 77, status: 'open' },
+            phase1Close: { visible: true, allowed: true, shiftId: 77, status: 'opened' }
+        }
+    });
+    f.page.renderFiscalReportsPanel();
+    assert.equal(f.el('closeZReportBtn').disabled, false);
+
+    f.page.state.routeLoading = true;
+    f.page.renderFiscalReportsPanel();
+    assert.equal(f.el('closeZReportBtn').disabled, true);
+    assert.match(f.el('fiscalReportsNotice').textContent, /Оновлюємо напрямок і касу/);
+    f.page.requestZReportClose();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(confirmCalls, 0);
+    assert.equal(f.window.__notifications.at(-1).type, 'error');
 });
 
 test('failed same-filter refresh preserves visibly stale rows instead of reporting zero', async t => {

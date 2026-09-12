@@ -201,6 +201,7 @@
         serviceOutApproveInFlight: false,
         serviceOutCancelInFlight: false,
         serviceOutLastError: null,
+        serviceOutCapabilityDenied: false,
         actionPinBindings: [],
         actionPinLoadInFlight: false,
         actionPinSaveInFlight: false,
@@ -245,6 +246,7 @@
         state.serviceOutLoadInFlight = false;
         state.actionPinLoadInFlight = false;
         state.serviceOutLastError = null;
+        state.serviceOutCapabilityDenied = false;
         syncUnresolvedControls();
         renderServiceOutPanel();
         renderActionPinPanel();
@@ -783,7 +785,8 @@
 
     function serviceOutUnavailableReason() {
         if (!serviceOutVisible()) return 'Немає дозволу на службову видачу.';
-        if (!state.routeReady) return 'Каса або маршрут ще не готові.';
+        if (state.serviceOutCapabilityDenied) return 'Локальна прив’язка касира не дозволяє service-out для цієї каси.';
+        if (!state.routeReady || state.routeLoading) return 'Каса або маршрут ще не готові.';
         if (state.registerState?.integrationReady !== true) return 'Готовність Checkbox ще не підтверджена.';
         if (!unresolvedQueueIsFresh()) return queueUnavailableReason();
         const shiftStatus = currentShiftStatus();
@@ -857,6 +860,11 @@
         return [];
     }
 
+    function serviceOutCapabilityDenied(error) {
+        return Number(error?.status || 0) === 403
+            && normalizeStatus(error?.code || error?.message) === 'fiscal_binding_capability_denied';
+    }
+
     function upsertServiceOutOperation(operation) {
         if (!operation?.operationId) return;
         const id = String(operation.operationId);
@@ -891,10 +899,18 @@
             if (contextKey !== interactionContextKey()) return state.serviceOutOperations;
             state.serviceOutOperations = normalizeServiceOutPayload(result);
             state.serviceOutLastError = null;
+            state.serviceOutCapabilityDenied = false;
             if (!silent) notify('Список service-out оновлено.', 'success');
             return state.serviceOutOperations;
         } catch (error) {
             if (contextKey !== interactionContextKey()) return state.serviceOutOperations;
+            if (serviceOutCapabilityDenied(error)) {
+                state.serviceOutOperations = [];
+                state.serviceOutLastError = null;
+                state.serviceOutCapabilityDenied = true;
+                if (!silent) notify(serviceOutUnavailableReason(), 'info');
+                return state.serviceOutOperations;
+            }
             state.serviceOutLastError = error;
             if (!silent) notify(paymentUiError(error), 'error');
             return state.serviceOutOperations;
@@ -1261,6 +1277,7 @@
         state.unresolvedFastRefreshStartedAt = 0;
         state.serviceOutOperations = [];
         state.serviceOutLastError = null;
+        state.serviceOutCapabilityDenied = false;
         state.actionPinBindings = [];
         resetReceiptHistoryForScope();
         $('catalogSaleLines')?.replaceChildren();
@@ -3488,6 +3505,10 @@
                     : 'Перейти до оплати');
         }
         setDisabledReason(createButton, disabled, reason);
+        if (createButton) {
+            createButton.classList.toggle('is-blocked', disabled);
+            createButton.classList.toggle('is-ready', !disabled);
+        }
         const nextButton = $('startNextOrderBtn');
         if (nextButton) {
             const reconcileOnly = state.confirmOutcomePending && Boolean(order?.id);
@@ -3523,7 +3544,9 @@
             return;
         }
         if (!state.serviceOutOperations.length) {
-            list.textContent = state.serviceOutLastError
+            list.textContent = state.serviceOutCapabilityDenied
+                ? 'Service-out недоступний для поточної прив’язки касира.'
+                : state.serviceOutLastError
                 ? 'Список тимчасово недоступний. Оновіть стан каси.'
                 : 'Активних service-out запитів немає.';
             return;
@@ -3797,12 +3820,19 @@
         return 'X-звіт Checkbox поки не запускається з CRM: потрібна durable черга provider-report з ідемпотентністю, щоб не створити дубль після перезавантаження.';
     }
 
+    function fiscalReportsLoadingReason() {
+        if (state.routeLoading) return 'Оновлюємо напрямок і касу. Звіти тимчасово заблоковані.';
+        if (state.readinessInFlight || state.nextCustomerSafetyRefreshInFlight) return 'Оновлюємо готовність каси перед фіскальними діями.';
+        return '';
+    }
+
     function renderFiscalReportsPanel() {
         const panel = $('fiscalReportsPanel');
         if (!panel) return;
         const context = phase1CloseContext();
-        const visible = Boolean(context?.visible);
-        const closeReason = visible ? phase1CloseUnavailableReason(context) : 'Немає активної зміни або доступу до звітів цієї каси.';
+        const loadingReason = fiscalReportsLoadingReason();
+        const visible = !loadingReason && Boolean(context?.visible);
+        const closeReason = loadingReason || (visible ? phase1CloseUnavailableReason(context) : 'Немає активної зміни або доступу до звітів цієї каси.');
         const closeBusy = state.phase1CloseConfirmationInFlight || state.phase1CloseSafetyRefreshInFlight || state.phase1CloseInFlight;
         const xReason = xReportUnavailableReason();
         const xButton = $('createXReportBtn');
@@ -3813,7 +3843,7 @@
         const canClose = visible && !closeReason && !closeBusy;
         panel.classList.toggle('is-ready', canClose);
         panel.classList.toggle('is-blocked', !canClose);
-        panel.setAttribute('aria-busy', closeBusy ? 'true' : 'false');
+        panel.setAttribute('aria-busy', closeBusy || Boolean(loadingReason) ? 'true' : 'false');
         setDisabledReason(xButton, true, xReason);
         setDisabledReason(zButton, !canClose, closeBusy ? 'Очікуємо завершення поточної перевірки зміни.' : closeReason);
         if (badge) {
@@ -3835,6 +3865,11 @@
 
     function requestZReportClose() {
         renderFiscalReportsPanel();
+        const loadingReason = fiscalReportsLoadingReason();
+        if (loadingReason) {
+            notify(loadingReason, 'error');
+            return;
+        }
         const context = phase1CloseContext();
         const reason = phase1CloseUnavailableReason(context);
         if (reason) {

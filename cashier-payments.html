@@ -163,7 +163,7 @@
                             <label><input type="radio" name="paymentTender" value="cash" checked> Готівка</label>
                             <label><input type="radio" name="paymentTender" value="card_terminal_manual"> Термінал</label>
                         </fieldset>
-                        <button type="submit" id="createPaymentOrderBtn" class="btn-page-primary cashier-primary-action" aria-describedby="createPaymentDisabledReason">Перейти до оплати</button>
+                        <button type="submit" id="createPaymentOrderBtn" class="btn-page-primary cashier-primary-action" disabled aria-disabled="true" aria-describedby="createPaymentDisabledReason" title="Очікуємо перевірку каси.">Перейти до оплати</button>
                         <button type="button" id="cancelDraftOrderBtn" class="btn-page-secondary cashier-primary-action hidden" disabled aria-describedby="createPaymentDisabledReason">Скасувати чернетку</button>
                         <p id="createPaymentDisabledReason" class="cashier-help" aria-live="polite">Касир не може змінити ціну, ФОП, профіль або касу. Позиції фіксуються під час створення оплати.</p>
                     </div>
@@ -340,8 +340,8 @@
                     <span id="fiscalReportsStateBadge" class="cashier-pill">Потрібна перевірка каси</span>
                 </div>
                 <div class="cashier-report-actions" role="group" aria-label="Операції X та Z звітів Checkbox">
-                    <button type="button" id="createXReportBtn" class="btn-page-secondary btn-page-toolbar" aria-describedby="fiscalReportsNotice">X-звіт</button>
-                    <button type="button" id="closeZReportBtn" class="btn-page-secondary btn-page-toolbar" aria-describedby="fiscalReportsNotice">Z-звіт / закрити зміну</button>
+                    <button type="button" id="createXReportBtn" class="btn-page-secondary btn-page-toolbar" disabled aria-disabled="true" aria-describedby="fiscalReportsNotice" title="Очікуємо перевірку каси.">X-звіт</button>
+                    <button type="button" id="closeZReportBtn" class="btn-page-secondary btn-page-toolbar" disabled aria-disabled="true" aria-describedby="fiscalReportsNotice" title="Очікуємо перевірку каси.">Z-звіт / закрити зміну</button>
                 </div>
                 <p id="fiscalReportsNotice" class="cashier-help" role="status" aria-live="polite">X-звіт потребує окремої durable черги Checkbox. Z-звіт створюється тільки через чинне закриття зміни.</p>
             </section>

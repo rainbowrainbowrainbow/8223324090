@@ -1023,7 +1023,7 @@ async function run() {
         }, longName);
         for (const dark of [false, true]) {
             await selectorPage.evaluate(value => document.body.classList.toggle('dark-mode', value), dark);
-            for (const width of [1440, 1024, 390]) {
+            for (const width of [1440, 1024, 768, 720, 390]) {
                 await selectorPage.setViewportSize({ width, height: 1000 });
                 await selectorPage.waitForFunction(() => document.querySelector('#paymentOrderForm').getBoundingClientRect().width > 300);
                 assert.equal(await selectorPage.textContent('[data-catalog-name]'), longName);

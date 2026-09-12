@@ -66,7 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_x_report_reconcile
     ON fiscal_x_report_requests (status, next_reconcile_at)
     WHERE status IN ('submitting', 'unknown');
 
-CREATE OR REPLACE FUNCTION touch_x_report_updated_at_v358()
+CREATE OR REPLACE FUNCTION touch_x_report_updated_at_v359()
 RETURNS TRIGGER LANGUAGE plpgsql AS $function$
 BEGIN
     NEW.updated_at = NOW();
@@ -79,13 +79,13 @@ BEGIN
 IF NOT EXISTS (
     SELECT 1
       FROM pg_trigger
-     WHERE tgname = 'trg_touch_x_report_updated_at_v358'
+     WHERE tgname = 'trg_touch_x_report_updated_at_v359'
        AND tgrelid = 'fiscal_x_report_requests'::regclass
 ) THEN
-CREATE TRIGGER trg_touch_x_report_updated_at_v358
+CREATE TRIGGER trg_touch_x_report_updated_at_v359
     BEFORE UPDATE ON fiscal_x_report_requests
     FOR EACH ROW
-    EXECUTE FUNCTION touch_x_report_updated_at_v358();
+    EXECUTE FUNCTION touch_x_report_updated_at_v359();
 END IF;
 END;
 $migration$;

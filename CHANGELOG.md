@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.139 - Каса: X/Z звіти й стійкість Checkbox
+
+### Cashier / Checkbox / XZ / (12.09.2026) [codex]
+- **Durable X-звіт** - X-звіт створюється через окремий lifecycle із idempotency, exact shift/register/cashier scope і recovery для unknown/timeout відповіді.
+- **Офіційний Z-документ** - UI/API читають Z зі збереженого provider document/status, без локального вигаданого підсумку.
+- **Безпечні gates каси** - X/Z кнопки залишаються заблокованими до readiness/schema/route proof і не виконують фіскальні дії під час stale/loading станів.
+- **Disposable PostgreSQL proof** - додано isolated тест для migration 359, constraints, restart-style persistence і reconciliation synthetic fixtures.
+
+---
+
 ## v0.81.138 - Omni: чесні можливості Viber Bridge
 
 ### Release / Versioning / (12.09.2026) [codex]

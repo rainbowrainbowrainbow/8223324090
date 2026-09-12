@@ -240,7 +240,7 @@ test('migration installs durable X-report lifecycle storage and constraints', as
     const migrationApplied = await queryScalar(
         pool,
         `SELECT EXISTS (
-             SELECT 1 FROM schema_migrations WHERE version = '358_checkbox_x_report_lifecycle'
+             SELECT 1 FROM schema_migrations WHERE version = '359_checkbox_x_report_lifecycle'
          )`
     );
     assert.equal(migrationApplied, true);

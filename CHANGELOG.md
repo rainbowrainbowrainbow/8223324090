@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.124 - PARK/DAR каса та знижки
+
+### Release / Versioning / (12.09.2026) [codex]
+- **PARK/DAR каса та знижки** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.123 - Omni: докази релізу WhatsApp
 
 ### Omni / WhatsApp / (12.09.2026) [codex]

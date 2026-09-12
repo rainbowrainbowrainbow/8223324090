@@ -8,6 +8,7 @@ const { JSDOM } = require('jsdom');
 const ROOT = path.resolve(__dirname, '..');
 const DESIGNER_HTML = fs.readFileSync(path.join(ROOT, 'designer.html'), 'utf8');
 const DESIGNS_HTML = fs.readFileSync(path.join(ROOT, 'designs.html'), 'utf8');
+const DESIGNS_CSS = fs.readFileSync(path.join(ROOT, 'css', 'designs.css'), 'utf8');
 
 function extractDesignerTabsScript() {
     const start = DESIGNER_HTML.indexOf('const DESIGNER_TABS');
@@ -58,4 +59,19 @@ test('Designer tab clicks update hashes and unknown hashes fall back safely', ()
     dom.window.document.querySelector('[data-tab="catalogs"]').click();
     assert.equal(dom.window.location.hash, '');
     assert.equal(dom.window.document.querySelector('.designer-tab.active')?.dataset.tab, 'catalogs');
+});
+
+test('Design Board theme CSS does not apply light catalog overrides in dark mode', () => {
+    assert.doesNotMatch(DESIGNS_HTML, /body:not\(\.dark-mode\)/);
+    assert.doesNotMatch(DESIGNS_CSS, /body:not\(\.dark-mode\)/);
+    assert.match(DESIGNS_HTML, /html\[data-theme="light"\] body \.img-picker-modal/);
+    assert.match(DESIGNS_CSS, /html\[data-theme="dark"\] \.design-guide-entry/);
+});
+
+test('Style Guide local styles follow the document theme contract', () => {
+    assert.match(DESIGNER_HTML, /html\[data-theme="dark"\] \.designer-page/);
+    assert.match(DESIGNER_HTML, /--dg-active-text:#A7F3D0/);
+    assert.match(DESIGNER_HTML, /designer-tab:focus-visible/);
+    assert.match(DESIGNER_HTML, /<h3>Inter<\/h3>/);
+    assert.doesNotMatch(DESIGNER_HTML, /Основний шрифт CRM\. Ваги/);
 });

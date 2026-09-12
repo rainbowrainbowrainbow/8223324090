@@ -421,6 +421,154 @@ body.dark-mode .drop-zone {
 }
 .tag-autocomplete-item:hover { background: var(--gray-50); }
 
+
+/* Task 4: local light/dark presentation polish for Design Board surfaces. */
+html[data-theme="dark"] .design-guide-entry,
+body.dark-mode .design-guide-entry {
+    background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(31,41,55,0.88));
+    border-color: rgba(148,163,184,0.20);
+    box-shadow: 0 18px 40px rgba(0,0,0,0.22);
+}
+html[data-theme="dark"] .design-guide-entry h2,
+body.dark-mode .design-guide-entry h2,
+html[data-theme="dark"] .design-card-title,
+body.dark-mode .design-card-title,
+html[data-theme="dark"] .collection-card-name,
+body.dark-mode .collection-card-name,
+html[data-theme="dark"] .calendar-nav-title,
+body.dark-mode .calendar-nav-title,
+html[data-theme="dark"] .calendar-day-detail h4,
+body.dark-mode .calendar-day-detail h4 {
+    color: #E5EEF8 !important;
+}
+html[data-theme="dark"] .design-guide-entry p,
+body.dark-mode .design-guide-entry p,
+html[data-theme="dark"] .design-guide-kicker,
+body.dark-mode .design-guide-kicker,
+html[data-theme="dark"] .drop-zone-text,
+body.dark-mode .drop-zone-text,
+html[data-theme="dark"] .drop-zone-hint,
+body.dark-mode .drop-zone-hint,
+html[data-theme="dark"] .collection-card-count,
+body.dark-mode .collection-card-count,
+html[data-theme="dark"] .design-card-meta,
+body.dark-mode .design-card-meta {
+    color: #A7B5C8 !important;
+}
+html[data-theme="dark"] .design-tab,
+body.dark-mode .design-tab,
+html[data-theme="dark"] .design-filters input,
+body.dark-mode .design-filters input,
+html[data-theme="dark"] .design-filters select,
+body.dark-mode .design-filters select,
+html[data-theme="dark"] .design-filters .btn-filter-pin,
+body.dark-mode .design-filters .btn-filter-pin,
+html[data-theme="dark"] .add-collection-bar input,
+body.dark-mode .add-collection-bar input,
+html[data-theme="dark"] .calendar-nav button,
+body.dark-mode .calendar-nav button,
+html[data-theme="dark"] .collection-card-actions button,
+body.dark-mode .collection-card-actions button {
+    background: rgba(15,23,42,0.72) !important;
+    border-color: rgba(148,163,184,0.22) !important;
+    color: #DDE7F3 !important;
+}
+html[data-theme="dark"] .design-tab.active,
+body.dark-mode .design-tab.active,
+html[data-theme="dark"] .design-filters .btn-filter-pin.active,
+body.dark-mode .design-filters .btn-filter-pin.active {
+    background: linear-gradient(135deg, #059669, #10B981) !important;
+    border-color: rgba(16,185,129,0.50) !important;
+    color: #FFFFFF !important;
+}
+html[data-theme="dark"] .tag-chip,
+body.dark-mode .tag-chip,
+html[data-theme="dark"] .design-card-tags .mini-tag,
+body.dark-mode .design-card-tags .mini-tag {
+    background: rgba(148,163,184,0.12) !important;
+    color: #CAD5E4 !important;
+}
+html[data-theme="dark"] .tag-chip.active,
+body.dark-mode .tag-chip.active,
+html[data-theme="dark"] .tag-input-container .tag-pill,
+body.dark-mode .tag-input-container .tag-pill {
+    background: rgba(16,185,129,0.18) !important;
+    border-color: rgba(16,185,129,0.42) !important;
+    color: #A7F3D0 !important;
+}
+html[data-theme="dark"] .calendar-day,
+body.dark-mode .calendar-day,
+html[data-theme="dark"] .calendar-day-detail,
+body.dark-mode .calendar-day-detail {
+    background: rgba(15,23,42,0.78) !important;
+    border: 1px solid rgba(148,163,184,0.14);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+html[data-theme="dark"] .calendar-day:hover,
+body.dark-mode .calendar-day:hover {
+    background: rgba(30,41,59,0.92) !important;
+}
+html[data-theme="dark"] .calendar-day-num,
+body.dark-mode .calendar-day-num,
+html[data-theme="dark"] .calendar-dot-more,
+body.dark-mode .calendar-dot-more {
+    color: #DDE7F3 !important;
+}
+html[data-theme="dark"] .design-edit-modal,
+body.dark-mode .design-edit-modal,
+html[data-theme="dark"] .tag-autocomplete,
+body.dark-mode .tag-autocomplete {
+    background: #111827 !important;
+    border-color: rgba(148,163,184,0.18) !important;
+    color: #E5EEF8 !important;
+}
+html[data-theme="dark"] .design-edit-modal input,
+body.dark-mode .design-edit-modal input,
+html[data-theme="dark"] .design-edit-modal select,
+body.dark-mode .design-edit-modal select,
+html[data-theme="dark"] .design-edit-modal textarea,
+body.dark-mode .design-edit-modal textarea,
+html[data-theme="dark"] .tag-input-container,
+body.dark-mode .tag-input-container {
+    background: rgba(15,23,42,0.82) !important;
+    border-color: rgba(148,163,184,0.22) !important;
+    color: #E5EEF8 !important;
+}
+html[data-theme="dark"] .tag-autocomplete-item:hover,
+body.dark-mode .tag-autocomplete-item:hover {
+    background: rgba(16,185,129,0.14) !important;
+}
+.design-tab:focus-visible,
+.tag-chip:focus-visible,
+.design-guide-link:focus-visible,
+.design-card-actions button:focus-visible,
+.collection-card-actions button:focus-visible,
+.calendar-nav button:focus-visible,
+.price-action-btn:focus-visible,
+.price-view-btn:focus-visible,
+.lightbox-close:focus-visible,
+.lightbox-download:focus-visible {
+    outline: 3px solid rgba(16,185,129,0.48);
+    outline-offset: 2px;
+}
+.lightbox {
+    padding: 72px 20px 76px;
+}
+.lightbox.visible {
+    gap: 14px;
+}
+.lightbox img,
+.lightbox iframe,
+.lightbox-error {
+    cursor: default;
+}
+@media (max-width: 640px) {
+    .lightbox { padding: 88px 12px 82px; }
+    .lightbox-download { top: 22px; left: 16px; right: 72px; justify-content: center; }
+    .lightbox-info { bottom: 14px; max-width: calc(100vw - 28px); }
+}
+
 /* ========================================== */
 
 @media (max-width: 768px) {

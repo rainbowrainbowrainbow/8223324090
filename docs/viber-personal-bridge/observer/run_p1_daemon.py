@@ -10,11 +10,14 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import ctypes
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any, Mapping
+from uuid import UUID, uuid4
 
 from p1_bridge_core import BridgeCore, BridgeCoreError
 from p1_daemon import BridgeDaemon, DaemonError
@@ -24,6 +27,33 @@ from p1_live_inbound import LiveInboundAdapter, LiveInboundJournal, LiveInboundE
 
 class LauncherError(Exception):
     pass
+
+
+def _runtime_id_path(config: Mapping[str, Any]) -> Path:
+    explicit = config.get("runtime_id_path")
+    if isinstance(explicit, str) and explicit:
+        path = Path(explicit)
+        if not path.is_absolute():
+            raise LauncherError("RUNTIME_ID_PATH_INVALID")
+        return path
+    return Path(config["state_path"]).with_name("runtime_id.txt")
+
+
+def _load_or_create_runtime_id(config: Mapping[str, Any]) -> str:
+    path = _runtime_id_path(config)
+    try:
+        if path.exists():
+            runtime_id = path.read_text(encoding="utf-8").strip().lower()
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            runtime_id = str(uuid4())
+            path.write_text(runtime_id + "\n", encoding="utf-8")
+        parsed = UUID(runtime_id)
+        if str(parsed) != runtime_id or parsed.version not in {1, 2, 3, 4, 5}:
+            raise ValueError("runtime id invalid")
+        return runtime_id
+    except (OSError, UnicodeError, ValueError) as error:
+        raise LauncherError("RUNTIME_ID_UNAVAILABLE") from error
 
 
 def _load_config(path: Path) -> Mapping[str, Any]:
@@ -39,6 +69,8 @@ def _load_config(path: Path) -> Mapping[str, Any]:
         raise LauncherError("CONFIG_INVALID")
     if not isinstance(raw["state_path"], str) or not Path(raw["state_path"]).is_absolute():
         raise LauncherError("STATE_PATH_INVALID")
+    if raw.get("runtime_id_path") is not None:
+        _runtime_id_path(raw)
     live = raw.get("live_inbound")
     if live is not None:
         if not isinstance(live, dict) or not isinstance(live.get("enabled"), bool):
@@ -91,6 +123,59 @@ def _build_receive_adapter(config: Mapping[str, Any]) -> LiveInboundAdapter | No
         raise
 
 
+def _windows_file_version(path: Path) -> str | None:
+    if os.name != "nt":
+        return None
+    try:
+        version = ctypes.windll.version
+        size = version.GetFileVersionInfoSizeW(str(path), None)
+        if not size:
+            return None
+        buffer = ctypes.create_string_buffer(size)
+        if not version.GetFileVersionInfoW(str(path), 0, size, buffer):
+            return None
+        value = ctypes.c_void_p()
+        length = ctypes.c_uint()
+        if not version.VerQueryValueW(buffer, "\\", ctypes.byref(value), ctypes.byref(length)):
+            return None
+        fixed = ctypes.cast(value, ctypes.POINTER(ctypes.c_uint32 * 13)).contents
+        ms = fixed[2]
+        ls = fixed[3]
+        return ".".join(str(part) for part in (
+            ms >> 16,
+            ms & 0xFFFF,
+            ls >> 16,
+            ls & 0xFFFF,
+        ))
+    except Exception:
+        return None
+
+
+def _default_viber_executable() -> Path | None:
+    candidates = []
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates.append(Path(local_app_data) / "Viber" / "Viber.exe")
+    program_files = [os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")]
+    for root in program_files:
+        if root:
+            candidates.append(Path(root) / "Viber" / "Viber.exe")
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def viber_desktop_preflight(config: Mapping[str, Any]) -> dict[str, Any]:
+    configured_path = config.get("viber_executable_path")
+    path = Path(configured_path) if isinstance(configured_path, str) and configured_path else _default_viber_executable()
+    present = bool(path and path.is_file())
+    return {
+        "configured": configured_path is not None,
+        "present": present,
+        "path": str(path) if path else None,
+        "version": _windows_file_version(path) if present else None,
+        "blockReason": None if present else "VIBER_DESKTOP_NOT_FOUND",
+    }
+
+
 def runtime_preflight(config: Mapping[str, Any], *, runtime_dir: Path | None = None) -> dict[str, Any]:
     live = config.get("live_inbound")
     live_enabled = isinstance(live, Mapping) and live.get("enabled") is True
@@ -131,6 +216,8 @@ def runtime_preflight(config: Mapping[str, Any], *, runtime_dir: Path | None = N
         "account_epoch": config["account_epoch"],
         "business_context": config["business_context"],
         "statePathExists": Path(config["state_path"]).exists(),
+        "runtimeIdPath": str(_runtime_id_path(config)),
+        "runtimeIdPresent": _runtime_id_path(config).is_file(),
         "modules": modules,
         "liveInbound": {
             "enabled": live_enabled,
@@ -138,6 +225,13 @@ def runtime_preflight(config: Mapping[str, Any], *, runtime_dir: Path | None = N
             "blockReason": None if live_enabled else "CAPTURE_NOT_CONFIGURED",
             **live_checks,
         },
+        "sender": {
+            "enabled": False,
+            "status": "disabled",
+            "blockReason": "SENDER_NOT_CONFIGURED",
+            "adapterModulePresent": modules.get("p1_dispatcher.py", {}).get("present") is True,
+        },
+        "viberDesktop": viber_desktop_preflight(config),
     }
 
 
@@ -152,7 +246,8 @@ def build_daemon(config: Mapping[str, Any]) -> BridgeDaemon:
     try:
         client = BridgeHttpClient(config["crm_base_url"], config["token"])
         receive_adapter = _build_receive_adapter(config)
-        return BridgeDaemon(core, client, receive_adapter=receive_adapter)
+        return BridgeDaemon(core, client, runtime_id=_load_or_create_runtime_id(config),
+                            receive_adapter=receive_adapter)
     except Exception:
         core.close()
         raise

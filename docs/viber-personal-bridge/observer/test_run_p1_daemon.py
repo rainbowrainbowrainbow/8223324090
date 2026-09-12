@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+from uuid import UUID
 from unittest.mock import patch
 
 import run_p1_daemon
@@ -60,9 +61,31 @@ class RunP1DaemonTests(unittest.TestCase):
             }, runtime_dir=root)
             self.assertTrue(result["ok"])
             self.assertTrue(result["statePathExists"])
+            self.assertFalse(result["runtimeIdPresent"])
             self.assertEqual(result["liveInbound"]["status"], "disabled")
             self.assertEqual(result["liveInbound"]["blockReason"], "CAPTURE_NOT_CONFIGURED")
+            self.assertEqual(result["sender"]["status"], "disabled")
+            self.assertEqual(result["sender"]["blockReason"], "SENDER_NOT_CONFIGURED")
+            self.assertIn("viberDesktop", result)
             self.assertNotIn("token", json.dumps(result))
+
+    def test_runtime_id_is_stable_and_private(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = {
+                "crm_base_url": "https://crm.example",
+                "bridge_id": "10000000-0000-4000-8000-000000000001",
+                "account_id": "10000000-0000-4000-8000-000000000002",
+                "account_epoch": 1,
+                "business_context": "event_genix",
+                "token": "x" * 32,
+                "state_path": str(root / "bridge.sqlite"),
+            }
+            first = run_p1_daemon._load_or_create_runtime_id(config)
+            second = run_p1_daemon._load_or_create_runtime_id(config)
+            self.assertEqual(first, second)
+            self.assertEqual(str(UUID(first)), first)
+            self.assertEqual((root / "runtime_id.txt").read_text(encoding="utf-8").strip(), first)
 
 
 if __name__ == "__main__":

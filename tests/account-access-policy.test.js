@@ -119,7 +119,9 @@ test('legacy page aliases canonicalize for reads and writes', () => {
     const specialPageGrant = resolveCapability({ role: 'animator', page_allowlist: ['/maysternya-doli'] }, '/maysternya-doli');
     assert.equal(specialPageGrant.allowed, false);
     assert.equal(specialPageGrant.reason, 'explicit_allow_disabled');
-    assert.equal(resolveCapability({ role: 'creator' }, '/maysternya-doli').allowed, true);
+    assert.equal(resolveCapability({ role: 'director' }, '/maysternya-doli').allowed, true);
+    assert.equal(resolveCapability({ role: 'manager' }, '/maysternya-doli').allowed, true);
+    assert.equal(resolveCapability({ role: 'creator' }, '/maysternya-doli').allowed, false);
 });
 
 test('canonical allow and deny conflicts are rejected', () => {

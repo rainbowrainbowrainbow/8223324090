@@ -3776,7 +3776,9 @@
         if ($('actionPinValue')) $('actionPinValue').disabled = disabled;
         if ($('actionPinConfirm')) $('actionPinConfirm').disabled = disabled;
         const checkBindingId = ownActionPinBindingId();
-        const checkDisabled = !checkVisible || state.actionPinCheckInFlight || !checkBindingId;
+        const checkAvailable = checkVisible && Boolean(checkBindingId);
+        const checkDisabled = !checkAvailable || state.actionPinCheckInFlight;
+        $('actionPinCheckForm')?.classList.toggle('hidden', !checkAvailable);
         if ($('actionPinCheckValue')) $('actionPinCheckValue').disabled = checkDisabled;
         setStatus('actionPinStatus', state.actionPinLoadInFlight || state.actionPinCheckInFlight ? 'pending' : (disabled && checkDisabled ? 'blocked' : 'ready'));
         setButtonBusy($('saveActionPinBtn'), state.actionPinSaveInFlight, 'Зберігаємо…');
@@ -3787,11 +3789,14 @@
         }
         setButtonBusy($('checkActionPinBtn'), state.actionPinCheckInFlight, 'Перевіряємо…');
         if (!state.actionPinCheckInFlight) {
-            setDisabledReason($('checkActionPinBtn'), checkDisabled, checkBindingId ? '' : 'Оберіть власного активного касира тестової каси.');
+            setDisabledReason($('checkActionPinBtn'), checkDisabled, checkBindingId ? '' : 'Перевірка доступна лише власнику активної тестової прив’язки.');
         }
         setText('actionPinNotice', selfSelected
             ? 'Власну прив’язку можна тільки перевірити; встановлює PIN інший відповідальний.'
-            : 'PIN встановлюється лише для іншого касира обраної тестової каси.');
+            : 'PIN встановлюється лише для іншого касира обраної тестової каси. Готовність продажів на це не впливає.');
+        setText('actionPinCheckNotice', checkAvailable
+            ? 'Введіть свій PIN, щоб перевірити його без створення касової операції.'
+            : 'Поточний обліковий запис не є власником активної тестової прив’язки. Віталіна встановлює PIN, а перевіряє його тестовий касир після входу у CRM під власним обліковим записом.');
     }
 
     function phase1CloseContext() {

@@ -7457,6 +7457,9 @@ check('Cashier PIN UI keeps delegated enrollment separate from an owner-only tes
     && cashierPaymentsJs.includes("$('actionPinCheckForm')?.addEventListener('submit', checkOwnActionPin)")
     && cashierPaymentsJs.includes('state.actionPinCheckInFlight')
     && cashierPaymentsJs.includes('PIN підтверджено без створення касової операції.')
+    && cashierPaymentsHtml.indexOf('id="cashierRouteSelector"') < cashierPaymentsHtml.indexOf('id="actionPinPanel"')
+    && cashierPaymentsHtml.indexOf('id="actionPinPanel"') < cashierPaymentsHtml.indexOf('id="cashierReadinessStatus"')
+    && cashierPaymentsJs.includes('selectedRoute()?.pinManageAllowed === true')
     && !/localStorage\.(?:setItem|getItem)[^\n]*(?:pin|actionPin)/i.test(cashierPaymentsJs));
 check('Cashier payments defines accessible dark warning and overflow containment surfaces',
     cashierPaymentsCss.includes('body.dark-mode .cashier-alert-warning')

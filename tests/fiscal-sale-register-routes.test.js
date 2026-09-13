@@ -107,6 +107,7 @@ test('test options are hidden without fiscal.configure', async () => {
 test('test PIN managers can see shared test routes without receiving test sales readiness', async () => {
     const routes = await listFiscalSaleRouteOptions({ dbPool: new RouteDb(), user: { id: 1 }, canUseActionFn: (_user, action) => action === 'fiscal.test.pin.manage', canAccessBusinessContextFn: allowBusiness, allowTestPinManage: true });
     assert.equal(routes.filter(route => route.mode === 'test').every(route => route.salesAllowed === false), true);
+    assert.equal(routes.filter(route => route.mode === 'test').every(route => route.pinManageAllowed === true), true);
 });
 
 test('test PIN owners can read their test route without receiving PIN management or sale readiness', async () => {
@@ -118,6 +119,7 @@ test('test PIN owners can read their test route without receiving PIN management
         allowTestPinRead: true
     });
     assert.equal(routes.filter(route => route.mode === 'test').every(route => route.salesAllowed === false), true);
+    assert.equal(routes.filter(route => route.mode === 'test').every(route => route.pinManageAllowed === false), true);
 });
 
 test('browser fiscal/provider overrides are rejected before DB access', () => {

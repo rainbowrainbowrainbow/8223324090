@@ -809,7 +809,11 @@
     function actionPinVisible() {
         return hasAction('fiscal.configure') || hasAction('fiscal.test.pin.manage') || selectedRoute()?.mode === 'test';
     }
-    function actionPinManageVisible() { return hasAction('fiscal.configure') || hasAction('fiscal.test.pin.manage'); }
+    function actionPinManageVisible() {
+        return hasAction('fiscal.configure')
+            || hasAction('fiscal.test.pin.manage')
+            || selectedRoute()?.pinManageAllowed === true;
+    }
     function actionPinCheckVisible() { return selectedRoute()?.mode === 'test'; }
 
     function currentShiftStatus() {

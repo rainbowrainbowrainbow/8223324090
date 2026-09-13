@@ -394,7 +394,7 @@ async function resolveFiscalSaleRoute({
     }
 }
 
-function projectRouteOption(route, resolved = null, error = null, { salesAllowed = true } = {}) {
+function projectRouteOption(route, resolved = null, error = null, { salesAllowed = true, pinManageAllowed = false } = {}) {
     const mapping = resolved?.mapping || null;
     const configured = Boolean(mapping);
     const sequentialOwnerBusinessContext = resolved?.sequentialState?.reasonCode === 'shared_test_register_owned_by_other_business'
@@ -411,6 +411,7 @@ function projectRouteOption(route, resolved = null, error = null, { salesAllowed
         featureEnabled: mapping?.feature_enabled === true && mapping?.route_feature_enabled === true,
         acceptanceEnabled: mapping?.acceptance_enabled === true && mapping?.route_acceptance_enabled === true,
         salesAllowed: salesAllowed !== false,
+        pinManageAllowed: pinManageAllowed === true,
         sequentialReady: resolved?.sequentialState?.ready === true,
         sequentialOwnerBusinessContext,
         readinessCode: error?.code || resolved?.sequentialState?.reasonCode || (
@@ -438,7 +439,10 @@ async function listFiscalSaleRouteOptions({
         } catch {
             continue;
         }
-        const salesAllowed = route.mode !== 'test' || canUseActionFn(user, 'fiscal.configure');
+        const canConfigure = canUseActionFn(user, 'fiscal.configure');
+        const salesAllowed = route.mode !== 'test' || canConfigure;
+        const pinManageAllowed = route.mode === 'test' && (canConfigure
+            || (allowTestPinManage === true && canUseActionFn(user, 'fiscal.test.pin.manage')));
         try {
             const resolved = await resolveFiscalSaleRoute({
                 dbPool,
@@ -447,16 +451,16 @@ async function listFiscalSaleRouteOptions({
                 canUseActionFn,
                 canAccessBusinessContextFn, allowTestPinManage, allowTestPinRead
             });
-            options.push(projectRouteOption(route, resolved, null, { salesAllowed }));
+            options.push(projectRouteOption(route, resolved, null, { salesAllowed, pinManageAllowed }));
         } catch (error) {
             if (
                 error?.code === 'fiscal_route_mapping_ambiguous'
                 || error?.code === 'fiscal_route_mode_mismatch'
                 || error?.code === 'fiscal_shared_register_group_drift'
             ) {
-                options.push(projectRouteOption(route, null, error, { salesAllowed }));
+                options.push(projectRouteOption(route, null, error, { salesAllowed, pinManageAllowed }));
             } else if (error?.code === 'fiscal_route_mapping_missing') {
-                options.push(projectRouteOption(route, null, null, { salesAllowed }));
+                options.push(projectRouteOption(route, null, null, { salesAllowed, pinManageAllowed }));
             } else {
                 throw error;
             }

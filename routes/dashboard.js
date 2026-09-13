@@ -34,6 +34,14 @@ const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurfa
 
 const log = createLogger('Dashboard');
 const SALES_LEAD_TYPE_FILTER = "COALESCE(lead_type, 'quality') = 'quality'";
+const SAFE_BOOKING_START_MINUTES_SQL = `
+    CASE
+        WHEN LEFT(BTRIM(COALESCE(b.time::text, '')), 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+        THEN EXTRACT(HOUR FROM LEFT(BTRIM(b.time::text), 5)::time)::int * 60
+           + EXTRACT(MINUTE FROM LEFT(BTRIM(b.time::text), 5)::time)::int
+        ELSE NULL
+    END
+`;
 const URGENT_TASK_MOVEMENT_ACTION_TYPES = [
     TASK_ACTION_TYPES.COMPLETED,
     TASK_ACTION_TYPES.STATUS_CHANGED,
@@ -993,7 +1001,7 @@ async function buildEventRiskSummary(user, businessScope = null) {
             WHERE LEFT(COALESCE(b.date, ''), 10) = $1
               AND b.status = 'preliminary'
               AND NULLIF(COALESCE(b.linked_to, ''), '') IS NULL
-              AND (SUBSTRING(b.time FROM 1 FOR 2)::int * 60 + SUBSTRING(b.time FROM 4 FOR 2)::int)
+              AND (${SAFE_BOOKING_START_MINUTES_SQL})
                   - EXTRACT(HOUR FROM NOW() AT TIME ZONE 'Europe/Kyiv')::int * 60
                   - EXTRACT(MINUTE FROM NOW() AT TIME ZONE 'Europe/Kyiv')::int
                   BETWEEN 0 AND 120
@@ -1765,7 +1773,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                         SELECT b.id, b.label, b.time, b.room FROM bookings b
                         WHERE b.date = $1 AND b.status = 'preliminary'
                           ${lateUnconfirmedVisibility.sql}
-                          AND (SUBSTRING(b.time FROM 1 FOR 2)::int * 60 + SUBSTRING(b.time FROM 4 FOR 2)::int)
+                          AND (${SAFE_BOOKING_START_MINUTES_SQL})
                               - EXTRACT(HOUR FROM NOW() AT TIME ZONE 'Europe/Kyiv')::int * 60
                               - EXTRACT(MINUTE FROM NOW() AT TIME ZONE 'Europe/Kyiv')::int
                               BETWEEN 0 AND 120
@@ -2469,6 +2477,7 @@ module.exports.triggerAlertBroadcast = triggerAlertBroadcast;
 module.exports.__boardTest = {
     alertBroadcasterState,
     buildPersistedDashboardConfig,
+    buildEventRiskSummary,
     broadcastAlerts,
     dashboardActiveBookingStatusSql,
     dashboardKyivClock,

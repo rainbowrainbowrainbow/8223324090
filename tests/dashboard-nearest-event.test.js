@@ -1,5 +1,7 @@
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 let state;
 let loadedDashboard;
@@ -284,6 +286,29 @@ describe('dashboard nearest event widget', () => {
         assert.equal(data.preparation.overdueCount, 8);
         assert.match(data.event.canonicalHref, /id=QA-7&businessContext=other_business/);
         assert.match(state.queries[1].sql, /LIMIT 6/);
+    });
+
+    it('guards event-risk preliminary time parsing against invalid live booking times', async () => {
+        const dashboard = loadDashboard();
+        state.eventRows = [{ count: '2' }];
+        state.taskRows = [{ count: '1' }];
+
+        const payload = await dashboard.__boardTest.buildEventRiskSummary(
+            { id: 5, role: 'admin', name: 'Admin' },
+            { activeContext: 'event_genix' }
+        );
+
+        assert.equal(payload.eventRiskSummary.todayUnconfirmed, 2);
+        assert.equal(payload.eventRiskSummary.tomorrowUnconfirmed, 1);
+        assert.equal(state.queries.length, 5);
+        const latePreliminaryQuery = state.queries[2].sql;
+        assert.match(latePreliminaryQuery, /CASE\s+WHEN LEFT\(BTRIM\(COALESCE\(b\.time::text, ''\)\), 5\) ~/);
+        assert.match(latePreliminaryQuery, /ELSE NULL/);
+        assert.doesNotMatch(latePreliminaryQuery, /SUBSTRING\(b\.time FROM 1 FOR 2\)::int/);
+
+        const dashboardRouteSource = fs.readFileSync(path.join(__dirname, '..', 'routes', 'dashboard.js'), 'utf8');
+        assert.doesNotMatch(dashboardRouteSource, /SUBSTRING\(b\.time FROM 1 FOR 2\)::int/);
+        assert.doesNotMatch(dashboardRouteSource, /SUBSTRING\(b\.time FROM 4 FOR 2\)::int/);
     });
 
     it('uses a single Kyiv clock at midnight, minute boundaries and both DST transitions', () => {

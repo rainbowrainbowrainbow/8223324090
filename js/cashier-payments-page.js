@@ -214,6 +214,7 @@
         actionPinLoadInFlight: false,
         actionPinSaveInFlight: false,
         actionPinCheckInFlight: false,
+        actionPinCheckMessage: null,
         actionPinSelectedBindingId: '',
         actionPinManagerOpen: false,
         actionPinSetOpen: false,
@@ -288,6 +289,9 @@
         state.terminal.loadInFlight = false;
         state.terminal.openInFlight = false;
         state.terminal.loginInFlight = false;
+        state.actionPinCheckInFlight = false;
+        state.actionPinCheckMessage = null;
+        if ($('actionPinCheckValue')) $('actionPinCheckValue').value = '';
         state.serviceOutLastError = null;
         state.serviceOutCapabilityDenied = false;
         syncUnresolvedControls();
@@ -1684,6 +1688,11 @@
             $('actionPinCheckValue')?.focus?.({ preventScroll: false });
             return;
         }
+        const contextKey = interactionContextKey();
+        if (state.actionPinCheckMessage && $('cashierGlobalStatus')?.textContent === state.actionPinCheckMessage) {
+            clearGlobalStatus({ preserveError: false });
+        }
+        state.actionPinCheckMessage = null;
         state.actionPinCheckInFlight = true;
         renderActionPinPanel();
         try {
@@ -1696,15 +1705,19 @@
                     routeOptionId: PILOT_SCOPE.routeOptionId
                 })
             });
-            if ($('actionPinCheckValue')) $('actionPinCheckValue').value = '';
-            setText('actionPinCheckNotice', 'PIN підтверджено для вашої тестової прив’язки.');
+            if (contextKey !== interactionContextKey()) return;
+            state.actionPinCheckMessage = 'PIN підтверджено для вашої тестової прив’язки.';
             notify('PIN підтверджено без створення касової операції.', 'success');
         } catch (error) {
-            setText('actionPinCheckNotice', paymentUiError(error));
+            if (contextKey !== interactionContextKey()) return;
+            state.actionPinCheckMessage = paymentUiError(error);
             notify(paymentUiError(error), 'error');
         } finally {
-            state.actionPinCheckInFlight = false;
-            renderActionPinPanel();
+            if (contextKey === interactionContextKey()) {
+                if ($('actionPinCheckValue')) $('actionPinCheckValue').value = '';
+                state.actionPinCheckInFlight = false;
+                renderActionPinPanel();
+            }
         }
     }
 
@@ -3400,6 +3413,11 @@
             fiscal_route_feature_disabled: 'Обрана каса вимкнена для продажів.',
             fiscal_route_acceptance_disabled: 'Приймання оплат для цієї каси ще не активоване.',
             fiscal_route_mode_mismatch: 'Фактичний test/production режим каси не збігається з обраним.',
+            fiscal_test_route_denied: 'Для продажів у тестовій касі потрібен окремий доступ тестового касира.',
+            fiscal_test_cashier_scope_invalid: 'Тестова каса неактивна або її прив’язка не підтверджена.',
+            fiscal_test_cashier_binding_denied: 'Оберіть власну активну прив’язку тестового касира.',
+            fiscal_binding_not_found: 'Для вашого облікового запису немає активної прив’язки касира цієї каси.',
+            fiscal_binding_capability_denied: 'Ваша прив’язка касира не має дозволу на цю дію.',
             shared_test_register_owned_by_other_business: 'Спільна тестова каса зараз використовується іншим напрямком.',
             shared_test_register_recovery_incomplete: 'Перед переключенням тестової каси треба завершити попередню зміну й відновлення.',
             local_qa_identity_not_confirmed: 'LOCAL QA не підтверджений сервером. Продаж заблоковано.',
@@ -4907,9 +4925,9 @@
         setText('actionPinNotice', manageVisible
             ? 'Керування PIN відкривається окремим вікном. Готовність продажів на це не впливає.'
             : 'Керування PIN недоступне для цього користувача CRM. Вхід касира в термінал не додає адміністративних прав.');
-        setText('actionPinCheckNotice', checkAvailable
+        setText('actionPinCheckNotice', state.actionPinCheckMessage || (checkAvailable
             ? 'Введіть свій PIN, щоб перевірити його без створення касової операції.'
-            : 'Поточний обліковий запис не є власником активної тестової прив’язки. Віталіна встановлює PIN, а перевіряє його тестовий касир після входу у CRM під власним обліковим записом.');
+            : 'Поточний обліковий запис не є власником активної тестової прив’язки. PIN встановлює інший відповідальний; перевіряє його власник прив’язки після входу у CRM.'));
     }
 
     function phase1CloseContext() {

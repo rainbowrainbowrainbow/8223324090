@@ -55,6 +55,9 @@ const MODES = {
     'catalog-sale-local-qa': [
         'tests/integration/catalog-sale-local-provider.integration.test.js'
     ],
+    'vitalina-test-cashier': [
+        'tests/integration/catalog-sale-vitalina-local-provider.integration.test.js'
+    ],
     'my-day': [
         'tests/integration/my-day-postgres.integration.test.js'
     ],
@@ -106,7 +109,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|catalog-sale|catalog-sale-local-qa|my-day|my-day-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
@@ -494,7 +497,8 @@ function runsAgainstDatabaseOnly(testFile) {
 
 async function runSuite(testDb, testFile, suiteMode) {
     const port = await reservePort();
-    const catalogSaleLocalQa = testFile.includes('catalog-sale-local-provider.integration');
+    const vitalinaTestCashier = testFile.includes('catalog-sale-vitalina-local-provider.integration');
+    const catalogSaleLocalQa = testFile.includes('catalog-sale-local-provider.integration') || vitalinaTestCashier;
     const checkboxBrowserMockPort = (testFile.includes('checkbox-cashier-real-routes-browser-smoke') || catalogSaleLocalQa) ? await reservePort() : null;
     const myDayOpenAiMockPort = (testFile.includes('my-day-postgres.integration') || testFile.includes('my-day-actual-app-browser-smoke')) ? await reservePort() : null;
     const baseUrl = `http://127.0.0.1:${port}`;
@@ -557,6 +561,10 @@ async function runSuite(testDb, testFile, suiteMode) {
         serverEnv.CHECKBOX_EXPECT_IS_TEST = 'true';
         serverEnv.CHECKBOX_WEBHOOK_ENABLED = 'false';
         serverEnv.EVENTGENIX_CASHIER_PRO_ENABLED = 'false';
+        if (vitalinaTestCashier) {
+            serverEnv.PARK_DAR_TEST_SERVICE_OUT_ENABLED = 'true';
+            serverEnv.PARK_DAR_TEST_XZ_ENABLED = 'true';
+        }
         serverEnv.PAYMENT_OUTBOX_WAKEUP_DISABLED = 'true';
         serverEnv.BACKUP_OUTBOUND_HOLD = 'true';
         const prefix = `CHECKBOX_${sharedRef}`;
@@ -738,7 +746,7 @@ async function runSuite(testDb, testFile, suiteMode) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'catalog-sale', 'catalog-sale-local-qa', 'my-day', 'my-day-browser', 'redirect-auth', 'redirect-upgrade', 'cashier-smoke', 'checkbox-config', 'checkbox-x-report', 'checkbox-ui-real', 'checkbox-ui-testmode-preflight', 'checkbox-ui-testmode', 'checkbox-ui-testmode-card-recovery', 'checkbox-ui-testmode-final-card-close', 'onboarding', 'backfill', 'upload-backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (mode !== 'all' && !Object.prototype.hasOwnProperty.call(MODES, mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const checkboxTestMode = mode === 'checkbox-ui-testmode-preflight'
         || mode === 'checkbox-ui-testmode'
@@ -747,7 +755,7 @@ async function main() {
     const checkboxMutationMode = mode === 'checkbox-ui-testmode'
         || mode === 'checkbox-ui-testmode-card-recovery'
         || mode === 'checkbox-ui-testmode-final-card-close';
-    if (mode === 'catalog-sale-local-qa') {
+    if (mode === 'catalog-sale-local-qa' || mode === 'vitalina-test-cashier') {
         if (!testDb.isLocal) throw new Error('Catalog-sale local QA requires loopback disposable PostgreSQL');
         if (isCheckboxPaymentAcceptanceEnabledForParent(process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED)) {
             throw new Error('Catalog-sale local QA refuses a pre-enabled parent payment acceptance flag');

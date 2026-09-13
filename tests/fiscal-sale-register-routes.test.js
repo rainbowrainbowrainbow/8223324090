@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
     assertNoClientFiscalRouteOverride,
+    assertTestCashierAction,
     listFiscalSaleRouteOptions,
     resolveFiscalSaleRoute
 } = require('../services/payments/fiscalSaleRouteService');
@@ -38,7 +39,9 @@ function mapping({ business = 'event_genix', physicalBusiness = business, routeO
 }
 
 class RouteDb {
-    constructor({ activeShift = null, blockers = null, testIsTest = true, sharedGroupRows = null } = {}) {
+    constructor({ activeShift = null, blockers = null, testIsTest = true, sharedGroupRows = null, binding = null, mappingOverrides = {} } = {}) {
+        this.binding = binding;
+        this.mappingOverrides = mappingOverrides;
         this.activeShift = activeShift;
         this.blockers = blockers || { pending_jobs: 0, unknown_operations: 0, unknown_orders: 0 };
         this.testIsTest = testIsTest;
@@ -48,6 +51,7 @@ class RouteDb {
     release() {}
     async query(sql, params = []) {
         const normalized = String(sql).replace(/\s+/g, ' ');
+        if (normalized.includes('FROM fiscal_cashier_bindings b')) return { rows: this.binding ? [this.binding] : [] };
         if (normalized.includes('WHERE fsr.shared_register_group = $1')) {
             return { rows: this.sharedGroupRows || [
                 mapping({ business: 'event_genix', physicalBusiness: 'event_genix', routeOptionId: 'park_test', registerId: 99, isTest: true }),
@@ -58,13 +62,13 @@ class RouteDb {
             const routeOptionId = params[0];
             const business = params[1];
             const isTest = routeOptionId.endsWith('_test');
-            return { rows: [mapping({
+            return { rows: [{ ...mapping({
                 business,
                 physicalBusiness: isTest ? 'event_genix' : business,
                 routeOptionId,
                 registerId: isTest ? 99 : business === 'dar' ? 41 : 40,
                 isTest: isTest ? this.testIsTest : false
-            })] };
+            }), ...this.mappingOverrides }] };
         }
         if (normalized.includes('FROM fiscal_shifts')) {
             return { rows: this.activeShift ? [this.activeShift] : [] };
@@ -76,6 +80,60 @@ class RouteDb {
 
 const allowBusiness = () => true;
 const allowConfigure = () => true;
+
+const testCashier = { id: 5, role: 'senior_manager', business_contexts: ['event_genix'],
+    default_business_context: 'event_genix',
+    action_allowlist: ['fiscal.test.cashier.use', 'payments.view', 'payments.create'] };
+const ownBinding = { id: 9, user_id: 5, fiscal_profile_id: 20, fiscal_location_id: 30,
+    fiscal_register_id: 99, register_fiscal_location_id: 30, provider: 'checkbox', status: 'active',
+    capability_scope: ['payments.view', 'payments.create'] };
+
+test('delegated cashier sees only own business test sales with an exact own active binding', async () => {
+    const options = await listFiscalSaleRouteOptions({ user: testCashier, dbPool: new RouteDb({ binding: ownBinding }) });
+    assert.deepEqual(options.map(route => route.id), ['park_production', 'park_test']);
+    assert.equal(options.find(route => route.id === 'park_test').salesAllowed, true);
+    assert.equal(options.find(route => route.id === 'park_test').pinManageAllowed, false);
+    assert.doesNotMatch(JSON.stringify(options), /capability_scope|provider|credential|cashierBinding/);
+    const route = await resolveFiscalSaleRoute({ user: testCashier, dbPool: new RouteDb({ binding: ownBinding }), routeOptionId: 'park_test' });
+    assertTestCashierAction({ user: testCashier, route, action: 'payments.create', bindingId: 9 });
+    assert.throws(() => assertTestCashierAction({ user: testCashier, route, action: 'payments.create', bindingId: 8 }),
+        error => error.code === 'fiscal_test_cashier_binding_denied');
+    assert.throws(() => assertTestCashierAction({ user: testCashier, route, action: 'fiscal.configure' }),
+        error => error.code === 'fiscal_capability_denied');
+});
+
+test('delegated test cashier fails closed on binding, active scope, business and mode drift', async () => {
+    for (const binding of [null, { ...ownBinding, user_id: 6 }, { ...ownBinding, status: 'inactive' },
+        { ...ownBinding, provider: 'other' }, { ...ownBinding, fiscal_location_id: 31 },
+        { ...ownBinding, fiscal_register_id: 98 }, { ...ownBinding, capability_scope: [] }]) {
+        await assert.rejects(resolveFiscalSaleRoute({ user: testCashier, dbPool: new RouteDb({ binding }), routeOptionId: 'park_test' }),
+            error => error.status === 403);
+    }
+    for (const mappingOverrides of [{ route_status: 'draft' }, { route_feature_enabled: false },
+        { feature_enabled: false }, { fiscal_register_status: 'inactive' }]) {
+        await assert.rejects(resolveFiscalSaleRoute({ user: testCashier,
+            dbPool: new RouteDb({ binding: ownBinding, mappingOverrides }), routeOptionId: 'park_test' }),
+        error => error.code === 'fiscal_test_cashier_scope_invalid');
+    }
+    await assert.rejects(resolveFiscalSaleRoute({ user: testCashier, dbPool: new RouteDb({ binding: ownBinding }), routeOptionId: 'dar_test' }),
+        error => error.code === 'fiscal_route_business_denied');
+    await assert.rejects(resolveFiscalSaleRoute({ user: testCashier, dbPool: new RouteDb({ binding: ownBinding, testIsTest: false }), routeOptionId: 'park_test' }),
+        error => error.code === 'fiscal_route_mode_mismatch');
+    await assert.rejects(resolveFiscalSaleRoute({ user: testCashier, dbPool: new RouteDb({ binding: ownBinding, blockers: { unknown_operations: 1 } }),
+        routeOptionId: 'park_test', requireMutationReady: true }), error => error.code === 'shared_test_register_recovery_incomplete');
+    await assert.rejects(resolveFiscalSaleRoute({ user: testCashier, dbPool: new RouteDb({ binding: ownBinding,
+        mappingOverrides: { route_acceptance_enabled: false } }), routeOptionId: 'park_test', requireMutationReady: true }),
+    error => error.code === 'fiscal_route_acceptance_disabled');
+});
+
+test('missing sale binding preserves separate PIN-only view and production behavior is unchanged', async () => {
+    const options = await listFiscalSaleRouteOptions({ user: testCashier, dbPool: new RouteDb(), allowTestPinRead: true });
+    assert.equal(options.find(route => route.id === 'park_test').salesAllowed, false);
+    assert.equal(options.find(route => route.id === 'park_test').readinessCode, 'fiscal_binding_not_found');
+    const production = await resolveFiscalSaleRoute({ user: testCashier, dbPool: new RouteDb(), routeOptionId: 'park_production' });
+    assert.equal(production.cashierBinding, null);
+    assert.equal(production.expectedIsTest, false);
+});
 
 test('four safe route options are visible to fiscal.configure users', async () => {
     const routes = await listFiscalSaleRouteOptions({

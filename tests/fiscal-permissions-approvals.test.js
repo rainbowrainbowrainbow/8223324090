@@ -159,6 +159,18 @@ test('test cashier PIN management is delegated without broad fiscal configuratio
     assert.equal(canUseAction(vitalinaLike, 'fiscal.configure'), false);
 });
 
+test('test cashier use is delegated separately from PIN management and configuration', () => {
+    const action = 'fiscal.test.cashier.use';
+    assert.equal(ACTION_PERMISSION_BY_KEY[action].delegable, true);
+    assert.deepEqual(ACTION_PERMISSION_BY_KEY[action].defaultRoles, []);
+    assert.equal(canUseAction(baseUser({ role: 'senior_manager' }), action), false);
+    const user = baseUser({ role: 'senior_manager', action_allowlist: [action] });
+    assert.equal(canUseAction(user, action), true);
+    assert.equal(canUseAction(user, 'fiscal.configure'), false);
+    assert.equal(canUseAction(user, 'fiscal.test.pin.manage'), false);
+    assert.equal(canUseAction({ ...user, action_denylist: [action] }, action), false);
+});
+
 test('fiscal action context requires exact user, CRM profile, location, register, and capability', () => {
     const decision = authorizeFiscalActionContext({
         user: baseUser(),

@@ -695,6 +695,12 @@ const ACTION_PERMISSIONS = Object.freeze([
         ]
     }),
     action({
+        key: 'fiscal.test.cashier.use', label: 'Use own test cashier', group: 'payments', defaultRoles: [], risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalSaleRouteService.js', "canUseActionFn(user, 'fiscal.test.cashier.use')", { enforces: true })],
+        apiConsumers: [api('routes/payments.js', '/api/payments/catalog/routes', null, 'Server-verified shared test routes only; own active binding, business scope and normal action capabilities remain required.')],
+        notes: 'Delegable test cashier access. Does not grant configuration, PIN management, business membership, or production capabilities.'
+    }),
+    action({
         key: 'fiscal.test.pin.manage', label: 'Manage test cashier PIN', group: 'payments', defaultRoles: [], risk: 'critical',
         backendConsumers: [source('routes/payments.js', "requireFiscalActionPinAccess", { enforces: true }), source('services/payments/cashierOperationsService.js', "canUseAction(user, 'fiscal.test.pin.manage')", { enforces: true }), source('services/payments/cashierBindingAdminService.js', "canUseAction(user, 'fiscal.test.pin.manage')", { enforces: true })],
         frontendConsumers: [source('js/cashier-payments-page.js', "hasAction('fiscal.test.pin.manage')", { enforces: true })],

@@ -26,6 +26,7 @@ const {
 } = require('../checkbox/config');
 const {
     assertNoClientFiscalRouteOverride,
+    assertTestCashierAction,
     resolveFiscalSaleRoute
 } = require('./fiscalSaleRouteService');
 const {
@@ -290,6 +291,7 @@ async function createCatalogSalePaymentOrder({
                 throw new PaymentServiceError('terminal_cashier_binding_mismatch', 'Terminal cashier does not match the selected payment cashier', { status: 409 });
             }
         }
+        assertTestCashierAction({ user: effectiveUser, route, action: 'payments.create', bindingId: selectedBinding.id });
         if (requireCheckboxIntegrationReady) {
             if (!isCheckboxIntegrationEnabled(env)) {
                 throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });

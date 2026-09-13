@@ -218,6 +218,7 @@
     "audit:checkbox-release-db-preflight": "node scripts/checkbox-release-db-preflight.js",
     "test:integration:catalog-sale:isolated": "node scripts/run-isolated-postgres-tests.js catalog-sale",
     "test:integration:catalog-sale-local-qa:isolated": "node scripts/run-isolated-postgres-tests.js catalog-sale-local-qa",
+    "test:integration:vitalina-test-cashier:isolated": "node scripts/run-isolated-postgres-tests.js vitalina-test-cashier",
     "test:checkbox:single-register-runner": "node --test tests/checkbox-single-register-mutation-qa.test.js",
     "test:catalog-sale:manual-ui": "node --test tests/catalog-sale-manual-ui.test.js tests/checkbox-local-manual-ui-mock.test.js tests/catalog-sale.test.js",
     "qa:catalog-sale:manual-ui": "npx --offline -y -p playwright node scripts/start-catalog-sale-manual-ui.js",

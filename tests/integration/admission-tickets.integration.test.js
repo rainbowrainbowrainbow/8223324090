@@ -105,10 +105,10 @@ async function ensureEventGenixMemberships(pool, users = []) {
     }
 
     const business = await pool.query(
-        `SELECT id, organization_id
-           FROM businesses
-          WHERE context_key = 'event_genix'
-            AND status = 'active'
+        `SELECT b.id, b.organization_id
+           FROM businesses b
+           JOIN organizations o ON o.id = b.organization_id
+          WHERE b.context_key = 'event_genix'
           LIMIT 1`
     ).catch(error => {
         if (['42P01', '42703'].includes(error?.code)) return { rows: [] };
@@ -116,6 +116,18 @@ async function ensureEventGenixMemberships(pool, users = []) {
     });
     const row = business.rows[0];
     if (!row) return;
+    await pool.query(
+        `UPDATE organizations
+            SET status = 'active'
+          WHERE id = $1`,
+        [row.organization_id]
+    );
+    await pool.query(
+        `UPDATE businesses
+            SET status = 'active'
+          WHERE id = $1`,
+        [row.id]
+    );
     for (const user of users) {
         await pool.query(
             `INSERT INTO organization_memberships (organization_id, user_id, role)

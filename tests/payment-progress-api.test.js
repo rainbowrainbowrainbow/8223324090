@@ -30,6 +30,7 @@ function loadService(dbPool, authorize) {
     ].map(id => [id, deniedExports]));
     return evaluate('services/payments/paymentService.js', {
         ...dependencies, 'node:crypto': require('node:crypto'), '../../db': { pool: dbPool },
+        '../../middleware/auth': { canUseAction: (_user, action) => action === 'fiscal.configure' },
         './fiscalAccess': { authorizeFiscalAction: authorize, authorizeFiscalActorAction: authorize },
         './paymentProgress': { paymentProgress }
     });

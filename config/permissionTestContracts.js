@@ -186,6 +186,11 @@ const ACTION_PERMISSION_TEST_CONTRACTS = Object.freeze({
         sensitive: true,
         testFiles: ['tests/payment-readiness.test.js']
     }),
+    'fiscal.test.cashier.use': actionContract('fiscal.test.cashier.use', {
+        backendScenario: 'own active shared test cashier without fiscal.configure',
+        mutation: true, sensitive: true,
+        testFiles: ['tests/fiscal-permissions-approvals.test.js', 'tests/fiscal-sale-register-routes.test.js']
+    }),
     'fiscal.configure': actionContract('fiscal.configure', {
         backendScenario: 'fiscal configuration approvals',
         mutation: true,

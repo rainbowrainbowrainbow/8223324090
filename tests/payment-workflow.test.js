@@ -1043,7 +1043,7 @@ test('only the authenticated actor that created an order can confirm it', async 
     assert.equal(db.outboxJobs.length, 0);
 });
 
-test('persisted test-register order cannot be confirmed after fiscal.configure access is lost', async () => {
+test('persisted test-register order cannot be confirmed without configuration or narrow test cashier access', async () => {
     const db = new FakePaymentDb();
     const order = db.seedOrder({
         created_by_user_id: 50,
@@ -1074,8 +1074,7 @@ test('persisted test-register order cannot be confirmed after fiscal.configure a
             idempotencyKey: 'confirm-test-route-without-configure',
             authorizer: allowAuthorizer
         }),
-        error => error.code === 'fiscal_capability_denied'
-            && error.details?.action === 'fiscal.configure'
+        error => error.code === 'fiscal_test_route_denied'
     );
     assert.equal(db.attempts.length, 0);
     assert.equal(db.outboxJobs.length, 0);

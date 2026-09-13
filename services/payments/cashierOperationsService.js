@@ -1056,6 +1056,11 @@ async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null
             action: 'fiscal.shift.open',
             crmProfileKey: sourceBusinessContext
         });
+        if (expectedIsTest === true && !order.source_snapshot?.terminal_session_id && !canUseAction(user, 'fiscal.configure')) {
+            const route = await resolveFiscalSaleRoute({ client, user,
+                routeOptionId: durableRouteOptionId || snapshotRouteOptionId, businessContext: sourceBusinessContext });
+            require('./fiscalSaleRouteService').assertTestCashierAction({ user, route, action: 'fiscal.shift.open', bindingId: binding.id });
+        }
     } else {
         await authorizeFiscalAction(client, {
             user,
@@ -2013,7 +2018,8 @@ async function loadShiftForUserAction(client, { user, shiftId, action }) {
         await lockFiscalRegister(client, scoped.fiscal_profile_id, scoped.fiscal_register_id);
     }
     const result = await client.query(
-        `SELECT fs.*, fr.fiscal_location_id, fr.register_alias, fp.crm_profile_key
+        `SELECT fs.*, fr.fiscal_location_id, fr.register_alias, fp.crm_profile_key,
+                COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS register_expected_is_test
            FROM fiscal_shifts fs
            JOIN fiscal_registers fr
              ON fr.id = fs.fiscal_register_id
@@ -2026,6 +2032,18 @@ async function loadShiftForUserAction(client, { user, shiftId, action }) {
     );
     const shift = result.rows[0];
     if (!shift) throw new CashierOperationsError('shift_not_found', 'Fiscal shift not found', { status: 404 });
+    if (normalizeBoolean(shift.register_expected_is_test) === true && !canUseAction(user, 'fiscal.configure')) {
+        const routeOptionId = { event_genix: 'park_test', dar: 'dar_test' }[shift.business_context];
+        const route = await resolveFiscalSaleRoute({ client, user, routeOptionId, businessContext: shift.business_context });
+        if (Number(route.mapping.fiscal_profile_id) !== Number(shift.fiscal_profile_id)
+            || Number(route.mapping.fiscal_location_id) !== Number(shift.fiscal_location_id)
+            || Number(route.mapping.fiscal_register_id) !== Number(shift.fiscal_register_id)) {
+            throw new CashierOperationsError('fiscal_test_cashier_scope_invalid', 'Shift does not match the test cashier route', { status: 403 });
+        }
+        require('./fiscalSaleRouteService').assertTestCashierAction({ user, route, action });
+        // Approval-required reconciliation must still pass its existing approval policy below.
+        if (action !== 'fiscal.reconcile') return shift;
+    }
     if (action === 'fiscal.reconcile') {
         if (!canUseAction(user, action)) {
             throw new FiscalAccessError('fiscal_capability_denied', 'User lacks the required payment/fiscal capability', { action });
@@ -3204,7 +3222,7 @@ async function verifyOwnFiscalActionPin({
     const normalizedBindingId = normalizePositiveId(bindingId, 'fiscal_binding_required');
     const rawPin = body.actionPin || body.action_pin || body.pin;
     if (rawPin === undefined || rawPin === null || String(rawPin).trim() === '') throw new FiscalApprovalError('action_pin_required', 'Action PIN is required');
-    return withTransactionFn(async client => {
+    const verification = await withTransactionFn(async client => {
         const routeInput = serviceOutRouteInput({ ...body, routeOptionId: routeOptionId ?? body.routeOptionId ?? body.route_option_id, businessContext: businessContext ?? body.businessContext ?? body.business_context });
         if (!routeInput.routeOptionId || !routeInput.businessContext) throw new CashierOperationsError('fiscal_route_option_required', 'Business context and route option are required', { status: 422 });
         const route = await routeResolver({ client, user, routeOptionId: routeInput.routeOptionId, businessContext: routeInput.businessContext, canUseActionFn: (actor, action) => action === 'fiscal.test.pin.manage' || canUseAction(actor, action), allowTestPinManage: true });
@@ -3215,9 +3233,12 @@ async function verifyOwnFiscalActionPin({
         if (!binding) throw new CashierOperationsError('fiscal_binding_not_found', 'Fiscal cashier binding not found', { status: 404 });
         const pinResult = await pinEvaluator({ binding, providedPin: rawPin });
         await persistPinResult(client, { fiscalProfileId: binding.fiscal_profile_id, actorUserId: user.id, binding, result: pinResult });
-        if (!pinResult.ok) throw new FiscalApprovalError(pinResult.code, pinResult.code);
+        if (!pinResult.ok) return { pinFailureCode: pinResult.code };
         return { bindingId: Number(binding.id), verified: true, pinLockedUntil: null, failedAttempts: 0 };
     });
+    // Commit the challenge counter and audit before returning the controlled rejection.
+    if (verification.pinFailureCode) throw new FiscalApprovalError(verification.pinFailureCode, verification.pinFailureCode);
+    return verification;
 }
 
 async function getOperationalReport({ user, shiftId }) {

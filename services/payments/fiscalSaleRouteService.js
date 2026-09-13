@@ -107,12 +107,47 @@ function assertRouteVisibleToUser(route, user, {
         throw new FiscalSaleRouteError('fiscal_route_business_denied', 'Business context is not available to this user', { status: 403 });
     }
     const canSeeTestRoute = canUseActionFn(user, 'fiscal.configure')
+        || canUseActionFn(user, 'fiscal.test.cashier.use')
         || (allowTestPinManage === true && canUseActionFn(user, 'fiscal.test.pin.manage'))
         || allowTestPinRead === true;
     if (route.mode === 'test' && !canSeeTestRoute) {
-        throw new FiscalSaleRouteError('fiscal_test_route_denied', 'Test register selection requires fiscal configuration access', { status: 403 });
+        throw new FiscalSaleRouteError('fiscal_test_route_denied', 'Test register selection requires explicit test cashier access', { status: 403 });
     }
     return true;
+}
+
+async function loadTestCashierBinding(client, { user, route, mapping }) {
+    if (route.mode !== 'test' || !route.sharedTestRegister
+        || mapping.route_status !== 'active' || mapping.route_feature_enabled !== true
+        || mapping.fiscal_register_status !== 'active' || mapping.feature_enabled !== true) {
+        throw new FiscalSaleRouteError('fiscal_test_cashier_scope_invalid', 'Test cashier requires an active verified test route', { status: 403 });
+    }
+    const { loadFiscalCashierBinding, assertFiscalCashierBindingCapability } = require('./fiscalAccess');
+    const binding = await loadFiscalCashierBinding(client, {
+        userId: user.id, fiscalProfileId: mapping.fiscal_profile_id, fiscalRegisterId: mapping.fiscal_register_id
+    });
+    if (Number(binding.user_id) !== Number(user.id) || binding.status !== 'active'
+        || binding.provider !== 'checkbox'
+        || Number(binding.fiscal_profile_id) !== Number(mapping.fiscal_profile_id)
+        || Number(binding.fiscal_register_id) !== Number(mapping.fiscal_register_id)
+        || Number(binding.fiscal_location_id) !== Number(mapping.fiscal_location_id)
+        || Number(binding.register_fiscal_location_id) !== Number(mapping.fiscal_location_id)) {
+        throw new FiscalSaleRouteError('fiscal_test_cashier_binding_denied', 'Test cashier requires an own matching active binding', { status: 403 });
+    }
+    assertFiscalCashierBindingCapability(binding, 'payments.view');
+    return binding;
+}
+
+function assertTestCashierAction({ user, route, action, bindingId = null }) {
+    if (!route?.cashierBinding) return;
+    const { assertFiscalCashierBindingCapability } = require('./fiscalAccess');
+    if (!canUseAction(user, action)) {
+        throw new FiscalSaleRouteError('fiscal_capability_denied', 'User lacks the required cashier capability', { status: 403 });
+    }
+    if (bindingId != null && Number(bindingId) !== Number(route.cashierBinding.id)) {
+        throw new FiscalSaleRouteError('fiscal_test_cashier_binding_denied', 'Test cashier can use only their own binding', { status: 403 });
+    }
+    assertFiscalCashierBindingCapability(route.cashierBinding, action);
 }
 
 const ROUTE_MAPPING_SELECT = `SELECT
@@ -356,6 +391,18 @@ async function resolveFiscalSaleRoute({
     try {
         const mapping = await loadRouteMapping(queryable, route);
         const expectedIsTest = assertMappingMatchesRoute(route, mapping);
+        let cashierBinding = null;
+        let cashierAccessError = null;
+        if (route.mode === 'test' && !canUseActionFn(user, 'fiscal.configure')
+            && canUseActionFn(user, 'fiscal.test.cashier.use')) {
+            try {
+                cashierBinding = await loadTestCashierBinding(queryable, { user, route, mapping });
+            } catch (error) {
+                if (!(error.status === 403 && (allowTestPinRead
+                    || (allowTestPinManage && canUseActionFn(user, 'fiscal.test.pin.manage'))))) throw error;
+                cashierAccessError = error;
+            }
+        }
         let sequentialState = { ready: true, reasonCode: null, activeBusinessContext: null };
         if (route.sharedTestRegister) {
             await assertSharedRegisterGroupInvariant(queryable, mapping);
@@ -387,6 +434,8 @@ async function resolveFiscalSaleRoute({
             sharedTestRegister: route.sharedTestRegister === true,
             sharedRegisterGroup: route.sharedTestRegister ? mapping.shared_register_group : null,
             sequentialState,
+            cashierBinding,
+            cashierAccessError,
             mapping
         };
     } finally {
@@ -440,7 +489,7 @@ async function listFiscalSaleRouteOptions({
             continue;
         }
         const canConfigure = canUseActionFn(user, 'fiscal.configure');
-        const salesAllowed = route.mode !== 'test' || canConfigure;
+        const salesAllowed = route.mode !== 'test' || canConfigure || canUseActionFn(user, 'fiscal.test.cashier.use');
         const pinManageAllowed = route.mode === 'test' && (canConfigure
             || (allowTestPinManage === true && canUseActionFn(user, 'fiscal.test.pin.manage')));
         try {
@@ -451,14 +500,21 @@ async function listFiscalSaleRouteOptions({
                 canUseActionFn,
                 canAccessBusinessContextFn, allowTestPinManage, allowTestPinRead
             });
-            options.push(projectRouteOption(route, resolved, null, { salesAllowed, pinManageAllowed }));
+            options.push(projectRouteOption(route, resolved, resolved.cashierAccessError, {
+                salesAllowed: salesAllowed && !resolved.cashierAccessError, pinManageAllowed
+            }));
         } catch (error) {
             if (
                 error?.code === 'fiscal_route_mapping_ambiguous'
                 || error?.code === 'fiscal_route_mode_mismatch'
                 || error?.code === 'fiscal_shared_register_group_drift'
+                || error?.code === 'fiscal_test_cashier_scope_invalid'
+                || error?.code === 'fiscal_test_cashier_binding_denied'
+                || error?.code === 'fiscal_binding_not_found'
+                || error?.code === 'fiscal_binding_ambiguous'
+                || error?.code === 'fiscal_binding_capability_denied'
             ) {
-                options.push(projectRouteOption(route, null, error, { salesAllowed, pinManageAllowed }));
+                options.push(projectRouteOption(route, null, error, { salesAllowed: false, pinManageAllowed }));
             } else if (error?.code === 'fiscal_route_mapping_missing') {
                 options.push(projectRouteOption(route, null, null, { salesAllowed, pinManageAllowed }));
             } else {
@@ -475,6 +531,7 @@ module.exports = {
     ROUTE_OPTIONS,
     assertNoClientFiscalRouteOverride,
     assertRouteVisibleToUser,
+    assertTestCashierAction,
     booleanOrNull,
     listFiscalSaleRouteOptions,
     loadRouteMapping,

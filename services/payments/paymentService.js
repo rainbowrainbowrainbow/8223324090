@@ -585,12 +585,24 @@ async function authorizePaymentOrderActor(client, {
 
     const routeExpectedIsTest = normalizeBoolean(order?.route_expected_is_test);
     const persistedRouteMode = String(order?.source_snapshot?.register_mode || '').trim().toLowerCase();
-    if (!terminalContext && routeScoped && (routeExpectedIsTest === true || persistedRouteMode === 'test')) {
-        await authorizeFiscalActorAction(client, {
-            user,
-            action: 'fiscal.configure',
-            crmProfileKey
-        });
+    if (!terminalContext && routeScoped && (routeExpectedIsTest === true || persistedRouteMode === 'test'
+        || ['park_test', 'dar_test'].includes(order.fiscal_sale_route_option_id || order.source_snapshot?.route_option_id))) {
+        if (require('../../middleware/auth').canUseAction(user, 'fiscal.configure')) {
+            await authorizeFiscalActorAction(client, { user, action: 'fiscal.configure', crmProfileKey });
+        } else {
+            const { resolveFiscalSaleRoute, assertTestCashierAction } = require('./fiscalSaleRouteService');
+            const route = await resolveFiscalSaleRoute({ client, user,
+                routeOptionId: order.fiscal_sale_route_option_id || order.source_snapshot?.route_option_id,
+                businessContext: crmProfileKey });
+            if (!route.cashierBinding || route.expectedIsTest !== true
+                || Number(route.mapping.fiscal_profile_id) !== Number(order.fiscal_profile_id)
+                || Number(route.mapping.fiscal_location_id) !== Number(order.fiscal_location_id)
+                || Number(route.mapping.fiscal_register_id) !== Number(order.fiscal_register_id)
+                || Number(order.cashier_user_id) !== Number(user.id)) {
+                throw new PaymentServiceError('fiscal_test_cashier_binding_denied', 'Order does not belong to the own test cashier scope', { status: 403 });
+            }
+            assertTestCashierAction({ user, route, action, bindingId: order.selected_fiscal_cashier_binding_id });
+        }
     }
 
     if (enforceActorOwnership) {
@@ -847,6 +859,9 @@ async function createAdmissionTicketPaymentOrder({
                 fiscalRegisterId: mapping.fiscal_register_id
             })
             : null;
+        require('./fiscalSaleRouteService').assertTestCashierAction({
+            user, route: fiscalRoute, action: 'payments.create', bindingId: selectedBinding?.id
+        });
         if (requireCheckboxIntegrationReady) {
             await assertCheckboxIntegrationReady(client, {
                 user,

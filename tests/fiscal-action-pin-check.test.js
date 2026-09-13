@@ -100,6 +100,40 @@ function immediateTransaction(client) {
     return callback => callback(client);
 }
 
+test('controlled PIN rejection commits while an unexpected audit failure rolls back', async () => {
+    const pin = createEphemeralActionPin();
+    const state = bindingState(await createActionPinHash(pin));
+    const client = createBindingClient(state);
+    const events = [];
+    const transaction = async work => {
+        const before = { ...state };
+        try {
+            const result = await work(client);
+            events.push('COMMIT');
+            return result;
+        } catch (error) {
+            Object.assign(state, before);
+            events.push('ROLLBACK');
+            throw error;
+        }
+    };
+    await assert.rejects(verifyInput({
+        user: testUser(), pin: 'wrong-synthetic', route: testRoute(), client,
+        withTransactionFn: transaction,
+        pinEvaluator: input => evaluatePinChallenge({ ...input, verifyHash: async () => false })
+    }), error => error.code === 'action_pin_invalid');
+    assert.equal(state.pin_failed_attempts, 1);
+    assert.deepEqual(events, ['COMMIT']);
+    await assert.rejects(verifyOwnFiscalActionPin({
+        user: testUser(), bindingId: 10,
+        body: { actionPin: pin, routeOptionId: 'park_test', businessContext: 'event_genix' },
+        routeResolver: routeResolver(testRoute()), withTransactionFn: transaction,
+        persistPinResult: async () => { state.pin_failed_attempts = 0; throw new Error('synthetic audit failure'); }
+    }), /synthetic audit failure/);
+    assert.equal(state.pin_failed_attempts, 1);
+    assert.deepEqual(events, ['COMMIT', 'ROLLBACK']);
+});
+
 function serializedTransaction(client) {
     let tail = Promise.resolve();
     return callback => {

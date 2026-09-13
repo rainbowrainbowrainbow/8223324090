@@ -196,6 +196,9 @@ async function resolvePaymentFiscalScope(req) {
         routeOptionId,
         businessContext: requestedBusiness
     });
+    require('../services/payments/fiscalSaleRouteService').assertTestCashierAction({
+        user: req.user, route, action: 'payments.view', bindingId: cashierBindingIdFromRequest(req)
+    });
     return {
         crmProfileKey: route.mapping.crm_profile_key,
         locationAlias: route.mapping.location_alias,
@@ -203,7 +206,7 @@ async function resolvePaymentFiscalScope(req) {
         authorizationCrmProfileKey: route.businessContext,
         businessContext: route.businessContext,
         routeOptionId: route.routeOptionId,
-        cashierBindingId: cashierBindingIdFromRequest(req)
+        cashierBindingId: cashierBindingIdFromRequest(req) || route.cashierBinding?.id || null
     };
 }
 

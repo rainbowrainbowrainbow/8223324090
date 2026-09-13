@@ -61,7 +61,7 @@ function requireIsolatedInputs() {
     assert.equal(process.env.PAYMENT_OUTBOX_WAKEUP_DISABLED, 'true');
 }
 
-async function insertUser({ username, name, contexts, actions = ACTIONS }) {
+async function insertUser({ username, name, contexts, actions = ACTIONS, role = 'creator' }) {
     const password = crypto.randomBytes(18).toString('base64url');
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await pool.query(
@@ -69,15 +69,15 @@ async function insertUser({ username, name, contexts, actions = ACTIONS }) {
              username, password_hash, role, name, is_active,
              action_allowlist, business_contexts, default_business_context
          )
-         VALUES ($1, $2, 'creator', $3, TRUE, $4::text[], $5::text[], $6)
+         VALUES ($1, $2, $7, $3, TRUE, $4::text[], $5::text[], $6)
          RETURNING id`,
-        [username, passwordHash, name, actions, contexts, contexts[0]]
+        [username, passwordHash, name, actions, contexts, contexts[0], role]
     );
     return {
         id: Number(result.rows[0].id),
         username,
         password,
-        role: 'creator',
+        role,
         actionAllowlist: actions,
         businessContexts: contexts,
         defaultBusinessContext: contexts[0]
@@ -259,6 +259,7 @@ async function startMockCheckbox(physical) {
         salePostsByUuid: new Map(),
         receiptLookupsByUuid: new Map(),
         shifts: new Map(),
+        reports: new Map(),
         currentShiftId: null
     };
     const server = http.createServer((req, res) => {
@@ -348,6 +349,17 @@ async function startMockCheckbox(physical) {
                 });
             }
             if (pathname === '/api/v1/receipts/validate' && req.method === 'POST') return send(200, { valid: true });
+            if (pathname === '/api/v1/reports' && req.method === 'POST') {
+                const report = { id: crypto.randomUUID(), shift_id: shift.id, is_z_report: false,
+                    fiscal_code: 'LOCAL-X', fiscal_date: new Date().toISOString() };
+                state.reports.set(report.id, report);
+                return send(201, report);
+            }
+            const reportMatch = pathname.match(/^\/api\/v1\/reports\/([^/]+)$/);
+            if (reportMatch && req.method === 'GET') {
+                const report = state.reports.get(decodeURIComponent(reportMatch[1]));
+                return report ? send(200, report) : send(404, { error: 'not_found' });
+            }
             if (pathname === '/api/v1/receipts/sell' && req.method === 'POST') {
                 const uuid = String(body.id || '');
                 state.saleBodies.set(uuid, body);
@@ -784,7 +796,10 @@ async function closeQaShift({ fixture, businessContext, provider, actorToken, mo
         resumed_at=NULL, resumed_by_user_id=NULL, resume_idempotency_key=NULL WHERE id=$1`, [drainId]), error => error.code === '23514');
 }
 
-test('PARK/DAR catalog_sale full local provider QA', async () => {
+module.exports = { requireIsolatedInputs, insertUser, seedQaData, startMockCheckbox, api, login,
+    createCatalogOrder, confirmOrder, processAllAvailableJobs };
+
+if (require.main === module) test('PARK/DAR catalog_sale full local provider QA', async () => {
     requireIsolatedInputs();
     const fixture = await seedQaData();
     const mock = await startMockCheckbox(fixture.physical);

@@ -5,7 +5,7 @@ const { PaymentServiceError } = require('./paymentService');
 const { canUseAction } = require('../../middleware/auth');
 const { authorizeFiscalActorAction } = require('./fiscalAccess');
 const { BUSINESS_SCOPES, defaultRouteOptionIdForBusiness } = require('./catalogSaleService');
-const { resolveFiscalSaleRoute } = require('./fiscalSaleRouteService');
+const { resolveFiscalSaleRoute, assertTestCashierAction } = require('./fiscalSaleRouteService');
 
 const SECRET_FIELDS = /password|secret|pin|license.?key|access.?key|device|credential.?value/i;
 const EDITABLE_FIELDS = new Set(['cashierName', 'cashier_name', 'cashierLogin', 'cashier_login']);
@@ -185,7 +185,8 @@ async function listSelectableCashiers({
               ORDER BY fcb.cashier_name NULLS LAST,fcb.id`,
             [mapping.fiscal_profile_id,mapping.fiscal_register_id]
         );
-        return result.rows.map(projectSelectable);
+        assertTestCashierAction({ user, route, action: 'payments.create' });
+        return result.rows.filter(row => !route.cashierBinding || Number(row.id) === Number(route.cashierBinding.id)).map(projectSelectable);
     } finally {
         client.release();
     }

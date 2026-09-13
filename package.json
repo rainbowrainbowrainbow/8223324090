@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.159",
+  "version": "0.81.160",
   "eventGenix": {
-    "releaseLabel": "Вимкнення згортання меню"
+    "releaseLabel": "Надійний PIN тестового касира"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

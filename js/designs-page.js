@@ -24,6 +24,7 @@ let designLoadSequence = 0;
 let activeLightboxObjectUrl = null;
 let lastLightboxTrigger = null;
 let lightboxRequestSequence = 0;
+const designThumbnailUrls = new Map();
 
 // ==========================================
 // AUTH CHECK (same pattern as tasks-page)
@@ -268,13 +269,17 @@ function renderDesignError() {
 function renderDesignGrid() {
     const grid = document.getElementById('designGrid');
     if (designs.length === 0) {
+        reconcileDesignThumbnailUrls(new Set());
         grid.innerHTML = '<div class="empty-state"><span>🎨</span>Немає дизайнів. Перетягніть файли у зону завантаження.</div>';
         return;
     }
 
+    reconcileDesignThumbnailUrls(new Set(designs.map(d => Number(d.id)).filter(Boolean)));
     grid.innerHTML = designs.map(d => {
         const isImage = d.mimeType && d.mimeType.startsWith('image/');
-        const thumb = isImage ? `/uploads/designs/${d.filename}` : '/images/favicon-512.png';
+        const cachedThumb = designThumbnailUrls.get(Number(d.id));
+        const thumb = isImage && cachedThumb ? cachedThumb : '/images/favicon-512.png';
+        const thumbAttr = isImage ? ` data-design-thumb="${esc(d.id)}"` : '';
         const size = d.fileSize > 1024 * 1024
             ? (d.fileSize / (1024 * 1024)).toFixed(1) + ' МБ'
             : Math.round(d.fileSize / 1024) + ' КБ';
@@ -289,7 +294,7 @@ function renderDesignGrid() {
             <div class="design-card ${d.isPinned ? 'pinned' : ''}" data-id="${d.id}">
                 ${pinHtml}
                 <button type="button" class="design-card-preview" data-design-preview="${esc(d.id)}" aria-label="Відкрити превʼю: ${esc(d.title || d.originalName || 'дизайн')}">
-                    <img class="design-card-img" src="${thumb}" alt="${esc(d.title)}" loading="lazy">
+                    <img class="design-card-img" src="${thumb}" alt="${esc(d.title)}" loading="lazy"${thumbAttr}>
                 </button>
                 <div class="design-card-body">
                     ${colHtml}
@@ -308,6 +313,7 @@ function renderDesignGrid() {
             </div>
         `;
     }).join('');
+    hydrateDesignThumbnails(grid);
 }
 
 function esc(str) {
@@ -426,6 +432,39 @@ async function fetchDesignBlob(design) {
     return { blob, filename };
 }
 
+function reconcileDesignThumbnailUrls(activeIds) {
+    for (const [id, url] of designThumbnailUrls) {
+        if (!activeIds.has(Number(id))) {
+            URL.revokeObjectURL(url);
+            designThumbnailUrls.delete(id);
+        }
+    }
+}
+
+async function hydrateDesignThumbnails(root = document) {
+    const images = Array.from(root.querySelectorAll('img[data-design-thumb]'));
+    await Promise.all(images.map(async img => {
+        const id = Number(img.dataset.designThumb);
+        const d = designs.find(item => Number(item.id) === id);
+        if (!d || !(d.mimeType || '').startsWith('image/')) return;
+        const cached = designThumbnailUrls.get(id);
+        if (cached) {
+            img.src = cached;
+            return;
+        }
+        try {
+            const { blob } = await fetchDesignBlob(d);
+            const mime = String(blob.type || d.mimeType || '').toLowerCase();
+            if (!mime.startsWith('image/')) return;
+            const url = URL.createObjectURL(blob);
+            designThumbnailUrls.set(id, url);
+            if (document.contains(img) && Number(img.dataset.designThumb) === id) img.src = url;
+        } catch {
+            img.classList.add('design-card-img-unavailable');
+        }
+    }));
+}
+
 async function downloadDesign(id) {
     const d = designs.find(x => x.id === id);
     if (!d) return;
@@ -456,8 +495,7 @@ async function copyDesign(id) {
     const d = designs.find(x => x.id === id);
     if (!d) return;
     try {
-        const res = await fetch(`/uploads/designs/${d.filename}`);
-        const blob = await res.blob();
+        const { blob } = await fetchDesignBlob(d);
         await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
         showNotification('Скопійовано в буфер');
     } catch {
@@ -1296,7 +1334,7 @@ async function renderCalendar() {
         for (const dd of show) {
             const isImg = dd.mimeType && dd.mimeType.startsWith('image/');
             if (isImg) {
-                dotsHtml += `<img class="calendar-dot" src="/uploads/designs/${dd.filename}" alt="">`;
+                dotsHtml += `<img class="calendar-dot" src="/images/favicon-512.png" alt="">`;
             } else {
                 dotsHtml += `<span class="calendar-dot-more">📄</span>`;
             }
@@ -1339,9 +1377,11 @@ function showCalendarDetail(dateStr) {
         <div class="design-grid" style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));">
             ${dayDesigns.map(d => {
                 const isImage = d.mimeType && d.mimeType.startsWith('image/');
-                const thumb = isImage ? `/uploads/designs/${d.filename}` : '/images/favicon-512.png';
+                const cachedThumb = designThumbnailUrls.get(Number(d.id));
+                const thumb = isImage && cachedThumb ? cachedThumb : '/images/favicon-512.png';
+                const thumbAttr = isImage ? ` data-design-thumb="${esc(d.id)}"` : '';
                 return `<div class="design-card" style="font-size:12px">
-                    <img class="design-card-img" src="${thumb}" alt="${esc(d.title)}" style="aspect-ratio:1/1">
+                    <img class="design-card-img" src="${thumb}" alt="${esc(d.title)}" style="aspect-ratio:1/1"${thumbAttr}>
                     <div class="design-card-body" style="padding:8px">
                         <div class="design-card-title">${esc(d.title)}</div>
                     </div>
@@ -1349,6 +1389,7 @@ function showCalendarDetail(dateStr) {
             }).join('')}
         </div>`;
     detail.style.display = '';
+    hydrateDesignThumbnails(detail);
 }
 window.showCalendarDetail = showCalendarDetail;
 

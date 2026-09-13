@@ -2359,6 +2359,7 @@
     // Reference image upload
     function uploadRefImage() { document.getElementById('refUploadInput').click(); }
     window.uploadRefImage = uploadRefImage;
+    function designMaterialApiUrl(id) { return '/api/designs/' + encodeURIComponent(id) + '/download'; }
     document.getElementById('refUploadInput')?.addEventListener('change', async function(e) {
         var file = e.target.files[0]; if (!file) return;
         var fd = new FormData(); fd.append('files', file);
@@ -2366,7 +2367,7 @@
             var r = await fetch('/api/designs/upload', { method: 'POST', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }, body: fd });
             var d = await r.json();
             if (d.items && d.items[0]) {
-                var url = '/uploads/designs/' + d.items[0].filename;
+                var url = designMaterialApiUrl(d.items[0].id);
                 window._refImageUrl = url;
                 document.getElementById('refPreview').src = url;
                 document.getElementById('refPreview').style.display = 'block';
@@ -2592,7 +2593,7 @@
         try {
             var r = await fetch('/api/designs/upload', { method: 'POST', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }, body: fd });
             var d = await r.json();
-            if (d.items && d.items[0]) savePageImg('/uploads/designs/' + d.items[0].filename);
+            if (d.items && d.items[0]) savePageImg(designMaterialApiUrl(d.items[0].id));
         } catch (err) { showNotification('Помилка: ' + err.message, 'error'); }
         e.target.value = '';
     });

@@ -89,3 +89,25 @@ test('design storage serves Postgres blobs before falling back and keeps missing
         await new Promise((resolve, reject) => started.server.close(err => err ? reject(err) : resolve()));
     }
 });
+
+test('design storage can disable unauthenticated public blob fallback', async () => {
+    let queries = 0;
+    const query = {
+        query: async () => {
+            queries += 1;
+            return { rows: [], rowCount: 0 };
+        }
+    };
+    const app = express();
+    app.get('/uploads/designs/:filename', buildDesignBlobFallbackHandler(query, null, { allowPublicDesignBlobs: false }));
+    app.use('/uploads/designs', (_req, res) => res.status(404).json({ error: 'design_upload_not_found' }));
+    const started = await startApp(app);
+    try {
+        const missing = await fetch(`${started.baseUrl}/uploads/designs/served.pdf`);
+        assert.equal(missing.status, 404);
+        assert.equal(await missing.text(), '{"error":"design_upload_not_found"}');
+        assert.equal(queries, 0);
+    } finally {
+        await new Promise((resolve, reject) => started.server.close(err => err ? reject(err) : resolve()));
+    }
+});

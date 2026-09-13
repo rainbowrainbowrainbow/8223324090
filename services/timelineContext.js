@@ -1,12 +1,15 @@
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextCatalog,
+    businessContextFromRequest,
     canAccessBusinessContext,
+    normalizeKnownBusinessContext,
     normalizeBusinessContext
 } = require('./businessContext');
+const { resolveCapability } = require('./accountAccessPolicy');
+const { userBusinessModuleState } = require('./businessModuleRegistry');
 
 const DEFAULT_TIMELINE_CONTEXT = DEFAULT_BUSINESS_CONTEXT;
-const DEFAULT_TIMELINE_ALIASES = new Set([DEFAULT_TIMELINE_CONTEXT, 'park_zakrevsky', 'park', 'pzp']);
 const VALID_TIMELINE_CONTEXTS = new Set(
     businessContextCatalog()
         .filter(context => Array.isArray(context.modules) && context.modules.includes('timeline'))
@@ -28,22 +31,24 @@ const PRIVATE_TIMELINE_CONTEXTS = new Set(['maysternya_doli']);
 function isKnownBusinessContextInput(value) {
     const raw = String(value || '').trim().toLowerCase();
     if (!raw) return false;
-    const normalized = normalizeBusinessContext(raw);
-    if (normalized !== DEFAULT_TIMELINE_CONTEXT) return true;
-    return DEFAULT_TIMELINE_ALIASES.has(raw);
+    return Boolean(normalizeKnownBusinessContext(raw) || /^[a-z][a-z0-9_]{2,63}$/.test(raw));
 }
 
 function isTimelineContext(value) {
     const raw = String(value || '').trim();
     if (!raw) return false;
     if (!isKnownBusinessContextInput(raw)) return false;
-    return VALID_TIMELINE_CONTEXTS.has(normalizeBusinessContext(raw));
+    const known = normalizeKnownBusinessContext(raw);
+    return known ? VALID_TIMELINE_CONTEXTS.has(known) : true;
 }
 
 function normalizeTimelineContext(value) {
     const raw = String(value || '').trim();
     if (!raw) return DEFAULT_TIMELINE_CONTEXT;
-    return isTimelineContext(raw) ? normalizeBusinessContext(raw) : DEFAULT_TIMELINE_CONTEXT;
+    if (isKnownBusinessContextInput(raw)) return normalizeBusinessContext(raw);
+    const error = new Error('Invalid timeline business context');
+    error.statusCode = 400;
+    throw error;
 }
 
 function rawTimelineContextFromRequest(req) {
@@ -58,7 +63,7 @@ function rawTimelineContextFromRequest(req) {
 
 function timelineContextFromRequest(req) {
     const raw = rawTimelineContextFromRequest(req);
-    if (!raw) return DEFAULT_TIMELINE_CONTEXT;
+    if (!raw) return businessContextFromRequest(req);
     return isKnownBusinessContextInput(raw)
         ? normalizeBusinessContext(raw)
         : String(raw).trim().toLowerCase();
@@ -84,7 +89,7 @@ function canAccessTimelineContext(user, context) {
     if (!user) return false;
     const normalized = context ? normalizeBusinessContext(context) : DEFAULT_TIMELINE_CONTEXT;
     if (context && !isKnownBusinessContextInput(context)) return false;
-    if (!VALID_TIMELINE_CONTEXTS.has(normalized)) return false;
+    if (!userBusinessModuleState(user, normalized, 'timeline').available) return false;
     if (!canAccessBusinessContext(user, normalized)) return false;
     if (!PRIVATE_TIMELINE_CONTEXTS.has(normalized)) return true;
     return userRoles(user).includes('creator');
@@ -93,6 +98,7 @@ function canAccessTimelineContext(user, context) {
 function canUseTimelineAction(user, context, action) {
     const normalized = context ? normalizeBusinessContext(context) : DEFAULT_TIMELINE_CONTEXT;
     if (!canAccessTimelineContext(user, normalized)) return false;
+    if (action === 'settings' && !resolveCapability(user, 'manage_settings', { type: 'action' }).allowed) return false;
     const allowed = CONTEXT_ACTION_ROLES[normalized]?.[action];
     if (!Array.isArray(allowed)) return true;
     if (!allowed.length) return false;

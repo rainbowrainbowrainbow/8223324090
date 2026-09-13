@@ -223,6 +223,7 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
                m.content AS last_message
         FROM conversations c
         LEFT JOIN conversation_messages expected_msg ON expected_msg.id = c.reply_expected_message_id
+          AND expected_msg.conversation_id = c.id
         LEFT JOIN LATERAL (
             SELECT content
             FROM conversation_messages
@@ -231,9 +232,10 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
             LIMIT 1
         ) m ON true
         WHERE c.customer_id = $1
+          AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
         ORDER BY c.last_message_at DESC NULLS LAST, c.updated_at DESC
         LIMIT 5
-    `, [id]);
+    `, [id, businessContext]);
     const exactConversations = exactConversationsResult.rows.map(row => mapConversation(row, 'exact'));
 
     const phoneDigits = normalizeDigits(customer.phone);
@@ -250,6 +252,7 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
                    m.content AS last_message
             FROM conversations c
             LEFT JOIN conversation_messages expected_msg ON expected_msg.id = c.reply_expected_message_id
+              AND expected_msg.conversation_id = c.id
             LEFT JOIN LATERAL (
                 SELECT content
                 FROM conversation_messages
@@ -258,6 +261,7 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
                 LIMIT 1
             ) m ON true
             WHERE (c.customer_id IS NULL OR c.customer_id <> $1)
+              AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
               AND (
                   ($2 <> '' AND regexp_replace(COALESCE(c.customer_phone, ''), '\\D', '', 'g') = $2)
                   OR ($3 <> '' AND c.customer_name ILIKE $3)
@@ -270,7 +274,7 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
                 c.last_message_at DESC NULLS LAST,
                 c.updated_at DESC
             LIMIT 5
-        `, [id, phoneDigits, namePattern]);
+        `, [id, phoneDigits, namePattern, businessContext]);
         suggestedConversations = suggestedResult.rows.map(row => mapConversation(row, 'suggested'));
     }
 

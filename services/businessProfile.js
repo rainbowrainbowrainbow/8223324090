@@ -7,8 +7,10 @@ const {
   resolveBusinessContextPolicy,
   resolveBusinessScope,
 } = require('./businessContext');
-const { getBusinessCabinetSettings } = require('./businessCabinet');
+const { getBusinessCabinetSettings, businessCabinetForUser } = require('./businessCabinet');
 const { getOmniAccountStatusesAsync } = require('./omni-accounts');
+const { authAccessContext } = require('./authBusinessProfile');
+const { businessModuleCatalog, configuredBusinessModuleEnabled } = require('./businessModuleRegistry');
 
 const START_PAGE_PATHS = Object.freeze({
   dashboard: '/dashboard',
@@ -37,7 +39,7 @@ const TIMELINE_MODULE_TO_BUSINESS_MODULE = Object.freeze({
 
 function timelineRouteForContext(context) {
   const key = normalizeBusinessContext(context);
-  return TIMELINE_CONTEXT_ROUTES[key] || '/dashboard';
+  return TIMELINE_CONTEXT_ROUTES[key] || `/?businessContext=${encodeURIComponent(key)}`;
 }
 
 function startPagePathForBusiness(context, timelineDisplay = {}, cabinet = null) {
@@ -66,10 +68,20 @@ function moduleEnabledByTimelineCabinet(moduleId, timelineDisplay = {}) {
   return entries.some(timelineModule => enabledModules[timelineModule] !== false);
 }
 
-function buildModuleMap(context, timelineDisplay = {}, cabinet = null, configuredModules = null) {
-  const baseModules = Array.isArray(configuredModules) && configuredModules.length
+function buildModuleMap(context, timelineDisplay = {}, cabinet = null, configuredModules = null, membershipMode = false) {
+  const baseModules = Array.isArray(configuredModules)
     ? configuredModules
     : businessModulesForContext(context);
+  if (membershipMode) {
+    // Membership modules have one authoritative configuration. Historical
+    // cabinet defaults cannot silently re-enable an empty or disabled registry.
+    const descriptors = businessModuleCatalog(context);
+    const catalog = [...new Set([...descriptors.map(module => module.key), ...baseModules])];
+    const enabled = Object.fromEntries(catalog.map(moduleId => [moduleId,
+      configuredBusinessModuleEnabled({ contextKey: context, modules: configuredModules }, moduleId)]));
+    return { source: 'business_registry', catalog, descriptors, enabled,
+      enabledIds: catalog.filter(key => enabled[key]), disabledIds: catalog.filter(key => !enabled[key]) };
+  }
   const enabled = {};
   baseModules.forEach(moduleId => { enabled[moduleId] = true; });
 
@@ -110,7 +122,7 @@ function buildModuleMap(context, timelineDisplay = {}, cabinet = null, configure
 }
 
 async function summarizeOmniIntegrations(context, modules) {
-  if (modules?.enabled?.omni === false) {
+  if (modules?.enabled?.omni !== true) {
     return {
       enabled: false,
       connectedChannels: [],
@@ -152,27 +164,38 @@ async function buildBusinessEntry(db, context, options = {}) {
   const catalogEntry = membership
     ? { key, label: membership.businessLabel, shortLabel: membership.businessShortLabel, modules: membership.businessModules }
     : (businessContextCatalog().find(item => item.key === key) || { key, label: key, shortLabel: key });
-  const cabinet = await getBusinessCabinetSettings(db, key);
-  const timelineDisplay = cabinet.timeline;
-  const modules = buildModuleMap(key, timelineDisplay, cabinet, catalogEntry.modules);
-  const startPath = startPagePathForBusiness(key, timelineDisplay, cabinet);
+  const cabinet = businessCabinetForUser(await getBusinessCabinetSettings(db, key), options.user);
+  const membershipMode = membership?.accessMode === 'membership';
+  const modules = buildModuleMap(key, cabinet.timeline, cabinet, catalogEntry.modules, membershipMode);
+  const timelineDisplay = membershipMode && !modules.enabled.timeline
+    ? { ...cabinet.timeline, timelineEnabled: false, mode: 'disabled', startPage: 'dashboard' }
+    : cabinet.timeline;
+  const effectiveCabinet = membershipMode ? { ...cabinet, modules, timeline: timelineDisplay } : cabinet;
+  const preferredStart = timelineDisplay.timelineEnabled === false ? 'dashboard' : cabinet.startPage || timelineDisplay.startPage;
+  const startPage = !membershipMode || modules.enabled[preferredStart] === true
+    ? preferredStart
+    : ['dashboard', 'timeline', 'tasks', 'customers', 'leads', 'omni'].find(moduleId => modules.enabled[moduleId]) || 'profile';
+  const startPath = startPage === 'profile' ? '/profile' : startPage === 'timeline'
+    ? timelineRouteForContext(key) : START_PAGE_PATHS[startPage] || '/profile';
+  if (membershipMode) Object.assign(effectiveCabinet, { startPage, timelineEnabled: timelineDisplay.timelineEnabled,
+    timelineMode: timelineDisplay.mode, timeline: { ...timelineDisplay, startPage } });
   const entry = {
     ...catalogEntry,
     id: key,
+    businessId: membership?.businessId || null,
+    organizationId: membership?.organizationId || null,
+    accessMode: membership?.accessMode || 'compatibility',
+    membership,
     businessContext: key,
     type: cabinet.businessType || businessTypeForTimelineDisplay(timelineDisplay),
-    startPage: timelineDisplay.timelineEnabled === false || timelineDisplay.mode === 'disabled'
-      ? 'dashboard'
-      : cabinet.startPage || timelineDisplay.startPage,
+    startPage,
     startPagePath: startPath,
     timelineRoute: timelineRouteForContext(key),
     timeline: timelineDisplay,
-    cabinet,
+    cabinet: effectiveCabinet,
     modules,
     shell: {
-      startPage: timelineDisplay.timelineEnabled === false || timelineDisplay.mode === 'disabled'
-        ? 'dashboard'
-        : cabinet.startPage || timelineDisplay.startPage,
+      startPage,
       startPagePath: startPath,
       timelineEnabled: timelineDisplay.timelineEnabled !== false && timelineDisplay.mode !== 'disabled',
       timelineMode: timelineDisplay.mode,
@@ -193,35 +216,56 @@ async function buildBusinessEntry(db, context, options = {}) {
 async function buildBusinessOperatingProfile(db, user, options = {}) {
   const policy = resolveBusinessContextPolicy(user);
   const scope = options.scope || resolveBusinessScope(user);
-  const allowed = Array.isArray(policy.allowed) && policy.allowed.length ? policy.allowed : [policy.defaultContext];
+  const allowed = Array.isArray(policy.allowed) ? policy.allowed.filter(Boolean) : [];
   const businesses = [];
 
   for (const context of allowed) {
     businesses.push(await buildBusinessEntry(db, context, { ...options, user }));
   }
 
-  const activeContext = normalizeBusinessContext(
-    scope?.activeContext || policy.defaultContext || businesses[0]?.key
-  );
-  const activeProfile = businesses.find(item => item.key === activeContext) || businesses[0] || null;
+  const activeContext = scope.invalid ? null : scope.activeContext || policy.defaultContext || null;
+  const activeProfile = businesses.find(item => item.key === activeContext) || null;
+  const organizations = [];
+  if (options.includeOrganizations === true) {
+    const result = await db.query(
+      `SELECT o.id, o.slug, o.name, o.status, om.role AS organization_role
+       FROM organization_memberships om
+       JOIN organizations o ON o.id = om.organization_id AND o.status = 'active'
+       WHERE om.user_id = $1 AND om.is_active IS TRUE
+       ORDER BY o.id`,
+      [user.id]
+    );
+    result.rows.forEach(row => organizations.push({
+      id: Number(row.id), slug: row.slug, name: row.name, status: row.status,
+      role: row.organization_role,
+      businessIds: businesses.filter(business => business.organizationId === Number(row.id)).map(business => business.businessId)
+    }));
+  }
 
   return {
     version: 1,
     source: 'server_business_profile',
-    activeBusinessId: activeProfile?.key || activeContext,
-    activeBusinessContext: activeProfile?.key || activeContext,
+    activeBusinessId: activeProfile?.key || null,
+    activeBusinessContext: activeProfile?.key || null,
     activeProfile,
+    activeMembership: scope.invalid ? null : user.businessMembershipAccess?.activeMembership || null,
+    membershipConfigured: user.businessMembershipAccess?.configured === true,
+    membershipMode: user.businessMembershipAccess?.membershipEnabled === true ? 'membership' : 'compatibility',
+    accessContext: authAccessContext(scope),
+    ...(options.includeOrganizations === true ? { organizations } : {}),
     businesses,
     allowedBusinessIds: allowed,
     defaultBusinessId: policy.defaultContext,
     canSwitchBusiness: policy.canSwitch === true,
     scope: {
       mode: scope?.mode || 'single',
-      activeContext: scope?.activeContext || activeProfile?.key || activeContext,
-      selectedContexts: Array.isArray(scope?.selectedContexts) ? scope.selectedContexts : [activeProfile?.key || activeContext],
+      activeContext: activeProfile?.key || null,
+      selectedContexts: scope.invalid ? [] : Array.isArray(scope?.selectedContexts) ? scope.selectedContexts : activeProfile ? [activeProfile.key] : [],
       allowedContexts: Array.isArray(scope?.allowedContexts) ? scope.allowedContexts : allowed,
-      readOnly: scope?.readOnly === true,
-      canWrite: scope?.canWrite !== false,
+      readOnly: scope.invalid || scope?.readOnly === true,
+      canWrite: !scope.invalid && scope?.canWrite !== false,
+      invalid: scope.invalid === true,
+      reason: scope.reason || null,
     },
     generatedAt: new Date().toISOString(),
   };

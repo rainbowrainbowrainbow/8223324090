@@ -6358,6 +6358,27 @@ const DashboardPage = (() => {
         _widgetInvalidationVersions.set(type, widgetInvalidationVersion(type) + 1);
     }
 
+    let legacyCatalogWidgetGeneration = 0;
+
+    function dashboardLegacyCatalogAvailability(data = {}) {
+        const profile = window.getLegacyBusinessSurfaceAvailability?.('catalogs');
+        if (profile?.available === false) return profile;
+        return data.legacyCatalogs || profile
+            || { available: false, message: 'Очікуємо перевірку доступу до каталогів.' };
+    }
+
+    function invalidateLegacyCatalogWidgets() {
+        legacyCatalogWidgetGeneration++;
+        for (const type of ['catalogs', 'content_pipeline']) {
+            delete _widgetData[type];
+            _widgetDataContextKeys.delete(type);
+            const container = document.getElementById(`widget-${type}`);
+            if (!container) continue;
+            container.innerHTML = '<div class="widget-empty" role="status">Оновлюємо доступ до даних…</div>';
+            void loadWidgetData(type, container, { force: true });
+        }
+    }
+
     function dashboardWidgetRequestContext(type) {
         const user = AppState.currentUser || {};
         let sessionGeneration = '';
@@ -6375,7 +6396,9 @@ const DashboardPage = (() => {
                 role: getEffectiveDashboardRole(),
                 sessionGeneration,
                 business: dashboardBusinessScopeKey(),
-                invalidationVersion: widgetInvalidationVersion(type)
+                invalidationVersion: widgetInvalidationVersion(type),
+                legacyCatalogs: ['catalogs', 'content_pipeline'].includes(type)
+                    ? [legacyCatalogWidgetGeneration, window.getLegacyBusinessSurfaceContextKey?.('catalogs') || ''] : null
             })
         };
     }
@@ -6552,6 +6575,10 @@ const DashboardPage = (() => {
 
             if (result.success) {
                 updateWidgetSuccess(type, result.data || {}, response.requestKey, container);
+                if (['catalogs', 'content_pipeline'].includes(type) && result.data?.legacyCatalogs?.available === false
+                    && window.getLegacyBusinessSurfaceAvailability?.('catalogs')?.available) {
+                    window.noteLegacyBusinessSurfaceUnavailable?.('catalogs', result.data.legacyCatalogs);
+                }
                 return { success: true };
             }
             return renderWidgetFailure(type, container, response.requestKey, new Error(result.error || 'API повернув помилку віджета'));
@@ -7377,6 +7404,11 @@ const DashboardPage = (() => {
     }
 
     function renderCatalogs(data, container) {
+        const availability = dashboardLegacyCatalogAvailability(data);
+        if (!availability.available) {
+            container.innerHTML = `<div class="widget-empty" role="status">${escapeHtml(availability.message || 'Спільні каталоги тимчасово недоступні.')}</div>`;
+            return;
+        }
         const items = data.recentItems || [];
         const defs = data.definitions || [];
         let html = '';
@@ -7618,7 +7650,10 @@ const DashboardPage = (() => {
             });
             html += '</div>';
         }
-        if (data.catalogs?.length) {
+        const catalogAvailability = dashboardLegacyCatalogAvailability(data);
+        if (!catalogAvailability.available) {
+            html += `<div class="widget-empty" role="status">${escapeHtml(catalogAvailability.message || 'Спільні каталоги тимчасово недоступні.')}</div>`;
+        } else if (data.catalogs?.length) {
             html += `<div style="font-size:11px;font-weight:700;color:var(--gray-400);margin-bottom:4px">📚 Каталоги (${data.catalogs.length})</div>`;
             html += data.catalogs.map(c => `<span style="font-size:12px;margin-right:8px">${c.emoji || '📂'} ${escapeHtml(c.name)} <span style="color:${c.status==='ready'?'#22c55e':'#f59e0b'};font-size:10px">${c.status==='ready'?'✅':'🔄'}</span></span>`).join('');
         }
@@ -9359,6 +9394,14 @@ const DashboardPage = (() => {
     function escapeJsString(str) {
         return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '');
     }
+
+    for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessContextHydrated',
+        'crmBusinessProfileChanged', 'permissions:lifecycle', 'workingRoleChanged', 'rolePreviewChanged']) {
+        window.addEventListener(eventName, invalidateLegacyCatalogWidgets);
+    }
+    window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+        if (event.detail?.surface === 'catalogs') invalidateLegacyCatalogWidgets();
+    });
 
     window.addEventListener('rolePreviewChanged', () => {
         if (!_config) return;

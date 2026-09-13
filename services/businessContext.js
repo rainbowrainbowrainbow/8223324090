@@ -93,13 +93,16 @@ function normalizeKnownBusinessContext(value) {
 }
 
 function businessContextFromRequest(req) {
-  return normalizeBusinessContext(
-    req?.body?.businessContext
+  const requested = req?.body?.businessContext
     || req?.body?.business_context
     || req?.query?.businessContext
     || req?.query?.business_context
-    || req?.headers?.['x-business-context']
-  );
+    || req?.headers?.['x-business-context'];
+  if (!requested && req?.user?.businessMembershipAccess?.membershipEnabled) {
+    return req.user.activeBusinessMembership?.businessContext
+      || req.user.businessMembershipAccess.defaultBusinessContext;
+  }
+  return normalizeBusinessContext(requested);
 }
 
 function roleList(user) {
@@ -216,11 +219,8 @@ function explicitDefaultBusinessContext(user) {
     || null;
 }
 
-function allowedBusinessContextsForUser(user) {
+function legacyBusinessContextsForUser(user) {
   if (!user) return [];
-  if (user?.businessMembershipAccess?.membershipEnabled) {
-    return normalizeBusinessContextList(user.businessMembershipAccess.businessContexts, []);
-  }
   if (!isBusinessContextSwitchRole(user)) return [DEFAULT_BUSINESS_CONTEXT];
   const assigned = normalizeBusinessContextList(rawBusinessContextList(user), []);
   if (assigned.length) return assigned;
@@ -233,7 +233,21 @@ function allowedBusinessContextsForUser(user) {
   return Array.from(allowed);
 }
 
+function allowedBusinessContextsForUser(user) {
+  const access = user?.businessMembershipAccess;
+  if (access?.membershipEnabled || access?.invalid) {
+    return normalizeBusinessContextList(access.businessContexts, []);
+  }
+  return legacyBusinessContextsForUser(user).filter(context => {
+    const business = access?.registry?.find(item => item.businessContext === context);
+    if (!business) return true;
+    return business.active && (business.accessMode !== 'membership'
+      || access.memberships.some(item => item.businessContext === context));
+  });
+}
+
 function resolveDefaultBusinessContext(user, allowed = allowedBusinessContextsForUser(user)) {
+  if (user?.businessMembershipAccess?.configured && !allowed.length) return null;
   const normalizedAllowed = normalizeBusinessContextList(allowed, [DEFAULT_BUSINESS_CONTEXT]);
   const explicitDefault = explicitDefaultBusinessContext(user);
   if (explicitDefault) {
@@ -254,6 +268,10 @@ function resolveDefaultBusinessContext(user, allowed = allowedBusinessContextsFo
 
 function resolveForcedBusinessContext(user) {
   if (!user) return null;
+  if (user?.businessMembershipAccess?.membershipEnabled) {
+    const allowed = allowedBusinessContextsForUser(user);
+    return allowed.length === 1 ? allowed[0] : null;
+  }
   if (!isBusinessContextSwitchRole(user)) return DEFAULT_BUSINESS_CONTEXT;
   const allowed = allowedBusinessContextsForUser(user);
   const explicit = explicitForcedBusinessContext(user);
@@ -266,6 +284,11 @@ function resolveBusinessContextPolicy(user) {
   const allowed = allowedBusinessContextsForUser(user);
   const assigned = normalizeBusinessContextList(rawBusinessContextList(user), []);
   const membershipDriven = user?.businessMembershipAccess?.membershipEnabled === true;
+  if (membershipDriven || user?.businessMembershipAccess?.invalid || (!allowed.length && user?.businessMembershipAccess?.configured)) {
+    const preferred = user.businessMembershipAccess.defaultBusinessContext;
+    const defaultContext = allowed.includes(preferred) ? preferred : allowed[0] || null;
+    return { canSwitch: allowed.length > 1, forced: allowed.length === 1 ? allowed[0] : null, allowed, defaultContext };
+  }
   const canSwitch = Boolean(user && allowed.length > 1 && (membershipDriven || isBusinessContextSwitchRole(user) || assigned.length > 1));
   const forced = canSwitch ? null : resolveForcedBusinessContext(user);
   const defaultContext = resolveDefaultBusinessContext(user, allowed);
@@ -278,7 +301,7 @@ function resolveBusinessContextPolicy(user) {
 }
 
 function canAccessBusinessContext(user, context) {
-  if (!user) return false;
+  if (!user || user.businessMembershipAccess?.invalid) return false;
   const normalized = normalizeBusinessContext(context);
   const policy = resolveBusinessContextPolicy(user);
   if (policy.canSwitch) return policy.allowed.includes(normalized);
@@ -295,14 +318,15 @@ function resolveBusinessScope(reqOrUser, maybeUser = null) {
   ) ? reqOrUser : null;
   const user = maybeUser || req?.user || (req ? null : reqOrUser);
   const policy = resolveBusinessContextPolicy(user);
-  const allowed = normalizeBusinessContextList(policy.allowed, [policy.defaultContext || DEFAULT_BUSINESS_CONTEXT]);
+  const membershipAccess = user?.businessMembershipAccess;
+  const allowed = normalizeBusinessContextList(policy.allowed, membershipAccess?.configured ? [] : [policy.defaultContext || DEFAULT_BUSINESS_CONTEXT]);
   const requestedMode = req ? businessScopeModeFromRequest(req) : BUSINESS_SCOPE_SINGLE;
   const requestedContexts = req ? businessScopeContextsFromRequest(req) : [];
-  const requestedContext = req ? businessContextFromRequest(req) : (policy.defaultContext || DEFAULT_BUSINESS_CONTEXT);
+  const requestedContext = req ? businessContextFromRequest({ body: req.body, query: req.query, headers: req.headers, user }) : (policy.defaultContext || DEFAULT_BUSINESS_CONTEXT);
   const explicitContext = req ? businessContextWasRequested(req) : false;
   const activeFallback = allowed.includes(policy.defaultContext)
     ? policy.defaultContext
-    : (allowed[0] || DEFAULT_BUSINESS_CONTEXT);
+    : (allowed[0] || null);
 
   const base = {
     mode: BUSINESS_SCOPE_SINGLE,
@@ -325,6 +349,32 @@ function resolveBusinessScope(reqOrUser, maybeUser = null) {
     };
   }
 
+  if (membershipAccess?.invalid || !allowed.length) {
+    return { ...base, invalid: true, readOnly: true, canWrite: false, reason: membershipAccess?.reason || 'business_context_unavailable' };
+  }
+
+  function aggregateOrganizationInvalid(contexts) {
+    if (!membershipAccess?.configured) return false;
+    const organizations = contexts.map(context => membershipAccess.registry?.find(item => item.businessContext === context)?.organizationId
+      || membershipAccess.memberships?.find(item => item.businessContext === context)?.organizationId);
+    return organizations.some(id => !id) || new Set(organizations).size > 1;
+  }
+
+  function aggregatePermissionsMismatch(contexts) {
+    if (!membershipAccess?.configured) return false;
+    const hasMembershipContext = contexts.some(context => membershipAccess.registry?.some(item => item.businessContext === context && item.accessMode === 'membership'));
+    if (!membershipAccess.membershipEnabled) return hasMembershipContext;
+    const signatures = contexts.map(context => {
+      const member = membershipAccess.memberships.find(item => item.businessContext === context);
+      if (!member || member.accessMode !== 'membership') return null;
+      return JSON.stringify([member.role, ...['extraRoles', 'pageAllowlist', 'pageDenylist', 'actionAllowlist', 'actionDenylist']
+        .map(key => [...(member[key] || [])].sort())]);
+    });
+    // Existing aggregate routes authorize once. Until they authorize each data
+    // partition, do not lend one business's stronger role to another business.
+    return signatures.some(value => !value) || new Set(signatures).size > 1;
+  }
+
   if (requestedMode === BUSINESS_SCOPE_ALL) {
     if (!policy.canSwitch || allowed.length < 2) {
       return {
@@ -332,6 +382,12 @@ function resolveBusinessScope(reqOrUser, maybeUser = null) {
         invalid: true,
         reason: 'all_business_scope_unavailable'
       };
+    }
+    if (aggregateOrganizationInvalid(allowed)) {
+      return { ...base, invalid: true, readOnly: true, canWrite: false, reason: 'business_scope_organization_mismatch' };
+    }
+    if (aggregatePermissionsMismatch(allowed)) {
+      return { ...base, invalid: true, readOnly: true, canWrite: false, reason: 'business_scope_permissions_mismatch' };
     }
     return {
       ...base,
@@ -352,6 +408,15 @@ function resolveBusinessScope(reqOrUser, maybeUser = null) {
         invalid: true,
         reason: 'multi_business_scope_unavailable'
       };
+    }
+    if (membershipAccess?.configured && requestedContexts.some(context => !allowed.includes(context))) {
+      return { ...base, invalid: true, readOnly: true, canWrite: false, reason: 'business_context_unavailable' };
+    }
+    if (aggregateOrganizationInvalid(uniqueSelected)) {
+      return { ...base, invalid: true, readOnly: true, canWrite: false, reason: 'business_scope_organization_mismatch' };
+    }
+    if (aggregatePermissionsMismatch(uniqueSelected)) {
+      return { ...base, invalid: true, readOnly: true, canWrite: false, reason: 'business_scope_permissions_mismatch' };
     }
     return {
       ...base,
@@ -455,14 +520,19 @@ function businessContextCatalog() {
   }));
 }
 
-function businessModulesForContext(context) {
-  const ctx = BUSINESS_CONTEXTS[normalizeBusinessContext(context)] || BUSINESS_CONTEXTS[DEFAULT_BUSINESS_CONTEXT];
-  return Array.isArray(ctx.modules) ? [...ctx.modules] : [];
+function businessModulesForContext(context, user = null) {
+  if (user?.businessMembershipAccess) {
+    const { businessModuleCatalog, userBusinessModuleState } = require('./businessModuleRegistry');
+    const key = normalizeBusinessContext(context);
+    return businessModuleCatalog(key).filter(module => userBusinessModuleState(user, key, module.key).available).map(module => module.key);
+  }
+  const ctx = BUSINESS_CONTEXTS[normalizeBusinessContext(context)];
+  return Array.isArray(ctx?.modules) ? [...ctx.modules] : [];
 }
 
-function businessContextHasModule(context, moduleId) {
+function businessContextHasModule(context, moduleId, user = null) {
   if (!moduleId) return true;
-  return businessModulesForContext(context).includes(String(moduleId));
+  return businessModulesForContext(context, user).includes(String(moduleId));
 }
 
 module.exports = {

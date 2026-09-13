@@ -684,12 +684,36 @@ router.patch('/pinata-designs/:id', requireRole('admin', 'manager'), async (req,
 });
 
 // GET /api/warehouse/categories — List unique categories
+// Intake drafts have no durable business owner; membership access cannot safely
+// authorize them until that independent Telegram workflow has been migrated.
+router.use('/photo-intake', (req, res, next) => {
+    const businessContext = requestWarehouseBusinessContext(req, res);
+    if (!businessContext) return;
+    if (req.user?.businessMembershipAccess?.membershipEnabled || businessContext !== DEFAULT_BUSINESS_CONTEXT) {
+        return res.status(403).json({
+            success: false,
+            code: 'warehouse_photo_intake_not_migrated',
+            error: 'Photo intake has no business ownership and is unavailable for this business access mode'
+        });
+    }
+    req.warehousePhotoIntakeBusinessContext = businessContext;
+    next();
+});
+
+function sendWarehousePhotoIntakeAccessError(res, error) {
+    const code = error?.code || error?.error;
+    if (!['warehouse_photo_intake_not_migrated', 'warehouse_photo_intake_scope_unavailable'].includes(code)) return false;
+    res.status(error.status || 403).json({ success: false, code, error: error.message || code });
+    return true;
+}
+
 // GET /api/warehouse/photo-intake/status - Telegram photo intake readiness
 router.get('/photo-intake/status', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
-        const status = await warehousePhotoIntake.getIntakeStatus();
+        const status = await warehousePhotoIntake.getIntakeStatus({ businessContext: req.warehousePhotoIntakeBusinessContext });
         res.json({ success: true, status });
     } catch (err) {
+        if (sendWarehousePhotoIntakeAccessError(res, err)) return;
         log.error('Warehouse photo intake status error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
@@ -699,11 +723,13 @@ router.get('/photo-intake/status', requireRole(...MANAGE_ROLES), async (req, res
 router.get('/photo-intake', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
         const items = await warehousePhotoIntake.listIntakes({
+            businessContext: req.warehousePhotoIntakeBusinessContext,
             status: req.query.status || 'all',
             limit: req.query.limit || 30
         });
         res.json({ success: true, items });
     } catch (err) {
+        if (sendWarehousePhotoIntakeAccessError(res, err)) return;
         log.error('Warehouse photo intake list error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
@@ -712,10 +738,11 @@ router.get('/photo-intake', requireRole(...MANAGE_ROLES), async (req, res) => {
 // GET /api/warehouse/photo-intake/:id - single Telegram photo intake detail
 router.get('/photo-intake/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
-        const item = await warehousePhotoIntake.getIntake(req.params.id);
+        const item = await warehousePhotoIntake.getIntake(req.params.id, { businessContext: req.warehousePhotoIntakeBusinessContext });
         if (!item) return res.status(404).json({ success: false, error: 'intake_not_found' });
         res.json({ success: true, item });
     } catch (err) {
+        if (sendWarehousePhotoIntakeAccessError(res, err)) return;
         log.error('Warehouse photo intake detail error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
@@ -725,14 +752,17 @@ router.get('/photo-intake/:id', requireRole(...MANAGE_ROLES), async (req, res) =
 router.post('/photo-intake/:id/confirm', requireRole(...MANAGE_ROLES), requireWarehousePhotoIntakeRevenueWrite, async (req, res) => {
     try {
         const result = await warehousePhotoIntake.confirmIntake(req.params.id, {
+            businessContext: req.warehousePhotoIntakeBusinessContext,
             actor: req.user?.username || req.user?.name || 'crm',
             draft: req.body?.draft || req.body || {},
             warehouseStockId: req.body?.warehouseStockId || req.body?.stockId || null,
             allowRevenueWrite: canUseAction(req.user, 'view_revenue')
         });
+        if (sendWarehousePhotoIntakeAccessError(res, result)) return;
         if (!result.success) return res.status(result.status || 400).json(result);
         res.json(result);
     } catch (err) {
+        if (sendWarehousePhotoIntakeAccessError(res, err)) return;
         log.error('Warehouse photo intake confirm error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
@@ -742,12 +772,15 @@ router.post('/photo-intake/:id/confirm', requireRole(...MANAGE_ROLES), requireWa
 router.post('/photo-intake/:id/cancel', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
         const result = await warehousePhotoIntake.cancelIntake(req.params.id, {
+            businessContext: req.warehousePhotoIntakeBusinessContext,
             actor: req.user?.username || req.user?.name || 'crm',
             notes: req.body?.notes || null
         });
+        if (sendWarehousePhotoIntakeAccessError(res, result)) return;
         if (!result.success) return res.status(result.status || 400).json(result);
         res.json(result);
     } catch (err) {
+        if (sendWarehousePhotoIntakeAccessError(res, err)) return;
         log.error('Warehouse photo intake cancel error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }

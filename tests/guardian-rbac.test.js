@@ -44,6 +44,7 @@ function clearModules() {
 
 function resetState() {
     state = {
+        users: new Map(),
         mutes: [
             { id: 1, channel_id: 10, user_id: 1, username: 'owner', display_name: 'Owner', channel_name: 'Ops', reason: 'admin mute', muted_until: new Date(Date.now() + 60000).toISOString(), created_at: new Date().toISOString() },
             { id: 2, channel_id: 10, user_id: 2, username: 'animator', display_name: 'Animator', channel_name: 'Ops', reason: 'own mute', muted_until: new Date(Date.now() + 60000).toISOString(), created_at: new Date().toISOString() }
@@ -63,6 +64,21 @@ function resetState() {
 }
 
 function tokenFor(role = 'creator', userId = 1) {
+    state.users.set(userId, {
+        id: userId,
+        username: `${role}-${userId}`,
+        name: `${role} ${userId}`,
+        role,
+        extra_roles: [],
+        page_allowlist: [],
+        page_denylist: [],
+        action_allowlist: [],
+        action_denylist: [],
+        business_contexts: ['event_genix'],
+        default_business_context: 'event_genix',
+        is_active: true,
+        session_revoked_at: null
+    });
     return jwt.sign(
         { id: userId, userId, username: `${role}-${userId}`, name: `${role} ${userId}`, role },
         TEST_JWT_SECRET,
@@ -105,7 +121,16 @@ function fakePool() {
                 return { rows: [], rowCount: 0 };
             }
             if (text.startsWith('SELECT is_active, session_revoked_at FROM users WHERE id = $1')) {
-                return { rows: [{ is_active: true, session_revoked_at: null }], rowCount: 1 };
+                const user = state.users.get(Number(params[0]));
+                return { rows: user ? [{ is_active: user.is_active, session_revoked_at: user.session_revoked_at }] : [], rowCount: user ? 1 : 0 };
+            }
+            if (text.startsWith('SELECT id, username, role,') && text.includes('FROM users WHERE id = $1')) {
+                const user = state.users.get(Number(params[0]));
+                return { rows: user ? [user] : [], rowCount: user ? 1 : 0 };
+            }
+            if (text.includes('FROM organization_memberships om') || text.includes('FROM businesses b')) {
+                // These RBAC fixtures represent accounts before organization bootstrap.
+                return { rows: [], rowCount: 0 };
             }
 
             if (text.includes('FROM chat_mutes cm')) {

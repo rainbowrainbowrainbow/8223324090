@@ -277,6 +277,9 @@ function apiAuthAuthorizationFingerprint(user = {}) {
         actionAllowlist: normalizeApiAuthList(user?.actionAllowlist, user?.action_allowlist),
         actionDenylist: normalizeApiAuthList(user?.actionDenylist, user?.action_denylist),
         businessContexts: normalizeApiAuthList(user?.businessContexts, user?.business_contexts),
+        activeBusinessContext: user?.activeBusinessContext || null,
+        organizationId: user?.organizationId || null,
+        accessContext: user?.accessContext || null,
         defaultBusinessContext: String(user?.defaultBusinessContext || user?.default_business_context || '').trim().toLowerCase(),
         qaCreatorLeaseId: String(user?.qaCreatorLeaseId || user?.qa_creator_lease_id || '')
     });
@@ -689,11 +692,20 @@ const crmBusinessProfileState = {
     businessesById: new Map(),
     loadedAt: 0
 };
+let crmBusinessProfileRequest = 0;
+
+function clearCrmBusinessProfile() {
+    crmBusinessProfileRequest += 1;
+    crmBusinessProfileState.profile = null;
+    crmBusinessProfileState.activeProfile = null;
+    crmBusinessProfileState.businessesById.clear();
+    crmBusinessProfileState.loadedAt = 0;
+}
 
 function normalizeCrmBusinessContext(value) {
     const key = String(value || '').trim().toLowerCase();
     if (CRM_BUSINESS_CONTEXT_ALIASES[key]) return CRM_BUSINESS_CONTEXT_ALIASES[key];
-    return CRM_BUSINESS_CONTEXTS[key] ? key : CRM_BUSINESS_DEFAULT_CONTEXT;
+    return key || null;
 }
 
 function parseCrmBusinessContextList(value) {
@@ -713,7 +725,7 @@ function normalizeCrmBusinessContextList(value, fallback = []) {
     const normalized = [];
     source.forEach(item => {
         const key = normalizeCrmBusinessContext(item);
-        if (CRM_BUSINESS_CONTEXTS[key] && !normalized.includes(key)) normalized.push(key);
+        if (key && !normalized.includes(key)) normalized.push(key);
     });
     return normalized.length ? normalized : [...fallback];
 }
@@ -756,7 +768,7 @@ function crmBusinessScopeFromUrl() {
         if (mode === CRM_BUSINESS_SCOPE_SINGLE) return null;
         return {
             mode,
-            activeContext: crmBusinessContextFromUrl() || CRM_BUSINESS_DEFAULT_CONTEXT,
+            activeContext: crmBusinessContextFromUrl(),
             selectedContexts: normalizeCrmBusinessContextList(
                 params.get('businessContexts') || params.get('business_contexts'),
                 []
@@ -817,7 +829,7 @@ function resolveStoredCrmBusinessContext(user = null, options = {}) {
         }
         const rawKey = String(value || '').trim().toLowerCase();
         const aliasKey = CRM_BUSINESS_CONTEXT_ALIASES[rawKey] || rawKey;
-        if (!CRM_BUSINESS_CONTEXTS[aliasKey]) {
+        if (!CRM_BUSINESS_CONTEXTS[aliasKey] && !user?.businessContextPolicy?.allowed?.includes(aliasKey)) {
             clearCrmBusinessContextStorage();
             return null;
         }
@@ -859,7 +871,7 @@ function crmBusinessScopeFromStorage(user = null) {
         if (mode === CRM_BUSINESS_SCOPE_SINGLE) return null;
         return {
             mode,
-            activeContext: crmBusinessContextFromStorage(user) || CRM_BUSINESS_DEFAULT_CONTEXT,
+            activeContext: crmBusinessContextFromStorage(user),
             selectedContexts: normalizeCrmBusinessContextList(
                 localStorage.getItem(CRM_BUSINESS_SCOPE_CONTEXTS_STORAGE_KEY),
                 []
@@ -954,6 +966,18 @@ function resolveCrmBusinessDefaultContext(user, allowed = crmBusinessAllowedCont
 }
 
 function resolveCrmBusinessPolicy(user) {
+    const serverPolicy = user?.businessContextPolicy || user?.business_context_policy || null;
+    if (serverPolicy && Array.isArray(serverPolicy.allowed)) {
+        const serverAllowed = normalizeCrmBusinessContextList(serverPolicy.allowed);
+        const serverDefault = normalizeCrmBusinessContext(serverPolicy.defaultContext || serverPolicy.default_context);
+        const unavailable = user?.accessContext && user.accessContext.status !== 'ready';
+        return {
+            canSwitch: serverAllowed.length > 1,
+            forced: unavailable ? null : normalizeCrmBusinessContext(serverPolicy.forced),
+            allowed: serverAllowed,
+            defaultContext: !unavailable && serverAllowed.includes(serverDefault) ? serverDefault : null
+        };
+    }
     if (user && !crmBusinessUserCanSwitch(user)) {
         return {
             canSwitch: false,
@@ -963,19 +987,6 @@ function resolveCrmBusinessPolicy(user) {
         };
     }
     const allowed = crmBusinessAllowedContexts(user);
-    const serverPolicy = user?.businessContextPolicy || user?.business_context_policy || null;
-    if (serverPolicy && Array.isArray(serverPolicy.allowed)) {
-        const serverAllowed = serverPolicy.allowed.map(normalizeCrmBusinessContext).filter(key => CRM_BUSINESS_CONTEXTS[key]);
-        if (serverAllowed.length) {
-            const serverDefault = normalizeCrmBusinessContext(serverPolicy.defaultContext || serverPolicy.default_context || serverPolicy.forced || serverAllowed[0]);
-            return {
-                canSwitch: Boolean(serverPolicy.canSwitch || serverAllowed.length > 1),
-                forced: serverPolicy.forced ? normalizeCrmBusinessContext(serverPolicy.forced) : null,
-                allowed: serverAllowed,
-                defaultContext: serverAllowed.includes(serverDefault) ? serverDefault : serverAllowed[0]
-            };
-        }
-    }
     const assigned = crmBusinessAssignedContexts(user);
     const canSwitch = Boolean(user && allowed.length > 1 && (crmBusinessUserCanSwitch(user) || assigned.length > 1));
     const explicit = crmBusinessExplicitForcedContext(user);
@@ -998,7 +1009,7 @@ function normalizeCrmBusinessProfilePayload(payload = {}) {
     const businessesById = new Map();
     businesses.forEach(item => {
         const key = normalizeCrmBusinessContext(item?.key || item?.id || item?.businessContext);
-        if (!CRM_BUSINESS_CONTEXTS[key]) return;
+        if (!key) return;
         businessesById.set(key, {
             ...item,
             key,
@@ -1009,15 +1020,14 @@ function normalizeCrmBusinessProfilePayload(payload = {}) {
     const activeKey = normalizeCrmBusinessContext(
         profile?.activeBusinessId
         || profile?.activeBusinessContext
-        || profile?.scope?.activeContext
-        || businesses[0]?.key
+        || (!profile?.scope?.invalid && profile?.scope?.activeContext)
     );
     return {
         ...profile,
         activeBusinessId: activeKey,
         activeBusinessContext: activeKey,
         businesses: Array.from(businessesById.values()),
-        activeProfile: businessesById.get(activeKey) || Array.from(businessesById.values())[0] || null
+        activeProfile: businessesById.get(activeKey) || null
     };
 }
 
@@ -1029,6 +1039,14 @@ function applyCrmBusinessProfile(profileInput = {}, options = {}) {
         (profile.businesses || []).map(item => [item.key, item])
     );
     crmBusinessProfileState.loadedAt = Date.now();
+    const profileUser = options.user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
+    if (profileUser) {
+        profileUser.businessProfile = profile;
+        const storedUser = readApiAuthStoredUser();
+        if (storedUser && apiAuthUsersShareIdentity(storedUser, profileUser)) {
+            localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify({ ...storedUser, businessProfile: profile }));
+        }
+    }
 
     if (profile.scope && options.syncScope !== false) {
         setCrmBusinessScope(profile.scope, {
@@ -1074,6 +1092,66 @@ function getCrmBusinessOperatingProfile() {
     return crmBusinessProfileState.profile || null;
 }
 
+const legacyBusinessSurfaceDenials = new Map();
+
+function getLegacyBusinessSurfaceAvailability(surface = 'catalogs') {
+    const labels = {
+        catalogs: 'Спільні каталоги', booking_templates: 'Шаблони бронювань',
+        recurring: 'Повторювані бронювання', finance_salary: 'Розрахунок зарплати',
+        contractors_procurement: 'Спільні підрядники та закупівлі'
+    };
+    const key = Object.prototype.hasOwnProperty.call(labels, surface) ? surface : 'catalogs';
+    const denied = legacyBusinessSurfaceDenials.get(key);
+    if (denied?.context === getLegacyBusinessSurfaceContextKey(key)) return { available: false, code: denied.code, message: denied.message };
+    const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    const profile = getCrmBusinessOperatingProfile();
+    const scope = getCrmBusinessScope(user);
+    const ready = Boolean(user && profile?.accessContext?.status === 'ready'
+        && user.accessContext?.status === 'ready'
+        && profile.activeBusinessId === scope.activeContext);
+    const available = ready && profile.membershipMode === 'compatibility'
+        && scope.mode === CRM_BUSINESS_SCOPE_SINGLE && scope.activeContext === CRM_BUSINESS_DEFAULT_CONTEXT;
+    return {
+        available,
+        code: available ? null : `${key}_not_migrated`,
+        message: available ? null : (ready
+            ? `Розділ «${labels[key]}» тимчасово недоступний у цьому бізнесі до завершення розподілу даних між бізнесами.`
+            : 'Доступ до бізнесу ще не підтверджено. Дочекайтеся завантаження профілю або оновіть сторінку.')
+    };
+}
+
+function getLegacyBusinessSurfaceContextKey(surface = 'catalogs') {
+    const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    const profile = getCrmBusinessOperatingProfile();
+    const scope = getCrmBusinessScope(user);
+    return JSON.stringify([surface, user?.id || user?.username || null,
+        apiAuthAuthorizationFingerprint(user || {}), profile?.activeBusinessId || null,
+        profile?.membershipMode || null, profile?.accessContext || null,
+        scope.mode, scope.activeContext, scope.selectedContexts || []]);
+}
+
+function legacyBusinessSurfaceError(surface, availability = getLegacyBusinessSurfaceAvailability(surface)) {
+    const error = new Error(availability.message || 'Дані тимчасово недоступні.');
+    error.code = availability.code || `${surface}_not_migrated`;
+    return error;
+}
+
+function noteLegacyBusinessSurfaceUnavailable(surface, availability, context = getLegacyBusinessSurfaceContextKey(surface)) {
+    if (availability?.code !== `${surface}_not_migrated` || context !== getLegacyBusinessSurfaceContextKey(surface)) return;
+    const message = availability.message || availability.error || 'Цей розділ тимчасово недоступний.';
+    legacyBusinessSurfaceDenials.set(surface, { context, code: availability.code, message });
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('legacyBusinessSurfaceUnavailable', {
+        detail: { surface, context, code: availability.code, message }
+    }));
+}
+
+if (typeof window !== 'undefined') {
+    window.getLegacyBusinessSurfaceAvailability = getLegacyBusinessSurfaceAvailability;
+    window.getLegacyBusinessSurfaceContextKey = getLegacyBusinessSurfaceContextKey;
+    window.legacyBusinessSurfaceError = legacyBusinessSurfaceError;
+    window.noteLegacyBusinessSurfaceUnavailable = noteLegacyBusinessSurfaceUnavailable;
+}
+
 function getCrmBusinessProfileForContext(context = getCrmBusinessContext()) {
     const key = normalizeCrmBusinessContext(context);
     return crmBusinessProfileState.businessesById.get(key) || null;
@@ -1082,11 +1160,17 @@ function getCrmBusinessProfileForContext(context = getCrmBusinessContext()) {
 function crmBusinessContextHasModule(context, moduleId) {
     if (!moduleId) return true;
     const profile = getCrmBusinessProfileForContext(context);
-    if (profile?.modules?.enabled && Object.prototype.hasOwnProperty.call(profile.modules.enabled, moduleId)) {
-        return profile.modules.enabled[moduleId] !== false;
+    if (profile?.accessMode === 'membership' || profile?.modules?.source === 'business_registry') {
+        return profile.modules?.enabled?.[moduleId] === true;
     }
-    const ctx = CRM_BUSINESS_CONTEXTS[normalizeCrmBusinessContext(context)] || CRM_BUSINESS_CONTEXTS[CRM_BUSINESS_DEFAULT_CONTEXT];
-    return Array.isArray(ctx.modules) && ctx.modules.includes(String(moduleId));
+    if (profile?.modules?.enabled && Object.prototype.hasOwnProperty.call(profile.modules.enabled, moduleId)) {
+        return profile.modules.enabled[moduleId] === true;
+    }
+    const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    if (user?.membershipMode === 'membership' || user?.businessProfile?.membershipMode === 'membership'
+        || user?.businessMembershipAccess?.membershipEnabled) return false;
+    const ctx = CRM_BUSINESS_CONTEXTS[normalizeCrmBusinessContext(context)];
+    return Array.isArray(ctx?.modules) && ctx.modules.includes(String(moduleId));
 }
 
 function crmBusinessContextSupportsTimeline(context) {
@@ -1116,8 +1200,10 @@ function resolveCrmBusinessContextState(user) {
     const storedInfo = resolveStoredCrmBusinessContext(activeUser);
     const stored = storedInfo?.key || null;
     const policy = resolveCrmBusinessPolicy(activeUser);
-    const accountDefault = policy.defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
-    const timelineEntryDefault = crmBusinessContextSupportsTimeline(accountDefault) ? accountDefault : CRM_BUSINESS_DEFAULT_CONTEXT;
+    const accountDefault = policy.defaultContext;
+    const timelineEntryDefault = activeUser?.membershipMode === 'membership'
+        ? accountDefault
+        : (crmBusinessContextSupportsTimeline(accountDefault) ? accountDefault : CRM_BUSINESS_DEFAULT_CONTEXT);
     const preferAccountDefaultOnTimelineRoot = normalizedCrmPath() === '/' && !fromUrl;
     const source = fromRoute
         ? 'route'
@@ -1126,8 +1212,10 @@ function resolveCrmBusinessContextState(user) {
             : (preferAccountDefaultOnTimelineRoot
                 ? 'account_default'
                 : (stored ? 'storage' : 'account_default')));
-    const requested = fromRoute || fromUrl || (preferAccountDefaultOnTimelineRoot ? timelineEntryDefault : (stored || accountDefault)) || CRM_BUSINESS_DEFAULT_CONTEXT;
-    const activeBusinessId = sanitizeCrmBusinessContextForUser(requested, activeUser);
+    const requested = fromRoute || fromUrl || (activeUser?.businessContextPolicy && activeUser.activeBusinessContext)
+        || (preferAccountDefaultOnTimelineRoot ? timelineEntryDefault : (stored || accountDefault));
+    const activeBusinessId = activeUser?.accessContext && activeUser.accessContext.status !== 'ready'
+        ? null : sanitizeCrmBusinessContextForUser(requested, activeUser);
     return {
         activeBusinessId,
         source: activeBusinessId === requested ? source : 'policy_fallback',
@@ -1169,15 +1257,25 @@ function sanitizeCrmBusinessContextListForUser(contexts, user) {
 
 function sanitizeCrmBusinessScopeForUser(scope = {}, user, options = {}) {
     const policy = resolveCrmBusinessPolicy(user);
-    const allowed = policy.canSwitch ? policy.allowed : [policy.defaultContext];
+    let allowed = [...policy.allowed];
+    const profile = getCrmBusinessOperatingProfile();
+    const requestedBusiness = profile?.businesses?.find(item => item.key === scope.activeContext);
+    const organizationId = requestedBusiness?.organizationId || user?.organizationId;
+    if (normalizeCrmBusinessScopeMode(scope.mode) !== CRM_BUSINESS_SCOPE_SINGLE && organizationId && profile) {
+        allowed = allowed.filter(key => profile?.businesses?.some(item => item.key === key && item.organizationId === organizationId));
+    }
     const defaultContext = allowed.includes(policy.defaultContext)
         ? policy.defaultContext
-        : (allowed[0] || CRM_BUSINESS_DEFAULT_CONTEXT);
+        : null;
     const allowAggregate = options.allowAggregate !== false && crmBusinessPageAllowsAggregate(options.page);
     const mode = allowAggregate ? normalizeCrmBusinessScopeMode(scope.mode) : CRM_BUSINESS_SCOPE_SINGLE;
     const activeContext = sanitizeCrmBusinessContextForUser(scope.activeContext || getCrmBusinessContext(user), user);
 
-    if (mode === CRM_BUSINESS_SCOPE_ALL && policy.canSwitch && allowed.length > 1) {
+    if (mode !== CRM_BUSINESS_SCOPE_SINGLE && (!activeContext || (user?.accessContext && user.accessContext.status !== 'ready'))) {
+        return { mode, activeContext: null, selectedContexts: [], allowedContexts: allowed, readOnly: true, canWrite: false };
+    }
+
+    if (mode === CRM_BUSINESS_SCOPE_ALL) {
         return {
             mode: CRM_BUSINESS_SCOPE_ALL,
             activeContext: allowed.includes(activeContext) ? activeContext : defaultContext,
@@ -1188,12 +1286,12 @@ function sanitizeCrmBusinessScopeForUser(scope = {}, user, options = {}) {
         };
     }
 
-    if (mode === CRM_BUSINESS_SCOPE_MULTI && policy.canSwitch && allowed.length > 1) {
-        const selected = sanitizeCrmBusinessContextListForUser(scope.selectedContexts, user);
+    if (mode === CRM_BUSINESS_SCOPE_MULTI) {
+        const selected = sanitizeCrmBusinessContextListForUser(scope.selectedContexts, user).filter(key => allowed.includes(key));
         const contexts = selected.length >= 2 ? selected : allowed.slice(0, Math.min(allowed.length, 2));
         return {
             mode: CRM_BUSINESS_SCOPE_MULTI,
-            activeContext: contexts[0] || defaultContext,
+            activeContext: contexts.includes(activeContext) ? activeContext : contexts[0] || defaultContext,
             selectedContexts: contexts,
             allowedContexts: [...allowed],
             readOnly: true,
@@ -1204,10 +1302,10 @@ function sanitizeCrmBusinessScopeForUser(scope = {}, user, options = {}) {
     return {
         mode: CRM_BUSINESS_SCOPE_SINGLE,
         activeContext,
-        selectedContexts: [activeContext],
+        selectedContexts: activeContext ? [activeContext] : [],
         allowedContexts: [...allowed],
-        readOnly: false,
-        canWrite: true
+        readOnly: !activeContext,
+        canWrite: Boolean(activeContext)
     };
 }
 
@@ -1253,7 +1351,7 @@ function crmBusinessReadOnlyMessage(scope = getCrmBusinessScope(), actionLabel =
 }
 
 function canWriteCrmBusinessScope(scope = getCrmBusinessScope()) {
-    return !isCrmBusinessScopeReadOnly(scope);
+    return scope?.canWrite !== false && !isCrmBusinessScopeReadOnly(scope);
 }
 
 function guardCrmBusinessWrite(actionLabel = 'змінювати дані', scope = getCrmBusinessScope()) {
@@ -1277,9 +1375,9 @@ function userCanAccessCrmBusinessContext(user, context) {
 
 function getCrmBusinessContextOptions(user) {
     const policy = resolveCrmBusinessPolicy(user);
-    const keys = policy.canSwitch ? policy.allowed : [policy.defaultContext];
+    const keys = policy.allowed;
     return keys
-        .map(key => CRM_BUSINESS_CONTEXTS[normalizeCrmBusinessContext(key)])
+        .map(key => crmBusinessProfileState.businessesById.get(key) || CRM_BUSINESS_CONTEXTS[normalizeCrmBusinessContext(key)])
         .filter(Boolean);
 }
 
@@ -1306,8 +1404,13 @@ function getCrmBusinessState(user) {
         availableBusinesses: getCrmBusinessContextOptions(user).map(ctx => ({
             id: ctx.key,
             key: ctx.key,
-            label: ctx.label,
-            shortLabel: ctx.shortLabel || ctx.label,
+            label: crmBusinessProfileState.profile?.organizations?.length > 1
+                ? [crmBusinessProfileState.profile.organizations.find(org => org.id === ctx.organizationId)?.name, ctx.label].filter(Boolean).join(' — ')
+                : ctx.label,
+            shortLabel: crmBusinessProfileState.profile?.organizations?.length > 1
+                ? [crmBusinessProfileState.profile.organizations.find(org => org.id === ctx.organizationId)?.name, ctx.shortLabel || ctx.label].filter(Boolean).join(' — ')
+                : ctx.shortLabel || ctx.label,
+            organizationId: ctx.organizationId || null,
             route: crmBusinessDestinationForCurrentPage(ctx.key) || ctx.pageAllowlist || null
         }))
     };
@@ -1318,7 +1421,8 @@ function setCrmBusinessContext(context, options = {}) {
     const previous = getCrmBusinessContext(user);
     const key = sanitizeCrmBusinessContextForUser(context, user);
     try {
-        localStorage.setItem(CRM_BUSINESS_STORAGE_KEY, key);
+        if (key) localStorage.setItem(CRM_BUSINESS_STORAGE_KEY, key);
+        else localStorage.removeItem(CRM_BUSINESS_STORAGE_KEY);
         const userKey = crmBusinessStorageUserKey(user);
         if (userKey) localStorage.setItem(CRM_BUSINESS_STORAGE_USER_KEY, userKey);
         localStorage.removeItem(CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY);
@@ -1328,7 +1432,7 @@ function setCrmBusinessContext(context, options = {}) {
     if (options.updateUrl !== false && typeof window !== 'undefined') {
         const url = new URL(window.location.href);
         const routeContext = crmBusinessContextFromRoute(url.pathname);
-        if (key === CRM_BUSINESS_DEFAULT_CONTEXT || routeContext === key) url.searchParams.delete('businessContext');
+        if (!key || (key === CRM_BUSINESS_DEFAULT_CONTEXT && resolveCrmBusinessPolicy(user).defaultContext === key) || routeContext === key) url.searchParams.delete('businessContext');
         else url.searchParams.set('businessContext', key);
         window.history.replaceState(window.history.state || {}, '', url);
     }
@@ -1352,7 +1456,8 @@ function setCrmBusinessScope(scopeInput = {}, options = {}) {
     });
     const previousContext = previousScope.activeContext;
     try {
-        localStorage.setItem(CRM_BUSINESS_STORAGE_KEY, scope.activeContext);
+        if (scope.activeContext) localStorage.setItem(CRM_BUSINESS_STORAGE_KEY, scope.activeContext);
+        else localStorage.removeItem(CRM_BUSINESS_STORAGE_KEY);
         const userKey = crmBusinessStorageUserKey(user);
         if (userKey) localStorage.setItem(CRM_BUSINESS_STORAGE_USER_KEY, userKey);
         localStorage.removeItem(CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY);
@@ -1372,7 +1477,7 @@ function setCrmBusinessScope(scopeInput = {}, options = {}) {
             url.searchParams.delete('business_scope');
             url.searchParams.delete('businessContexts');
             url.searchParams.delete('business_contexts');
-            if (scope.activeContext === CRM_BUSINESS_DEFAULT_CONTEXT || routeContext === scope.activeContext) url.searchParams.delete('businessContext');
+            if (!scope.activeContext || (scope.activeContext === CRM_BUSINESS_DEFAULT_CONTEXT && resolveCrmBusinessPolicy(user).defaultContext === scope.activeContext) || routeContext === scope.activeContext) url.searchParams.delete('businessContext');
             else url.searchParams.set('businessContext', scope.activeContext);
         } else {
             url.searchParams.set('businessScope', scope.mode);
@@ -1382,7 +1487,7 @@ function setCrmBusinessScope(scopeInput = {}, options = {}) {
                 url.searchParams.delete('businessContexts');
                 url.searchParams.delete('business_contexts');
             }
-            if (routeContext === scope.activeContext || scope.mode === CRM_BUSINESS_SCOPE_ALL) url.searchParams.delete('businessContext');
+            if (!scope.activeContext || routeContext === scope.activeContext) url.searchParams.delete('businessContext');
             else url.searchParams.set('businessContext', scope.activeContext);
         }
         window.history.replaceState(window.history.state || {}, '', url);
@@ -1592,7 +1697,7 @@ async function switchCrmBusinessScope(scopeInput = {}, options = {}) {
     const unchanged = previousScope.mode === nextScope.mode
         && previous === next
         && previousScope.selectedContexts.join(',') === nextScope.selectedContexts.join(',');
-    if (unchanged) {
+    if (unchanged && !user?.businessContextPolicy) {
         setCrmBusinessScope(nextScope, { ...options, user, emit: false });
         return nextScope;
     }
@@ -1602,9 +1707,25 @@ async function switchCrmBusinessScope(scopeInput = {}, options = {}) {
         const allowed = await binding.beforeChange(next, previous, { scope: nextScope, previousScope });
         if (allowed === false) return previousScope;
     }
-    const currentScope = setCrmBusinessScope(nextScope, { ...options, user, emit: true });
+    const profile = await hydrateCrmBusinessProfile({
+        ...options, user, scope: nextScope, requireReady: true, syncScope: false, emit: false, updateUrl: false
+    });
+    if (!profile) throw new Error('Сесія змінилася. Повторіть вибір бізнесу.');
+    const activeUser = typeof AppState !== 'undefined' ? AppState.currentUser : user;
+    const currentScope = setCrmBusinessScope(profile.scope || nextScope, { ...options, user: activeUser, emit: false });
     const current = currentScope.activeContext;
-    await hydrateCrmBusinessProfile({ ...options, user, emit: true, updateUrl: false }).catch(() => null);
+    if (typeof hydrateActionPermissions === 'function') {
+        const permissions = await hydrateActionPermissions(activeUser);
+        if (!permissions) {
+            if (typeof renderPermissionBootstrapError === 'function') renderPermissionBootstrapError({ overlay: true, retry: checkSession });
+            throw new Error('Не вдалося підтвердити права бізнесу. Повторіть спробу.');
+        }
+    }
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('crmBusinessContextChanged', { detail: { previous, current, scope: currentScope } }));
+        window.dispatchEvent(new CustomEvent('crmBusinessScopeChanged', { detail: { previousScope, scope: currentScope } }));
+        window.dispatchEvent(new CustomEvent('crmBusinessProfileChanged', { detail: { profile, activeProfile: profile.activeProfile } }));
+    }
     if (typeof binding?.onChange === 'function') {
         await binding.onChange({ current, previous, context: CRM_BUSINESS_CONTEXTS[current], scope: currentScope, previousScope });
     }
@@ -1637,14 +1758,27 @@ function initCrmBusinessContextPage(options = {}) {
 }
 
 async function apiGetBusinessOperatingProfile(options = {}) {
-    const url = crmBusinessApiUrl(`${API_BASE}/business/profile`, options.context || getCrmBusinessContext(options.user));
+    const scope = options.scope || getCrmBusinessScope(options.user);
+    const context = options.context || scope.activeContext || crmBusinessContextFromUrl();
+    const params = new URLSearchParams();
+    if (!options.discovery && context) params.set('businessContext', context);
+    if (!options.discovery && scope.mode !== CRM_BUSINESS_SCOPE_SINGLE && context) {
+        params.set('businessScope', scope.mode);
+        if (scope.mode === CRM_BUSINESS_SCOPE_MULTI) params.set('businessContexts', scope.selectedContexts.join(','));
+    }
+    const url = `${API_BASE}/auth/business-profile${params.size ? `?${params}` : ''}`;
     const response = await apiFetchWithAuthRetry(url, {
-        headers: getAuthHeaders(false),
+        headers: getTimelineAuthHeaders(false),
+        authBusinessScope: false,
         authSessionSnapshot: options.sessionSnapshot,
         authUser: options.user
     });
-    if (!response || handleAuthError(response)) return null;
-    return await response.json();
+    if (!response) return null;
+    const payload = await response.json();
+    if (!response.ok && !(response.status === 403 && payload.businessProfile && payload.user)) {
+        throw apiErrorFromPayload(payload, 'Не вдалося завантажити профіль бізнесу');
+    }
+    return payload;
 }
 
 async function apiGetBusinessCabinet(options = {}) {
@@ -1667,6 +1801,7 @@ async function apiSaveBusinessCabinet(payload = {}, options = {}) {
 }
 
 async function hydrateCrmBusinessProfile(options = {}) {
+    const requestId = ++crmBusinessProfileRequest;
     const sessionSnapshot = options.sessionSnapshot || captureApiAuthSessionSnapshot(options.user);
     if (!isApiAuthSessionSnapshotCurrent(sessionSnapshot, options.user)) {
         markApiAuthSessionChanged('business-profile');
@@ -1674,16 +1809,29 @@ async function hydrateCrmBusinessProfile(options = {}) {
     }
     try {
         const payload = await apiGetBusinessOperatingProfile(options);
-        if (!isApiAuthSessionSnapshotCurrent(sessionSnapshot, options.user)) {
+        if (requestId !== crmBusinessProfileRequest || !isApiAuthSessionSnapshotCurrent(sessionSnapshot, options.user)) {
             markApiAuthSessionChanged('business-profile');
             return null;
         }
-        if (!payload) return getCrmBusinessOperatingProfile();
-        return applyCrmBusinessProfile(payload.businessProfile || payload, options);
+        if (!payload) throw new Error('Не вдалося підтвердити профіль бізнесу');
+        if (options.requireReady && payload.user?.accessContext?.status !== 'ready') {
+            throw apiErrorFromPayload(payload, 'Цей бізнес недоступний для поточного акаунта');
+        }
+        let user = payload.user ? mergeApiCurrentUser(payload.user) : options.user;
+        if (payload.user && !user) return null;
+        if (user && options.user) {
+            delete options.user.permissions;
+            Object.assign(options.user, user);
+            user = options.user;
+        }
+        if (user && typeof AppState !== 'undefined') AppState.currentUser = user;
+        // Advance only this accepted request's snapshot after its own synchronous
+        // rights update. Other in-flight requests retain their old generation.
+        Object.assign(sessionSnapshot, captureApiAuthSessionSnapshot(user));
+        return applyCrmBusinessProfile(payload.businessProfile || payload, { ...options, user });
     } catch (error) {
         if (!isApiAuthSessionSnapshotCurrent(sessionSnapshot, options.user)) return null;
-        console.warn('[CrmBusinessContext] business profile hydrate failed', error);
-        return getCrmBusinessOperatingProfile();
+        throw error;
     }
 }
 
@@ -1716,6 +1864,7 @@ if (typeof window !== 'undefined') {
         profileFor: getCrmBusinessProfileForContext,
         applyProfile: applyCrmBusinessProfile,
         hydrateProfile: hydrateCrmBusinessProfile,
+        clearProfile: clearCrmBusinessProfile,
         defaultTimelineRouteForUser: crmBusinessDefaultTimelineRouteForUser,
         startPageForUser: crmBusinessStartPageForUser,
         currentPage: currentCrmBusinessScopedPage,
@@ -1731,7 +1880,8 @@ if (typeof window !== 'undefined') {
 // v39.9: Global safe fetch wrapper — auto-checks response.ok, handles auth errors
 function applyCrmBusinessScopeHeaders(headers = {}) {
     if (!Object.keys(headers).some(key => String(key).toLowerCase() === 'x-business-context')) {
-        headers['X-Business-Context'] = getCrmBusinessContext();
+        const context = getCrmBusinessContext();
+        if (context) headers['X-Business-Context'] = context;
     }
     const scope = getCrmBusinessScope();
     if (scope.mode !== CRM_BUSINESS_SCOPE_SINGLE) {
@@ -1776,6 +1926,11 @@ function assertCrmBusinessWritableRequest(url, method = 'GET') {
     if (!isCrmBusinessScopeReadOnly()) return;
     const path = crmBusinessRequestPath(url);
     if (CRM_BUSINESS_SCOPE_WRITE_EXEMPT_PATHS.has(path)) return;
+    if ((normalizedMethod === 'POST' && (path === '/api/organizations/bootstrap' || /^\/api\/organizations\/\d+\/businesses$/.test(path)))
+        || (normalizedMethod === 'PATCH' && /^\/api\/organizations\/businesses\/\d+(?:\/configuration)?$/.test(path))
+        || (normalizedMethod === 'POST' && /^\/api\/organizations\/businesses\/\d+\/initialize-resources$/.test(path))
+        || (normalizedMethod === 'PUT' && /^\/api\/organizations\/\d+\/members\/\d+$/.test(path))
+        || (normalizedMethod === 'DELETE' && /^\/api\/organizations\/\d+\/members\/\d+\/\d+$/.test(path))) return;
     throw apiErrorFromPayload({
         success: false,
         status: 403,
@@ -3375,7 +3530,8 @@ async function apiGetProduct(id, options = {}) {
     }
 }
 
-async function apiGetProductCatalogs() {
+async function apiGetProductCatalogs(options = {}) {
+    const requestContext = getLegacyBusinessSurfaceContextKey('catalogs');
     try {
         const context = typeof window !== 'undefined' && window.ProductBusinessContext
             ? window.ProductBusinessContext.getApiContext()
@@ -3384,13 +3540,15 @@ async function apiGetProductCatalogs() {
         addProductBusinessContextParam(params, context);
         const qs = params.toString() ? `?${params.toString()}` : '';
         const response = await apiNetworkFetch(`${API_BASE}/products/catalogs${qs}`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return [];
-        if (!response.ok) throw new Error('API error');
+        if (handleAuthError(response)) throw new Error('Сесія недоступна');
+        if (!response.ok) throw await apiErrorFromResponse(response, 'Не вдалося завантажити каталоги');
         const data = await response.json();
+        if (data.legacyCatalogs?.available === false) noteLegacyBusinessSurfaceUnavailable('catalogs', data.legacyCatalogs, requestContext);
+        if (options.includeAvailability) return data;
         return data.catalogs || [];
     } catch (err) {
         console.error('API getProductCatalogs error:', err);
-        return [];
+        throw err;
     }
 }
 
@@ -3851,6 +4009,7 @@ function revokeUnclaimedApiRefreshToken(refreshToken) {
 }
 
 function clearApiAuthSessionStorage(reason = 'api-auth-session-clear') {
+    clearCrmBusinessProfile();
     recordApiRedirectDiagnostic('auth-storage-clear', { storageClearReason: reason });
     const runtimeUser = typeof AppState !== 'undefined' && AppState ? AppState.currentUser : null;
     if (typeof clearRuntimePermissionCatalog === 'function') clearRuntimePermissionCatalog(runtimeUser);
@@ -3927,7 +4086,12 @@ function mergeApiCurrentUser(user = null, options = {}) {
         } else if (!hasIncomingPermissions) {
             delete next.permissions;
         }
+        if (user.accessContext && user.accessContext.status !== 'ready') delete next.permissions;
         const runtimeAuthorizationChanged = identityChanged || authorizationChanged;
+        if (runtimeAuthorizationChanged) {
+            delete next.businessProfile;
+            clearCrmBusinessProfile();
+        }
         if (runtimeAuthorizationChanged) {
             transition = beginApiAuthTransition('merge');
             if (!transition.owned) return null;
@@ -3941,8 +4105,8 @@ function mergeApiCurrentUser(user = null, options = {}) {
         if (runtimeAuthorizationChanged && typeof setPermissionLifecycle === 'function') {
             setPermissionLifecycle('loading');
         }
-        if (runtimeAuthorizationChanged) rotateApiAuthSessionGeneration();
         localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(next));
+        if (runtimeAuthorizationChanged) rotateApiAuthSessionGeneration();
         const runtimeUser = typeof AppState !== 'undefined' && AppState?.currentUser
             ? AppState.currentUser
             : null;
@@ -4029,8 +4193,17 @@ function canApplyApiAuthRefreshResponse(refreshToken, expectedUser, sessionGener
         && responseSessionTokenId > currentSessionTokenId);
 }
 
+function apiAuthBusinessContextHeaders() {
+    const user = readApiAuthStoredUser();
+    if (!user?.businessContextPolicy) return {};
+    const context = crmBusinessContextFromRoute() || crmBusinessContextFromUrl()
+        || getCrmBusinessContext(user) || user.activeBusinessContext;
+    return context ? { 'X-Business-Context': context } : {};
+}
+
 async function requestApiAuthTokenRefresh(refreshToken) {
     const headers = { 'Content-Type': 'application/json' };
+    Object.assign(headers, apiAuthBusinessContextHeaders());
     const accessToken = localStorage.getItem(API_AUTH_ACCESS_TOKEN_KEY) || localStorage.getItem('pzp_token');
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     return apiNetworkFetch(`${API_BASE}/auth/refresh`, {
@@ -4361,7 +4534,7 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
     let verifiedRefreshToken = localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY);
     try {
         let response = await apiNetworkFetch(`${API_BASE}/auth/verify`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: { 'Authorization': `Bearer ${token}`, ...apiAuthBusinessContextHeaders() }
         });
         if (getActiveApiAuthTransitionMarker()) {
             setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
@@ -4378,7 +4551,7 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             response,
             verifyResponseData,
             () => apiNetworkFetch(`${API_BASE}/auth/verify`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 'Authorization': `Bearer ${token}`, ...apiAuthBusinessContextHeaders() }
             }),
             {
                 canContinue: () => !getActiveApiAuthTransitionMarker()
@@ -4426,7 +4599,7 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             token = refreshedToken;
             verifiedRefreshToken = localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY);
             response = await apiNetworkFetch(`${API_BASE}/auth/verify`, {
-                headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                headers: { 'Authorization': `Bearer ${refreshedToken}`, ...apiAuthBusinessContextHeaders() }
             });
             if (getActiveApiAuthTransitionMarker()) {
                 setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
@@ -4443,7 +4616,7 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
                 response,
                 verifyResponseData,
                 () => apiNetworkFetch(`${API_BASE}/auth/verify`, {
-                    headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                    headers: { 'Authorization': `Bearer ${refreshedToken}`, ...apiAuthBusinessContextHeaders() }
                 }),
                 {
                     canContinue: () => !getActiveApiAuthTransitionMarker()
@@ -5353,7 +5526,10 @@ async function apiGetWarehousePhotoIntakeStatus() {
     try {
         const response = await apiNetworkFetch(`${API_BASE}/warehouse/photo-intake/status`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false };
-        if (!response.ok) throw new Error('API error');
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, code: body?.code || null, error: body?.error || 'API error' };
+        }
         return await response.json();
     } catch (err) {
         console.error('API getWarehousePhotoIntakeStatus error:', err);
@@ -5369,7 +5545,10 @@ async function apiGetWarehousePhotoIntakes(filters = {}) {
         const qs = params.toString();
         const response = await apiNetworkFetch(`${API_BASE}/warehouse/photo-intake${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false, items: [] };
-        if (!response.ok) throw new Error('API error');
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, items: [], code: body?.code || null, error: body?.error || 'API error' };
+        }
         return await response.json();
     } catch (err) {
         console.error('API getWarehousePhotoIntakes error:', err);

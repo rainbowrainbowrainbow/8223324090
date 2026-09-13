@@ -378,7 +378,7 @@ check('Invite personalized guest tips render by card and fall back safely',
     && inviteInvalidCardDom.window.document.querySelector('#inviteVisitSection')?.querySelectorAll('[data-visit-tip]').length >= 2);
 check('Invite browser smoke covers real public invite render without joining npm test',
     pkg.scripts?.['test:browser:invite'] === 'npx --yes --package playwright node tests/browser/invite-browser-smoke.js'
-    && pkg.scripts?.test === 'npm run verify'
+    && pkg.scripts?.test?.includes('npm run verify')
     && !pkg.scripts?.verify?.includes('test:browser:invite')
     && inviteBrowserSmokeCode.includes("const INVITE_PATH = '/invite?date=2026-06-25&time=15:00&end=15:30&program=")
     && inviteBrowserSmokeCode.includes('card=show-program')

@@ -240,10 +240,15 @@ describe('warehouse Telegram photo intake contract', () => {
                 releaseCount += 1;
             }
         };
-        const loaded = loadWarehousePhotoIntakeService({ connect: async () => client });
+        const loaded = loadWarehousePhotoIntakeService({ connect: async () => client,
+            async query(sql) {
+                assert.match(sql, /FROM businesses/);
+                return { rows: [{ access_mode: 'compatibility', business_status: 'active', organization_status: 'active' }] };
+            } });
 
         try {
             const result = await loaded.service.confirmIntake(91, {
+                businessContext: 'event_genix',
                 actor: 'warehouse-access-test',
                 draft: { name: 'Updated paper cups' },
                 allowRevenueWrite: false

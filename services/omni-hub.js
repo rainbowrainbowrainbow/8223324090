@@ -1,16 +1,14 @@
 'use strict';
 
 const { pool } = require('../db');
-const { getWSS } = require('./websocket');
+const { broadcastBusinessEvent } = require('./websocket');
 const { sendTelegramMessage } = require('./telegram');
 const { createLogger } = require('../utils/logger');
 const {
   DEFAULT_BUSINESS_CONTEXT,
   normalizeBusinessContext,
   normalizeKnownBusinessContext,
-  canAccessBusinessContext,
 } = require('./businessContext');
-const { resolveCapability } = require('./accountAccessPolicy');
 
 const { sendViber } = require('./omni-viber');
 const { sendSMS } = require('./omni-sms');
@@ -2114,30 +2112,19 @@ async function getQuickReplies(options = {}) {
 // 13. notifyCRM
 // ---------------------------------------------------------------------------
 
-function notifyCRM(type, data) {
+async function notifyCRM(type, data) {
   try {
-    const wss = getWSS();
-    if (!wss || !wss.clients) return;
-
     const businessContext = normalizeKnownBusinessContext(data?.conversation?.businessContext || data?.businessContext);
-    if (!businessContext) return;
+    if (!businessContext) return 0;
     // Invalidate the authorized inbox; message content is fetched through HTTP
     // with fresh access checks instead of broadcasting customer data.
-    const payload = JSON.stringify({ type, data: {
+    return await broadcastBusinessEvent(type, {
       businessContext,
       conversationId: data?.conversation?.id || data?.message?.conversationId,
-    } });
-
-    for (const client of wss.clients) {
-      const user = client._pzp?.accessUser;
-      if (client.readyState === 1 && client._pzp?.authenticated && user
-          && canAccessBusinessContext(user, businessContext)
-          && resolveCapability(user, '/omni', { type: 'page' }).allowed) {
-        try { client.send(payload); } catch { /* One disconnected tab must not block other recipients. */ }
-      }
-    }
+    }, { businessContext, page: '/omni', envelope: 'data' });
   } catch (err) {
-    logger.error('notifyCRM broadcast error', err);
+    logger.error('notifyCRM broadcast error', { code: err.code || err.name });
+    return 0;
   }
 }
 

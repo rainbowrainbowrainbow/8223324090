@@ -9,10 +9,12 @@ const { createLogger } = require('../utils/logger');
 
 const { authenticateToken, canUseAction, requireRole } = require('../middleware/auth');
 const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const log = createLogger('Contractors');
 
 // RBAC: Contractors — authentication + management only
 router.use(authenticateToken);
+router.use(requireLegacyBusinessSurface('contractors_procurement'));
 router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'));
 router.use((req, res, next) => installRevenueResponseShaper(
     req,

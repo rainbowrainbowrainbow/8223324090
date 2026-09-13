@@ -1135,7 +1135,7 @@ test('an old terminal API response cannot clear a newly-started auth transition'
 test('terminal business-profile auth failure stays terminal after snapshot invalidation', async () => {
     const user = { id: 22, username: 'account.b', role: 'animator' };
     const { context, store } = loadApi(async url => {
-        assert.match(url, /\/api\/business\/profile/);
+        assert.match(url, /\/api\/auth\/business-profile/);
         return response(401, {
             error: 'session revoked',
             code: 'auth_session_revoked'

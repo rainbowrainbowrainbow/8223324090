@@ -19,7 +19,9 @@ async function apiRequest(method, url, body) {
     if (!res || handleAuthError(res)) return;
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
+        const error = new Error(err.error || `HTTP ${res.status}`);
+        error.code = err.code;
+        throw error;
     }
     return await res.json();
 }
@@ -291,14 +293,60 @@ async function fetchMonthlyReport() {
     }
 }
 
+let salaryRequestGeneration = 0;
+let salaryAvailability = { available: false, message: 'Оберіть місяць, щоб перевірити доступ до звіту.' };
+
+function salarySurfaceAvailability() {
+    return window.getLegacyBusinessSurfaceAvailability?.('finance_salary')
+        || { available: false, code: 'business_profile_unavailable', message: 'Очікуємо перевірку доступу до бізнесу.' };
+}
+
+function salaryRequestContextKey() {
+    return JSON.stringify([
+        window.getLegacyBusinessSurfaceContextKey?.('finance_salary') || '',
+        document.getElementById('salaryMonth')?.value || ''
+    ]);
+}
+
+function clearSalaryWorkspace(availability = salarySurfaceAvailability()) {
+    FinState.salaryReport = null;
+    FinState.salaryWorkspace = null;
+    FinState.selectedSalaryStaffId = null;
+    FinState.creatingSalaryScheme = false;
+    salaryAvailability = availability.available
+        ? { available: false, message: 'Перевіряємо доступ і завантажуємо звіт…' } : availability;
+    for (const id of ['salaryStaffList', 'salaryMainPanel', 'salaryPreviewPanel']) {
+        const panel = document.getElementById(id);
+        if (panel) panel.innerHTML = id === 'salaryMainPanel'
+            ? `<div class="salary-muted" role="status">${escapeHtml(salaryAvailability.message || 'Звіт тимчасово недоступний.')}</div>` : '';
+    }
+    document.querySelectorAll('.salary-mode-btn, #salaryCreateSchemeBtn, #salaryGenerateReportBtn')
+        .forEach(button => { button.disabled = true; });
+}
+
+function invalidateSalaryBusinessContext() {
+    salaryRequestGeneration++;
+    clearSalaryWorkspace();
+    if (FinState.currentTab === 'salary') void fetchSalaryReport();
+}
+
 async function fetchSalaryReport() {
+    const generation = ++salaryRequestGeneration;
+    const requestKey = salaryRequestContextKey();
+    const current = () => generation === salaryRequestGeneration && requestKey === salaryRequestContextKey();
+    const availability = salarySurfaceAvailability();
+    clearSalaryWorkspace(availability.available
+        ? { available: false, message: 'Перевіряємо доступ і завантажуємо звіт…' } : availability);
+    if (!availability.available) return;
     try {
         const month = document.getElementById('salaryMonth')?.value;
         if (!month) return;
-        const [report, workspace] = await Promise.all([
-            apiRequest('GET', `/api/finance/report/salary?month=${month}`),
-            apiRequest('GET', `/api/payroll/schemes?month=${month}`)
-        ]);
+        // The guarded report must authorize this workspace before loading legacy schemes.
+        const report = await apiRequest('GET', `/api/finance/report/salary?month=${month}`);
+        if (!current() || !report || !salarySurfaceAvailability().available) return;
+        const workspace = await apiRequest('GET', `/api/payroll/schemes?month=${month}`);
+        if (!current() || !workspace || !salarySurfaceAvailability().available) return;
+        salaryAvailability = { available: true };
         FinState.salaryReport = report;
         FinState.salaryWorkspace = {
             ...(workspace || {}),
@@ -314,8 +362,12 @@ async function fetchSalaryReport() {
         }
         renderSalaryWorkspace();
     } catch (err) {
-        console.error('Failed to fetch salary report', err);
-        showNotification('Не вдалося завантажити зарплати', 'error');
+        if (!current()) return;
+        clearSalaryWorkspace({ available: false, code: err.code,
+            message: err.code === 'finance_salary_not_migrated' ? err.message : 'Не вдалося завантажити звіт. Оновіть сторінку та повторіть спробу.' });
+        if (err.code === 'finance_salary_not_migrated') {
+            window.noteLegacyBusinessSurfaceUnavailable?.('finance_salary', { code: err.code, message: err.message });
+        }
     }
 }
 
@@ -1266,6 +1318,11 @@ function renderFinancePayrollInstallments(row = {}) {
 }
 
 function renderSalaryWorkspace() {
+    const availability = salarySurfaceAvailability();
+    if (!availability.available || !salaryAvailability.available) {
+        clearSalaryWorkspace(availability.available ? salaryAvailability : availability);
+        return;
+    }
     renderSalaryModeButtons();
     renderSalaryActionButtons();
     renderSalaryStaffList();
@@ -2604,6 +2661,15 @@ async function initFinancePage() {
         const now = new Date();
         salaryMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     }
+    clearSalaryWorkspace();
+    document.getElementById('tabSalary')?.addEventListener('click', event => {
+        if (!event.target.closest('button')) return;
+        const availability = salarySurfaceAvailability();
+        if (availability.available && salaryAvailability.available) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        clearSalaryWorkspace(availability.available ? salaryAvailability : availability);
+    }, true);
 
     // Year filter
     populateYearFilter();
@@ -2797,6 +2863,14 @@ async function initFinancePage() {
 }
 
 document.addEventListener('DOMContentLoaded', () => { void initFinancePage(); });
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessContextHydrated',
+    'crmBusinessProfileChanged', 'permissions:lifecycle', 'workingRoleChanged', 'rolePreviewChanged']) {
+    window.addEventListener(eventName, invalidateSalaryBusinessContext);
+}
+window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+    if (event.detail?.surface === 'finance_salary') invalidateSalaryBusinessContext();
+});
 
 // ==========================================
 // v30.6: CASH REGISTER SHIFTS

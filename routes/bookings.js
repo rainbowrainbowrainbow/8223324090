@@ -23,6 +23,7 @@ const {
     validateBookingWithinWorkingHours
 } = require('../services/booking');
 const { normalizePinataFields } = require('../services/pinataMode');
+const { assertBookingLinkedParent } = require('../services/bookingLinkOwnership');
 const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
 const { insertHistory } = require('../services/historyLog');
@@ -129,6 +130,7 @@ router.use(authenticateToken);
 
 function ticketBusinessContextFromAuthenticatedRequest(req) {
     return businessContextFromRequest({
+        user: req?.user,
         query: req?.query || {},
         headers: req?.headers || {}
     });
@@ -557,10 +559,23 @@ async function runOptionalBookingTransactionStep(client, label, step) {
         await client.query('RELEASE SAVEPOINT booking_optional_step');
         return result;
     } catch (err) {
-        await client.query('ROLLBACK TO SAVEPOINT booking_optional_step')
-            .catch(rbErr => log.error(`Rollback to optional booking savepoint failed (${label})`, rbErr));
-        await client.query('RELEASE SAVEPOINT booking_optional_step')
-            .catch(relErr => log.error(`Release optional booking savepoint failed (${label})`, relErr));
+        try {
+            await client.query('ROLLBACK TO SAVEPOINT booking_optional_step');
+            await client.query('RELEASE SAVEPOINT booking_optional_step');
+        } catch (cleanupError) {
+            log.error(`Optional booking savepoint cleanup failed (${label})`, cleanupError);
+            throw cleanupError;
+        }
+        if (err?.code === '40P01') {
+            throw Object.assign(new Error('Concurrent lead relationship update', { cause: err }), {
+                statusCode: 409,
+                code: 'lead_transaction_conflict',
+                publicMessage: 'Пов’язані записи одночасно змінюються. Повторіть спробу.'
+            });
+        }
+        if (['lead_reference_unavailable', 'lead_parent_update_failed', 'customer_parent_update_failed',
+            'invalid_lead_reference', 'business_context_invalid', 'lead_transaction_required',
+            'lead_savepoint_cleanup_failed', 'lead_transaction_conflict'].includes(err?.code)) throw err;
         log.warn(`${label} failed (non-critical): ${err.message}`);
         return null;
     }
@@ -731,13 +746,20 @@ async function syncBookingLeadHandoff(client, booking, customerId, businessConte
     }
     return runOptionalBookingTransactionStep(client, label, async () => {
         if (booking.leadId) {
-            return attachLeadBookingLink(client, {
+            const attached = await attachLeadBookingLink(client, {
                 leadId: booking.leadId,
                 bookingId: booking.id,
                 customerId,
                 businessContext,
                 bookingStatus: booking.status
             });
+            if (attached?.attached === false) {
+                const err = new Error('Lead handoff reference is unavailable in this business');
+                err.statusCode = attached.reason === 'missing_context' ? 400 : 404;
+                err.code = attached.reason === 'missing_context' ? 'invalid_lead_reference' : 'lead_reference_unavailable';
+                throw err;
+            }
+            return attached;
         }
         const leadLink = await ensureLeadForBooking(client, {
             booking,
@@ -2643,6 +2665,14 @@ router.get('/banquet-menu-rules', async (req, res) => {
 router.post('/ticket-quote', requireAction('edit_booking'), async (req, res) => {
     try {
         const businessContext = ticketBusinessContextFromAuthenticatedRequest(req);
+        if (req.user?.businessMembershipAccess?.membershipEnabled
+            && req.user.activeBusinessMembership?.businessContext !== businessContext) {
+            return res.status(403).json({
+                success: false,
+                error: 'Ticket quote context does not match the authenticated business',
+                code: 'business_context_unavailable'
+            });
+        }
         if (!requireBusinessContext(req, res, businessContext)) return;
         const body = req.body && typeof req.body === 'object' ? req.body : {};
         if (rejectBookingWriteAliasConflict(res, body)) return;
@@ -3591,6 +3621,11 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     try {
         await client.query('BEGIN');
         qaContext = await prepareTrustedQaBookingInput(client, req, b, businessContext);
+        await assertBookingLinkedParent(client, {
+            childId: b.id,
+            linkedTo: b.linkedTo,
+            businessContext
+        });
         if (!qaContext.trusted && !b.linkedTo) {
             const pastValidationError = bookingPastValidationError(b);
             if (pastValidationError) {
@@ -6276,6 +6311,11 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             await client.query('ROLLBACK');
             return sendTicketPackageOwnerRequired(res);
         }
+        await assertBookingLinkedParent(client, {
+            childId: id,
+            linkedTo: b.linkedTo,
+            businessContext
+        });
         mergeExistingExtraDataForBookingUpdate(b, oldBooking);
         const ticketResolution = await resolveAndApplyAdmissionTicketQuote({
             queryable: client,

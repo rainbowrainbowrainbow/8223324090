@@ -12,6 +12,7 @@ const { createLogger } = require('../utils/logger');
 const { requireRole, requireAction } = require('../middleware/auth');
 const { publish } = require('../services/eventBus');
 const { getSalaryReport } = require('../services/payroll');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { classifyLegacyManualSalaryFinance } = require('../services/payrollSettlement');
 const {
     DEFAULT_BUSINESS_CONTEXT,
@@ -125,12 +126,13 @@ function sendFinanceError(res, err) {
             error: 'Payroll-linked finance transactions are managed by payroll payment/reversal workflow'
         });
     }
-    if (err?.status) return res.status(err.status).json({ success: false, error: err.message });
+    if (err?.status) return res.status(err.status).json({ success: false, error: err.message,
+        ...(err.code ? { code: err.code } : {}) });
     return res.status(500).json({ success: false, error: 'Internal server error' });
 }
 
-async function assertFinanceTransactionNotPayrollManaged(transactionId, businessContext) {
-    const result = await pool.query(
+async function assertFinanceTransactionNotPayrollManaged(transactionId, businessContext, queryable = pool) {
+    const result = await queryable.query(
         `SELECT ft.id, ft.source, ppm.id AS payroll_movement_id,
                 pr.id AS legacy_payroll_report_id
          FROM finance_transactions ft
@@ -154,12 +156,61 @@ async function assertFinanceTransactionNotPayrollManaged(transactionId, business
     return true;
 }
 
-async function validateFinanceCategory(categoryId, businessContext, expectedType = null) {
+async function withFinanceTransaction(work) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await work(client);
+        await client.query('COMMIT');
+        return result;
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+async function validateFinanceRelatedReferences(references, businessContext, user, queryable) {
+    if (user?.businessMembershipAccess?.membershipEnabled && (references.staffId || references.certificateId)) {
+        const error = new Error('Staff and certificate references have no business ownership; this finance link is not migrated');
+        error.status = 403;
+        error.code = 'finance_reference_not_migrated';
+        throw error;
+    }
+    if (!references.bookingId) return;
+    const result = await queryable.query(
+        `SELECT id FROM bookings WHERE id = $1 AND ${businessScopeSql('', '$2')} LIMIT 1 FOR SHARE`,
+        [references.bookingId, businessContext]
+    );
+    if (!result.rowCount) {
+        const error = new Error('Booking not found in selected business');
+        error.status = 400;
+        error.code = 'finance_booking_not_found';
+        throw error;
+    }
+}
+
+async function validateFinanceAccount(accountId, businessContext, queryable) {
+    if (!accountId) return null;
+    const result = await queryable.query(
+        `SELECT id, name FROM finance_accounts WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')} FOR SHARE`,
+        [accountId, businessContext]
+    );
+    if (!result.rowCount) {
+        const error = new Error('Account not found in selected business');
+        error.status = 400;
+        throw error;
+    }
+    return result.rows[0];
+}
+
+async function validateFinanceCategory(categoryId, businessContext, expectedType = null, queryable = pool) {
     if (!categoryId) return null;
-    const result = await pool.query(
+    const result = await queryable.query(
         `SELECT id, type
          FROM finance_categories
-         WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')}`,
+         WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')} FOR SHARE`,
         [categoryId, businessContext]
     );
     if (!result.rowCount) {
@@ -366,34 +417,30 @@ router.post('/transactions', async (req, res) => {
         if (!date || !isValidDate(date)) {
             return res.status(400).json({ error: 'valid date (YYYY-MM-DD) required' });
         }
-        await validateFinanceCategory(categoryId, businessContext, type);
-        let accountName = null;
-        if (accountId) {
-            const account = await pool.query(
-                `SELECT id, name FROM finance_accounts WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')}`,
-                [accountId, businessContext]
+        const r = await withFinanceTransaction(async client => {
+            await validateFinanceRelatedReferences({ bookingId, staffId, certificateId }, businessContext, req.user, client);
+            await validateFinanceCategory(categoryId, businessContext, type, client);
+            const account = await validateFinanceAccount(accountId, businessContext, client);
+            const accountName = account?.name || null;
+            const result = await client.query(
+                `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, staff_id, certificate_id, account_id, account_name, created_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+                [businessContext, type, categoryId || null, parseInt(amount), description || null, date,
+                 paymentMethod || null, bookingId || null, staffId || null, certificateId || null,
+                 accountId || null, accountName, req.user?.username]
             );
-            if (!account.rowCount) return res.status(400).json({ error: 'Account not found in selected business' });
-            accountName = account.rows[0].name;
-        }
-
-        const result = await pool.query(
-            `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, staff_id, certificate_id, account_id, account_name, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
-            [businessContext, type, categoryId || null, parseInt(amount), description || null, date,
-             paymentMethod || null, bookingId || null, staffId || null, certificateId || null,
-             accountId || null, accountName, req.user?.username]
-        );
-
-        const r = result.rows[0];
+            return result.rows[0];
+        });
 
         // Publish income event for chat notifications
         if (r.type === 'income') {
             publish('finance.income', {
+                transactionId: r.id,
+                businessContext: r.business_context,
                 amount: r.amount,
                 description: r.description || '',
                 category: ''
-            }).catch(e => log.warn('eventBus publish income:', e.message));
+            }, `finance.income:${r.business_context}:${r.id}`).catch(e => log.warn('eventBus publish income:', e.message));
         }
 
         res.status(201).json({
@@ -417,43 +464,62 @@ router.put('/transactions/:id', async (req, res) => {
         const { id } = req.params;
         const { type, categoryId, amount, description, date, paymentMethod, accountId } = req.body;
 
-        const existing = await pool.query(
-            `SELECT * FROM finance_transactions WHERE id = $1 AND ${businessScopeSql('', '$2')}`,
-            [id, businessContext]
-        );
-        if (existing.rows.length === 0) return res.status(404).json({ error: 'Transaction not found' });
-        await assertFinanceTransactionNotPayrollManaged(id, businessContext);
-        await validateFinanceCategory(categoryId, businessContext, type || existing.rows[0].type);
-        let accountName = undefined;
-        if (accountId !== undefined) {
-            if (accountId === null || accountId === '') {
-                accountName = null;
-            } else {
-                const account = await pool.query(
-                    `SELECT id, name FROM finance_accounts WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')}`,
-                    [accountId, businessContext]
+        const updated = await withFinanceTransaction(async client => {
+            const initial = await client.query(
+                `SELECT * FROM finance_transactions WHERE id = $1 AND ${businessScopeSql('', '$2')}`,
+                [id, businessContext]
+            );
+            if (!initial.rowCount) return false;
+            // Booking edits lock booking -> finance. Keep that order here too;
+            // reference errors are reported after the payroll ownership guard.
+            if (initial.rows[0].booking_id) {
+                await client.query(
+                    `SELECT id FROM bookings WHERE id = $1 AND ${businessScopeSql('', '$2')} LIMIT 1 FOR SHARE`,
+                    [initial.rows[0].booking_id, businessContext]
                 );
-                if (!account.rowCount) return res.status(400).json({ error: 'Account not found in selected business' });
-                accountName = account.rows[0].name;
             }
-        }
-
-        await pool.query(
-            `UPDATE finance_transactions SET
-                type = COALESCE($1, type),
-                category_id = COALESCE($2, category_id),
-                amount = COALESCE($3, amount),
-                description = COALESCE($4, description),
-                date = COALESCE($5, date),
-                payment_method = COALESCE($6, payment_method),
-                account_id = COALESCE($9, account_id),
-                account_name = COALESCE($10, account_name),
-                updated_at = NOW()
-             WHERE id = $7 AND ${businessScopeSql('', '$8')}`,
-            [type, categoryId, amount ? parseInt(amount) : null, description, date, paymentMethod, id, businessContext,
-                accountId === undefined ? null : (accountId || null),
-                accountId === undefined ? null : accountName]
-        );
+            const existing = await client.query(
+                `SELECT * FROM finance_transactions WHERE id = $1 AND ${businessScopeSql('', '$2')} FOR UPDATE`,
+                [id, businessContext]
+            );
+            if (!existing.rowCount) return false;
+            const current = existing.rows[0];
+            if (String(current.booking_id || '') !== String(initial.rows[0].booking_id || '')) {
+                const error = new Error('Transaction booking changed; reload the transaction and retry');
+                error.status = 409;
+                error.code = 'finance_transaction_changed';
+                throw error;
+            }
+            await assertFinanceTransactionNotPayrollManaged(id, businessContext, client);
+            const membershipMode = req.user?.businessMembershipAccess?.membershipEnabled === true;
+            if (membershipMode) {
+                await validateFinanceRelatedReferences({ bookingId: current.booking_id,
+                    staffId: current.staff_id, certificateId: current.certificate_id }, businessContext, req.user, client);
+                if (!categoryId) await validateFinanceCategory(current.category_id, businessContext, null, client);
+            }
+            await validateFinanceCategory(categoryId, businessContext, type || current.type, client);
+            const effectiveAccountId = accountId || (membershipMode ? current.account_id : null);
+            const account = await validateFinanceAccount(effectiveAccountId, businessContext, client);
+            const accountName = accountId ? account?.name : null;
+            await client.query(
+                `UPDATE finance_transactions SET
+                    type = COALESCE($1, type),
+                    category_id = COALESCE($2, category_id),
+                    amount = COALESCE($3, amount),
+                    description = COALESCE($4, description),
+                    date = COALESCE($5, date),
+                    payment_method = COALESCE($6, payment_method),
+                    account_id = COALESCE($9, account_id),
+                    account_name = COALESCE($10, account_name),
+                    updated_at = NOW()
+                 WHERE id = $7 AND ${businessScopeSql('', '$8')}`,
+                [type, categoryId, amount ? parseInt(amount) : null, description, date, paymentMethod, id, businessContext,
+                    accountId === undefined ? null : (accountId || null),
+                    accountId === undefined ? null : accountName]
+            );
+            return true;
+        });
+        if (!updated) return res.status(404).json({ error: 'Transaction not found' });
         res.json({ success: true });
     } catch (err) {
         log.error('PUT /transactions/:id error', err);
@@ -664,7 +730,7 @@ router.get('/report/monthly', async (req, res) => {
 // SALARY REPORT — from HR time records
 // ==========================================
 
-router.get('/report/salary', async (req, res) => {
+router.get('/report/salary', requireLegacyBusinessSurface('finance_salary'), async (req, res) => {
     try {
         const month = req.query.month; // YYYY-MM
         if (!month || !/^\d{4}-\d{2}$/.test(month)) {
@@ -1777,19 +1843,12 @@ router.post('/accounts', requireRole('admin', 'senior_manager'), async (req, res
         const personalFlag = isPersonal === true || isPersonal === 'true';
         const r = await pool.query(
             `INSERT INTO finance_accounts
-                (name, emoji, description, type, sort_order, is_personal, owner_username, crm_created_by, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+                (name, emoji, description, type, sort_order, is_personal, owner_username, crm_created_by, created_by, business_context)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
             [name.trim(), emoji || '💳', description?.trim() || null,
              type || 'cash', sortOrder || 99, personalFlag,
-             personalFlag ? req.user.username : null, req.user.username, req.user.username]
+             personalFlag ? req.user.username : null, req.user.username, req.user.username, businessContext]
         );
-        if (businessContext !== DEFAULT_BUSINESS_CONTEXT) {
-            const scoped = await pool.query(
-                `UPDATE finance_accounts SET business_context = $1 WHERE id = $2 RETURNING *`,
-                [businessContext, r.rows[0].id]
-            );
-            if (scoped.rowCount) r.rows[0] = scoped.rows[0];
-        }
         res.json({ success: true, account: r.rows[0] });
     } catch (err) {
         log.error('POST /accounts error', err);

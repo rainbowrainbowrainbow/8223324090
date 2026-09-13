@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "task": "SYS-MB-FINISH-01",
+  "status": "LOCAL_ACCEPTANCE_COMPLETE_RELEASE_AUTHORIZATION_PENDING",
+  "candidate": {
+    "branch": "codex/sys-mb-finish-01-r3-20260913",
+    "productionBase": "d2b6a686a4fe4ad21d14d809c053cab68dcfb374",
+    "baseVersion": "0.81.151",
+    "releaseCommit": null
+  },
+  "production": {
+    "target": "fortunate-appreciation / production / 8223324090",
+    "writes": 0,
+    "fixturesCreated": 0,
+    "authorization": null
+  },
+  "migrations": {
+    "newFiles": [],
+    "membershipSchema": "357_multibusiness_organizations.sql",
+    "liveLedgerPreflight": "NOT_COLLECTED_NO_DEDICATED_READ_ONLY_CONNECTION"
+  },
+  "qa": {
+    "writableFixtures": "NOT_AUTHORIZED_NOT_IMPLEMENTED",
+    "liveMode": "READ_ONLY_EXISTING_APPROVED_TEST_ACCOUNTS_ONLY",
+    "sameJwtRevokeProduction": "NOT_TESTABLE"
+  },
+  "checks": {
+    "runtime": "PASS Node 22.23.1 / npm 10.9.8",
+    "sysMb": "PASS 187",
+    "linkedToPostgres": "PASS 10",
+    "payrollContract": "PASS 2",
+    "timelineProtectedSurface": "PASS",
+    "migrationGovernance": "PASS",
+    "version": "PASS 0.81.151",
+    "npmTest": "PASS full npm test after browser-smoke contract correction",
+    "d06ActualAppBrowser": "PASS d06_1789297445570_d09fe4: 196 PASS / 1 NOT_TESTABLE / 0 FAIL; disposable DB cleanup verified"
+  },
+  "readiness": {
+    "parkDarReleaseReady": false,
+    "globalModelComplete": false
+  }
+}

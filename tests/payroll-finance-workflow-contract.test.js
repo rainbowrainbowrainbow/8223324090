@@ -81,7 +81,7 @@ test('generic Finance PUT and DELETE return 409 for payroll-managed transactions
     assert.match(financeRoute, /row\.payroll_movement_id \|\| row\.legacy_payroll_report_id \|\| row\.source === 'payroll'/);
 
     const putBlock = financeRoute.match(/router\.put\('\/transactions\/:id'[\s\S]*?router\.delete\('\/transactions\/:id'/)?.[0] || '';
-    assert.match(putBlock, /assertFinanceTransactionNotPayrollManaged\(id, businessContext\)/);
+    assert.match(putBlock, /assertFinanceTransactionNotPayrollManaged\(id, businessContext, client\)/);
     const deleteBlock = financeRoute.match(/router\.delete\('\/transactions\/:id'[\s\S]*?\/\/ ==========================================/)?.[0] || '';
     assert.match(deleteBlock, /assertFinanceTransactionNotPayrollManaged\(id, businessContext\)/);
 });

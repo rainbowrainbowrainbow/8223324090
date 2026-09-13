@@ -1,6 +1,7 @@
 'use strict';
 
-const { normalizeBusinessContext } = require('./businessContext');
+const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext, normalizeBusinessContextList, normalizeKnownBusinessContext } = require('./businessContext');
+const { normalizeRoleList } = require('./accountAccessPolicy');
 
 const MEMBERSHIP_SCHEMA_MISSING = new Set(['42P01', '42703']);
 
@@ -35,27 +36,58 @@ function normalizeMembershipRow(row = {}) {
     };
 }
 
-function buildMembershipAccess(user = {}, rows = [], requestedContext = null) {
-    const memberships = rows.map(normalizeMembershipRow).filter(item => item.businessId > 0);
-    const requested = requestedContext ? normalizeBusinessContext(requestedContext) : null;
-    const active = memberships.find(item => item.businessContext === requested)
-        || memberships.find(item => item.isDefault)
-        || memberships[0]
-        || null;
-    const organizationIds = new Set(memberships.map(item => item.organizationId));
-    const contexts = memberships.map(item => item.businessContext);
-    const requestedMembership = requested
-        ? memberships.find(item => item.businessContext === requested)
-        : active;
-    const membershipEnabled = requestedMembership?.accessMode === 'membership';
+function normalizeRegistryRow(row) {
     return {
-        configured: memberships.length > 0,
+        businessId: Number(row.business_id),
+        organizationId: Number(row.organization_id),
+        businessContext: normalizeBusinessContext(row.context_key),
+        accessMode: row.access_mode,
+        active: (row.business_status || 'active') === 'active'
+            && (row.organization_status || 'active') === 'active'
+    };
+}
+
+function buildMembershipAccess(user = {}, rows = [], requestedContext = null, registryRows = rows) {
+    const registry = registryRows.map(normalizeRegistryRow);
+    const registryByContext = new Map(registry.map(item => [item.businessContext, item]));
+    const memberships = rows.map(normalizeMembershipRow).filter(item => item.businessId > 0
+        && registryByContext.get(item.businessContext)?.active !== false);
+    const raw = String(requestedContext || '').trim().toLowerCase();
+    const scopeAlias = ['all', 'all-business', 'all_business', 'overview', 'multi', 'many', 'selected', 'several'].includes(raw);
+    const explicit = Boolean(raw && !scopeAlias);
+    const malformed = explicit && !normalizeKnownBusinessContext(raw) && !/^[a-z][a-z0-9_]{2,63}$/.test(raw);
+    const requested = explicit ? normalizeBusinessContext(raw) : null;
+    const defaultMembership = memberships.find(item => item.isDefault) || memberships[0] || null;
+    const defaultContext = defaultMembership?.businessContext
+        || normalizeBusinessContext(user.defaultBusinessContext || user.default_business_context || DEFAULT_BUSINESS_CONTEXT);
+    const selectedContext = requested || defaultContext;
+    const business = registryByContext.get(selectedContext);
+    const active = memberships.find(item => item.businessContext === selectedContext) || null;
+    const organizationIds = new Set(memberships.map(item => item.organizationId));
+    const membershipEnabled = business?.accessMode === 'membership';
+    const platformRole = user.platformRole || user.role;
+    let reason = null;
+    if (malformed || business?.active === false
+        || (membershipEnabled && !active)
+        || (explicit && !business && !normalizeKnownBusinessContext(raw))) {
+        reason = 'business_context_unavailable';
+    } else if (!explicit && organizationIds.size > 1) {
+        // Do not choose an organization by SQL row order.
+        reason = 'business_context_required';
+    } else if (membershipEnabled && active?.role === 'creator' && platformRole !== 'creator') {
+        reason = 'business_membership_role_invalid';
+    }
+    return {
+        configured: registry.length > 0,
         membershipEnabled,
         activeMembership: active,
         memberships,
+        registry,
+        invalid: Boolean(reason),
+        reason,
         organizationIds: [...organizationIds],
-        businessContexts: [...new Set(contexts)],
-        defaultBusinessContext: memberships.find(item => item.isDefault)?.businessContext || active?.businessContext || null,
+        businessContexts: [...new Set(memberships.filter(item => item.accessMode === 'membership').map(item => item.businessContext))],
+        defaultBusinessContext: defaultContext,
         organizationScoped: organizationIds.size <= 1
     };
 }
@@ -76,38 +108,64 @@ async function loadMembershipAccess(db, user, requestedContext = null) {
              ORDER BY bm.is_default DESC, b.id ASC`,
             [user.id]
         );
-        return buildMembershipAccess(user, result.rows, requestedContext);
+        const contexts = normalizeBusinessContextList([
+            DEFAULT_BUSINESS_CONTEXT,
+            ...(user.businessContexts || user.business_contexts || []),
+            user.defaultBusinessContext || user.default_business_context || DEFAULT_BUSINESS_CONTEXT,
+            ...(requestedContext ? [requestedContext] : []),
+            ...result.rows.map(row => row.context_key)
+        ], []);
+        // The registry is independent of the user's active memberships. A revoked
+        // member must not turn a migrated business back into legacy authorization.
+        const registry = await db.query(
+            `SELECT b.id AS business_id, b.organization_id, b.context_key, b.access_mode,
+                    b.status AS business_status, o.status AS organization_status
+             FROM businesses b JOIN organizations o ON o.id = b.organization_id
+             WHERE b.context_key = ANY($1::text[])`,
+            [contexts]
+        );
+        return buildMembershipAccess(user, result.rows, requestedContext, registry.rows);
     } catch (error) {
-        if (isMembershipSchemaMissing(error)) return { configured: false, membershipEnabled: false, memberships: [], schemaUnavailable: true };
-        // Self-contained route mocks deliberately reject SQL outside their narrow mock contract.
-        // PostgreSQL errors do not use this sentinel wording, so production DB failures remain fail-closed.
-        if (isNodeTestDoubleQuery(error)) return { configured: false, membershipEnabled: false, memberships: [], testDoubleUnavailable: true };
+        // Explicit Node test doubles may omit this schema. Runtime SQL failures,
+        // including a missing table, must never restore permissions from a JWT.
+        if (process.env.NODE_TEST_CONTEXT && isNodeTestDoubleQuery(error)) {
+            return { configured: false, membershipEnabled: false, memberships: [], organizationIds: [], testDoubleUnavailable: true };
+        }
         throw error;
     }
 }
 
 function applyMembershipAccess(user = {}, access = {}) {
-    if (!access?.membershipEnabled || !access.activeMembership) return { ...user, businessMembershipAccess: access };
+    const platformRole = user.platformRole || user.role;
+    if (!access?.membershipEnabled && !access.invalid) return { ...user, platformRole, businessMembershipAccess: access };
     const membership = access.activeMembership;
+    const role = access.invalid ? null : membership?.role || null;
+    const extraRoles = (access.invalid ? [] : membership?.extraRoles || []).filter(item => item !== 'creator' || platformRole === 'creator');
+    const pageAllowlist = access.invalid ? [] : membership?.pageAllowlist || [];
+    const pageDenylist = access.invalid ? [] : membership?.pageDenylist || [];
+    const actionAllowlist = access.invalid ? [] : membership?.actionAllowlist || [];
+    const actionDenylist = access.invalid ? [] : membership?.actionDenylist || [];
     return {
         ...user,
-        role: membership.role,
-        extra_roles: membership.extraRoles,
-        extraRoles: membership.extraRoles,
-        page_allowlist: membership.pageAllowlist,
-        pageAllowlist: membership.pageAllowlist,
-        page_denylist: membership.pageDenylist,
-        pageDenylist: membership.pageDenylist,
-        action_allowlist: membership.actionAllowlist,
-        actionAllowlist: membership.actionAllowlist,
-        action_denylist: membership.actionDenylist,
-        actionDenylist: membership.actionDenylist,
+        platformRole,
+        role,
+        roles: normalizeRoleList({ role, extraRoles }),
+        extra_roles: extraRoles,
+        extraRoles,
+        page_allowlist: pageAllowlist,
+        pageAllowlist,
+        page_denylist: pageDenylist,
+        pageDenylist,
+        action_allowlist: actionAllowlist,
+        actionAllowlist,
+        action_denylist: actionDenylist,
+        actionDenylist,
         business_contexts: access.businessContexts,
         businessContexts: access.businessContexts,
-        default_business_context: access.defaultBusinessContext || membership.businessContext,
-        defaultBusinessContext: access.defaultBusinessContext || membership.businessContext,
-        organizationId: membership.organizationId,
-        organizationRole: membership.organizationRole,
+        default_business_context: access.defaultBusinessContext,
+        defaultBusinessContext: access.defaultBusinessContext,
+        organizationId: membership?.organizationId || null,
+        organizationRole: membership?.organizationRole || null,
         activeBusinessMembership: membership,
         businessMembershipAccess: access
     };

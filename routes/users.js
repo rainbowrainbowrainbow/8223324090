@@ -28,6 +28,7 @@ const {
 } = require('../services/accountAccessPolicy');
 const { createLogger } = require('../utils/logger');
 const { recordAccountSecurityEvent, listAccountSecurityEvents } = require('../services/accountSecurity');
+const { lockOrganizationOwnership, assertCanDeactivateOrganizationOwners } = require('../services/organizationOwnership');
 const { normalizeManualPassword } = require('../services/credentialInput');
 const {
     BUSINESS_CONTEXTS,
@@ -917,14 +918,14 @@ async function updateAccountAccess(req, res) {
         const defaultNeedsUpdate = Object.prototype.hasOwnProperty.call(req.body, 'defaultBusinessContext')
             || Object.prototype.hasOwnProperty.call(req.body, 'default_business_context')
             || Array.isArray(businessContexts);
-        const normalizedDefaultBusinessContext = defaultNeedsUpdate
+        let normalizedDefaultBusinessContext = defaultNeedsUpdate
             ? defaultBusinessContextForSelection(
                 requestedDefaultBusinessContext || oldDefaultBusinessContext,
                 Array.isArray(businessContexts) ? businessContexts : oldBusinessContexts,
                 role
             )
             : null;
-        const normalizedBusinessContexts = Array.isArray(businessContexts) || normalizedDefaultBusinessContext
+        let normalizedBusinessContexts = Array.isArray(businessContexts) || normalizedDefaultBusinessContext
             ? businessContextsWithDefault(
                 Array.isArray(businessContexts) ? businessContexts : oldBusinessContexts,
                 normalizedDefaultBusinessContext || oldDefaultBusinessContext,
@@ -942,6 +943,34 @@ async function updateAccountAccess(req, res) {
             business_contexts: normalizedBusinessContexts || oldBusinessContexts,
             default_business_context: normalizedDefaultBusinessContext || oldDefaultBusinessContext
         };
+        if (defaultNeedsUpdate) {
+            // Migrated business access is managed through memberships. Legacy
+            // clients may send the unchanged compatibility mirror with an edit.
+            const registry = await client.query("SELECT context_key FROM businesses WHERE access_mode = 'membership'");
+            const membershipKeys = new Set(registry.rows.map(row => row.context_key));
+            const before = oldBusinessContexts.filter(key => membershipKeys.has(key)).sort();
+            const requested = (Array.isArray(businessContexts) ? businessContexts : oldBusinessContexts)
+                .filter(key => membershipKeys.has(key)).sort();
+            const changesMembership = !sameStringArray(before, requested);
+            const changesMembershipDefault = requestedDefaultBusinessContext !== oldDefaultBusinessContext
+                && membershipKeys.has(requestedDefaultBusinessContext);
+            if (changesMembership || changesMembershipDefault) {
+                const err = new Error('Доступ і основний бізнес змінюються у членстві конкретного бізнесу');
+                err.statusCode = 409;
+                err.code = 'business_membership_required';
+                throw err;
+            }
+            normalizedBusinessContexts = Array.from(new Set([
+                ...(normalizedBusinessContexts || oldBusinessContexts).filter(key => !membershipKeys.has(key)),
+                ...before
+            ]));
+            if ((!requestedDefaultBusinessContext || requestedDefaultBusinessContext === oldDefaultBusinessContext)
+                && membershipKeys.has(oldDefaultBusinessContext)) {
+                normalizedDefaultBusinessContext = oldDefaultBusinessContext;
+            }
+            prospectiveAccount.business_contexts = normalizedBusinessContexts;
+            prospectiveAccount.default_business_context = normalizedDefaultBusinessContext || oldDefaultBusinessContext;
+        }
         assertNoCapabilityConflicts(prospectiveAccount.page_allowlist, prospectiveAccount.page_denylist, CAPABILITY_TYPES.PAGE);
         assertNoCapabilityConflicts(prospectiveAccount.action_allowlist, prospectiveAccount.action_denylist);
         assertSelfAccountAccessSafe(req.user, prospectiveAccount);
@@ -1163,6 +1192,7 @@ router.patch('/:id/active', requireAction('manage_accounts'), async (req, res) =
         }
 
         await client.query('BEGIN');
+        await lockOrganizationOwnership(client);
         const target = await client.query(
             'SELECT id, username, name, role, extra_roles, action_denylist, is_active FROM users WHERE id = $1 FOR UPDATE',
             [parseInt(id)]
@@ -1186,6 +1216,7 @@ router.patch('/:id/active', requireAction('manage_accounts'), async (req, res) =
             actionDenylist: normalizeStoredArray(target.rows[0].action_denylist),
             isActive: !!isActive
         });
+        if (!isActive) await assertCanDeactivateOrganizationOwners(client, [target.rows[0].id]);
         await client.query(
             `UPDATE users
              SET is_active = $1,
@@ -1217,7 +1248,8 @@ router.patch('/:id/active', requireAction('manage_accounts'), async (req, res) =
     } catch (err) {
         try { await client.query('ROLLBACK'); } catch {}
         log.error('Toggle active error', err);
-        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error',
+            ...(err.code === 'organization_last_owner' ? { code: err.code } : {}) });
     } finally {
         client.release();
     }

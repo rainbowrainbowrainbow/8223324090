@@ -168,16 +168,16 @@ test('operators can read channel status while an explicit Omni page denial is en
   assert.equal((await request(t,denied,'/accounts',{method:'GET'})).status,403);
 });
 
-test('Omni broadcast sends only scoped invalidations to authenticated permitted sockets',()=>{
+test('Omni invalidations use the fresh business dispatch boundary without customer content',async()=>{
   const received=[];
-  function client(name,user,authenticated=true){return{readyState:1,_pzp:{authenticated,accessUser:user},send:value=>received.push({name,data:JSON.parse(value)})};}
-  const manager={id:7,role:'manager',businessContexts:['event_genix']};
-  const clients=[client('allowed',manager),client('unauthenticated',manager,false),client('denied',{...manager,pageDenylist:['/omni']}),client('wrong-business',{...manager,role:'creator',businessContexts:['dar'],business_contexts:['dar'],forced_business_context:'dar'})];
-  mock('../db',{pool:{}});mock('../services/websocket',{getWSS:()=>({clients})});
+  mock('../db',{pool:{}});mock('../services/websocket',{
+    broadcastBusinessEvent:async(type,data,options)=>{received.push({type,data,options});return 1;},
+    getWSS:()=>{throw new Error('Direct socket access is forbidden');}
+  });
   const hub=fresh('../services/omni-hub');
-  hub.notifyCRM('omni:message',{conversation:{id:1,businessContext:'event_genix',customerName:'Private'},message:{conversationId:1,content:'Private text'}});
-  assert.deepEqual(received.map(r=>r.name),['allowed']);
-  assert.deepEqual(received[0].data,{type:'omni:message',data:{businessContext:'event_genix',conversationId:1}});
-  hub.notifyCRM('omni:message',{message:{content:'No context'}});assert.equal(received.length,1);
+  assert.equal(await hub.notifyCRM('omni:message',{conversation:{id:1,businessContext:'event_genix',customerName:'Private'},message:{conversationId:1,content:'Private text'}}),1);
+  assert.deepEqual(received,[{type:'omni:message',data:{businessContext:'event_genix',conversationId:1},options:{businessContext:'event_genix',page:'/omni',envelope:'data'}}]);
+  assert.equal(await hub.notifyCRM('omni:message',{message:{content:'No context'}}),0);
+  assert.equal(received.length,1);
   assert.equal(hub.generateAndSendAIResponse,undefined);
 });

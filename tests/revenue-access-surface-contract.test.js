@@ -670,7 +670,13 @@ test('dashboard financial widgets fail before business scope and SQL for explici
 
 test('dashboard catalog widget preserves public item prices without view_revenue', async () => {
     const actualRoles = require('../config/roles');
-    const actualBusinessContext = require('../services/businessContext');
+    const { buildMembershipAccess, applyMembershipAccess } = require('../services/businessMembership');
+    const account = { id: 71, role: 'creator', username: 'catalog-user', action_denylist: ['view_revenue'],
+        business_contexts: ['event_genix'], default_business_context: 'event_genix' };
+    const user = applyMembershipAccess(account, buildMembershipAccess(account, [], 'event_genix', [{
+        business_id: 1, organization_id: 1, context_key: 'event_genix', access_mode: 'compatibility',
+        business_status: 'active', organization_status: 'active'
+    }]));
     const loaded = loadAccessTestRouter('../routes/dashboard', {
         '../db': {
             pool: {
@@ -699,16 +705,6 @@ test('dashboard catalog widget preserves public item prices without view_revenue
             ...actualRoles,
             canAccessDashboardWidget: () => true
         },
-        '../services/businessContext': {
-            ...actualBusinessContext,
-            resolveBusinessScope: () => ({
-                mode: 'single',
-                activeContext: 'event_genix',
-                selectedContexts: ['event_genix']
-            }),
-            requireBusinessScope: () => true,
-            pushBusinessScopeCondition: () => 'TRUE'
-        },
         '../services/websocket': { getOnlineUserIds: () => [] },
         '../services/omni-accounts': { getOmniAccountAlertsAsync: async () => [] }
     });
@@ -717,7 +713,7 @@ test('dashboard catalog widget preserves public item prices without view_revenue
         await withMountedAccessRouter(
             loaded.router,
             '/dashboard',
-            { role: 'creator', username: 'catalog-user', action_denylist: ['view_revenue'] },
+            user,
             async baseUrl => {
                 const response = await fetch(baseUrl + '/dashboard/widgets/catalogs');
                 assert.equal(response.status, 200);

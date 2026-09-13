@@ -14,19 +14,86 @@ let _catImgUrl    = null;
 let _catPollTimer = null;
 let _catPollStop  = null;
 let _catalogDefs  = [];
+let _catalogSurfaceGeneration = 0;
+
+function clearCatalogSurface(message = '') {
+    ++_catalogSurfaceGeneration;
+    _catalogDefs = [];
+    _catImgUrl = null;
+    _stopCatPoll();
+    _stopCoverPoll();
+    const modal = document.getElementById('addCatalogModal');
+    if (modal) modal.style.display = 'none';
+    document.getElementById('coverGenModal')?.remove();
+    const select = document.getElementById('catCatalogId');
+    if (select) { select.innerHTML = '<option value="">— недоступно —</option>'; select.disabled = true; }
+    ['publishBtn', 'genImageBtn', 'regenBtn'].forEach(id => {
+        const button = document.getElementById(id); if (button) button.disabled = true;
+    });
+    const recent = document.getElementById('recentCatalogItems');
+    if (recent) {
+        recent.setAttribute('role', 'status');
+        recent.textContent = message || window.getLegacyBusinessSurfaceAvailability?.('catalogs')?.message || '';
+    }
+}
+
+function catalogSurfaceAvailable() {
+    const availability = window.getLegacyBusinessSurfaceAvailability?.('catalogs')
+        || { available: false, message: 'Доступ до каталогів ще не підтверджено.' };
+    if (!availability.available) clearCatalogSurface(availability.message);
+    return availability.available;
+}
+
+async function catalogSurfaceCall(method, url, body) {
+    if (!catalogSurfaceAvailable()) throw window.legacyBusinessSurfaceError?.('catalogs') || new Error('Каталоги недоступні.');
+    const generation = _catalogSurfaceGeneration;
+    const context = window.getLegacyBusinessSurfaceContextKey?.('catalogs');
+    try {
+        const data = await apiCall(method, url, body);
+        if (!catalogSurfaceAvailable()) throw window.legacyBusinessSurfaceError?.('catalogs') || new Error('Каталоги недоступні.');
+        if (generation !== _catalogSurfaceGeneration || context !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) {
+            const error = new Error('Бізнес змінився. Оновіть каталоги.');
+            error.code = 'legacy_response_stale';
+            throw error;
+        }
+        return data;
+    } catch (error) {
+        if (error.code === 'catalogs_not_migrated' && context === window.getLegacyBusinessSurfaceContextKey?.('catalogs')) {
+            window.noteLegacyBusinessSurfaceUnavailable?.('catalogs', error, context);
+            clearCatalogSurface(error.message);
+        }
+        throw error;
+    }
+}
+
+['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'permissions:lifecycle'].forEach(event => {
+    window.addEventListener(event, () => {
+        clearCatalogSurface();
+        if (document.getElementById('catCatalogId') && catalogSurfaceAvailable()) void loadCatalogDefinitions();
+    });
+});
+window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+    if (event.detail?.surface === 'catalogs') clearCatalogSurface(event.detail.message);
+});
 
 // ─── Load catalog definitions from API ───────────
 async function loadCatalogDefinitions() {
+    _catalogDefs = [];
+    if (!catalogSurfaceAvailable()) return;
     try {
-        const data = await apiCall('GET', '/catalogs/definitions');
+        const data = await catalogSurfaceCall('GET', '/catalogs/definitions');
         _catalogDefs = data?.catalogs || [];
         _buildCatalogDropdown();
-    } catch (e) { console.warn('loadCatalogDefinitions:', e); }
+    } catch (e) {
+        if (e.code !== 'legacy_response_stale') clearCatalogSurface(e.message);
+    }
 }
 
 function _buildCatalogDropdown() {
     const sel = document.getElementById('catCatalogId');
     if (!sel) return;
+    if (!catalogSurfaceAvailable()) return;
+    sel.disabled = false;
     const current = sel.value;
     sel.innerHTML = '<option value="">— оберіть —</option>';
     _catalogDefs.forEach(c => {
@@ -40,6 +107,7 @@ function _buildCatalogDropdown() {
 
 // ─── Open modal ──────────────────────────────────
 function openAddCatalogItem(prefill = {}) {
+    if (!catalogSurfaceAvailable()) return;
     _catImgUrl = null;
     _stopCatPoll();
     ['catCatalogId','catName','catDescription','catPrice'].forEach(id => {
@@ -92,7 +160,7 @@ async function suggestCatalogPrice() {
     const subcategory = document.getElementById('catSubcategory')?.value;
     if (!catalogId) { showToast('Обери каталог', 'warning'); return; }
     try {
-        const d = await apiCall('POST', '/catalogs/suggest-price', { catalogId, subcategory });
+        const d = await catalogSurfaceCall('POST', '/catalogs/suggest-price', { catalogId, subcategory });
         if (!d?.suggested) return;
         const priceEl = document.getElementById('catPrice');
         if (priceEl) priceEl.value = d.suggested;
@@ -120,7 +188,7 @@ async function generateCatalogImage() {
     _setEl('imageError', 'style.display', 'none');
 
     try {
-        const d = await apiCall('POST', '/catalogs/generate-image', { name, catalogId, subcategory });
+        const d = await catalogSurfaceCall('POST', '/catalogs/generate-image', { name, catalogId, subcategory });
         if (!d?.taskId) throw new Error(d?.error || 'Немає taskId');
         _startCatPoll(d.taskId);
     } catch (e) { _showImgError(e.message); }
@@ -133,6 +201,7 @@ function regenerateCatalogImage() {
 }
 
 function acceptCatalogImage() {
+    if (!catalogSurfaceAvailable() || !_catImgUrl) return;
     _setEl('publishBtn', 'disabled', false);
     showToast('Зображення підтверджено');
 }
@@ -140,7 +209,7 @@ function acceptCatalogImage() {
 function _startCatPoll(taskId) {
     _catPollTimer = setInterval(async () => {
         try {
-            const d = await apiCall('GET', `/catalogs/generate-image/${encodeURIComponent(taskId)}`);
+            const d = await catalogSurfaceCall('GET', `/catalogs/generate-image/${encodeURIComponent(taskId)}`);
             if (d?.done && d.imageUrl) {
                 _stopCatPoll();
                 _catImgUrl = d.imageUrl;
@@ -198,7 +267,7 @@ async function publishCatalogItem() {
     try {
         const distPrice = document.getElementById('distPrice');
         const distTask  = document.getElementById('distTask');
-        const res = await apiCall('POST', '/catalogs/publish', {
+        const res = await catalogSurfaceCall('POST', '/catalogs/publish', {
             catalogId, subcategory, name, description: desc, price,
             imageUrl: _catImgUrl, extraData,
             createPrice: distPrice ? distPrice.checked : true,
@@ -220,7 +289,7 @@ async function publishCatalogItem() {
 // ─── Clone ───────────────────────────────────────
 async function cloneCatalogItem(itemId) {
     try {
-        const data = await apiCall('GET', `/catalogs/items/${parseInt(itemId, 10)}`);
+        const data = await catalogSurfaceCall('GET', `/catalogs/items/${parseInt(itemId, 10)}`);
         const item = data?.item;
         if (!item) return;
         openAddCatalogItem({
@@ -240,7 +309,7 @@ async function cloneCatalogItem(itemId) {
 // ─── Restore from archive ────────────────────────
 async function restoreCatalogItem(itemId, name) {
     try {
-        await apiCall('POST', `/catalogs/items/${parseInt(itemId, 10)}/restore`);
+        await catalogSurfaceCall('POST', `/catalogs/items/${parseInt(itemId, 10)}/restore`);
         showToast(`"${name}" відновлено`);
         _loadRecentCatalogItems();
     } catch (e) { showToast(e.message, 'error'); }
@@ -249,7 +318,7 @@ async function restoreCatalogItem(itemId, name) {
 // ─── Telegram share ──────────────────────────────
 async function shareCatalogItemTelegram(itemId) {
     try {
-        await apiCall('POST', `/catalogs/items/${parseInt(itemId, 10)}/telegram`);
+        await catalogSurfaceCall('POST', `/catalogs/items/${parseInt(itemId, 10)}/telegram`);
         showToast('Відправлено в Telegram!');
     } catch (e) { showToast(e.message, 'error'); }
 }
@@ -257,7 +326,7 @@ async function shareCatalogItemTelegram(itemId) {
 // ─── Kie.ai balance ──────────────────────────────
 async function loadKieBalance() {
     try {
-        const data = await apiCall('GET', '/catalogs/kie-balance');
+        const data = await catalogSurfaceCall('GET', '/catalogs/kie-balance');
         const badge = document.getElementById('kieBalanceBadge');
         if (badge && data?.balance !== undefined) {
             badge.textContent = `${data.balance} кред.`;
@@ -271,7 +340,7 @@ async function _loadRecentCatalogItems() {
     const container = document.getElementById('recentCatalogItems');
     if (!container) return;
     try {
-        const data = await apiCall('GET', '/catalogs/items');
+        const data = await catalogSurfaceCall('GET', '/catalogs/items');
         const items = data?.items || [];
         if (!items.length) { container.innerHTML = '<p class="empty-hint">Позицій ще немає</p>'; return; }
         container.innerHTML = items.slice(0, 5).map(it => {
@@ -291,7 +360,9 @@ async function _loadRecentCatalogItems() {
                 </div>
             </div>`;
         }).join('');
-    } catch { container.innerHTML = ''; }
+    } catch (error) {
+        if (error.code !== 'legacy_response_stale') container.textContent = error.message || 'Каталоги недоступні.';
+    }
 }
 
 function _escHtml(str) {
@@ -309,6 +380,7 @@ let _coverPollTimer = null;
 let _coverPollStop = null;
 
 async function generateCatalogCover(catalogId) {
+    if (!catalogSurfaceAvailable()) return;
     if (!catalogId) { showToast('Оберіть каталог', 'warning'); return; }
     _stopCoverPoll();
 
@@ -341,7 +413,7 @@ async function generateCatalogCover(catalogId) {
     document.body.appendChild(coverModal);
 
     try {
-        const d = await apiCall('POST', `/catalogs/${catalogId}/generate-cover`);
+        const d = await catalogSurfaceCall('POST', `/catalogs/${catalogId}/generate-cover`);
         if (!d?.taskId) throw new Error(d?.error || 'Немає taskId');
         coverModal._taskId = d.taskId;
         coverModal._catalogId = catalogId;
@@ -354,7 +426,7 @@ async function generateCatalogCover(catalogId) {
 function _startCoverPoll(taskId, catalogId) {
     _coverPollTimer = setInterval(async () => {
         try {
-            const d = await apiCall('GET', `/catalogs/generate-image/${encodeURIComponent(taskId)}`);
+            const d = await catalogSurfaceCall('GET', `/catalogs/generate-image/${encodeURIComponent(taskId)}`);
             if (d?.done && d.imageUrl) {
                 _stopCoverPoll();
                 const modal = document.getElementById('coverGenModal');
@@ -398,7 +470,7 @@ async function applyCoverImage(catalogId) {
     const btn = document.getElementById('coverApplyBtn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Збереження...'; }
     try {
-        const d = await apiCall('POST', `/catalogs/${catalogId}/apply-cover`, { taskId: modal._taskId });
+        const d = await catalogSurfaceCall('POST', `/catalogs/${catalogId}/apply-cover`, { taskId: modal._taskId });
         if (d?.done && d.imageUrl) {
             showToast('Обкладинку збережено!');
             closeCoverModal();

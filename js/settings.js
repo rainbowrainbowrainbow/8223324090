@@ -1132,6 +1132,7 @@ function activeBusinessModuleState() {
     const catalog = activeProfile?.modules?.catalog || catalogEntry?.modules || ['dashboard', 'settings'];
     const enabled = activeProfile?.modules?.enabled || Object.fromEntries(catalog.map(key => [key, true]));
     return {
+        source: activeProfile?.modules?.source || 'business_cabinet',
         catalog,
         enabled,
         enabledIds: catalog.filter(key => enabled[key] !== false),
@@ -1147,17 +1148,19 @@ function renderBusinessCabinetModuleButtons(moduleState = null) {
     const controls = getTimelineDisplayControls();
     if (!controls.businessModules) return;
     const state = moduleState?.catalog ? moduleState : activeBusinessModuleState();
+    const registry = state.source === 'business_registry';
     const catalog = Array.isArray(state.catalog) && state.catalog.length ? state.catalog : ['dashboard', 'settings'];
     const enabled = state.enabled || {};
     controls.businessModules.innerHTML = catalog.map(moduleId => {
-        const locked = BUSINESS_CABINET_SAFE_MODULES.includes(moduleId);
-        const active = locked || enabled[moduleId] !== false;
+        const locked = registry || BUSINESS_CABINET_SAFE_MODULES.includes(moduleId);
+        const active = registry ? enabled[moduleId] === true : locked || enabled[moduleId] !== false;
         return `<button type="button" class="timeline-toggle-button${active ? ' is-active' : ''}${locked ? ' is-locked' : ''}" data-business-module="${escapeHtml(moduleId)}" aria-pressed="${active ? 'true' : 'false'}"${locked ? ' disabled' : ''}>${escapeHtml(moduleLabel(moduleId))}</button>`;
-    }).join('');
+    }).join('') + (registry ? '<p role="status">Модулі визначає власник бізнесу. <a href="/profile">Керування бізнесами у профілі</a></p>' : '');
 }
 
 function collectBusinessCabinetModules() {
     const active = activeBusinessModuleState();
+    if (active.source === 'business_registry') return active;
     const enabled = { ...(active.enabled || {}) };
     document.querySelectorAll('[data-business-module]').forEach(button => {
         const moduleId = button.dataset.businessModule;
@@ -1178,6 +1181,7 @@ function collectBusinessCabinetModules() {
 
 function deriveBusinessModuleStateFromTimeline(settings = {}) {
     const active = activeBusinessModuleState();
+    if (active.source === 'business_registry') return active;
     const catalog = active.catalog || [];
     const enabled = { ...(active.enabled || {}) };
     const map = {
@@ -1626,7 +1630,7 @@ function handleTimelineControlClick(event) {
         return;
     }
     if (button.dataset.businessModule) {
-        if (BUSINESS_CABINET_SAFE_MODULES.includes(button.dataset.businessModule)) return;
+        if (activeBusinessModuleState().source === 'business_registry' || BUSINESS_CABINET_SAFE_MODULES.includes(button.dataset.businessModule)) return;
         button.classList.toggle('is-active');
         button.setAttribute('aria-pressed', button.classList.contains('is-active') ? 'true' : 'false');
         refreshTimelineDisplaySettingsPreview();

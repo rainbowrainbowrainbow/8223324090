@@ -109,6 +109,7 @@ const {
     cleanupFutureStaffOperationalSchedule,
     syncLinkedStaffAccountDeactivation
 } = require('../services/staffLifecycle');
+const { lockOrganizationOwnership } = require('../services/organizationOwnership');
 const {
     linkUserToStaffProfile,
     unlinkStaffAccount,
@@ -125,10 +126,12 @@ const {
 const { buildStaffScheduleWorkbookBuffer } = require('../services/staffScheduleWorkbook');
 
 const { requireAction, requireRole, authenticateToken, ROLE_LEVEL, canUseAction } = require('../middleware/auth');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const log = createLogger('Staff');
 
 // v39.8: Security — require authentication for all staff endpoints
 router.use(authenticateToken);
+router.use(requireLegacyBusinessSurface('staff'));
 
 const ACCOUNT_MANAGER_PRIMARY_ROLES = new Set(['creator', 'director']);
 const STAFF_COPY_WEEK_RAW_DEPARTMENT_ALLOWLIST = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);
@@ -2154,6 +2157,7 @@ router.put('/:id', requireAction('hr.staff.manage'), async (req, res) => {
         }
         const secondaryRoles = normalizeSecondaryProfessions(secondary_professions ?? secondaryProfessions, effectivePrimaryRole);
         await client.query('BEGIN');
+        if (isActive === false) await lockOrganizationOwnership(client);
         const result = await client.query(
             `UPDATE staff SET name=COALESCE($1,name), department=COALESCE($2,department),
              position=COALESCE($3,position), phone=$4, hire_date=$5, color=$6,
@@ -2190,6 +2194,7 @@ router.put('/:id', requireAction('hr.staff.manage'), async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /staff error', err);
+        if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
         client.release();
@@ -2201,6 +2206,7 @@ router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await lockOrganizationOwnership(client);
         const existing = await client.query('SELECT id FROM staff WHERE id = $1 FOR UPDATE', [req.params.id]);
         if (!existing.rows.length) {
             await client.query('ROLLBACK');
@@ -2248,6 +2254,7 @@ router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('DELETE /staff error', err);
+        if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
         client.release();

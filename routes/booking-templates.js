@@ -6,11 +6,14 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 const { authenticateToken } = require('../middleware/auth');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { createLogger } = require('../utils/logger');
 const { canonicalizeBookingRoomResource } = require('../services/timelineResources');
 const { DEFAULT_TIMELINE_CONTEXT } = require('../services/timelineContext');
 
 const log = createLogger('BookingTemplates');
+
+router.use(authenticateToken, requireLegacyBusinessSurface('booking_templates'));
 
 function mapRow(r) {
     return {

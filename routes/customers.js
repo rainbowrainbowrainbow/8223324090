@@ -640,6 +640,11 @@ async function loadCustomerChildrenMap(customerIds = [], businessContext = null,
              FROM customer_children
              WHERE customer_id = ANY($1::int[])
                ${contextSql}
+               AND EXISTS (
+                   SELECT 1 FROM customers c
+                   WHERE c.id = customer_children.customer_id
+                     AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = customer_children.business_context
+               )
              ORDER BY customer_id ASC, sort_order ASC, id ASC`,
             params
         );
@@ -2469,6 +2474,7 @@ router.get('/:id', async (req, res) => {
                  FROM event_reviews er
                  LEFT JOIN bookings b ON b.id = er.booking_id
                  WHERE er.customer_id = $1
+                   AND COALESCE(er.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
                    AND (er.booking_id IS NULL OR COALESCE(b.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2)
                    AND (er.booking_id IS NULL OR ${reviewVisibility.condition})
                  ORDER BY er.created_at DESC LIMIT 10`,

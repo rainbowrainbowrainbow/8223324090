@@ -1,0 +1,431 @@
+{
+  "status": "READY_LOCAL_PROFILE_UI_REVIEW",
+  "verifiedAtUtc": "2026-09-12T13:16:04.6297970Z",
+  "baseCommit": "a5180def01a1e47f8f4fc75e2f7a43092f205828",
+  "branch": "codex/sys-mb-auth-p0-20260912",
+  "version": "0.81.132",
+  "changes": "Uncommitted cumulative P0, lifecycle, streaming/ownership and profile/editor work",
+  "priorCheckpoint": "STREAMING_OWNERSHIP_VERIFICATION.json",
+  "runtime": {
+    "npm": "10.9.8",
+    "node": "22.23.1"
+  },
+  "npmTest": {
+    "uiLoader": {
+      "fail": 0,
+      "pass": 4,
+      "skipped": 0
+    },
+    "myDay": {
+      "fail": 0,
+      "pass": 337,
+      "skipped": 0
+    },
+    "exitCode": 0,
+    "unit": {
+      "fail": 0,
+      "pass": 2875,
+      "skipped": 0
+    },
+    "firstAttempt": {
+      "reason": "Two obsolete assertions: canonical business discovery was still classified as operational, and timeline test required a manufactured Park default. Both updated while retaining runtime denial/default assertions.",
+      "exitCode": 1
+    },
+    "uiStatic": {
+      "fail": 0,
+      "pass": 1312
+    },
+    "syntaxFiles": 1165,
+    "log": ".codex-temp/sys-mb-profile-ui/verification-final.log",
+    "command": "npm test"
+  },
+  "focused": {
+    "fail": 0,
+    "pass": 231,
+    "skipped": 0,
+    "command": "node --test tests/auth-api-session-hardening.test.js tests/auth-frontend-session.test.js tests/permission-bootstrap-lifecycle.test.js tests/auth-account-lifecycle.test.js tests/timeline-context.test.js tests/business-membership-security.test.js tests/business-profile-frontend.test.js"
+  },
+  "frontend": {
+    "captured_at": "2026-09-12T13:06:39.026Z",
+    "file": "tests/business-profile-frontend.test.js",
+    "command": "node --test tests/business-profile-frontend.test.js",
+    "result": "PASS",
+    "tests": 18,
+    "pass": 18,
+    "fail": 0,
+    "skipped": 0,
+    "duration_ms": 161.9484,
+    "scope": "Full js/api.js loaded in isolated Node VM; fake HTTP responses and browser surfaces, no live/browser/production claim."
+  },
+  "crossTab": {
+    "fail": 0,
+    "pass": 5,
+    "file": "tests/business-profile-cross-tab.test.js",
+    "includedInFinalNpmTest": true
+  },
+  "postgres": {
+    "totalPass": 60,
+    "remainingTestDatabases": 0,
+    "remainingTestConnections": 0,
+    "newProfileSuite": {
+      "captured_at": "2026-09-12T13:10:30Z",
+      "file": "tests/integration/multibusiness-profile-postgres.test.js",
+      "command": "wsl -d Ubuntu -u postgres -- env BUSINESS_MEMBERSHIP_LOCAL_POSTGRES_TEST=1 node --test '/mnt/c/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/sys-mb-auth-p0-20260912/tests/integration/multibusiness-profile-postgres.test.js'",
+      "result": "PASS",
+      "exit_code": 0,
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "skipped": 0,
+      "duration_ms": 112340.697116,
+      "scope": "Actual loopback HTTP, bcrypt login, refresh rotation, account and membership PostgreSQL reads/writes in an owned random disposable local database; no production.",
+      "cleanup": {
+        "remaining_test_databases": 0,
+        "remaining_test_connections": 0
+      }
+    },
+    "priorSuites": {
+      "fail": 0,
+      "pass": 47,
+      "command": "wsl -d Ubuntu -u postgres -- env BUSINESS_MEMBERSHIP_LOCAL_POSTGRES_TEST=1 node --test tests/integration/business-membership-postgres.test.js tests/integration/organization-lifecycle-postgres.test.js tests/integration/multibusiness-streaming-ownership-postgres.test.js (absolute /mnt/c worktree paths used)",
+      "skipped": 0,
+      "log": ".codex-temp/sys-mb-profile-ui/prior-postgres.tap",
+      "exitCode": 0
+    }
+  },
+  "browser": {
+    "schemaVersion": 1,
+    "verificationKind": "synthetic-browser-fixture",
+    "productionAccess": false,
+    "workingDirectory": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-auth-p0-20260912",
+    "runtime": {
+      "node": "v22.23.1",
+      "npm": "10.9.8"
+    },
+    "runs": [
+      {
+        "command": "npx --offline --package @playwright/test playwright test tests/browser/business-profile-access.spec.js tests/browser/business-membership-editor.spec.js tests/browser/account-access-editor.spec.js --reporter=line --workers=1 --output=.codex-temp/sys-mb-profile-ui/evidence-browser-results",
+        "startedAtUtc": "2026-09-12T13:11:50.4090863Z",
+        "completedAtUtc": "2026-09-12T13:12:15.8885464Z",
+        "exitCode": 0,
+        "expectedTests": 19,
+        "passedTests": 19,
+        "failedTests": 0,
+        "workers": 1,
+        "logPath": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-auth-p0-20260912\\.codex-temp\\sys-mb-profile-ui\\browser-final-cached-cli.log",
+        "outputDirectory": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-auth-p0-20260912\\.codex-temp\\sys-mb-profile-ui\\evidence-browser-results"
+      }
+    ],
+    "distinctCases": 19,
+    "testFiles": [
+      "tests/browser/account-access-editor.spec.js",
+      "tests/browser/business-membership-editor.spec.js",
+      "tests/browser/business-profile-access.spec.js"
+    ],
+    "screenshots": [
+      "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-auth-p0-20260912\\output\\playwright\\business-membership-editor-390.png",
+      "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-auth-p0-20260912\\output\\playwright\\business-profile-access-390.png"
+    ],
+    "limitations": [
+      "Synthetic API responses and bootstrap shell boundaries; this is not live-site or actual PostgreSQL QA.",
+      "No production accounts, credentials, or customer records were used."
+    ]
+  },
+  "diffCheck": "PASS",
+  "ci": "NOT_RUN",
+  "deploy": "NOT_RUN",
+  "liveQA": "NOT_RUN",
+  "productionOperations": 0,
+  "sharedCabinetPolicy": "Tabs retain the existing shared active cabinet; sibling routes converge before generation-triggered reload. Per-tab independent cabinets are not introduced.",
+  "remainingWork": [
+    "Operational domain SQL/route isolation",
+    "Explicit general chat and personal AI ownership boundaries",
+    "Full organization/business administration and invitation UX",
+    "MD/CRM compatibility cutovers",
+    "Separately authorized cumulative release and controlled live QA"
+  ],
+  "incrementalSourceFiles": [
+    "js/account-access-editor.js",
+    "js/api.js",
+    "js/auth.js",
+    "js/business-membership-manager.js",
+    "js/profile-page.js",
+    "middleware/auth.js",
+    "package.json",
+    "profile.html",
+    "routes/auth.js",
+    "routes/organizations.js",
+    "routes/users.js",
+    "services/authBusinessProfile.js",
+    "services/businessProfile.js",
+    "services/organizationLifecycle.js",
+    "tests/account-access-editor.test.js",
+    "tests/auth-account-lifecycle.test.js",
+    "tests/auth-api-session-hardening.test.js",
+    "tests/auth-business-profile.test.js",
+    "tests/browser/business-membership-editor.spec.js",
+    "tests/browser/business-profile-access.spec.js",
+    "tests/business-membership-manager.test.js",
+    "tests/business-membership-security.test.js",
+    "tests/business-profile-cross-tab.test.js",
+    "tests/business-profile-frontend.test.js",
+    "tests/integration/multibusiness-profile-postgres.test.js",
+    "tests/timeline-context.test.js"
+  ],
+  "sourceFiles": [
+    {
+      "path": "js/account-access-editor.js",
+      "sha256": "f05318df5418961bc7051d62241b8abda4f6cb8fa6349d40bb28cb6fba965b41"
+    },
+    {
+      "path": "js/api.js",
+      "sha256": "4beb7c6f99c4630e58ad010307c84f0092dcebb29c5a84714f5682cc28bd61b0"
+    },
+    {
+      "path": "js/auth.js",
+      "sha256": "aa9b2639f34897c1c81d37867269fedc0701ffe91a4ea0f66bea88650f5cf721"
+    },
+    {
+      "path": "js/business-membership-manager.js",
+      "sha256": "af897a6d40d77b35013a41e6b0704c585f2ed5dd87b63e30c8bceb5a6167c7bb"
+    },
+    {
+      "path": "js/profile-page.js",
+      "sha256": "edfae85d6c661f4e78c323ebece0e5918019dea84e9c2d2186c30c3e705cfce3"
+    },
+    {
+      "path": "middleware/auth.js",
+      "sha256": "0b8393c8e24eb6ecdac50a13001ee5940e4006431095a974c400b63a9022217f"
+    },
+    {
+      "path": "package.json",
+      "sha256": "99fa98471503f7e0c1c950d66550a351cf00e53c65225114ea78ade3ea48cbee"
+    },
+    {
+      "path": "profile.html",
+      "sha256": "2d780a25feecc9633c42107d2f6198147c978d23e3125b014ac3364a65fae559"
+    },
+    {
+      "path": "routes/auth.js",
+      "sha256": "91df7d54e1fb8b1928b5053b5d6b153a9decceb1670885d9c6808e43ee153630"
+    },
+    {
+      "path": "routes/hr.js",
+      "sha256": "193880479731c5f640328737938f7a2800f6c559bc188815de03bfb0690d8725"
+    },
+    {
+      "path": "routes/organizations.js",
+      "sha256": "c71271146efc0ed1d7e93132450e1616929f6c135be3f70757dd531e012ac33d"
+    },
+    {
+      "path": "routes/staff.js",
+      "sha256": "00888109f6fdd1562a9498ba38bfb18e5f054eab0dc72336673f08ca6ab97041"
+    },
+    {
+      "path": "routes/users.js",
+      "sha256": "7127c2b40a26c37a41f24d5c822af96488962bf92a1c87c370faebcea79c50c7"
+    },
+    {
+      "path": "services/authBusinessProfile.js",
+      "sha256": "95974d58c4c282cb005b8ca7cb194d9221abc22f28790d28c6fb65e73dfb541e"
+    },
+    {
+      "path": "services/businessContext.js",
+      "sha256": "2f4ac79ef891f22b9d001f3d6d34a83c96c02ef91c04f8be9513f53fa95b37c8"
+    },
+    {
+      "path": "services/businessMembership.js",
+      "sha256": "ceb14f4a1790ad718eee8d4f6f0ac404cf861c0d323a6bffc53a5a5e5a2744ee"
+    },
+    {
+      "path": "services/businessProfile.js",
+      "sha256": "03c04f1051ddad4b0b42cd60bf086c92c966b44ba4a921c5b4248cfcb9a50d72"
+    },
+    {
+      "path": "services/omni-hub.js",
+      "sha256": "7924aeef4d5fef73b32202acc75a7de1177a56705594b8b1b031955dbc43fb9a"
+    },
+    {
+      "path": "services/organizationLifecycle.js",
+      "sha256": "c9cec0aea3c1d36ed66068b9755ebe6c2da734bf28e6fd5e722d96f96683d105"
+    },
+    {
+      "path": "services/organizationOwnership.js",
+      "sha256": "69b14f45dd3d5510d6c7228a97d0a0a0adcea57b760f434db7edd40606d2ec61"
+    },
+    {
+      "path": "services/staffLifecycle.js",
+      "sha256": "a2b3060345a9c04f3374c6956cd9550083a11120e86415e8e453c1df527ba230"
+    },
+    {
+      "path": "services/websocket.js",
+      "sha256": "1f608e7791f2afd11bcebb78b1ec0be85f7b3c3f618e5081e8ad3f2d668e689a"
+    },
+    {
+      "path": "services/websocketEventAccess.js",
+      "sha256": "39ae9c0464e58500a5878bfe72d44947dbf85e0c974680b7c542abe08c94c5dd"
+    },
+    {
+      "path": "tests/account-access-editor.test.js",
+      "sha256": "cb2bad4ba152dc4f84e7df87dd8fd8a1c222b00b2ded545ecfa41cf4082bf165"
+    },
+    {
+      "path": "tests/auth-account-lifecycle.test.js",
+      "sha256": "6562d1174d9c692d587e48340704400467a88302b71095cf16a43ff2d79a128c"
+    },
+    {
+      "path": "tests/auth-api-session-hardening.test.js",
+      "sha256": "95519e7138277f4963d56b597d84526d315162c4fed5585b32b90a9a4fef8e37"
+    },
+    {
+      "path": "tests/auth-business-profile.test.js",
+      "sha256": "40afdb5a7e6363f40eba7d1629561c7009c9372307dffbd747047cc4b529626e"
+    },
+    {
+      "path": "tests/browser/business-membership-editor.spec.js",
+      "sha256": "84948709e6fbf75713fa2951ac5d1deb1bdb67149d8fc0b72d724a8506b52be8"
+    },
+    {
+      "path": "tests/browser/business-profile-access.spec.js",
+      "sha256": "128944a609432a330fb36a0f5ca9be7af313a7173868136cabbe3cbe3f996d42"
+    },
+    {
+      "path": "tests/business-membership-auth-profile.test.js",
+      "sha256": "34d11d8e94f5a8eeb4e7b494c2f2f6607f9d0b5fcf00368f44fe5c71a4599e55"
+    },
+    {
+      "path": "tests/business-membership-manager.test.js",
+      "sha256": "a142b755cbdf0d5e2086a48d00c1e49b3fbae21702791b5d5edd1e408eca4cd5"
+    },
+    {
+      "path": "tests/business-membership-organization-guards.test.js",
+      "sha256": "951bf618e328dff9aa9eebaf7077d2f400c0e613b95b0bae339ea8dfa55902a5"
+    },
+    {
+      "path": "tests/business-membership-security.test.js",
+      "sha256": "e42993668817e7bb9f059d52b655ba432273c25316efa038cbb4efc8a7c6fb47"
+    },
+    {
+      "path": "tests/business-membership.test.js",
+      "sha256": "5e222635fce55397a414b22d1b43748d12f8c2f4a0b3fca23a90c5a010fe1ecb"
+    },
+    {
+      "path": "tests/business-profile-cross-tab.test.js",
+      "sha256": "14a1dac2d2ce44ae05995f3924e0d49c7c58e8b605f75d65271a31a279838572"
+    },
+    {
+      "path": "tests/business-profile-frontend.test.js",
+      "sha256": "ef828b9b3e94859e9d39918e2c2ea5842de5affa3cc9db7c9be4125c0b18b8d5"
+    },
+    {
+      "path": "tests/chat-upload-route.test.js",
+      "sha256": "55718e8babcaf9f5070489907757a63d86ed0d7e8b19390a964076b7804ba623"
+    },
+    {
+      "path": "tests/dashboard-assistant.test.js",
+      "sha256": "7c14366c4b534531d1977fad94f591eb82e5c3dc769d81f08a128bd4c370d1ab"
+    },
+    {
+      "path": "tests/guardian-rbac.test.js",
+      "sha256": "f296661781277f4a8bc30492657e129a54e21f86605573197323605592ded1d7"
+    },
+    {
+      "path": "tests/integration/business-membership-postgres.test.js",
+      "sha256": "d4ae18dfe8c31ff1f5978f806a52bb65116484b68aac4cbfe1bf7848934ffab1"
+    },
+    {
+      "path": "tests/integration/multibusiness-profile-postgres.test.js",
+      "sha256": "1e82d6deddfadbb27d69b67a94cb787fa4288c1c3c5818cbf6fb3f2492044f65"
+    },
+    {
+      "path": "tests/integration/multibusiness-streaming-ownership-postgres.test.js",
+      "sha256": "dc32722b16286485ba69ce19da40175ba17a87362dfd2675ac8ff2c7a2ab1577"
+    },
+    {
+      "path": "tests/integration/omni-completion-postgres.test.js",
+      "sha256": "4d65bd7af06408b9480f6697c727bed5c931dc845f951e5692e04cbef4d0d7a2"
+    },
+    {
+      "path": "tests/integration/omni-inbox-postgres.test.js",
+      "sha256": "5499e443e5bc6b5989e03f87847b537613b346b15a0a0a832f75a378df9ca84a"
+    },
+    {
+      "path": "tests/integration/organization-lifecycle-postgres.test.js",
+      "sha256": "cc4593d2e5b1b78f58b40a377fd6e6da7633229da072fba7b0964db64273e37b"
+    },
+    {
+      "path": "tests/omni-case-link.test.js",
+      "sha256": "b7a946509b71668a10b129caae6628051797855ccd3de0f932ad0a5f0da74ed3"
+    },
+    {
+      "path": "tests/omni-hardening.test.js",
+      "sha256": "25051790d7ae0c5828fffe6e4e6d468026c4c342d164919fb9f7e76995b38197"
+    },
+    {
+      "path": "tests/omni-provider-lifecycle.test.js",
+      "sha256": "5b7b9c7958668f5eb6d3533b6a921dbe160122b30a5098a8ab043c6203f57430"
+    },
+    {
+      "path": "tests/omni-send-truth.test.js",
+      "sha256": "2fc4ae488df7d05719c440f6a38922ff428cce6042897b2b370275d312b73aaf"
+    },
+    {
+      "path": "tests/organization-lifecycle.test.js",
+      "sha256": "7f7fe1792bf0cf951e415eb241b2d126b7c410fa27fd96ba5937696441ce662d"
+    },
+    {
+      "path": "tests/organization-ownership.test.js",
+      "sha256": "732041d859a124133d165b9b3c1e76e39f84a471b469dbf78bf2060a1534732d"
+    },
+    {
+      "path": "tests/route-smoke.test.js",
+      "sha256": "8e2513580ba06950aba1c6748ddcb0fca59c71f0dae21f30a4c90b81315bb821"
+    },
+    {
+      "path": "tests/timeline-context.test.js",
+      "sha256": "d4f88a555ee1afbf52b098ac6546679676af4c9e24fbcb1cdf4d520c2fec4a1b"
+    },
+    {
+      "path": "tests/websocket-event-access.test.js",
+      "sha256": "3b5e00d2d3867297745912d338227831aa39d7ef69ae21040a90aae19e57e6e8"
+    },
+    {
+      "path": "tests/websocket-membership.test.js",
+      "sha256": "c64c6539c606a8519fd4fa3522e4672a02ad55a77d516da488b5ae61f3f985a9"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": ".codex-temp/sys-mb-profile-ui/verification-final.log",
+      "sha256": "624fa3b469ecdfbcd004b228e733e63dae08f561f54b8effe3f751b076b0c8a8"
+    },
+    {
+      "path": ".codex-temp/sys-mb-profile-ui/verification-first.log",
+      "sha256": "ae28f6cd0047eff6bea5bd408affa5f99ebf4b183571e2d837e4f0baff6a8d0f"
+    },
+    {
+      "path": ".codex-temp/sys-mb-profile-ui/root-targeted-final.tap",
+      "sha256": "e27346cd4af4e04ca219f18ca26b9fbaa2f64ec814dd6969af768766f23fd108"
+    },
+    {
+      "path": ".codex-temp/sys-mb-profile-ui/prior-postgres.tap",
+      "sha256": "f97cbe5314bef3fee9c4ba1d388f460c689f14df1525a1c5cbb0275c9d7fa2cf"
+    },
+    {
+      "path": ".codex-temp/sys-mb-profile/multibusiness-profile-postgres.tap",
+      "sha256": "b7400ae814ea23180e99dd0f0d4a4158bfe6e3c735f4e7a40900a1743b4f04be"
+    },
+    {
+      "path": ".codex-temp/sys-mb-profile-ui/browser-final-cached-cli.log",
+      "sha256": "7cfcdeb182de5bd9470e40788d9d9377f19e755c02d3a7b1ff9f880ec7aaa712"
+    },
+    {
+      "path": "output/playwright/business-membership-editor-390.png",
+      "sha256": "365d4eeaeb2760973935257f6db564dc890dfac59b02e842e22faa35bb90ec45"
+    },
+    {
+      "path": "output/playwright/business-profile-access-390.png",
+      "sha256": "76cdf75ab18e0974b40bb037110aead5b0c408a6cc097a3a949896c3f7fe3f1b"
+    }
+  ]
+}

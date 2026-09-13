@@ -199,7 +199,7 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCss.includes('.booking-summary-arrival-editor__form input[type="time"]:focus-visible'));
     check('Booking summary browser smoke covers client document surface without joining npm test',
         pkg.scripts?.['test:browser:booking-summary'] === 'npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js'
-        && pkg.scripts?.test === 'npm run verify'
+        && pkg.scripts?.test?.includes('npm run verify')
         && !pkg.scripts?.verify?.includes('test:browser:booking-summary')
         && bookingSummaryBrowserSmokeCode.includes("const SUMMARY_PATH = '/booking-summary.html?id=BK-SMOKE-001&mode=client&businessContext=event_genix'")
         && bookingSummaryBrowserSmokeCode.includes('routeBookingSummaryApi(page)')

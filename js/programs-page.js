@@ -363,6 +363,9 @@ let productRouteNavigationBound = false;
 let productCatalogs = [];
 let graduationCatalogPackageCount = null;
 let catalogEntriesLoaded = false;
+let productCatalogRequest = 0;
+let productCatalogContext = null;
+let productLegacyCatalogAvailability = null;
 let editingDocumentProductId = null;
 let productDocumentSaving = false;
 let productDocumentLastFocus = null;
@@ -517,7 +520,16 @@ function renderAllergenChipsFromForm() {
 }
 
 function getActiveBusinessContext() {
-    return PRODUCT_BUSINESS_CONTEXTS[activeBusinessContext] || PRODUCT_BUSINESS_CONTEXTS.event_genix;
+    const legacy = PRODUCT_BUSINESS_CONTEXTS[activeBusinessContext];
+    const profile = window.CrmBusinessContext?.profileFor?.(activeBusinessContext);
+    const label = profile?.label || legacy?.label || activeBusinessContext;
+    return {
+        id: activeBusinessContext,
+        label,
+        title: profile?.label ? `Products · ${label}` : (legacy?.title || `Products · ${label}`),
+        subtitle: legacy?.subtitle || 'Продукти та послуги обраного бізнесу.',
+        tabs: legacy?.tabs || [{ id: 'programs', name: 'Продукти' }]
+    };
 }
 
 function isParkProductsContext() {
@@ -525,7 +537,7 @@ function isParkProductsContext() {
 }
 
 function getProductApiBusinessContext(context = activeBusinessContext) {
-    return normalizeProductBusinessContext(context) === 'maysternya_doli' ? 'maysternya_doli' : 'event_genix';
+    return normalizeProductBusinessContext(context);
 }
 
 if (typeof window !== 'undefined') {
@@ -535,7 +547,7 @@ if (typeof window !== 'undefined') {
 }
 
 function getBusinessHash() {
-    if (!isParkProductsContext()) return '#maysternya';
+    if (!isParkProductsContext()) return activeBusinessContext === 'maysternya_doli' ? '#maysternya' : '';
     if (activeProductTab === 'catalogs') return '#catalogs';
     if (activeProductTab === 'kitchen') return `#kitchen-${activeKitchenTab === 'menu' ? 'menu' : 'cakes'}`;
     if (activeProductTab === 'programs' && currentCategory !== 'all') return `#${currentCategory}`;
@@ -584,10 +596,27 @@ function bindProductRouteNavigation() {
     window.addEventListener('popstate', restore);
     window.addEventListener('hashchange', restore);
     const refreshCatalogAccess = () => {
-        if (catalogEntriesLoaded) renderCatalogEntries();
+        if (productCatalogContext !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) {
+            ++productCatalogRequest;
+            productCatalogs = [];
+            graduationCatalogPackageCount = null;
+            catalogEntriesLoaded = false;
+            productLegacyCatalogAvailability = null;
+            renderCatalogEntries();
+            if (activeProductTab === 'catalogs') void loadCatalogEntries();
+        } else if (catalogEntriesLoaded) renderCatalogEntries();
     };
     window.addEventListener('permissions:lifecycle', refreshCatalogAccess);
     window.addEventListener('roleSwitched', refreshCatalogAccess);
+    window.addEventListener('crmBusinessContextChanged', refreshCatalogAccess);
+    window.addEventListener('crmBusinessScopeChanged', refreshCatalogAccess);
+    window.addEventListener('crmBusinessProfileChanged', refreshCatalogAccess);
+    window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+        if (event.detail?.surface !== 'catalogs') return;
+        productLegacyCatalogAvailability = { available: false, code: event.detail.code, message: event.detail.message };
+        productCatalogs = productCatalogs.filter(catalog => catalog.id === 'graduation');
+        renderCatalogEntries();
+    });
 }
 
 function renderProductBusinessSelector() {
@@ -762,25 +791,41 @@ function updateProductTabPanels() {
     const pageTitle = document.getElementById('productsPageTitle');
     const pageSubtitle = document.getElementById('productsPageSubtitle');
     const parkContext = isParkProductsContext();
+    const consultationContext = activeBusinessContext === 'maysternya_doli';
+    const context = getActiveBusinessContext();
     if (programsPanel) programsPanel.classList.toggle('hidden', !parkContext || activeProductTab !== 'programs');
     if (kitchenPanel) kitchenPanel.classList.toggle('hidden', !parkContext || activeProductTab !== 'kitchen');
     if (catalogsPanel) catalogsPanel.classList.toggle('hidden', !parkContext || activeProductTab !== 'catalogs');
-    if (maysternyaPanel) maysternyaPanel.classList.toggle('hidden', parkContext);
+    if (maysternyaPanel) {
+        maysternyaPanel.classList.toggle('hidden', parkContext);
+        maysternyaPanel.setAttribute('aria-label', `Продукти · ${context.label}`);
+        const head = maysternyaPanel.querySelector('.business-variant-head');
+        if (head) {
+            head.querySelector('.business-variant-eyebrow').textContent = context.label;
+            head.querySelector('h3').textContent = consultationContext ? 'Консультаційні продукти' : 'Продукти та послуги';
+            head.querySelector('p:last-child').textContent = consultationContext
+                ? 'Перший робочий набір для консультаційного напрямку. Повний каталог буде розширюватися окремо від продуктів парку.'
+                : context.subtitle;
+        }
+        const consultationActions = maysternyaPanel.querySelector('.business-variant-actions');
+        if (consultationActions) {
+            consultationActions.hidden = !consultationContext;
+            consultationActions.style.display = consultationContext ? '' : 'none';
+        }
+    }
     if (addBtn) {
         const canAddInCurrentContext = canManageProducts() && (!parkContext || ['programs', 'kitchen'].includes(activeProductTab));
         addBtn.style.display = canAddInCurrentContext ? '' : 'none';
-        addBtn.textContent = activeProductTab === 'kitchen'
+        addBtn.textContent = parkContext && activeProductTab === 'kitchen'
             ? (activeKitchenTab === 'cake' ? '+ Додати торт' : '+ Додати меню')
-            : (parkContext ? '+ Додати продукт' : '+ Додати консультацію');
+            : (consultationContext ? '+ Додати консультацію' : '+ Додати продукт');
     }
     if (pageTitle) {
-        if (!parkContext) pageTitle.textContent = PRODUCT_BUSINESS_CONTEXTS.maysternya_doli.title;
-        else if (activeProductTab === 'catalogs') pageTitle.textContent = 'Products · Парк Закревського · Каталоги';
-        else if (activeProductTab === 'kitchen') pageTitle.textContent = `Products · Парк Закревського · Кухня · ${activeKitchenTab === 'cake' ? 'Торти' : 'Меню'}`;
-        else pageTitle.textContent = PRODUCT_BUSINESS_CONTEXTS.event_genix.title;
+        if (parkContext && activeProductTab === 'catalogs') pageTitle.textContent = `${context.title} · Каталоги`;
+        else if (parkContext && activeProductTab === 'kitchen') pageTitle.textContent = `${context.title} · Кухня · ${activeKitchenTab === 'cake' ? 'Торти' : 'Меню'}`;
+        else pageTitle.textContent = context.title;
     }
     if (pageSubtitle) {
-        const context = getActiveBusinessContext();
         pageSubtitle.textContent = context.subtitle;
     }
     if (parkContext && activeProductTab === 'catalogs' && catalogEntriesLoaded) renderCatalogEntries();
@@ -953,7 +998,8 @@ function renderMaysternyaProducts() {
     const products = allProducts.filter(p => getProductDomain(p) === 'program');
 
     if (products.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><div class="empty-state-text">Продукти Майстерні долі ще не додано</div></div>';
+        const message = activeBusinessContext === 'maysternya_doli' ? 'Продукти Майстерні долі ще не додано' : 'Продукти ще не додано';
+        grid.innerHTML = `<div class="empty-state"><div class="empty-state-text">${message}</div></div>`;
         return;
     }
 
@@ -964,7 +1010,7 @@ function renderMaysternyaProducts() {
                 <h4>${escapeHtml(p.name)}</h4>
                 <div class="maysternya-product-meta">
                     <span>${Number(p.duration || 0)} хв</span>
-                    <span>${escapeHtml(p.code || p.category || 'consultation')}</span>
+                    <span>${escapeHtml(p.code || p.category || (activeBusinessContext === 'maysternya_doli' ? 'consultation' : 'product'))}</span>
                     ${Number(p.price || 0) > 0 ? `<span>${formatPrice(p.price)}</span>` : ''}
                     ${p.isActive === false ? '<span>неактивна</span>' : ''}
                 </div>
@@ -2104,22 +2150,41 @@ async function toggleProductDocumentFlag(productId, field, checked) {
 // ==========================================
 
 async function loadCatalogEntries() {
+    const generation = ++productCatalogRequest;
+    const context = window.getLegacyBusinessSurfaceContextKey?.('catalogs');
+    productCatalogs = [];
+    graduationCatalogPackageCount = null;
+    catalogEntriesLoaded = false;
+    productLegacyCatalogAvailability = null;
     const grid = document.getElementById('catalogsGrid');
     if (grid) grid.innerHTML = '<div class="loading-spinner">Завантаження каталогів…</div>';
     try {
-        productCatalogs = await apiGetProductCatalogs();
-        graduationCatalogPackageCount = null;
-        if (productCatalogs.some(catalog => catalog.id === 'graduation')) {
+        const payload = await apiGetProductCatalogs({ includeAvailability: true });
+        if (generation !== productCatalogRequest || context !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) return;
+        const catalogs = Array.isArray(payload) ? payload : (payload.catalogs || []);
+        let packageCount = null;
+        if (catalogs.some(catalog => catalog.id === 'graduation')) {
             try {
                 const packages = await apiCall('GET', '/graduation/packages');
-                if (Array.isArray(packages)) graduationCatalogPackageCount = packages.length;
+                if (Array.isArray(packages)) packageCount = packages.length;
             } catch (err) {
                 console.warn('Graduation catalog count unavailable');
             }
         }
+        if (generation !== productCatalogRequest || context !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) return;
+        const currentAvailability = window.getLegacyBusinessSurfaceAvailability?.('catalogs');
+        productLegacyCatalogAvailability = currentAvailability?.available === false
+            ? currentAvailability : (payload.legacyCatalogs || currentAvailability || null);
+        productCatalogs = productLegacyCatalogAvailability?.available === false
+            ? catalogs.filter(catalog => catalog.id === 'graduation') : catalogs;
+        graduationCatalogPackageCount = packageCount;
+        productCatalogContext = context;
         catalogEntriesLoaded = true;
         renderCatalogEntries();
     } catch (err) {
+        if (generation !== productCatalogRequest || context !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) return;
+        productCatalogs = [];
+        productCatalogContext = null;
         console.error('loadCatalogEntries error:', err);
         if (grid) grid.innerHTML = '<div class="empty-state"><div class="empty-state-text">Не вдалося завантажити каталоги</div></div>';
     }
@@ -2129,8 +2194,13 @@ function renderCatalogEntries() {
     const grid = document.getElementById('catalogsGrid');
     if (!grid) return;
 
+    const currentAvailability = window.getLegacyBusinessSurfaceAvailability?.('catalogs');
+    const availability = currentAvailability?.available === false ? currentAvailability : productLegacyCatalogAvailability;
+    if (availability?.available === false) productCatalogs = productCatalogs.filter(catalog => catalog.id === 'graduation');
+    const notice = availability?.available === false
+        ? `<div class="empty-state" role="status"><div class="empty-state-text">${escapeHtml(availability.message || 'Спільні каталоги тимчасово недоступні.')}</div></div>` : '';
     if (!productCatalogs.length) {
-        grid.innerHTML = '<div class="empty-state"><div class="empty-state-text">Готових каталогів поки немає</div></div>';
+        grid.innerHTML = notice || '<div class="empty-state"><div class="empty-state-text">Готових каталогів поки немає</div></div>';
         return;
     }
 
@@ -2140,7 +2210,7 @@ function renderCatalogEntries() {
         && getPermissionLifecycle()?.status === 'ready'
         && typeof canAccessPage === 'function'
         && canAccessPage('/graduation');
-    grid.innerHTML = productCatalogs.map(catalog => `
+    grid.innerHTML = notice + productCatalogs.map(catalog => `
         <article class="product-catalog-card">
             <div class="product-catalog-icon">${escapeHtml(catalog.emoji || '📂')}</div>
             <div class="product-catalog-body">

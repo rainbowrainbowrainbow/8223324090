@@ -913,6 +913,7 @@ async function checkSessionAttempt(sessionChangeRetry = 0) {
                 if (!isAuthBootstrapSessionCurrent(bootstrapSession, verifiedUser)) {
                     return restartAfterSessionChange('business-profile');
                 }
+                if (verifiedUser.accessContext && renderBusinessAccessSelection(verifiedUser)) return false;
                 const permissions = await hydrateActionPermissions(verifiedUser, { sessionSnapshot: bootstrapSession });
                 if (!isAuthBootstrapSessionCurrent(bootstrapSession, verifiedUser)) {
                     return restartAfterSessionChange('permissions');
@@ -1020,6 +1021,7 @@ async function login(username, password) {
         if (!isAuthBootstrapSessionCurrent(bootstrapSession, authenticatedUser)) {
             return { success: true, pending: true };
         }
+        if (authenticatedUser.accessContext && renderBusinessAccessSelection(authenticatedUser)) return { success: true, pending: true };
         const permissions = await hydrateActionPermissions(authenticatedUser, { sessionSnapshot: bootstrapSession });
         if (!isAuthBootstrapSessionCurrent(bootstrapSession, authenticatedUser)) {
             return { success: true, pending: true };
@@ -1383,6 +1385,67 @@ async function hydrateBusinessOperatingProfile(user = AppState.currentUser, opti
         } catch {}
     }
     return profile;
+}
+
+function renderBusinessAccessSelection(user) {
+    if (!user?.accessContext || user.accessContext.status === 'ready') return false;
+    resetAuthenticatedRuntimeReady();
+    clearRuntimePermissionCatalog(user);
+    const target = ensureAuthSessionRecoverySurface();
+    if (!target) return true;
+    const profile = window.CrmBusinessContext?.profile?.() || user.businessProfile || {};
+    const businesses = profile.businesses || [];
+    const organizations = profile.organizations || [];
+    const choices = businesses.map(business => {
+        const organization = organizations.find(item => item.id === business.organizationId);
+        const label = [organization?.name, business.label || business.name || business.key].filter(Boolean).join(' — ');
+        return `<option value="${_escHtml(business.key)}">${_escHtml(label)}</option>`;
+    }).join('');
+    const title = businesses.length ? 'Оберіть бізнес' : 'Немає активного доступу до бізнесу';
+    target.setAttribute('role', 'dialog');
+    target.setAttribute('aria-modal', 'true');
+    target.setAttribute('aria-labelledby', 'businessAccessSelectionTitle');
+    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error"><h3 id="businessAccessSelectionTitle">${title}</h3><p>Вхід в акаунт виконано. ${businesses.length ? 'Права та дані відкриються після вибору доступного бізнесу.' : 'Власник організації може відновити ваше членство.'}</p>${businesses.length ? `<label for="businessAccessSelection">Організація та бізнес</label><select id="businessAccessSelection" class="form-control">${choices}</select>` : ''}<p data-business-access-error role="status"></p><div class="auth-session-bootstrap-actions">${businesses.length ? '<button type="button" class="btn btn-primary" data-business-access-select>Відкрити бізнес</button>' : ''}<button type="button" class="btn btn-secondary" data-business-access-retry>Перевірити доступ</button><button type="button" class="btn btn-secondary" data-business-access-logout>Вийти</button></div></div>`;
+    target.querySelector('[data-business-access-select]')?.addEventListener('click', async event => {
+        const button = event.currentTarget;
+        const select = target.querySelector('#businessAccessSelection');
+        button.disabled = true;
+        select.disabled = true;
+        try {
+            await window.CrmBusinessContext.switchTo(select.value, { user, navigate: false });
+            await checkSession();
+        } catch (error) {
+            target.querySelector('[data-business-access-error]').textContent = error.message || 'Не вдалося відкрити бізнес.';
+            button.disabled = false;
+            if (button.isConnected) button.focus();
+        } finally {
+            button.disabled = false;
+            select.disabled = false;
+        }
+    });
+    target.querySelector('[data-business-access-retry]')?.addEventListener('click', () => checkSession());
+    target.querySelector('[data-business-access-logout]')?.addEventListener('click', () => logout());
+    if (organizations.some(organization => ['owner', 'admin'].includes(organization.role))) {
+        const link = document.createElement('a');
+        link.className = 'btn btn-secondary';
+        link.href = '/profile';
+        link.textContent = 'Команда та доступи';
+        target.querySelector('.auth-session-bootstrap-actions').appendChild(link);
+    }
+    const businessSelect = target.querySelector('select');
+    if (businessSelect) businessSelect.style.maxWidth = '100%';
+    target.onkeydown = event => {
+        if (event.key !== 'Tab') return;
+        const controls = Array.from(target.querySelectorAll('a[href], button:not([disabled]), select:not([disabled])'));
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
+            event.preventDefault();
+            (event.shiftKey ? last : first)?.focus();
+        }
+    };
+    target.querySelector('select, button')?.focus();
+    return true;
 }
 
 const PERMISSION_RETRY_DELAY_MS = 250;
@@ -2175,6 +2238,21 @@ function revokeStoredRefreshToken() {
     refreshTokens.forEach(revokeRefreshTokenValue);
 }
 
+function synchronizeSharedBusinessRoute() {
+    const incoming = readAuthBootstrapStoredUser();
+    const current = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    if (!incoming?.businessContextPolicy || !current || !authBootstrapUsersShareIdentity(current, incoming)) return;
+    if (current.activeBusinessContext === incoming.activeBusinessContext) return;
+    const url = new URL(window.location.href);
+    const active = incoming.activeBusinessContext;
+    // Active cabinet storage is shared by tabs. Converge their explicit routes
+    // before reloading, so Park/Dar tabs cannot repeatedly restore each other.
+    if (url.pathname.replace(/\.html$/, '').replace(/\/$/, '') === '/maysternya-doli' && active !== 'maysternya_doli') url.pathname = '/';
+    for (const key of ['businessContext', 'business_context', 'businessScope', 'business_scope', 'businessContexts', 'business_contexts']) url.searchParams.delete(key);
+    if (active) url.searchParams.set('businessContext', active);
+    window.history.replaceState(window.history.state || {}, '', url);
+}
+
 function handleCrossTabAuthStorageChange(event) {
     const authKeys = new Set([
         'pzp_token',
@@ -2205,6 +2283,7 @@ function handleCrossTabAuthStorageChange(event) {
         }
         if (!generationChanged && !identityChanged) return;
 
+        if (generationChanged && typeof synchronizeSharedBusinessRoute === 'function') synchronizeSharedBusinessRoute();
         crossTabSessionSyncInProgress = true;
         resetAuthenticatedRuntimeReady();
         if (typeof AppState !== 'undefined' && AppState?.currentUser) {
@@ -2257,6 +2336,7 @@ if (typeof window !== 'undefined' && window.addEventListener) {
 }
 
 function clearPrivateClientCaches() {
+    window.CrmBusinessContext?.clearProfile?.();
     try {
         if (typeof OfflineQueue !== 'undefined' && OfflineQueue.clearQueue) {
             OfflineQueue.clearQueue().catch(() => {});

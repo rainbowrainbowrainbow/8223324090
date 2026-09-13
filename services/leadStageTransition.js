@@ -1,6 +1,7 @@
 'use strict';
 
-const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext } = require('./businessContext');
+const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
+const { linkBusinessContext, positiveRecordId, assertLeadReference, requireParentUpdate, withLeadSavepoint } = require('./leadReferenceIntegrity');
 
 const LEAD_STAGE_TO_STATUS = Object.freeze({
   new: 'new',
@@ -45,8 +46,7 @@ function cleanText(value, maxLength = 500) {
 }
 
 function parseLeadId(value) {
-  const n = Number.parseInt(value, 10);
-  return Number.isInteger(n) && n > 0 ? n : null;
+  return positiveRecordId(value);
 }
 
 function normalizeLeadStage(value) {
@@ -121,17 +121,18 @@ async function updateBookingOnly(queryable, { leadId, businessContext, bookingId
      RETURNING *`,
     [leadId, businessContext, String(bookingId)]
   );
+  requireParentUpdate(result);
   return result.rows[0] || null;
 }
 
 async function transitionLeadStage(queryable, options = {}) {
   const leadId = parseLeadId(options.leadId);
-  const businessContext = normalizeBusinessContext(options.businessContext) || DEFAULT_BUSINESS_CONTEXT;
+  const businessContext = linkBusinessContext(options.businessContext);
   const targetStage = requireValidLeadStage(options.targetStage || options.pipelineStage);
   const targetStatus = leadStatusForStage(targetStage);
   const lostReason = normalizeLostReason(options.lostReason);
   const source = cleanText(options.source, 100) || 'leadStageTransition';
-  const bookingId = cleanText(options.bookingId, 120);
+  const bookingId = cleanText(options.bookingId, Number.MAX_SAFE_INTEGER);
   const allowedFromStages = options.allowedFromStages instanceof Set
     ? options.allowedFromStages
     : (Array.isArray(options.allowedFromStages) ? new Set(options.allowedFromStages) : null);
@@ -149,6 +150,7 @@ async function transitionLeadStage(queryable, options = {}) {
     });
   }
 
+  return withLeadSavepoint(queryable, 'lead_stage_transition', async () => {
   const previousResult = await queryable.query(
     `SELECT *
      FROM leads
@@ -164,6 +166,11 @@ async function transitionLeadStage(queryable, options = {}) {
       code: 'lead_not_found'
     });
   }
+
+  if (bookingId || previousLead.booking_id) {
+    await assertLeadReference(queryable, 'bookings', bookingId || previousLead.booking_id, businessContext);
+  }
+  if (previousLead.program_id) await assertLeadReference(queryable, 'products', previousLead.program_id, businessContext);
 
   const oldStage = previousLead.pipeline_stage || 'new';
   if (allowedFromStages && !allowedFromStages.has(oldStage)) {
@@ -207,7 +214,8 @@ async function transitionLeadStage(queryable, options = {}) {
      RETURNING *`,
     params
   );
-  const updatedLead = updatedResult.rows[0] || previousLead;
+  requireParentUpdate(updatedResult);
+  const updatedLead = updatedResult.rows[0];
   const transition = transitionChanged(previousLead, updatedLead, targetStage);
   if (transition.changed) {
     await logLeadStageChange(queryable, {
@@ -228,6 +236,7 @@ async function transitionLeadStage(queryable, options = {}) {
     skipped: false,
     skipReason: null
   };
+  });
 }
 
 module.exports = {

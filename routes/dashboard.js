@@ -30,6 +30,7 @@ const {
     pushBusinessScopeCondition
 } = require('../services/businessContext');
 const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
+const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurface');
 
 const log = createLogger('Dashboard');
 const SALES_LEAD_TYPE_FILTER = "COALESCE(lead_type, 'quality') = 'quality'";
@@ -1639,11 +1640,17 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
             }
 
             case 'catalogs': {
+                const { available, code, message } = legacyBusinessSurfaceAccess(req, 'catalogs');
+                const legacyCatalogs = { available, code, message };
+                if (!available) {
+                    data = { definitions: [], recentItems: [], legacyCatalogs };
+                    break;
+                }
                 const [catDefs, catItems] = await Promise.all([
                     pool.query("SELECT cd.id, cd.name, cd.emoji, COUNT(ci.id)::int AS count FROM catalog_definitions cd LEFT JOIN catalog_items ci ON ci.catalog_id = cd.id AND ci.status = 'active' WHERE cd.is_active = true GROUP BY cd.id, cd.name, cd.emoji, cd.sort_order ORDER BY cd.sort_order").catch(() => ({ rows: [] })),
                     pool.query("SELECT ci.id, ci.name, ci.price, ci.image_url, ci.catalog_id, cd.name AS catalog_name, cd.emoji AS catalog_emoji FROM catalog_items ci JOIN catalog_definitions cd ON cd.id = ci.catalog_id WHERE ci.status = 'active' ORDER BY ci.created_at DESC LIMIT 5").catch(() => ({ rows: [] })),
                 ]);
-                data = { definitions: catDefs.rows, recentItems: catItems.rows };
+                data = { definitions: catDefs.rows, recentItems: catItems.rows, legacyCatalogs };
                 break;
             }
 
@@ -1833,19 +1840,23 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
 
             // v39.10: Art director content pipeline
             case 'content_pipeline': {
+                const { available, code, message } = legacyBusinessSurfaceAccess(req, 'catalogs');
+                const legacyCatalogs = { available, code, message };
                 const designTaskParams = [];
                 const designTaskBusinessCondition = appendDashboardBusinessScope(designTaskParams, businessScope, 'tasks');
                 const [inReview, approved, tasks, catalogs] = await Promise.all([
                     pool.query(`SELECT id, title, status FROM art_director_content WHERE status = 'in_review' ORDER BY created_at DESC LIMIT 5`).catch(() => ({ rows: [] })),
                     pool.query(`SELECT COUNT(*)::int AS c FROM art_director_content WHERE status = 'approved' AND created_at > NOW() - INTERVAL '7 days'`).catch(() => ({ rows: [{ c: 0 }] })),
                     pool.query(`SELECT id, title, priority FROM tasks WHERE category = 'improvement' AND status NOT IN ('done','cancelled') ${designTaskBusinessCondition} ORDER BY priority DESC, deadline ASC LIMIT 5`, designTaskParams).catch(() => ({ rows: [] })),
-                    pool.query(`SELECT id, name, emoji, status FROM catalog_definitions WHERE is_active = true ORDER BY name`).catch(() => ({ rows: [] }))
+                    available ? pool.query(`SELECT id, name, emoji, status FROM catalog_definitions WHERE is_active = true ORDER BY name`).catch(() => ({ rows: [] }))
+                        : Promise.resolve({ rows: [] })
                 ]);
                 data = {
                     inReview: inReview.rows,
                     approvedThisWeek: approved.rows[0].c,
                     designTasks: tasks.rows,
-                    catalogs: catalogs.rows
+                    catalogs: catalogs.rows,
+                    legacyCatalogs
                 };
                 break;
             }

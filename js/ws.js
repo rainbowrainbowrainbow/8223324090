@@ -804,7 +804,11 @@ var ParkWS = (function () {
     function _updateChatBadge() {
         var token = localStorage.getItem('pzp_token');
         if (!token) return;
-        fetch('/api/chat/unread', { headers: { 'Authorization': 'Bearer ' + token } })
+        var businessContext = window.CrmBusinessContext?.current?.()
+            || window.TimelineBusinessContext?.current?.()?.key
+            || null;
+        if (!businessContext) return;
+        fetch('/api/chat/unread?businessContext=' + encodeURIComponent(businessContext), { headers: { 'Authorization': 'Bearer ' + token } })
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (data) {
                 if (data) _setChatBadge(data.total || 0);

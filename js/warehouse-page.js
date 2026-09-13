@@ -54,6 +54,8 @@ let warehouseLocations = [];
 let warehouseContractors = [];
 let warehousePhotoIntakes = [];
 let warehouseIntakeStatus = null;
+let warehouseIntakeFailure = null;
+let warehouseIntakeRequest = 0;
 let warehouseCostumes = [];
 let locationSaveInFlight = false;
 let itemSaveInFlight = false;
@@ -587,15 +589,27 @@ async function loadWarehousePhotoIntake(opts = {}) {
     const statusEl = document.getElementById('warehouseBotStatus');
     const listEl = document.getElementById('warehouseIntakeList');
     if (!statusEl || !listEl) return;
+    const request = ++warehouseIntakeRequest;
     if (!opts.silent) {
         statusEl.innerHTML = '<div class="wh-intake-loading">Оновлюємо стан Telegram intake...</div>';
     }
-    const [statusResp, listResp] = await Promise.all([
-        apiGetWarehousePhotoIntakeStatus(),
-        apiGetWarehousePhotoIntakes({ limit: 12 })
-    ]);
-    warehouseIntakeStatus = statusResp?.status || null;
-    warehousePhotoIntakes = listResp?.items || [];
+    let responses;
+    try {
+        responses = await Promise.all([
+            apiGetWarehousePhotoIntakeStatus(),
+            apiGetWarehousePhotoIntakes({ limit: 12 })
+        ]);
+    } catch { responses = []; }
+    if (request !== warehouseIntakeRequest) return;
+    const [statusResp, listResp] = responses;
+    const denied = responses.some(response => response?.code === 'warehouse_photo_intake_not_migrated');
+    const failed = statusResp?.success !== true || !statusResp.status
+        || listResp?.success !== true || !Array.isArray(listResp.items);
+    warehouseIntakeFailure = denied
+        ? 'Фото-приймання тимчасово недоступне в цьому кабінеті до розмежування даних за бізнесами.'
+        : (failed ? 'Не вдалося завантажити фото-приймання. Натисніть «Оновити intake», щоб повторити спробу.' : null);
+    warehouseIntakeStatus = warehouseIntakeFailure ? null : statusResp.status;
+    warehousePhotoIntakes = warehouseIntakeFailure ? [] : listResp.items;
     renderWarehousePhotoIntake();
 }
 
@@ -607,6 +621,10 @@ function renderWarehousePhotoIntake() {
 function renderWarehouseBotStatus() {
     const el = document.getElementById('warehouseBotStatus');
     if (!el) return;
+    if (warehouseIntakeFailure) {
+        el.innerHTML = `<div class="wh-intake-warning" role="status">${escapeHtml(warehouseIntakeFailure)}</div>`;
+        return;
+    }
     const telegram = warehouseIntakeStatus?.telegram || {};
     const vision = warehouseIntakeStatus?.vision || {};
     const counts = warehouseIntakeStatus?.counts || {};
@@ -649,6 +667,7 @@ function renderWarehouseBotStatus() {
 function renderWarehouseIntakeList() {
     const el = document.getElementById('warehouseIntakeList');
     if (!el) return;
+    if (warehouseIntakeFailure) { el.innerHTML = ''; return; }
     if (!warehousePhotoIntakes.length) {
         el.innerHTML = '<div class="wh-intake-empty">Фото-intake ще немає. Надішліть фото товару в Telegram-бот, і чернетка зʼявиться тут.</div>';
         return;
@@ -1242,6 +1261,19 @@ function switchPageTab(tab) {
 // ==========================================
 
 async function loadWarehouseContractors(options = {}) {
+    const availability = typeof getLegacyBusinessSurfaceAvailability === 'function'
+        ? getLegacyBusinessSurfaceAvailability('contractors_procurement')
+        : { available: true };
+    if (!availability.available) {
+        warehouseContractors = [];
+        renderContractorCards();
+        const empty = document.getElementById('contractorEmptyState');
+        if (empty) {
+            empty.textContent = availability.message || 'Підрядники тимчасово недоступні в цьому кабінеті.';
+            empty.style.display = '';
+        }
+        return;
+    }
     const category = document.getElementById('contractorCategoryFilter')?.value || '';
     const q = document.getElementById('contractorSearchInput')?.value.trim() || '';
     const data = await apiGetContractors({ category, q, active: true });
@@ -1458,6 +1490,19 @@ async function createKitchenDemandProcurement(stockId) {
 }
 
 async function loadProcLists() {
+    const availability = typeof getLegacyBusinessSurfaceAvailability === 'function'
+        ? getLegacyBusinessSurfaceAvailability('contractors_procurement')
+        : { available: true };
+    if (!availability.available) {
+        procLists = [];
+        renderProcLists();
+        const empty = document.getElementById('procEmptyState');
+        if (empty) {
+            empty.textContent = availability.message || 'Закупівлі тимчасово недоступні в цьому кабінеті.';
+            empty.style.display = '';
+        }
+        return;
+    }
     const dept = document.getElementById('procDeptFilter')?.value || '';
     const status = document.getElementById('procStatusFilter')?.value || '';
     const data = await apiGetProcurementLists({ department: dept, status: status });

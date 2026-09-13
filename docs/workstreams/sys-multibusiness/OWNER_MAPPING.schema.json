@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:eventgenix:sys-mb:owner-mapping:1",
+  "title": "Restricted historical ownership review input, never an apply authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "classification", "dataKind", "source", "registry", "evidence", "decisions", "referenceRecords", "entities"],
+  "properties": {
+    "schemaVersion": {"const": "sys-mb-owner-mapping/1"},
+    "classification": {"const": "RESTRICTED"},
+    "dataKind": {"enum": ["unpopulated", "synthetic", "restricted_snapshot"]},
+    "source": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/source"}]},
+    "registry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["organizations", "businesses"],
+      "properties": {
+        "organizations": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/organization"}},
+        "businesses": {"type": "array", "maxItems": 10000, "items": {"$ref": "#/$defs/business"}}
+      }
+    },
+    "evidence": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/evidence"}},
+    "decisions": {"type": "array", "minItems": 8, "maxItems": 8, "items": {"$ref": "#/$defs/decision"}},
+    "referenceRecords": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/referenceRecord"}},
+    "entities": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/entity"}}
+  },
+  "$defs": {
+    "ref": {"type": "string", "pattern": "^[A-Z][A-Z0-9_-]{2,79}$", "maxLength": 80},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "refs": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"$ref": "#/$defs/ref"}},
+    "decisionId": {"enum": ["OWN-01", "OWN-02", "OWN-03", "OWN-04", "OWN-05", "OWN-06", "OWN-07", "OWN-08"]},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["snapshotRef", "snapshotSha256", "checkpointSha256", "capturedAt", "coverage"],
+      "properties": {
+        "snapshotRef": {"$ref": "#/$defs/ref"},
+        "snapshotSha256": {"$ref": "#/$defs/sha256"},
+        "checkpointSha256": {"$ref": "#/$defs/sha256"},
+        "capturedAt": {"$ref": "#/$defs/timestamp"},
+        "coverage": {"enum": ["COMPLETE", "PARTIAL", "NOT_COLLECTED"]}
+      }
+    },
+    "organization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "registryId", "evidenceRefs"],
+      "properties": {
+        "ref": {"$ref": "#/$defs/ref"},
+        "registryId": {"type": "string", "pattern": "^[1-9][0-9]{0,18}$"},
+        "evidenceRefs": {"$ref": "#/$defs/refs"}
+      }
+    },
+    "business": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "registryId", "organizationRef", "contextKey", "evidenceRefs"],
+      "properties": {
+        "ref": {"$ref": "#/$defs/ref"},
+        "registryId": {"type": "string", "pattern": "^[1-9][0-9]{0,18}$"},
+        "organizationRef": {"$ref": "#/$defs/ref"},
+        "contextKey": {"type": "string", "pattern": "^[a-z][a-z0-9_]{2,63}$"},
+        "evidenceRefs": {"$ref": "#/$defs/refs"}
+      }
+    },
+    "owner": {
+      "type": "object", "additionalProperties": false,
+      "required": ["organizationRef", "businessRef"],
+      "properties": {"organizationRef": {"$ref": "#/$defs/ref"}, "businessRef": {"$ref": "#/$defs/ref"}}
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "kind", "origin", "artifactRef", "sha256", "capturedAt"],
+      "properties": {
+        "ref": {"$ref": "#/$defs/ref"},
+        "kind": {"enum": ["record_snapshot", "registry_snapshot", "owner_decision", "relation_observation", "public_policy", "job_policy", "review_attestation"]},
+        "origin": {"enum": ["DATABASE_SNAPSHOT", "OWNER_REVIEW", "REPOSITORY", "SYNTHETIC"]},
+        "artifactRef": {"$ref": "#/$defs/ref"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "capturedAt": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "attestation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reviewerRef", "evidenceRef", "reviewedAt", "bindingSha256"],
+      "properties": {
+        "reviewerRef": {"$ref": "#/$defs/ref"},
+        "evidenceRef": {"$ref": "#/$defs/ref"},
+        "reviewedAt": {"$ref": "#/$defs/timestamp"},
+        "bindingSha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "decision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "revision", "status", "evidenceRefs", "attestation"],
+      "properties": {
+        "id": {"$ref": "#/$defs/decisionId"},
+        "revision": {"type": "integer", "minimum": 1},
+        "status": {"enum": ["APPROVED", "PENDING"]},
+        "evidenceRefs": {"$ref": "#/$defs/refs"},
+        "attestation": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/attestation"}]}
+      }
+    },
+    "key": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[^\u0000-\u001f\u007f]+$"},
+        "catalog_id": {"type": "string", "minLength": 1, "maxLength": 50, "pattern": "^[^\u0000-\u001f\u007f]+$"},
+        "filename": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[^\u0000-\u001f\u007f/\\\\]+$"},
+        "business_context": {"type": "string", "pattern": "^[a-z][a-z0-9_]{2,63}$"},
+        "resource_id": {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[^\u0000-\u001f\u007f]+$"}
+      }
+    },
+    "referenceRecord": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "table", "key", "rowSha256", "owner", "evidenceRefs"],
+      "properties": {
+        "ref": {"$ref": "#/$defs/ref"},
+        "table": {"enum": ["products", "bookings", "timeline_resources"]},
+        "key": {"$ref": "#/$defs/key"},
+        "rowSha256": {"$ref": "#/$defs/sha256"},
+        "owner": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/owner"}]},
+        "evidenceRefs": {"$ref": "#/$defs/refs"}
+      }
+    },
+    "relation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["field", "state", "targetRef", "evidenceRefs"],
+      "properties": {
+        "field": {"enum": ["catalog_id", "catalog_page_id", "generated_item_id", "template_id", "product_id", "room_resource_id", "observed_recurring_instance", "observed_asset_use", "embedded_item_reference"]},
+        "state": {"enum": ["LINKED", "NULL", "ORPHANED", "NOT_COLLECTED"]},
+        "targetRef": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/ref"}]},
+        "evidenceRefs": {"$ref": "#/$defs/refs"}
+      }
+    },
+    "entity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "table", "key", "rowSha256", "status", "classification", "disposition", "owner", "reasonCode", "relationCoverage", "relations", "decisionRefs", "evidenceRefs", "attestation"],
+      "properties": {
+        "ref": {"$ref": "#/$defs/ref"},
+        "table": {"enum": ["catalog_definitions", "catalog_subcategories", "catalog_items", "catalog_settings", "catalog_pages", "catalog_page_history", "catalog_automations", "trend_proposals", "catalog_image_blobs", "booking_templates", "recurring_templates", "recurring_booking_skips"]},
+        "key": {"$ref": "#/$defs/key"},
+        "rowSha256": {"$ref": "#/$defs/sha256"},
+        "status": {"enum": ["APPROVED", "PENDING"]},
+        "classification": {"enum": ["BUSINESS_OWNED", "SHARED_CANDIDATE", "MIXED", "UNKNOWN"]},
+        "disposition": {"enum": ["ASSIGN", "QUARANTINE"]},
+        "owner": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/owner"}]},
+        "reasonCode": {"enum": ["REVIEWED_SINGLE_OWNER", "OWNER_NOT_REVIEWED", "UNKNOWN_OWNER", "MIXED_REFERENCES", "MISSING_PARENT", "SHARED_POLICY_PENDING", "EVIDENCE_INCOMPLETE"]},
+        "relationCoverage": {"enum": ["COMPLETE", "PARTIAL", "NOT_COLLECTED"]},
+        "relations": {"type": "array", "maxItems": 10000, "items": {"$ref": "#/$defs/relation"}},
+        "decisionRefs": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/decisionId"}},
+        "evidenceRefs": {"$ref": "#/$defs/refs"},
+        "attestation": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/attestation"}]}
+      }
+    }
+  }
+}

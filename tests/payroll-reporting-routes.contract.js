@@ -145,7 +145,16 @@ before(async () => {
     const app = express();
     app.use(express.json());
     app.use((req, res, next) => {
-        req.user = { id: 1, username: 'payroll-route-test', role: 'creator' };
+        req.user = {
+            id: 1,
+            username: 'payroll-route-test',
+            role: 'creator',
+            businessMembershipAccess: {
+                membershipEnabled: false,
+                invalid: false,
+                registry: [{ businessContext: 'event_genix', accessMode: 'compatibility', active: true }]
+            }
+        };
         next();
     });
     app.use('/api/payroll', payrollRouter);

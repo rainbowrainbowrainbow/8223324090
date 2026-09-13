@@ -1,36 +1,51 @@
 'use strict';
 
-const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext } = require('./businessContext');
+const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 const { transitionLeadStage } = require('./leadStageTransition');
+const { integrityError, linkBusinessContext, positiveRecordId, assertLeadReference, requireParentUpdate, withLeadSavepoint } = require('./leadReferenceIntegrity');
 
 function parseLeadId(value) {
-  const n = Number.parseInt(value, 10);
-  return Number.isInteger(n) && n > 0 ? n : null;
+  return positiveRecordId(value);
 }
 
 async function upsertLeadCustomerLink(client, { leadId, customerId, businessContext, source = 'booking_handoff' }) {
   const parsedLeadId = parseLeadId(leadId);
-  const numericCustomerId = Number.parseInt(customerId, 10);
-  if (!parsedLeadId || !Number.isInteger(numericCustomerId) || numericCustomerId <= 0) return false;
+  const numericCustomerId = positiveRecordId(customerId);
+  if (leadId == null || customerId == null) return false;
+  if (!parsedLeadId || !numericCustomerId) throw integrityError('invalid_lead_reference', 'Invalid relationship reference', 400);
+  const context = linkBusinessContext(businessContext);
   const result = await client.query(
-    `INSERT INTO lead_customer_links (business_context, lead_id, customer_id, link_type, source, metadata, updated_at)
-     VALUES ($1, $2, $3, 'booking_customer', $4, $5::jsonb, NOW())
+    `WITH scoped_parents AS (
+       SELECT l.id AS lead_id, c.id AS customer_id
+       FROM leads l JOIN customers c ON c.id = $3
+       WHERE l.id = $2 AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+         AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+         AND (c.lead_id IS NULL OR EXISTS (
+           SELECT 1 FROM leads primary_lead WHERE primary_lead.id = c.lead_id
+             AND COALESCE(primary_lead.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1 FOR SHARE
+         ))
+       FOR SHARE OF l, c
+     )
+     INSERT INTO lead_customer_links (business_context, lead_id, customer_id, link_type, source, metadata, updated_at)
+     SELECT $1, lead_id, customer_id, 'booking_customer', $4, $5::jsonb, NOW() FROM scoped_parents
      ON CONFLICT (business_context, lead_id, customer_id, link_type) DO UPDATE SET
        source = COALESCE(EXCLUDED.source, lead_customer_links.source),
        metadata = COALESCE(lead_customer_links.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb),
        updated_at = NOW()`,
-    [businessContext, parsedLeadId, numericCustomerId, source, JSON.stringify({ source: 'leadBookingLink' })]
+    [context, parsedLeadId, numericCustomerId, source, JSON.stringify({ source: 'leadBookingLink' })]
   );
+  if (!result.rowCount) throw integrityError('lead_reference_unavailable', 'Related record is unavailable in this business', 404);
   return result.rowCount > 0;
 }
 
 async function attachLeadBookingLink(client, { leadId, bookingId, customerId, businessContext = DEFAULT_BUSINESS_CONTEXT, bookingStatus = null }) {
   const parsedLeadId = parseLeadId(leadId);
   const resolvedBookingId = bookingId ? String(bookingId) : '';
-  const context = normalizeBusinessContext(businessContext);
+  const context = linkBusinessContext(businessContext);
   if (!parsedLeadId || !resolvedBookingId) {
     return { attached: false, reason: 'missing_context' };
   }
+  return withLeadSavepoint(client, 'lead_booking_attach', async () => {
   const stage = bookingLeadStage({ status: bookingStatus || 'confirmed' });
   const allowedFromStages = new Set(['new', 'contacted', 'info_sent', 'deal', 'waiting']);
 
@@ -45,7 +60,7 @@ async function attachLeadBookingLink(client, { leadId, bookingId, customerId, bu
       source: 'leadBookingLink.attach'
     });
   } catch (err) {
-    if (err?.code === 'lead_not_found' || err?.statusCode === 404) {
+    if (err?.code === 'lead_not_found') {
       return { attached: false, reason: 'lead_not_found', leadId: parsedLeadId };
     }
     throw err;
@@ -57,25 +72,10 @@ async function attachLeadBookingLink(client, { leadId, bookingId, customerId, bu
   }
 
   let customerLinked = false;
-  const numericCustomerId = Number.parseInt(customerId, 10);
-  if (Number.isInteger(numericCustomerId) && numericCustomerId > 0) {
-    const customerResult = await client.query(
-      `UPDATE customers
-       SET lead_id = COALESCE(lead_id, $1),
-           source = COALESCE(NULLIF(source, ''), 'lead'),
-           updated_at = NOW()
-       WHERE id = $2
-         AND COALESCE(business_context, $3) = $3`,
-      [parsedLeadId, numericCustomerId, context]
-    );
-    customerLinked = customerResult.rowCount > 0;
-    const linkInserted = await upsertLeadCustomerLink(client, {
-      leadId: parsedLeadId,
-      customerId: numericCustomerId,
-      businessContext: context,
-      source: 'booking_attach'
-    });
-    customerLinked = customerLinked || linkInserted;
+  const numericCustomerId = positiveRecordId(customerId);
+  if (customerId !== undefined && customerId !== null) {
+    customerLinked = await linkCustomerToLead(client, { leadId: parsedLeadId, customerId,
+      businessContext: context, source: 'booking_attach', customerSource: 'lead' });
   }
 
   return {
@@ -89,6 +89,7 @@ async function attachLeadBookingLink(client, { leadId, bookingId, customerId, bu
     customerId: Number.isInteger(numericCustomerId) && numericCustomerId > 0 ? numericCustomerId : null,
     customerLinked,
   };
+  });
 }
 
 function cleanText(value, maxLength = 500) {
@@ -399,24 +400,28 @@ function bookingLeadRawPayload(booking, meta) {
   });
 }
 
-async function linkCustomerToLead(client, { leadId, customerId, businessContext }) {
-  const numericCustomerId = Number.parseInt(customerId, 10);
-  if (!Number.isInteger(numericCustomerId) || numericCustomerId <= 0 || !leadId) return false;
+async function linkCustomerToLead(client, { leadId, customerId, businessContext, source = 'booking_handoff', customerSource = 'booking' }) {
+  if (customerId === undefined || customerId === null) return false;
+  const numericCustomerId = positiveRecordId(customerId);
+  const customer = await assertLeadReference(client, 'customers', customerId, businessContext, { lock: 'UPDATE' });
+  if (customer.lead_id && Number(customer.lead_id) !== Number(leadId)) {
+    await assertLeadReference(client, 'leads', customer.lead_id, businessContext);
+  }
   const result = await client.query(
     `UPDATE customers
      SET lead_id = COALESCE(lead_id, $1),
-         source = COALESCE(NULLIF(source, ''), 'booking'),
+         source = COALESCE(NULLIF(source, ''), $4),
          updated_at = NOW()
      WHERE id = $2
-       AND COALESCE(business_context, $3) = $3`,
-    [leadId, numericCustomerId, businessContext]
+       AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+    [leadId, numericCustomerId, businessContext, customerSource]
   );
-  const linkInserted = await upsertLeadCustomerLink(client, { leadId, customerId: numericCustomerId, businessContext });
-  return result.rowCount > 0 || linkInserted;
+  requireParentUpdate(result, 'customer');
+  return upsertLeadCustomerLink(client, { leadId, customerId: numericCustomerId, businessContext, source });
 }
 
 async function ensureLeadForBooking(client, { booking, customerId, businessContext = DEFAULT_BUSINESS_CONTEXT }) {
-  const context = normalizeBusinessContext(businessContext);
+  const context = linkBusinessContext(businessContext);
   const bookingId = booking?.id ? String(booking.id) : '';
   const customer = booking?.customer || {};
   const phone = cleanText(customer.phone || booking?.phone || customer.whatsapp || booking?.whatsapp, 50);
@@ -432,9 +437,15 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
     return { attached: false, reason: 'missing_context' };
   }
 
+  return withLeadSavepoint(client, 'lead_booking_ensure', async () => {
+  const storedBooking = await assertLeadReference(client, 'bookings', bookingId, context);
   const stage = bookingLeadStage(booking);
   const status = bookingLeadStatus(stage);
-  const programId = cleanText(booking?.programId || booking?.program_id, 50);
+  const programId = cleanText(booking?.programId || booking?.program_id, 120);
+  if (programId) await assertLeadReference(client, 'products', programId, context);
+  if (storedBooking.program_id && storedBooking.program_id !== programId) {
+    await assertLeadReference(client, 'products', storedBooking.program_id, context);
+  }
   const notes = bookingLeadNotes(booking, contactMeta);
   const childrenCount = Number.parseInt(booking?.kidsCount || booking?.childrenCount || booking?.children_count, 10);
   const safeChildrenCount = Number.isInteger(childrenCount) && childrenCount >= 0 ? childrenCount : null;
@@ -451,7 +462,7 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
   const lookup = await client.query(
     `SELECT id
      FROM leads
-     WHERE COALESCE(business_context, $1) = $1
+     WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
        AND (
             booking_id = $2
             OR (
@@ -482,7 +493,7 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
      ORDER BY
        CASE WHEN booking_id = $2 THEN 0 ELSE 1 END,
        id DESC
-     LIMIT 1`,
+     LIMIT 1 FOR UPDATE`,
     [context, bookingId, phone, instagram, externalId, sourceChannel, contactMeta.telegramId, restrictContactReuse]
   );
 
@@ -490,7 +501,10 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
   let created = false;
 
   if (leadId) {
-    await client.query(
+    const existingLead = await assertLeadReference(client, 'leads', leadId, context, { lock: 'UPDATE' });
+    if (existingLead.booking_id && existingLead.booking_id !== bookingId) await assertLeadReference(client, 'bookings', existingLead.booking_id, context);
+    if (existingLead.program_id && existingLead.program_id !== programId) await assertLeadReference(client, 'products', existingLead.program_id, context);
+    const updated = await client.query(
       `UPDATE leads
        SET booking_id = COALESCE(booking_id, $1),
            client_name = COALESCE(NULLIF(client_name, ''), $2),
@@ -524,10 +538,11 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
              ELSE COALESCE(raw_payload, '{}'::jsonb) || $15::jsonb
            END
        WHERE id = $16
-         AND COALESCE(business_context, $17) = $17`,
+         AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $17`,
       [bookingId, clientName, phone, contactMeta.telegramId, instagram, source, sourceChannel, externalId,
        programId, booking?.date || null, safeChildrenCount, stage, status, notes, rawPayloadJson, leadId, context]
     );
+    requireParentUpdate(updated);
   } else {
     const inserted = await client.query(
       `INSERT INTO leads
@@ -558,6 +573,12 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
        programId, booking?.date || null, safeChildrenCount, notes, rawPayloadJson, status, stage, bookingId]
     );
     leadId = parseLeadId(inserted.rows[0]?.id);
+    requireParentUpdate(inserted);
+    if (!leadId) throw integrityError('lead_parent_update_failed', 'Lead creation did not complete');
+    // A concurrent external-id replay may return a row containing older links.
+    const persistedLead = await assertLeadReference(client, 'leads', leadId, context, { lock: 'UPDATE' });
+    if (persistedLead.booking_id && persistedLead.booking_id !== bookingId) await assertLeadReference(client, 'bookings', persistedLead.booking_id, context);
+    if (persistedLead.program_id && persistedLead.program_id !== programId) await assertLeadReference(client, 'products', persistedLead.program_id, context);
     created = Boolean(leadId);
   }
 
@@ -571,6 +592,7 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
     customerLinked,
     businessContext: context,
   };
+  });
 }
 
 module.exports = {

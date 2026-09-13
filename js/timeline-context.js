@@ -298,7 +298,7 @@
         if (profile && (timeline.timelineEnabled === false || profile?.shell?.timelineEnabled === false || rawMode === 'disabled')) {
             return 'disabled';
         }
-        return VALID_DISPLAY_MODES.has(rawMode) ? rawMode : (profile ? 'park' : 'disabled');
+        return VALID_DISPLAY_MODES.has(rawMode) ? rawMode : (profile ? (profile.key === 'event_genix' ? 'park' : 'simple') : 'disabled');
     }
 
     function contextForBusiness(profileOrKey) {
@@ -309,7 +309,7 @@
         if (!businessProfile && !KNOWN_CRM_CONTEXT_KEYS.has(key)) return null;
         const fallbackContext = !businessProfile ? fallbackContextForBusinessKey(key) : null;
         if (fallbackContext) return fallbackContext;
-        if (CONTEXTS[key] && (STATIC_CONTEXT_KEYS.has(key) || !businessProfile)) return CONTEXTS[key];
+        if (CONTEXTS[key] && (!businessProfile || (STATIC_CONTEXT_KEYS.has(key) && businessProfile.accessMode !== 'membership'))) return CONTEXTS[key];
 
         const label = businessProfile?.label || businessProfile?.brandName || businessProfile?.name || key;
         const shortLabel = businessProfile?.shortLabel || businessProfile?.switchLabel || label;
@@ -321,7 +321,7 @@
             ...existing,
             key,
             path: route,
-            pageAccessPath: route,
+            pageAccessPath: existing.pageAccessPath || '/',
             title: businessProfile?.title || `${label} | Timeline`,
             navLabel: shortLabel,
             switchLabel: shortLabel,
@@ -330,7 +330,7 @@
             subtitle: businessProfile?.subtitle || 'CRM',
             storagePrefix: existing.storagePrefix || storagePrefixForContext(key),
             apiValue: key,
-            isPrivateSurface: false,
+            isPrivateSurface: existing.isPrivateSurface === true,
             showAfisha: timeline.timelineFeatures?.afisha === true || businessProfile?.modules?.enabled?.afisha === true,
             defaultDisplayMode: mode,
             defaultHiddenElements: Array.isArray(timeline.defaultHiddenElements) ? timeline.defaultHiddenElements : [],
@@ -367,9 +367,18 @@
         }
     }
 
+    function currentMembershipContext() {
+        const profile = window.CrmBusinessContext?.profile?.();
+        if (profile?.membershipMode !== 'membership' || profile.accessContext?.status !== 'ready') return null;
+        const key = window.CrmBusinessContext?.current?.();
+        if (!key || key !== profile.activeBusinessId) return null;
+        return contextForBusiness(key);
+    }
+
     function currentContext() {
         return currentRouteContext()
             || currentUrlContext()
+            || currentMembershipContext()
             || currentPinnedRootContext()
             || currentCrmContext()
             || CONTEXTS.event_genix;
@@ -378,7 +387,7 @@
     function contextState() {
         const ctx = currentContext();
         const explicitRouteCtx = currentRouteContext();
-        const rootRouteCtx = currentPinnedRootContext();
+        const rootRouteCtx = currentMembershipContext() ? null : currentPinnedRootContext();
         const routeCtx = explicitRouteCtx || rootRouteCtx;
         const urlCtx = currentUrlContext();
         const crmState = window.CrmBusinessContext?.state?.();

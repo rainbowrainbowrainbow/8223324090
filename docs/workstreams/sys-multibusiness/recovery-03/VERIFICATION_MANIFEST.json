@@ -1,19 +1,15 @@
 {
   "status": "READY_FOR_EXACT_OWNER_BLOCK",
-  "generatedAt": "2026-09-13T14:19:44.252443+00:00",
+  "generatedAt": "2026-09-13T14:26:38.041732+00:00",
   "productionImpact": true,
   "candidateWorktree": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-recover-03-20260913",
   "candidateBranch": "codex/sys-mb-recover-03-20260913",
   "productionBranch": "codex/eventgenix-production",
-  "productionBaseSha": "487e9e872cef1455627aa0d6d31a9ef2ce9d7211",
-  "candidateHeadBeforeLocalCommit": "8d516d6e6292621890874f422ebab6059856bd78",
-  "liveVersionObserved": {
-    "url": "https://8223324090-production.up.railway.app/api/version",
-    "branch": "codex/eventgenix-production",
-    "sha": "487e9e872cef1455627aa0d6d31a9ef2ce9d7211",
-    "version": "0.81.154",
-    "releaseLabel": "Гайдбук Design Board для реклами"
-  },
+  "productionBranchBaseSha": "a06742e0d95ff286feff9bf79238cd1607b03412",
+  "liveShaObservedBeforeRelease": "487e9e872cef1455627aa0d6d31a9ef2ce9d7211",
+  "candidateHeadBeforeThisDocsCommit": "95d5ee555dcaefa1d60a986fe2909865dc2a9567",
+  "releaseVersion": "0.81.156",
+  "releaseLabel": "SYS-MB: перехід CRM",
   "railwayTarget": {
     "project": "fortunate-appreciation",
     "projectId": "bc28b46c-d4bc-491c-893a-d8401c633668",
@@ -21,13 +17,35 @@
     "serviceName": "8223324090",
     "serviceUuidObservedReadOnly": "3fb62d4c-2dc2-4701-8e2b-09ce16e188ee"
   },
-  "changedPathCount": 307,
-  "changedPaths": [
+  "changedPathCountBeforeThisDocsCommit": 358,
+  "changedPathsBeforeThisDocsCommit": [
+    "CHANGELOG.md",
+    "accounting-deposits.html",
+    "afisha.html",
+    "art-director.html",
+    "booking-summary.html",
+    "cashier-payments.html",
+    "center.html",
+    "certificates.html",
+    "chat-settings.html",
+    "chat.html",
+    "checkin.html",
     "config/permissionRegistry.js",
+    "content.html",
+    "copilot.html",
+    "css/assistant-rail.css",
+    "css/pages-shell.css",
+    "css/pages.css",
+    "css/sidebar-aurora.css",
+    "customers.html",
+    "dashboard.html",
     "db/migrations/363_multibusiness_cutover_journal_telemetry.sql",
     "db/migrations/364_catalog_ownership_markers.sql",
     "db/migrations/365_business_cutover_journal_approval_receipts.sql",
+    "demo.html",
+    "designer.html",
     "designs.html",
+    "docs/integrations/checkbox/IMPLEMENTATION_STATUS.md",
     "docs/workstreams/sys-multibusiness/ACCEPTANCE_REPORT.md",
     "docs/workstreams/sys-multibusiness/BUSINESS_CABINET_IMPLEMENTATION_REPORT.md",
     "docs/workstreams/sys-multibusiness/BUSINESS_CABINET_VERIFICATION.json",
@@ -146,8 +164,17 @@
     "docs/workstreams/sys-multibusiness/recovery-02/VERIFICATION_MANIFEST.json",
     "docs/workstreams/sys-multibusiness/recovery-03/CRM_RELEASE_MANIFEST.md",
     "docs/workstreams/sys-multibusiness/recovery-03/PRODUCTION_DELIVERY_REPORT.md",
+    "docs/workstreams/sys-multibusiness/recovery-03/VERIFICATION_MANIFEST.json",
     "docs/workstreams/sys-multibusiness/tools/validate-owner-mapping.cjs",
     "docs/workstreams/sys-multibusiness/tools/validate-owner-mapping.test.cjs",
+    "finance.html",
+    "game.html",
+    "graduation.html",
+    "guardian-ops.html",
+    "hermes-studio.html",
+    "hr.html",
+    "index.html",
+    "invite.html",
     "js/account-access-editor.js",
     "js/api.js",
     "js/auth.js",
@@ -165,9 +192,18 @@
     "js/timeline-context.js",
     "js/warehouse-page.js",
     "js/ws.js",
+    "landing/index.html",
+    "leads.html",
     "middleware/auth.js",
     "omni.html",
+    "package-lock.json",
     "package.json",
+    "profile.html",
+    "programs.html",
+    "quiz.html",
+    "report-agent.html",
+    "reports.html",
+    "room.html",
     "routes/art-director.js",
     "routes/auth.js",
     "routes/booking-templates.js",
@@ -205,6 +241,7 @@
     "scripts/sys-mb-recovery-draft.cjs",
     "scripts/sys-mb-recovery-review.cjs",
     "scripts/sys-mb-registry-snapshot.cjs",
+    "server.js",
     "services/accountAccessPolicy.js",
     "services/authBusinessProfile.js",
     "services/bookingLinkOwnership.js",
@@ -235,6 +272,12 @@
     "services/warehousePhotoIntake.js",
     "services/websocket.js",
     "services/websocketEventAccess.js",
+    "shop.html",
+    "sound.html",
+    "staff.html",
+    "status.html",
+    "sw.js",
+    "tasks.html",
     "tests/acceptance/run-sys-mb-local.cjs",
     "tests/acceptance/sys-mb-browser-scenarios.cjs",
     "tests/acceptance/sys-mb-browser-worker.cjs",
@@ -326,11 +369,20 @@
     "tests/timeline-context.test.js",
     "tests/timeline-membership-isolation.test.js",
     "tests/timeline-resources.test.js",
+    "tests/ui-check.js",
     "tests/warehouse-photo-intake.test.js",
     "tests/warehouse-product-isolation.test.js",
     "tests/websocket-event-access.test.js",
-    "tests/websocket-membership.test.js"
+    "tests/websocket-membership.test.js",
+    "timeline-settings.html",
+    "training.html",
+    "warehouse.html"
   ],
+  "mappingHashes": {
+    "crm": "3e653c3f12cc4edb3476cf4f5a9f06e1f2fbf865a2d410459fccca9163e50a86",
+    "maysternya_doli": "7efec32812aa093d5cfb5ce390e4faa68cf36342d13c90aa40d462d8fed6a162",
+    "sourceSnapshotSha256": "458fbd72aafaf3708f2e80ad85893418d9122c0a5c7487ffe3f3de6dc12a757b"
+  },
   "privateArtifacts": {
     "approvedCrmPayload": {
       "path": "C:\\Users\\Plotva\\.eventgenix\\sys-mb-recover-01-20260913\\approved-crm-apply-payload.json",
@@ -342,46 +394,41 @@
     },
     "crmPreflight": {
       "path": "C:\\Users\\Plotva\\.eventgenix\\sys-mb-recover-01-20260913\\recover-03-preflight-crm.json",
-      "sha256": "6253dc37dbec14f32836faf0d2cb4e2dc2ff9844d034456e040f0cc0508c1a2e",
       "status": "HOLD_REVIEW_REQUIRED",
-      "issue": "SELECT_PERMISSION_REQUIRED"
+      "issue": "SELECT_PERMISSION_REQUIRED",
+      "sha256": "6253dc37dbec14f32836faf0d2cb4e2dc2ff9844d034456e040f0cc0508c1a2e"
     },
     "maysternyaPreflight": {
       "path": "C:\\Users\\Plotva\\.eventgenix\\sys-mb-recover-01-20260913\\recover-03-preflight-maysternya_doli.json",
-      "sha256": "c1dc03833f16a9c6cdb4599c58cddd1fd8d0240b2b6529e87a569fb3fcd32a1b",
       "status": "HOLD_REVIEW_REQUIRED",
-      "issue": "SELECT_PERMISSION_REQUIRED"
+      "issue": "SELECT_PERMISSION_REQUIRED",
+      "sha256": "c1dc03833f16a9c6cdb4599c58cddd1fd8d0240b2b6529e87a569fb3fcd32a1b"
     }
-  },
-  "mappingHashes": {
-    "crm": "3e653c3f12cc4edb3476cf4f5a9f06e1f2fbf865a2d410459fccca9163e50a86",
-    "maysternya_doli": "7efec32812aa093d5cfb5ce390e4faa68cf36342d13c90aa40d462d8fed6a162",
-    "sourceSnapshotSha256": "458fbd72aafaf3708f2e80ad85893418d9122c0a5c7487ffe3f3de6dc12a757b"
   },
   "migrationHashes": {
     "db/migrations/357_organizations_business_memberships.sql": "681a1aca9f40d822ad1413440dae24f5e634c8f64dfa722c8e6f2cc5b5e85adb",
     "db/migrations/363_multibusiness_cutover_journal_telemetry.sql": "20f379fd31c48f1be49da7aa4439a94209bfd6b1b7a8a3cf42ba7fb73934d023",
-    "db/migrations/364_catalog_ownership_markers.sql": "55cf238013b86069634cffe984e0c538ff469685586c653080a8ba06da478129",
-    "db/migrations/365_business_cutover_journal_approval_receipts.sql": "6a3078bb9d68efc08040800834827b3cd0e206ebaecd475edca116f456834f39"
+    "db/migrations/364_catalog_ownership_markers.sql": "2e37931e813217278c2d72784493b046e4c4ebd4457e23e185131b59e15389aa",
+    "db/migrations/365_business_cutover_journal_approval_receipts.sql": "fd937ac24548c619d267114a8e8dd29161f871f966e081cc1d7b7ddeef75a6a0"
   },
   "localChecks": [
     {
-      "command": "npx -y -p node@22 -p npm@10 -c \"npm run check:runtime\"",
+      "command": "npm run check:runtime",
       "status": "PASS",
-      "evidence": "Node 22.23.2 / npm 10.9.9"
+      "evidence": "Node 22.23.1 / npm 10.9.8"
     },
     {
-      "command": "npx -y -p node@22 -p npm@10 -c \"npm run check:migrations\"",
+      "command": "npm run check:version",
+      "status": "PASS",
+      "evidence": "v0.81.156 — SYS-MB: перехід CRM in sync"
+    },
+    {
+      "command": "npm run check:migrations",
       "status": "PASS",
       "evidence": "Migration governance passed; SQL range 001-365"
     },
     {
-      "command": "npx -y -p node@22 -p npm@10 -c \"npm run test:sys-mb\"",
-      "status": "PASS",
-      "evidence": "legacy-containment 68, business-cabinets 84, lead-integrity 20, d05-domain-ownership 25 all passed"
-    },
-    {
-      "command": "npx -y -p node@22 -p npm@10 -c \"node --test tests/production-block-controller.test.js\"",
+      "command": "node --test tests/production-block-controller.test.js",
       "status": "PASS",
       "evidence": "45/45 tests passed"
     },
@@ -389,43 +436,13 @@
       "command": "BUSINESS_CUTOVER_LOCAL_POSTGRES_TEST=1 node tests/integration/business-cutover-journal-postgres.test.js under disposable local PostgreSQL",
       "status": "PASS",
       "evidence": "2/2 tests passed"
+    },
+    {
+      "command": "npm run test:sys-mb",
+      "status": "PASS",
+      "evidence": "Passed before rebase: legacy-containment 68, business-cabinets 84, lead-integrity 20, d05-domain-ownership 25"
     }
   ],
   "blockerBeforeProductionApply": "Production read-only preflight is incomplete until a bounded read lease or equivalent post-schema read-only preflight is authorized; live cutover journal schema is not applied yet.",
-  "localDirtyStatusAtManifestWrite": [
-    " M config/permissionRegistry.js",
-    " M docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.cjs",
-    " M docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.postgres.test.cjs",
-    " M routes/organizations.js",
-    " M scripts/audit-multibusiness-ownership.js",
-    " M scripts/production-block-controller.js",
-    " M scripts/production-block-policy.js",
-    " M services/accountAccessPolicy.js",
-    " M services/businessCutover.js",
-    " M services/businessModuleRegistry.js",
-    " M services/legacyBusinessSurface.js",
-    " M services/websocketEventAccess.js",
-    " M tests/business-cutover.test.js",
-    " M tests/business-membership-security.test.js",
-    " M tests/integration/business-cutover-journal-postgres.test.js",
-    " M tests/legacy-business-surface.test.js",
-    " M tests/multibusiness-ownership-preflight.test.js",
-    " M tests/production-block-controller.test.js",
-    "?? db/migrations/364_catalog_ownership_markers.sql",
-    "?? db/migrations/365_business_cutover_journal_approval_receipts.sql",
-    "?? docs/workstreams/sys-multibusiness/RECOVERY_TASKS_GPT55.md",
-    "?? docs/workstreams/sys-multibusiness/recovery-01/",
-    "?? docs/workstreams/sys-multibusiness/recovery-02/",
-    "?? docs/workstreams/sys-multibusiness/recovery-03/",
-    "?? scripts/sys-mb-audit-access.cjs",
-    "?? scripts/sys-mb-audit-read-lease.cjs",
-    "?? scripts/sys-mb-compatibility-telemetry-report.cjs",
-    "?? scripts/sys-mb-recovery-draft.cjs",
-    "?? scripts/sys-mb-recovery-review.cjs",
-    "?? scripts/sys-mb-registry-snapshot.cjs",
-    "?? tests/integration/sys-mb-audit-read-lease-postgres.test.js",
-    "?? tests/sys-mb-compatibility-telemetry-report.test.js",
-    "?? tests/sys-mb-recovery-audit.test.js",
-    "?? tests/sys-mb-recovery-review.test.js"
-  ]
+  "authoritativeProductionBlock": "Generate after this docs commit with production-block-controller; use the block id and confirmation printed by that command."
 }

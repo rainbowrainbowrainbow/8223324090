@@ -1,6 +1,6 @@
 # SYS-MB RECOVER-03 CRM first release manifest
 
-Status: WAITING_FOR_EXACT_OWNER_BLOCK
+Status: READY_FOR_EXACT_OWNER_BLOCK
 Generated: 2026-09-13
 Production impact: yes
 
@@ -15,12 +15,11 @@ Second business after CRM PASS: `maysternya_doli`, with a fresh preflight, manif
 
 - Live URL: `https://8223324090-production.up.railway.app`
 - Live branch from `/api/version`: `codex/eventgenix-production`
-- Live SHA from `/api/version`: `487e9e872cef1455627aa0d6d31a9ef2ce9d7211`
-- Live version: `0.81.154`
-- Remote production SHA: `487e9e872cef1455627aa0d6d31a9ef2ce9d7211`
+- Live SHA from `/api/version` before this release: `487e9e872cef1455627aa0d6d31a9ef2ce9d7211`
+- Remote production branch base used for candidate: `a06742e0d95ff286feff9bf79238cd1607b03412`
 - Candidate source branch: `codex/sys-mb-recover-03-20260913`
-- Candidate base: `487e9e872cef1455627aa0d6d31a9ef2ce9d7211`
-- Candidate HEAD before RECOVER-02/03 functional commit: `8d516d6e6292621890874f422ebab6059856bd78`
+- Release version: `v0.81.156`
+- Release label: `SYS-MB: перехід CRM`
 
 ## Railway target
 
@@ -33,21 +32,22 @@ Second business after CRM PASS: `maysternya_doli`, with a fresh preflight, manif
 
 ## Candidate scope
 
-Changed paths count before final local commit: `305`.
+The candidate preserves production branch hotfix `a06742e0d95ff286feff9bf79238cd1607b03412` and adds SYS-MB commits on top.
+
 Scope families:
 
 - SYS-MB auth/business context/profile/membership/cabinet code from prerequisite FINISH packages.
 - RECOVER-02 atomic reserved business apply and guarded release workflow.
-- Additive migrations 363, 364, 365. Migration 357 is prerequisite schema and is expected to already be in candidate history from the SYS-MB prerequisite commit.
+- Additive migrations 357, 363, 364, 365.
 - SYS-MB tests and recovery documentation.
-- Existing Design Board v0.81.154 production changes are preserved from current production base.
+- Version/cache/changelog marker `v0.81.156 — SYS-MB: перехід CRM`.
 
 ## Migration hashes
 
 - `db/migrations/357_organizations_business_memberships.sql`: `681a1aca9f40d822ad1413440dae24f5e634c8f64dfa722c8e6f2cc5b5e85adb`
 - `db/migrations/363_multibusiness_cutover_journal_telemetry.sql`: `20f379fd31c48f1be49da7aa4439a94209bfd6b1b7a8a3cf42ba7fb73934d023`
-- `db/migrations/364_catalog_ownership_markers.sql`: `55cf238013b86069634cffe984e0c538ff469685586c653080a8ba06da478129`
-- `db/migrations/365_business_cutover_journal_approval_receipts.sql`: `6a3078bb9d68efc08040800834827b3cd0e206ebaecd475edca116f456834f39`
+- `db/migrations/364_catalog_ownership_markers.sql`: `2e37931e813217278c2d72784493b046e4c4ebd4457e23e185131b59e15389aa`
+- `db/migrations/365_business_cutover_journal_approval_receipts.sql`: `fd937ac24548c619d267114a8e8dd29161f871f966e081cc1d7b7ddeef75a6a0`
 
 ## Approved CRM mapping
 
@@ -55,8 +55,6 @@ Scope families:
 - Private payload file hash: `30d9d2f478f938da22957ece2e20ccd8b9f673b6a8ba8b8a209294ffe7874aba`
 - Mapping body hash: `3e653c3f12cc4edb3476cf4f5a9f06e1f2fbf865a2d410459fccca9163e50a86`
 - Source snapshot hash: `458fbd72aafaf3708f2e80ad85893418d9122c0a5c7487ffe3f3de6dc12a757b`
-- Snapshot source deployment SHA: `4214598e263057b1cb1524d7fb84f328031d288d`
-- Membership writes expected by private summary: `3`
 - Approved role result: two director business memberships and one operational admin business membership. No owner assignment, no business creator role, no Hermes Bot rights.
 
 ## MD mapping prepared but not first apply
@@ -67,8 +65,6 @@ Scope families:
 
 ## Fresh preflight status before first block
 
-Current read-only production preflight was executed for both contexts and stored privately:
-
 - CRM: `HOLD_REVIEW_REQUIRED`, `INCOMPLETE`, issue `SELECT_PERMISSION_REQUIRED`, private file hash `6253dc37dbec14f32836faf0d2cb4e2dc2ff9844d034456e040f0cc0508c1a2e`.
 - Maysternya: `HOLD_REVIEW_REQUIRED`, `INCOMPLETE`, issue `SELECT_PERMISSION_REQUIRED`, private file hash `c1dc03833f16a9c6cdb4599c58cddd1fd8d0240b2b6529e87a569fb3fcd32a1b`.
 - Live schema currently has membership schema applied but cutover journal schema not applied.
@@ -77,56 +73,23 @@ This is the remaining technical blocker before data apply. The release block mus
 
 ## Data predicates for CRM apply
 
-Apply may proceed only if all predicates are true after schema/code deploy:
-
 1. `/api/version` proves the exact release SHA and branch.
 2. Migration ledger includes required SYS-MB migrations.
 3. The approved CRM payload hash and mapping body hash match this manifest.
 4. The CRM context is absent or belongs to the current Event Genix Group organization.
-5. No Park/Dar business, membership or default context changes are included in the CRM apply receipt.
+5. No Park/Dar/Maysternya business, membership or default context changes are included in the CRM apply receipt.
 6. The apply response returns state `applied`, context `crm`, expected membership count, approval ref, DB fingerprint and receipt hash.
 7. A replay with the same payload returns idempotent replay without duplicate memberships.
 
-## QA scope after CRM apply
+## Local verification before owner block
 
-Safe live QA only; no real sends, payments, exports, public token rotation, Telegram actions or generation.
-
-Required checks:
-
-- owner can see CRM business without changing Park/Dar default;
-- directors can access CRM approved pages/actions;
-- operational admin can access CRM as admin but is not owner/platform creator;
-- worker/non-member denied;
-- same-JWT revoke/role change takes effect on next request;
-- business switching does not leak Park/Dar/MD data;
-- public catalog links remain Park-owned and are not republished;
-- compatibility telemetry observation starts after migration.
-
-## Rollback
-
-Rollback is forward-only:
-
-- retain additive schema/evidence tables;
-- use receipt-bound rollback package if CRM mapping must be undone;
-- do not flip back to broad compatibility unless separately reviewed;
-- do not drop deprecated columns/tables in this release.
+- PASS: `npm run check:runtime` — Node 22.23.1 / npm 10.9.8
+- PASS: `npm run check:version` — v0.81.156 — SYS-MB: перехід CRM in sync
+- PASS: `npm run check:migrations` — Migration governance passed; SQL range 001-365
+- PASS: `node --test tests/production-block-controller.test.js` — 45/45 tests passed
+- PASS: `BUSINESS_CUTOVER_LOCAL_POSTGRES_TEST=1 node tests/integration/business-cutover-journal-postgres.test.js under disposable local PostgreSQL` — 2/2 tests passed
+- PASS: `npm run test:sys-mb` — Passed before rebase: legacy-containment 68, business-cabinets 84, lead-integrity 20, d05-domain-ownership 25
 
 ## Required owner block
 
 Exact block must authorize: auth/permission code, additive migrations, push to `codex/eventgenix-production`, exact-SHA CI, Railway helper deploy, temporary bounded read-only preflight access if required, approved atomic CRM mapping apply, safe live QA and cleanup, within 6 hours and max 3 release attempts.
-
-## Local verification before owner block
-
-- Candidate worktree: `C:\Users\Plotva\OneDrive\Документи\EventGenix\.worktrees\sys-mb-recover-03-20260913`
-- Candidate branch: `codex/sys-mb-recover-03-20260913`
-- Production base SHA: `487e9e872cef1455627aa0d6d31a9ef2ce9d7211`
-- Candidate HEAD before functional local commit: `8d516d6e6292621890874f422ebab6059856bd78`
-- Changed paths in release scope before local commit: `307`
-- Checks:
-  - PASS: `npx -y -p node@22 -p npm@10 -c "npm run check:runtime"` — Node 22.23.2 / npm 10.9.9
-  - PASS: `npx -y -p node@22 -p npm@10 -c "npm run check:migrations"` — Migration governance passed; SQL range 001-365
-  - PASS: `npx -y -p node@22 -p npm@10 -c "npm run test:sys-mb"` — legacy-containment 68, business-cabinets 84, lead-integrity 20, d05-domain-ownership 25 all passed
-  - PASS: `npx -y -p node@22 -p npm@10 -c "node --test tests/production-block-controller.test.js"` — 45/45 tests passed
-  - PASS: `BUSINESS_CUTOVER_LOCAL_POSTGRES_TEST=1 node tests/integration/business-cutover-journal-postgres.test.js under disposable local PostgreSQL` — 2/2 tests passed
-- `routes/finance.js` and `routes/payroll.js` are allowed only inside the explicit `sys-mb-auth-cutover` workflow as SYS-MB containment; `routes/payments.js` remains blocked by regression test.
-- Production apply remains blocked until the exact owner block authorizes the read-only preflight lease/equivalent preflight, migrations, push, CI, Railway helper deploy, approved CRM apply, safe QA and cleanup.

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.153 - Рішення щодо legacy-матеріалів Design Board
+
+### Release / Versioning / (13.09.2026) [codex]
+- **Рішення щодо legacy-матеріалів Design Board** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.152 - Пояснення PIN тестової каси
 
 ### Release / Versioning / (13.09.2026) [codex]

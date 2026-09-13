@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.152 - Пояснення PIN тестової каси
+
+### Release / Versioning / (13.09.2026) [codex]
+- **Пояснення PIN тестової каси** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.151 - PIN тестової каси біля маршруту
 
 ### Release / Versioning / (13.09.2026) [codex]

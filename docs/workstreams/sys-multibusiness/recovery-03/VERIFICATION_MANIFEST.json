@@ -1,14 +1,14 @@
 {
-  "status": "READY_FOR_NEW_EXACT_OWNER_BLOCK_AFTER_CI_REMEDIATION",
-  "generatedAt": "2026-09-13T15:23:23.0152617Z",
+  "status": "READY_FOR_PUSH_AFTER_REBASE_TO_CURRENT_PRODUCTION",
+  "generatedAt": "2026-09-13T17:45:01.3467262Z",
   "productionImpact": true,
   "candidateWorktree": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-recover-03-20260913",
   "candidateBranch": "codex/sys-mb-recover-03-20260913",
   "productionBranch": "codex/eventgenix-production",
-  "productionBranchBaseSha": "18521fb2eb708f17d677c0cf96944adea0be91b1",
-  "liveShaObservedBeforeRelease": "8b21b3fcbd159c6c1e793d22508953d303c6c212",
+  "productionBranchBaseSha": "94c9966c0018c36931627343311f64b777d52ddd",
+  "liveShaObservedBeforeRelease": "0c7c72e24961f69449b1aa78cac08f558df68e55",
   "candidateHeadBeforeThisDocsCommit": "d448d125c94398fbd7bc2922bc6fee6b224c0290",
-  "releaseVersion": "0.81.159",
+  "releaseVersion": "0.81.165",
   "releaseLabel": "SYS-MB: перехід CRM",
   "railwayTarget": {
     "project": "fortunate-appreciation",
@@ -467,5 +467,31 @@
     "version": "0.81.158",
     "label": "Спільний тестовий термінал",
     "preserved": true
+  },
+  "candidateHeadBeforeFinalMarkerCommit": "231ecd1c18a6b4c92b692bcdc2d64c288de66839",
+  "latestProductionDrift": {
+    "absorbed": true,
+    "originSha": "94c9966c0018c36931627343311f64b777d52ddd",
+    "notes": "Dashboard v0.81.164 production branch drift preserved before SYS-MB v0.81.165 marker."
+  },
+  "registryDecision": {
+    "maysternyaDoliDefaultRoles": [
+      "director",
+      "manager",
+      "admin"
+    ],
+    "platformCreatorOperationalBusinessRole": false,
+    "notes": "Technical creator remains platform-only; MD operational page access must come from active maysternya_doli membership."
+  },
+  "localVerificationRefresh": {
+    "beforeFinalMarkerCommit": [
+      "npm run check:runtime",
+      "npm run check:migrations",
+      "node --test tests/account-access-policy.test.js tests/capability-parity-contract.test.js tests/production-block-controller.test.js",
+      "npm run test:browser:sidebar-timeline",
+      "npm run test:sys-mb",
+      "npm test"
+    ],
+    "afterFinalMarkerCommitRequired": true
   }
 }

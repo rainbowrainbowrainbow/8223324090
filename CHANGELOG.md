@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.165 - SYS-MB: перехід CRM
+
+### Release / Versioning / (13.09.2026) [codex]
+- **SYS-MB: перехід CRM** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.164 - Dashboard без 500 у ризиках
 
 ### Release / Versioning / (13.09.2026) [codex]

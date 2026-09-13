@@ -205,7 +205,7 @@ const PAGE_PERMISSIONS = Object.freeze([
     }),
     page({
         key: '/maysternya-doli', label: 'Таймлайн МД', group: 'today', canonicalPath: '/maysternya-doli',
-        defaultRoles: ['creator', 'director', 'manager', 'admin'], explicitAllow: false, risk: 'critical', status: PAGE_STATUS.SPECIAL_CONTEXT,
+        defaultRoles: ['director', 'manager', 'admin'], explicitAllow: false, risk: 'critical', status: PAGE_STATUS.SPECIAL_CONTEXT,
         sidebarLinks: ['/maysternya-doli'], frontendConsumers: [source('index.html', 'js/auth.js')],
         backendConsumers: [source('server.js', "app.get('/maysternya-doli'")],
         apiConsumers: [api('routes/bookings.js', '/api/bookings?business_context=maysternya_doli', null)],

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.164",
+  "version": "0.81.165",
   "eventGenix": {
-    "releaseLabel": "Dashboard без 500 у ризиках"
+    "releaseLabel": "SYS-MB: перехід CRM"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

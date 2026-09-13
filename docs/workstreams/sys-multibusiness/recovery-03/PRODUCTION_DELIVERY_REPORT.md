@@ -1,24 +1,24 @@
 # SYS-MB RECOVER-03 production delivery report
 
-Status: READY_FOR_NEW_EXACT_OWNER_BLOCK_AFTER_CI_REMEDIATION
+Status: READY_FOR_PUSH_AFTER_REBASE_TO_CURRENT_PRODUCTION
 Generated: 2026-09-13
 Production impact: yes
+## Current refresh after Dashboard production drift
 
-- Live SHA before release: `8b21b3fcbd159c6c1e793d22508953d303c6c212`
-- Remote production branch base: `18521fb2eb708f17d677c0cf96944adea0be91b1`
-- Candidate branch: `codex/sys-mb-recover-03-20260913`
-- Candidate HEAD before drift refresh: `d448d125c94398fbd7bc2922bc6fee6b224c0290`
-- First pushed candidate attempt: `7b3f87aa2fd37ff1f3b8e442077c6e1246bddea5` — CI failed before deploy; no Railway deploy or CRM apply was run.
-- Remote production branch drift absorbed: `18521fb2eb708f17d677c0cf96944adea0be91b1` (`v0.81.158 — Спільний тестовий термінал`) is preserved in the remediated candidate; live site still reported `8b21b3fcbd159c6c1e793d22508953d303c6c212` before deploy.
-- Release version: `v0.81.159`
-- Release label: `SYS-MB: перехід CRM`
-- First business planned for apply: `crm`
-- Second business: `maysternya_doli` after CRM PASS and a separate fresh block.
+- Refreshed at: `2026-09-13T17:46:36Z`.
+- Live before this SYS-MB deploy: `0c7c72e24961f69449b1aa78cac08f558df68e55` / `v0.81.163` / `Dashboard стабільні ризик-сигнали` on `codex/eventgenix-production`.
+- Current remote production branch: `94c9966c0018c36931627343311f64b777d52ddd`.
+- Candidate branch: `codex/sys-mb-recover-03-20260913`.
+- Candidate head before final marker commit: `231ecd1c18a6b4c92b692bcdc2d64c288de66839`.
+- Release marker prepared: `v0.81.165 — SYS-MB: перехід CRM`.
+- Dashboard drift `94c9966c0018c36931627343311f64b777d52ddd` is preserved as production base; shared-terminal/payment drift is already in deployed/base history and is not modified by this SYS-MB marker.
+- `/maysternya-doli` page registry now requires active business membership roles `director`, `manager`, or `admin`; technical platform `creator` is not treated as an MD business role.
+- Local checks after the earlier candidate and before this final marker: `npm run check:runtime`, `npm run check:migrations`, policy/controller tests, `npm run test:browser:sidebar-timeline`, `npm run test:sys-mb`, and `npm test` passed. Targeted checks must be rerun after this final marker commit before push.
 
 ## Local readiness
 
 - PASS: `npm run check:runtime` — to rerun after this manifest refresh
-- PASS: `npm run check:version` — v0.81.159 — SYS-MB: перехід CRM in sync before this docs refresh
+- PASS: `npm run check:version` — v0.81.165 — SYS-MB: перехід CRM in sync before this docs refresh
 - PASS: `npm run check:migrations` — to rerun after this manifest refresh
 - PASS: `node --test tests/production-block-controller.test.js` — to rerun after this manifest refresh
 - PASS: `npm run test:sys-mb` — to rerun after this manifest refresh
@@ -46,7 +46,7 @@ Result: FAIL before deploy. Railway deploy and CRM mapping apply were not starte
 
 Fixed local causes:
 
-- `config/permissionRegistry.js`: restored technical `creator` to the `/maysternya-doli` special-context page preset while keeping the membership-context guard in `services/accountAccessPolicy.js`; explicit allow for this page remains disabled.
+- `config/permissionRegistry.js`: keeps `/maysternya-doli` special-context access on active business membership roles `director`, `manager`, and `admin`; technical platform `creator` is not an operational MD role and explicit allow remains disabled.
 - `tests/browser/sidebar-timeline-launcher-runtime-ci-smoke.js`: updated the read-only browser fixture to serve the canonical `/api/auth/business-profile` endpoint used by current frontend hydration.
 
 Post-fix local verification:

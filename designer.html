@@ -11,26 +11,16 @@
     <title>Event Genix | Дизайнер</title>
     <meta name="description" content="Event Genix — Дизайнер: каталоги, гайдлайн, бренд">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.153">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.153">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.153">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.153">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.153">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.153">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.153">
+    <link rel="stylesheet" href="css/base.css?v=0.81.154">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.154">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.154">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.154">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.154">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.154">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.154">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <style>
-        .designer-page{--dg-text:var(--gray-900);--dg-muted:var(--gray-500);--dg-card:var(--white);--dg-line:var(--gray-100);--dg-tabs:var(--gray-50);--dg-active:var(--white);--dg-active-text:var(--gray-900);--dg-link:var(--primary);padding:20px 24px;min-height:100vh;color:var(--dg-text)}
-        html[data-theme="dark"] .designer-page,body.dark-mode .designer-page{--dg-text:#E2E8F0;--dg-muted:#94A3B8;--dg-card:rgba(255,255,255,.04);--dg-line:rgba(255,255,255,.07);--dg-tabs:rgba(255,255,255,.04);--dg-active:rgba(16,185,129,.16);--dg-active-text:#A7F3D0;--dg-link:#6EE7B7}
-        .designer-breadcrumb{display:inline-flex;align-items:center;min-height:36px;margin-bottom:14px;color:var(--dg-muted);font-size:13px;font-weight:700;text-decoration:none;border-radius:10px}.designer-breadcrumb:hover{color:var(--dg-link)}
-        .designer-breadcrumb:focus-visible,.designer-tab:focus-visible{outline:3px solid rgba(16,185,129,.48);outline-offset:2px}.designer-header{margin-bottom:24px}.designer-header h1{font-size:28px;font-weight:800;margin:0 0 4px;color:var(--dg-text)}.designer-header .subtitle{font-size:14px;color:var(--dg-muted)}
-        .designer-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--dg-tabs);border:1px solid var(--dg-line);border-radius:12px;padding:4px;flex-wrap:wrap}.designer-tab{min-height:40px;padding:8px 16px;border:0;background:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--dg-muted)}.designer-tab.active{background:var(--dg-active);color:var(--dg-active-text)}.designer-tab:hover:not(.active){color:var(--dg-text);background:var(--dg-card)}
-        .designer-tab-content{display:none}.designer-tab-content.active{display:block}.designer-section{margin-bottom:24px}.designer-section h2{font-size:20px;font-weight:800;margin:0 0 12px;color:var(--dg-text)}.designer-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}.designer-card{background:var(--dg-card);border:1px solid var(--dg-line);border-radius:14px;padding:18px}.designer-card h3{font-size:15px;font-weight:800;margin:0 0 8px;color:var(--dg-text)}.designer-card p{font-size:13px;color:var(--dg-muted);margin:0}.designer-empty{text-align:center;padding:60px 20px;color:var(--gray-400)}.designer-empty-icon{font-size:48px;margin-bottom:12px}
-        .color-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}.color-swatch{border-radius:12px;overflow:hidden;border:1px solid var(--dg-line);background:var(--dg-card)}.color-swatch-preview{height:60px}.color-swatch-info{padding:8px;font-size:11px;font-weight:700}.color-swatch-name{color:var(--dg-text)}.color-swatch-hex{color:var(--dg-muted)}
-        @media(max-width:640px){.designer-page{padding:16px}.designer-grid{grid-template-columns:1fr}.designer-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.designer-tabs::-webkit-scrollbar{display:none}.designer-tab{flex:0 0 auto;white-space:nowrap}}
-
-    </style>
+    <link rel="stylesheet" href="css/designer-guidebook.css?v=0.81.154">
 </head>
 <body data-page-group="designer">
     <script>(function(){var s=localStorage.getItem('pzp_dark_mode');if(s!=='false'){document.body.classList.add('dark-mode')}})();</script>
@@ -90,151 +80,220 @@
 
         <main class="main-content" id="main-content">
             <div class="designer-page">
-                <a class="designer-breadcrumb" href="/designs">← Design Board</a>
+                <a class="designer-breadcrumb" href="/designs">← До матеріалів Design Board</a>
                 <div class="designer-header">
-                    <h1>📐 Дизайнер</h1>
-                    <p class="subtitle">Каталоги, гайдлайни, брендбук, стайлгайд</p>
+                    <div class="designer-hero-media" aria-hidden="true"></div>
+                    <div class="designer-hero">
+                        <div>
+                            <p class="designer-kicker">Design Board Guidebook</p>
+                            <h1>Event Genix brand guide для швидких рекламних матеріалів</h1>
+                            <p class="subtitle">Єдиний орієнтир для CRM-візуалів: логотип, кольори, тон, приклади композиції та шаблони для постів, stories, каталогів і презентацій.</p>
+                        </div>
+                        <div class="designer-logo-panel">
+                            <img loading="lazy" src="images/brand/event-genix-logo.png" alt="Event Genix mosaic mark">
+                            <strong>Event Genix</strong>
+                            <span>AI First CRM</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="designer-tabs">
-                    <button type="button" class="designer-tab active" data-tab="catalogs">📂 Каталоги</button>
-                    <button type="button" class="designer-tab" data-tab="guideline">📖 Гайдлайн</button>
-                    <button type="button" class="designer-tab" data-tab="brand">🎨 Brand Book</button>
-                    <button type="button" class="designer-tab" data-tab="styleguide">📐 Стайлгайд</button>
-                    <button type="button" class="designer-tab" data-tab="templates">📋 Шаблони</button>
+                    <button type="button" class="designer-tab active" data-tab="catalogs" id="tabButtonCatalogs" aria-controls="tabCatalogs">📂 Каталоги</button>
+                    <button type="button" class="designer-tab" data-tab="guideline" id="tabButtonGuideline" aria-controls="tabGuideline">📖 Гайдлайн</button>
+                    <button type="button" class="designer-tab" data-tab="brand" id="tabButtonBrand" aria-controls="tabBrand">🎨 Brand Book</button>
+                    <button type="button" class="designer-tab" data-tab="styleguide" id="tabButtonStyleguide" aria-controls="tabStyleguide">📐 Стайлгайд</button>
+                    <button type="button" class="designer-tab" data-tab="templates" id="tabButtonTemplates" aria-controls="tabTemplates">📋 Шаблони</button>
                 </div>
 
                 <!-- Каталоги -->
-                <div id="tabCatalogs" class="designer-tab-content active">
+                <div id="tabCatalogs" class="designer-tab-content active" role="tabpanel" aria-labelledby="tabButtonCatalogs">
                     <div class="designer-section">
-                        <h2>Каталоги продуктів</h2>
-                        <div class="designer-grid" id="catalogsGrid">
-                            <div class="designer-card">
-                                <h3>🎯 Квести</h3>
-                                <p>Піратський квест, Лісова академія, Квест-Фотограф та інші</p>
+                        <h2>Каталоги матеріалів</h2>
+                        <p class="designer-section-lead">Ці групи допомагають швидко зібрати матеріал для реклами, презентації або клієнтського каталогу без пошуку по всій CRM.</p>
+                        <div class="guide-image-grid" id="catalogsGrid">
+                            <div class="guide-image-card">
+                                <img loading="lazy" src="images/brand/guidebook/event-card-quest.png" alt="Quest visual materials">
+                                <div>
+                                    <h3>Квести та пригоди</h3>
+                                    <p>Темні сцени, маршрут, світло і предметний фокус. Підходить для афіш, stories і teaser-постів.</p>
+                                </div>
                             </div>
-                            <div class="designer-card">
-                                <h3>🎂 Дні народження</h3>
-                                <p>Базовий, Стандарт, Преміум, VIP пакети</p>
+                            <div class="guide-image-card">
+                                <img loading="lazy" src="images/brand/guidebook/event-card-show-program.png" alt="Show program visual materials">
+                                <div>
+                                    <h3>Шоу та програми</h3>
+                                    <p>Яскрава сцена з вільним центром для заголовка. Добре працює для анонсів і банерів.</p>
+                                </div>
                             </div>
-                            <div class="designer-card">
-                                <h3>🎪 Програми</h3>
-                                <p>Анімації, шоу, МК, фото-зони</p>
+                            <div class="guide-image-card">
+                                <img loading="lazy" src="images/brand/guidebook/event-card-workshop.png" alt="Workshop visual materials">
+                                <div>
+                                    <h3>Майстер-класи</h3>
+                                    <p>Тепле світло, багато фактур і рукодільна тема. Основа для дитячих та творчих пропозицій.</p>
+                                </div>
                             </div>
-                            <div class="designer-card">
-                                <h3>🎓 Випускні</h3>
-                                <p>7 пакетів від Базового до Преміум+</p>
+                            <div class="guide-image-card">
+                                <img loading="lazy" src="images/brand/guidebook/event-card-private-party.png" alt="Private party visual materials">
+                                <div>
+                                    <h3>Фото-зони та приватні події</h3>
+                                    <p>Чистий простір у центрі, м'які акценти та готова зона для назви пакета або дати.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Гайдлайн -->
-                <div id="tabGuideline" class="designer-tab-content">
+                <div id="tabGuideline" class="designer-tab-content" role="tabpanel" aria-labelledby="tabButtonGuideline">
                     <div class="designer-section">
-                        <h2>Правила використання бренду</h2>
+                        <h2>Правила використання бренду Event Genix</h2>
+                        <p class="designer-section-lead">Гайд описує загальний CRM-бренд. Матеріали ДАР, Майстерні долі та Парку використовуються тільки як приклади окремих клієнтських стилів.</p>
+                        <div class="guide-logo-row">
+                            <div class="guide-logo-stage">
+                                <img loading="lazy" src="images/brand/event-genix-logo.png" alt="Event Genix mosaic mark">
+                            </div>
+                            <div class="guide-rule-list">
+                                <div class="guide-rule"><span>Назва</span><p><strong>Event Genix</strong> пишемо з пробілом і двома великими літерами. У продукті не скорочуємо до EG.</p></div>
+                                <div class="guide-rule"><span>Логотип</span><p>Основний знак для CRM-гайду — кольоровий мозаїчний круг. Золотий gear mark лишається службовим знаком у sidebar і технічних місцях.</p></div>
+                                <div class="guide-rule"><span>Масштаб</span><p>Для екрана тримаємо знак не менше 64 px у презентаційних блоках і не розтягуємо його по одній осі.</p></div>
+                                <div class="guide-rule"><span>Мова</span><p>Продуктові та рекламні матеріали готуємо українською. Код, id і технічні назви лишаються англійською.</p></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="designer-section">
+                        <h2>Композиція</h2>
                         <div class="designer-grid">
                             <div class="designer-card">
-                                <h3>Логотип</h3>
-                                <p>Основний — gear-logo.svg. Мінімальний розмір 32px. Не змінювати пропорції та кольори.</p>
+                                <h3>Правильно</h3>
+                                <div class="guide-sample"><p>Один сильний заголовок, реальне зображення, чиста зона для тексту, один заклик до дії.</p></div>
+                                <button type="button" class="guide-copy-btn" data-guide-copy="Один сильний заголовок, реальне зображення, чиста зона для тексту, один заклик до дії.">Копіювати приклад</button>
                             </div>
                             <div class="designer-card">
-                                <h3>Найменування</h3>
-                                <p>Офіційна назва: Event Genix. Не використовувати: EventGenix, event genix, EG.</p>
+                                <h3>Не треба</h3>
+                                <div class="guide-sample bad"><p>Багато емодзі, дрібний текст поверх деталей, випадкові кольори, змішування логотипів різних брендів.</p></div>
                             </div>
                             <div class="designer-card">
-                                <h3>Мова</h3>
-                                <p>UI/UX — українською. Код — англійською. Бренд-матеріали — українською.</p>
+                                <h3>Перед публікацією</h3>
+                                <p>Перевірити назву бренду, контраст, відступи навколо логотипа, читабельність на телефоні та відповідність матеріалу конкретній компанії.</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Brand Book -->
-                <div id="tabBrand" class="designer-tab-content">
+                <div id="tabBrand" class="designer-tab-content" role="tabpanel" aria-labelledby="tabButtonBrand">
                     <div class="designer-section">
-                        <h2>Brand Book — Парк Закревського Періоду</h2>
-                        <div id="brandContent" style="display:flex;flex-direction:column;gap:16px">
-                            <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;padding:20px">
-                                <h3 style="margin:0 0 8px">🎯 Місія</h3>
-                                <p style="color:var(--gray-500);margin:0">Створювати найяскравіші дитячі свята та розваги у Києві. Кожне бронювання — це пригода.</p>
+                        <h2>Brand Book Event Genix</h2>
+                        <p class="designer-section-lead">Event Genix звучить як робочий інструмент для команди: ясно, спокійно, без зайвої магії в тексті. Візуально бренд може бути яскравим, але інтерфейс має лишатися зручним для щоденної роботи.</p>
+                        <div id="brandContent" class="designer-grid">
+                            <div class="designer-card">
+                                <h3>Призначення</h3>
+                                <p>CRM збирає операційні матеріали, бронювання, каталоги, задачі та рекламні assets в одному місці для команд подій і сервісних бізнесів.</p>
                             </div>
-                            <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;padding:20px">
-                                <h3 style="margin:0 0 8px">🎨 Логотип</h3>
-                                <p style="color:var(--gray-500);margin:0">Шестеренка з крапкою по центру. Колір: золотий (#F5C842) на темному (#0D0D0D). Мінімальний розмір: 32px.</p>
+                            <div class="designer-card">
+                                <h3>Голос</h3>
+                                <p>Тексти короткі, конкретні й корисні. Пояснюємо результат дії, не продаємо через тиск і не обіцяємо те, що система не підтверджує даними.</p>
                             </div>
-                            <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;padding:20px">
-                                <h3 style="margin:0 0 8px">✍️ Тон комунікації</h3>
-                                <p style="color:var(--gray-500);margin:0">Дружній, грайливий, професійний. Звертаємося на "ви" до батьків, на "ти" до дітей. Емодзі — помірно.</p>
+                            <div class="designer-card">
+                                <h3>Візуальний принцип</h3>
+                                <p>Одна сильна фотографія або ілюстрація, чиста зона для тексту, мозаїчна палітра як акцент і зрозумілий CTA.</p>
                             </div>
-                            <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;padding:20px">
-                                <h3 style="margin:0 0 8px">📱 Соціальні мережі</h3>
-                                <p style="color:var(--gray-500);margin:0">Instagram: яскраві фото з свят. Facebook: анонси + відгуки. Telegram: оперативні новини команді.</p>
+                            <div class="designer-card">
+                                <h3>Для клієнтських брендів</h3>
+                                <p>ДАР, Майстерня долі й Парк мають окремий голос і палітри. У CRM вони мають бути позначені як матеріали конкретної компанії.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="designer-section">
+                        <h2>Приклади голосу</h2>
+                        <div class="brand-example-grid">
+                            <div class="brand-example">
+                                <h3>Event Genix</h3>
+                                <p>Готовий макет для афіші збережено в Design Board. Перевірте текст, дату й компанію перед публікацією.</p>
+                                <button type="button" class="guide-copy-btn" data-guide-copy="Готовий макет для афіші збережено в Design Board. Перевірте текст, дату й компанію перед публікацією.">Копіювати текст</button>
+                            </div>
+                            <div class="brand-example">
+                                <h3>Дитячий Активний Розвиток</h3>
+                                <p>Теплий освітній тон: прості формулювання, багато повітря, біле тло, зелений як основний акцент.</p>
+                                <button type="button" class="guide-copy-btn" data-guide-copy="Теплий освітній тон: прості формулювання, багато повітря, біле тло, зелений як основний акцент.">Копіювати текст</button>
+                            </div>
+                            <div class="brand-example">
+                                <h3>Майстерня долі</h3>
+                                <p>Спокійний рефлексивний тон: без гарантій результату, без тиску, з м'яким запрошенням до діалогу.</p>
+                                <button type="button" class="guide-copy-btn" data-guide-copy="Спокійний рефлексивний тон: без гарантій результату, без тиску, з м'яким запрошенням до діалогу.">Копіювати текст</button>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Стайлгайд -->
-                <div id="tabStyleguide" class="designer-tab-content">
+                <div id="tabStyleguide" class="designer-tab-content" role="tabpanel" aria-labelledby="tabButtonStyleguide">
                     <div class="designer-section">
-                        <h2>Кольори</h2>
+                        <h2>Кольори Event Genix</h2>
+                        <p class="designer-section-lead">Палітра взята з наявного мозаїчного знака й адаптована для CRM: синій для довіри, зелений для готовності, рожевий і помаранчевий для рекламних акцентів.</p>
                         <div class="color-grid">
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#10B981"></div><div class="color-swatch-info"><div class="color-swatch-name">Primary</div><div class="color-swatch-hex">#10B981</div></div></div>
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#F5C842"></div><div class="color-swatch-info"><div class="color-swatch-name">Accent</div><div class="color-swatch-hex">#F5C842</div></div></div>
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#EF4444"></div><div class="color-swatch-info"><div class="color-swatch-name">Danger</div><div class="color-swatch-hex">#EF4444</div></div></div>
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#3B82F6"></div><div class="color-swatch-info"><div class="color-swatch-name">Info</div><div class="color-swatch-hex">#3B82F6</div></div></div>
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#1a1a2e"></div><div class="color-swatch-info"><div class="color-swatch-name">Dark BG</div><div class="color-swatch-hex">#1a1a2e</div></div></div>
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#F9FAFB"></div><div class="color-swatch-info"><div class="color-swatch-name">Light BG</div><div class="color-swatch-hex">#F9FAFB</div></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#17324D"></div><div class="color-swatch-info"><div class="color-swatch-name">Ink</div><div class="color-swatch-hex">#17324D</div><div class="color-swatch-role">заголовки, темні блоки</div><button type="button" class="guide-copy-btn" data-guide-copy="#17324D">Копіювати HEX</button></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#2176AE"></div><div class="color-swatch-info"><div class="color-swatch-name">Blue</div><div class="color-swatch-hex">#2176AE</div><div class="color-swatch-role">посилання, навігація</div><button type="button" class="guide-copy-btn" data-guide-copy="#2176AE">Копіювати HEX</button></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#25B7D3"></div><div class="color-swatch-info"><div class="color-swatch-name">Sky</div><div class="color-swatch-hex">#25B7D3</div><div class="color-swatch-role">інфо, легкі акценти</div><button type="button" class="guide-copy-btn" data-guide-copy="#25B7D3">Копіювати HEX</button></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#2FB36D"></div><div class="color-swatch-info"><div class="color-swatch-name">Green</div><div class="color-swatch-hex">#2FB36D</div><div class="color-swatch-role">готово, доступно</div><button type="button" class="guide-copy-btn" data-guide-copy="#2FB36D">Копіювати HEX</button></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#E73783"></div><div class="color-swatch-info"><div class="color-swatch-name">Pink</div><div class="color-swatch-hex">#E73783</div><div class="color-swatch-role">promo, social hooks</div><button type="button" class="guide-copy-btn" data-guide-copy="#E73783">Копіювати HEX</button></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#F59E0B"></div><div class="color-swatch-info"><div class="color-swatch-name">Orange</div><div class="color-swatch-hex">#F59E0B</div><div class="color-swatch-role">CTA, увага</div><button type="button" class="guide-copy-btn" data-guide-copy="#F59E0B">Копіювати HEX</button></div></div>
                         </div>
                     </div>
                     <div class="designer-section">
                         <h2>Типографіка</h2>
                         <div class="designer-grid">
-                            <div class="designer-card">
-                                <h3>Inter</h3>
-                                <p>Основний шрифт CRM для тексту, даних і таблиць. Ваги: 400, 600, 700, 800.</p>
+                            <div class="type-sample">
+                                <h3>Nunito</h3>
+                                <p class="display">Event Genix керує матеріалами без хаосу</p>
+                                <p class="body">Nunito використовується для великих презентаційних заголовків, коли сторінка має звучати дружніше.</p>
                             </div>
-                            <div class="designer-card">
-                                <h3>Space Grotesk / Nunito</h3>
-                                <p>Display-шрифти для заголовків і бренд-матеріалів. Не змінювати глобальну типографіку без окремого scope.</p>
+                            <div class="type-sample">
+                                <h3>Inter</h3>
+                                <p class="display" style="font-family:Inter,Nunito,sans-serif;font-size:26px">Design Board показує статус файлів чесно</p>
+                                <p class="body">Inter лишається основним шрифтом CRM для таблиць, форм, меню, списків і робочих станів.</p>
                             </div>
                         </div>
                     </div>
                     <div class="designer-section">
-                        <h2>Відступи та радіуси</h2>
+                        <h2>UI правила</h2>
                         <div class="designer-grid">
-                            <div class="designer-card"><h3>Radius</h3><p>--radius: 16px, --radius-card: 12px, --radius-sm: 10px</p></div>
-                            <div class="designer-card"><h3>Spacing</h3><p>Base: 8px. Grid gap: 12-14px. Section gap: 24px.</p></div>
-                            <div class="designer-card"><h3>Touch Target</h3><p>Min 44px (WCAG 2.1). Font-size inputs: min 16px.</p></div>
+                            <div class="designer-card"><h3>Cards</h3><p>Для робочих карток тримаємо радіус 12-14 px, чіткий border і без вкладених декоративних карток.</p></div>
+                            <div class="designer-card"><h3>Spacing</h3><p>Базовий крок 8 px. Між секціями 24 px, між картками 12 px. У рекламних прев'ю залишаємо більше повітря навколо логотипа.</p></div>
+                            <div class="designer-card"><h3>States</h3><p>Недоступний файл показуємо як unavailable state. Не малюємо preview, якщо байтів немає.</p></div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Шаблони -->
-                <div id="tabTemplates" class="designer-tab-content">
+                <div id="tabTemplates" class="designer-tab-content" role="tabpanel" aria-labelledby="tabButtonTemplates">
                     <div class="designer-section">
                         <h2>Шаблони дизайнів</h2>
-                        <div id="templatesContent" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">
-                            <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;padding:16px">
-                                <div style="font-size:32px;margin-bottom:8px">📄</div>
-                                <h3 style="margin:0 0 4px;font-size:14px">Пост Instagram</h3>
-                                <p style="color:var(--gray-500);font-size:12px;margin:0">1080×1080, фото + текст, золотий акцент</p>
+                        <p class="designer-section-lead">Це реальні demo-шаблони у SVG: їх можна завантажити, відкрити в редакторі та використати як стартову композицію для рекламного матеріалу.</p>
+                        <div id="templatesContent" class="template-grid">
+                            <div class="template-card">
+                                <img loading="lazy" src="images/brand/guidebook/templates/event-genix-post-template.svg" alt="Instagram post template preview">
+                                <div class="template-card-content">
+                                    <h3>Instagram post 1080×1080</h3>
+                                    <p>Квадратний формат, один заголовок, логотип у верхній зоні, CTA внизу.</p>
+                                    <a class="template-download" href="images/brand/guidebook/templates/event-genix-post-template.svg" download>Завантажити SVG</a>
+                                </div>
                             </div>
-                            <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;padding:16px">
-                                <div style="font-size:32px;margin-bottom:8px">📱</div>
-                                <h3 style="margin:0 0 4px;font-size:14px">Stories</h3>
-                                <p style="color:var(--gray-500);font-size:12px;margin:0">1080×1920, вертикальний, CTA кнопка</p>
+                            <div class="template-card">
+                                <img loading="lazy" src="images/brand/guidebook/templates/event-genix-stories-template.svg" alt="Stories template preview">
+                                <div class="template-card-content">
+                                    <h3>Stories 1080×1920</h3>
+                                    <p>Вертикальний макет із чистим центром, датою події та одним коротким CTA.</p>
+                                    <a class="template-download" href="images/brand/guidebook/templates/event-genix-stories-template.svg" download>Завантажити SVG</a>
+                                </div>
                             </div>
-                            <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;padding:16px">
-                                <div style="font-size:32px;margin-bottom:8px">🎟️</div>
-                                <h3 style="margin:0 0 4px;font-size:14px">Сертифікат</h3>
-                                <p style="color:var(--gray-500);font-size:12px;margin:0">A5, горизонтальний, QR код</p>
-                            </div>
-                            <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;padding:16px">
-                                <div style="font-size:32px;margin-bottom:8px">📋</div>
-                                <h3 style="margin:0 0 4px;font-size:14px">Каталог</h3>
-                                <p style="color:var(--gray-500);font-size:12px;margin:0">A4 portrait, мульти-сторінка, PDF</p>
+                            <div class="template-card">
+                                <img loading="lazy" src="images/brand/guidebook/templates/event-genix-cover-template.svg" alt="Catalog cover template preview">
+                                <div class="template-card-content">
+                                    <h3>Каталог A4</h3>
+                                    <p>Обкладинка з одним hero-зображенням, назвою добірки та службовою датою версії.</p>
+                                    <a class="template-download" href="images/brand/guidebook/templates/event-genix-cover-template.svg" download>Завантажити SVG</a>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -258,10 +317,10 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.81.153"></script>
-    <script src="js/api.js?v=0.81.153"></script>
-    <script src="js/auth.js?v=0.81.153"></script>
-    <script src="js/components/sidebar.js?v=0.81.153"></script>
+    <script src="js/config.js?v=0.81.154"></script>
+    <script src="js/api.js?v=0.81.154"></script>
+    <script src="js/auth.js?v=0.81.154"></script>
+    <script src="js/components/sidebar.js?v=0.81.154"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script>
     // Auth check — unhide mainApp
@@ -293,12 +352,18 @@
             var active = tab.dataset.tab === target;
             tab.classList.toggle('active', active);
             tab.setAttribute('aria-selected', active ? 'true' : 'false');
+            tab.tabIndex = active ? 0 : -1;
         });
         document.querySelectorAll('.designer-tab-content').forEach(function(content) {
             content.classList.remove('active');
+            content.hidden = true;
         });
         var tabId = 'tab' + target.charAt(0).toUpperCase() + target.slice(1);
-        document.getElementById(tabId)?.classList.add('active');
+        var activePanel = document.getElementById(tabId);
+        if (activePanel) {
+            activePanel.hidden = false;
+            activePanel.classList.add('active');
+        }
         if (!options || options.updateHash !== false) {
             var nextHash = target === 'catalogs' ? '' : '#' + target;
             if (window.location.hash !== nextHash) {
@@ -309,14 +374,49 @@
     document.querySelectorAll('.designer-tab').forEach(function(tab) {
         tab.setAttribute('role', 'tab');
         tab.addEventListener('click', function() { showDesignerTab(tab.dataset.tab); });
+        tab.addEventListener('keydown', function(event) {
+            var currentIndex = DESIGNER_TABS.indexOf(tab.dataset.tab);
+            var nextIndex = currentIndex;
+            if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % DESIGNER_TABS.length;
+            else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + DESIGNER_TABS.length) % DESIGNER_TABS.length;
+            else if (event.key === 'Home') nextIndex = 0;
+            else if (event.key === 'End') nextIndex = DESIGNER_TABS.length - 1;
+            else return;
+            event.preventDefault();
+            var nextTab = document.querySelector('[data-tab="' + DESIGNER_TABS[nextIndex] + '"]');
+            if (nextTab) {
+                nextTab.focus();
+                showDesignerTab(nextTab.dataset.tab);
+            }
+        });
     });
     document.querySelector('.designer-tabs')?.setAttribute('role', 'tablist');
+    document.querySelectorAll('.designer-tab-content').forEach(function(content) {
+        content.setAttribute('role', 'tabpanel');
+    });
     showDesignerTab(window.location.hash.replace('#', ''), { updateHash: false });
     window.addEventListener('hashchange', function() {
         showDesignerTab(window.location.hash.replace('#', ''), { updateHash: false });
     });
+    async function copyGuideText(text) {
+        if (!text) return;
+        try {
+            if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+                throw new Error('clipboard_unavailable');
+            }
+            await navigator.clipboard.writeText(text);
+            if (typeof showNotification === 'function') showNotification('Скопійовано', 'success');
+        } catch {
+            if (typeof showNotification === 'function') showNotification('Копіювання недоступне в цьому браузері', 'warning');
+        }
+    }
+    document.addEventListener('click', function(event) {
+        var button = event.target.closest('[data-guide-copy]');
+        if (!button) return;
+        copyGuideText(button.dataset.guideCopy || '');
+    });
     </script>
-<script src="js/ui.js?v=0.81.153"></script>
-    <script src="js/alerts.js?v=0.81.153"></script>
+<script src="js/ui.js?v=0.81.154"></script>
+    <script src="js/alerts.js?v=0.81.154"></script>
 </body>
 </html>

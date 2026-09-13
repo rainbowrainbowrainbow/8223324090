@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Event Genix demo cover template</title>
+  <desc id="desc">Wide demo cover template for catalog or presentation title page.</desc>
+  <defs>
+    <linearGradient id="shade" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#0F172A" stop-opacity="0.94"/>
+      <stop offset="0.55" stop-color="#17324D" stop-opacity="0.72"/>
+      <stop offset="1" stop-color="#17324D" stop-opacity="0.12"/>
+    </linearGradient>
+  </defs>
+  <image href="../event-card-workshop.png" x="0" y="-50" width="1600" height="1000" preserveAspectRatio="xMidYMid slice"/>
+  <rect width="1600" height="900" fill="url(#shade)"/>
+  <rect x="80" y="74" width="138" height="138" rx="34" fill="#FFFFFF" opacity="0.92"/>
+  <image href="../../event-genix-logo.png" x="102" y="96" width="94" height="94" preserveAspectRatio="xMidYMid meet"/>
+  <text x="80" y="328" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="800" fill="#A7F3D0">CATALOG COVER</text>
+  <text x="80" y="432" font-family="Nunito, Arial, sans-serif" font-size="90" font-weight="900" fill="#FFFFFF">Добірка</text>
+  <text x="80" y="532" font-family="Nunito, Arial, sans-serif" font-size="90" font-weight="900" fill="#FFFFFF">матеріалів</text>
+  <text x="80" y="618" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="600" fill="#E0F2FE">Титульна сторінка для презентації, PDF або клієнтського каталогу.</text>
+  <rect x="80" y="722" width="268" height="72" rx="24" fill="#2176AE"/>
+  <text x="118" y="769" font-family="Inter, Arial, sans-serif" font-size="27" font-weight="900" fill="#FFFFFF">Event Genix</text>
+</svg>

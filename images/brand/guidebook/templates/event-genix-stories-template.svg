@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920" role="img" aria-labelledby="title desc">
+  <title id="title">Event Genix demo stories template</title>
+  <desc id="desc">Vertical demo stories template with event photo zone background and CTA footer.</desc>
+  <defs>
+    <linearGradient id="shade" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#17324D" stop-opacity="0.30"/>
+      <stop offset="0.48" stop-color="#17324D" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#0F172A" stop-opacity="0.92"/>
+    </linearGradient>
+  </defs>
+  <image href="../event-card-private-party.png" x="-996" y="0" width="3072" height="1920" preserveAspectRatio="xMidYMid slice"/>
+  <rect width="1080" height="1920" fill="url(#shade)"/>
+  <rect x="72" y="86" width="166" height="166" rx="42" fill="#FFFFFF" opacity="0.92"/>
+  <image href="../../event-genix-logo.png" x="98" y="112" width="114" height="114" preserveAspectRatio="xMidYMid meet"/>
+  <text x="72" y="1210" font-family="Inter, Arial, sans-serif" font-size="36" font-weight="800" fill="#A7F3D0">STORIES 1080x1920</text>
+  <text x="72" y="1314" font-family="Nunito, Arial, sans-serif" font-size="102" font-weight="900" fill="#FFFFFF">Анонс</text>
+  <text x="72" y="1424" font-family="Nunito, Arial, sans-serif" font-size="102" font-weight="900" fill="#FFFFFF">події</text>
+  <text x="72" y="1510" font-family="Inter, Arial, sans-serif" font-size="36" font-weight="600" fill="#E0F2FE">Дата, формат і одна дія для глядача.</text>
+  <rect x="72" y="1660" width="936" height="112" rx="36" fill="#F59E0B"/>
+  <text x="138" y="1733" font-family="Inter, Arial, sans-serif" font-size="40" font-weight="900" fill="#FFFFFF">Написати менеджеру</text>
+</svg>

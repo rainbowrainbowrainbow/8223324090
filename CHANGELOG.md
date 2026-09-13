@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.154 - Гайдбук Design Board для реклами
+
+### Release / Versioning / (13.09.2026) [codex]
+- **Наповнений гайдбук Event Genix** — `/designer` отримав завершений guidebook із логотипом, правилами композиції, палітрою, typography, tone of voice і прикладами застосування.
+- **Швидкий вхід із Design Board** — `/designs` показує внутрішню картку гайдбука з переходом у `/designer#styleguide`, а чинні deep links залишаються сумісними.
+- **Demo-шаблони для реклами** — вкладка `#templates` має 3 реальні SVG-файли для preview/download без обіцянки онлайн-редактора або фейкових матеріалів.
+
+---
+
 ## v0.81.153 - Рішення щодо legacy-матеріалів Design Board
 
 ### Release / Versioning / (13.09.2026) [codex]

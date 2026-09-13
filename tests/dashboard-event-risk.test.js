@@ -57,7 +57,7 @@ function createFakePool(queries) {
             if (/FROM tasks t JOIN bookings b ON t\.source_type = 'booking' AND t\.source_id = b\.id::text/i.test(text)) {
                 return { rows: [{ count: 4 }] };
             }
-            if (/FROM bookings b/i.test(text) && /b\.line_id IS NULL OR b\.line_id = 0/i.test(text)) {
+            if (/FROM bookings b/i.test(text) && /b\.line_id::text/i.test(text) && /BTRIM/i.test(text)) {
                 return { rows: [{ count: 2 }] };
             }
             throw new Error(`Unexpected dashboard-event-risk query: ${text}`);
@@ -107,6 +107,10 @@ test('dashboard event risk summary is visible-scope, explainable, and booking-li
         assert.match(prepQuery.text, /t\.source_type = 'booking'/);
         assert.match(prepQuery.text, /t\.source_id = b\.id::text/);
         assert.doesNotMatch(prepQuery.text, /category\s*=\s*'event'/i);
+
+        const resourceQuery = queries.find(query => /b\.line_id::text/i.test(query.text));
+        assert.ok(resourceQuery, 'resource warnings must use the text-safe line_id contract');
+        assert.doesNotMatch(resourceQuery.text, /\bline_id\s*=\s*0\b/);
     } finally {
         await close(server);
         process.env.JWT_SECRET = originalSecret;

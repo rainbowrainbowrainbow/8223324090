@@ -34,14 +34,20 @@ const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurfa
 
 const log = createLogger('Dashboard');
 const SALES_LEAD_TYPE_FILTER = "COALESCE(lead_type, 'quality') = 'quality'";
-const SAFE_BOOKING_START_MINUTES_SQL = `
+
+function safeBookingStartMinutesSql(alias = 'b') {
+    return `
     CASE
-        WHEN LEFT(BTRIM(COALESCE(b.time::text, '')), 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-        THEN EXTRACT(HOUR FROM LEFT(BTRIM(b.time::text), 5)::time)::int * 60
-           + EXTRACT(MINUTE FROM LEFT(BTRIM(b.time::text), 5)::time)::int
+        WHEN LEFT(BTRIM(COALESCE(${alias}.time::text, '')), 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+        THEN EXTRACT(HOUR FROM LEFT(BTRIM(${alias}.time::text), 5)::time)::int * 60
+           + EXTRACT(MINUTE FROM LEFT(BTRIM(${alias}.time::text), 5)::time)::int
         ELSE NULL
     END
 `;
+}
+
+const SAFE_BOOKING_START_MINUTES_SQL = safeBookingStartMinutesSql('b');
+const BOOKING_LINE_UNASSIGNED_SQL = "(NULLIF(BTRIM(COALESCE(b.line_id::text, '')), '') IS NULL OR BTRIM(b.line_id::text) = '0')";
 const URGENT_TASK_MOVEMENT_ACTION_TYPES = [
     TASK_ACTION_TYPES.COMPLETED,
     TASK_ACTION_TYPES.STATUS_CHANGED,
@@ -1024,7 +1030,7 @@ async function buildEventRiskSummary(user, businessScope = null) {
             FROM bookings b
             WHERE LEFT(COALESCE(b.date, ''), 10) = $1
               AND COALESCE(b.status, 'confirmed') <> 'cancelled'
-              AND (b.line_id IS NULL OR b.line_id = 0)
+              AND ${BOOKING_LINE_UNASSIGNED_SQL}
               ${resourceBookingVisibility.sql}
         `, resourceParams)
     ]);
@@ -1722,9 +1728,11 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                           AND b1.room IS NOT NULL AND b1.room != ''
                           ${conflictVisibility1.sql}
                           ${conflictVisibility2.sql}
+                          AND (${safeBookingStartMinutesSql('b1')}) IS NOT NULL
+                          AND (${safeBookingStartMinutesSql('b2')}) IS NOT NULL
                           AND ABS(
-                            (SUBSTRING(b1.time FROM 1 FOR 2)::int * 60 + SUBSTRING(b1.time FROM 4 FOR 2)::int) -
-                            (SUBSTRING(b2.time FROM 1 FOR 2)::int * 60 + SUBSTRING(b2.time FROM 4 FOR 2)::int)
+                            (${safeBookingStartMinutesSql('b1')}) -
+                            (${safeBookingStartMinutesSql('b2')})
                           ) < COALESCE(b1.duration, 120)
                         LIMIT 5
                     `, conflictParams).catch(() => ({ rows: [] })),
@@ -1733,7 +1741,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                         SELECT b.id, b.label, b.time, b.program_name, b.room
                         FROM bookings b
                         WHERE b.date = $1 AND b.status != 'cancelled'
-                          AND (b.line_id IS NULL OR b.line_id = 0)
+                          AND ${BOOKING_LINE_UNASSIGNED_SQL}
                           ${noAnimatorVisibility.sql}
                         ORDER BY b.time LIMIT 5
                     `, noAnimatorParams).catch(() => ({ rows: [] })),

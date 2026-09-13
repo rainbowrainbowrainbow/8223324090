@@ -305,10 +305,12 @@ describe('dashboard nearest event widget', () => {
         assert.match(latePreliminaryQuery, /CASE\s+WHEN LEFT\(BTRIM\(COALESCE\(b\.time::text, ''\)\), 5\) ~/);
         assert.match(latePreliminaryQuery, /ELSE NULL/);
         assert.doesNotMatch(latePreliminaryQuery, /SUBSTRING\(b\.time FROM 1 FOR 2\)::int/);
+        const resourceWarningsQuery = state.queries[4].sql;
+        assert.match(resourceWarningsQuery, /b\.line_id::text/);
 
         const dashboardRouteSource = fs.readFileSync(path.join(__dirname, '..', 'routes', 'dashboard.js'), 'utf8');
-        assert.doesNotMatch(dashboardRouteSource, /SUBSTRING\(b\.time FROM 1 FOR 2\)::int/);
-        assert.doesNotMatch(dashboardRouteSource, /SUBSTRING\(b\.time FROM 4 FOR 2\)::int/);
+        assert.doesNotMatch(dashboardRouteSource, /SUBSTRING\(b\d?\.time FROM [^)]+\)::int/);
+        assert.doesNotMatch(dashboardRouteSource, /\bline_id\s*=\s*0\b/);
     });
 
     it('uses a single Kyiv clock at midnight, minute boundaries and both DST transitions', () => {

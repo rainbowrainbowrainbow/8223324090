@@ -304,6 +304,13 @@ const CSS_SURFACE = [
         reason: 'Design catalog workspace styles.'
     },
     {
+        file: 'css/designer-guidebook.css',
+        owner: 'designer',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Design Board guidebook presentation, local theme states, tabs, examples, and downloadable template cards.'
+    },
+    {
         file: 'css/features.css',
         owner: 'timeline',
         category: 'shell-large',

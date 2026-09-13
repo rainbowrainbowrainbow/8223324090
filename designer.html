@@ -20,19 +20,7 @@
     <link rel="stylesheet" href="css/responsive.css?v=0.81.153">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <style>
-        .designer-page{--dg-text:var(--gray-900);--dg-muted:var(--gray-500);--dg-card:var(--white);--dg-soft:#f8fafc;--dg-line:var(--gray-100);--dg-tabs:var(--gray-50);--dg-active:var(--white);--dg-active-text:var(--gray-900);--dg-link:var(--primary);--dg-ink:#17324d;--dg-blue:#2176ae;--dg-sky:#25b7d3;--dg-green:#2fb36d;--dg-lime:#a8cf38;--dg-pink:#e73783;--dg-orange:#f59e0b;--dg-red:#c8282f;--dg-shadow:0 18px 42px rgba(15,23,42,.08);padding:20px 24px 36px;min-height:100vh;color:var(--dg-text)}
-        html[data-theme="dark"] .designer-page,body.dark-mode .designer-page{--dg-text:#E2E8F0;--dg-muted:#A8B3C7;--dg-card:rgba(15,23,42,.76);--dg-soft:rgba(255,255,255,.045);--dg-line:rgba(255,255,255,.09);--dg-tabs:rgba(255,255,255,.045);--dg-active:rgba(16,185,129,.16);--dg-active-text:#A7F3D0;--dg-link:#6EE7B7;--dg-shadow:0 22px 52px rgba(0,0,0,.26)}
-        .designer-breadcrumb{display:inline-flex;align-items:center;min-height:36px;margin-bottom:14px;color:var(--dg-muted);font-size:13px;font-weight:800;text-decoration:none;border-radius:10px}.designer-breadcrumb:hover{color:var(--dg-link)}
-        .designer-breadcrumb:focus-visible,.designer-tab:focus-visible{outline:3px solid rgba(16,185,129,.48);outline-offset:2px}.designer-header{position:relative;overflow:hidden;margin-bottom:24px;border:1px solid var(--dg-line);border-radius:20px;background:var(--dg-card);box-shadow:var(--dg-shadow)}.designer-hero-media{position:absolute;inset:0;background:linear-gradient(90deg,rgba(15,23,42,.92),rgba(15,23,42,.66),rgba(15,23,42,.22)),url('images/brand/guidebook/event-card-family-event.png') center/cover no-repeat}.designer-hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:24px;align-items:center;min-height:300px;padding:32px}.designer-kicker{margin:0 0 10px;color:#a7f3d0;font-size:12px;font-weight:900;letter-spacing:0;text-transform:uppercase}.designer-header h1{max-width:720px;font-size:38px;line-height:1.05;font-weight:900;margin:0 0 12px;color:#fff}.designer-header .subtitle{max-width:700px;font-size:15px;line-height:1.6;color:rgba(255,255,255,.84);margin:0}.designer-logo-panel{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:220px;border:1px solid rgba(255,255,255,.24);border-radius:18px;background:rgba(255,255,255,.88);backdrop-filter:blur(8px);padding:20px;color:#17324d}.designer-logo-panel img{width:136px;height:136px;object-fit:contain}.designer-logo-panel strong{font-size:18px;margin-top:12px}.designer-logo-panel span{font-size:12px;font-weight:800;color:#64748b}
-        .designer-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--dg-tabs);border:1px solid var(--dg-line);border-radius:12px;padding:4px;flex-wrap:wrap}.designer-tab{min-height:40px;padding:8px 16px;border:0;background:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;color:var(--dg-muted)}.designer-tab.active{background:var(--dg-active);color:var(--dg-active-text)}.designer-tab:hover:not(.active){color:var(--dg-text);background:var(--dg-card)}
-        .designer-tab-content{display:none}.designer-tab-content.active{display:block}.designer-section{margin-bottom:24px}.designer-section h2{font-size:22px;font-weight:900;margin:0 0 12px;color:var(--dg-text)}.designer-section-lead{max-width:760px;margin:0 0 16px;color:var(--dg-muted);font-size:14px;line-height:1.6}.designer-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}.designer-card{background:var(--dg-card);border:1px solid var(--dg-line);border-radius:14px;padding:18px}.designer-card h3{font-size:15px;font-weight:900;margin:0 0 8px;color:var(--dg-text)}.designer-card p{font-size:13px;line-height:1.55;color:var(--dg-muted);margin:0}.designer-card strong{color:var(--dg-text)}.designer-empty{text-align:center;padding:60px 20px;color:var(--gray-400)}.designer-empty-icon{font-size:48px;margin-bottom:12px}
-        .guide-image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.guide-image-card{overflow:hidden;border:1px solid var(--dg-line);border-radius:14px;background:var(--dg-card)}.guide-image-card img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}.guide-image-card div{padding:14px}.guide-image-card h3{margin:0 0 5px;font-size:14px;color:var(--dg-text)}.guide-image-card p{margin:0;color:var(--dg-muted);font-size:12px;line-height:1.45}.guide-logo-row{display:grid;grid-template-columns:220px minmax(0,1fr);gap:14px}.guide-logo-stage{display:flex;align-items:center;justify-content:center;min-height:190px;border:1px solid var(--dg-line);border-radius:14px;background:#fff}.guide-logo-stage.dark{background:#101827}.guide-logo-stage img{max-width:140px;max-height:140px;object-fit:contain}.guide-rule-list{display:grid;gap:10px}.guide-rule{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:start;border:1px solid var(--dg-line);border-radius:12px;background:var(--dg-card);padding:12px}.guide-rule span{font-size:11px;font-weight:900;text-transform:uppercase;color:var(--dg-muted)}.guide-rule p{margin:0;font-size:13px;line-height:1.5;color:var(--dg-text)}.guide-sample{border-left:4px solid var(--dg-green);padding:10px 12px;background:var(--dg-soft);border-radius:10px}.guide-sample.bad{border-left-color:var(--dg-red)}.guide-sample p{margin:0;color:var(--dg-text)}
-        .color-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px}.color-swatch{border-radius:12px;overflow:hidden;border:1px solid var(--dg-line);background:var(--dg-card)}.color-swatch-preview{height:68px}.color-swatch-info{padding:10px;font-size:11px;font-weight:800}.color-swatch-name{color:var(--dg-text)}.color-swatch-role{margin-top:4px;color:var(--dg-muted);font-weight:700;line-height:1.35}.color-swatch-hex{color:var(--dg-muted);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.type-sample{padding:18px;border:1px solid var(--dg-line);border-radius:14px;background:var(--dg-card)}.type-sample h3{margin:0 0 10px;color:var(--dg-muted);font-size:12px;font-weight:900;text-transform:uppercase}.type-sample .display{margin:0 0 8px;font-family:Nunito,Inter,sans-serif;font-size:32px;line-height:1.08;font-weight:900;color:var(--dg-text)}.type-sample .body{margin:0;color:var(--dg-muted);font:500 14px/1.6 Inter,Nunito,sans-serif}.template-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}.template-card{position:relative;overflow:hidden;min-height:250px;border:1px solid var(--dg-line);border-radius:14px;background:var(--dg-card)}.template-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.template-card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,23,42,.14),rgba(15,23,42,.82))}.template-card-content{position:absolute;inset:auto 0 0;z-index:1;padding:16px;color:#fff}.template-card-content h3{margin:0 0 5px;font-size:15px;font-weight:900}.template-card-content p{margin:0;font-size:12px;line-height:1.45;color:rgba(255,255,255,.84)}.brand-example-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.brand-example{border:1px solid var(--dg-line);border-radius:14px;background:var(--dg-card);padding:16px}.brand-example h3{margin:0 0 8px;color:var(--dg-text);font-size:15px}.brand-example p{margin:0;color:var(--dg-muted);font-size:13px;line-height:1.55}
-        @media(max-width:820px){.designer-hero{grid-template-columns:1fr}.designer-logo-panel{min-height:auto;align-items:flex-start}.guide-logo-row{grid-template-columns:1fr}.designer-header h1{font-size:32px}}
-        @media(max-width:640px){.designer-page{padding:16px}.designer-hero{padding:22px;min-height:360px}.designer-header h1{font-size:28px}.designer-grid{grid-template-columns:1fr}.designer-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.designer-tabs::-webkit-scrollbar{display:none}.designer-tab{flex:0 0 auto;white-space:nowrap}.guide-rule{grid-template-columns:1fr}.color-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-
-    </style>
+    <link rel="stylesheet" href="css/designer-guidebook.css?v=0.81.153">
 </head>
 <body data-page-group="designer">
     <script>(function(){var s=localStorage.getItem('pzp_dark_mode');if(s!=='false'){document.body.classList.add('dark-mode')}})();</script>
@@ -92,7 +80,7 @@
 
         <main class="main-content" id="main-content">
             <div class="designer-page">
-                <a class="designer-breadcrumb" href="/designs">← Design Board</a>
+                <a class="designer-breadcrumb" href="/designs">← До матеріалів Design Board</a>
                 <div class="designer-header">
                     <div class="designer-hero-media" aria-hidden="true"></div>
                     <div class="designer-hero">
@@ -110,15 +98,15 @@
                 </div>
 
                 <div class="designer-tabs">
-                    <button type="button" class="designer-tab active" data-tab="catalogs">📂 Каталоги</button>
-                    <button type="button" class="designer-tab" data-tab="guideline">📖 Гайдлайн</button>
-                    <button type="button" class="designer-tab" data-tab="brand">🎨 Brand Book</button>
-                    <button type="button" class="designer-tab" data-tab="styleguide">📐 Стайлгайд</button>
-                    <button type="button" class="designer-tab" data-tab="templates">📋 Шаблони</button>
+                    <button type="button" class="designer-tab active" data-tab="catalogs" id="tabButtonCatalogs" aria-controls="tabCatalogs">📂 Каталоги</button>
+                    <button type="button" class="designer-tab" data-tab="guideline" id="tabButtonGuideline" aria-controls="tabGuideline">📖 Гайдлайн</button>
+                    <button type="button" class="designer-tab" data-tab="brand" id="tabButtonBrand" aria-controls="tabBrand">🎨 Brand Book</button>
+                    <button type="button" class="designer-tab" data-tab="styleguide" id="tabButtonStyleguide" aria-controls="tabStyleguide">📐 Стайлгайд</button>
+                    <button type="button" class="designer-tab" data-tab="templates" id="tabButtonTemplates" aria-controls="tabTemplates">📋 Шаблони</button>
                 </div>
 
                 <!-- Каталоги -->
-                <div id="tabCatalogs" class="designer-tab-content active">
+                <div id="tabCatalogs" class="designer-tab-content active" role="tabpanel" aria-labelledby="tabButtonCatalogs">
                     <div class="designer-section">
                         <h2>Каталоги матеріалів</h2>
                         <p class="designer-section-lead">Ці групи допомагають швидко зібрати матеріал для реклами, презентації або клієнтського каталогу без пошуку по всій CRM.</p>
@@ -156,7 +144,7 @@
                 </div>
 
                 <!-- Гайдлайн -->
-                <div id="tabGuideline" class="designer-tab-content">
+                <div id="tabGuideline" class="designer-tab-content" role="tabpanel" aria-labelledby="tabButtonGuideline">
                     <div class="designer-section">
                         <h2>Правила використання бренду Event Genix</h2>
                         <p class="designer-section-lead">Гайд описує загальний CRM-бренд. Матеріали ДАР, Майстерні долі та Парку використовуються тільки як приклади окремих клієнтських стилів.</p>
@@ -178,6 +166,7 @@
                             <div class="designer-card">
                                 <h3>Правильно</h3>
                                 <div class="guide-sample"><p>Один сильний заголовок, реальне зображення, чиста зона для тексту, один заклик до дії.</p></div>
+                                <button type="button" class="guide-copy-btn" data-guide-copy="Один сильний заголовок, реальне зображення, чиста зона для тексту, один заклик до дії.">Копіювати приклад</button>
                             </div>
                             <div class="designer-card">
                                 <h3>Не треба</h3>
@@ -192,7 +181,7 @@
                 </div>
 
                 <!-- Brand Book -->
-                <div id="tabBrand" class="designer-tab-content">
+                <div id="tabBrand" class="designer-tab-content" role="tabpanel" aria-labelledby="tabButtonBrand">
                     <div class="designer-section">
                         <h2>Brand Book Event Genix</h2>
                         <p class="designer-section-lead">Event Genix звучить як робочий інструмент для команди: ясно, спокійно, без зайвої магії в тексті. Візуально бренд може бути яскравим, але інтерфейс має лишатися зручним для щоденної роботи.</p>
@@ -221,31 +210,34 @@
                             <div class="brand-example">
                                 <h3>Event Genix</h3>
                                 <p>Готовий макет для афіші збережено в Design Board. Перевірте текст, дату й компанію перед публікацією.</p>
+                                <button type="button" class="guide-copy-btn" data-guide-copy="Готовий макет для афіші збережено в Design Board. Перевірте текст, дату й компанію перед публікацією.">Копіювати текст</button>
                             </div>
                             <div class="brand-example">
                                 <h3>Дитячий Активний Розвиток</h3>
                                 <p>Теплий освітній тон: прості формулювання, багато повітря, біле тло, зелений як основний акцент.</p>
+                                <button type="button" class="guide-copy-btn" data-guide-copy="Теплий освітній тон: прості формулювання, багато повітря, біле тло, зелений як основний акцент.">Копіювати текст</button>
                             </div>
                             <div class="brand-example">
                                 <h3>Майстерня долі</h3>
                                 <p>Спокійний рефлексивний тон: без гарантій результату, без тиску, з м'яким запрошенням до діалогу.</p>
+                                <button type="button" class="guide-copy-btn" data-guide-copy="Спокійний рефлексивний тон: без гарантій результату, без тиску, з м'яким запрошенням до діалогу.">Копіювати текст</button>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Стайлгайд -->
-                <div id="tabStyleguide" class="designer-tab-content">
+                <div id="tabStyleguide" class="designer-tab-content" role="tabpanel" aria-labelledby="tabButtonStyleguide">
                     <div class="designer-section">
                         <h2>Кольори Event Genix</h2>
                         <p class="designer-section-lead">Палітра взята з наявного мозаїчного знака й адаптована для CRM: синій для довіри, зелений для готовності, рожевий і помаранчевий для рекламних акцентів.</p>
                         <div class="color-grid">
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#17324D"></div><div class="color-swatch-info"><div class="color-swatch-name">Ink</div><div class="color-swatch-hex">#17324D</div><div class="color-swatch-role">заголовки, темні блоки</div></div></div>
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#2176AE"></div><div class="color-swatch-info"><div class="color-swatch-name">Blue</div><div class="color-swatch-hex">#2176AE</div><div class="color-swatch-role">посилання, навігація</div></div></div>
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#25B7D3"></div><div class="color-swatch-info"><div class="color-swatch-name">Sky</div><div class="color-swatch-hex">#25B7D3</div><div class="color-swatch-role">інфо, легкі акценти</div></div></div>
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#2FB36D"></div><div class="color-swatch-info"><div class="color-swatch-name">Green</div><div class="color-swatch-hex">#2FB36D</div><div class="color-swatch-role">готово, доступно</div></div></div>
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#E73783"></div><div class="color-swatch-info"><div class="color-swatch-name">Pink</div><div class="color-swatch-hex">#E73783</div><div class="color-swatch-role">promo, social hooks</div></div></div>
-                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#F59E0B"></div><div class="color-swatch-info"><div class="color-swatch-name">Orange</div><div class="color-swatch-hex">#F59E0B</div><div class="color-swatch-role">CTA, увага</div></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#17324D"></div><div class="color-swatch-info"><div class="color-swatch-name">Ink</div><div class="color-swatch-hex">#17324D</div><div class="color-swatch-role">заголовки, темні блоки</div><button type="button" class="guide-copy-btn" data-guide-copy="#17324D">Копіювати HEX</button></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#2176AE"></div><div class="color-swatch-info"><div class="color-swatch-name">Blue</div><div class="color-swatch-hex">#2176AE</div><div class="color-swatch-role">посилання, навігація</div><button type="button" class="guide-copy-btn" data-guide-copy="#2176AE">Копіювати HEX</button></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#25B7D3"></div><div class="color-swatch-info"><div class="color-swatch-name">Sky</div><div class="color-swatch-hex">#25B7D3</div><div class="color-swatch-role">інфо, легкі акценти</div><button type="button" class="guide-copy-btn" data-guide-copy="#25B7D3">Копіювати HEX</button></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#2FB36D"></div><div class="color-swatch-info"><div class="color-swatch-name">Green</div><div class="color-swatch-hex">#2FB36D</div><div class="color-swatch-role">готово, доступно</div><button type="button" class="guide-copy-btn" data-guide-copy="#2FB36D">Копіювати HEX</button></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#E73783"></div><div class="color-swatch-info"><div class="color-swatch-name">Pink</div><div class="color-swatch-hex">#E73783</div><div class="color-swatch-role">promo, social hooks</div><button type="button" class="guide-copy-btn" data-guide-copy="#E73783">Копіювати HEX</button></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#F59E0B"></div><div class="color-swatch-info"><div class="color-swatch-name">Orange</div><div class="color-swatch-hex">#F59E0B</div><div class="color-swatch-role">CTA, увага</div><button type="button" class="guide-copy-btn" data-guide-copy="#F59E0B">Копіювати HEX</button></div></div>
                         </div>
                     </div>
                     <div class="designer-section">
@@ -274,37 +266,33 @@
                 </div>
 
                 <!-- Шаблони -->
-                <div id="tabTemplates" class="designer-tab-content">
+                <div id="tabTemplates" class="designer-tab-content" role="tabpanel" aria-labelledby="tabButtonTemplates">
                     <div class="designer-section">
                         <h2>Шаблони дизайнів</h2>
-                        <p class="designer-section-lead">Шаблони тут описують формат і композицію. У наступній задачі їх можна перетворити на реальні downloadable demo-файли.</p>
+                        <p class="designer-section-lead">Це реальні demo-шаблони у SVG: їх можна завантажити, відкрити в редакторі та використати як стартову композицію для рекламного матеріалу.</p>
                         <div id="templatesContent" class="template-grid">
                             <div class="template-card">
-                                <img loading="lazy" src="images/brand/guidebook/event-card-family-event.png" alt="Instagram post template background">
+                                <img loading="lazy" src="images/brand/guidebook/templates/event-genix-post-template.svg" alt="Instagram post template preview">
                                 <div class="template-card-content">
                                     <h3>Instagram post 1080×1080</h3>
                                     <p>Квадратний формат, один заголовок, логотип у верхній зоні, CTA внизу.</p>
+                                    <a class="template-download" href="images/brand/guidebook/templates/event-genix-post-template.svg" download>Завантажити SVG</a>
                                 </div>
                             </div>
                             <div class="template-card">
-                                <img loading="lazy" src="images/brand/guidebook/event-card-private-party.png" alt="Stories template background">
+                                <img loading="lazy" src="images/brand/guidebook/templates/event-genix-stories-template.svg" alt="Stories template preview">
                                 <div class="template-card-content">
                                     <h3>Stories 1080×1920</h3>
                                     <p>Вертикальний макет із чистим центром, датою події та одним коротким CTA.</p>
+                                    <a class="template-download" href="images/brand/guidebook/templates/event-genix-stories-template.svg" download>Завантажити SVG</a>
                                 </div>
                             </div>
                             <div class="template-card">
-                                <img loading="lazy" src="images/brand/guidebook/event-card-workshop.png" alt="Catalog cover template background">
+                                <img loading="lazy" src="images/brand/guidebook/templates/event-genix-cover-template.svg" alt="Catalog cover template preview">
                                 <div class="template-card-content">
                                     <h3>Каталог A4</h3>
                                     <p>Обкладинка з одним hero-зображенням, назвою добірки та службовою датою версії.</p>
-                                </div>
-                            </div>
-                            <div class="template-card">
-                                <img loading="lazy" src="images/brand/guidebook/event-card-show-program.png" alt="Presentation cover template background">
-                                <div class="template-card-content">
-                                    <h3>Презентація програми</h3>
-                                    <p>Широкий cover, короткий опис, 2-4 ключові умови й фінальний слайд з контактною дією.</p>
+                                    <a class="template-download" href="images/brand/guidebook/templates/event-genix-cover-template.svg" download>Завантажити SVG</a>
                                 </div>
                             </div>
                         </div>
@@ -364,12 +352,18 @@
             var active = tab.dataset.tab === target;
             tab.classList.toggle('active', active);
             tab.setAttribute('aria-selected', active ? 'true' : 'false');
+            tab.tabIndex = active ? 0 : -1;
         });
         document.querySelectorAll('.designer-tab-content').forEach(function(content) {
             content.classList.remove('active');
+            content.hidden = true;
         });
         var tabId = 'tab' + target.charAt(0).toUpperCase() + target.slice(1);
-        document.getElementById(tabId)?.classList.add('active');
+        var activePanel = document.getElementById(tabId);
+        if (activePanel) {
+            activePanel.hidden = false;
+            activePanel.classList.add('active');
+        }
         if (!options || options.updateHash !== false) {
             var nextHash = target === 'catalogs' ? '' : '#' + target;
             if (window.location.hash !== nextHash) {
@@ -380,11 +374,46 @@
     document.querySelectorAll('.designer-tab').forEach(function(tab) {
         tab.setAttribute('role', 'tab');
         tab.addEventListener('click', function() { showDesignerTab(tab.dataset.tab); });
+        tab.addEventListener('keydown', function(event) {
+            var currentIndex = DESIGNER_TABS.indexOf(tab.dataset.tab);
+            var nextIndex = currentIndex;
+            if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % DESIGNER_TABS.length;
+            else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + DESIGNER_TABS.length) % DESIGNER_TABS.length;
+            else if (event.key === 'Home') nextIndex = 0;
+            else if (event.key === 'End') nextIndex = DESIGNER_TABS.length - 1;
+            else return;
+            event.preventDefault();
+            var nextTab = document.querySelector('[data-tab="' + DESIGNER_TABS[nextIndex] + '"]');
+            if (nextTab) {
+                nextTab.focus();
+                showDesignerTab(nextTab.dataset.tab);
+            }
+        });
     });
     document.querySelector('.designer-tabs')?.setAttribute('role', 'tablist');
+    document.querySelectorAll('.designer-tab-content').forEach(function(content) {
+        content.setAttribute('role', 'tabpanel');
+    });
     showDesignerTab(window.location.hash.replace('#', ''), { updateHash: false });
     window.addEventListener('hashchange', function() {
         showDesignerTab(window.location.hash.replace('#', ''), { updateHash: false });
+    });
+    async function copyGuideText(text) {
+        if (!text) return;
+        try {
+            if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+                throw new Error('clipboard_unavailable');
+            }
+            await navigator.clipboard.writeText(text);
+            if (typeof showNotification === 'function') showNotification('Скопійовано', 'success');
+        } catch {
+            if (typeof showNotification === 'function') showNotification('Копіювання недоступне в цьому браузері', 'warning');
+        }
+    }
+    document.addEventListener('click', function(event) {
+        var button = event.target.closest('[data-guide-copy]');
+        if (!button) return;
+        copyGuideText(button.dataset.guideCopy || '');
     });
     </script>
 <script src="js/ui.js?v=0.81.153"></script>

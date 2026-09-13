@@ -9,6 +9,7 @@ const ROOT = path.resolve(__dirname, '..');
 const DESIGNER_HTML = fs.readFileSync(path.join(ROOT, 'designer.html'), 'utf8');
 const DESIGNS_HTML = fs.readFileSync(path.join(ROOT, 'designs.html'), 'utf8');
 const DESIGNS_CSS = fs.readFileSync(path.join(ROOT, 'css', 'designs.css'), 'utf8');
+const DESIGNER_CSS = fs.readFileSync(path.join(ROOT, 'css', 'designer-guidebook.css'), 'utf8');
 
 function extractDesignerTabsScript() {
     const start = DESIGNER_HTML.indexOf('const DESIGNER_TABS');
@@ -36,6 +37,8 @@ test('Design Board exposes Style Guide as an internal child entry', () => {
     assert.ok(entry);
     assert.equal(entry.getAttribute('data-page-access'), '/designer');
     assert.equal(entry.querySelector('a')?.getAttribute('href'), '/designer#styleguide');
+    assert.match(entry.textContent, /Гайдбук і стайлгайд/);
+    assert.match(entry.textContent, /3 SVG шаблони/);
 });
 
 test('/designer#styleguide opens the Style Guide tab while /designer keeps catalogs default', () => {
@@ -61,6 +64,21 @@ test('Designer tab clicks update hashes and unknown hashes fall back safely', ()
     assert.equal(dom.window.document.querySelector('.designer-tab.active')?.dataset.tab, 'catalogs');
 });
 
+test('Designer tabs support keyboard navigation and hidden panel states', () => {
+    const dom = createDesignerDom('https://crm.test/designer#guideline');
+    const document = dom.window.document;
+    const activeTab = document.querySelector('[data-tab="guideline"]');
+    assert.equal(activeTab?.getAttribute('aria-selected'), 'true');
+    assert.equal(document.getElementById('tabGuideline')?.hidden, false);
+    assert.equal(document.getElementById('tabBrand')?.hidden, true);
+
+    activeTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.equal(document.querySelector('.designer-tab.active')?.dataset.tab, 'brand');
+    assert.equal(dom.window.location.hash, '#brand');
+    assert.equal(document.getElementById('tabGuideline')?.hidden, true);
+    assert.equal(document.getElementById('tabBrand')?.hidden, false);
+});
+
 test('Design Board theme CSS does not apply light catalog overrides in dark mode', () => {
     assert.doesNotMatch(DESIGNS_HTML, /body:not\(\.dark-mode\)/);
     assert.doesNotMatch(DESIGNS_CSS, /body:not\(\.dark-mode\)/);
@@ -69,9 +87,26 @@ test('Design Board theme CSS does not apply light catalog overrides in dark mode
 });
 
 test('Style Guide local styles follow the document theme contract', () => {
-    assert.match(DESIGNER_HTML, /html\[data-theme="dark"\] \.designer-page/);
-    assert.match(DESIGNER_HTML, /--dg-active-text:#A7F3D0/);
-    assert.match(DESIGNER_HTML, /designer-tab:focus-visible/);
+    assert.match(DESIGNER_HTML, /css\/designer-guidebook\.css\?v=0\.81\.153/);
+    assert.match(DESIGNER_CSS, /html\[data-theme="dark"\] \.designer-page/);
+    assert.match(DESIGNER_CSS, /--dg-active-text:#A7F3D0/);
+    assert.match(DESIGNER_CSS, /designer-tab:focus-visible/);
     assert.match(DESIGNER_HTML, /<h3>Inter<\/h3>/);
     assert.doesNotMatch(DESIGNER_HTML, /Основний шрифт CRM\. Ваги/);
+});
+
+test('Guidebook exposes real downloadable demo templates and copy actions', () => {
+    const templateSources = [
+        'images/brand/guidebook/templates/event-genix-post-template.svg',
+        'images/brand/guidebook/templates/event-genix-stories-template.svg',
+        'images/brand/guidebook/templates/event-genix-cover-template.svg'
+    ];
+    for (const source of templateSources) {
+        assert.match(DESIGNER_HTML, new RegExp(source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+        assert.ok(fs.existsSync(path.join(ROOT, source)), `${source} must exist`);
+    }
+    assert.equal((DESIGNER_HTML.match(/class="template-download"/g) || []).length, 3);
+    assert.match(DESIGNER_HTML, /data-guide-copy="#17324D"/);
+    assert.match(DESIGNER_HTML, /async function copyGuideText/);
+    assert.match(DESIGNER_HTML, /Копіювання недоступне/);
 });

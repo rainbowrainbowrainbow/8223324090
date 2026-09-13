@@ -17,6 +17,9 @@ Base: `origin/codex/eventgenix-production` at `4214598e263057b1cb1524d7fb84f3280
 | Local CRM_ART event-card-show-program image | Event Genix demo visual, show program theme | `images/brand/guidebook/event-card-show-program.png` | Catalog material card and presentation template preview | Safe illustrative asset; no people, secrets, customer records, or local path is displayed in product UI. |
 | Local CRM_ART event-card-quest image | Event Genix demo visual, quest theme | `images/brand/guidebook/event-card-quest.png` | Catalog material card | Safe illustrative asset; no people, secrets, customer records, or local path is displayed in product UI. |
 | Local CRM_ART event-card-private-party image | Event Genix demo visual, photo zone and private event theme | `images/brand/guidebook/event-card-private-party.png` | Catalog material card and stories template preview | Safe illustrative asset; no people, secrets, customer records, or local path is displayed in product UI. |
+| Authored SVG composition from selected guidebook assets | Event Genix demo template, social post | `images/brand/guidebook/templates/event-genix-post-template.svg` | Templates tab preview and download | Built from already-copied safe guidebook image and Event Genix copy; no external or private file contents embedded beyond selected assets. |
+| Authored SVG composition from selected guidebook assets | Event Genix demo template, stories | `images/brand/guidebook/templates/event-genix-stories-template.svg` | Templates tab preview and download | Built from already-copied safe guidebook image and Event Genix copy; no fake QR, offer, certificate, or editor capability. |
+| Authored SVG composition from selected guidebook assets | Event Genix demo template, catalog cover | `images/brand/guidebook/templates/event-genix-cover-template.svg` | Templates tab preview and download | Built from already-copied safe guidebook image and Event Genix copy; intended as a static downloadable demo file. |
 
 ## Existing Repository Assets
 
@@ -44,7 +47,7 @@ Base: `origin/codex/eventgenix-production` at `4214598e263057b1cb1524d7fb84f3280
 | Typography guidance | Authored for the guidebook | Based on current `designer.html` font imports and existing CRM UI typography. |
 | Event Genix tone samples | Authored for the guidebook | Practical editorial guidance. No company history, metrics, awards, customer names, official approvals, or contact details were invented. |
 | ДАР and Майстерня долі examples | Paraphrased as separate examples | Based on inspected source documents, but no private files or long source copy were copied into product UI. |
-| Template descriptions | Authored for the guidebook | Describes intended demo formats only. This task does not create downloadable template files. |
+| Template descriptions and SVG files | Authored for the guidebook | Three static downloadable SVG demo files are present in the repository. They are examples, not an online editor or generated commercial offers. |
 
 ## Guardrails Kept
 
@@ -53,6 +56,6 @@ Base: `origin/codex/eventgenix-production` at `4214598e263057b1cb1524d7fb84f3280
 - Product UI does not expose local filesystem paths.
 - Existing deep links remain unchanged: `/designer`, `/designer#catalogs`, `/designer#guideline`, `/designer#brand`, `/designer#styleguide`, and `/designer#templates`.
 
-## Handoff To Task 2
+## Handoff To Task 3
 
-Task 2 should treat this commit as content foundation. It can further improve presentation, local light/dark rendering, responsive QA, and create real downloadable demo templates if still desired. It should not replace this guidebook with a new backend brand-management system.
+Task 3 should treat this branch as the guidebook presentation foundation. It should verify CI/PR state, perform release planning, and avoid replacing this guidebook with a new backend brand-management system.

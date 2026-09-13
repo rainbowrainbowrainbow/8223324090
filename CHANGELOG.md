@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.148 - Design Board isolation release
+
+### Release / Versioning / (13.09.2026) [codex]
+- **Design Board isolation release** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.147 - Omni: Viber Bridge paired-only release
 
 ### Omni / Viber Personal Bridge / (12.09.2026) [codex]

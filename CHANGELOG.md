@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.163 - Dashboard стабільні ризик-сигнали
+
+### Release / Versioning / (13.09.2026) [codex]
+- **Dashboard стабільні ризик-сигнали** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.162 - Презентаційний Dashboard з орієнтиром дня
 
 ### Release / Versioning / (13.09.2026) [codex]

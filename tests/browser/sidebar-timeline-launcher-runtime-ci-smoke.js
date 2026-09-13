@@ -74,7 +74,7 @@ function fixtureServer() {
         }
         if (url.pathname === '/api/auth/verify') return json(res, { user: USER });
         if (url.pathname === '/api/auth/permissions') return json(res, PERMISSIONS);
-        if (url.pathname === '/api/business/profile') return json(res, { businessProfile: PROFILE });
+        if (url.pathname === '/api/business/profile' || url.pathname === '/api/auth/business-profile') return json(res, { businessProfile: PROFILE });
         if (/^\/api\/bookings\/\d{4}-\d{2}-\d{2}$/.test(url.pathname)) return json(res, []);
         if (/^\/api\/lines\/\d{4}-\d{2}-\d{2}$/.test(url.pathname)) return json(res, []);
         if (url.pathname === '/api/products') return json(res, []);

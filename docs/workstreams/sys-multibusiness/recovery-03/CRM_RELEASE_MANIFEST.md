@@ -16,11 +16,12 @@ Second business after CRM PASS: `maysternya_doli`, with a fresh preflight, manif
 - Live URL: `https://8223324090-production.up.railway.app`
 - Live branch from `/api/version`: `codex/eventgenix-production`
 - Live SHA from `/api/version` before this release: `8b21b3fcbd159c6c1e793d22508953d303c6c212`
-- Remote production branch base used for candidate: `8b21b3fcbd159c6c1e793d22508953d303c6c212`
+- Remote production branch base used for candidate: `18521fb2eb708f17d677c0cf96944adea0be91b1`
 - Candidate source branch: `codex/sys-mb-recover-03-20260913`
 - Candidate HEAD before drift refresh: `d448d125c94398fbd7bc2922bc6fee6b224c0290`
 - First pushed candidate attempt: `7b3f87aa2fd37ff1f3b8e442077c6e1246bddea5` — CI failed before deploy; no Railway deploy or CRM apply was run.
-- Release version: `v0.81.157`
+- Remote production branch drift absorbed: `18521fb2eb708f17d677c0cf96944adea0be91b1` (`v0.81.158 — Спільний тестовий термінал`) is preserved in the remediated candidate; live site still reported `8b21b3fcbd159c6c1e793d22508953d303c6c212` before deploy.
+- Release version: `v0.81.159`
 - Release label: `SYS-MB: перехід CRM`
 
 ## Railway target
@@ -42,7 +43,7 @@ Scope families:
 - RECOVER-02 atomic reserved business apply and guarded release workflow.
 - Additive migrations 357, 363, 364, 365.
 - SYS-MB tests and recovery documentation.
-- Version/cache/changelog marker `v0.81.157 — SYS-MB: перехід CRM`.
+- Version/cache/changelog marker `v0.81.159 — SYS-MB: перехід CRM`.
 
 ## Migration hashes
 
@@ -85,7 +86,7 @@ The release block must allow either a temporary bounded read-lease for the prefl
 ## Local verification before owner block
 
 - PASS: `npm run check:runtime` — to rerun after this manifest refresh
-- PASS: `npm run check:version` — v0.81.157 — SYS-MB: перехід CRM in sync before this docs refresh
+- PASS: `npm run check:version` — v0.81.159 — SYS-MB: перехід CRM in sync before this docs refresh
 - PASS: `npm run check:migrations` — to rerun after this manifest refresh
 - PASS: `node --test tests/production-block-controller.test.js` — to rerun after this manifest refresh
 - PASS: `npm run test:sys-mb` — to rerun after this manifest refresh
@@ -113,3 +114,4 @@ Post-fix local verification:
 - PASS: `npm test`
 
 A new exact owner block is required for the remediated candidate SHA after commit because the previous block was bound to `7b3f87aa2fd37ff1f3b8e442077c6e1246bddea5`.
+

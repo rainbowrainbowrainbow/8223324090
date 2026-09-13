@@ -1,14 +1,14 @@
 {
   "status": "READY_FOR_NEW_EXACT_OWNER_BLOCK_AFTER_CI_REMEDIATION",
-  "generatedAt": "2026-09-13T15:20:54.3500270Z",
+  "generatedAt": "2026-09-13T15:23:23.0152617Z",
   "productionImpact": true,
   "candidateWorktree": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-recover-03-20260913",
   "candidateBranch": "codex/sys-mb-recover-03-20260913",
   "productionBranch": "codex/eventgenix-production",
-  "productionBranchBaseSha": "8b21b3fcbd159c6c1e793d22508953d303c6c212",
+  "productionBranchBaseSha": "18521fb2eb708f17d677c0cf96944adea0be91b1",
   "liveShaObservedBeforeRelease": "8b21b3fcbd159c6c1e793d22508953d303c6c212",
   "candidateHeadBeforeThisDocsCommit": "d448d125c94398fbd7bc2922bc6fee6b224c0290",
-  "releaseVersion": "0.81.157",
+  "releaseVersion": "0.81.159",
   "releaseLabel": "SYS-MB: перехід CRM",
   "railwayTarget": {
     "project": "fortunate-appreciation",
@@ -461,5 +461,11 @@
       "npm run test:browser:sidebar-timeline",
       "npm test"
     ]
+  },
+  "remoteProductionDriftAbsorbed": {
+    "sha": "18521fb2eb708f17d677c0cf96944adea0be91b1",
+    "version": "0.81.158",
+    "label": "Спільний тестовий термінал",
+    "preserved": true
   }
 }

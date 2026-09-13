@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.149",
+  "version": "0.81.150",
   "eventGenix": {
-    "releaseLabel": "Vitalina test cashier PIN"
+    "releaseLabel": "Design Board UI context polish"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

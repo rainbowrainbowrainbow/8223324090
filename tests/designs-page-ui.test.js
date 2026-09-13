@@ -61,7 +61,11 @@ function createHarness(fetchImpl = async () => new Response(JSON.stringify({ ite
         window: dom.window,
         document: dom.window.document,
         localStorage: {
-            getItem: key => key === 'pzp_token' ? 'test-token' : null,
+            getItem: key => {
+                if (key === 'pzp_token') return 'test-token';
+                if (key === 'pzp_crm_business_context') return 'dar';
+                return null;
+            },
             removeItem: () => {}
         },
         fetch: async (url, options) => {
@@ -100,6 +104,10 @@ function createHarness(fetchImpl = async () => new Response(JSON.stringify({ ite
         let lightboxRequestSequence = 0;
         const designThumbnailUrls = new Map();
         ${[
+            'activeDesignBusinessContext',
+            'isDesignApiUrl',
+            'designApiUrl',
+            'designApiHeaders',
             'authHeaders',
             'apiFetch',
             'loadDesigns',
@@ -107,6 +115,9 @@ function createHarness(fetchImpl = async () => new Response(JSON.stringify({ ite
             'renderDesignError',
             'renderDesignGrid',
             'esc',
+            'designFileKind',
+            'designImagePlaceholderDataUrl',
+            'designCardPreviewContent',
             'setupDesignGridActions',
             'designDownloadUrl',
             'designFilenameFromDisposition',
@@ -161,6 +172,33 @@ test('Design Board renders cards and tag chips without inline data handlers', ()
     assert.equal(dom.window.document.querySelector('[data-design-download="42"]').getAttribute('onclick'), null);
     assert.match(dom.window.document.querySelector('.design-card-tags').textContent, /#x<script>/);
     assert.doesNotMatch(dom.window.document.body.innerHTML, /\/uploads\/designs/);
+    assert.doesNotMatch(dom.window.document.body.innerHTML, /favicon-512/);
+
+    context.window.__setDesigns([{
+        id: 43,
+        title: 'Guide PDF',
+        originalName: 'guide.pdf',
+        filename: 'guide.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 4096,
+        createdAt: '2026-09-12T10:00:00.000Z',
+        tags: [],
+        isPinned: false
+    }]);
+    context.renderDesignGrid();
+    assert.ok(dom.window.document.querySelector('.design-file-thumb-pdf'));
+    assert.equal(dom.window.document.querySelector('.design-card-img'), null);
+    assert.doesNotMatch(dom.window.document.body.innerHTML, /favicon-512/);
+});
+
+
+test('Design Board API calls include active business context without touching non-design URLs', async () => {
+    const { context, calls } = createHarness(async () => new Response(JSON.stringify({ items: [], total: 0 }), { status: 200 }));
+    await context.loadDesigns();
+    assert.equal(calls[0].url, '/api/designs?limit=50&offset=0&businessContext=dar');
+    assert.equal(calls[0].options.headers['x-business-context'], 'dar');
+    assert.equal(context.designApiUrl('/api/catalogs/1/pages'), '/api/catalogs/1/pages');
+    assert.equal(context.designApiUrl('/api/designs?businessContext=event_genix'), '/api/designs?businessContext=event_genix');
 });
 
 test('Design Board download uses the authenticated API response as a Blob', async () => {
@@ -170,8 +208,9 @@ test('Design Board download uses the authenticated API response as a Blob', asyn
     }));
     context.window.__setDesigns([{ id: 7, title: 'Poster', filename: 'poster.png', mimeType: 'image/png' }]);
     await context.downloadDesign(7);
-    assert.equal(calls[0].url, '/api/designs/7/download');
+    assert.equal(calls[0].url, '/api/designs/7/download?businessContext=dar');
     assert.equal(calls[0].options.headers.Authorization, 'Bearer test-token');
+    assert.equal(calls[0].options.headers['x-business-context'], 'dar');
     assert.equal(calls.find(call => call.type === 'download')?.filename, 'poster.png');
 });
 

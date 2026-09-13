@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.150 - Design Board UI context polish
+
+### Release / Versioning / (13.09.2026) [codex]
+- **Design Board UI context polish** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.149 - Vitalina test cashier PIN
 
 ### Каса / Тестовий PIN / (13.09.2026) [codex]

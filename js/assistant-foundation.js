@@ -1325,18 +1325,15 @@
     function setSidebarCollapsed(collapsed = null) {
         const sidebar = document.getElementById('sidebarNav');
         if (!sidebar) return { success: false, message: 'sidebar_unavailable' };
-        const next = collapsed === null ? !sidebar.classList.contains('collapsed') : !!collapsed;
-        sidebar.classList.toggle('collapsed', next);
-        document.body.classList.toggle('sidebar-is-collapsed', next);
-        try { localStorage.setItem('pzp_sidebar_collapsed', String(next)); } catch {}
+        sidebar.classList.remove('collapsed');
+        document.body.classList.remove('sidebar-is-collapsed');
+        try { localStorage.removeItem('pzp_sidebar_collapsed'); } catch {}
         const btn = document.getElementById('sidebarCollapseBtn');
         if (btn) {
-            btn.setAttribute('aria-pressed', String(next));
-            btn.setAttribute('aria-label', next ? 'Розгорнути меню' : 'Згорнути меню');
-            btn.setAttribute('title', next ? 'Розгорнути меню' : 'Згорнути меню');
+            btn.remove();
         }
         window.dispatchEvent(new Event('resize'));
-        return { success: true, collapsed: next };
+        return { success: true, collapsed: false, disabled: true };
     }
 
     function setTimelineCompact(enabled) {

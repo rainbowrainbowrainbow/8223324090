@@ -6239,3 +6239,13 @@ body.timeline-dashboard-page .schedule-command-center .toolbarGroup .toolbarTogg
 body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-selector .timeline-view-mode-btn.active {
     box-shadow: none !important;
 }
+
+/* v0.81.159: sidebar collapse mode is disabled; hide static legacy buttons after all sidebar imports */
+#sidebarCollapseBtn,
+.sidebar-collapse-btn,
+.sidebar-nav:not(.collapsed) .sidebar-collapse-btn,
+.sidebar-nav.collapsed .sidebar-collapse-btn {
+    display: none !important;
+    visibility: hidden;
+    pointer-events: none;
+}

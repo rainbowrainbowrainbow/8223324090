@@ -4410,24 +4410,23 @@ const Sidebar = (() => {
 
     function _ensureSidebarCollapseButton(sidebar) {
         if (!sidebar) return null;
-        const brand = sidebar.querySelector('.sidebar-brand');
         let btn = document.getElementById('sidebarCollapseBtn');
-        if (!btn) {
-            btn = document.createElement('button');
-            btn.type = 'button';
-            btn.id = 'sidebarCollapseBtn';
-            btn.className = 'sidebar-collapse-btn';
+        if (btn) {
+            btn.remove();
         }
-        btn.innerHTML = '<span class="collapse-icon" aria-hidden="true">‹</span><span class="collapse-text">Згорнути</span>';
-        if (brand && btn.parentElement !== brand) brand.appendChild(btn);
-        return btn;
+        sidebar.classList.remove('collapsed');
+        document.body.classList.remove('sidebar-is-collapsed');
+        try { localStorage.removeItem('pzp_sidebar_collapsed'); } catch {}
+        return null;
     }
 
     function _syncSidebarCollapseButton(sidebar) {
         const root = sidebar || document.getElementById('sidebarNav');
         const btn = document.getElementById('sidebarCollapseBtn');
-        if (!root || !btn) return;
+        if (!root) return;
         const collapsed = root.classList.contains('collapsed');
+        document.body.classList.toggle('sidebar-is-collapsed', collapsed);
+        if (!btn) return;
         const icon = btn.querySelector('.collapse-icon');
         const text = btn.querySelector('.collapse-text');
         if (icon) icon.textContent = collapsed ? '›' : '‹';
@@ -4435,7 +4434,6 @@ const Sidebar = (() => {
         btn.setAttribute('aria-label', collapsed ? 'Розгорнути меню' : 'Згорнути меню');
         btn.setAttribute('title', collapsed ? 'Розгорнути меню' : 'Згорнути меню');
         btn.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
-        document.body.classList.toggle('sidebar-is-collapsed', collapsed);
     }
 
     function _notifyGlobalTaskTimerShellChanged() {
@@ -4452,8 +4450,10 @@ const Sidebar = (() => {
     function _setSidebarCollapsed(nextCollapsed, persist = true) {
         const sidebar = document.getElementById('sidebarNav');
         if (!sidebar) return;
-        sidebar.classList.toggle('collapsed', !!nextCollapsed);
-        if (persist) localStorage.setItem('pzp_sidebar_collapsed', String(!!nextCollapsed));
+        sidebar.classList.remove('collapsed');
+        if (persist) {
+            try { localStorage.removeItem('pzp_sidebar_collapsed'); } catch {}
+        }
         _syncSidebarCollapseButton(sidebar);
         _syncSidebarBusinessSwitcher();
         _queueActiveIndicatorUpdate();
@@ -4578,9 +4578,8 @@ const Sidebar = (() => {
                 }
                 sidebar.classList.remove('collapsed');
             } else if (!nextOpen && sidebar.dataset.sidebarMobileRestoreCollapsed !== undefined) {
-                const restoreCollapsed = sidebar.dataset.sidebarMobileRestoreCollapsed === 'true';
                 delete sidebar.dataset.sidebarMobileRestoreCollapsed;
-                sidebar.classList.toggle('collapsed', restoreCollapsed);
+                sidebar.classList.remove('collapsed');
             }
             sidebar.classList.toggle('open', nextOpen);
             if (overlay) {

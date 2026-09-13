@@ -752,7 +752,13 @@ async function assertParkLauncher(page, base) {
     await page.evaluate(() => localStorage.setItem('pzp_sidebar_collapsed', 'true'));
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForSidebar(page);
-    await page.waitForFunction(() => document.getElementById('sidebarNav')?.classList.contains('collapsed'));
+    await page.waitForFunction(() => {
+        const sidebar = document.getElementById('sidebarNav');
+        return sidebar
+            && !sidebar.classList.contains('collapsed')
+            && localStorage.getItem('pzp_sidebar_collapsed') === null
+            && !document.getElementById('sidebarCollapseBtn');
+    });
     await page.locator('#sidebarToggle').click();
     await page.waitForFunction(() => {
         const sidebar = document.getElementById('sidebarNav');
@@ -771,11 +777,13 @@ async function assertParkLauncher(page, base) {
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => {
         const sidebar = document.getElementById('sidebarNav');
-        return !sidebar?.classList.contains('open') && sidebar?.classList.contains('collapsed');
+        return !sidebar?.classList.contains('open')
+            && !sidebar?.classList.contains('collapsed')
+            && localStorage.getItem('pzp_sidebar_collapsed') === null;
     });
 
     await page.evaluate(() => {
-        localStorage.setItem('pzp_sidebar_collapsed', 'false');
+        localStorage.removeItem('pzp_sidebar_collapsed');
         localStorage.setItem('eg_sidebar_extra_menu_items_v3', JSON.stringify([{
             id: 'smoke_staff_only',
             label: 'Staff only',

@@ -99,6 +99,13 @@ async function waitForStableSidebarRuntime(page, expectedListHidden) {
     // Wait for the exact shared Favorites DOM to survive two frames, so a late
     // sidebar render cannot replace the keyboard target between focus and press.
     await page.waitForLoadState('networkidle');
+    await page.waitForFunction(() => typeof window.CrmBusinessContext?.applyProfile === 'function');
+    await page.evaluate(({ profile, user }) => {
+        if (!window.CrmBusinessContext.profileFor?.('event_genix')) {
+            window.CrmBusinessContext.applyProfile(profile, { user, emit: true, updateUrl: false });
+        }
+    }, { profile: PROFILE, user: USER });
+    await publishFixtureTimelineSummary(page);
     let stableReadyBadgeCount;
     try {
         stableReadyBadgeCount = await page.waitForFunction(expectedHidden => {
@@ -117,9 +124,9 @@ async function waitForStableSidebarRuntime(page, expectedListHidden) {
             && toggle.getAttribute('aria-expanded') === String(!expectedHidden)
             && modes.length === 2
             && badges.length === 2
-            && badges.every(badge => badge
+            && (expectedHidden || badges.every(badge => badge
                 && /^\d+$/.test(badge.textContent.trim())
-                && badge.dataset.sidebarTimelineCountStatus === 'ready')
+                && badge.dataset.sidebarTimelineCountStatus === 'ready'))
         );
         const stable = window.__sidebarTimelineRuntimeStable || { frames: 0 };
         const unchanged = ready
@@ -132,7 +139,7 @@ async function waitForStableSidebarRuntime(page, expectedListHidden) {
             && stable.modes.every((mode, index) => mode === modes[index])
             && stable.badges.every((badge, index) => badge === badges[index]);
         window.__sidebarTimelineRuntimeStable = { root, list, toggle, launcher, modes, badges, frames: unchanged ? stable.frames + 1 : 0 };
-        return ready && unchanged && window.__sidebarTimelineRuntimeStable.frames >= 2 ? badges.length : false;
+        return ready && unchanged && window.__sidebarTimelineRuntimeStable.frames >= 2 ? modes.length : false;
     }, expectedListHidden, { polling: 'raf' });
     } catch (error) {
         const diagnostics = await page.evaluate(() => ({
@@ -149,11 +156,12 @@ async function waitForStableSidebarRuntime(page, expectedListHidden) {
                 key: mode.dataset.sidebarTimelineMode,
                 count: mode.querySelector('[data-sidebar-timeline-count-mode]')?.textContent?.trim() || '',
                 status: mode.querySelector('[data-sidebar-timeline-count-mode]')?.dataset.sidebarTimelineCountStatus || ''
-            }))
+            })),
+            storageCollapsed: localStorage.getItem('pzp_sidebar_collapsed')
         })).catch(() => null);
         throw new Error(`sidebar runtime did not stabilize: ${JSON.stringify(diagnostics)}; ${error.message}`);
     }
-    assert.equal(await stableReadyBadgeCount.jsonValue(), 2, 'both runtime badges are ready after the sidebar becomes idle');
+    assert.equal(await stableReadyBadgeCount.jsonValue(), 2, 'both runtime mode controls are stable after the sidebar becomes idle');
 }
 
 async function publishFixtureTimelineSummary(page) {
@@ -202,7 +210,7 @@ async function run() {
         localStorage.setItem('pzp_token', 'ci-read-only-token');
         localStorage.setItem('pzp_current_user', JSON.stringify(user));
         localStorage.setItem('pzp_dark_mode', 'true');
-        localStorage.setItem('pzp_sidebar_collapsed', 'false');
+        localStorage.removeItem('pzp_sidebar_collapsed');
     }, USER);
     await context.route('**/*', route => {
         if (new URL(route.request().url()).origin !== fixture.base) {

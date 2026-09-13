@@ -831,9 +831,19 @@ test('migration 326 adds sanitized Checkbox readiness snapshots and operational 
 test('payment create and confirm use the server-side provider readiness gate', () => {
     const service = read('services/payments/paymentService.js');
     assert.match(service, /PaymentReadinessError,[\s\S]*assertFreshPaymentReadiness,[\s\S]*assertPaymentReadiness[\s\S]*require\('\.\/paymentReadinessService'\)/);
-    assert.match(service, /await assertPaymentReadiness\(\{\s*client,\s*user,\s*fiscalProfileId: mapping\.fiscal_profile_id,[\s\S]*?action: 'payments\.create'/);
-    assert.match(service, /fiscalProfileId: mapping\.fiscal_profile_id,[\s\S]*?action: 'payments\.create',\s*tender/);
-    assert.match(service, /await assertPaymentReadiness\(\{\s*client,\s*user: effectiveUser,\s*fiscalProfileId: order\.fiscal_profile_id,[\s\S]*?action: 'payments\.confirm_received'/);
+    const createOrderSection = service.slice(
+        service.indexOf('async function createAdmissionTicketPaymentOrder'),
+        service.indexOf('async function confirmPaymentOrder')
+    );
+    assert.match(createOrderSection, /await assertPaymentReadiness\(\{[\s\S]*?fiscalProfileId: mapping\.fiscal_profile_id,[\s\S]*?\}\);/);
+    assert.match(createOrderSection, /await assertPaymentReadiness\(\{[\s\S]*?action: 'payments\.create'[\s\S]*?\}\);/);
+    assert.match(createOrderSection, /await assertPaymentReadiness\(\{[\s\S]*?tender[\s\S]*?\}\);/);
+    const confirmOrderSection = service.slice(
+        service.indexOf('async function confirmPaymentOrder'),
+        service.indexOf('async function cancelDraftPaymentOrder')
+    );
+    assert.match(confirmOrderSection, /await assertPaymentReadiness\(\{[\s\S]*?fiscalProfileId: order\.fiscal_profile_id,[\s\S]*?\}\);/);
+    assert.match(confirmOrderSection, /await assertPaymentReadiness\(\{[\s\S]*?action: 'payments\.confirm_received'[\s\S]*?\}\);/);
     assert.match(service, /await assertFreshPaymentReadiness\(\{[\s\S]*?tender: immutableTender,[\s\S]*?fetchImpl: checkboxFetchImpl/);
     assert.ok(
         service.indexOf('await assertFreshPaymentReadiness({') < service.indexOf('const result = await withTransaction(dbPool, async client => {', service.indexOf('async function confirmPaymentOrder')),

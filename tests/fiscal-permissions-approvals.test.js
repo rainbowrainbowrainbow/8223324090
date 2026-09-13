@@ -151,6 +151,14 @@ test('fiscal.configure is non-delegable and explicit allowlist is ignored', () =
     assert.equal(canUseAction({ id: 1, role: 'creator', action_allowlist: ['fiscal.configure'] }, 'fiscal.configure'), true);
 });
 
+test('test cashier PIN management is delegated without broad fiscal configuration', () => {
+    assert.equal(ACTION_PERMISSION_BY_KEY['fiscal.test.pin.manage'].delegable, true);
+    assert.deepEqual(ACTION_PERMISSION_BY_KEY['fiscal.test.pin.manage'].defaultRoles, []);
+    const vitalinaLike = baseUser({ role: 'senior_manager', action_allowlist: ['fiscal.test.pin.manage'], business_contexts: ['event_genix'], default_business_context: 'event_genix' });
+    assert.equal(canUseAction(vitalinaLike, 'fiscal.test.pin.manage'), true);
+    assert.equal(canUseAction(vitalinaLike, 'fiscal.configure'), false);
+});
+
 test('fiscal action context requires exact user, CRM profile, location, register, and capability', () => {
     const decision = authorizeFiscalActionContext({
         user: baseUser(),

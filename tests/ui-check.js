@@ -7446,6 +7446,18 @@ check('Cashier thin page exposes only narrow service-out/PIN operations outside 
     && !cashierPaymentsHtml.includes('data-cashier-pro-page="true"')
     && !cashierPaymentsHtml.includes('id="operationalContourPanel"')
     && !cashierPaymentsHtml.includes('cashier-payments-pro'));
+check('Cashier PIN UI keeps delegated enrollment separate from an owner-only test PIN check',
+    cashierPaymentsHtml.includes('id="actionPinCheckForm"')
+    && cashierPaymentsHtml.includes('id="actionPinCheckValue"')
+    && cashierPaymentsHtml.includes('id="checkActionPinBtn"')
+    && /id="actionPinCheckValue"[^>]*minlength="4"[^>]*maxlength="12"/.test(cashierPaymentsHtml)
+    && cashierPaymentsJs.includes('function actionPinManageVisible()')
+    && cashierPaymentsJs.includes('function checkOwnActionPin(event)')
+    && cashierPaymentsJs.includes('/action-pin/check')
+    && cashierPaymentsJs.includes("$('actionPinCheckForm')?.addEventListener('submit', checkOwnActionPin)")
+    && cashierPaymentsJs.includes('state.actionPinCheckInFlight')
+    && cashierPaymentsJs.includes('PIN підтверджено без створення касової операції.')
+    && !/localStorage\.(?:setItem|getItem)[^\n]*(?:pin|actionPin)/i.test(cashierPaymentsJs));
 check('Cashier payments defines accessible dark warning and overflow containment surfaces',
     cashierPaymentsCss.includes('body.dark-mode .cashier-alert-warning')
     && cashierPaymentsCss.includes('color: #fde68a')

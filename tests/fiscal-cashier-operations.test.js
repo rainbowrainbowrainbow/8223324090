@@ -408,16 +408,19 @@ test('two-FOP isolation is enforced by fiscal_profile_id scoped FKs and queries'
   assert.ok((service.match(/fiscal_profile_id = \$1|fiscal_profile_id = \$2|fiscalProfileId/g) || []).length >= 20);
 });
 
-test('PIN enrollment is a configure-only server flow and never stores raw PIN in responses', () => {
+test('PIN enrollment is a scoped configure or test manager server flow and never stores raw PIN in responses', () => {
   assert.match(routes, /\/fiscal-bindings\/:bindingId\/action-pin/);
-  assert.match(routes, /requireAction\('fiscal\.configure'\)/);
+  assert.match(routes, /requireFiscalActionPinAccess/);
+  assert.match(routes, /\/fiscal-bindings\/:bindingId\/action-pin\/check/);
   assert.match(service, /async function enrollFiscalActionPin/);
+  assert.match(service, /async function verifyOwnFiscalActionPin/);
   assert.match(service, /route = await routeResolver/);
   assert.match(service, /AND b\.fiscal_profile_id = \$2 AND b\.fiscal_location_id = \$3 AND b\.fiscal_register_id = \$4/);
   assert.match(service, /action_pin_self_enrollment_denied/);
   assert.match(service, /createActionPinHash\(rawPin\)/);
   assert.match(service, /action_pin_hash = \$2/);
-  assert.doesNotMatch(service, /pinEnrolled:[\s\S]*rawPin/);
+  const enrollmentResult = service.slice(service.indexOf('pinEnrolled: true'), service.indexOf('async function verifyOwnFiscalActionPin'));
+  assert.doesNotMatch(enrollmentResult, /rawPin/);
   assert.match(bindingAdmin, /actionPin:\s*\{[\s\S]*configured: pinConfigured,[\s\S]*lockedUntil:/);
   assert.doesNotMatch(bindingAdmin, /credentialReference/);
 });

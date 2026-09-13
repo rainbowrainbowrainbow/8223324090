@@ -35,7 +35,8 @@ const {
     listServiceOutRequests,
     loadPilotRegisterState,
     recoverServiceOutRequest,
-    applyPhase1CloseReadiness
+    applyPhase1CloseReadiness,
+    verifyOwnFiscalActionPin
 } = require('../services/payments/cashierOperationsService');
 const {
     PaymentReadinessError,
@@ -63,6 +64,12 @@ const {
 } = require('../services/payments/fiscalSaleRouteService');
 
 router.use(authenticateToken);
+
+function requireFiscalActionPinAccess(req, res, next) {
+    if (canUseAction(req.user, 'fiscal.configure') || canUseAction(req.user, 'fiscal.test.pin.manage')) return next();
+    return res.status(403).json({ success: false, error: 'fiscal_capability_denied', message: 'User lacks the required fiscal PIN capability', details: { action: 'fiscal.test.pin.manage' } });
+}
+function canReadOwnActionPinBinding(user) { return canUseAction(user, 'payments.view'); }
 
 function idempotencyKeyFromRequest(req) {
     return req.get('Idempotency-Key') || req.get('idempotency-key') || '';
@@ -683,7 +690,11 @@ router.post('/catalog/orders', requireAction('payments.create'), async (req, res
 
 router.get('/catalog/routes', requireAction('payments.view'), async (req, res) => {
     try {
-        const routes = await listFiscalSaleRouteOptions({ user: req.user });
+        const routes = await listFiscalSaleRouteOptions({
+            user: req.user,
+            allowTestPinManage: canUseAction(req.user, 'fiscal.test.pin.manage'),
+            allowTestPinRead: canReadOwnActionPinBinding(req.user)
+        });
         return res.status(200).json({ success: true, routes });
     } catch (error) {
         const response = paymentErrorResponse(error);
@@ -748,12 +759,14 @@ router.get('/catalog/cashiers', requireAction('payments.create'), async (req, re
     }
 });
 
-router.get('/fiscal-bindings/cashiers', requireAction('fiscal.configure'), async (req, res) => {
+router.get('/fiscal-bindings/cashiers', async (req, res) => {
     try {
+        const selfOnly = !(canUseAction(req.user, 'fiscal.configure') || canUseAction(req.user, 'fiscal.test.pin.manage'));
+        if (selfOnly && !canReadOwnActionPinBinding(req.user)) return res.status(403).json({ success: false, error: 'fiscal_capability_denied', message: 'User lacks the required fiscal PIN capability', details: { action: 'payments.view' } });
         const cashiers = await listCashierBindings({
             user: req.user,
             businessContext: req.query.businessContext || req.query.business_context,
-            routeOptionId: routeOptionIdFromRequest(req)
+            routeOptionId: routeOptionIdFromRequest(req), selfOnly
         });
         return res.status(200).json({ success: true, cashiers });
     } catch (error) {
@@ -1011,7 +1024,7 @@ router.post('/shifts/:shiftId/phase1-close', requireAction('fiscal.shift.close')
     }
 });
 
-router.post('/fiscal-bindings/:bindingId/action-pin', requireAction('fiscal.configure'), async (req, res) => {
+router.post('/fiscal-bindings/:bindingId/action-pin', requireFiscalActionPinAccess, async (req, res) => {
     try {
         const result = await enrollFiscalActionPin({
             user: req.user,
@@ -1024,6 +1037,16 @@ router.post('/fiscal-bindings/:bindingId/action-pin', requireAction('fiscal.conf
                 ?? req.query?.business_context
                 ?? null
         });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = cashierOperationsErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/fiscal-bindings/:bindingId/action-pin/check', async (req, res) => {
+    try {
+        const result = await verifyOwnFiscalActionPin({ user: req.user, bindingId: req.params.bindingId, body: req.body || {}, routeOptionId: routeOptionIdFromRequest(req), businessContext: req.body?.businessContext ?? req.body?.business_context ?? req.query?.businessContext ?? req.query?.business_context ?? null });
         return res.status(200).json({ success: true, ...result });
     } catch (error) {
         const response = cashierOperationsErrorResponse(error);

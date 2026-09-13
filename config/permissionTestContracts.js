@@ -187,6 +187,7 @@ const ACTION_PERMISSION_TEST_CONTRACTS = Object.freeze({
         allowExpectation: 'primary_role_preset_only',
         testFiles: ['tests/fiscal-permissions-approvals.test.js']
     }),
+    'fiscal.test.pin.manage': actionContract('fiscal.test.pin.manage', { backendScenario: 'delegated test cashier PIN enrollment without fiscal.configure', mutation: true, sensitive: true, testFiles: ['tests/fiscal-permissions-approvals.test.js', 'tests/fiscal-sale-register-routes.test.js', 'tests/fiscal-cashier-operations.test.js', 'tests/fiscal-action-pin-check.test.js', 'tests/catalog-sale.test.js'] }),
     'create_booking': actionContract('create_booking', {
         backendScenario: 'booking create routes',
         mutation: true,

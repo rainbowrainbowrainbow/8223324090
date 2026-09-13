@@ -97,11 +97,19 @@ function assertNoClientFiscalRouteOverride(body = {}) {
     }
 }
 
-function assertRouteVisibleToUser(route, user, { canUseActionFn = canUseAction, canAccessBusinessContextFn = canAccessBusinessContext } = {}) {
+function assertRouteVisibleToUser(route, user, {
+    canUseActionFn = canUseAction,
+    canAccessBusinessContextFn = canAccessBusinessContext,
+    allowTestPinManage = false,
+    allowTestPinRead = false
+} = {}) {
     if (!user?.id || !canAccessBusinessContextFn(user, route.businessContext)) {
         throw new FiscalSaleRouteError('fiscal_route_business_denied', 'Business context is not available to this user', { status: 403 });
     }
-    if (route.mode === 'test' && !canUseActionFn(user, 'fiscal.configure')) {
+    const canSeeTestRoute = canUseActionFn(user, 'fiscal.configure')
+        || (allowTestPinManage === true && canUseActionFn(user, 'fiscal.test.pin.manage'))
+        || allowTestPinRead === true;
+    if (route.mode === 'test' && !canSeeTestRoute) {
         throw new FiscalSaleRouteError('fiscal_test_route_denied', 'Test register selection requires fiscal configuration access', { status: 403 });
     }
     return true;
@@ -332,11 +340,13 @@ async function resolveFiscalSaleRoute({
     businessContext = null,
     requireMutationReady = false,
     canUseActionFn = canUseAction,
-    canAccessBusinessContextFn = canAccessBusinessContext
+    canAccessBusinessContextFn = canAccessBusinessContext,
+    allowTestPinManage = false,
+    allowTestPinRead = false
 } = {}) {
     const id = normalizeRouteOptionId(routeOptionId);
     const route = ROUTE_OPTIONS[id];
-    assertRouteVisibleToUser(route, user, { canUseActionFn, canAccessBusinessContextFn });
+    assertRouteVisibleToUser(route, user, { canUseActionFn, canAccessBusinessContextFn, allowTestPinManage, allowTestPinRead });
     const requestedBusiness = String(businessContext || route.businessContext).trim().toLowerCase();
     if (requestedBusiness !== route.businessContext) {
         throw new FiscalSaleRouteError('fiscal_route_business_mismatch', 'Selected register route belongs to another business context', { status: 409 });
@@ -384,9 +394,12 @@ async function resolveFiscalSaleRoute({
     }
 }
 
-function projectRouteOption(route, resolved = null, error = null) {
+function projectRouteOption(route, resolved = null, error = null, { salesAllowed = true } = {}) {
     const mapping = resolved?.mapping || null;
     const configured = Boolean(mapping);
+    const sequentialOwnerBusinessContext = resolved?.sequentialState?.reasonCode === 'shared_test_register_owned_by_other_business'
+        ? resolved.sequentialState.activeBusinessContext
+        : null;
     return {
         id: route.id,
         businessContext: route.businessContext,
@@ -397,7 +410,9 @@ function projectRouteOption(route, resolved = null, error = null) {
         configured,
         featureEnabled: mapping?.feature_enabled === true && mapping?.route_feature_enabled === true,
         acceptanceEnabled: mapping?.acceptance_enabled === true && mapping?.route_acceptance_enabled === true,
+        salesAllowed: salesAllowed !== false,
         sequentialReady: resolved?.sequentialState?.ready === true,
+        sequentialOwnerBusinessContext,
         readinessCode: error?.code || resolved?.sequentialState?.reasonCode || (
             !configured ? 'fiscal_route_mapping_missing'
                 : mapping.fiscal_register_status !== 'active' || mapping.route_status !== 'active' ? 'register_inactive'
@@ -412,33 +427,36 @@ async function listFiscalSaleRouteOptions({
     dbPool = pool,
     user,
     canUseActionFn = canUseAction,
-    canAccessBusinessContextFn = canAccessBusinessContext
+    canAccessBusinessContextFn = canAccessBusinessContext,
+    allowTestPinManage = false,
+    allowTestPinRead = false
 } = {}) {
     const options = [];
     for (const route of Object.values(ROUTE_OPTIONS)) {
         try {
-            assertRouteVisibleToUser(route, user, { canUseActionFn, canAccessBusinessContextFn });
+            assertRouteVisibleToUser(route, user, { canUseActionFn, canAccessBusinessContextFn, allowTestPinManage, allowTestPinRead });
         } catch {
             continue;
         }
+        const salesAllowed = route.mode !== 'test' || canUseActionFn(user, 'fiscal.configure');
         try {
             const resolved = await resolveFiscalSaleRoute({
                 dbPool,
                 user,
                 routeOptionId: route.id,
                 canUseActionFn,
-                canAccessBusinessContextFn
+                canAccessBusinessContextFn, allowTestPinManage, allowTestPinRead
             });
-            options.push(projectRouteOption(route, resolved));
+            options.push(projectRouteOption(route, resolved, null, { salesAllowed }));
         } catch (error) {
             if (
                 error?.code === 'fiscal_route_mapping_ambiguous'
                 || error?.code === 'fiscal_route_mode_mismatch'
                 || error?.code === 'fiscal_shared_register_group_drift'
             ) {
-                options.push(projectRouteOption(route, null, error));
+                options.push(projectRouteOption(route, null, error, { salesAllowed }));
             } else if (error?.code === 'fiscal_route_mapping_missing') {
-                options.push(projectRouteOption(route));
+                options.push(projectRouteOption(route, null, null, { salesAllowed }));
             } else {
                 throw error;
             }

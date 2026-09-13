@@ -18,7 +18,8 @@ const {
     FiscalApprovalError,
     approveFiscalAction,
     consumeFiscalApprovalInTransaction,
-    createActionPinHash
+    createActionPinHash,
+    evaluatePinChallenge
 } = require('./fiscalApprovals');
 const { toPostgresBigint } = require('./money');
 const {
@@ -150,6 +151,14 @@ function requireBusinessContextAccess(user, crmProfileKey, action) {
         });
     }
     return businessContext;
+}
+
+function assertTestPinRouteScope(route = {}) {
+    const mapping = route.mapping || {};
+    if (route.mode !== 'test' || route.expectedIsTest !== true || route.sharedTestRegister !== true || mapping.route_status !== 'active' || mapping.route_feature_enabled !== true || mapping.fiscal_register_status !== 'active' || mapping.feature_enabled !== true || String(mapping.provider || '').trim() !== 'checkbox' || !String(mapping.shared_register_group || '').trim()) {
+        throw new CashierOperationsError('fiscal_test_pin_scope_invalid', 'Test PIN management is available only for server-verified shared test registers', { status: 403 });
+    }
+    return true;
 }
 
 function serviceOutRouteInput(body = {}) {
@@ -3086,17 +3095,18 @@ async function enrollFiscalActionPin({
     body = {},
     routeOptionId = null,
     businessContext = null,
-    routeResolver = resolveFiscalSaleRoute
+    routeResolver = resolveFiscalSaleRoute,
+    withTransactionFn = withTransaction
 } = {}) {
-    if (!canUseAction(user, 'fiscal.configure')) {
-        throw new FiscalAccessError('fiscal_capability_denied', 'User lacks the required payment/fiscal capability', { action: 'fiscal.configure' });
-    }
+    const canConfigure = canUseAction(user, 'fiscal.configure');
+    const canManageTestPin = canUseAction(user, 'fiscal.test.pin.manage');
+    if (!canConfigure && !canManageTestPin) throw new FiscalAccessError('fiscal_capability_denied', 'User lacks the required payment/fiscal capability', { action: 'fiscal.test.pin.manage' });
     const normalizedBindingId = normalizePositiveId(bindingId, 'fiscal_binding_required');
     const rawPin = body.actionPin || body.action_pin || body.pin;
     if (rawPin === undefined || rawPin === null || String(rawPin).trim() === '') {
         throw new FiscalApprovalError('action_pin_required', 'Action PIN is required');
     }
-    return withTransaction(async client => {
+    return withTransactionFn(async client => {
         const routeBody = {
             ...body,
             routeOptionId: routeOptionId ?? body.routeOptionId ?? body.route_option_id,
@@ -3112,9 +3122,12 @@ async function enrollFiscalActionPin({
                 client,
                 user,
                 routeOptionId: routeInput.routeOptionId,
-                businessContext: routeInput.businessContext
+                businessContext: routeInput.businessContext, allowTestPinManage: canManageTestPin
             });
-            requireBusinessContextAccess(user, route.businessContext, 'fiscal.configure');
+            if (canConfigure) requireBusinessContextAccess(user, route.businessContext, 'fiscal.configure');
+            else { assertTestPinRouteScope(route); requireBusinessContextAccess(user, route.businessContext, 'fiscal.test.pin.manage'); }
+        } else if (!canConfigure) {
+            throw new CashierOperationsError('fiscal_route_option_required', 'Business context and route option are required', { status: 422 });
         }
         const result = await client.query(
             `SELECT b.*, fp.crm_profile_key, fr.register_alias
@@ -3135,6 +3148,7 @@ async function enrollFiscalActionPin({
         if (!binding) {
             throw new CashierOperationsError('fiscal_binding_not_found', 'Fiscal cashier binding not found', { status: 404 });
         }
+        if (!canConfigure && binding.status !== 'active') throw new CashierOperationsError('fiscal_binding_not_found', 'Fiscal cashier binding not found', { status: 404 });
         if (Number(binding.user_id) === Number(user?.id)) {
             throw new FiscalApprovalError('action_pin_self_enrollment_denied', 'Fiscal action PIN must be enrolled by a different authorized actor');
         }
@@ -3172,6 +3186,37 @@ async function enrollFiscalActionPin({
             fiscalRegisterId: Number(binding.fiscal_register_id),
             pinEnrolled: true
         };
+    });
+}
+
+async function verifyOwnFiscalActionPin({
+    user,
+    bindingId,
+    body = {},
+    routeOptionId = null,
+    businessContext = null,
+    routeResolver = resolveFiscalSaleRoute,
+    withTransactionFn = withTransaction,
+    pinEvaluator = evaluatePinChallenge,
+    persistPinResult = persistApprovalPinResult
+} = {}) {
+    if (!user?.id) throw new FiscalAccessError('fiscal_authentication_required', 'Authenticated user is required');
+    const normalizedBindingId = normalizePositiveId(bindingId, 'fiscal_binding_required');
+    const rawPin = body.actionPin || body.action_pin || body.pin;
+    if (rawPin === undefined || rawPin === null || String(rawPin).trim() === '') throw new FiscalApprovalError('action_pin_required', 'Action PIN is required');
+    return withTransactionFn(async client => {
+        const routeInput = serviceOutRouteInput({ ...body, routeOptionId: routeOptionId ?? body.routeOptionId ?? body.route_option_id, businessContext: businessContext ?? body.businessContext ?? body.business_context });
+        if (!routeInput.routeOptionId || !routeInput.businessContext) throw new CashierOperationsError('fiscal_route_option_required', 'Business context and route option are required', { status: 422 });
+        const route = await routeResolver({ client, user, routeOptionId: routeInput.routeOptionId, businessContext: routeInput.businessContext, canUseActionFn: (actor, action) => action === 'fiscal.test.pin.manage' || canUseAction(actor, action), allowTestPinManage: true });
+        assertTestPinRouteScope(route);
+        requireBusinessContextAccess(user, route.businessContext, 'payments.view');
+        const result = await client.query(`SELECT b.*, fp.crm_profile_key, fr.register_alias FROM fiscal_cashier_bindings b JOIN fiscal_profiles fp ON fp.id = b.fiscal_profile_id JOIN fiscal_registers fr ON fr.id = b.fiscal_register_id AND fr.fiscal_profile_id = b.fiscal_profile_id WHERE b.id = $1 AND b.user_id = $2 AND b.fiscal_profile_id = $3 AND b.fiscal_location_id = $4 AND b.fiscal_register_id = $5 AND b.provider = 'checkbox' AND b.status = 'active' FOR UPDATE OF b`, [normalizedBindingId, user.id, route.mapping.fiscal_profile_id, route.mapping.fiscal_location_id, route.mapping.fiscal_register_id]);
+        const binding = result.rows[0];
+        if (!binding) throw new CashierOperationsError('fiscal_binding_not_found', 'Fiscal cashier binding not found', { status: 404 });
+        const pinResult = await pinEvaluator({ binding, providedPin: rawPin });
+        await persistPinResult(client, { fiscalProfileId: binding.fiscal_profile_id, actorUserId: user.id, binding, result: pinResult });
+        if (!pinResult.ok) throw new FiscalApprovalError(pinResult.code, pinResult.code);
+        return { bindingId: Number(binding.id), verified: true, pinLockedUntil: null, failedAttempts: 0 };
     });
 }
 
@@ -3255,6 +3300,7 @@ module.exports = {
     autoCloseShift,
     createFullRefund,
     enrollFiscalActionPin,
+    verifyOwnFiscalActionPin,
     getOperationalReport,
     cashierOperationsErrorResponse
 };

@@ -289,6 +289,11 @@
                     <button type="submit" id="saveActionPinBtn" class="btn-page-secondary cashier-primary-action" disabled aria-describedby="actionPinNotice">Зберегти PIN</button>
                 </form>
                 <p id="actionPinNotice" class="cashier-help" role="status" aria-live="polite">Доступні касири ще не завантажені.</p>
+                <form id="actionPinCheckForm" class="cashier-pin-form hidden" autocomplete="off">
+                    <label class="cashier-field"><span>Мій PIN</span><input id="actionPinCheckValue" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="12" autocomplete="new-password" aria-describedby="actionPinCheckNotice"></label>
+                    <button type="submit" id="checkActionPinBtn" class="btn-page-secondary cashier-primary-action" disabled aria-describedby="actionPinCheckNotice">Перевірити мій PIN</button>
+                </form>
+                <p id="actionPinCheckNotice" class="cashier-help" role="status" aria-live="polite">Перевірка доступна тільки для власної активної прив’язки тестової каси.</p>
             </section>
                 </div>
             </details>

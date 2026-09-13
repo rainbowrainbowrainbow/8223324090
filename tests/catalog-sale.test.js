@@ -263,6 +263,8 @@ test('catalog order items persist untaxed fields as NULL literals', () => {
 test('cashier admin routes retain fiscal.configure while public list uses payments.create', () => {
     const routes = fs.readFileSync(path.join(__dirname, '..', 'routes', 'payments.js'), 'utf8');
     assert.match(routes, /get\('\/catalog\/cashiers', requireAction\('payments\.create'\)/);
+    assert.match(routes, /get\('\/fiscal-bindings\/cashiers', async \(req, res\)/);
+    assert.match(routes, /selfOnly = !\(canUseAction\(req\.user, 'fiscal\.configure'\) \|\| canUseAction\(req\.user, 'fiscal\.test\.pin\.manage'\)\)/);
     assert.match(routes, /put\('\/fiscal-bindings\/cashiers\/:bindingId', requireAction\('fiscal\.configure'\)/);
 });
 

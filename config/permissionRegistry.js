@@ -674,6 +674,17 @@ const ACTION_PERMISSIONS = Object.freeze([
         ]
     }),
     action({
+        key: 'fiscal.test.pin.manage', label: 'Manage test cashier PIN', group: 'payments', defaultRoles: [], risk: 'critical',
+        backendConsumers: [source('routes/payments.js', "requireFiscalActionPinAccess", { enforces: true }), source('services/payments/cashierOperationsService.js', "canUseAction(user, 'fiscal.test.pin.manage')", { enforces: true }), source('services/payments/cashierBindingAdminService.js', "canUseAction(user, 'fiscal.test.pin.manage')", { enforces: true })],
+        frontendConsumers: [source('js/cashier-payments-page.js', "hasAction('fiscal.test.pin.manage')", { enforces: true })],
+        apiConsumers: [
+            api('routes/payments.js', '/api/payments/fiscal-bindings/cashiers', null, 'Custom guard: fiscal.configure or fiscal.test.pin.manage lists safe test cashier binding metadata for PIN enrollment only.'),
+            api('routes/payments.js', '/api/payments/fiscal-bindings/:bindingId/action-pin', null, 'Custom guard: fiscal.configure or fiscal.test.pin.manage enrolls a PIN for another active cashier on an exact server-verified test route.'),
+            api('routes/payments.js', '/api/payments/fiscal-bindings/:bindingId/action-pin/check', null, 'Self-only test PIN verification; does not create approvals or fiscal operations.')
+        ],
+        notes: 'Delegable narrow access for test cashier PIN lifecycle. It does not grant fiscal.configure, test sales, shifts, service-out, refunds, or production binding updates.'
+    }),
+    action({
         key: 'create_booking', label: 'Створювати бронювання', group: 'bookings',
         defaultRoles: [...ADMIN_UP, 'reception'], risk: 'high',
         frontendConsumers: [source('js/auth.js', "canAccess('create_booking')", { enforces: true })],

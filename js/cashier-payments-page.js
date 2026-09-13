@@ -134,6 +134,7 @@
         user: null,
         saleMode: SALE_MODE,
         routeOptions: [],
+        routeOptionsLoadGeneration: 0,
         routeReady: false,
         routeLoading: true,
         catalogItems: [],
@@ -185,6 +186,7 @@
         unresolvedForceOpenChecking: false,
         readinessInFlight: false,
         readinessLoadGeneration: 0,
+        readinessRefreshGeneration: 0,
         nextCustomerSafetyRefreshInFlight: false,
         readinessTimer: null,
         readinessBackoffMs: READINESS_REFRESH_MIN_MS,
@@ -209,6 +211,8 @@
         actionPinBindings: [],
         actionPinLoadInFlight: false,
         actionPinSaveInFlight: false,
+        actionPinCheckInFlight: false,
+        actionPinSelectedBindingId: '',
         tender: 'cash',
         interactionGeneration: 0,
         orderLoadGeneration: 0,
@@ -241,6 +245,10 @@
         state.orderLoadGeneration += 1;
         state.unresolvedLoadGeneration += 1;
         state.readinessLoadGeneration += 1;
+        state.readinessRefreshGeneration += 1;
+        state.routeOptionsLoadGeneration += 1;
+        state.readinessInFlight = false;
+        state.routeLoading = false;
         state.reportLoadGeneration += 1;
         state.orderRequest = null;
         state.unresolvedRequest = null;
@@ -345,7 +353,19 @@
 
     function formatCrmProfile(value) {
         const profile = String(value || '').trim();
-        return profile === 'event_genix' ? 'парк' : (profile || '—');
+        return profile === 'event_genix' ? 'парк' : profile === 'dar' ? 'ДАР' : (profile || '—');
+    }
+
+    function businessContextLabel(value) {
+        const context = normalizeCashierBusinessContext(value);
+        return BUSINESS_SCOPES[context]?.businessLabel || 'інший напрямок';
+    }
+
+    function sharedTestRouteBlockReason(route = selectedRoute()) {
+        if (route?.readinessCode !== 'shared_test_register_owned_by_other_business') return '';
+        const owner = String(route.sequentialOwnerBusinessContext || '').trim();
+        const ownerLabel = owner ? businessContextLabel(owner) : 'інший напрямок';
+        return `Спільну тестову зміну використовує напрямок ${ownerLabel}. Для переходу потрібно штатно завершити його тестовий день.`;
     }
 
     function formatLocationRegister(locationValue, registerValue, registerDisplayName = '', locationDisplayName = '') {
@@ -354,9 +374,12 @@
         const locationLabel = location.toLowerCase() === 'park'
             ? 'парк'
             : (String(locationDisplayName || '').trim() || 'локація');
-        const registerLabel = register.toLowerCase() === 'middle'
+        const explicitRegisterLabel = String(registerDisplayName || '').trim();
+        const registerLabel = PILOT_SCOPE.mode === 'test' && explicitRegisterLabel
+            ? explicitRegisterLabel
+            : register.toLowerCase() === 'middle'
             ? 'середня каса'
-            : (String(registerDisplayName || '').trim() || 'каса');
+            : (explicitRegisterLabel || 'каса');
         return `${locationLabel} / ${registerLabel}`;
     }
 
@@ -681,6 +704,7 @@
 
     function readinessContextKey() {
         return JSON.stringify({
+            interaction: interactionContextKey(),
             routeOptionId: PILOT_SCOPE.routeOptionId || null,
             cashierBindingId: selectedCashierBindingId(),
             tender: state.tender || null
@@ -783,8 +807,10 @@
     }
 
     function actionPinVisible() {
-        return hasAction('fiscal.configure');
+        return hasAction('fiscal.configure') || hasAction('fiscal.test.pin.manage') || selectedRoute()?.mode === 'test';
     }
+    function actionPinManageVisible() { return hasAction('fiscal.configure') || hasAction('fiscal.test.pin.manage'); }
+    function actionPinCheckVisible() { return selectedRoute()?.mode === 'test'; }
 
     function currentShiftStatus() {
         const phaseContext = phase1CloseContext();
@@ -1083,6 +1109,12 @@
             renderActionPinPanel();
             return [];
         }
+        if (!actionPinManageVisible() && !actionPinCheckVisible()) {
+            state.actionPinBindings = [];
+            renderActionPinPanel();
+            return [];
+        }
+        const contextKey = interactionContextKey();
         state.actionPinLoadInFlight = true;
         renderActionPinPanel();
         try {
@@ -1091,10 +1123,12 @@
                 method: 'GET',
                 headers: apiHeaders()
             });
+            if (contextKey !== interactionContextKey()) return state.actionPinBindings;
             state.actionPinBindings = Array.isArray(result.cashiers) ? result.cashiers : [];
             if (!silent) notify('Список касирів для PIN оновлено.', 'success');
             return state.actionPinBindings;
         } catch (error) {
+            if (contextKey !== interactionContextKey()) return state.actionPinBindings;
             state.actionPinBindings = [];
             if (!silent) notify(paymentUiError(error), 'error');
             return state.actionPinBindings;
@@ -1110,8 +1144,52 @@
     }
 
     function changeActionPinBinding() {
+        state.actionPinSelectedBindingId = $('actionPinBindingSelect')?.value || '';
         clearActionPinFields();
         renderActionPinPanel();
+    }
+
+    function ownActionPinBindingId() {
+        const own = state.actionPinBindings.find(binding => Number(binding.targetUserId) === Number(state.user?.id));
+        return own?.id || null;
+    }
+
+    async function checkOwnActionPin(event) {
+        event?.preventDefault?.();
+        if (state.actionPinCheckInFlight) return;
+        const bindingId = ownActionPinBindingId();
+        const pin = String($('actionPinCheckValue')?.value || '').trim();
+        if (!bindingId) {
+            notify(paymentUiError(new Error('cashier_binding_required')), 'error');
+            return;
+        }
+        if (!/^\d{4,12}$/.test(pin)) {
+            notify(paymentUiError(new Error('action_pin_format_invalid')), 'error');
+            $('actionPinCheckValue')?.focus?.({ preventScroll: false });
+            return;
+        }
+        state.actionPinCheckInFlight = true;
+        renderActionPinPanel();
+        try {
+            await apiRequest(`/api/payments/fiscal-bindings/${encodeURIComponent(bindingId)}/action-pin/check`, {
+                method: 'POST',
+                headers: apiHeaders(),
+                body: JSON.stringify({
+                    actionPin: pin,
+                    businessContext: PILOT_SCOPE.crmProfileKey,
+                    routeOptionId: PILOT_SCOPE.routeOptionId
+                })
+            });
+            if ($('actionPinCheckValue')) $('actionPinCheckValue').value = '';
+            setText('actionPinCheckNotice', 'PIN підтверджено для вашої тестової прив’язки.');
+            notify('PIN підтверджено без створення касової операції.', 'success');
+        } catch (error) {
+            setText('actionPinCheckNotice', paymentUiError(error));
+            notify(paymentUiError(error), 'error');
+        } finally {
+            state.actionPinCheckInFlight = false;
+            renderActionPinPanel();
+        }
     }
 
     async function saveActionPin(event) {
@@ -1154,8 +1232,9 @@
                     routeOptionId: PILOT_SCOPE.routeOptionId
                 })
             });
+            state.actionPinSelectedBindingId = String(binding.id);
             clearActionPinFields();
-            notify('Action PIN збережено для обраної прив’язки.', 'success');
+            notify(`PIN встановлено для ${binding.cashierName || binding.cashierLogin || `касира ${binding.id}`}.`, 'success');
             await loadActionPinBindings({ silent: true });
         } catch (error) {
             notify(paymentUiError(error), 'error');
@@ -1204,10 +1283,14 @@
 
     function routeReadinessLabel(route) {
         if (!route?.configured) return 'не налаштовано';
+        if (route.salesAllowed === false) return 'тільки PIN';
         if (route.status !== 'active') return 'неактивна';
         if (route.featureEnabled !== true) return 'функцію вимкнено';
         if (route.acceptanceEnabled !== true) return 'приймання вимкнено';
-        if (route.sequentialReady !== true) return 'очікує завершення іншого напрямку';
+        if (route.sequentialReady !== true) {
+            const owner = String(route.sequentialOwnerBusinessContext || '').trim();
+            return owner ? `зайнята: ${businessContextLabel(owner)}` : 'очікує завершення іншого напрямку';
+        }
         return 'готова';
     }
 
@@ -1248,6 +1331,7 @@
             && route.status === 'active'
             && route.featureEnabled === true
             && route.acceptanceEnabled === true
+            && route.salesAllowed !== false
             && route.sequentialReady === true
         );
         setText('cashierRouteStatus', routeReadinessLabel(route));
@@ -1255,17 +1339,19 @@
     }
 
     async function loadRouteOptions() {
+        const loadGeneration = ++state.routeOptionsLoadGeneration;
         state.routeLoading = true;
         state.routeReady = false;
         setText('cashierRouteStatus', 'завантаження');
         try {
             const result = await apiRequest('/api/payments/catalog/routes', { method: 'GET', headers: apiHeaders() });
+            if (loadGeneration !== state.routeOptionsLoadGeneration) return state.routeOptions;
             state.routeOptions = Array.isArray(result.routes) ? result.routes : [];
             if (!state.routeOptions.length) throw new Error('fiscal_route_options_unavailable');
             renderRouteSelectors();
             return state.routeOptions;
         } finally {
-            state.routeLoading = false;
+            if (loadGeneration === state.routeOptionsLoadGeneration) state.routeLoading = false;
         }
     }
 
@@ -1329,6 +1415,11 @@
             renderServiceOutPanel();
             renderActionPinPanel();
             return;
+        }
+        if (route.salesAllowed === false) {
+            setText('catalogSaleSummary', 'Ця тестова каса доступна лише для налаштування або перевірки PIN. Продажі для вашого доступу заблоковані.');
+            $('paymentCashierBinding')?.replaceChildren(new Option('Продажі недоступні для цього доступу', ''));
+            state.catalogReady = false; state.routeReady = false; renderReadinessState(); syncCreateAvailability(); renderServiceOutPanel(); await loadActionPinBindings({ silent: true }); loadReceiptHistoryOnOpen(); return;
         }
         await loadSelectableCashiers();
         await loadCatalogData();
@@ -1958,6 +2049,12 @@
 
     async function refreshReadiness({ silent = false, force = true } = {}) {
         if (state.readinessInFlight) return state.registerState;
+        const contextKey = readinessContextKey();
+        const refreshGeneration = ++state.readinessRefreshGeneration;
+        const refreshIsCurrent = () => (
+            refreshGeneration === state.readinessRefreshGeneration
+            && contextKey === readinessContextKey()
+        );
         state.readinessInFlight = true;
         state.phase1ClosePollingPaused = false;
         const button = $('refreshReadinessBtn');
@@ -1966,6 +2063,9 @@
         syncCreateAvailability();
         syncConfirmationAvailability();
         try {
+            await loadRouteOptions();
+            if (!refreshIsCurrent()) return state.registerState;
+            if (selectedRoute()?.salesAllowed === false) return state.registerState;
             const cashierBindingId = selectedCashierBindingId();
             await apiRequest('/api/payments/readiness/probe', {
                 method: 'POST',
@@ -1979,11 +2079,14 @@
                 }),
                 timeoutMs: READINESS_REQUEST_TIMEOUT_MS
             });
+            if (!refreshIsCurrent()) return state.registerState;
             const result = await loadPilotRegisterState({ silent: true });
+            if (!refreshIsCurrent()) return state.registerState;
             state.readinessBackoffMs = READINESS_REFRESH_MIN_MS;
             if (!silent) notify('Готовність Checkbox оновлено без перезавантаження сторінки.', 'success');
             return result;
         } catch (error) {
+            if (!refreshIsCurrent()) return state.registerState;
             state.readinessBackoffMs = Math.min(READINESS_REFRESH_MAX_MS, Math.max(READINESS_REFRESH_MIN_MS, state.readinessBackoffMs * 2));
             state.registerState = {
                 ...(state.registerState || {}),
@@ -1995,14 +2098,17 @@
             if (!silent) notify(paymentUiError(error), 'error');
             return state.registerState;
         } finally {
-            state.readinessInFlight = false;
+            const isCurrent = refreshIsCurrent();
+            if (isCurrent) state.readinessInFlight = false;
             setButtonBusy(button, false, '');
             if (button) button.disabled = false;
-            renderReadinessState();
-            syncCreateAvailability();
-            syncConfirmationAvailability();
-            renderServiceOutPanel();
-            scheduleReadinessRefresh();
+            if (isCurrent) {
+                renderReadinessState();
+                syncCreateAvailability();
+                syncConfirmationAvailability();
+                renderServiceOutPanel();
+                scheduleReadinessRefresh();
+            }
         }
     }
 
@@ -3135,7 +3241,7 @@
 
     function loadReceiptHistoryOnOpen() {
         const panel = $('checkboxSalesReportPanel');
-        if (!panel?.open || !state.routeReady) return;
+        if (!panel?.open || !selectedRoute()?.configured) return;
         const snapshot = receiptHistorySnapshot();
         if (state.receiptHistoryLoaded
             && state.reportRenderedSnapshotKey === receiptHistorySnapshotKey(snapshot)) return;
@@ -3398,9 +3504,8 @@
                 }));
             }
         }
-        if (!state.routeReady && selectedRoute()?.readinessCode === 'shared_test_register_owned_by_other_business') {
-            messages.push('Спільну тестову зміну використовує інший напрямок. Для переходу потрібне штатне завершення його тестового дня.');
-        }
+        const sharedRouteReason = sharedTestRouteBlockReason();
+        if (sharedRouteReason) messages.push(sharedRouteReason);
         const testDayReason = sharedTestDayBlockReason();
         if (testDayReason) messages.push(testDayReason);
         const queueReason = queueUnavailableReason();
@@ -3627,13 +3732,19 @@
         const visible = actionPinVisible();
         panel.classList.toggle('hidden', !visible);
         panel.setAttribute('aria-hidden', visible ? 'false' : 'true');
-        panel.setAttribute('aria-busy', state.actionPinLoadInFlight || state.actionPinSaveInFlight ? 'true' : 'false');
+        panel.setAttribute('aria-busy', state.actionPinLoadInFlight || state.actionPinSaveInFlight || state.actionPinCheckInFlight ? 'true' : 'false');
         if (!visible) return;
+        const manageVisible = actionPinManageVisible();
+        const checkVisible = actionPinCheckVisible();
+        $('actionPinForm')?.classList.toggle('hidden', !manageVisible);
+        $('actionPinCheckForm')?.classList.toggle('hidden', !checkVisible);
         const select = $('actionPinBindingSelect');
-        const previousValue = select?.value || '';
+        const previousValue = state.actionPinSelectedBindingId || select?.value || '';
         if (select) {
             select.replaceChildren();
-            if (state.actionPinLoadInFlight) {
+            if (!manageVisible) {
+                select.append(new Option('Керування PIN недоступне', ''));
+            } else if (state.actionPinLoadInFlight) {
                 select.append(new Option('Завантаження касирів…', ''));
             } else if (!state.actionPinBindings.length) {
                 select.append(new Option('Немає доступних прив’язок', ''));
@@ -3648,25 +3759,35 @@
                     if (Number(binding.targetUserId) === Number(state.user?.id)) option.disabled = true;
                     select.append(option);
                 });
-                if ([...select.options].some(option => option.value === previousValue && !option.disabled)) select.value = previousValue;
+                if ([...select.options].some(option => option.value === previousValue && !option.disabled)) {
+                    select.value = previousValue;
+                    state.actionPinSelectedBindingId = previousValue;
+                }
             }
         }
         const selected = state.actionPinBindings.find(binding => String(binding.id) === String(select?.value || ''));
         const selfSelected = selected && Number(selected.targetUserId) === Number(state.user?.id);
-        const disabled = state.actionPinLoadInFlight || state.actionPinSaveInFlight || !selected || selfSelected;
+        const disabled = !manageVisible || state.actionPinLoadInFlight || state.actionPinSaveInFlight || !selected || selfSelected;
         if (select) select.disabled = state.actionPinLoadInFlight || state.actionPinSaveInFlight;
         if ($('actionPinValue')) $('actionPinValue').disabled = disabled;
         if ($('actionPinConfirm')) $('actionPinConfirm').disabled = disabled;
-        setStatus('actionPinStatus', state.actionPinLoadInFlight ? 'pending' : (disabled ? 'blocked' : 'ready'));
+        const checkBindingId = ownActionPinBindingId();
+        const checkDisabled = !checkVisible || state.actionPinCheckInFlight || !checkBindingId;
+        if ($('actionPinCheckValue')) $('actionPinCheckValue').disabled = checkDisabled;
+        setStatus('actionPinStatus', state.actionPinLoadInFlight || state.actionPinCheckInFlight ? 'pending' : (disabled && checkDisabled ? 'blocked' : 'ready'));
         setButtonBusy($('saveActionPinBtn'), state.actionPinSaveInFlight, 'Зберігаємо…');
         if (!state.actionPinSaveInFlight) {
             setDisabledReason($('saveActionPinBtn'), disabled, selfSelected
                 ? 'Не можна встановити PIN для власної прив’язки.'
                 : (!selected ? 'Оберіть прив’язку іншого касира.' : ''));
         }
+        setButtonBusy($('checkActionPinBtn'), state.actionPinCheckInFlight, 'Перевіряємо…');
+        if (!state.actionPinCheckInFlight) {
+            setDisabledReason($('checkActionPinBtn'), checkDisabled, checkBindingId ? '' : 'Оберіть власного активного касира тестової каси.');
+        }
         setText('actionPinNotice', selfSelected
-            ? 'Самостійне встановлення PIN для власної прив’язки заблоковане.'
-            : 'PIN встановлює адміністратор для іншого касира цієї самої route-aware binding.');
+            ? 'Власну прив’язку можна тільки перевірити; встановлює PIN інший відповідальний.'
+            : 'PIN встановлюється лише для іншого касира обраної тестової каси.');
     }
 
     function phase1CloseContext() {
@@ -4513,6 +4634,8 @@
         $('actionPinBindingSelect')?.addEventListener('change', changeActionPinBinding);
         $('actionPinValue')?.addEventListener('input', renderActionPinPanel);
         $('actionPinConfirm')?.addEventListener('input', renderActionPinPanel);
+        $('actionPinCheckForm')?.addEventListener('submit', checkOwnActionPin);
+        $('actionPinCheckValue')?.addEventListener('input', renderActionPinPanel);
         $('unresolvedOrdersBody')?.addEventListener('click', event => {
             const target = event.target?.closest?.('[data-order-id]');
             const orderId = target?.getAttribute?.('data-order-id');

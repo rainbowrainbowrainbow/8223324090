@@ -148,14 +148,14 @@ function permissionPayload(allowed = true, { fiscalConfigure = false } = {}) {
     };
 }
 
-function routeOptionsPayload({ includeTest = false } = {}) {
+function routeOptionsPayload({ includeTest = false, testRouteOverrides = {} } = {}) {
     const routes = [
         { id: 'park_production', businessContext: 'event_genix', businessLabel: 'ПАРК', mode: 'production', registerLabel: 'Середня каса', status: 'active', configured: true, featureEnabled: true, acceptanceEnabled: true, sequentialReady: true, readinessCode: 'ready' },
         { id: 'dar_production', businessContext: 'dar', businessLabel: 'ДАР', mode: 'production', registerLabel: 'Студія / Каса ДАР', status: 'active', configured: true, featureEnabled: true, acceptanceEnabled: true, sequentialReady: true, readinessCode: 'ready' }
     ];
     if (includeTest) routes.push(
-        { id: 'park_test', businessContext: 'event_genix', businessLabel: 'ПАРК', mode: 'test', registerLabel: 'Тестова каса', status: 'active', configured: true, featureEnabled: true, acceptanceEnabled: false, sequentialReady: true, readinessCode: 'payment_acceptance_disabled' },
-        { id: 'dar_test', businessContext: 'dar', businessLabel: 'ДАР', mode: 'test', registerLabel: 'Тестова каса', status: 'active', configured: true, featureEnabled: true, acceptanceEnabled: false, sequentialReady: true, readinessCode: 'payment_acceptance_disabled' }
+        { id: 'park_test', businessContext: 'event_genix', businessLabel: 'ПАРК', mode: 'test', registerLabel: 'Тестова каса', status: 'active', configured: true, featureEnabled: true, acceptanceEnabled: false, sequentialReady: true, readinessCode: 'payment_acceptance_disabled', ...(testRouteOverrides.park_test || {}) },
+        { id: 'dar_test', businessContext: 'dar', businessLabel: 'ДАР', mode: 'test', registerLabel: 'Тестова каса', status: 'active', configured: true, featureEnabled: true, acceptanceEnabled: false, sequentialReady: true, readinessCode: 'payment_acceptance_disabled', ...(testRouteOverrides.dar_test || {}) }
     );
     return { success: true, routes };
 }
@@ -969,11 +969,18 @@ async function run() {
             contentType: 'application/json',
             body: JSON.stringify(permissionPayload(true, { fiscalConfigure: true }))
         }));
-        await selectorContext.route('**/api/payments/catalog/routes', route => route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify(routeOptionsPayload({ includeTest: true }))
-        }));
+        let selectorRouteOverrides = {};
+        let selectorRouteOptionsDelayMs = 0;
+        await selectorContext.route('**/api/payments/catalog/routes', async route => {
+            const delayMs = selectorRouteOptionsDelayMs;
+            selectorRouteOptionsDelayMs = 0;
+            if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify(routeOptionsPayload({ includeTest: true, testRouteOverrides: selectorRouteOverrides }))
+            });
+        });
         const darDeepLinkPage = await selectorContext.newPage();
         await darDeepLinkPage.goto(`${base}/cashier-payments?businessContext=dar&routeOptionId=dar_test`, { waitUntil: 'domcontentloaded' });
         await darDeepLinkPage.waitForFunction(() => window.CashierPaymentsPage?.state?.catalogReady === true && !window.CashierPaymentsPage.state.routeLoading);
@@ -1002,7 +1009,7 @@ async function run() {
         await selectorPage.fill('#actionPinValue', '2468');
         await selectorPage.fill('#actionPinConfirm', '2468');
         await selectorPage.click('#saveActionPinBtn');
-        await selectorPage.waitForFunction(() => document.querySelector('#cashierGlobalStatus')?.textContent.includes('Action PIN збережено'));
+        await selectorPage.waitForFunction(() => document.querySelector('#cashierGlobalStatus')?.textContent.includes('PIN встановлено для Старша зміни'));
         assert.equal(state.operationCalls.some(call => call.type === 'action_pin_enroll' && call.bindingId === 78), true, 'PIN enrollment targets a selected non-self binding');
         assert.equal(await selectorPage.evaluate(() => Object.entries(localStorage).some(([key, value]) => /pin|actionpin/i.test(`${key}:${value}`) || value === '2468')), false, 'Action PIN is not persisted in browser storage');
         assert.deepEqual(
@@ -1066,6 +1073,16 @@ async function run() {
         await selectorPage.setViewportSize({ width: 1440, height: 1000 });
         await selectorPage.click('[data-catalog-remove]');
         assert.equal(await selectorPage.locator('[data-catalog-item]').count(), 0, 'last row can be removed');
+        selectorRouteOverrides = {
+            park_test: {
+                acceptanceEnabled: true,
+                sequentialReady: false,
+                sequentialOwnerBusinessContext: 'dar',
+                readinessCode: 'shared_test_register_owned_by_other_business'
+            }
+        };
+        await selectorPage.click('#refreshReadinessBtn');
+        await selectorPage.waitForFunction(() => !window.CashierPaymentsPage.state.readinessInFlight);
         await selectorPage.selectOption('#paymentRegisterRoute', 'park_test');
         await selectorPage.waitForSelector('#cashierTestModeBanner:not(.hidden)');
         await selectorPage.waitForFunction(() => document.querySelector('#cashierScopeMode')?.textContent.trim() === 'ТЕСТОВИЙ');
@@ -1074,7 +1091,29 @@ async function run() {
         assert.equal(await selectorPage.locator('#catalogPicker').isVisible(), true, 'route change keeps the PARK catalog directly available');
         assert.equal(await selectorPage.locator('#catalogSearchResults .cashier-catalog-result').first().isVisible(), true, 'PARK picker opens without requiring search');
         assert.match(await selectorPage.textContent('#cashierTestModeBanner'), /ТЕСТОВА КАСА/i, 'test route has a prominent warning');
-        assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'test route remains blocked while its acceptance gate is disabled');
+        assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'test route remains blocked while the shared shift belongs to another business');
+        assert.equal((await selectorPage.textContent('#cashierRouteStatus')).trim(), 'зайнята: ДАР', 'route selector identifies the actual owner business');
+        assert.match(await selectorPage.textContent('#cashierReadinessTechnicalList'), /напрямок ДАР.*штатно завершити/i, 'readiness explains the ordinary owner action without exposing a shift id');
+        await selectorPage.locator('[data-catalog-add]').first().click();
+        const cartBeforeRefresh = await selectorPage.locator('[data-catalog-item]').count();
+        selectorRouteOverrides = {
+            park_test: {
+                acceptanceEnabled: true,
+                sequentialReady: true,
+                sequentialOwnerBusinessContext: null,
+                readinessCode: 'ready'
+            }
+        };
+        await selectorPage.click('#refreshReadinessBtn');
+        await selectorPage.waitForFunction(() => window.CashierPaymentsPage?.state?.routeReady === true && !window.CashierPaymentsPage.state.readinessInFlight);
+        assert.equal(await selectorPage.inputValue('#paymentRegisterRoute'), 'park_test', 'readiness refresh keeps the selected test register');
+        assert.equal(await selectorPage.locator('[data-catalog-item]').count(), cartBeforeRefresh, 'readiness refresh keeps the catalog cart');
+        selectorRouteOptionsDelayMs = 300;
+        await selectorPage.click('#refreshReadinessBtn');
+        await selectorPage.selectOption('#paymentRegisterRoute', 'park_production');
+        await selectorPage.waitForFunction(() => document.querySelector('#paymentRegisterRoute')?.value === 'park_production' && !window.CashierPaymentsPage.state.routeLoading);
+        await selectorPage.waitForTimeout(350);
+        assert.equal(await selectorPage.inputValue('#paymentRegisterRoute'), 'park_production', 'a stale readiness response cannot restore the old test register');
         await captureVisualArtifact(selectorPage, '00-catalog-park-test-disabled.png');
         assert.equal(await selectorPage.isDisabled('#paymentBusinessContext'), true, 'business selector is read-only; business changes through the global CRM switch');
         await selectorPage.evaluate(() => {

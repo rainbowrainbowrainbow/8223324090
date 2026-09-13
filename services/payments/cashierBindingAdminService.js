@@ -2,12 +2,31 @@
 
 const { pool } = require('../../db');
 const { PaymentServiceError } = require('./paymentService');
+const { canUseAction } = require('../../middleware/auth');
 const { authorizeFiscalActorAction } = require('./fiscalAccess');
 const { BUSINESS_SCOPES, defaultRouteOptionIdForBusiness } = require('./catalogSaleService');
 const { resolveFiscalSaleRoute } = require('./fiscalSaleRouteService');
 
 const SECRET_FIELDS = /password|secret|pin|license.?key|access.?key|device|credential.?value/i;
 const EDITABLE_FIELDS = new Set(['cashierName', 'cashier_name', 'cashierLogin', 'cashier_login']);
+
+function assertTestPinRouteAccess(user, route = {}) {
+    if (canUseAction(user, 'fiscal.configure')) return 'fiscal.configure';
+    if (!canUseAction(user, 'fiscal.test.pin.manage')) {
+        throw new PaymentServiceError('fiscal_capability_denied', 'User lacks the required fiscal PIN capability', {
+            status: 403,
+            details: { action: 'fiscal.test.pin.manage' }
+        });
+    }
+    if (route.mode !== 'test' || route.expectedIsTest !== true || route.sharedTestRegister !== true) {
+        throw new PaymentServiceError('fiscal_test_pin_scope_invalid', 'Test PIN management is available only for server-verified shared test registers', { status: 403 });
+    }
+    return 'fiscal.test.pin.manage';
+}
+function assertSharedTestPinRoute(route = {}) {
+    const mapping = route.mapping || {};
+    if (route.mode !== 'test' || route.expectedIsTest !== true || route.sharedTestRegister !== true || mapping.route_status !== 'active' || mapping.route_feature_enabled !== true || mapping.fiscal_register_status !== 'active' || mapping.feature_enabled !== true || String(mapping.provider || '').trim() !== 'checkbox' || !String(mapping.shared_register_group || '').trim()) throw new PaymentServiceError('fiscal_test_pin_scope_invalid', 'Test PIN actions are available only for server-verified shared test registers', { status: 403 });
+}
 
 function assertNoSecrets(body = {}) {
     const forbidden = Object.keys(body).filter(key => SECRET_FIELDS.test(key));
@@ -57,6 +76,7 @@ async function listCashierBindings({
     businessContext,
     routeOptionId = null,
     user,
+    selfOnly = false,
     authorizer = authorizeFiscalActorAction,
     routeResolver = resolveFiscalSaleRoute
 } = {}) {
@@ -68,11 +88,15 @@ async function listCashierBindings({
             client,
             user,
             routeOptionId: routeOptionId || defaultRouteOptionIdForBusiness(scope.crmProfileKey),
-            businessContext: scope.crmProfileKey
+            businessContext: scope.crmProfileKey,
+            canUseActionFn: selfOnly ? (actor, action) => action === 'fiscal.test.pin.manage' || canUseAction(actor, action) : canUseAction,
+            allowTestPinManage: canUseAction(user, 'fiscal.test.pin.manage') || selfOnly
         });
+        const action = selfOnly ? 'payments.view' : assertTestPinRouteAccess(user, route);
+        if (selfOnly) assertSharedTestPinRoute(route);
         await authorizer(client, {
             user,
-            action: 'fiscal.configure',
+            action,
             crmProfileKey: route.businessContext
         });
         const mapping = route.mapping;
@@ -111,8 +135,9 @@ async function listCashierBindings({
                 AND fcb.fiscal_register_id = $3
                 AND fcb.provider = 'checkbox'
                 AND fcb.status <> 'archived'
+                ${selfOnly ? 'AND fcb.user_id = $5 AND fcb.status = $6' : ''}
               ORDER BY fcb.cashier_name NULLS LAST, u.name NULLS LAST, u.username NULLS LAST, fcb.id`,
-            [mapping.fiscal_profile_id, mapping.fiscal_location_id, mapping.fiscal_register_id, route.businessContext]
+            selfOnly ? [mapping.fiscal_profile_id, mapping.fiscal_location_id, mapping.fiscal_register_id, route.businessContext, user?.id, 'active'] : [mapping.fiscal_profile_id, mapping.fiscal_location_id, mapping.fiscal_register_id, route.businessContext]
         );
         return result.rows.map(project);
     } finally {

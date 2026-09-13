@@ -104,6 +104,22 @@ test('test options are hidden without fiscal.configure', async () => {
     assert.deepEqual(routes.map(route => route.id), ['park_production', 'dar_production']);
 });
 
+test('test PIN managers can see shared test routes without receiving test sales readiness', async () => {
+    const routes = await listFiscalSaleRouteOptions({ dbPool: new RouteDb(), user: { id: 1 }, canUseActionFn: (_user, action) => action === 'fiscal.test.pin.manage', canAccessBusinessContextFn: allowBusiness, allowTestPinManage: true });
+    assert.equal(routes.filter(route => route.mode === 'test').every(route => route.salesAllowed === false), true);
+});
+
+test('test PIN owners can read their test route without receiving PIN management or sale readiness', async () => {
+    const routes = await listFiscalSaleRouteOptions({
+        dbPool: new RouteDb(),
+        user: { id: 1 },
+        canUseActionFn: () => false,
+        canAccessBusinessContextFn: allowBusiness,
+        allowTestPinRead: true
+    });
+    assert.equal(routes.filter(route => route.mode === 'test').every(route => route.salesAllowed === false), true);
+});
+
 test('browser fiscal/provider overrides are rejected before DB access', () => {
     for (const field of [
         'fiscalProfileId', 'fiscalRegisterId', 'locationAlias', 'registerAlias',
@@ -178,6 +194,20 @@ test('shared test register blocks concurrent context and unresolved recovery', a
         }),
         error => error.code === 'shared_test_register_recovery_incomplete'
     );
+});
+
+test('shared test route projection exposes only the active business owner, never the shift identity', async () => {
+    const routes = await listFiscalSaleRouteOptions({
+        dbPool: new RouteDb({ activeShift: { id: 6, status: 'open', business_context: 'dar' } }),
+        user: { id: 1 },
+        canUseActionFn: allowConfigure,
+        canAccessBusinessContextFn: allowBusiness
+    });
+    const parkTest = routes.find(route => route.id === 'park_test');
+    assert.equal(parkTest.sequentialReady, false);
+    assert.equal(parkTest.readinessCode, 'shared_test_register_owned_by_other_business');
+    assert.equal(parkTest.sequentialOwnerBusinessContext, 'dar');
+    assert.doesNotMatch(JSON.stringify(parkTest), /"id":6|shiftId/i);
 });
 
 test('shared test routes fail closed when one active route points to another physical register', async () => {

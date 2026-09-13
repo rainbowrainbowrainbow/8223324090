@@ -17,6 +17,7 @@ const PAYMENT_FISCAL_CAPABILITIES = Object.freeze([
     'fiscal.reconcile',
     'fiscal.audit.view',
     'fiscal.incident.manage',
+    'fiscal.test.pin.manage',
     'fiscal.configure'
 ]);
 

@@ -42,6 +42,7 @@ function createHarness(fetchImpl = async () => new Response(JSON.stringify({ ite
         <select id="collectionFilter"><option value=""></option></select>
         <button id="pinFilter"></button>
         <div id="tagChips"></div>
+        <section id="designGuideEntry" class="design-guide-entry hidden" data-page-access="/designer"></section>
         <div id="designGrid"></div>
         <span id="countDesigns"></span>
         <div id="loadMore"></div>
@@ -110,6 +111,7 @@ function createHarness(fetchImpl = async () => new Response(JSON.stringify({ ite
             'designApiHeaders',
             'authHeaders',
             'apiFetch',
+            'syncDesignGuideEntry',
             'loadDesigns',
             'renderDesignLoading',
             'renderDesignError',
@@ -192,6 +194,22 @@ test('Design Board renders cards and tag chips without inline data handlers', ()
 });
 
 
+
+test('Design Board guidebook entry falls back to role access before permission catalog hydration', () => {
+    const { dom, context } = createHarness();
+    const entry = dom.window.document.getElementById('designGuideEntry');
+    assert.ok(entry.classList.contains('hidden'));
+
+    context.canAccessPage = () => false;
+    context._isPageAllowedForRole = (page, role) => page === '/designer' && role === 'creator';
+    context.getUserRole = () => 'creator';
+    context.syncDesignGuideEntry();
+    assert.equal(entry.classList.contains('hidden'), false);
+
+    context.getUserRole = () => 'waiter';
+    context.syncDesignGuideEntry();
+    assert.equal(entry.classList.contains('hidden'), true);
+});
 test('Design Board API calls include active business context without touching non-design URLs', async () => {
     const { context, calls } = createHarness(async () => new Response(JSON.stringify({ items: [], total: 0 }), { status: 200 }));
     await context.loadDesigns();

@@ -88,6 +88,38 @@ async function seedAdmissionTimelineLine(pool, { date, lineId, name }) {
     );
 }
 
+async function ensureEventGenixMemberships(pool, users = []) {
+    if (!users.length) return;
+    const business = await pool.query(
+        `SELECT id, organization_id, access_mode
+           FROM businesses
+          WHERE context_key = 'event_genix'
+            AND status = 'active'
+          LIMIT 1`
+    ).catch(error => {
+        if (['42P01', '42703'].includes(error?.code)) return { rows: [] };
+        throw error;
+    });
+    const row = business.rows[0];
+    if (!row || row.access_mode !== 'membership') return;
+    for (const user of users) {
+        await pool.query(
+            `INSERT INTO organization_memberships (organization_id, user_id, role)
+             VALUES ($1, $2, 'member')
+             ON CONFLICT (organization_id, user_id)
+             DO UPDATE SET is_active = true, role = EXCLUDED.role`,
+            [row.organization_id, user.id]
+        );
+        await pool.query(
+            `INSERT INTO business_memberships (business_id, organization_id, user_id, role, is_default)
+             VALUES ($1, $2, $3, $4, true)
+             ON CONFLICT (business_id, user_id)
+             DO UPDATE SET is_active = true, role = EXCLUDED.role, is_default = EXCLUDED.is_default`,
+            [row.id, row.organization_id, user.id, user.role]
+        );
+    }
+}
+
 async function deleteAdmissionBookingFixtures(pool, { bookingIds = [], lineFixtures = [] } = {}) {
     const ids = bookingIds.map(String).filter(Boolean);
     if (ids.length) {
@@ -206,6 +238,7 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
             users.push(result.rows[0]);
         }
         [manager, seniorManager, reception, animator] = users;
+        await ensureEventGenixMemberships(pool, users);
 
         const creator = process.env.TEST_USER
             ? (await pool.query('SELECT id, username, role FROM users WHERE username = $1', [process.env.TEST_USER])).rows[0]

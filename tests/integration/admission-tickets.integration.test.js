@@ -148,35 +148,27 @@ async function deleteAdmissionBookingFixtures(pool, { bookingIds = [], lineFixtu
 }
 
 async function ensureAdmissionEventGenixMemberships(pool, users = []) {
-    const existingBusiness = await pool.query(
-        `SELECT id, organization_id
-         FROM businesses
-         WHERE context_key = 'event_genix'
-         LIMIT 1`
+    const organization = await pool.query(
+        `INSERT INTO organizations (slug, name, status)
+         VALUES ('admission-fixture-event-genix', 'Admission Fixture Event Genix', 'active')
+         ON CONFLICT (slug) DO UPDATE SET
+             name = EXCLUDED.name,
+             status = 'active'
+         RETURNING id`
     );
-    let businessId;
-    let organizationId;
-    if (existingBusiness.rows[0]) {
-        businessId = Number(existingBusiness.rows[0].id);
-        organizationId = Number(existingBusiness.rows[0].organization_id);
-    } else {
-        const organization = await pool.query(
-            `INSERT INTO organizations (slug, name)
-             VALUES ('admission-fixture-event-genix', 'Admission Fixture Event Genix')
-             ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
-             RETURNING id`
-        );
-        organizationId = Number(organization.rows[0].id);
-        const business = await pool.query(
-            `INSERT INTO businesses (organization_id, context_key, label, short_label, access_mode, modules)
-             VALUES ($1, 'event_genix', 'Fixture Park', 'Park', 'membership', '["timeline","center"]'::jsonb)
-             ON CONFLICT (context_key) DO UPDATE SET context_key = EXCLUDED.context_key
-             RETURNING id, organization_id`,
-            [organizationId]
-        );
-        businessId = Number(business.rows[0].id);
-        organizationId = Number(business.rows[0].organization_id);
-    }
+    const organizationId = Number(organization.rows[0].id);
+    const business = await pool.query(
+        `INSERT INTO businesses (organization_id, context_key, label, short_label, access_mode, modules, status)
+         VALUES ($1, 'event_genix', 'Fixture Park', 'Park', 'membership', '["timeline","center"]'::jsonb, 'active')
+         ON CONFLICT (context_key) DO UPDATE SET
+             organization_id = EXCLUDED.organization_id,
+             access_mode = 'membership',
+             status = 'active',
+             modules = EXCLUDED.modules
+         RETURNING id`,
+        [organizationId]
+    );
+    const businessId = Number(business.rows[0].id);
 
     for (const user of users.filter(Boolean)) {
         const userId = Number(user.id);

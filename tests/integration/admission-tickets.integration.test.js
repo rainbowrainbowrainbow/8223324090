@@ -64,8 +64,8 @@ async function login(username, password) {
         body: { username, password }
     });
     assert.equal(response.status, 200, `login failed for ${username}: ${JSON.stringify(response.body)}`);
-    assert.ok(response.body.token);
-    return response.body.token;
+    assert.ok(response.body.accessToken || response.body.token);
+    return response.body.accessToken || response.body.token;
 }
 
 async function expectPgCode(promise, code) {
@@ -598,7 +598,6 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
             {
                 token: receptionToken,
                 body: {
-                    businessContext: 'dar',
                     date: '2026-07-17',
                     roomResourceId: 'room-takeaway',
                     banquetGuests: 5,
@@ -628,6 +627,24 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
                 adult_game: 1
             }
         );
+
+        const tamperedContext = await apiRequest(
+            'POST',
+            '/api/bookings/ticket-quote?businessContext=event_genix',
+            {
+                token: receptionToken,
+                body: {
+                    businessContext: 'dar',
+                    date: '2026-07-17',
+                    roomResourceId: 'room-takeaway',
+                    banquetGuests: 5,
+                    banquetAdults: 2,
+                    ticketQuantities: [{ code: 'birthday_child', quantity: 1 }]
+                }
+            }
+        );
+        assert.equal(tamperedContext.status, 403);
+        assert.equal(tamperedContext.body.code, 'business_context_unavailable');
 
         const reserved = await apiRequest(
             'POST',

@@ -173,6 +173,52 @@ async function deleteAdmissionBookingFixtures(pool, { bookingIds = [], lineFixtu
     }
 }
 
+async function ensureAdmissionEventGenixMemberships(pool, users = []) {
+    const organization = await pool.query(
+        `INSERT INTO organizations (slug, name, status)
+         VALUES ('admission-fixture-event-genix', 'Admission Fixture Event Genix', 'active')
+         ON CONFLICT (slug) DO UPDATE SET
+             name = EXCLUDED.name,
+             status = 'active'
+         RETURNING id`
+    );
+    const organizationId = Number(organization.rows[0].id);
+    const business = await pool.query(
+        `INSERT INTO businesses (organization_id, context_key, label, short_label, access_mode, modules, status)
+         VALUES ($1, 'event_genix', 'Fixture Park', 'Park', 'membership', '["timeline","center"]'::jsonb, 'active')
+         ON CONFLICT (context_key) DO UPDATE SET
+             organization_id = EXCLUDED.organization_id,
+             access_mode = 'membership',
+             status = 'active',
+             modules = EXCLUDED.modules
+         RETURNING id`,
+        [organizationId]
+    );
+    const businessId = Number(business.rows[0].id);
+
+    for (const user of users.filter(Boolean)) {
+        const userId = Number(user.id);
+        if (!Number.isInteger(userId) || userId <= 0) continue;
+        const role = String(user.role || 'reception').trim() || 'reception';
+        await pool.query(
+            `INSERT INTO organization_memberships (organization_id, user_id, role, is_active)
+             VALUES ($1, $2, 'member', true)
+             ON CONFLICT (organization_id, user_id)
+             DO UPDATE SET is_active = true`,
+            [organizationId, userId]
+        );
+        await pool.query(
+            `INSERT INTO business_memberships (business_id, organization_id, user_id, role, is_default, is_active)
+             VALUES ($1, $2, $3, $4, true, true)
+             ON CONFLICT (business_id, user_id)
+             DO UPDATE SET role = EXCLUDED.role,
+                           is_default = true,
+                           is_active = true`,
+            [businessId, organizationId, userId, role]
+        );
+    }
+}
+
 describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
     skip: !enabled,
     concurrency: 1
@@ -211,6 +257,11 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
         }
         [manager, seniorManager, reception, animator] = users;
         await ensureEventGenixMemberships(pool, users);
+
+        const creator = process.env.TEST_USER
+            ? (await pool.query('SELECT id, username, role FROM users WHERE username = $1', [process.env.TEST_USER])).rows[0]
+            : null;
+        await ensureAdmissionEventGenixMemberships(pool, [creator, manager, seniorManager, reception, animator]);
 
         creatorToken = await login(process.env.TEST_USER, process.env.TEST_PASS);
         managerToken = await login(manager.username, password);
@@ -592,6 +643,28 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
         });
         assert.equal(insufficient.status, 403);
 
+        const tamperedContext = await apiRequest(
+            'POST',
+            '/api/bookings/ticket-quote?businessContext=event_genix',
+            {
+                token: receptionToken,
+                body: {
+                    businessContext: 'dar',
+                    date: '2026-07-17',
+                    roomResourceId: 'room-takeaway',
+                    banquetGuests: 5,
+                    banquetAdults: 2,
+                    ticketQuantities: [
+                        { code: 'birthday_child', quantity: 1 },
+                        { code: 'discounted_child', quantity: 1 },
+                        { code: 'adult_game', quantity: 1 }
+                    ]
+                }
+            }
+        );
+        assert.equal(tamperedContext.status, 403);
+        assert.equal(tamperedContext.body.code, 'business_context_unavailable');
+
         const mixed = await apiRequest(
             'POST',
             '/api/bookings/ticket-quote?businessContext=event_genix',
@@ -627,24 +700,6 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
                 adult_game: 1
             }
         );
-
-        const tamperedContext = await apiRequest(
-            'POST',
-            '/api/bookings/ticket-quote?businessContext=event_genix',
-            {
-                token: receptionToken,
-                body: {
-                    businessContext: 'dar',
-                    date: '2026-07-17',
-                    roomResourceId: 'room-takeaway',
-                    banquetGuests: 5,
-                    banquetAdults: 2,
-                    ticketQuantities: [{ code: 'birthday_child', quantity: 1 }]
-                }
-            }
-        );
-        assert.equal(tamperedContext.status, 403);
-        assert.equal(tamperedContext.body.code, 'business_context_unavailable');
 
         const reserved = await apiRequest(
             'POST',

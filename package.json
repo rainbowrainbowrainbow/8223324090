@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.157",
+  "version": "0.81.158",
   "eventGenix": {
-    "releaseLabel": "SYS-MB: перехід CRM"
+    "releaseLabel": "Спільний тестовий термінал"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.158 - Спільний тестовий термінал
+
+### Release / Versioning / (13.09.2026) [codex]
+- **Спільний тестовий термінал** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.157 - SYS-MB: перехід CRM
 
 ### Release / Versioning / (13.09.2026) [codex]

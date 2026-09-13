@@ -1,6 +1,6 @@
 {
-  "status": "READY_FOR_EXACT_OWNER_BLOCK",
-  "generatedAt": "2026-09-13T14:58:36.525873+00:00",
+  "status": "READY_FOR_NEW_EXACT_OWNER_BLOCK_AFTER_CI_REMEDIATION",
+  "generatedAt": "2026-09-13T15:20:54.3500270Z",
   "productionImpact": true,
   "candidateWorktree": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-recover-03-20260913",
   "candidateBranch": "codex/sys-mb-recover-03-20260913",
@@ -443,5 +443,23 @@
       "evidence": "to rerun after this manifest refresh"
     }
   ],
-  "blockerBeforeProductionApply": "Production read-only preflight was incomplete until a bounded read lease or equivalent post-schema read-only preflight is authorized; live cutover journal schema must be checked after deploy."
+  "blockerBeforeProductionApply": "Production read-only preflight was incomplete until a bounded read lease or equivalent post-schema read-only preflight is authorized; live cutover journal schema must be checked after deploy.",
+  "firstPushedCandidateAttempt": {
+    "sha": "7b3f87aa2fd37ff1f3b8e442077c6e1246bddea5",
+    "ciRunId": 34764487575,
+    "result": "FAIL_BEFORE_DEPLOY",
+    "deployStarted": false,
+    "mappingApplyStarted": false
+  },
+  "remediation": {
+    "changedPaths": [
+      "config/permissionRegistry.js",
+      "tests/browser/sidebar-timeline-launcher-runtime-ci-smoke.js"
+    ],
+    "localVerification": [
+      "node --test tests/account-access-policy.test.js tests/capability-parity-contract.test.js",
+      "npm run test:browser:sidebar-timeline",
+      "npm test"
+    ]
+  }
 }

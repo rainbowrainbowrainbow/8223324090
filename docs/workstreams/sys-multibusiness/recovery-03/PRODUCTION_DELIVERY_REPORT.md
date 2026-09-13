@@ -1,13 +1,14 @@
 # SYS-MB RECOVER-03 production delivery report
 
-Status: READY_FOR_EXACT_OWNER_BLOCK
+Status: READY_FOR_NEW_EXACT_OWNER_BLOCK_AFTER_CI_REMEDIATION
 Generated: 2026-09-13
 Production impact: yes
 
 - Live SHA before release: `8b21b3fcbd159c6c1e793d22508953d303c6c212`
 - Remote production branch base: `8b21b3fcbd159c6c1e793d22508953d303c6c212`
 - Candidate branch: `codex/sys-mb-recover-03-20260913`
-- Candidate HEAD before this manifest refresh: `d448d125c94398fbd7bc2922bc6fee6b224c0290`
+- Candidate HEAD before drift refresh: `d448d125c94398fbd7bc2922bc6fee6b224c0290`
+- First pushed candidate attempt: `7b3f87aa2fd37ff1f3b8e442077c6e1246bddea5` — CI failed before deploy; no Railway deploy or CRM apply was run.
 - Release version: `v0.81.157`
 - Release label: `SYS-MB: перехід CRM`
 - First business planned for apply: `crm`
@@ -35,3 +36,22 @@ Fresh read-only production preflight for CRM and Maysternya was collected earlie
 - CRM release manifest: `docs/workstreams/sys-multibusiness/recovery-03/CRM_RELEASE_MANIFEST.md`
 - Verification manifest: `docs/workstreams/sys-multibusiness/recovery-03/VERIFICATION_MANIFEST.json`
 - Private approved CRM payload and preflight files remain outside Git under `C:/Users/Plotva/.eventgenix/sys-mb-recover-01-20260913`.
+
+## CI attempt 1 remediation
+
+Attempted exact-SHA CI: `34764487575` for `7b3f87aa2fd37ff1f3b8e442077c6e1246bddea5`.
+
+Result: FAIL before deploy. Railway deploy and CRM mapping apply were not started.
+
+Fixed local causes:
+
+- `config/permissionRegistry.js`: restored technical `creator` to the `/maysternya-doli` special-context page preset while keeping the membership-context guard in `services/accountAccessPolicy.js`; explicit allow for this page remains disabled.
+- `tests/browser/sidebar-timeline-launcher-runtime-ci-smoke.js`: updated the read-only browser fixture to serve the canonical `/api/auth/business-profile` endpoint used by current frontend hydration.
+
+Post-fix local verification:
+
+- PASS: `node --test tests/account-access-policy.test.js tests/capability-parity-contract.test.js`
+- PASS: `npm run test:browser:sidebar-timeline`
+- PASS: `npm test`
+
+A new exact owner block is required for the remediated candidate SHA after commit because the previous block was bound to `7b3f87aa2fd37ff1f3b8e442077c6e1246bddea5`.

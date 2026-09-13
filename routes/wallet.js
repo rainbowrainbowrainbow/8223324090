@@ -79,6 +79,13 @@ router.post('/daily-login', requireRole(...ANY_ROLE), async (req, res) => {
         client = await pool.connect();
         await client.query('BEGIN');
 
+        const created = await client.query(
+            'INSERT INTO game_wallets (user_id, coins, total_earned) VALUES ($1, 500, 500) ON CONFLICT (user_id) DO NOTHING RETURNING user_id',
+            [req.user.id]
+        );
+        if (created.rows.length > 0) {
+            await recordWalletTransaction(client, req.user.id, 500, 'starter_bonus', 'Стартовий бонус');
+        }
         const wallet = await client.query(
             'SELECT *, last_login_reward::text AS last_login_reward_day FROM game_wallets WHERE user_id = $1 FOR UPDATE',
             [req.user.id]

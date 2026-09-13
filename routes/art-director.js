@@ -5,11 +5,14 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const costumeInventory = require('../services/costumeInventory');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('ArtDirector');
 const ART_COSTUME_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'art_director', 'marketer'];
+
+router.use(requireLegacyBusinessSurface('art'));
 
 // ==========================================
 // BRAND GUIDELINES

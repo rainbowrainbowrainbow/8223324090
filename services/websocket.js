@@ -20,6 +20,7 @@ const jwt = require('jsonwebtoken');
 const { JWT_SECRET, loadAuthenticatedUserAccess } = require('../middleware/auth');
 const { canAccessTimelineContext } = require('./timelineContext');
 const { canViewBooking } = require('./bookingVisibility');
+const { loadBusinessEventUser, canReceiveEvent } = require('./websocketEventAccess');
 
 const log = createLogger('WebSocket');
 
@@ -76,8 +77,12 @@ function initWebSocket(httpServer) {
     });
 
     // Start heartbeat checker
+    let heartbeatRunning = false;
     const heartbeatInterval = setInterval(() => {
-        _heartbeat();
+        if (heartbeatRunning) return;
+        heartbeatRunning = true;
+        _heartbeat().catch(error => log.warn('WebSocket heartbeat failed', { code: error.code || error.name }))
+            .finally(() => { heartbeatRunning = false; });
     }, HEARTBEAT_INTERVAL);
 
     // Clean up on server close
@@ -105,6 +110,9 @@ function _handleConnection(ws, req) {
         username: null,
         role: null,
         accessUser: null,
+        sessionToken: null,
+        inboundQueue: Promise.resolve(),
+        deliveryQueue: Promise.resolve(),
         subscribedDates: new Set(),
         subscribedChannels: new Set(),
         missedPongs: 0,
@@ -120,7 +128,7 @@ function _handleConnection(ws, req) {
     }, 10000);
 
     ws.on('message', (data) => {
-        _handleMessage(ws, data, authTimeout).catch(err => {
+        ws._pzp.inboundQueue = ws._pzp.inboundQueue.then(() => _handleMessage(ws, data, authTimeout)).catch(err => {
             log.error('WebSocket message handler error:', err.message);
             _sendError(ws, 'Internal server error');
         });
@@ -166,6 +174,9 @@ async function _handleMessage(ws, rawData, authTimeout) {
         }
         return;
     }
+
+    // A subscription or an open connection is never a durable access grant.
+    if (!await _refreshSocketUser(ws)) return;
 
     // Handle authenticated messages
     switch (message.type) {
@@ -218,6 +229,7 @@ async function _authenticateClient(ws, token, authTimeout) {
         ws._pzp.username = accessUser.username || accessUser.name || 'unknown';
         ws._pzp.role = accessUser.role || 'viewer';
         ws._pzp.accessUser = accessUser;
+        ws._pzp.sessionToken = token;
 
         // Track client connection
         _addClient(ws);
@@ -239,6 +251,26 @@ async function _authenticateClient(ws, token, authTimeout) {
     }
 }
 
+async function _refreshSocketUser(ws) {
+    if (!ws._pzp?.authenticated || ws.readyState !== 1) return null;
+    try {
+        const principal = jwt.verify(ws._pzp.sessionToken, JWT_SECRET);
+        const user = await loadAuthenticatedUserAccess(principal, { requireFresh: true });
+        if (String(user.id) !== ws._pzp.userId) throw new Error('Socket identity changed');
+        ws._pzp.username = user.username || user.name || 'unknown';
+        ws._pzp.role = user.role;
+        ws._pzp.accessUser = user;
+        return user;
+    } catch (error) {
+        if (error.status === 401 || ['TokenExpiredError', 'JsonWebTokenError', 'NotBeforeError'].includes(error.name)) {
+            ws.close(4001, 'Session is no longer valid');
+        }
+        // Database failures deny this delivery. Never reuse the previous user.
+        log.warn('WebSocket access refresh denied', { code: error.code || error.name });
+        return null;
+    }
+}
+
 function _isValidDateSubscription(value) {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
     const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -246,8 +278,9 @@ function _isValidDateSubscription(value) {
 }
 
 function _parseChannelId(channelId) {
+    if (!['number', 'string'].includes(typeof channelId)) return null;
     const parsed = Number(channelId);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 async function _isChannelMember(channelId, userId) {
@@ -265,6 +298,11 @@ async function _requireChannelMember(ws, channelId) {
     const isMember = await _isChannelMember(parsedChannelId, ws._pzp.userId);
     if (!isMember) {
         _sendError(ws, 'Not a member of this channel');
+        return null;
+    }
+
+    if (!await canReceiveEvent(ws._pzp.accessUser, 'chat:joined', {}, { channelId: parsedChannelId, delivery: 'user' })) {
+        _sendError(ws, 'Channel access is no longer available');
         return null;
     }
 
@@ -300,7 +338,7 @@ async function _handleChatTyping(ws, channelId) {
     const parsedChannelId = await _requireChannelMember(ws, channelId);
     if (!parsedChannelId) return;
 
-    broadcastToChannel(parsedChannelId, 'chat:typing', {
+    await broadcastToChannel(parsedChannelId, 'chat:typing', {
         channelId: parsedChannelId,
         userId: ws._pzp.userId,
         username: ws._pzp.username
@@ -400,53 +438,78 @@ function getConnectedClientsCount() {
  * @param {string|null} [excludeUserId] - User ID to exclude from broadcast (the user who made the change)
  * @param {string|null} [date] - Optional date string (YYYY-MM-DD) to filter by subscribed dates
  */
-function broadcast(eventType, data, excludeUserId, date) {
-    if (
-        String(eventType || '').startsWith('booking:')
-        || String(eventType || '').startsWith('line:')
-        || String(eventType || '').startsWith('banquet:')
-    ) {
-        log.error(`Blocked protected timeline event through generic broadcast: ${eventType}`);
+async function broadcast(eventType, data, excludeUserId, date) {
+    if (/^(booking|line|banquet):/.test(String(eventType || ''))) {
+        log.error('Blocked protected timeline event through generic broadcast');
         return 0;
     }
-    if (!_wss) return 0;
-
-    const message = JSON.stringify({
-        type: eventType,
-        payload: data || {},
-        meta: {
-            timestamp: new Date().toISOString(),
-            excludedUser: excludeUserId || null
-        }
+    return _dispatch({
+        type: eventType, payload: data || {},
+        meta: { timestamp: new Date().toISOString(), excludedUser: excludeUserId || null }
+    }, {
+        excludeUserId, date,
+        authorize: (user, snapshot) => canReceiveEvent(user, snapshot.type, snapshot.payload, { delivery: 'broadcast' })
     });
+}
 
-    let sent = 0;
-
-    for (const [userId, connections] of _clients) {
-        // Skip the user who made the change (they already have the response)
-        if (excludeUserId && userId === excludeUserId) continue;
-
-        for (const ws of connections) {
-            if (ws.readyState !== 1) continue; // Only send to OPEN connections
-
-            // If date filtering is requested, only send to clients subscribed to that date
-            if (date && !ws._pzp.subscribedDates.has(date)) {
-                continue;
-            }
-
-            try {
-                ws.send(message);
-                sent++;
-            } catch (err) {
-                log.error('Broadcast send error:', err.message);
+// Queue each socket's events in order. Authorization is resolved when the event
+// reaches its queue, without reusing permissions from any earlier delivery.
+async function _dispatch(message, options = {}) {
+    if (!_wss) return 0;
+    try {
+        const snapshot = JSON.parse(JSON.stringify(message));
+        // HR consumers reload their authorized HTTP data. Apply this to every
+        // dispatch path so no raw compensation or device fields reach the wire.
+        const wireMessage = snapshot.type === 'hr:attendance-updated'
+            ? { type: snapshot.type, payload: { date: (snapshot.payload || snapshot.data)?.date }, meta: snapshot.meta }
+            : snapshot;
+        const serialized = JSON.stringify(wireMessage);
+        const deliveries = [];
+        for (const [userId, connections] of _clients) {
+            if (options.userId != null && userId !== String(options.userId)) continue;
+            if (options.excludeUserId != null && userId === String(options.excludeUserId)) continue;
+            for (const ws of connections) {
+                if (ws.readyState !== 1 || !ws._pzp?.authenticated) continue;
+                if (options.date && !ws._pzp.subscribedDates.has(options.date)) continue;
+                if (options.channelId && !ws._pzp.subscribedChannels.has(Number(options.channelId))) continue;
+                const pending = ws._pzp.deliveryQueue.then(async () => {
+                    const user = await _refreshSocketUser(ws);
+                    if (!user || (options.username != null && user.username !== options.username)) return 0;
+                    if (!await options.authorize(user, snapshot)) return 0;
+                    if (ws.readyState !== 1) return 0;
+                    // A user may leave a subscription while a DB check is pending.
+                    if (options.date && !ws._pzp.subscribedDates.has(options.date)) return 0;
+                    if (options.channelId && !ws._pzp.subscribedChannels.has(Number(options.channelId))) return 0;
+                    jwt.verify(ws._pzp.sessionToken, JWT_SECRET);
+                    ws.send(serialized);
+                    return 1;
+                }).catch(error => {
+                    log.warn('WebSocket delivery denied', { eventType: message.type, code: error.code || error.name });
+                    return 0;
+                });
+                ws._pzp.deliveryQueue = pending;
+                deliveries.push(pending);
             }
         }
+        return (await Promise.all(deliveries)).reduce((sum, count) => sum + count, 0);
+    } catch (error) {
+        // Producers can dispatch after commit without awaiting the delivery count.
+        log.warn('WebSocket dispatch failed', { eventType: message.type, code: error.code || error.name });
+        return 0;
     }
+}
 
-    if (sent > 0) {
-        log.info(`Broadcast [${eventType}] to ${sent} client(s)` + (date ? ` for date ${date}` : ''));
-    }
-    return sent;
+/** Send a business invalidation through the same fresh authorization boundary. */
+async function broadcastBusinessEvent(eventType, data, options = {}) {
+    const accessOptions = { businessContext: options.businessContext, page: options.page, delivery: 'broadcast' };
+    const envelope = options.envelope === 'data' ? 'data' : 'payload';
+    const message = options.envelope === 'data'
+        ? { type: eventType, data }
+        : { type: eventType, payload: data, meta: { timestamp: new Date().toISOString() } };
+    return _dispatch(message, {
+        excludeUserId: options.excludeUserId,
+        authorize: (user, snapshot) => canReceiveEvent(user, snapshot.type, snapshot[envelope], accessOptions)
+    });
 }
 
 function _timelineEventPayload(eventType, audience, options = {}) {
@@ -464,50 +527,30 @@ function _timelineEventPayload(eventType, audience, options = {}) {
     return { date, businessContext, eventType, updatedAt };
 }
 
-function _broadcastAuthorizedTimelineEvent(eventType, audience, excludeUserId, options = {}) {
+async function _broadcastAuthorizedTimelineEvent(eventType, audience, excludeUserId, options = {}) {
     if (!_wss) return 0;
-
     const payload = _timelineEventPayload(eventType, audience, options);
     if (!_isValidDateSubscription(payload.date) || !payload.businessContext) {
-        log.error(`Blocked ${eventType}: timeline audience is incomplete`);
+        log.error('Blocked timeline event: audience is incomplete');
         return 0;
     }
-
-    const excludeId = excludeUserId == null ? null : String(excludeUserId);
-    const message = JSON.stringify({
-        type: eventType,
-        payload: options.payload(payload),
+    const visibilityBookings = (Array.isArray(options.visibilityBookings) ? options.visibilityBookings : [audience])
+        .map(booking => ({ ...booking }));
+    const bookingVisibility = Boolean(options.bookingVisibility);
+    return _dispatch({
+        type: eventType, payload: options.payload(payload),
         meta: { timestamp: new Date().toISOString() }
-    });
-    let sent = 0;
-
-    for (const [userId, connections] of _clients) {
-        if (excludeId && userId === excludeId) continue;
-        for (const ws of connections) {
-            if (ws.readyState !== 1) continue;
-            if (!ws._pzp.subscribedDates.has(payload.date)) continue;
-            const accessUser = ws._pzp.accessUser;
-            if (!canAccessTimelineContext(accessUser, payload.businessContext)) continue;
-            const visibilityBookings = Array.isArray(options.visibilityBookings)
-                ? options.visibilityBookings
-                : [audience];
-            if (options.bookingVisibility && !visibilityBookings.some(booking => canViewBooking(accessUser, booking))) continue;
-            try {
-                ws.send(message);
-                sent++;
-            } catch (err) {
-                log.error('Authorized timeline broadcast send error:', err.message);
-            }
+    }, {
+        excludeUserId, date: payload.date,
+        authorize: async user => {
+            const accessUser = await loadBusinessEventUser(user, payload.businessContext);
+            if (!accessUser || !canAccessTimelineContext(accessUser, payload.businessContext)) return false;
+            return !bookingVisibility || visibilityBookings.some(booking => canViewBooking(accessUser, booking));
         }
-    }
-
-    if (sent > 0) {
-        log.info(`Authorized broadcast [${eventType}] to ${sent} client(s) for ${payload.businessContext}/${payload.date}`);
-    }
-    return sent;
+    });
 }
 
-function broadcastBookingEvent(eventType, booking, excludeUserId, options = {}) {
+async function broadcastBookingEvent(eventType, booking, excludeUserId, options = {}) {
     if (!String(eventType || '').startsWith('booking:')) {
         log.error(`Blocked invalid booking event type: ${eventType}`);
         return 0;
@@ -537,7 +580,7 @@ function broadcastBookingEvent(eventType, booking, excludeUserId, options = {}) 
 
     let sent = 0;
     for (const group of audienceGroups.values()) {
-        sent += _broadcastAuthorizedTimelineEvent(eventType, group.state, excludeUserId, {
+        sent += await _broadcastAuthorizedTimelineEvent(eventType, group.state, excludeUserId, {
             ...options,
             updatedAt: booking.updatedAt || booking.updated_at || options.updatedAt,
             bookingVisibility: true,
@@ -548,7 +591,7 @@ function broadcastBookingEvent(eventType, booking, excludeUserId, options = {}) 
     return sent;
 }
 
-function broadcastLineEvent(eventType, lineAudience, excludeUserId, options = {}) {
+async function broadcastLineEvent(eventType, lineAudience, excludeUserId, options = {}) {
     const safeEventType = String(eventType || '');
     if (!safeEventType.startsWith('line:') && safeEventType !== 'timeline:roster-updated') {
         log.error(`Blocked invalid line event type: ${eventType}`);
@@ -561,7 +604,7 @@ function broadcastLineEvent(eventType, lineAudience, excludeUserId, options = {}
     });
 }
 
-function broadcastBanquetEvent(eventType, banquetAudience, excludeUserId = null, options = {}) {
+async function broadcastBanquetEvent(eventType, banquetAudience, excludeUserId = null, options = {}) {
     const safeEventType = String(eventType || '');
     if (!safeEventType.startsWith('banquet:')) {
         log.error(`Blocked invalid banquet event type: ${eventType}`);
@@ -605,25 +648,14 @@ function broadcastBanquetEvent(eventType, banquetAudience, excludeUserId = null,
  * @param {string} eventType - Event type
  * @param {object} data - Event payload
  */
-function sendToUser(userId, eventType, data) {
-    const connections = _clients.get(userId);
-    if (!connections) return;
-
-    const message = JSON.stringify({
-        type: eventType,
-        payload: data || {},
-        meta: { timestamp: new Date().toISOString() }
+async function sendToUser(userId, eventType, data) {
+    if (!['number', 'string'].includes(typeof userId) || !Number.isSafeInteger(Number(userId)) || Number(userId) <= 0) return 0;
+    return _dispatch({
+        type: eventType, payload: data || {}, meta: { timestamp: new Date().toISOString() }
+    }, {
+        userId,
+        authorize: (user, snapshot) => canReceiveEvent(user, snapshot.type, snapshot.payload, { delivery: 'user' })
     });
-
-    for (const ws of connections) {
-        if (ws.readyState === 1) {
-            try {
-                ws.send(message);
-            } catch (err) {
-                log.error('sendToUser error:', err.message);
-            }
-        }
-    }
 }
 
 /**
@@ -633,37 +665,15 @@ function sendToUser(userId, eventType, data) {
  * @param {object} data - Event payload
  * @param {string|null} [excludeUserId] - User ID to exclude
  */
-function broadcastToChannel(channelId, eventType, data, excludeUserId) {
-    if (!_wss) return;
-
-    const message = JSON.stringify({
-        type: eventType,
-        payload: data || {},
-        meta: { timestamp: new Date().toISOString() }
+async function broadcastToChannel(channelId, eventType, data, excludeUserId) {
+    const parsedChannelId = _parseChannelId(channelId);
+    if (!parsedChannelId) return 0;
+    return _dispatch({
+        type: eventType, payload: data || {}, meta: { timestamp: new Date().toISOString() }
+    }, {
+        channelId: parsedChannelId, excludeUserId,
+        authorize: (user, snapshot) => canReceiveEvent(user, snapshot.type, snapshot.payload, { delivery: 'channel', channelId: parsedChannelId })
     });
-
-    let sent = 0;
-    const numChannelId = Number(channelId);
-
-    for (const [userId, connections] of _clients) {
-        if (excludeUserId && userId === String(excludeUserId)) continue;
-
-        for (const ws of connections) {
-            if (ws.readyState !== 1) continue;
-            if (!ws._pzp.subscribedChannels.has(numChannelId)) continue;
-
-            try {
-                ws.send(message);
-                sent++;
-            } catch (err) {
-                log.error('broadcastToChannel send error:', err.message);
-            }
-        }
-    }
-
-    if (sent > 0) {
-        log.info(`broadcastToChannel [${eventType}] ch:${channelId} to ${sent} client(s)`);
-    }
 }
 
 /**
@@ -673,32 +683,14 @@ function broadcastToChannel(channelId, eventType, data, excludeUserId) {
  * @param {string} eventType - Event type
  * @param {object} data - Event payload
  */
-function sendToUsername(username, eventType, data) {
-    if (!_wss) return;
-
-    const message = JSON.stringify({
-        type: eventType,
-        payload: data || {},
-        meta: { timestamp: new Date().toISOString() }
+async function sendToUsername(username, eventType, data) {
+    if (typeof username !== 'string' || !username.trim()) return 0;
+    return _dispatch({
+        type: eventType, payload: data || {}, meta: { timestamp: new Date().toISOString() }
+    }, {
+        username,
+        authorize: (user, snapshot) => canReceiveEvent(user, snapshot.type, snapshot.payload, { delivery: 'username' })
     });
-
-    let sent = 0;
-    for (const [, connections] of _clients) {
-        for (const ws of connections) {
-            if (ws._pzp.username === username && ws.readyState === 1) {
-                try {
-                    ws.send(message);
-                    sent++;
-                } catch (err) {
-                    log.error('sendToUsername error:', err.message);
-                }
-            }
-        }
-    }
-
-    if (sent > 0) {
-        log.info(`sendToUsername [${eventType}] to ${username}: ${sent} connection(s)`);
-    }
 }
 
 // ==========================================
@@ -708,7 +700,7 @@ function sendToUsername(username, eventType, data) {
 /**
  * Ping all clients and disconnect stale ones.
  */
-function _heartbeat() {
+async function _heartbeat() {
     if (!_wss) return;
 
     // v38.4.0: Snapshot entries to prevent iterator invalidation during cleanup
@@ -716,6 +708,7 @@ function _heartbeat() {
     for (const [userId, connections] of snapshot) {
         const deadClients = [];
         for (const ws of connections) {
+            if (!await _refreshSocketUser(ws)) continue;
             if (!ws._pzp.alive) {
                 ws._pzp.missedPongs++;
                 if (ws._pzp.missedPongs >= MAX_MISSED_PONGS) {
@@ -792,6 +785,7 @@ function getLastSeen(userId) {
 module.exports = {
     initWebSocket,
     broadcast,
+    broadcastBusinessEvent,
     broadcastBookingEvent,
     broadcastBanquetEvent,
     broadcastLineEvent,

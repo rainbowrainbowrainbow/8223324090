@@ -1,0 +1,129 @@
+Runtime: v22.23.1
+Command: node docs/workstreams/sys-multibusiness/final-cutover/mapping/validate.test.cjs
+Scope: offline synthetic mapping checks; no database, application or providers
+
+TAP version 13
+# Subtest: both unpopulated templates remain review-only HOLD
+ok 1 - both unpopulated templates remain review-only HOLD
+  ---
+  duration_ms: 3.4065
+  type: 'test'
+  ...
+# Subtest: foreign business and repeated user mapping are rejected
+ok 2 - foreign business and repeated user mapping are rejected
+  ---
+  duration_ms: 1.8138
+  type: 'test'
+  ...
+# Subtest: raw context strings cannot grant previously inaccessible context or operation
+ok 3 - raw context strings cannot grant previously inaccessible context or operation
+  ---
+  duration_ms: 0.3283
+  type: 'test'
+  ...
+# Subtest: platform creator and organization promotion are not inferred by mapping
+ok 4 - platform creator and organization promotion are not inferred by mapping
+  ---
+  duration_ms: 0.3105
+  type: 'test'
+  ...
+# Subtest: loss of existing permissions needs an explicit restriction decision
+ok 5 - loss of existing permissions needs an explicit restriction decision
+  ---
+  duration_ms: 0.466
+  type: 'test'
+  ...
+# Subtest: inactive users and changed defaults are not silently repaired
+ok 6 - inactive users and changed defaults are not silently repaired
+  ---
+  duration_ms: 0.4823
+  type: 'test'
+  ...
+# Subtest: even apparently approved complete metadata never authorizes migration
+ok 7 - even apparently approved complete metadata never authorizes migration
+  ---
+  duration_ms: 0.2584
+  type: 'test'
+  ...
+# Subtest: partial input, unknown context and missing source fingerprint fail closed
+ok 8 - partial input, unknown context and missing source fingerprint fail closed
+  ---
+  duration_ms: 0.2362
+  type: 'test'
+  ...
+# Subtest: unknown nested fields are rejected at every review boundary
+ok 9 - unknown nested fields are rejected at every review boundary
+  ---
+  duration_ms: 0.7779
+  type: 'test'
+  ...
+# Subtest: unknown roles, modules and page/action identifiers are not valid mapping fields
+ok 10 - unknown roles, modules and page/action identifiers are not valid mapping fields
+  ---
+  duration_ms: 0.8665
+  type: 'test'
+  ...
+# Subtest: source active state and organization role must be explicitly typed
+ok 11 - source active state and organization role must be explicitly typed
+  ---
+  duration_ms: 0.9958
+  type: 'test'
+  ...
+# Subtest: context-access loss needs a nonempty typed restriction reference
+ok 12 - context-access loss needs a nonempty typed restriction reference
+  ---
+  duration_ms: 0.4056
+  type: 'test'
+  ...
+# Subtest: default rows require exact fields and canonical context keys
+ok 13 - default rows require exact fields and canonical context keys
+  ---
+  duration_ms: 0.3602
+  type: 'test'
+  ...
+# Subtest: duplicate default rows cannot make conflicting claims for one user
+ok 14 - duplicate default rows cannot make conflicting claims for one user
+  ---
+  duration_ms: 0.2245
+  type: 'test'
+  ...
+# Subtest: claimed default membership requires matching default evidence and active state
+ok 15 - claimed default membership requires matching default evidence and active state
+  ---
+  duration_ms: 0.3145
+  type: 'test'
+  ...
+# Subtest: snapshot timestamps must be real UTC calendar instants
+ok 16 - snapshot timestamps must be real UTC calendar instants
+  ---
+  duration_ms: 0.3606
+  type: 'test'
+  ...
+# Subtest: historical mapping and approval metadata cannot have invalid nested types
+ok 17 - historical mapping and approval metadata cannot have invalid nested types
+  ---
+  duration_ms: 0.8065
+  type: 'test'
+  ...
+# Subtest: valid canonical values, explicit absent defaults and leap dates remain review-only
+ok 18 - valid canonical values, explicit absent defaults and leap dates remain review-only
+  ---
+  duration_ms: 0.3115
+  type: 'test'
+  ...
+# Subtest: pure registry imports do not load database, application startup or providers
+ok 19 - pure registry imports do not load database, application startup or providers
+  ---
+  duration_ms: 0.2851
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27.6828
+ExitCode: 0

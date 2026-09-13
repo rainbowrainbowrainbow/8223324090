@@ -1,0 +1,145 @@
+{
+  "status": "READY_LOCAL_HTTP_LIFECYCLE_REVIEW",
+  "verifiedAtUtc": "2026-09-12T12:00:06.0438731Z",
+  "baseCommit": "a5180def01a1e47f8f4fc75e2f7a43092f205828",
+  "branch": "codex/sys-mb-auth-p0-20260912",
+  "changes": "uncommitted cumulative P0 plus lifecycle",
+  "priorCheckpoint": "P0_VERIFICATION.json",
+  "windowsRuntime": {
+    "node": "22.23.1",
+    "npm": "10.9.8"
+  },
+  "npmTest": {
+    "command": "npm test",
+    "exitCode": 0,
+    "unit": {
+      "skipped": 0,
+      "fail": 0,
+      "pass": 2803
+    },
+    "myDay": {
+      "skipped": 0,
+      "fail": 0,
+      "pass": 337
+    },
+    "uiLoader": {
+      "skipped": 0,
+      "fail": 0,
+      "pass": 4
+    },
+    "log": ".codex-temp/sys-mb-lifecycle/verification-final.log",
+    "uiStatic": {
+      "pass": 1312,
+      "fail": 0
+    }
+  },
+  "focused": {
+    "skipped": 0,
+    "command": "node --test tests/organization-lifecycle.test.js tests/business-membership-organization-guards.test.js",
+    "fail": 0,
+    "pass": 24
+  },
+  "postgres": {
+    "environment": "local WSL Ubuntu disposable database",
+    "tests": 14,
+    "actualLifecycleHttpMutationsTested": true,
+    "node": "22.22.2",
+    "nestedScenarios": 13,
+    "skipped": 0,
+    "remainingTestConnections": 0,
+    "command": "BUSINESS_MEMBERSHIP_LOCAL_POSTGRES_TEST=1 node --test tests/integration/organization-lifecycle-postgres.test.js",
+    "status": "PASS",
+    "fail": 0,
+    "postgres": "16",
+    "exitCode": 0,
+    "remainingTestDatabases": 0,
+    "production": false
+  },
+  "diffCheck": "PASS",
+  "ci": "NOT_RUN",
+  "deploy": "NOT_RUN",
+  "liveQA": "NOT_RUN",
+  "productionOperations": 0,
+  "rolloutBlockers": [
+    "WebSocket fresh membership authorization and event ownership",
+    "Last effective owner invariant on external account deactivation paths"
+  ],
+  "incrementalSourceFiles": [
+    "package.json",
+    "routes/organizations.js",
+    "services/organizationLifecycle.js",
+    "tests/business-membership-organization-guards.test.js",
+    "tests/integration/organization-lifecycle-postgres.test.js",
+    "tests/organization-lifecycle.test.js"
+  ],
+  "sourceFiles": [
+    {
+      "path": "middleware/auth.js",
+      "sha256": "9dac8da2e6cd0f59cb24b8a35e3b1761c1b40d28728139547f448ba54e0d9b2f"
+    },
+    {
+      "path": "package.json",
+      "sha256": "fb31fc467e217099c68309469dc04f44f2920ee50eb45810a25e0cb86fa6697b"
+    },
+    {
+      "path": "routes/auth.js",
+      "sha256": "43feac79c262fba80e567f2d24553767e1ff53ef612b516a211f84b50072d16d"
+    },
+    {
+      "path": "routes/organizations.js",
+      "sha256": "6d0d0e0b9ce8445ef4d70f7801f9a63d1b3a4a53c4429f004240ebd99c7f4602"
+    },
+    {
+      "path": "services/businessContext.js",
+      "sha256": "2f4ac79ef891f22b9d001f3d6d34a83c96c02ef91c04f8be9513f53fa95b37c8"
+    },
+    {
+      "path": "services/businessMembership.js",
+      "sha256": "ceb14f4a1790ad718eee8d4f6f0ac404cf861c0d323a6bffc53a5a5e5a2744ee"
+    },
+    {
+      "path": "services/organizationLifecycle.js",
+      "sha256": "9234f2db3de97b825da1521021daa7f57898fdaefcd71bdf643d4a2f582ebb3f"
+    },
+    {
+      "path": "tests/business-membership-auth-profile.test.js",
+      "sha256": "34d11d8e94f5a8eeb4e7b494c2f2f6607f9d0b5fcf00368f44fe5c71a4599e55"
+    },
+    {
+      "path": "tests/business-membership-organization-guards.test.js",
+      "sha256": "951bf618e328dff9aa9eebaf7077d2f400c0e613b95b0bae339ea8dfa55902a5"
+    },
+    {
+      "path": "tests/business-membership-security.test.js",
+      "sha256": "9f5fbd3a7437ece8942fffccfc32ce8e8a21ac9a1d78db71d129ae41fbe4da83"
+    },
+    {
+      "path": "tests/business-membership.test.js",
+      "sha256": "5e222635fce55397a414b22d1b43748d12f8c2f4a0b3fca23a90c5a010fe1ecb"
+    },
+    {
+      "path": "tests/chat-upload-route.test.js",
+      "sha256": "55718e8babcaf9f5070489907757a63d86ed0d7e8b19390a964076b7804ba623"
+    },
+    {
+      "path": "tests/dashboard-assistant.test.js",
+      "sha256": "7c14366c4b534531d1977fad94f591eb82e5c3dc769d81f08a128bd4c370d1ab"
+    },
+    {
+      "path": "tests/guardian-rbac.test.js",
+      "sha256": "f296661781277f4a8bc30492657e129a54e21f86605573197323605592ded1d7"
+    },
+    {
+      "path": "tests/integration/business-membership-postgres.test.js",
+      "sha256": "d4ae18dfe8c31ff1f5978f806a52bb65116484b68aac4cbfe1bf7848934ffab1"
+    },
+    {
+      "path": "tests/integration/organization-lifecycle-postgres.test.js",
+      "sha256": "cc4593d2e5b1b78f58b40a377fd6e6da7633229da072fba7b0964db64273e37b"
+    },
+    {
+      "path": "tests/organization-lifecycle.test.js",
+      "sha256": "5fa83d23283c9ab91cac7b2b677a2267a920c9750cbbd618f7ce04c44f1661b6"
+    }
+  ]
+}

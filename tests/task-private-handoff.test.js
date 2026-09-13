@@ -38,7 +38,7 @@ function createReassignPool(options = {}) {
             if (compact.startsWith('SELECT t.*, u.name AS owner_name')) {
                 return { rows: [task] };
             }
-            if (compact.startsWith('SELECT id, username, name, role FROM users')) {
+            if (compact.startsWith('SELECT id, username, name, users.role AS role FROM users')) {
                 return { rows: [{ id: 8, username: 'receiver', name: 'Receiver', role: 'manager' }] };
             }
             if (compact.startsWith('SELECT 1 FROM task_observers')) {

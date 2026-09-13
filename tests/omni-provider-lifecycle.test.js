@@ -36,7 +36,7 @@ function loadHub(pool) {
     clearModules();
     installMock('../db', { pool });
     installMock('../services/kleshnya-chat', { generateChatResponse: async () => '' });
-    installMock('../services/websocket', { getWSS: () => ({ clients: [] }) });
+    installMock('../services/websocket', { broadcastBusinessEvent: async () => 0 });
     installMock('../services/telegram', { sendTelegramMessage: async () => ({ ok: true, result: { message_id: 42 } }) });
     installMock('../services/omni-viber', { sendViber: async () => ({ success: true, messageToken: 43 }) });
     installMock('../services/omni-sms', { sendSMS: async () => ({ success: true, messageId: 'sms-44' }) });

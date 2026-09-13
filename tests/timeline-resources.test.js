@@ -2249,6 +2249,7 @@ test('resource availability keeps day booking metadata separate from selected-ti
     }];
     const bookingRows = [{
         id: 'BK-2099-0101',
+        actor_can_view: true,
         line_id: 'cabinet-a',
         room: 'Cabinet A',
         time: '10:00',
@@ -2270,6 +2271,7 @@ test('resource availability keeps day booking metadata separate from selected-ti
         banquet_group_customer_id: 101
     }, {
         id: 'BK-2099-0102',
+        actor_can_view: true,
         line_id: 'cabinet-a',
         room: 'Cabinet A',
         time: '15:00',
@@ -2308,6 +2310,7 @@ test('resource availability keeps day booking metadata separate from selected-ti
     };
 
     const availability = await timelineResourceAvailability(fakeDb, {
+        actor: { role: 'director' },
         context: 'event_genix',
         type: 'cabinet',
         date: '2099-03-10',
@@ -2378,6 +2381,7 @@ test('room resource availability resolves legacy room aliases and durable resour
     }];
     const bookingRows = [{
         id: 'BK-ROOM-ALIAS',
+        actor_can_view: true,
         line_id: 'legacy-line',
         resource_id: null,
         room: 'Марвел',
@@ -2417,6 +2421,7 @@ test('room resource availability resolves legacy room aliases and durable resour
     };
 
     const availability = await timelineResourceAvailability(fakeDb, {
+        actor: { role: 'director' },
         context: 'event_genix',
         type: 'room',
         date: '2099-03-10',

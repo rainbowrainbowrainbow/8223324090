@@ -4,10 +4,17 @@
 
 ---
 
-## v0.81.157 - Авторизований вхід у гайдбук Design Board
+## v0.81.158 - Авторизований вхід у гайдбук Design Board
 
 ### Release / Versioning / (13.09.2026) [codex]
 - **Авторизований вхід у гайдбук Design Board** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
+## v0.81.157 - SYS-MB: перехід CRM
+
+### Release / Versioning / (13.09.2026) [codex]
+- **SYS-MB: перехід CRM** - підготовлено контрольований реліз багатобізнесової моделі для CRM з окремими міграціями, маркерами версії та доказами приймання.
 
 ---
 

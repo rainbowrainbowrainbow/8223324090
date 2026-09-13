@@ -28,12 +28,15 @@ const {
 } = require('../services/payroll');
 const { closePayrollPeriod } = require('../services/hrPayrollPeriod');
 const { PAYROLL_HISTORICAL_CLASSIFICATION_MESSAGES } = require('../services/payrollSettlement');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const {
     requireWritableBusinessScope,
     resolveBusinessScope
 } = require('../services/businessContext');
 
 const log = createLogger('PayrollRoutes');
+
+router.use(requireLegacyBusinessSurface('payroll'));
 
 function sendError(res, err, fallback = 'Internal server error') {
     const status = err.status || err.statusCode || 500;

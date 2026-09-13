@@ -6,12 +6,27 @@
  */
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
+const { loadLegacyBusinessSurfaceAccess } = require('./legacyBusinessSurface');
 const {
     downloadTelegramFileById,
     getTelegramBotConfigStatus
 } = require('./telegram');
 
 const log = createLogger('WarehousePhotoIntake');
+
+async function intakeBusinessAccess(options = {}) {
+    // Existing intake records have no owner. Only an explicitly authorized
+    // pre-cutover context can access this legacy namespace; missing is denied.
+    const context = options?.businessContext === DEFAULT_BUSINESS_CONTEXT ? options.businessContext : null;
+    const access = await loadLegacyBusinessSurfaceAccess(pool, context, 'warehouse_photo_intake');
+    return access.status === 503 ? { ...access, code: 'warehouse_photo_intake_scope_unavailable' } : access;
+}
+
+async function assertIntakeBusinessAccess(options) {
+    const access = await intakeBusinessAccess(options);
+    if (!access.available) throw Object.assign(new Error(access.message), { code: access.code, status: access.status });
+}
 
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
 const VISION_MODEL = process.env.WAREHOUSE_VISION_MODEL || process.env.OPENAI_VISION_MODEL || process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini';
@@ -257,19 +272,21 @@ function stockMatchScore(draftName, stockName) {
     return shared ? shared / Math.max(aWords.size, bWords.size) : 0;
 }
 
-async function findMatchCandidates(draft = {}) {
+async function findMatchCandidates(draft = {}, options = {}) {
+    await assertIntakeBusinessAccess(options);
     if (!draft.name) return [];
     const result = await pool.query(
         `SELECT id, name, category, quantity, unit, location_id, sku
-           FROM warehouse_stock
+          FROM warehouse_stock
           WHERE is_active = true
+            AND business_context = $4
             AND (name ILIKE $1 OR COALESCE(sku, '') ILIKE $1 OR category = $2)
           ORDER BY
             CASE WHEN LOWER(name) = LOWER($3) THEN 0 ELSE 1 END,
             updated_at DESC NULLS LAST,
             name
           LIMIT 30`,
-        [`%${draft.name}%`, draft.category || 'consumable', draft.name]
+        [`%${draft.name}%`, draft.category || 'consumable', draft.name, options.businessContext]
     );
     return result.rows
         .map(row => ({
@@ -394,7 +411,9 @@ async function downloadVisionImages(photoRefs) {
     return images;
 }
 
-async function createTelegramPhotoIntake(message) {
+async function createTelegramPhotoIntake(message, options = {}) {
+    const access = await intakeBusinessAccess(options);
+    if (!access.available) return { ok: false, status: access.status, reason: access.code };
     const photoRefs = buildPhotoRefs(message);
     if (!photoRefs.length) return { ok: false, reason: 'no_photo' };
 
@@ -419,7 +438,7 @@ async function createTelegramPhotoIntake(message) {
     const images = await downloadVisionImages(photoRefs);
     const vision = await callOpenAIVision(images, caption);
     const draft = normalizeDraft(vision.draft);
-    const candidates = await findMatchCandidates(draft);
+    const candidates = await findMatchCandidates(draft, options);
     const status = deriveStatus(draft, candidates, vision.ok);
 
     const result = await pool.query(
@@ -483,11 +502,12 @@ async function createTelegramPhotoIntake(message) {
         );
     }
 
-    const withCount = await getIntake(intake.id);
+    const withCount = await getIntake(intake.id, options);
     return { ok: true, intake: withCount, duplicate: false };
 }
 
-async function getIntake(id) {
+async function getIntake(id, options = {}) {
+    await assertIntakeBusinessAccess(options);
     const result = await pool.query(
         `SELECT i.*, COUNT(p.id)::int AS photo_count
            FROM warehouse_photo_intakes i
@@ -500,6 +520,7 @@ async function getIntake(id) {
 }
 
 async function listIntakes(options = {}) {
+    await assertIntakeBusinessAccess(options);
     const limit = Math.min(Math.max(Number(options.limit) || 20, 1), 100);
     const status = normalizeText(options.status || '');
     const params = [];
@@ -522,7 +543,8 @@ async function listIntakes(options = {}) {
     return result.rows.map(mapIntakeRow);
 }
 
-async function getIntakeStatus() {
+async function getIntakeStatus(options = {}) {
+    await assertIntakeBusinessAccess(options);
     const [telegram, countsResult, lastResult] = await Promise.all([
         getTelegramBotConfigStatus().catch(err => ({ configured: false, status: 'error', error: err.message })),
         pool.query(
@@ -564,6 +586,9 @@ function effectiveDraftHasPrice(current = {}, overrides = {}) {
 }
 
 async function confirmIntake(id, options = {}) {
+    const access = await intakeBusinessAccess(options);
+    if (!access.available) return { success: false, status: access.status, error: access.code };
+    const businessContext = options.businessContext;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -605,6 +630,21 @@ async function confirmIntake(id, options = {}) {
             return { success: false, status: 409, error: 'ambiguous_match_requires_manual_choice' };
         }
 
+        const locationIsAccessible = async locationId => {
+            if (!locationId) return true;
+            const location = await client.query(
+                `SELECT id FROM warehouse_locations
+                 WHERE id = $1 AND is_active = true
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2 FOR SHARE`,
+                [locationId, businessContext]
+            );
+            return location.rowCount > 0;
+        };
+        if (!await locationIsAccessible(draft.locationId)) {
+            await client.query('ROLLBACK');
+            return { success: false, status: 404, error: 'target_location_not_found' };
+        }
+
         const actor = normalizeText(options.actor || 'telegram');
         const amount = clampInt(draft.quantity, 1);
         const reason = `Telegram photo intake #${id}${draft.notes ? `: ${draft.notes}` : ''}`.slice(0, 250);
@@ -614,12 +654,17 @@ async function confirmIntake(id, options = {}) {
 
         if (targetStockId) {
             const existing = await client.query(
-                `SELECT * FROM warehouse_stock WHERE id = $1 AND is_active = true FOR UPDATE`,
-                [targetStockId]
+                `SELECT * FROM warehouse_stock WHERE id = $1 AND is_active = true
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2 FOR UPDATE`,
+                [targetStockId, businessContext]
             );
             if (!existing.rowCount) {
                 await client.query('ROLLBACK');
                 return { success: false, status: 404, error: 'target_stock_not_found' };
+            }
+            if (!await locationIsAccessible(existing.rows[0].location_id)) {
+                await client.query('ROLLBACK');
+                return { success: false, status: 404, error: 'target_location_not_found' };
             }
             const updated = await client.query(
                 `UPDATE warehouse_stock
@@ -627,17 +672,18 @@ async function confirmIntake(id, options = {}) {
                         updated_at = NOW(),
                         updated_by = $2
                   WHERE id = $3
+                    AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
                   RETURNING *`,
-                [amount, actor, targetStockId]
+                [amount, actor, targetStockId, businessContext]
             );
             stockRow = updated.rows[0];
         } else {
             const created = await client.query(
                 `INSERT INTO warehouse_stock (
                     name, category, quantity, min_quantity, unit, notes, updated_by, owner,
-                    location_id, sku, purchase_unit_price, is_procured_externally
+                    location_id, sku, purchase_unit_price, is_procured_externally, business_context
                  )
-                 VALUES ($1,$2,$3,0,$4,$5,$6,'park',$7,$8,$9,false)
+                 VALUES ($1,$2,$3,0,$4,$5,$6,'park',$7,$8,$9,false,$10)
                  RETURNING *`,
                 [
                     draft.name,
@@ -648,28 +694,29 @@ async function confirmIntake(id, options = {}) {
                     actor,
                     draft.locationId || null,
                     draft.sku || null,
-                    Number.isFinite(Number(draft.price)) ? Number(draft.price) : 0
+                    Number.isFinite(Number(draft.price)) ? Number(draft.price) : 0,
+                    businessContext
                 ]
             );
             stockRow = created.rows[0];
         }
 
         const history = await client.query(
-            `INSERT INTO warehouse_history (stock_id, change, reason, created_by)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO warehouse_history (stock_id, change, reason, created_by, business_context)
+             VALUES ($1, $2, $3, $4, $5)
              RETURNING id`,
-            [stockRow.id, amount, reason, actor]
+            [stockRow.id, amount, reason, actor, businessContext]
         );
         historyId = history.rows[0]?.id || null;
 
         const movement = await client.query(
             `INSERT INTO warehouse_stock_movements (
                 warehouse_stock_id, movement_type, from_location_id, to_location_id,
-                quantity, reason, created_by
+                quantity, reason, created_by, business_context
              )
-             VALUES ($1, 'manual_adjustment', NULL, $2, $3, $4, $5)
+             VALUES ($1, 'manual_adjustment', NULL, $2, $3, $4, $5, $6)
              RETURNING id`,
-            [stockRow.id, stockRow.location_id || draft.locationId || null, amount, reason, actor]
+            [stockRow.id, stockRow.location_id || draft.locationId || null, amount, reason, actor, businessContext]
         );
         movementId = movement.rows[0]?.id || null;
 
@@ -687,6 +734,10 @@ async function confirmIntake(id, options = {}) {
               RETURNING *`,
             [JSON.stringify(draft), stockRow.id, historyId, movementId, actor, id]
         );
+        if (updatedIntake.rowCount !== 1 || !updatedIntake.rows[0]) {
+            await client.query('ROLLBACK');
+            return { success: false, status: 409, error: 'intake_parent_update_failed' };
+        }
 
         await client.query('COMMIT');
         return {
@@ -707,6 +758,8 @@ async function confirmIntake(id, options = {}) {
 }
 
 async function cancelIntake(id, options = {}) {
+    const access = await intakeBusinessAccess(options);
+    if (!access.available) return { success: false, status: access.status, error: access.code };
     const actor = normalizeText(options.actor || 'telegram');
     const result = await pool.query(
         `UPDATE warehouse_photo_intakes

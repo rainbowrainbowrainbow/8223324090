@@ -1,0 +1,2401 @@
+diff --git a/js/programs-page.js b/js/programs-page.js
+index b43c8b0ca..6a14561c2 100644
+--- a/js/programs-page.js
++++ b/js/programs-page.js
+@@ -520,7 +520,16 @@ function renderAllergenChipsFromForm() {
+ }
+ 
+ function getActiveBusinessContext() {
+-    return PRODUCT_BUSINESS_CONTEXTS[activeBusinessContext] || PRODUCT_BUSINESS_CONTEXTS.event_genix;
++    const legacy = PRODUCT_BUSINESS_CONTEXTS[activeBusinessContext];
++    const profile = window.CrmBusinessContext?.profileFor?.(activeBusinessContext);
++    const label = profile?.label || legacy?.label || activeBusinessContext;
++    return {
++        id: activeBusinessContext,
++        label,
++        title: profile?.label ? `Products · ${label}` : (legacy?.title || `Products · ${label}`),
++        subtitle: legacy?.subtitle || 'Продукти та послуги обраного бізнесу.',
++        tabs: legacy?.tabs || [{ id: 'programs', name: 'Продукти' }]
++    };
+ }
+ 
+ function isParkProductsContext() {
+@@ -528,7 +537,7 @@ function isParkProductsContext() {
+ }
+ 
+ function getProductApiBusinessContext(context = activeBusinessContext) {
+-    return normalizeProductBusinessContext(context) === 'maysternya_doli' ? 'maysternya_doli' : 'event_genix';
++    return normalizeProductBusinessContext(context);
+ }
+ 
+ if (typeof window !== 'undefined') {
+@@ -538,7 +547,7 @@ if (typeof window !== 'undefined') {
+ }
+ 
+ function getBusinessHash() {
+-    if (!isParkProductsContext()) return '#maysternya';
++    if (!isParkProductsContext()) return activeBusinessContext === 'maysternya_doli' ? '#maysternya' : '';
+     if (activeProductTab === 'catalogs') return '#catalogs';
+     if (activeProductTab === 'kitchen') return `#kitchen-${activeKitchenTab === 'menu' ? 'menu' : 'cakes'}`;
+     if (activeProductTab === 'programs' && currentCategory !== 'all') return `#${currentCategory}`;
+@@ -782,25 +791,41 @@ function updateProductTabPanels() {
+     const pageTitle = document.getElementById('productsPageTitle');
+     const pageSubtitle = document.getElementById('productsPageSubtitle');
+     const parkContext = isParkProductsContext();
++    const consultationContext = activeBusinessContext === 'maysternya_doli';
++    const context = getActiveBusinessContext();
+     if (programsPanel) programsPanel.classList.toggle('hidden', !parkContext || activeProductTab !== 'programs');
+     if (kitchenPanel) kitchenPanel.classList.toggle('hidden', !parkContext || activeProductTab !== 'kitchen');
+     if (catalogsPanel) catalogsPanel.classList.toggle('hidden', !parkContext || activeProductTab !== 'catalogs');
+-    if (maysternyaPanel) maysternyaPanel.classList.toggle('hidden', parkContext);
++    if (maysternyaPanel) {
++        maysternyaPanel.classList.toggle('hidden', parkContext);
++        maysternyaPanel.setAttribute('aria-label', `Продукти · ${context.label}`);
++        const head = maysternyaPanel.querySelector('.business-variant-head');
++        if (head) {
++            head.querySelector('.business-variant-eyebrow').textContent = context.label;
++            head.querySelector('h3').textContent = consultationContext ? 'Консультаційні продукти' : 'Продукти та послуги';
++            head.querySelector('p:last-child').textContent = consultationContext
++                ? 'Перший робочий набір для консультаційного напрямку. Повний каталог буде розширюватися окремо від продуктів парку.'
++                : context.subtitle;
++        }
++        const consultationActions = maysternyaPanel.querySelector('.business-variant-actions');
++        if (consultationActions) {
++            consultationActions.hidden = !consultationContext;
++            consultationActions.style.display = consultationContext ? '' : 'none';
++        }
++    }
+     if (addBtn) {
+         const canAddInCurrentContext = canManageProducts() && (!parkContext || ['programs', 'kitchen'].includes(activeProductTab));
+         addBtn.style.display = canAddInCurrentContext ? '' : 'none';
+-        addBtn.textContent = activeProductTab === 'kitchen'
++        addBtn.textContent = parkContext && activeProductTab === 'kitchen'
+             ? (activeKitchenTab === 'cake' ? '+ Додати торт' : '+ Додати меню')
+-            : (parkContext ? '+ Додати продукт' : '+ Додати консультацію');
++            : (consultationContext ? '+ Додати консультацію' : '+ Додати продукт');
+     }
+     if (pageTitle) {
+-        if (!parkContext) pageTitle.textContent = PRODUCT_BUSINESS_CONTEXTS.maysternya_doli.title;
+-        else if (activeProductTab === 'catalogs') pageTitle.textContent = 'Products · Парк Закревського · Каталоги';
+-        else if (activeProductTab === 'kitchen') pageTitle.textContent = `Products · Парк Закревського · Кухня · ${activeKitchenTab === 'cake' ? 'Торти' : 'Меню'}`;
+-        else pageTitle.textContent = PRODUCT_BUSINESS_CONTEXTS.event_genix.title;
++        if (parkContext && activeProductTab === 'catalogs') pageTitle.textContent = `${context.title} · Каталоги`;
++        else if (parkContext && activeProductTab === 'kitchen') pageTitle.textContent = `${context.title} · Кухня · ${activeKitchenTab === 'cake' ? 'Торти' : 'Меню'}`;
++        else pageTitle.textContent = context.title;
+     }
+     if (pageSubtitle) {
+-        const context = getActiveBusinessContext();
+         pageSubtitle.textContent = context.subtitle;
+     }
+     if (parkContext && activeProductTab === 'catalogs' && catalogEntriesLoaded) renderCatalogEntries();
+@@ -973,7 +998,8 @@ function renderMaysternyaProducts() {
+     const products = allProducts.filter(p => getProductDomain(p) === 'program');
+ 
+     if (products.length === 0) {
+-        grid.innerHTML = '<div class="empty-state"><div class="empty-state-text">Продукти Майстерні долі ще не додано</div></div>';
++        const message = activeBusinessContext === 'maysternya_doli' ? 'Продукти Майстерні долі ще не додано' : 'Продукти ще не додано';
++        grid.innerHTML = `<div class="empty-state"><div class="empty-state-text">${message}</div></div>`;
+         return;
+     }
+ 
+@@ -984,7 +1010,7 @@ function renderMaysternyaProducts() {
+                 <h4>${escapeHtml(p.name)}</h4>
+                 <div class="maysternya-product-meta">
+                     <span>${Number(p.duration || 0)} хв</span>
+-                    <span>${escapeHtml(p.code || p.category || 'consultation')}</span>
++                    <span>${escapeHtml(p.code || p.category || (activeBusinessContext === 'maysternya_doli' ? 'consultation' : 'product'))}</span>
+                     ${Number(p.price || 0) > 0 ? `<span>${formatPrice(p.price)}</span>` : ''}
+                     ${p.isActive === false ? '<span>неактивна</span>' : ''}
+                 </div>
+diff --git a/package.json b/package.json
+index 1e013b48b..bd973f03a 100644
+--- a/package.json
++++ b/package.json
+@@ -13,7 +13,7 @@
+     "test": "npm run verify",
+     "verify": "npm run check:runtime && npm run check:version && npm run test:version-tooling && npm run check:access && npm run check:action-permissions && npm run check:permission-registry && npm run check:permission-contracts:executable && npm run check:capability-policy && npm run test:permission-contracts && npm run test:live-authenticated-qa-contract && npm run check:account-access-surface && npm run check:account-access-editor && npm run check:auth-boundary && npm run check:static-surface && npm run check:css-surface && npm run check:theme-surface && npm run check:api-surface && npm run check:storage-surface && npm run check:service-worker-policy && npm run check:scheduler-surface && npm run check:checkbox-openapi && npm run test:checkbox-openapi-contract && npm run check:checkbox-safety && npm run check:db-startup-surface && npm run check:timeline-protected-surface && npm run check:migrations && npm run check:syntax && npm run test:sales-funnel-auth && npm run test:attendance-plan && npm run test:attendance-datafix && npm run test:staff-shift-preferences && npm run test:banquet-arrival-migrations && npm run test:db-flow-contract && npm run test:backup-recovery && npm run test:hr-release-b && npm run test:payroll-contracts && npm run test:ticket-contract && npm run test:unit:hr-org-tree && npm run test:task-performance-policy && npm run test:task-archive-system-filter && npm run test:task-stale-machine-report && npm run test:task-cleanup-operator && npm run test:task-legacy-remediation && npm run test:postgres-temp-privileges && npm run test:legacy-upload-backfill && npm run test:unit && npm run test:unit:legacy-containment && npm run test:unit:business-cabinets && npm run test:unit:lead-integrity && npm run test:unit:d05-domain-ownership && npm run test:my-day && npm run test:ui",
+     "test:unit:legacy-containment": "node scripts/run-unit-tests.js tests/legacy-business-surface.test.js tests/legacy-catalog-sources.test.js tests/legacy-containment-frontend.test.js tests/legacy-finance-dashboard-ui.test.js tests/omni-legacy-catalog-ui.test.js",
+-    "test:unit:business-cabinets": "node scripts/run-unit-tests.js tests/business-module-registry.test.js tests/d03-timeline-client.test.js tests/d03-business-cabinet-parity.test.js tests/d03-organization-lifecycle.test.js tests/business-cabinet-resources.test.js tests/business-cabinet-manager.test.js",
++    "test:unit:business-cabinets": "node scripts/run-unit-tests.js tests/business-module-registry.test.js tests/d03-timeline-client.test.js tests/d03-business-cabinet-parity.test.js tests/d03-organization-lifecycle.test.js tests/business-cabinet-resources.test.js tests/business-cabinet-manager.test.js tests/d06-products-context.test.js",
+     "test:unit:lead-integrity": "node scripts/run-unit-tests.js tests/lead-reference-integrity.test.js tests/lead-related-records-callers.test.js",
+     "test:unit:d05-domain-ownership": "node scripts/run-unit-tests.js tests/d05-income-notification.test.js tests/d05-chat-ai-containment.test.js tests/d05-intake-unavailable-ui.test.js tests/d05-intake-service-containment.test.js",
+     "check:runtime": "node scripts/check-runtime.js",
+diff --git a/tests/d06-products-context.test.js b/tests/d06-products-context.test.js
+new file mode 100644
+index 000000000..08b0dffe8
+--- /dev/null
++++ b/tests/d06-products-context.test.js
+@@ -0,0 +1,121 @@
++'use strict';
++
++const test = require('node:test');
++const assert = require('node:assert/strict');
++const fs = require('node:fs');
++const path = require('node:path');
++const vm = require('node:vm');
++const { JSDOM } = require('jsdom');
++const root = path.resolve(__dirname, '..');
++
++// Focused page-level regressions complement the real HTTP/PG/browser acceptance.
++function setup(context = 'event_genix') {
++    const dom = new JSDOM(fs.readFileSync(path.join(root, 'programs.html'), 'utf8'), {
++        url: `http://localhost/programs?businessContext=${context}`, runScripts: 'outside-only'
++    });
++    const w = dom.window;
++    const profiles = {
++        event_genix: { key: 'event_genix', label: 'Fixture Park' },
++        dar: { key: 'dar', label: 'Fixture Dar' },
++        custom_studio: { key: 'custom_studio', label: 'Fixture Studio <safe>' },
++        maysternya_doli: { key: 'maysternya_doli', label: 'Майстерня долі' }
++    };
++    w.CrmBusinessContext = {
++        normalize: value => value === 'park_zakrevsky' ? 'event_genix' : String(value || '').trim().toLowerCase() || null,
++        current: () => context,
++        profileFor: key => profiles[key] || null,
++        scope: () => ({ mode: 'single', activeContext: context })
++    };
++    w.AppState = { currentUser: { role: 'manager' } };
++    w.formatPrice = value => `${Number(value)} ₴`;
++    w.showNotification = () => {};
++    w.EventCards = { renderEventCardImage: () => '' };
++    vm.runInContext(fs.readFileSync(path.join(root, 'js/programs-page.js'), 'utf8')
++        .replace("document.addEventListener('DOMContentLoaded', initPage);", ''), dom.getInternalVMContext());
++    return { w, profiles, close: () => dom.window.close() };
++}
++
++test('products API context preserves each actual business and the legacy Park alias', () => {
++    const h = setup();
++    try {
++        for (const [input, expected] of [['event_genix', 'event_genix'], ['dar', 'dar'],
++            ['custom_studio', 'custom_studio'], ['maysternya_doli', 'maysternya_doli'], ['park_zakrevsky', 'event_genix']]) {
++            assert.equal(h.w.getProductApiBusinessContext(input), expected, input);
++        }
++    } finally { h.close(); }
++});
++
++for (const context of ['dar', 'custom_studio']) {
++    test(`${context} reads its own products and renders its registry branding without another business alias`, async () => {
++        const h = setup(context);
++        try {
++            const requested = [];
++            h.w.apiGetProducts = async (_, options) => {
++                requested.push(options.businessContext);
++                return [{ id: 'fixture-own', businessContext: context, name: 'Own fixture product', domain: 'program', price: 10 }];
++            };
++            h.w.renderProductIaTabs();
++            h.w.updateProductTabPanels();
++            await h.w.loadProducts();
++            assert.deepEqual(requested, [context]);
++            assert.equal(h.w.ProductBusinessContext.getApiContext(), context);
++            assert.equal(h.w.document.querySelector('#productsPageTitle').textContent, `Products · ${h.profiles[context].label}`);
++            const panel = h.w.document.querySelector('#maysternyaPanel');
++            assert.ok(panel.textContent.includes(h.profiles[context].label));
++            assert.doesNotMatch(panel.querySelector('.business-variant-head').textContent, /Майстерн|консультаці|парку/i);
++            assert.equal(panel.querySelector('.business-variant-actions').hidden, true);
++            assert.equal(h.w.document.querySelector('#productIaTabs').textContent.trim(), 'Продукти');
++            assert.equal(h.w.document.querySelector('#addProductBtn').textContent, '+ Додати продукт');
++            assert.equal(h.w.getBusinessHash(), '');
++            assert.equal(panel.querySelector('safe'), null, 'Registry label is text, not HTML');
++            h.w.apiGetProducts = async () => [];
++            await h.w.loadProducts();
++            assert.doesNotMatch(panel.querySelector('#maysternyaProductsGrid').textContent, /Майстерн|Парку/);
++        } finally { h.close(); }
++    });
++}
++
++test('legacy consultation context retains its own hash, vocabulary and timeline action', () => {
++    const h = setup('maysternya_doli');
++    try {
++        h.w.renderProductIaTabs();
++        h.w.updateProductTabPanels();
++        assert.equal(h.w.getBusinessHash(), '#maysternya');
++        assert.equal(h.w.document.querySelector('#addProductBtn').textContent, '+ Додати консультацію');
++        assert.equal(h.w.document.querySelector('#maysternyaPanel .business-variant-actions').hidden, false);
++        assert.equal(h.w.document.querySelector('#maysternyaPanel .business-variant-actions a').getAttribute('href'), '/maysternya-doli');
++    } finally { h.close(); }
++});
++
++test('Park title follows fresh registry branding while preserving existing kitchen route behavior', async () => {
++    const h = setup();
++    try {
++        h.w.updateProductTabPanels();
++        assert.equal(h.w.document.querySelector('#productsPageTitle').textContent, 'Products · Fixture Park');
++        h.profiles.event_genix.label = 'Updated Park';
++        await h.w.setProductTab('kitchen');
++        h.w.setKitchenTab('menu');
++        assert.equal(h.w.document.querySelector('#productsPageTitle').textContent, 'Products · Updated Park · Кухня · Меню');
++        assert.equal(h.w.getBusinessHash(), '#kitchen-menu');
++    } finally { h.close(); }
++});
++
++test('an older Park response cannot replace the actual custom-context product response', async () => {
++    const h = setup();
++    try {
++        let resolvePark;
++        const requested = [];
++        h.w.apiGetProducts = (_, options) => {
++            requested.push(options.businessContext);
++            if (requested.length === 1) return new Promise(resolve => { resolvePark = resolve; });
++            return Promise.resolve([{ id: 'studio-own', businessContext: 'custom_studio', name: 'Studio product' }]);
++        };
++        const oldRequest = h.w.loadProducts();
++        await h.w.applyProductBusinessContext('custom_studio');
++        resolvePark([{ id: 'park-old', businessContext: 'event_genix', name: 'Old Park product' }]);
++        await oldRequest;
++        assert.deepEqual(requested, ['event_genix', 'custom_studio']);
++        assert.equal(h.w.eval('allProducts[0].id'), 'studio-own');
++        assert.equal(h.w.document.querySelector('[data-id="park-old"]'), null);
++    } finally { h.close(); }
++});
+diff --git a/tests/acceptance/run-sys-mb-local.cjs b/tests/acceptance/run-sys-mb-local.cjs
+new file mode 100644
+index 000000000..d3ebf9ee4
+--- /dev/null
++++ b/tests/acceptance/run-sys-mb-local.cjs
+@@ -0,0 +1,270 @@
++'use strict';
++
++const assert = require('node:assert/strict');
++const fs = require('node:fs');
++const path = require('node:path');
++const crypto = require('node:crypto');
++const net = require('node:net');
++const os = require('node:os');
++const { spawn } = require('node:child_process');
++const { Pool } = require('pg');
++const bcrypt = require('bcryptjs');
++const root = path.resolve(__dirname, '../..');
++const runId = 'd06_' + Date.now() + '_' + crypto.randomBytes(3).toString('hex');
++const database = 'eventgenix_d06_test_' + crypto.randomUUID().replaceAll('-', '');
++const outputDir = path.join(root, '.codex-temp/sys-mb-d06/runs', runId);
++const records = [];
++const secretValues = [];
++const fixture = { runId, database, date: '2026-09-16', contexts: { park: 'event_genix', dar: 'dar', other: 'd06_other' },
++    actors: {}, records: {}, organizations: {}, businesses: {}, markers: {} };
++fixture.accounts = fixture.actors;
++const randomSecret = () => { const value = crypto.randomBytes(32).toString('base64url'); secretValues.push(value); return value; };
++function redact(value) {
++    let text = typeof value === 'string' ? value : JSON.stringify(value);
++    for (const secret of secretValues) text = text.split(secret).join('[REDACTED]');
++    return text.replace(/Bearer\s+[A-Za-z0-9_.-]+/g, 'Bearer [REDACTED]')
++        .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[REDACTED_JWT]');
++}
++function writeJson(file, value) { fs.writeFileSync(path.join(outputDir, file), redact(JSON.stringify(value, null, 2)) + '\n'); }
++function record(item) {
++    const safe = JSON.parse(redact(item));
++    records.push(safe);
++    writeJson('records-in-progress.json', records);
++    process.stdout.write(`[D06] ${safe.id || safe.domain}: ${safe.status}\n`);
++}
++function windowsPath(file) {
++    const match = /^\/mnt\/([a-z])\/(.*)$/.exec(file);
++    assert.ok(match, 'Windows interop requires a mounted drive');
++    return match[1].toUpperCase() + ':/' + match[2];
++}
++async function reservePort() {
++    const server = net.createServer();
++    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
++    const port = server.address().port;
++    await new Promise(resolve => server.close(resolve));
++    return port;
++}
++async function stop(child) {
++    if (!child || child.exitCode !== null) return;
++    const closed = new Promise(resolve => child.once('close', resolve));
++    child.kill('SIGTERM');
++    const timeout = setTimeout(() => child.kill('SIGKILL'), 20000);
++    await closed;
++    clearTimeout(timeout);
++}
++async function main() {
++    assert.equal(process.env.SYS_MB_D06_LOCAL, 'true');
++    assert.equal(process.platform, 'linux');
++    assert.match(process.version, /^v22\./);
++    for (const key of ['RAILWAY_ENVIRONMENT', 'RAILWAY_PROJECT_ID', 'RAILWAY_SERVICE_ID']) assert.ok(!process.env[key]);
++    assert.notEqual(process.env.NODE_ENV, 'production');
++    assert.equal(fs.existsSync(path.join(root, '.env')), false, 'No local credentials file may be loaded');
++    assert.equal(fs.existsSync(path.join(root, '.env.local')), false, 'No local credentials file may be loaded');
++    fs.mkdirSync(outputDir, { recursive: true });
++    const checkpoint = JSON.parse(fs.readFileSync(path.join(root, 'docs/workstreams/sys-multibusiness/D05_VERIFICATION.json'), 'utf8'));
++    const sourcePaths = [...new Set([...checkpoint.sourceFiles, ...checkpoint.auditSources].map(entry => entry.path)
++        .concat(['server.js', 'db/index.js', 'routes/contractors.js', 'routes/procurement.js', 'routes/quests.js', 'tests/d06-products-context.test.js'],
++            fs.readdirSync(__dirname).filter(file => file.endsWith('.cjs')).map(file => 'tests/acceptance/' + file)))].sort();
++    const hash = file => crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex');
++    const sourceState = sourcePaths.map(file => ({ path: file, sha256: hash(file) }));
++    writeJson('source-state.json', { capturedAtUtc: new Date().toISOString(), entries: sourceState });
++    const admin = new Pool({ host: '/var/run/postgresql', user: 'postgres', database: 'postgres', max: 1 });
++    let db, server, browserChild, created = false;
++    let serverLog = '';
++    const lifecycle = { databaseCreated: false, appStarted: false, bootstrap: false, cleanupVerified: false };
++    const bootstrap = { username: `${runId}_creator`, password: randomSecret() };
++    try {
++        assert.match(database, /^eventgenix_d06_test_[a-f0-9]{32}$/);
++        await admin.query(`CREATE DATABASE "${database}"`);
++        created = lifecycle.databaseCreated = true;
++        db = new Pool({ host: '/var/run/postgresql', user: 'postgres', database, max: 8,
++            statement_timeout: 20000, connectionTimeoutMillis: 5000 });
++        assert.equal((await db.query('SELECT current_database() AS name')).rows[0].name, database);
++        const port = await reservePort();
++        const baseUrl = `http://127.0.0.1:${port}`;
++        const env = { PATH: process.env.PATH, HOME: process.env.HOME, LANG: 'C.UTF-8',
++            NODE_ENV: 'test', SYS_MB_D06_LOCAL: 'true', PORT: String(port), LOG_LEVEL: 'warn',
++            PGHOST: '/var/run/postgresql', PGUSER: 'postgres', PGDATABASE: database, PGPORT: '5432', PGPASSWORD: '', DATABASE_URL: '',
++            JWT_SECRET: randomSecret(), BOOTSTRAP_CREATOR_USERNAME: bootstrap.username,
++            BOOTSTRAP_CREATOR_PASSWORD: bootstrap.password, BOOTSTRAP_CREATOR_NAME: 'D06 Synthetic Platform Creator',
++            BACKUP_OUTBOUND_HOLD: 'true', SKIP_TELEGRAM_BOT_STARTUP_CONFIG: 'true',
++            RATE_LIMIT_MAX: '20000', LOGIN_RATE_LIMIT_MAX: '2000',
++            TELEGRAM_BOT_TOKEN: '', REPORT_BOT_TOKEN: '', KLESHNYA_WEBHOOK_SECRET: '',
++            NODE_OPTIONS: '--require=./tests/acceptance/sys-mb-local-preload.cjs' };
++        server = spawn(process.execPath, ['server.js'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
++        const capture = chunk => {
++            serverLog += redact(String(chunk));
++            fs.writeFileSync(path.join(outputDir, 'server.log'), serverLog);
++        };
++        server.stdout.on('data', capture); server.stderr.on('data', capture);
++        let spawnError;
++        server.on('error', error => { spawnError = error; });
++        for (let attempt = 0; attempt < 360; attempt++) {
++            if (spawnError) throw spawnError;
++            if (server.exitCode !== null) throw new Error('Actual server exited during startup: ' + server.exitCode);
++            try {
++                const response = await fetch(baseUrl + '/api/health', { signal: AbortSignal.timeout(1000) });
++                if (response.ok) { lifecycle.appStarted = true; break; }
++            } catch {}
++            await new Promise(resolve => setTimeout(resolve, 500));
++        }
++        assert.ok(lifecycle.appStarted, 'Actual server startup timed out');
++        const ledger = (await db.query('SELECT version FROM schema_migrations')).rows.map(row => row.version);
++        const expected = fs.readdirSync(path.join(root, 'db/migrations')).filter(file => file.endsWith('.sql')).map(file => file.slice(0, -4));
++        const missing = expected.filter(file => !ledger.includes(file));
++        writeJson('schema.json', (await db.query(`SELECT table_name,column_name,data_type,is_nullable,column_default
++            FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name,ordinal_position`)).rows);
++        record({ id: 'startup-full-schema', domain: 'startup', status: missing.length ? 'FAIL' : 'PASS',
++            expected: 'All existing SQL migrations applied by actual server startup', observed: { count: ledger.length, missing } });
++        async function login(account) {
++            const response = await fetch(baseUrl + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
++                body: JSON.stringify({ username: account.username, password: account.password }) });
++            const body = await response.json();
++            assert.equal(response.status, 200, 'Synthetic account login failed: ' + (body.code || response.status));
++            account.id = Number(body.user.id); account.token = body.token || body.accessToken;
++            assert.ok(account.token); secretValues.push(account.token);
++            if (body.accessToken) secretValues.push(body.accessToken);
++            if (body.refreshToken) secretValues.push(body.refreshToken);
++            return account;
++        }
++        fixture.actors.platformCreator = await login(bootstrap);
++        async function request({ actor = 'owner', method = 'GET', path: apiPath, context, body }) {
++            assert.ok(apiPath.startsWith('/api/'), 'Acceptance requests stay on the local API');
++            const account = typeof actor === 'string' ? fixture.actors[actor] : actor;
++            assert.ok(account?.token, 'A synthetic logged-in account is required');
++            const headers = { Authorization: `Bearer ${account.token}`, 'Content-Type': 'application/json' };
++            if (context !== undefined) headers['X-Business-Context'] = context;
++            const response = await fetch(baseUrl + apiPath, { method, headers,
++                ...(body !== undefined ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(30000) });
++            const raw = await response.text();
++            let data; try { data = JSON.parse(raw); } catch { data = { nonJson: true, preview: raw.slice(0, 160) }; }
++            return { status: response.status, body: data, headers: Object.fromEntries(response.headers) };
++        }
++        const boot = await request({ actor: 'platformCreator', method: 'POST', path: '/api/organizations/bootstrap',
++            body: { name: 'D06 Synthetic Organization', slug: runId.replaceAll('_', '-') } });
++        assert.equal(boot.status, 201, 'Actual organization bootstrap: ' + JSON.stringify(boot.body));
++        lifecycle.bootstrap = true;
++        fixture.organizations.primaryId = Number(boot.body.organization.id);
++        const org2 = await db.query('INSERT INTO organizations (slug,name,created_by_user_id) VALUES ($1,$2,$3) RETURNING id',
++            [runId + '-other', 'D06 Other Organization', bootstrap.id]);
++        fixture.organizations.secondaryId = Number(org2.rows[0].id);
++        const modules = ['dashboard','timeline','tasks','customers','leads','finance','programs','warehouse','settings','omni'];
++        await db.query("UPDATE businesses SET modules=$1::jsonb WHERE organization_id=$2", [JSON.stringify([...modules,'graduation']), fixture.organizations.primaryId]);
++        const other = await db.query(`INSERT INTO businesses(organization_id,context_key,label,short_label,access_mode,modules)
++            VALUES($1,'d06_other','D06 Other Business','D06 Other','membership',$2::jsonb) RETURNING id`,
++            [fixture.organizations.secondaryId, JSON.stringify(modules)]);
++        const businesses = (await db.query('SELECT id,context_key FROM businesses')).rows;
++        fixture.businesses = { parkId: Number(businesses.find(row => row.context_key === 'event_genix').id),
++            darId: Number(businesses.find(row => row.context_key === 'dar').id), customId: Number(other.rows[0].id), customKey: 'd06_other' };
++        async function addAccount(key, contexts = ['event_genix','dar'], defaultContext = contexts[0]) {
++            const account = { username: `${runId}_${key}`, password: randomSecret() };
++            const hash = await bcrypt.hash(account.password, 10);
++            const row = await db.query(`INSERT INTO users(username,password_hash,name,role,business_contexts,default_business_context)
++                VALUES($1,$2,$3,'director',$4,$5) RETURNING id`, [account.username,hash,`D06 ${key}`,contexts,defaultContext]);
++            account.id = Number(row.rows[0].id); fixture.actors[key] = account;
++        }
++        for (const key of ['owner','admin','worker','multiOrg','revocable','unassigned']) await addAccount(key);
++        await addAccount('otherOrg',['d06_other']);
++        await addAccount('compatibility',['maysternya_doli']);
++        async function membership(key, organizationId, businessId, role, orgRole = 'member', isDefault = false) {
++            const actor = fixture.actors[key];
++            await db.query(`INSERT INTO organization_memberships(organization_id,user_id,role)
++                VALUES($1,$2,$3) ON CONFLICT(organization_id,user_id) DO UPDATE SET role=EXCLUDED.role`, [organizationId,actor.id,orgRole]);
++            await db.query(`INSERT INTO business_memberships(organization_id,business_id,user_id,role,is_default)
++                VALUES($1,$2,$3,$4,$5)`,[organizationId,businessId,actor.id,role,isDefault]);
++        }
++        for (const key of ['owner','admin','worker','multiOrg','revocable']) {
++            await membership(key,fixture.organizations.primaryId,fixture.businesses.parkId,key === 'admin' ? 'manager':'director',key === 'owner'?'owner':key === 'admin'?'admin':'member',true);
++            await membership(key,fixture.organizations.primaryId,fixture.businesses.darId,['worker','multiOrg'].includes(key)?'animator':key==='admin'?'manager':'director',key==='owner'?'owner':key==='admin'?'admin':'member');
++        }
++        await membership('otherOrg',fixture.organizations.secondaryId,fixture.businesses.customId,'director','owner',true);
++        await membership('multiOrg',fixture.organizations.secondaryId,fixture.businesses.customId,'manager','member',true);
++        await db.query("UPDATE organization_memberships SET role='member' WHERE user_id=$1 AND organization_id=$2",[bootstrap.id,fixture.organizations.primaryId]);
++        for (const account of Object.values(fixture.actors)) if (account !== bootstrap) await login(account);
++        record({ id:'bootstrap-two-organizations',domain:'lifecycle',status:'PASS',expected:'Actual creator bootstrap, explicit synthetic memberships',
++            observed:{ organizations:2,businesses:3,accounts:Object.keys(fixture.actors).length,ownerPlatformRole:'director' } });
++        if (process.argv.includes('--startup-only')) return;
++        const domain = require('./sys-mb-domain-scenarios.cjs');
++        const readiness = require('./sys-mb-readiness-scenarios.cjs');
++        await domain.seed({db,fixture});
++        process.stdout.write('[D06] Domain fixtures prepared\n');
++        await readiness.seed({db,fixture});
++        process.stdout.write('[D06] Readiness fixtures prepared\n');
++        const context = {baseUrl,fixture,request,db,record};
++        const readinessResult = await readiness.run(context);
++        if (readinessResult) writeJson('readiness.json',readinessResult);
++        await domain.run(context);
++        if (!process.argv.includes('--no-browser')) {
++            const browserOptions = { baseUrl,fixture,outputDir:windowsPath(path.join(root,'output/playwright/sys-mb-d06',runId)),
++                playwrightModule:'C:/Users/Plotva/AppData/Local/npm-cache/_npx/420ff84f11983ee5/node_modules/playwright',
++                executablePath:'C:/Users/Plotva/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe' };
++            const interfaceAddress = Object.values(os.networkInterfaces()).flat().find(address =>
++                address.family === 'IPv4' && !address.internal && /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(address.address));
++            assert.ok(interfaceAddress, 'A local WSL interface is required for the Windows browser TCP bridge');
++            browserOptions.localForwardTarget = { host: interfaceAddress.address, port };
++            browserChild = spawn('/mnt/c/Users/Plotva/.local/eventgenix-node22-runtime/node_modules/node/bin/node.exe',
++                [windowsPath(path.join(__dirname,'sys-mb-browser-worker.cjs'))], {cwd:root,
++                    env:{...process.env,SystemRoot:'C:\\Windows',WINDIR:'C:\\Windows',USERPROFILE:'C:\\Users\\Plotva',
++                        LOCALAPPDATA:'C:\\Users\\Plotva\\AppData\\Local',TEMP:'C:\\Users\\Plotva\\AppData\\Local\\Temp'},
++                    stdio:['pipe','pipe','pipe'],windowsHide:true});
++            let browserText=''; browserChild.stdout.on('data',chunk=>{
++                const text = String(chunk); browserText += text;
++                for (const line of text.split(/\r?\n/)) if (/^D06_BROWSER_PROGRESS [A-Za-z0-9_-]+ (PASS|FAIL|NOT_TESTABLE)$/.test(line)) {
++                    process.stdout.write(line + '\n');
++                }
++            });
++            browserChild.stderr.on('data',chunk=>{browserText+=String(chunk);});
++            const browserClosed = new Promise((resolve,reject)=>{browserChild.once('close',resolve);browserChild.once('error',reject);});
++            browserChild.stdin.end(JSON.stringify(browserOptions));
++            const timer=setTimeout(()=>browserChild.kill('SIGTERM'),15*60*1000);
++            const browserExit=await browserClosed;clearTimeout(timer);
++            const line=browserText.split(/\r?\n/).find(text=>text.startsWith('D06_BROWSER_RESULT='));
++            fs.writeFileSync(path.join(outputDir,'browser-worker.log'),redact(browserText));
++            if(line){const result=JSON.parse(line.slice('D06_BROWSER_RESULT='.length)); for(const item of result.records||[])record(item);writeJson('browser.json',result);
++                if(result.error)record({id:'browser-runner',domain:'browser',status:'FAIL',observed:result.error});}
++            else record({id:'browser-runner',domain:'browser',status:'NOT_TESTABLE',observed:{exitCode:browserExit,reason:'No browser result received'}});
++        }
++        const postOwnership = await readiness.collectOwnershipReadiness(db, fixture);
++        writeJson('ownership-after-scenarios.json', postOwnership);
++        const regressions = [];
++        for (const [edge, after] of Object.entries(postOwnership.relationships || {})) {
++            const before = readinessResult?.ownership?.relationships?.[edge];
++            for (const metric of ['orphanRows', 'crossContextRows', 'unknownContextRows']) {
++                if (before?.counts && after?.counts && after.counts[metric] > before.counts[metric]) {
++                    regressions.push({ edge, metric, before: before.counts[metric], after: after.counts[metric] });
++                }
++            }
++        }
++        record({ id: 'D06-OWNERSHIP-AFTER-SCENARIOS', domain: 'ownership_collection',
++            status: postOwnership.collectionStatus !== 'COMPLETE' ? 'NOT_TESTABLE' : regressions.length ? 'FAIL' : 'PASS',
++            expected: 'No new orphan/cross-context relationships across the declared edges after acceptance mutations',
++            observed: { collectionStatus: postOwnership.collectionStatus, regressions,
++                scope: 'Declared SQL edges only; intentional pre-existing sentinels retained' } });
++    } catch(error) {
++        record({id:'harness-stage',domain:'harness',status:'FAIL',observed:{name:error.name,message:redact(error.message),stack:redact(error.stack).split('\n').slice(0,6)}});
++        process.exitCode=1;
++    } finally {
++        await stop(browserChild); await stop(server);
++        if(db)await db.end();
++        if(created){
++            assert.match(database,/^eventgenix_d06_test_[a-f0-9]{32}$/);
++            await admin.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()',[database]);
++            await admin.query(`DROP DATABASE "${database}"`);
++            assert.equal((await admin.query('SELECT 1 FROM pg_database WHERE datname=$1',[database])).rowCount,0);
++            lifecycle.cleanupVerified=true;
++        }
++        await admin.end();
++        record({ id: 'acceptance-source-stability', domain: 'harness',
++            status: sourceState.every(entry => hash(entry.path) === entry.sha256) ? 'PASS' : 'FAIL',
++            expected: 'No source modifications while actual-app acceptance is running',
++            observed: { changed: sourceState.filter(entry => hash(entry.path) !== entry.sha256).map(entry => entry.path) } });
++        fs.writeFileSync(path.join(outputDir,'server.log'),redact(serverLog));
++        writeJson('result.json',{runId,node:process.version,entrypoint:'server.js',lifecycle,records,
++            limitations:['Disposable fixture source only','Startup schedulers held; real provider calls forbidden',
++                'Actual WebSocket module attached by test-only preload after outbound-hold startup',
++                'No production counts or compatibility zero-usage claim'],
++            outboundDeniedHosts:[...new Set([...serverLog.matchAll(/\[D06_OUTBOUND_DENIED\] ([^\r\n]+)/g)].map(match=>match[1]))]});
++        process.stdout.write(`D06_RESULT ${path.relative(root,path.join(outputDir,'result.json'))}\n`);
++    }
++}
++main().catch(error=>{process.stderr.write(redact(error.stack)+'\n');process.exitCode=1;});
+diff --git a/tests/acceptance/sys-mb-browser-scenarios.cjs b/tests/acceptance/sys-mb-browser-scenarios.cjs
+new file mode 100644
+index 000000000..3bfc88ef1
+--- /dev/null
++++ b/tests/acceptance/sys-mb-browser-scenarios.cjs
+@@ -0,0 +1,715 @@
++'use strict';
++
++const assert = require('node:assert/strict');
++const fs = require('node:fs');
++const path = require('node:path');
++
++// The caller creates and verifies the disposable database and actual server.js.
++// This runner never creates API responses, seeds a browser principal, or prints credentials.
++async function runBrowserAcceptance({ baseUrl, fixture, outputDir, playwrightModule, executablePath, record = () => {} }) {
++    const target = new URL(baseUrl);
++    assert.equal(target.protocol, 'http:');
++    assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname), 'Browser acceptance requires loopback HTTP');
++    assert.ok(fixture?.runId && fixture?.actors?.owner && fixture?.organizations?.primaryId, 'Disposable fixture is required');
++    const output = path.resolve(outputDir || path.join(__dirname, '../../output/playwright/sys-mb-d06'));
++    fs.mkdirSync(output, { recursive: true });
++    const playwright = typeof playwrightModule === 'string' ? require(playwrightModule) : playwrightModule || require('playwright');
++    const browser = await playwright.chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
++    const entries = [];
++    const sessions = [];
++    const network = [];
++    const consoleErrors = [];
++    const pageErrors = [];
++    const blockedExternal = [];
++    const denialBodyReads = [];
++    let phase = 'setup';
++    let ownerSession;
++    let createdBusiness;
++    let evidencePage;
++    let memberOpenSequence = 0;
++    const sensitive = Object.values(fixture.actors).flatMap(actor => [actor.password, actor.token]).filter(Boolean);
++    const redact = input => {
++        let value = String(input || '');
++        for (const secret of sensitive) value = value.split(secret).join('[REDACTED]');
++        return value.replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
++            .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[REDACTED_JWT]');
++    };
++    function emit(entry) {
++        const safe = JSON.parse(redact(JSON.stringify({ domain: 'browser', ...entry })));
++        entries.push(safe);
++        record(safe);
++        fs.writeFileSync(path.join(output, 'browser-progress.json'), redact(JSON.stringify({ phase, entries,
++            actualAppApiResponses: network.length, pageErrors, consoleErrors }, null, 2)) + '\n');
++    }
++    async function screenshot(page, name, fullPage = true) {
++        if (!page || page.isClosed()) return null;
++        evidencePage = page;
++        const destination = path.join(output, name.replace(/[^a-zA-Z0-9_-]/g, '-') + '.png');
++        await page.screenshot({ path: destination, fullPage, timeout: 30000 });
++        return destination;
++    }
++    async function scenario(id, expected, action) {
++        phase = id;
++        try {
++            const result = await action();
++            emit({ id, status: 'PASS', expected, observed: result?.observed || 'Actual browser scenario completed', evidence: result?.evidence || [] });
++        } catch (error) {
++            const page = evidencePage;
++            const evidence = await screenshot(page, id + '-failure').catch(() => null);
++            const transportUnavailable = network.length === 0 && /ERR_CONNECTION_REFUSED|ECONNREFUSED|ERR_ADDRESS_UNREACHABLE|ENETUNREACH/.test(error.message);
++            emit({ id, status: error.notTestable || transportUnavailable ? 'NOT_TESTABLE' : 'FAIL', expected,
++                observed: (transportUnavailable ? 'HARNESS_TRANSPORT_UNAVAILABLE: ' : '') + redact(error.message), evidence: evidence ? [evidence] : [] });
++        }
++    }
++    function prerequisite(value, message) {
++        if (!value) throw Object.assign(new Error(message), { notTestable: true });
++    }
++    function trackPage(page) {
++        page.setDefaultTimeout(15000);
++        page.setDefaultNavigationTimeout(30000);
++        page.on('pageerror', error => pageErrors.push({ phase, message: redact(error.message), path: new URL(page.url()).pathname }));
++        page.on('console', message => {
++            if (message.type() === 'error') consoleErrors.push({ phase, message: redact(message.text()), location: redact(message.location().url) });
++        });
++    }
++    async function newSession(actor, name) {
++        prerequisite(actor?.username && actor?.password, `Missing synthetic ${name} account`);
++        const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: 'uk-UA', serviceWorkers: 'block' });
++        context.on('page', trackPage);
++        context.on('response', response => {
++            const url = new URL(response.url());
++            if (url.origin === target.origin && url.pathname.startsWith('/api/')) {
++                const entry = {
++                    phase, actor: name, path: url.pathname, method: response.request().method(), status: response.status(),
++                    context: url.searchParams.get('businessContext') || response.request().headers()['x-business-context'] || null
++                };
++                network.push(entry);
++                if (entry.path === '/api/chat/unread' && entry.method === 'GET' && entry.status === 403) {
++                    denialBodyReads.push(response.json().then(body => {
++                        entry.denialCode = typeof body?.code === 'string' && /^[a-z_]{1,80}$/.test(body.code) ? body.code : null;
++                    }).catch(() => { entry.denialCodeUnavailable = true; }));
++                }
++            }
++        });
++        await context.route('**/*', route => {
++            const url = new URL(route.request().url());
++            if (url.origin === target.origin || ['data:', 'blob:'].includes(url.protocol)) return route.continue();
++            blockedExternal.push({ phase, host: url.hostname, path: url.pathname, type: route.request().resourceType() });
++            return route.abort('blockedbyclient');
++        });
++        const session = { context, actor, name, page: await context.newPage() };
++        sessions.push(session);
++        evidencePage = session.page;
++        await session.page.goto(target.origin + '/', { waitUntil: 'domcontentloaded' });
++        await session.page.locator('#username').waitFor({ state: 'visible' });
++        await session.page.locator('#username').fill(actor.username);
++        await session.page.locator('#password').fill(actor.password);
++        await session.page.locator('#loginForm button[type="submit"]').focus();
++        const [login] = await Promise.all([
++            session.page.waitForResponse(response => new URL(response.url()).pathname === '/api/auth/login' && response.request().method() === 'POST'),
++            session.page.keyboard.press('Enter')
++        ]);
++        assert.equal(login.status(), 200, `${name}: actual login must succeed`);
++        await session.page.waitForFunction(id => {
++            const user = window.AppState?.currentUser;
++            if (Number(user?.id) !== Number(id) || document.querySelector('#loginForm[aria-busy="true"]')) return false;
++            const selection = document.querySelector('#businessAccessSelection');
++            if (user.accessContext?.status === 'selection_required' && selection?.getClientRects().length) return true;
++            return user.accessContext?.status === 'ready' && window.isAuthenticatedRuntimeReady?.()
++                && document.body.classList.contains('shell-ready') && typeof getPermissionLifecycle === 'function'
++                && getPermissionLifecycle()?.status === 'ready';
++        }, actor.id);
++        const completedLogin = await session.page.evaluate(() => ({
++            path: location.pathname + location.search,
++            userId: window.AppState.currentUser.id,
++            context: window.AppState.currentUser.activeBusinessContext,
++            accessStatus: window.AppState.currentUser.accessContext?.status,
++            runtimeReady: Boolean(window.isAuthenticatedRuntimeReady?.()),
++            shellReady: document.body.classList.contains('shell-ready'),
++            loginBusy: Boolean(document.querySelector('#loginForm[aria-busy="true"]'))
++        }));
++        fs.writeFileSync(path.join(output, `login-${name}-completion.json`), redact(JSON.stringify(completedLogin, null, 2)) + '\n');
++        return session;
++    }
++    async function goProfile(session, context = 'event_genix') {
++        evidencePage = session.page;
++        await session.page.goto(target.origin + `/profile?tab=settings&businessContext=${encodeURIComponent(context)}`, { waitUntil: 'domcontentloaded' });
++        await session.page.locator('#profileBusinessCabinets').waitFor({ state: 'attached' });
++    }
++    async function loadCabinets(page) {
++        await page.locator('[data-cabinet-action="load"]').click();
++        await page.locator('[data-cabinet-organization]').waitFor({ state: 'visible' });
++        await page.locator('[data-cabinet-organization]').selectOption(String(fixture.organizations.primaryId));
++    }
++    async function ownerApi(method, route, body) {
++        const response = await fetch(target.origin + route, { method,
++            headers: { Authorization: 'Bearer ' + fixture.actors.owner.token, 'Content-Type': 'application/json' },
++            ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
++        const payload = await response.json();
++        assert.ok(response.ok, `${method} ${route}: ${response.status} ${payload.code || payload.error || ''}`);
++        return payload;
++    }
++    async function openMember(page, actorId, businessId) {
++        evidencePage = page;
++        const attempt = ++memberOpenSequence;
++        const startedAt = network.length;
++        await page.evaluate(() => {
++            const state = () => {
++                const button = document.querySelector('[data-members-add]');
++                const user = window.AppState?.currentUser;
++                const box = button?.getBoundingClientRect();
++                const hit = box ? document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) : null;
++                return { userId: user?.id, context: user?.activeBusinessContext, accessStatus: user?.accessContext?.status,
++                    permissionStatus: typeof getPermissionLifecycle === 'function' ? getPermissionLifecycle()?.status : null,
++                    shellReady: document.body.classList.contains('shell-ready'),
++                    runtimeReady: Boolean(window.isAuthenticatedRuntimeReady?.()),
++                    mounted: typeof document.querySelector('#profileBusinessMembers')?.__businessMembershipCleanup === 'function',
++                    disabled: button?.disabled, input: document.querySelector('[data-members-account-id]')?.value,
++                    status: document.querySelector('[data-members-status]')?.textContent,
++                    buttonRect: box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null,
++                    hit: hit ? { tag: hit.tagName, id: hit.id, memberAdd: hit.hasAttribute('data-members-add') } : null };
++            };
++            const observation = { before: state(), events: [], state };
++            const listener = event => {
++                if (!(event.target instanceof Element)) return;
++                observation.events.push({ type: event.type, trusted: event.isTrusted,
++                    tag: event.target.tagName, id: event.target.id, insideMembers: Boolean(event.target.closest('#profileBusinessMembers')),
++                    point: { x: event.clientX, y: event.clientY }, memberAdd: event.target.hasAttribute('data-members-add'), ...state() });
++            };
++            for (const type of ['pointerdown', 'pointerup', 'click']) document.addEventListener(type, listener, true);
++            observation.cleanup = () => {
++                for (const type of ['pointerdown', 'pointerup', 'click']) document.removeEventListener(type, listener, true);
++            };
++            window.__d06MemberOpenObservation = observation;
++        });
++        try {
++            await page.locator('[data-members-account-id]').fill(String(actorId));
++            await page.locator('[data-members-add]').click();
++            await page.locator('#accountAccessEditorRoot [role="dialog"]').waitFor({ state: 'visible' });
++            await page.locator('[data-access-scope]').selectOption(`business:${fixture.organizations.primaryId}:${businessId}`);
++        } finally {
++            const observation = await page.evaluate(() => {
++                const observation = window.__d06MemberOpenObservation;
++                if (!observation) return null;
++                const result = { before: observation.before, events: observation.events, after: observation.state() };
++                observation.cleanup();
++                delete window.__d06MemberOpenObservation;
++                return result;
++            }).catch(() => null);
++            fs.writeFileSync(path.join(output, `membership-open-${attempt}-diagnostics.json`), redact(JSON.stringify({ phase, actorId, businessId,
++                observation, requests: network.slice(startedAt).filter(item => item.path.startsWith('/api/organizations/') || item.path.startsWith('/api/auth/')) }, null, 2)) + '\n');
++        }
++    }
++    async function saveMember(page) {
++        await page.locator('[data-action="save"]').focus();
++        await page.keyboard.press('Enter');
++        await page.locator('#accountAccessEditorRoot').waitFor({ state: 'detached' });
++        assert.equal(await page.locator('[data-members-add]').evaluate(element => element === document.activeElement), true, 'Editor restores opener focus');
++    }
++    async function switchBusiness(page, businessContext) {
++        evidencePage = page;
++        const select = page.locator('#sidebarBusinessContextSelect');
++        // The shared sidebar may be collapsed on narrow screens; desktop tests use its real control.
++        await select.selectOption(businessContext);
++        await page.waitForFunction(context => window.CrmBusinessContext?.current?.() === context
++            && window.AppState?.currentUser?.activeBusinessContext === context, businessContext);
++    }
++    async function setTheme(page, dark) {
++        const toggle = page.locator('#headerThemeToggle');
++        await toggle.waitFor({ state: 'visible' });
++        const current = await page.locator('body').evaluate(element => element.classList.contains('dark-mode'));
++        if (current !== dark) await toggle.click();
++        assert.equal(await page.locator('body').evaluate(element => element.classList.contains('dark-mode')), dark);
++    }
++    async function reachable(locator) {
++        await locator.scrollIntoViewIfNeeded();
++        assert.equal(await locator.isVisible(), true);
++        assert.equal(await locator.evaluate(element => {
++            const box = element.getBoundingClientRect();
++            const x = Math.max(0, Math.min(innerWidth - 1, box.x + box.width / 2));
++            const y = Math.max(0, Math.min(innerHeight - 1, box.y + box.height / 2));
++            const top = document.elementFromPoint(x, y);
++            return box.left >= -1 && box.right <= innerWidth + 1 && box.width > 0 && box.height > 0
++                && Boolean(top && (element.contains(top) || top.contains(element)));
++        }), true, 'Control is within viewport and not covered');
++    }
++    try {
++        await scenario('D06-B01-owner-cabinet-lifecycle', 'Owner uses actual profile UI to create an empty cabinet, edit branding and explicitly initialize resources without enabling unsupported modules', async () => {
++            ownerSession = await newSession(fixture.actors.owner, 'owner');
++            const page = ownerSession.page;
++            await goProfile(ownerSession);
++            await loadCabinets(page);
++            await page.locator('[data-cabinet-action="create"]').click();
++            assert.equal(await page.locator('[name="label"]').evaluate(element => element === document.activeElement), true);
++            const suffix = fixture.runId.toLowerCase().replace(/[^a-z0-9]/g, '').slice(-18);
++            const key = 'd06_browser_' + suffix;
++            const label = 'D06 Browser Cabinet ' + suffix;
++            await page.locator('[name="label"]').fill(label);
++            await page.locator('[name="shortLabel"]').fill('D06 Browser');
++            await page.locator('[name="contextKey"]').fill(key);
++            await page.locator('[data-cabinet-unavailable] summary').click();
++            assert.equal(await page.locator('[data-cabinet-module="graduation"]').isDisabled(), true);
++            assert.equal(await page.locator('[data-cabinet-module="catalogs"]').isDisabled(), true);
++            await page.getByRole('button', { name: 'Зберегти бізнес', exact: true }).focus();
++            await page.keyboard.press('Enter');
++            await page.locator('[data-cabinet-form]').waitFor({ state: 'detached' });
++            const directory = await ownerApi('GET', '/api/organizations/management');
++            createdBusiness = directory.organizations.flatMap(org => org.businesses || []).find(business => business.contextKey === key);
++            assert.ok(createdBusiness, 'Created cabinet must come from actual management response');
++            assert.deepEqual(createdBusiness.modules, []);
++            await loadCabinets(page);
++            await page.locator(`[data-cabinet-action="edit"][data-business-id="${createdBusiness.id}"]`).click();
++            await page.locator('[name="label"]').fill(label + ' Updated');
++            await page.locator('[name="shortLabel"]').fill('D06 Updated');
++            await page.getByRole('button', { name: 'Зберегти бізнес', exact: true }).click();
++            await page.locator('[data-cabinet-form]').waitFor({ state: 'detached' });
++            await loadCabinets(page);
++            await screenshot(page, 'owner-before-resource-initialization');
++            const init = page.locator(`[data-cabinet-action="initialize"][data-business-id="${fixture.businesses.parkId}"]`);
++            const initialization = [];
++            for (let pass = 0; pass < 2; pass += 1) {
++                // A successful mutation refreshes the profile and invalidates the
++                // management directory. Reopen it through the existing UI for replay.
++                if (pass > 0) await loadCabinets(page);
++                await init.waitFor({ state: 'visible' });
++                const [response] = await Promise.all([
++                    page.waitForResponse(item => new URL(item.url()).pathname.endsWith('/initialize-resources') && item.request().method() === 'POST'),
++                    init.click()
++                ]);
++                assert.equal(response.status(), 200, 'Explicit resource initialization succeeds');
++                initialization.push((await response.json()).initialization);
++                await page.locator('[data-cabinet-action="load"]:not([disabled])').waitFor();
++                await screenshot(page, `owner-after-resource-initialization-${pass + 1}`);
++            }
++            assert.equal(initialization[1].created, 0, 'Second explicit initialization must be idempotent');
++            const updated = (await ownerApi('GET', '/api/organizations/management')).organizations.flatMap(org => org.businesses || []).find(item => item.id === createdBusiness.id);
++            assert.equal(updated.label, label + ' Updated');
++            assert.deepEqual(updated.modules, []);
++            return { observed: { businessContext: key, businessId: createdBusiness.id, modules: updated.modules, secondInitializationCreated: initialization[1].created }, evidence: [await screenshot(page, 'owner-cabinets')] };
++        });
++
++        await scenario('D06-B02-membership-editor', 'Owner assigns explicit, different roles and a default to an existing synthetic account through the canonical editor', async () => {
++            prerequisite(ownerSession && fixture.actors.unassigned, 'Owner page and unassigned synthetic account are required');
++            const page = ownerSession.page;
++            await goProfile(ownerSession);
++            await openMember(page, fixture.actors.unassigned.id, fixture.businesses.parkId);
++            await page.locator('[data-tab="businesses"]').click();
++            await page.locator('[data-membership-active]').check();
++            await page.locator('[data-membership-default]').check();
++            await page.locator('[data-tab="roles"]').click();
++            await page.locator('[data-field="role"]').selectOption('animator');
++            await saveMember(page);
++            await openMember(page, fixture.actors.unassigned.id, fixture.businesses.darId);
++            await page.locator('[data-tab="businesses"]').click();
++            await page.locator('[data-membership-active]').check();
++            await page.locator('[data-membership-default]').check();
++            await page.locator('[data-tab="roles"]').click();
++            await page.locator('[data-field="role"]').selectOption('manager');
++            await saveMember(page);
++            const access = (await ownerApi('GET', `/api/organizations/members/${fixture.actors.unassigned.id}/access-profile`)).accessProfile;
++            const businesses = access.organizations.flatMap(org => org.businesses || []);
++            assert.equal(businesses.find(item => item.id === fixture.businesses.parkId).membership.role, 'animator');
++            assert.equal(businesses.find(item => item.id === fixture.businesses.darId).membership.role, 'manager');
++            assert.equal(businesses.find(item => item.id === fixture.businesses.darId).membership.isDefault, true);
++            return { observed: 'Actual access-profile confirms Park animator, Dar manager and explicit Dar default; editor save/close restores focus', evidence: [await screenshot(page, 'membership-save')] };
++        });
++
++        await scenario('D06-B03-admin-member-boundaries', 'Admin sees member management without owner cabinet controls; ordinary worker has neither lifecycle launcher', async () => {
++            const admin = await newSession(fixture.actors.admin, 'admin');
++            await goProfile(admin);
++            await loadCabinets(admin.page);
++            assert.equal(await admin.page.locator('[data-cabinet-action="create"]').count(), 0);
++            assert.equal(await admin.page.locator('[data-cabinet-action="edit"]').count(), 0);
++            assert.equal(await admin.page.locator('[data-members-load]').isVisible(), true);
++            const worker = await newSession(fixture.actors.worker, 'worker');
++            await goProfile(worker);
++            assert.equal(await worker.page.locator('#profileBusinessCabinets').isVisible(), false);
++            assert.equal(await worker.page.locator('#profileBusinessMembers').isVisible(), false);
++            return { evidence: [await screenshot(admin.page, 'admin-cabinet-boundary'), await screenshot(worker.page, 'worker-profile-boundary')] };
++        });
++
++        await scenario('D06-B04-cross-tab-history', 'A real sidebar switch converges both tabs to Dar role; refresh/back/forward do not restore the Park role', async () => {
++            const session = await newSession(fixture.actors.worker, 'worker-cross-tab');
++            await goProfile(session);
++            const second = await session.context.newPage();
++            await second.goto(target.origin + '/profile?tab=settings&businessContext=event_genix', { waitUntil: 'domcontentloaded' });
++            await second.locator('#profileBusinessCabinets').waitFor({ state: 'attached' });
++            await switchBusiness(session.page, 'dar');
++            for (const page of [session.page, second]) {
++                await page.waitForFunction(() => window.AppState?.currentUser?.activeBusinessContext === 'dar' && window.AppState?.currentUser?.role === 'animator');
++                assert.equal(new URL(page.url()).searchParams.get('businessContext'), 'dar');
++            }
++            await second.reload({ waitUntil: 'domcontentloaded' });
++            await second.waitForFunction(() => window.AppState?.currentUser?.activeBusinessContext === 'dar' && window.AppState?.currentUser?.role === 'animator');
++            await second.goto(target.origin + '/profile?tab=myday&businessContext=dar', { waitUntil: 'domcontentloaded' });
++            await second.goBack({ waitUntil: 'domcontentloaded' });
++            await second.waitForFunction(() => window.AppState?.currentUser?.activeBusinessContext === 'dar' && window.AppState?.currentUser?.role === 'animator');
++            await second.goForward({ waitUntil: 'domcontentloaded' });
++            await second.waitForFunction(() => window.AppState?.currentUser?.activeBusinessContext === 'dar' && window.AppState?.currentUser?.role === 'animator');
++            return { observed: 'Two tabs retained Dar/animator after switch, reload and browser history', evidence: [await screenshot(second, 'cross-tab-dar-history')] };
++        });
++
++        await scenario('D06-B05-two-organizations', 'Multi-organization login requires actual explicit keyboard selection and exposes only available businesses', async () => {
++            const session = await newSession(fixture.actors.multiOrg, 'multiOrg');
++            const select = session.page.locator('#businessAccessSelection');
++            await select.waitFor({ state: 'visible' });
++            const values = await select.locator('option').evaluateAll(options => options.map(option => option.value));
++            assert.ok(values.includes(fixture.businesses.customKey));
++            await select.selectOption(fixture.businesses.customKey);
++            await session.page.locator('[data-business-access-select]').focus();
++            await session.page.keyboard.press('Enter');
++            await session.page.waitForFunction(context => window.AppState?.currentUser?.activeBusinessContext === context, fixture.businesses.customKey);
++            const user = await session.page.evaluate(() => ({ context: AppState.currentUser.activeBusinessContext, organizationId: AppState.currentUser.organizationId, role: AppState.currentUser.role }));
++            assert.equal(Number(user.organizationId), Number(fixture.organizations.secondaryId));
++            assert.equal(user.role, 'manager');
++            return { observed: user, evidence: [await screenshot(session.page, 'two-organization-selection')] };
++        });
++
++        await scenario('D06-B12-products-context', 'Actual product cards switch from the Park fixture marker to Dar without retaining the other business data', async () => {
++            const parkMarker = fixture.markers?.parkProduct || fixture.markers?.event_genix?.product;
++            const darMarker = fixture.markers?.darProduct || fixture.markers?.dar?.product;
++            prerequisite(ownerSession && parkMarker && darMarker, 'Owner session and exact synthetic product markers are required');
++            const page = ownerSession.page;
++            evidencePage = page;
++            await page.goto(target.origin + '/programs?businessContext=event_genix#animation', { waitUntil: 'domcontentloaded' });
++            const cards = page.locator('.program-card:visible, .maysternya-product-card:visible');
++            const park = cards.filter({ hasText: parkMarker });
++            const dar = cards.filter({ hasText: darMarker });
++            await park.first().waitFor({ state: 'visible' });
++            assert.equal(await dar.count(), 0);
++            const [response] = await Promise.all([
++                page.waitForResponse(item => new URL(item.url()).pathname === '/api/products' && item.request().method() === 'GET'),
++                switchBusiness(page, 'dar')
++            ]);
++            await page.waitForFunction(() => document.body.dataset.productsBusiness === 'dar'
++                && !document.querySelector('#maysternyaProductsGrid .product-load-state'));
++            const dom = await page.evaluate(() => {
++                const profile = window.CrmBusinessContext?.activeProfile?.();
++                return {
++                    path: location.pathname + location.search + location.hash,
++                    business: document.body.dataset.productsBusiness,
++                    apiContext: window.ProductBusinessContext?.getApiContext?.(),
++                    title: document.querySelector('#productsPageTitle')?.textContent,
++                    subtitle: document.querySelector('#productsPageSubtitle')?.textContent,
++                    addLabel: document.querySelector('#addProductBtn')?.textContent,
++                    activeProfile: profile ? { key: profile.key, label: profile.label, branding: profile.branding } : null,
++                    visibleCards: [...document.querySelectorAll('.program-card, .maysternya-product-card')]
++                        .filter(element => element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden')
++                        .map(element => ({ id: element.dataset.id, name: element.querySelector('h3,h4')?.textContent }))
++                };
++            });
++            const diagnosticsPath = path.join(output, 'products-context-diagnostics.json');
++            fs.writeFileSync(diagnosticsPath, redact(JSON.stringify({ dom, response: {
++                status: response.status(), path: new URL(response.url()).pathname,
++                context: new URL(response.url()).searchParams.get('businessContext')
++            }, requests: network.filter(item => item.actor === 'owner' && item.phase === phase
++                && ['/api/products', '/api/auth/business-profile', '/api/auth/permissions'].includes(item.path)) }, null, 2)) + '\n');
++            await screenshot(page, 'products-after-dar-switch');
++            assert.equal(new URL(response.url()).searchParams.get('businessContext'), 'dar', 'Selected Dar must request Dar products rather than another available membership');
++            await dar.first().waitFor({ state: 'visible' });
++            assert.equal(await park.count(), 0);
++            assert.equal(await page.locator('#maysternyaPanel .business-variant-actions a').isVisible(), false, 'Dar must not show the legacy Maysternya timeline action');
++            await page.reload({ waitUntil: 'domcontentloaded' });
++            await dar.first().waitFor({ state: 'visible' });
++            assert.equal(await park.count(), 0);
++            assert.equal(await page.locator('body').getAttribute('data-products-business'), 'dar');
++            assert.ok(dom.title.includes(dom.activeProfile.label), 'Product heading must use the selected business registry label');
++            return { observed: 'Actual products HTTP/PG response and visible cards changed context; reload retained only Dar marker', evidence: [diagnosticsPath, await screenshot(page, 'products-dar-only')] };
++        });
++
++        await scenario('D06-B13-custom-products-history', 'A custom business in the second organization reads its own products and registry branding through reload/back/forward', async () => {
++            const session = sessions.find(item => item.name === 'multiOrg');
++            const key = fixture.businesses.customKey;
++            const marker = fixture.markers?.[key]?.product;
++            prerequisite(session && marker, 'Existing multi-organization session and synthetic custom product are required');
++            const page = session.page;
++            evidencePage = page;
++            const [response] = await Promise.all([
++                page.waitForResponse(item => new URL(item.url()).pathname === '/api/products' && item.request().method() === 'GET'),
++                page.goto(target.origin + `/programs?businessContext=${encodeURIComponent(key)}`, { waitUntil: 'domcontentloaded' })
++            ]);
++            assert.equal(response.status(), 200);
++            assert.equal(new URL(response.url()).searchParams.get('businessContext'), key);
++            const cards = page.locator('.program-card:visible, .maysternya-product-card:visible');
++            async function assertOwnProducts() {
++                await cards.filter({ hasText: marker }).first().waitFor({ state: 'visible' });
++                for (const other of ['event_genix', 'dar']) assert.equal(await cards.filter({ hasText: fixture.markers[other].product }).count(), 0);
++                const state = await page.evaluate(() => ({
++                    context: window.ProductBusinessContext.getApiContext(),
++                    title: document.querySelector('#productsPageTitle').textContent,
++                    label: window.CrmBusinessContext.activeProfile().label,
++                    organizationId: window.AppState.currentUser.organizationId,
++                    hash: location.hash
++                }));
++                assert.equal(state.context, key);
++                assert.ok(state.title.includes(state.label));
++                assert.equal(Number(state.organizationId), Number(fixture.organizations.secondaryId));
++                assert.notEqual(state.hash, '#maysternya');
++                assert.equal(await page.locator('#maysternyaPanel .business-variant-actions a').isVisible(), false, 'Custom business must not show the legacy Maysternya timeline action');
++                return state;
++            }
++            await assertOwnProducts();
++            await page.reload({ waitUntil: 'domcontentloaded' });
++            await assertOwnProducts();
++            await goProfile(session, key);
++            await page.goBack({ waitUntil: 'domcontentloaded' });
++            await assertOwnProducts();
++            await page.goForward({ waitUntil: 'domcontentloaded' });
++            await page.locator('#profileBusinessCabinets').waitFor({ state: 'attached' });
++            await page.goBack({ waitUntil: 'domcontentloaded' });
++            const state = await assertOwnProducts();
++            return { observed: state, evidence: [await screenshot(page, 'products-custom-history')] };
++        });
++
++        await scenario('D06-B06-late-real-response', 'A delayed real management response cannot restore data after a real cabinet switch invalidates its request', async () => {
++            prerequisite(ownerSession, 'Owner browser session is required');
++            const session = ownerSession;
++            await goProfile(session);
++            let release;
++            let arrived;
++            const responseReady = new Promise(resolve => { arrived = resolve; });
++            const gate = new Promise(resolve => { release = resolve; });
++            let held = false;
++            let heldRequest;
++            const pattern = '**/api/organizations/management';
++            const handler = async route => {
++                if (held || route.request().method() !== 'GET') return route.continue();
++                held = true;
++                heldRequest = route.request();
++                const realResponse = await route.fetch();
++                assert.equal(realResponse.status(), 200);
++                arrived();
++                await gate;
++                await route.fulfill({ response: realResponse }).catch(() => {});
++            };
++            await session.page.route(pattern, handler);
++            let timeout;
++            try {
++                await session.page.locator('[data-cabinet-action="load"]').click();
++                await Promise.race([responseReady, new Promise((resolve, reject) => { timeout = setTimeout(() => reject(new Error('Real management response did not reach delay barrier')), 15000); })]);
++                clearTimeout(timeout);
++                await switchBusiness(session.page, 'dar');
++                const completed = session.page.waitForEvent('requestfinished', { predicate: request => request === heldRequest, timeout: 15000 })
++                    .then(request => ({ request }), error => ({ error }));
++                release();
++                const completion = await completed;
++                if (completion.error) throw completion.error;
++                const deliveredResponse = await completion.request.response();
++                assert.equal(deliveredResponse.status(), 200, 'The original real management response must finish delivery');
++                await deliveredResponse.finished();
++                await session.page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
++                await session.page.waitForFunction(() => window.AppState?.currentUser?.activeBusinessContext === 'dar');
++                assert.equal(await session.page.locator('[data-cabinet-organization]').count(), 0, 'Stale directory may not repaint after context invalidation');
++                return { observed: { actualGetFromAppPostgres: true, delayedOnlyInTransit: true, deliveredHttpStatus: deliveredResponse.status(),
++                    requestFinished: true, uiFramesAfterDelivery: 2, activeBusiness: 'dar', staleDirectoryCount: 0 }, evidence: [await screenshot(session.page, 'late-response-dar')] };
++            } finally { clearTimeout(timeout); release(); await session.page.unroute(pattern, handler); }
++        });
++
++        await scenario('D06-B10-ui-change-same-jwt', 'A role change and membership deactivation submitted by the owner UI affect the same existing browser JWT immediately', async () => {
++            prerequisite(ownerSession && entries.some(entry => entry.id === 'D06-B02-membership-editor' && entry.status === 'PASS'), 'Successful assignment of the synthetic unassigned account is required');
++            const session = await newSession(fixture.actors.unassigned, 'assigned-worker');
++            await goProfile(session, 'dar');
++            const originalToken = await session.page.evaluate(() => localStorage.getItem('pzp_access_token') || localStorage.getItem('pzp_token'));
++            assert.ok(originalToken);
++            sensitive.push(originalToken);
++            async function sameSessionProfile() {
++                const response = await session.context.request.get(target.origin + '/api/auth/business-profile?businessContext=dar', {
++                    headers: { Authorization: 'Bearer ' + originalToken }
++                });
++                return { status: response.status(), body: await response.json() };
++            }
++            assert.equal((await sameSessionProfile()).body.user.role, 'manager');
++            await goProfile(ownerSession);
++            await openMember(ownerSession.page, fixture.actors.unassigned.id, fixture.businesses.darId);
++            await ownerSession.page.locator('[data-tab="roles"]').click();
++            await ownerSession.page.locator('[data-field="role"]').selectOption('animator');
++            await saveMember(ownerSession.page);
++            const changed = await sameSessionProfile();
++            assert.equal(changed.status, 200);
++            assert.equal(changed.body.user.role, 'animator');
++            await session.page.reload({ waitUntil: 'domcontentloaded' });
++            await session.page.waitForFunction(() => window.AppState?.currentUser?.activeBusinessContext === 'dar' && window.AppState?.currentUser?.role === 'animator');
++            await openMember(ownerSession.page, fixture.actors.unassigned.id, fixture.businesses.darId);
++            await ownerSession.page.locator('[data-tab="businesses"]').click();
++            await ownerSession.page.locator('[data-membership-active]').uncheck();
++            await saveMember(ownerSession.page);
++            const revoked = await sameSessionProfile();
++            assert.equal(revoked.status, 403);
++            assert.notEqual(revoked.body.user?.role, 'manager');
++            await session.page.reload({ waitUntil: 'domcontentloaded' });
++            await session.page.waitForFunction(actorId => {
++                const user = window.AppState?.currentUser;
++                return Number(user?.id) === Number(actorId)
++                    && (['selection_required', 'unavailable'].includes(user.accessContext?.status)
++                        || (user.activeBusinessContext === 'event_genix' && user.role === 'animator'));
++            }, fixture.actors.unassigned.id);
++            return { observed: { sameOriginalJwt: true, roleAfterUiSave: changed.body.user.role, statusAfterMembershipDeactivation: revoked.status }, evidence: [await screenshot(session.page, 'same-jwt-revoked-membership')] };
++        });
++
++        for (const width of [390, 768, 1440]) {
++            await scenario(`D06-B07-layout-${width}`, `Actual cabinet and membership controls remain usable with keyboard at ${width}px in light and dark`, async () => {
++                prerequisite(ownerSession, 'Owner browser session is required');
++                const page = ownerSession.page;
++                await page.setViewportSize({ width, height: 1000 });
++                await goProfile(ownerSession);
++                await loadCabinets(page);
++                const evidence = [];
++                for (const dark of [false, true]) {
++                    await setTheme(page, dark);
++                    await page.locator('[data-cabinet-action="create"]').click();
++                    const form = page.locator('[data-cabinet-form]');
++                    assert.equal(await form.locator('[name="label"]').evaluate(element => element === document.activeElement), true);
++                    await form.locator('[name="label"]').fill('D06 unsaved responsive fixture');
++                    await form.locator('[name="label"]').press('Tab');
++                    assert.equal(await form.locator('[name="shortLabel"]').evaluate(element => element === document.activeElement), true);
++                    await reachable(form.getByRole('button', { name: 'Зберегти бізнес', exact: true }));
++                    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'No horizontal document clipping');
++                    evidence.push(await screenshot(page, `cabinet-${width}-${dark ? 'dark' : 'light'}`));
++                    evidence.push(await screenshot(page, `cabinet-${width}-${dark ? 'dark' : 'light'}-viewport`, false));
++                    page.once('dialog', dialog => dialog.accept());
++                    await page.locator('[data-cabinet-action="cancel"]').click();
++                    await openMember(page, fixture.actors.worker.id, fixture.businesses.parkId);
++                    await page.locator('[data-tab="businesses"]').click();
++                    await reachable(page.locator('[data-access-scope]'));
++                    await reachable(page.locator('[data-membership-active]'));
++                    await reachable(page.locator('[data-action="save"]'));
++                    evidence.push(await screenshot(page, `membership-${width}-${dark ? 'dark' : 'light'}`));
++                    evidence.push(await screenshot(page, `membership-${width}-${dark ? 'dark' : 'light'}-viewport`, false));
++                    if (width === 390) {
++                        await page.locator('[data-tab="businesses"]').focus();
++                        await page.keyboard.press('End');
++                        const history = page.locator('[data-tab="history"]');
++                        assert.equal(await history.evaluate(element => element === document.activeElement), true);
++                        assert.equal(await history.getAttribute('aria-selected'), 'true');
++                        const geometry = () => history.evaluate(element => {
++                            const box = element.getBoundingClientRect();
++                            const rail = element.closest('[role="tablist"]');
++                            const sheet = element.closest('.aae-sheet');
++                            const rect = rail.getBoundingClientRect();
++                            return { tab: { left: box.left, right: box.right }, rail: { left: rect.left, right: rect.right, scrollLeft: rail.scrollLeft },
++                                sheetTransform: getComputedStyle(sheet).transform, sheetAnimation: getComputedStyle(sheet).animationName,
++                                viewport: innerWidth, focused: element === document.activeElement };
++                        });
++                        const before = await geometry();
++                        try {
++                            // The canonical sheet re-enters for .18s after tab rerender.
++                            // Observe its settled geometry; do not scroll or change CSS from the test.
++                            await page.waitForFunction(() => {
++                                const element = document.querySelector('[data-tab="history"]');
++                                const box = element?.getBoundingClientRect();
++                                const rail = element?.closest('[role="tablist"]').getBoundingClientRect();
++                                return Boolean(box && rail && element === document.activeElement
++                                    && box.left >= Math.max(0, rail.left) - 1 && box.right <= Math.min(innerWidth, rail.right) + 1);
++                            }, null, { timeout: 2000 });
++                        } finally {
++                            const geometryPath = path.join(output, `membership-390-${dark ? 'dark' : 'light'}-keyboard-geometry.json`);
++                            fs.writeFileSync(geometryPath, JSON.stringify({ before, settled: await geometry() }, null, 2) + '\n');
++                            evidence.push(geometryPath);
++                        }
++                        evidence.push(await screenshot(page, `membership-390-${dark ? 'dark' : 'light'}-history-viewport`, false));
++                    }
++                    await page.keyboard.press('Escape');
++                    await page.locator('#accountAccessEditorRoot').waitFor({ state: 'detached' });
++                }
++                return { observed: 'Native form focus order, visible actionable controls, canonical theme toggle and no document overflow', evidence };
++            });
++        }
++
++        await scenario('D06-B08-business-deactivation', 'Owner deactivates only the newly created synthetic business through the existing UI', async () => {
++            prerequisite(ownerSession && createdBusiness, 'Successful owner cabinet creation is required');
++            const page = ownerSession.page;
++            await page.setViewportSize({ width: 1440, height: 1000 });
++            await goProfile(ownerSession);
++            await loadCabinets(page);
++            page.once('dialog', dialog => dialog.accept());
++            await page.locator(`[data-cabinet-action="status"][data-business-id="${createdBusiness.id}"]`).click();
++            await page.locator('[data-cabinet-action="load"]:not([disabled])').waitFor();
++            const entry = (await ownerApi('GET', '/api/organizations/management')).organizations.flatMap(org => org.businesses || []).find(item => item.id === createdBusiness.id);
++            assert.equal(entry.status, 'inactive');
++            return { observed: { businessId: entry.id, contextKey: entry.contextKey, status: entry.status }, evidence: [await screenshot(page, 'cabinet-deactivated')] };
++        });
++
++        await scenario('D06-B11-last-owner-editor', 'Attempting to demote the sole active organization owner through the editor receives 409 and preserves the owner', async () => {
++            prerequisite(ownerSession, 'Owner browser session is required');
++            const page = ownerSession.page;
++            await goProfile(ownerSession);
++            await openMember(page, fixture.actors.owner.id, fixture.businesses.parkId);
++            await page.locator('[data-tab="businesses"]').click();
++            await page.locator('[data-organization-role]').selectOption('member');
++            const [response] = await Promise.all([
++                page.waitForResponse(item => new URL(item.url()).pathname === `/api/organizations/${fixture.organizations.primaryId}/members/${fixture.actors.owner.id}` && item.request().method() === 'PUT'),
++                page.locator('[data-action="save"]').click()
++            ]);
++            assert.equal(response.status(), 409);
++            await page.locator('.aae-save-state').filter({ hasText: /owner|власник|власників/i }).waitFor({ state: 'visible' });
++            const management = await ownerApi('GET', '/api/organizations/management');
++            assert.equal(management.organizations.find(org => org.id === fixture.organizations.primaryId).role, 'owner');
++            const evidence = await screenshot(page, 'last-owner-denial');
++            await page.keyboard.press('Escape');
++            if (await page.locator('[data-action="discard"]').isVisible()) await page.locator('[data-action="discard"]').click();
++            return { observed: 'Actual UI write returned 409 and fresh management still reports the same owner', evidence: [evidence] };
++        });
++    } finally {
++        phase = 'teardown';
++        await Promise.all(denialBodyReads);
++        for (const session of sessions) await session.context.close().catch(() => {});
++        await browser.close();
++        const unexpectedServerErrors = network.filter(item => item.status >= 500);
++        const errorResponses = network.filter(item => item.status >= 400 && item.status < 500);
++        function expectedDenial(item) {
++            if (item.status === 409 && item.actor === 'owner' && item.phase === 'D06-B11-last-owner-editor'
++                && item.method === 'PUT' && item.path === `/api/organizations/${fixture.organizations.primaryId}/members/${fixture.actors.owner.id}`) return 'Sole-owner invariant';
++            if (item.status !== 403 || item.method !== 'GET') return null;
++            if (item.actor === 'assigned-worker' && item.phase === 'D06-B10-ui-change-same-jwt'
++                && item.path === '/api/auth/business-profile' && item.context === 'dar') return 'Explicitly revoked Dar membership';
++            if (['worker-cross-tab', 'assigned-worker'].includes(item.actor) && item.context === 'dar'
++                && ['/api/tasks/decomposition-saved-templates', '/api/tasks/ai-draft/status'].includes(item.path)) return 'Animator lacks task-AI management permission';
++            if (['multiOrg', 'assigned-worker'].includes(item.actor) && item.context === null
++                && item.path === '/api/dashboard/widgets/currency') return 'Manager/animator lacks protected currency-widget permission';
++            if (['multiOrg', 'assigned-worker'].includes(item.actor) && item.context === null
++                && item.path === '/api/chat/unread' && item.denialCode === 'chat_not_migrated') return 'Confirmed legacy chat containment for membership context';
++            return null;
++        }
++        const classifiedDenials = errorResponses.map(item => ({ ...item, reason: expectedDenial(item) }));
++        const unclassifiedHttpErrors = classifiedDenials.filter(item => !item.reason);
++        const expectedBlocked = blockedExternal.filter(item => (item.host === 'fonts.googleapis.com' && item.path === '/css2')
++            || (item.host === 'www.clarity.ms' && item.path === '/tag/w841e2emn0'));
++        const unclassifiedExternal = blockedExternal.filter(item => !expectedBlocked.includes(item));
++        const classifiedConsole = consoleErrors.map(item => {
++            let url;
++            try { url = new URL(item.location); } catch {}
++            let reason = null;
++            if (url && item.message === 'Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector'
++                && expectedBlocked.some(blocked => blocked.host === url.hostname && blocked.path === url.pathname)) reason = 'Intentional external browser fence';
++            const status = Number(item.message.match(/^Failed to load resource: the server responded with a status of (403|409) \(/)?.[1]);
++            if (url?.origin === target.origin && status && classifiedDenials.some(denial => denial.reason
++                && denial.path === url.pathname && denial.status === status)) reason = 'Expected HTTP denial (see exact actor/context matrix)';
++            return { ...item, reason };
++        });
++        const unclassifiedConsole = classifiedConsole.filter(item => !item.reason);
++        const diagnosticsStatus = network.length === 0 ? 'NOT_TESTABLE'
++            : unexpectedServerErrors.length || pageErrors.length || unclassifiedHttpErrors.length
++                || unclassifiedConsole.length || unclassifiedExternal.length ? 'FAIL' : 'PASS';
++        emit({ id: 'D06-B09-browser-diagnostics', status: diagnosticsStatus,
++            expected: 'No page exceptions, HTTP 5xx or unclassified failures; exact expected access denials and blocked fonts/analytics remain visible in evidence',
++            observed: { actualAppApiResponses: network.length, http5xx: unexpectedServerErrors.length, pageErrors: pageErrors.length, consoleErrors: consoleErrors.length,
++                http4xx: errorResponses.length, blockedExternal: blockedExternal.length, expectedHttpDenials: classifiedDenials.length - unclassifiedHttpErrors.length,
++                unexpectedHttpErrors: unclassifiedHttpErrors.length, unclassifiedConsole: unclassifiedConsole.length, unclassifiedExternal: unclassifiedExternal.length },
++            evidence: [path.join(output, 'browser-diagnostics.json')] });
++        fs.writeFileSync(path.join(output, 'browser-diagnostics.json'), redact(JSON.stringify({ network, consoleErrors, pageErrors, blockedExternal,
++            classifiedDenials, classifiedConsole, unclassifiedExternal }, null, 2)) + '\n');
++        fs.writeFileSync(path.join(output, 'browser-results.json'), redact(JSON.stringify({ runId: fixture.runId, target: target.origin,
++            actualApp: true, apiMocks: false, serviceWorkers: 'blocked-to-require-real-HTTP', entries }, null, 2)) + '\n');
++    }
++    return { entries, network, consoleErrors, pageErrors, blockedExternal, outputDir: output };
++}
++
++if (require.main === module) {
++    const input = JSON.parse(process.env.SYS_MB_BROWSER_FIXTURE_JSON || 'null');
++    assert.ok(input, 'Provide in-memory SYS_MB_BROWSER_FIXTURE_JSON from the guarded disposable harness');
++    runBrowserAcceptance({ ...input, record: entry => process.stdout.write(`${entry.id} ${entry.status}\n`) })
++        .then(result => { process.exitCode = result.entries.some(entry => entry.status === 'FAIL') ? 1 : 0; })
++        .catch(error => { process.stderr.write(`Browser runner failed: ${error.name}\n`); process.exitCode = 1; });
++}
++
++module.exports = { runBrowserAcceptance };
+diff --git a/tests/acceptance/sys-mb-browser-worker.cjs b/tests/acceptance/sys-mb-browser-worker.cjs
+new file mode 100644
+index 000000000..110d8ab27
+--- /dev/null
++++ b/tests/acceptance/sys-mb-browser-worker.cjs
+@@ -0,0 +1,51 @@
++'use strict';
++
++const fs = require('node:fs');
++const net = require('node:net');
++const assert = require('node:assert/strict');
++async function main() {
++    // Synthetic passwords/session tokens travel through an anonymous pipe, never
++    // a command argument, fixture file, screenshot or acceptance result artifact.
++    let input = '';
++    for await (const chunk of process.stdin) input += chunk;
++    const options = JSON.parse(input);
++    const records = [];
++    const record = item => {
++        records.push(item);
++        fs.writeSync(1, 'D06_BROWSER_PROGRESS ' + item.id + ' ' + item.status + '\n');
++    };
++    let bridge;
++    const sockets = new Set();
++    try {
++        // Windows and WSL do not share loopback on every host. Forward TCP bytes
++        // only to the exact disposable application's local interface and port.
++        const target = options.localForwardTarget;
++        assert.match(target?.host || '', /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/);
++        assert.ok(Number.isInteger(target.port) && target.port > 1024 && target.port <= 65535);
++        bridge = net.createServer(socket => {
++            sockets.add(socket);
++            const upstream = net.connect(target.port, target.host);
++            sockets.add(upstream);
++            for (const connection of [socket, upstream]) {
++                connection.on('close', () => sockets.delete(connection));
++                connection.on('error', () => { socket.destroy(); upstream.destroy(); });
++            }
++            socket.pipe(upstream); upstream.pipe(socket);
++        });
++        await new Promise((resolve, reject) => { bridge.once('error', reject); bridge.listen(0, '127.0.0.1', resolve); });
++        options.baseUrl = 'http://127.0.0.1:' + bridge.address().port;
++        const health = await fetch(options.baseUrl + '/api/health', { signal: AbortSignal.timeout(10000) });
++        assert.ok(health.ok, 'The TCP bridge must reach the actual application before browser scenarios');
++        const { runBrowserAcceptance } = require('./sys-mb-browser-scenarios.cjs');
++        const summary = await runBrowserAcceptance({ ...options, record });
++        fs.writeSync(1, '\nD06_BROWSER_RESULT=' + JSON.stringify({ records, summary }) + '\n');
++    } catch (error) {
++        fs.writeSync(1, '\nD06_BROWSER_RESULT=' + JSON.stringify({ records,
++            error: { name: error.name, message: String(error.message).slice(0, 800) } }) + '\n');
++        process.exitCode = 1;
++    } finally {
++        for (const socket of sockets) socket.destroy();
++        if (bridge) await new Promise(resolve => bridge.close(resolve));
++    }
++}
++main().catch(() => { process.stderr.write('D06 browser worker failed before reporting\n'); process.exitCode = 1; });
+diff --git a/tests/acceptance/sys-mb-domain-scenarios.cjs b/tests/acceptance/sys-mb-domain-scenarios.cjs
+new file mode 100644
+index 000000000..a217c0733
+--- /dev/null
++++ b/tests/acceptance/sys-mb-domain-scenarios.cjs
+@@ -0,0 +1,688 @@
++'use strict';
++
++const assert = require('node:assert/strict');
++const { createHash } = require('node:crypto');
++
++// The harness owns the real app process, migrations, login and disposable DB.
++// No router, auth, principal, SQL result or provider is replaced by this module.
++async function requireDisposableDatabase(db) {
++    const { rows } = await db.query('SELECT current_database() AS name');
++    assert.match(rows[0].name, /(?:^|_)(?:test|testing|disposable|acceptance|d06)(?:_|$)/i);
++    assert.doesNotMatch(rows[0].name, /(?:^|_)(?:prod|production|live)(?:_|$)/i);
++}
++
++async function seed({ db, fixture }) {
++    await requireDisposableDatabase(db);
++    assert.ok(fixture.runId && fixture.date && fixture.actors?.owner?.id);
++    const prefix = `d06_${createHash('sha256').update(fixture.runId).digest('hex').slice(0, 10)}`;
++    const client = await db.connect();
++    const records = {};
++    const markers = {};
++    const unownedWarehouseSentinels = {};
++    try {
++        await client.query('BEGIN');
++        for (const [alias, context] of Object.entries(fixture.contexts)) {
++            const actor = alias === 'other' ? fixture.actors.otherOrg : fixture.actors.owner;
++            const key = `${prefix}_${alias}`;
++            const marker = `D06-${key}`;
++            const row = { productId: `${key}_product`, bookingId: `${key}_booking`,
++                lineId: `${key}_line`, resourceId: `${key}_resource`, roomResourceId: `${key}_room` };
++            markers[context] = Object.fromEntries(['product', 'customer', 'lead', 'task', 'booking',
++                'warehouse', 'graduationPackage', 'graduationQuote', 'resource', 'stock']
++                .map(kind => [kind, `${marker}-${kind}`]));
++            const names = markers[context];
++            await client.query(`INSERT INTO products
++                (id,business_context,code,timeline_code,label,name,category,duration,price,hosts,description,sort_order)
++                VALUES ($1,$2,$3,$3,$4,$4,'animation',30,1201,1,$5,-1000)`,
++            [row.productId, context, `Q6${alias[0].toUpperCase()}`, names.product, `${names.product} full synthetic description`]);
++            row.customerId = (await client.query(`INSERT INTO customers
++                (business_context,name,source,notes) VALUES ($1,$2,'manual',$3) RETURNING id`,
++            [context, names.customer, marker])).rows[0].id;
++            await client.query(`INSERT INTO timeline_resources
++                (business_context,resource_id,type,name,short_name,capacity,metadata)
++                VALUES ($1,$2,'cabinet',$3,$4,20,$5::jsonb)`,
++            [context, row.resourceId, names.resource, alias, JSON.stringify({ source: 'd06_acceptance', runId: fixture.runId })]);
++            await client.query(`INSERT INTO timeline_resources
++                (business_context,resource_id,type,name,short_name,capacity,metadata)
++                VALUES ($1,$2,'room',$3,$4,20,$5::jsonb)`,
++            [context, row.roomResourceId, `${marker}-room`, alias, JSON.stringify({ source: 'd06_acceptance', runId: fixture.runId })]);
++            await client.query(`INSERT INTO lines_by_date
++                (business_context,date,line_id,name,color) VALUES ($1,$2,$3,$4,'#10B981')`,
++            [context, fixture.date, row.lineId, `${marker}-line`]);
++            await client.query(`INSERT INTO bookings
++                (id,business_context,date,time,line_id,program_id,program_code,label,program_name,
++                 category,duration,price,hosts,room,notes,status,customer_id,created_by,skip_notification,room_resource_id)
++                VALUES ($1,$2,$3,'12:00',$4,$5,$6,$7,$7,'animation',30,1201,1,$8,$9,'confirmed',$10,$11,true,$12)`,
++            [row.bookingId, context, fixture.date, row.lineId, row.productId, `Q6${alias[0].toUpperCase()}`,
++                names.booking, `${marker}-room`, marker, row.customerId, actor.username, row.roomResourceId]);
++            row.leadId = (await client.query(`INSERT INTO leads
++                (business_context,client_name,status,pipeline_stage,lead_type,program_id,booking_id,
++                 assigned_to,event_date,children_count,notes)
++                VALUES ($1,$2,'new','new','quality',$3,$4,$5,$6,10,$7) RETURNING id`,
++            [context, names.lead, row.productId, row.bookingId, actor.id, fixture.date, marker])).rows[0].id;
++            await client.query(`INSERT INTO lead_customer_links
++                (business_context,lead_id,customer_id,link_type,source,created_by)
++                VALUES ($1,$2,$3,'customer_card','d06_acceptance',$4)`,
++            [context, row.leadId, row.customerId, actor.id]);
++            row.conversationId = (await client.query(`INSERT INTO conversations
++                (business_context,channel,external_id,customer_name,customer_id,status,meta,last_message_at)
++                VALUES ($1,'telegram',$2,$3,$4,'open',$5::jsonb,NOW()) RETURNING id`,
++            [context, `${key}_synthetic_inbox`, `${marker}-conversation`, row.customerId,
++                JSON.stringify({ leadId: row.leadId, source: 'd06_acceptance' })])).rows[0].id;
++            row.messageId = (await client.query(`INSERT INTO conversation_messages
++                (conversation_id,direction,content,content_type,meta)
++                VALUES ($1,'inbound',$2,'text',$3::jsonb) RETURNING id`,
++            [row.conversationId, `${marker}-synthetic-message`, JSON.stringify({ source: 'd06_acceptance' })])).rows[0].id;
++            row.taskId = (await client.query(`INSERT INTO tasks
++                (business_context,title,description,date,status,priority,created_by,owner_user_id,
++                 task_mode,task_kind,visibility,workflow_state,type,source_type)
++                VALUES ($1,$2,$3,$4,'todo','normal',$5,$6,'work','action','team','todo','manual','manual') RETURNING id`,
++            [context, names.task, marker, fixture.date, actor.username, actor.id])).rows[0].id;
++            row.locationId = (await client.query(`INSERT INTO warehouse_locations
++                (business_context,slug,name) VALUES ($1,$2,$3) RETURNING id`,
++            [context, `${key}_location`, names.warehouse])).rows[0].id;
++            row.stockId = (await client.query(`INSERT INTO warehouse_stock
++                (business_context,name,category,quantity,min_quantity,unit,location_id,notes)
++                VALUES ($1,$2,'consumable',10,1,'шт',$3,$4) RETURNING id`,
++            [context, names.stock, row.locationId, marker])).rows[0].id;
++            row.financeCategoryId = (await client.query(`INSERT INTO finance_categories
++                (business_context,name,type) VALUES ($1,$2,'expense') RETURNING id`,
++            [context, `${marker}-expense`])).rows[0].id;
++            row.financeAccountId = (await client.query(`INSERT INTO finance_accounts
++                (business_context,name,type,created_by) VALUES ($1,$2,'cash',$3) RETURNING id`,
++            [context, `${marker}-account`, actor.username])).rows[0].id;
++            row.financeTransactionId = (await client.query(`INSERT INTO finance_transactions
++                (business_context,type,category_id,account_id,amount,date,description,booking_id,created_by)
++                VALUES ($1,'expense',$2,$3,123,$4,$5,$6,$7) RETURNING id`,
++            [context, row.financeCategoryId, row.financeAccountId, fixture.date, marker, row.bookingId, actor.username])).rows[0].id;
++            row.graduationServiceId = (await client.query(`INSERT INTO graduation_services
++                (business_context,name,description,price_type,price_per_child,duration_min)
++                VALUES ($1,$2,$3,'fixed',125,30) RETURNING id`,
++            [context, `${marker}-service`, marker])).rows[0].id;
++            row.graduationPackageSlug = `${key}_package`;
++            row.graduationPackageId = (await client.query(`INSERT INTO graduation_packages
++                (business_context,name,slug,description) VALUES ($1,$2,$3,$4) RETURNING id`,
++            [context, names.graduationPackage, row.graduationPackageSlug, marker])).rows[0].id;
++            await client.query(`INSERT INTO graduation_package_items
++                (business_context,package_id,service_id,override_price) VALUES ($1,$2,$3,125)`,
++            [context, row.graduationPackageId, row.graduationServiceId]);
++            row.graduationQuoteId = (await client.query(`INSERT INTO graduation_quotes
++                (business_context,quote_number,customer_id,kids_count,selected_services,package_id,
++                 total_per_child,total_all,notes,created_by,event_date)
++                VALUES ($1,$2,$3,10,$4::jsonb,$5,125,1250,$6,$7,$8) RETURNING id`,
++            [context, names.graduationQuote, row.customerId, JSON.stringify([{ serviceId: row.graduationServiceId }]),
++                row.graduationPackageId, marker, actor.username, fixture.date])).rows[0].id;
++            records[context] = row;
++        }
++        // These legacy tables have no organization/business ownership column.
++        // A stock/location association is evidence for a foreign-ID read probe,
++        // never an inferred assignment of the contractor/procurement owner.
++        for (const context of [fixture.contexts.park, fixture.contexts.dar]) {
++            const owned = records[context];
++            const marker = `D06-${prefix}-UNASSIGNED-${context}`;
++            const contractorId = (await client.query(`INSERT INTO contractors
++                (name,notes) VALUES ($1,$2) RETURNING id`,
++            [`${marker}-contractor`, 'Synthetic unassigned legacy row; no owner is asserted'])).rows[0].id;
++            const procurementListId = (await client.query(`INSERT INTO procurement_lists
++                (title,department,status,target_location_id,contractor_id,notes,created_by)
++                VALUES ($1,'admin','draft',$2,$3,$4,$5) RETURNING id`,
++            [`${marker}-list`, owned.locationId, contractorId,
++                'Synthetic unassigned legacy row referencing explicitly owned stock', fixture.actors.owner.username])).rows[0].id;
++            const procurementItemId = (await client.query(`INSERT INTO procurement_items
++                (list_id,name,quantity,unit,warehouse_stock_id,contractor_id)
++                VALUES ($1,$2,1,'шт',$3,$4) RETURNING id`,
++            [procurementListId, `${marker}-item`, owned.stockId, contractorId])).rows[0].id;
++            unownedWarehouseSentinels[context] = { contractorId, procurementListId, procurementItemId,
++                stockId: owned.stockId, locationId: owned.locationId, stockBusinessContext: context,
++                legacyRowOwnership: 'UNASSIGNED_GLOBAL_ROW' };
++        }
++        await client.query('COMMIT');
++    } catch (error) {
++        await client.query('ROLLBACK');
++        throw error;
++    } finally { client.release(); }
++    fixture.records = { ...(fixture.records || {}), ...records };
++    fixture.markers = { ...(fixture.markers || {}), ...markers };
++    fixture.domainPrefix = prefix;
++    fixture.unownedWarehouseSentinels = unownedWarehouseSentinels;
++    return { records, markers };
++}
++
++function arrayAt(body, key) {
++    const value = key ? body?.[key] : body;
++    assert.ok(Array.isArray(value), `Expected array response${key ? ` at ${key}` : ''}`);
++    return value;
++}
++
++function idSet(rows, field = 'id') { return new Set(rows.map(row => String(row[field]))); }
++function expectStatus(response, status) {
++    assert.equal(response.status, status, `HTTP ${response.status}; expected ${status}; code=${response.body?.code || 'none'}`);
++}
++
++async function run({ baseUrl, fixture, request, db, record }) {
++    assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(new URL(baseUrl).hostname), 'Acceptance must use loopback');
++    await requireDisposableDatabase(db);
++    const { park, dar, other } = fixture.contexts;
++    const outcomes = [];
++    let activeEvidence = [];
++    async function http(input) {
++        const response = await request(input);
++        activeEvidence.push({ method: input.method || 'GET', path: input.path, actor: typeof input.actor === 'string' ? input.actor : 'same_jwt_snapshot',
++            context: input.context ?? null, status: response.status, code: response.body?.code || null });
++        return response;
++    }
++    async function scenario(id, domain, expected, fn) {
++        activeEvidence = [];
++        const started = Date.now();
++        let status = 'PASS';
++        let observed = 'Expected assertions satisfied through actual HTTP and stored rows';
++        try { await fn(); }
++        catch (error) { status = 'FAIL'; observed = String(error.message || error).slice(0, 700); }
++        const outcome = { id, domain, status, method: activeEvidence[0]?.method || 'SQL',
++            path: activeEvidence[0]?.path || null, expected, observed,
++            evidence: { localActualApp: true, elapsedMs: Date.now() - started, requests: activeEvidence } };
++        outcomes.push(outcome);
++        record(outcome);
++    }
++    const scopes = [[park, 'owner'], [dar, 'owner'], [other, 'otherOrg']];
++    const lists = [
++        ['bookings', `/api/bookings/${fixture.date}`, null, 'bookingId'],
++        ['timeline', '/api/timeline/resources?type=cabinet', 'resources', 'resourceId', 'resourceId'],
++        ['customers', '/api/customers?limit=100', 'customers', 'customerId'],
++        ['leads', '/api/leads?limit=100', 'leads', 'leadId'],
++        ['tasks', `/api/tasks?date=${fixture.date}&limit=100`, null, 'taskId'],
++        ['finance', `/api/finance/transactions?from=${fixture.date}&to=${fixture.date}&limit=200`, 'transactions', 'financeTransactionId'],
++        ['warehouse', '/api/warehouse', 'items', 'stockId'],
++        ['products', '/api/products', null, 'productId']
++    ];
++    for (const [context, actor] of scopes) {
++        for (const [domain, path, arrayKey, fixtureKey, responseKey] of lists) {
++            await scenario(`domain.${context}.${domain}.list`, domain, 'Own sentinel included; other-business and other-organization sentinels absent', async () => {
++                const result = await http({ actor, path, context });
++                expectStatus(result, 200);
++                const ids = idSet(arrayAt(result.body, arrayKey), responseKey);
++                assert.ok(ids.has(String(fixture.records[context][fixtureKey])), 'Own fixture record must be returned');
++                for (const otherContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                    assert.ok(!ids.has(String(fixture.records[otherContext][fixtureKey])), 'Foreign fixture record must be absent');
++                }
++            });
++        }
++    }
++    const details = [
++        ['bookings', row => `/api/bookings/detail/${row.bookingId}`, 'bookingId', body => body.booking?.id],
++        ['customers', row => `/api/customers/${row.customerId}`, 'customerId', body => body.id],
++        ['leads', row => `/api/leads/${row.leadId}/booking-context`, 'leadId', body => body.leadContext?.leadId],
++        ['tasks', row => `/api/tasks/${row.taskId}`, 'taskId', body => body.id],
++        ['warehouse', row => `/api/warehouse/${row.stockId}`, 'stockId', body => body.id],
++        ['products', row => `/api/products/${row.productId}`, 'productId', body => body.id]
++    ];
++    for (const [context, actor] of scopes) {
++        for (const [domain, pathFor, fixtureKey, resultId] of details) {
++            await scenario(`domain.${context}.${domain}.direct_id`, domain, 'Own direct ID works; every seeded foreign direct ID is404', async () => {
++                const own = await http({ actor, path: pathFor(fixture.records[context]), context });
++                expectStatus(own, 200);
++                assert.equal(String(resultId(own.body)), String(fixture.records[context][fixtureKey]));
++                for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                    expectStatus(await http({ actor, path: pathFor(fixture.records[foreignContext]), context }), 404);
++                }
++            });
++        }
++    }
++    for (const [context, actor] of scopes) {
++        await scenario(`domain.${context}.graduation`, 'graduation', context === other
++            ? 'Unsupported custom graduation denied explicitly; no Park fallback'
++            : 'Owned package/service and quote work; foreign package/quote IDs denied', async () => {
++            const packages = await http({ actor, path: '/api/graduation/packages', context });
++            if (context === other) {
++                expectStatus(packages, 403);
++                assert.equal(packages.body?.code, 'graduation_business_context_unavailable');
++                expectStatus(await http({ actor, path: '/api/graduation/packages' }), 403);
++                return;
++            }
++            expectStatus(packages, 200);
++            const own = fixture.records[context];
++            const ids = idSet(arrayAt(packages.body));
++            assert.ok(ids.has(String(own.graduationPackageId)));
++            for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                const foreign = fixture.records[foreignContext];
++                assert.ok(!ids.has(String(foreign.graduationPackageId)));
++                expectStatus(await http({ actor, path: `/api/graduation/packages/${foreign.graduationPackageSlug}`, context }), 404);
++                expectStatus(await http({ actor, path: `/api/graduation/quotes/${foreign.graduationQuoteId}`, context }), 404);
++            }
++            const detail = await http({ actor, path: `/api/graduation/packages/${own.graduationPackageSlug}`, context });
++            expectStatus(detail, 200);
++            assert.equal(String(detail.body.id), String(own.graduationPackageId));
++            assert.ok(idSet(detail.body.services).has(String(own.graduationServiceId)));
++            const quote = await http({ actor, path: `/api/graduation/quotes/${own.graduationQuoteId}`, context });
++            expectStatus(quote, 200);
++            assert.equal(String(quote.body.id), String(own.graduationQuoteId));
++        });
++    }
++    for (const [context, actor] of scopes) {
++        await scenario(`domain.${context}.timeline_get_no_insert`, 'timeline', 'Repeated resource/availability GET does not create resources', async () => {
++            const before = (await db.query('SELECT id,business_context,resource_id FROM timeline_resources ORDER BY id')).rows;
++            for (let index = 0; index < 2; index++) {
++                expectStatus(await http({ actor, path: '/api/timeline/resources', context }), 200);
++                expectStatus(await http({ actor, path: `/api/timeline/resources/availability?type=cabinet&date=${fixture.date}&time=12:00&duration=30`, context }), 200);
++            }
++            assert.deepEqual((await db.query('SELECT id,business_context,resource_id FROM timeline_resources ORDER BY id')).rows, before);
++        });
++    }
++    const rowTables = { bookings: ['bookings', 'bookingId'], customers: ['customers', 'customerId'],
++        leads: ['leads', 'leadId'], tasks: ['tasks', 'taskId'], finance: ['finance_transactions', 'financeTransactionId'],
++        warehouse: ['warehouse_stock', 'stockId'], products: ['products', 'productId'], graduation: ['graduation_quotes', 'graduationQuoteId'] };
++    const mutationPaths = {
++        bookings: row => `/api/bookings/${row.bookingId}`, customers: row => `/api/customers/${row.customerId}`,
++        leads: row => `/api/leads/${row.leadId}`, tasks: row => `/api/tasks/${row.taskId}`,
++        finance: row => `/api/finance/transactions/${row.financeTransactionId}`, warehouse: row => `/api/warehouse/${row.stockId}`,
++        products: row => `/api/products/${row.productId}`, graduation: row => `/api/graduation/quotes/${row.graduationQuoteId}`
++    };
++    for (const [context, actor] of scopes.filter(([value]) => value !== other)) {
++        for (const [domain, [table, key]] of Object.entries(rowTables)) {
++            await scenario(`domain.${context}.${domain}.foreign_write`, domain, 'Foreign update rejected404; exact stored target row unchanged', async () => {
++                for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                    const row = fixture.records[foreignContext];
++                    const before = (await db.query(`SELECT * FROM ${table} WHERE id=$1`, [row[key]])).rows;
++                    const body = { name: 'D06 forbidden edit', title: 'D06 forbidden edit', notes: 'D06 forbidden edit', amount: 321 };
++                    const result = await http({ actor, context, method: domain === 'leads' ? 'PATCH' : 'PUT', path: mutationPaths[domain](row), body });
++                    expectStatus(result, 404);
++                    assert.deepEqual((await db.query(`SELECT * FROM ${table} WHERE id=$1`, [row[key]])).rows, before);
++                }
++            });
++        }
++    }
++    for (const [context, actor] of scopes) {
++        const own = fixture.records[context];
++        await scenario(`domain.${context}.products.create`, 'products', 'Actual product create persists active business and submitted fixture price', async () => {
++            const suffix = context === park ? 'P' : context === dar ? 'D' : 'O';
++            const name = `${fixture.markers[context].product}-created`;
++            const result = await http({ actor, context, method: 'POST', path: '/api/products',
++                body: { code: `N6${suffix}`, timelineCode: `N6${suffix}`, label: name, name,
++                    category: 'animation', duration: 30, price: 1281, hosts: 1, description: 'Synthetic acceptance description' } });
++            expectStatus(result, 201);
++            assert.equal((await db.query('SELECT business_context FROM products WHERE id=$1', [result.body.id])).rows[0]?.business_context, context);
++            const read = await http({ actor, context, path: `/api/products/${result.body.id}` });
++            expectStatus(read, 200);
++            assert.equal(Number(read.body.price), 1281);
++        });
++        await scenario(`domain.${context}.tasks.priority`, 'tasks', 'Actual task priority update affects only its active-business record', async () => {
++            const foreignIds = Object.values(fixture.contexts).filter(value => value !== context).map(value => fixture.records[value].taskId);
++            const before = (await db.query('SELECT id,business_context,priority FROM tasks WHERE id=ANY($1::int[]) ORDER BY id', [foreignIds])).rows;
++            const result = await http({ actor, context, method: 'PATCH', path: `/api/tasks/${own.taskId}/priority`, body: { priority: 'high' } });
++            expectStatus(result, 200);
++            assert.equal((await db.query('SELECT priority FROM tasks WHERE id=$1', [own.taskId])).rows[0]?.priority, 'high');
++            assert.deepEqual((await db.query('SELECT id,business_context,priority FROM tasks WHERE id=ANY($1::int[]) ORDER BY id', [foreignIds])).rows, before);
++        });
++        await scenario(`domain.${context}.customers.create`, 'customers', 'Actual customer create persists the active business', async () => {
++            const result = await http({ actor, context, method: 'POST', path: '/api/customers', body: { name: `${fixture.markers[context].customer}-created` } });
++            expectStatus(result, 200);
++            assert.equal((await db.query('SELECT business_context FROM customers WHERE id=$1', [result.body.id])).rows[0]?.business_context, context);
++        });
++        await scenario(`domain.${context}.finance.own_and_foreign_references`, 'finance', 'Expense write with own references succeeds; foreign category/account/booking rejected without a new ledger row', async () => {
++            const payload = { type: 'expense', amount: 127, date: fixture.date, description: `${fixture.domainPrefix}-http-expense`,
++                categoryId: own.financeCategoryId, accountId: own.financeAccountId, bookingId: own.bookingId };
++            const result = await http({ actor, context, method: 'POST', path: '/api/finance/transactions', body: payload });
++            expectStatus(result, 201);
++            const stored = (await db.query('SELECT business_context,amount,booking_id FROM finance_transactions WHERE id=$1', [result.body.id])).rows[0];
++            assert.deepEqual(stored, { business_context: context, amount: 127, booking_id: own.bookingId });
++            const before = (await db.query('SELECT id,business_context,amount FROM finance_transactions ORDER BY id')).rows;
++            for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                const foreign = fixture.records[foreignContext];
++                for (const patch of [{ categoryId: foreign.financeCategoryId }, { accountId: foreign.financeAccountId }, { bookingId: foreign.bookingId }]) {
++                    expectStatus(await http({ actor, context, method: 'POST', path: '/api/finance/transactions', body: { ...payload, ...patch } }), 400);
++                }
++            }
++            assert.deepEqual((await db.query('SELECT id,business_context,amount FROM finance_transactions ORDER BY id')).rows, before);
++        });
++        await scenario(`domain.${context}.leads.foreign_references`, 'leads', 'Own lead accepts its retained relation; foreign product/booking fails and rolls back notes', async () => {
++            const valid = await http({ actor, context, method: 'PATCH', path: `/api/leads/${own.leadId}`,
++                body: { program_id: own.productId, booking_id: own.bookingId } });
++            expectStatus(valid, 200);
++            const before = (await db.query('SELECT * FROM leads WHERE id=$1', [own.leadId])).rows;
++            for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                const foreign = fixture.records[foreignContext];
++                for (const patch of [{ program_id: foreign.productId }, { booking_id: foreign.bookingId }]) {
++                    expectStatus(await http({ actor, context, method: 'PATCH', path: `/api/leads/${own.leadId}`,
++                        body: { ...patch, notes: 'D06 must roll back' } }), 404);
++                }
++            }
++            assert.deepEqual((await db.query('SELECT * FROM leads WHERE id=$1', [own.leadId])).rows, before);
++        });
++        await scenario(`domain.${context}.warehouse.foreign_location`, 'warehouse', 'Own stock create persists active owner; foreign location fails without new stock', async () => {
++            const payload = { name: `${fixture.markers[context].stock}-created`, category: 'consumable', quantity: 2, unit: 'шт', locationId: own.locationId };
++            const valid = await http({ actor, context, method: 'POST', path: '/api/warehouse', body: payload });
++            expectStatus(valid, 201);
++            assert.equal((await db.query('SELECT business_context FROM warehouse_stock WHERE id=$1', [valid.body.item?.id])).rows[0]?.business_context, context);
++            const before = (await db.query('SELECT id,business_context FROM warehouse_stock ORDER BY id')).rows;
++            for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                expectStatus(await http({ actor, context, method: 'POST', path: '/api/warehouse',
++                    body: { ...payload, name: `${payload.name}-foreign`, locationId: fixture.records[foreignContext].locationId } }), 400);
++            }
++            assert.deepEqual((await db.query('SELECT id,business_context FROM warehouse_stock ORDER BY id')).rows, before);
++        });
++    }
++    for (const context of [park, dar]) {
++        const own = fixture.records[context];
++        await scenario(`domain.${context}.graduation.foreign_references`, 'graduation', 'Foreign service/package/customer rejected without changing quote or quote count', async () => {
++            const before = (await db.query('SELECT * FROM graduation_quotes ORDER BY id')).rows;
++            for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                const foreign = fixture.records[foreignContext];
++                for (const patch of [{ selectedServices: [{ serviceId: foreign.graduationServiceId }] },
++                    { packageId: foreign.graduationPackageId }, { customerId: foreign.customerId }]) {
++                    const result = await http({ actor: 'owner', context, method: 'PUT',
++                        path: `/api/graduation/quotes/${own.graduationQuoteId}`, body: { ...patch, notes: 'D06 must not persist' } });
++                    expectStatus(result, 400);
++                }
++            }
++            assert.deepEqual((await db.query('SELECT * FROM graduation_quotes ORDER BY id')).rows, before);
++        });
++    }
++    const aggregateQuery = `businessScope=multi&businessContexts=${encodeURIComponent(`${park},${dar}`)}`;
++    for (const [domain, path, arrayKey, fixtureKey] of lists.filter(([domain]) => ['customers', 'leads', 'tasks', 'products'].includes(domain))) {
++        await scenario(`aggregate.${domain}.same_org`, domain, 'Same-role, same-organization aggregate includes Park+Dar and excludes organization2', async () => {
++            const result = await http({ actor: 'owner', context: park, path: `${path}${path.includes('?') ? '&' : '?'}${aggregateQuery}` });
++            expectStatus(result, 200);
++            const ids = idSet(arrayAt(result.body, arrayKey));
++            for (const context of [park, dar]) assert.ok(ids.has(String(fixture.records[context][fixtureKey])));
++            assert.ok(!ids.has(String(fixture.records[other][fixtureKey])));
++        });
++    }
++    await scenario('aggregate.permissions_and_organizations', 'auth', 'Mixed role and mixed organization aggregate requests fail closed', async () => {
++        const mixedRole = await http({ actor: 'worker', context: park, path: `/api/products?${aggregateQuery}` });
++        expectStatus(mixedRole, 403);
++        assert.equal(mixedRole.body.code, 'business_scope_permissions_mismatch');
++        const mixedOrg = await http({ actor: 'multiOrg', context: park, path: `/api/products?businessScope=multi&businessContexts=${park},${other}` });
++        expectStatus(mixedOrg, 403);
++        assert.equal(mixedOrg.body.code, 'business_scope_organization_mismatch');
++    });
++    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
++        await scenario(`aggregate.write.${method}`, 'auth', 'Every mutating method rejects aggregate scope before writes', async () => {
++            const own = fixture.records[park];
++            const before = (await db.query('SELECT * FROM customers WHERE id=$1', [own.customerId])).rows;
++            const path = method === 'POST' ? '/api/customers' : `/api/customers/${own.customerId}`;
++            const result = await http({ actor: 'owner', context: park, method, path: `${path}?${aggregateQuery}`, body: { name: 'D06 aggregate must not persist' } });
++            expectStatus(result, 403);
++            assert.equal(result.body.code, 'business_scope_read_only');
++            assert.deepEqual((await db.query('SELECT * FROM customers WHERE id=$1', [own.customerId])).rows, before);
++        });
++    }
++    await scenario('auth.explicit_foreign_context', 'auth', 'Every supported router denies inaccessible organization context', async () => {
++        for (const [, path] of lists) expectStatus(await http({ actor: 'owner', path, context: other }), 403);
++    });
++    await scenario('auth.default_and_role_isolation', 'auth', 'Same account receives Park director versus Dar animator rights; defaults are read from server', async () => {
++        for (const [context, role] of [[park, 'director'], [dar, 'animator']]) {
++            const profile = await http({ actor: 'worker', context, path: '/api/auth/business-profile' });
++            expectStatus(profile, 200);
++            assert.equal(profile.body.user.role, role);
++            assert.equal(profile.body.businessProfile.activeBusinessContext, context);
++        }
++        expectStatus(await http({ actor: 'worker', context: park, path: '/api/finance/accounts' }), 200);
++        expectStatus(await http({ actor: 'worker', context: dar, path: '/api/finance/accounts' }), 403);
++        for (const [actor, context] of [['owner', park], ['otherOrg', other]]) {
++            const profile = await http({ actor, path: '/api/auth/business-profile' });
++            expectStatus(profile, 200);
++            assert.equal(profile.body.businessProfile.activeBusinessContext, context);
++        }
++    });
++    await scenario('lifecycle.last_owner', 'lifecycle', 'Non-platform last owner cannot demote their organization ownership', async () => {
++        const ownerId = fixture.actors.owner.id;
++        assert.notEqual((await db.query('SELECT role FROM users WHERE id=$1', [ownerId])).rows[0]?.role, 'creator');
++        const path = `/api/organizations/${fixture.organizations.primaryId}/members/${ownerId}`;
++        const before = (await db.query('SELECT role,is_active FROM organization_memberships WHERE organization_id=$1 AND user_id=$2',
++            [fixture.organizations.primaryId, ownerId])).rows;
++        const result = await http({ actor: 'owner', context: park, method: 'PUT', path,
++            body: { businessId: fixture.businesses.parkId, role: 'director', organizationRole: 'member' } });
++        expectStatus(result, 409);
++        assert.equal(result.body.code, 'organization_last_owner');
++        assert.deepEqual((await db.query('SELECT role,is_active FROM organization_memberships WHERE organization_id=$1 AND user_id=$2',
++            [fixture.organizations.primaryId, ownerId])).rows, before);
++    });
++    await scenario('lifecycle.management_boundaries', 'lifecycle', 'Member cannot promote self; owner cannot configure organization2; admin cannot create business', async () => {
++        expectStatus(await http({ actor: 'worker', context: park, method: 'PUT',
++            path: `/api/organizations/${fixture.organizations.primaryId}/members/${fixture.actors.worker.id}`,
++            body: { businessId: fixture.businesses.darId, role: 'director' } }), 403);
++        expectStatus(await http({ actor: 'owner', context: park, method: 'PATCH',
++            path: `/api/organizations/businesses/${fixture.businesses.customId}/configuration`,
++            body: { label: 'D06 forbidden cross-organization label' } }), 403);
++        expectStatus(await http({ actor: 'admin', context: park, method: 'POST',
++            path: `/api/organizations/${fixture.organizations.primaryId}/businesses`,
++            body: { contextKey: `${fixture.domainPrefix}_admin_denied`, label: 'D06 forbidden admin business', modules: [] } }), 403);
++    });
++    await scenario('lifecycle.owner_custom_business', 'lifecycle', 'Owner creates, configures and deactivates a custom cabinet; disabled modules and unconfigured resources remain explicit', async () => {
++        const context = `${fixture.domainPrefix}_cabinet`;
++        const label = `D06 ${fixture.domainPrefix} Cabinet`;
++        const created = await http({ actor: 'owner', context: park, method: 'POST',
++            path: `/api/organizations/${fixture.organizations.primaryId}/businesses`,
++            body: { contextKey: context, label, shortLabel: 'D06 Cabinet', modules: [] } });
++        expectStatus(created, 201);
++        const id = created.body.business?.id;
++        assert.ok(id, 'Created business ID required');
++        fixture.lifecycleBusiness = { id, context, label, finalStatus: 'pending_deactivation' };
++        try {
++            expectStatus(await http({ actor: 'owner', context: park, method: 'PUT',
++                path: `/api/organizations/${fixture.organizations.primaryId}/members/${fixture.actors.owner.id}`,
++                body: { businessId: id, role: 'director', isDefault: false } }), 200);
++            const disabled = await http({ actor: 'owner', context, path: '/api/products' });
++            expectStatus(disabled, 403);
++            assert.equal(disabled.body.code, 'business_module_disabled');
++            expectStatus(await http({ actor: 'owner', context: park, method: 'PATCH',
++                path: `/api/organizations/businesses/${id}/configuration`,
++                body: { label: `${label} Updated`, modules: ['programs', 'timeline'] } }), 200);
++            const profile = await http({ actor: 'owner', context, path: '/api/auth/business-profile' });
++            expectStatus(profile, 200);
++            assert.equal(profile.body.businessProfile.activeProfile.label, `${label} Updated`);
++            const products = await http({ actor: 'owner', context, path: '/api/products' });
++            expectStatus(products, 200);
++            assert.equal(arrayAt(products.body).length, 0);
++            const resources = await http({ actor: 'owner', context, path: '/api/timeline/resources' });
++            expectStatus(resources, 200);
++            assert.equal(arrayAt(resources.body, 'resources').length, 0);
++            for (let attempt = 0; attempt < 2; attempt++) {
++                const initialized = await http({ actor: 'owner', context: park, method: 'POST',
++                    path: `/api/organizations/businesses/${id}/initialize-resources`, body: {} });
++                expectStatus(initialized, 200);
++                assert.equal(initialized.body.initialization.created, 0);
++                assert.ok(initialized.body.initialization.resourceTypes.every(row => row.status === 'no_defaults'));
++            }
++            const forbiddenModule = await http({ actor: 'owner', context: park, method: 'PATCH',
++                path: `/api/organizations/businesses/${id}/configuration`, body: { modules: ['programs', 'graduation'] } });
++            expectStatus(forbiddenModule, 400);
++            assert.equal(forbiddenModule.body.code, 'business_module_not_supported');
++        } finally {
++            const deactivated = await http({ actor: 'owner', context: park, method: 'PATCH',
++                path: `/api/organizations/businesses/${id}`, body: { status: 'inactive' } });
++            expectStatus(deactivated, 200);
++            fixture.lifecycleBusiness.finalStatus = 'inactive';
++        }
++        expectStatus(await http({ actor: 'owner', context, path: '/api/products' }), 403);
++    });
++    const containment = [
++        ['/api/catalogs', 'catalogs_not_migrated'], ['/api/booking-templates', 'booking_templates_not_migrated'],
++        ['/api/recurring', 'recurring_not_migrated'], ['/api/warehouse/photo-intake/status', 'warehouse_photo_intake_not_migrated'],
++        ['/api/warehouse/photo-intake', 'warehouse_photo_intake_not_migrated'], ['/api/chat/channels', 'chat_not_migrated'],
++        ['/api/kleshnya/sessions', 'kleshnya_not_migrated'], ['/api/finance/report/salary', 'finance_salary_not_migrated']
++    ];
++    for (const [context, actor] of scopes) {
++        for (const [path, code] of containment) {
++            await scenario(`containment.${context}.${code}.${path.endsWith('/status') ? 'status' : 'read'}`, 'containment', 'Membership entry returns its explicit NOT_MIGRATED code', async () => {
++                const result = await http({ actor, context, path });
++                expectStatus(result, 403);
++                assert.equal(result.body.code, code);
++            });
++        }
++    }
++    // Keep this actor separate from browser workers. Restore through the same
++    // lifecycle API; never mint another token to make a revocation test pass.
++    await scenario('auth.same_jwt_role_and_revoke', 'auth', 'Role reduction and membership revoke take effect immediately on the same JWT', async () => {
++        const actor = { ...fixture.actors.revocable };
++        assert.ok(actor.token, 'Real login token required');
++        const memberPath = `/api/organizations/${fixture.organizations.primaryId}/members/${actor.id}`;
++        const businessId = fixture.businesses.parkId;
++        const prior = (await db.query(`SELECT role,extra_roles,page_allowlist,page_denylist,action_allowlist,action_denylist,is_default
++            FROM business_memberships WHERE business_id=$1 AND user_id=$2`, [businessId, actor.id])).rows[0];
++        assert.ok(prior, 'Revocable actor must have a seeded membership');
++        const restore = { businessId, role: prior.role, extraRoles: prior.extra_roles,
++            pageAllowlist: prior.page_allowlist, pageDenylist: prior.page_denylist,
++            actionAllowlist: prior.action_allowlist, actionDenylist: prior.action_denylist, isDefault: prior.is_default };
++        try {
++            expectStatus(await http({ actor, context: park, path: '/api/finance/accounts' }), 200);
++            expectStatus(await http({ actor: 'owner', context: park, method: 'PUT', path: memberPath,
++                body: { businessId, role: 'animator', actionAllowlist: [], actionDenylist: [], extraRoles: [] } }), 200);
++            expectStatus(await http({ actor, context: park, path: '/api/finance/accounts' }), 403);
++            const profile = await http({ actor, context: park, path: '/api/auth/business-profile' });
++            expectStatus(profile, 200);
++            assert.equal(profile.body.user.role, 'animator');
++            expectStatus(await http({ actor: 'owner', context: park, method: 'DELETE', path: `${memberPath}/${businessId}` }), 200);
++            expectStatus(await http({ actor, context: park, path: '/api/products' }), 403);
++            expectStatus(await http({ actor, context: park, path: '/api/auth/business-profile' }), 403);
++            assert.equal(actor.token, fixture.actors.revocable.token);
++        } finally {
++            expectStatus(await http({ actor: 'owner', context: park, method: 'PUT', path: memberPath, body: restore }), 200);
++        }
++        expectStatus(await http({ actor, context: park, path: '/api/finance/accounts' }), 200);
++    });
++    // Main reads for the remaining enabled modules. Existing core counts stay
++    // separate; provider-facing and unowned indirect adapters are not certified.
++    for (const [context, actor] of scopes) {
++        for (const [widget, key, arrayKey] of [['tasks', 'taskId', 'tasks'], ['leads_new', 'leadId', 'leads']]) {
++            await scenario(`enabled_extra.${context}.dashboard.${widget}`, 'dashboard',
++                'Owned dashboard sentinel included; foreign business and organization sentinels absent', async () => {
++                    const result = await http({ actor, context, path: `/api/dashboard/widgets/${widget}` });
++                    expectStatus(result, 200);
++                    const ids = idSet(arrayAt(result.body?.data, arrayKey));
++                    assert.ok(ids.has(String(fixture.records[context][key])), 'Owned dashboard sentinel required');
++                    for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                        assert.ok(!ids.has(String(fixture.records[foreignContext][key])), 'Foreign dashboard sentinel must be absent');
++                    }
++                });
++        }
++        for (const [kind, path] of [['cabinet', '/api/business/cabinet'], ['timeline_display', '/api/settings/timeline-display']]) {
++            await scenario(`enabled_extra.${context}.settings.${kind}`, 'settings',
++                'Scoped settings identify the selected business and do not insert or alter persisted settings', async () => {
++                    const snapshot = async () => (await db.query(`SELECT key,md5(COALESCE(value,'')) AS fingerprint
++                        FROM settings WHERE key=ANY($1::text[]) ORDER BY key`,
++                    [[`business_cabinet:${context}`, `timeline_display:${context}`]])).rows;
++                    const before = await snapshot();
++                    const result = await http({ actor, context, path });
++                    expectStatus(result, 200);
++                    if (kind === 'cabinet') {
++                        assert.equal(result.body.businessContext, context);
++                        assert.equal(result.body.cabinet?.context, context);
++                        assert.equal(result.body.cabinet?.modules?.source, 'business_registry');
++                        assert.equal(result.body.cabinet?.modules?.readOnly, true);
++                        const registered = (await db.query('SELECT modules FROM businesses WHERE context_key=$1', [context])).rows[0];
++                        assert.ok(registered);
++                        assert.deepEqual([...result.body.cabinet.modules.enabledIds].sort(), [...registered.modules].sort());
++                    } else assert.equal(result.body.context, context);
++                    assert.deepEqual(await snapshot(), before, 'GET must not create defaults or change scoped settings');
++                });
++        }
++        await scenario(`enabled_extra.${context}.omni.list`, 'omni',
++            'Owned synthetic conversation included; foreign conversations absent without provider calls', async () => {
++                const result = await http({ actor, context, path: '/api/omni/conversations?limit=100' });
++                expectStatus(result, 200);
++                assert.equal(result.body.businessContext, context);
++                const ids = idSet(arrayAt(result.body.data, 'conversations'));
++                assert.ok(ids.has(String(fixture.records[context].conversationId)));
++                for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                    assert.ok(!ids.has(String(fixture.records[foreignContext].conversationId)));
++                }
++            });
++        await scenario(`enabled_extra.${context}.omni.context`, 'omni',
++            'Owned conversation resolves its customer/lead/booking; every foreign conversation ID returns404', async () => {
++                const own = fixture.records[context];
++                const result = await http({ actor, context, path: `/api/omni/conversations/${own.conversationId}/context` });
++                expectStatus(result, 200);
++                assert.equal(String(result.body.data?.conversation?.id), String(own.conversationId));
++                assert.equal(result.body.data?.conversation?.businessContext, context);
++                for (const [relation, key] of [['customer', 'customerId'], ['lead', 'leadId'], ['booking', 'bookingId']]) {
++                    assert.equal(String(result.body.data?.exact?.[relation]?.id), String(own[key]));
++                }
++                for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                    expectStatus(await http({ actor, context,
++                        path: `/api/omni/conversations/${fixture.records[foreignContext].conversationId}/context` }), 404);
++                }
++            });
++        await scenario(`enabled_extra.${context}.omni.messages`, 'omni',
++            'Owned synthetic message readable; foreign conversations return an empty message collection', async () => {
++                const own = fixture.records[context];
++                const result = await http({ actor, context, path: `/api/omni/conversations/${own.conversationId}/messages` });
++                expectStatus(result, 200);
++                assert.ok(idSet(arrayAt(result.body.data, 'messages')).has(String(own.messageId)));
++                for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
++                    const foreign = await http({ actor, context,
++                        path: `/api/omni/conversations/${fixture.records[foreignContext].conversationId}/messages` });
++                    expectStatus(foreign, 200);
++                    assert.equal(arrayAt(foreign.body.data, 'messages').length, 0);
++                    assert.equal(foreign.body.data.total, 0);
++                }
++            });
++    }
++    for (const [domain, paths] of [
++        ['dashboard', ['/api/dashboard/widgets/tasks', '/api/dashboard/widgets/leads_new']],
++        ['settings', ['/api/business/cabinet', '/api/settings/timeline-display']],
++        ['omni', ['/api/omni/conversations', `/api/omni/conversations/${fixture.records[park].conversationId}/context`]]
++    ]) {
++        await scenario(`enabled_extra.${domain}.inaccessible_organization`, domain,
++            'Explicit context from an inaccessible organization is rejected before the read', async () => {
++                for (const path of paths) {
++                    expectStatus(await http({ actor: 'otherOrg', context: park, path }), 403);
++                    expectStatus(await http({ actor: 'owner', context: other, path }), 403);
++                }
++            });
++    }
++    // Additional residual probes are separate from the 123 core scenarios.
++    // No contractor message, order mutation, export or provider action is used.
++    for (const [context, actor] of scopes) {
++        for (const [domain, path, arrayKey, key] of [
++            ['contractors', '/api/contractors', null, 'contractorId'],
++            ['procurement', '/api/procurement', 'lists', 'procurementListId']
++        ]) {
++            await scenario(`warehouse_residual.${context}.${domain}.unassigned_list`, 'warehouse_residual',
++                'Unassigned legacy rows are quarantined or excluded from membership reads', async () => {
++                    const result = await http({ actor, context, path });
++                    if (result.status === 403) return;
++                    expectStatus(result, 200);
++                    const ids = idSet(arrayAt(result.body, arrayKey));
++                    const exposed = Object.values(fixture.unownedWarehouseSentinels)
++                        .filter(row => ids.has(String(row[key]))).map(row => row[key]);
++                    activeEvidence[activeEvidence.length - 1].sentinelEvidence = {
++                        legacyRowOwnership: 'UNASSIGNED_GLOBAL_ROW', exposedSyntheticIds: exposed };
++                    assert.equal(exposed.length, 0, `Unassigned ${domain} rows returned to ${context}: ${exposed.join(',')}`);
++                });
++        }
++    }
++    for (const ownerContext of [park, dar]) {
++        const sentinel = fixture.unownedWarehouseSentinels[ownerContext];
++        for (const [context, actor] of [[ownerContext === park ? dar : park, 'owner'], [other, 'otherOrg']]) {
++            for (const [kind, parameter, id] of [
++                ['direct_stock', 'stockItemId', sentinel.stockId],
++                ['procurement_stock', 'procurementItemId', sentinel.procurementItemId]
++            ]) {
++                await scenario(`warehouse_residual.${context}.${ownerContext}.${kind}`, 'warehouse_residual',
++                    'Contractor order-context cannot return a stock item owned by another business or organization', async () => {
++                        const stored = (await db.query('SELECT id,business_context FROM warehouse_stock WHERE id=$1',
++                            [sentinel.stockId])).rows[0];
++                        assert.equal(stored?.business_context, ownerContext, 'Foreign stock must have explicit stored ownership');
++                        assert.notEqual(context, ownerContext);
++                        const result = await http({ actor, context,
++                            path: `/api/contractors/${sentinel.contractorId}/order-context?${parameter}=${id}` });
++                        activeEvidence[activeEvidence.length - 1].sentinelEvidence = {
++                            storedStockId: stored.id, storedStockBusinessContext: stored.business_context,
++                            returnedStockId: result.body?.stockItem?.id ?? null,
++                            returnedStockBusinessContext: result.body?.stockItem?.business_context ?? null,
++                            returnedProcurementItemId: result.body?.procurementItem?.id ?? null,
++                            legacyRowOwnership: sentinel.legacyRowOwnership };
++                        if ([403, 404].includes(result.status)) return;
++                        expectStatus(result, 200);
++                        assert.notEqual(String(result.body?.stockItem?.id), String(sentinel.stockId),
++                            `Foreign stock ${sentinel.stockId} owned by ${ownerContext} returned to ${context} through ${kind}`);
++                    });
++            }
++        }
++    }
++    return { scenarios: outcomes.length, pass: outcomes.filter(row => row.status === 'PASS').length,
++        fail: outcomes.filter(row => row.status === 'FAIL').length, outcomes };
++}
++
++module.exports = { seed, run };
+diff --git a/tests/acceptance/sys-mb-local-preload.cjs b/tests/acceptance/sys-mb-local-preload.cjs
+new file mode 100644
+index 000000000..d7738d5cf
+--- /dev/null
++++ b/tests/acceptance/sys-mb-local-preload.cjs
+@@ -0,0 +1,38 @@
++'use strict';
++
++// Test transport fence only. Real Express, auth, services and SQL remain loaded.
++const assert = require('node:assert/strict');
++assert.equal(process.env.SYS_MB_D06_LOCAL, 'true');
++assert.equal(process.env.NODE_ENV, 'test');
++assert.match(process.env.PGDATABASE || '', /^eventgenix_d06_test_[a-f0-9]{32}$/);
++assert.equal(process.env.PGHOST, '/var/run/postgresql');
++assert.equal(process.env.BACKUP_OUTBOUND_HOLD, 'true');
++const local = host => ['localhost', '127.0.0.1', '::1', '[::1]'].includes(String(host).toLowerCase());
++function validate(target) {
++    const host = typeof target === 'string' || target instanceof URL
++        ? new URL(target).hostname : target?.hostname || String(target?.host || 'localhost').split(':')[0];
++    if (local(host)) return;
++    process.stderr.write(`[D06_OUTBOUND_DENIED] ${String(host).replace(/[^a-zA-Z0-9.:-]/g, '')}\n`);
++    throw Object.assign(new Error('Non-loopback transport blocked by D06 local harness'), { code: 'D06_OUTBOUND_BLOCKED' });
++}
++const nativeFetch = global.fetch;
++global.fetch = (input, init) => { validate(input?.url || input); return nativeFetch(input, init); };
++for (const moduleName of ['node:http', 'node:https']) {
++    const transport = require(moduleName);
++    for (const method of ['request', 'get']) {
++        const original = transport[method];
++        transport[method] = function(input, ...args) { validate(input); return original.call(this, input, ...args); };
++    }
++}
++// The supported outbound-hold mode returns before WS initialization. Attach the
++// unchanged production WS module explicitly; scheduler behavior is NOT_TESTABLE.
++const http = require('node:http');
++const originalEmit = http.Server.prototype.emit;
++http.Server.prototype.emit = function(event, ...args) {
++    const result = originalEmit.call(this, event, ...args);
++    if (event === 'listening' && !this.__d06WebSocket) {
++        this.__d06WebSocket = true;
++        require('../../services/websocket').initWebSocket(this);
++    }
++    return result;
++};
+diff --git a/tests/acceptance/sys-mb-readiness-scenarios.cjs b/tests/acceptance/sys-mb-readiness-scenarios.cjs
+new file mode 100644
+index 000000000..9d97e6aa8
+--- /dev/null
++++ b/tests/acceptance/sys-mb-readiness-scenarios.cjs
+@@ -0,0 +1,354 @@
++'use strict';
++
++// Acceptance-only collector and read probes. Runtime modules are not replaced.
++// Seed writes are restricted to the parent-owned disposable D06 database.
++const assert = require('node:assert/strict');
++const crypto = require('node:crypto');
++const { runOwnershipPreflight, safeFailure } = require('../../scripts/audit-multibusiness-ownership');
++
++const OWNED_TABLES = Object.freeze([
++    'bookings', 'customers', 'leads', 'lead_customer_links', 'tasks', 'products', 'timeline_resources',
++    'finance_transactions', 'finance_accounts', 'finance_categories',
++    'warehouse_stock', 'warehouse_locations', 'warehouse_history', 'warehouse_stock_movements',
++    'graduation_settings', 'graduation_services', 'graduation_packages', 'graduation_package_items',
++    'graduation_quotes', 'graduation_child_packs', 'graduation_children',
++    'graduation_diploma_templates', 'graduation_diploma_exports', 'graduation_automation_state'
++]);
++const EDGES = Object.freeze([
++    ['booking_customer', 'bookings', 'customer_id', 'customers', 'id'],
++    ['booking_product', 'bookings', 'program_id', 'products', 'id'],
++    ['booking_linked_parent', 'bookings', 'linked_to', 'bookings', 'id'],
++    ['customer_lead', 'customers', 'lead_id', 'leads', 'id'],
++    ['lead_booking', 'leads', 'booking_id', 'bookings', 'id'],
++    ['lead_product', 'leads', 'program_id', 'products', 'id'],
++    ['lead_link_lead', 'lead_customer_links', 'lead_id', 'leads', 'id'],
++    ['lead_link_customer', 'lead_customer_links', 'customer_id', 'customers', 'id'],
++    ['finance_booking', 'finance_transactions', 'booking_id', 'bookings', 'id'],
++    ['finance_account', 'finance_transactions', 'account_id', 'finance_accounts', 'id'],
++    ['finance_category', 'finance_transactions', 'category_id', 'finance_categories', 'id'],
++    ['stock_location', 'warehouse_stock', 'location_id', 'warehouse_locations', 'id'],
++    ['stock_history', 'warehouse_history', 'stock_id', 'warehouse_stock', 'id'],
++    ['stock_movement', 'warehouse_stock_movements', 'warehouse_stock_id', 'warehouse_stock', 'id'],
++    ['graduation_package_item_package', 'graduation_package_items', 'package_id', 'graduation_packages', 'id'],
++    ['graduation_package_item_service', 'graduation_package_items', 'service_id', 'graduation_services', 'id'],
++    ['graduation_pack_quote', 'graduation_child_packs', 'graduation_quote_id', 'graduation_quotes', 'id'],
++    ['graduation_child_quote', 'graduation_children', 'graduation_quote_id', 'graduation_quotes', 'id'],
++    ['graduation_child_pack', 'graduation_children', 'child_pack_id', 'graduation_child_packs', 'id'],
++    ['graduation_export_quote', 'graduation_diploma_exports', 'graduation_quote_id', 'graduation_quotes', 'id']
++]);
++const collectionDefinition = Object.freeze({
++    source: 'ACTUAL_LOCAL_APP_DISPOSABLE_POSTGRESQL',
++    ownerTables: OWNED_TABLES, relationshipIds: EDGES.map(edge => edge[0]),
++    transaction: 'REPEATABLE READ READ ONLY; explicit ROLLBACK',
++    unknownOwnerPolicy: 'Observe NULL/empty and unregistered contexts; never coalesce an owner to Park.',
++    limitations: [
++        'Fixture rows and application seeds are synthetic; counts are not a production inventory or an owner approval.',
++        'This finite relationship list does not inspect embedded JSON, external assets, provider jobs or every operational join.',
++        'Missing table/column, permission denial or RLS produces NOT_TESTABLE rather than a zero count.',
++        'MD compatibility permits some opaque external product codes; missing product counts alone do not prove a service defect.',
++        'Staff/payroll/certificate allocation and amounts are not inferred from membership or row counts.',
++        'Background workers and outbound providers are held by the parent harness; their usage/delivery cannot be measured here.'
++    ]
++});
++
++function safeCode(error) {
++    return /^[A-Z0-9_]{3,90}$/.test(String(error?.code || '')) ? error.code : 'READINESS_COLLECTION_FAILED';
++}
++
++async function assertFixtureDatabase(db, fixture) {
++    assert.notEqual(process.env.NODE_ENV, 'production');
++    assert.match(String(fixture?.database || ''), /^eventgenix_d06_test_[a-f0-9]{32}$/);
++    const result = await db.query('SELECT current_database() AS name');
++    assert.equal(result.rows[0]?.name, fixture.database, 'Readiness must use the exact parent-owned fixture database');
++}
++
++async function seed({ db, fixture }) {
++    await assertFixtureDatabase(db, fixture);
++    const suffix = crypto.createHash('sha256').update(String(fixture.runId)).digest('hex').slice(0, 10);
++    const marker = `D06_READINESS_${suffix}`;
++    // Measure the same collector before injection: a nonzero startup count alone
++    // must not satisfy the controlled sensitivity assertion after injection.
++    const before = await collectOwnershipReadiness(db, fixture);
++    const state = { source: 'DELIBERATE_DISPOSABLE_SENTINELS', marker, rows: {}, constraints: {},
++        baseline: { unregisteredProductRows: before.tables.products?.counts?.unregisteredContextRows ?? null,
++            crossContextCustomerLinks: before.relationships.lead_link_customer?.counts?.crossContextRows ?? null } };
++    const client = await db.connect();
++    try {
++        await client.query('BEGIN');
++        let sequence = 0;
++        async function insert(name, sql, params) {
++            const savepoint = `d06_readiness_seed_${++sequence}`;
++            await client.query(`SAVEPOINT ${savepoint}`);
++            try {
++                const result = await client.query(sql, params);
++                assert.equal(result.rowCount, 1);
++                const row = result.rows[0];
++                await client.query(`RELEASE SAVEPOINT ${savepoint}`);
++                state.rows[name] = { status: 'SEEDED', id: row.id };
++                return row.id;
++            } catch (error) {
++                await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
++                await client.query(`RELEASE SAVEPOINT ${savepoint}`);
++                state.rows[name] = { status: 'NOT_TESTABLE', code: safeCode(error),
++                    column: /^[a-z_][a-z0-9_]*$/.test(error.column || '') ? error.column : null };
++                return null;
++            }
++        }
++        await insert('staff', `INSERT INTO staff (name,department,position,is_active)
++            VALUES ($1,'D06_SYNTHETIC','Fixture only',true) RETURNING id`, [marker]);
++        state.certificateCode = `D06${suffix.toUpperCase()}`;
++        await insert('certificate', `INSERT INTO certificates
++            (cert_code,display_mode,display_value,type_text,valid_until,status)
++            VALUES ($1,'fio',$2,'Synthetic read probe','2099-12-31','active') RETURNING id`,
++        [state.certificateCode, marker]);
++        await insert('art', `INSERT INTO brand_guidelines (category,title,value,is_active,created_by)
++            VALUES ('rule',$1,'Synthetic read probe',true,'d06_fixture') RETURNING id`, [marker]);
++        await insert('unregisteredProduct', `INSERT INTO products
++            (id,business_context,code,timeline_code,label,name,category,duration,price)
++            VALUES ($1,'d06_unregistered',$2,'Q6U',$3,$3,'animation',30,0) RETURNING id`,
++        [`d06_orphan_product_${suffix}`, `D06${suffix}`, marker]);
++        const leadId = await insert('crossContextLead', `INSERT INTO leads
++            (business_context,client_name,status) VALUES ($1,$2,'new') RETURNING id`, [fixture.contexts.park, marker]);
++        const customerId = await insert('crossContextCustomer', `INSERT INTO customers
++            (business_context,name) VALUES ($1,$2) RETURNING id`, [fixture.contexts.dar, marker]);
++        if (leadId && customerId) {
++            await insert('crossContextLink', `INSERT INTO lead_customer_links
++                (business_context,lead_id,customer_id,link_type,source)
++                VALUES ($1,$2,$3,'d06_readiness','d06_synthetic_collector_probe') RETURNING id`,
++            [fixture.contexts.park, leadId, customerId]);
++        }
++        const nullOwner = await insert('nullOwnerProduct', `INSERT INTO products
++            (id,business_context,code,timeline_code,label,name,category,duration,price)
++            VALUES ($1,NULL,$2,'Q6N',$3,$3,'animation',30,0) RETURNING id`,
++        [`d06_null_product_${suffix}`, `DN${suffix}`, marker]);
++        state.constraints.nullProductOwner = nullOwner
++            ? { status: 'INJECTED_WITHOUT_SCHEMA_CHANGE' }
++            : { status: 'NOT_TESTABLE', reason: 'EXISTING_CONSTRAINT_OR_SCHEMA_REJECTED_SENTINEL',
++                code: state.rows.nullOwnerProduct.code, column: state.rows.nullOwnerProduct.column };
++        if (customerId) {
++            const missingLeadId = -2147000000;
++            assert.equal((await client.query('SELECT id FROM leads WHERE id=$1', [missingLeadId])).rowCount, 0);
++            const orphanLink = await insert('orphanLeadLink', `INSERT INTO lead_customer_links
++                (business_context,lead_id,customer_id,link_type,source)
++                VALUES ($1,$2,$3,'d06_missing_parent','d06_synthetic_collector_probe') RETURNING id`,
++            [fixture.contexts.park, missingLeadId, customerId]);
++            state.constraints.missingLeadParent = orphanLink
++                ? { status: 'INJECTED_WITHOUT_SCHEMA_CHANGE' }
++                : { status: 'NOT_TESTABLE', reason: 'EXISTING_CONSTRAINT_OR_SCHEMA_REJECTED_SENTINEL', code: state.rows.orphanLeadLink.code };
++        }
++        await client.query('COMMIT');
++    } catch (error) {
++        await client.query('ROLLBACK');
++        throw error;
++    } finally { client.release(); }
++    fixture.readiness = state;
++    return state;
++}
++
++async function collectOwnershipReadiness(db, fixture) {
++    await assertFixtureDatabase(db, fixture);
++    const client = await db.connect();
++    const tables = [...new Set([...OWNED_TABLES, 'organizations', 'businesses', 'business_memberships', 'organization_memberships'])];
++    const result = { source: collectionDefinition.source, collectionStatus: 'COMPLETE', readOnly: false,
++        tables: {}, relationships: {}, membership: {}, limitations: collectionDefinition.limitations };
++    try {
++        await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
++        await client.query("SET LOCAL statement_timeout = '15s'");
++        await client.query("SET LOCAL lock_timeout = '1s'");
++        assert.equal((await client.query('SHOW transaction_read_only')).rows[0].transaction_read_only, 'on');
++        result.readOnly = true;
++        const metadata = await client.query(`SELECT c.relname AS table_name,a.attname AS column_name,c.relrowsecurity
++            FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
++            JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid
++            WHERE n.nspname='public' AND c.relkind IN ('r','p') AND a.attnum>0 AND NOT a.attisdropped
++              AND c.relname=ANY($1::text[])`, [tables]);
++        const columns = new Map(tables.map(table => [table, new Set()]));
++        const rls = new Set();
++        for (const row of metadata.rows) {
++            columns.get(row.table_name)?.add(row.column_name);
++            if (row.relrowsecurity) rls.add(row.table_name);
++        }
++        const available = (table, ...names) => columns.get(table)?.size && names.every(name => columns.get(table).has(name));
++        let sequence = 0;
++        async function observe(requirements, sql, params = []) {
++            if (requirements.some(([table]) => rls.has(table))) {
++                result.collectionStatus = 'INCOMPLETE';
++                return { status: 'NOT_TESTABLE', reason: 'ROW_LEVEL_SECURITY', counts: null };
++            }
++            if (!requirements.every(([table, ...names]) => available(table, ...names))) {
++                result.collectionStatus = 'INCOMPLETE';
++                return { status: 'NOT_TESTABLE', reason: 'MISSING_SCHEMA', counts: null };
++            }
++            const savepoint = `d06_readiness_observe_${++sequence}`;
++            await client.query(`SAVEPOINT ${savepoint}`);
++            try {
++                const query = await client.query(sql, params);
++                const counts = Object.fromEntries(Object.entries(query.rows[0] || {}).map(([key, value]) => {
++                    const number = Number(value);
++                    assert.ok(/^\d+$/.test(String(value)) && Number.isSafeInteger(number));
++                    return [key, number];
++                }));
++                await client.query(`RELEASE SAVEPOINT ${savepoint}`);
++                return { status: 'OBSERVED', counts };
++            } catch (error) {
++                await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
++                await client.query(`RELEASE SAVEPOINT ${savepoint}`);
++                result.collectionStatus = 'INCOMPLETE';
++                return { status: 'NOT_TESTABLE', reason: safeCode(error), counts: null };
++            }
++        }
++        for (const table of OWNED_TABLES) {
++            result.tables[table] = await observe([[table, 'business_context'], ['businesses', 'context_key', 'organization_id', 'status'], ['organizations', 'id', 'status']],
++                `SELECT COUNT(*) AS "totalRows",
++                  COUNT(*) FILTER (WHERE NULLIF(BTRIM(r.business_context),'') IS NULL) AS "missingContextRows",
++                  COUNT(*) FILTER (WHERE NULLIF(BTRIM(r.business_context),'') IS NOT NULL AND NOT EXISTS (
++                    SELECT 1 FROM public.businesses b WHERE b.context_key=r.business_context)) AS "unregisteredContextRows",
++                  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM public.businesses b LEFT JOIN public.organizations o ON o.id=b.organization_id
++                    WHERE b.context_key=r.business_context AND (b.status IS DISTINCT FROM 'active' OR o.status IS DISTINCT FROM 'active'))) AS "inactiveOwnerRows"
++                 FROM public."${table}" r`);
++        }
++        for (const [id, child, foreignKey, parent, primaryKey] of EDGES) {
++            result.relationships[id] = await observe([[child, foreignKey, 'business_context'], [parent, primaryKey, 'business_context']],
++                `SELECT COUNT(*) FILTER (WHERE NULLIF(BTRIM(c."${foreignKey}"::text),'') IS NOT NULL) AS "linkedRows",
++                  COUNT(*) FILTER (WHERE NULLIF(BTRIM(c."${foreignKey}"::text),'') IS NOT NULL AND p."${primaryKey}" IS NULL) AS "orphanRows",
++                  COUNT(*) FILTER (WHERE p."${primaryKey}" IS NOT NULL AND NULLIF(BTRIM(c.business_context),'') IS NOT NULL
++                    AND NULLIF(BTRIM(p.business_context),'') IS NOT NULL AND c.business_context<>p.business_context) AS "crossContextRows",
++                  COUNT(*) FILTER (WHERE NULLIF(BTRIM(c."${foreignKey}"::text),'') IS NOT NULL
++                    AND (NULLIF(BTRIM(c.business_context),'') IS NULL OR (p."${primaryKey}" IS NOT NULL AND NULLIF(BTRIM(p.business_context),'') IS NULL))) AS "unknownContextRows"
++                 FROM public."${child}" c LEFT JOIN public."${parent}" p ON p."${primaryKey}"::text=c."${foreignKey}"::text`);
++        }
++        result.membership.duplicateBusinessMemberships = await observe([['business_memberships', 'user_id', 'business_id']],
++            `SELECT COUNT(*) AS "duplicateKeys" FROM (SELECT user_id,business_id FROM business_memberships GROUP BY user_id,business_id HAVING COUNT(*)>1) duplicated`);
++        result.membership.activeWithoutOrganizationMembership = await observe([
++            ['business_memberships', 'user_id', 'business_id', 'is_active'], ['businesses', 'id', 'organization_id'],
++            ['organization_memberships', 'user_id', 'organization_id', 'is_active']],
++        `SELECT COUNT(*) AS "rows" FROM business_memberships bm JOIN businesses b ON b.id=bm.business_id
++            WHERE bm.is_active IS TRUE AND NOT EXISTS (SELECT 1 FROM organization_memberships om
++                WHERE om.user_id=bm.user_id AND om.organization_id=b.organization_id AND om.is_active IS TRUE)`);
++        await client.query('ROLLBACK');
++        return result;
++    } catch (error) {
++        await client.query('ROLLBACK').catch(() => {});
++        throw error;
++    } finally { client.release(); }
++}
++
++async function run({ baseUrl, fixture, request, db, record }) {
++    assert.equal(new URL(baseUrl).hostname, '127.0.0.1');
++    await assertFixtureDatabase(db, fixture);
++    const output = { definition: collectionDefinition, profileMatrix: [], protectedReadMatrix: [],
++        compatibility: { source: 'MEASURED_FIXTURE_PROFILE_REQUESTS_ONLY', membershipRequests: 0,
++            compatibilityRequests: 0, failedRequests: 0, runtimeTelemetry: {
++                status: 'NOT_AVAILABLE', authoritativeUsage: null, observationWindow: null,
++                coverage: 'Profile probes only; API audit excludes reads and ordinary403; no complete mode/ingress counter.',
++                backgroundWorkers: 'HELD_BY_PARENT_HARNESS', outboundProviders: 'FORBIDDEN',
++                zeroUsageEstablished: false } }, sentinelSetup: fixture.readiness || null };
++    const cases = [['owner', fixture.contexts.park], ['owner', fixture.contexts.dar],
++        ['multiOrg', fixture.contexts.park], ['multiOrg', fixture.contexts.other], ['otherOrg', fixture.contexts.other]];
++    if (fixture.actors.compatibility) cases.push(['compatibility', 'maysternya_doli']);
++    for (const [actor, context] of cases) {
++        const id = `D06-READINESS-PROFILE-${actor}-${context}`;
++        try {
++            const response = await request({ actor, path: '/api/auth/business-profile', context });
++            const profile = response.body?.businessProfile;
++            const active = profile?.activeProfile;
++            const passed = response.status === 200 && active?.businessContext === context
++                && ['membership', 'compatibility'].includes(profile?.membershipMode);
++            const observed = { actor, context, httpStatus: response.status, code: response.body?.code || null,
++                activeContext: profile?.activeBusinessContext || null, membershipMode: profile?.membershipMode || null,
++                role: typeof response.body?.user?.role === 'string' ? response.body.user.role : null,
++                roles: Array.isArray(response.body?.user?.roles)
++                    ? response.body.user.roles.filter(role => typeof role === 'string') : null,
++                modulesSource: active?.modules?.source || null,
++                enabledModules: active?.modules?.enabledIds || [],
++                modules: (active?.modules?.descriptors || []).map(module => ({ key: module.key, status: module.status,
++                    canEnable: module.canEnable, enabled: active.modules.enabled?.[module.key] === true })) };
++            output.profileMatrix.push(observed);
++            if (passed) output.compatibility[profile.membershipMode === 'membership' ? 'membershipRequests' : 'compatibilityRequests']++;
++            else output.compatibility.failedRequests++;
++            record({ id, domain: 'readiness_profile', status: passed ? 'PASS' : 'FAIL', method: 'GET',
++                path: '/api/auth/business-profile', expected: { status: 200, activeContext: context }, observed });
++        } catch (error) {
++            output.compatibility.failedRequests++;
++            record({ id, domain: 'readiness_profile', status: 'FAIL', path: '/api/auth/business-profile', observed: { code: safeCode(error) } });
++        }
++    }
++    const protectedCases = [
++        ['staff', '/api/staff', 'staff'],
++        ['certificates', '/api/certificates', 'certificate'],
++        ['art', '/api/art-director/brand', 'art'],
++        ['payroll', `/api/payroll/settlement?month=${String(fixture.date).slice(0, 7)}`, null]
++    ];
++    for (const [actor, context] of [['owner', fixture.contexts.dar], ['otherOrg', fixture.contexts.other]]) {
++        for (const [domain, path, sentinel] of protectedCases) {
++            const id = `D06-READINESS-PROTECTED-${domain}-${context}`;
++            if (sentinel && fixture.readiness?.rows?.[sentinel]?.status !== 'SEEDED') {
++                record({ id, domain, status: 'NOT_TESTABLE', method: 'GET', path,
++                    observed: { reason: 'CONTROLLED_SENTINEL_NOT_SEEDED', code: fixture.readiness?.rows?.[sentinel]?.code || null } });
++                continue;
++            }
++            try {
++                const response = await request({ actor, path, context });
++                const markerPresent = sentinel ? JSON.stringify(response.body || {}).includes(fixture.readiness.marker) : null;
++                const code = response.body?.code || null;
++                const explicitContainment = response.status === 403 && /(?:not_migrated|module_disabled)$/.test(String(code || ''));
++                const status = explicitContainment ? 'PASS' : response.status === 403 ? 'NOT_TESTABLE' : 'FAIL';
++                const observed = { actor, context, httpStatus: response.status, code, sentinelPresent: markerPresent,
++                    outcome: explicitContainment ? 'EXPLICIT_UNAVAILABLE_GUARD' : response.status === 403
++                        ? 'ROLE_OR_OTHER_DENIAL_NOT_DOMAIN_PROOF' : markerPresent
++                            ? 'UNOWNED_SYNTHETIC_RECORD_EXPOSED' : 'UNMIGRATED_ENDPOINT_NOT_DEMONSTRABLY_CONTAINED' };
++                output.protectedReadMatrix.push({ domain, method: 'GET', path, status, ...observed });
++                record({ id, domain, status, method: 'GET', path,
++                    expected: { status: 403, behavior: 'Unsupported membership domain is unavailable before reading global records.' }, observed });
++            } catch (error) {
++                record({ id, domain, status: 'FAIL', method: 'GET', path, observed: { code: safeCode(error) } });
++            }
++        }
++    }
++    try {
++        output.ownership = await collectOwnershipReadiness(db, fixture);
++        const unregistered = output.ownership.tables.products?.counts?.unregisteredContextRows;
++        const crossContext = output.ownership.relationships.lead_link_customer?.counts?.crossContextRows;
++        const expectedUnregistered = fixture.readiness?.rows?.unregisteredProduct?.status === 'SEEDED';
++        const expectedCrossContext = fixture.readiness?.rows?.crossContextLink?.status === 'SEEDED';
++        const baseline = fixture.readiness?.baseline || {};
++        const productDelta = Number.isSafeInteger(unregistered) && Number.isSafeInteger(baseline.unregisteredProductRows)
++            ? unregistered - baseline.unregisteredProductRows : null;
++        const linkDelta = Number.isSafeInteger(crossContext) && Number.isSafeInteger(baseline.crossContextCustomerLinks)
++            ? crossContext - baseline.crossContextCustomerLinks : null;
++        const expectedLinkDelta = (expectedCrossContext ? 1 : 0)
++            + (fixture.readiness?.rows?.orphanLeadLink?.status === 'SEEDED' ? 1 : 0);
++        const canMeasureSensitivity = expectedUnregistered && expectedCrossContext && productDelta !== null && linkDelta !== null;
++        const sensitive = productDelta === 1 && linkDelta === expectedLinkDelta;
++        record({ id: 'D06-READINESS-COUNTS', domain: 'ownership_collection',
++            status: !canMeasureSensitivity ? 'NOT_TESTABLE' : !sensitive ? 'FAIL'
++                : output.ownership.collectionStatus === 'COMPLETE' ? 'PASS' : 'NOT_TESTABLE',
++            expected: 'Read-only fixture collection detects deliberate sentinels; missing coverage is not zero.',
++            observed: { collectionStatus: output.ownership.collectionStatus, readOnly: output.ownership.readOnly,
++                unregisteredProductSentinelDetected: expectedUnregistered ? productDelta === 1 : null,
++                crossContextLinkSentinelDetected: expectedCrossContext ? linkDelta === expectedLinkDelta : null,
++                unregisteredProductDelta: productDelta, crossContextLinkDelta: linkDelta, expectedCrossContextLinkDelta: expectedLinkDelta,
++                semantics: 'COLLECTOR_SENSITIVITY_ONLY_NOT_DATA_CLEANLINESS' } });
++    } catch (error) {
++        output.ownership = { collectionStatus: 'FAILED', code: safeCode(error), counts: null };
++        record({ id: 'D06-READINESS-COUNTS', domain: 'ownership_collection', status: 'NOT_TESTABLE', observed: output.ownership });
++    }
++    try {
++        output.legacyPreflight = await runOwnershipPreflight(db);
++        record({ id: 'D06-READINESS-LEGACY-PREFLIGHT', domain: 'legacy_collection',
++            status: output.legacyPreflight.collectionStatus === 'COMPLETE' ? 'PASS' : 'NOT_TESTABLE',
++            observed: { collectionStatus: output.legacyPreflight.collectionStatus, readOnly: output.legacyPreflight.readOnly,
++                ownershipEstablished: false, safeToAutoBackfill: false, source: collectionDefinition.source } });
++    } catch (error) {
++        output.legacyPreflight = safeFailure(error);
++        record({ id: 'D06-READINESS-LEGACY-PREFLIGHT', domain: 'legacy_collection', status: 'NOT_TESTABLE', observed: output.legacyPreflight });
++    }
++    record({ id: 'D06-READINESS-COMPATIBILITY', domain: 'compatibility_usage', status: 'NOT_TESTABLE',
++        expected: 'A complete observed ingress/window is required to establish zero compatibility usage.', observed: output.compatibility });
++    output.decisions = { PARK_DAR_RELEASE_READY: 'HOLD', GLOBAL_MODEL_COMPLETE: 'HOLD',
++        reasons: ['Protected enabled-domain gaps and OWN-01–08 pending decisions are not cleared by collector or fixture PASS.',
++            'Runtime compatibility/background/provider coverage is incomplete.', 'No production/live QA or exact-SHA release evidence is collected here.'] };
++    return output;
++}
++
++module.exports = { seed, run, collectOwnershipReadiness, collectionDefinition };

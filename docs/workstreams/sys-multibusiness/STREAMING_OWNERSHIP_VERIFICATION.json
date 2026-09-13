@@ -1,0 +1,289 @@
+{
+  "status": "READY_LOCAL_STREAMING_OWNERSHIP_REVIEW",
+  "verifiedAtUtc": "2026-09-12T12:29:41.2028896Z",
+  "baseCommit": "a5180def01a1e47f8f4fc75e2f7a43092f205828",
+  "branch": "codex/sys-mb-auth-p0-20260912",
+  "version": "0.81.132",
+  "changes": "uncommitted cumulative P0, lifecycle and streaming/ownership",
+  "priorCheckpoint": "LIFECYCLE_VERIFICATION.json",
+  "windowsRuntime": {
+    "node": "22.23.1",
+    "npm": "10.9.8"
+  },
+  "npmTest": {
+    "command": "npm test",
+    "exitCode": 0,
+    "unit": {
+      "pass": 2836,
+      "fail": 0,
+      "skipped": 0
+    },
+    "myDay": {
+      "pass": 337,
+      "fail": 0,
+      "skipped": 0
+    },
+    "uiStatic": {
+      "pass": 1312,
+      "fail": 0
+    },
+    "uiLoader": {
+      "pass": 4,
+      "fail": 0,
+      "skipped": 0
+    },
+    "log": ".codex-temp/sys-mb-streaming-ownership/verification-final.log",
+    "firstAttempt": {
+      "exitCode": 1,
+      "reason": "Legacy route-smoke fake omitted the new organization-owner registry query; explicit empty-registry fixture added with assertions retained",
+      "log": ".codex-temp/sys-mb-streaming-ownership/verification-first-attempt.log"
+    }
+  },
+  "focused": {
+    "command": "node --test tests/websocket-membership.test.js tests/websocket-event-access.test.js tests/organization-ownership.test.js tests/organization-lifecycle.test.js tests/business-membership-organization-guards.test.js tests/omni-hardening.test.js",
+    "exitCode": 0,
+    "pass": 87,
+    "fail": 0,
+    "skipped": 0,
+    "log": ".codex-temp/sys-mb-streaming-ownership/targeted-final.log"
+  },
+  "postgres": {
+    "environment": "local WSL Ubuntu, Node 22.22.2, PostgreSQL 16, disposable databases",
+    "production": false,
+    "pass": 47,
+    "fail": 0,
+    "skipped": 0,
+    "parentTestsIncluded": 3,
+    "results": [
+      {
+        "file": "tests/integration/business-membership-postgres.test.js",
+        "command": "wsl -d Ubuntu -u postgres -- env BUSINESS_MEMBERSHIP_LOCAL_POSTGRES_TEST=1 node --test '/mnt/c/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/sys-mb-auth-p0-20260912/tests/integration/business-membership-postgres.test.js'",
+        "result": "PASS",
+        "exit_code": 0,
+        "tests": 14,
+        "pass": 14,
+        "fail": 0,
+        "skipped": 0,
+        "duration_ms": 5653.888244
+      },
+      {
+        "file": "tests/integration/organization-lifecycle-postgres.test.js",
+        "command": "wsl -d Ubuntu -u postgres -- env BUSINESS_MEMBERSHIP_LOCAL_POSTGRES_TEST=1 node --test '/mnt/c/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/sys-mb-auth-p0-20260912/tests/integration/organization-lifecycle-postgres.test.js'",
+        "result": "PASS",
+        "exit_code": 0,
+        "tests": 14,
+        "pass": 14,
+        "fail": 0,
+        "skipped": 0,
+        "duration_ms": 7864.907765
+      },
+      {
+        "file": "tests/integration/multibusiness-streaming-ownership-postgres.test.js",
+        "command": "wsl -d Ubuntu -u postgres -- env BUSINESS_MEMBERSHIP_LOCAL_POSTGRES_TEST=1 node --test '/mnt/c/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/sys-mb-auth-p0-20260912/tests/integration/multibusiness-streaming-ownership-postgres.test.js'",
+        "result": "PASS",
+        "exit_code": 0,
+        "tests": 19,
+        "pass": 19,
+        "fail": 0,
+        "skipped": 0,
+        "duration_ms": 12477.148297
+      }
+    ],
+    "cleanup": {
+      "command": "wsl -d Ubuntu -u postgres -- psql -d postgres -Atc \"SELECT 'remaining_test_databases=' || count(*) FROM pg_database WHERE datname LIKE 'eventgenix_membership_test_%'; SELECT 'remaining_test_connections=' || count(*) FROM pg_stat_activity WHERE datname LIKE 'eventgenix_membership_test_%';\"",
+      "exit_code": 0,
+      "remaining_test_databases": 0,
+      "remaining_test_connections": 0
+    },
+    "logDirectory": ".codex-temp/sys-mb-streaming-ownership/"
+  },
+  "diffCheck": "PASS",
+  "ci": "NOT_RUN",
+  "deploy": "NOT_RUN",
+  "liveQA": "NOT_RUN",
+  "productionOperations": 0,
+  "ownershipCoverage": "Canonical cooperating application writers; no database trigger or protection against arbitrary SQL",
+  "streamingCoverage": "Fresh JWT/account and event-specific business/channel/entity checks, ordered immutable delivery snapshot; no recall of already-delivered frames",
+  "remainingWork": [
+    "Login/refresh/profile and membership-backed account editor parity",
+    "General chat and personal AI transcript business ownership",
+    "Remaining domain SQL isolation and MD/CRM compatibility cutovers",
+    "Controlled QA fixtures and separately authorized exact-SHA release/live evidence"
+  ],
+  "incrementalSourceFiles": [
+    "package.json",
+    "routes/hr.js",
+    "routes/organizations.js",
+    "routes/staff.js",
+    "routes/users.js",
+    "services/omni-hub.js",
+    "services/organizationLifecycle.js",
+    "services/organizationOwnership.js",
+    "services/staffLifecycle.js",
+    "services/websocket.js",
+    "services/websocketEventAccess.js",
+    "tests/auth-account-lifecycle.test.js",
+    "tests/integration/multibusiness-streaming-ownership-postgres.test.js",
+    "tests/integration/omni-completion-postgres.test.js",
+    "tests/integration/omni-inbox-postgres.test.js",
+    "tests/omni-case-link.test.js",
+    "tests/omni-hardening.test.js",
+    "tests/omni-provider-lifecycle.test.js",
+    "tests/omni-send-truth.test.js",
+    "tests/organization-lifecycle.test.js",
+    "tests/organization-ownership.test.js",
+    "tests/route-smoke.test.js",
+    "tests/websocket-event-access.test.js",
+    "tests/websocket-membership.test.js"
+  ],
+  "sourceFiles": [
+    {
+      "path": "middleware/auth.js",
+      "sha256": "9dac8da2e6cd0f59cb24b8a35e3b1761c1b40d28728139547f448ba54e0d9b2f"
+    },
+    {
+      "path": "package.json",
+      "sha256": "ebddb63abdb66dbc496c642fb3299d46b3216a3de7916535c27e36bb2ff81c6e"
+    },
+    {
+      "path": "routes/auth.js",
+      "sha256": "43feac79c262fba80e567f2d24553767e1ff53ef612b516a211f84b50072d16d"
+    },
+    {
+      "path": "routes/hr.js",
+      "sha256": "193880479731c5f640328737938f7a2800f6c559bc188815de03bfb0690d8725"
+    },
+    {
+      "path": "routes/organizations.js",
+      "sha256": "bcfff4ac8cd3e10b6829539d62ab0e19f863414337bb20c44f89975526938cbf"
+    },
+    {
+      "path": "routes/staff.js",
+      "sha256": "00888109f6fdd1562a9498ba38bfb18e5f054eab0dc72336673f08ca6ab97041"
+    },
+    {
+      "path": "routes/users.js",
+      "sha256": "f1c378145810c46329dc0c9674b9c856b1f404b6c95817130b8124934f35d691"
+    },
+    {
+      "path": "services/businessContext.js",
+      "sha256": "2f4ac79ef891f22b9d001f3d6d34a83c96c02ef91c04f8be9513f53fa95b37c8"
+    },
+    {
+      "path": "services/businessMembership.js",
+      "sha256": "ceb14f4a1790ad718eee8d4f6f0ac404cf861c0d323a6bffc53a5a5e5a2744ee"
+    },
+    {
+      "path": "services/omni-hub.js",
+      "sha256": "7924aeef4d5fef73b32202acc75a7de1177a56705594b8b1b031955dbc43fb9a"
+    },
+    {
+      "path": "services/organizationLifecycle.js",
+      "sha256": "16e48e9c87db2f2a35ab270863808389d49325e096448c7fe0979dbeb76585a7"
+    },
+    {
+      "path": "services/organizationOwnership.js",
+      "sha256": "69b14f45dd3d5510d6c7228a97d0a0a0adcea57b760f434db7edd40606d2ec61"
+    },
+    {
+      "path": "services/staffLifecycle.js",
+      "sha256": "a2b3060345a9c04f3374c6956cd9550083a11120e86415e8e453c1df527ba230"
+    },
+    {
+      "path": "services/websocket.js",
+      "sha256": "1f608e7791f2afd11bcebb78b1ec0be85f7b3c3f618e5081e8ad3f2d668e689a"
+    },
+    {
+      "path": "services/websocketEventAccess.js",
+      "sha256": "39ae9c0464e58500a5878bfe72d44947dbf85e0c974680b7c542abe08c94c5dd"
+    },
+    {
+      "path": "tests/auth-account-lifecycle.test.js",
+      "sha256": "1a42c05683c738306e544c9386027d89f764f91f46cb220cd1d855a1c5aae43e"
+    },
+    {
+      "path": "tests/business-membership-auth-profile.test.js",
+      "sha256": "34d11d8e94f5a8eeb4e7b494c2f2f6607f9d0b5fcf00368f44fe5c71a4599e55"
+    },
+    {
+      "path": "tests/business-membership-organization-guards.test.js",
+      "sha256": "951bf618e328dff9aa9eebaf7077d2f400c0e613b95b0bae339ea8dfa55902a5"
+    },
+    {
+      "path": "tests/business-membership-security.test.js",
+      "sha256": "9f5fbd3a7437ece8942fffccfc32ce8e8a21ac9a1d78db71d129ae41fbe4da83"
+    },
+    {
+      "path": "tests/business-membership.test.js",
+      "sha256": "5e222635fce55397a414b22d1b43748d12f8c2f4a0b3fca23a90c5a010fe1ecb"
+    },
+    {
+      "path": "tests/chat-upload-route.test.js",
+      "sha256": "55718e8babcaf9f5070489907757a63d86ed0d7e8b19390a964076b7804ba623"
+    },
+    {
+      "path": "tests/dashboard-assistant.test.js",
+      "sha256": "7c14366c4b534531d1977fad94f591eb82e5c3dc769d81f08a128bd4c370d1ab"
+    },
+    {
+      "path": "tests/guardian-rbac.test.js",
+      "sha256": "f296661781277f4a8bc30492657e129a54e21f86605573197323605592ded1d7"
+    },
+    {
+      "path": "tests/integration/business-membership-postgres.test.js",
+      "sha256": "d4ae18dfe8c31ff1f5978f806a52bb65116484b68aac4cbfe1bf7848934ffab1"
+    },
+    {
+      "path": "tests/integration/multibusiness-streaming-ownership-postgres.test.js",
+      "sha256": "dc32722b16286485ba69ce19da40175ba17a87362dfd2675ac8ff2c7a2ab1577"
+    },
+    {
+      "path": "tests/integration/omni-completion-postgres.test.js",
+      "sha256": "4d65bd7af06408b9480f6697c727bed5c931dc845f951e5692e04cbef4d0d7a2"
+    },
+    {
+      "path": "tests/integration/omni-inbox-postgres.test.js",
+      "sha256": "5499e443e5bc6b5989e03f87847b537613b346b15a0a0a832f75a378df9ca84a"
+    },
+    {
+      "path": "tests/integration/organization-lifecycle-postgres.test.js",
+      "sha256": "cc4593d2e5b1b78f58b40a377fd6e6da7633229da072fba7b0964db64273e37b"
+    },
+    {
+      "path": "tests/omni-case-link.test.js",
+      "sha256": "b7a946509b71668a10b129caae6628051797855ccd3de0f932ad0a5f0da74ed3"
+    },
+    {
+      "path": "tests/omni-hardening.test.js",
+      "sha256": "25051790d7ae0c5828fffe6e4e6d468026c4c342d164919fb9f7e76995b38197"
+    },
+    {
+      "path": "tests/omni-provider-lifecycle.test.js",
+      "sha256": "5b7b9c7958668f5eb6d3533b6a921dbe160122b30a5098a8ab043c6203f57430"
+    },
+    {
+      "path": "tests/omni-send-truth.test.js",
+      "sha256": "2fc4ae488df7d05719c440f6a38922ff428cce6042897b2b370275d312b73aaf"
+    },
+    {
+      "path": "tests/organization-lifecycle.test.js",
+      "sha256": "7f7fe1792bf0cf951e415eb241b2d126b7c410fa27fd96ba5937696441ce662d"
+    },
+    {
+      "path": "tests/organization-ownership.test.js",
+      "sha256": "732041d859a124133d165b9b3c1e76e39f84a471b469dbf78bf2060a1534732d"
+    },
+    {
+      "path": "tests/route-smoke.test.js",
+      "sha256": "8e2513580ba06950aba1c6748ddcb0fca59c71f0dae21f30a4c90b81315bb821"
+    },
+    {
+      "path": "tests/websocket-event-access.test.js",
+      "sha256": "3b5e00d2d3867297745912d338227831aa39d7ef69ae21040a90aae19e57e6e8"
+    },
+    {
+      "path": "tests/websocket-membership.test.js",
+      "sha256": "c64c6539c606a8519fd4fa3522e4672a02ad55a77d516da488b5ae61f3f985a9"
+    }
+  ]
+}

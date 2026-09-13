@@ -21,15 +21,15 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.81.157">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.157">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.157">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.157">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.157">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.157">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.157">
-    <link rel="stylesheet" href="css/designs.css?v=0.81.157">
-    <link rel="stylesheet" href="css/catalog.css?v=0.81.157">
+    <link rel="stylesheet" href="css/base.css?v=0.81.158">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.158">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.158">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.158">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.158">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.158">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.158">
+    <link rel="stylesheet" href="css/designs.css?v=0.81.158">
+    <link rel="stylesheet" href="css/catalog.css?v=0.81.158">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -1633,15 +1633,15 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/ui.js?v=0.81.157"></script>
-    <script src="js/config.js?v=0.81.157"></script>
-    <script src="js/notification.js?v=0.81.157"></script>
-    <script src="js/api.js?v=0.81.157"></script>
-    <script src="js/auth.js?v=0.81.157"></script>
-    <script src="js/components/sidebar.js?v=0.81.157"></script>
+    <script src="js/ui.js?v=0.81.158"></script>
+    <script src="js/config.js?v=0.81.158"></script>
+    <script src="js/notification.js?v=0.81.158"></script>
+    <script src="js/api.js?v=0.81.158"></script>
+    <script src="js/auth.js?v=0.81.158"></script>
+    <script src="js/components/sidebar.js?v=0.81.158"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/catalogs.js?v=0.81.157"></script>
-    <script src="js/designs-page.js?v=0.81.157"></script>
+    <script src="js/catalogs.js?v=0.81.158"></script>
+    <script src="js/designs-page.js?v=0.81.158"></script>
 <script>
     // v38.9.0: Create catalog modal functions
     function rememberEditableOverlay(overlay) {
@@ -1773,7 +1773,44 @@
     }
 
     // v39.3: Dynamic catalog cards — redesigned with cover images + status badges
+    var legacyCatalogUiGeneration = 0;
+    var legacyCatalogPollTimers = new Set();
+    function clearLegacyCatalogUi(message) {
+        ++legacyCatalogUiGeneration;
+        legacyCatalogPollTimers.forEach(function(timer) { clearInterval(timer); });
+        legacyCatalogPollTimers.clear();
+        window._refGenUrl = null;
+        window._imgGenUrl = null;
+        window._refImageUrl = null;
+        window._imgPickerCatalogId = null;
+        _catalogsLoaded = false;
+        _pagesData = [];
+        _pagesCatalogId = null;
+        _pagesCatalogDef = null;
+        document.querySelectorAll('#catalogList .catalog-card[data-catalog]:not([data-catalog="graduation"]), #catalogList .catalog-card-create').forEach(function(el) { el.remove(); });
+        var view = document.getElementById('inlineCatalogView');
+        if (view) { view.innerHTML = ''; view.style.display = 'none'; }
+        ['imagePickerOverlay', 'pageFormOverlay', 'createCatalogOverlay'].forEach(function(id) {
+            document.getElementById(id)?.classList.add('hidden');
+        });
+        var notice = document.getElementById('dynamicCatalogCards');
+        if (notice) {
+            notice.style.display = '';
+            notice.setAttribute('role', 'status');
+            notice.textContent = message || window.getLegacyBusinessSurfaceAvailability?.('catalogs')?.message || '';
+        }
+    }
+    ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'permissions:lifecycle'].forEach(function(event) {
+        window.addEventListener(event, function() { clearLegacyCatalogUi(); });
+    });
+    window.addEventListener('legacyBusinessSurfaceUnavailable', function(event) {
+        if (event.detail?.surface === 'catalogs') clearLegacyCatalogUi(event.detail.message);
+    });
     async function loadDynamicCatalogCards() {
+        clearLegacyCatalogUi();
+        var generation = legacyCatalogUiGeneration;
+        var context = window.getLegacyBusinessSurfaceContextKey?.('catalogs');
+        if (!window.getLegacyBusinessSurfaceAvailability?.('catalogs')?.available) return;
         var listContainer = document.getElementById('catalogList');
         var dynContainer = document.getElementById('dynamicCatalogCards');
         if (!listContainer) return;
@@ -1790,6 +1827,8 @@
                     if (pr && pr.ok) { var pd = await pr.json(); pageCounts[c.id] = (pd.pages || []).length; }
                 }
             } catch(e) {}
+            if (generation !== legacyCatalogUiGeneration || context !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) return;
+            _catalogsLoaded = true;
             // Remove old dynamic cards (keep graduation + create card)
             listContainer.querySelectorAll('.catalog-card[data-catalog]:not([data-catalog="graduation"])').forEach(function(el) { el.remove(); });
             listContainer.querySelectorAll('.catalog-card-create').forEach(function(el) { el.remove(); });
@@ -1825,7 +1864,9 @@
             // Update tab count
             var countEl = document.getElementById('countCatalogs');
             if (countEl) countEl.textContent = listContainer.querySelectorAll('.catalog-card[data-catalog]').length;
-        } catch (err) { console.error('loadDynamicCatalogCards:', err); }
+        } catch (err) {
+            if (generation === legacyCatalogUiGeneration && context === window.getLegacyBusinessSurfaceContextKey?.('catalogs')) clearLegacyCatalogUi(err.message);
+        }
     }
 
     // v39.3: Catalog pages editor — inline edit, items grid, theme picker
@@ -1834,6 +1875,9 @@
     var _pagesCatalogDef = null;
 
     async function openCatalogPages(catalogId) {
+        if (!window.getLegacyBusinessSurfaceAvailability?.('catalogs')?.available) { clearLegacyCatalogUi(); return; }
+        var generation = ++legacyCatalogUiGeneration;
+        var context = window.getLegacyBusinessSurfaceContextKey?.('catalogs');
         _pagesCatalogId = catalogId;
         // Push history state so browser Back returns to catalog list
         if (!history.state || history.state.view !== 'catalog-pages') {
@@ -1843,6 +1887,7 @@
             var r = await apiFetch('/api/catalogs/' + catalogId + '/pages');
             if (!r || !r.ok) return;
             var d = await r.json();
+            if (generation !== legacyCatalogUiGeneration || context !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) return;
             _pagesData = d.pages || [];
             var viewEl = document.getElementById('inlineCatalogView');
             if (!viewEl) { viewEl = document.createElement('div'); viewEl.id = 'inlineCatalogView'; document.getElementById('tabCatalogs').appendChild(viewEl); }
@@ -1853,6 +1898,7 @@
                 viewEl.style.display = '';
             }
             try { var cr = await apiFetch('/api/catalogs/definitions'); if (cr && cr.ok) { var cd = await cr.json(); _pagesCatalogDef = (cd.catalogs || []).find(function(c2) { return c2.id === catalogId; }); } } catch(e) {}
+            if (generation !== legacyCatalogUiGeneration || context !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) return;
             renderCatalogPagesEditor();
         } catch (err) { console.error('openCatalogPages:', err); }
     }
@@ -2446,8 +2492,9 @@
                         } else {
                             _setGenStatus('refGenStatus', '⏳ Очікуємо... (' + pollCount + '/' + maxPolls + ')', false);
                         }
-                    } catch(pe) { _imgLog('Ref poll error: ' + pe.message); }
+                    } catch(pe) { clearInterval(poll); _imgLog('Ref poll error: ' + pe.message); }
                 }, 3000);
+                legacyCatalogPollTimers.add(poll);
             } else if (data.url) {
                 window._refGenUrl = data.url;
                 document.getElementById('refGenPreview').src = data.url;
@@ -2572,8 +2619,9 @@
                         } else {
                             _setGenStatus('imgGenStatus', '⏳ Очікуємо... (' + pollCount + '/' + maxPolls + ')', false);
                         }
-                    } catch(pollErr) { _imgLog('Poll error: ' + pollErr.message); }
+                    } catch(pollErr) { clearInterval(poll); _imgLog('Poll error: ' + pollErr.message); }
                 }, 3000);
+                legacyCatalogPollTimers.add(poll);
             } else if (data.url || data.imageUrl) {
                 // Instant result
                 var url = data.imageUrl || data.url;
@@ -2649,6 +2697,7 @@
             if (data.tasks && data.tasks.length > 0) {
                 data.tasks.forEach(function(t) {
                     var poll = setInterval(async function() {
+                        try {
                         var pr = await apiFetch('/api/catalogs/generate-image/' + t.taskId);
                         if (!pr || !pr.ok) return;
                         var pd = await pr.json();
@@ -2660,7 +2709,9 @@
                             showNotification('Фото готово: ' + t.title + ' (' + completed + '/' + data.started + ')');
                             if (completed === data.started) openCatalogPages(catalogId);
                         } else if (pd.state === 'failed' || pd.status === 'failed') { clearInterval(poll); completed++; }
+                        } catch (error) { clearInterval(poll); }
                     }, 4000);
+                    legacyCatalogPollTimers.add(poll);
                     setTimeout(function() { clearInterval(poll); }, 180000);
                 });
             }
@@ -2802,6 +2853,6 @@
         }
     });
     </script>
-    <script src="js/alerts.js?v=0.81.157"></script>
+    <script src="js/alerts.js?v=0.81.158"></script>
 </body>
 </html>

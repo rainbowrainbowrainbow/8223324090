@@ -18,6 +18,7 @@ const {
 } = require('./taskActionHistory');
 const { subtaskCompletionState } = require('./taskSubtasks');
 const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
+const { businessUserAccessSql } = require('./businessUserAccess');
 const { rescheduleTask: canonicalRescheduleTask } = require('./taskReschedule');
 const { postponementAttentionLevel } = require('./taskPostponementPolicy');
 const { stopActiveTimerForUser } = require('./myDayTimeTracking');
@@ -246,12 +247,14 @@ async function listTaskOwnerCandidates(options = {}) {
     const query = options.pool || pool;
     const params = [ASSIGNABLE_TASK_ROLES];
     const scope = ownerCandidateScopeSql(options.actor, params);
+    const business = businessUserAccessSql(options.actor, params, 'users', options.businessScope || options.businessContext);
     const result = await query.query(
-        `SELECT id, username, name, role
+        `SELECT id, username, name, ${business.roleSql} AS role
          FROM users
          WHERE COALESCE(is_active, true) = true
-           AND role = ANY($1::text[])
+           AND ${business.roleSql} = ANY($1::text[])
            ${scope}
+           ${business.condition}
          ORDER BY COALESCE(NULLIF(name, ''), username), id
          LIMIT 200`,
         params
@@ -276,13 +279,15 @@ async function getAssignableTaskOwner(ownerUserId, options = {}) {
     const query = options.pool || pool;
     const params = [id, ASSIGNABLE_TASK_ROLES];
     const scope = ownerCandidateScopeSql(options.actor, params);
+    const business = businessUserAccessSql(options.actor, params, 'users', options.businessScope || options.businessContext);
     const result = await query.query(
-        `SELECT id, username, name, role
+        `SELECT id, username, name, ${business.roleSql} AS role
          FROM users
          WHERE users.id = $1
            AND COALESCE(is_active, true) = true
-           AND role = ANY($2::text[])
+           AND ${business.roleSql} = ANY($2::text[])
            ${scope}
+           ${business.condition}
          LIMIT 1`,
         params
     );
@@ -513,7 +518,7 @@ async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
         if (!canReassignTask(actor, task)) {
             throw forbidden('You cannot reassign this task');
         }
-        const owner = await getAssignableTaskOwner(ownerUserId, { pool: query, actor });
+        const owner = await getAssignableTaskOwner(ownerUserId, { pool: query, actor, businessContext: task.business_context });
         if (Number(task.owner_user_id || 0) === Number(owner.id)) {
             const err = new Error('Task already has this owner');
             err.statusCode = 409;

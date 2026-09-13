@@ -503,6 +503,12 @@ function createFakePool() {
         nextStaffId: 60,
         tasks: [],
         bookings: [],
+        bookingLeads: new Map([[777, { id: 777, business_context: 'maysternya_doli', external_id: 'existing-external', source_channel: 'maysternya_bot' }]]),
+        leadReferenceProducts: [
+            { id: 'natal-chart', business_context: 'maysternya_doli' },
+            { id: 'foreign-park-product', business_context: 'event_genix' },
+            { id: `program-${'i'.repeat(80)}`.slice(0, 50), business_context: 'maysternya_doli' }
+        ],
         customerChildren: [{
             id: 1001,
             business_context: 'event_genix',
@@ -1111,6 +1117,11 @@ function createFakePool() {
             if (/SELECT pg_advisory_xact_lock/i.test(text)) {
                 return { rows: [], rowCount: 1 };
             }
+            if (/^SELECT om\.organization_id FROM organization_memberships om /i.test(text)
+                && /HAVING COUNT\(\*\) FILTER/i.test(text)) {
+                // This legacy route fixture has no organization ownership records.
+                return { rows: [], rowCount: 0 };
+            }
             if (/^SELECT 1\b/i.test(text)) {
                 return { rows: [{ ok: 1 }] };
             }
@@ -1499,6 +1510,29 @@ function createFakePool() {
                 );
                 return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
             }
+            if (/^SELECT \* FROM bookings WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 FOR SHARE$/i.test(text)) {
+                const row = hrState.bookings.find(booking => String(booking.id) === String(params[0])
+                    && (booking.business_context || 'event_genix') === params[1]);
+                return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+            }
+            if (/^SELECT \* FROM customers WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 FOR (SHARE|UPDATE)$/i.test(text)) {
+                const row = hrState.customers.find(customer => Number(customer.id) === Number(params[0])
+                    && (customer.business_context || 'event_genix') === params[1]);
+                return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+            }
+            if (/^SELECT \* FROM products WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 FOR SHARE$/i.test(text)) {
+                const row = hrState.leadReferenceProducts.find(product => product.id === params[0] && product.business_context === params[1]);
+                return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+            }
+            if (/^SELECT id, business_context FROM products WHERE id = \$1 FOR SHARE$/i.test(text)) {
+                const row = hrState.leadReferenceProducts.find(product => product.id === params[0]);
+                return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+            }
+            if (/^SELECT access_mode FROM businesses WHERE context_key = \$1 FOR SHARE$/i.test(text)
+                && params[0] === 'maysternya_doli') {
+                // This legacy route fixture predates the Maysternya registry cutover.
+                return { rows: [], rowCount: 0 };
+            }
             if (/SELECT value FROM settings WHERE key = \$1/i.test(text)) {
                 return { rows: [{ value: JSON.stringify({ mode: 'simple', resourceModel: 'specialist' }) }], rowCount: 1 };
             }
@@ -1760,8 +1794,19 @@ function createFakePool() {
             if (/SELECT id FROM leads WHERE COALESCE\(business_context, \$1\) = \$1/i.test(text)) {
                 return { rows: [], rowCount: 0 };
             }
+            if (/^SELECT id FROM leads WHERE COALESCE\(business_context, 'event_genix'\) = \$1/i.test(text)
+                && /booking_id = \$2/i.test(text) && /LIMIT 1 FOR UPDATE$/i.test(text)) {
+                const row = Array.from(hrState.bookingLeads.values()).find(lead => lead.business_context === params[0]
+                    && (lead.booking_id === params[1] || (params[4] && lead.external_id === params[4] && lead.source_channel === params[5])));
+                return { rows: row ? [{ id: row.id }] : [], rowCount: row ? 1 : 0 };
+            }
             if (/UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text)) {
-                return { rows: [], rowCount: params[1] ? 1 : 0 };
+                const row = hrState.customers.find(customer => Number(customer.id) === Number(params[1])
+                    && (customer.business_context || 'event_genix') === params[2]);
+                if (!row) return { rows: [], rowCount: 0 };
+                row.lead_id ??= params[0];
+                if (!row.source) row.source = params[3];
+                return { rows: [], rowCount: 1 };
             }
             if (/INSERT INTO history \(business_context, action, username, data\)/i.test(text)) {
                 hrState.historyRows.push({
@@ -2832,8 +2877,7 @@ function createFakePool() {
                 throw new Error('synthetic lead handoff failure');
             }
             if (/INSERT INTO leads/i.test(text) && /booking_id/i.test(text) && /raw_payload/i.test(text)) {
-                return {
-                    rows: [{
+                const row = {
                         id: 602,
                         business_context: params[0] || 'event_genix',
                         client_name: params[1],
@@ -2843,6 +2887,7 @@ function createFakePool() {
                         source: params[5],
                         source_channel: params[6],
                         external_id: params[7],
+                        program_id: params[8],
                         event_date: params[9],
                         notes: params[11],
                         raw_payload: JSON.parse(params[12] || '{}'),
@@ -2850,8 +2895,9 @@ function createFakePool() {
                         pipeline_stage: params[14],
                         booking_id: params[15],
                         created_at: new Date('2026-05-11T00:00:00Z').toISOString()
-                    }]
-                };
+                    };
+                hrState.bookingLeads.set(Number(row.id), row);
+                return { rows: [{ ...row }], rowCount: 1 };
             }
             if (/INSERT INTO leads/i.test(text) && /source_channel/i.test(text) && /raw_payload/i.test(text)) {
                 return {
@@ -2912,17 +2958,17 @@ function createFakePool() {
             if (/DELETE FROM lead_event_preferences/i.test(text)) {
                 return { rows: [], rowCount: 1 };
             }
-            if (/SELECT id, username, name, role FROM users WHERE is_active = true AND role = ANY\(\$1::text\[\]\)/i.test(text)) {
+            if (/SELECT id, username, name, users\.role AS role FROM users WHERE is_active = true AND users\.role = ANY\(\$1::text\[\]\)/i.test(text)) {
                 return {
                     rows: ownerRows().filter(user => user.id !== 1)
                 };
             }
-            if (/SELECT id, username, name, role FROM users WHERE COALESCE\(is_active, true\) = true AND role = ANY\(\$1::text\[\]\)/i.test(text)) {
+            if (/SELECT id, username, name, users\.role AS role FROM users WHERE COALESCE\(is_active, true\) = true AND users\.role = ANY\(\$1::text\[\]\)/i.test(text)) {
                 return {
                     rows: ownerRows().filter(user => user.id !== 1)
                 };
             }
-            if (/SELECT id, username, name, role FROM users WHERE users\.id = \$1 AND COALESCE\(is_active, true\) = true AND role = ANY\(\$2::text\[\]\)/i.test(text)) {
+            if (/SELECT id, username, name, users\.role AS role FROM users WHERE users\.id = \$1 AND COALESCE\(is_active, true\) = true AND users\.role = ANY\(\$2::text\[\]\)/i.test(text)) {
                 const user = hrState.users.get(Number(params[0]));
                 return { rows: user ? [{ id: user.id, username: user.username, name: user.name, role: user.role }] : [] };
             }
@@ -3203,10 +3249,15 @@ function createFakePool() {
             if (/INSERT INTO task_logs \(task_id, action, old_value, new_value, actor\)/i.test(text)) {
                 return { rows: [], rowCount: 1 };
             }
-            if (/SELECT id FROM users WHERE id = \$1 AND is_active = true AND role = ANY\(\$2::text\[\]\)/i.test(text)) {
+            if (/SELECT id FROM users WHERE id = \$1 AND is_active = true AND users\.role = ANY\(\$2::text\[\]\)/i.test(text)) {
                 return { rows: params[0] === 2 ? [{ id: 2 }] : [] };
             }
             if (/SELECT \* FROM leads WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 FOR UPDATE/i.test(text)) {
+                const stored = hrState.bookingLeads.get(Number(params[0]));
+                if (stored) return { rows: stored.business_context === params[1] ? [{ ...stored }] : [], rowCount: stored.business_context === params[1] ? 1 : 0 };
+                if (params[1] !== 'event_genix' || ![501, 502, 503, 504, 505, 506, 507, 508].includes(Number(params[0]))) {
+                    return { rows: [], rowCount: 0 };
+                }
                 if ([504, 507].includes(Number(params[0]))) {
                     const err = new Error('canceling statement due to lock timeout');
                     err.code = '55P03';
@@ -3266,6 +3317,11 @@ function createFakePool() {
                 };
                 const updateId = whereParamFor(/WHERE id = \$(\d+)/i) || params[params.length - 2] || params[params.length - 1];
                 const updateBusinessContext = whereParamFor(/COALESCE\(business_context, 'event_genix'\) = \$(\d+)/i) || params[params.length - 1] || 'event_genix';
+                const storedLead = hrState.bookingLeads.get(Number(updateId));
+                const seededLeadExists = updateBusinessContext === 'event_genix' && [501, 502, 503, 504, 505, 506, 507, 508].includes(Number(updateId));
+                if (!seededLeadExists && storedLead?.business_context !== updateBusinessContext) {
+                    return { rows: [], rowCount: 0 };
+                }
                 const row = {
                     id: updateId,
                     business_context: updateBusinessContext,
@@ -3315,7 +3371,7 @@ function createFakePool() {
                 else if (previousLeadType !== undefined) row.lead_type = previousLeadType;
                 if (lostReason !== undefined) row.lost_reason = lostReason;
                 return {
-                    rows: [row]
+                    rows: [row], rowCount: 1
                 };
             }
             if (/INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(text)) {
@@ -3325,6 +3381,14 @@ function createFakePool() {
                 if (String(params[0]) === '503' && String(params[3] || '').includes('leads.collaboration_task')) {
                     throw new Error('route smoke collaboration audit insert failure');
                 }
+                return { rows: [], rowCount: 1 };
+            }
+            if (/^UPDATE leads SET booking_id = COALESCE\(booking_id, \$1\)/i.test(text)
+                && /WHERE id = \$16 AND COALESCE\(business_context, 'event_genix'\) = \$17$/i.test(text)) {
+                const row = hrState.bookingLeads.get(Number(params[15]));
+                if (!row || row.business_context !== params[16]) return { rows: [], rowCount: 0 };
+                row.booking_id ??= params[0];
+                row.program_id ??= params[8];
                 return { rows: [], rowCount: 1 };
             }
             if (/FROM customers WHERE lead_id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1/i.test(text)) {
@@ -3377,6 +3441,16 @@ function createFakePool() {
                 };
             }
             if (/INSERT INTO lead_customer_links \(business_context, lead_id, customer_id, link_type, source, metadata, updated_at\)/i.test(text)) {
+                if (/^WITH scoped_parents AS/i.test(text)) {
+                    const lead = hrState.bookingLeads.get(Number(params[1]));
+                    const customer = hrState.customers.find(row => Number(row.id) === Number(params[2])
+                        && (row.business_context || 'event_genix') === params[0]);
+                    const primaryLead = customer?.lead_id ? hrState.bookingLeads.get(Number(customer.lead_id)) : null;
+                    if (!lead || lead.business_context !== params[0] || !customer
+                        || (customer.lead_id && (!primaryLead || primaryLead.business_context !== params[0]))) {
+                        return { rows: [], rowCount: 0 };
+                    }
+                }
                 return {
                     rows: [{
                         id: 9902,
@@ -4859,7 +4933,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.leadId, 602);
         assert.equal(res.data.lead?.attached, true);
         assert.ok(!queries.some(q => /INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text)));
-        assert.ok(queries.some(q => /INSERT INTO leads/i.test(q.text) && /booking_id/i.test(q.text) && /raw_payload/i.test(q.text)));
+        assert.ok(queries.some(q => /^UPDATE leads SET booking_id = COALESCE/i.test(q.text) && /raw_payload/i.test(q.text)));
+        assert.ok(!queries.some(q => /INSERT INTO leads/i.test(q.text)), 'replay must reuse the persisted scoped lead');
     });
 
     it('validates Maysternya bot booking webhook in dry-run mode without writing', async () => {
@@ -4895,6 +4970,7 @@ describe('route-level API safety smoke', () => {
             time: '09:00',
             duration: 60,
             resource_id: 'md-consult-room',
+            programId: 'natal-chart',
             programName: 'Side Effect Smoke',
             customer: { name: 'Lead Side Effect Fails' }
         }, {
@@ -4908,6 +4984,44 @@ describe('route-level API safety smoke', () => {
         assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
         assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));
         assert.ok(!queries.some(q => /INSERT INTO history \(business_context, action, username, data\)/i.test(q.text)));
+    });
+
+    it('preserves opaque name-only and code-only Maysternya inputs on the compatibility path without inventing products', async () => {
+        // Existing callers synthesize program_id from a code or MD. Those values
+        // are not product records and must not be invented in this fixture.
+        for (const [index, fields, expectedId] of [
+            [0, { programName: 'Synthetic consultation' }, 'MD'],
+            [1, { programName: 'Synthetic consultation', programCode: 'CONSULT-CODE' }, 'CONSULT-CODE']
+        ]) {
+            queries.length = 0;
+            const res = await request('POST', '/api/leads/webhook/maysternya-booking', {
+                external_id: `md-unmapped-program-${index}`,
+                date: `2099-06-${21 + index}`, time: '10:00', duration: 60,
+                resource_id: 'md-consult-room', ...fields,
+                customer: { name: 'Synthetic unconfigured product' }
+            }, { Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}` });
+            assert.equal(res.status, 200, JSON.stringify(res.data));
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.booking.programId, expectedId);
+            assert.ok(queries.some(query => /^SELECT id, business_context FROM products /i.test(query.text)
+                && query.params[0] === expectedId));
+            assert.ok(queries.some(query => /^COMMIT$/i.test(query.text)));
+            assert.ok(!queries.some(query => /INSERT INTO products/i.test(query.text)));
+        }
+    });
+
+    it('rejects an actual foreign product on the Maysternya compatibility booking path', async () => {
+        const res = await request('POST', '/api/leads/webhook/maysternya-booking', {
+            external_id: 'md-real-foreign-product', date: '2099-06-24', time: '10:00', duration: 60,
+            resource_id: 'md-consult-room', programId: 'foreign-park-product',
+            customer: { name: 'Synthetic foreign product denial' }
+        }, { Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}` });
+        assert.equal(res.status, 404, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'lead_reference_unavailable');
+        assert.ok(queries.some(query => /^SELECT id, business_context FROM products /i.test(query.text)
+            && query.params[0] === 'foreign-park-product'));
+        assert.ok(queries.some(query => /^ROLLBACK$/i.test(query.text)));
+        assert.ok(!queries.some(query => /^COMMIT$/i.test(query.text)));
     });
 
     it('truncates Maysternya bot booking payload fields to CRM column limits', async () => {

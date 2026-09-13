@@ -11,11 +11,14 @@ const { pool }  = require('../db');
 const { uploadFromUrl, makeFilename } = require('../services/imageStorage');
 const { callUnifiedChatCompletion } = require('../services/ai-config');
 const { requireRole, requireAction, authenticateToken } = require('../middleware/auth');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Catalogs');
 function getKleshnya() { return require('../services/kleshnya'); }
 
 const KIE_KEY = process.env.KIE_API_KEY || '';
+
+router.use(authenticateToken, requireLegacyBusinessSurface('catalogs'));
 
 // ─── Kie.ai helpers ──────────────────────────────────────────
 function kieRequest(method, path, body) {

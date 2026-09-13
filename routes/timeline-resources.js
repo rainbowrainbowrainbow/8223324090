@@ -34,8 +34,7 @@ router.get('/resources', async (req, res) => {
         const resources = await listTimelineResources(pool, {
             context,
             type,
-            includeInactive,
-            ensureDefault: Boolean(type)
+            includeInactive
         });
         res.json({ context, type, resources });
     } catch (err) {
@@ -130,6 +129,7 @@ router.get('/resources/availability', async (req, res) => {
         if (!validateDate(String(date || ''))) return res.status(400).json({ error: 'Invalid date' });
         if (!validateTime(String(time || ''))) return res.status(400).json({ error: 'Invalid time' });
         const payload = await timelineResourceAvailability(pool, {
+            actor: req.user,
             context,
             type: req.query.type || 'cabinet',
             date,

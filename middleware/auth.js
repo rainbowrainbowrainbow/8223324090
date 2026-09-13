@@ -9,7 +9,9 @@ const { createLogger } = require('../utils/logger');
 const {
     allowedBusinessContextsForUser,
     resolveDefaultBusinessContext,
-    resolveBusinessContextPolicy
+    resolveBusinessContextPolicy,
+    resolveBusinessScope,
+    requireBusinessScope
 } = require('../services/businessContext');
 const {
     ROLE_HIERARCHY,
@@ -24,9 +26,25 @@ const {
 } = require('../services/accountAccessPolicy');
 const { resolveActiveQaCreatorLease } = require('../services/qaCreatorLease');
 const { applyMembershipAccess, loadMembershipAccess } = require('../services/businessMembership');
+const { requireRequestBusinessModule } = require('../services/businessModuleRegistry');
+const { recordCompatibilityTelemetrySafe } = require('../services/businessCutover');
 
 const log = createLogger('Auth');
 const AUTHENTICATED_REQUEST = Symbol('eventgenix.authenticatedRequest');
+
+function recordBusinessAuthorityDecision(req, access, outcome) {
+    if (!access?.configured) return;
+    const requested = req?.body?.businessContext || req?.body?.business_context
+        || req?.query?.businessContext || req?.query?.business_context
+        || req?.headers?.['x-business-context'] || null;
+    const businessContext = access.activeMembership?.businessContext || String(requested || '').trim() || 'unknown';
+    recordCompatibilityTelemetrySafe(pool, {
+        businessContext,
+        entryFamily: String(req?.path || '').startsWith('/auth/') ? 'profile' : 'http',
+        authoritySource: access.membershipEnabled ? 'membership' : 'compatibility',
+        outcome
+    }, log);
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 if (!process.env.JWT_SECRET) {
@@ -142,6 +160,32 @@ function isDemoTokenRequestAllowed(req) {
     return method === 'PUT' && /^\/demo\/sessions\/[^/]+$/.test(apiLocalPath);
 }
 
+function isAccountContextRequest(req) {
+    // These routes operate on the authenticated account or list its memberships;
+    // they must remain reachable when no operational cabinet is available yet.
+    const path = String(req.originalUrl || req.path || req.url || '').split('?')[0]
+        .replace(/^\/api(?=\/)/, '').replace(/\/+$/, '');
+    const method = String(req.method || 'GET').toUpperCase();
+    if (new Set([
+        'GET /auth/security',
+        'GET /auth/verify',
+        'GET /auth/business-profile',
+        'GET /organizations',
+        'GET /organizations/management',
+        'GET /organizations/members',
+        'POST /auth/logout',
+        'POST /auth/security/revoke-sessions'
+    ]).has(`${method} ${path}`)) return true;
+    // Organization lifecycle routes authorize the current organization manager
+    // themselves, including recovery after its last business was deactivated.
+    return (method === 'GET' && /^\/organizations\/members\/\d+\/access-profile$/.test(path))
+        || (method === 'POST' && (path === '/organizations/bootstrap' || /^\/organizations\/\d+\/businesses$/.test(path)))
+        || (method === 'PATCH' && /^\/organizations\/businesses\/\d+(?:\/configuration)?$/.test(path))
+        || (method === 'POST' && /^\/organizations\/businesses\/\d+\/initialize-resources$/.test(path))
+        || (method === 'PUT' && /^\/organizations\/\d+\/members\/\d+$/.test(path))
+        || (method === 'DELETE' && /^\/organizations\/\d+\/members\/\d+\/\d+$/.test(path));
+}
+
 async function loadAuthenticatedUserAccess(user, options = {}) {
     const requireFresh = options.requireFresh === true;
     const requireIdentityMatch = options.requireIdentityMatch === true;
@@ -188,8 +232,7 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
         );
         const freshUser = freshAccessState.rows[0];
         if (!freshUser) {
-            if (requireFresh) throw authSessionError('User not found or deactivated', 'auth_user_missing');
-            return user;
+            throw authSessionError('User not found or deactivated', 'auth_user_missing');
         }
         if (requireIdentityMatch) {
             const tokenUsername = String(user?.username || '').trim().toLowerCase();
@@ -227,6 +270,9 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
         return {
             ...user,
             ...buildAuthUserPayload({ ...accessUser, staffIds }),
+            // Platform authority is refreshed from the account, never from a
+            // business membership or a previously issued token field.
+            platformRole: accessUser.role,
             iat: user.iat,
             exp: user.exp,
             imp: user.imp,
@@ -234,7 +280,7 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
         };
     } catch (error) {
         if (error?.isAuthSessionError) throw error;
-        if (!requireFresh && isAuthCompatibilityMiss(error)) return user;
+        if (!requireFresh && process.env.NODE_TEST_CONTEXT && isAuthCompatibilityMiss(error)) return user;
         throw error;
     }
 }
@@ -279,6 +325,16 @@ async function authenticateToken(req, res, next) {
         const membershipAccess = await loadMembershipAccess(pool, requestUser, requestedBusinessContext);
         const resolvedRequestUser = applyMembershipAccess(requestUser, membershipAccess);
         req.user = resolvedRequestUser;
+        const businessScope = resolveBusinessScope(req);
+        if (!isAccountContextRequest(req) && !requireBusinessScope(req, res, businessScope)) {
+            recordBusinessAuthorityDecision(req, membershipAccess, 'denied');
+            return;
+        }
+        if (!isAccountContextRequest(req) && !requireRequestBusinessModule(req, res, businessScope)) {
+            recordBusinessAuthorityDecision(req, membershipAccess, 'denied');
+            return;
+        }
+        if (!isAccountContextRequest(req)) recordBusinessAuthorityDecision(req, membershipAccess, 'allowed');
         req[AUTHENTICATED_REQUEST] = { token, user: resolvedRequestUser };
 
         // v19.1: Update employee activity (fire-and-forget, throttled to 1/min per user)

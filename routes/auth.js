@@ -59,7 +59,7 @@ const {
     pushBusinessScopeCondition
 } = require('../services/businessContext');
 const { buildBusinessOperatingProfile } = require('../services/businessProfile');
-const { loadMembershipAccess } = require('../services/businessMembership');
+const { resolveAuthBusinessContext, authBusinessUserFields } = require('../services/authBusinessProfile');
 
 const log = createLogger('Auth');
 const PROFILE_COCKPIT_WIDGET_IDS = Object.freeze([
@@ -85,20 +85,20 @@ const DEFAULT_PROFILE_COCKPIT_WIDGETS = Object.freeze([
 // settings endpoint while the multi-business lifecycle UI moves here.
 router.get('/business-profile', authenticateToken, async (req, res) => {
     try {
-        const membershipAccess = req.user.businessMembershipAccess
-            || await loadMembershipAccess(pool, req.user, req.query?.businessContext || null);
-        const businessProfile = await buildBusinessOperatingProfile(pool, req.user, {
-            scope: resolveBusinessScope(req),
-            includeIntegrations: true
+        const resolved = await resolveAuthBusinessContext(pool, req.user, req, { membershipAccess: req.user.businessMembershipAccess });
+        const businessProfile = await buildBusinessOperatingProfile(pool, resolved.user, {
+            scope: resolved.scope,
+            // Authentication discovery must not invoke provider status readers
+            // that may repair legacy integration bindings.
+            includeIntegrations: false,
+            includeOrganizations: true
         });
-        res.json({
-            success: true,
-            businessProfile: {
-                ...businessProfile,
-                organizations: membershipAccess.memberships ? membershipAccess.organizationIds.map(id => ({ id })) : [],
-                activeMembership: membershipAccess.activeMembership || null,
-                membershipMode: membershipAccess.membershipEnabled === true ? 'membership' : 'compatibility'
-            }
+        const denied = resolved.explicitContext && resolved.scope.invalid;
+        res.status(denied ? 403 : 200).json({
+            success: !denied,
+            ...(denied ? { error: 'Business scope is not available for this user', code: resolved.accessContext.code } : {}),
+            user: { ...buildAuthUserPayload(resolved.user), ...authBusinessUserFields(resolved.user, resolved.scope) },
+            businessProfile
         });
     } catch (error) {
         log.error('GET /auth/business-profile failed', error);
@@ -313,6 +313,8 @@ router.post('/login', async (req, res) => {
                 JWT_SECRET,
                 { expiresIn: '24h' }
             );
+            const resolved = await resolveAuthBusinessContext(loginClient, user, req);
+            authUser = { ...buildAuthUserPayload(resolved.user), ...authBusinessUserFields(resolved.user, resolved.scope) };
             await loginClient.query('COMMIT');
             loginTransactionOpen = false;
         } catch (error) {
@@ -374,13 +376,15 @@ router.get('/verify', authenticateToken, async (req, res) => {
         }
         const user = {
             ...result.rows[0],
+            ...(req.user.businessMembershipAccess?.configured ? req.user : {}),
             role: req.user.role,
             ...(req.user.qaCreatorLeaseId ? {
                 qaCreatorLeaseId: req.user.qaCreatorLeaseId,
                 qaCreatorLeaseExpiresAt: req.user.qaCreatorLeaseExpiresAt
             } : {})
         };
-        res.json({ user: { ...buildAuthUserPayload(user), ...userAvatarPayload(user) } });
+        const resolved = await resolveAuthBusinessContext(pool, user, req, { membershipAccess: req.user.businessMembershipAccess });
+        res.json({ user: { ...buildAuthUserPayload(resolved.user), ...authBusinessUserFields(resolved.user, resolved.scope), ...userAvatarPayload(user) } });
     } catch (err) {
         res.status(500).json({ error: 'Verification failed' });
     }
@@ -452,7 +456,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
             [username]
         );
         if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-        const user = userResult.rows[0];
+        const user = {
+            ...userResult.rows[0],
+            ...(req.user.businessMembershipAccess?.configured ? req.user : {})
+        };
         const businessScope = resolveBusinessScope({ ...req, user });
         if (!requireBusinessScope(req, res, businessScope)) return;
         const ownerScope = profileTaskOwnerWhere(user);
@@ -1074,6 +1081,8 @@ router.get('/profile', authenticateToken, async (req, res) => {
 
         const profilePayload = {
             user: {
+                ...buildAuthUserPayload(user),
+                ...authBusinessUserFields(user, businessScope),
                 username: user.username,
                 name: user.name,
                 role: user.role,
@@ -1741,12 +1750,13 @@ router.post('/refresh', async (req, res) => {
         }
 
         log.info(`Token refreshed for user "${result.user.username}"`);
+        const resolved = await resolveAuthBusinessContext(pool, result.user, req);
         res.json({
             accessToken: result.accessToken,
             refreshToken: result.refreshToken,
             refreshExpiresAt: result.expiresAt,
             sessionTokenId: result.sessionTokenId,
-            user: buildAuthUserPayload(result.user),
+            user: { ...buildAuthUserPayload(resolved.user), ...authBusinessUserFields(resolved.user, resolved.scope) },
             ...(result.recovered ? { recovered: true } : {})
         });
     } catch (err) {

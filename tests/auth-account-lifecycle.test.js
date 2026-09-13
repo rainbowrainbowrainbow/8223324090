@@ -105,12 +105,20 @@ function createFakePool() {
     async function query(sql, params = []) {
         const text = normalizeSql(sql);
         state.queryStatements.push(text);
+        if (text === "SELECT context_key FROM businesses WHERE access_mode = 'membership'") {
+            return { rows: [], rowCount: 0 };
+        }
 
         if (/^(BEGIN|COMMIT|ROLLBACK)\b/i.test(text)) {
             state.transactionStatements.push(text.split(/\s+/)[0].toUpperCase());
             return { rows: [], rowCount: 0 };
         }
         if (/SELECT pg_advisory_xact_lock\(hashtext\(\$1\)\)/i.test(text)) return { rows: [{}], rowCount: 1 };
+        if (text === "SELECT pg_advisory_xact_lock(hashtext('eventgenix:organization-ownership'))") return { rows: [{}], rowCount: 1 };
+        if (text.startsWith('SELECT om.organization_id FROM organization_memberships om JOIN organizations o')) {
+            // This account/session fixture has no organization owners.
+            return { rows: [], rowCount: 0 };
+        }
 
         if (/SELECT id, username FROM users WHERE LOWER\(username\) = \$1/i.test(text)) {
             const user = findUserByLogin(params[0]);

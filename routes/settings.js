@@ -42,6 +42,7 @@ const {
 const { buildBusinessOperatingProfile } = require('../services/businessProfile');
 const {
     businessCabinetCatalog,
+    businessCabinetForUser,
     businessCabinetSettingsKey,
     getBusinessCabinetSettings,
     isTimelineContext,
@@ -636,7 +637,7 @@ router.get('/business/cabinet', async (req, res) => {
     try {
         const context = businessContextFromRequest(req);
         if (!requireBusinessContext(req, res, context)) return;
-        const cabinet = await getBusinessCabinetSettings(pool, context);
+        const cabinet = businessCabinetForUser(await getBusinessCabinetSettings(pool, context), req.user);
         res.json({
             success: true,
             businessContext: context,
@@ -686,7 +687,8 @@ router.put('/business/cabinet', requireRole('creator', 'director'), requireSetti
         });
     } catch (err) {
         log.error('PUT /business/cabinet error', err);
-        res.status(500).json({ success: false, error: 'Internal server error' });
+        res.status(err.status || 500).json({ success: false, error: err.status ? err.message : 'Internal server error',
+            ...(err.status && err.code ? { code: err.code } : {}) });
     }
 });
 
@@ -763,6 +765,7 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         const resourceType = resourceTypeForDisplayMode(display.mode, display);
         if (resourceType || display.mode === 'park') {
             const resourceAvailability = await timelineResourceAvailability(pool, {
+                actor: req.user,
                 context,
                 type: resourceType || 'room',
                 date,

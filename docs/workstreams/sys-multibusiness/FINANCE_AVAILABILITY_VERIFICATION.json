@@ -1,0 +1,597 @@
+{
+  "status": "READY_LOCAL_FINANCE_AVAILABILITY_REVIEW",
+  "cutoverStatus": "HOLD_REMAINING_DOMAIN_GAPS",
+  "verifiedAtUtc": "2026-09-12T14:15:59.846Z",
+  "baseCommit": "a5180def01a1e47f8f4fc75e2f7a43092f205828",
+  "branch": "codex/sys-mb-auth-p0-20260912",
+  "worktree": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-auth-p0-20260912",
+  "version": "0.81.132",
+  "versionMeaning": "Unreleased worktree marker; live identity not checked",
+  "priorCheckpoint": "DOMAIN_ISOLATION_VERIFICATION.json",
+  "priorSourceHashesVerifiedBeforeEdits": 74,
+  "changes": "Uncommitted cumulative P0, lifecycle, streaming/ownership, profile/editor, domain and D-01 increments",
+  "runtime": {
+    "node": "22.23.1",
+    "npm": "10.9.8",
+    "postgresTestsNode": "22.22.2",
+    "postgres": "16 local WSL"
+  },
+  "npmTest": {
+    "command": "npm test",
+    "exitCode": 0,
+    "log": ".codex-temp/sys-mb-finance-availability/verification-final.log",
+    "syntaxFiles": 1177,
+    "unit": {
+      "tests": 2902,
+      "pass": 2902,
+      "fail": 0,
+      "skipped": 0
+    },
+    "myDay": {
+      "tests": 337,
+      "pass": 337,
+      "fail": 0,
+      "skipped": 0
+    },
+    "uiStatic": {
+      "pass": 1312,
+      "fail": 0
+    },
+    "uiLoader": {
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "focused": [
+    {
+      "command": "node --test tests/finance-business-isolation.test.js tests/finance-permission-contract.test.js tests/payroll-finance-workflow-contract.test.js tests/route-smoke.test.js",
+      "pass": 131,
+      "fail": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "log": ".codex-temp/sys-mb-finance-availability/finance-focused.tap",
+      "stage": "Before addition of prototype-header case; final full npm baseline covers final source"
+    },
+    {
+      "command": "node --test tests/finance-business-isolation.test.js tests/business-membership-security.test.js tests/business-membership.test.js tests/timeline-context.test.js",
+      "pass": 69,
+      "fail": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "log": ".codex-temp/sys-mb-finance-availability/context-focused.tap"
+    },
+    {
+      "command": "node --test tests/timeline-availability-privacy.test.js tests/timeline-resources.test.js",
+      "pass": 128,
+      "fail": 0,
+      "skip": 0,
+      "durationMs": 5426.5321,
+      "log": ".codex-temp/sys-mb-finance-availability/timeline-unit-final.log",
+      "sha256": "8A47D10E07AE856EC43884AE92C9ADFA9BA09BB350328513B8DD7BF0FFE3DBCA",
+      "stage": "Log-capture-only replay, source unchanged; earlier final pass retained separately in timeline-availability-results.json.",
+      "note": "Replay completed before parent advised relying on full npm baseline for unit raw evidence."
+    }
+  ],
+  "postgres": {
+    "totalPass": 36,
+    "fail": 0,
+    "skipped": 0,
+    "finance": {
+      "command": "wsl -d Ubuntu -u postgres -- env BUSINESS_MEMBERSHIP_LOCAL_POSTGRES_TEST=1 node --test '/mnt/c/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/sys-mb-auth-p0-20260912/tests/integration/finance-business-isolation-postgres.test.js'",
+      "capture": "2>&1 | Tee-Object -FilePath '.codex-temp/sys-mb-finance-availability/finance-postgres.log' | Select-Object -Last 17; exit $LASTEXITCODE",
+      "runtime": "WSL Ubuntu; Node 22.22.2; local PostgreSQL Unix socket /var/run/postgresql",
+      "completedAtUtc": "2026-09-12T14:06:50.9818407Z",
+      "timeSource": "Log modification time; start time was not captured",
+      "exitCode": 0,
+      "tests": 13,
+      "scenarioSubtests": 12,
+      "parentTests": 1,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "durationMs": 8111.724587,
+      "log": ".codex-temp/sys-mb-finance-availability/finance-postgres.log"
+    },
+    "timeline": {
+      "command": "wsl -d Ubuntu -u postgres -- env BUSINESS_MEMBERSHIP_LOCAL_POSTGRES_TEST=1 node --test '/mnt/c/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/sys-mb-auth-p0-20260912/tests/integration/timeline-availability-postgres.test.js'",
+      "pass": 9,
+      "fail": 0,
+      "skip": 0,
+      "durationMs": 42102.18386,
+      "log": ".codex-temp/sys-mb-finance-availability/timeline-postgres-final.log",
+      "sha256": "38A8B286B6C29CDD02487A3C53A8DA922F70DC56FE5FFED54B5F5F342D9ECD53",
+      "stage": "Complete raw-log capture replay on unchanged final source.",
+      "note": "TAP monotonic duration recorded. WSL displayed wall time may drift; capturedAtUtc is the independent clock tool result.",
+      "exitCode": 0
+    },
+    "membership": {
+      "command": "wsl -d Ubuntu -u postgres -- env BUSINESS_MEMBERSHIP_LOCAL_POSTGRES_TEST=1 node --test '/mnt/c/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/sys-mb-auth-p0-20260912/tests/integration/business-membership-postgres.test.js'",
+      "pass": 14,
+      "fail": 0,
+      "skip": 0,
+      "durationMs": 8562.33198,
+      "log": ".codex-temp/sys-mb-finance-availability/membership-regression-final.log",
+      "sha256": "E456E196841D350B4127FE20B2DC6A1EF73A9D9080AE1F15F2B9EEAF0A2A3634",
+      "note": "Requested bounded regression after final businessContext.js prototype-header preservation.",
+      "exitCode": 0
+    },
+    "cleanup": {
+      "checkedAtUtc": "2026-09-12 14:12:35 UTC",
+      "prefix": "eventgenix_membership_test_",
+      "databaseCount": 0,
+      "connectionCount": 0,
+      "coveredSuites": [
+        "business-membership-postgres",
+        "finance-business-isolation-postgres",
+        "timeline-availability-postgres"
+      ],
+      "note": "Independent read-only pg_database and pg_stat_activity check after final replay. Each harness also drops its exact owned random database in finally."
+    },
+    "limitations": [
+      "No production connection or production data; no DATABASE_URL fallback",
+      "EventBus is an in-memory publisher spy; no actual global rules or provider calls",
+      "Payroll report function throws if invoked; no payroll report/allocation calculation coverage",
+      "External fetch denied; HTTP loopback only",
+      "Concurrency writer uses real SQL representing the canonical lock order, not the full booking HTTP route",
+      "Not live QA, CI, deploy or end-to-end notification-isolation evidence",
+      "Income event global channel rules, payroll roster and staff/certificate ownership remain not_migrated",
+      "Resource GET retains default initialization; protected visible source IDs not changed",
+      "No browser/live QA; replay runs do not add unique coverage"
+    ]
+  },
+  "peerReview": {
+    "status": "No actionable final findings in reviewed changes",
+    "fixedIntermediateFinding": "Booking/finance row-lock inversion; canonical order restored and tested",
+    "consumerReview": "Actual-source VM confirms opaque busy record renders without link/autofill ID; not a browser"
+  },
+  "protectedTimelineBlocks": {
+    "status": "PASS",
+    "count": 6
+  },
+  "diffCheck": "PASS",
+  "ci": "NOT_RUN",
+  "deploy": "NOT_RUN",
+  "liveQA": "NOT_RUN",
+  "productionOperations": 0,
+  "schemaChanges": 0,
+  "sourceCount": 84,
+  "incrementalSourceCount": 12,
+  "incrementalSourceFiles": [
+    "package.json",
+    "routes/finance.js",
+    "routes/settings.js",
+    "routes/timeline-resources.js",
+    "services/businessContext.js",
+    "services/timelineResources.js",
+    "tests/finance-business-isolation.test.js",
+    "tests/integration/finance-business-isolation-postgres.test.js",
+    "tests/integration/timeline-availability-postgres.test.js",
+    "tests/payroll-finance-workflow-contract.test.js",
+    "tests/timeline-availability-privacy.test.js",
+    "tests/timeline-resources.test.js"
+  ],
+  "sourceFiles": [
+    {
+      "path": "js/account-access-editor.js",
+      "sha256": "f05318df5418961bc7051d62241b8abda4f6cb8fa6349d40bb28cb6fba965b41"
+    },
+    {
+      "path": "js/api.js",
+      "sha256": "4beb7c6f99c4630e58ad010307c84f0092dcebb29c5a84714f5682cc28bd61b0"
+    },
+    {
+      "path": "js/auth.js",
+      "sha256": "aa9b2639f34897c1c81d37867269fedc0701ffe91a4ea0f66bea88650f5cf721"
+    },
+    {
+      "path": "js/business-membership-manager.js",
+      "sha256": "af897a6d40d77b35013a41e6b0704c585f2ed5dd87b63e30c8bceb5a6167c7bb"
+    },
+    {
+      "path": "js/profile-page.js",
+      "sha256": "edfae85d6c661f4e78c323ebece0e5918019dea84e9c2d2186c30c3e705cfce3"
+    },
+    {
+      "path": "middleware/auth.js",
+      "sha256": "0b8393c8e24eb6ecdac50a13001ee5940e4006431095a974c400b63a9022217f"
+    },
+    {
+      "path": "package.json",
+      "sha256": "f78dff94131bf36216d005d0a3b6df58967f3773e18a9050d25d0c365f30e6b1"
+    },
+    {
+      "path": "profile.html",
+      "sha256": "2d780a25feecc9633c42107d2f6198147c978d23e3125b014ac3364a65fae559"
+    },
+    {
+      "path": "routes/auth.js",
+      "sha256": "91df7d54e1fb8b1928b5053b5d6b153a9decceb1670885d9c6808e43ee153630"
+    },
+    {
+      "path": "routes/bookings.js",
+      "sha256": "cb224b7695f6cd4fbab377fecc02e46d3ca8e56ac91c359439767cc35b6affed"
+    },
+    {
+      "path": "routes/customers.js",
+      "sha256": "404aeb09e366e8d462ba51b5b192032eb320e7d77ecac7a7185a7f01d923f771"
+    },
+    {
+      "path": "routes/finance.js",
+      "sha256": "7d3e322c481067ec22533633cf57aa17ad0f6965314490b4cac23d0da5bda20d"
+    },
+    {
+      "path": "routes/hr.js",
+      "sha256": "193880479731c5f640328737938f7a2800f6c559bc188815de03bfb0690d8725"
+    },
+    {
+      "path": "routes/leads.js",
+      "sha256": "9a1641973a77eb2f6d24af1598d2137ad8b1acb52f21864b9a763bede7d71470"
+    },
+    {
+      "path": "routes/organizations.js",
+      "sha256": "c71271146efc0ed1d7e93132450e1616929f6c135be3f70757dd531e012ac33d"
+    },
+    {
+      "path": "routes/products.js",
+      "sha256": "2bab041eb45f9a4d86d85b8d3fd65855db4e3ba03d7f5653b033c283cc2c6730"
+    },
+    {
+      "path": "routes/settings.js",
+      "sha256": "0e03581a37bed3b2c861088196775ed8bb20305b494a16df54bd43140f3c29ea"
+    },
+    {
+      "path": "routes/staff.js",
+      "sha256": "00888109f6fdd1562a9498ba38bfb18e5f054eab0dc72336673f08ca6ab97041"
+    },
+    {
+      "path": "routes/tasks.js",
+      "sha256": "7dd0ddb0bcd53672f1fd55bc5f5be4ba2aa084ad9f0b48498ab5c4eda3b70b24"
+    },
+    {
+      "path": "routes/timeline-resources.js",
+      "sha256": "3e037e64ce43f2983fd8c148e37538d9c2e997eef9f26755c1257f6587337bd1"
+    },
+    {
+      "path": "routes/users.js",
+      "sha256": "7127c2b40a26c37a41f24d5c822af96488962bf92a1c87c370faebcea79c50c7"
+    },
+    {
+      "path": "routes/warehouse.js",
+      "sha256": "2dff15d9787ecdb15c29df8fb51528648b709e3beed9e3db16c9f744ad9e7366"
+    },
+    {
+      "path": "services/authBusinessProfile.js",
+      "sha256": "95974d58c4c282cb005b8ca7cb194d9221abc22f28790d28c6fb65e73dfb541e"
+    },
+    {
+      "path": "services/businessContext.js",
+      "sha256": "73887ebcfd5ca9b12e614d903cc074cd3bab77f29d6408990b43023ba6abd94e"
+    },
+    {
+      "path": "services/businessMembership.js",
+      "sha256": "ceb14f4a1790ad718eee8d4f6f0ac404cf861c0d323a6bffc53a5a5e5a2744ee"
+    },
+    {
+      "path": "services/businessProfile.js",
+      "sha256": "03c04f1051ddad4b0b42cd60bf086c92c966b44ba4a921c5b4248cfcb9a50d72"
+    },
+    {
+      "path": "services/businessUserAccess.js",
+      "sha256": "889db644a06b722999030a4362f53c44945a53a2d5b7f3d0ef73e9a3a384c29c"
+    },
+    {
+      "path": "services/customerCommunicationHub.js",
+      "sha256": "88b5fe8f6c93534013979f024ef93bdda54fa8187bcf9e4f85a7c951f138130a"
+    },
+    {
+      "path": "services/omni-hub.js",
+      "sha256": "7924aeef4d5fef73b32202acc75a7de1177a56705594b8b1b031955dbc43fb9a"
+    },
+    {
+      "path": "services/organizationLifecycle.js",
+      "sha256": "c9cec0aea3c1d36ed66068b9755ebe6c2da734bf28e6fd5e722d96f96683d105"
+    },
+    {
+      "path": "services/organizationOwnership.js",
+      "sha256": "69b14f45dd3d5510d6c7228a97d0a0a0adcea57b760f434db7edd40606d2ec61"
+    },
+    {
+      "path": "services/staffLifecycle.js",
+      "sha256": "a2b3060345a9c04f3374c6956cd9550083a11120e86415e8e453c1df527ba230"
+    },
+    {
+      "path": "services/taskExecution.js",
+      "sha256": "39cf2ed93c2931acab7e7bf09f04bcf93ac431b41c6aef46794033e05bf80d4b"
+    },
+    {
+      "path": "services/timelineContext.js",
+      "sha256": "48d2edc67852c04b07ca9ac83d71b6aadcf94a11da18f0d5f8fc6f943be30c80"
+    },
+    {
+      "path": "services/timelineResources.js",
+      "sha256": "343a51787540baafb140d64e1de1b732cb0b57f159b1089daa78cb2e95f83ebd"
+    },
+    {
+      "path": "services/warehousePhotoIntake.js",
+      "sha256": "c3b11167c8d7e6d5f66245d6c66de90c484fe51e67d5cba92c274e097de78cff"
+    },
+    {
+      "path": "services/websocket.js",
+      "sha256": "1f608e7791f2afd11bcebb78b1ec0be85f7b3c3f618e5081e8ad3f2d668e689a"
+    },
+    {
+      "path": "services/websocketEventAccess.js",
+      "sha256": "39ae9c0464e58500a5878bfe72d44947dbf85e0c974680b7c542abe08c94c5dd"
+    },
+    {
+      "path": "tests/account-access-editor.test.js",
+      "sha256": "cb2bad4ba152dc4f84e7df87dd8fd8a1c222b00b2ded545ecfa41cf4082bf165"
+    },
+    {
+      "path": "tests/auth-account-lifecycle.test.js",
+      "sha256": "6562d1174d9c692d587e48340704400467a88302b71095cf16a43ff2d79a128c"
+    },
+    {
+      "path": "tests/auth-api-session-hardening.test.js",
+      "sha256": "95519e7138277f4963d56b597d84526d315162c4fed5585b32b90a9a4fef8e37"
+    },
+    {
+      "path": "tests/auth-business-profile.test.js",
+      "sha256": "40afdb5a7e6363f40eba7d1629561c7009c9372307dffbd747047cc4b529626e"
+    },
+    {
+      "path": "tests/browser/business-membership-editor.spec.js",
+      "sha256": "84948709e6fbf75713fa2951ac5d1deb1bdb67149d8fc0b72d724a8506b52be8"
+    },
+    {
+      "path": "tests/browser/business-profile-access.spec.js",
+      "sha256": "128944a609432a330fb36a0f5ca9be7af313a7173868136cabbe3cbe3f996d42"
+    },
+    {
+      "path": "tests/business-membership-auth-profile.test.js",
+      "sha256": "34d11d8e94f5a8eeb4e7b494c2f2f6607f9d0b5fcf00368f44fe5c71a4599e55"
+    },
+    {
+      "path": "tests/business-membership-manager.test.js",
+      "sha256": "a142b755cbdf0d5e2086a48d00c1e49b3fbae21702791b5d5edd1e408eca4cd5"
+    },
+    {
+      "path": "tests/business-membership-organization-guards.test.js",
+      "sha256": "951bf618e328dff9aa9eebaf7077d2f400c0e613b95b0bae339ea8dfa55902a5"
+    },
+    {
+      "path": "tests/business-membership-security.test.js",
+      "sha256": "e42993668817e7bb9f059d52b655ba432273c25316efa038cbb4efc8a7c6fb47"
+    },
+    {
+      "path": "tests/business-membership.test.js",
+      "sha256": "5e222635fce55397a414b22d1b43748d12f8c2f4a0b3fca23a90c5a010fe1ecb"
+    },
+    {
+      "path": "tests/business-profile-cross-tab.test.js",
+      "sha256": "14a1dac2d2ce44ae05995f3924e0d49c7c58e8b605f75d65271a31a279838572"
+    },
+    {
+      "path": "tests/business-profile-frontend.test.js",
+      "sha256": "ef828b9b3e94859e9d39918e2c2ea5842de5affa3cc9db7c9be4125c0b18b8d5"
+    },
+    {
+      "path": "tests/business-user-access.test.js",
+      "sha256": "91ce104dacff984daf210b64e033ded25ba0645d481dd2d06df25ce9976a07a9"
+    },
+    {
+      "path": "tests/chat-upload-route.test.js",
+      "sha256": "55718e8babcaf9f5070489907757a63d86ed0d7e8b19390a964076b7804ba623"
+    },
+    {
+      "path": "tests/dashboard-assistant.test.js",
+      "sha256": "7c14366c4b534531d1977fad94f591eb82e5c3dc769d81f08a128bd4c370d1ab"
+    },
+    {
+      "path": "tests/finance-business-isolation.test.js",
+      "sha256": "d305a0987df1fe6b1662e85fc8b86b3f7ef61d1c2a73899d6893237a91c73900"
+    },
+    {
+      "path": "tests/guardian-rbac.test.js",
+      "sha256": "f296661781277f4a8bc30492657e129a54e21f86605573197323605592ded1d7"
+    },
+    {
+      "path": "tests/integration/business-membership-postgres.test.js",
+      "sha256": "d4ae18dfe8c31ff1f5978f806a52bb65116484b68aac4cbfe1bf7848934ffab1"
+    },
+    {
+      "path": "tests/integration/business-user-access-postgres.test.js",
+      "sha256": "879f0ec35fa7240d15fd51d093b83b3ded14480f987e4c6dd310594e4a839de2"
+    },
+    {
+      "path": "tests/integration/customer-lead-business-isolation-postgres.test.js",
+      "sha256": "791f4101fe0b29070e2d604c31adcc5b49d28b3c06edacfe527dca24d4843b1c"
+    },
+    {
+      "path": "tests/integration/finance-business-isolation-postgres.test.js",
+      "sha256": "93f6e8a73f9ed6220b652b6d403e4431ffaa0b3aeb0c36114a020d7028ee7c51"
+    },
+    {
+      "path": "tests/integration/multibusiness-profile-postgres.test.js",
+      "sha256": "1e82d6deddfadbb27d69b67a94cb787fa4288c1c3c5818cbf6fb3f2492044f65"
+    },
+    {
+      "path": "tests/integration/multibusiness-streaming-ownership-postgres.test.js",
+      "sha256": "dc32722b16286485ba69ce19da40175ba17a87362dfd2675ac8ff2c7a2ab1577"
+    },
+    {
+      "path": "tests/integration/omni-completion-postgres.test.js",
+      "sha256": "4d65bd7af06408b9480f6697c727bed5c931dc845f951e5692e04cbef4d0d7a2"
+    },
+    {
+      "path": "tests/integration/omni-inbox-postgres.test.js",
+      "sha256": "5499e443e5bc6b5989e03f87847b537613b346b15a0a0a832f75a378df9ca84a"
+    },
+    {
+      "path": "tests/integration/organization-lifecycle-postgres.test.js",
+      "sha256": "cc4593d2e5b1b78f58b40a377fd6e6da7633229da072fba7b0964db64273e37b"
+    },
+    {
+      "path": "tests/integration/timeline-availability-postgres.test.js",
+      "sha256": "21f3b9f686bf45932798f3737bb6eb45dab124c23b2bc895fa971b29a2d4525d"
+    },
+    {
+      "path": "tests/integration/timeline-membership-postgres.test.js",
+      "sha256": "ebfc83eaae8ed3c1dd57ed51f6d99464dac72f0d261ffeefcd6e75e503d63c18"
+    },
+    {
+      "path": "tests/integration/warehouse-product-isolation-postgres.test.js",
+      "sha256": "0dee4aa1e979b65432813c4aac3e4c8016ca89346fa8891610991e527eddbce6"
+    },
+    {
+      "path": "tests/omni-case-link.test.js",
+      "sha256": "b7a946509b71668a10b129caae6628051797855ccd3de0f932ad0a5f0da74ed3"
+    },
+    {
+      "path": "tests/omni-hardening.test.js",
+      "sha256": "25051790d7ae0c5828fffe6e4e6d468026c4c342d164919fb9f7e76995b38197"
+    },
+    {
+      "path": "tests/omni-provider-lifecycle.test.js",
+      "sha256": "5b7b9c7958668f5eb6d3533b6a921dbe160122b30a5098a8ab043c6203f57430"
+    },
+    {
+      "path": "tests/omni-send-truth.test.js",
+      "sha256": "2fc4ae488df7d05719c440f6a38922ff428cce6042897b2b370275d312b73aaf"
+    },
+    {
+      "path": "tests/organization-lifecycle.test.js",
+      "sha256": "7f7fe1792bf0cf951e415eb241b2d126b7c410fa27fd96ba5937696441ce662d"
+    },
+    {
+      "path": "tests/organization-ownership.test.js",
+      "sha256": "732041d859a124133d165b9b3c1e76e39f84a471b469dbf78bf2060a1534732d"
+    },
+    {
+      "path": "tests/payroll-finance-workflow-contract.test.js",
+      "sha256": "bd753ccf55a4a9cfef3b5b7330cb0b4643e0d31d0a64d64bc7465c750bd9c5cb"
+    },
+    {
+      "path": "tests/route-smoke.test.js",
+      "sha256": "744c298f27e1a4b52e8058f6a52af5a04d5219e81d52254f9677f9b2739276e0"
+    },
+    {
+      "path": "tests/task-private-handoff.test.js",
+      "sha256": "3333fa43173629be2d3ac89554c6eb2a2529eec7fb76b66a6d22e9bfc6feb8c5"
+    },
+    {
+      "path": "tests/timeline-availability-privacy.test.js",
+      "sha256": "eb059cd8f63f4ea64cb0831383fa67f3b7ad8a44d6ccd4069cb9ea1cde70a80a"
+    },
+    {
+      "path": "tests/timeline-context.test.js",
+      "sha256": "d4f88a555ee1afbf52b098ac6546679676af4c9e24fbcb1cdf4d520c2fec4a1b"
+    },
+    {
+      "path": "tests/timeline-membership-isolation.test.js",
+      "sha256": "79b5bacf3568471151c16565ea1bcc971ac51ff22b06e45e77328b04c389aa29"
+    },
+    {
+      "path": "tests/timeline-resources.test.js",
+      "sha256": "23cdd697e80e2119f189f07c3f6724831cd112d5396ef7474b2b5955b9412c96"
+    },
+    {
+      "path": "tests/warehouse-product-isolation.test.js",
+      "sha256": "d6598ec378e2739d6204cdc6884e55350ef91aab7d6ec5757e2d4504b0b8aa8d"
+    },
+    {
+      "path": "tests/websocket-event-access.test.js",
+      "sha256": "3b5e00d2d3867297745912d338227831aa39d7ef69ae21040a90aae19e57e6e8"
+    },
+    {
+      "path": "tests/websocket-membership.test.js",
+      "sha256": "c64c6539c606a8519fd4fa3522e4672a02ad55a77d516da488b5ae61f3f985a9"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/context-focused.tap",
+      "sha256": "339b947bed184f477beff0cab23441803905d9e355fc072ff35f428eabe4ce67"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/final-log-manifest.json",
+      "sha256": "acd9976b84358dd6dd055d4bffd93d97bd64dac19a9ea3098a34570f1ee06419"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/finance-focused.tap",
+      "sha256": "dd850d755244691c70a24df5e6c03de958887c74034529e6e5e3d5644fb77434"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/finance-postgres-before.log",
+      "sha256": "07bceae29c6f53f230f9161beb973682fd42ca4267264dae0ceba5743dbec87e"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/finance-postgres-evidence.json",
+      "sha256": "efadffb5bca0865bbf3e4477447c9ed54e2b0a619912f5215f9ac64859cb8941"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/finance-postgres.log",
+      "sha256": "0b9936083666f117d996b2858f04f22bed86a5679c6b95eb7cbe1d61acc442e7"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/finance-red.tap",
+      "sha256": "09eb52f0f6c118a9045fef01a03741ff62f823dc2f497df987e8411eb34630d6"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/membership-regression-final.json",
+      "sha256": "5949661c1e791619861aed005d0019881e8457e6d9158f166bffb260b0f588e6"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/membership-regression-final.log",
+      "sha256": "e456e196841d350b4127fe20b2dc6a1ef73a9d9080ae1f15f2b9eeaf0a2a3634"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/timeline-availability-results.json",
+      "sha256": "d1eebf1e59e7e4e38d4436db4f03ddc7c206bea05217c1e31d6aa42cb520315b"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/timeline-availability-review.md",
+      "sha256": "9617d600bf32b093805b0fa4522bec41550b9b19ab4b44a14721b48ad88bbc48"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/timeline-postgres-final.log",
+      "sha256": "38a8b286b6c29cdd02487a3c53a8da922f70dc56fe5ffed54b5f5f342d9ecd53"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/timeline-unit-final.log",
+      "sha256": "8a47d10e07ae856ec43884ae92c9adfa9ba09bb350328513b8dd7bf0ffe3dbca"
+    },
+    {
+      "path": ".codex-temp/sys-mb-finance-availability/verification-final.log",
+      "sha256": "a026073ecedb3b86e42ccb3eb63245e359e18c8c0edb2546ea3eea209fb9f6dc"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/DOMAIN_ISOLATION_IMPLEMENTATION_REPORT.md",
+      "sha256": "c344be52a3098fdb8775f5c99a7631d6e8d5dbd9acf4b3c992a155b33fbd8d4a"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/DOMAIN_ISOLATION_INVENTORY.md",
+      "sha256": "304b42ce1d33b82ab69da45ee6f61bf50c0791af9d899b7a7c2390345e5bc973"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/DOMAIN_ISOLATION_VERIFICATION.json",
+      "sha256": "25250705fe864eb415de7f98eef5821722fd52f1232efd722694471923301fcd"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/FINANCE_AVAILABILITY_IMPLEMENTATION_REPORT.md",
+      "sha256": "a0481e8021294c3b6e510078664d9919b64c9aba2d99bcc319e3e4a1be7a2486"
+    }
+  ],
+  "nextTask": "D-02: read-only ownership preflight and legacy-surface containment analysis",
+  "remainingWork": [
+    "Global catalog/templates/recurring ownership decisions and containment",
+    "Staff/certificate ownership; payroll roster not migrated; references denied for membership mode",
+    "Finance income global notification routing and other integration ownership",
+    "Explicit resource initialization replacing GET default writes",
+    "Protected visible booking raw references and generic parent contract analysis",
+    "Registry modules/custom-business setup, internal related-record contracts",
+    "Exact-candidate CI/release/live QA, MD/CRM cutover and compatibility usage evidence"
+  ]
+}

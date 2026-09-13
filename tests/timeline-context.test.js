@@ -16,9 +16,10 @@ const { ACTION_PERMISSIONS } = require('../middleware/auth');
 
 const ROOT = path.join(__dirname, '..');
 
-test('timeline context defaults internal invalid normalization but fails closed for explicit bad request context', () => {
+test('timeline context preserves custom partitions and rejects malformed internal contexts', () => {
     assert.equal(normalizeTimelineContext(), DEFAULT_TIMELINE_CONTEXT);
-    assert.equal(normalizeTimelineContext('unknown'), DEFAULT_TIMELINE_CONTEXT);
+    assert.equal(normalizeTimelineContext('unknown'), 'unknown');
+    assert.throws(() => normalizeTimelineContext('not/a/context'), /Invalid timeline business context/);
     assert.equal(normalizeTimelineContext('dar'), 'dar');
     assert.equal(normalizeTimelineContext('maysternya_doli'), 'maysternya_doli');
     assert.equal(timelineContextFromRequest({ query: { businessContext: 'unknown' } }), 'unknown');
@@ -1047,8 +1048,7 @@ test('non-creator account lock migration forces Park while director unlock migra
 test('timeline root uses account default instead of stale stored business context', () => {
     const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
 
-    assert.match(apiCode, /const accountDefault = policy\.defaultContext \|\| CRM_BUSINESS_DEFAULT_CONTEXT/);
-    assert.match(apiCode, /const timelineEntryDefault = crmBusinessContextSupportsTimeline\(accountDefault\) \? accountDefault : CRM_BUSINESS_DEFAULT_CONTEXT/);
+    assert.match(apiCode, /const accountDefault = policy\.defaultContext;/);
     assert.match(apiCode, /const preferAccountDefaultOnTimelineRoot = normalizedCrmPath\(\) === '\/' && !fromUrl/);
     assert.match(apiCode, /preferAccountDefaultOnTimelineRoot \? timelineEntryDefault : \(stored \|\| accountDefault\)/);
 
@@ -1092,6 +1092,11 @@ test('timeline root uses account default instead of stale stored business contex
     sandbox.AppState.currentUser.defaultBusinessContext = 'maysternya_doli';
     assert.equal(sandbox.window.CrmBusinessContext.current(sandbox.AppState.currentUser), 'maysternya_doli');
     assert.equal(sandbox.window.CrmBusinessContext.defaultTimelineRouteForUser(sandbox.AppState.currentUser), '/maysternya-doli');
+    sandbox.AppState.currentUser.membershipMode = 'membership';
+    sandbox.AppState.currentUser.businessContexts = ['event_genix', 'crm'];
+    sandbox.AppState.currentUser.defaultBusinessContext = 'crm';
+    assert.equal(sandbox.window.CrmBusinessContext.current(sandbox.AppState.currentUser), 'crm',
+        'A membership business without timeline must not become the Park partition');
 });
 
 test('canonical business state repairs invalid or unauthorized persisted business context', () => {

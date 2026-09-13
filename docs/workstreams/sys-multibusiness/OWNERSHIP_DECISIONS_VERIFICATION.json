@@ -1,0 +1,1006 @@
+{
+  "status": "READY_OWNERSHIP_DECISIONS_REVIEW",
+  "task": "SYS-MB-OWNERSHIP-DECISIONS",
+  "cutoverStatus": "HOLD_REVIEWED_SOURCE_MAPPING_PUBLIC_JOB_POLICIES_AND_REMAINING_DOMAINS",
+  "verifiedAtUtc": "2026-09-12T17:18:40.189Z",
+  "worktree": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-auth-p0-20260912",
+  "baseCommit": "a5180def01a1e47f8f4fc75e2f7a43092f205828",
+  "branch": "codex/sys-mb-auth-p0-20260912",
+  "priorCheckpoint": "RELATED_RECORDS_VERIFICATION.json",
+  "priorSourceHashesVerifiedBeforeEdits": 136,
+  "priorArtifactHashesVerifiedBeforeEdits": 30,
+  "priorSourceHashesUnchangedAfterEdits": 136,
+  "priorArtifactEvidencePreserved": 30,
+  "preservedPriorIndexes": [
+    {
+      "originalPath": "docs/workstreams/sys-multibusiness/CONTINUATION_TASKS.md",
+      "preservedAt": ".codex-temp/sys-mb-ownership-decisions/prior-artifacts/CONTINUATION_TASKS.md",
+      "sha256": "98e538a9a0d6a29399c0083e86e5fa0640bb1d6fbd24ad54313e5c31ffd52963"
+    },
+    {
+      "originalPath": "docs/workstreams/sys-multibusiness/DOMAIN_ISOLATION_INVENTORY.md",
+      "preservedAt": ".codex-temp/sys-mb-ownership-decisions/prior-artifacts/DOMAIN_ISOLATION_INVENTORY.md",
+      "sha256": "05d01cfd6f878d2ce6c40a3d38c369e19ffbe3547443929a6d5bb6ab800f577f"
+    }
+  ],
+  "sourceCount": 138,
+  "sourceFiles": [
+    {
+      "path": "designs.html",
+      "sha256": "4d70be24d3943e05897badab1d0ef2504a2fe5107df445bd39ee086e3989f9be"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/tools/validate-owner-mapping.cjs",
+      "sha256": "54f225c8a13cbb9ecf335c07ac417fae6932e107444e484869de74ef54a82cd8"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/tools/validate-owner-mapping.test.cjs",
+      "sha256": "9c283a161f05d5ac5652975813dbcebb9c3e7d480136514ee1396fd6fcdb45de"
+    },
+    {
+      "path": "js/account-access-editor.js",
+      "sha256": "f05318df5418961bc7051d62241b8abda4f6cb8fa6349d40bb28cb6fba965b41"
+    },
+    {
+      "path": "js/api.js",
+      "sha256": "800544ba65126d9ba24aa79922672538d22d77fa58c252721726ff6979229b95"
+    },
+    {
+      "path": "js/auth.js",
+      "sha256": "aa9b2639f34897c1c81d37867269fedc0701ffe91a4ea0f66bea88650f5cf721"
+    },
+    {
+      "path": "js/booking-form.js",
+      "sha256": "1601da20d409403a9eb77bc7b3afdc141c490cf920809deba199f284cc4e3ad5"
+    },
+    {
+      "path": "js/booking.js",
+      "sha256": "b0918366e3ecd1b77f3cef2e19db99553d266bbd3ce10ea6cce13d5e4b629ca4"
+    },
+    {
+      "path": "js/business-cabinet-manager.js",
+      "sha256": "e66824d1d0edfc45c9450a1a4ad570dd9fb95bd6542b4c1be8436bc9f5c0ab73"
+    },
+    {
+      "path": "js/business-membership-manager.js",
+      "sha256": "4a4c71b4f4dc38eedc80f0a39acccfa98dff8f98e0fdc86cee28419baa06c251"
+    },
+    {
+      "path": "js/catalogs.js",
+      "sha256": "9c4811231df859c6314b3896d549cefd601b27a095e25a6467522b48bef98de6"
+    },
+    {
+      "path": "js/dashboard-page.js",
+      "sha256": "4d0923729fc1708f4b94609319f2a8bbf9a722296b28cbc7fea0f293b07cb8af"
+    },
+    {
+      "path": "js/designs-page.js",
+      "sha256": "0178741ccb49fb878880edf29ba39315dfabd7cd21ec123fa36e2ec472ac1505"
+    },
+    {
+      "path": "js/finance-page.js",
+      "sha256": "8a77a59a28de7aff7378cd57fd6b736deb788e72d04ffb1d8c87b10dfe655a21"
+    },
+    {
+      "path": "js/profile-page.js",
+      "sha256": "c2e0db45ecea2141c55192eb190fdbc9d07d67643aaf64d042e6547ff965426b"
+    },
+    {
+      "path": "js/programs-page.js",
+      "sha256": "5947fff0e1b44cc65b9c123d2e39c6b70058f34856db5e1b880c894779c37c88"
+    },
+    {
+      "path": "js/settings.js",
+      "sha256": "f1b0791db6a6c5cf9e371910475fdb677cb8c0a1a7f9dc3f3d4b7efb16211ba0"
+    },
+    {
+      "path": "js/timeline-context.js",
+      "sha256": "df4266ba6bd94096753befd6d7ed283cdd5475a5530ccc6342360ddd55397a23"
+    },
+    {
+      "path": "middleware/auth.js",
+      "sha256": "686f3c4232d8f65b3f17531f0573d3b31e4f3c8d07138a06b5d2793ef99435dc"
+    },
+    {
+      "path": "omni.html",
+      "sha256": "10759a45ca27a5b3ba249d031cf42e750d992ea169d8083f1f6f13919f7db521"
+    },
+    {
+      "path": "package.json",
+      "sha256": "d7408608585e836c9275c0dd321f0f29db35337ec76b079f8f94052c7722755b"
+    },
+    {
+      "path": "profile.html",
+      "sha256": "19c61da5b1667a76fd9610986a55f1da7611962f44732617319895f032038eab"
+    },
+    {
+      "path": "routes/auth.js",
+      "sha256": "91df7d54e1fb8b1928b5053b5d6b153a9decceb1670885d9c6808e43ee153630"
+    },
+    {
+      "path": "routes/booking-templates.js",
+      "sha256": "ca5b40baae590cbcb51b535d20e775e4833c0e82c2201340c25278cbf6733401"
+    },
+    {
+      "path": "routes/bookings.js",
+      "sha256": "740c8c50b9000b11ad25ac620a83e8d1672d9efcbd7af262869710f928246b96"
+    },
+    {
+      "path": "routes/catalogs.js",
+      "sha256": "d2844aab76afe7bfbbc0654df84981a75a7f21435b04fa9b630e56be83f56aad"
+    },
+    {
+      "path": "routes/customers.js",
+      "sha256": "404aeb09e366e8d462ba51b5b192032eb320e7d77ecac7a7185a7f01d923f771"
+    },
+    {
+      "path": "routes/dashboard.js",
+      "sha256": "d9ce936f736ae2a086ff987df1e1b9c08c2405ba823910b4190c9e4da87e6a0e"
+    },
+    {
+      "path": "routes/finance.js",
+      "sha256": "8ec296498b5f311cb30a9bf724c625dc4b24ff8b2f6aae0cb4a3205ff676f9d1"
+    },
+    {
+      "path": "routes/graduation.js",
+      "sha256": "5f01697db2623e7f8c203acce1705da41210c16e4689ddec0ca5a3d3f3805a64"
+    },
+    {
+      "path": "routes/hr.js",
+      "sha256": "193880479731c5f640328737938f7a2800f6c559bc188815de03bfb0690d8725"
+    },
+    {
+      "path": "routes/leads.js",
+      "sha256": "0478718b0fe2dcc41614f1f555cadb9f7ff1156ae0a94936a3d6d0934402a18d"
+    },
+    {
+      "path": "routes/omnichannel.js",
+      "sha256": "f72e74dff3ad42450ad467f73fbe595836cfa57541921d05c02f067f958863f7"
+    },
+    {
+      "path": "routes/organizations.js",
+      "sha256": "05f8fb43f7d60358c297a16fdcfbd73baf6d152d1ae8907307974c20c4aa42e4"
+    },
+    {
+      "path": "routes/products.js",
+      "sha256": "ac8442251ca4c131d2efd8e9e4182e7bdda219b817d42c37c3c3e714343139a5"
+    },
+    {
+      "path": "routes/recurring.js",
+      "sha256": "6f369c9df528a5e74e23d88c6cdf7a8ac3c338a351abd7d8217b9226d0ec1d43"
+    },
+    {
+      "path": "routes/settings.js",
+      "sha256": "0e3ecea776d103566dc9d65aab863e4ab774dc83fc6169f3f9e40e261f4ffe37"
+    },
+    {
+      "path": "routes/staff.js",
+      "sha256": "00888109f6fdd1562a9498ba38bfb18e5f054eab0dc72336673f08ca6ab97041"
+    },
+    {
+      "path": "routes/tasks.js",
+      "sha256": "7dd0ddb0bcd53672f1fd55bc5f5be4ba2aa084ad9f0b48498ab5c4eda3b70b24"
+    },
+    {
+      "path": "routes/timeline-resources.js",
+      "sha256": "4a4b53f780c1f49af9ba19181b1aa8bf7bc2c6cfb1502ddeb53cd01aa6e72ff7"
+    },
+    {
+      "path": "routes/users.js",
+      "sha256": "7127c2b40a26c37a41f24d5c822af96488962bf92a1c87c370faebcea79c50c7"
+    },
+    {
+      "path": "routes/warehouse.js",
+      "sha256": "2dff15d9787ecdb15c29df8fb51528648b709e3beed9e3db16c9f744ad9e7366"
+    },
+    {
+      "path": "scripts/audit-multibusiness-ownership.js",
+      "sha256": "6846156fe32efce90fb8ea929cfb427872a75771069e5152300a8dc488a7ca76"
+    },
+    {
+      "path": "services/authBusinessProfile.js",
+      "sha256": "95974d58c4c282cb005b8ca7cb194d9221abc22f28790d28c6fb65e73dfb541e"
+    },
+    {
+      "path": "services/businessCabinet.js",
+      "sha256": "b6996e7792a3bc7501cdf7a949fb54cb61110d2020093fc310688b54f509546e"
+    },
+    {
+      "path": "services/businessContext.js",
+      "sha256": "5d6acb2bba17cbd170c8feb32eb27a71924de2cd22292f5fd7e926e519836a5d"
+    },
+    {
+      "path": "services/businessMembership.js",
+      "sha256": "ceb14f4a1790ad718eee8d4f6f0ac404cf861c0d323a6bffc53a5a5e5a2744ee"
+    },
+    {
+      "path": "services/businessModuleRegistry.js",
+      "sha256": "fed6ffebb590323c6af52480d42a93bbedb7ebbc61727befddc93d7343df2744"
+    },
+    {
+      "path": "services/businessProfile.js",
+      "sha256": "93912b846a892ef2c129b4bb9ad1028c59e7ee107db40f421aee7c6b60506ab9"
+    },
+    {
+      "path": "services/businessUserAccess.js",
+      "sha256": "889db644a06b722999030a4362f53c44945a53a2d5b7f3d0ef73e9a3a384c29c"
+    },
+    {
+      "path": "services/customerCommunicationHub.js",
+      "sha256": "88b5fe8f6c93534013979f024ef93bdda54fa8187bcf9e4f85a7c951f138130a"
+    },
+    {
+      "path": "services/leadBookingLink.js",
+      "sha256": "d6ea528b44fa6ccb5eb164b26a6b2cb567fe7fc008f54c87c9ac018a5299ce7d"
+    },
+    {
+      "path": "services/leadReferenceIntegrity.js",
+      "sha256": "4d7daab8c64e6b400a7b80642da1aa40d9d20f1b1ae05abc512a12dac8f6bf5f"
+    },
+    {
+      "path": "services/leadStageTransition.js",
+      "sha256": "d04235bc4bc7abe71f53ac0d88c226850fbc41c08a7b1ca9d8f71071b014e2b7"
+    },
+    {
+      "path": "services/legacyBusinessSurface.js",
+      "sha256": "e6e0703b1e005e54feb805db82767fbdbed21d9e4fac29be61704a9b2cb418ea"
+    },
+    {
+      "path": "services/maysternyaBookingWebhook.js",
+      "sha256": "7098ea8a29e0080c87b54b05b13e9e0664cf888ed8ea42e63ddb7bd52a651db9"
+    },
+    {
+      "path": "services/omni-hub.js",
+      "sha256": "7924aeef4d5fef73b32202acc75a7de1177a56705594b8b1b031955dbc43fb9a"
+    },
+    {
+      "path": "services/omniLeadAssistant.js",
+      "sha256": "42effc9a27ba8c1195fda4b0936674c71349bde60d819e1688a52876e6b64927"
+    },
+    {
+      "path": "services/organizationLifecycle.js",
+      "sha256": "b1e30c6a21394d047d24db0a47852c355a9e0eeda3b98fa8bf04235a48f68eb9"
+    },
+    {
+      "path": "services/organizationOwnership.js",
+      "sha256": "69b14f45dd3d5510d6c7228a97d0a0a0adcea57b760f434db7edd40606d2ec61"
+    },
+    {
+      "path": "services/staffLifecycle.js",
+      "sha256": "a2b3060345a9c04f3374c6956cd9550083a11120e86415e8e453c1df527ba230"
+    },
+    {
+      "path": "services/taskExecution.js",
+      "sha256": "39cf2ed93c2931acab7e7bf09f04bcf93ac431b41c6aef46794033e05bf80d4b"
+    },
+    {
+      "path": "services/timelineContext.js",
+      "sha256": "03b51cf7421c1297748c095c6448cfcffb4e8325a7476bb18fb605ff0a87fad0"
+    },
+    {
+      "path": "services/timelineResources.js",
+      "sha256": "17d65b287a420691e0fe6ddbbbe2019788bd86cd247a92b304cd43a2c1694687"
+    },
+    {
+      "path": "services/warehousePhotoIntake.js",
+      "sha256": "c3b11167c8d7e6d5f66245d6c66de90c484fe51e67d5cba92c274e097de78cff"
+    },
+    {
+      "path": "services/websocket.js",
+      "sha256": "1f608e7791f2afd11bcebb78b1ec0be85f7b3c3f618e5081e8ad3f2d668e689a"
+    },
+    {
+      "path": "services/websocketEventAccess.js",
+      "sha256": "39ae9c0464e58500a5878bfe72d44947dbf85e0c974680b7c542abe08c94c5dd"
+    },
+    {
+      "path": "tests/account-access-editor.test.js",
+      "sha256": "cb2bad4ba152dc4f84e7df87dd8fd8a1c222b00b2ded545ecfa41cf4082bf165"
+    },
+    {
+      "path": "tests/auth-account-lifecycle.test.js",
+      "sha256": "6562d1174d9c692d587e48340704400467a88302b71095cf16a43ff2d79a128c"
+    },
+    {
+      "path": "tests/auth-api-session-hardening.test.js",
+      "sha256": "95519e7138277f4963d56b597d84526d315162c4fed5585b32b90a9a4fef8e37"
+    },
+    {
+      "path": "tests/auth-business-profile.test.js",
+      "sha256": "40afdb5a7e6363f40eba7d1629561c7009c9372307dffbd747047cc4b529626e"
+    },
+    {
+      "path": "tests/booking-create-durability.test.js",
+      "sha256": "278955712a2e6605eb78d6084810f934d6d83e1a24022b0787c5c15f03d6221f"
+    },
+    {
+      "path": "tests/browser/business-cabinet-manager.spec.js",
+      "sha256": "8c37026d841cde492eeaaf7b627ff8b233b71d9bb068526aa21085e66394c1bb"
+    },
+    {
+      "path": "tests/browser/business-membership-editor.spec.js",
+      "sha256": "84948709e6fbf75713fa2951ac5d1deb1bdb67149d8fc0b72d724a8506b52be8"
+    },
+    {
+      "path": "tests/browser/business-profile-access.spec.js",
+      "sha256": "128944a609432a330fb36a0f5ca9be7af313a7173868136cabbe3cbe3f996d42"
+    },
+    {
+      "path": "tests/browser/legacy-containment.spec.js",
+      "sha256": "286c23d5fafc6cdb62789bca8fab0d0a152e4e12d89f9009ee2de72b819a29eb"
+    },
+    {
+      "path": "tests/business-cabinet-manager.test.js",
+      "sha256": "d9c941bc460feaa4e1fc51c347b443a851ae56a19c167f7256a3b87440c82fbd"
+    },
+    {
+      "path": "tests/business-cabinet-resources.test.js",
+      "sha256": "6fa094068af42bc86a9e60428156c2946f899f60a63857df1a3674b4e0fcdda8"
+    },
+    {
+      "path": "tests/business-membership-auth-profile.test.js",
+      "sha256": "34d11d8e94f5a8eeb4e7b494c2f2f6607f9d0b5fcf00368f44fe5c71a4599e55"
+    },
+    {
+      "path": "tests/business-membership-manager.test.js",
+      "sha256": "a75911dc23e2b09a3ab23d5ad1f3566dfeda3739e671481c7ef5b6bb17d5b51f"
+    },
+    {
+      "path": "tests/business-membership-organization-guards.test.js",
+      "sha256": "951bf618e328dff9aa9eebaf7077d2f400c0e613b95b0bae339ea8dfa55902a5"
+    },
+    {
+      "path": "tests/business-membership-security.test.js",
+      "sha256": "e42993668817e7bb9f059d52b655ba432273c25316efa038cbb4efc8a7c6fb47"
+    },
+    {
+      "path": "tests/business-membership.test.js",
+      "sha256": "5e222635fce55397a414b22d1b43748d12f8c2f4a0b3fca23a90c5a010fe1ecb"
+    },
+    {
+      "path": "tests/business-module-registry.test.js",
+      "sha256": "2bf81775fe3183de1a2c80ebe16df475b405f6e61c7d3aba49ae201d5cc24da1"
+    },
+    {
+      "path": "tests/business-profile-cross-tab.test.js",
+      "sha256": "14a1dac2d2ce44ae05995f3924e0d49c7c58e8b605f75d65271a31a279838572"
+    },
+    {
+      "path": "tests/business-profile-frontend.test.js",
+      "sha256": "9b241609fb91abe06f897d34dc6ca29343f923b01772e0610634fa37ab1489cb"
+    },
+    {
+      "path": "tests/business-user-access.test.js",
+      "sha256": "91ce104dacff984daf210b64e033ded25ba0645d481dd2d06df25ce9976a07a9"
+    },
+    {
+      "path": "tests/chat-upload-route.test.js",
+      "sha256": "55718e8babcaf9f5070489907757a63d86ed0d7e8b19390a964076b7804ba623"
+    },
+    {
+      "path": "tests/d03-business-cabinet-parity.test.js",
+      "sha256": "f30d8d33a79d8502e1666404789141a5205d487c66cc1bf1f6881158990faec7"
+    },
+    {
+      "path": "tests/d03-organization-lifecycle.test.js",
+      "sha256": "75b463a6d698f81e14b5f8c3cb7b476071617546501cabf36d472013734c9b60"
+    },
+    {
+      "path": "tests/d03-timeline-client.test.js",
+      "sha256": "8636c0ca8e485d5623d2486538ed992676ba80d3c67699f3c7bd0b8c608442a9"
+    },
+    {
+      "path": "tests/dashboard-assistant.test.js",
+      "sha256": "7c14366c4b534531d1977fad94f591eb82e5c3dc769d81f08a128bd4c370d1ab"
+    },
+    {
+      "path": "tests/finance-business-isolation.test.js",
+      "sha256": "d305a0987df1fe6b1662e85fc8b86b3f7ef61d1c2a73899d6893237a91c73900"
+    },
+    {
+      "path": "tests/guardian-rbac.test.js",
+      "sha256": "f296661781277f4a8bc30492657e129a54e21f86605573197323605592ded1d7"
+    },
+    {
+      "path": "tests/integration/booking-linkedto-reproducer-postgres.test.js",
+      "sha256": "0f5894a2fdb1ca5e82f6602f7c234f9cf6a9db8837444597c27bfc5c320a6997"
+    },
+    {
+      "path": "tests/integration/business-cabinet-resources-postgres.test.js",
+      "sha256": "5c50badc89885589109c37b13253257108a9e60a65e1dda69ce6006f668bd5e7"
+    },
+    {
+      "path": "tests/integration/business-membership-postgres.test.js",
+      "sha256": "d4ae18dfe8c31ff1f5978f806a52bb65116484b68aac4cbfe1bf7848934ffab1"
+    },
+    {
+      "path": "tests/integration/business-user-access-postgres.test.js",
+      "sha256": "879f0ec35fa7240d15fd51d093b83b3ded14480f987e4c6dd310594e4a839de2"
+    },
+    {
+      "path": "tests/integration/customer-lead-business-isolation-postgres.test.js",
+      "sha256": "538d2accc6cbcef2576cf2c9286989895d8c289d7544eb19e49f23554c8ffcdd"
+    },
+    {
+      "path": "tests/integration/d03-organization-lifecycle-postgres.test.js",
+      "sha256": "0de7eb29c85d482767474c1ee9b8a233c0ea58205e502a2c4c45d466f90bb26e"
+    },
+    {
+      "path": "tests/integration/finance-business-isolation-postgres.test.js",
+      "sha256": "a66b0f1dad13932e02590dfd24cd49aef9207ac64b71bfb2c9d593b98b45fe9f"
+    },
+    {
+      "path": "tests/integration/lead-related-records-postgres.test.js",
+      "sha256": "c12b1005a2ac9542ad99142d06a1ec97fb863e4457d7a6c046d6d22cad0382ea"
+    },
+    {
+      "path": "tests/integration/legacy-business-containment-postgres.test.js",
+      "sha256": "bdac11e425716b9cfcefcc297342006635cc09de2a7a549001dbe6cd6a76b2cb"
+    },
+    {
+      "path": "tests/integration/multibusiness-ownership-preflight-postgres.test.js",
+      "sha256": "95fa150c9ac51e931a9b2522506b690ad3c562e289d16eb4a00b272a842905ec"
+    },
+    {
+      "path": "tests/integration/multibusiness-profile-postgres.test.js",
+      "sha256": "1e82d6deddfadbb27d69b67a94cb787fa4288c1c3c5818cbf6fb3f2492044f65"
+    },
+    {
+      "path": "tests/integration/multibusiness-streaming-ownership-postgres.test.js",
+      "sha256": "dc32722b16286485ba69ce19da40175ba17a87362dfd2675ac8ff2c7a2ab1577"
+    },
+    {
+      "path": "tests/integration/omni-completion-postgres.test.js",
+      "sha256": "4d65bd7af06408b9480f6697c727bed5c931dc845f951e5692e04cbef4d0d7a2"
+    },
+    {
+      "path": "tests/integration/omni-inbox-postgres.test.js",
+      "sha256": "5499e443e5bc6b5989e03f87847b537613b346b15a0a0a832f75a378df9ca84a"
+    },
+    {
+      "path": "tests/integration/organization-lifecycle-postgres.test.js",
+      "sha256": "cc4593d2e5b1b78f58b40a377fd6e6da7633229da072fba7b0964db64273e37b"
+    },
+    {
+      "path": "tests/integration/timeline-availability-postgres.test.js",
+      "sha256": "21f3b9f686bf45932798f3737bb6eb45dab124c23b2bc895fa971b29a2d4525d"
+    },
+    {
+      "path": "tests/integration/timeline-membership-postgres.test.js",
+      "sha256": "ebfc83eaae8ed3c1dd57ed51f6d99464dac72f0d261ffeefcd6e75e503d63c18"
+    },
+    {
+      "path": "tests/integration/warehouse-product-isolation-postgres.test.js",
+      "sha256": "0dee4aa1e979b65432813c4aac3e4c8016ca89346fa8891610991e527eddbce6"
+    },
+    {
+      "path": "tests/lead-booking-link.test.js",
+      "sha256": "7f566f099d6f68769b8bf8f547f1ceb21c4bd991438e2071d421d6a991b62fa6"
+    },
+    {
+      "path": "tests/lead-reference-integrity.test.js",
+      "sha256": "7c2c759aeef22f3d30a6bba188c6690e2437783084761af84a8de586c647fca0"
+    },
+    {
+      "path": "tests/lead-related-records-callers.test.js",
+      "sha256": "3ecb8ee79f31f7bc840d893d519386074154ffe4b948b75664a9fb4c307762ad"
+    },
+    {
+      "path": "tests/legacy-business-surface.test.js",
+      "sha256": "655693c1fa45e17c60c5e3f3404b5000c645c371c6b70c2a3759c2f76d6e3de6"
+    },
+    {
+      "path": "tests/legacy-catalog-sources.test.js",
+      "sha256": "a81e025d96b71cb4fda3e0d7a8f2955d939955692f48a03eda5ef0554d163496"
+    },
+    {
+      "path": "tests/legacy-containment-frontend.test.js",
+      "sha256": "1fc8723f21762b8ebdcbd8790125db76a3757f8fe215ba2848a36dbd7d8a9a9f"
+    },
+    {
+      "path": "tests/legacy-finance-dashboard-ui.test.js",
+      "sha256": "f3c384fac5b7dd8cfd4d33f421778e60ad6edc0fbc077ac9b1850272823ba986"
+    },
+    {
+      "path": "tests/multibusiness-ownership-preflight.test.js",
+      "sha256": "94e7725cbb0b4a840b66b735ec5e93026dc50c38121a2c4592bdf38063771e6b"
+    },
+    {
+      "path": "tests/omni-case-link.test.js",
+      "sha256": "b7a946509b71668a10b129caae6628051797855ccd3de0f932ad0a5f0da74ed3"
+    },
+    {
+      "path": "tests/omni-hardening.test.js",
+      "sha256": "25051790d7ae0c5828fffe6e4e6d468026c4c342d164919fb9f7e76995b38197"
+    },
+    {
+      "path": "tests/omni-legacy-catalog-ui.test.js",
+      "sha256": "f6ed0d0b59f9f7ca0b2a6def8aefa67c8140559e3bef4885e9462dc6bce0ed76"
+    },
+    {
+      "path": "tests/omni-provider-lifecycle.test.js",
+      "sha256": "5b7b9c7958668f5eb6d3533b6a921dbe160122b30a5098a8ab043c6203f57430"
+    },
+    {
+      "path": "tests/omni-send-truth.test.js",
+      "sha256": "2fc4ae488df7d05719c440f6a38922ff428cce6042897b2b370275d312b73aaf"
+    },
+    {
+      "path": "tests/organization-lifecycle.test.js",
+      "sha256": "7f7fe1792bf0cf951e415eb241b2d126b7c410fa27fd96ba5937696441ce662d"
+    },
+    {
+      "path": "tests/organization-ownership.test.js",
+      "sha256": "732041d859a124133d165b9b3c1e76e39f84a471b469dbf78bf2060a1534732d"
+    },
+    {
+      "path": "tests/payroll-finance-workflow-contract.test.js",
+      "sha256": "bd753ccf55a4a9cfef3b5b7330cb0b4643e0d31d0a64d64bc7465c750bd9c5cb"
+    },
+    {
+      "path": "tests/revenue-access-surface-contract.test.js",
+      "sha256": "695ca1b325584cb60edad011f4e8b7c730403f711df12efae80a563bfa80d462"
+    },
+    {
+      "path": "tests/route-smoke.test.js",
+      "sha256": "d20d5388a298d86066ffffbe8ef779985a12c7197cd7e8764cbef03e9760db05"
+    },
+    {
+      "path": "tests/task-private-handoff.test.js",
+      "sha256": "3333fa43173629be2d3ac89554c6eb2a2529eec7fb76b66a6d22e9bfc6feb8c5"
+    },
+    {
+      "path": "tests/timeline-availability-privacy.test.js",
+      "sha256": "eb059cd8f63f4ea64cb0831383fa67f3b7ad8a44d6ccd4069cb9ea1cde70a80a"
+    },
+    {
+      "path": "tests/timeline-context.test.js",
+      "sha256": "e340f737bbb07a40b8bb26093940d6113c6c0c69df4ae16b36b5b9a6b6ea973c"
+    },
+    {
+      "path": "tests/timeline-membership-isolation.test.js",
+      "sha256": "04a5b0b3d78a11d3dd2ec7c34d5c935f6a531045d707be7fabe1ffc371a7b4d4"
+    },
+    {
+      "path": "tests/timeline-resources.test.js",
+      "sha256": "23cdd697e80e2119f189f07c3f6724831cd112d5396ef7474b2b5955b9412c96"
+    },
+    {
+      "path": "tests/warehouse-product-isolation.test.js",
+      "sha256": "b67cad3d840d8a1afbbb067d858d2c2d356eeff3ed09193df6e46ab5b69608b7"
+    },
+    {
+      "path": "tests/websocket-event-access.test.js",
+      "sha256": "3b5e00d2d3867297745912d338227831aa39d7ef69ae21040a90aae19e57e6e8"
+    },
+    {
+      "path": "tests/websocket-membership.test.js",
+      "sha256": "c64c6539c606a8519fd4fa3522e4672a02ad55a77d516da488b5ae61f3f985a9"
+    }
+  ],
+  "newlyTouchedSources": [
+    "docs/workstreams/sys-multibusiness/tools/validate-owner-mapping.cjs",
+    "docs/workstreams/sys-multibusiness/tools/validate-owner-mapping.test.cjs"
+  ],
+  "runtimeSourceChanges": false,
+  "existingCollectorChanges": false,
+  "existingTestChanges": false,
+  "analysisToolMeaning": "Read-only local JSON schema/graph validation; no database connection, SQL/apply, membership authentication or approval verification",
+  "auditSources": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "328f654aa5e20178d4a1da82c06de5eea909b7a1b134471dab259b83f0182516"
+    },
+    {
+      "path": "README.md",
+      "sha256": "ae05ac28d47ab4a9a0acd99317e064d37b78114a30663af3152b1ac1b2062209"
+    },
+    {
+      "path": "server.js",
+      "sha256": "bce78b5f6088dc986a6141f7a47a9adc8f137a14f8255f11270a10da0336bc78"
+    },
+    {
+      "path": "routes/catalogs.js",
+      "sha256": "d2844aab76afe7bfbbc0654df84981a75a7f21435b04fa9b630e56be83f56aad"
+    },
+    {
+      "path": "routes/booking-templates.js",
+      "sha256": "ca5b40baae590cbcb51b535d20e775e4833c0e82c2201340c25278cbf6733401"
+    },
+    {
+      "path": "routes/recurring.js",
+      "sha256": "6f369c9df528a5e74e23d88c6cdf7a8ac3c338a351abd7d8217b9226d0ec1d43"
+    },
+    {
+      "path": "routes/finance.js",
+      "sha256": "8ec296498b5f311cb30a9bf724c625dc4b24ff8b2f6aae0cb4a3205ff676f9d1"
+    },
+    {
+      "path": "routes/products.js",
+      "sha256": "ac8442251ca4c131d2efd8e9e4182e7bdda219b817d42c37c3c3e714343139a5"
+    },
+    {
+      "path": "routes/dashboard.js",
+      "sha256": "d9ce936f736ae2a086ff987df1e1b9c08c2405ba823910b4190c9e4da87e6a0e"
+    },
+    {
+      "path": "routes/omnichannel.js",
+      "sha256": "f72e74dff3ad42450ad467f73fbe595836cfa57541921d05c02f067f958863f7"
+    },
+    {
+      "path": "services/imageStorage.js",
+      "sha256": "cd8239a0995cf1ffda51802977f3efe28ed2fa464fb0297e861b79907e984734"
+    },
+    {
+      "path": "services/scheduler.js",
+      "sha256": "847d3a882b97e12b71719daf21d94a074deded4121aa5ea0a72846d8e317d6ef"
+    },
+    {
+      "path": "services/recurring.js",
+      "sha256": "92514976c5e94a77a27aff6212a0e3ef8749808244e88cf02eed9f1267e15e00"
+    },
+    {
+      "path": "services/legacyBusinessSurface.js",
+      "sha256": "e6e0703b1e005e54feb805db82767fbdbed21d9e4fac29be61704a9b2cb418ea"
+    },
+    {
+      "path": "services/omniLeadAssistant.js",
+      "sha256": "42effc9a27ba8c1195fda4b0936674c71349bde60d819e1688a52876e6b64927"
+    },
+    {
+      "path": "services/menuPhotoGeneration.js",
+      "sha256": "c4168004ef860026bc2818218ea18fdcfc462b5b18f99ee93d2bac146bc1ddf2"
+    },
+    {
+      "path": "services/menuImageDrafts.js",
+      "sha256": "a91e44261bac2065c49f0b57b9b1035c616679cba0b8cc1dd992102a891fcb06"
+    },
+    {
+      "path": "services/programIconGeneration.js",
+      "sha256": "1995c5891de09fbda9d388c82865e21cb62c68a82e3a2e67ddb5bdd4cddfe8b1"
+    },
+    {
+      "path": "config/schedulerSurface.js",
+      "sha256": "c4bed38a6ccd90a9985ca8afa577184ab3e0913067117629c63247d3661d0be3"
+    },
+    {
+      "path": "config/storageSurface.js",
+      "sha256": "b6b8c547d5ca5027dce1a9e02837127501ce4ed72eea0c9802a924c01ad2aee6"
+    },
+    {
+      "path": "config/serviceWorkerPolicy.js",
+      "sha256": "bc2b677c890fe8fe0a21a44223921787a3de8b4889d63ba1cd152cf18f5a762d"
+    },
+    {
+      "path": "db/index.js",
+      "sha256": "6e894a145beb0a36dc649463ac548078e3c0a515270d3dffbbafa0fb15b28234"
+    },
+    {
+      "path": "db/migrations/003_recurring_bookings.sql",
+      "sha256": "594ae26fdc495987fde4a2157a57fcc1aa4a478b42402cb692607ba1fed2bc07"
+    },
+    {
+      "path": "db/migrations/075_booking_templates.sql",
+      "sha256": "168e42f1f0a17b8c6a4ce2d701ebe1a747f22bbd023fb26df396f9c7fb72d4f8"
+    },
+    {
+      "path": "db/migrations/093_catalogs.sql",
+      "sha256": "25454f57babf922ba979a950e9dcbbe6fae9c00982e8639f8cf15d08191289b0"
+    },
+    {
+      "path": "db/migrations/127_catalog_pages.sql",
+      "sha256": "1ee7611274551fdca3c370e33271dffa0e031f370746ba3e34838509cb8ac0cc"
+    },
+    {
+      "path": "db/migrations/135_catalog_enhancements.sql",
+      "sha256": "c070c8e586d09d86ee6f1cec19d747a28ace917e1c499e6ef6062cfd7264c946"
+    },
+    {
+      "path": "db/migrations/136_catalog_automations.sql",
+      "sha256": "905b3f52141294b5a408f6a64a8bd0f3debbf1b09eadc0bc84de9be0130b6f2e"
+    },
+    {
+      "path": "db/migrations/276_catalog_image_blobs.sql",
+      "sha256": "7c483abde2bbc9df56490e0bc2e3ad5f4beb1c3e3a49f500f4132ca65534ea90"
+    },
+    {
+      "path": "db/migrations/296_room_resource_id_schema.sql",
+      "sha256": "dd44545e7aaa9e0dba9f75feb96f43a4056f6a6d16bb7576d01c44618e1ebfd8"
+    },
+    {
+      "path": "scripts/backfill-room-resource-id.js",
+      "sha256": "ab5ec84a023bdd70ce35b24e60da52316a718ab8f04cfd030bcbb821847d97c4"
+    },
+    {
+      "path": "scripts/audit-multibusiness-ownership.js",
+      "sha256": "6846156fe32efce90fb8ea929cfb427872a75771069e5152300a8dc488a7ca76"
+    }
+  ],
+  "decisions": {
+    "OWN-01": "PENDING",
+    "OWN-02": "PENDING",
+    "OWN-03": "PENDING",
+    "OWN-04": "PENDING",
+    "OWN-05": "PENDING",
+    "OWN-06": "PENDING",
+    "OWN-07": "PENDING",
+    "OWN-08": "PENDING"
+  },
+  "actualSource": {
+    "status": "NOT_RUN_SOURCE_UNAVAILABLE",
+    "dedicatedReadOnlyConnectionPresent": false,
+    "dedicatedTestConnectionPresent": false,
+    "actualCounts": null,
+    "actualOwners": null,
+    "secretsLoaded": false,
+    "applicationDatabaseUrlFallback": false
+  },
+  "restrictedMapping": {
+    "path": ".codex-temp/sys-mb-ownership-decisions/restricted/owner-mapping.json",
+    "status": "UNPOPULATED_NOT_COLLECTED",
+    "meaning": "No real-source inventory exists; empty entries do not imply zero production rows; git-ignore is not access control",
+    "applied": false
+  },
+  "runtime": {
+    "windowsNode": "22.23.1",
+    "npm": "10.9.8",
+    "postgres": "Local WSL Node 22 / PostgreSQL 16 disposable fixtures"
+  },
+  "verification": {
+    "preflightUnit": {
+      "log": ".codex-temp/sys-mb-ownership-decisions/unit.log",
+      "tests": 10,
+      "pass": 10,
+      "fail": 0,
+      "skipped": 0
+    },
+    "preflightPostgres": {
+      "log": ".codex-temp/sys-mb-ownership-decisions/postgres.log",
+      "tests": 8,
+      "pass": 8,
+      "fail": 0,
+      "skipped": 0
+    },
+    "permissionDenial": {
+      "sourceKind": "SYNTHETIC_DISPOSABLE_LOCAL_POSTGRESQL",
+      "productionData": false,
+      "scenario": "Existing pg_monitor role lacks SELECT on disposable catalog table",
+      "status": "PASS",
+      "observedDatabaseErrorCode": "42501",
+      "publicError": {
+        "status": "AUDIT_FAILED",
+        "code": "AUDIT_DATABASE_FAILED"
+      },
+      "collectorBeginsVerifiedReadOnlySnapshot": true,
+      "collectorEndsWithRollback": true,
+      "sourceRowsUnchanged": true,
+      "collectorWriteStatements": 0,
+      "newRolesCreated": 0,
+      "grantsChanged": 0,
+      "recordsExported": false,
+      "exactCleanup": "PASS"
+    },
+    "mappingValidator": {
+      "log": ".codex-temp/sys-mb-ownership-decisions/mapping-validator.log",
+      "tests": 27,
+      "pass": 27,
+      "fail": 0,
+      "skipped": 0
+    },
+    "mappingExamples": [
+      {
+        "path": ".codex-temp/sys-mb-ownership-decisions/mapping-synthetic-validation.json",
+        "formatValid": true,
+        "classification": "RESTRICTED",
+        "dataKind": "synthetic",
+        "recordCollection": "CLAIMED_PARTIAL_UNVERIFIED",
+        "migrationReadiness": "SYNTHETIC_NOT_APPLICABLE",
+        "authorizationVerified": false,
+        "sourceSnapshotVerified": false,
+        "safeToApply": false,
+        "errors": [],
+        "counts": {
+          "mappingEntries": 12,
+          "contextualReferences": 1,
+          "pendingEntries": 12,
+          "quarantinedEntries": 12,
+          "pendingDecisions": 8
+        }
+      },
+      {
+        "path": ".codex-temp/sys-mb-ownership-decisions/mapping-unpopulated-validation.json",
+        "formatValid": true,
+        "classification": "RESTRICTED",
+        "dataKind": "unpopulated",
+        "recordCollection": "NOT_COLLECTED",
+        "migrationReadiness": "NOT_COLLECTED",
+        "authorizationVerified": false,
+        "sourceSnapshotVerified": false,
+        "safeToApply": false,
+        "errors": [],
+        "counts": {
+          "mappingEntries": 0,
+          "contextualReferences": 0,
+          "pendingEntries": 0,
+          "quarantinedEntries": 0,
+          "pendingDecisions": 8
+        }
+      }
+    ],
+    "mappingSandboxAttempt": {
+      "status": "TEST_RUNNER_BLOCKED_SPAWN_EPERM",
+      "log": ".codex-temp/sys-mb-ownership-decisions/mapping-validator-sandbox.log",
+      "outcome": "Same focused command passed outside child-process restriction"
+    },
+    "parserCheck": {
+      "status": "PASS",
+      "command": "node --check",
+      "files": [
+        "docs/workstreams/sys-multibusiness/tools/validate-owner-mapping.cjs",
+        "docs/workstreams/sys-multibusiness/tools/validate-owner-mapping.test.cjs"
+      ]
+    },
+    "diffCheck": {
+      "status": "PASS",
+      "command": "git -c core.safecrlf=false diff --check"
+    },
+    "fullNpmTestThisTask": "NOT_RUN_ANALYSIS_AND_READONLY_TOOL_ONLY",
+    "priorFullBaseline": {
+      "checkpoint": "RELATED_RECORDS_VERIFICATION.json",
+      "status": "PASS_HISTORICAL_NOT_RERUN"
+    }
+  },
+  "artifacts": [
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/build-evidence.cjs",
+      "sha256": "9c9e46715da63ee348f8259a0f26aefabf853386859437e0da9bbcd8a7528858"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/capture-preflight.cjs",
+      "sha256": "e65844ef5b1116938d01ee677a3eb968a4ea14703eb3fcf9e1aa528960726624"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/mapping-synthetic-validation.json",
+      "sha256": "bb4a16612362b188a88d866743e8d68ffca8a3e87434ecb530a149d331e137f4"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/mapping-tests.log",
+      "sha256": "f143e56fce22208f148169cfd935964ab81ebaa3371bec0cb26fa19a798d7720"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/mapping-unpopulated-validation.json",
+      "sha256": "d9651033df7a1cbc54a80697f11afd2fad95e2d55624600493e4297f0eb7098a"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/mapping-validator-sandbox.log",
+      "sha256": "202365c6e93d855da6c165d087d38f164e602ad3d26db7bf6dfb575b6a7a036d"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/mapping-validator.log",
+      "sha256": "577bc93155441a2cf91a59fe9039236d44eb8c43d1ab9eef1cc22c5aa919d8ea"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/permission-negative.cjs",
+      "sha256": "16a1b270ccadec2ad699c305755d03ab020ac8a1ce0ae5d2f0c6d2f2e81e008c"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/permission-negative.json",
+      "sha256": "163ed55d84d4c8808a1f15b51eea89d14c73a96e8b1e3b4b204c98acbdf89f3c"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/permission-negative.log",
+      "sha256": "4df274c03a9a65ac48ebc8be353391ee67adc8b22191ef2d7d31a915e1a69455"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/postgres.log",
+      "sha256": "f691a56434eb2e33c78514e76a021c586b5935defda1e91340b19281795c99cf"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/preserve-prior-indexes.cjs",
+      "sha256": "7574145a4263b6948d29d5bf6cd3670c92f18104c2bd2fcb0f84192cb39828f5"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/prior-artifacts/CONTINUATION_TASKS.md",
+      "sha256": "98e538a9a0d6a29399c0083e86e5fa0640bb1d6fbd24ad54313e5c31ffd52963"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/prior-artifacts/DOMAIN_ISOLATION_INVENTORY.md",
+      "sha256": "05d01cfd6f878d2ce6c40a3d38c369e19ffbe3547443929a6d5bb6ab800f577f"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/prior-artifacts/index.json",
+      "sha256": "5683e2fb56d26253979718d2a3af6b5f3856caf88457dab1d96f2eaac07ea8b8"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/restricted/owner-mapping.json",
+      "sha256": "3d4228357c53e08a95154e8c0e95d197e3f31263176d39527c2e8c167771443a"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/runtime.log",
+      "sha256": "de6ff1d131bbcc65608a7a6896b6d9bb6ccfa24775f4c13de7e8a9d151b1b671"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/synthetic-collections.json",
+      "sha256": "22c3fe1adf03f238d222fb6885cc46d52875eb12c0bb9d22622944ec27d3795b"
+    },
+    {
+      "path": ".codex-temp/sys-mb-ownership-decisions/unit.log",
+      "sha256": "383de88a41fabff5b4df044d7ff0977409e6c161b0c719c71e63025a992caf0c"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/CONTINUATION_TASKS.md",
+      "sha256": "e532243754de9aeb74e71eb3e1d3ba7981fbf968037046f80ab01f04fdbdb517"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/DECISIONS.md",
+      "sha256": "d027af7cd68f2f71f5ee84f0d0f348eecbf8fbd3426a1b9da6e0a0a15902b180"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/DOMAIN_ISOLATION_INVENTORY.md",
+      "sha256": "91324e67acc55f2fdb77c3c7e1bd041f29e9d23a5f32d9abe8e2076b707a1206"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/OWNERSHIP_DECISIONS_REPORT.md",
+      "sha256": "2c802bb214469d4cf0cd61d34454605e3f5a6ca16e05491570345eb7739b25e1"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/OWNERSHIP_PREFLIGHT.synthetic.json",
+      "sha256": "24bd6e2b08c7e5f9e9a7e990762120b4f32f9b7f2d6c609f62ffe4a6b64f28d4"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/OWNERSHIP_PREFLIGHT_REPORT.md",
+      "sha256": "5967ccd38f286f7034c36f12853195833bd688f278266a090c82710477167e7e"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/OWNER_MAPPING.schema.json",
+      "sha256": "31f796a96240e2445173eea0fd00a6a523cb5eda36ed19bfa62c445fd5ad1399"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/OWNER_MAPPING.synthetic.json",
+      "sha256": "590019b8970074d6f6cfe59fb9dfc379842bfc429ff1aa631bf912846f4387ee"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/OWNER_MAPPING_FORMAT.md",
+      "sha256": "94b9d85fc90a41e563d4084a725d9058a6676f64cd7a19ec1417f3e3fe699ade"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/PUBLIC_ASSET_JOB_POLICY.md",
+      "sha256": "2de7161603b1470a855373d6509925630f6824f74a8008d0fb07f09c02ef0147"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/RELATED_RECORDS_VERIFICATION.json",
+      "sha256": "38406a8518218cb7bf7aaf74f4edf3457e84d3d12a7d38385cea9c91449526c0"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/tools/validate-owner-mapping.cjs",
+      "sha256": "54f225c8a13cbb9ecf335c07ac417fae6932e107444e484869de74ef54a82cd8"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/tools/validate-owner-mapping.test.cjs",
+      "sha256": "9c283a161f05d5ac5652975813dbcebb9c3e7d480136514ee1396fd6fcdb45de"
+    }
+  ],
+  "schemasOrMigrationsChanged": false,
+  "authenticationChanged": false,
+  "dependenciesChanged": false,
+  "publicLinksChanged": false,
+  "assetsFetchedOrChanged": false,
+  "schedulersChangedOrInvoked": false,
+  "productionOperations": 0,
+  "providerCalls": 0,
+  "credentialsLoaded": false,
+  "commit": "NOT_RUN",
+  "push": "NOT_RUN",
+  "ci": "NOT_RUN",
+  "deploy": "NOT_RUN",
+  "liveQA": "NOT_RUN",
+  "nextTask": "Owner review of OWN-01..08 and explicitly selected read-only source; task4 application remains blocked until reviewed mapping and policies exist",
+  "limitations": [
+    "Synthetic PostgreSQL validates the collector only; no real row, historical owner, intended publication or deployed job was certified.",
+    "Collection COMPLETE covers only 21 tables / 25 metrics; it does not establish ownership or full asset/job/embedded JSON coverage.",
+    "Mapping format and declared attestations are not independent owner, reviewer identity or authorization evidence.",
+    "Private containment does not cover the independent bearer viewer, shared public image paths or registered actorless refresh.",
+    "Prior D04 protected linkedTo and remaining D05/domain gaps remain unresolved; no migration/release authorization is created.",
+    "Ignored scratch evidence must accompany any workspace transfer; real identifiers belong in approved restricted storage."
+  ]
+}

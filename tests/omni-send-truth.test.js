@@ -33,7 +33,7 @@ function loadHub(pool, providerMocks = {}) {
     clearModules();
     installMock('../db', { pool: pool || { query: async () => ({ rows: [] }) } });
     installMock('../services/kleshnya-chat', { generateChatResponse: async () => '' });
-    installMock('../services/websocket', { getWSS: () => ({ clients: [] }) });
+    installMock('../services/websocket', { broadcastBusinessEvent: async () => 0 });
     installMock('../services/telegram', { sendTelegramMessage: providerMocks.sendTelegramMessage || (async () => ({ ok: true, result: { message_id: 42 } })) });
     installMock('../services/omni-telegram-bridge', { sendTelegramBridgeMessage: providerMocks.sendTelegramBridgeMessage || (async () => null) });
     installMock('../services/omni-viber', { sendViber: providerMocks.sendViber || (async () => ({ success: true, messageToken: 43 })) });

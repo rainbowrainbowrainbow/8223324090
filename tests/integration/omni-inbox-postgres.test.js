@@ -34,7 +34,7 @@ test('Omni PostgreSQL concurrency, idempotency, read boundaries and provider iso
     mock('../../db', { pool });
     const account = { connected: true, sendCapable: true, status: 'connected' };
     mock('../../services/omni-accounts', { getOmniAccountStatus: () => account, getOmniAccountStatusAsync: async () => account });
-    mock('../../services/websocket', { getWSS: () => ({ clients: [] }) });
+    mock('../../services/websocket', { broadcastBusinessEvent: async () => 0 });
     let sends = 0;
     mock('../../services/telegram', { sendTelegramMessage: async () => { sends++; await new Promise(resolve => setTimeout(resolve, 40)); return { ok: true, result: { message_id: 'fixture-provider-1' } }; } });
     mock('../../services/omni-telegram-bridge', { sendTelegramBridgeMessage: async () => null });

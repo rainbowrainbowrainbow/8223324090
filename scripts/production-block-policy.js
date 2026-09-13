@@ -16,6 +16,20 @@ const TARGET = Object.freeze({
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const BLOCK_ID_PATTERN = /^EG-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$/;
 const SENSITIVE_KEY = /(secret|token|password|database.?url|authorization|cookie)/i;
+const PROTECTED_WORKFLOWS = Object.freeze({
+    SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover'
+});
+const SYS_MB_PROTECTED_PATH_PATTERNS = Object.freeze([
+    /^config\/permissionRegistry\.js$/,
+    /^middleware\/auth\.js$/,
+    /^routes\/(?:auth|organizations|finance|payroll)\.js$/,
+    /^services\/(?:accountAccessPolicy|businessContext|businessCutover|businessMembership|businessModuleRegistry|businessUserAccess|legacyBusinessSurface|websocketEventAccess)\.js$/,
+    /^db\/migrations\/(?:357_organizations_business_memberships|363_multibusiness_cutover_journal_telemetry|364_catalog_ownership_markers|365_business_cutover_journal_approval_receipts)\.sql$/,
+    /^scripts\/(?:audit-multibusiness-ownership|production-block-controller|production-block-policy|sys-mb-[a-z0-9-]+)\.cjs$/,
+    /^tests\/(?:business-cutover|business-membership-security|business-module-registry|legacy-business-surface|multibusiness-ownership-preflight|production-block-controller)\.test\.js$/,
+    /^tests\/integration\/(?:business-cutover-journal-postgres|sys-mb-[a-z0-9-]+)\.test\.js$/,
+    /^docs\/workstreams\/sys-multibusiness\//
+]);
 const RED_PATH_PATTERNS = Object.freeze([
     /^\.github\/workflows\//,
     /(^|\/)railway(?:\.json|\.toml|\/)/i,
@@ -125,8 +139,39 @@ function classifyMigration(file, sql) {
     };
 }
 
+function normalizePathList(paths = []) {
+    return [...new Set(paths.map(file => String(file || '').replaceAll('\\', '/')).filter(Boolean))].sort();
+}
+
 function redChangedPaths(paths = []) {
-    return paths.map(file => file.replaceAll('\\', '/')).filter(file => RED_PATH_PATTERNS.some(pattern => pattern.test(file)));
+    return normalizePathList(paths).filter(file => RED_PATH_PATTERNS.some(pattern => pattern.test(file)));
+}
+
+function isSysMbProtectedPath(file) {
+    const normalized = String(file || '').replaceAll('\\', '/');
+    return SYS_MB_PROTECTED_PATH_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
+function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
+    if (!workflow || workflow === 'none') {
+        fail(redPaths.length === 0, 'Candidate changes include Red protected paths', 'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
+        return { enabled: false, kind: null, protectedChangedPaths: [] };
+    }
+    fail(workflow === PROTECTED_WORKFLOWS.SYS_MB_AUTH_CUTOVER,
+        'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    const protectedChangedPaths = normalizePathList(changedPaths).filter(isSysMbProtectedPath);
+    const unauthorizedRedPaths = redPaths.filter(file => !isSysMbProtectedPath(file));
+    fail(unauthorizedRedPaths.length === 0,
+        'Protected SYS-MB workflow cannot authorize these Red paths',
+        'PRODUCTION_BLOCK_RED_PATHS', { paths: unauthorizedRedPaths });
+    fail(protectedChangedPaths.length > 0,
+        'Protected SYS-MB workflow requires a concrete protected path in the candidate',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_EMPTY');
+    return {
+        enabled: true,
+        kind: PROTECTED_WORKFLOWS.SYS_MB_AUTH_CUTOVER,
+        protectedChangedPaths
+    };
 }
 
 function validateQaScope(scope) {
@@ -172,10 +217,11 @@ function buildManifest(facts, options = {}) {
     fail(SHA_PATTERN.test(head) && SHA_PATTERN.test(baseLiveSha),
         'Prepare requires exact candidate and live SHAs', 'PRODUCTION_BLOCK_SHA_INVALID');
     const migrations = (facts.migrations || []).map(item => classifyMigration(item.file, item.sql));
-    const redPaths = redChangedPaths(facts.changedPaths || []);
+    const changed = normalizePathList(facts.changedPaths || []);
+    const redPaths = redChangedPaths(changed);
+    const protectedWorkflow = validateProtectedWorkflow(options.protectedWorkflow || 'none', changed, redPaths);
     const redMigrations = migrations.filter(item => item.red);
     fail(facts.descendsFromLive === true, 'Candidate HEAD is not a descendant of live SHA', 'PRODUCTION_BLOCK_NOT_DESCENDANT');
-    fail(redPaths.length === 0, 'Candidate changes include Red protected paths', 'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
     fail(redMigrations.length === 0, 'Candidate includes a Red migration', 'PRODUCTION_BLOCK_RED_MIGRATION', {
         migrations: redMigrations.map(item => ({ file: item.file, reason: item.redReason }))
     });
@@ -194,6 +240,7 @@ function buildManifest(facts, options = {}) {
         allowedMigrationFiles: migrations.map(item => item.file).sort(),
         migrationClassifications: migrations.sort((left, right) => left.file.localeCompare(right.file)),
         allowedQaScope: validateQaScope(options.qaScope || { enabled: false }),
+        allowedProtectedWorkflow: protectedWorkflow,
         releaseLabel: String(options.releaseLabel || 'Autonomy Hardening').trim().slice(0, 120),
         maxReleaseAttempts: Number(options.maxReleaseAttempts || DEFAULT_MAX_ATTEMPTS),
         realDataMutationAllowed: false,
@@ -204,7 +251,7 @@ function buildManifest(facts, options = {}) {
             previousProductionSha: baseLiveSha,
             migrations: Object.fromEntries(migrations.map(item => [item.file, item.rollback || 'No automatic rollback documented']))
         },
-        changedPaths: [...new Set((facts.changedPaths || []).map(file => file.replaceAll('\\', '/')))].sort(),
+        changedPaths: changed,
         runtimeState: {
             releaseAttempts: 0,
             lastAttemptAt: null,
@@ -247,6 +294,15 @@ function validateManifest(manifest, options = {}) {
         && manifest.protectedContractMutationAllowed === false,
     'Production block attempts to permit a Red action', 'PRODUCTION_BLOCK_RED_PERMISSION');
     validateQaScope(manifest.allowedQaScope);
+    const changed = normalizePathList(manifest.changedPaths || []);
+    const protectedWorkflow = manifest.allowedProtectedWorkflow || { enabled: false, kind: null, protectedChangedPaths: [] };
+    const validatedProtectedWorkflow = validateProtectedWorkflow(
+        protectedWorkflow.enabled ? protectedWorkflow.kind : 'none',
+        changed,
+        redChangedPaths(changed)
+    );
+    fail(JSON.stringify(validatedProtectedWorkflow) === JSON.stringify(protectedWorkflow),
+        'Protected workflow envelope differs from candidate paths', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
     return manifest;
 }
 
@@ -260,6 +316,9 @@ function warningText(manifest) {
     const qa = manifest.allowedQaScope?.enabled
         ? `${manifest.allowedQaScope.kind || 'trusted QA'}, TTL ${manifest.allowedQaScope.ttlMinutes || '?'} хв`
         : 'none';
+    const protectedWorkflow = manifest.allowedProtectedWorkflow?.enabled
+        ? `${manifest.allowedProtectedWorkflow.kind}; protected paths: ${manifest.allowedProtectedWorkflow.protectedChangedPaths.join(', ')}`
+        : 'none';
     return [
         `УВАГА · ${manifest.blockId}`,
         '',
@@ -271,8 +330,9 @@ function warningText(manifest) {
         `3. Deploy у Railway service ${manifest.railwayServiceId}.`,
         `4. Застосування migrations: ${migrations}.`,
         `5. Disposable QA: ${qa}.`,
+        `6. Protected workflow: ${protectedWorkflow}.`,
         '',
-        'Межі: тільки зафіксовані branch/service/migrations/QA scope; real data, settings і secrets заборонені.',
+        'Межі: тільки зафіксовані branch/service/migrations/QA scope/protected workflow; real data, settings і secrets заборонені.',
         `Відкат: production SHA ${manifest.baseLiveSha}; migration mapping у block manifest; exact QA cleanup.`,
         `Потрібний дозвіл: «Дозволяю блок ${manifest.blockId}» або exact controller confirmation ${confirmationValue(manifest)}.`
     ].join('\n');
@@ -282,6 +342,7 @@ module.exports = {
     DEFAULT_MAX_ATTEMPTS,
     MAX_VALIDITY_MS,
     ProductionBlockError,
+    PROTECTED_WORKFLOWS,
     RED_PATH_PATTERNS,
     SCHEMA_VERSION,
     TARGET,
@@ -289,10 +350,12 @@ module.exports = {
     classifyMigration,
     confirmationValue,
     manifestHash,
+    isSysMbProtectedPath,
     redChangedPaths,
     sanitize,
     stableJson,
     validateManifest,
+    validateProtectedWorkflow,
     validateQaScope,
     warningText
 };

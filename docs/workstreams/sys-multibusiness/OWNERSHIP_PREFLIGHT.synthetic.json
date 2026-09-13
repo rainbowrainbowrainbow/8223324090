@@ -1,0 +1,1018 @@
+{
+  "schemaVersion": 1,
+  "task": "SYS-MB-OWNERSHIP-DECISIONS",
+  "generatedAt": "2026-09-12T16:59:11.377Z",
+  "sourceKind": "SYNTHETIC_DISPOSABLE_LOCAL_POSTGRESQL",
+  "productionData": false,
+  "sourceFixture": "tests/integration/multibusiness-ownership-preflight-postgres.test.js",
+  "branch": "codex/sys-mb-auth-p0-20260912",
+  "baseCommit": "a5180def01a1e47f8f4fc75e2f7a43092f205828",
+  "operatorSource": {
+    "status": "NOT_RUN_SOURCE_UNAVAILABLE",
+    "actualCounts": null,
+    "presenceCheck": "Parent task checked only dedicated process-local environment variable presence; both were absent.",
+    "dedicatedAuditConnectionPresent": false,
+    "dedicatedTestConnectionPresent": false,
+    "secretsLoaded": false,
+    "applicationConnectionFallbackUsed": false
+  },
+  "evidenceStatus": "PASS_LOCAL_COLLECTOR_VERIFICATION_ONLY",
+  "ownershipDecisionStatus": "HOLD_OWNERSHIP_DECISIONS",
+  "safeToAutoBackfill": false,
+  "ownershipEstablished": false,
+  "verification": {
+    "unit": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    "postgres": {
+      "passed": 8,
+      "scenarios": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "additionalPermissionNegative": {
+      "sourceKind": "SYNTHETIC_DISPOSABLE_LOCAL_POSTGRESQL",
+      "productionData": false,
+      "scenario": "Existing pg_monitor role lacks SELECT on disposable catalog table",
+      "status": "PASS",
+      "observedDatabaseErrorCode": "42501",
+      "publicError": {
+        "status": "AUDIT_FAILED",
+        "code": "AUDIT_DATABASE_FAILED"
+      },
+      "collectorBeginsVerifiedReadOnlySnapshot": true,
+      "collectorEndsWithRollback": true,
+      "sourceRowsUnchanged": true,
+      "collectorWriteStatements": 0,
+      "newRolesCreated": 0,
+      "grantsChanged": 0,
+      "recordsExported": false,
+      "exactCleanup": "PASS"
+    },
+    "collectorRuntimeOrTestsChanged": false,
+    "fullNpmTestThisTask": "NOT_RUN",
+    "productionPreflight": "NOT_RUN"
+  },
+  "sources": [
+    {
+      "path": "scripts/audit-multibusiness-ownership.js",
+      "sha256": "6846156fe32efce90fb8ea929cfb427872a75771069e5152300a8dc488a7ca76"
+    },
+    {
+      "path": "tests/multibusiness-ownership-preflight.test.js",
+      "sha256": "94e7725cbb0b4a840b66b735ec5e93026dc50c38121a2c4592bdf38063771e6b"
+    },
+    {
+      "path": "tests/integration/multibusiness-ownership-preflight-postgres.test.js",
+      "sha256": "95fa150c9ac51e931a9b2522506b690ad3c562e289d16eb4a00b272a842905ec"
+    }
+  ],
+  "capturedCollections": [
+    {
+      "scenario": "empty_schema",
+      "generatedAt": "2026-09-12T16:55:50.710Z",
+      "collectionStatus": "INCOMPLETE_SCHEMA",
+      "collectionIssues": [
+        "MISSING_SCHEMA"
+      ],
+      "status": "HOLD_OWNERSHIP_DECISIONS",
+      "readOnly": true,
+      "isolation": "repeatable read",
+      "observedTables": 0,
+      "totalTables": 21,
+      "observedRelationships": 0,
+      "totalRelationships": 25,
+      "unobservedTables": [
+        {
+          "table": "catalog_definitions",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_subcategories",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_items",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_settings",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_pages",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_page_history",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_automations",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "trend_proposals",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_image_blobs",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "booking_templates",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "recurring_templates",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "recurring_booking_skips",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "bookings",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "products",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "timeline_resources",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "finance_transactions",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "staff",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "certificates",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "payroll_reports",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "organizations",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "businesses",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        }
+      ],
+      "unobservedRelationships": [
+        {
+          "metric": "catalog_items_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_subcategories_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_settings_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_pages_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_page_history_page",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_automations_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "trend_proposals_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "trend_proposals_item",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_skips_template",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "finance_staff",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "finance_certificate",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "booking_template_products",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "booking_templates_rooms",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_template_products",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_templates_rooms",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_instances",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_linked_children",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_activity",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_automation_flags",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_automatic_settings",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "bookings_registry_context",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "products_registry_context",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "finance_transactions_registry_context",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "timeline_resources_registry_context",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_public_tokens",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        }
+      ]
+    },
+    {
+      "scenario": "partial_schema",
+      "generatedAt": "2026-09-12T16:55:50.743Z",
+      "collectionStatus": "INCOMPLETE_SCHEMA",
+      "collectionIssues": [
+        "MISSING_SCHEMA"
+      ],
+      "status": "HOLD_OWNERSHIP_DECISIONS",
+      "readOnly": true,
+      "isolation": "repeatable read",
+      "observedTables": 3,
+      "totalTables": 21,
+      "observedRelationships": 0,
+      "totalRelationships": 25,
+      "unobservedTables": [
+        {
+          "table": "catalog_definitions",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_subcategories",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_items",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_settings",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_pages",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_page_history",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_automations",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "trend_proposals",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "catalog_image_blobs",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "recurring_booking_skips",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "products",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "timeline_resources",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "finance_transactions",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "staff",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "certificates",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "payroll_reports",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "organizations",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        },
+        {
+          "table": "businesses",
+          "status": "NOT_CHECKED_MISSING_TABLE",
+          "totalRows": null
+        }
+      ],
+      "unobservedRelationships": [
+        {
+          "metric": "catalog_items_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_subcategories_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_settings_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_pages_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_page_history_page",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_automations_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "trend_proposals_definition",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "trend_proposals_item",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_skips_template",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "finance_staff",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "finance_certificate",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "booking_template_products",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "booking_templates_rooms",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_template_products",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_templates_rooms",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_instances",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_linked_children",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "recurring_activity",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_automation_flags",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_automatic_settings",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "bookings_registry_context",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "products_registry_context",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "finance_transactions_registry_context",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "timeline_resources_registry_context",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        },
+        {
+          "metric": "catalog_public_tokens",
+          "status": "NOT_CHECKED_MISSING_SCHEMA",
+          "counts": null
+        }
+      ]
+    },
+    {
+      "scenario": "complete_synthetic_schema",
+      "generatedAt": "2026-09-12T16:55:50.860Z",
+      "collectionStatus": "COMPLETE",
+      "collectionIssues": [],
+      "status": "HOLD_OWNERSHIP_DECISIONS",
+      "readOnly": true,
+      "isolation": "repeatable read",
+      "observedTables": 21,
+      "totalTables": 21,
+      "observedRelationships": 25,
+      "totalRelationships": 25,
+      "unobservedTables": [],
+      "unobservedRelationships": []
+    },
+    {
+      "scenario": "repeat_same_snapshot_data",
+      "generatedAt": "2026-09-12T16:55:50.886Z",
+      "collectionStatus": "COMPLETE",
+      "collectionIssues": [],
+      "status": "HOLD_OWNERSHIP_DECISIONS",
+      "readOnly": true,
+      "isolation": "repeatable read",
+      "observedTables": 21,
+      "totalTables": 21,
+      "observedRelationships": 25,
+      "totalRelationships": 25,
+      "unobservedTables": [],
+      "unobservedRelationships": []
+    },
+    {
+      "scenario": "rls_visibility_gap",
+      "generatedAt": "2026-09-12T16:55:50.920Z",
+      "collectionStatus": "INCOMPLETE_VISIBILITY",
+      "collectionIssues": [
+        "ROW_SECURITY"
+      ],
+      "status": "HOLD_OWNERSHIP_DECISIONS",
+      "readOnly": true,
+      "isolation": "repeatable read",
+      "observedTables": 20,
+      "totalTables": 21,
+      "observedRelationships": 18,
+      "totalRelationships": 25,
+      "unobservedTables": [
+        {
+          "table": "catalog_definitions",
+          "status": "NOT_CHECKED_ROW_SECURITY",
+          "totalRows": null
+        }
+      ],
+      "unobservedRelationships": [
+        {
+          "metric": "catalog_items_definition",
+          "status": "NOT_CHECKED_ROW_SECURITY",
+          "counts": null
+        },
+        {
+          "metric": "catalog_subcategories_definition",
+          "status": "NOT_CHECKED_ROW_SECURITY",
+          "counts": null
+        },
+        {
+          "metric": "catalog_settings_definition",
+          "status": "NOT_CHECKED_ROW_SECURITY",
+          "counts": null
+        },
+        {
+          "metric": "catalog_pages_definition",
+          "status": "NOT_CHECKED_ROW_SECURITY",
+          "counts": null
+        },
+        {
+          "metric": "catalog_automations_definition",
+          "status": "NOT_CHECKED_ROW_SECURITY",
+          "counts": null
+        },
+        {
+          "metric": "trend_proposals_definition",
+          "status": "NOT_CHECKED_ROW_SECURITY",
+          "counts": null
+        },
+        {
+          "metric": "catalog_public_tokens",
+          "status": "NOT_CHECKED_ROW_SECURITY",
+          "counts": null
+        }
+      ]
+    }
+  ],
+  "completeSyntheticReport": {
+    "schemaVersion": 1,
+    "generatedAt": "2026-09-12T16:55:50.860Z",
+    "status": "HOLD_OWNERSHIP_DECISIONS",
+    "readOnly": true,
+    "isolation": "repeatable read",
+    "collectionStatus": "COMPLETE",
+    "collectionIssues": [],
+    "safeToAutoBackfill": false,
+    "ownershipEstablished": false,
+    "scope": "Legacy catalog, booking template, recurring and finance reference ownership evidence",
+    "tables": {
+      "catalog_definitions": {
+        "status": "OBSERVED",
+        "totalRows": 3,
+        "ownershipColumns": [
+          "owner_business_context"
+        ],
+        "missingOwnerRows": {
+          "owner_business_context": 2
+        }
+      },
+      "catalog_subcategories": {
+        "status": "OBSERVED",
+        "totalRows": 0,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "catalog_items": {
+        "status": "OBSERVED",
+        "totalRows": 3,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "catalog_settings": {
+        "status": "OBSERVED",
+        "totalRows": 3,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "catalog_pages": {
+        "status": "OBSERVED",
+        "totalRows": 3,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "catalog_page_history": {
+        "status": "OBSERVED",
+        "totalRows": 3,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "catalog_automations": {
+        "status": "OBSERVED",
+        "totalRows": 3,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "trend_proposals": {
+        "status": "OBSERVED",
+        "totalRows": 0,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "catalog_image_blobs": {
+        "status": "OBSERVED",
+        "totalRows": 0,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "booking_templates": {
+        "status": "OBSERVED",
+        "totalRows": 6,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "recurring_templates": {
+        "status": "OBSERVED",
+        "totalRows": 5,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "recurring_booking_skips": {
+        "status": "OBSERVED",
+        "totalRows": 3,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "bookings": {
+        "status": "OBSERVED",
+        "totalRows": 8,
+        "ownershipColumns": [
+          "business_context"
+        ],
+        "missingOwnerRows": {
+          "business_context": 3
+        }
+      },
+      "products": {
+        "status": "OBSERVED",
+        "totalRows": 3,
+        "ownershipColumns": [
+          "business_context"
+        ],
+        "missingOwnerRows": {
+          "business_context": 1
+        }
+      },
+      "timeline_resources": {
+        "status": "OBSERVED",
+        "totalRows": 4,
+        "ownershipColumns": [
+          "business_context"
+        ],
+        "missingOwnerRows": {
+          "business_context": 1
+        }
+      },
+      "finance_transactions": {
+        "status": "OBSERVED",
+        "totalRows": 3,
+        "ownershipColumns": [
+          "business_context"
+        ],
+        "missingOwnerRows": {
+          "business_context": 1
+        }
+      },
+      "staff": {
+        "status": "OBSERVED",
+        "totalRows": 1,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "certificates": {
+        "status": "OBSERVED",
+        "totalRows": 1,
+        "ownershipColumns": [
+          "business_context"
+        ],
+        "missingOwnerRows": {
+          "business_context": 0
+        }
+      },
+      "payroll_reports": {
+        "status": "OBSERVED",
+        "totalRows": 2,
+        "ownershipColumns": [
+          "business_id"
+        ],
+        "missingOwnerRows": {
+          "business_id": 1
+        }
+      },
+      "organizations": {
+        "status": "OBSERVED",
+        "totalRows": 1,
+        "ownershipColumns": [],
+        "missingOwnerRows": {}
+      },
+      "businesses": {
+        "status": "OBSERVED",
+        "totalRows": 2,
+        "ownershipColumns": [
+          "organization_id"
+        ],
+        "missingOwnerRows": {
+          "organization_id": 0
+        }
+      }
+    },
+    "relationships": {
+      "catalog_items_definition": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 2,
+          "orphanRows": 1
+        }
+      },
+      "catalog_subcategories_definition": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 0,
+          "orphanRows": 0
+        }
+      },
+      "catalog_settings_definition": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 2,
+          "orphanRows": 1
+        }
+      },
+      "catalog_pages_definition": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 2,
+          "orphanRows": 1
+        }
+      },
+      "catalog_page_history_page": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 2,
+          "orphanRows": 1
+        }
+      },
+      "catalog_automations_definition": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 2,
+          "orphanRows": 1
+        }
+      },
+      "trend_proposals_definition": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 0,
+          "orphanRows": 0
+        }
+      },
+      "trend_proposals_item": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 0,
+          "orphanRows": 0
+        }
+      },
+      "recurring_skips_template": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 2,
+          "orphanRows": 1
+        }
+      },
+      "finance_staff": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 2,
+          "orphanRows": 1
+        }
+      },
+      "finance_certificate": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 2,
+          "orphanRows": 1
+        }
+      },
+      "booking_template_products": {
+        "status": "OBSERVED",
+        "counts": {
+          "missingProductRows": 2,
+          "orphanProductRows": 1,
+          "productWithoutContextRows": 1
+        }
+      },
+      "booking_templates_rooms": {
+        "status": "OBSERVED",
+        "counts": {
+          "missingRoomRows": 2,
+          "orphanRoomRows": 1,
+          "ambiguousContextRows": 2,
+          "roomWithoutContextRows": 1
+        }
+      },
+      "recurring_template_products": {
+        "status": "OBSERVED",
+        "counts": {
+          "missingProductRows": 1,
+          "orphanProductRows": 1,
+          "productWithoutContextRows": 1
+        }
+      },
+      "recurring_templates_rooms": {
+        "status": "OBSERVED",
+        "counts": {
+          "missingRoomRows": 1,
+          "orphanRoomRows": 1,
+          "ambiguousContextRows": 1,
+          "roomWithoutContextRows": 1
+        }
+      },
+      "recurring_instances": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 7,
+          "orphanTemplateRows": 1,
+          "missingContextRows": 3,
+          "mixedContextTemplates": 1,
+          "templatesWithMissingContext": 2
+        }
+      },
+      "recurring_linked_children": {
+        "status": "OBSERVED",
+        "counts": {
+          "linkedRows": 3,
+          "orphanParentRows": 1,
+          "crossContextRows": 1,
+          "unknownContextRows": 2
+        }
+      },
+      "recurring_activity": {
+        "status": "OBSERVED",
+        "counts": {
+          "activeRows": 4,
+          "withoutInstanceRows": 1
+        }
+      },
+      "catalog_automation_flags": {
+        "status": "OBSERVED",
+        "counts": {
+          "activeRows": 2
+        }
+      },
+      "catalog_automatic_settings": {
+        "status": "OBSERVED",
+        "counts": {
+          "autoEnabledRows": 2
+        }
+      },
+      "bookings_registry_context": {
+        "status": "OBSERVED",
+        "counts": {
+          "missingContextRows": 3,
+          "unregisteredContextRows": 1
+        }
+      },
+      "products_registry_context": {
+        "status": "OBSERVED",
+        "counts": {
+          "missingContextRows": 1,
+          "unregisteredContextRows": 0
+        }
+      },
+      "finance_transactions_registry_context": {
+        "status": "OBSERVED",
+        "counts": {
+          "missingContextRows": 1,
+          "unregisteredContextRows": 1
+        }
+      },
+      "timeline_resources_registry_context": {
+        "status": "OBSERVED",
+        "counts": {
+          "missingContextRows": 1,
+          "unregisteredContextRows": 0
+        }
+      },
+      "catalog_public_tokens": {
+        "status": "OBSERVED",
+        "counts": {
+          "rowsWithPublicToken": 1
+        }
+      }
+    },
+    "limitations": [
+      "Counts and existing owner columns are observations, not authorization or assignment proof.",
+      "No creator username, product context, label or existing child chooses an owner.",
+      "Missing schema is not checked; zero rows never authorizes a cutover.",
+      "RLS-enabled tables and their dependent metrics are not checked, even for a role that could bypass RLS.",
+      "Public links/assets, embedded catalog JSON references, external storage, jobs and API containment require source/consumer review.",
+      "No staff/payroll allocation, formula, finance amount or production migration is evaluated."
+    ]
+  },
+  "interpretationLimits": [
+    "Every numeric data count is from deliberately synthetic fixtures, never production or a production restore.",
+    "COMPLETE covers only the 21 table observations and 25 configured relationship metrics.",
+    "Historical owner mapping, public classification, storage/provider job inventory and HR/finance allocation remain unproven.",
+    "Positive owner columns, zero counts, active automation flags and fixture PASS cannot approve migration or cutover.",
+    "Existing test data and all collector source remain unchanged; scratch wrappers capture aggregate-only output."
+  ]
+}

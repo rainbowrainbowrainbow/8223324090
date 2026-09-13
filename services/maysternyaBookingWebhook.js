@@ -916,7 +916,7 @@ async function ensureMaysternyaBookingLead(client, { booking, row, customerId, p
   if (!resolvedCustomerId) {
     resolvedCustomerId = await resolveOrCreateMaysternyaCustomer(client, booking);
     if (resolvedCustomerId) {
-      await client.query(
+      const parentUpdate = await client.query(
         `UPDATE bookings
             SET customer_id = COALESCE(customer_id, $1),
                 updated_at = NOW()
@@ -924,6 +924,12 @@ async function ensureMaysternyaBookingLead(client, { booking, row, customerId, p
             AND COALESCE(business_context, 'event_genix') = $3`,
         [resolvedCustomerId, bookingId, MAYSTERNYA_CONTEXT]
       );
+      if (parentUpdate.rowCount !== 1) {
+        const err = new Error('Maysternya booking customer update did not update its parent');
+        err.statusCode = 409;
+        err.code = 'booking_parent_update_failed';
+        throw err;
+      }
     }
   }
 

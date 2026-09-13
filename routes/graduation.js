@@ -34,13 +34,13 @@ const {
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextCatalog,
-    businessContextHasModule,
     normalizeKnownBusinessContext,
     resolveBusinessScope,
     requireBusinessScope,
     requireWritableBusinessScope,
     pushBusinessContextCondition
 } = require('../services/businessContext');
+const { userBusinessModuleState, userBusinessRegistryEntry } = require('../services/businessModuleRegistry');
 
 const log = createLogger('Graduation');
 const requireGraduationRevenue = requireAction('view_revenue');
@@ -105,7 +105,8 @@ function rejectGraduationBusinessContext(res, businessContext, code = GRADUATION
 
 function requireGraduationBusinessContext(req, res, options = {}) {
     const rawRequested = rawGraduationBusinessContextInput(req);
-    if (rawRequested && !normalizeKnownBusinessContext(rawRequested)) {
+    if (rawRequested && !normalizeKnownBusinessContext(rawRequested)
+        && !/^[a-z][a-z0-9_]{2,63}$/.test(String(rawRequested).trim().toLowerCase())) {
         rejectGraduationBusinessContext(res, String(rawRequested), GRADUATION_BUSINESS_CONTEXT_UNAVAILABLE);
         return null;
     }
@@ -123,7 +124,7 @@ function requireGraduationBusinessContext(req, res, options = {}) {
     }
 
     const businessContext = scope.activeContext || DEFAULT_BUSINESS_CONTEXT;
-    if (!businessContextHasModule(businessContext, GRADUATION_MODULE_ID)) {
+    if (!userBusinessModuleState(req.user, businessContext, GRADUATION_MODULE_ID).available) {
         rejectGraduationBusinessContext(res, businessContext);
         return null;
     }
@@ -135,8 +136,15 @@ function graduationBusinessContext(req) {
     return req?.graduationBusinessContext || DEFAULT_BUSINESS_CONTEXT;
 }
 
-function graduationBusinessCatalogEntry(businessContext = DEFAULT_BUSINESS_CONTEXT) {
-    const normalized = normalizeKnownBusinessContext(businessContext) || DEFAULT_BUSINESS_CONTEXT;
+function graduationBusinessCatalogEntry(businessContext = DEFAULT_BUSINESS_CONTEXT, user = null) {
+    const normalized = normalizeKnownBusinessContext(businessContext) || String(businessContext || '').trim().toLowerCase();
+    const registered = userBusinessRegistryEntry(user, normalized);
+    if (registered) return {
+        key: normalized,
+        label: registered.businessLabel || registered.label || normalized,
+        shortLabel: registered.businessShortLabel || registered.shortLabel || registered.businessLabel || normalized,
+        registered: true
+    };
     return businessContextCatalog().find(item => item.key === normalized) || {
         key: normalized,
         label: normalized,
@@ -144,9 +152,9 @@ function graduationBusinessCatalogEntry(businessContext = DEFAULT_BUSINESS_CONTE
     };
 }
 
-function graduationBusinessPresentation(businessContext = DEFAULT_BUSINESS_CONTEXT) {
-    const entry = graduationBusinessCatalogEntry(businessContext);
-    if (entry.key === DEFAULT_BUSINESS_CONTEXT) return { ...GRADUATION_DEFAULT_PRESENTATION };
+function graduationBusinessPresentation(businessContext = DEFAULT_BUSINESS_CONTEXT, user = null) {
+    const entry = graduationBusinessCatalogEntry(businessContext, user);
+    if (entry.key === DEFAULT_BUSINESS_CONTEXT && !entry.registered) return { ...GRADUATION_DEFAULT_PRESENTATION };
     const businessLabel = entry.label || entry.shortLabel || entry.key;
     return {
         businessLabel,
@@ -1967,7 +1975,7 @@ router.get('/quotes/:id/diplomas/print-sheet', requireRole('creator', 'director'
 router.get('/quotes/:id/proposal', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), requireAction('view_revenue'), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
-        const presentation = graduationBusinessPresentation(businessContext);
+        const presentation = graduationBusinessPresentation(businessContext, req.user);
         const { id } = req.params;
         const q = await getQuoteRow(pool, id, businessContext);
         if (!q) {
@@ -2248,7 +2256,7 @@ async function onSettingsChanged(key, newValue, username, businessContext = DEFA
 router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
-        const presentation = graduationBusinessPresentation(businessContext);
+        const presentation = graduationBusinessPresentation(businessContext, req.user);
         const pkgResult = await pool.query(
             `SELECT * FROM graduation_packages
              WHERE is_active = true AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1

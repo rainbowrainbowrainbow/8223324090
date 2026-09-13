@@ -20,6 +20,7 @@ const { callUnifiedChatCompletion } = require('../services/ai-config');
 const { emitTaskCreatedNotificationOutboxEvent } = require('../services/notificationOutbox');
 
 const { authenticateToken, requireRole, ROLE_HIERARCHY } = require('../middleware/auth');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 
 const log = createLogger('ChatAPI');
 
@@ -28,6 +29,7 @@ const CHAT_ACCESS_ROLES = ROLE_HIERARCHY.filter(role => role !== 'waiter');
 // All chat routes require authentication and /chat page-level access.
 router.use(authenticateToken);
 router.use(requireRole(...CHAT_ACCESS_ROLES));
+router.use(requireLegacyBusinessSurface('chat'));
 
 // Chat message rate limiter: max 1 msg per 500ms per user, 60 msgs/min per channel
 const _chatRateLimits = new Map(); // userId → { lastSent, channelCounts: Map<channelId, {count, resetAt}> }

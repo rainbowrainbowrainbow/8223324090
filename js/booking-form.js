@@ -249,20 +249,66 @@ window.BookingForm = {
 
 (function() {
     let _templates = [];
+    let _templateContext = null;
+    let _templateRequest = 0;
+
+    function templateAvailability() {
+        return window.getLegacyBusinessSurfaceAvailability?.('booking_templates')
+            || { available: false, message: 'Доступ до шаблонів ще не підтверджено.' };
+    }
+
+    function templateContext() {
+        return window.getLegacyBusinessSurfaceContextKey?.('booking_templates') || null;
+    }
+
+    function clearTemplates(message = '') {
+        _templates = [];
+        _templateContext = null;
+        renderTemplateDropdown();
+        const select = document.getElementById('templateSelect');
+        const save = document.getElementById('saveTemplateBtn');
+        const available = templateAvailability().available;
+        if (select) select.disabled = true;
+        if (save) save.disabled = !available;
+        let notice = document.getElementById('bookingTemplateAvailability');
+        if (!notice && select) {
+            notice = document.createElement('p');
+            notice.id = 'bookingTemplateAvailability';
+            notice.className = 'empty-hint';
+            notice.setAttribute('role', 'status');
+            select.insertAdjacentElement('afterend', notice);
+        }
+        if (notice) notice.textContent = message || (!available ? templateAvailability().message : '');
+    }
 
     function bookingTemplateAuthHeaders(withContentType = false) {
         return typeof getAuthHeaders === 'function' ? getAuthHeaders(withContentType) : {};
     }
 
     async function loadTemplates() {
+        const generation = ++_templateRequest;
+        const context = templateContext();
+        clearTemplates();
+        if (!templateAvailability().available) return false;
         try {
             const res = await fetch('/api/booking-templates', {
                 headers: bookingTemplateAuthHeaders(false)
             });
-            if (!res.ok) return;
-            _templates = await res.json();
+            const data = await res.json();
+            if (generation !== _templateRequest || context !== templateContext()) return false;
+            if (!res.ok) window.noteLegacyBusinessSurfaceUnavailable?.('booking_templates', data, context);
+            if (!res.ok) throw new Error(data.message || data.error || 'Шаблони недоступні.');
+            if (!templateAvailability().available || !Array.isArray(data)) return false;
+            _templates = data;
+            _templateContext = context;
             renderTemplateDropdown();
-        } catch (e) { /* ignore */ }
+            const select = document.getElementById('templateSelect');
+            if (select) select.disabled = !_templates.length;
+            return true;
+        } catch (e) {
+            if (generation === _templateRequest && context === templateContext()) clearTemplates(e.message);
+            return false;
+        }
     }
 
     function renderTemplateDropdown() {
@@ -277,9 +323,34 @@ window.BookingForm = {
         });
     }
 
-    function applyTemplate(templateId) {
+    async function applyTemplate(templateId) {
+        const context = templateContext();
+        if (!templateAvailability().available || _templateContext !== context) {
+            clearTemplates();
+            return;
+        }
+        // Revalidate the source before any form field changes, including a same-session revocation.
+        if (!await loadTemplates() || context !== templateContext()) return;
         const t = _templates.find(x => x.id === parseInt(templateId));
         if (!t) return;
+        const generation = _templateRequest;
+        try {
+            const response = await fetch(`/api/booking-templates/${t.id}/use`, {
+                method: 'POST', headers: bookingTemplateAuthHeaders(false)
+            });
+            if (context !== templateContext() || generation !== _templateRequest) return;
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                if (context !== templateContext() || generation !== _templateRequest) return;
+                window.noteLegacyBusinessSurfaceUnavailable?.('booking_templates', error, context);
+                clearTemplates(error.message || error.error || 'Не вдалося застосувати шаблон.');
+                return;
+            }
+            if (!templateAvailability().available) { clearTemplates(); return; }
+        } catch (error) {
+            if (context === templateContext() && generation === _templateRequest) clearTemplates('Не вдалося застосувати шаблон.');
+            return;
+        }
 
         // Fill form fields
         if (t.room) {
@@ -317,12 +388,6 @@ window.BookingForm = {
             if (n) n.value = t.notes;
         }
 
-        // Increment usage count
-        fetch(`/api/booking-templates/${t.id}/use`, {
-            method: 'POST',
-            headers: bookingTemplateAuthHeaders(false)
-        }).catch(() => {});
-
         if (typeof showNotification === 'function') {
             showNotification(`Шаблон "${t.name}" завантажено`, 'success');
         }
@@ -331,11 +396,14 @@ window.BookingForm = {
     let _savingTemplate = false;
     async function saveTemplate() {
         if (_savingTemplate) return;
+        const context = templateContext();
+        if (!templateAvailability().available) { clearTemplates(); return; }
         const formData = BookingForm.getFormData ? BookingForm.getFormData() : null;
         const programSel = document.getElementById('selectedProgram');
         const roomSel = document.getElementById('roomSelect');
 
         const name = await promptModal('Назва шаблону:', { placeholder: 'Наприклад: День народження стандарт' });
+        if (context !== templateContext() || !templateAvailability().available) { clearTemplates(); return; }
         if (!name || !name.trim()) return;
         if (_savingTemplate) return;
         _savingTemplate = true;
@@ -372,11 +440,16 @@ window.BookingForm = {
                 headers: bookingTemplateAuthHeaders(true),
                 body: JSON.stringify(body)
             });
+            if (context !== templateContext()) return;
             if (res.ok) {
                 if (typeof showNotification === 'function') {
                     showNotification(`Шаблон "${name}" збережено`, 'success');
                 }
                 await loadTemplates();
+            } else {
+                const error = await res.json().catch(() => ({}));
+                window.noteLegacyBusinessSurfaceUnavailable?.('booking_templates', error, context);
+                if (context === templateContext()) clearTemplates(error.message || error.error || 'Не вдалося зберегти шаблон.');
             }
         } catch (e) {
             if (typeof showNotification === 'function') {
@@ -384,11 +457,12 @@ window.BookingForm = {
             }
         } finally {
             _savingTemplate = false;
-            if (saveBtn) saveBtn.disabled = false;
+            if (saveBtn) saveBtn.disabled = !templateAvailability().available;
         }
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        clearTemplates();
         const sel = document.getElementById('templateSelect');
         if (sel) sel.addEventListener('change', (e) => {
             if (e.target.value) applyTemplate(e.target.value);
@@ -408,5 +482,18 @@ window.BookingForm = {
         }
     });
 
+    ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'permissions:lifecycle'].forEach(event => {
+        window.addEventListener(event, () => {
+            ++_templateRequest;
+            clearTemplates();
+            const panel = document.getElementById('bookingPanel');
+            if (panel && !panel.classList.contains('hidden') && templateAvailability().available) void loadTemplates();
+        });
+    });
+    window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+        if (event.detail?.surface !== 'booking_templates') return;
+        ++_templateRequest;
+        clearTemplates(event.detail.message);
+    });
     window.BookingTemplates = { load: loadTemplates, save: saveTemplate };
 })();

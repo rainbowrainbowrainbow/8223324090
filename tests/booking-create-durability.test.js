@@ -995,6 +995,7 @@ async function withApp(dbOptions, fn) {
         attachLeadBookingLink: async () => null,
         ensureLeadForBooking: async () => {
             state.leadAttempts += 1;
+            if (dbOptions?.leadHandoffError) throw dbOptions.leadHandoffError;
             if (dbOptions?.leadHandoffFails) throw new Error('legacy leads schema mismatch');
             return { attached: false };
         }
@@ -3123,6 +3124,36 @@ test('POST /api/bookings keeps Maysternya booking durable when automatic lead ha
         assert.ok(state.tx.includes('ROLLBACK TO SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('RELEASE SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('COMMIT'));
+    });
+});
+
+test('POST /api/bookings rolls back the entire booking when its lead handoff reports a PostgreSQL deadlock', async () => {
+    const deadlock = Object.assign(new Error('Synthetic handoff deadlock'), { code: '40P01' });
+    await withApp({ leadHandoffError: deadlock }, async ({ baseUrl, state }) => {
+        const response = await createBooking(baseUrl, {
+            businessContext: 'dar',
+            date: '2099-02-12',
+            time: '15:30',
+            lineId: 'specialist-main',
+            room: 'Specialist',
+            programId: 'dar-consultation',
+            programCode: 'CONSULT',
+            label: 'Fixture consultation',
+            programName: 'Fixture consultation',
+            category: 'consultation',
+            duration: 60,
+            price: 0,
+            customer: { name: 'Synthetic fixture', phone: '+380000000011' }
+        });
+        assert.equal(response.status, 409, JSON.stringify(response.data));
+        assert.equal(response.data.success, false);
+        assert.equal(response.data.code, 'lead_transaction_conflict');
+        assert.equal(state.leadAttempts, 1);
+        assert.ok(state.tx.includes('ROLLBACK TO SAVEPOINT booking_optional_step'));
+        assert.ok(state.tx.includes('RELEASE SAVEPOINT booking_optional_step'));
+        assert.ok(state.tx.includes('ROLLBACK'));
+        assert.equal(state.tx.includes('COMMIT'), false);
+        assert.equal(state.rows.length, 0);
     });
 });
 

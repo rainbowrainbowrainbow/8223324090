@@ -8,6 +8,8 @@ const { requireRole, authenticateToken } = require('../middleware/auth');
 const { requireAction } = require('../middleware/auth');
 const { createWriteRateLimiter } = require('../middleware/rateLimit');
 const { createLogger } = require('../utils/logger');
+const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurface');
+const { userBusinessModuleState } = require('../services/businessModuleRegistry');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest,
@@ -1325,10 +1327,13 @@ router.get('/catalogs', async (req, res) => {
     try {
         const businessContext = requireProductBusinessContext(req, res);
         if (!businessContext) return;
+        const { available, code, message } = legacyBusinessSurfaceAccess(req, 'catalogs');
+        const legacyCatalogs = { available, code, message };
+        const graduationAvailable = userBusinessModuleState(req.user, businessContext, 'graduation').available;
         if (businessContext !== DEFAULT_BUSINESS_CONTEXT) {
-            return res.json({ success: true, catalogs: [] });
+            return res.json({ success: true, catalogs: [], legacyCatalogs });
         }
-        const result = await pool.query(`
+        const result = available ? await pool.query(`
             SELECT
                 cd.id,
                 cd.name,
@@ -1358,9 +1363,9 @@ router.get('/catalogs', async (req, res) => {
                 END,
                 cd.sort_order,
                 cd.name
-        `);
+        `) : { rows: [] };
 
-        const catalogs = result.rows.map(row => ({
+        const catalogs = result.rows.filter(row => row.id !== 'graduation' || graduationAvailable).map(row => ({
             id: row.id,
             title: row.name || row.id,
             emoji: row.emoji || '📂',
@@ -1374,11 +1379,13 @@ router.get('/catalogs', async (req, res) => {
             actionLabel: 'Відкрити каталог'
         }));
 
-        if (!catalogs.some(catalog => catalog.id === 'graduation')) {
+        if (graduationAvailable && !catalogs.some(catalog => catalog.id === 'graduation')) {
             const graduationCount = await pool.query(
                 `SELECT COUNT(*)::int AS count
                  FROM graduation_packages
-                 WHERE COALESCE(is_active, true) = true`
+                 WHERE COALESCE(is_active, true) = true
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
+                [businessContext]
             ).catch(() => ({ rows: [{ count: 0 }] }));
 
             catalogs.unshift({
@@ -1396,7 +1403,7 @@ router.get('/catalogs', async (req, res) => {
             });
         }
 
-        res.json({ success: true, catalogs });
+        res.json({ success: true, catalogs, legacyCatalogs });
     } catch (err) {
         log.error('List product catalog entry points error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });

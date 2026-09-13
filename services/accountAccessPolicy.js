@@ -256,6 +256,16 @@ function resolveCapability(user, capability, context = {}) {
     if (!normalized.known || (normalized.type === CAPABILITY_TYPES.ACTION && normalized.definition.deprecated === true)) {
         return decision(normalized, false, 'default_deny', null, 'unknown_capability');
     }
+    if (normalized.type === CAPABILITY_TYPES.PAGE && normalized.key === '/maysternya-doli'
+        && user?.businessMembershipAccess?.configured === true) {
+        const activeContext = user?.activeBusinessMembership?.businessContext
+            || user?.businessMembershipAccess?.activeMembership?.businessContext
+            || user?.activeBusinessContext
+            || null;
+        if (activeContext !== 'maysternya_doli') {
+            return decision(normalized, false, 'default_deny', null, 'business_context_required');
+        }
+    }
 
     const lists = explicitListsFor(user, normalized.type);
     const overrideKeys = normalized.type === CAPABILITY_TYPES.ACTION

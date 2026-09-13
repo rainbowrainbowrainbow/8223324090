@@ -27,6 +27,7 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { isTrustedDisposableQaSource } = require('./disposableQa');
+const { assertFinanceIncomeNotificationScope } = require('./financeIncomeNotification');
 const {
     MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING,
     buildMachineTaskControlMetaPatch
@@ -90,6 +91,9 @@ async function publish(eventType, payload, idempotencyKey) {
 async function processEventRules(event) {
     let applied = 0;
     try {
+        if (event?.event_type === 'finance.income') {
+            await assertFinanceIncomeNotificationScope(pool, event.payload);
+        }
         let internalResult = null;
         const internalApplied = await processInternalEventHandler(event);
         if (internalApplied) {
@@ -193,6 +197,11 @@ async function processInternalEventHandler(event) {
 }
 
 function classifyEventProcessingError(event, err) {
+    if (event?.event_type === 'finance.income' && ['finance_notifications_not_migrated',
+        'finance_notification_scope_unavailable'].includes(err?.code)) {
+        const terminal = err.code === 'finance_notifications_not_migrated';
+        return { retryable: !terminal, terminal, failureClass: err.code, message: err.message };
+    }
     if (event?.event_type?.startsWith('guardian.')) {
         const { classifyGuardianDeliveryError } = require('./guardianDelivery');
         return classifyGuardianDeliveryError(err);

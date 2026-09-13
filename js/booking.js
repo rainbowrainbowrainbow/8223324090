@@ -18463,10 +18463,38 @@ async function switchBookingLine(bookingId, targetLineId) {
 // v30.3: RECURRING BOOKINGS UI
 // ==========================================
 
+let recurringSourceContext = null;
+
+function syncRecurringAvailability() {
+    const availability = window.getLegacyBusinessSurfaceAvailability?.('recurring')
+        || { available: false, message: 'Доступ до повторюваних бронювань ще не підтверджено.' };
+    document.querySelectorAll('[onclick*="showRecurringModal"], #recurringForm button[type="submit"]').forEach(button => {
+        button.disabled = !availability.available;
+        button.setAttribute('aria-disabled', String(!availability.available));
+        button.title = availability.message || '';
+    });
+    return availability;
+}
+
+['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'permissions:lifecycle'].forEach(event => {
+    window.addEventListener(event, () => {
+        recurringSourceContext = null;
+        document.getElementById('recurringModal')?.classList.add('hidden');
+        const input = document.getElementById('recurringBookingId');
+        if (input) input.value = '';
+        syncRecurringAvailability();
+    });
+});
+
 async function showRecurringModal(bookingId) {
+    const availability = syncRecurringAvailability();
+    if (!availability.available) { showNotification(availability.message, 'error'); return; }
+    const context = window.getLegacyBusinessSurfaceContextKey?.('recurring');
     const bookings = await getBookingsForDate(AppState.selectedDate);
+    if (context !== window.getLegacyBusinessSurfaceContextKey?.('recurring') || !syncRecurringAvailability().available) return;
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
+    recurringSourceContext = context;
     const recurringPackage = getBookingPackageFromBooking(booking);
     if (Array.isArray(recurringPackage?.ticketLines || recurringPackage?.ticket_lines)) {
         showNotification('Повторювані бронювання з квитковим snapshot недоступні. Створіть окрему бронь і отримайте quote для її дати.', 'error');
@@ -18504,17 +18532,33 @@ async function showRecurringModal(bookingId) {
 // Form submit handler
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('recurringForm');
+    syncRecurringAvailability();
+    const details = document.getElementById('bookingDetails');
+    if (details) new MutationObserver(syncRecurringAvailability).observe(details, { childList: true, subtree: true });
+    window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+        if (event.detail?.surface !== 'recurring') return;
+        recurringSourceContext = null;
+        document.getElementById('recurringModal')?.classList.add('hidden');
+        syncRecurringAvailability();
+    });
     if (form) {
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             // Prevent double-submit during async request
             if (form._submitting) return;
+            const context = window.getLegacyBusinessSurfaceContextKey?.('recurring');
+            const availability = syncRecurringAvailability();
+            if (!availability.available || !recurringSourceContext || recurringSourceContext !== context) {
+                showNotification(availability.message || 'Бізнес змінився. Відкрийте форму повторно.', 'error');
+                return;
+            }
             form._submitting = true;
             const submitBtn = form.querySelector('button[type="submit"]');
             if (submitBtn) submitBtn.disabled = true;
             try {
             const bookingId = document.getElementById('recurringBookingId')?.value;
             const bookings = await getBookingsForDate(AppState.selectedDate);
+            if (context !== window.getLegacyBusinessSurfaceContextKey?.('recurring') || !syncRecurringAvailability().available) return;
             const booking = bookings.find(b => b.id === bookingId);
             if (!booking) return;
 
@@ -18556,12 +18600,11 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const res = await fetch('/api/recurring', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                    },
+                    headers: getAuthHeaders(true),
                     body: JSON.stringify(body)
                 });
+
+                if (context !== window.getLegacyBusinessSurfaceContextKey?.('recurring')) return;
 
                 if (res.ok) {
                     const result = await res.json();
@@ -18572,6 +18615,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     showNotification(`Створено повторюване бронювання (${count} подій)`, 'success');
                 } else {
                     const err = await res.json();
+                    window.noteLegacyBusinessSurfaceUnavailable?.('recurring', err, context);
                     showNotification(err.error || 'Помилка створення', 'error');
                 }
             } catch (error) {
@@ -18579,7 +18623,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             } finally {
                 form._submitting = false;
-                if (submitBtn) submitBtn.disabled = false;
+                if (submitBtn) submitBtn.disabled = !syncRecurringAvailability().available;
             }
         });
     }

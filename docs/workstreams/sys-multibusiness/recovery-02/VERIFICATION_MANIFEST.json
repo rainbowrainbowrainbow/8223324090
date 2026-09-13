@@ -1,0 +1,50 @@
+{
+  "task": "SYS-MB-RECOVER-02",
+  "status": "RUNNABLE_PACKAGE_READY_WITH_PRODUCTION_PREFLIGHT_HOLD",
+  "generatedAt": "2026-09-13T00:00:00.000Z",
+  "worktree": "C:/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/sys-mb-recover-01-20260913",
+  "liveVersionProof": {
+    "url": "https://8223324090-production.up.railway.app/api/version",
+    "commitSha": "487e9e872cef1455627aa0d6d31a9ef2ce9d7211",
+    "sourceBranch": "codex/eventgenix-production",
+    "version": "0.81.154",
+    "releaseLabel": "Гайдбук Design Board для реклами"
+  },
+  "privateMapping": {
+    "status": "APPROVED_PACKAGE_NOT_APPLIED",
+    "directory": "C:/Users/Plotva/.eventgenix/sys-mb-recover-01-20260913",
+    "sourceSnapshotSha256": "458fbd72aafaf3708f2e80ad85893418d9122c0a5c7487ffe3f3de6dc12a757b",
+    "sourceDeploymentSha": "4214598e263057b1cb1524d7fb84f328031d288d",
+    "contexts": {
+      "maysternya_doli": { "mappingSha256": "7efec32812aa093d5cfb5ce390e4faa68cf36342d13c90aa40d462d8fed6a162", "membershipsCount": 3 },
+      "crm": { "mappingSha256": "3e653c3f12cc4edb3476cf4f5a9f06e1f2fbf865a2d410459fccca9163e50a86", "membershipsCount": 3 }
+    }
+  },
+  "migrations": [
+    "db/migrations/357_organizations_business_memberships.sql",
+    "db/migrations/363_multibusiness_cutover_journal_telemetry.sql",
+    "db/migrations/364_catalog_ownership_markers.sql",
+    "db/migrations/365_business_cutover_journal_approval_receipts.sql"
+  ],
+  "checks": [
+    { "command": "node --test tests/business-cutover.test.js", "status": "PASS", "tests": "8/8" },
+    { "command": "BUSINESS_CUTOVER_LOCAL_POSTGRES_TEST=1 node tests/integration/business-cutover-journal-postgres.test.js", "status": "PASS", "tests": "2/2", "database": "disposable local PostgreSQL" },
+    { "command": "npm run check:migrations", "status": "PASS" },
+    { "command": "npm run test:unit:business-cabinets", "status": "PASS", "tests": "84/84" },
+    { "command": "npm run test:sys-mb", "status": "PASS" },
+    { "command": "npm run test:browser:account-access:mobile", "status": "PASS", "tests": "1/1" },
+    { "command": "node --test tests/production-block-controller.test.js tests/business-cutover.test.js tests/business-membership-security.test.js tests/business-module-registry.test.js tests/legacy-business-surface.test.js", "status": "PASS", "tests": "89/89" },
+    { "command": "node --test tests/sys-mb-compatibility-telemetry-report.test.js", "status": "PASS", "tests": "2/2" }
+  ],
+  "readOnlyProductionEvidence": {
+    "ownershipPreflight": "HOLD_OWNERSHIP_DECISIONS / INCOMPLETE_VISIBILITY",
+    "telemetryReport": "HOLD: SYS_MB_TELEMETRY_REPORT_FAILED_42P01"
+  },
+  "releaseReadiness": {
+    "codePackage": "READY_LOCAL",
+    "migrations": "READY_LOCAL",
+    "privateMapping": "READY_FOR_DRIFT_CHECK",
+    "productionPushDeployApply": "HOLD_PENDING_EXACT_BLOCK_AND_REFRESHED_PREFLIGHT",
+    "compatibilityRemoval": "HOLD_PENDING_LIVE_TELEMETRY_PASS_MEASURED"
+  }
+}

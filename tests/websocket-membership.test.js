@@ -25,6 +25,7 @@ function clearModules() {
         '../db',
         '../middleware/auth',
         '../services/chatService',
+        '../services/websocketEventAccess',
         '../services/websocket'
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
@@ -131,11 +132,12 @@ describe('WebSocket chat membership authorization', () => {
         clearModules();
         state = {
             memberships: new Set(),
+            failSessionRead: false,
             users: new Map([
-                [1, { id: 1, username: 'creator-event', name: 'Creator Event', role: 'creator', business_contexts: ['event_genix'], is_active: true }],
-                [2, { id: 2, username: 'staff-22', name: 'Staff 22', role: 'animator', business_contexts: ['event_genix'], is_active: true }],
-                [3, { id: 3, username: 'staff-33', name: 'Staff 33', role: 'animator', business_contexts: ['event_genix'], is_active: true }],
-                [4, { id: 4, username: 'creator-maysternya', name: 'Creator Maysternya', role: 'creator', business_contexts: ['maysternya_doli'], is_active: true }]
+                [1, { id: 1, username: 'creator-event', name: 'Creator Event', role: 'creator', business_contexts: ['event_genix'], default_business_context: 'event_genix', is_active: true }],
+                [2, { id: 2, username: 'staff-22', name: 'Staff 22', role: 'animator', business_contexts: ['event_genix'], default_business_context: 'event_genix', is_active: true }],
+                [3, { id: 3, username: 'staff-33', name: 'Staff 33', role: 'animator', business_contexts: ['event_genix'], default_business_context: 'event_genix', is_active: true }],
+                [4, { id: 4, username: 'creator-maysternya', name: 'Creator Maysternya', role: 'creator', business_contexts: ['maysternya_doli'], default_business_context: 'maysternya_doli', is_active: true }]
             ]),
             staffIds: new Map([[2, [22]], [3, [33]]])
         };
@@ -144,8 +146,9 @@ describe('WebSocket chat membership authorization', () => {
             query: async (sql, params = []) => {
                 const userId = Number(params[0]);
                 if (/SELECT is_active, session_revoked_at FROM users/i.test(sql)) {
+                    if (state.failSessionRead) throw Object.assign(new Error('Fixture database unavailable'), { code: '08006' });
                     const user = state.users.get(userId);
-                    return { rows: user ? [{ is_active: user.is_active, session_revoked_at: null }] : [], rowCount: user ? 1 : 0 };
+                    return { rows: user ? [{ is_active: user.is_active, session_revoked_at: user.session_revoked_at || null }] : [], rowCount: user ? 1 : 0 };
                 }
                 if (/FROM users WHERE id = \$1/i.test(sql)) {
                     const user = state.users.get(userId);
@@ -154,6 +157,9 @@ describe('WebSocket chat membership authorization', () => {
                 if (/FROM employee_profiles/i.test(sql)) {
                     const rows = (state.staffIds.get(userId) || []).map(staffId => ({ staff_id: staffId }));
                     return { rows, rowCount: rows.length };
+                }
+                if (/FROM chat_channels c JOIN chat_channel_members cm/i.test(sql)) {
+                    return { rows: state.memberships.has(`${params[0]}:${params[1]}`) ? [{ id: Number(params[0]), type: 'general' }] : [] };
                 }
                 return { rows: [], rowCount: 0 };
             }
@@ -180,6 +186,131 @@ describe('WebSocket chat membership authorization', () => {
         if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
         else process.env.JWT_SECRET = originalJwtSecret;
         clearModules();
+    });
+
+    it('stops an existing channel subscription immediately after its membership is removed', async () => {
+        state.memberships.add('42:1');
+        const client = await openAuthedClient(1);
+        await withClients([client], async () => {
+            client.send(JSON.stringify({ type: 'CHAT_JOIN', channelId: 42 }));
+            await waitForMessage(client, message => message.type === 'chat:joined');
+            const delivered = waitForMessage(client, message => message.type === 'chat:message');
+            assert.equal(await wsService.broadcastToChannel(42, 'chat:message', { channelId: 42, ok: true }), 1);
+            await delivered;
+            state.memberships.delete('42:1');
+            assert.equal(await didReceiveMessage(client, message => message.type === 'chat:message', async () => {
+                assert.equal(await wsService.broadcastToChannel(42, 'chat:message', { channelId: 42, removed: true }), 0);
+            }), false);
+        });
+    });
+
+    it('rechecks the current username for addressed account transcripts', async () => {
+        const client = await openAuthedClient(1);
+        await withClients([client], async () => {
+            const first = waitForMessage(client, message => message.type === 'kleshnya:reply');
+            assert.equal(await wsService.sendToUsername('creator-event', 'kleshnya:reply', { text: 'before' }), 1);
+            await first;
+            state.users.get(1).username = 'renamed-fixture';
+            assert.equal(await wsService.sendToUsername('creator-event', 'kleshnya:reply', { text: 'old address' }), 0);
+            const next = waitForMessage(client, message => message.type === 'kleshnya:reply');
+            assert.equal(await wsService.sendToUsername('renamed-fixture', 'kleshnya:reply', { text: 'new address' }), 1);
+            assert.equal((await next).payload.text, 'new address');
+        });
+    });
+
+    it('sends attendance only as a permitted invalidation without compensation or device data', async () => {
+        const client = await openAuthedClient(1);
+        await withClients([client], async () => {
+            const received = waitForMessage(client, message => message.type === 'hr:attendance-updated');
+            assert.equal(await wsService.broadcast('hr:attendance-updated', {
+                businessContext: 'event_genix', date: '2026-09-12', staffName: 'Synthetic private name',
+                hrTimeRecord: { compensation_snapshot: { base_salary: 5000 }, ip_address: '127.0.0.1', user_agent: 'fixture', notes: 'private fixture' }
+            }), 1);
+            assert.deepEqual((await received).payload, { date: '2026-09-12' });
+            state.users.get(1).action_denylist = ['hr.today.view'];
+            assert.equal(await wsService.broadcast('hr:attendance-updated', { businessContext: 'event_genix', date: '2026-09-12' }), 0);
+        });
+    });
+
+    it('never turns an invalid direct recipient into a broadcast', async () => {
+        const client = await openAuthedClient(1);
+        await withClients([client], async () => {
+            for (const recipient of [undefined, null, '', false, [], {}]) {
+                assert.equal(await wsService.sendToUsername(recipient, 'kleshnya:reply', { text: 'fixture' }), 0);
+                assert.equal(await wsService.sendToUser(recipient, 'guardian:mood', { emoji: 'ok' }), 0);
+            }
+        });
+    });
+
+    it('fails closed on account database failure and recovers without reusing stale access', async () => {
+        const client = await openAuthedClient(1);
+        await withClients([client], async () => {
+            const first = waitForMessage(client, message => message.type === 'kleshnya:reply');
+            assert.equal(await wsService.sendToUsername('creator-event', 'kleshnya:reply', { text: 'before' }), 1);
+            await first;
+            state.failSessionRead = true;
+            assert.equal(await wsService.sendToUsername('creator-event', 'kleshnya:reply', { text: 'unavailable' }), 0);
+            state.failSessionRead = false;
+            const recovered = waitForMessage(client, message => message.type === 'kleshnya:reply');
+            assert.equal(await wsService.sendToUsername('creator-event', 'kleshnya:reply', { text: 'recovered' }), 1);
+            assert.equal((await recovered).payload.text, 'recovered');
+        });
+    });
+
+    it('closes a revoked session before processing another inbound message', async () => {
+        const client = await openAuthedClient(1);
+        await withClients([client], async () => {
+            state.users.get(1).session_revoked_at = new Date(Date.now() + 1000);
+            const closed = new Promise(resolve => client.once('close', resolve));
+            client.send(JSON.stringify({ type: 'JOIN_DATE', date: '2026-09-12' }));
+            assert.equal(await closed, 4001);
+        });
+    });
+
+    it('rejects an expired original JWT on the already-open connection', async t => {
+        const client = await openAuthedClient(1);
+        await withClients([client], async () => {
+            const first = waitForMessage(client, message => message.type === 'kleshnya:reply');
+            assert.equal(await wsService.sendToUsername('creator-event', 'kleshnya:reply', { text: 'before expiry' }), 1);
+            await first;
+            const afterExpiry = Date.now() + 3601000;
+            t.mock.method(Date, 'now', () => afterExpiry);
+            const closed = new Promise(resolve => client.once('close', resolve));
+            assert.equal(await wsService.sendToUsername('creator-event', 'kleshnya:reply', { text: 'after expiry' }), 0);
+            assert.equal(await closed, 4001);
+        });
+    });
+
+    it('authorizes the queued wire snapshot even if its producer mutates the original payload and options', async () => {
+        const client = await openAuthedClient(1);
+        await withClients([client], async () => {
+            const first = waitForMessage(client, message => message.type === 'omni:conversation');
+            assert.equal(await wsService.broadcastBusinessEvent('omni:conversation', { businessContext: 'event_genix', conversationId: 1 }, { businessContext: 'event_genix', page: '/omni', envelope: 'data' }), 1);
+            await first;
+            assert.equal(await didReceiveMessage(client, message => message.type === 'omni:conversation' && message.data?.conversationId === 2, async () => {
+                const data = { businessContext: 'dar', conversationId: 2 };
+                const options = { businessContext: 'dar', page: '/omni', envelope: 'data' };
+                const pending = wsService.broadcastBusinessEvent('omni:conversation', data, options);
+                data.businessContext = 'event_genix';
+                options.businessContext = 'event_genix';
+                assert.equal(await pending, 0);
+            }), false);
+        });
+    });
+
+    it('preserves per-socket delivery order for concurrent dispatches', async () => {
+        const client = await openAuthedClient(1);
+        await withClients([client], async () => {
+            const received = [];
+            client.on('message', raw => {
+                const message = JSON.parse(raw);
+                if (message.type === 'kleshnya:reply') received.push(message.payload.sequence);
+            });
+            const last = waitForMessage(client, message => message.type === 'kleshnya:reply' && message.payload.sequence === 3);
+            assert.deepEqual(await Promise.all([1, 2, 3].map(sequence => wsService.sendToUsername('creator-event', 'kleshnya:reply', { sequence }))), [1, 1, 1]);
+            await last;
+            assert.deepEqual(received, [1, 2, 3]);
+        });
     });
 
     it('blocks unauthorized CHAT_JOIN and does not subscribe the socket', async () => {

@@ -2,13 +2,12 @@
 
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireAction, canUseAction } = require('../middleware/auth');
-const { ROLE_HIERARCHY, normalizeActionOverrideList, normalizePageAllowlist, normalizePageDenylist } = require('../services/accountAccessPolicy');
-const { businessContextCatalog, normalizeBusinessContext } = require('../services/businessContext');
+const { requireAction } = require('../middleware/auth');
+const { businessContextCatalog } = require('../services/businessContext');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
-
-const ORGANIZATION_ROLES = new Set(['owner', 'admin', 'member']);
-const BUSINESS_STATUSES = new Set(['active', 'inactive']);
+const lifecycle = require('../services/organizationLifecycle');
+const { lockOrganizationOwnership } = require('../services/organizationOwnership');
+const { applyReservedCutover, prepareReservedCutover } = require('../services/businessCutover');
 
 function text(value, max = 160) {
     return String(value || '').trim().slice(0, max);
@@ -19,40 +18,29 @@ function slug(value) {
     return normalized.length >= 3 ? normalized : '';
 }
 
-function role(value) {
-    const result = text(value, 64);
-    return ROLE_HIERARCHY.includes(result) ? result : '';
+function lifecycleError(res, error, fallbackCode) {
+    const status = error.status || (error.code === '23505' ? 409 : 500);
+    return res.status(status).json({ error: error.status ? error.message : 'Organization lifecycle operation failed', code: error.status ? error.code : fallbackCode });
 }
 
-function stringList(value) {
-    if (!Array.isArray(value)) return [];
-    return [...new Set(value.map(item => text(item, 200)).filter(Boolean))];
-}
+router.get('/members', async (req, res) => {
+    try {
+        res.json({ success: true, ...await lifecycle.listOrganizationMembers(pool, req.user) });
+    } catch (error) { lifecycleError(res, error, 'organization_members_unavailable'); }
+});
 
-async function organizationAccess(db, userId, organizationId) {
-    const result = await db.query(
-        `SELECT role, is_active FROM organization_memberships WHERE organization_id = $1 AND user_id = $2`,
-        [organizationId, userId]
-    );
-    return result.rows[0] || null;
-}
+router.get('/members/:userId/access-profile', async (req, res) => {
+    try {
+        const accessProfile = await lifecycle.getMemberAccessProfile(pool, req.user, req.params.userId);
+        res.json({ success: true, accessProfile });
+    } catch (error) { lifecycleError(res, error, 'business_member_access_unavailable'); }
+});
 
-async function requireOrganizationManager(req, res, next) {
-    const organizationId = Number(req.params.organizationId || req.body?.organizationId);
-    if (!Number.isInteger(organizationId) || organizationId <= 0) {
-        return res.status(400).json({ error: 'Valid organizationId is required', code: 'organization_id_invalid' });
-    }
-    if (canUseAction(req.user, 'manage_accounts') && req.user?.role === 'creator') {
-        req.organizationId = organizationId;
-        return next();
-    }
-    const membership = await organizationAccess(pool, req.user.id, organizationId);
-    if (!membership?.is_active || !['owner', 'admin'].includes(membership.role)) {
-        return res.status(403).json({ error: 'Organization management access is required', code: 'organization_management_denied' });
-    }
-    req.organizationId = organizationId;
-    return next();
-}
+router.get('/management', async (req, res) => {
+    try {
+        res.json({ success: true, ...await lifecycle.getOrganizationManagement(pool, req.user) });
+    } catch (error) { lifecycleError(res, error, 'organization_management_unavailable'); }
+});
 
 router.get('/', async (req, res) => {
     const result = await pool.query(
@@ -80,13 +68,21 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/bootstrap', requireAction('manage_accounts'), async (req, res) => {
-    if (req.user?.role !== 'creator') return res.status(403).json({ error: 'Platform creator access is required', code: 'organization_bootstrap_denied' });
+    if (req.user?.platformRole !== 'creator') return res.status(403).json({ error: 'Platform creator access is required', code: 'organization_bootstrap_denied' });
     const name = text(req.body?.name, 160);
     const organizationSlug = slug(req.body?.slug || name);
     if (!name || !organizationSlug) return res.status(400).json({ error: 'Organization name and slug are required', code: 'organization_invalid' });
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await lockOrganizationOwnership(client);
+        // Locking an empty SELECT does not serialize the first bootstrap.
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('eventgenix:organization-bootstrap'))");
+        const account = await client.query('SELECT role, is_active FROM users WHERE id = $1', [req.user.id]);
+        if (account.rows[0]?.role !== 'creator' || !account.rows[0]?.is_active) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: 'Permanent platform creator access is required', code: 'organization_bootstrap_denied' });
+        }
         const existing = await client.query('SELECT id FROM organizations LIMIT 1 FOR UPDATE');
         if (existing.rows.length) {
             await client.query('ROLLBACK');
@@ -142,8 +138,8 @@ router.post('/bootstrap', requireAction('manage_accounts'), async (req, res) => 
                 );
             }
         }
+        await recordAccountSecurityEvent({ actor: req.user, target: req.user, eventType: 'organization_bootstrapped', details: { organizationId, contexts: ['event_genix', 'dar'] }, req, client, strict: true });
         await client.query('COMMIT');
-        await recordAccountSecurityEvent({ actor: req.user, target: req.user, eventType: 'organization_bootstrapped', details: { organizationId, contexts: ['event_genix', 'dar'] }, req });
         res.status(201).json({ success: true, organization: organization.rows[0], contexts: ['event_genix', 'dar'] });
     } catch (error) {
         try { await client.query('ROLLBACK'); } catch {}
@@ -151,89 +147,64 @@ router.post('/bootstrap', requireAction('manage_accounts'), async (req, res) => 
     } finally { client.release(); }
 });
 
-router.post('/:organizationId/businesses', requireOrganizationManager, async (req, res) => {
-    const contextKey = normalizeBusinessContext(req.body?.contextKey || req.body?.businessContext);
-    const rawContext = text(req.body?.contextKey || req.body?.businessContext, 64);
-    const label = text(req.body?.label, 160);
-    const shortLabel = text(req.body?.shortLabel || label, 80);
-    if (!rawContext || contextKey !== rawContext || !label || !shortLabel) return res.status(400).json({ error: 'Valid contextKey, label and shortLabel are required', code: 'business_invalid' });
-    const modules = stringList(req.body?.modules);
-    const result = await pool.query(
-        `INSERT INTO businesses (organization_id, context_key, label, short_label, modules, access_mode, created_by_user_id)
-         VALUES ($1, $2, $3, $4, $5::jsonb, 'membership', $6) RETURNING id, organization_id, context_key, label, short_label, status, access_mode, modules`,
-        [req.organizationId, contextKey, label, shortLabel, JSON.stringify(modules), req.user.id]
-    );
-    await recordAccountSecurityEvent({ actor: req.user, target: req.user, eventType: 'business_created', details: { organizationId: req.organizationId, businessId: result.rows[0].id, contextKey }, req });
-    res.status(201).json({ success: true, business: result.rows[0] });
+// This creates review-bound journal evidence only. It intentionally does not
+// create a reserved business, membership, owner, default, or data mapping.
+router.post('/cutovers/prepare', requireAction('manage_accounts'), async (req, res) => {
+    try {
+        const cutover = await prepareReservedCutover(pool, req.user, req.body || {});
+        res.status(cutover.replay ? 200 : 201).json({ success: true, cutover });
+    } catch (error) { lifecycleError(res, error, 'cutover_prepare_failed'); }
+});
+
+// Red-scope operational cutover. The endpoint is inert without an approved,
+// hash-bound mapping body and a matching journal/source fingerprint.
+router.post('/cutovers/apply', requireAction('manage_accounts'), async (req, res) => {
+    try {
+        const cutover = await applyReservedCutover(pool, req.user, req.body || {});
+        res.status(cutover.replay ? 200 : 201).json({ success: true, cutover });
+    } catch (error) { lifecycleError(res, error, 'cutover_apply_failed'); }
+});
+
+router.post('/:organizationId/businesses', async (req, res) => {
+    try {
+        const business = await lifecycle.createBusiness(pool, req.user, req.params.organizationId, req.body || {}, req);
+        res.status(201).json({ success: true, business });
+    } catch (error) { lifecycleError(res, error, 'business_create_failed'); }
 });
 
 router.patch('/businesses/:businessId', async (req, res) => {
-    const businessId = Number(req.params.businessId);
-    const lookup = await pool.query('SELECT organization_id FROM businesses WHERE id = $1', [businessId]);
-    if (!lookup.rows[0]) return res.status(404).json({ error: 'Business not found', code: 'business_not_found' });
-    req.body = { ...(req.body || {}), organizationId: lookup.rows[0].organization_id };
-    return requireOrganizationManager(req, res, async () => {
-        const status = text(req.body?.status, 16);
-        if (!BUSINESS_STATUSES.has(status)) return res.status(400).json({ error: 'Valid status is required', code: 'business_status_invalid' });
-        const result = await pool.query('UPDATE businesses SET status = $1 WHERE id = $2 RETURNING id, context_key, status', [status, businessId]);
-        await recordAccountSecurityEvent({ actor: req.user, target: req.user, eventType: 'business_status_changed', details: { businessId, status }, req });
-        return res.json({ success: true, business: result.rows[0] });
-    });
-});
-
-router.put('/:organizationId/members/:userId', requireOrganizationManager, async (req, res) => {
-    const targetUserId = Number(req.params.userId);
-    const businessId = Number(req.body?.businessId);
-    const membershipRole = role(req.body?.role);
-    if (!Number.isInteger(targetUserId) || !Number.isInteger(businessId) || !membershipRole) return res.status(400).json({ error: 'Valid userId, businessId and role are required', code: 'business_membership_invalid' });
-    const business = await pool.query('SELECT id FROM businesses WHERE id = $1 AND organization_id = $2 AND status = \'active\'', [businessId, req.organizationId]);
-    if (!business.rows[0]) return res.status(404).json({ error: 'Active business not found in organization', code: 'business_not_found' });
-    const organizationRole = text(req.body?.organizationRole || 'member', 16);
-    if (!ORGANIZATION_ROLES.has(organizationRole)) return res.status(400).json({ error: 'Invalid organization role', code: 'organization_role_invalid' });
-    const extraRoles = stringList(req.body?.extraRoles);
-    const pageAllowlist = normalizePageAllowlist(req.body?.pageAllowlist || []);
-    const pageDenylist = normalizePageDenylist(req.body?.pageDenylist || []);
-    const actionAllowlist = normalizeActionOverrideList(req.body?.actionAllowlist || []);
-    const actionDenylist = normalizeActionOverrideList(req.body?.actionDenylist || []);
-    const client = await pool.connect();
     try {
-        await client.query('BEGIN');
-        await client.query(
-            `INSERT INTO organization_memberships (organization_id, user_id, role, is_active, created_by_user_id)
-             VALUES ($1, $2, $3, true, $4)
-             ON CONFLICT (organization_id, user_id) DO UPDATE SET role = EXCLUDED.role, is_active = true`,
-            [req.organizationId, targetUserId, organizationRole, req.user.id]
-        );
-        if (req.body?.isDefault === true) await client.query('UPDATE business_memberships SET is_default = false WHERE user_id = $1 AND organization_id = $2', [targetUserId, req.organizationId]);
-        const result = await client.query(
-            `INSERT INTO business_memberships (business_id, organization_id, user_id, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, is_default, is_active, created_by_user_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11)
-             ON CONFLICT (business_id, user_id) DO UPDATE SET role = EXCLUDED.role, extra_roles = EXCLUDED.extra_roles, page_allowlist = EXCLUDED.page_allowlist, page_denylist = EXCLUDED.page_denylist, action_allowlist = EXCLUDED.action_allowlist, action_denylist = EXCLUDED.action_denylist, is_default = EXCLUDED.is_default, is_active = true
-             RETURNING business_id, user_id, role, is_default, is_active`,
-            [businessId, req.organizationId, targetUserId, membershipRole, extraRoles, pageAllowlist, pageDenylist, actionAllowlist, actionDenylist, req.body?.isDefault === true, req.user.id]
-        );
-        await client.query('UPDATE users SET session_revoked_at = clock_timestamp() WHERE id = $1', [targetUserId]);
-        await client.query('COMMIT');
-        await recordAccountSecurityEvent({ actor: req.user, target: { id: targetUserId }, eventType: 'business_membership_updated', details: { organizationId: req.organizationId, businessId, membershipRole, organizationRole }, req });
-        res.json({ success: true, membership: result.rows[0] });
-    } catch (error) {
-        try { await client.query('ROLLBACK'); } catch {}
-        res.status(500).json({ error: 'Business membership update failed', code: 'business_membership_update_failed' });
-    } finally { client.release(); }
+        const business = await lifecycle.setBusinessStatus(pool, req.user, req.params.businessId, req.body?.status, req);
+        res.json({ success: true, business });
+    } catch (error) { lifecycleError(res, error, 'business_status_update_failed'); }
 });
 
-router.delete('/:organizationId/members/:userId/:businessId', requireOrganizationManager, async (req, res) => {
-    const targetUserId = Number(req.params.userId);
-    const businessId = Number(req.params.businessId);
-    const result = await pool.query(
-        `UPDATE business_memberships SET is_active = false, is_default = false
-         WHERE organization_id = $1 AND user_id = $2 AND business_id = $3 RETURNING business_id`,
-        [req.organizationId, targetUserId, businessId]
-    );
-    if (!result.rows[0]) return res.status(404).json({ error: 'Business membership not found', code: 'business_membership_not_found' });
-    await pool.query('UPDATE users SET session_revoked_at = clock_timestamp() WHERE id = $1', [targetUserId]);
-    await recordAccountSecurityEvent({ actor: req.user, target: { id: targetUserId }, eventType: 'business_membership_deactivated', details: { organizationId: req.organizationId, businessId }, req });
-    res.json({ success: true });
+router.patch('/businesses/:businessId/configuration', async (req, res) => {
+    try {
+        const business = await lifecycle.updateBusinessConfiguration(pool, req.user, req.params.businessId, req.body, req);
+        res.json({ success: true, business });
+    } catch (error) { lifecycleError(res, error, 'business_configuration_update_failed'); }
+});
+
+router.post('/businesses/:businessId/initialize-resources', async (req, res) => {
+    try {
+        const initialization = await lifecycle.initializeBusinessResources(pool, req.user, req.params.businessId, req.body || {}, req);
+        res.json({ success: true, initialization });
+    } catch (error) { lifecycleError(res, error, 'business_resources_initialization_failed'); }
+});
+
+router.put('/:organizationId/members/:userId', async (req, res) => {
+    try {
+        const membership = await lifecycle.updateBusinessMembership(pool, req.user, req.params.organizationId, req.params.userId, req.body, req);
+        res.json({ success: true, membership });
+    } catch (error) { lifecycleError(res, error, 'business_membership_update_failed'); }
+});
+
+router.delete('/:organizationId/members/:userId/:businessId', async (req, res) => {
+    try {
+        await lifecycle.deactivateBusinessMembership(pool, req.user, req.params.organizationId, req.params.userId, req.params.businessId, req);
+        res.json({ success: true });
+    } catch (error) { lifecycleError(res, error, 'business_membership_deactivation_failed'); }
 });
 
 module.exports = router;

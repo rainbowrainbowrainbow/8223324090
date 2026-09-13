@@ -775,7 +775,8 @@ router.get('/lead-assistant/sales-context', auth, async (req, res) => {
         if (!businessContext) return;
         const settings = await getLeadAssistantSettings({ businessContext });
         const salesContext = await getLeadAssistantSalesContext(settings, {}, {
-            businessContext
+            businessContext,
+            request: req
         });
         res.json({ success: true, salesContext });
     } catch (err) {
@@ -786,7 +787,9 @@ router.get('/lead-assistant/sales-context', auth, async (req, res) => {
 
 router.post('/lead-assistant/test', auth, async (req, res) => {
     try {
-        const analysis = await testLeadAssistantScript(req.body || {});
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const analysis = await testLeadAssistantScript(req.body || {}, { businessContext, request: req });
         res.json({ success: true, analysis });
     } catch (err) {
         log.error('Test Omni lead assistant script error:', err.message);
@@ -850,7 +853,7 @@ router.post('/conversations/:id/lead-assistant/analyze', auth, async (req, res) 
         if (!businessContext) return;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
-        const analysis = await analyzeConversationLead(id, { businessContext });
+        const analysis = await analyzeConversationLead(id, { businessContext, request: req });
         res.json({ success: true, analysis });
     } catch (err) {
         log.error('Omni lead assistant analysis error:', err.message);
@@ -866,7 +869,7 @@ router.post('/conversations/:id/lead-assistant/create-lead', auth, requireRole('
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
         const explicitDraft = req.body?.draft || req.body?.leadDraft || req.body?.lead || null;
-        const analysis = req.body?.analysis || (explicitDraft ? null : await analyzeConversationLead(id, { businessContext }));
+        const analysis = req.body?.analysis || (explicitDraft ? null : await analyzeConversationLead(id, { businessContext, request: req }));
         const result = await createLeadFromConversation(id, analysis, {
             businessContext,
             user: req.user,

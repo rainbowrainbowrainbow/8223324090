@@ -29,6 +29,7 @@ const { redactRevenueFieldKeys } = require('../services/revenueAccessPolicy');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { buildTaskVisibilityScope } = require('../services/taskPolicy');
 const { getAssignableTaskOwner } = require('../services/taskExecution');
+const { businessUserAccessSql } = require('../services/businessUserAccess');
 const {
     booleanValue,
     deriveReplySlaState,
@@ -521,18 +522,41 @@ function leadVersionConflictPayload(err, req, res) {
     };
 }
 
-async function ensureAssignableUser(userId) {
+async function ensureAssignableUser(userId, actor, businessScope) {
     if (userId === null) return true;
+    const params = [userId, LEAD_ASSIGNEE_ROLES];
+    const access = businessUserAccessSql(actor, params, 'users', businessScope);
     const result = await pool.query(
         `SELECT id
          FROM users
          WHERE id = $1
            AND is_active = true
-           AND role = ANY($2::text[])
+           AND ${access.roleSql} = ANY($2::text[])
+           ${access.condition}
          LIMIT 1`,
-        [userId, LEAD_ASSIGNEE_ROLES]
+        params
     );
     return result.rows.length > 0;
+}
+
+async function assertScopedLeadReference(queryable, table, id, businessContext) {
+    if (id === undefined || id === null || id === '') return;
+    if (!['products', 'bookings', 'leads'].includes(table)) throw new Error('Unsupported lead reference');
+    if (!['string', 'number'].includes(typeof id)) {
+        throw new LeadStageTransitionError('Некоректне посилання на запис', {
+            statusCode: 400, code: 'lead_related_record_invalid'
+        });
+    }
+    const result = await queryable.query(
+        `SELECT id FROM ${table}
+         WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+         LIMIT 1 FOR SHARE`, [id, businessContext]
+    );
+    if (!result.rows.length) {
+        throw new LeadStageTransitionError('Пов’язаний запис не знайдено в цьому бізнесі', {
+            statusCode: 404, code: 'lead_related_record_not_found'
+        });
+    }
 }
 
 function normalizeDigits(value) {
@@ -1068,6 +1092,7 @@ async function fetchLeadList({ businessScope, query = {}, order = query.order, l
         FROM leads l
         LEFT JOIN users u ON l.assigned_to = u.id
         LEFT JOIN products p ON l.program_id = p.id
+          AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
         LEFT JOIN LATERAL (
             SELECT lep.*
             FROM lead_event_preferences lep
@@ -1905,7 +1930,13 @@ async function linkLeadCustomer(queryable, {
     const normalizedBusinessContext = normalizeBusinessContext(businessContext) || DEFAULT_BUSINESS_CONTEXT;
     const result = await queryable.query(
         `INSERT INTO lead_customer_links (business_context, lead_id, customer_id, link_type, source, metadata, created_by, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, NOW())
+         SELECT $1, l.id, c.id, $4, $5, $6::jsonb, $7, NOW()
+         FROM leads l
+         JOIN customers c ON c.id = $3
+         WHERE l.id = $2
+           AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+           AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+         FOR SHARE OF l, c
          ON CONFLICT (business_context, lead_id, customer_id, link_type) DO UPDATE SET
              source = COALESCE(EXCLUDED.source, lead_customer_links.source),
              metadata = COALESCE(lead_customer_links.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb),
@@ -2443,13 +2474,18 @@ router.use(requireRole('manager', 'marketer'));
 // GET /api/leads/assignees — active users that can own leads
 router.get('/assignees', async (req, res) => {
     try {
+        const businessScope = ensureBusinessScope(req, res);
+        if (!businessScope) return;
+        const params = [LEAD_ASSIGNEE_ROLES];
+        const access = businessUserAccessSql(req.user, params, 'users', businessScope);
         const result = await pool.query(
-            `SELECT id, username, name, role
+            `SELECT id, username, name, ${access.roleSql} AS role
              FROM users
              WHERE is_active = true
-               AND role = ANY($1::text[])
+               AND ${access.roleSql} = ANY($1::text[])
+               ${access.condition}
              ORDER BY
-               CASE role
+               CASE ${access.roleSql}
                  WHEN 'creator' THEN 1
                  WHEN 'director' THEN 2
                  WHEN 'vice_director' THEN 3
@@ -2460,7 +2496,7 @@ router.get('/assignees', async (req, res) => {
                  ELSE 99
                END,
                COALESCE(NULLIF(name, ''), username)`,
-            [LEAD_ASSIGNEE_ROLES]
+            params
         );
         res.json({ success: true, users: result.rows });
     } catch (err) {
@@ -2498,6 +2534,7 @@ router.get('/hot', shapeRevenueResponse, async (req, res) => {
             FROM leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN products p ON l.program_id = p.id
+              AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
             WHERE COALESCE(l.pipeline_stage, 'new') = 'new'
               AND COALESCE(l.lead_type, 'quality') = 'quality'
               AND ${scopeSql}
@@ -2615,7 +2652,7 @@ router.post('/', shapeRevenueResponse, async (req, res) => {
         if (assignedTo.error) {
             return res.status(400).json({ success: false, error: assignedTo.error });
         }
-        if (assignedTo.provided && !(await ensureAssignableUser(assignedTo.value))) {
+        if (assignedTo.provided && !(await ensureAssignableUser(assignedTo.value, req.user, businessContext))) {
             return res.status(400).json({ success: false, error: 'Відповідального не знайдено або він неактивний' });
         }
         const createStageStatus = pipeline_stage !== undefined
@@ -2645,6 +2682,7 @@ router.post('/', shapeRevenueResponse, async (req, res) => {
         client = await pool.connect();
         await client.query('BEGIN');
         transactionStarted = true;
+        await assertScopedLeadReference(client, 'products', program_id || null, businessContext);
         if (createCustomerId) {
             const existingCustomer = await client.query(
                 `SELECT * FROM customers WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2 LIMIT 1`,
@@ -2775,7 +2813,7 @@ router.post('/', shapeRevenueResponse, async (req, res) => {
         res.json(response);
     } catch (err) {
         if (transactionStarted && client) await client.query('ROLLBACK').catch(() => {});
-        if (err instanceof LeadStageTransitionError) {
+        if (err instanceof LeadStageTransitionError || err?.name === 'LeadReferenceIntegrityError') {
             return res.status(err.statusCode || 400).json({ success: false, error: err.message, code: err.code });
         }
         log.error('POST /leads error', err);
@@ -2953,7 +2991,7 @@ router.patch('/:id/stage', shapeRevenueResponse, async (req, res) => {
         if (warnings.length) response.warnings = warnings;
         res.json(response);
     } catch (err) {
-        if (err?.statusCode === 404) {
+        if (err?.statusCode === 404 && !(err instanceof LeadStageTransitionError || err?.name === 'LeadReferenceIntegrityError')) {
             return res.status(404).json({ success: false, error: 'Lead not found' });
         }
         if (err?.code === 'lead_version_conflict') {
@@ -2966,7 +3004,7 @@ router.patch('/:id/stage', shapeRevenueResponse, async (req, res) => {
             });
             return res.status(409).json(leadVersionConflictPayload(err, req, res));
         }
-        if (err instanceof LeadStageTransitionError) {
+        if (err instanceof LeadStageTransitionError || err?.name === 'LeadReferenceIntegrityError') {
             return res.status(err.statusCode || 400).json({ success: false, error: err.message, code: err.code });
         }
         const mappedError = mapLeadPatchError(err, req, res);
@@ -3029,7 +3067,7 @@ router.patch('/:id', requireRevenueForExplicitFields('potential_value', 'potenti
         if (stageStatus.error) {
             return res.status(400).json({ success: false, error: stageStatus.error });
         }
-        if (assignedTo.provided && !(await ensureAssignableUser(assignedTo.value))) {
+        if (assignedTo.provided && !(await ensureAssignableUser(assignedTo.value, req.user, businessContext))) {
             return res.status(400).json({ success: false, error: 'Відповідального не знайдено або він неактивний' });
         }
 
@@ -3099,13 +3137,28 @@ router.patch('/:id', requireRevenueForExplicitFields('potential_value', 'potenti
         const shouldEnsureCustomerCard = CUSTOMER_CARD_PIPELINE_STAGES.has(effectivePipelineStage);
         const shouldSyncLinkedCustomerChildren = celebrants !== undefined && !shouldEnsureCustomerCard;
         const shouldPersistEventPreference = eventPreferenceInput.provided;
-        const updateClient = shouldEnsureCustomerCard || shouldSyncLinkedCustomerChildren || stageStatus.stageProvided || kanbanOrderIds.length || shouldPersistEventPreference ? await pool.connect() : null;
+        const shouldLockRelatedRecords = program_id !== undefined || booking_id !== undefined;
+        const updateClient = shouldEnsureCustomerCard || shouldSyncLinkedCustomerChildren || stageStatus.stageProvided || kanbanOrderIds.length || shouldPersistEventPreference || shouldLockRelatedRecords ? await pool.connect() : null;
         try {
             if (updateClient) {
                 await updateClient.query('BEGIN');
                 await applyLeadPatchTransactionGuards(updateClient);
             }
             const queryable = updateClient || pool;
+            if (shouldLockRelatedRecords) {
+                const parent = await queryable.query(
+                    `SELECT id FROM leads WHERE id = $1
+                     AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2 FOR UPDATE`,
+                    [leadId, businessContext]
+                );
+                if (!parent.rows.length) {
+                    throw new LeadStageTransitionError('Лід не знайдено', {
+                        statusCode: 404, code: 'lead_not_found'
+                    });
+                }
+            }
+            if (program_id !== undefined) await assertScopedLeadReference(queryable, 'products', program_id || null, businessContext);
+            if (booking_id !== undefined) await assertScopedLeadReference(queryable, 'bookings', booking_id, businessContext);
             if (updates.length > 0) {
                 const result = await queryable.query(
                     `UPDATE leads SET ${updates.join(', ')}
@@ -3293,7 +3346,7 @@ router.patch('/:id', requireRevenueForExplicitFields('potential_value', 'potenti
         if (warnings.length) response.warnings = warnings;
         res.json(response);
     } catch (err) {
-        if (err instanceof LeadStageTransitionError) {
+        if (err instanceof LeadStageTransitionError || err?.name === 'LeadReferenceIntegrityError') {
             return res.status(err.statusCode || 400).json({ success: false, error: err.message, code: err.code });
         }
         const mappedError = mapLeadPatchError(err, req, res);
@@ -3352,7 +3405,7 @@ router.post('/:id/collaboration-task', shapeRevenueResponse, async (req, res) =>
         }
 
         const oldLead = leadResult.rows[0];
-        const owner = await getAssignableTaskOwner(ownerId.value, { actor: req.user, pool: client });
+        const owner = await getAssignableTaskOwner(ownerId.value, { actor: req.user, pool: client, businessContext });
         const taskPayload = buildCollaborationTaskPayload(oldLead, req.body, owner, req.user, businessContext);
         if (taskPayload.error) {
             await client.query('ROLLBACK');
@@ -3703,6 +3756,7 @@ router.get('/:id/workspace', shapeRevenueResponse, async (req, res) => {
             FROM leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN products p ON l.program_id = p.id
+              AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
             LEFT JOIN LATERAL (
                 SELECT lep.*
                 FROM lead_event_preferences lep
@@ -3905,6 +3959,8 @@ router.get('/:id/workspace', shapeRevenueResponse, async (req, res) => {
             conversationParams.push(`%${lead.clientName}%`);
             conversationConditions.push(`c.customer_name ILIKE $${conversationParams.length}`);
         }
+        conversationParams.push(businessContext);
+        const conversationBusinessRef = `$${conversationParams.length}`;
         const conversationsResult = conversationConditions.length > 0
             ? await optionalWorkspaceQuery(`
                 SELECT c.id, c.channel, c.customer_name, c.customer_phone, c.customer_id, c.status,
@@ -3916,6 +3972,7 @@ router.get('/:id/workspace', shapeRevenueResponse, async (req, res) => {
                        m.content AS last_message
                 FROM conversations c
                 LEFT JOIN conversation_messages expected_msg ON expected_msg.id = c.reply_expected_message_id
+                  AND expected_msg.conversation_id = c.id
                 LEFT JOIN LATERAL (
                     SELECT content
                     FROM conversation_messages
@@ -3923,7 +3980,8 @@ router.get('/:id/workspace', shapeRevenueResponse, async (req, res) => {
                     ORDER BY created_at DESC
                     LIMIT 1
                 ) m ON true
-                WHERE ${conversationConditions.join(' OR ')}
+                WHERE (${conversationConditions.join(' OR ')})
+                  AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = ${conversationBusinessRef}
                 ORDER BY c.last_message_at DESC NULLS LAST, c.updated_at DESC
                 LIMIT 8
             `, conversationParams)
@@ -4034,6 +4092,7 @@ router.post('/mailing', async (req, res) => {
         if (!name && !phone) {
             return res.status(400).json({ success: false, error: "Ім'я або телефон обов'язкові" });
         }
+        await assertScopedLeadReference(pool, 'leads', lead_id || null, businessContext);
         const result = await pool.query(`
             INSERT INTO mailing_list (business_context, name, phone, email, source_channel, contact_value, lead_id, notes)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -4048,6 +4107,9 @@ router.post('/mailing', async (req, res) => {
 
         res.json({ success: true, entry: result.rows[0] });
     } catch (err) {
+        if (err instanceof LeadStageTransitionError || err?.name === 'LeadReferenceIntegrityError') {
+            return res.status(err.statusCode || 400).json({ success: false, error: err.message, code: err.code });
+        }
         log.error('POST /leads/mailing error', err);
         res.status(500).json({ success: false, error: 'Помилка додавання до розсилки' });
     }
@@ -4544,25 +4606,29 @@ async function loadActiveTaskById(taskId, businessContext) {
     return result.rows[0] || null;
 }
 
-async function findAccountantTaskOwner(businessContext) {
+async function findAccountantTaskOwner(businessContext, actor) {
+    const params = [];
+    const access = businessUserAccessSql(actor, params, 'users', businessContext);
+    const legacyContextRef = access.membershipMode ? null : `$${params.push(businessContext)}`;
     const result = await pool.query(
-        `SELECT id, username, name, role
+        `SELECT id, username, name, ${access.roleSql} AS role
            FROM users
           WHERE COALESCE(is_active, true) = true
             AND (
-                role = 'accountant'
-                OR 'accountant' = ANY(COALESCE(extra_roles, ARRAY[]::text[]))
+                ${access.roleSql} = 'accountant'
+                OR 'accountant' = ANY(COALESCE(${access.extraRolesSql}, ARRAY[]::text[]))
             )
-            AND (
+            ${access.condition}
+            ${access.membershipMode ? '' : `AND (
                 business_contexts IS NULL
                 OR array_length(business_contexts, 1) IS NULL
-                OR $1 = ANY(business_contexts)
-            )
-          ORDER BY CASE WHEN role = 'accountant' THEN 0 ELSE 1 END,
+                OR ${legacyContextRef} = ANY(business_contexts)
+            )`}
+          ORDER BY CASE WHEN ${access.roleSql} = 'accountant' THEN 0 ELSE 1 END,
                    COALESCE(NULLIF(name, ''), username),
                    id
           LIMIT 1`,
-        [businessContext]
+        params
     );
     const row = result.rows[0];
     if (!row) return null;
@@ -4676,7 +4742,7 @@ async function createAccountantDepositTaskOnce(lead, user, options = {}) {
         return existingSourceTask;
     }
 
-    const accountant = await findAccountantTaskOwner(businessContext);
+    const accountant = await findAccountantTaskOwner(businessContext, user);
     const task = await getKleshnya().createTask(
         buildDepositAccountantTaskPayload({ lead, user, businessContext, handoff, accountant })
     );

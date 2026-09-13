@@ -1,0 +1,29 @@
+{
+  "role": {
+    "rolsuper": false,
+    "rolcreaterole": false,
+    "rolcreatedb": false,
+    "rolreplication": false,
+    "rolbypassrls": false,
+    "memberships": 0,
+    "database_create": false,
+    "database_temp": false,
+    "schema_create": false
+  },
+  "relations": {
+    "tables": 399,
+    "readable": 384,
+    "writable": 0,
+    "owned": 0,
+    "rls": 0
+  },
+  "functions": {
+    "executable_user_functions": 52,
+    "security_definer": 0,
+    "volatile": 48
+  },
+  "candidateForReview": true,
+  "operationalRowsRead": 0,
+  "productionWrites": 0,
+  "generatedAt": "2026-09-13T13:10:54.372Z"
+}

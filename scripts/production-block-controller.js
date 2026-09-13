@@ -503,6 +503,7 @@ function parseOptions(argv) {
         '--validity-minutes',
         '--max-release-attempts',
         '--release-label',
+        '--protected-workflow',
         '--qa-scope',
         '--qa-scope-base64'
     ]);
@@ -519,6 +520,7 @@ function parseOptions(argv) {
         validityMinutes: Number(argValue(args, '--validity-minutes', '360')),
         maxReleaseAttempts: Number(argValue(args, '--max-release-attempts', '3')),
         releaseLabel: cleanText(argValue(args, '--release-label', 'Autonomy Hardening'), 120),
+        protectedWorkflow: cleanText(argValue(args, '--protected-workflow', 'none'), 80),
         qaScope: parseQaScope(qaScopeValue),
         dryRun: argPresent(args, '--dry-run')
     };

@@ -1485,8 +1485,10 @@ async function initProfilePage() {
         }
         if (typeof AppState !== 'undefined') AppState.currentUser = user;
         if (typeof hydrateBusinessOperatingProfile === 'function') await hydrateBusinessOperatingProfile(user);
-        if (typeof hydrateActionPermissions === 'function') await hydrateActionPermissions(user);
-        window.WorkingRole?.hydrate?.();
+        if (!user.accessContext || user.accessContext.status === 'ready') {
+            if (typeof hydrateActionPermissions === 'function') await hydrateActionPermissions(user);
+            window.WorkingRole?.hydrate?.();
+        }
         currentUserId = user.id;
         loadCabinetMyDayViewModePreference();
     } catch (e) {
@@ -1502,6 +1504,15 @@ async function initProfilePage() {
     const params = new URLSearchParams(window.location.search);
     const viewUserId = parseInt(params.get('id')) || currentUserId;
     isOwnProfile = viewUserId === currentUserId;
+    const authenticatedProfileUser = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    if (isOwnProfile && authenticatedProfileUser?.accessContext && authenticatedProfileUser.accessContext.status !== 'ready') {
+        document.getElementById('main-content').innerHTML = '<div class="profile-page"><section class="profile-work-panel"><h1>Ваш акаунт</h1><p>Оберіть доступний бізнес, щоб відкрити робочий профіль. Якщо доступу немає, зверніться до власника організації.</p><div class="profile-avatar-action-row"><a href="/" class="profile-settings-primary">Вибрати бізнес</a><button type="button" onclick="window.location.reload()">Перевірити доступ</button><button type="button" onclick="logout()">Вийти</button></div></section><section id="profileBusinessCabinets"></section><section id="profileBusinessMembers"></section></div>';
+        window.BusinessCabinetManager?.mount(document.getElementById('profileBusinessCabinets'), authenticatedProfileUser);
+        window.BusinessMembershipManager?.mount(document.getElementById('profileBusinessMembers'), authenticatedProfileUser);
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell({ markRuntimeReady: false });
+        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+        return;
+    }
     const requestedTab = params.get('tab');
     const normalizedRequestedTab = normalizeProfileTab(requestedTab);
     const allowedOwnTabs = ['professions', 'checklists', 'materials', 'myday', 'settings', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
@@ -2035,10 +2046,13 @@ function renderProfile() {
         <div id="tabContent">
             ${renderTabContent()}
         </div>
+        ${isOwnProfile ? '<section id="profileBusinessCabinets"></section><section id="profileBusinessMembers"></section>' : ''}
     </div>`;
 
     document.getElementById('main-content').innerHTML = html;
     attachProfileListeners();
+    if (isOwnProfile) window.BusinessCabinetManager?.mount(document.getElementById('profileBusinessCabinets'), typeof AppState !== 'undefined' ? AppState.currentUser : null);
+    if (isOwnProfile) window.BusinessMembershipManager?.mount(document.getElementById('profileBusinessMembers'), typeof AppState !== 'undefined' ? AppState.currentUser : null);
 }
 
 async function switchTab(tab, options = {}) {

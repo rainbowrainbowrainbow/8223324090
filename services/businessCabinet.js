@@ -3,14 +3,15 @@
 const { pool: defaultPool } = require('../db');
 const {
   DEFAULT_BUSINESS_CONTEXT,
+  normalizeKnownBusinessContext,
   businessContextCatalog,
   businessModulesForContext,
   normalizeBusinessContext,
 } = require('./businessContext');
 const {
-  DEFAULT_TIMELINE_CONTEXT,
   isTimelineContext: isRegisteredTimelineContext,
 } = require('./timelineContext');
+const { businessModuleCatalog, userBusinessRegistryEntry, userBusinessModuleState } = require('./businessModuleRegistry');
 const {
   TIMELINE_FEATURE_KEYS,
   TIMELINE_MODULE_KEYS,
@@ -61,6 +62,7 @@ function isTimelineContext(context) {
 
 function defaultBusinessTypeForContext(context) {
   const key = normalizeBusinessContext(context);
+  if (!normalizeKnownBusinessContext(key)) return 'simple';
   const modules = businessModulesForContext(key);
   if (!modules.includes('timeline')) return 'no_timeline';
   if (key === 'maysternya_doli' || key === 'dar') return 'simple';
@@ -86,7 +88,7 @@ function timelineModeForBusinessType(type, fallback = null) {
   if (normalized === 'education') return 'education';
   if (normalized === 'specialist') return 'specialist';
   if (normalized === 'simple') return 'simple';
-  return fallback?.mode || 'park';
+  return fallback?.mode || 'simple';
 }
 
 function normalizeToggleRecord(value, defaults, allowedKeys) {
@@ -111,7 +113,7 @@ function defaultTimelineDisplayForBusiness(context) {
     enabledModules: defaultTimelineModules(mode, parkKitchenMode),
     timelineFeatures: defaultTimelineFeatures(mode, parkKitchenMode),
     bookingPolicy: defaultBookingPolicy(mode),
-  }, isTimelineContext(key) ? key : DEFAULT_TIMELINE_CONTEXT);
+  }, key);
   return { ...normalized, context: key };
 }
 
@@ -139,7 +141,7 @@ function coerceTimelineDisplay(value = {}, context, fallbackTimeline = null) {
   };
   const normalized = normalizeTimelineDisplaySettings(
     source,
-    isTimelineContext(key) ? key : DEFAULT_TIMELINE_CONTEXT
+    key
   );
   return { ...normalized, context: key };
 }
@@ -290,6 +292,41 @@ async function getBusinessCabinetSettings(db = defaultPool, context = DEFAULT_BU
   });
 }
 
+function businessCabinetForUser(cabinet, user) {
+  const context = cabinet.context;
+  if (userBusinessRegistryEntry(user, context)?.accessMode !== 'membership') return cabinet;
+  const descriptors = businessModuleCatalog(context);
+  const membership = userBusinessRegistryEntry(user, context);
+  const catalog = [...new Set([...descriptors.map(module => module.key), ...(membership.businessModules || [])])];
+  const enabled = Object.fromEntries(catalog.map(key => [key, userBusinessModuleState(user, context, key).available]));
+  const enabledModules = { ...cabinet.timeline.enabledModules };
+  for (const [timelineModule, moduleId] of Object.entries(TIMELINE_MODULE_TO_BUSINESS_MODULE)) {
+    enabledModules[timelineModule] = enabled[moduleId] === true;
+  }
+  enabledModules.bookings = enabled.timeline === true;
+  const timeline = { ...cabinet.timeline, enabledModules };
+  if (!enabled.timeline) Object.assign(timeline, { timelineEnabled: false, mode: 'disabled' });
+  return {
+    ...cabinet, timeline, timelineEnabled: timeline.timelineEnabled, timelineMode: timeline.mode,
+    modules: { source: 'business_registry', readOnly: true, managementPath: '/profile', catalog, descriptors, enabled,
+      enabledIds: catalog.filter(key => enabled[key]), disabledIds: catalog.filter(key => !enabled[key]) }
+  };
+}
+
+function assertBusinessCabinetModuleEcho(payload, cabinet) {
+  if (cabinet.modules.source !== 'business_registry') return;
+  for (const field of ['modules', 'businessModules', 'moduleMap']) {
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) continue;
+    const value = payload[field];
+    const map = value?.enabled || value?.map || value;
+    if (!map || typeof map !== 'object' || Array.isArray(map)
+      || Object.entries(map).some(([key, enabled]) => typeof enabled !== 'boolean' || enabled !== (cabinet.modules.enabled[key] === true))) {
+      throw Object.assign(new Error('Змінюйте модулі через керування бізнесами у профілі.'),
+        { status: 400, code: 'business_modules_managed_by_organization' });
+    }
+  }
+}
+
 function timelineDisplayFromBusinessCabinet(cabinet) {
   const normalized = normalizeBusinessCabinetSettings(cabinet, cabinet?.businessContext || cabinet?.context || DEFAULT_BUSINESS_CONTEXT);
   return {
@@ -305,6 +342,7 @@ function timelineDisplayFromBusinessCabinet(cabinet) {
 async function saveBusinessCabinetSettings(db = defaultPool, context = DEFAULT_BUSINESS_CONTEXT, payload = {}, user = null) {
   const key = normalizeBusinessContext(context);
   const current = await getBusinessCabinetSettings(db, key);
+  assertBusinessCabinetModuleEcho(payload || {}, businessCabinetForUser(current, user));
   const cabinet = normalizeBusinessCabinetSettings({
     ...current,
     ...(payload || {}),
@@ -343,7 +381,7 @@ async function saveBusinessCabinetSettings(db = defaultPool, context = DEFAULT_B
   } finally {
     client.release();
   }
-  return cabinet;
+  return businessCabinetForUser(cabinet, user);
 }
 
 function businessCabinetCatalog() {
@@ -359,6 +397,7 @@ module.exports = {
   BUSINESS_START_PAGES,
   BUSINESS_TYPES,
   businessCabinetCatalog,
+  businessCabinetForUser,
   businessCabinetSettingsKey,
   defaultBusinessTypeForContext,
   getBusinessCabinetSettings,

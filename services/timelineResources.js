@@ -6,6 +6,8 @@ const {
     normalizeTimelineContext
 } = require('./timelineContext');
 const { timeToMinutes } = require('./booking');
+const { getVisibleBookingScope } = require('./bookingVisibility');
+const { canAccessBusinessContext } = require('./businessContext');
 
 const TIMELINE_DISPLAY_MODES = new Set(['disabled', 'simple', 'specialist', 'park', 'education']);
 const TIMELINE_PARK_KITCHEN_MODES = new Set(['with_kitchen', 'without_kitchen']);
@@ -42,7 +44,7 @@ function activeBookingStatusSql(alias = '') {
 
 function defaultTimelineDisplayMode(context) {
     const key = normalizeTimelineContext(context);
-    return key === 'maysternya_doli' || key === 'dar' ? 'simple' : 'park';
+    return key === DEFAULT_TIMELINE_CONTEXT ? 'park' : 'simple';
 }
 
 function timelineDisplaySettingsKey(context) {
@@ -313,7 +315,11 @@ function resourceColor(index, fallback) {
 
 function defaultResourcesFor(context, type) {
     const businessContext = normalizeTimelineContext(context);
+    // Existing templates describe known businesses only. A custom cabinet must
+    // configure its own resources instead of inheriting Park/education records.
+    if (![DEFAULT_TIMELINE_CONTEXT, 'dar', 'maysternya_doli'].includes(businessContext)) return [];
     if (businessContext === 'maysternya_doli') {
+        if (type !== 'specialist') return [];
         return [{
             resourceId: 'md-consult-room',
             type: 'specialist',
@@ -759,26 +765,52 @@ async function upsertTimelineResource(db = defaultPool, context = DEFAULT_TIMELI
     return mapTimelineResourceRow(result.rows[0]);
 }
 
-async function ensureDefaultTimelineResources(db = defaultPool, context = DEFAULT_TIMELINE_CONTEXT, type = 'cabinet') {
-    const businessContext = normalizeTimelineContext(context);
-    const resourceType = normalizeResourceType(type, 'cabinet');
-    const countResult = await db.query(
-        'SELECT COUNT(*)::int AS count FROM timeline_resources WHERE business_context = $1 AND type = $2',
-        [businessContext, resourceType]
-    );
-    if ((countResult.rows[0]?.count || 0) > 0) return;
-    const defaults = defaultResourcesFor(businessContext, resourceType);
-    for (const resource of defaults) {
-        await upsertTimelineResource(db, businessContext, resource);
+// The lifecycle caller owns the transaction and authorization. No read path
+// calls this initializer; the advisory lock serializes concurrent initializers.
+async function initializeTimelineResources(db, context, options = {}) {
+    if (!db || typeof db.query !== 'function' || !context) {
+        throw new TypeError('A transaction client and explicit business context are required');
     }
+    const businessContext = normalizeTimelineContext(context);
+    const types = options.types === undefined ? ['cabinet', 'specialist', 'room'] : options.types;
+    if (!Array.isArray(types) || !types.length || types.some(type => !RESOURCE_TYPES.has(type))) {
+        const error = new Error('Resource types must be an explicit non-empty list of supported types');
+        error.statusCode = 400;
+        throw error;
+    }
+    const resourceTypes = [];
+    for (const type of [...new Set(types)].sort()) {
+        await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`timeline_resources:${businessContext}:${type}`]);
+        const countResult = await db.query(
+            'SELECT COUNT(*)::int AS count FROM timeline_resources WHERE business_context = $1 AND type = $2',
+            [businessContext, type]
+        );
+        if (Number(countResult.rows[0]?.count || 0) > 0) {
+            resourceTypes.push({ type, created: 0, status: 'existing' });
+            continue;
+        }
+        const defaults = defaultResourcesFor(businessContext, type);
+        let created = 0;
+        for (const resource of defaults) {
+            const result = await db.query(
+                `INSERT INTO timeline_resources
+                    (business_context, resource_id, type, name, short_name, color, capacity, equipment, sort_order, metadata)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10::jsonb)
+                 ON CONFLICT (business_context, resource_id) DO NOTHING RETURNING id`,
+                [businessContext, resource.resourceId, resource.type, resource.name, resource.shortName,
+                    resource.color, resource.capacity, JSON.stringify(resource.equipment || []), resource.sortOrder,
+                    JSON.stringify(resource.metadata || {})]
+            );
+            created += result.rowCount || 0;
+        }
+        resourceTypes.push({ type, created, status: defaults.length ? 'initialized' : 'no_defaults' });
+    }
+    return { context: businessContext, created: resourceTypes.reduce((sum, item) => sum + item.created, 0), resourceTypes };
 }
 
 async function listTimelineResources(db = defaultPool, options = {}) {
     const businessContext = normalizeTimelineContext(options.context || options.businessContext);
     const type = options.type ? normalizeResourceType(options.type) : null;
-    if (options.ensureDefault && type) {
-        await ensureDefaultTimelineResources(db, businessContext, type);
-    }
     const params = [businessContext];
     const conditions = ['business_context = $1'];
     if (type) {
@@ -839,8 +871,7 @@ async function timelineResourceLinesForMode(db = defaultPool, context = DEFAULT_
     const resources = await listTimelineResources(db, {
         context,
         type,
-        includeInactive: false,
-        ensureDefault: true
+        includeInactive: false
     });
     return resources.map(resourceToLine);
 }
@@ -943,8 +974,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
     const resources = await listTimelineResources(db, {
         context,
         type,
-        includeInactive: false,
-        ensureDefault: true
+        includeInactive: false
     });
     const resourceIds = resources.map(resource => resource.resourceId);
     const resourceNames = [...new Set(resources.flatMap(timelineResourceRoomMatchValues))];
@@ -958,6 +988,14 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
                 AND (b.line_id = ANY($3::text[]) OR b.room = ANY($4::text[]))
             ))`
         : 'b.line_id = ANY($3::text[])';
+    const actor = options.actor;
+    const access = actor?.businessMembershipAccess;
+    const actorMatchesContext = Boolean(actor && !access?.invalid
+        && canAccessBusinessContext(actor, context)
+        && (!access?.membershipEnabled || actor.activeBusinessMembership?.businessContext === context));
+    const params = [date, context, resourceIds];
+    if (type === 'room') params.push(resourceNames);
+    const visibility = getVisibleBookingScope(actorMatchesContext ? actor : null, params, 'b');
     const bookings = await db.query(
         `SELECT b.id, b.line_id, b.room, b.room_resource_id, b.time, b.duration, b.label, b.program_code, b.program_name,
                 b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data, b.customer_id, b.business_context,
@@ -965,7 +1003,8 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
                 bg.id AS banquet_group_id,
                 CASE WHEN bg.id IS NOT NULL THEN bgb.role ELSE NULL END AS banquet_group_role,
                 bg.primary_booking_id AS banquet_group_primary_booking_id,
-                bg.customer_id AS banquet_group_customer_id
+                bg.customer_id AS banquet_group_customer_id,
+                (${visibility.condition}) AS actor_can_view
            FROM bookings b
            LEFT JOIN customers c
              ON c.id = b.customer_id
@@ -981,7 +1020,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
             AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
             AND ${activeBookingStatusSql('b')}
             AND ${roomIdentitySql}`,
-        [date, context, resourceIds, resourceNames]
+        params
     );
     const start = timeToMinutes(time);
     const end = start + duration;
@@ -993,10 +1032,13 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
         );
         const byName = direct || resources.find(resource => timelineResourceMatchesRoomValue(resource, booking.room));
         if (!byName) continue;
+        // Hidden bookings still participate in collision checks, without becoming UI link targets.
+        const canViewDetails = actorMatchesContext && booking.actor_can_view === true;
+        const busy = { time: booking.time, duration: booking.duration || 0, unavailable: true };
         if (!String(booking.linked_to || '').trim()) {
             const customerName = booking.customer_name || booking.group_name || booking.label
                 || booking.program_name || booking.program_code || booking.id;
-            dayBookingsByResource.get(byName.resourceId)?.push({
+            dayBookingsByResource.get(byName.resourceId)?.push(canViewDetails ? {
                 id: booking.id,
                 time: booking.time,
                 duration: booking.duration || 0,
@@ -1015,12 +1057,12 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
                     booking.banquet_group_primary_booking_id
                     && String(booking.banquet_group_primary_booking_id) === String(booking.id)
                 )
-            });
+            } : busy);
         }
         const bookingStart = timeToMinutes(booking.time);
         const bookingEnd = bookingStart + (parseInt(booking.duration, 10) || 0);
         if (!(start < bookingEnd && end > bookingStart)) continue;
-        byResource.get(byName.resourceId)?.push({
+        byResource.get(byName.resourceId)?.push(canViewDetails ? {
             id: booking.id,
             time: booking.time,
             duration: booking.duration,
@@ -1028,7 +1070,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
             kidsCount: booking.kids_count || null,
             resourceBlock: booking.extra_data?.timelineResourceBlock?.resourceBlocked === true
                 || booking.extra_data?.maysternyaBooking?.slotClosed === true
-        });
+        } : busy);
     }
     dayBookingsByResource.forEach((resourceBookings, resourceId) => {
         dayBookingsByResource.set(resourceId, [...resourceBookings].sort((a, b) =>
@@ -1102,7 +1144,7 @@ module.exports = {
     roomTextLooksInvalid,
     bookingRoomResourceId,
     upsertTimelineResource,
-    ensureDefaultTimelineResources,
+    initializeTimelineResources,
     listTimelineResources,
     findTimelineResource,
     findTimelineResourceByName,

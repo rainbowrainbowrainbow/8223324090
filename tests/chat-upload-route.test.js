@@ -167,9 +167,24 @@ describe('chat upload route storage and safety', () => {
         clearModules();
 
         const pool = {
-            query: async sql => {
+            query: async (sql, params = []) => {
                 if (/SELECT\s+is_active,\s*session_revoked_at\s+FROM\s+users/i.test(String(sql))) {
-                    return { rows: [{ is_active: true, session_revoked_at: null }], rowCount: 1 };
+                    const rows = Number(params[0]) === 1 ? [{ is_active: true, session_revoked_at: null }] : [];
+                    return { rows, rowCount: rows.length };
+                }
+                if (/SELECT\s+id,\s*username,\s*role,\s*extra_roles/i.test(String(sql))) {
+                    const rows = Number(params[0]) === 1 ? [{
+                        id: 1, username: 'user-1', name: 'User 1', role: 'creator',
+                        extra_roles: [], page_allowlist: [], page_denylist: [],
+                        action_allowlist: [], action_denylist: [],
+                        business_contexts: ['event_genix'], default_business_context: 'event_genix',
+                        is_active: true
+                    }] : [];
+                    return { rows, rowCount: rows.length };
+                }
+                if (/FROM organization_memberships om|FROM businesses b JOIN organizations o/i.test(String(sql))) {
+                    // This upload fixture models an account before organization bootstrap.
+                    return { rows: [], rowCount: 0 };
                 }
                 return { rows: [], rowCount: 0 };
             }

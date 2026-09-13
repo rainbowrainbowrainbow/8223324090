@@ -11,13 +11,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.157">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.157">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.157">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.157">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.157">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.157">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.157">
+    <link rel="stylesheet" href="css/base.css?v=0.81.158">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.158">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.158">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.158">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.158">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.158">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.158">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -2122,7 +2122,7 @@
             color: #FBBF24;
         }
     </style>
-    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.157">
+    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.158">
 </head>
 <body data-page-group="system">
     <script>
@@ -2351,12 +2351,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.81.157"></script>
-    <script src="js/api.js?v=0.81.157"></script>
-    <script src="js/auth.js?v=0.81.157"></script>
-    <script src="js/components/sidebar.js?v=0.81.157"></script>
+    <script src="js/config.js?v=0.81.158"></script>
+    <script src="js/api.js?v=0.81.158"></script>
+    <script src="js/auth.js?v=0.81.158"></script>
+    <script src="js/components/sidebar.js?v=0.81.158"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.81.157"></script>
+    <script src="js/ws.js?v=0.81.158"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -2383,6 +2383,9 @@
         let accountsRequestSeq = 0;
         let statsRequestSeq = 0;
         let assistantRequestSeq = 0;
+        let assistantTestRequestSeq = 0;
+        let assistantAccessKey = '';
+        let assistantAccessListenersReady = false;
         let leadDraftRequestSeq = 0;
         let conversationsLoading = false;
         let messagesLoading = false;
@@ -2530,9 +2533,8 @@
             setChannelActionFeedback('');
             selectedConversationQueryId = null;
             conversationQueryApplied = true;
-            leadAssistantState.settings = null;
-            leadAssistantState.salesContext = null;
-            leadAssistantState.analytics = null;
+            clearLeadAssistantSources();
+            assistantAccessKey = leadAssistantAccessContextKey();
             closeConnectionModal();
             closeLeadAssistantPanel();
             renderConversations();
@@ -2550,6 +2552,17 @@
         }
 
         function initOmniBusinessContext() {
+            assistantAccessKey = leadAssistantAccessContextKey();
+            if (!assistantAccessListenersReady) {
+                assistantAccessListenersReady = true;
+                window.addEventListener('crmBusinessProfileChanged', refreshLeadAssistantAccess);
+                window.addEventListener('permissions:lifecycle', refreshLeadAssistantAccess);
+                window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+                    if (event.detail?.surface !== 'catalogs') return;
+                    if (event.detail.context && event.detail.context !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) return;
+                    refreshLeadAssistantAccess();
+                });
+            }
             if (!window.CrmBusinessContext || typeof window.CrmBusinessContext.initPage !== 'function') return;
             window.CrmBusinessContext.initPage({
                 pageId: 'system',
@@ -2557,6 +2570,71 @@
                     await reloadOmniForBusinessContext();
                 }
             });
+        }
+
+        function leadAssistantAccessContextKey() {
+            const catalogAccess = window.getLegacyBusinessSurfaceAvailability?.('catalogs');
+            return JSON.stringify([
+                window.getLegacyBusinessSurfaceContextKey?.('catalogs') || getOmniBusinessContext(),
+                window.getPermissionLifecycle?.().status || null,
+                catalogAccess?.available === true, catalogAccess?.code || null
+            ]);
+        }
+
+        function clearLeadAssistantSources() {
+            assistantRequestSeq++;
+            assistantTestRequestSeq++;
+            for (const key of ['analysis', 'settings', 'salesContext', 'analytics', 'testAnalysis']) leadAssistantState[key] = null;
+            for (const key of ['loading', 'testingScript', 'savingSettings']) leadAssistantState[key] = false;
+            leadAssistantState.testTranscript = '';
+            leadAssistantState.error = '';
+            if (leadAssistantContent) leadAssistantContent.innerHTML = '';
+            if (leadAssistantSettingsEl) leadAssistantSettingsEl.innerHTML = '';
+        }
+
+        function refreshLeadAssistantAccess() {
+            const nextKey = leadAssistantAccessContextKey();
+            if (nextKey === assistantAccessKey) return;
+            assistantAccessKey = nextKey;
+            clearLeadAssistantSources();
+            closeLeadAssistantPanel();
+        }
+
+        function leadAssistantCatalogAccess(salesContext = leadAssistantState.salesContext) {
+            const local = window.getLegacyBusinessSurfaceAvailability?.('catalogs') || {
+                available: false, code: 'catalogs_not_migrated', message: 'Доступ до спільних каталогів ще не підтверджено.'
+            };
+            return local.available ? (salesContext?.legacyCatalogs || local) : local;
+        }
+
+        function renderLeadAssistantCatalogNotice(salesContext) {
+            const access = leadAssistantCatalogAccess(salesContext);
+            return access.available ? '' : '<div class="omni-ai-summary" role="status">' + esc(access.message) + '</div>';
+        }
+
+        function leadAssistantMaterialAvailable(material, salesContext = leadAssistantState.analysis?.salesContext) {
+            return material?.source !== 'catalog_item' || leadAssistantCatalogAccess(salesContext).available;
+        }
+
+        function normalizeLeadAssistantSalesSources(salesContext) {
+            if (!salesContext) return salesContext;
+            const legacyCatalogs = leadAssistantCatalogAccess(salesContext);
+            return {
+                ...salesContext,
+                legacyCatalogs,
+                ...(Array.isArray(salesContext.materials) ? {
+                    materials: salesContext.materials.filter(item => leadAssistantMaterialAvailable(item, salesContext))
+                } : {})
+            };
+        }
+
+        function normalizeLeadAssistantAnalysisSources(analysis) {
+            if (!analysis) return analysis;
+            return {
+                ...analysis,
+                salesContext: normalizeLeadAssistantSalesSources(analysis.salesContext),
+                recommendedMaterials: (analysis.recommendedMaterials || []).filter(item => leadAssistantMaterialAvailable(item, analysis.salesContext))
+            };
         }
 
         // ---- Channel icons ----
@@ -3997,10 +4075,11 @@
         }
 
         function renderLeadAssistantMaterials(materials) {
-            if (!materials?.length) {
+            if (!materials?.some(item => leadAssistantMaterialAvailable(item))) {
                 return '<div class="omni-ai-summary">Поки немає релевантних каталогів для вставки. Додайте матеріали в налаштуваннях або уточніть потребу клієнта.</div>';
             }
             return '<div class="omni-ai-materials">' + materials.map((item, idx) => {
+                if (!leadAssistantMaterialAvailable(item)) return '';
                 const price = item.price ? item.price + ' грн' + (item.unit ? '/' + item.unit : '') : '';
                 const tags = (item.tags || []).slice(0, 5).map(tag => '<b>' + esc(tag) + '</b>').join('');
                 return '<div class="omni-ai-material">' +
@@ -4114,6 +4193,7 @@
                 '</div>' +
                 '<div class="omni-ai-panel" style="margin:12px 0 0;padding:0;border:0;box-shadow:none">' +
                     '<div class="omni-ai-section-title">Каталоги і вкладення</div>' +
+                    renderLeadAssistantCatalogNotice(analysis.salesContext) +
                     renderLeadAssistantMaterials(materials) +
                 '</div>' +
                 (actions.length ? '<div class="omni-ai-panel" style="margin:12px 0 0;padding:0;border:0;box-shadow:none">' +
@@ -4193,7 +4273,8 @@
                 '<div class="omni-ai-settings-block">' +
                     '<div class="omni-ai-section-title">Джерела каталогів CRM</div>' +
                     '<div id="omniLeadAssistantSources">' + sources.map(renderLeadAssistantSourceRow).join('') + '</div>' +
-                    '<div class="omni-ai-summary">AI підтягує активні продукти, торти, меню та catalog_items. Зараз доступно: ' + esc(leadAssistantState.salesContext?.materialCount ?? '—') + ' матеріалів.</div>' +
+                    '<div class="omni-ai-summary">AI використовує доступні продукти, торти, меню та каталоги. Зараз доступно: ' + esc(leadAssistantState.salesContext?.materialCount ?? leadAssistantState.salesContext?.materials?.length ?? '—') + ' матеріалів.</div>' +
+                    renderLeadAssistantCatalogNotice(leadAssistantState.salesContext) +
                 '</div>' +
                 '<div class="omni-ai-settings-block">' +
                     '<div class="omni-ai-section-title">Ручні вкладення і посилання</div>' +
@@ -4315,8 +4396,9 @@
             if (leadAssistantState.testingScript) return 'Тестую сценарій...';
             if (!test) return '';
             const score = test.leadScore ? test.leadScore.score + '/100 ' + test.leadScore.label : 'без score';
-            const materials = (test.recommendedMaterials || []).map(item => item.title).slice(0, 3).join(', ') || 'матеріали не підібрані';
-            return esc((test.scenario?.label || 'Сценарій') + ' · ' + score + ' · ' + materials);
+            const materials = (test.recommendedMaterials || []).filter(item => leadAssistantMaterialAvailable(item, test.salesContext)).map(item => item.title).slice(0, 3).join(', ') || 'матеріали не підібрані';
+            const access = leadAssistantCatalogAccess(test.salesContext);
+            return esc((test.scenario?.label || 'Сценарій') + ' · ' + score + ' · ' + materials + (access.available ? '' : ' · ' + access.message));
         }
 
         function renderLeadAssistant() {
@@ -4329,14 +4411,16 @@
 
         async function loadLeadAssistantSettings() {
             const epoch = workspaceEpoch;
+            const accessKey = leadAssistantAccessContextKey();
             const res = await api('/lead-assistant/settings');
-            if (epoch !== workspaceEpoch) return;
+            if (epoch !== workspaceEpoch || accessKey !== leadAssistantAccessContextKey()) return;
             if (res.success) {
                 leadAssistantState.settings = res.settings || {};
                 const ctx = await api('/lead-assistant/sales-context');
-                if (epoch !== workspaceEpoch) return;
-                if (ctx.success) leadAssistantState.salesContext = ctx.salesContext || null;
+                if (epoch !== workspaceEpoch || accessKey !== leadAssistantAccessContextKey()) return;
+                if (ctx.success) leadAssistantState.salesContext = normalizeLeadAssistantSalesSources(ctx.salesContext) || null;
                 const analytics = await api('/lead-assistant/analytics');
+                if (epoch !== workspaceEpoch || accessKey !== leadAssistantAccessContextKey()) return;
                 if (analytics.success) leadAssistantState.analytics = analytics.analytics || null;
             } else {
                 leadAssistantState.error = res.error || 'Не вдалося завантажити налаштування AI ліда';
@@ -4347,20 +4431,21 @@
             if (!currentConvId) return;
             const convId = currentConvId;
             const epoch = workspaceEpoch;
+            const accessKey = leadAssistantAccessContextKey();
             const requestSeq = ++assistantRequestSeq;
             leadAssistantState.mode = 'ai';
             leadAssistantState.loading = true;
             leadAssistantState.error = '';
             renderLeadAssistant();
             const res = await api('/conversations/' + convId + '/lead-assistant/analyze', { method: 'POST' });
-            if (requestSeq !== assistantRequestSeq || epoch !== workspaceEpoch || convId !== currentConvId) return;
+            if (requestSeq !== assistantRequestSeq || epoch !== workspaceEpoch || accessKey !== leadAssistantAccessContextKey() || convId !== currentConvId) return;
             leadAssistantState.loading = false;
             if (res.success) {
-                leadAssistantState.analysis = res.analysis;
+                leadAssistantState.analysis = normalizeLeadAssistantAnalysisSources(res.analysis);
                 if (res.analysis?.settings) leadAssistantState.settings = res.analysis.settings;
                 const analytics = await api('/lead-assistant/analytics');
                 if (epoch !== workspaceEpoch) return;
-                if (requestSeq !== assistantRequestSeq || epoch !== workspaceEpoch || convId !== currentConvId) return;
+                if (requestSeq !== assistantRequestSeq || epoch !== workspaceEpoch || accessKey !== leadAssistantAccessContextKey() || convId !== currentConvId) return;
                 if (analytics.success) leadAssistantState.analytics = analytics.analytics || null;
             } else {
                 leadAssistantState.error = res.error || 'AI аналіз недоступний';
@@ -4465,6 +4550,8 @@
         }
 
         async function saveLeadAssistantSettings() {
+            const epoch = workspaceEpoch;
+            const accessKey = leadAssistantAccessContextKey();
             const payload = collectLeadAssistantSettings();
             leadAssistantState.savingSettings = true;
             renderLeadAssistantSettings();
@@ -4472,6 +4559,7 @@
                 method: 'PUT',
                 body: JSON.stringify(payload)
             });
+            if (epoch !== workspaceEpoch || accessKey !== leadAssistantAccessContextKey()) return;
             leadAssistantState.savingSettings = false;
             if (res.success) {
                 leadAssistantState.settings = res.settings;
@@ -4572,6 +4660,7 @@
 
         function materialTextByIndex(index) {
             const material = leadAssistantState.analysis?.recommendedMaterials?.[Number(index)];
+            if (!leadAssistantMaterialAvailable(material)) return '';
             return material?.attachText || material?.url || material?.title || '';
         }
 
@@ -4591,6 +4680,9 @@
         }
 
         async function testLeadAssistantScript() {
+            const epoch = workspaceEpoch;
+            const accessKey = leadAssistantAccessContextKey();
+            const requestSeq = ++assistantTestRequestSeq;
             const transcript = $('omniLeadAssistantTestTranscript')?.value || '';
             if (!transcript.trim()) {
                 leadAssistantNotify('Вставте приклад переписки для тесту', 'warning');
@@ -4604,9 +4696,10 @@
                 method: 'POST',
                 body: JSON.stringify({ transcript, settings: payload })
             });
+            if (requestSeq !== assistantTestRequestSeq || epoch !== workspaceEpoch || accessKey !== leadAssistantAccessContextKey()) return;
             leadAssistantState.testingScript = false;
             if (res.success) {
-                leadAssistantState.testAnalysis = res.analysis;
+                leadAssistantState.testAnalysis = normalizeLeadAssistantAnalysisSources(res.analysis);
                 leadAssistantNotify('Тест скрипту готовий', 'success');
             } else {
                 leadAssistantNotify(res.error || 'Не вдалося протестувати скрипт', 'error');
@@ -5649,7 +5742,7 @@
         });
     })();
     </script>
-<script src="js/ui.js?v=0.81.157"></script>
-    <script src="js/alerts.js?v=0.81.157"></script>
+<script src="js/ui.js?v=0.81.158"></script>
+    <script src="js/alerts.js?v=0.81.158"></script>
 </body>
 </html>

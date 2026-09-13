@@ -9,6 +9,7 @@ const {
   normalizeBusinessContext,
 } = require('./businessContext');
 const { DEFAULT_MODELS, callUnifiedChatCompletion } = require('./ai-config');
+const { legacyBusinessSurfaceAccess, loadLegacyBusinessSurfaceAccess } = require('./legacyBusinessSurface');
 
 const log = createLogger('OmniLeadAssistant');
 
@@ -1172,6 +1173,7 @@ function normalizeAnalysis(raw, bundle, config, provider = {}, salesContext = nu
       materialCount: salesContext.materials?.length || 0,
       stale: salesContext.stale === true,
       errors: salesContext.errors || [],
+      legacyCatalogs: salesContext.legacyCatalogs || null,
     } : null,
     settings: config,
   };
@@ -1437,13 +1439,23 @@ async function loadCatalogItemMaterials(sourceConfig) {
 }
 
 async function getLeadAssistantSalesContext(config, bundle = {}, options = {}) {
-  const businessContext = normalizeBusinessContext(options.businessContext || DEFAULT_BUSINESS_CONTEXT);
+  const trustedContext = options.businessContext || bundle?.conversation?.business_context;
+  const businessContext = trustedContext ? normalizeBusinessContext(trustedContext) : null;
+  const legacyAccess = options.request
+    ? legacyBusinessSurfaceAccess(options.request, 'catalogs')
+    : await loadLegacyBusinessSurfaceAccess(pool, trustedContext, 'catalogs');
+  const legacyCatalogs = { available: legacyAccess.available, code: legacyAccess.code, message: legacyAccess.message };
   const materials = [];
   const errors = [];
   let sourceCount = 0;
   for (const sourceConfig of config.catalogSources || []) {
     if (sourceConfig.enabled === false) continue;
     sourceCount += 1;
+    if (sourceConfig.source === 'catalog_items' && !legacyAccess.available) continue;
+    if (!businessContext) {
+      errors.push(`${sourceConfig.id}: business_context_required`);
+      continue;
+    }
     try {
       const loaded = sourceConfig.source === 'catalog_items'
         ? await loadCatalogItemMaterials(sourceConfig)
@@ -1460,6 +1472,7 @@ async function getLeadAssistantSalesContext(config, bundle = {}, options = {}) {
     sourceCount,
     materials: materials.slice(0, 80),
     errors: errors.slice(0, 8),
+    legacyCatalogs,
     conversationId: bundle?.conversation?.id || null,
   };
 }
@@ -1971,7 +1984,8 @@ async function analyzeConversationLead(conversationId, options = {}) {
     getConversationBundle(conversationId, 120, options),
   ]);
   const salesContext = await getLeadAssistantSalesContext(config, bundle, {
-    businessContext: options.businessContext || bundle.conversation.business_context || DEFAULT_BUSINESS_CONTEXT,
+    businessContext: options.businessContext || bundle.conversation.business_context,
+    request: options.request,
   });
   const analysis = await callOpenRouterForAnalysis(bundle, config, salesContext);
   await recordConversationLeadAssistantAnalysis(bundle.conversation.id, analysis).catch(err => {
@@ -2001,7 +2015,7 @@ function transcriptToMessages(transcript) {
     .slice(0, 80);
 }
 
-async function testLeadAssistantScript(input = {}) {
+async function testLeadAssistantScript(input = {}, options = {}) {
   const savedConfig = await getLeadAssistantSettings();
   const config = normalizeLeadAssistantConfig({ ...savedConfig, ...(input.settings || {}) });
   const bundle = {
@@ -2017,7 +2031,7 @@ async function testLeadAssistantScript(input = {}) {
       ? input.messages
       : transcriptToMessages(input.transcript || ''),
   };
-  const salesContext = await getLeadAssistantSalesContext(config, bundle);
+  const salesContext = await getLeadAssistantSalesContext(config, bundle, options);
   return callOpenRouterForAnalysis(bundle, config, salesContext);
 }
 

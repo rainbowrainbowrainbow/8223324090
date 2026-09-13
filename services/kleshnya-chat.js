@@ -10,6 +10,7 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('./bookingVisibility');
+const { legacyBusinessSurfaceAccess } = require('./legacyBusinessSurface');
 const {
     DEFAULT_TIMELINE_CONTEXT,
     normalizeTimelineContext,
@@ -650,6 +651,10 @@ const HELLO_KEYWORDS = ['привіт', 'здоров', 'hi', 'hello', 'йо', '
 // --- Main Chat Engine ---
 
 async function generateChatResponse(userMessage, username, chatHistory, actor = null, options = {}) {
+    const access = legacyBusinessSurfaceAccess({ user: actor }, 'kleshnya');
+    if (!access.available) {
+        return { available: false, code: access.code, message: access.message, suggestions: [] };
+    }
     const lower = userMessage.toLowerCase().trim();
     const pageContext = normalizePageContext(options.pageContext || {});
 

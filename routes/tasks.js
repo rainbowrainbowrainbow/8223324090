@@ -582,7 +582,7 @@ async function replaceTaskObservers(task, observerIds = [], actor) {
         const previous = await listTaskObservers(taskId, { pool: client });
         const validated = [];
         for (const userId of uniqueIds) {
-            const owner = await getAssignableTaskOwner(userId, { pool: client, actor });
+            const owner = await getAssignableTaskOwner(userId, { pool: client, actor, businessContext: task.business_context });
             validated.push(owner);
         }
 
@@ -1864,6 +1864,8 @@ router.get('/permissions', (req, res) => {
 // GET /api/tasks/owners — active assignable users for typed task ownership
 router.get('/owners', async (req, res) => {
     try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
         const perms = getPermissions(req.user?.role);
         if (!perms.canCreateTasks && !perms.canAssignAnyone && !['all', 'department'].includes(perms.taskVisibility)) {
             return res.status(403).json({ error: 'Insufficient permissions' });

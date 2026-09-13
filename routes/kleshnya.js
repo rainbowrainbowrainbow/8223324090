@@ -36,10 +36,16 @@ const { getPendingMessages, handleWebhookResponse, getTelegramFileUrl,
         BRIDGE_ENABLED, KLESHNYA_WEBHOOK_SECRET } = require('../services/kleshnya-bridge');
 const { sendToUsername } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken: authenticateUserToken } = require('../middleware/auth');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { normalizePageContext, buildPageKnowledgeDebug } = require('../config/assistant-page-knowledge');
 
 const log = createLogger('KleshnyaRoute');
+const requireLegacyKleshnya = requireLegacyBusinessSurface('kleshnya');
+
+function authenticateToken(req, res, next) {
+    return authenticateUserToken(req, res, () => requireLegacyKleshnya(req, res, next));
+}
 
 // ==========================================
 // GENERATION TRIGGERS

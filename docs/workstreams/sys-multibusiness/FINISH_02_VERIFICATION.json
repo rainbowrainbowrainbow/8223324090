@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "task": "SYS-MB-FINISH-02",
+  "status": "LOCAL_IMPLEMENTATION_COMPLETE_PRODUCTION_MAPPING_HOLD",
+  "production": {
+    "writes": 0,
+    "realPreflight": {
+      "maysternya_doli": "AUDIT_READONLY_CONNECTION_REQUIRED",
+      "crm": "AUDIT_READONLY_CONNECTION_REQUIRED"
+    },
+    "mapping": "UNPOPULATED",
+    "ownerDecisions": "PENDING",
+    "releaseAuthorization": null
+  },
+  "implementation": {
+    "migration": "363_multibusiness_cutover_journal_telemetry.sql",
+    "journal": "PREPARE_ONLY_FAIL_CLOSED",
+    "telemetry": "AGGREGATE_HOURLY_NO_PII",
+    "collectorObservations": 49
+  },
+  "checks": {
+    "businessCutoverUnit": "PASS 6",
+    "cutoverCollectorPostgres": "PASS 17",
+    "cutoverJournalPostgres": "PASS 1",
+    "businessCabinets": "PASS 81",
+    "authBoundary": "PASS",
+    "apiSurface": "PASS",
+    "migrationGovernance": "PASS",
+    "npmTest": "PASS full baseline on v0.81.153 candidate"
+  },
+  "readiness": {
+    "maysternyaCutoverReady": false,
+    "crmCutoverReady": false,
+    "compatibilityRemovalReady": false,
+    "globalModelComplete": false
+  },
+  "artifacts": {
+    "db/migrations/363_multibusiness_cutover_journal_telemetry.sql": "0986d83caaccce20fe62f8602b8892ad1e4739db6ddf84e9f2a8220f8b492ca6",
+    "services/businessCutover.js": "493f3e8388a34e6f9e8ff0f09cc639bbf428d2e04845d815f1f61ec97a26c08f",
+    "middleware/auth.js": "7281a03b1070f8463e2cf28043498f9677785751ef086bc2845baa86fde088f9",
+    "routes/organizations.js": "125730a16d3d298df331b1cc2c4583f894e27562f83ddf11f1858baf0983eb8d",
+    "docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.cjs": "1ca3d76e9d2f45c0dcfe35c5b6cb0332b8b65abb397a0bdf2ecb00f2edc4cdad",
+    "tests/business-cutover.test.js": "8fdf0fb1aea6722936f9811da6c90fa11ffc859108c2523f686674f3a1db9097",
+    "tests/integration/business-cutover-journal-postgres.test.js": "3431873f3d833860824c658d265612f40b48ffc33bd640b26925bfd10b1e5d61",
+    "docs/workstreams/sys-multibusiness/CUTOVER_DOMAIN_MATRIX.md": "12fd33df0bdd8552563b98040f19169df4ade2b4346495abe684248421a90bfd",
+    "docs/workstreams/sys-multibusiness/FINISH_02_DECISION_PACKAGE.md": "070a167b09d25a44006500b674710fa1df86b718e56163aed991956bf259ff0e",
+    "docs/workstreams/sys-multibusiness/FINISH_02_RELEASE_MANIFEST.md": "f0b547b674a60a0642fc201bcb037d363021a4e2acdba11ba782e6ab940fef80",
+    "docs/workstreams/sys-multibusiness/FINISH_02_REPORT.md": "c6a3c47a890e5457c78e314dc277a8af767bb28e9a9dee0d31c5200827fcd8f0",
+    "docs/workstreams/sys-multibusiness/FINISH_02_ROLLBACK.md": "74b1e237a96136b460a877a59bb8559452fbf9a1192f02a5c10723a917bff6e3",
+    "docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.test.cjs": "08bd653af223e1d5d9e4f4b03988e5cbca924a1fb338e7e4dbdb0b63082e2f4a",
+    "docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.postgres.test.cjs": "cbdd1efa1676a46869e3acc4564cbbab008d735a92a5d345dd20637957e8994d"
+  },
+  "candidate": {
+    "branch": "codex/sys-mb-finish-02-r2-20260913",
+    "productionBase": "4214598e263057b1cb1524d7fb84f328031d288d",
+    "productionBranch": "codex/eventgenix-production",
+    "candidateFoundation": "7cc3699ac"
+  }
+}

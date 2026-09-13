@@ -11,12 +11,29 @@ function isCustomerLinkUpsert(text) {
     return /INSERT INTO lead_customer_links \(business_context, lead_id, customer_id, link_type, source, metadata, updated_at\)/i.test(text);
 }
 
+function isSavepointQuery(text) {
+    return /^(?:SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT) lead_(?:stage_transition|booking_attach|booking_ensure)$/.test(text);
+}
+
+function referenceFixture(text, params, context, records) {
+    if (isSavepointQuery(text)) return { rows: [], rowCount: null };
+    const match = /^SELECT \* FROM (leads|bookings|customers|products) WHERE id = \$1/.exec(text);
+    if (!match) return undefined;
+    const table = match[1];
+    assert.match(text, /COALESCE\(business_context, 'event_genix'\) = \$2 FOR (?:SHARE|UPDATE)$/);
+    const found = params[1] === context && (records[table] || []).includes(params[0]);
+    return { rows: found ? [{ id: params[0], business_context: context }] : [], rowCount: found ? 1 : 0 };
+}
+
 describe('lead booking link repair', () => {
     it('parses only positive lead ids', () => {
         assert.equal(parseLeadId('501'), 501);
         assert.equal(parseLeadId(12), 12);
         assert.equal(parseLeadId('0'), null);
         assert.equal(parseLeadId('bad'), null);
+        assert.equal(parseLeadId('501junk'), null);
+        assert.equal(parseLeadId('1.5'), null);
+        assert.equal(parseLeadId('9007199254740993'), null);
     });
 
     it('writes leads.booking_id through the canonical stage dispatcher and preserves customer lead linkage', async () => {
@@ -28,6 +45,10 @@ describe('lead booking link repair', () => {
                 if (/SELECT \* FROM leads WHERE id = \$1/i.test(text)) {
                     return { rows: [{ id: params[0], booking_id: null, pipeline_stage: 'new', status: 'new' }], rowCount: 1 };
                 }
+                const reference = referenceFixture(text, params, 'event_genix', {
+                    bookings: ['BK-2099-0001'], customers: [701]
+                });
+                if (reference) return reference;
                 if (/UPDATE leads SET pipeline_stage = \$3/i.test(text)) {
                     return { rows: [{ id: params[0], booking_id: params[4], pipeline_stage: params[2], status: params[3] }], rowCount: 1 };
                 }
@@ -99,6 +120,10 @@ describe('lead booking link repair', () => {
                 if (/SELECT \* FROM leads WHERE id = \$1/i.test(text)) {
                     return { rows: [{ id: params[0], booking_id: null, pipeline_stage: 'deal', status: 'proposal' }], rowCount: 1 };
                 }
+                const reference = referenceFixture(text, params, 'maysternya_doli', {
+                    bookings: ['MD-1'], customers: [44]
+                });
+                if (reference) return reference;
                 if (/UPDATE leads SET pipeline_stage = \$3/i.test(text)) {
                     return { rows: [{ id: params[0], booking_id: params[4], pipeline_stage: params[2], status: params[3] }], rowCount: 1 };
                 }
@@ -115,8 +140,10 @@ describe('lead booking link repair', () => {
             bookingStatus: 'preliminary'
         });
 
-        assert.equal(queries.length, 5);
-        assert.ok(queries.every(q => q.params.includes('maysternya_doli') || /INSERT INTO lead_interactions/i.test(q.text)));
+        assert.ok(queries.some(q => /SELECT \* FROM bookings/.test(q.text) && /FOR SHARE$/.test(q.text)));
+        assert.ok(queries.some(q => /SELECT \* FROM customers/.test(q.text) && /FOR UPDATE$/.test(q.text)));
+        assert.ok(queries.every(q => q.params.includes('maysternya_doli')
+            || /INSERT INTO lead_interactions/i.test(q.text) || isSavepointQuery(q.text)));
         const stageUpdate = queries.find(q => /UPDATE leads SET pipeline_stage = \$3/i.test(q.text));
         assert.equal(stageUpdate.params[2], 'waiting');
         assert.equal(stageUpdate.params[3], 'booked');
@@ -127,6 +154,10 @@ describe('lead booking link repair', () => {
             query: async (sql, params = []) => {
                 const text = String(sql).replace(/\s+/g, ' ').trim();
                 queries.push({ text, params });
+                const reference = referenceFixture(text, params, 'maysternya_doli', {
+                    bookings: ['BK-2099-0101'], customers: [701], products: ['md_full_consult_40'], leads: [77]
+                });
+                if (reference) return reference;
                 if (/SELECT id FROM leads WHERE/i.test(text)) {
                     return { rows: [], rowCount: 0 };
                 }
@@ -186,6 +217,10 @@ describe('lead booking link repair', () => {
             query: async (sql, params = []) => {
                 const text = String(sql).replace(/\s+/g, ' ').trim();
                 queries.push({ text, params });
+                const reference = referenceFixture(text, params, 'maysternya_doli', {
+                    bookings: ['BK-2099-0103'], customers: [703], products: ['maysternya-paid-session'], leads: [91]
+                });
+                if (reference) return reference;
                 if (/SELECT id FROM leads WHERE/i.test(text)) {
                     return { rows: [], rowCount: 0 };
                 }
@@ -273,6 +308,10 @@ describe('lead booking link repair', () => {
             query: async (sql, params = []) => {
                 const text = String(sql).replace(/\s+/g, ' ').trim();
                 queries.push({ text, params });
+                const reference = referenceFixture(text, params, 'maysternya_doli', {
+                    bookings: ['BK-2099-0102'], customers: [702], leads: [88]
+                });
+                if (reference) return reference;
                 if (/SELECT id FROM leads WHERE/i.test(text)) {
                     return { rows: [{ id: 88 }], rowCount: 1 };
                 }
@@ -309,7 +348,7 @@ describe('lead booking link repair', () => {
         assert.doesNotMatch(leadUpdate.text, /updated_at/i);
         assert.match(leadUpdate.text, /lead_type = COALESCE\(NULLIF\(lead_type, ''\), 'quality'\)/i);
         assert.ok(queries.some(q => /booking_id IS NULL/i.test(q.text)));
-        assert.ok(queries.every(q => q.params.includes('maysternya_doli')));
+        assert.ok(queries.every(q => q.params.includes('maysternya_doli') || isSavepointQuery(q.text)));
     });
 
     it('does not reuse terminal leads by contact for Maysternya bot bookings', async () => {
@@ -318,6 +357,10 @@ describe('lead booking link repair', () => {
             query: async (sql, params = []) => {
                 const text = String(sql).replace(/\s+/g, ' ').trim();
                 queries.push({ text, params });
+                const reference = referenceFixture(text, params, 'maysternya_doli', {
+                    bookings: ['BK-2099-0104'], customers: [704], leads: [92]
+                });
+                if (reference) return reference;
                 if (/SELECT id FROM leads WHERE/i.test(text)) {
                     return { rows: [], rowCount: 0 };
                 }
@@ -405,6 +448,7 @@ describe('lead stage transition dispatcher', () => {
             query: async (sql, params = []) => {
                 const text = String(sql).replace(/\s+/g, ' ').trim();
                 queries.push({ text, params });
+                if (isSavepointQuery(text)) return { rows: [], rowCount: null };
                 if (/SELECT \* FROM leads WHERE id = \$1/i.test(text)) {
                     return { rows: [{ id: params[0], pipeline_stage: 'info_sent', status: 'contact' }], rowCount: 1 };
                 }

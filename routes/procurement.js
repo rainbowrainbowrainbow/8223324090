@@ -10,9 +10,11 @@ const { createLogger } = require('../utils/logger');
 
 const { canUseAction, requireAction, requireRole } = require('../middleware/auth');
 const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const log = createLogger('Procurement');
 
 // RBAC: Procurement — management + admin only
+router.use(requireLegacyBusinessSurface('contractors_procurement'));
 router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'));
 const requireProcurementRevenue = requireAction('view_revenue');
 router.use((req, res, next) => installRevenueResponseShaper(

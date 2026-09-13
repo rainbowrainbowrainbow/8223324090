@@ -2,6 +2,7 @@
 
 const { recordAccountSecurityEvent } = require('./accountSecurity');
 const { reconcileScheduledAnimatorLines } = require('./booking');
+const { lockOrganizationOwnership, assertCanDeactivateOrganizationOwners } = require('./organizationOwnership');
 
 function normalizeLifecycleDate(value) {
     if (!value) return null;
@@ -102,6 +103,7 @@ async function syncLinkedStaffAccountDeactivation(client, staffId, options = {})
         };
     }
 
+    await lockOrganizationOwnership(client);
     const linkedAccounts = await client.query(
         `SELECT u.id, u.username, u.name, u.role, u.extra_roles, ep.id AS profile_id
          FROM employee_profiles ep
@@ -140,6 +142,7 @@ async function syncLinkedStaffAccountDeactivation(client, staffId, options = {})
     const userIds = allowedAccounts.map(row => Number(row.id)).filter(Number.isFinite);
     let disabledRows = [];
     if (userIds.length) {
+        await assertCanDeactivateOrganizationOwners(client, userIds);
         const disabled = await client.query(
             `UPDATE users
              SET is_active = false,

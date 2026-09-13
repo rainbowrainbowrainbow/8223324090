@@ -48,7 +48,7 @@ test('Omni ownership serialization and health migration on a disposable local Po
       assigned_to TEXT, customer_phone TEXT, meta JSONB DEFAULT '{}'::jsonb, updated_at TIMESTAMPTZ DEFAULT NOW())`);
     await pool.query("INSERT INTO conversations (channel, external_id, business_context, status) VALUES ('telegram', 'fixture', 'event_genix', 'open')");
     const wsId = require.resolve('../../services/websocket');
-    require.cache[wsId] = { id: wsId, filename: wsId, loaded: true, exports: { getWSS: () => ({ clients: [] }) } };
+    require.cache[wsId] = { id: wsId, filename: wsId, loaded: true, exports: { broadcastBusinessEvent: async () => 0 } };
     const hub = require('../../services/omni-hub');
     const competing = await Promise.allSettled(['closed', 'pending'].map(status =>
       hub.updateConversationStatus(1, status, undefined, undefined,

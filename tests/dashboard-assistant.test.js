@@ -4,6 +4,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 
 const TEST_JWT_SECRET = 'dashboard-assistant-test-secret';
+const testAccounts = new Map();
 
 const originalEnv = {
     JWT_SECRET: process.env.JWT_SECRET,
@@ -33,6 +34,7 @@ function clearAssistantModules() {
 }
 
 function restoreEnv() {
+    testAccounts.clear();
     for (const [key, value] of Object.entries(originalEnv)) {
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;
@@ -42,17 +44,23 @@ function restoreEnv() {
 }
 
 function tokenFor(role = 'manager') {
+    const user = { id: role === 'creator' ? 1 : 20, username: `${role}-user`, role };
+    testAccounts.set(user.id, {
+        ...user, is_active: true, session_revoked_at: null,
+        business_contexts: ['event_genix'], default_business_context: 'event_genix'
+    });
     return jwt.sign(
-        { id: role === 'creator' ? 1 : 20, username: `${role}-user`, role },
+        user,
         TEST_JWT_SECRET,
         { expiresIn: '1h' }
     );
 }
 
 function authAwareEmptyDb() {
-    const query = async sql => {
-        if (/SELECT\s+is_active,\s*session_revoked_at\s+FROM\s+users/i.test(String(sql))) {
-            return { rows: [{ is_active: true, session_revoked_at: null }], rowCount: 1 };
+    const query = async (sql, params = []) => {
+        if (/SELECT\s+(?:is_active,\s*session_revoked_at|id,\s*username,\s*role,)[\s\S]*FROM\s+users\s+WHERE\s+id/i.test(String(sql))) {
+            const account = testAccounts.get(Number(params[0]));
+            return { rows: account ? [account] : [], rowCount: account ? 1 : 0 };
         }
         return { rows: [], rowCount: 0 };
     };
@@ -601,7 +609,7 @@ describe('dashboard assistant route context', () => {
         }
     });
 
-    it('uses JWT role as the source of truth and limits role preview to creator', async () => {
+    it('uses the authenticated account role as the source of truth and limits role preview to creator', async () => {
         process.env.JWT_SECRET = TEST_JWT_SECRET;
         clearAssistantModules();
 

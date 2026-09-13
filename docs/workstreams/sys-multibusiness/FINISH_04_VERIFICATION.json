@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "task": "SYS-MB-FINISH-04",
+  "status": "HOLD_NOT_INSTRUMENTED_NOT_COLLECTED",
+  "observedAtUtc": "2026-09-13T12:04:56Z",
+  "live": {
+    "url": "https://8223324090-production.up.railway.app",
+    "version": "0.81.153",
+    "releaseLabel": "Рішення щодо legacy-матеріалів Design Board",
+    "commitSha": "4214598e263057b1cb1524d7fb84f328031d288d",
+    "sourceBranch": "codex/eventgenix-production",
+    "deploymentMetadata": "complete_manifest"
+  },
+  "telemetry": {
+    "migration": "363_multibusiness_cutover_journal_telemetry.sql",
+    "liveMigrationPresent": false,
+    "instrumentedEntrypoints": null,
+    "observationStartUtc": null,
+    "observationEndUtc": null,
+    "completeUtcDays": null,
+    "remaining": "NOT_STARTED"
+  },
+  "cutovers": {
+    "maysternya_doli": "NOT_RUN",
+    "crm": "NOT_RUN",
+    "approvedMapping": "UNPOPULATED",
+    "readOnlyPreflight": "NOT_COLLECTED"
+  },
+  "exitGate": {
+    "minimumDays": 14,
+    "passMeasured": false,
+    "globalModelComplete": false
+  },
+  "productionWrites": 0
+}

@@ -28,6 +28,7 @@ const {
     requireWritableBusinessScope,
     resolveBusinessScope
 } = require('../services/businessContext');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const {
     lockAttendanceWriteMaintenance,
     lockAttendanceWriteTarget,
@@ -115,6 +116,7 @@ const {
     cleanupFutureStaffOperationalSchedule,
     syncLinkedStaffAccountDeactivation
 } = require('../services/staffLifecycle');
+const { lockOrganizationOwnership } = require('../services/organizationOwnership');
 const {
     listVacancyPlatformTemplates,
     formatVacancyForPlatform
@@ -412,6 +414,7 @@ function shapeHrStaffList(rows, capability, user) {
     return shapeHrPayrollFields(rows, user);
 }
 router.use(requireHrCapabilityContract);
+router.use(requireLegacyBusinessSurface('staff'));
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 
@@ -4561,6 +4564,7 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
         const notes = cleanStaffText(req.body.notes, 2000);
 
         await client.query('BEGIN');
+        await lockOrganizationOwnership(client);
         const staff = await loadStaffRowOrNull(req.params.id, client, { lock: true });
         if (!staff) {
             await client.query('ROLLBACK');
@@ -4663,6 +4667,7 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/staff/:id/offboarding error', err);
+        if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
         client.release();
@@ -4955,6 +4960,7 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
         }
 
         await client.query('BEGIN');
+        await lockOrganizationOwnership(client);
         const before = await client.query('SELECT * FROM staff WHERE id = $1 FOR UPDATE', [req.params.id]);
         if (!before.rows.length) {
             await client.query('ROLLBACK');
@@ -5086,6 +5092,7 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/staff/:id/status error', err);
+        if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
         client.release();

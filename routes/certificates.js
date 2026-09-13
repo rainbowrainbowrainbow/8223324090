@@ -6,6 +6,7 @@ const router = require('express').Router();
 const { randomUUID } = require('crypto');
 const { pool, generateCertCode } = require('../db');
 const { requireRole, authenticateToken } = require('../middleware/auth'); 
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const {
     mapCertificateRow,
     calculateValidUntil,
@@ -53,6 +54,7 @@ async function assertUniqueCertificateIdentity(db, displayValue, excludeId = nul
 // GET /api/certificates — List with filters
 // v39.8: Security — require authentication
 router.use(authenticateToken);
+router.use(requireLegacyBusinessSurface('certificates'));
 // v40: Validate :id param is numeric
 router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
 router.get('/', async (req, res) => {

@@ -31,6 +31,7 @@ const { normalizePinataFields } = require('../services/pinataMode');
 const { insertHistory } = require('../services/historyLog');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
+const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { canonicalizeBookingRoomResource } = require('../services/timelineResources');
 const { DEFAULT_TIMELINE_CONTEXT } = require('../services/timelineContext');
 const {
@@ -49,6 +50,7 @@ const log = createLogger('RecurringAPI');
 
 // All recurring routes require authentication
 router.use(authenticateToken);
+router.use(requireLegacyBusinessSurface('recurring'));
 
 function normalizeRecurringPinataFields(body) {
     const normalized = normalizePinataFields({

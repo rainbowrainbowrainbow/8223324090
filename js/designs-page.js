@@ -48,6 +48,11 @@ const designThumbnailUrls = new Map();
     }
 
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
+    try {
+        await window.CrmBusinessContext?.hydrateProfile?.({ user: AppState.currentUser });
+    } catch {
+        // Unconfirmed business access leaves legacy controls unavailable without ending the session.
+    }
 
     // v20.8.0: Embedded mode — hide chrome when inside Art page
     if (new URLSearchParams(window.location.search).get('embedded') === '1') {
@@ -228,16 +233,51 @@ function designApiHeaders(contentType = true, extraHeaders = {}, includeBusiness
 }
 
 function authHeaders(contentType = true) {
-    return designApiHeaders(contentType);
+    if (typeof designApiHeaders === 'function') return designApiHeaders(contentType);
+    if (typeof getAuthHeaders === 'function') return getAuthHeaders(contentType);
+    const token = localStorage.getItem('pzp_token');
+    const headers = {};
+    if (contentType) headers['Content-Type'] = 'application/json';
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
 }
 
 async function apiFetch(url, options = {}) {
-    const scopedDesignRequest = isDesignApiUrl(url);
-    const requestUrl = scopedDesignRequest ? designApiUrl(url) : url;
+    const scopedDesignRequest = typeof isDesignApiUrl === 'function' && isDesignApiUrl(url);
+    const requestUrl = scopedDesignRequest && typeof designApiUrl === 'function' ? designApiUrl(url) : url;
+    const legacyCatalog = /^\/api\/catalogs(?:\/|$)/.test(String(url));
+    const context = window.getLegacyBusinessSurfaceContextKey?.('catalogs');
+    if (legacyCatalog) {
+        const availability = window.getLegacyBusinessSurfaceAvailability?.('catalogs');
+        if (!availability?.available) throw window.legacyBusinessSurfaceError?.('catalogs')
+            || new Error('Спільні каталоги тимчасово недоступні.');
+    }
+    const requestHeaders = typeof designApiHeaders === 'function'
+        ? designApiHeaders(!options.body || typeof options.body === 'string', options.headers, scopedDesignRequest)
+        : { ...authHeaders(!options.body || typeof options.body === 'string'), ...options.headers };
     const res = await fetch(requestUrl, {
         ...options,
-        headers: designApiHeaders(!options.body || typeof options.body === 'string', options.headers, scopedDesignRequest)
+        headers: requestHeaders
     });
+    if (legacyCatalog) {
+        const ensureCurrent = () => {
+            if (context !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) {
+                throw new Error('Бізнес змінився. Оновіть список каталогів.');
+            }
+            if (!window.getLegacyBusinessSurfaceAvailability?.('catalogs')?.available) throw window.legacyBusinessSurfaceError?.('catalogs') || new Error('Спільні каталоги недоступні.');
+        };
+        ensureCurrent();
+        if (res.status === 403) {
+            const data = await res.json().catch(() => ({}));
+            ensureCurrent();
+            const error = new Error(data.message || data.error || 'Спільні каталоги тимчасово недоступні.');
+            error.code = data.code;
+            window.noteLegacyBusinessSurfaceUnavailable?.('catalogs', data, context);
+            throw error;
+        }
+        const readJson = res.json.bind(res);
+        res.json = async () => { const data = await readJson(); ensureCurrent(); return data; };
+    }
     if (res.status === 401 || res.status === 403) {
         localStorage.removeItem('pzp_token');
         window.location.href = '/';
@@ -1631,6 +1671,7 @@ let catalogPackages = [];
 let catalogOpenGeneration = 0;
 let catalogMetadataGeneration = 0;
 let catalogViewerMessage = '';
+let catalogSourceContext = null;
 let currentCatalogPage = 0;
 let _viewerCatalogType = 'graduation'; // 'graduation' or auto-catalog slug
 const CATALOG_UI_MODES = {
@@ -1679,6 +1720,7 @@ function setCatalogUiMode(mode) {
 
 async function loadCatalogs() {
     const generation = ++catalogMetadataGeneration;
+    const context = window.getLegacyBusinessSurfaceContextKey?.('catalogs');
     const countEl = document.getElementById('catalogPackageCount');
     if (countEl) countEl.textContent = 'Пакетів: —';
     try {
@@ -1686,12 +1728,12 @@ async function loadCatalogs() {
         if (!res || !res.ok) return null;
         const data = await res.json();
         if (!Array.isArray(data)) return null;
-        if (generation === catalogMetadataGeneration) {
+        if (generation === catalogMetadataGeneration && context === window.getLegacyBusinessSurfaceContextKey?.('catalogs')) {
             if (countEl) countEl.textContent = 'Пакетів: ' + data.length;
             const updatedEl = document.getElementById('catalogUpdated');
             if (updatedEl) updatedEl.textContent = 'Оновлено: ' + new Date().toLocaleDateString('uk-UA');
         }
-        return data;
+        return context === window.getLegacyBusinessSurfaceContextKey?.('catalogs') ? data : null;
     } catch (err) {
         console.error('Load catalogs error:', err);
         return null;
@@ -1700,6 +1742,7 @@ async function loadCatalogs() {
 
 async function openCatalog(catalogId) {
     const generation = ++catalogOpenGeneration;
+    const context = window.getLegacyBusinessSurfaceContextKey?.('catalogs');
     _viewerCatalogType = catalogId;
     catalogPackages = [];
     catalogViewerMessage = 'Завантаження каталогу…';
@@ -1709,20 +1752,24 @@ async function openCatalog(catalogId) {
         if (catalogId === 'graduation') {
             pages = await loadCatalogs();
         } else {
+            const availability = window.getLegacyBusinessSurfaceAvailability?.('catalogs');
+            if (availability?.available === false) throw window.legacyBusinessSurfaceError?.('catalogs') || new Error(availability.message);
             const res = await apiFetch(`/api/catalogs/${encodeURIComponent(catalogId)}/pages`);
             if (!res || !res.ok) throw new Error('Catalog unavailable');
             const data = await res.json();
             pages = Array.isArray(data.pages) ? data.pages.filter(p => p.is_active !== false) : null;
         }
-        if (generation !== catalogOpenGeneration) return;
+        if (generation !== catalogOpenGeneration || context !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) return;
         if (!Array.isArray(pages)) throw new Error('Catalog unavailable');
         catalogPackages = pages;
+        catalogSourceContext = context;
         catalogViewerMessage = 'Каталог порожній';
         renderCurrentPage();
     } catch (err) {
-        if (generation !== catalogOpenGeneration) return;
+        if (generation !== catalogOpenGeneration || context !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) return;
         catalogPackages = [];
-        catalogViewerMessage = 'Не вдалося завантажити каталог. Закрийте перегляд і спробуйте ще раз.';
+        catalogViewerMessage = err.code === 'catalogs_not_migrated' ? err.message
+            : 'Не вдалося завантажити каталог. Закрийте перегляд і спробуйте ще раз.';
         renderCurrentPage();
     }
 }
@@ -1795,6 +1842,30 @@ function closeCatalog() {
     setCatalogUiMode(_catalogReturnMode === CATALOG_UI_MODES.INLINE ? CATALOG_UI_MODES.INLINE : CATALOG_UI_MODES.LIST);
 }
 
+['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'permissions:lifecycle'].forEach(event => {
+    window.addEventListener(event, () => {
+        ++catalogOpenGeneration;
+        ++catalogMetadataGeneration;
+        catalogPackages = [];
+        catalogSourceContext = null;
+        catalogViewerMessage = 'Бізнес змінився. Відкрийте каталог повторно.';
+        const pages = document.getElementById('catalogPages');
+        if (pages) pages.textContent = '';
+        const count = document.getElementById('catalogPackageCount');
+        if (count) count.textContent = 'Пакетів: —';
+        _catalogReturnMode = CATALOG_UI_MODES.LIST;
+        closeCatalog();
+    });
+});
+window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+    if (event.detail?.surface !== 'catalogs' || _viewerCatalogType === 'graduation') return;
+    ++catalogOpenGeneration;
+    catalogPackages = [];
+    catalogSourceContext = null;
+    catalogViewerMessage = event.detail.message;
+    renderCurrentPage();
+});
+
 function printCatalog(catalogId) {
     if (catalogId === 'graduation' || _viewerCatalogType === 'graduation') {
         openGraduationCatalogPrintDocument();
@@ -1810,6 +1881,8 @@ function printCatalog(catalogId) {
 }
 
 function doPrintCatalog() {
+    if (catalogSourceContext !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')) return;
+    if (_viewerCatalogType !== 'graduation' && window.getLegacyBusinessSurfaceAvailability?.('catalogs')?.available === false) return;
     const viewer = document.getElementById('catalogViewer');
     if (!viewer) return;
     setCatalogUiMode(CATALOG_UI_MODES.VIEWER);
@@ -1908,7 +1981,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.81.157" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.81.158" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -2002,7 +2075,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.81.157" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.81.158" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -2020,6 +2093,8 @@ function printCatalogPage(catalogId, slugOrPageNum) {
         openGraduationCatalogPrintDocument(slugOrPageNum);
         return;
     }
+    if (catalogSourceContext !== window.getLegacyBusinessSurfaceContextKey?.('catalogs')
+        || window.getLegacyBusinessSurfaceAvailability?.('catalogs')?.available === false) return;
     let pkg;
     let renderFn;
     pkg = catalogPackages.find(p => String(p.page_number) === String(slugOrPageNum));

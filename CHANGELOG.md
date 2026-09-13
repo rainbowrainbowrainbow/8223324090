@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.151 - PIN тестової каси біля маршруту
+
+### Release / Versioning / (13.09.2026) [codex]
+- **Test cashier PIN route controls** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.150 - Design Board UI context polish
 
 ### Release / Versioning / (13.09.2026) [codex]

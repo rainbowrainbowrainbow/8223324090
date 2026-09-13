@@ -87,7 +87,7 @@ test('Design Board theme CSS does not apply light catalog overrides in dark mode
 });
 
 test('Style Guide local styles follow the document theme contract', () => {
-    assert.match(DESIGNER_HTML, /css\/designer-guidebook\.css\?v=0\.81\.153/);
+    assert.match(DESIGNER_HTML, /css\/designer-guidebook\.css\?v=\d+\.\d+\.\d+/);
     assert.match(DESIGNER_CSS, /html\[data-theme="dark"\] \.designer-page/);
     assert.match(DESIGNER_CSS, /--dg-active-text:#A7F3D0/);
     assert.match(DESIGNER_CSS, /designer-tab:focus-visible/);

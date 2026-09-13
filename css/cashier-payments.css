@@ -2636,3 +2636,583 @@ body.dark-mode .cashier-report-body.is-error:not(.is-stale) {
         grid-row: 1;
     }
 }
+
+
+.cashier-terminal-panel {
+    padding: 14px 16px;
+    border-color: rgba(20, 184, 166, 0.24);
+}
+
+.cashier-terminal-grid {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+}
+
+.cashier-terminal-active {
+    min-width: 0;
+    padding: 12px;
+    border-radius: 8px;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-100);
+}
+
+.cashier-terminal-label {
+    display: block;
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.cashier-terminal-active strong {
+    display: block;
+    color: var(--gray-900);
+    font-size: 18px;
+}
+
+.cashier-terminal-active .cashier-help {
+    margin-bottom: 0;
+}
+
+.cashier-terminal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.cashier-terminal-panel.is-locked {
+    border-color: rgba(245, 158, 11, 0.55);
+    background: rgba(245, 158, 11, 0.06);
+}
+
+.cashier-terminal-panel.is-active {
+    border-color: rgba(16, 185, 129, 0.45);
+}
+
+@media (max-width: 860px) {
+    .cashier-terminal-grid {
+        grid-template-columns: 1fr;
+    }
+    .cashier-terminal-actions {
+        justify-content: flex-start;
+    }
+}
+
+.cashier-terminal-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 14px;
+    border-color: rgba(20, 184, 166, .24);
+}
+
+.cashier-terminal-topbar-main,
+.cashier-terminal-topbar-actions,
+.cashier-login-gate-actions,
+.cashier-modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.cashier-terminal-topbar-actions {
+    justify-content: flex-end;
+}
+
+.cashier-terminal-chip {
+    display: grid;
+    gap: 2px;
+    min-width: 120px;
+    padding: 8px 10px;
+    border: 1px solid var(--gray-100);
+    border-radius: 8px;
+    background: var(--gray-50);
+}
+
+.cashier-terminal-chip.is-cashier {
+    min-width: 180px;
+    border-color: rgba(20, 184, 166, .34);
+    background: rgba(20, 184, 166, .08);
+}
+
+.cashier-terminal-chip span {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.cashier-terminal-chip strong {
+    color: var(--gray-900);
+    font-size: 14px;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
+.cashier-workspace-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px;
+    position: sticky;
+    top: 70px;
+    z-index: 5;
+}
+
+.cashier-workspace-tab {
+    border: 1px solid var(--gray-100);
+    border-radius: 999px;
+    background: var(--gray-50);
+    color: var(--gray-700);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 900;
+    padding: 9px 14px;
+}
+
+.cashier-workspace-tab.is-active {
+    border-color: rgba(20, 184, 166, .45);
+    background: rgba(20, 184, 166, .12);
+    color: var(--primary);
+}
+
+.cashier-tab-hidden {
+    display: none !important;
+}
+
+.cashier-login-gate {
+    display: grid;
+    gap: 16px;
+    padding: 20px;
+    min-height: 320px;
+    align-content: center;
+    border-color: rgba(20, 184, 166, .30);
+    background: linear-gradient(135deg, rgba(20,184,166,.10), rgba(99,102,241,.08)), var(--white);
+}
+
+.cashier-login-gate-copy h2 {
+    margin: 0;
+    color: var(--gray-900);
+    font-size: clamp(24px, 3vw, 34px);
+}
+
+.cashier-login-gate-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    gap: 10px;
+}
+
+.cashier-login-card {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    min-height: 92px;
+    padding: 14px;
+    text-align: left;
+    border: 1px solid rgba(20, 184, 166, .34);
+    border-radius: 12px;
+    background: var(--white);
+    color: var(--gray-900);
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+}
+
+.cashier-login-card strong {
+    font-size: 18px;
+    font-weight: 900;
+}
+
+.cashier-login-card span {
+    color: var(--gray-500);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.cashier-login-card:hover:not(:disabled),
+.cashier-login-card:focus-visible {
+    border-color: var(--primary);
+    outline: 3px solid rgba(99,102,241,.18);
+    outline-offset: 1px;
+}
+
+.cashier-login-card:disabled,
+.cashier-login-card.is-disabled {
+    cursor: not-allowed;
+    opacity: .62;
+    background: var(--gray-50);
+}
+
+.cashier-terminal-fallback-login {
+    display: none !important;
+}
+
+.cashier-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+}
+
+.cashier-modal.hidden {
+    display: none !important;
+}
+
+.cashier-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, .58);
+    backdrop-filter: blur(4px);
+}
+
+.cashier-modal-card {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 460px);
+    max-height: min(92vh, 760px);
+    overflow: auto;
+    padding: 18px;
+    border-radius: 16px;
+    border: 1px solid var(--gray-100);
+    background: var(--white);
+    box-shadow: 0 24px 80px rgba(15, 23, 42, .28);
+}
+
+.cashier-modal-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+}
+
+.cashier-modal-head h2 {
+    margin: 0;
+    color: var(--gray-900);
+}
+
+.cashier-modal-close {
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--gray-100);
+    border-radius: 999px;
+    background: var(--gray-50);
+    color: var(--gray-800);
+    cursor: pointer;
+    font-size: 24px;
+    line-height: 1;
+}
+
+.cashier-pin-modal-form {
+    display: grid;
+    gap: 12px;
+}
+
+.cashier-pin-error {
+    min-height: 20px;
+    margin: 0;
+    color: #b91c1c;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.cashier-pin-keypad {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.cashier-pin-keypad button {
+    min-height: 52px;
+    border: 1px solid var(--gray-100);
+    border-radius: 12px;
+    background: var(--gray-50);
+    color: var(--gray-900);
+    cursor: pointer;
+    font: inherit;
+    font-size: 18px;
+    font-weight: 900;
+}
+
+.cashier-pin-keypad button:hover,
+.cashier-pin-keypad button:focus-visible,
+.cashier-modal-close:focus-visible,
+.cashier-workspace-tab:focus-visible {
+    border-color: var(--primary);
+    outline: 3px solid rgba(99,102,241,.20);
+    outline-offset: 1px;
+}
+
+.cashier-modal-actions {
+    justify-content: flex-end;
+}
+
+body.dark-mode .cashier-terminal-topbar,
+body.dark-mode .cashier-login-gate,
+body.dark-mode .cashier-modal-card,
+body.dark-mode .cashier-login-card,
+body.dark-mode .cashier-workspace-tabs,
+body.dark-mode .cashier-terminal-chip,
+body.dark-mode .cashier-workspace-tab,
+body.dark-mode .cashier-pin-keypad button,
+body.dark-mode .cashier-modal-close {
+    border-color: rgba(255,255,255,.10);
+    background-color: rgba(15,23,42,.86);
+    color: #e5e7eb;
+}
+
+body.dark-mode .cashier-login-gate {
+    background: linear-gradient(135deg, rgba(20,184,166,.14), rgba(99,102,241,.12)), rgba(15,23,42,.86);
+}
+
+body.dark-mode .cashier-terminal-chip.is-cashier,
+body.dark-mode .cashier-workspace-tab.is-active {
+    border-color: rgba(45, 212, 191, .36);
+    background: rgba(20, 184, 166, .16);
+}
+
+body.dark-mode .cashier-terminal-chip strong,
+body.dark-mode .cashier-login-gate-copy h2,
+body.dark-mode .cashier-login-card strong,
+body.dark-mode .cashier-modal-head h2,
+body.dark-mode .cashier-pin-keypad button {
+    color: #f8fafc;
+}
+
+body.dark-mode .cashier-terminal-chip span,
+body.dark-mode .cashier-login-card span {
+    color: #94a3b8;
+}
+
+body.dark-mode .cashier-pin-error {
+    color: #fca5a5;
+}
+
+@media (max-width: 920px) {
+    .cashier-terminal-topbar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cashier-terminal-topbar-actions {
+        justify-content: flex-start;
+    }
+
+    .cashier-terminal-chip {
+        min-width: min(100%, 145px);
+    }
+}
+
+@media (max-width: 560px) {
+    .cashier-terminal-topbar-main,
+    .cashier-terminal-topbar-actions,
+    .cashier-workspace-tabs,
+    .cashier-modal-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cashier-login-gate {
+        padding: 16px;
+        min-height: 260px;
+    }
+
+    .cashier-modal-card {
+        padding: 14px;
+    }
+}
+
+.cashier-route-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.cashier-access-reasons {
+    grid-column: 1 / -1;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--gray-100);
+}
+
+.cashier-access-reasons h3 {
+    margin: 0 0 8px;
+    color: var(--gray-900);
+    font-size: 15px;
+}
+
+.cashier-access-reasons-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    gap: 8px;
+}
+
+.cashier-access-reason {
+    display: grid;
+    gap: 4px;
+    padding: 10px;
+    border: 1px solid var(--gray-100);
+    border-radius: 10px;
+    background: var(--gray-50);
+}
+
+.cashier-access-reason strong {
+    color: var(--gray-900);
+    font-size: 14px;
+    font-weight: 900;
+}
+
+.cashier-access-reason span {
+    color: var(--gray-500);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.cashier-access-reason.is-ready {
+    border-color: rgba(16, 185, 129, .28);
+    background: rgba(16, 185, 129, .08);
+}
+
+.cashier-access-reason.is-pending,
+.cashier-access-reason.is-info {
+    border-color: rgba(59, 130, 246, .25);
+    background: rgba(59, 130, 246, .08);
+}
+
+.cashier-access-reason.is-blocked {
+    border-color: rgba(245, 158, 11, .32);
+    background: rgba(245, 158, 11, .10);
+}
+
+.cashier-readiness-card.is-info {
+    border-color: rgba(59, 130, 246, .30);
+    background: rgba(59, 130, 246, .08);
+}
+
+.cashier-readiness-last-check {
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.cashier-pin-manager-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.cashier-pin-manager-summary .cashier-help {
+    margin: 0;
+    flex: 1 1 260px;
+}
+
+.cashier-pin-manager-modal {
+    width: min(100%, 760px);
+}
+
+.cashier-pin-manager-list {
+    display: grid;
+    gap: 10px;
+    margin: 14px 0;
+}
+
+.cashier-pin-manager-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid var(--gray-100);
+    border-radius: 12px;
+    background: var(--gray-50);
+}
+
+.cashier-pin-manager-main {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.cashier-pin-manager-main strong {
+    color: var(--gray-900);
+    font-size: 16px;
+    font-weight: 900;
+}
+
+.cashier-pin-manager-main span,
+.cashier-pin-manager-actions .cashier-help {
+    color: var(--gray-500);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.cashier-pin-manager-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: min(100%, 180px);
+}
+
+.cashier-pin-manager-actions .cashier-help {
+    max-width: 240px;
+    margin: 0;
+    text-align: right;
+}
+
+body.dark-mode .cashier-route-actions,
+body.dark-mode .cashier-access-reasons,
+body.dark-mode .cashier-pin-manager-card,
+body.dark-mode .cashier-access-reason {
+    border-color: rgba(255,255,255,.10);
+}
+
+body.dark-mode .cashier-access-reason,
+body.dark-mode .cashier-pin-manager-card {
+    background: rgba(15,23,42,.68);
+}
+
+body.dark-mode .cashier-access-reasons h3,
+body.dark-mode .cashier-access-reason strong,
+body.dark-mode .cashier-pin-manager-main strong {
+    color: #f8fafc;
+}
+
+body.dark-mode .cashier-access-reason span,
+body.dark-mode .cashier-readiness-last-check,
+body.dark-mode .cashier-pin-manager-main span,
+body.dark-mode .cashier-pin-manager-actions .cashier-help {
+    color: #94a3b8;
+}
+
+body.dark-mode .cashier-readiness-card.is-info,
+body.dark-mode .cashier-access-reason.is-info,
+body.dark-mode .cashier-access-reason.is-pending {
+    border-color: rgba(96, 165, 250, .32);
+    background: rgba(30, 64, 175, .18);
+}
+
+@media (max-width: 720px) {
+    .cashier-route-actions,
+    .cashier-pin-manager-card,
+    .cashier-pin-manager-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        justify-content: stretch;
+    }
+
+    .cashier-pin-manager-actions .cashier-help {
+        max-width: none;
+        text-align: left;
+    }
+}

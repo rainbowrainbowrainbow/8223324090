@@ -4,10 +4,17 @@
 
 ---
 
-## v0.81.158 - Авторизований вхід у гайдбук Design Board
+## v0.81.159 - Авторизований вхід у гайдбук Design Board
 
 ### Release / Versioning / (13.09.2026) [codex]
 - **Авторизований вхід у гайдбук Design Board** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
+## v0.81.158 - Спільний тестовий термінал
+
+### Release / Versioning / (13.09.2026) [codex]
+- **Спільний тестовий термінал** - release marker, cache tags and visible version metadata were prepared automatically.
 
 ---
 

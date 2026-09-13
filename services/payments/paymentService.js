@@ -511,7 +511,8 @@ async function authorizeOrderReplay(client, {
     expectedBusinessContext = null,
     expectedRouteOptionId = null,
     authorizationCrmProfileKey = null,
-    requestFingerprint = null
+    requestFingerprint = null,
+    terminalContext = null
 } = {}) {
     if (!order) {
         throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
@@ -522,9 +523,18 @@ async function authorizeOrderReplay(client, {
         order,
         authorizer,
         authorizationCrmProfileKey,
-        enforceActorOwnership: false
+        enforceActorOwnership: false,
+        terminalContext
     });
-    const actorUserId = order.created_by_user_id ?? order.cashier_user_id;
+    if (terminalContext) {
+        const orderCashierUserId = Number(order.cashier_user_id || 0);
+        const orderBindingId = Number(order.selected_fiscal_cashier_binding_id || 0);
+        if (orderCashierUserId !== Number(terminalContext.activeCashierUserId || 0)
+            || orderBindingId !== Number(terminalContext.activeCashierBindingId || 0)) {
+            throw new PaymentServiceError('idempotency_key_scope_conflict', 'Idempotency key belongs to another terminal cashier', { status: 409 });
+        }
+    }
+    const actorUserId = terminalContext ? order.cashier_user_id : (order.created_by_user_id ?? order.cashier_user_id);
     if (Number(actorUserId || 0) !== Number(user?.id || 0)) {
         throw new PaymentServiceError('idempotency_key_scope_conflict', 'Idempotency key belongs to another payment scope', { status: 409 });
     }
@@ -554,7 +564,8 @@ async function authorizePaymentOrderActor(client, {
     order,
     authorizer = authorizeFiscalAction,
     authorizationCrmProfileKey = null,
-    enforceActorOwnership = action === 'payments.confirm_received'
+    enforceActorOwnership = action === 'payments.confirm_received',
+    terminalContext = null
 } = {}) {
     const routeScoped = Boolean(order?.fiscal_sale_route_option_id || order?.source_snapshot?.route_option_id);
     const effectiveAuthorizer = routeScoped && authorizer === authorizeFiscalAction
@@ -574,7 +585,7 @@ async function authorizePaymentOrderActor(client, {
 
     const routeExpectedIsTest = normalizeBoolean(order?.route_expected_is_test);
     const persistedRouteMode = String(order?.source_snapshot?.register_mode || '').trim().toLowerCase();
-    if (routeScoped && (routeExpectedIsTest === true || persistedRouteMode === 'test')) {
+    if (!terminalContext && routeScoped && (routeExpectedIsTest === true || persistedRouteMode === 'test')) {
         await authorizeFiscalActorAction(client, {
             user,
             action: 'fiscal.configure',
@@ -583,7 +594,21 @@ async function authorizePaymentOrderActor(client, {
     }
 
     if (enforceActorOwnership) {
-        const actorUserId = order?.created_by_user_id ?? order?.cashier_user_id;
+        if (terminalContext) {
+            const orderCashierUserId = Number(order?.cashier_user_id || 0);
+            const orderBindingId = Number(order?.selected_fiscal_cashier_binding_id || 0);
+            if (
+                orderCashierUserId !== Number(terminalContext.activeCashierUserId || 0)
+                || orderBindingId !== Number(terminalContext.activeCashierBindingId || 0)
+            ) {
+                throw new PaymentServiceError(
+                    'terminal_payment_order_actor_mismatch',
+                    'Terminal cashier does not match this payment order',
+                    { status: 409 }
+                );
+            }
+        }
+        const actorUserId = terminalContext ? order?.cashier_user_id : (order?.created_by_user_id ?? order?.cashier_user_id);
         if (Number(actorUserId || 0) !== Number(user?.id || 0)) {
             throw new PaymentServiceError(
                 'payment_order_actor_mismatch',
@@ -840,7 +865,7 @@ async function createAdmissionTicketPaymentOrder({
             });
             await assertPaymentReadiness({
                 client,
-                user,
+                user: effectiveUser,
                 fiscalProfileId: mapping.fiscal_profile_id,
                 fiscalRegisterId: mapping.fiscal_register_id,
                 crmProfileKey: mapping.crm_profile_key,
@@ -1017,10 +1042,14 @@ async function confirmPaymentOrder({
     authorizer = authorizeFiscalAction,
     requireCheckboxIntegrationReady = false,
     env = process.env,
-    checkboxFetchImpl
+    checkboxFetchImpl,
+    terminalSession = null
 } = {}) {
     const key = requireIdempotencyKey(idempotencyKey);
     assertNoClientFiscalConfirmationOverride(body);
+    const effectiveUser = terminalSession?.activeCashierUser || user;
+    const openerUser = terminalSession?.openerUser || user;
+    const terminalContext = terminalSession?.terminalContext || null;
 
     const numericOrderId = Number(orderId);
     if (!Number.isSafeInteger(numericOrderId) || numericOrderId <= 0) {
@@ -1040,10 +1069,11 @@ async function confirmPaymentOrder({
         if (existingAttempt) {
             const existingOrder = await loadOrderSnapshot(client, existingAttempt.payment_order_id);
             await authorizeOrderReplay(client, {
-                user,
+                user: effectiveUser,
                 order: existingOrder,
                 action: 'payments.confirm_received',
-                authorizer
+                authorizer,
+                terminalContext
             });
             if (existingAttempt.request_snapshot?.fingerprint !== requestFingerprint) {
                 throw new PaymentServiceError('idempotency_key_conflict', 'Same idempotency key was used with a different confirmation body', { status: 409 });
@@ -1066,16 +1096,23 @@ async function confirmPaymentOrder({
             throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
         }
         await authorizePaymentOrderActor(client, {
-            user,
+            user: effectiveUser,
             action: 'payments.confirm_received',
             order,
-            authorizer
+            authorizer,
+            terminalContext
         });
+        if (terminalContext) {
+            if (String(order.business_context || order.source_snapshot?.business_context || '') !== String(terminalContext.businessContext || '')
+                || String(order.fiscal_sale_route_option_id || order.source_snapshot?.route_option_id || '') !== String(terminalContext.routeOptionId || '')) {
+                throw new PaymentServiceError('terminal_payment_order_route_mismatch', 'Terminal session does not match this payment order route', { status: 409 });
+            }
+        }
         assertPaymentOrderRouteMutationReady(order);
         await assertRegisterAccepting(client, order.fiscal_profile_id, order.fiscal_register_id);
         await assertCheckboxIntegrationReady(client, {
             env,
-            user,
+            user: effectiveUser,
             cashierUserId: order.cashier_user_id,
             cashierBindingId: order.selected_fiscal_cashier_binding_id,
             fiscalProfileId: order.fiscal_profile_id,
@@ -1096,7 +1133,7 @@ async function confirmPaymentOrder({
     const freshProviderReadiness = requireCheckboxIntegrationReady
         ? await assertFreshPaymentReadiness({
             dbPool,
-            user,
+            user: effectiveUser,
             fiscalProfileId: preflight.order.fiscal_profile_id,
             fiscalLocationId: preflight.order.fiscal_location_id,
             fiscalRegisterId: preflight.order.fiscal_register_id,
@@ -1120,10 +1157,11 @@ async function confirmPaymentOrder({
         if (existingAttempt) {
             const existingOrder = await loadOrderSnapshot(client, existingAttempt.payment_order_id);
             await authorizeOrderReplay(client, {
-                user,
+                user: effectiveUser,
                 order: existingOrder,
                 action: 'payments.confirm_received',
-                authorizer
+                authorizer,
+                terminalContext
             });
             if (existingAttempt.request_snapshot?.fingerprint !== requestFingerprint) {
                 throw new PaymentServiceError('idempotency_key_conflict', 'Same idempotency key was used with a different confirmation body', { status: 409 });
@@ -1150,11 +1188,18 @@ async function confirmPaymentOrder({
             throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
         }
         await authorizePaymentOrderActor(client, {
-            user,
+            user: effectiveUser,
             action: 'payments.confirm_received',
             order: scopedOrder,
-            authorizer
+            authorizer,
+            terminalContext
         });
+        if (terminalContext) {
+            if (String(scopedOrder.business_context || scopedOrder.source_snapshot?.business_context || '') !== String(terminalContext.businessContext || '')
+                || String(scopedOrder.fiscal_sale_route_option_id || scopedOrder.source_snapshot?.route_option_id || '') !== String(terminalContext.routeOptionId || '')) {
+                throw new PaymentServiceError('terminal_payment_order_route_mismatch', 'Terminal session does not match this payment order route', { status: 409 });
+            }
+        }
         assertPaymentOrderRouteMutationReady(scopedOrder);
         await client.query('SELECT pg_advisory_xact_lock($1, $2)', [
             scopedOrder.fiscal_profile_id,
@@ -1229,10 +1274,11 @@ async function confirmPaymentOrder({
         }
 
         await authorizePaymentOrderActor(client, {
-            user,
+            user: effectiveUser,
             action: 'payments.confirm_received',
             order,
-            authorizer
+            authorizer,
+            terminalContext
         });
         assertPaymentOrderRouteMutationReady(order);
         await assertRegisterAccepting(client, order.fiscal_profile_id, order.fiscal_register_id);
@@ -1240,7 +1286,7 @@ async function confirmPaymentOrder({
         if (requireCheckboxIntegrationReady) {
             const verifiedRuntime = await assertCheckboxIntegrationReady(client, {
                 env,
-                user,
+                user: effectiveUser,
                 cashierUserId: order.cashier_user_id,
                 cashierBindingId: order.selected_fiscal_cashier_binding_id,
                 binding: {
@@ -1276,7 +1322,7 @@ async function confirmPaymentOrder({
             });
             await assertPaymentReadiness({
                 client,
-                user,
+                user: effectiveUser,
                 fiscalProfileId: order.fiscal_profile_id,
                 fiscalLocationId: order.fiscal_location_id,
                 fiscalRegisterId: order.fiscal_register_id,
@@ -1329,7 +1375,10 @@ async function confirmPaymentOrder({
             change_amount_minor: confirmation.changeAmountMinor.toString(),
             terminal_reference: terminalReference,
             terminal_showed_success: confirmation.tender === 'card_terminal_manual' ? true : undefined,
-            confirmed_by_user_id: user?.id || null,
+            confirmed_by_user_id: effectiveUser?.id || null,
+            terminal_session_id: terminalContext?.terminalSessionId || null,
+            terminal_opened_by_user_id: openerUser?.id || null,
+            terminal_active_cashier_user_id: terminalContext?.activeCashierUserId || null,
             fiscal_configuration_hash: fiscalConfig.hash,
             provider_context: fiscalConfig.snapshot
         };
@@ -1377,7 +1426,7 @@ async function confirmPaymentOrder({
                     received_amount_minor: confirmation.receivedAmountMinor.toString(),
                     change_amount_minor: confirmation.changeAmountMinor.toString()
                 }),
-                user?.id || null
+                effectiveUser?.id || null
             ]
         );
 
@@ -1416,7 +1465,7 @@ async function confirmPaymentOrder({
         );
         const recordedOrder = recorded.rows[0];
 
-        const shift = await ensureOpenShiftForSale(client, { order, user, fiscalConfig });
+        const shift = await ensureOpenShiftForSale(client, { order, user: effectiveUser, fiscalConfig });
         const providerRequestUuid = crypto.randomUUID();
         const fiscalOperation = await client.query(
             `INSERT INTO fiscal_operations (
@@ -1450,7 +1499,7 @@ async function confirmPaymentOrder({
                     provider_context: fiscalConfig.snapshot,
                     external_stage: 'auth'
                 }),
-                user?.id || null,
+                effectiveUser?.id || null,
                 fiscalConfig.snapshot.provider_organization_id,
                 fiscalConfig.snapshot.provider_outlet_id,
                 fiscalConfig.snapshot.provider_register_id,
@@ -1499,7 +1548,7 @@ async function confirmPaymentOrder({
              VALUES ($1, $2, 'payment_confirmed_outbox_queued', 'payment_orders', $3, $4, $5::jsonb, $6::jsonb)`,
             [
                 order.fiscal_profile_id,
-                user?.id || null,
+                effectiveUser?.id || null,
                 order.id,
                 key,
                 JSON.stringify({ status: order.status, payment_status: order.payment_status }),
@@ -1509,7 +1558,9 @@ async function confirmPaymentOrder({
                     fiscal_status: recordedOrder.fiscal_status,
                     fiscal_operation_id: Number(fiscalOperation.rows[0].id),
                     fiscal_shift_id: Number(shift.id),
-                    outbox_job_id: Number(job.rows[0].id)
+                    outbox_job_id: Number(job.rows[0].id),
+                    opened_by_user_id: openerUser?.id || null,
+                    terminal_session_id: terminalContext?.terminalSessionId || null
                 })
             ]
         );
@@ -1534,9 +1585,12 @@ async function cancelDraftPaymentOrder({
     user,
     orderId,
     idempotencyKey,
+    terminalSession = null,
     authorizer = authorizeFiscalAction
 } = {}) {
     const key = requireIdempotencyKey(idempotencyKey);
+    const effectiveUser = terminalSession?.activeCashierUser || user;
+    const terminalContext = terminalSession?.terminalContext || null;
     const numericOrderId = Number(orderId);
     if (!Number.isSafeInteger(numericOrderId) || numericOrderId <= 0) {
         throw new PaymentServiceError('payment_order_id_invalid', 'Payment order id is invalid', { status: 422 });
@@ -1573,10 +1627,11 @@ async function cancelDraftPaymentOrder({
         }
         const order = lockResult.rows[0];
         await authorizeOrderReplay(client, {
-            user,
+            user: effectiveUser,
             order,
             action: 'payments.create',
-            authorizer
+            authorizer,
+            terminalContext
         });
 
         if (order.status === 'cancelled' && order.payment_status === 'unpaid') {
@@ -1614,11 +1669,17 @@ async function cancelDraftPaymentOrder({
              VALUES ($1, $2, 'payment_order_cancelled', 'payment_orders', $3, $4, $5::jsonb, $6::jsonb)`,
             [
                 order.fiscal_profile_id,
-                user?.id || null,
+                effectiveUser?.id || null,
                 order.id,
                 key,
                 JSON.stringify({ status: order.status, payment_status: order.payment_status, fiscal_status: order.fiscal_status }),
-                JSON.stringify({ status: 'cancelled', payment_status: 'unpaid', fiscal_status: 'not_required' })
+                JSON.stringify({
+                    status: 'cancelled',
+                    payment_status: 'unpaid',
+                    fiscal_status: 'not_required',
+                    terminal_session_id: terminalContext?.terminalSessionId || null,
+                    terminal_opened_by_user_id: terminalSession?.openerUser?.id || null
+                })
             ]
         );
 

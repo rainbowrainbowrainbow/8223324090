@@ -45,12 +45,13 @@ function loadProjection(service) {
     const dependencies = Object.fromEntries([
         '../services/payments/sharedTestDayService', '../services/payments/catalogSaleService',
         '../services/payments/cashierBindingAdminService', '../services/payments/cashierOperationsService',
-        '../services/payments/paymentReadinessService', '../services/payments/fiscalSaleRouteService'
+        '../services/payments/paymentReadinessService', '../services/payments/fiscalSaleRouteService',
+        '../services/payments/cashierTerminalSessionService'
     ].map(id => [id, deniedExports]));
     return evaluate('routes/payments.js', {
         ...dependencies, express: { Router: () => router },
         '../db': { pool: { query: forbidden, connect: forbidden } },
-        '../middleware/auth': { authenticateToken: forbidden, requireAction: () => forbidden },
+        '../middleware/auth': { authenticateToken: forbidden, requireAction: () => forbidden, canUseAction: () => false },
         '../services/businessContext': { canAccessBusinessContext: () => false },
         '../services/checkbox/config': {
             isCashierProEnabled: () => false,

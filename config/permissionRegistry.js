@@ -351,7 +351,8 @@ const PAGE_PERMISSIONS = Object.freeze([
             source('cashier-payments.html', 'js/auth.js'),
             source('js/cashier-payments-page.js', "canAccess('payments.view')", { enforces: true }),
             source('js/cashier-payments-page.js', "canAccess('payments.create')", { enforces: true }),
-            source('js/cashier-payments-page.js', "canAccess('payments.confirm_received')", { enforces: true })
+            source('js/cashier-payments-page.js', "canAccess('payments.confirm_received')", { enforces: true }),
+            source('js/cashier-payments-page.js', "canAccess('fiscal.terminal.launch')", { enforces: true })
         ],
         backendConsumers: [source('server.js', "app.get('/cashier-payments'")],
         apiConsumers: [
@@ -361,8 +362,8 @@ const PAGE_PERMISSIONS = Object.freeze([
             api('routes/payments.js', '/api/payments/unresolved-orders', 'payments.view'),
             api('routes/payments.js', '/api/payments/checkbox-sales-report', 'payments.view'),
             api('routes/payments.js', '/api/payments/admission-ticket/orders', 'payments.create'),
-            api('routes/payments.js', '/api/payments/orders/:orderId/cancel', 'payments.create'),
-            api('routes/payments.js', '/api/payments/orders/:orderId/confirm', 'payments.confirm_received')
+            api('routes/payments.js', '/api/payments/orders/:orderId/cancel', null, 'Guarded by requireActionOrTerminal: legacy users need payments.create; terminal sessions authorize cancellation as the active cashier.'),
+            api('routes/payments.js', '/api/payments/orders/:orderId/confirm', null, 'Guarded by requireActionOrTerminal: legacy users need payments.confirm_received; terminal sessions authorize the active cashier server-side.')
         ],
         notes: 'Checkbox park pilot cashier UI is scoped to CRM profile event_genix and register alias middle; fiscal profile/register are resolved server-side.'
     }),
@@ -553,20 +554,40 @@ const ACTION_PERMISSIONS = Object.freeze([
         ],
         apiConsumers: [
             api('routes/payments.js', '/api/payments/admission-ticket/orders', 'payments.create'),
-            api('routes/payments.js', '/api/payments/orders/:orderId/cancel', 'payments.create'),
+            api('routes/payments.js', '/api/payments/orders/:orderId/cancel', null, 'Guarded by requireActionOrTerminal: legacy users need payments.create; terminal sessions authorize cancellation as the active cashier.'),
             api('services/payments/fiscalAccess.js', 'Payment order creation authorization service', null, 'Checked by authorizeFiscalActionContext before payment order creation.')
         ]
     }),
     action({
         key: 'payments.confirm_received', label: 'Confirm manual payment received', group: 'payments', defaultRoles: PAYMENT_CASHIER_ACCESS, risk: 'critical',
         backendConsumers: [
-            source('routes/payments.js', "requireAction('payments.confirm_received')", { enforces: true }),
+            source('routes/payments.js', "requireActionOrTerminal('payments.confirm_received')", { enforces: true }),
             source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })
         ],
         apiConsumers: [
-            api('routes/payments.js', '/api/payments/orders/:orderId/confirm', 'payments.confirm_received'),
+            api('routes/payments.js', '/api/payments/orders/:orderId/confirm', null, 'Guarded by requireActionOrTerminal: legacy users need payments.confirm_received; terminal sessions authorize the active cashier server-side.'),
             api('services/payments/fiscalAccess.js', 'Manual cash/card-terminal confirmation authorization service', null, 'Checked by authorizeFiscalActionContext before confirming money received.')
         ]
+    }),
+    action({
+        key: 'fiscal.terminal.launch', label: 'Open shared cashier terminal', group: 'payments', defaultRoles: [], risk: 'critical',
+        backendConsumers: [
+            source('routes/payments.js', "router.post('/terminal/sessions'", { enforces: true }),
+            source('services/payments/cashierTerminalSessionService.js', "canUseAction(user, 'fiscal.terminal.launch')", { enforces: true }),
+            source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })
+        ],
+        apiConsumers: [
+            api('routes/payments.js', '/api/payments/terminal/sessions', null, 'Custom guard: opens a scoped shared test terminal session for the selected business context and cashier register.'),
+            api('routes/payments.js', '/api/payments/terminal/sessions/:sessionId', null, 'Custom guard: reads only the opener own terminal session state for reload recovery.'),
+            api('routes/payments.js', '/api/payments/terminal/sessions/:sessionId/cashiers', null, 'Custom guard: lists active cashier bindings available inside the opened terminal session.'),
+            api('routes/payments.js', '/api/payments/terminal/sessions/:sessionId/cashier-login', null, 'Custom guard: verifies the selected cashier own PIN and stores the active cashier on the server session.'),
+            api('routes/payments.js', '/api/payments/terminal/sessions/:sessionId/lock', null, 'Custom guard: clears the active cashier and increments session version without closing the Checkbox shift.'),
+            api('routes/payments.js', '/api/payments/terminal/sessions/:sessionId/end', null, 'Custom guard: ends only the terminal session without closing the Checkbox shift.'),
+            api('routes/payments.js', '/api/payments/catalog/orders', null, 'May use X-Cashier-Terminal-Session and X-Cashier-Terminal-Version; payment creation is authorized as the active cashier, not the opener.'),
+            api('routes/payments.js', '/api/payments/orders/:orderId/cancel', null, 'May use X-Cashier-Terminal-Session and X-Cashier-Terminal-Version; unpaid draft cancellation is authorized as the active cashier.'),
+            api('routes/payments.js', '/api/payments/orders/:orderId/confirm', null, 'May use X-Cashier-Terminal-Session and X-Cashier-Terminal-Version; payment confirmation is authorized as the active cashier, not the opener.')
+        ],
+        notes: 'Delegable terminal launcher only. It opens a shared test terminal shell and does not grant fiscal.configure, cashier impersonation, service-out, refunds, or access to other CRM pages.'
     }),
     action({
         key: 'fiscal.shift.open', label: 'Open fiscal shift', group: 'payments', defaultRoles: FISCAL_PHASE1_OPERATOR_ACCESS, risk: 'critical',

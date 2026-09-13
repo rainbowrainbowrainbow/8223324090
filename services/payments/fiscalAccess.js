@@ -8,6 +8,7 @@ const PAYMENT_FISCAL_CAPABILITIES = Object.freeze([
     'payments.view',
     'payments.create',
     'payments.confirm_received',
+    'fiscal.terminal.launch',
     'fiscal.shift.open',
     'fiscal.shift.close',
     'fiscal.service_in',

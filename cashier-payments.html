@@ -7,14 +7,14 @@
     <title>Event Genix | Оплата та чек</title>
     <meta name="description" content="Продажі ПАРК і ДАР з контрольованою фіскалізацією Checkbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.158">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.158">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.158">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.158">
-    <link rel="stylesheet" href="css/cashier-payments.css?v=0.81.158">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.158">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.158">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.158">
+    <link rel="stylesheet" href="css/base.css?v=0.81.159">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.159">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.159">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.159">
+    <link rel="stylesheet" href="css/cashier-payments.css?v=0.81.159">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.159">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.159">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.159">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -58,12 +58,28 @@
                     <div><dt>Режим</dt><dd id="cashierScopeMode">робочий</dd></div>
                 </dl>
             </section>
+            <section id="cashierTerminalTopBar" class="cashier-card cashier-terminal-topbar hidden" aria-label="Поточний термінал каси" aria-hidden="true">
+                <div class="cashier-terminal-topbar-main">
+                    <span class="cashier-terminal-chip"><span>Бізнес</span><strong id="cashierTopBusiness">ПАРК</strong></span>
+                    <span class="cashier-terminal-chip"><span>Каса</span><strong id="cashierTopRegister">—</strong></span>
+                    <span class="cashier-terminal-chip"><span>Режим</span><strong id="cashierTopMode">—</strong></span>
+                    <span class="cashier-terminal-chip is-cashier"><span>Активний касир</span><strong id="cashierTopActiveCashier">не обрано</strong></span>
+                </div>
+                <div class="cashier-terminal-topbar-actions" aria-label="Швидкі дії термінала">
+                    <button type="button" id="topChangeTerminalCashierBtn" class="btn-page-secondary">Змінити касира</button>
+                    <button type="button" id="topLockTerminalBtn" class="btn-page-secondary">Заблокувати</button>
+                    <button type="button" id="topOpenPinAdminBtn" class="btn-page-secondary">Касири та PIN</button>
+                </div>
+            </section>
             <div id="cashierAccessDenied" class="cashier-alert cashier-alert-danger hidden" role="alert">Немає доступу до оплати або фіскалізації.</div>
             <div id="cashierGlobalStatus" class="cashier-alert hidden" role="status" aria-live="polite"></div>
             <section id="cashierRouteSelector" class="cashier-card cashier-route-card" aria-labelledby="cashierRouteTitle">
                 <div class="cashier-route-heading">
                     <div><p class="cashier-kicker">Маршрут продажу</p><h2 id="cashierRouteTitle">Напрямок і каса</h2></div>
-                    <span id="cashierRouteStatus" class="cashier-pill">завантаження</span>
+                    <div class="cashier-route-actions">
+                        <span id="cashierRouteStatus" class="cashier-pill">завантаження</span>
+                        <button type="button" id="openActionPinManagerBtn" class="btn-page-secondary btn-page-toolbar hidden">Касири та PIN</button>
+                    </div>
                 </div>
                 <div class="cashier-route-grid">
                     <label class="cashier-field"><span>Напрямок</span>
@@ -79,13 +95,59 @@
                     </label>
                 </div>
                 <p id="paymentRouteHelp" class="cashier-help">Оберіть напрямок і касу для поточного клієнта.</p>
+                <section id="cashierAccessReasons" class="cashier-access-reasons hidden" aria-labelledby="cashierAccessReasonsTitle" aria-live="polite">
+                    <h3 id="cashierAccessReasonsTitle">Що зараз доступно</h3>
+                    <div id="cashierAccessReasonsList" class="cashier-access-reasons-list"></div>
+                </section>
             </section>
+            <section id="cashierTerminalPanel" class="cashier-card cashier-terminal-panel hidden" aria-labelledby="cashierTerminalTitle" aria-hidden="true">
+                <div class="cashier-card-head">
+                    <div><p class="cashier-kicker">Спільний термінал</p><h2 id="cashierTerminalTitle">Касир зміни</h2></div>
+                    <span id="cashierTerminalStatus" class="cashier-status">—</span>
+                </div>
+                <div class="cashier-terminal-grid">
+                    <div class="cashier-terminal-active">
+                        <span class="cashier-terminal-label">Активний касир</span>
+                        <strong id="cashierTerminalActiveCashier">не обрано</strong>
+                        <p id="cashierTerminalNotice" class="cashier-help" role="status" aria-live="polite">Відкрийте термінал і увійдіть касиром за власним PIN.</p>
+                    </div>
+                    <div class="cashier-terminal-actions" aria-label="Дії термінала">
+                        <button type="button" id="openTerminalSessionBtn" class="btn-page-secondary">Відкрити термінал</button>
+                        <button type="button" id="changeTerminalCashierBtn" class="btn-page-secondary hidden">Змінити касира</button>
+                        <button type="button" id="lockTerminalBtn" class="btn-page-secondary hidden">Заблокувати</button>
+                        <button type="button" id="endTerminalBtn" class="btn-page-secondary hidden">Завершити сесію</button>
+                    </div>
+                </div>
+                <form id="terminalCashierLoginForm" class="cashier-pin-form cashier-terminal-fallback-login hidden" autocomplete="off">
+                    <label class="cashier-field"><span>Касир</span><select id="terminalCashierSelect" aria-describedby="cashierTerminalNotice"><option value="">Спочатку відкрийте термінал</option></select></label>
+                    <label class="cashier-field"><span>PIN касира</span><input id="terminalCashierPin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="12" autocomplete="current-password" aria-describedby="cashierTerminalNotice"></label>
+                    <button type="submit" id="terminalCashierLoginBtn" class="btn-page-primary cashier-primary-action" disabled aria-describedby="cashierTerminalNotice">Увійти касиром</button>
+                </form>
+            </section>
+            <section id="cashierLoginGate" class="cashier-card cashier-login-gate hidden" aria-labelledby="cashierLoginGateTitle" aria-hidden="true">
+                <div class="cashier-login-gate-copy">
+                    <p class="cashier-kicker">Вхід касира</p>
+                    <h2 id="cashierLoginGateTitle">Хто працює за цією касою?</h2>
+                    <p id="cashierLoginGateNotice" class="cashier-muted" role="status" aria-live="polite">Відкрийте термінал і оберіть касира. Продаж з’явиться після підтвердження PIN.</p>
+                </div>
+                <div id="cashierLoginGateActions" class="cashier-login-gate-actions"></div>
+                <div id="cashierLoginGateList" class="cashier-login-gate-list" aria-label="Касири термінала"></div>
+            </section>
+            <nav id="cashierWorkspaceTabs" class="cashier-card cashier-workspace-tabs hidden" aria-label="Розділи каси" aria-hidden="true">
+                <button type="button" class="cashier-workspace-tab is-active" data-cashier-tab="sale" aria-pressed="true">Продаж</button>
+                <button type="button" class="cashier-workspace-tab" data-cashier-tab="history" aria-pressed="false">Історія</button>
+                <button type="button" class="cashier-workspace-tab" data-cashier-tab="shift" aria-pressed="false">Робота зміни</button>
+            </nav>
             <section id="actionPinPanel" class="cashier-shift-action hidden" aria-labelledby="actionPinTitle" aria-hidden="true">
                 <div class="cashier-card-head">
                     <div><p class="cashier-kicker">Тестова каса</p><h2 id="actionPinTitle">PIN касира</h2></div>
                     <span id="actionPinStatus" class="cashier-status">—</span>
                 </div>
-                <form id="actionPinForm" class="cashier-pin-form" autocomplete="off">
+                <div id="actionPinManageSummary" class="cashier-pin-manager-summary hidden">
+                    <p id="actionPinNotice" class="cashier-help" role="status" aria-live="polite">Доступні касири ще не завантажені.</p>
+                    <button type="button" id="openActionPinManagerFromPanelBtn" class="btn-page-secondary cashier-primary-action">Відкрити керування касирами</button>
+                </div>
+                <form id="actionPinForm" class="cashier-pin-form hidden" autocomplete="off">
                     <label class="cashier-field"><span>Касир</span><select id="actionPinBindingSelect" aria-describedby="actionPinNotice"></select></label>
                     <div class="cashier-pin-grid">
                         <label class="cashier-field"><span>Новий PIN</span><input id="actionPinValue" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="12" autocomplete="new-password" aria-describedby="actionPinNotice"></label>
@@ -93,7 +155,6 @@
                     </div>
                     <button type="submit" id="saveActionPinBtn" class="btn-page-secondary cashier-primary-action" disabled aria-describedby="actionPinNotice">Зберегти PIN</button>
                 </form>
-                <p id="actionPinNotice" class="cashier-help" role="status" aria-live="polite">Доступні касири ще не завантажені.</p>
                 <form id="actionPinCheckForm" class="cashier-pin-form hidden" autocomplete="off">
                     <label class="cashier-field"><span>Мій PIN</span><input id="actionPinCheckValue" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="12" autocomplete="new-password" aria-describedby="actionPinCheckNotice"></label>
                     <button type="submit" id="checkActionPinBtn" class="btn-page-secondary cashier-primary-action" disabled aria-describedby="actionPinCheckNotice">Перевірити мій PIN</button>
@@ -107,7 +168,8 @@
                     <ul id="cashierReadinessTechnicalList"></ul>
                 </details>
                 <div class="cashier-toolbar-row" aria-label="Керування готовністю Checkbox">
-                    <button type="button" id="refreshReadinessBtn" class="btn-page-secondary btn-page-toolbar" aria-describedby="cashierReadinessSummary" aria-controls="cashierReadinessDetails">Оновити готовність Checkbox</button>
+                    <button type="button" id="refreshReadinessBtn" class="btn-page-secondary btn-page-toolbar" aria-describedby="cashierReadinessSummary" aria-controls="cashierReadinessDetails">Оновити стан каси</button>
+                    <span id="cashierReadinessLastChecked" class="cashier-readiness-last-check">ще не перевіряли</span>
                 </div>
             </section>
 
@@ -353,7 +415,82 @@
             </section>
         </main>
     </div>
+    <div id="actionPinManagerModal" class="cashier-modal hidden" role="dialog" aria-modal="true" aria-labelledby="actionPinManagerTitle" aria-describedby="actionPinManagerHelp" aria-hidden="true">
+        <div class="cashier-modal-backdrop" data-action-pin-manager-close="backdrop"></div>
+        <div class="cashier-modal-card cashier-pin-manager-modal" role="document">
+            <div class="cashier-modal-head">
+                <div>
+                    <p class="cashier-kicker">Касири та PIN</p>
+                    <h2 id="actionPinManagerTitle">Керування тестовими PIN</h2>
+                    <p id="actionPinManagerHelp" class="cashier-muted">Доступ визначається правами користувача CRM, який відкрив сторінку. Вхід касира в термінал не додає адміністративних прав.</p>
+                </div>
+                <button type="button" id="actionPinManagerClose" class="cashier-modal-close" aria-label="Закрити керування PIN">×</button>
+            </div>
+            <div id="actionPinManagerList" class="cashier-pin-manager-list" aria-live="polite"></div>
+            <div class="cashier-modal-actions">
+                <button type="button" id="actionPinManagerRefresh" class="btn-page-secondary">Оновити касирів</button>
+                <button type="button" id="actionPinManagerDone" class="btn-page-primary">Готово</button>
+            </div>
+        </div>
+    </div>
+    <div id="actionPinSetModal" class="cashier-modal hidden" role="dialog" aria-modal="true" aria-labelledby="actionPinSetTitle" aria-describedby="actionPinSetHelp" aria-hidden="true">
+        <div class="cashier-modal-backdrop" data-action-pin-set-close="backdrop"></div>
+        <div class="cashier-modal-card cashier-pin-set-modal" role="document">
+            <div class="cashier-modal-head">
+                <div>
+                    <p class="cashier-kicker">Новий PIN</p>
+                    <h2 id="actionPinSetTitle">Встановити PIN касира</h2>
+                    <p id="actionPinSetHelp" class="cashier-muted">PIN вводиться заново і не показує чинне значення.</p>
+                </div>
+                <button type="button" id="actionPinSetClose" class="cashier-modal-close" aria-label="Закрити встановлення PIN">×</button>
+            </div>
+            <form id="actionPinSetForm" class="cashier-pin-modal-form" autocomplete="off">
+                <label class="cashier-field"><span>Новий PIN</span><input id="actionPinSetValue" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="12" autocomplete="new-password" aria-describedby="actionPinSetError actionPinSetHelp"></label>
+                <label class="cashier-field"><span>Повтор PIN</span><input id="actionPinSetConfirm" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="12" autocomplete="new-password" aria-describedby="actionPinSetError actionPinSetHelp"></label>
+                <p id="actionPinSetError" class="cashier-pin-error" role="alert" aria-live="assertive"></p>
+                <div class="cashier-modal-actions">
+                    <button type="button" id="actionPinSetCancel" class="btn-page-secondary">Скасувати</button>
+                    <button type="submit" id="actionPinSetSubmit" class="btn-page-primary cashier-primary-action" disabled>Зберегти PIN</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div id="terminalPinModal" class="cashier-modal hidden" role="dialog" aria-modal="true" aria-labelledby="terminalPinModalTitle" aria-describedby="terminalPinModalHelp" aria-hidden="true">
+        <div class="cashier-modal-backdrop" data-terminal-pin-close="backdrop"></div>
+        <div class="cashier-modal-card cashier-pin-modal-card" role="document">
+            <div class="cashier-modal-head">
+                <div>
+                    <p class="cashier-kicker">PIN касира</p>
+                    <h2 id="terminalPinModalTitle">Увійти касиром</h2>
+                    <p id="terminalPinModalHelp" class="cashier-muted">Введіть власний PIN для цієї тестової каси.</p>
+                </div>
+                <button type="button" id="terminalPinModalClose" class="cashier-modal-close" aria-label="Закрити вікно PIN">×</button>
+            </div>
+            <form id="terminalPinModalForm" class="cashier-pin-modal-form" autocomplete="off">
+                <label class="cashier-field"><span>PIN</span><input id="terminalPinModalInput" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="12" autocomplete="current-password" aria-describedby="terminalPinModalError terminalPinModalHelp"></label>
+                <p id="terminalPinModalError" class="cashier-pin-error" role="alert" aria-live="assertive"></p>
+                <div class="cashier-pin-keypad" aria-label="Цифрова клавіатура PIN">
+                    <button type="button" data-terminal-pin-key="1">1</button>
+                    <button type="button" data-terminal-pin-key="2">2</button>
+                    <button type="button" data-terminal-pin-key="3">3</button>
+                    <button type="button" data-terminal-pin-key="4">4</button>
+                    <button type="button" data-terminal-pin-key="5">5</button>
+                    <button type="button" data-terminal-pin-key="6">6</button>
+                    <button type="button" data-terminal-pin-key="7">7</button>
+                    <button type="button" data-terminal-pin-key="8">8</button>
+                    <button type="button" data-terminal-pin-key="9">9</button>
+                    <button type="button" data-terminal-pin-key="clear">Очистити</button>
+                    <button type="button" data-terminal-pin-key="0">0</button>
+                    <button type="button" data-terminal-pin-key="backspace">⌫</button>
+                </div>
+                <div class="cashier-modal-actions">
+                    <button type="button" id="terminalPinModalCancel" class="btn-page-secondary">Скасувати</button>
+                    <button type="submit" id="terminalPinModalSubmit" class="btn-page-primary cashier-primary-action" disabled>Увійти</button>
+                </div>
+            </form>
+        </div>
+    </div>
     <div id="notification" class="notification hidden"><span id="notificationText"></span></div>
-    <script src="js/ui.js?v=0.81.158"></script><script src="js/config.js?v=0.81.158"></script><script src="js/notification.js?v=0.81.158"></script><script src="js/api.js?v=0.81.158"></script><script src="js/auth.js?v=0.81.158"></script><script src="js/components/sidebar.js?v=0.81.158"></script><script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/catalog-discount-calculator.js?v=0.81.158"></script><script src="js/cashier-payments-page.js?v=0.81.158"></script><script src="js/alerts.js?v=0.81.158"></script>
+    <script src="js/ui.js?v=0.81.159"></script><script src="js/config.js?v=0.81.159"></script><script src="js/notification.js?v=0.81.159"></script><script src="js/api.js?v=0.81.159"></script><script src="js/auth.js?v=0.81.159"></script><script src="js/components/sidebar.js?v=0.81.159"></script><script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/catalog-discount-calculator.js?v=0.81.159"></script><script src="js/cashier-payments-page.js?v=0.81.159"></script><script src="js/alerts.js?v=0.81.159"></script>
 </body>
 </html>

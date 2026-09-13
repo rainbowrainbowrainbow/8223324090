@@ -67,7 +67,8 @@ async function resolveCatalogRoute({
     routeOptionId,
     businessContext,
     requireMutationReady = false,
-    routeResolver = resolveFiscalSaleRoute
+    routeResolver = resolveFiscalSaleRoute,
+    routeResolverOptions = {}
 } = {}) {
     return routeResolver({
         client,
@@ -75,7 +76,8 @@ async function resolveCatalogRoute({
         user,
         routeOptionId,
         businessContext,
-        requireMutationReady
+        requireMutationReady,
+        ...routeResolverOptions
     });
 }
 
@@ -210,13 +212,19 @@ async function createCatalogSalePaymentOrder({
     authorizer = authorizeFiscalActorAction,
     routeResolver = resolveFiscalSaleRoute,
     env = process.env,
-    requireCheckboxIntegrationReady = false
+    requireCheckboxIntegrationReady = false,
+    terminalSession = null
 } = {}) {
     const key = requireIdempotencyKey(idempotencyKey);
     assertNoClientFiscalRouteOverride(body);
+    const effectiveUser = terminalSession?.activeCashierUser || user;
+    const openerUser = terminalSession?.openerUser || user;
+    const terminalContext = terminalSession?.terminalContext || null;
+    const routeResolverOptions = terminalSession?.routeResolverOptions || {};
     const sourceScope = scopeForBusiness(body.businessContext || body.business_context);
     const routeOptionId = normalizeRouteOption(body, sourceScope.crmProfileKey);
-    const selectedCashierBindingId = Number(body.cashierBindingId ?? body.cashier_binding_id);
+    const selectedCashierBindingId = terminalContext?.activeCashierBindingId
+        || Number(body.cashierBindingId ?? body.cashier_binding_id);
     if (!Number.isSafeInteger(selectedCashierBindingId) || selectedCashierBindingId <= 0) {
         throw new PaymentServiceError('cashier_binding_required', 'Select an active Checkbox cashier', { status: 422 });
     }
@@ -228,25 +236,35 @@ async function createCatalogSalePaymentOrder({
         await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [key]);
         let route = await resolveCatalogRoute({
             client,
-            user,
+            user: effectiveUser,
             routeOptionId,
             businessContext: sourceScope.crmProfileKey,
             requireMutationReady: requireCheckboxIntegrationReady,
-            routeResolver
+            routeResolver,
+            routeResolverOptions
         });
         const originalMapping = route.mapping;
         await lockFiscalRegister(client, originalMapping.fiscal_profile_id, originalMapping.fiscal_register_id);
-        route = await resolveCatalogRoute({ client, user, routeOptionId, businessContext: sourceScope.crmProfileKey,
-            requireMutationReady: requireCheckboxIntegrationReady, routeResolver });
+        route = await resolveCatalogRoute({ client, user: effectiveUser, routeOptionId, businessContext: sourceScope.crmProfileKey,
+            requireMutationReady: requireCheckboxIntegrationReady, routeResolver, routeResolverOptions });
         const mapping = route.mapping;
         if (String(mapping.fiscal_profile_id) !== String(originalMapping.fiscal_profile_id)
             || String(mapping.fiscal_register_id) !== String(originalMapping.fiscal_register_id)) throw new TestDrainError('shared_test_scope_changed');
-        await authorizer(client, { user, action: 'payments.create', crmProfileKey: route.businessContext });
+        if (terminalContext) {
+            if (terminalContext.businessContext !== route.businessContext || terminalContext.routeOptionId !== route.routeOptionId) {
+                throw new PaymentServiceError('terminal_route_mismatch', 'Terminal session does not match this payment route', { status: 409 });
+            }
+            if (Number(terminalContext.fiscalProfileId) !== Number(mapping.fiscal_profile_id)
+                || Number(terminalContext.fiscalRegisterId) !== Number(mapping.fiscal_register_id)) {
+                throw new PaymentServiceError('terminal_register_mismatch', 'Terminal session does not match this fiscal register', { status: 409 });
+            }
+        }
+        await authorizer(client, { user: effectiveUser, action: 'payments.create', crmProfileKey: route.businessContext });
         const existing = await findOrderByIdempotency(client, key);
         if (existing) {
             const order = await loadOrderSnapshot(client, existing.id);
             await authorizeOrderReplay(client, {
-                user,
+                user: effectiveUser,
                 order,
                 action: 'payments.create',
                 authorizer,
@@ -255,7 +273,8 @@ async function createCatalogSalePaymentOrder({
                 expectedBusinessContext: route.businessContext,
                 expectedRouteOptionId: route.routeOptionId,
                 authorizationCrmProfileKey: route.businessContext,
-                requestFingerprint
+                requestFingerprint,
+                terminalContext
             });
             return { replayed: true, order: normalizePaymentOrder(order) };
         }
@@ -265,6 +284,12 @@ async function createCatalogSalePaymentOrder({
             fiscalProfileId: mapping.fiscal_profile_id,
             fiscalRegisterId: mapping.fiscal_register_id
         });
+        if (terminalContext) {
+            if (Number(selectedBinding.user_id) !== Number(terminalContext.activeCashierUserId || 0)
+                || Number(selectedBinding.id) !== Number(terminalContext.activeCashierBindingId || 0)) {
+                throw new PaymentServiceError('terminal_cashier_binding_mismatch', 'Terminal cashier does not match the selected payment cashier', { status: 409 });
+            }
+        }
         if (requireCheckboxIntegrationReady) {
             if (!isCheckboxIntegrationEnabled(env)) {
                 throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });
@@ -274,7 +299,7 @@ async function createCatalogSalePaymentOrder({
             }
             await assertCheckboxIntegrationReady(client, {
                 env,
-                user,
+                user: effectiveUser,
                 cashierUserId: selectedBinding.user_id,
                 cashierBindingId: selectedBinding.id,
                 binding: selectedBinding,
@@ -289,7 +314,7 @@ async function createCatalogSalePaymentOrder({
             });
             await assertPaymentReadiness({
                 client,
-                user,
+                user: effectiveUser,
                 cashierUserId: selectedBinding.user_id,
                 cashierBindingId: selectedBinding.id,
                 fiscalProfileId: mapping.fiscal_profile_id,
@@ -337,15 +362,18 @@ async function createCatalogSalePaymentOrder({
             register_mode: route.mode,
             shared_test_register: route.sharedTestRegister === true,
             selected_cashier_binding_id: Number(selectedBinding.id),
+            terminal_session_id: terminalContext?.terminalSessionId || null,
+            terminal_opened_by_user_id: terminalContext?.openedByUserId || null,
+            terminal_active_cashier_user_id: terminalContext?.activeCashierUserId || null,
             tender
         };
-        const inserted = await client.query(`INSERT INTO payment_orders (fiscal_profile_id,fiscal_register_id,cashier_user_id,selected_fiscal_cashier_binding_id,source_type,source_id,order_key,idempotency_key,status,payment_status,fiscal_status,payment_method,total_amount_minor,currency,source_snapshot,created_by_user_id,fiscal_sale_route_option_id,business_context) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft','unpaid','pending',$9,$10,'UAH',$11::jsonb,$12,$13,$14) RETURNING *`, [mapping.fiscal_profile_id,mapping.fiscal_register_id,selectedBinding.user_id,selectedBinding.id,CATALOG_SOURCE_TYPE,sourceId,orderKey,key,paymentMethod,toPostgresBigint(total),JSON.stringify(sourceSnapshot),user?.id || null,route.routeOptionId,route.businessContext]);
+        const inserted = await client.query(`INSERT INTO payment_orders (fiscal_profile_id,fiscal_register_id,cashier_user_id,selected_fiscal_cashier_binding_id,source_type,source_id,order_key,idempotency_key,status,payment_status,fiscal_status,payment_method,total_amount_minor,currency,source_snapshot,created_by_user_id,fiscal_sale_route_option_id,business_context) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft','unpaid','pending',$9,$10,'UAH',$11::jsonb,$12,$13,$14) RETURNING *`, [mapping.fiscal_profile_id,mapping.fiscal_register_id,selectedBinding.user_id,selectedBinding.id,CATALOG_SOURCE_TYPE,sourceId,orderKey,key,paymentMethod,toPostgresBigint(total),JSON.stringify(sourceSnapshot),openerUser?.id || null,route.routeOptionId,route.businessContext]);
         const order = inserted.rows[0];
         for (const line of quote) {
             const fm = fiscalMappings.get(line.product.id);
             await client.query(`INSERT INTO payment_order_items (fiscal_profile_id,payment_order_id,line_number,item_type,item_code,item_name,unit_price_minor,quantity_millis,total_amount_minor,currency,tax_reference,tax_code,tax_rate_bps,provider_tax_id,tax_mode,item_snapshot) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'UAH',$10,NULL,NULL,NULL,'untaxed',$11::jsonb)`, [order.fiscal_profile_id,order.id,line.index,CATALOG_SOURCE_TYPE,line.product.id,fm.fiscal_item_name,toPostgresBigint(line.finalUnitMinor),toPostgresBigint(line.quantityMillis),toPostgresBigint(line.totalMinor),`price_rule:${line.product.price_rule_id}`,JSON.stringify({ original_unit_price_minor:String(line.originalUnitMinor),discount_amount_minor:String(line.discountMinor),final_unit_price_minor:String(line.finalUnitMinor),quantity_millis:String(line.quantityMillis),price_source:'price_rules',price_rule_id:Number(line.product.price_rule_id),price_rule_code:line.product.price_rule_code,discount_rule_code:line.discount?.code || null,fiscal_item_mapping_id:Number(fm.id) })]);
         }
-        await client.query(`INSERT INTO fiscal_audit_events (fiscal_profile_id,actor_user_id,event_type,entity_table,entity_id,idempotency_key,after_snapshot) VALUES ($1,$2,'payment_order_created','payment_orders',$3,$4,$5::jsonb)`, [order.fiscal_profile_id,user?.id || null,order.id,key,JSON.stringify({ source_type: CATALOG_SOURCE_TYPE, total_amount_minor:String(total) })]);
+        await client.query(`INSERT INTO fiscal_audit_events (fiscal_profile_id,actor_user_id,event_type,entity_table,entity_id,idempotency_key,after_snapshot) VALUES ($1,$2,'payment_order_created','payment_orders',$3,$4,$5::jsonb)`, [order.fiscal_profile_id,effectiveUser?.id || null,order.id,key,JSON.stringify({ source_type: CATALOG_SOURCE_TYPE, total_amount_minor:String(total), opened_by_user_id: openerUser?.id || null, terminal_session_id: terminalContext?.terminalSessionId || null })]);
         return { replayed: false, order: normalizePaymentOrder(order) };
     });
 }

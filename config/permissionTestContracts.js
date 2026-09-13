@@ -166,6 +166,12 @@ const ACTION_PERMISSION_TEST_CONTRACTS = Object.freeze({
         sensitive: true,
         testFiles: ['tests/payment-workflow.test.js']
     }),
+    'fiscal.terminal.launch': actionContract('fiscal.terminal.launch', {
+        backendScenario: 'shared test cashier terminal session launch',
+        mutation: true,
+        sensitive: true,
+        testFiles: ['tests/cashier-terminal-session-service.test.js']
+    }),
     'fiscal.shift.open': actionContract('fiscal.shift.open', { backendScenario: 'fiscal shift open', mutation: true, sensitive: true, testFiles: ['tests/fiscal-cashier-operations.test.js'] }),
     'fiscal.shift.close': actionContract('fiscal.shift.close', { backendScenario: 'fiscal shift close', mutation: true, sensitive: true, testFiles: ['tests/fiscal-cashier-operations.test.js'] }),
     'fiscal.service_in': actionContract('fiscal.service_in', { backendScenario: 'fiscal service-in', mutation: true, sensitive: true, testFiles: ['tests/fiscal-cashier-operations.test.js'] }),

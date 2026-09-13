@@ -62,6 +62,18 @@ const {
     listFiscalSaleRouteOptions,
     resolveFiscalSaleRoute
 } = require('../services/payments/fiscalSaleRouteService');
+const {
+    listTerminalCashiers,
+    loadTerminalSessionForAction,
+    loginTerminalCashier,
+    getTerminalSession,
+    lockTerminalSession,
+    endTerminalSession,
+    openTerminalSession,
+    sessionIdFromRequest,
+    sessionVersionFromRequest,
+    terminalErrorResponse
+} = require('../services/payments/cashierTerminalSessionService');
 
 router.use(authenticateToken);
 
@@ -70,6 +82,27 @@ function requireFiscalActionPinAccess(req, res, next) {
     return res.status(403).json({ success: false, error: 'fiscal_capability_denied', message: 'User lacks the required fiscal PIN capability', details: { action: 'fiscal.test.pin.manage' } });
 }
 function canReadOwnActionPinBinding(user) { return canUseAction(user, 'payments.view'); }
+
+function requireActionOrTerminal(action) {
+    const legacyGuard = requireAction(action);
+    return (req, res, next) => {
+        if (sessionIdFromRequest(req)) return next();
+        return legacyGuard(req, res, next);
+    };
+}
+
+async function terminalSessionForMutation(req, action) {
+    const terminalSessionId = sessionIdFromRequest(req);
+    if (!terminalSessionId) return null;
+    return loadTerminalSessionForAction({
+        user: req.user,
+        sessionId: terminalSessionId,
+        action,
+        businessContext: req.body?.businessContext || req.body?.business_context || req.query?.businessContext || req.query?.business_context || null,
+        routeOptionId: routeOptionIdFromRequest(req),
+        expectedVersion: sessionVersionFromRequest(req) || -1
+    });
+}
 
 function idempotencyKeyFromRequest(req) {
     return req.get('Idempotency-Key') || req.get('idempotency-key') || '';
@@ -663,7 +696,7 @@ router.post('/admission-ticket/orders', requireAction('payments.create'), async 
     }
 });
 
-router.post('/catalog/orders', requireAction('payments.create'), async (req, res) => {
+router.post('/catalog/orders', requireActionOrTerminal('payments.create'), async (req, res) => {
     try {
         if (!String(routeOptionIdFromRequest(req) || '').trim()) {
             throw Object.assign(new Error('Safe fiscal register option is required'), {
@@ -672,11 +705,13 @@ router.post('/catalog/orders', requireAction('payments.create'), async (req, res
                 status: 422
             });
         }
+        const terminalSession = await terminalSessionForMutation(req, 'payments.create');
         const result = await createCatalogSalePaymentOrder({
             user: req.user,
             body: req.body || {},
             idempotencyKey: idempotencyKeyFromRequest(req),
-            requireCheckboxIntegrationReady: true
+            requireCheckboxIntegrationReady: true,
+            terminalSession
         });
         return res.status(result.replayed ? 200 : 201).json({
             success: true,
@@ -744,6 +779,89 @@ router.get('/local-qa-status', requireAction('payments.view'), (req, res) => {
     }
 });
 
+router.post('/terminal/sessions', async (req, res) => {
+    try {
+        const result = await openTerminalSession({
+            user: req.user,
+            businessContext: req.body?.businessContext || req.body?.business_context,
+            routeOptionId: routeOptionIdFromRequest(req)
+        });
+        return res.status(201).json({ success: true, ...result });
+    } catch (error) {
+        const response = terminalErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/terminal/sessions/:sessionId', async (req, res) => {
+    try {
+        const result = await getTerminalSession({
+            user: req.user,
+            sessionId: req.params.sessionId
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = terminalErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/terminal/sessions/:sessionId/cashiers', async (req, res) => {
+    try {
+        const result = await listTerminalCashiers({
+            user: req.user,
+            sessionId: req.params.sessionId
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = terminalErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/terminal/sessions/:sessionId/cashier-login', async (req, res) => {
+    try {
+        const result = await loginTerminalCashier({
+            user: req.user,
+            sessionId: req.params.sessionId,
+            bindingId: req.body?.bindingId || req.body?.binding_id,
+            actionPin: req.body?.actionPin || req.body?.action_pin
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = terminalErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/terminal/sessions/:sessionId/lock', async (req, res) => {
+    try {
+        const result = await lockTerminalSession({
+            user: req.user,
+            sessionId: req.params.sessionId,
+            expectedVersion: sessionVersionFromRequest(req)
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = terminalErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/terminal/sessions/:sessionId/end', async (req, res) => {
+    try {
+        const result = await endTerminalSession({
+            user: req.user,
+            sessionId: req.params.sessionId,
+            expectedVersion: sessionVersionFromRequest(req)
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = terminalErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
 router.get('/catalog/cashiers', requireAction('payments.create'), async (req, res) => {
     try {
         assertNoClientFiscalRouteOverride(req.query || {});
@@ -804,14 +922,16 @@ router.get('/orders/:orderId', requireAction('payments.view'), async (req, res) 
     }
 });
 
-router.post('/orders/:orderId/confirm', requireAction('payments.confirm_received'), async (req, res) => {
+router.post('/orders/:orderId/confirm', requireActionOrTerminal('payments.confirm_received'), async (req, res) => {
     try {
+        const terminalSession = await terminalSessionForMutation(req, 'payments.confirm_received');
         const result = await confirmPaymentOrder({
             user: req.user,
             orderId: req.params.orderId,
             body: req.body || {},
             idempotencyKey: idempotencyKeyFromRequest(req),
-            requireCheckboxIntegrationReady: true
+            requireCheckboxIntegrationReady: true,
+            terminalSession
         });
         return res.status(200).json({
             success: true,
@@ -823,12 +943,14 @@ router.post('/orders/:orderId/confirm', requireAction('payments.confirm_received
     }
 });
 
-router.post('/orders/:orderId/cancel', requireAction('payments.create'), async (req, res) => {
+router.post('/orders/:orderId/cancel', requireActionOrTerminal('payments.create'), async (req, res) => {
     try {
+        const terminalSession = await terminalSessionForMutation(req, 'payments.create');
         const result = await cancelDraftPaymentOrder({
             user: req.user,
             orderId: req.params.orderId,
-            idempotencyKey: idempotencyKeyFromRequest(req)
+            idempotencyKey: idempotencyKeyFromRequest(req),
+            terminalSession
         });
         return res.status(200).json({
             success: true,

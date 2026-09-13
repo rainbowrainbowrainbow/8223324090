@@ -35,7 +35,7 @@ test('Design Board exposes Style Guide as an internal child entry', () => {
     const dom = new JSDOM(DESIGNS_HTML);
     const entry = dom.window.document.getElementById('designGuideEntry');
     assert.ok(entry);
-    assert.equal(entry.getAttribute('data-page-access'), '/designer');
+    assert.equal(entry.getAttribute('data-page-access'), '/designs');
     assert.equal(entry.querySelector('a')?.getAttribute('href'), '/designer#styleguide');
     assert.match(entry.textContent, /Гайдбук і стайлгайд/);
     assert.match(entry.textContent, /3 SVG шаблони/);

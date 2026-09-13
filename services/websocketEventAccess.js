@@ -7,6 +7,8 @@ const { resolveCapability } = require('./accountAccessPolicy');
 const { canViewBooking } = require('./bookingVisibility');
 const { buildTaskVisibilityScope } = require('./taskPolicy');
 const { legacyBusinessSurfaceAccess } = require('./legacyBusinessSurface');
+const { recordCompatibilityTelemetrySafe } = require('./businessCutover');
+const { createLogger } = require('../utils/logger');
 
 const TASK_EVENTS = new Set(['task:assigned', 'task:schedule_changed', 'task:slot_missed']);
 const CHAT_EVENTS = new Set([
@@ -19,6 +21,7 @@ const CHAT_EVENTS = new Set([
 const PRESENCE_EVENTS = new Set(['user:online', 'user:offline', 'user:status']);
 const ACCOUNT_TRANSCRIPT_EVENTS = new Set(['kleshnya:thinking', 'kleshnya:reply', 'kleshnya:media']);
 const BUSINESS_EVENTS = new Set(['omni:message', 'omni:conversation']);
+const log = createLogger('WebSocketBusinessAccess');
 
 function positiveId(value) {
     if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value))) return null;
@@ -32,6 +35,20 @@ function explicitContext(value) {
     if (!raw || normalizeBusinessScopeMode(raw) !== BUSINESS_SCOPE_SINGLE) return null;
     if (!normalizeKnownBusinessContext(raw) && !/^[a-z][a-z0-9_]{2,63}$/.test(raw)) return null;
     return normalizeBusinessContext(raw);
+}
+
+function telemetryBusinessContext(values = []) {
+    const context = matchingContexts(values);
+    return context || 'unknown';
+}
+
+function recordWebSocketTelemetry(businessContext, allowed) {
+    recordCompatibilityTelemetrySafe(pool, {
+        businessContext,
+        entryFamily: 'websocket',
+        authoritySource: businessContext === 'unknown' ? 'unknown' : 'membership',
+        outcome: allowed ? 'allowed' : 'denied'
+    }, log);
 }
 
 function matchingContexts(values) {
@@ -154,7 +171,7 @@ async function canReceiveAttendance(freshUser, data, options) {
     return Boolean(user && resolveCapability(user, 'hr.today.view', { type: 'action' }).allowed);
 }
 
-async function canReceiveEvent(freshUser, eventType, data = {}, options = {}) {
+async function canReceiveEventDecision(freshUser, eventType, data = {}, options = {}) {
     if (!positiveId(freshUser?.id) || freshUser.is_active === false || !data || typeof data !== 'object') return false;
     // These events must pass the specialized timeline audience/visibility path.
     if (/^(booking:|line:|banquet:)/.test(eventType) || eventType === 'timeline:roster-updated') return false;
@@ -177,6 +194,17 @@ async function canReceiveEvent(freshUser, eventType, data = {}, options = {}) {
             && (!options.page || resolveCapability(user, options.page, { type: 'page' }).allowed));
     }
     return false;
+}
+
+async function canReceiveEvent(freshUser, eventType, data = {}, options = {}) {
+    const businessContext = telemetryBusinessContext([
+        options.businessContext, options.business_context, data.businessContext, data.business_context,
+        data.task?.businessContext, data.task?.business_context, data.hrTimeRecord?.businessContext, data.hrTimeRecord?.business_context,
+        data.meta?.businessContext
+    ]);
+    const allowed = await canReceiveEventDecision(freshUser, eventType, data, options);
+    recordWebSocketTelemetry(businessContext, allowed);
+    return allowed;
 }
 
 module.exports = { loadBusinessEventUser, canReceiveEvent };

@@ -204,6 +204,54 @@ test('data-fix needs bounded metadata and rejects protected real-data scope', ()
     assert.equal(unsafe.red, true);
 });
 
+
+
+test('SYS-MB protected workflow permits only its exact auth cutover Red surface', () => {
+    const value = manifest({ protectedWorkflow: 'sys-mb-auth-cutover' }, {
+        changedPaths: [
+            'middleware/auth.js',
+            'routes/organizations.js',
+            'routes/finance.js',
+            'routes/payroll.js',
+            'services/businessCutover.js',
+            'db/migrations/364_catalog_ownership_markers.sql',
+            'docs/workstreams/sys-multibusiness/recovery-02/IMPLEMENTATION_RECOVERY_REPORT.md'
+        ],
+        migrations: [{
+            file: 'db/migrations/364_catalog_ownership_markers.sql',
+            sql: '-- MIGRATION_KIND: schema\n-- SAFETY: additive catalog ownership markers\n-- ROLLBACK: leave additive columns unused\nALTER TABLE catalog_definitions ADD COLUMN IF NOT EXISTS business_context TEXT;'
+        }]
+    });
+    assert.equal(value.allowedProtectedWorkflow.kind, 'sys-mb-auth-cutover');
+    assert.deepEqual(value.allowedProtectedWorkflow.protectedChangedPaths, [
+        'db/migrations/364_catalog_ownership_markers.sql',
+        'docs/workstreams/sys-multibusiness/recovery-02/IMPLEMENTATION_RECOVERY_REPORT.md',
+        'middleware/auth.js',
+        'routes/finance.js',
+        'routes/organizations.js',
+        'routes/payroll.js',
+        'services/businessCutover.js'
+    ]);
+    assert.doesNotThrow(() => validateManifest(value));
+    assert.match(warningText(value), /Protected workflow: sys-mb-auth-cutover/);
+});
+
+test('SYS-MB protected workflow does not permit unrelated Red production paths', () => {
+    assert.throws(() => manifest({ protectedWorkflow: 'sys-mb-auth-cutover' }, {
+        changedPaths: ['middleware/auth.js', 'routes/payments.js']
+    }), error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    assert.throws(() => manifest({ protectedWorkflow: 'unknown' }, {
+        changedPaths: ['middleware/auth.js']
+    }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+});
+
+test('protected workflow parsing is explicit and disabled by default', () => {
+    assert.equal(parseOptions(['prepare', '--protected-workflow', 'sys-mb-auth-cutover']).protectedWorkflow, 'sys-mb-auth-cutover');
+    assert.equal(parseOptions(['prepare']).protectedWorkflow, 'none');
+    assert.throws(() => manifest({}, { changedPaths: ['middleware/auth.js'] }),
+        error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+});
+
 test('attempt budget stops execution before orchestration', async t => {
     const value = manifest({ maxReleaseAttempts: 1 });
     value.runtimeState.releaseAttempts = 1;

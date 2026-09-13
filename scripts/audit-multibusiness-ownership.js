@@ -81,7 +81,8 @@ async function runOwnershipPreflight(pool) {
             throw auditError('AUDIT_READONLY_SNAPSHOT_REQUIRED');
         }
         const metadata = await client.query(`
-            SELECT c.relname AS table_name, a.attname AS column_name, c.relrowsecurity AS row_security
+            SELECT c.relname AS table_name, a.attname AS column_name, c.relrowsecurity AS row_security,
+                has_table_privilege(c.oid, 'SELECT') AS can_select
             FROM pg_catalog.pg_class c
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
@@ -90,9 +91,11 @@ async function runOwnershipPreflight(pool) {
         `, [TABLES]);
         const columns = new Map(TABLES.map(name => [name, new Set()]));
         const rowSecurityTables = new Set();
+        const unreadableTables = new Set();
         for (const row of metadata.rows) {
             columns.get(row.table_name)?.add(row.column_name);
             if (columns.has(row.table_name) && row.row_security === true) rowSecurityTables.add(row.table_name);
+            if (columns.has(row.table_name) && row.can_select !== true) unreadableTables.add(row.table_name);
         }
         const has = (name, ...required) => columns.get(name)?.size > 0
             && required.every(column => columns.get(name).has(column));
@@ -113,9 +116,14 @@ async function runOwnershipPreflight(pool) {
         };
         function incomplete(reason) {
             if (!report.collectionIssues.includes(reason)) report.collectionIssues.push(reason);
-            report.collectionStatus = report.collectionIssues.includes('ROW_SECURITY') ? 'INCOMPLETE_VISIBILITY' : 'INCOMPLETE_SCHEMA';
+            report.collectionStatus = report.collectionIssues.some(issue => ['ROW_SECURITY', 'SELECT_PERMISSION_REQUIRED'].includes(issue)) ? 'INCOMPLETE_VISIBILITY' : 'INCOMPLETE_SCHEMA';
         }
         async function observe(id, requirements, sql) {
+            if (requirements.some(([name]) => unreadableTables.has(name))) {
+                report.relationships[id] = { status: 'NOT_CHECKED_SELECT_PERMISSION', counts: null };
+                incomplete('SELECT_PERMISSION_REQUIRED');
+                return;
+            }
             if (requirements.some(([name]) => rowSecurityTables.has(name))) {
                 report.relationships[id] = { status: 'NOT_CHECKED_ROW_SECURITY', counts: null };
                 incomplete('ROW_SECURITY');
@@ -138,6 +146,12 @@ async function runOwnershipPreflight(pool) {
                 continue;
             }
             const ownerColumns = OWNER_COLUMNS.filter(column => has(name, column));
+            if (unreadableTables.has(name)) {
+                report.tables[name] = { status: 'NOT_CHECKED_SELECT_PERMISSION', totalRows: null,
+                    ownershipColumns: ownerColumns, missingOwnerRows: {} };
+                incomplete('SELECT_PERMISSION_REQUIRED');
+                continue;
+            }
             if (rowSecurityTables.has(name)) {
                 report.tables[name] = { status: 'NOT_CHECKED_ROW_SECURITY', totalRows: null,
                     ownershipColumns: ownerColumns, missingOwnerRows: {} };

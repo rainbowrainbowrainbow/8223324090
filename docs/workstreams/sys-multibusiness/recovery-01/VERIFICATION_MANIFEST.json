@@ -1,0 +1,217 @@
+{
+  "task": "SYS-MB-RECOVER-01",
+  "status": "TECHNICAL_COLLECTION_COMPLETE_BUSINESS_DECISIONS_PENDING",
+  "generatedAt": "2026-09-13T13:15:17.502Z",
+  "baseCommit": "827b7ab4d0a9fa50a04dcb7c93d4392513c50f81",
+  "liveCommit": "4214598e263057b1cb1524d7fb84f328031d288d",
+  "branch": "codex/sys-mb-recover-01-20260913",
+  "production": {
+    "operationalWrites": 0,
+    "privilegeChanges": {
+      "grantSelectTables": 4,
+      "revokeSelectTables": 4
+    },
+    "leaseStatus": "RETIRED",
+    "startedAt": "2026-09-13T13:03:31.9899547Z",
+    "finishedAt": "2026-09-13T13:03:54.4568710Z",
+    "originalAclRestored": true,
+    "approvedLeaseScriptSha256": "a25319ede24aa4884ff6c777370efc6a4f26e184eb3cbcfac73d8baa14999af3",
+    "approvalRef": "SYS-MB-AUDIT-READ-GRANTS:user:ок дозволяю працюй:2026-09-13",
+    "push": false,
+    "deploy": false,
+    "bootstrap": false,
+    "ownerMappingApply": false
+  },
+  "currentTests": {
+    "unitPolicy": {
+      "passed": 9,
+      "failed": 0,
+      "command": "node --test tests/sys-mb-recovery-review.test.js docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.test.cjs"
+    },
+    "postgresCutover": {
+      "passed": 10,
+      "failed": 0,
+      "command": "WSL SYS_MB_CUTOVER_LOCAL_TEST=true node docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.postgres.test.cjs",
+      "fixtureCleanup": "PASS"
+    },
+    "registryCollector": "PASS_REAL_READONLY_PRODUCTION_SNAPSHOT",
+    "liveHttpDomainJwtQa": "NOT_TESTED_NO_ACTIVITY_WRITES",
+    "diffCheck": "PASS"
+  },
+  "priorStageTests": {
+    "manifest": "docs/workstreams/sys-multibusiness/recovery-01/VERIFICATION_MANIFEST_PRE_GRANT.json",
+    "sha256": "6defea68d836f8e8cfe2928dd58ea17b171a1baa9cd5c886f6a11d69f2a12e26",
+    "passed": 25,
+    "rerunThisTurn": false
+  },
+  "limitations": [
+    "Business mapping/publication/account-purpose decisions remain unapproved.",
+    "104 rows are exact-live-source pure-policy calculations on real DB snapshot, not browser or HTTP authorization PASS.",
+    "Public assets complete consumer graph and job/provider bindings belong to RECOVER-02; no ownership inferred.",
+    "Raw cutover collector JSON retains original 48/49 observations; independent same-lease ownership counts cover 72 blobs; COUNT/id bug subsequently fixed and tested locally."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/workstreams/sys-multibusiness/RECOVERY_TASKS_GPT55.md",
+      "sha256": "0b9f25178ec8601395bd4e0a36ac0faf8134c84d5d3a78a976478826590ee67a"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/ACCESS_SETUP_EVIDENCE.md",
+      "sha256": "9ca40c3b61cc78d15ac497645f3af438ff0d772a2c56aa2cc59d1a67b686bf3a"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/AUDIT_READ_GRANT_BLOCK.md",
+      "sha256": "2c0960964d7162f0180b34735724ba7cd240274fdd4385f92a3e35d35ea7e896"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/OWNER_DECISIONS_REVIEW.md",
+      "sha256": "e25665e598633d7f8aed22432d9407a74820bd01acfdd6df62eb216414fa884d"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/PUBLIC_ASSETS_JOBS_REVIEW.md",
+      "sha256": "807014e1a3ffbcfc6d371069c336bbfd988bc48da25698575acb368f937e1b3d"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/VERIFICATION_MANIFEST_PRE_GRANT.json",
+      "sha256": "6defea68d836f8e8cfe2928dd58ea17b171a1baa9cd5c886f6a11d69f2a12e26"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/access-review-summary.json",
+      "sha256": "16aada20ef5748aca79b05880d78606ab408c2931b062589f89d83252f486f5a"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/audit-source-after-retirement.json",
+      "sha256": "6f76fa30ec46e9d9cc2d393c33e6cfd67f963473b8387d57f328457022c0cf28"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/audit-source.json",
+      "sha256": "1d0bb3e76c4c35fb16d5e89a85b8f8001c31cb8aa4c7a331843295ab878d9009"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/draft-summary.json",
+      "sha256": "b589b8e187bacb244286e0ec229defb6078b785a677b88452ab6e71d701c6450"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/legacy-consumers-summary.json",
+      "sha256": "c44beb5de5ee440f0f6e138393c16ec0792fc9d0aa8ae7426ec0e43d4126bf69"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/live-version.json",
+      "sha256": "0f3befd8a8464619e9b9d3d6667e8d68a4d5dbcf6ddc5f8c2270e1c3008be673"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/ownership-preflight-with-registry.json",
+      "sha256": "4906ab6e79fe46fa2b628382736ebacdc815afda3186f1432559f27f16f2e95f"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/ownership-preflight.json",
+      "sha256": "21350047d796098a602dc676f08505ab2ee1d619be4993298297c9cd1acb79e9"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/preflight-crm-with-registry.json",
+      "sha256": "18d5032bfc75de95de24f2701425770aae6b94093d037243a6a075472fee5d88"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/preflight-crm.json",
+      "sha256": "2c06435b0325e64427d6ec13f535c431863bf53c04f7cf77107c47de1e4cf79b"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/preflight-maysternya_doli-with-registry.json",
+      "sha256": "f419e60b1b380abef9ee7906bc1f3d830d633f28f0fda49eebb339c1bcb55efb"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/preflight-maysternya_doli.json",
+      "sha256": "9c9a34550618db0b0cfdbd3659f4902086c067b5382bf21d8ed6c929f217db37"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/read-lease-execution.json",
+      "sha256": "c4a23a425c01e5e1086d7ca5c658d3eb7b51e02774931ee2bbbe759aa4958794"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/read-lease-plan.json",
+      "sha256": "6481987b4fcb7ab5eb81e6d62dbf95aec008560ed8b3929743a6a02a8f7d45bd"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/read-lease-retired-plan.json",
+      "sha256": "6481987b4fcb7ab5eb81e6d62dbf95aec008560ed8b3929743a6a02a8f7d45bd"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/recovery-01/registry-summary.json",
+      "sha256": "9186741f63cdea53b303c1293e29bebee636a33fa479063bca78d31f0a916332"
+    },
+    {
+      "path": "scripts/sys-mb-audit-access.cjs",
+      "sha256": "1e0a5a8f4e94f3007df89c8757066f1030f1590572fd5ceff1c55603730778d2"
+    },
+    {
+      "path": "scripts/sys-mb-audit-read-lease.cjs",
+      "sha256": "a25319ede24aa4884ff6c777370efc6a4f26e184eb3cbcfac73d8baa14999af3"
+    },
+    {
+      "path": "scripts/sys-mb-recovery-draft.cjs",
+      "sha256": "3fbb24054e83b782642c7290dd55d988066c43f5e99adec622726fa33a7676fb"
+    },
+    {
+      "path": "scripts/sys-mb-recovery-review.cjs",
+      "sha256": "dfa2dc84c65ea4c76ba8447e62008d43680126b0c9e1666fd839df94a4480781"
+    },
+    {
+      "path": "scripts/sys-mb-registry-snapshot.cjs",
+      "sha256": "08c53c330e5bc73d7b7bf108a2710fdd99ec8beebb9bc88902838d49a8b79f43"
+    },
+    {
+      "path": "tests/integration/sys-mb-audit-read-lease-postgres.test.js",
+      "sha256": "d007692ec76f310db4ff09ba029cbe9fbe15176c1ea7340f4d79c8165e550c44"
+    },
+    {
+      "path": "tests/sys-mb-recovery-audit.test.js",
+      "sha256": "55800f2d498bf99257dc9c576fe8ade819db009c789c6c5017b3f57cbe14eaf2"
+    },
+    {
+      "path": "tests/sys-mb-recovery-review.test.js",
+      "sha256": "1e577b9416bb243e5b563fb2c9dc12cc106e8d948117eac8b1fd59b7e6de2274"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.cjs",
+      "sha256": "e8d9f6ad7f9f20e1d5ed856877cb4476a1e4ac24e711ab79a8c16cca5ea6ac73"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.postgres.test.cjs",
+      "sha256": "b961a509be70f9803e4b6c9f30767e007a4c2418d97b91be037854dd03e8baf8"
+    },
+    {
+      "path": "scripts/audit-multibusiness-ownership.js",
+      "sha256": "aebfd16c40d65f73854931ec95eeae3ead31e9090c1879fd3bf438076febbdc3"
+    },
+    {
+      "path": "tests/multibusiness-ownership-preflight.test.js",
+      "sha256": "981320c8f1b6f8ab8f7bb91d44a1b772123f21a1f62af719a40cf0a4ca301ae6"
+    }
+  ],
+  "privateArtifacts": [
+    {
+      "path": "C:/Users/Plotva/.eventgenix/sys-mb-recover-01-20260913/draft-mapping.json",
+      "sha256": "bad7a4573179ae19859edf5db402cb1734d0b477989a30dcdf7f8067e7413705"
+    },
+    {
+      "path": "C:/Users/Plotva/.eventgenix/sys-mb-recover-01-20260913/legacy-consumers-snapshot.json",
+      "sha256": "d53640d3b741a1bc868bd622a101c641a4345d4774c8eaccfd797d91d66fe5d4"
+    },
+    {
+      "path": "C:/Users/Plotva/.eventgenix/sys-mb-recover-01-20260913/OWNER_DECISIONS_REVIEW_PRIVATE.md",
+      "sha256": "a630f1c62d154affb5a3751f9456c7186d870a66b7bbcb0759eab971d404dc0c"
+    },
+    {
+      "path": "C:/Users/Plotva/.eventgenix/sys-mb-recover-01-20260913/read-lease-receipt.json",
+      "sha256": "26819207a2b5306047b6ee8908c6f494aac2fa145e496fa8e7be59a067c20b0b"
+    },
+    {
+      "path": "C:/Users/Plotva/.eventgenix/sys-mb-recover-01-20260913/registry-snapshot.json",
+      "sha256": "769d1228d2d9fe4084ed85cb3edf221fd9d050077072a0f75e1c00ef9b9a02bc"
+    },
+    {
+      "path": "C:/Users/Plotva/.eventgenix/sys-mb-recover-01-20260913/reviewed-draft-mapping.json",
+      "sha256": "1df6b52a1e67449177c25e8a8af89750601eb3d0626efd6a84033779938aab9f"
+    }
+  ]
+}

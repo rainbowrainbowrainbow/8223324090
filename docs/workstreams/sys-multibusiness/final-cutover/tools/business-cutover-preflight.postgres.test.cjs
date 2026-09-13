@@ -84,10 +84,10 @@ test('cutover preflight: disposable local PostgreSQL, counts only, explicit roll
                 action_denylist TEXT[] DEFAULT '{}',business_contexts TEXT[] DEFAULT '{}',default_business_context TEXT,is_active BOOLEAN);
             CREATE TABLE organization_memberships (organization_id INTEGER,user_id INTEGER,role TEXT,is_active BOOLEAN);
             CREATE TABLE business_memberships (business_id INTEGER,organization_id INTEGER,user_id INTEGER,is_active BOOLEAN,is_default BOOLEAN);
-            CREATE TABLE schema_migrations (filename TEXT);
+            CREATE TABLE schema_migrations (version TEXT);
             CREATE TABLE settings (key TEXT,value JSONB);`);
         for (const name of DOMAINS.filter(name => name !== 'products')) await pool.query(`CREATE TABLE public."${name}" (id TEXT PRIMARY KEY,business_context TEXT)`);
-        for (const name of LEGACY_ROOTS) await pool.query(`CREATE TABLE public."${name}" (id TEXT PRIMARY KEY)`);
+        for (const name of LEGACY_ROOTS) await pool.query(`CREATE TABLE public."${name}" (${name === 'catalog_image_blobs' ? 'filename' : 'id'} TEXT PRIMARY KEY)`);
         for (const [, child, fk] of EDGES) await pool.query(`ALTER TABLE public."${child}" ADD COLUMN IF NOT EXISTS "${fk}" TEXT`);
         await pool.query(`INSERT INTO organizations VALUES (1,'active'),(2,'inactive');
             INSERT INTO businesses VALUES (1,1,'maysternya_doli','active','compatibility','["timeline","programs","chat","SECRET_MODULE"]'),

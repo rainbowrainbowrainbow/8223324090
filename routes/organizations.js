@@ -7,7 +7,7 @@ const { businessContextCatalog } = require('../services/businessContext');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const lifecycle = require('../services/organizationLifecycle');
 const { lockOrganizationOwnership } = require('../services/organizationOwnership');
-const { prepareReservedCutover } = require('../services/businessCutover');
+const { applyReservedCutover, prepareReservedCutover } = require('../services/businessCutover');
 
 function text(value, max = 160) {
     return String(value || '').trim().slice(0, max);
@@ -154,6 +154,15 @@ router.post('/cutovers/prepare', requireAction('manage_accounts'), async (req, r
         const cutover = await prepareReservedCutover(pool, req.user, req.body || {});
         res.status(cutover.replay ? 200 : 201).json({ success: true, cutover });
     } catch (error) { lifecycleError(res, error, 'cutover_prepare_failed'); }
+});
+
+// Red-scope operational cutover. The endpoint is inert without an approved,
+// hash-bound mapping body and a matching journal/source fingerprint.
+router.post('/cutovers/apply', requireAction('manage_accounts'), async (req, res) => {
+    try {
+        const cutover = await applyReservedCutover(pool, req.user, req.body || {});
+        res.status(cutover.replay ? 200 : 201).json({ success: true, cutover });
+    } catch (error) { lifecycleError(res, error, 'cutover_apply_failed'); }
 });
 
 router.post('/:organizationId/businesses', async (req, res) => {

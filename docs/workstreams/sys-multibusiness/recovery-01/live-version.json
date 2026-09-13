@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "version": "0.81.153",
+  "releaseLabel": "Рішення щодо legacy-матеріалів Design Board",
+  "name": "Event Genix",
+  "testMode": false,
+  "commitSha": "4214598e263057b1cb1524d7fb84f328031d288d",
+  "sourceBranch": "codex/eventgenix-production",
+  "deploymentMetadata": {
+    "status": "manifest",
+    "complete": true,
+    "commitShaSource": "DEPLOYMENT_MANIFEST",
+    "sourceBranchSource": "DEPLOYMENT_MANIFEST",
+    "invalidSources": [],
+    "warnings": []
+  }
+}

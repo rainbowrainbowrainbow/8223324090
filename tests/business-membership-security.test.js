@@ -358,6 +358,28 @@ test('role and override changes apply on the next request without stale JWT or a
     assert.deepEqual(park.req.user.pageDenylist, []);
 });
 
+test('Maysternya page access comes from active MD membership roles, not platform creator fallback', async t => {
+    const f = fixture(t, {
+        memberships: [
+            member('event_genix', { role: 'director' }),
+            member('maysternya_doli', { role: 'manager', business_id: 13, business_modules: ['timeline'] })
+        ],
+        registry: [registeredBusiness(), registeredBusiness('maysternya_doli', { business_id: 13 })]
+    });
+    const md = await f.request({ query: { businessContext: 'maysternya_doli' } });
+    assert.equal(md.status, 200);
+    assert.equal(md.req.user.role, 'manager');
+    assert.equal(resolveCapability(md.req.user, '/maysternya-doli', { type: 'page' }).allowed, true);
+    const park = await f.request({ query: { businessContext: 'event_genix' } });
+    assert.equal(park.status, 200);
+    assert.equal(park.req.user.role, 'director');
+    assert.equal(resolveCapability(park.req.user, '/maysternya-doli', { type: 'page' }).allowed, false);
+    f.state.memberships = [member('event_genix', { role: 'creator' })];
+    const noMd = await f.request({ query: { businessContext: 'maysternya_doli' } });
+    assert.equal(noMd.status, 403);
+    assert.equal(noMd.body.code, 'business_context_unavailable');
+});
+
 test('omitted context resolves the database membership default for both request role and scope', async t => {
     const f = fixture(t, {
         memberships: [member('event_genix', { is_default: false }), member('dar', { is_default: true, role: 'accountant' })]

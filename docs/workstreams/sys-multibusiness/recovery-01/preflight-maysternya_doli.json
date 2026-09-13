@@ -1,0 +1,430 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-13T12:52:19.723Z",
+  "context": "maysternya_doli",
+  "source": "OPERATOR_SELECTED_DATABASE_NOT_INDEPENDENTLY_ATTESTED",
+  "status": "HOLD_REVIEW_REQUIRED",
+  "readOnly": true,
+  "isolation": "repeatable read",
+  "safeToApply": false,
+  "authorizationVerified": false,
+  "ownershipEstablished": false,
+  "collectionStatus": "INCOMPLETE",
+  "collectionIssues": [
+    "SELECT_PERMISSION_REQUIRED",
+    "MISSING_SCHEMA"
+  ],
+  "limits": {
+    "users": 10000,
+    "accessRowBytes": 16384,
+    "accessTotalBytes": 8388608,
+    "totalMs": 60000,
+    "statementMs": 10000,
+    "lockMs": 1000
+  },
+  "registry": {
+    "status": "NOT_COLLECTED",
+    "reason": "SELECT_PERMISSION_REQUIRED",
+    "counts": null
+  },
+  "modules": {
+    "status": "NOT_COLLECTED",
+    "reason": "SELECT_PERMISSION_REQUIRED",
+    "counts": null
+  },
+  "memberships": {
+    "status": "NOT_COLLECTED",
+    "reason": "SELECT_PERMISSION_REQUIRED",
+    "counts": null
+  },
+  "defaults": {
+    "status": "NOT_COLLECTED",
+    "reason": "SELECT_PERMISSION_REQUIRED",
+    "counts": null
+  },
+  "legacyCohort": {
+    "status": "OBSERVED",
+    "counts": {
+      "activeUsersExamined": 26,
+      "legacyPotentialCohortUsers": 3,
+      "explicitAssignmentUsers": 4,
+      "unassignedRoleFallbackUsers": 0,
+      "legacyDefaultSelectsBusinessUsers": 0,
+      "globalExplicitDefaultOutsideLegacyAllowedUsers": 0,
+      "aliasAssignmentUsers": 0,
+      "aliasDefaultUsers": 0,
+      "cohortWithExtraRolesUsers": 0,
+      "cohortWithAccessOverridesUsers": 1
+    }
+  },
+  "schema": {
+    "status": "OBSERVED",
+    "counts": {
+      "membershipSchemaApplied": 1,
+      "cutoverJournalSchemaApplied": 0
+    }
+  },
+  "cabinet": {
+    "status": "OBSERVED",
+    "counts": {
+      "businessCabinetRows": 0,
+      "timelineDisplayRows": 0,
+      "timelineResourcesRows": 0
+    }
+  },
+  "domains": {
+    "bookings": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 14,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 1801
+      }
+    },
+    "customers": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 8,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 121
+      }
+    },
+    "leads": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 8,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 72
+      }
+    },
+    "lead_customer_links": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 5,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 72
+      }
+    },
+    "tasks": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 6,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 3150
+      }
+    },
+    "products": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 2,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 181
+      }
+    },
+    "timeline_resources": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 1,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 21
+      }
+    },
+    "finance_transactions": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 206
+      }
+    },
+    "finance_accounts": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 4,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 12
+      }
+    },
+    "finance_categories": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 12,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 36
+      }
+    },
+    "warehouse_stock": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 3
+      }
+    },
+    "warehouse_locations": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 6
+      }
+    },
+    "warehouse_history": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 3
+      }
+    },
+    "warehouse_stock_movements": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 2
+      }
+    },
+    "graduation_settings": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 5
+      }
+    },
+    "graduation_services": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 25
+      }
+    },
+    "graduation_packages": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 7
+      }
+    },
+    "graduation_package_items": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 30
+      }
+    },
+    "graduation_quotes": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 6
+      }
+    },
+    "graduation_child_packs": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 4
+      }
+    },
+    "graduation_children": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 17
+      }
+    },
+    "graduation_diploma_templates": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 1
+      }
+    },
+    "graduation_diploma_exports": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 13
+      }
+    },
+    "graduation_automation_state": {
+      "status": "OBSERVED",
+      "counts": {
+        "requestedBusinessRows": 0,
+        "globalUnattributedRows": 0,
+        "otherContextRows": 6
+      }
+    }
+  },
+  "legacyRoots": {
+    "catalog_definitions": {
+      "status": "OBSERVED",
+      "counts": {
+        "rows": 9
+      }
+    },
+    "catalog_subcategories": {
+      "status": "OBSERVED",
+      "counts": {
+        "rows": 10
+      }
+    },
+    "catalog_items": {
+      "status": "OBSERVED",
+      "counts": {
+        "rows": 8
+      }
+    },
+    "catalog_pages": {
+      "status": "OBSERVED",
+      "counts": {
+        "rows": 17
+      }
+    },
+    "catalog_automations": {
+      "status": "OBSERVED",
+      "counts": {
+        "rows": 0
+      }
+    },
+    "catalog_page_history": {
+      "status": "OBSERVED",
+      "counts": {
+        "rows": 9
+      }
+    },
+    "booking_templates": {
+      "status": "OBSERVED",
+      "counts": {
+        "rows": 0
+      }
+    },
+    "recurring_templates": {
+      "status": "OBSERVED",
+      "counts": {
+        "rows": 0
+      }
+    },
+    "recurring_booking_skips": {
+      "status": "OBSERVED",
+      "counts": {
+        "rows": 0
+      }
+    },
+    "catalog_image_blobs": {
+      "status": "NOT_COLLECTED",
+      "reason": "MISSING_SCHEMA",
+      "counts": null
+    },
+    "hermes_jobs": {
+      "status": "OBSERVED",
+      "counts": {
+        "rows": 5
+      }
+    }
+  },
+  "relationships": {
+    "booking_product": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 13,
+        "missingParentRows": 11,
+        "unattributedParentRows": 0,
+        "foreignContextParentRows": 0
+      }
+    },
+    "lead_product": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 4,
+        "missingParentRows": 4,
+        "unattributedParentRows": 0,
+        "foreignContextParentRows": 0
+      }
+    },
+    "booking_customer": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 13,
+        "missingParentRows": 0,
+        "unattributedParentRows": 0,
+        "foreignContextParentRows": 0
+      }
+    },
+    "customer_lead": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 5,
+        "missingParentRows": 0,
+        "unattributedParentRows": 0,
+        "foreignContextParentRows": 0
+      }
+    },
+    "lead_booking": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 4,
+        "missingParentRows": 0,
+        "unattributedParentRows": 0,
+        "foreignContextParentRows": 0
+      }
+    },
+    "lead_link_lead": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 5,
+        "missingParentRows": 0,
+        "unattributedParentRows": 0,
+        "foreignContextParentRows": 0
+      }
+    },
+    "lead_link_customer": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 5,
+        "missingParentRows": 0,
+        "unattributedParentRows": 0,
+        "foreignContextParentRows": 0
+      }
+    }
+  },
+  "notCovered": [
+    "complete_page_action_permission_equivalence",
+    "all_foreign_edges_and_embedded_json",
+    "complete_dangling_owner_and_membership_inventory",
+    "source_deployment_attestation",
+    "HR_payroll_certificates_Art_ownership",
+    "provider_and_public_token_bindings",
+    "job_retry_replay_ingress",
+    "durable_compatibility_usage_telemetry",
+    "reviewed_entity_or_membership_mapping",
+    "live_access_denial_QA"
+  ],
+  "limitations": [
+    "Legacy cohort uses the current pure global-role helper without membership overlay; it is potential legacy access, not a grant or current successful request count.",
+    "NULL/empty owner counts are global unattributed observations; they are never assigned to the requested business.",
+    "Missing MD product references can be intentional compatibility external codes; no product or owner is inferred.",
+    "Module catalog status is a source declaration, not proof of route or integration containment.",
+    "COMPLETE_FOR_DECLARED_SCOPE is collection completeness only. This tool cannot establish cutover readiness or zero compatibility usage."
+  ],
+  "rollbackVerified": true,
+  "coverage": {
+    "declaredObservations": 49,
+    "observed": 44,
+    "notCollected": 5,
+    "ownedTables": 24,
+    "legacyOwnershipRoots": 11,
+    "foreignEdges": 7,
+    "fullCutoverInventoryCovered": false
+  }
+}

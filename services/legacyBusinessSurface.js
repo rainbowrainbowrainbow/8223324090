@@ -1,6 +1,8 @@
 'use strict';
 
 const { BUSINESS_SCOPE_SINGLE, DEFAULT_BUSINESS_CONTEXT, resolveBusinessScope } = require('./businessContext');
+const { userBusinessModuleState } = require('./businessModuleRegistry');
+const { recordCompatibilityTelemetrySafe } = require('./businessCutover');
 
 const SURFACES = Object.freeze({
     catalogs: { code: 'catalogs_not_migrated', label: 'Спільні каталоги' },
@@ -29,6 +31,15 @@ function available() {
     return { available: true, status: 200, code: null, message: null };
 }
 
+function legacyTelemetry(db, businessContext, authoritySource, outcome) {
+    recordCompatibilityTelemetrySafe(db, {
+        businessContext: typeof businessContext === 'string' && businessContext.trim() ? businessContext.trim().toLowerCase() : 'unknown',
+        entryFamily: 'service',
+        authoritySource,
+        outcome
+    });
+}
+
 function legacyBusinessSurfaceAccess(req, surface = 'catalogs') {
     const denied = unavailable(surface);
     if (!req?.user) return { available: false, status: 401, code: 'auth_required', message: 'Потрібна авторизація.' };
@@ -40,7 +51,12 @@ function legacyBusinessSurfaceAccess(req, surface = 'catalogs') {
     // Only a server-resolved pre-cutover Park request may keep legacy behavior.
     // A different compatible context or revoked membership cannot restore this namespace.
     if (scope.mode !== BUSINESS_SCOPE_SINGLE || scope.activeContext !== DEFAULT_BUSINESS_CONTEXT
-        || !access || access.membershipEnabled !== false || access.invalid
+        || !access || access.invalid) return denied;
+    if (surface === 'catalogs' && access.membershipEnabled === true) {
+        const moduleState = userBusinessModuleState(req.user, DEFAULT_BUSINESS_CONTEXT, 'catalogs');
+        return moduleState.available ? available() : denied;
+    }
+    if (access.membershipEnabled !== false
         || (business && (business.accessMode !== 'compatibility' || business.active !== true))) return denied;
     return available();
 }
@@ -65,12 +81,20 @@ async function loadLegacyBusinessSurfaceAccess(db, businessContext, surface = 'c
              FROM businesses b LEFT JOIN organizations o ON o.id = b.organization_id
              WHERE b.context_key = $1`, [DEFAULT_BUSINESS_CONTEXT]
         );
-        if (result.rows.length === 0) return available();
-        if (result.rows.length !== 1) return denied;
+        if (result.rows.length === 0) {
+            legacyTelemetry(db, businessContext, 'compatibility', 'allowed');
+            return available();
+        }
+        if (result.rows.length !== 1) {
+            legacyTelemetry(db, businessContext, 'unknown', 'denied');
+            return denied;
+        }
         const row = result.rows[0];
-        return row.access_mode === 'compatibility' && row.business_status === 'active' && row.organization_status === 'active'
-            ? available() : denied;
+        const allowed = row.access_mode === 'compatibility' && row.business_status === 'active' && row.organization_status === 'active';
+        legacyTelemetry(db, businessContext, allowed ? 'compatibility' : 'membership', allowed ? 'allowed' : 'denied');
+        return allowed ? available() : denied;
     } catch {
+        legacyTelemetry(db, businessContext, 'unknown', 'unavailable');
         return { available: false, status: 503, code: 'legacy_business_scope_unavailable',
             message: 'Не вдалося перевірити доступ до спільних даних. Оновіть сторінку та повторіть спробу.' };
     }

@@ -10,7 +10,7 @@ const CORE_MODULES = Object.freeze({
 const UNMIGRATED_MODULES = Object.freeze({
     chat: 'Чат', reports: 'Звіти', copilot: 'Copilot', staff: 'Працівники (legacy)',
     hr: 'HR', training: 'Навчання', checkin: 'Check-in', kitchen: 'Кухня',
-    catalogs: 'Legacy-каталоги', content: 'Контент', art: 'Art', sound: 'Звук',
+    content: 'Контент', art: 'Art', sound: 'Звук',
     afisha: 'Афіша', certificates: 'Сертифікати', kleshnya: 'Клешня',
     guardian: 'Guardian', center: 'Центр', game: 'Гра', demo: 'Демо',
     payroll: 'Зарплата', telegram: 'Telegram', payments: 'Платежі'
@@ -28,6 +28,12 @@ function businessModuleCatalog(contextKey) {
         reason: graduationSupported
             ? 'Конструктор у бізнесі; конвертація в бронювання підтримується лише для Парку.'
             : 'Конструктор для нового бізнесу ще недоступний.' });
+    const catalogsSupported = contextKey === 'event_genix';
+    catalog.push({ key: 'catalogs', label: 'Каталоги',
+        status: catalogsSupported ? 'limited' : 'not_migrated', canEnable: catalogsSupported,
+        reason: catalogsSupported
+            ? 'Історичні каталоги закріплені за Парком після ownership review.'
+            : 'Каталоги інших бізнесів потребують окремого ownership cutover.' });
     return catalog.concat(Object.entries(UNMIGRATED_MODULES).map(([key, label]) => ({
         key, label, status: 'not_migrated', canEnable: false,
         reason: 'Ще недоступний для окремих бізнесів.'

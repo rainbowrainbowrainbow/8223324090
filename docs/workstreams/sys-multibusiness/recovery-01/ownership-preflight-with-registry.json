@@ -1,0 +1,353 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-13T13:03:35.638Z",
+  "status": "HOLD_OWNERSHIP_DECISIONS",
+  "readOnly": true,
+  "isolation": "repeatable read",
+  "collectionStatus": "COMPLETE",
+  "collectionIssues": [],
+  "safeToAutoBackfill": false,
+  "ownershipEstablished": false,
+  "scope": "Legacy catalog, booking template, recurring and finance reference ownership evidence",
+  "tables": {
+    "catalog_definitions": {
+      "status": "OBSERVED",
+      "totalRows": 9,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "catalog_subcategories": {
+      "status": "OBSERVED",
+      "totalRows": 10,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "catalog_items": {
+      "status": "OBSERVED",
+      "totalRows": 8,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "catalog_settings": {
+      "status": "OBSERVED",
+      "totalRows": 9,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "catalog_pages": {
+      "status": "OBSERVED",
+      "totalRows": 17,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "catalog_page_history": {
+      "status": "OBSERVED",
+      "totalRows": 9,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "catalog_automations": {
+      "status": "OBSERVED",
+      "totalRows": 0,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "trend_proposals": {
+      "status": "OBSERVED",
+      "totalRows": 0,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "catalog_image_blobs": {
+      "status": "OBSERVED",
+      "totalRows": 72,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "booking_templates": {
+      "status": "OBSERVED",
+      "totalRows": 0,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "recurring_templates": {
+      "status": "OBSERVED",
+      "totalRows": 0,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "recurring_booking_skips": {
+      "status": "OBSERVED",
+      "totalRows": 0,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "bookings": {
+      "status": "OBSERVED",
+      "totalRows": 1815,
+      "ownershipColumns": [
+        "business_context"
+      ],
+      "missingOwnerRows": {
+        "business_context": 0
+      }
+    },
+    "products": {
+      "status": "OBSERVED",
+      "totalRows": 183,
+      "ownershipColumns": [
+        "business_context"
+      ],
+      "missingOwnerRows": {
+        "business_context": 0
+      }
+    },
+    "timeline_resources": {
+      "status": "OBSERVED",
+      "totalRows": 22,
+      "ownershipColumns": [
+        "business_context"
+      ],
+      "missingOwnerRows": {
+        "business_context": 0
+      }
+    },
+    "finance_transactions": {
+      "status": "OBSERVED",
+      "totalRows": 206,
+      "ownershipColumns": [
+        "business_context"
+      ],
+      "missingOwnerRows": {
+        "business_context": 0
+      }
+    },
+    "staff": {
+      "status": "OBSERVED",
+      "totalRows": 216,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "certificates": {
+      "status": "OBSERVED",
+      "totalRows": 845,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "payroll_reports": {
+      "status": "OBSERVED",
+      "totalRows": 0,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "organizations": {
+      "status": "OBSERVED",
+      "totalRows": 1,
+      "ownershipColumns": [],
+      "missingOwnerRows": {}
+    },
+    "businesses": {
+      "status": "OBSERVED",
+      "totalRows": 2,
+      "ownershipColumns": [
+        "organization_id"
+      ],
+      "missingOwnerRows": {
+        "organization_id": 0
+      }
+    }
+  },
+  "relationships": {
+    "catalog_items_definition": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 8,
+        "orphanRows": 0
+      }
+    },
+    "catalog_subcategories_definition": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 10,
+        "orphanRows": 0
+      }
+    },
+    "catalog_settings_definition": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 9,
+        "orphanRows": 0
+      }
+    },
+    "catalog_pages_definition": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 17,
+        "orphanRows": 0
+      }
+    },
+    "catalog_page_history_page": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 9,
+        "orphanRows": 0
+      }
+    },
+    "catalog_automations_definition": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 0,
+        "orphanRows": 0
+      }
+    },
+    "trend_proposals_definition": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 0,
+        "orphanRows": 0
+      }
+    },
+    "trend_proposals_item": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 0,
+        "orphanRows": 0
+      }
+    },
+    "recurring_skips_template": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 0,
+        "orphanRows": 0
+      }
+    },
+    "finance_staff": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 2,
+        "orphanRows": 0
+      }
+    },
+    "finance_certificate": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 0,
+        "orphanRows": 0
+      }
+    },
+    "booking_template_products": {
+      "status": "OBSERVED",
+      "counts": {
+        "missingProductRows": 0,
+        "orphanProductRows": 0,
+        "productWithoutContextRows": 0
+      }
+    },
+    "booking_templates_rooms": {
+      "status": "OBSERVED",
+      "counts": {
+        "missingRoomRows": 0,
+        "orphanRoomRows": 0,
+        "ambiguousContextRows": 0,
+        "roomWithoutContextRows": 0
+      }
+    },
+    "recurring_template_products": {
+      "status": "OBSERVED",
+      "counts": {
+        "missingProductRows": 0,
+        "orphanProductRows": 0,
+        "productWithoutContextRows": 0
+      }
+    },
+    "recurring_templates_rooms": {
+      "status": "OBSERVED",
+      "counts": {
+        "missingRoomRows": 0,
+        "orphanRoomRows": 0,
+        "ambiguousContextRows": 0,
+        "roomWithoutContextRows": 0
+      }
+    },
+    "recurring_instances": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 0,
+        "orphanTemplateRows": 0,
+        "missingContextRows": 0,
+        "mixedContextTemplates": 0,
+        "templatesWithMissingContext": 0
+      }
+    },
+    "recurring_linked_children": {
+      "status": "OBSERVED",
+      "counts": {
+        "linkedRows": 0,
+        "orphanParentRows": 0,
+        "crossContextRows": 0,
+        "unknownContextRows": 0
+      }
+    },
+    "recurring_activity": {
+      "status": "OBSERVED",
+      "counts": {
+        "activeRows": 0,
+        "withoutInstanceRows": 0
+      }
+    },
+    "catalog_automation_flags": {
+      "status": "OBSERVED",
+      "counts": {
+        "activeRows": 0
+      }
+    },
+    "catalog_automatic_settings": {
+      "status": "OBSERVED",
+      "counts": {
+        "autoEnabledRows": 2
+      }
+    },
+    "bookings_registry_context": {
+      "status": "OBSERVED",
+      "counts": {
+        "missingContextRows": 0,
+        "unregisteredContextRows": 14
+      }
+    },
+    "products_registry_context": {
+      "status": "OBSERVED",
+      "counts": {
+        "missingContextRows": 0,
+        "unregisteredContextRows": 2
+      }
+    },
+    "finance_transactions_registry_context": {
+      "status": "OBSERVED",
+      "counts": {
+        "missingContextRows": 0,
+        "unregisteredContextRows": 0
+      }
+    },
+    "timeline_resources_registry_context": {
+      "status": "OBSERVED",
+      "counts": {
+        "missingContextRows": 0,
+        "unregisteredContextRows": 1
+      }
+    },
+    "catalog_public_tokens": {
+      "status": "OBSERVED",
+      "counts": {
+        "rowsWithPublicToken": 3
+      }
+    }
+  },
+  "limitations": [
+    "Counts and existing owner columns are observations, not authorization or assignment proof.",
+    "No creator username, product context, label or existing child chooses an owner.",
+    "Missing schema is not checked; zero rows never authorizes a cutover.",
+    "RLS-enabled tables and their dependent metrics are not checked, even for a role that could bypass RLS.",
+    "Public links/assets, embedded catalog JSON references, external storage, jobs and API containment require source/consumer review.",
+    "No staff/payroll allocation, formula, finance amount or production migration is evaluated."
+  ]
+}

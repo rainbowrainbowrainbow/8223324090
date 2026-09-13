@@ -237,9 +237,9 @@ async function runPreflight(pool, context) {
             if (users.length > LIMITS.users) throw auditError('AUDIT_ACCESS_BUDGET_EXCEEDED');
             return cohortCounts(users, context);
         });
-        report.schema = await observe([['schema_migrations', 'filename']], `SELECT
-            COUNT(*) FILTER (WHERE filename='357_organizations_business_memberships') AS "membershipSchemaApplied",
-            COUNT(*) FILTER (WHERE filename='363_multibusiness_cutover_journal_telemetry') AS "cutoverJournalSchemaApplied"
+        report.schema = await observe([['schema_migrations', 'version']], `SELECT
+            COUNT(*) FILTER (WHERE version='357_organizations_business_memberships') AS "membershipSchemaApplied",
+            COUNT(*) FILTER (WHERE version='363_multibusiness_cutover_journal_telemetry') AS "cutoverJournalSchemaApplied"
             FROM public.schema_migrations`);
         report.cabinet = await observe([['settings', 'key', 'value']], `SELECT
             COUNT(*) FILTER (WHERE key=$1) AS "businessCabinetRows",
@@ -254,7 +254,7 @@ async function runPreflight(pool, context) {
                 FROM ${table(name)}`, [context]);
         }
         for (const name of LEGACY_ROOTS) {
-            report.legacyRoots[name] = await observe([[name, 'id']], `SELECT COUNT(*) AS "rows" FROM ${table(name)}`);
+            report.legacyRoots[name] = await observe([[name]], `SELECT COUNT(*) AS "rows" FROM ${table(name)}`);
         }
         for (const [id, child, foreignKey, parent, primaryKey] of EDGES) {
             report.relationships[id] = await observe([[child, foreignKey, 'business_context'], [parent, primaryKey, 'business_context']], `SELECT

@@ -9,7 +9,8 @@ const contexts = ['event_genix', 'dar', 'crm', 'maysternya_doli'];
 const actor = { id: 1, username: 'synthetic_actor', role: 'director', business_contexts: contexts, default_business_context: 'event_genix' };
 const registry = (context, mode = 'membership', extra = {}) => ({ business_id: context === 'event_genix' ? 1 : 2,
     organization_id: 1, context_key: context, access_mode: mode, business_status: 'active', organization_status: 'active', ...extra });
-const member = context => ({ ...registry(context), role: 'director', organization_role: 'owner', is_default: context === 'event_genix' });
+const member = (context, extra = {}) => ({ ...registry(context), role: 'director', organization_role: 'owner',
+    business_modules: [], is_default: context === 'event_genix', ...extra });
 function request(context, rows = [], registryRows = [], principal = actor) {
     const user = applyMembershipAccess(principal, buildMembershipAccess(principal, rows, context, registryRows));
     return { user, headers: { 'x-business-context': context }, query: {}, body: {} };
@@ -36,6 +37,23 @@ test('owners and platform creators cannot use migrated global surfaces or recove
             if (context === 'crm') assert.equal(req.user.businessMembershipAccess.membershipEnabled, false, 'Actual compatibility bypass fixture');
         }
     }
+});
+
+test('Park catalog ownership allows only an active Park membership with the catalogs module', () => {
+    const allowed = request('event_genix',
+        [member('event_genix', { business_modules: ['catalogs'] })],
+        [registry('event_genix')]
+    );
+    assert.equal(legacyBusinessSurfaceAccess(allowed, 'catalogs').available, true);
+    for (const context of ['dar', 'crm', 'maysternya_doli']) {
+        const denied = request(context,
+            [member(context, { business_modules: ['catalogs'] })],
+            [registry(context)]
+        );
+        assert.equal(legacyBusinessSurfaceAccess(denied, 'catalogs').available, false, context);
+    }
+    const missingModule = request('event_genix', [member('event_genix')], [registry('event_genix')]);
+    assert.equal(legacyBusinessSurfaceAccess(missingModule, 'catalogs').available, false);
 });
 
 test('invalid/revoked/inactive scopes and missing authenticated registry snapshot never become legacy access', () => {

@@ -9,6 +9,19 @@ const { parseArgs, poolConfig, runOwnershipPreflight, safeFailure } = require('.
 const sentinel = 'SYNTHETIC_PRIVATE_VALUE_MUST_NOT_APPEAR';
 const entry = path.join(__dirname, '../scripts/audit-multibusiness-ownership.js');
 
+test('partial SELECT grants preserve independent observations and do not query denied tables', async () => {
+    const pool = fixturePool({ metadata: [
+        { table_name: 'organizations', column_name: 'id', can_select: false },
+        { table_name: 'catalog_definitions', column_name: 'id', can_select: true }
+    ], countRow: { totalRows: '9' } });
+    const report = await runOwnershipPreflight(pool);
+    assert.equal(report.tables.organizations.status, 'NOT_CHECKED_SELECT_PERMISSION');
+    assert.equal(report.tables.organizations.totalRows, null);
+    assert.equal(report.tables.catalog_definitions.totalRows, 9);
+    assert.ok(report.collectionIssues.includes('SELECT_PERMISSION_REQUIRED'));
+    assert.equal(pool.queries.some(sql => /FROM public\."organizations"/.test(sql)), false);
+});
+
 function fixturePool({ readonly = 'on', isolation = 'repeatable read', metadata = [], countRow,
     metadataFailure, rollbackFailure } = {}) {
     const queries = [];
@@ -23,7 +36,7 @@ function fixturePool({ readonly = 'on', isolation = 'repeatable read', metadata 
                     if (sql === 'SHOW transaction_isolation') return { rows: [{ transaction_isolation: isolation }] };
                     if (sql.includes('pg_catalog.pg_class')) {
                         if (metadataFailure) throw metadataFailure;
-                        return { rows: metadata };
+                        return { rows: metadata.map(row => ({ can_select: true, ...row })) };
                     }
                     if (sql.startsWith('SELECT COUNT(*)')) return { rows: [countRow] };
                     if (sql === 'ROLLBACK' && rollbackFailure) throw rollbackFailure;

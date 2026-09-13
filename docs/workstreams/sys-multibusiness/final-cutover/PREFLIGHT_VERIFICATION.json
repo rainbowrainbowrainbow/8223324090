@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-09-12T20:42:03.960Z",
+  "status": "LOCAL_VERIFICATION_PASS",
+  "sourceBaseCommit": "047e77fe4e15d36e0161f458632c4368583b0178",
+  "branch": "codex/sys-mb-final-cutover-20260912",
+  "source": "DISPOSABLE_LOCAL_WSL_POSTGRESQL",
+  "versions": {
+    "node": "v22.22.2",
+    "npm": "10.9.7",
+    "postgresServer": "16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)"
+  },
+  "command": "wsl -d Ubuntu -u postgres -- env SYS_MB_CUTOVER_LOCAL_TEST=true node --test '/mnt/c/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/sys-mb-final-cutover-20260912/docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.test.cjs' '/mnt/c/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/sys-mb-final-cutover-20260912/docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.postgres.test.cjs'",
+  "exitCode": 0,
+  "tests": {
+    "tapTests": 17,
+    "pass": 17,
+    "fail": 0,
+    "skipped": 0,
+    "unitCases": 7,
+    "postgresSubcases": 9,
+    "postgresContainer": 1
+  },
+  "checks": {
+    "parser": "PASS",
+    "gitDiffCheck": "PASS",
+    "databaseAbsentAfterCleanup": true,
+    "fixtureRoleDropSucceeded": true,
+    "collectorTransactionReadOnlyVerified": true,
+    "collectorRepeatableReadVerified": true,
+    "postgresRejectedWriteCode": "25006",
+    "collectorRollbackVerified": true,
+    "allFixtureRecordSnapshotsUnchanged": true
+  },
+  "scope": {
+    "declaredObservations": 36,
+    "ownedTables": 24,
+    "foreignEdges": 7,
+    "fullCutoverInventoryCovered": false,
+    "operatorPreflight": "NOT_RUN",
+    "productionDatabaseAccess": false,
+    "credentialsLoaded": false,
+    "runtimeEdits": false,
+    "safeToApply": false,
+    "authorizationVerified": false
+  },
+  "reviewChanges": "Renamed the intentionally global default-conflict counter to globalExplicitDefaultOutsideLegacyAllowedUsers; added explicit persisted-cabinet, complete dangling ownership/membership and schema/ledger/source-attestation exclusions. Final combined PG+unit run includes these exact changes.",
+  "sourceFiles": [
+    {
+      "path": "docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.cjs",
+      "sha256": "edd00ac6ac5fa910e2cfe52eb0f2c15a0f2c74119e766579e350fdc144bd632d"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.test.cjs",
+      "sha256": "08bd653af223e1d5d9e4f4b03988e5cbca924a1fb338e7e4dbdb0b63082e2f4a"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/final-cutover/tools/business-cutover-preflight.postgres.test.cjs",
+      "sha256": "4b4394a1825d134e8d38c45d424aaf996deaacdce3ed433a3c772506911f4f16"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/workstreams/sys-multibusiness/final-cutover/tools/README.md",
+      "sha256": "574c9fc64b01b52b6fc9cb2cf8d0717db6e8a0663abd83a63bbec296096d9671"
+    },
+    {
+      "path": "docs/workstreams/sys-multibusiness/final-cutover/tools/preflight-tests-verified.log",
+      "sha256": "27c56b2d6ac3871d9f6bf6a4fba6b24d90a0a4c823a39f14dff11f58b3c00a03"
+    }
+  ],
+  "historicalLogs": [
+    "docs/workstreams/sys-multibusiness/final-cutover/tools/preflight-tests.log",
+    "docs/workstreams/sys-multibusiness/final-cutover/tools/preflight-tests-final.log",
+    "docs/workstreams/sys-multibusiness/final-cutover/tools/preflight-post-review-unit.log"
+  ],
+  "limitations": [
+    "Synthetic local evidence is not live acceptance, owner approval, actual production preflight or a compatibility usage window.",
+    "Full npm baseline, CI, deploy and production data access were not run by this bounded tool task.",
+    "WSL npm 10.9.7 was observed; verification ran Node 22 directly, without npm install or baseline invocation."
+  ]
+}

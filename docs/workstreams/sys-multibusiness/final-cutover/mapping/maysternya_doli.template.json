@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "businessContext": "maysternya_doli",
+  "dataKind": "production",
+  "collectionStatus": "NOT_COLLECTED",
+  "source": {
+    "deploymentSha": null,
+    "snapshotAtUtc": null,
+    "snapshotSha256": null,
+    "effectiveAccessMatrixSha256": null
+  },
+  "target": {
+    "organizationId": null,
+    "businessId": null,
+    "contextKey": "maysternya_doli",
+    "modules": []
+  },
+  "approval": {
+    "status": "PENDING",
+    "reference": null,
+    "mappingSha256": null
+  },
+  "memberships": [],
+  "defaults": [],
+  "historicalOwnerMapping": {
+    "reference": null,
+    "sha256": null,
+    "decisionsStatus": "PENDING"
+  }
+}

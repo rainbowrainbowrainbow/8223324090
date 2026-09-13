@@ -1,0 +1,19 @@
+{
+  "task": "SYS-MB-FINAL-CUTOVER",
+  "recordedAtUtc": "2026-09-12T20:32:46Z",
+  "request": "GET https://8223324090-production.up.railway.app/api/version",
+  "status": "PASS_READ_ONLY_IDENTITY",
+  "version": "0.81.146",
+  "releaseLabel": "Omni: Viber Bridge fault QA",
+  "commitSha": "1f28c652d7acef20776afd2c664fb73af6c22d42",
+  "sourceBranch": "codex/eventgenix-production",
+  "deploymentMetadata": {
+    "status": "manifest",
+    "complete": true,
+    "commitShaSource": "DEPLOYMENT_MANIFEST",
+    "sourceBranchSource": "DEPLOYMENT_MANIFEST",
+    "invalidSources": [],
+    "warnings": []
+  },
+  "scope": "Public version metadata only; no account/profile/database/hosting calls. Confirms existing release, not SYS-MB delivery."
+}

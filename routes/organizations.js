@@ -7,6 +7,7 @@ const { businessContextCatalog } = require('../services/businessContext');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const lifecycle = require('../services/organizationLifecycle');
 const { lockOrganizationOwnership } = require('../services/organizationOwnership');
+const { prepareReservedCutover } = require('../services/businessCutover');
 
 function text(value, max = 160) {
     return String(value || '').trim().slice(0, max);
@@ -144,6 +145,15 @@ router.post('/bootstrap', requireAction('manage_accounts'), async (req, res) => 
         try { await client.query('ROLLBACK'); } catch {}
         res.status(error.code === '23505' ? 409 : 500).json({ error: 'Organization bootstrap failed', code: 'organization_bootstrap_failed' });
     } finally { client.release(); }
+});
+
+// This creates review-bound journal evidence only. It intentionally does not
+// create a reserved business, membership, owner, default, or data mapping.
+router.post('/cutovers/prepare', requireAction('manage_accounts'), async (req, res) => {
+    try {
+        const cutover = await prepareReservedCutover(pool, req.user, req.body || {});
+        res.status(cutover.replay ? 200 : 201).json({ success: true, cutover });
+    } catch (error) { lifecycleError(res, error, 'cutover_prepare_failed'); }
 });
 
 router.post('/:organizationId/businesses', async (req, res) => {

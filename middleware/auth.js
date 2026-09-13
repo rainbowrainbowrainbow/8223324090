@@ -27,9 +27,24 @@ const {
 const { resolveActiveQaCreatorLease } = require('../services/qaCreatorLease');
 const { applyMembershipAccess, loadMembershipAccess } = require('../services/businessMembership');
 const { requireRequestBusinessModule } = require('../services/businessModuleRegistry');
+const { recordCompatibilityTelemetrySafe } = require('../services/businessCutover');
 
 const log = createLogger('Auth');
 const AUTHENTICATED_REQUEST = Symbol('eventgenix.authenticatedRequest');
+
+function recordBusinessAuthorityDecision(req, access, outcome) {
+    if (!access?.configured) return;
+    const requested = req?.body?.businessContext || req?.body?.business_context
+        || req?.query?.businessContext || req?.query?.business_context
+        || req?.headers?.['x-business-context'] || null;
+    const businessContext = access.activeMembership?.businessContext || String(requested || '').trim() || 'unknown';
+    recordCompatibilityTelemetrySafe(pool, {
+        businessContext,
+        entryFamily: String(req?.path || '').startsWith('/auth/') ? 'profile' : 'http',
+        authoritySource: access.membershipEnabled ? 'membership' : 'compatibility',
+        outcome
+    }, log);
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 if (!process.env.JWT_SECRET) {
@@ -311,8 +326,15 @@ async function authenticateToken(req, res, next) {
         const resolvedRequestUser = applyMembershipAccess(requestUser, membershipAccess);
         req.user = resolvedRequestUser;
         const businessScope = resolveBusinessScope(req);
-        if (!isAccountContextRequest(req) && !requireBusinessScope(req, res, businessScope)) return;
-        if (!isAccountContextRequest(req) && !requireRequestBusinessModule(req, res, businessScope)) return;
+        if (!isAccountContextRequest(req) && !requireBusinessScope(req, res, businessScope)) {
+            recordBusinessAuthorityDecision(req, membershipAccess, 'denied');
+            return;
+        }
+        if (!isAccountContextRequest(req) && !requireRequestBusinessModule(req, res, businessScope)) {
+            recordBusinessAuthorityDecision(req, membershipAccess, 'denied');
+            return;
+        }
+        if (!isAccountContextRequest(req)) recordBusinessAuthorityDecision(req, membershipAccess, 'allowed');
         req[AUTHENTICATED_REQUEST] = { token, user: resolvedRequestUser };
 
         // v19.1: Update employee activity (fire-and-forget, throttled to 1/min per user)

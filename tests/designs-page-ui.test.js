@@ -98,6 +98,7 @@ function createHarness(fetchImpl = async () => new Response(JSON.stringify({ ite
         let activeLightboxObjectUrl = null;
         let lastLightboxTrigger = null;
         let lightboxRequestSequence = 0;
+        const designThumbnailUrls = new Map();
         ${[
             'authHeaders',
             'apiFetch',
@@ -110,6 +111,8 @@ function createHarness(fetchImpl = async () => new Response(JSON.stringify({ ite
             'designDownloadUrl',
             'designFilenameFromDisposition',
             'fetchDesignBlob',
+            'reconcileDesignThumbnailUrls',
+            'hydrateDesignThumbnails',
             'downloadDesign',
             'clearLightboxPreview',
             'setLightboxError',
@@ -157,6 +160,7 @@ test('Design Board renders cards and tag chips without inline data handlers', ()
     assert.equal(dom.window.document.querySelector('[data-design-preview="42"]').getAttribute('onclick'), null);
     assert.equal(dom.window.document.querySelector('[data-design-download="42"]').getAttribute('onclick'), null);
     assert.match(dom.window.document.querySelector('.design-card-tags').textContent, /#x<script>/);
+    assert.doesNotMatch(dom.window.document.body.innerHTML, /\/uploads\/designs/);
 });
 
 test('Design Board download uses the authenticated API response as a Blob', async () => {

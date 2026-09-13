@@ -3459,6 +3459,9 @@ function createFakePool() {
             if (/SELECT tag, COUNT\(\*\) as count FROM design_tags GROUP BY tag ORDER BY count DESC, tag ASC/i.test(text)) {
                 return { rows: [] };
             }
+            if (/FROM design_tags dt\s+JOIN designs d ON d\.id = dt\.design_id\s+WHERE d\.business_context = \$1/i.test(text)) {
+                return { rows: [] };
+            }
             if (/FROM costumes c LEFT JOIN staff s ON s\.id = c\.assigned_to ORDER BY c\.name/i.test(text)) {
                 return {
                     rows: [{

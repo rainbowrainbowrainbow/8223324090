@@ -98,9 +98,11 @@ async function readDesignBlobByFilename(query, filename) {
     return result.rows[0] || null;
 }
 
-function buildDesignBlobFallbackHandler(query, logger = null) {
+function buildDesignBlobFallbackHandler(query, logger = null, options = {}) {
+    const allowPublicDesignBlobs = options.allowPublicDesignBlobs !== false;
     return async (req, res, next) => {
         try {
+            if (!allowPublicDesignBlobs) return next();
             const row = await readDesignBlobByFilename(query, req.params?.filename);
             if (!row?.data) return next();
             const data = Buffer.isBuffer(row.data) ? row.data : Buffer.from(row.data);

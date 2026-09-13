@@ -17,6 +17,12 @@ const {
     readDesignBlob,
     storeDesignBlob
 } = require('../services/designStorage');
+const {
+    DEFAULT_BUSINESS_CONTEXT,
+    requireBusinessScope,
+    requireWritableBusinessScope,
+    resolveBusinessScope
+} = require('../services/businessContext');
 
 const log = createLogger('Designs');
 
@@ -86,9 +92,25 @@ async function readDesignBuffer(design) {
     };
 }
 
+function requireDesignBusinessContext(req, res, options = {}) {
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    if (options.write && !requireWritableBusinessScope(req, res, scope)) return null;
+    if (scope.mode !== 'single') {
+        res.status(400).json({
+            success: false,
+            error: 'Design Board endpoints require one active business context',
+            code: 'design_single_business_required'
+        });
+        return null;
+    }
+    return scope.activeContext || DEFAULT_BUSINESS_CONTEXT;
+}
+
 function mapDesignRow(row) {
     return {
         id: row.id,
+        businessContext: row.business_context || null,
         filename: row.filename,
         originalName: row.original_name,
         mimeType: row.mime_type,
@@ -115,13 +137,15 @@ function mapDesignRow(row) {
 // --- GET /api/designs — List with filters ---
 router.get('/', async (req, res) => {
     try {
+        const businessContext = requireDesignBusinessContext(req, res);
+        if (!businessContext) return;
         const { tag, collection, search, pinned, publish_from, publish_to, limit, offset } = req.query;
-        const conditions = [];
-        const params = [];
-        let idx = 1;
+        const conditions = ['d.business_context = $1'];
+        const params = [businessContext];
+        let idx = 2;
 
         if (tag) {
-            conditions.push(`d.id IN (SELECT design_id FROM design_tags WHERE tag = $${idx++})`);
+            conditions.push(`d.id IN (SELECT dt.design_id FROM design_tags dt JOIN designs scoped ON scoped.id = dt.design_id WHERE dt.tag = $${idx++} AND scoped.business_context = d.business_context)`);
             params.push(tag);
         }
         if (collection) {
@@ -157,6 +181,7 @@ router.get('/', async (req, res) => {
                     (SELECT string_agg(tag, ',') FROM design_tags WHERE design_id = d.id) AS tags
              FROM designs d
              LEFT JOIN design_collections dc ON d.collection_id = dc.id
+                AND dc.business_context = d.business_context
              ${where}
              ORDER BY d.is_pinned DESC, d.created_at DESC
              LIMIT $${idx++} OFFSET $${idx++}`,
@@ -176,8 +201,16 @@ router.get('/', async (req, res) => {
 // --- GET /api/designs/tags — All unique tags for autocomplete ---
 router.get('/tags', async (req, res) => {
     try {
+        const businessContext = requireDesignBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(
-            'SELECT tag, COUNT(*) as count FROM design_tags GROUP BY tag ORDER BY count DESC, tag ASC'
+            `SELECT dt.tag, COUNT(*) as count
+             FROM design_tags dt
+             JOIN designs d ON d.id = dt.design_id
+             WHERE d.business_context = $1
+             GROUP BY dt.tag
+             ORDER BY count DESC, dt.tag ASC`,
+            [businessContext]
         );
         res.json(result.rows);
     } catch (err) {
@@ -189,12 +222,15 @@ router.get('/tags', async (req, res) => {
 // --- GET /api/designs/calendar — Designs grouped by publish_date ---
 router.get('/calendar', async (req, res) => {
     try {
+        const businessContext = requireDesignBusinessContext(req, res);
+        if (!businessContext) return;
         const { month } = req.query; // format: YYYY-MM
-        const conditions = ['d.publish_date IS NOT NULL'];
-        const params = [];
+        const conditions = ['d.business_context = $1', 'd.publish_date IS NOT NULL'];
+        const params = [businessContext];
+        let idx = 2;
 
         if (month) {
-            conditions.push(`d.publish_date LIKE $1`);
+            conditions.push(`d.publish_date LIKE $${idx++}`);
             params.push(`${month}%`);
         }
 
@@ -202,7 +238,9 @@ router.get('/calendar', async (req, res) => {
         const result = await pool.query(
             `SELECT d.*, dc.name AS collection_name, dc.color AS collection_color,
                     (SELECT string_agg(tag, ',') FROM design_tags WHERE design_id = d.id) AS tags
-             FROM designs d LEFT JOIN design_collections dc ON d.collection_id = dc.id
+             FROM designs d
+             LEFT JOIN design_collections dc ON d.collection_id = dc.id
+                AND dc.business_context = d.business_context
              ${where}
              ORDER BY d.publish_date ASC, d.created_at ASC`,
             params
@@ -228,8 +266,15 @@ router.get('/calendar', async (req, res) => {
 // GET /api/designs/collections
 router.get('/collections', async (req, res) => {
     try {
+        const businessContext = requireDesignBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(
-            'SELECT *, (SELECT COUNT(*) FROM designs WHERE collection_id = design_collections.id) AS design_count FROM design_collections ORDER BY sort_order ASC, name ASC'
+            `SELECT *,
+                    (SELECT COUNT(*) FROM designs d WHERE d.collection_id = design_collections.id AND d.business_context = $1) AS design_count
+             FROM design_collections
+             WHERE business_context = $1
+             ORDER BY sort_order ASC, name ASC`,
+            [businessContext]
         );
         res.json(result.rows.map(r => ({
             id: r.id,
@@ -248,13 +293,15 @@ router.get('/collections', async (req, res) => {
 // POST /api/designs/collections
 router.post('/collections', async (req, res) => {
     try {
+        const businessContext = requireDesignBusinessContext(req, res, { write: true });
+        if (!businessContext) return;
         const { name, color } = req.body;
         if (!name || !name.trim()) {
             return res.status(400).json({ error: 'Назва обовʼязкова' });
         }
         const result = await pool.query(
-            'INSERT INTO design_collections (name, color) VALUES ($1, $2) RETURNING *',
-            [name.trim(), color || '#6366F1']
+            'INSERT INTO design_collections (name, color, business_context, created_by_user_id) VALUES ($1, $2, $3, $4) RETURNING *',
+            [name.trim(), color || '#6366F1', businessContext, req.user?.id || null]
         );
         res.json(result.rows[0]);
     } catch (err) {
@@ -266,13 +313,20 @@ router.post('/collections', async (req, res) => {
 // PUT /api/designs/collections/:id
 router.put('/collections/:id', async (req, res) => {
     try {
+        const businessContext = requireDesignBusinessContext(req, res, { write: true });
+        if (!businessContext) return;
         const { id } = req.params;
         const { name, color, sort_order } = req.body;
-        await pool.query(
-            'UPDATE design_collections SET name = COALESCE($1, name), color = COALESCE($2, color), sort_order = COALESCE($3, sort_order) WHERE id = $4',
-            [name, color, sort_order, id]
+        const result = await pool.query(
+            `UPDATE design_collections
+             SET name = COALESCE($1, name),
+                 color = COALESCE($2, color),
+                 sort_order = COALESCE($3, sort_order)
+             WHERE id = $4
+               AND business_context = $5
+             RETURNING *`,
+            [name, color, sort_order, id, businessContext]
         );
-        const result = await pool.query('SELECT * FROM design_collections WHERE id = $1', [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Колекцію не знайдено' });
         }
@@ -285,14 +339,41 @@ router.put('/collections/:id', async (req, res) => {
 
 // DELETE /api/designs/collections/:id
 router.delete('/collections/:id', async (req, res) => {
+    let client;
     try {
+        const businessContext = requireDesignBusinessContext(req, res, { write: true });
+        if (!businessContext) return;
         const { id } = req.params;
-        await pool.query('UPDATE designs SET collection_id = NULL WHERE collection_id = $1', [id]);
-        await pool.query('DELETE FROM design_collections WHERE id = $1', [id]);
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const existing = await client.query(
+            'SELECT id FROM design_collections WHERE id = $1 AND business_context = $2 LIMIT 1',
+            [id, businessContext]
+        );
+        if (existing.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Колекцію не знайдено' });
+        }
+        await client.query(
+            'UPDATE designs SET collection_id = NULL WHERE collection_id = $1 AND business_context = $2',
+            [id, businessContext]
+        );
+        const deleted = await client.query(
+            'DELETE FROM design_collections WHERE id = $1 AND business_context = $2 RETURNING id',
+            [id, businessContext]
+        );
+        if (deleted.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Колекцію не знайдено' });
+        }
+        await client.query('COMMIT');
         res.json({ success: true });
     } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
         log.error('Error deleting collection', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -300,6 +381,11 @@ router.delete('/collections/:id', async (req, res) => {
 router.post('/upload', upload.array('files', 20), async (req, res) => {
     let client;
     try {
+        const businessContext = requireDesignBusinessContext(req, res, { write: true });
+        if (!businessContext) {
+            await Promise.all((req.files || []).map(removeTempUpload));
+            return;
+        }
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ error: 'Файли не завантажено' });
         }
@@ -313,16 +399,28 @@ router.post('/upload', upload.array('files', 20), async (req, res) => {
         client = await pool.connect();
         await client.query('BEGIN');
 
+        if (colId) {
+            const collection = await client.query(
+                'SELECT id FROM design_collections WHERE id = $1 AND business_context = $2 LIMIT 1',
+                [colId, businessContext]
+            );
+            if (collection.rows.length === 0) {
+                await client.query('ROLLBACK');
+                await Promise.all(req.files.map(removeTempUpload));
+                return res.status(400).json({ error: 'Колекція недоступна для поточного бізнес-контексту' });
+            }
+        }
+
         for (const file of req.files) {
             let width = null, height = null;
             const fileBuffer = await fs.promises.readFile(file.path);
 
             const result = await client.query(
-                `INSERT INTO designs (filename, original_name, mime_type, file_size, width, height, title, collection_id, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+                `INSERT INTO designs (filename, original_name, mime_type, file_size, width, height, title, collection_id, created_by, business_context, created_by_user_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
                 [file.filename, file.originalname, file.mimetype, file.size, width, height,
                  title_prefix ? `${title_prefix} ${created.length + 1}` : file.originalname.replace(/\.[^.]+$/, ''),
-                 colId, req.user?.username]
+                 colId, req.user?.username, businessContext, req.user?.id || null]
             );
 
             let design = result.rows[0];
@@ -346,8 +444,9 @@ router.post('/upload', upload.array('files', 20), async (req, res) => {
                 `SELECT d.*, dc.name AS collection_name, dc.color AS collection_color,
                         (SELECT string_agg(tag, ',') FROM design_tags WHERE design_id = d.id) AS tags
                  FROM designs d LEFT JOIN design_collections dc ON d.collection_id = dc.id
-                 WHERE d.id = $1`,
-                [design.id]
+                    AND dc.business_context = d.business_context
+                 WHERE d.id = $1 AND d.business_context = $2`,
+                [design.id, businessContext]
             );
             created.push(mapDesignRow(full.rows[0]));
         }
@@ -376,8 +475,13 @@ router.post('/upload', upload.array('files', 20), async (req, res) => {
 // --- GET /api/designs/:id/download — Download with correct headers (v20.8.0) ---
 router.get('/:id/download', async (req, res) => {
     try {
+        const businessContext = requireDesignBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
-        const result = await pool.query('SELECT id, filename, original_name, mime_type, storage_key FROM designs WHERE id = $1', [id]);
+        const result = await pool.query(
+            'SELECT id, filename, original_name, mime_type, storage_key FROM designs WHERE id = $1 AND business_context = $2',
+            [id, businessContext]
+        );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Дизайн не знайдено' });
         }
@@ -396,36 +500,86 @@ router.get('/:id/download', async (req, res) => {
     }
 });
 
+// --- GET /api/designs/:id — Scoped material details ---
+router.get('/:id', async (req, res) => {
+    try {
+        const businessContext = requireDesignBusinessContext(req, res);
+        if (!businessContext) return;
+        const { id } = req.params;
+        const result = await pool.query(
+            `SELECT d.*, dc.name AS collection_name, dc.color AS collection_color,
+                    (SELECT string_agg(tag, ',') FROM design_tags WHERE design_id = d.id) AS tags
+             FROM designs d
+             LEFT JOIN design_collections dc ON d.collection_id = dc.id
+                AND dc.business_context = d.business_context
+             WHERE d.id = $1
+               AND d.business_context = $2`,
+            [id, businessContext]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Дизайн не знайдено' });
+        }
+        res.json(mapDesignRow(result.rows[0]));
+    } catch (err) {
+        log.error('Error fetching design', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // --- PUT /api/designs/:id — Update design metadata ---
 router.put('/:id', async (req, res) => {
+    let client;
     try {
+        const businessContext = requireDesignBusinessContext(req, res, { write: true });
+        if (!businessContext) return;
         const { id } = req.params;
         const { title, description, is_pinned, collection_id, publish_date, tags } = req.body;
 
-        const existing = await pool.query('SELECT * FROM designs WHERE id = $1', [id]);
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        const existing = await client.query('SELECT * FROM designs WHERE id = $1 AND business_context = $2', [id, businessContext]);
         if (existing.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Дизайн не знайдено' });
         }
 
-        await pool.query(
+        const nextCollectionId = collection_id || null;
+        if (nextCollectionId) {
+            const collection = await client.query(
+                'SELECT id FROM design_collections WHERE id = $1 AND business_context = $2 LIMIT 1',
+                [nextCollectionId, businessContext]
+            );
+            if (collection.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Колекція недоступна для поточного бізнес-контексту' });
+            }
+        }
+
+        await client.query(
             `UPDATE designs SET
                 title = COALESCE($1, title),
                 description = COALESCE($2, description),
                 is_pinned = COALESCE($3, is_pinned),
                 collection_id = $4,
                 publish_date = $5
-             WHERE id = $6`,
-            [title, description, is_pinned, collection_id || null, publish_date || null, id]
+             WHERE id = $6
+               AND business_context = $7`,
+            [title, description, is_pinned, nextCollectionId, publish_date || null, id, businessContext]
         );
 
         // Update tags if provided
         if (tags !== undefined) {
-            await pool.query('DELETE FROM design_tags WHERE design_id = $1', [id]);
+            await client.query(
+                `DELETE FROM design_tags
+                 WHERE design_id IN (SELECT id FROM designs WHERE id = $1 AND business_context = $2)`,
+                [id, businessContext]
+            );
             const tagList = Array.isArray(tags) ? tags : [];
             for (const tag of tagList) {
                 const cleanTag = tag.trim().toLowerCase().replace(/^#/, '');
                 if (cleanTag) {
-                    await pool.query(
+                    await client.query(
                         'INSERT INTO design_tags (design_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING',
                         [id, cleanTag]
                     );
@@ -434,26 +588,35 @@ router.put('/:id', async (req, res) => {
         }
 
         // Fetch updated
-        const result = await pool.query(
+        const result = await client.query(
             `SELECT d.*, dc.name AS collection_name, dc.color AS collection_color,
                     (SELECT string_agg(tag, ',') FROM design_tags WHERE design_id = d.id) AS tags
-             FROM designs d LEFT JOIN design_collections dc ON d.collection_id = dc.id
-             WHERE d.id = $1`,
-            [id]
+             FROM designs d
+             LEFT JOIN design_collections dc ON d.collection_id = dc.id
+                AND dc.business_context = d.business_context
+             WHERE d.id = $1
+               AND d.business_context = $2`,
+            [id, businessContext]
         );
 
+        await client.query('COMMIT');
         res.json(mapDesignRow(result.rows[0]));
     } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
         log.error('Error updating design', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        if (client) client.release();
     }
 });
 
 // --- DELETE /api/designs/:id ---
 router.delete('/:id', async (req, res) => {
     try {
+        const businessContext = requireDesignBusinessContext(req, res, { write: true });
+        if (!businessContext) return;
         const { id } = req.params;
-        const existing = await pool.query('SELECT id, filename FROM designs WHERE id = $1', [id]);
+        const existing = await pool.query('SELECT id, filename FROM designs WHERE id = $1 AND business_context = $2', [id, businessContext]);
         if (existing.rows.length === 0) {
             return res.status(404).json({ error: 'Дизайн не знайдено' });
         }
@@ -466,7 +629,7 @@ router.delete('/:id', async (req, res) => {
             fs.unlinkSync(filePath);
         }
 
-        await pool.query('DELETE FROM designs WHERE id = $1', [id]);
+        await pool.query('DELETE FROM designs WHERE id = $1 AND business_context = $2', [id, businessContext]);
         res.json({ success: true });
     } catch (err) {
         log.error('Error deleting design', err);
@@ -477,10 +640,12 @@ router.delete('/:id', async (req, res) => {
 // --- POST /api/designs/:id/telegram — Send design to Telegram ---
 router.post('/:id/telegram', async (req, res) => {
     try {
+        const businessContext = requireDesignBusinessContext(req, res, { write: true });
+        if (!businessContext) return;
         const { id } = req.params;
         const { caption } = req.body;
 
-        const existing = await pool.query('SELECT * FROM designs WHERE id = $1', [id]);
+        const existing = await pool.query('SELECT * FROM designs WHERE id = $1 AND business_context = $2', [id, businessContext]);
         if (existing.rows.length === 0) {
             return res.status(404).json({ error: 'Дизайн не знайдено' });
         }

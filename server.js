@@ -184,10 +184,9 @@ app.use('/uploads/catalog-images/items', (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     return res.status(404).json({ error: 'image_not_found' });
 });
-const designBlobHandler = buildDesignBlobFallbackHandler(pool, log);
+const designBlobHandler = buildDesignBlobFallbackHandler(pool, log, { allowPublicDesignBlobs: false });
 app.get('/uploads/designs/:filename', designBlobHandler);
 app.head('/uploads/designs/:filename', designBlobHandler);
-app.use('/uploads/designs', express.static(path.join(__dirname, 'uploads', 'designs')));
 app.use('/uploads/designs', (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     return res.status(404).json({ error: 'design_upload_not_found' });

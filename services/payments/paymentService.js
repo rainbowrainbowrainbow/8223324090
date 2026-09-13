@@ -865,7 +865,7 @@ async function createAdmissionTicketPaymentOrder({
             });
             await assertPaymentReadiness({
                 client,
-                user: effectiveUser,
+                user,
                 fiscalProfileId: mapping.fiscal_profile_id,
                 fiscalRegisterId: mapping.fiscal_register_id,
                 crmProfileKey: mapping.crm_profile_key,

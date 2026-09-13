@@ -833,7 +833,7 @@ test('payment create and confirm use the server-side provider readiness gate', (
     assert.match(service, /PaymentReadinessError,[\s\S]*assertFreshPaymentReadiness,[\s\S]*assertPaymentReadiness[\s\S]*require\('\.\/paymentReadinessService'\)/);
     assert.match(service, /await assertPaymentReadiness\(\{\s*client,\s*user,\s*fiscalProfileId: mapping\.fiscal_profile_id,[\s\S]*?action: 'payments\.create'/);
     assert.match(service, /fiscalProfileId: mapping\.fiscal_profile_id,[\s\S]*?action: 'payments\.create',\s*tender/);
-    assert.match(service, /await assertPaymentReadiness\(\{\s*client,\s*user,\s*fiscalProfileId: order\.fiscal_profile_id,[\s\S]*?action: 'payments\.confirm_received'/);
+    assert.match(service, /await assertPaymentReadiness\(\{\s*client,\s*user: effectiveUser,\s*fiscalProfileId: order\.fiscal_profile_id,[\s\S]*?action: 'payments\.confirm_received'/);
     assert.match(service, /await assertFreshPaymentReadiness\(\{[\s\S]*?tender: immutableTender,[\s\S]*?fetchImpl: checkboxFetchImpl/);
     assert.ok(
         service.indexOf('await assertFreshPaymentReadiness({') < service.indexOf('const result = await withTransaction(dbPool, async client => {', service.indexOf('async function confirmPaymentOrder')),

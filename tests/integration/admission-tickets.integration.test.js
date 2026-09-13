@@ -90,8 +90,22 @@ async function seedAdmissionTimelineLine(pool, { date, lineId, name }) {
 
 async function ensureEventGenixMemberships(pool, users = []) {
     if (!users.length) return;
+    const userIds = users.map(user => user.id).filter(Boolean);
+    if (userIds.length) {
+        await pool.query(
+            `UPDATE users
+                SET business_contexts = ARRAY['event_genix']::text[],
+                    default_business_context = 'event_genix'
+              WHERE id = ANY($1::int[])`,
+            [userIds]
+        ).catch(error => {
+            if (['42703'].includes(error?.code)) return null;
+            throw error;
+        });
+    }
+
     const business = await pool.query(
-        `SELECT id, organization_id, access_mode
+        `SELECT id, organization_id
            FROM businesses
           WHERE context_key = 'event_genix'
             AND status = 'active'
@@ -101,7 +115,7 @@ async function ensureEventGenixMemberships(pool, users = []) {
         throw error;
     });
     const row = business.rows[0];
-    if (!row || row.access_mode !== 'membership') return;
+    if (!row) return;
     for (const user of users) {
         await pool.query(
             `INSERT INTO organization_memberships (organization_id, user_id, role)

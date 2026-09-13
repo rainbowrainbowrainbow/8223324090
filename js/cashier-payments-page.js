@@ -122,6 +122,7 @@
     );
     const PHASE1_CLOSE_POLL_INTERVAL_MS = 2500;
     const PHASE1_CLOSE_POLL_TIMEOUT_MS = 60000;
+    const TERMINAL_IDLE_LOCK_MS = boundedTestTiming('terminalIdleLockMs', 15 * 60 * 1000);
 
     function boundedTestTiming(key, fallback) {
         const value = Number(window.__EVENTGENIX_TEST_CASHIER_QUEUE_TIMING__?.[key]);
@@ -190,6 +191,7 @@
         nextCustomerSafetyRefreshInFlight: false,
         readinessTimer: null,
         readinessBackoffMs: READINESS_REFRESH_MIN_MS,
+        readinessLastCheckedAt: null,
         phase1CloseConfirmationInFlight: false,
         phase1CloseSafetyRefreshInFlight: false,
         phase1CloseInFlight: false,
@@ -213,6 +215,27 @@
         actionPinSaveInFlight: false,
         actionPinCheckInFlight: false,
         actionPinSelectedBindingId: '',
+        actionPinManagerOpen: false,
+        actionPinSetOpen: false,
+        actionPinSetError: '',
+        actionPinModalTrigger: null,
+        activeWorkspaceTab: 'sale',
+        terminal: {
+            session: null,
+            cashiers: [],
+            selectedBindingId: '',
+            activeCashier: null,
+            openInFlight: false,
+            loadInFlight: false,
+            loginInFlight: false,
+            lockInFlight: false,
+            endInFlight: false,
+            lastActivityAt: Date.now(),
+            idleTimer: null,
+            pinModalBindingId: '',
+            pinModalError: '',
+            pinModalTrigger: null
+        },
         tender: 'cash',
         interactionGeneration: 0,
         orderLoadGeneration: 0,
@@ -261,12 +284,17 @@
         state.fiscalReport = null;
         state.xReportCreateInFlight = false;
         state.actionPinLoadInFlight = false;
+        state.actionPinSetError = '';
+        state.terminal.loadInFlight = false;
+        state.terminal.openInFlight = false;
+        state.terminal.loginInFlight = false;
         state.serviceOutLastError = null;
         state.serviceOutCapabilityDenied = false;
         syncUnresolvedControls();
         renderServiceOutPanel();
         renderActionPinPanel();
         renderFiscalReportsPanel();
+        renderAvailabilityReasons();
         const reportButton = $('loadCheckboxSalesReportBtn');
         setButtonBusy(reportButton, false, '');
         if (reportButton) reportButton.disabled = false;
@@ -464,6 +492,7 @@
     }
 
     function selectedCashierLabel() {
+        if (terminalRouteAvailable()) return terminalActiveCashier() ? terminalCashierLabel() : 'не обрано';
         const select = $('paymentCashierBinding');
         const option = select?.selectedOptions?.[0];
         const label = String(option?.textContent || '').trim();
@@ -481,7 +510,12 @@
         setText('cashierScopeTender', formatPaymentMethod(state.tender).toLowerCase());
         setText('cashierScopeShift', shiftLabel);
         setText('cashierShiftConsoleStatus', `зміна: ${shiftLabel}`);
-        setText('cashierScopeMode', route?.mode === 'test' ? 'ТЕСТОВИЙ' : (state.localQa?.enabled === true ? 'LOCAL QA · MOCK' : 'РОБОЧИЙ'));
+        const modeLabel = route?.mode === 'test' ? 'ТЕСТОВИЙ' : (state.localQa?.enabled === true ? 'LOCAL QA · MOCK' : 'РОБОЧИЙ');
+        setText('cashierScopeMode', modeLabel);
+        setText('cashierTopBusiness', PILOT_SCOPE.businessLabel);
+        setText('cashierTopRegister', route?.registerLabel || PILOT_SCOPE.registerLabel);
+        setText('cashierTopMode', modeLabel);
+        setText('cashierTopActiveCashier', selectedCashierLabel());
     }
 
     function placeCheckoutActions() {
@@ -544,6 +578,152 @@
         setFlowNodeState('order', !hasOrder ? 'active' : (paid ? 'complete' : 'active'));
         setFlowNodeState('receipt', fiscalized ? 'complete' : (paid ? 'active' : 'muted'));
         setFlowNodeState('recovery', queueState === 'available' && queueCount === 0 ? 'complete' : (queueState === 'available' ? 'active' : 'blocked'));
+    }
+
+
+    function workspaceTabAllowed(tab) {
+        return ['sale', 'history', 'shift'].includes(tab) ? tab : 'sale';
+    }
+
+    function terminalScreenLocked() {
+        const session = state.terminal.session;
+        return normalizeStatus(session?.state) === 'screen_locked' || normalizeStatus(session?.status) === 'locked';
+    }
+
+    function terminalSessionEnded() {
+        const session = state.terminal.session;
+        return Boolean(session && !terminalSessionActive());
+    }
+
+    function terminalLoginGateVisible() {
+        return Boolean(terminalRouteAvailable()
+            && state.activeWorkspaceTab === 'sale'
+            && (!terminalActiveCashier() || terminalScreenLocked() || terminalSessionEnded()));
+    }
+
+    function setTabSectionHidden(target, hidden) {
+        const element = typeof target === 'string' ? $(target) : target;
+        element?.classList.toggle('cashier-tab-hidden', Boolean(hidden));
+    }
+
+    function syncWorkspaceTabs() {
+        const tabs = $('cashierWorkspaceTabs');
+        const available = terminalRouteAvailable();
+        if (tabs) {
+            tabs.classList.toggle('hidden', !available);
+            tabs.setAttribute('aria-hidden', available ? 'false' : 'true');
+        }
+        if (!available) {
+            $('cashierLoginGate')?.classList.add('hidden');
+            $('cashierLoginGate')?.setAttribute('aria-hidden', 'true');
+            ['cashierReadinessStatus', 'cashierFlowOverview', 'checkboxSalesReportPanel', 'unresolvedOrdersPanel', 'cashierShiftConsole', 'fiscalReportsPanel', 'actionPinPanel']
+                .forEach(id => setTabSectionHidden(id, false));
+            document.querySelectorAll('.cashier-workbench').forEach(section => setTabSectionHidden(section, false));
+            return;
+        }
+        const activeTab = workspaceTabAllowed(state.activeWorkspaceTab);
+        state.activeWorkspaceTab = activeTab;
+        document.querySelectorAll('[data-cashier-tab]').forEach(button => {
+            const active = button.getAttribute('data-cashier-tab') === activeTab;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        const gateVisible = terminalLoginGateVisible();
+        const saleContentHidden = activeTab !== 'sale' || gateVisible;
+        setTabSectionHidden('cashierReadinessStatus', saleContentHidden);
+        setTabSectionHidden('cashierFlowOverview', saleContentHidden);
+        document.querySelectorAll('.cashier-workbench').forEach(section => setTabSectionHidden(section, saleContentHidden));
+        setTabSectionHidden('checkboxSalesReportPanel', activeTab !== 'history');
+        const shiftHidden = activeTab !== 'shift';
+        ['unresolvedOrdersPanel', 'cashierShiftConsole', 'fiscalReportsPanel', 'actionPinPanel']
+            .forEach(id => setTabSectionHidden(id, shiftHidden));
+    }
+
+    function setWorkspaceTab(tab, { focus = false } = {}) {
+        state.activeWorkspaceTab = workspaceTabAllowed(tab);
+        if (state.activeWorkspaceTab === 'history') {
+            const panel = $('checkboxSalesReportPanel');
+            if (panel && !panel.open) panel.open = true;
+            void loadCheckboxSalesReport({ silent: true });
+        }
+        if (state.activeWorkspaceTab === 'shift') {
+            const shiftPanel = $('cashierShiftConsole');
+            if (shiftPanel && !shiftPanel.open) shiftPanel.open = true;
+            void loadActionPinBindings({ silent: true });
+        }
+        renderActionPinPanel();
+        renderTerminalPanel();
+        syncWorkspaceTabs();
+        if (focus) document.querySelector(`[data-cashier-tab="${state.activeWorkspaceTab}"]`)?.focus?.({ preventScroll: true });
+    }
+
+    function routeSalesBlockedReason(route = selectedRoute()) {
+        if (!route) return 'Маршрут ще не обрано.';
+        if (!route.configured) return 'Каса для маршруту ще не налаштована.';
+        if (route.salesAllowed === false) return 'Обраний режим призначений лише для керування PIN і не є аварією Checkbox.';
+        if (route.status !== 'active') return 'Маршрут каси неактивний.';
+        if (route.featureEnabled !== true) return 'Функцію Checkbox для цієї каси вимкнено.';
+        if (route.acceptanceEnabled !== true) return 'Приймання оплат вимкнено налаштуванням каси.';
+        if (route.sequentialReady !== true) return sharedTestRouteBlockReason() || 'Спільну тестову зміну утримує інший напрямок.';
+        return '';
+    }
+
+    function buildAvailabilityReasons() {
+        const route = selectedRoute();
+        const reasons = [];
+        if (state.routeLoading || state.readinessInFlight) {
+            reasons.push({ tone: 'pending', title: 'Стан каси перевіряється', body: 'Сервер перечитує маршрут, зміну й готовність Checkbox. Кошик не очищається.' });
+        }
+        const canSell = hasAction('payments.create') && hasAction('payments.confirm_received');
+        if (!canSell) {
+            reasons.push({ tone: 'blocked', title: 'Немає права продажу', body: actionPinManageVisible() ? 'Можна керувати PIN, але створення оплат цим правом не відкривається.' : 'Потрібен окремий дозвіл на створення та підтвердження оплат.' });
+        }
+        const routeReason = routeSalesBlockedReason(route);
+        if (routeReason) {
+            reasons.push({ tone: route?.salesAllowed === false ? 'info' : 'blocked', title: route?.salesAllowed === false ? ['Режим лише', 'PIN'].join(' ') : 'Маршрут продажу недоступний', body: routeReason });
+        }
+        if (terminalRouteAvailable(route) && !terminalActiveCashierBindingId()) {
+            reasons.push({ tone: 'pending', title: 'Касир не ввійшов', body: 'Оберіть касира на стартовому екрані та підтвердьте його PIN. Права CRM-користувача не передаються касиру.' });
+        }
+        const lockedCashiers = state.terminal.cashiers.filter(cashier => cashier.pinLockedUntil);
+        if (lockedCashiers.length) {
+            const first = lockedCashiers[0];
+            reasons.push({ tone: 'blocked', title: 'PIN тимчасово заблоковано', body: `${terminalCashierLabel(first)}: повторна спроба після ${formatKyivDateTime(first.pinLockedUntil)}.` });
+        }
+        const sharedReason = sharedTestRouteBlockReason();
+        if (sharedReason) reasons.push({ tone: 'blocked', title: 'Зміна зайнята іншим напрямком', body: sharedReason });
+        const code = String(state.registerState?.readinessCode || '').trim();
+        if (code === 'provider_unavailable' || state.registerState?.providerUnavailable === true) {
+            reasons.push({ tone: 'blocked', title: 'Checkbox недоступний', body: 'Сервер не отримав підтвердження готовності Checkbox. Оновлення стану лише перечитає фактичний стан, але не додає прав.' });
+        } else if (!state.registerState && route?.salesAllowed !== false && !state.routeLoading) {
+            reasons.push({ tone: 'pending', title: 'Стан каси ще не прочитано', body: 'Натисніть “Оновити стан каси”, щоб перечитати готовність і зміну.' });
+        } else if (state.registerState && state.registerState.integrationReady !== true && route?.salesAllowed !== false) {
+            reasons.push({ tone: 'blocked', title: 'Каса ще не готова', body: paymentUiError({ code: code || 'readiness_missing' }) });
+        }
+        if (!reasons.length) reasons.push({ tone: 'ready', title: 'Продаж доступний', body: 'Права, касир і готовність каси підтверджені.' });
+        return reasons;
+    }
+
+    function renderAvailabilityReasons() {
+        const panel = $('cashierAccessReasons');
+        const list = $('cashierAccessReasonsList');
+        if (!panel || !list) return;
+        const route = selectedRoute();
+        const visible = Boolean(route && (terminalRouteAvailable(route) || route.mode === 'test' || state.registerState || route.salesAllowed === false));
+        panel.classList.toggle('hidden', !visible);
+        if (!visible) return;
+        const reasons = buildAvailabilityReasons();
+        list.innerHTML = reasons.map(reason => `
+            <article class="cashier-access-reason is-${escapeAttribute(reason.tone)}">
+                <strong>${escapeHtml(reason.title)}</strong>
+                <span>${escapeHtml(reason.body)}</span>
+            </article>
+        `).join('');
+    }
+
+    function receiptHistoryReadable() {
+        const route = selectedRoute();
+        return Boolean(route?.configured && canAccess('payments.view'));
     }
 
     function setButtonBusy(button, busy, busyText) {
@@ -689,7 +869,128 @@
         });
     }
 
+    function terminalRouteAvailable(route = selectedRoute()) {
+        return Boolean(route?.mode === 'test' && route.sharedTestRegister === true && hasAction('fiscal.terminal.launch'));
+    }
+
+    function terminalSessionActive() {
+        const session = state.terminal.session;
+        return Boolean(session?.id && !['ended', 'expired', 'revoked'].includes(normalizeStatus(session.state || session.status)));
+    }
+
+    function terminalActiveCashier() {
+        return state.terminal.activeCashier || state.terminal.session?.activeCashier || null;
+    }
+
+    function terminalActiveCashierBindingId() {
+        const bindingId = Number(terminalActiveCashier()?.bindingId || 0);
+        return Number.isSafeInteger(bindingId) && bindingId > 0 ? bindingId : null;
+    }
+
+    function terminalStorageKey() {
+        const userId = state.user?.id || state.user?.username || 'anonymous';
+        return `${STORAGE_PREFIX}:terminal:u:${userId}:business:${PILOT_SCOPE.crmProfileKey}:route:${PILOT_SCOPE.routeOptionId}`;
+    }
+
+    function saveTerminalSessionRef() {
+        try {
+            const session = state.terminal.session;
+            if (!session?.id) {
+                window.localStorage.removeItem(terminalStorageKey());
+                return;
+            }
+            window.localStorage.setItem(terminalStorageKey(), JSON.stringify({
+                id: session.id,
+                version: session.version,
+                businessContext: session.businessContext,
+                routeOptionId: session.routeOptionId
+            }));
+        } catch {}
+    }
+
+    function clearTerminalSessionRef() {
+        try { window.localStorage.removeItem(terminalStorageKey()); } catch {}
+    }
+
+    function terminalMutationHeaders(idempotencyKey = null) {
+        const headers = apiHeaders(idempotencyKey);
+        const session = state.terminal.session;
+        if (session?.id && session.version) {
+            headers['X-Cashier-Terminal-Session'] = session.id;
+            headers['X-Cashier-Terminal-Version'] = String(session.version);
+        }
+        return headers;
+    }
+
+    function shouldUseTerminalForSales() {
+        return terminalRouteAvailable() && terminalSessionActive() && Boolean(terminalActiveCashierBindingId());
+    }
+
+    function catalogCartSnapshot() {
+        const lines = [...document.querySelectorAll('#catalogSaleLines .cashier-catalog-line')]
+            .map(row => ({
+                itemCode: String(row.querySelector('[data-catalog-item]')?.value || '').trim(),
+                quantity: String(row.querySelector('[data-catalog-quantity]')?.value || '').trim()
+            }))
+            .filter(line => line.itemCode);
+        return {
+            lines,
+            discountCode: String($('catalogDiscountRule')?.value || '').trim(),
+            tender: state.tender,
+            terminalSessionId: state.terminal.session?.id || null,
+            terminalSessionVersion: state.terminal.session?.version || null,
+            terminalCashierBindingId: terminalActiveCashierBindingId()
+        };
+    }
+
+    function cartHasLines() {
+        return document.querySelectorAll('#catalogSaleLines .cashier-catalog-line').length > 0;
+    }
+
+    function cartDraftKey() {
+        return `cartDraft:${PILOT_SCOPE.routeOptionId}`;
+    }
+
+    function saveCatalogCartDraft() {
+        if (state.saleMode !== 'catalog_sale' || state.orderDetails?.order?.id || state.createInFlight || createDraft()?.payload) return;
+        const snapshot = catalogCartSnapshot();
+        if (!snapshot.lines.length && !snapshot.discountCode) {
+            storageRemove(cartDraftKey());
+            return;
+        }
+        storageSet(cartDraftKey(), JSON.stringify(snapshot));
+    }
+
+    function clearCatalogCartDraft() {
+        storageRemove(cartDraftKey());
+    }
+
+    function restoreCatalogCartDraft() {
+        if (state.saleMode !== 'catalog_sale' || cartHasLines() || state.orderDetails?.order?.id) return;
+        const raw = storageGet(cartDraftKey());
+        if (!raw) return;
+        try {
+            const snapshot = JSON.parse(raw);
+            if (!Array.isArray(snapshot.lines)) return;
+            snapshot.lines.forEach(line => {
+                addCatalogLine(line.itemCode);
+                const lastRow = [...document.querySelectorAll('#catalogSaleLines .cashier-catalog-line')]
+                    .find(row => row.querySelector('[data-catalog-item]')?.value === line.itemCode);
+                const quantity = lastRow?.querySelector('[data-catalog-quantity]');
+                if (quantity && line.quantity) {
+                    quantity.value = line.quantity;
+                    syncCatalogLine(lastRow);
+                }
+            });
+            if ($('catalogDiscountRule') && snapshot.discountCode) $('catalogDiscountRule').value = snapshot.discountCode;
+            updateCatalogCartSummary();
+            renderCatalogSearchResults();
+        } catch {}
+    }
+
     function selectedCashierBindingId() {
+        const terminalBindingId = terminalActiveCashierBindingId();
+        if (shouldUseTerminalForSales() && terminalBindingId) return terminalBindingId;
         const id = Number($('paymentCashierBinding')?.value || 0);
         return Number.isSafeInteger(id) && id > 0 ? id : null;
     }
@@ -1139,23 +1440,234 @@
         } finally {
             state.actionPinLoadInFlight = false;
             renderActionPinPanel();
+            renderActionPinManagerModal();
+            renderActionPinSetModal();
         }
     }
 
     function clearActionPinFields() {
         if ($('actionPinValue')) $('actionPinValue').value = '';
         if ($('actionPinConfirm')) $('actionPinConfirm').value = '';
+        clearActionPinSetFields();
     }
 
     function changeActionPinBinding() {
         state.actionPinSelectedBindingId = $('actionPinBindingSelect')?.value || '';
         clearActionPinFields();
         renderActionPinPanel();
+        renderTerminalPanel();
     }
 
     function ownActionPinBindingId() {
         const own = state.actionPinBindings.find(binding => Number(binding.targetUserId) === Number(state.user?.id));
         return own?.id || null;
+    }
+
+    function actionPinBindingLabel(binding = {}) {
+        return binding.cashierName || binding.name || binding.cashierLogin || binding.username || `Касир ${binding.id || binding.bindingId || '—'}`;
+    }
+
+    function actionPinBindingAccount(binding = {}) {
+        const pieces = [];
+        const username = binding.username || binding.cashierLogin || binding.accountUsername || '';
+        const userId = binding.targetUserId || binding.userId || binding.crmUserId || '';
+        if (username) pieces.push(username);
+        if (userId) pieces.push(`CRM ID ${userId}`);
+        return pieces.join(' · ') || 'CRM-акаунт не передано сервером';
+    }
+
+    function actionPinBindingRegister(binding = {}) {
+        return binding.registerDisplayName
+            || binding.registerLabel
+            || selectedRoute()?.registerLabel
+            || PILOT_SCOPE.registerLabel
+            || 'обрана каса';
+    }
+
+    function actionPinBindingStatus(binding = {}) {
+        const lockedUntil = binding.actionPin?.lockedUntil || binding.pinLockedUntil || null;
+        if (lockedUntil) return { tone: 'blocked', label: `Заблоковано до ${formatKyivDateTime(lockedUntil)}` };
+        const configured = binding.actionPin?.configured === true || binding.pinConfigured === true;
+        return configured
+            ? { tone: 'ready', label: 'PIN встановлено' }
+            : { tone: 'missing', label: 'PIN не встановлено' };
+    }
+
+    function actionPinSelfInstallMessage() {
+        if (actionPinManageVisible()) return 'Власний PIN має встановити інший уповноважений користувач CRM.';
+        return 'PIN встановлює користувач CRM із дозволом fiscal.test.pin.manage або fiscal.configure.';
+    }
+
+    function clearActionPinSetFields() {
+        if ($('actionPinSetValue')) $('actionPinSetValue').value = '';
+        if ($('actionPinSetConfirm')) $('actionPinSetConfirm').value = '';
+        state.actionPinSetError = '';
+    }
+
+    function renderActionPinEntryButtons() {
+        const visible = actionPinVisible();
+        ['openActionPinManagerBtn', 'openActionPinManagerFromPanelBtn', 'topOpenPinAdminBtn'].forEach(id => {
+            const button = $(id);
+            if (!button) return;
+            button.classList.toggle('hidden', !visible);
+            const disabled = !visible || state.actionPinLoadInFlight;
+            setButtonBusy(button, state.actionPinLoadInFlight && state.actionPinManagerOpen, 'Оновлюємо…');
+            if (!state.actionPinLoadInFlight) setDisabledReason(button, disabled, visible ? '' : 'Немає доступу до PIN-дій для цієї каси.');
+        });
+    }
+
+    function renderActionPinManagerModal() {
+        const modal = $('actionPinManagerModal');
+        if (!modal) return;
+        const open = Boolean(state.actionPinManagerOpen);
+        modal.classList.toggle('hidden', !open);
+        modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+        if (!open) return;
+        const list = $('actionPinManagerList');
+        if (list) {
+            list.replaceChildren();
+            if (!actionPinManageVisible()) {
+                const message = document.createElement('p');
+                message.className = 'cashier-help';
+                message.textContent = 'У цього користувача CRM немає права керувати PIN. Вхід касира в термінал цього не змінює.';
+                list.append(message);
+            } else if (state.actionPinLoadInFlight && !state.actionPinBindings.length) {
+                const message = document.createElement('p');
+                message.className = 'cashier-help';
+                message.textContent = 'Завантажуємо касирів цієї тестової каси…';
+                list.append(message);
+            } else if (!state.actionPinBindings.length) {
+                const message = document.createElement('p');
+                message.className = 'cashier-help';
+                message.textContent = 'Для цієї каси немає доступних тестових прив’язок.';
+                list.append(message);
+            } else {
+                state.actionPinBindings.forEach(binding => {
+                    const status = actionPinBindingStatus(binding);
+                    const self = Number(binding.targetUserId) === Number(state.user?.id);
+                    const card = document.createElement('article');
+                    card.className = 'cashier-pin-manager-card';
+                    card.innerHTML = `
+                        <div class="cashier-pin-manager-main">
+                            <strong>${escapeHtml(actionPinBindingLabel(binding))}</strong>
+                            <span>${escapeHtml(actionPinBindingAccount(binding))}</span>
+                            <span>${escapeHtml(actionPinBindingRegister(binding))}</span>
+                        </div>
+                        <span class="cashier-status ${escapeAttribute(status.tone === 'ready' ? 'is-ok' : status.tone === 'blocked' ? 'is-danger' : 'is-warn')}">${escapeHtml(status.label)}</span>
+                    `;
+                    const actions = document.createElement('div');
+                    actions.className = 'cashier-pin-manager-actions';
+                    const help = document.createElement('p');
+                    help.className = 'cashier-help';
+                    if (self) {
+                        help.textContent = actionPinSelfInstallMessage();
+                        actions.append(help);
+                    } else {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'btn-page-secondary';
+                        button.setAttribute('data-action-pin-set-binding', String(binding.id));
+                        button.textContent = status.tone === 'ready' ? ['Змінити', 'PIN'].join(' ') : ['Встановити', 'PIN'].join(' ');
+                        button.disabled = state.actionPinSaveInFlight;
+                        actions.append(button);
+                    }
+                    card.append(actions);
+                    list.append(card);
+                });
+            }
+        }
+        setButtonBusy($('actionPinManagerRefresh'), state.actionPinLoadInFlight, 'Оновлюємо…');
+        if (!state.actionPinLoadInFlight) setDisabledReason($('actionPinManagerRefresh'), !actionPinManageVisible(), 'Немає права керувати PIN.');
+    }
+
+    function renderActionPinSetModal() {
+        const modal = $('actionPinSetModal');
+        if (!modal) return;
+        const open = Boolean(state.actionPinSetOpen);
+        modal.classList.toggle('hidden', !open);
+        modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+        if (!open) return;
+        const binding = state.actionPinBindings.find(item => String(item.id) === String(state.actionPinSelectedBindingId));
+        setText('actionPinSetTitle', binding ? `PIN для ${actionPinBindingLabel(binding)}` : 'Встановити PIN касира');
+        setText('actionPinSetHelp', binding
+            ? `${actionPinBindingRegister(binding)} · ${actionPinBindingAccount(binding)}. Чинний PIN не показується.`
+            : 'Оберіть касира зі списку.');
+        const pin = String($('actionPinSetValue')?.value || '').trim();
+        const confirmation = String($('actionPinSetConfirm')?.value || '').trim();
+        const valid = /^\d{4,12}$/.test(pin) && pin === confirmation && Boolean(binding) && Number(binding?.targetUserId) !== Number(state.user?.id);
+        setText('actionPinSetError', state.actionPinSetError || '');
+        $('actionPinSetError')?.classList.toggle('hidden', !state.actionPinSetError);
+        setButtonBusy($('actionPinSetSubmit'), state.actionPinSaveInFlight, 'Зберігаємо…');
+        if (!state.actionPinSaveInFlight) setDisabledReason($('actionPinSetSubmit'), !valid, 'Введіть однаковий PIN на 4–12 цифр для іншого касира.');
+        if ($('actionPinSetValue')) $('actionPinSetValue').disabled = state.actionPinSaveInFlight;
+        if ($('actionPinSetConfirm')) $('actionPinSetConfirm').disabled = state.actionPinSaveInFlight;
+    }
+
+    async function openActionPinManager(trigger = null) {
+        if (!actionPinVisible()) {
+            notify('PIN-дії недоступні для цієї каси або користувача.', 'error');
+            return;
+        }
+        state.actionPinManagerOpen = true;
+        state.actionPinModalTrigger = trigger || document.activeElement || null;
+        renderActionPinManagerModal();
+        await loadActionPinBindings({ silent: true });
+        renderActionPinManagerModal();
+        window.setTimeout(() => $('actionPinManagerRefresh')?.focus?.({ preventScroll: true }), 0);
+    }
+
+    function closeActionPinManager({ restoreFocus = true } = {}) {
+        const trigger = state.actionPinModalTrigger;
+        state.actionPinManagerOpen = false;
+        state.actionPinModalTrigger = null;
+        renderActionPinManagerModal();
+        if (restoreFocus) trigger?.focus?.({ preventScroll: true });
+    }
+
+    function openActionPinSetModal(bindingId, trigger = null) {
+        const binding = state.actionPinBindings.find(item => String(item.id) === String(bindingId));
+        if (!binding) { notify('Оберіть касира для PIN.', 'error'); return; }
+        if (Number(binding.targetUserId) === Number(state.user?.id)) {
+            notify(paymentUiError(new Error('action_pin_self_enrollment_denied')), 'error');
+            return;
+        }
+        state.actionPinSelectedBindingId = String(binding.id);
+        state.actionPinSetOpen = true;
+        state.actionPinModalTrigger = trigger || document.activeElement || state.actionPinModalTrigger || null;
+        clearActionPinSetFields();
+        renderActionPinSetModal();
+        window.setTimeout(() => $('actionPinSetValue')?.focus?.({ preventScroll: false }), 0);
+    }
+
+    function closeActionPinSetModal({ restoreFocus = true } = {}) {
+        const trigger = state.actionPinModalTrigger;
+        state.actionPinSetOpen = false;
+        clearActionPinSetFields();
+        renderActionPinSetModal();
+        if (restoreFocus) trigger?.focus?.({ preventScroll: true });
+    }
+
+    function handleActionPinModalKeydown(event) {
+        const activeModal = state.actionPinSetOpen ? $('actionPinSetModal') : state.actionPinManagerOpen ? $('actionPinManagerModal') : null;
+        if (!activeModal) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            if (state.actionPinSetOpen) closeActionPinSetModal();
+            else closeActionPinManager();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const focusable = Array.from(activeModal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]'));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
     }
 
     async function checkOwnActionPin(event) {
@@ -1200,32 +1712,47 @@
         event?.preventDefault?.();
         if (state.actionPinSaveInFlight) return;
         const select = $('actionPinBindingSelect');
-        const bindingId = select?.value || '';
+        const bindingId = state.actionPinSelectedBindingId || select?.value || '';
         const binding = state.actionPinBindings.find(item => String(item.id) === String(bindingId));
-        const pin = String($('actionPinValue')?.value || '').trim();
-        const confirmation = String($('actionPinConfirm')?.value || '').trim();
+        const pin = String(($('actionPinSetValue')?.value || $('actionPinValue')?.value || '')).trim();
+        const confirmation = String(($('actionPinSetConfirm')?.value || $('actionPinConfirm')?.value || '')).trim();
+        const focusInvalid = (id) => (state.actionPinSetOpen ? $(id) : (id === 'actionPinSetConfirm' ? $('actionPinConfirm') : $('actionPinValue')))?.focus?.({ preventScroll: false });
         if (!binding) {
-            notify(paymentUiError(new Error('cashier_binding_required')), 'error');
+            const message = paymentUiError(new Error('cashier_binding_required'));
+            state.actionPinSetError = message;
+            renderActionPinSetModal();
+            notify(message, 'error');
             select?.focus?.({ preventScroll: false });
             return;
         }
         if (Number(binding.targetUserId) === Number(state.user?.id)) {
-            notify(paymentUiError(new Error('action_pin_self_enrollment_denied')), 'error');
-            select?.focus?.({ preventScroll: false });
+            const message = paymentUiError(new Error('action_pin_self_enrollment_denied'));
+            state.actionPinSetError = message;
+            renderActionPinSetModal();
+            notify(message, 'error');
             return;
         }
         if (!/^\d{4,12}$/.test(pin)) {
-            notify(paymentUiError(new Error('action_pin_format_invalid')), 'error');
-            $('actionPinValue')?.focus?.({ preventScroll: false });
+            const message = paymentUiError(new Error('action_pin_format_invalid'));
+            state.actionPinSetError = message;
+            renderActionPinSetModal();
+            notify(message, 'error');
+            focusInvalid('actionPinSetValue');
             return;
         }
         if (pin !== confirmation) {
-            notify(paymentUiError(new Error('action_pin_confirmation_mismatch')), 'error');
-            $('actionPinConfirm')?.focus?.({ preventScroll: false });
+            const message = paymentUiError(new Error('action_pin_confirmation_mismatch'));
+            state.actionPinSetError = message;
+            renderActionPinSetModal();
+            notify(message, 'error');
+            focusInvalid('actionPinSetConfirm');
             return;
         }
         state.actionPinSaveInFlight = true;
+        state.actionPinSetError = '';
         renderActionPinPanel();
+        renderActionPinManagerModal();
+        renderActionPinSetModal();
         try {
             await apiRequest(`/api/payments/fiscal-bindings/${encodeURIComponent(binding.id)}/action-pin`, {
                 method: 'POST',
@@ -1238,13 +1765,19 @@
             });
             state.actionPinSelectedBindingId = String(binding.id);
             clearActionPinFields();
-            notify(`PIN встановлено для ${binding.cashierName || binding.cashierLogin || `касира ${binding.id}`}.`, 'success');
+            closeActionPinSetModal({ restoreFocus: false });
+            notify(`PIN встановлено для ${actionPinBindingLabel(binding)}.`, 'success');
             await loadActionPinBindings({ silent: true });
+            renderActionPinManagerModal();
         } catch (error) {
-            notify(paymentUiError(error), 'error');
+            const message = paymentUiError(error);
+            state.actionPinSetError = message;
+            notify(message, 'error');
         } finally {
             state.actionPinSaveInFlight = false;
             renderActionPinPanel();
+            renderActionPinManagerModal();
+            renderActionPinSetModal();
         }
     }
 
@@ -1335,11 +1868,13 @@
             && route.status === 'active'
             && route.featureEnabled === true
             && route.acceptanceEnabled === true
-            && route.salesAllowed !== false
+            && (route.salesAllowed !== false || terminalRouteAvailable(route))
             && route.sequentialReady === true
         );
         setText('cashierRouteStatus', routeReadinessLabel(route));
         configurePageContext();
+        renderActionPinEntryButtons();
+        renderAvailabilityReasons();
     }
 
     async function loadRouteOptions() {
@@ -1377,6 +1912,28 @@
         state.serviceOutLastError = null;
         state.serviceOutCapabilityDenied = false;
         state.actionPinBindings = [];
+        state.actionPinManagerOpen = false;
+        state.actionPinSetOpen = false;
+        state.actionPinSetError = '';
+        state.readinessLastCheckedAt = null;
+        if (state.terminal.idleTimer) window.clearTimeout(state.terminal.idleTimer);
+        state.terminal = {
+            ...state.terminal,
+            session: null,
+            cashiers: [],
+            selectedBindingId: '',
+            activeCashier: null,
+            openInFlight: false,
+            loadInFlight: false,
+            loginInFlight: false,
+            lockInFlight: false,
+            endInFlight: false,
+            idleTimer: null,
+            pinModalBindingId: '',
+            pinModalError: '',
+            pinModalTrigger: null
+        };
+        clearTerminalSessionRef();
         resetReceiptHistoryForScope();
         $('catalogSaleLines')?.replaceChildren();
         $('paymentCashierBinding')?.replaceChildren(new Option('Завантаження касирів…', ''));
@@ -1420,10 +1977,10 @@
             renderActionPinPanel();
             return;
         }
-        if (route.salesAllowed === false) {
+        if (route.salesAllowed === false && !terminalRouteAvailable(route)) {
             setText('catalogSaleSummary', 'Ця тестова каса доступна лише для налаштування або перевірки PIN. Продажі для вашого доступу заблоковані.');
             $('paymentCashierBinding')?.replaceChildren(new Option('Продажі недоступні для цього доступу', ''));
-            state.catalogReady = false; state.routeReady = false; renderReadinessState(); syncCreateAvailability(); renderServiceOutPanel(); await loadActionPinBindings({ silent: true }); loadReceiptHistoryOnOpen(); return;
+            state.catalogReady = false; state.routeReady = false; renderReadinessState(); syncCreateAvailability(); renderServiceOutPanel(); renderTerminalPanel(); await loadActionPinBindings({ silent: true }); loadReceiptHistoryOnOpen(); return;
         }
         await loadSelectableCashiers();
         await loadCatalogData();
@@ -1433,6 +1990,8 @@
         await loadUnresolvedOrders({ silent: true });
         await loadServiceOutRequests({ silent: true });
         await loadActionPinBindings({ silent: true });
+        await restoreTerminalFromStorage();
+        restoreCatalogCartDraft();
         scheduleReadinessRefresh();
         loadReceiptHistoryOnOpen();
     }
@@ -1657,6 +2216,7 @@
                 ? `Перейти до оплати · ${formatMoneyMinor(String(finalTotalMinor))}`
                 : 'Перейти до оплати';
         }
+        saveCatalogCartDraft();
         const explanation = $('catalogDiscountExplanation');
         if (explanation) {
             explanation.hidden = !discount;
@@ -1830,7 +2390,7 @@
 
     function buildCatalogSalePayload() {
         const route = assertSelectedRouteScope();
-        const cashierBindingId = Number($('paymentCashierBinding')?.value || 0);
+        const cashierBindingId = selectedCashierBindingId();
         if (!Number.isSafeInteger(cashierBindingId) || cashierBindingId <= 0) throw new Error('cashier_binding_required');
         const discountCode = String($('catalogDiscountRule')?.value || '').trim();
         return {
@@ -1848,7 +2408,7 @@
         const date = $('paymentDate')?.value;
         const kids = Number($('paymentKidsCount')?.value || 0);
         const adults = Number($('paymentAdultsCount')?.value || 0);
-        const cashierBindingId = Number($('paymentCashierBinding')?.value || 0);
+        const cashierBindingId = selectedCashierBindingId();
         if (!date) throw new Error('payment_date_required');
         if (!Number.isSafeInteger(kids) || kids <= 0) throw new Error('kids_count_invalid');
         if (!Number.isSafeInteger(adults) || adults < 0) throw new Error('adults_count_invalid');
@@ -1871,6 +2431,20 @@
         const select = $('paymentCashierBinding');
         if (!select) return;
         const route = assertSelectedRouteScope();
+        if (terminalRouteAvailable(route)) {
+            if (!state.terminal.session?.id) {
+                state.selectableCashiers = [];
+                select.replaceChildren(new Option('Увійдіть касиром у спільний термінал', ''));
+                setText('paymentCashierHelp', 'Продаж виконує активний касир термінала після PIN-входу.');
+                renderTerminalPanel();
+                return;
+            }
+            await loadTerminalCashiers({ silent: true });
+            state.selectableCashiers = state.terminal.cashiers.map(cashier => ({ id: cashier.bindingId, cashierName: cashier.name, mode: 'test' }));
+            updatePaymentCashierFromTerminal();
+            setText('paymentCashierHelp', 'Касир береться з PIN-входу у спільний термінал.');
+            return;
+        }
         const params = routeQueryParams({ businessContext: route.businessContext, routeOptionId: route.id });
         const result = await apiRequest(`/api/payments/catalog/cashiers?${params.toString()}`, { method: 'GET', headers: apiHeaders() });
         const cashiers = Array.isArray(result.cashiers) ? result.cashiers : [];
@@ -1894,6 +2468,540 @@
         syncCreateAvailability();
     }
 
+    function projectTerminalCashier(binding = {}) {
+        return {
+            bindingId: Number(binding.bindingId || binding.id || 0),
+            userId: Number(binding.userId || binding.targetUserId || 0),
+            name: binding.cashierName || binding.name || binding.username || binding.cashierLogin || null,
+            username: binding.username || null,
+            pinConfigured: binding.pinConfigured === true || binding.actionPin?.configured === true,
+            pinLockedUntil: binding.pinLockedUntil || binding.actionPin?.lockedUntil || null
+        };
+    }
+
+    function terminalCashierLabel(cashier = terminalActiveCashier()) {
+        if (!cashier) return 'не обрано';
+        const binding = state.terminal.cashiers.find(item => Number(item.bindingId) === Number(cashier.bindingId));
+        return cashier.name || binding?.name || cashier.username || binding?.username || `Касир ${cashier.bindingId}`;
+    }
+
+    function terminalCashierByBindingId(bindingId) {
+        const numericId = Number(bindingId || 0);
+        return state.terminal.cashiers.find(cashier => Number(cashier.bindingId) === numericId) || null;
+    }
+
+    function terminalCashierStatusText(cashier) {
+        if (!cashier) return '';
+        if (!cashier.pinConfigured) return 'PIN не встановлено';
+        if (cashier.pinLockedUntil) return `Тимчасово заблоковано до ${formatKyivDateTime(cashier.pinLockedUntil)}`;
+        return 'PIN готовий';
+    }
+
+    function terminalCashierCanLogin(cashier) {
+        return Boolean(cashier?.bindingId && cashier.pinConfigured && !cashier.pinLockedUntil && state.terminal.session?.id && !terminalSessionEnded());
+    }
+
+    function clearTerminalPinSecret() {
+        const input = $('terminalPinModalInput');
+        if (input) input.value = '';
+        if ($('terminalCashierPin')) $('terminalCashierPin').value = '';
+    }
+
+    function renderTerminalTopBar() {
+        const topBar = $('cashierTerminalTopBar');
+        const visible = terminalRouteAvailable();
+        if (topBar) {
+            topBar.classList.toggle('hidden', !visible);
+            topBar.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        }
+        if (!visible) return;
+        const session = state.terminal.session;
+        const active = terminalActiveCashier();
+        const screenLocked = terminalScreenLocked();
+        const ended = terminalSessionEnded();
+        setText('cashierTopActiveCashier', active && !screenLocked && !ended ? terminalCashierLabel(active) : 'не обрано');
+        const canSwitch = Boolean(session?.id && !ended && !screenLocked);
+        const canLock = Boolean(session?.id && !ended && !screenLocked && active);
+        const changeButton = $('topChangeTerminalCashierBtn');
+        const lockButton = $('topLockTerminalBtn');
+        const pinButton = $('topOpenPinAdminBtn');
+        setButtonBusy(changeButton, state.terminal.lockInFlight, 'Готуємо…');
+        setButtonBusy(lockButton, state.terminal.lockInFlight, 'Блокуємо…');
+        if (!state.terminal.lockInFlight) {
+            setDisabledReason(changeButton, !canSwitch, canSwitch ? '' : 'Увійдіть касиром або відкрийте термінал.');
+            setDisabledReason(lockButton, !canLock, canLock ? '' : 'Немає активного касира для блокування.');
+        }
+        setDisabledReason(pinButton, !actionPinVisible(), actionPinVisible() ? '' : 'Немає доступу до PIN-дій для цієї каси.');
+    }
+
+    function renderTerminalLoginGate() {
+        const gate = $('cashierLoginGate');
+        if (!gate) return;
+        const visible = terminalLoginGateVisible();
+        gate.classList.toggle('hidden', !visible);
+        gate.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        if (!visible) return;
+        const session = state.terminal.session;
+        const ended = terminalSessionEnded();
+        const screenLocked = terminalScreenLocked();
+        const actions = $('cashierLoginGateActions');
+        const list = $('cashierLoginGateList');
+        const notice = $('cashierLoginGateNotice');
+        if (notice) {
+            notice.textContent = !session?.id || ended
+                ? 'Відкрийте термінал для цієї тестової каси. Продажна форма з’явиться після входу касира.'
+                : screenLocked
+                ? 'Термінал заблоковано. Для відновлення оберіть касира й введіть його PIN.'
+                : 'Оберіть касира, який зараз працює біля каси, і підтвердьте його PIN.';
+        }
+        if (actions) {
+            actions.replaceChildren();
+            if (!session?.id || ended) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'btn-page-primary cashier-primary-action';
+                button.setAttribute('data-terminal-open', 'true');
+                button.textContent = state.terminal.openInFlight ? 'Відкриваємо…' : 'Відкрити термінал';
+                button.disabled = state.terminal.openInFlight;
+                actions.append(button);
+            } else {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'btn-page-secondary';
+                button.setAttribute('data-terminal-refresh-cashiers', 'true');
+                button.textContent = state.terminal.loadInFlight ? 'Оновлюємо…' : 'Оновити касирів';
+                button.disabled = state.terminal.loadInFlight;
+                actions.append(button);
+            }
+        }
+        if (!list) return;
+        list.replaceChildren();
+        if (!session?.id || ended) return;
+        if (state.terminal.loadInFlight) {
+            const item = document.createElement('p');
+            item.className = 'cashier-help';
+            item.textContent = 'Завантажуємо доступних касирів…';
+            list.append(item);
+            return;
+        }
+        if (!state.terminal.cashiers.length) {
+            const item = document.createElement('p');
+            item.className = 'cashier-help';
+            item.textContent = 'Для цієї каси немає активних касирів із PIN.';
+            list.append(item);
+            return;
+        }
+        state.terminal.cashiers.forEach(cashier => {
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.className = 'cashier-login-card';
+            card.setAttribute('data-terminal-cashier-login', String(cashier.bindingId));
+            const canLogin = terminalCashierCanLogin(cashier);
+            card.disabled = !canLogin || state.terminal.loginInFlight;
+            if (!canLogin) card.classList.add('is-disabled');
+            const name = document.createElement('strong');
+            name.textContent = cashier.name || cashier.username || `Касир ${cashier.bindingId}`;
+            const status = document.createElement('span');
+            status.textContent = terminalCashierStatusText(cashier);
+            card.append(name, status);
+            list.append(card);
+        });
+    }
+
+    function renderTerminalPinModal() {
+        const modal = $('terminalPinModal');
+        if (!modal) return;
+        const open = Boolean(state.terminal.pinModalBindingId);
+        const cashier = terminalCashierByBindingId(state.terminal.pinModalBindingId);
+        modal.classList.toggle('hidden', !open);
+        modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+        if (!open) return;
+        setText('terminalPinModalTitle', cashier ? `Увійти: ${terminalCashierLabel(cashier)}` : 'Увійти касиром');
+        setText('terminalPinModalHelp', `Каса: ${selectedRoute()?.registerLabel || PILOT_SCOPE.registerLabel}. PIN вводить сам касир; він не зберігається на сторінці.`);
+        const error = state.terminal.pinModalError || '';
+        setText('terminalPinModalError', error);
+        $('terminalPinModalError')?.classList.toggle('hidden', !error);
+        const input = $('terminalPinModalInput');
+        const valid = /^\d{4,12}$/.test(String(input?.value || '').trim());
+        if (input) input.disabled = state.terminal.loginInFlight;
+        setButtonBusy($('terminalPinModalSubmit'), state.terminal.loginInFlight, 'Перевіряємо…');
+        if (!state.terminal.loginInFlight) setDisabledReason($('terminalPinModalSubmit'), !valid || !cashier || !terminalCashierCanLogin(cashier), 'Введіть 4–12 цифр PIN.');
+    }
+
+    function openTerminalPinModal(bindingId, trigger = null) {
+        const cashier = terminalCashierByBindingId(bindingId);
+        if (!terminalCashierCanLogin(cashier)) {
+            notify(cashier ? terminalCashierStatusText(cashier) : 'Оберіть доступного касира термінала.', 'error');
+            return;
+        }
+        state.terminal.selectedBindingId = String(bindingId);
+        state.terminal.pinModalBindingId = String(bindingId);
+        state.terminal.pinModalError = '';
+        state.terminal.pinModalTrigger = trigger || document.activeElement || null;
+        clearTerminalPinSecret();
+        renderTerminalPinModal();
+        window.setTimeout(() => $('terminalPinModalInput')?.focus?.({ preventScroll: false }), 0);
+    }
+
+    function closeTerminalPinModal({ restoreFocus = true } = {}) {
+        const trigger = state.terminal.pinModalTrigger;
+        state.terminal.pinModalBindingId = '';
+        state.terminal.pinModalError = '';
+        state.terminal.pinModalTrigger = null;
+        clearTerminalPinSecret();
+        renderTerminalPinModal();
+        if (restoreFocus) trigger?.focus?.({ preventScroll: true });
+    }
+
+    function handleTerminalPinModalKeydown(event) {
+        if (!state.terminal.pinModalBindingId) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeTerminalPinModal();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const modal = $('terminalPinModal');
+        const focusable = modal ? Array.from(modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]')) : [];
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
+
+    function applyTerminalPinKey(key) {
+        const input = $('terminalPinModalInput');
+        if (!input || input.disabled) return;
+        const current = String(input.value || '');
+        if (/^\d$/.test(key)) input.value = (current + key).slice(0, 12);
+        else if (key === 'backspace') input.value = current.slice(0, -1);
+        else if (key === 'clear') input.value = '';
+        state.terminal.pinModalError = '';
+        renderTerminalPinModal();
+        input.focus({ preventScroll: true });
+    }
+
+    function updatePaymentCashierFromTerminal() {
+        const select = $('paymentCashierBinding');
+        if (!select || !terminalRouteAvailable()) return;
+        const bindingId = terminalActiveCashierBindingId();
+        select.replaceChildren();
+        if (!bindingId) {
+            select.append(new Option('Касир термінала не обраний', ''));
+            return;
+        }
+        select.append(new Option(`${terminalCashierLabel()} · PIN підтверджено`, String(bindingId)));
+        select.value = String(bindingId);
+    }
+
+    function renderTerminalPanel() {
+        const panel = $('cashierTerminalPanel');
+        const visible = terminalRouteAvailable();
+        if (panel) {
+            panel.classList.toggle('hidden', !visible);
+            panel.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        }
+        renderTerminalTopBar();
+        if (!visible) {
+            renderTerminalLoginGate();
+            syncWorkspaceTabs();
+            return;
+        }
+        const session = state.terminal.session;
+        const active = terminalActiveCashier();
+        const screenLocked = terminalScreenLocked();
+        const ended = terminalSessionEnded();
+        if (panel) {
+            panel.classList.toggle('is-active', Boolean(active) && !screenLocked && !ended);
+            panel.classList.toggle('is-locked', screenLocked);
+            panel.setAttribute('aria-busy', state.terminal.openInFlight || state.terminal.loadInFlight || state.terminal.loginInFlight || state.terminal.lockInFlight || state.terminal.endInFlight ? 'true' : 'false');
+        }
+        setStatus('cashierTerminalStatus', state.terminal.openInFlight || state.terminal.loginInFlight || state.terminal.loadInFlight ? 'pending' : (ended ? 'closed' : (screenLocked ? 'blocked' : (active ? 'ready' : 'not_open'))));
+        setText('cashierTerminalActiveCashier', active && !screenLocked ? terminalCashierLabel(active) : 'не обрано');
+        const notice = ended
+            ? 'Сесію термінала завершено. Відкрийте нову сесію для роботи.'
+            : screenLocked
+            ? 'Екран заблоковано. Оберіть касира на стартовому екрані й введіть PIN у вікні.'
+            : active
+            ? `Активний касир підтверджений PIN. Версія сесії: ${session?.version || '—'}.`
+            : session?.id
+            ? 'Оберіть касира на стартовому екрані. Кошик лишається на сторінці, але продаж не створиться без активного касира.'
+            : 'Відкрийте термінал для цієї тестової каси.';
+        setText('cashierTerminalNotice', notice);
+        $('openTerminalSessionBtn')?.classList.toggle('hidden', Boolean(session?.id && !ended));
+        $('changeTerminalCashierBtn')?.classList.toggle('hidden', !session?.id || ended || screenLocked);
+        $('lockTerminalBtn')?.classList.toggle('hidden', !session?.id || ended || screenLocked);
+        $('endTerminalBtn')?.classList.toggle('hidden', !session?.id || ended);
+        $('terminalCashierLoginForm')?.classList.add('hidden');
+        const select = $('terminalCashierSelect');
+        if (select) {
+            const previous = state.terminal.selectedBindingId || select.value || '';
+            select.replaceChildren();
+            if (state.terminal.loadInFlight) select.append(new Option('Завантаження касирів…', ''));
+            else if (!state.terminal.cashiers.length) select.append(new Option('Немає доступних касирів', ''));
+            else {
+                select.append(new Option('Оберіть касира', ''));
+                state.terminal.cashiers.forEach(cashier => {
+                    const option = new Option(`${cashier.name || cashier.username || `Касир ${cashier.bindingId}`} · ${terminalCashierStatusText(cashier)}`, String(cashier.bindingId));
+                    if (!terminalCashierCanLogin(cashier)) option.disabled = true;
+                    select.append(option);
+                });
+                if ([...select.options].some(option => option.value === previous && !option.disabled)) select.value = previous;
+                state.terminal.selectedBindingId = select.value || previous;
+            }
+        }
+        const fallbackPin = String($('terminalCashierPin')?.value || '').trim();
+        const loginDisabled = !state.terminal.session?.id || ended || state.terminal.loginInFlight || !$('terminalCashierSelect')?.value || !/^\d{4,12}$/.test(fallbackPin);
+        setButtonBusy($('openTerminalSessionBtn'), state.terminal.openInFlight, 'Відкриваємо…');
+        setButtonBusy($('terminalCashierLoginBtn'), state.terminal.loginInFlight, 'Перевіряємо PIN…');
+        setButtonBusy($('lockTerminalBtn'), state.terminal.lockInFlight, 'Блокуємо…');
+        setButtonBusy($('endTerminalBtn'), state.terminal.endInFlight, 'Завершуємо…');
+        if (!state.terminal.openInFlight) setDisabledReason($('openTerminalSessionBtn'), false, '');
+        if (!state.terminal.loginInFlight) setDisabledReason($('terminalCashierLoginBtn'), loginDisabled, 'Оберіть касира і введіть 4–12 цифр PIN.');
+        renderTerminalLoginGate();
+        renderTerminalPinModal();
+        updatePaymentCashierFromTerminal();
+        renderCompactContext();
+        syncWorkspaceTabs();
+        syncCreateAvailability();
+        syncConfirmationAvailability();
+    }
+
+    async function loadTerminalCashiers({ silent = true } = {}) {
+        if (!terminalRouteAvailable() || !state.terminal.session?.id) return [];
+        state.terminal.loadInFlight = true;
+        renderTerminalPanel();
+        try {
+            const result = await apiRequest(`/api/payments/terminal/sessions/${encodeURIComponent(state.terminal.session.id)}/cashiers`, {
+                method: 'GET',
+                headers: apiHeaders()
+            });
+            state.terminal.session = result.session || state.terminal.session;
+            state.terminal.cashiers = Array.isArray(result.cashiers) ? result.cashiers.map(projectTerminalCashier) : [];
+            saveTerminalSessionRef();
+            if (!silent) notify('Список касирів термінала оновлено.', 'success');
+            return state.terminal.cashiers;
+        } catch (error) {
+            if (!silent) notify(paymentUiError(error), 'error');
+            return state.terminal.cashiers;
+        } finally {
+            state.terminal.loadInFlight = false;
+            renderTerminalPanel();
+        }
+    }
+
+    async function refreshTerminalSession({ silent = true } = {}) {
+        if (!terminalRouteAvailable() || !state.terminal.session?.id) return null;
+        try {
+            const result = await apiRequest(`/api/payments/terminal/sessions/${encodeURIComponent(state.terminal.session.id)}`, {
+                method: 'GET',
+                headers: apiHeaders(),
+                cache: 'no-store'
+            });
+            state.terminal.session = result.session || null;
+            if (!terminalSessionActive()) state.terminal.activeCashier = null;
+            else if (state.terminal.session?.activeCashier) state.terminal.activeCashier = state.terminal.session.activeCashier;
+            saveTerminalSessionRef();
+            await loadTerminalCashiers({ silent: true });
+            return state.terminal.session;
+        } catch (error) {
+            if (!silent) notify(paymentUiError(error), 'error');
+            state.terminal.session = null;
+            state.terminal.activeCashier = null;
+            clearTerminalSessionRef();
+            renderTerminalPanel();
+            return null;
+        }
+    }
+
+    async function openTerminalSession() {
+        if (!terminalRouteAvailable() || state.terminal.openInFlight) return;
+        state.terminal.openInFlight = true;
+        renderTerminalPanel();
+        try {
+            const result = await apiRequest('/api/payments/terminal/sessions', {
+                method: 'POST',
+                headers: apiHeaders(),
+                body: JSON.stringify({ businessContext: PILOT_SCOPE.crmProfileKey, routeOptionId: PILOT_SCOPE.routeOptionId })
+            });
+            state.terminal.session = result.session;
+            state.terminal.activeCashier = result.session?.activeCashier || null;
+            saveTerminalSessionRef();
+            await loadTerminalCashiers({ silent: true });
+            notify('Термінал відкрито. Оберіть касира і введіть PIN.', 'success');
+            $('cashierLoginGate')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+            window.setTimeout(() => document.querySelector('[data-terminal-cashier-login]:not(:disabled)')?.focus?.({ preventScroll: true }), 0);
+        } catch (error) {
+            notify(paymentUiError(error), 'error');
+        } finally {
+            state.terminal.openInFlight = false;
+            renderTerminalPanel();
+        }
+    }
+
+    function terminalSwitchBlockedReason() {
+        if (state.confirmInFlight) return 'Підтвердження оплати вже надіслано. Спочатку дочекайтесь відповіді або звірте результат.';
+        if (state.confirmOutcomePending) return 'Результат оплати невідомий. Спочатку звірте цей продаж.';
+        if (state.createInFlight) return 'Створення оплати триває. Зачекайте завершення запиту.';
+        if (state.orderDetails?.order?.id && !orderAllowsNextCustomer()) return 'Є відкрита чернетка. Завершіть оплату або скасуйте чернетку перед зміною касира.';
+        if (createDraft()?.payload) return 'Є незавершений запит створення. Відновіть або скасуйте його перед зміною касира.';
+        if (cartHasLines()) return 'У кошику є позиції. Завершіть продаж або очистіть кошик перед зміною касира.';
+        return '';
+    }
+
+    async function lockTerminalScreen({ force = false, silent = false } = {}) {
+        if (!terminalRouteAvailable() || !state.terminal.session?.id || state.terminal.lockInFlight) return;
+        if (force && (state.confirmInFlight || state.createInFlight)) return;
+        const reason = force ? '' : terminalSwitchBlockedReason();
+        if (reason) {
+            notify(reason, 'error');
+            return;
+        }
+        closeTerminalPinModal({ restoreFocus: false });
+        state.terminal.lockInFlight = true;
+        renderTerminalPanel();
+        try {
+            const result = await apiRequest(`/api/payments/terminal/sessions/${encodeURIComponent(state.terminal.session.id)}/lock`, {
+                method: 'POST',
+                headers: terminalMutationHeaders()
+            });
+            state.terminal.session = result.session || state.terminal.session;
+            state.terminal.activeCashier = null;
+            saveTerminalSessionRef();
+            await loadTerminalCashiers({ silent: true });
+            if (!silent) notify('Термінал заблоковано. Каса Checkbox не закривалась.', 'success');
+        } catch (error) {
+            notify(paymentUiError(error), 'error');
+        } finally {
+            state.terminal.lockInFlight = false;
+            renderTerminalPanel();
+        }
+    }
+
+    async function changeTerminalCashier() {
+        await lockTerminalScreen({ force: false, silent: true });
+        if (normalizeStatus(state.terminal.session?.state) === 'screen_locked') {
+            $('cashierLoginGate')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+            window.setTimeout(() => document.querySelector('[data-terminal-cashier-login]:not(:disabled)')?.focus?.({ preventScroll: true }), 0);
+            notify('Оберіть іншого касира і введіть його PIN.', 'info');
+        }
+    }
+
+    async function endTerminal() {
+        if (!terminalRouteAvailable() || !state.terminal.session?.id || state.terminal.endInFlight) return;
+        const reason = terminalSwitchBlockedReason();
+        if (reason) {
+            notify(reason, 'error');
+            return;
+        }
+        closeTerminalPinModal({ restoreFocus: false });
+        state.terminal.endInFlight = true;
+        renderTerminalPanel();
+        try {
+            const result = await apiRequest(`/api/payments/terminal/sessions/${encodeURIComponent(state.terminal.session.id)}/end`, {
+                method: 'POST',
+                headers: terminalMutationHeaders()
+            });
+            state.terminal.session = result.session || null;
+            state.terminal.activeCashier = null;
+            clearTerminalSessionRef();
+            notify('Сесію термінала завершено. Зміна Checkbox не закривалась.', 'success');
+        } catch (error) {
+            notify(paymentUiError(error), 'error');
+        } finally {
+            state.terminal.endInFlight = false;
+            renderTerminalPanel();
+        }
+    }
+
+    async function submitTerminalCashierPin(bindingId, pin) {
+        if (!state.terminal.session?.id || state.terminal.loginInFlight) return;
+        const cashier = terminalCashierByBindingId(bindingId);
+        if (!cashier) { notify('Оберіть касира термінала.', 'error'); return; }
+        if (!terminalCashierCanLogin(cashier)) { notify(terminalCashierStatusText(cashier), 'error'); return; }
+        if (!/^\d{4,12}$/.test(String(pin || '').trim())) {
+            const message = paymentUiError(new Error('action_pin_format_invalid'));
+            if (state.terminal.pinModalBindingId) {
+                state.terminal.pinModalError = message;
+                renderTerminalPinModal();
+                $('terminalPinModalInput')?.focus?.({ preventScroll: false });
+            } else notify(message, 'error');
+            return;
+        }
+        state.terminal.loginInFlight = true;
+        state.terminal.pinModalError = '';
+        renderTerminalPanel();
+        try {
+            const result = await apiRequest(`/api/payments/terminal/sessions/${encodeURIComponent(state.terminal.session.id)}/cashier-login`, {
+                method: 'POST',
+                headers: apiHeaders(),
+                body: JSON.stringify({ bindingId, actionPin: String(pin).trim() })
+            });
+            clearTerminalPinSecret();
+            state.terminal.session = result.session || state.terminal.session;
+            const cashierResult = result.cashier ? { ...result.cashier, bindingId: Number(result.cashier.bindingId || bindingId) } : { bindingId: Number(bindingId) };
+            state.terminal.activeCashier = cashierResult;
+            saveTerminalSessionRef();
+            await loadTerminalCashiers({ silent: true });
+            closeTerminalPinModal({ restoreFocus: false });
+            notify(`Касир ${terminalCashierLabel(cashierResult)} увійшов у термінал.`, 'success');
+            $('catalogSearch')?.focus?.({ preventScroll: true });
+        } catch (error) {
+            clearTerminalPinSecret();
+            const message = paymentUiError(error);
+            if (state.terminal.pinModalBindingId) {
+                state.terminal.pinModalError = message;
+                renderTerminalPinModal();
+                $('terminalPinModalInput')?.focus?.({ preventScroll: false });
+            } else notify(message, 'error');
+        } finally {
+            state.terminal.loginInFlight = false;
+            renderTerminalPanel();
+        }
+    }
+
+    async function loginTerminalCashier(event) {
+        event?.preventDefault?.();
+        const bindingId = $('terminalCashierSelect')?.value || state.terminal.selectedBindingId;
+        const pin = String($('terminalCashierPin')?.value || '').trim();
+        await submitTerminalCashierPin(bindingId, pin);
+    }
+
+    async function submitTerminalPinModal(event) {
+        event?.preventDefault?.();
+        const bindingId = state.terminal.pinModalBindingId;
+        const pin = String($('terminalPinModalInput')?.value || '').trim();
+        await submitTerminalCashierPin(bindingId, pin);
+    }
+
+    async function restoreTerminalFromStorage() {
+        if (!terminalRouteAvailable()) { renderTerminalPanel(); return; }
+        try {
+            const raw = window.localStorage.getItem(terminalStorageKey());
+            if (!raw) { renderTerminalPanel(); return; }
+            const stored = JSON.parse(raw);
+            if (!stored?.id || stored.businessContext !== PILOT_SCOPE.crmProfileKey || stored.routeOptionId !== PILOT_SCOPE.routeOptionId) return;
+            state.terminal.session = { id: stored.id, version: stored.version, businessContext: stored.businessContext, routeOptionId: stored.routeOptionId };
+            await refreshTerminalSession({ silent: true });
+        } catch { renderTerminalPanel(); }
+    }
+
+    function markTerminalActivity() {
+        state.terminal.lastActivityAt = Date.now();
+        if (!terminalRouteAvailable() || !terminalSessionActive() || !terminalActiveCashier()) return;
+        if (state.terminal.idleTimer) window.clearTimeout(state.terminal.idleTimer);
+        state.terminal.idleTimer = window.setTimeout(() => {
+            if (!terminalRouteAvailable() || !terminalSessionActive() || !terminalActiveCashier()) return;
+            if (Date.now() - state.terminal.lastActivityAt >= TERMINAL_IDLE_LOCK_MS) void lockTerminalScreen({ force: true, silent: false });
+        }, TERMINAL_IDLE_LOCK_MS + 250);
+    }
+
     async function createPaymentOrder(event) {
         event?.preventDefault?.();
         if (state.createInFlight) return;
@@ -1903,6 +3011,12 @@
         }
         if (state.orderDetails?.order?.id) {
             notify('Для нового продажу натисніть «Наступний клієнт».', 'info');
+            return;
+        }
+        if (terminalRouteAvailable() && !terminalActiveCashierBindingId()) {
+            notify('Спочатку увійдіть касиром у спільний термінал за PIN.', 'error');
+            $('cashierLoginGate')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+            document.querySelector('[data-terminal-cashier-login]:not(:disabled)')?.focus?.({ preventScroll: false });
             return;
         }
         state.createInFlight = true;
@@ -1928,12 +3042,13 @@
                     : '/api/payments/admission-ticket/orders';
                 const result = await apiRequest(endpoint, {
                     method: 'POST',
-                    headers: apiHeaders(idempotencyKey),
+                    headers: shouldUseTerminalForSales() ? terminalMutationHeaders(idempotencyKey) : apiHeaders(idempotencyKey),
                     body: JSON.stringify(payload)
             });
             const orderId = result.order?.id;
             if (!orderId) throw new Error('payment_order_missing_in_response');
             storageSet('lastOrderId', orderId);
+            clearCatalogCartDraft();
             invalidateInteractionRequests();
             await loadPaymentOrder(orderId, { silent: true });
             notify(result.replayed ? 'Цю саму оплату безпечно відкрито повторно.' : 'Оплату створено. Перевірте позиції та підтвердьте отримання грошей.', 'success');
@@ -2022,6 +3137,7 @@
                 return state.registerState;
             }
             state.registerState = result;
+            state.readinessLastCheckedAt = new Date().toISOString();
             renderRegisterState(result);
             void loadFiscalReportState({ silent: true });
             if (!silent) notify('Стан каси оновлено.', 'success');
@@ -2031,6 +3147,7 @@
                 return state.registerState;
             }
             state.registerState = null;
+            state.readinessLastCheckedAt = new Date().toISOString();
             state.fiscalReport = null;
             renderRegisterState(null);
             if (!silent) notify(paymentUiError(error), 'error');
@@ -2069,7 +3186,7 @@
         try {
             await loadRouteOptions();
             if (!refreshIsCurrent()) return state.registerState;
-            if (selectedRoute()?.salesAllowed === false) return state.registerState;
+            if (selectedRoute()?.salesAllowed === false && !terminalRouteAvailable()) return state.registerState;
             const cashierBindingId = selectedCashierBindingId();
             await apiRequest('/api/payments/readiness/probe', {
                 method: 'POST',
@@ -2098,6 +3215,7 @@
                 integrationReady: false,
                 providerUnavailable: true
             };
+            state.readinessLastCheckedAt = new Date().toISOString();
             renderRegisterState(state.registerState);
             if (!silent) notify(paymentUiError(error), 'error');
             return state.registerState;
@@ -3035,7 +4153,7 @@
             $('checkboxReportPagination')?.classList.add('hidden');
         }
         renderReceiptHistoryAppliedFilter(snapshot);
-        if (load && $('checkboxSalesReportPanel')?.open && state.routeReady) {
+        if (load && $('checkboxSalesReportPanel')?.open && receiptHistoryReadable()) {
             void loadCheckboxSalesReport({ silent: true });
         }
     }
@@ -3240,12 +4358,13 @@
     function refreshReceiptHistoryIfVisible() {
         const panel = $('checkboxSalesReportPanel');
         if (!panel?.open && !state.receiptHistoryLoaded) return;
+        if (!receiptHistoryReadable()) return;
         void loadCheckboxSalesReport({ silent: true });
     }
 
     function loadReceiptHistoryOnOpen() {
         const panel = $('checkboxSalesReportPanel');
-        if (!panel?.open || !selectedRoute()?.configured) return;
+        if (!panel?.open || !receiptHistoryReadable()) return;
         const snapshot = receiptHistorySnapshot();
         if (state.receiptHistoryLoaded
             && state.reportRenderedSnapshotKey === receiptHistorySnapshotKey(snapshot)) return;
@@ -3290,6 +4409,7 @@
         renderServiceOutPanel();
         renderActionPinPanel();
         renderCompactContext();
+        syncWorkspaceTabs();
     }
 
     function escapeAttribute(value) {
@@ -3439,10 +4559,14 @@
         const details = $('cashierReadinessDetails');
         const technicalList = $('cashierReadinessTechnicalList');
         const canViewTechnicalDetails = hasAction('fiscal.configure');
+        const route = selectedRoute();
+        const canSell = hasAction('payments.create') && hasAction('payments.confirm_received');
+        const pinOnlyMode = route?.salesAllowed === false && !canSell;
         const messages = [];
         const warnings = [];
         if (!state.registerState) {
-            messages.push('Не вдалося прочитати стан пілотної каси.');
+            if (pinOnlyMode) messages.push('Продажі для цього доступу вимкнені; це очікуваний режим керування PIN, а не аварія Checkbox.');
+            else messages.push('Не вдалося прочитати стан пілотної каси.');
         } else {
             const code = state.registerState.readinessCode || 'unknown';
             const readinessDetails = state.registerState.readiness || state.registerState;
@@ -3520,17 +4644,20 @@
             || state.registerState?.readinessCode === 'global_integration_disabled'
             || state.registerState?.readinessCode === 'payment_acceptance_disabled';
         const summaryText = state.readinessInFlight
-            ? 'Оновлюємо готовність Checkbox…'
-            : (ready
-                ? (warnings.length
-                    ? 'Сервер дозволив приймання оплати з попередженням: Checkbox не повідомив право на вибраний спосіб оплати.'
-                    : state.tender === 'card_terminal_manual'
-                    ? 'Каса готова до оплати карткою через термінал.'
-                    : 'Каса готова до оплати готівкою.')
-                : (viewOnly
-                    ? 'Оплати поки вимкнені — сторінка працює лише для перегляду.'
-                    : testDayReason || 'Каса ще не готова — приймання оплат заблоковано.'));
+            ? 'Оновлюємо стан каси…'
+            : (pinOnlyMode
+                ? 'Режим лише PIN — керування касирами доступне окремо від приймання оплат.'
+                : (ready
+                    ? (warnings.length
+                        ? 'Сервер дозволив приймання оплати з попередженням: Checkbox не повідомив право на вибраний спосіб оплати.'
+                        : state.tender === 'card_terminal_manual'
+                        ? 'Каса готова до оплати карткою через термінал.'
+                        : 'Каса готова до оплати готівкою.')
+                    : (viewOnly
+                        ? 'Оплати поки вимкнені — сторінка працює лише для перегляду.'
+                        : testDayReason || 'Каса ще не готова — приймання оплат заблоковано.')));
         if (summary) summary.textContent = summaryText;
+        setText('cashierReadinessLastChecked', state.readinessLastCheckedAt ? `Перевірено: ${formatKyivDateTime(state.readinessLastCheckedAt)}` : 'Стан ще не перевіряли');
         if (technicalList) {
             technicalList.innerHTML = canViewTechnicalDetails && (messages.length || warnings.length)
                 ? [...new Set([...messages, ...warnings])].map(message => `<li>${escapeHtml(message)}</li>`).join('')
@@ -3541,10 +4668,12 @@
             if (!canViewTechnicalDetails) details.open = false;
         }
         panel.classList.remove('hidden');
-        panel.classList.toggle('is-ready', ready && warnings.length === 0);
-        panel.classList.toggle('is-blocked', !ready);
-        panel.classList.toggle('cashier-alert-warning', !ready || warnings.length > 0);
+        panel.classList.toggle('is-ready', ready && warnings.length === 0 && !pinOnlyMode);
+        panel.classList.toggle('is-blocked', !ready && !pinOnlyMode);
+        panel.classList.toggle('is-info', pinOnlyMode);
+        panel.classList.toggle('cashier-alert-warning', (!ready && !pinOnlyMode) || warnings.length > 0);
         panel.setAttribute('aria-busy', state.readinessInFlight ? 'true' : 'false');
+        renderAvailabilityReasons();
         syncFlowOverview();
     }
 
@@ -3565,7 +4694,8 @@
         const hasCurrentOrder = Boolean(order?.id);
         const retryPending = Boolean(createDraft()?.payload) && !hasCurrentOrder;
         const safeDraftCoordination = Boolean(window.navigator.locks?.request);
-        const cashierSelected = Number($('paymentCashierBinding')?.value || 0) > 0;
+        const terminalNeedsCashier = terminalRouteAvailable();
+        const cashierSelected = terminalNeedsCashier ? Boolean(terminalActiveCashierBindingId()) : Number($('paymentCashierBinding')?.value || 0) > 0;
         let catalogSelectionValid = true;
         if (state.saleMode === 'catalog_sale') {
             try { catalogSelectionValid = state.catalogReady && catalogLinesPayload().length > 0; }
@@ -3580,10 +4710,10 @@
         else if (active) reason = 'Спершу підтвердьте або скасуйте поточну чернетку.';
         else if (hasCurrentOrder) reason = 'Натисніть «Наступний клієнт» для нового продажу.';
         else if (sharedTestDayBlockReason()) reason = sharedTestDayBlockReason();
-        else if (!state.routeReady) reason = 'Обрана каса ще не готова або приймання оплат для неї вимкнено.';
+        else if (!state.routeReady) reason = routeSalesBlockedReason() || 'Обрана каса ще не готова або приймання оплат для неї вимкнено.';
         else if (!ready) reason = queueUnavailableReason() || 'Каса не готова: перегляньте повідомлення про готовність вище.';
         else if (retryPending) reason = 'Результат створення ще не відновлено. Повторіть той самий запит; кошик збережено.';
-        else if (!cashierSelected) reason = 'Оберіть активного касира Checkbox для цієї каси.';
+        else if (!cashierSelected) reason = terminalNeedsCashier ? 'Увійдіть касиром у спільний термінал за PIN.' : 'Оберіть активного касира Checkbox для цієї каси.';
         else if (!catalogSelectionValid) reason = 'Оберіть доступні позиції та вкажіть дозволену кількість.';
         const createButton = $('createPaymentOrderBtn');
         if ($('paymentBusinessContext')) $('paymentBusinessContext').disabled = true;
@@ -3603,6 +4733,7 @@
             });
             form.setAttribute('aria-busy', state.createInFlight ? 'true' : 'false');
         }
+        if ($('paymentCashierBinding') && terminalNeedsCashier) $('paymentCashierBinding').disabled = true;
         const addLineButton = $('addCatalogLineBtn');
         if (addLineButton) addLineButton.disabled = editingDisabled || !state.catalogReady;
         document.querySelectorAll('[data-catalog-remove], [data-catalog-step], [data-catalog-add]').forEach(button => {
@@ -3649,6 +4780,7 @@
                 : 'Скасувати можна тільки неоплачену чернетку.';
             setDisabledReason(cancelBtn, !canCancel || state.confirmOutcomePending, canCancel && !state.confirmOutcomePending ? '' : cancelReason);
         }
+        renderAvailabilityReasons();
     }
 
     function hasAction(action) {
@@ -3733,67 +4865,48 @@
     function renderActionPinPanel() {
         const panel = $('actionPinPanel');
         if (!panel) return;
-        const visible = actionPinVisible();
+        renderActionPinEntryButtons();
+        const visible = actionPinVisible() && (!terminalRouteAvailable() || state.activeWorkspaceTab === 'shift');
         panel.classList.toggle('hidden', !visible);
         panel.setAttribute('aria-hidden', visible ? 'false' : 'true');
         panel.setAttribute('aria-busy', state.actionPinLoadInFlight || state.actionPinSaveInFlight || state.actionPinCheckInFlight ? 'true' : 'false');
+        renderActionPinManagerModal();
+        renderActionPinSetModal();
         if (!visible) return;
         const manageVisible = actionPinManageVisible();
         const checkVisible = actionPinCheckVisible();
-        $('actionPinForm')?.classList.toggle('hidden', !manageVisible);
-        $('actionPinCheckForm')?.classList.toggle('hidden', !checkVisible);
+        $('actionPinForm')?.classList.add('hidden');
+        $('actionPinManageSummary')?.classList.toggle('hidden', !manageVisible);
         const select = $('actionPinBindingSelect');
-        const previousValue = state.actionPinSelectedBindingId || select?.value || '';
         if (select) {
             select.replaceChildren();
-            if (!manageVisible) {
-                select.append(new Option('Керування PIN недоступне', ''));
-            } else if (state.actionPinLoadInFlight) {
-                select.append(new Option('Завантаження касирів…', ''));
-            } else if (!state.actionPinBindings.length) {
-                select.append(new Option('Немає доступних прив’язок', ''));
-            } else {
-                select.append(new Option('Оберіть касира', ''));
+            if (!manageVisible) select.append(new Option('Керування PIN недоступне', ''));
+            else if (state.actionPinLoadInFlight) select.append(new Option('Завантаження касирів…', ''));
+            else if (!state.actionPinBindings.length) select.append(new Option('Немає доступних прив’язок', ''));
+            else {
+                select.append(new Option('Оберіть касира у вікні керування', ''));
                 state.actionPinBindings.forEach(binding => {
-                    const pinState = binding.actionPin?.configured || binding.pinConfigured ? 'PIN є' : 'PIN немає';
-                    const locked = binding.actionPin?.lockedUntil || binding.pinLockedUntil
-                        ? ` · lock до ${formatKyivDateTime(binding.actionPin?.lockedUntil || binding.pinLockedUntil)}`
-                        : '';
-                    const option = new Option(`${binding.cashierName || binding.cashierLogin || `Касир ${binding.id}`} · ${pinState}${locked}`, String(binding.id));
+                    const status = actionPinBindingStatus(binding);
+                    const option = new Option(`${actionPinBindingLabel(binding)} · ${status.label}`, String(binding.id));
                     if (Number(binding.targetUserId) === Number(state.user?.id)) option.disabled = true;
                     select.append(option);
                 });
-                if ([...select.options].some(option => option.value === previousValue && !option.disabled)) {
-                    select.value = previousValue;
-                    state.actionPinSelectedBindingId = previousValue;
-                }
             }
+            select.value = state.actionPinSelectedBindingId || '';
         }
-        const selected = state.actionPinBindings.find(binding => String(binding.id) === String(select?.value || ''));
-        const selfSelected = selected && Number(selected.targetUserId) === Number(state.user?.id);
-        const disabled = !manageVisible || state.actionPinLoadInFlight || state.actionPinSaveInFlight || !selected || selfSelected;
-        if (select) select.disabled = state.actionPinLoadInFlight || state.actionPinSaveInFlight;
-        if ($('actionPinValue')) $('actionPinValue').disabled = disabled;
-        if ($('actionPinConfirm')) $('actionPinConfirm').disabled = disabled;
         const checkBindingId = ownActionPinBindingId();
         const checkAvailable = checkVisible && Boolean(checkBindingId);
         const checkDisabled = !checkAvailable || state.actionPinCheckInFlight;
         $('actionPinCheckForm')?.classList.toggle('hidden', !checkAvailable);
         if ($('actionPinCheckValue')) $('actionPinCheckValue').disabled = checkDisabled;
-        setStatus('actionPinStatus', state.actionPinLoadInFlight || state.actionPinCheckInFlight ? 'pending' : (disabled && checkDisabled ? 'blocked' : 'ready'));
-        setButtonBusy($('saveActionPinBtn'), state.actionPinSaveInFlight, 'Зберігаємо…');
-        if (!state.actionPinSaveInFlight) {
-            setDisabledReason($('saveActionPinBtn'), disabled, selfSelected
-                ? 'Не можна встановити PIN для власної прив’язки.'
-                : (!selected ? 'Оберіть прив’язку іншого касира.' : ''));
-        }
+        setStatus('actionPinStatus', state.actionPinLoadInFlight || state.actionPinCheckInFlight || state.actionPinSaveInFlight ? 'pending' : (!manageVisible && !checkAvailable ? 'blocked' : 'ready'));
         setButtonBusy($('checkActionPinBtn'), state.actionPinCheckInFlight, 'Перевіряємо…');
         if (!state.actionPinCheckInFlight) {
             setDisabledReason($('checkActionPinBtn'), checkDisabled, checkBindingId ? '' : 'Перевірка доступна лише власнику активної тестової прив’язки.');
         }
-        setText('actionPinNotice', selfSelected
-            ? 'Власну прив’язку можна тільки перевірити; встановлює PIN інший відповідальний.'
-            : 'PIN встановлюється лише для іншого касира обраної тестової каси. Готовність продажів на це не впливає.');
+        setText('actionPinNotice', manageVisible
+            ? 'Керування PIN відкривається окремим вікном. Готовність продажів на це не впливає.'
+            : 'Керування PIN недоступне для цього користувача CRM. Вхід касира в термінал не додає адміністративних прав.');
         setText('actionPinCheckNotice', checkAvailable
             ? 'Введіть свій PIN, щоб перевірити його без створення касової операції.'
             : 'Поточний обліковий запис не є власником активної тестової прив’язки. Віталіна встановлює PIN, а перевіряє його тестовий касир після входу у CRM під власним обліковим записом.');
@@ -4262,14 +5375,17 @@
     function syncConfirmationAvailability() {
         const order = state.orderDetails?.order || null;
         const hasOrder = Boolean(order?.id);
-        const blocked = !integrationReady() || !hasOrder || orderBlocksPayment(order) || state.confirmSubmitted || state.confirmOutcomePending || state.confirmInFlight;
+        const terminalCashierMissing = terminalRouteAvailable() && !terminalActiveCashierBindingId();
+        const blocked = !integrationReady() || terminalCashierMissing || !hasOrder || orderBlocksPayment(order) || state.confirmSubmitted || state.confirmOutcomePending || state.confirmInFlight;
         const reason = state.confirmInFlight
             ? 'Підтверджуємо оплату…'
             : (state.confirmOutcomePending
                 ? 'Результат підтвердження уточнюється. Не повторюйте оплату; звірте це саме замовлення без нового підтвердження.'
                 : (!integrationReady()
                     ? (queueUnavailableReason() || 'Каса не готова до Checkbox операцій.')
-                    : (!hasOrder ? 'Спершу створіть оплату.' : (orderBlocksPayment(order) ? 'Цю оплату вже не можна підтвердити повторно.' : ''))));
+                    : (terminalCashierMissing
+                        ? 'Екран термінала заблоковано або касир не підтверджений PIN.'
+                        : (!hasOrder ? 'Спершу створіть оплату.' : (orderBlocksPayment(order) ? 'Цю оплату вже не можна підтвердити повторно.' : '')))));
         const cashReceived = $('cashReceivedAmount');
         const terminalSuccess = $('terminalSuccessCheckbox');
         const terminalReference = $('terminalReference');
@@ -4357,7 +5473,7 @@
         try {
             const result = await apiRequest(`/api/payments/orders/${encodeURIComponent(orderId)}/confirm`, {
                 method: 'POST',
-                headers: apiHeaders(idempotencyKey),
+                headers: shouldUseTerminalForSales() ? terminalMutationHeaders(idempotencyKey) : apiHeaders(idempotencyKey),
                 body: JSON.stringify(payload)
             });
             if (result.order?.id) storageSet('lastOrderId', result.order.id);
@@ -4422,7 +5538,7 @@
         try {
             const result = await apiRequest(`/api/payments/orders/${encodeURIComponent(order.id)}/cancel`, {
                 method: 'POST',
-                headers: apiHeaders(idempotencyKey)
+                headers: shouldUseTerminalForSales() ? terminalMutationHeaders(idempotencyKey) : apiHeaders(idempotencyKey)
             });
             clearOperationIdempotencyKey('cancel-draft', order.id);
             if (result.order?.id) {
@@ -4495,6 +5611,7 @@
         clearOrderPolling();
         invalidateInteractionRequests();
         clearCreateIdempotencyKey();
+        clearCatalogCartDraft();
         storageRemove('lastOrderId');
         const currentOrderId = state.orderDetails?.order?.id;
         if (currentOrderId) storageRemove(`confirm:${PILOT_SCOPE.routeOptionId}:${currentOrderId}`);
@@ -4645,6 +5762,63 @@
         $('actionPinConfirm')?.addEventListener('input', renderActionPinPanel);
         $('actionPinCheckForm')?.addEventListener('submit', checkOwnActionPin);
         $('actionPinCheckValue')?.addEventListener('input', renderActionPinPanel);
+        $('openActionPinManagerBtn')?.addEventListener('click', event => { void openActionPinManager(event.currentTarget); });
+        $('openActionPinManagerFromPanelBtn')?.addEventListener('click', event => { void openActionPinManager(event.currentTarget); });
+        $('actionPinManagerClose')?.addEventListener('click', () => closeActionPinManager());
+        $('actionPinManagerDone')?.addEventListener('click', () => closeActionPinManager());
+        $('actionPinManagerRefresh')?.addEventListener('click', () => { void loadActionPinBindings({ silent: false }); });
+        $('actionPinManagerModal')?.addEventListener('keydown', handleActionPinModalKeydown);
+        $('actionPinManagerModal')?.addEventListener('click', event => {
+            if (event.target?.getAttribute?.('data-action-pin-manager-close') === 'backdrop') closeActionPinManager();
+            const setTarget = event.target?.closest?.('[data-action-pin-set-binding]');
+            if (setTarget) openActionPinSetModal(setTarget.getAttribute('data-action-pin-set-binding'), setTarget);
+        });
+        $('actionPinSetForm')?.addEventListener('submit', saveActionPin);
+        $('actionPinSetValue')?.addEventListener('input', () => { state.actionPinSetError = ''; renderActionPinSetModal(); });
+        $('actionPinSetConfirm')?.addEventListener('input', () => { state.actionPinSetError = ''; renderActionPinSetModal(); });
+        $('actionPinSetClose')?.addEventListener('click', () => closeActionPinSetModal());
+        $('actionPinSetCancel')?.addEventListener('click', () => closeActionPinSetModal());
+        $('actionPinSetModal')?.addEventListener('keydown', handleActionPinModalKeydown);
+        $('actionPinSetModal')?.addEventListener('click', event => {
+            if (event.target?.getAttribute?.('data-action-pin-set-close') === 'backdrop') closeActionPinSetModal();
+        });
+        $('openTerminalSessionBtn')?.addEventListener('click', () => { void openTerminalSession(); });
+        $('terminalCashierLoginForm')?.addEventListener('submit', loginTerminalCashier);
+        $('terminalCashierSelect')?.addEventListener('change', () => { state.terminal.selectedBindingId = $('terminalCashierSelect')?.value || ''; renderTerminalPanel(); });
+        $('terminalCashierPin')?.addEventListener('input', renderTerminalPanel);
+        $('changeTerminalCashierBtn')?.addEventListener('click', () => { void changeTerminalCashier(); });
+        $('lockTerminalBtn')?.addEventListener('click', () => { void lockTerminalScreen({ force: true, silent: false }); });
+        $('endTerminalBtn')?.addEventListener('click', () => { void endTerminal(); });
+        $('topChangeTerminalCashierBtn')?.addEventListener('click', () => { void changeTerminalCashier(); });
+        $('topLockTerminalBtn')?.addEventListener('click', () => { void lockTerminalScreen({ force: true, silent: false }); });
+        $('topOpenPinAdminBtn')?.addEventListener('click', event => { void openActionPinManager(event.currentTarget); });
+        document.querySelectorAll('[data-cashier-tab]').forEach(button => {
+            button.addEventListener('click', () => setWorkspaceTab(button.getAttribute('data-cashier-tab') || 'sale'));
+        });
+        $('cashierLoginGate')?.addEventListener('click', event => {
+            const openTarget = event.target?.closest?.('[data-terminal-open]');
+            if (openTarget) { void openTerminalSession(); return; }
+            const refreshTarget = event.target?.closest?.('[data-terminal-refresh-cashiers]');
+            if (refreshTarget) { void loadTerminalCashiers({ silent: false }); return; }
+            const loginTarget = event.target?.closest?.('[data-terminal-cashier-login]');
+            if (loginTarget) openTerminalPinModal(loginTarget.getAttribute('data-terminal-cashier-login'), loginTarget);
+        });
+        $('terminalPinModalForm')?.addEventListener('submit', submitTerminalPinModal);
+        $('terminalPinModalInput')?.addEventListener('input', () => {
+            state.terminal.pinModalError = '';
+            renderTerminalPinModal();
+        });
+        $('terminalPinModal')?.addEventListener('keydown', handleTerminalPinModalKeydown);
+        $('terminalPinModalClose')?.addEventListener('click', () => closeTerminalPinModal());
+        $('terminalPinModalCancel')?.addEventListener('click', () => closeTerminalPinModal());
+        $('terminalPinModal')?.addEventListener('click', event => {
+            if (event.target?.getAttribute?.('data-terminal-pin-close') === 'backdrop') closeTerminalPinModal();
+            const keyTarget = event.target?.closest?.('[data-terminal-pin-key]');
+            if (keyTarget) applyTerminalPinKey(keyTarget.getAttribute('data-terminal-pin-key'));
+        });
+        ['click', 'input', 'keydown', 'touchstart'].forEach(eventName => {
+            document.addEventListener(eventName, markTerminalActivity, { passive: true });
+        });
         $('unresolvedOrdersBody')?.addEventListener('click', event => {
             const target = event.target?.closest?.('[data-order-id]');
             const orderId = target?.getAttribute?.('data-order-id');
@@ -4695,8 +5869,8 @@
             syncPilotScopeWithCrmBusiness(user);
             setText('currentUser', user.name || user.username || '');
             if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
-            if (!canAccessPage('/cashier-payments') || !canAccess('payments.view') || !canAccess('payments.create') || !canAccess('payments.confirm_received')) {
-                setDenied('Немає доступу до сторінки оплати або потрібних касових дозволів. Розширений доступ до фінансів для цієї сторінки не потрібен.');
+            if (!canAccessPage('/cashier-payments') || !canAccess('payments.view') || ((!canAccess('payments.create') || !canAccess('payments.confirm_received')) && !canAccess('fiscal.terminal.launch'))) {
+                setDenied('Немає доступу до сторінки оплати або запуску спільного термінала. Розширений доступ до фінансів для цієї сторінки не потрібен.');
                 return;
             }
             await loadRouteOptions();
@@ -4740,6 +5914,7 @@
         pauseOrderPolling();
         if ($('serviceOutApprovalPin')) $('serviceOutApprovalPin').value = '';
         clearActionPinFields();
+        if (state.terminal.idleTimer) window.clearTimeout(state.terminal.idleTimer);
     });
     window.addEventListener('crmBusinessContextChanged', event => { void handleGlobalBusinessContextChanged(event); });
     document.addEventListener('visibilitychange', () => {
@@ -4749,6 +5924,7 @@
             return;
         }
         if (serviceOutVisible()) void loadServiceOutRequests({ silent: true });
+        if (terminalRouteAvailable() && state.terminal.session?.id) void refreshTerminalSession({ silent: true });
         const order = state.orderDetails?.order;
         if (shouldPollOrder(order)) {
             void loadPaymentOrder(order.id, { silent: true }).catch(() => {
@@ -4780,6 +5956,13 @@
         createXReportFromPanel,
         explainXReportUnavailable: createXReportFromPanel,
         requestZReportClose,
+        openTerminalSession,
+        loginTerminalCashier,
+        lockTerminalScreen,
+        changeTerminalCashier,
+        endTerminal,
+        renderTerminalPanel,
+        terminalMutationHeaders,
         loadServiceOutRequests,
         createServiceOutRequest,
         cancelServiceOutOperation,

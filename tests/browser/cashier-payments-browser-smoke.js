@@ -962,7 +962,7 @@ async function run() {
         await selectorContext.route('**/api/auth/verify', route => route.fulfill({
             status: 200,
             contentType: 'application/json',
-            body: JSON.stringify({ user: { id: 4, name: 'Smoke Creator', role: 'creator', roles: ['creator'], businessProfile: 'event_genix' } })
+            body: JSON.stringify({ user: { id: 50, name: 'Smoke Cashier', role: 'creator', roles: ['creator'], businessProfile: 'event_genix' } })
         }));
         await selectorContext.route('**/api/auth/permissions*', route => route.fulfill({
             status: 200,
@@ -996,22 +996,29 @@ async function run() {
         await selectorPage.setViewportSize({ width: 1440, height: 1000 });
         await selectorPage.goto(`${base}/cashier-payments?businessContext=event_genix&routeOptionId=park_production`, { waitUntil: 'domcontentloaded' });
         await selectorPage.waitForFunction(() => document.querySelector('#catalogSaleSummary')?.textContent.includes('140 активних позицій'));
-        await selectorPage.locator('#cashierShiftConsole').evaluate(panel => { panel.open = true; });
-        await selectorPage.waitForSelector('#actionPinPanel:not(.hidden)');
-        await selectorPage.waitForSelector('#actionPinBindingSelect option[value="78"]', { state: 'attached' });
-        await selectorPage.selectOption('#actionPinBindingSelect', '78');
-        await selectorPage.fill('#actionPinValue', '2468');
-        await selectorPage.fill('#actionPinConfirm', '2468');
-        await selectorPage.selectOption('#actionPinBindingSelect', '');
-        assert.equal(await selectorPage.inputValue('#actionPinValue'), '', 'draft Action PIN is cleared when the target binding changes');
-        assert.equal(await selectorPage.inputValue('#actionPinConfirm'), '', 'draft Action PIN confirmation is cleared when the target binding changes');
-        await selectorPage.selectOption('#actionPinBindingSelect', '78');
-        await selectorPage.fill('#actionPinValue', '2468');
-        await selectorPage.fill('#actionPinConfirm', '2468');
-        await selectorPage.click('#saveActionPinBtn');
+        await selectorPage.click('#openActionPinManagerBtn');
+        await selectorPage.waitForSelector('#actionPinManagerModal:not(.hidden)');
+        await selectorPage.waitForSelector('[data-action-pin-set-binding="78"]');
+        assert.equal(await selectorPage.locator('#actionPinManagerList').textContent().then(text => text.includes('Smoke Cashier') && text.includes('Власний PIN має встановити інший уповноважений користувач CRM.')), true, 'PIN manager explains self-enrollment denial');
+        await selectorPage.click('[data-action-pin-set-binding="78"]');
+        await selectorPage.waitForSelector('#actionPinSetModal:not(.hidden)');
+        await selectorPage.fill('#actionPinSetValue', '2468');
+        await selectorPage.fill('#actionPinSetConfirm', '2468');
+        await selectorPage.click('#actionPinSetCancel');
+        await selectorPage.waitForFunction(() => document.querySelector('#actionPinSetModal')?.classList.contains('hidden'));
+        await selectorPage.click('[data-action-pin-set-binding="78"]');
+        await selectorPage.waitForSelector('#actionPinSetModal:not(.hidden)');
+        assert.equal(await selectorPage.inputValue('#actionPinSetValue'), '', 'draft Action PIN is cleared when the modal closes');
+        assert.equal(await selectorPage.inputValue('#actionPinSetConfirm'), '', 'draft Action PIN confirmation is cleared when the modal closes');
+        await selectorPage.fill('#actionPinSetValue', '2468');
+        await selectorPage.fill('#actionPinSetConfirm', '2468');
+        await selectorPage.click('#actionPinSetSubmit');
         await selectorPage.waitForFunction(() => document.querySelector('#cashierGlobalStatus')?.textContent.includes('PIN встановлено для Старша зміни'));
         assert.equal(state.operationCalls.some(call => call.type === 'action_pin_enroll' && call.bindingId === 78), true, 'PIN enrollment targets a selected non-self binding');
         assert.equal(await selectorPage.evaluate(() => Object.entries(localStorage).some(([key, value]) => /pin|actionpin/i.test(`${key}:${value}`) || value === '2468')), false, 'Action PIN is not persisted in browser storage');
+        assert.equal(await selectorPage.locator('#actionPinManagerList').textContent().then(text => text.includes('2468')), false, 'PIN manager never renders the current PIN');
+        await selectorPage.click('#actionPinManagerDone');
+        await selectorPage.waitForFunction(() => document.querySelector('#actionPinManagerModal')?.classList.contains('hidden'));
         assert.deepEqual(
             await selectorPage.locator('#paymentRegisterRoute option').allTextContents(),
             ['Середня каса · готова', 'Тестова каса · приймання вимкнено'],
@@ -1118,7 +1125,7 @@ async function run() {
         assert.equal(await selectorPage.isDisabled('#paymentBusinessContext'), true, 'business selector is read-only; business changes through the global CRM switch');
         await selectorPage.evaluate(() => {
             localStorage.setItem('pzp_crm_business_context', 'dar');
-            localStorage.setItem('pzp_crm_business_context_user', '4');
+            localStorage.setItem('pzp_crm_business_context_user', '50');
             window.dispatchEvent(new CustomEvent('crmBusinessContextChanged', {
                 detail: { previous: 'event_genix', current: 'dar' }
             }));
@@ -1189,12 +1196,12 @@ async function run() {
                 && button.textContent.trim() === 'Оновлюємо готовність…';
         });
         assert.equal(await page.getAttribute('#cashierReadinessStatus', 'aria-busy'), 'true', 'readiness region exposes its busy state');
-        assert.equal((await page.textContent('#cashierReadinessSummary')).trim(), 'Оновлюємо готовність Checkbox…', 'readiness summary explains the active refresh');
+        assert.equal((await page.textContent('#cashierReadinessSummary')).trim(), 'Оновлюємо стан каси…', 'readiness summary explains the active refresh');
         await page.waitForFunction(() => {
             const button = document.getElementById('refreshReadinessBtn');
             return button?.disabled === false
                 && button.getAttribute('aria-busy') === 'false'
-                && button.textContent.trim() === 'Оновити готовність Checkbox';
+                && button.textContent.trim() === 'Оновити стан каси';
         });
         assert.equal(state.readinessRequestCount, readinessCallsBefore + 1, 'one readiness click sends one provider probe');
 
@@ -1579,7 +1586,7 @@ async function run() {
         await disabledContext.route('**/api/auth/verify', route => route.fulfill({
             status: 200,
             contentType: 'application/json',
-            body: JSON.stringify({ user: { id: 4, name: 'Smoke Creator', role: 'creator', roles: ['creator'], businessProfile: 'event_genix' } })
+            body: JSON.stringify({ user: { id: 50, name: 'Smoke Cashier', role: 'creator', roles: ['creator'], businessProfile: 'event_genix' } })
         }));
         await disabledContext.route('**/api/auth/permissions', route => route.fulfill({
             status: 200,

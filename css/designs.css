@@ -114,6 +114,32 @@ body.dark-mode .design-guide-entry h2 { color: var(--gray-200); }
     width: 100%; aspect-ratio: 4/3; object-fit: contain; display: block;
     cursor: pointer; background: var(--gray-100);
 }
+.design-file-thumb {
+    width: 100%; aspect-ratio: 4/3; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    cursor: pointer; background:
+        radial-gradient(circle at 30% 20%, rgba(16,185,129,0.16), transparent 28%),
+        linear-gradient(135deg, rgba(99,102,241,0.18), rgba(15,23,42,0.05));
+    color: var(--gray-700); border-bottom: 1px solid rgba(148,163,184,0.14);
+}
+.design-file-thumb-icon { font-size: 42px; line-height: 1; }
+.design-file-thumb-label {
+    padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 800;
+    letter-spacing: .08em; text-transform: uppercase;
+    background: rgba(255,255,255,0.72); color: var(--gray-700);
+}
+.design-file-thumb-pdf {
+    background:
+        radial-gradient(circle at 72% 24%, rgba(239,68,68,0.20), transparent 24%),
+        linear-gradient(135deg, rgba(239,68,68,0.18), rgba(245,158,11,0.10));
+}
+.design-file-thumb-video {
+    background:
+        radial-gradient(circle at 72% 24%, rgba(59,130,246,0.22), transparent 24%),
+        linear-gradient(135deg, rgba(59,130,246,0.18), rgba(99,102,241,0.12));
+}
+.design-file-thumb-compact { aspect-ratio: 1/1; }
+.design-file-thumb-compact .design-file-thumb-icon { font-size: 30px; }
 .design-card-preview {
     display: block; width: 100%; padding: 0; border: 0; background: transparent;
     cursor: pointer; font: inherit;
@@ -185,6 +211,17 @@ body.dark-mode .collection-card {
 html[data-theme="dark"] .design-card-img,
 body.dark-mode .design-card-img {
     background: #111827 !important;
+}
+html[data-theme="dark"] .design-file-thumb,
+body.dark-mode .design-file-thumb {
+    background:
+        radial-gradient(circle at 30% 20%, rgba(16,185,129,0.18), transparent 28%),
+        linear-gradient(135deg, rgba(30,41,59,0.98), rgba(15,23,42,0.94)) !important;
+    color: #e5e7eb; border-bottom-color: rgba(148,163,184,0.14);
+}
+html[data-theme="dark"] .design-file-thumb-label,
+body.dark-mode .design-file-thumb-label {
+    background: rgba(15,23,42,0.84); color: #e5e7eb;
 }
 
 html[data-theme="dark"] .drop-zone,

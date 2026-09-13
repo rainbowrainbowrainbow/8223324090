@@ -164,16 +164,80 @@ function setupTabs() {
 // ==========================================
 // API CALLS
 // ==========================================
-function authHeaders(contentType = true) {
+function activeDesignBusinessContext() {
+    try {
+        if (typeof getCrmBusinessContext === 'function') {
+            const scoped = getCrmBusinessContext();
+            if (scoped) return scoped;
+        }
+    } catch (_) {}
+
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        const routed = params.get('businessContext') || params.get('business_context');
+        if (routed) return routed;
+    } catch (_) {}
+
+    try {
+        return localStorage.getItem('pzp_crm_business_context')
+            || localStorage.getItem('pzp_crm_business_context_user')
+            || '';
+    } catch (_) {
+        return '';
+    }
+}
+
+function isDesignApiUrl(url) {
+    const raw = String(url || '');
+    try {
+        const parsed = new URL(raw, window.location.origin);
+        return parsed.origin === window.location.origin && parsed.pathname.startsWith('/api/designs');
+    } catch (_) {
+        return raw.startsWith('/api/designs');
+    }
+}
+
+function designApiUrl(url) {
+    if (!isDesignApiUrl(url)) return url;
+    const context = activeDesignBusinessContext();
+    if (!context) return url;
+    try {
+        const parsed = new URL(String(url), window.location.origin);
+        if (!parsed.searchParams.has('businessContext') && !parsed.searchParams.has('business_context')) {
+            parsed.searchParams.set('businessContext', context);
+        }
+        return parsed.origin === window.location.origin
+            ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+            : parsed.toString();
+    } catch (_) {
+        const raw = String(url || '');
+        if (/[?&](businessContext|business_context)=/.test(raw)) return url;
+        const joiner = raw.includes('?') ? '&' : '?';
+        return `${raw}${joiner}businessContext=${encodeURIComponent(context)}`;
+    }
+}
+
+function designApiHeaders(contentType = true, extraHeaders = {}, includeBusinessContext = true) {
     const token = localStorage.getItem('pzp_token');
     const h = {};
     if (contentType) h['Content-Type'] = 'application/json';
     if (token) h['Authorization'] = `Bearer ${token}`;
-    return h;
+    const context = includeBusinessContext ? activeDesignBusinessContext() : '';
+    if (context) h['x-business-context'] = context;
+    return { ...h, ...extraHeaders };
+}
+
+function authHeaders(contentType = true) {
+    return designApiHeaders(contentType);
 }
 
 async function apiFetch(url, options = {}) {
-    const res = await fetch(url, { ...options, headers: { ...authHeaders(!options.body || typeof options.body === 'string'), ...options.headers } });
+    const scopedDesignRequest = isDesignApiUrl(url);
+    const requestUrl = scopedDesignRequest ? designApiUrl(url) : url;
+    const res = await fetch(requestUrl, {
+        ...options,
+        headers: designApiHeaders(!options.body || typeof options.body === 'string', options.headers, scopedDesignRequest)
+    });
     if (res.status === 401 || res.status === 403) {
         localStorage.removeItem('pzp_token');
         window.location.href = '/';
@@ -276,10 +340,7 @@ function renderDesignGrid() {
 
     reconcileDesignThumbnailUrls(new Set(designs.map(d => Number(d.id)).filter(Boolean)));
     grid.innerHTML = designs.map(d => {
-        const isImage = d.mimeType && d.mimeType.startsWith('image/');
-        const cachedThumb = designThumbnailUrls.get(Number(d.id));
-        const thumb = isImage && cachedThumb ? cachedThumb : '/images/favicon-512.png';
-        const thumbAttr = isImage ? ` data-design-thumb="${esc(d.id)}"` : '';
+        const previewHtml = designCardPreviewContent(d);
         const size = d.fileSize > 1024 * 1024
             ? (d.fileSize / (1024 * 1024)).toFixed(1) + ' МБ'
             : Math.round(d.fileSize / 1024) + ' КБ';
@@ -294,7 +355,7 @@ function renderDesignGrid() {
             <div class="design-card ${d.isPinned ? 'pinned' : ''}" data-id="${d.id}">
                 ${pinHtml}
                 <button type="button" class="design-card-preview" data-design-preview="${esc(d.id)}" aria-label="Відкрити превʼю: ${esc(d.title || d.originalName || 'дизайн')}">
-                    <img class="design-card-img" src="${thumb}" alt="${esc(d.title)}" loading="lazy"${thumbAttr}>
+                    ${previewHtml}
                 </button>
                 <div class="design-card-body">
                     ${colHtml}
@@ -319,6 +380,38 @@ function renderDesignGrid() {
 function esc(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function designFileKind(design = {}) {
+    const mime = String(design.mimeType || design.mime_type || '').toLowerCase();
+    const name = String(design.originalName || design.filename || design.title || '').toLowerCase();
+    if (mime === 'application/pdf' || name.endsWith('.pdf')) {
+        return { label: 'PDF', icon: '📄', className: 'pdf' };
+    }
+    if (mime.startsWith('video/')) {
+        return { label: 'Video', icon: '🎬', className: 'video' };
+    }
+    return { label: 'File', icon: '📁', className: 'file' };
+}
+
+function designImagePlaceholderDataUrl() {
+    return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22640%22 height=%22480%22 viewBox=%220 0 640 480%22%3E%3Crect width=%22640%22 height=%22480%22 rx=%2228%22 fill=%22%23f1f5f9%22/%3E%3Cpath d=%22M164 330l92-104 70 74 50-52 104 114H164z%22 fill=%22%23cbd5e1%22/%3E%3Ccircle cx=%22458%22 cy=%22142%22 r=%2248%22 fill=%22%23e2e8f0%22/%3E%3C/svg%3E';
+}
+
+function designCardPreviewContent(design = {}, options = {}) {
+    const isImage = String(design.mimeType || '').startsWith('image/');
+    if (isImage) {
+        const cachedThumb = designThumbnailUrls.get(Number(design.id));
+        const thumb = cachedThumb || designImagePlaceholderDataUrl();
+        return `<img class="design-card-img" src="${thumb}" alt="${esc(design.title)}" loading="lazy" data-design-thumb="${esc(design.id)}">`;
+    }
+
+    const kind = designFileKind(design);
+    const compact = options.compact ? ' design-file-thumb-compact' : '';
+    return `<div class="design-file-thumb design-file-thumb-${esc(kind.className)}${compact}" aria-hidden="true">
+        <span class="design-file-thumb-icon">${kind.icon}</span>
+        <span class="design-file-thumb-label">${esc(kind.label)}</span>
+    </div>`;
 }
 
 function setupDesignGridActions() {
@@ -378,10 +471,9 @@ async function uploadFiles(files) {
     // Collect current tags/collection if any
     formData.append('tags', JSON.stringify([]));
 
-    const token = localStorage.getItem('pzp_token');
-    const res = await fetch(`${API}/upload`, {
+    const res = await fetch(designApiUrl(`${API}/upload`), {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: designApiHeaders(false),
         body: formData
     });
 
@@ -1376,12 +1468,9 @@ function showCalendarDetail(dateStr) {
     detail.innerHTML = `<h4>📅 ${formatted} — ${dayDesigns.length} дизайн(ів)</h4>
         <div class="design-grid" style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));">
             ${dayDesigns.map(d => {
-                const isImage = d.mimeType && d.mimeType.startsWith('image/');
-                const cachedThumb = designThumbnailUrls.get(Number(d.id));
-                const thumb = isImage && cachedThumb ? cachedThumb : '/images/favicon-512.png';
-                const thumbAttr = isImage ? ` data-design-thumb="${esc(d.id)}"` : '';
+                const previewHtml = designCardPreviewContent(d, { compact: true });
                 return `<div class="design-card" style="font-size:12px">
-                    <img class="design-card-img" src="${thumb}" alt="${esc(d.title)}" style="aspect-ratio:1/1"${thumbAttr}>
+                    ${previewHtml}
                     <div class="design-card-body" style="padding:8px">
                         <div class="design-card-title">${esc(d.title)}</div>
                     </div>

@@ -4,10 +4,17 @@
 
 ---
 
-## v0.81.159 - Авторизований вхід у гайдбук Design Board
+## v0.81.160 - Авторизований вхід у гайдбук Design Board
 
 ### Release / Versioning / (13.09.2026) [codex]
-- **Авторизований вхід у гайдбук Design Board** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Авторизований вхід у гайдбук Design Board** - внутрішня картка гайдбука показується після успішної авторизації Design Board без залежності від застарілого page-access alias; CI fixtures синхронізовано з поточною SYS-MB бізнес-моделлю.
+
+---
+
+## v0.81.159 - Вимкнення згортання меню
+
+### Release / Versioning / (13.09.2026) [codex]
+- **Кнопку згортання лівого меню вимкнено** - статична кнопка більше не показується на сторінках CRM, legacy JS та команди асистента не повертають меню у зменшений режим, а старий `pzp_sidebar_collapsed` очищається при старті.
 
 ---
 

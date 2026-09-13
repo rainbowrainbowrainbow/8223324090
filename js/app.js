@@ -1504,18 +1504,13 @@ function initUIControlListeners() {
             (typeof Sidebar !== 'undefined' && typeof Sidebar.initToggle === 'function')
         )
     );
-    if (collapseBtn && sidebar && !sharedSidebarOwnsCollapse && collapseBtn.dataset.sidebarLegacyCollapseBound !== 'true') {
-        collapseBtn.dataset.sidebarLegacyCollapseBound = 'true';
-        // Restore saved state
-        const savedCollapsed = localStorage.getItem('pzp_sidebar_collapsed');
-        if (savedCollapsed === 'true') {
-            sidebar.classList.add('collapsed');
-        }
-
-        collapseBtn.addEventListener('click', () => {
-            const isCollapsed = sidebar.classList.toggle('collapsed');
-            localStorage.setItem('pzp_sidebar_collapsed', isCollapsed);
-        });
+    if (collapseBtn) {
+        collapseBtn.remove();
+    }
+    if (sidebar) {
+        sidebar.classList.remove('collapsed');
+        document.body.classList.remove('sidebar-is-collapsed');
+        try { localStorage.removeItem('pzp_sidebar_collapsed'); } catch {}
     }
 }
 

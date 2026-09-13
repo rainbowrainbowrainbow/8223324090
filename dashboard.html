@@ -104,6 +104,13 @@
                     <div>
                         <h1>Дашборд</h1>
                         <div class="dashboard-greeting" id="dashboardGreeting"></div>
+                        <section class="dashboard-day-orientation" id="dashboardDayOrientation" role="status" aria-live="polite" data-tone="loading">
+                            <div class="dashboard-day-orientation-main">
+                                <span class="dashboard-day-orientation-kicker">Орієнтир дня</span>
+                                <strong>Збираю актуальні сигнали…</strong>
+                                <span>Покажу наступний крок після оновлення даних.</span>
+                            </div>
+                        </section>
                     </div>
                     <div class="dashboard-actions">
                         <div class="dashboard-role-preview" id="dashboardRolePreview" hidden>
@@ -118,78 +125,12 @@
                     </div>
                 </div>
 
-                <div class="dashboard-board-toolbar dashboard-workspace-toolbar" id="dashboardBoardToolbar" aria-label="Єдина робоча сцена дашборду" data-dashboard-workspace="unified">
-                    <div class="dashboard-mode-toggle dashboard-workspace-status" role="group" aria-label="Єдина робоча сцена">
-                        <button type="button" id="dashboardBoardModeBtn" class="dashboard-mode-btn active" onclick="DashboardPage.setDashboardMode('workspace')">Сцена</button>
-                        <div class="dashboard-workspace-title">
-                            <span>Workshop dashboard</span>
-                            <strong>Єдина sandbox-сцена</strong>
-                            <em>Віджети лишаються живими, а фігури, зв’язки й блоки можна рухати без окремого режиму редагування.</em>
-                        </div>
-                    </div>
-                    <div class="board-tool-options board-palette-group" id="boardToolOptions" aria-live="polite"></div>
+                <div class="dashboard-layout-help">
+                    <p id="dashboardWidgetHint">Перетягуйте віджети за ⠿ або користуйтеся клавішами зі стрілками. Порядок зберігається автоматично.</p>
+                    <span id="dashboardLayoutStatus" role="status" aria-live="polite"></span>
                 </div>
 
-                <div class="dashboard-workspace-stage">
-                    <div class="board-edit-controls board-pro-palette board-tool-rail" id="boardEditControls" role="toolbar" aria-label="Інструменти робочої сцени">
-                        <div class="dashboard-mode-toggle compact board-palette-group board-tool-family board-unified-mode-chip" data-board-tool-family="interaction" data-board-tool-family-label="Режим" role="group" aria-label="Єдиний режим роботи з дошкою">
-                            <span class="dashboard-mode-btn active" id="boardUnifiedModeLabel">Єдиний режим</span>
-                        </div>
-                        <div class="board-tools-group board-palette-group board-tool-family" data-board-tool-family="navigate" data-board-tool-family-label="Навігація" role="group" aria-label="Інструменти навігації">
-                            <button type="button" class="dashboard-btn" data-board-tool="select" onclick="DashboardPage.setBoardTool('select')" title="Вибір" aria-label="Вибір">Вибір</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="hand" onclick="DashboardPage.setBoardTool('hand')" title="Рука" aria-label="Рука">Рука</button>
-                        </div>
-                        <div class="board-tools-group board-palette-group board-tool-family" data-board-tool-family="insert" data-board-tool-family-label="Додати" role="group" aria-label="Інструменти додавання">
-                            <button type="button" class="dashboard-btn" data-board-tool="note" onclick="DashboardPage.setBoardTool('note')" title="Нотатка" aria-label="Нотатка">Нотатка</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="text" onclick="DashboardPage.setBoardTool('text')" title="Текст" aria-label="Текст">Текст</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="frame" onclick="DashboardPage.setBoardTool('frame')" title="Рамка" aria-label="Рамка">Рамка</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="space" onclick="DashboardPage.setBoardTool('space')" title="Порожня зона" aria-label="Порожня зона">Порожня зона</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="widget" onclick="DashboardPage.setBoardTool('widget')" title="Віджет" aria-label="Віджет">Віджет</button>
-                        </div>
-                        <div class="board-tools-group board-palette-group board-tool-family" data-board-tool-family="draw" data-board-tool-family-label="Малювання" role="group" aria-label="Інструменти малювання">
-                            <button type="button" class="dashboard-btn" data-board-tool="brush" onclick="DashboardPage.setBoardTool('brush')" title="Пензель" aria-label="Пензель">Пензель</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="highlighter" onclick="DashboardPage.setBoardTool('highlighter')" title="Маркер" aria-label="Маркер">Маркер</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="eraser" onclick="DashboardPage.setBoardTool('eraser')" title="Гумка" aria-label="Гумка">Гумка</button>
-                        </div>
-                        <div class="board-tools-group board-palette-group board-tool-family" data-board-tool-family="shape" data-board-tool-family-label="Фігури" role="group" aria-label="Інструменти фігур">
-                            <button type="button" class="dashboard-btn" data-board-tool="line" onclick="DashboardPage.setBoardTool('line')" title="Лінія" aria-label="Лінія">Лінія</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="rect" onclick="DashboardPage.setBoardTool('rect')" title="Прямокутник" aria-label="Прямокутник">Прямокутник</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="square" onclick="DashboardPage.setBoardTool('square')" title="Квадрат" aria-label="Квадрат">Квадрат</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="circle" onclick="DashboardPage.setBoardTool('circle')" title="Коло" aria-label="Коло">Коло</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="ellipse" onclick="DashboardPage.setBoardTool('ellipse')" title="Еліпс" aria-label="Еліпс">Еліпс</button>
-                        </div>
-                        <div class="board-tools-group board-palette-group board-tool-family" data-board-tool-family="connect" data-board-tool-family-label="Зв’язки" role="group" aria-label="Інструменти зв’язків">
-                            <button type="button" class="dashboard-btn" data-board-tool="arrow" onclick="DashboardPage.setBoardTool('arrow')" title="Стрілка-зв’язок" aria-label="Стрілка-зв’язок">Стрілка</button>
-                            <button type="button" class="dashboard-btn" data-board-tool="connector" onclick="DashboardPage.setBoardTool('connector')" title="Зв’язати" aria-label="Зв’язати">Зв’язати</button>
-                        </div>
-                        <div class="board-tools-group board-palette-group board-tool-family board-content-tools" data-board-tool-family="content" data-board-tool-family-label="Контент" role="group" aria-label="Контент-пресети дошки">
-                            <button type="button" class="dashboard-btn" data-board-preset="idea" data-tool-label="Ідея" onclick="DashboardPage.insertBoardContentPreset('idea')" title="Ідея / кластер" aria-label="Ідея / кластер">Ідея</button>
-                            <button type="button" class="dashboard-btn" data-board-preset="production" data-tool-label="Production" onclick="DashboardPage.insertBoardContentPreset('production')" title="Production map" aria-label="Production map">Production</button>
-                            <button type="button" class="dashboard-btn" data-board-preset="approved" data-tool-label="Approved" onclick="DashboardPage.insertBoardContentPreset('approved')" title="Approved / publish-ready" aria-label="Approved / publish-ready">Approved</button>
-                            <button type="button" class="dashboard-btn" data-board-preset="blocked" data-tool-label="Blocked" onclick="DashboardPage.insertBoardContentPreset('blocked')" title="Blocked / needs decision" aria-label="Blocked / needs decision">Blocked</button>
-                            <button type="button" class="dashboard-btn" data-board-preset="story" data-tool-label="Storyboard" onclick="DashboardPage.insertBoardContentPreset('story')" title="Launch storyboard" aria-label="Launch storyboard">Storyboard</button>
-                        </div>
-                        <div class="board-tools-group board-palette-group board-tool-family board-ai-tools" data-board-tool-family="templates" data-board-tool-family-label="Помічник" role="group" aria-label="AI-допомога дошки">
-                            <button type="button" class="dashboard-btn" data-board-action="expand" data-tool-label="Розширити" onclick="DashboardPage.runBoardAiAction('expand')" title="Розширити" aria-label="Розширити">Розширити</button>
-                            <button type="button" class="dashboard-btn" data-board-action="mood-pack" data-tool-label="Настрій" onclick="DashboardPage.runBoardAiAction('mood-pack')" title="Настрій" aria-label="Настрій">Настрій</button>
-                            <button type="button" class="dashboard-btn" data-board-action="cluster" data-tool-label="Кластер" onclick="DashboardPage.runBoardAiAction('cluster')" title="Кластер" aria-label="Кластер">Кластер</button>
-                            <button type="button" class="dashboard-btn" data-board-action="prompt" data-tool-label="З промпта" onclick="DashboardPage.runBoardAiAction('prompt-to-board')" title="З промпта" aria-label="З промпта">З промпта</button>
-                        </div>
-                        <div class="board-actions-group board-palette-group board-tool-family" data-board-tool-family="actions" data-board-tool-family-label="Дії" role="group" aria-label="Дії дошки">
-                            <button type="button" id="boardUndoBtn" class="dashboard-btn" data-board-action="undo" onclick="DashboardPage.undoBoard()" title="Назад" aria-label="Назад" disabled>Назад</button>
-                            <button type="button" id="boardRedoBtn" class="dashboard-btn" data-board-action="redo" onclick="DashboardPage.redoBoard()" title="Вперед" aria-label="Вперед" disabled>Вперед</button>
-                            <button type="button" class="dashboard-btn danger" data-board-action="clear" onclick="DashboardPage.clearBoardContent()" title="Очистити все" aria-label="Очистити все">Очистити все</button>
-                            <button type="button" class="dashboard-btn" data-board-action="reset" onclick="DashboardPage.resetBoardView()" title="Скинути вид" aria-label="Скинути вид">Скинути вид</button>
-                            <span class="board-save-status" id="boardSaveStatus" data-state="saved" title="Збережено">Збережено</span>
-                        </div>
-                    </div>
-
-                    <div class="dashboard-board-shell hidden" id="dashboardBoardShell">
-                        <div class="dashboard-board-canvas" id="dashboardBoardCanvas" aria-label="Dashboard board canvas"></div>
-                    </div>
-                </div>
-
-                <div class="dashboard-grid" id="dashboardGrid">
+                <div class="dashboard-grid dashboard-widget-grid" id="dashboardGrid" aria-label="Віджети дашборду">
                     <div class="widget-loading">Завантаження...</div>
                 </div>
             </div>

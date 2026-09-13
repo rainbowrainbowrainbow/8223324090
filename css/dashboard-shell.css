@@ -43,15 +43,71 @@
 }
 
 .dashboard-header h1 {
-    font-size: 22px;
+    font-size: 32px;
     font-weight: 900;
     margin: 0;
+    letter-spacing: 0;
+    line-height: 1.04;
+    background: linear-gradient(135deg, #0f172a 0%, #047857 48%, #10b981 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
 }
 
 .dashboard-greeting {
     font-size: 14px;
     color: var(--gray-500, #a0aec0);
-    margin-top: 2px;
+    margin-top: 8px;
+    font-weight: 800;
+}
+
+.dashboard-showcase-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0 0 14px;
+}
+
+.dashboard-showcase-strip article {
+    min-width: 0;
+    padding: 14px 16px;
+    border: 1px solid rgba(16, 185, 129, 0.16);
+    border-radius: 18px;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.90), rgba(236, 253, 245, 0.74)),
+        radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.16), transparent 42%);
+    box-shadow: 0 16px 38px rgba(15, 23, 42, 0.07);
+}
+
+.dashboard-showcase-strip span,
+.dashboard-showcase-strip strong,
+.dashboard-showcase-strip em {
+    display: block;
+}
+
+.dashboard-showcase-strip span {
+    color: #059669;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.dashboard-showcase-strip strong {
+    margin-top: 5px;
+    color: #0f172a;
+    font-size: 15px;
+    font-weight: 950;
+    line-height: 1.16;
+}
+
+.dashboard-showcase-strip em {
+    margin-top: 6px;
+    color: #64748b;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 1.35;
 }
 
 .dashboard-assistant-rail {
@@ -258,6 +314,33 @@ body.dark-mode .assistant-rail-name {
     color: #f8fafc;
 }
 
+body.dark-mode .dashboard-header h1 {
+    background: linear-gradient(135deg, #f8fafc 0%, #a7f3d0 52%, #34d399 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+body.dark-mode .dashboard-showcase-strip article {
+    border-color: rgba(52, 211, 153, 0.18);
+    background:
+        linear-gradient(135deg, rgba(15, 23, 42, 0.88), rgba(6, 78, 59, 0.42)),
+        radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.16), transparent 44%);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+}
+
+body.dark-mode .dashboard-showcase-strip span {
+    color: #6ee7b7;
+}
+
+body.dark-mode .dashboard-showcase-strip strong {
+    color: #f8fafc;
+}
+
+body.dark-mode .dashboard-showcase-strip em {
+    color: #cbd5e1;
+}
+
 body.dark-mode .assistant-rail-subtitles {
     color: #cbd5e1;
 }
@@ -441,6 +524,35 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 }
 
 @media (max-width: 980px) {
+    .dashboard-showcase-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .dashboard-showcase-strip article {
+        padding: 10px 11px;
+        border-radius: 14px;
+    }
+
+    .dashboard-showcase-strip article:last-child {
+        grid-column: auto;
+    }
+
+    .dashboard-showcase-strip span {
+        font-size: 9px;
+        letter-spacing: 0.06em;
+    }
+
+    .dashboard-showcase-strip strong {
+        margin-top: 3px;
+        font-size: 13px;
+        line-height: 1.12;
+    }
+
+    .dashboard-showcase-strip em {
+        display: none;
+    }
+
     .dashboard-assistant-rail {
         min-width: 260px;
         min-height: 68px;
@@ -459,6 +571,26 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 }
 
 @media (max-width: 640px) {
+    .dashboard-header {
+        align-items: flex-start;
+    }
+
+    .dashboard-header h1 {
+        font-size: 28px;
+    }
+
+    .dashboard-showcase-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .dashboard-showcase-strip article {
+        padding: 9px 8px;
+    }
+
+    .dashboard-showcase-strip article:last-child {
+        grid-column: auto;
+    }
+
     .dashboard-assistant-rail {
         order: 10;
         flex: 1 0 100%;
@@ -488,6 +620,14 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 }
 
 @media (max-width: 390px) {
+    .dashboard-showcase-strip strong {
+        font-size: 14px;
+    }
+
+    .dashboard-showcase-strip em {
+        font-size: 11px;
+    }
+
     .assistant-rail-actions {
         gap: 4px;
     }
@@ -1170,4 +1310,19 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 .board-save-status[data-state="error"] {
     background: rgba(239, 68, 68, 0.14);
     color: #b91c1c;
+}
+
+@media (max-width: 768px) {
+    body[data-crm-page="dashboard"] .header,
+    body[data-crm-page="dashboard"] .page-container {
+        margin-left: 0 !important;
+        width: 100% !important;
+        max-width: 100vw !important;
+        box-sizing: border-box !important;
+    }
+
+    body[data-crm-page="dashboard"] .page-container {
+        padding: 12px !important;
+        overflow-x: hidden;
+    }
 }

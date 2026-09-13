@@ -283,7 +283,6 @@ test('dashboard initial render requests every widget endpoint once', async () =>
         return result;
     }, {});
     assert.deepEqual(counts, {
-        '/api/dashboard/widgets/funnel': 1,
         '/api/dashboard/widgets/tasks': 1,
         '/api/dashboard/widgets/weather': 1
     });

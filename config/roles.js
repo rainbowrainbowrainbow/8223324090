@@ -62,32 +62,32 @@ const ROLE_DEPARTMENTS = {
 // v24.3.0: Default dashboard widgets per role (all 24 roles)
 const DEFAULT_WIDGETS = {
     // Executive — full overview
-    creator:        ['personal_tasker', 'quick_stats', 'my_focus', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements'],
-    director:       ['director_pnl', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'weather', 'currency', 'announcements'],
-    vice_director:  ['operations', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'weather', 'announcements'],
+    creator:        ['personal_tasker', 'quick_stats', 'my_focus', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'nearest_event', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements'],
+    director:       ['director_pnl', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'nearest_event', 'bookings_today', 'leads_new', 'weather', 'currency', 'announcements'],
+    vice_director:  ['operations', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'nearest_event', 'bookings_today', 'weather', 'announcements'],
     // Management
-    senior_manager: ['quick_stats', 'my_focus', 'funnel', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements'],
-    manager:        ['staff_today', 'event_risk_summary', 'exceptions', 'my_focus', 'funnel', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements'],
+    senior_manager: ['quick_stats', 'my_focus', 'funnel', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'nearest_event', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements'],
+    manager:        ['staff_today', 'event_risk_summary', 'exceptions', 'my_focus', 'funnel', 'tasks', 'nearest_event', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements'],
     // Specialists
     accountant:     ['finance_today', 'tasks', 'quick_stats', 'currency', 'weather'],
-    art_director:   ['content_pipeline', 'tasks', 'my_schedule', 'bookings_today', 'weather', 'announcements'],
+    art_director:   ['content_pipeline', 'tasks', 'my_schedule', 'nearest_event', 'bookings_today', 'weather', 'announcements'],
     marketer:       ['funnel', 'leads_new', 'tasks', 'quick_stats', 'weather', 'announcements'],
     it_specialist:  ['tasks', 'alerts', 'team_online', 'weather'],
     hr:             ['hr_overview', 'staff_today', 'tasks', 'team_online', 'my_schedule', 'announcements', 'weather'],
     // Operations
-    admin:          ['event_risk_summary', 'exceptions', 'tasks', 'bookings_today', 'my_schedule', 'weather', 'announcements'],
+    admin:          ['event_risk_summary', 'exceptions', 'tasks', 'nearest_event', 'bookings_today', 'my_schedule', 'weather', 'announcements'],
     security:       ['my_schedule', 'tasks', 'alerts', 'weather'],
     // Programs
-    senior_instructor: ['my_schedule', 'tasks', 'bookings_today', 'weather', 'announcements'],
-    instructor:     ['my_schedule', 'tasks', 'bookings_today', 'weather'],
+    senior_instructor: ['my_schedule', 'tasks', 'nearest_event', 'bookings_today', 'weather', 'announcements'],
+    instructor:     ['my_schedule', 'tasks', 'nearest_event', 'bookings_today', 'weather'],
     // Kitchen
-    head_chef:      ['tasks', 'my_schedule', 'bookings_today', 'weather'],
+    head_chef:      ['tasks', 'my_schedule', 'nearest_event', 'bookings_today', 'weather'],
     cook:           ['my_schedule', 'tasks', 'weather'],
-    head_pastry:    ['tasks', 'my_schedule', 'bookings_today', 'weather'],
+    head_pastry:    ['tasks', 'my_schedule', 'nearest_event', 'bookings_today', 'weather'],
     pastry_chef:    ['my_schedule', 'tasks', 'weather'],
     // Field
-    animator:       ['my_schedule', 'tasks', 'bookings_today', 'weather'],
-    reception:      ['exceptions', 'bookings_today', 'tasks', 'my_schedule', 'weather'],
+    animator:       ['my_schedule', 'tasks', 'nearest_event', 'bookings_today', 'weather'],
+    reception:      ['exceptions', 'nearest_event', 'bookings_today', 'tasks', 'my_schedule', 'weather'],
     barista:        ['my_schedule', 'tasks', 'weather'],
     wardrobe:       ['my_schedule', 'tasks', 'weather'],
     cleaning:       ['my_schedule', 'tasks', 'weather'],
@@ -104,6 +104,7 @@ const DASHBOARD_WIDGET_MIN_ROLES = {
     tasks: null,
     my_focus: null,
     personal_tasker: 'creator',
+    nearest_event: null,
     bookings_today: 'admin',
     my_schedule: null,
     team_online: 'manager',

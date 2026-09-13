@@ -1534,6 +1534,11 @@ describe('work queue endpoint', () => {
         dom.window.ROLE_NAMES = { manager: 'Manager' };
         dom.window.hasMinRole = () => true;
         dom.window.apiVerifyToken = async () => ({ id: 20, name: 'Manager User', role: 'manager' });
+        dom.window.apiHasStoredAuthSession = () => true;
+        dom.window.hydrateActionPermissions = async () => ({ hydrated: true });
+        dom.window.captureAuthBootstrapSession = user => ({ userId: user.id, role: user.role });
+        dom.window.isAuthBootstrapSessionCurrent = () => true;
+        dom.window.enforceCurrentPageAccess = () => true;
         dom.window.Explainability = {
             renderFilterSummary: () => '<div>queue explainability</div>',
             setRegion: (target, html) => { target.innerHTML = html; }
@@ -1541,7 +1546,7 @@ describe('work queue endpoint', () => {
         dom.window.fetch = async (url, options = {}) => {
             const value = String(url);
             if (value.startsWith('/api/dashboard/config')) {
-                return { ok: true, status: 200, json: async () => ({ success: true, config: { widgets: [], layout: {}, theme: 'default' } }) };
+                return { ok: true, status: 200, json: async () => ({ success: true, config: { widgets: ['funnel'], layout: {}, theme: 'default' } }) };
             }
             if (value.startsWith('/api/dashboard/widgets/funnel')) {
                 return {

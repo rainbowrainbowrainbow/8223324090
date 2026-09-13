@@ -1,6 +1,6 @@
 /**
  * js/dashboard-page.js — Dashboard page logic (v0.50.11)
- * Widget-based personalized dashboard with safe board foundation mode.
+ * Personalized widget dashboard. Legacy board data remains compatible with saved layouts.
  */
 
 const DashboardPage = (() => {
@@ -210,6 +210,18 @@ const DashboardPage = (() => {
     const BOARD_AI_PRESETS = new Set(['expand', 'mood-pack', 'cluster', 'summarize', 'tasks', 'remix', 'name-frame', 'prompt-to-board']);
     const DASHBOARD_RETIRED_WIDGETS = new Set();
     const DASHBOARD_PRESENTATION_MODES = new Set(['mixed-scene', 'flat-grid']);
+    const DASHBOARD_SHOWCASE_WIDGETS = Object.freeze([
+        'funnel',
+        'my_focus',
+        'tasks',
+        'nearest_event', 'bookings_today',
+        'staff_today',
+        'event_risk_summary',
+        'team_tasks',
+        'alerts',
+        'quick_stats',
+        'weather'
+    ]);
     const BOARD_PLANNING_ZONES = [
         {
             id: 'focus',
@@ -324,7 +336,8 @@ const DashboardPage = (() => {
         quick_stats:    { icon: '📊', title: 'Швидка статистика', minRole: 'admin' },
         tasks:          { icon: '📋', title: 'Мої задачі', minRole: null },
         my_focus:       { icon: '🎯', title: 'Мій фокус', minRole: null },
-        personal_tasker:{ icon: '✅', title: 'Особистий tasker', minRole: 'creator' },
+        personal_tasker:{ icon: '✅', title: 'Особисті задачі', minRole: 'creator' },
+        nearest_event: { icon: '🎬', title: 'Найближча подія', minRole: null },
         bookings_today: { icon: '📅', title: 'Бронювання сьогодні', minRole: 'admin' },
         my_schedule:    { icon: '🕐', title: 'Мій графік', minRole: null },
         team_online:    { icon: '👥', title: 'Команда онлайн', minRole: 'manager' },
@@ -343,9 +356,9 @@ const DashboardPage = (() => {
         staff_today:    { icon: '👷', title: 'Хто на зміні', minRole: 'manager' },
         week_bookings:  { icon: '📆', title: 'Бронювання на тиждень', minRole: 'admin' },
         team_tasks:     { icon: '📝', title: 'Задачі команди', minRole: 'manager' },
-        task_health:    { icon: '🧭', title: 'Automation hygiene', minRole: 'manager' },
+        task_health:    { icon: '🧭', title: 'Стан задач', minRole: 'manager' },
         hr_overview:    { icon: '🏥', title: 'HR дайджест', minRole: 'hr' },
-        director_pnl:   { icon: '💹', title: 'P&L', minRole: 'director' },
+        director_pnl:   { icon: '💹', title: 'Фінансовий пульс', minRole: 'director' },
         content_pipeline: { icon: '🎨', title: 'Контент-пайплайн', minRole: 'art_director' },
         operations:     { icon: '⚙️', title: 'Операції', minRole: 'vice_director' },
     };
@@ -355,16 +368,22 @@ const DashboardPage = (() => {
         'director_pnl'
     ]);
     const WIDGET_DATA_TTL_MS = 90 * 1000;
+    const DAY_ORIENTATION_SOURCE_TYPES = ['nearest_event', 'my_focus', 'funnel'];
+    const DAY_ORIENTATION_SOURCE_LABELS = {
+        nearest_event: 'найближча подія',
+        my_focus: 'мій фокус',
+        funnel: 'воронка'
+    };
 
     const ROLE_DASHBOARD_BASE_WIDGETS = {
-        creator: ['personal_tasker', 'quick_stats', 'my_focus', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts', 'hr_overview', 'content_pipeline', 'operations'],
-        director: ['director_pnl', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts'],
-        vice_director: ['operations', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'bookings_today', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
-        senior_manager: ['quick_stats', 'my_focus', 'funnel', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
-        manager: ['staff_today', 'event_risk_summary', 'exceptions', 'my_focus', 'funnel', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements', 'team_tasks', 'task_health', 'team_online', 'alerts', 'quick_stats'],
-        admin: ['event_risk_summary', 'exceptions', 'tasks', 'bookings_today', 'my_schedule', 'weather', 'announcements', 'alerts', 'quick_stats', 'catalogs'],
+        creator: ['personal_tasker', 'quick_stats', 'my_focus', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'nearest_event', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts', 'hr_overview', 'content_pipeline', 'operations'],
+        director: ['director_pnl', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'nearest_event', 'bookings_today', 'leads_new', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        vice_director: ['operations', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'nearest_event', 'bookings_today', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        senior_manager: ['quick_stats', 'my_focus', 'funnel', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'nearest_event', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        manager: ['staff_today', 'event_risk_summary', 'exceptions', 'my_focus', 'funnel', 'tasks', 'nearest_event', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements', 'team_tasks', 'task_health', 'team_online', 'alerts', 'quick_stats'],
+        admin: ['event_risk_summary', 'exceptions', 'tasks', 'nearest_event', 'bookings_today', 'my_schedule', 'weather', 'announcements', 'alerts', 'quick_stats', 'catalogs'],
         hr: ['hr_overview', 'staff_today', 'tasks', 'team_online', 'my_schedule', 'announcements', 'weather', 'alerts'],
-        art_director: ['content_pipeline', 'tasks', 'my_schedule', 'bookings_today', 'weather', 'announcements', 'alerts', 'catalogs', 'quick_stats'],
+        art_director: ['content_pipeline', 'tasks', 'my_schedule', 'nearest_event', 'bookings_today', 'weather', 'announcements', 'alerts', 'catalogs', 'quick_stats'],
         _default: ['tasks', 'my_schedule', 'weather', 'announcements', 'alerts'],
     };
 
@@ -373,7 +392,7 @@ const DashboardPage = (() => {
             title: 'Creator mixed scene',
             description: 'Повний огляд CRM з операційним кластером, executive контролем і окремою смугою для думок.',
             zones: {
-                leftCluster: ['funnel', 'tasks', 'team_tasks', 'leads_new', 'staff_today', 'bookings_today'],
+                leftCluster: ['funnel', 'tasks', 'team_tasks', 'leads_new', 'staff_today', 'nearest_event', 'bookings_today'],
                 centerControl: ['alerts', 'quick_stats', 'weather', 'announcements', 'my_schedule'],
                 lowerSupport: ['director_pnl', 'operations', 'event_risk_summary', 'exceptions', 'team_online', 'currency'],
                 specialty: ['hr_overview', 'content_pipeline', 'catalogs'],
@@ -385,7 +404,7 @@ const DashboardPage = (() => {
             title: 'Admin operations scene',
             description: 'Контроль бронювань, ризиків, задач і системних довідників без executive шуму.',
             zones: {
-                leftCluster: ['event_risk_summary', 'exceptions', 'bookings_today', 'tasks'],
+                leftCluster: ['event_risk_summary', 'exceptions', 'nearest_event', 'bookings_today', 'tasks'],
                 centerControl: ['alerts', 'quick_stats', 'my_schedule'],
                 lowerSupport: ['announcements', 'weather', 'catalogs'],
                 rightWritingLane: ['notes-zone-primary', 'admin-zone']
@@ -397,7 +416,7 @@ const DashboardPage = (() => {
             description: 'Ліди, команда, задачі й сьогоднішні події з місцем для швидких нотаток.',
             zones: {
                 leftCluster: ['funnel', 'leads_new', 'tasks', 'team_tasks'],
-                centerControl: ['alerts', 'staff_today', 'team_online', 'bookings_today'],
+                centerControl: ['alerts', 'staff_today', 'team_online', 'nearest_event', 'bookings_today'],
                 lowerSupport: ['event_risk_summary', 'exceptions', 'my_schedule', 'weather', 'announcements'],
                 rightWritingLane: ['notes-zone-primary']
             },
@@ -409,7 +428,7 @@ const DashboardPage = (() => {
             zones: {
                 leftCluster: ['funnel', 'team_tasks', 'staff_today', 'leads_new'],
                 centerControl: ['quick_stats', 'event_risk_summary', 'exceptions'],
-                lowerSupport: ['bookings_today', 'team_online', 'alerts', 'weather', 'announcements'],
+                lowerSupport: ['nearest_event', 'bookings_today', 'team_online', 'alerts', 'weather', 'announcements'],
                 rightWritingLane: ['notes-zone-primary', 'decision-zone']
             },
             spacing: { rightFreeLane: 320, chaos: 0.15 }
@@ -420,7 +439,7 @@ const DashboardPage = (() => {
             zones: {
                 leftCluster: ['director_pnl', 'quick_stats', 'funnel'],
                 centerControl: ['alerts', 'event_risk_summary', 'exceptions'],
-                lowerSupport: ['team_tasks', 'staff_today', 'bookings_today', 'team_online', 'weather', 'announcements'],
+                lowerSupport: ['team_tasks', 'staff_today', 'nearest_event', 'bookings_today', 'team_online', 'weather', 'announcements'],
                 rightWritingLane: ['notes-zone-primary', 'decision-zone']
             },
             spacing: { rightFreeLane: 340, chaos: 0.10 }
@@ -429,7 +448,7 @@ const DashboardPage = (() => {
             title: 'Vice director operations scene',
             description: 'Операційний контроль, ризики подій і команда з помірною асиметрією.',
             zones: {
-                leftCluster: ['operations', 'event_risk_summary', 'exceptions', 'bookings_today'],
+                leftCluster: ['operations', 'event_risk_summary', 'exceptions', 'nearest_event', 'bookings_today'],
                 centerControl: ['alerts', 'quick_stats', 'staff_today', 'team_online'],
                 lowerSupport: ['funnel', 'team_tasks', 'weather', 'announcements'],
                 rightWritingLane: ['notes-zone-primary', 'ops-zone']
@@ -452,7 +471,7 @@ const DashboardPage = (() => {
             description: 'Контент, задачі, бронювання й простір для скетчів без змішування з executive блоками.',
             zones: {
                 leftCluster: ['content_pipeline', 'tasks'],
-                centerControl: ['alerts', 'my_schedule', 'bookings_today', 'announcements'],
+                centerControl: ['alerts', 'my_schedule', 'nearest_event', 'bookings_today', 'announcements'],
                 lowerSupport: ['catalogs', 'quick_stats', 'weather'],
                 rightWritingLane: ['notes-zone-primary', 'sketch-zone']
             },
@@ -508,6 +527,7 @@ const DashboardPage = (() => {
     let _dashboardServerRevision = null;
     let _dashboardSaveSequence = Promise.resolve();
     let _dashboardInitPromise = null;
+    let _dashboardConfigState = 'idle';
     let _dashboardViewportBound = false;
     let _workQueueReplyScope = normalizeWorkQueueReplyScope(localStorage.getItem('eg_reply_backlog_scope'));
     let _workQueueReplyFilters = loadReplyConsoleFilters();
@@ -537,6 +557,11 @@ const DashboardPage = (() => {
     let _assistantAudioPlayer = null;
     let _assistantAudioUrl = null;
     let _assistantHistory = [];
+    const _dashboardTaskCompletionPending = new Set();
+    const _dashboardTaskCompletionErrors = new Map();
+    let _dashboardDayOrientationDateKey = '';
+    let _dashboardDayOrientationClock = null;
+    let _dashboardDayOrientationLoading = false;
     const ASSISTANT_RAIL_MODES = new Set(['idle', 'thinking', 'busy', 'listening', 'speaking', 'muted', 'error']);
     const ASSISTANT_RAIL_LABELS = {
         idle: 'Готовий',
@@ -550,7 +575,7 @@ const DashboardPage = (() => {
 
     function createDefaultDashboardConfig() {
         return {
-            widgets: ['tasks', 'my_schedule', 'weather'],
+            widgets: ['funnel', 'my_focus', 'nearest_event', 'tasks', 'bookings_today', 'staff_today', 'event_risk_summary', 'alerts', 'weather'],
             layout: {},
             theme: 'default',
             mode: DASHBOARD_WORKSPACE_MODE,
@@ -1076,6 +1101,16 @@ const DashboardPage = (() => {
 
     function buildDashboardConfigPayload(patch = {}) {
         if (!_config) _config = createDefaultDashboardConfig();
+        if (patch.widgetsOnly) {
+            return {
+                baseRevision: _dashboardServerRevision || null,
+                widgets: patch.widgets || [],
+                layout: {
+                    presentationMode: 'flat-grid',
+                    widgetGridVersion: 1
+                }
+            };
+        }
         const nextMode = normalizeDashboardMode(patch.mode || _config.mode);
         const nextPresentationMode = patch.presentationMode || _config.presentationMode || 'mixed-scene';
         const nextSceneOptions = patch.sceneOptions || _config.sceneOptions || createDefaultDashboardConfig().sceneOptions;
@@ -1604,7 +1639,6 @@ const DashboardPage = (() => {
         if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
         setBoardRecoveryKey();
         initDashboardViewportHeight();
-        initBoardKeyboard();
         revealDashboardShell();
 
         // Decision Screen — before dashboard loads
@@ -1620,6 +1654,8 @@ const DashboardPage = (() => {
 
         // Render greeting
         renderGreeting();
+        initDashboardDayOrientationClock();
+        renderDayOrientation();
         revealDashboardShell();
     }
 
@@ -1690,40 +1726,24 @@ const DashboardPage = (() => {
             return;
         }
         revealDashboardShell();
-        const shell = document.getElementById('dashboardBoardShell');
-        const canvas = document.getElementById('dashboardBoardCanvas');
         const grid = document.getElementById('dashboardGrid');
-        const widgetKeys = collectDashboardFallbackWidgetKeys();
-        if (shell) {
-            shell.classList.remove('hidden');
-            shell.classList.add('dashboard-render-fallback');
-        }
-        if (canvas) {
-            canvas.innerHTML = `
-                <div class="dashboard-board-warning" role="alert" data-dashboard-open-fallback="${escapeHtml(source)}">
-                    <strong>Dashboard відкрився у резервному перегляді</strong>
-                    <span>Board-сцена не змогла відрендеритись, але доступні віджети поточної дошки залишаються нижче. Це не змінює дошку й не зберігає новий стан.</span>
-                    <button type="button" class="dashboard-btn primary" onclick="DashboardPage.retryDashboardBoardRender()">Повторити малювання дошки</button>
+        if (grid) {
+            grid.className = 'dashboard-grid dashboard-widget-grid';
+            grid.removeAttribute('aria-hidden');
+            grid.innerHTML = `
+                <div class="widget-empty" role="alert" data-dashboard-open-fallback="${escapeHtml(source)}">
+                    <strong>Не вдалося відкрити віджети</strong>
+                    <p>Спробуйте завантажити дашборд ще раз.</p>
+                    <button type="button" class="dashboard-btn" onclick="DashboardPage.retryDashboard()">Повторити</button>
                 </div>
             `;
-        }
-        if (grid) {
-            renderFlatWidgetGrid(grid, {
-                fallback: true,
-                hydrateData: true,
-                widgetKeys,
-                source,
-                error
-            });
-            grid.classList.remove('hidden', 'dashboard-compat-widget-cache');
-            grid.removeAttribute('aria-hidden');
             return;
         }
         if (typeof renderStandaloneFatalError === 'function') {
             renderStandaloneFatalError({
                 moduleName: 'dashboard',
-                title: 'Dashboard відкрився у резервному перегляді',
-                message: 'Board-сцена не змогла повністю відрендеритись на цьому пристрої.',
+                title: 'Не вдалося відкрити віджети',
+                message: 'Спробуйте оновити сторінку.',
                 error
             });
         }
@@ -1746,7 +1766,7 @@ const DashboardPage = (() => {
         if (shell) shell.classList.add('hidden');
         if (grid) {
             grid.innerHTML = `
-                <section class="widget-card dashboard-config-retry" role="alert">
+                <section class="widget-card dashboard-config-retry" role="alert" data-dashboard-open-fallback="config">
                     <div class="widget-header">
                         <div class="widget-title">
                             <span class="widget-title-icon">⚠️</span>
@@ -1767,6 +1787,8 @@ const DashboardPage = (() => {
     }
 
     async function loadConfig() {
+        if (_dashboardConfigState === 'loading') return;
+        _dashboardConfigState = 'loading';
         _dashboardConfigWritable = false;
         _dashboardConfigLoadError = null;
         try {
@@ -1777,23 +1799,22 @@ const DashboardPage = (() => {
             const data = await resp.json();
 
             if (!data.success) {
-                throw new Error(data.error || 'Dashboard config API returned success:false');
+                throw new Error(data.error || 'Не вдалося завантажити налаштування');
             }
 
             _dashboardConfigWritable = true;
+            _dashboardConfigState = 'ready';
             _dashboardConfigLoadError = null;
             _boardLegacyUpgradePending = false;
             applyDashboardConfig(data.config);
+            setBoardRecoveryKey();
             _dashboardLocalRevision = 0;
             _dashboardLastConfirmedRevision = 0;
-            const shouldPersistLegacyUpgrade = _boardLegacyUpgradePending;
             await restoreBoardDraftIfNeeded();
-            if (shouldPersistLegacyUpgrade) {
-                _boardLegacyUpgradePending = false;
-                markBoardDirty('legacy-note-upgrade');
-            }
+            _boardLegacyUpgradePending = false;
             renderWidgetsSafely('config');
         } catch (err) {
+            _dashboardConfigState = 'error';
             console.error('Dashboard config error:', err);
             _dashboardConfigWritable = false;
             _dashboardConfigLoadError = err instanceof Error ? err : new Error(String(err || 'Dashboard config error'));
@@ -3546,7 +3567,7 @@ const DashboardPage = (() => {
 
     function targetLaneForWidget(widgetKey) {
         if (['director_pnl', 'operations', 'hr_overview', 'content_pipeline', 'catalogs'].includes(widgetKey)) return 'specialty';
-        if (['quick_stats', 'bookings_today', 'event_risk_summary', 'exceptions', 'my_schedule', 'weather', 'currency', 'announcements'].includes(widgetKey)) return 'lowerSupport';
+        if (['quick_stats', 'nearest_event', 'bookings_today', 'event_risk_summary', 'exceptions', 'my_schedule', 'weather', 'currency', 'announcements'].includes(widgetKey)) return 'lowerSupport';
         if (['alerts', 'team_online', 'staff_today'].includes(widgetKey)) return 'centerControl';
         return 'leftCluster';
     }
@@ -3638,6 +3659,7 @@ const DashboardPage = (() => {
         return `
             <section class="widget-card scene-tone-${escapeHtml(tone)}" data-widget="${safeKey}">
                 <div class="widget-header">
+                    <button type="button" class="widget-drag-handle" title="Перетягніть віджет або змініть порядок клавішами зі стрілками" aria-label="Перемістити: ${escapeHtml(def.title)}" aria-describedby="dashboardWidgetHint">⠿</button>
                     <div class="widget-title">
                         <span class="widget-title-icon">${escapeHtml(def.icon)}</span>
                         ${escapeHtml(def.title)}
@@ -3698,24 +3720,12 @@ const DashboardPage = (() => {
     }
 
     function renderFlatWidgetGrid(grid, options = {}) {
-        grid.className = options.fallback ? 'dashboard-grid dashboard-fallback-widget-grid' : 'dashboard-grid';
+        grid.className = 'dashboard-grid dashboard-widget-grid';
         const widgets = Array.isArray(options.widgetKeys)
             ? normalizeDashboardWidgets(options.widgetKeys)
             : normalizeDashboardWidgets(_config.widgets || []);
         grid.innerHTML = '';
         let renderedCount = 0;
-
-        if (options.fallback) {
-            grid.insertAdjacentHTML('beforeend', `
-                <section class="dashboard-fallback-banner" role="status" aria-live="polite">
-                    <div>
-                        <strong>Резервний перегляд віджетів</strong>
-                        <span>Показую видимі дозволені віджети з поточної дошки. Координати, boardState і серверна конфігурація не змінюються.</span>
-                    </div>
-                    <button type="button" class="dashboard-btn" onclick="DashboardPage.retryDashboardBoardRender()">Повторити board</button>
-                </section>
-            `);
-        }
 
         for (const widgetKey of widgets) {
             if (!canUseWidget(widgetKey)) continue;
@@ -3725,8 +3735,140 @@ const DashboardPage = (() => {
         }
 
         if (renderedCount === 0) {
-            grid.insertAdjacentHTML('beforeend', '<div class="widget-empty">Немає доступних віджетів для резервного перегляду.</div>');
+            grid.innerHTML = '<div class="widget-empty">Оберіть потрібні віджети для свого робочого дня.<br><button type="button" class="dashboard-btn primary" onclick="DashboardPage.openWidgetManager()">Додати віджет</button></div>';
         }
+        initWidgetGridDragging(grid);
+    }
+
+    let _widgetLayoutSaving = false;
+    let _widgetDragCleanup = null;
+
+    function setWidgetLayoutStatus(message, state = 'saved') {
+        const status = document.getElementById('dashboardLayoutStatus');
+        if (!status) return;
+        status.textContent = message;
+        status.dataset.state = state;
+    }
+
+    function restoreWidgetOrder(grid, order) {
+        const focused = document.activeElement;
+        const cards = new Map(Array.from(grid.querySelectorAll('.widget-card[data-widget]'))
+            .map(card => [card.dataset.widget, card]));
+        order.forEach(key => { if (cards.has(key)) grid.appendChild(cards.get(key)); });
+        if (focused && grid.contains(focused)) focused.focus({ preventScroll: true });
+    }
+
+    async function persistWidgetGridOrder(grid) {
+        if (_widgetLayoutSaving) return;
+        const previous = [..._config.widgets];
+        const visible = Array.from(grid.querySelectorAll('.widget-card[data-widget]')).map(card => card.dataset.widget);
+        const visibleKeys = new Set(visible);
+        let position = 0;
+        // Keep widgets hidden by role preview in their original slots.
+        const next = previous.map(key => visibleKeys.has(key) ? visible[position++] : key);
+        if (next.every((key, index) => key === previous[index])) return;
+        _widgetLayoutSaving = true;
+        grid.setAttribute('aria-busy', 'true');
+        setWidgetLayoutStatus('Зберігаємо порядок…', 'saving');
+        try {
+            const result = await saveDashboardConfig({ widgets: next, widgetsOnly: true });
+            if (!result?.success) throw new Error(result?.error || 'Не вдалося зберегти порядок');
+            _config.widgets = next;
+            setWidgetLayoutStatus('Порядок збережено');
+        } catch (err) {
+            _config.widgets = previous;
+            restoreWidgetOrder(grid, previous);
+            setWidgetLayoutStatus('Не збережено. Попередній порядок відновлено — спробуйте ще раз.', 'error');
+            notifyDashboardIssue(err.message || 'Не вдалося зберегти порядок віджетів');
+        } finally {
+            _widgetLayoutSaving = false;
+            grid.removeAttribute('aria-busy');
+        }
+    }
+
+    function initWidgetGridDragging(grid) {
+        grid.querySelectorAll('.widget-drag-handle').forEach(handle => {
+            handle.addEventListener('keydown', event => {
+                const offsets = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 };
+                if (!(event.key in offsets)) return;
+                event.preventDefault();
+                if (_widgetLayoutSaving) return;
+                const card = handle.closest('.widget-card');
+                const cards = Array.from(grid.querySelectorAll('.widget-card[data-widget]'));
+                const index = cards.indexOf(card);
+                const target = cards[index + offsets[event.key]];
+                if (!target) return;
+                grid.insertBefore(card, offsets[event.key] > 0 ? target.nextSibling : target);
+                handle.focus({ preventScroll: true });
+                persistWidgetGridOrder(grid);
+            });
+            handle.addEventListener('pointerdown', event => {
+                if (event.button !== 0 || event.isPrimary === false || _widgetLayoutSaving) return;
+                event.preventDefault();
+                _widgetDragCleanup?.();
+                const card = handle.closest('.widget-card');
+                const startX = event.clientX;
+                const startY = event.clientY;
+                const startScroll = window.scrollY;
+                let target = null;
+                let moved = false;
+                handle.focus({ preventScroll: true });
+                captureBoardPointerSafely(handle, event);
+                const move = current => {
+                    if (current.pointerId !== event.pointerId) return;
+                    const dx = current.clientX - startX;
+                    const dy = current.clientY - startY;
+                    if (!moved && Math.hypot(dx, dy) < 6) return;
+                    moved = true;
+                    card.classList.add('is-dragging');
+                    card.style.transform = `translate(${dx}px, ${dy + window.scrollY - startScroll}px)`;
+                    target?.classList.remove('is-drop-target');
+                    target = Array.from(grid.querySelectorAll('.widget-card[data-widget]')).find(other => {
+                        if (other === card) return false;
+                        const rect = other.getBoundingClientRect();
+                        return current.clientX >= rect.left && current.clientX <= rect.right
+                            && current.clientY >= rect.top && current.clientY <= rect.bottom;
+                    }) || null;
+                    target?.classList.add('is-drop-target');
+                    if (current.clientY > window.innerHeight - 60) window.scrollBy(0, 18);
+                    else if (current.clientY < 80) window.scrollBy(0, -18);
+                };
+                const cleanup = () => {
+                    card.classList.remove('is-dragging');
+                    card.style.removeProperty('transform');
+                    target?.classList.remove('is-drop-target');
+                    window.removeEventListener('pointermove', move);
+                    window.removeEventListener('pointerup', finish);
+                    window.removeEventListener('pointercancel', cancel);
+                    window.removeEventListener('keydown', escape);
+                    window.removeEventListener('blur', cleanup);
+                    handle.removeEventListener('lostpointercapture', cleanup);
+                    try {
+                        if (handle.hasPointerCapture?.(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+                    } catch { /* The browser may already have released a cancelled pointer. */ }
+                    _widgetDragCleanup = null;
+                };
+                const finish = current => {
+                    if (current.pointerId !== event.pointerId) return;
+                    cleanup();
+                    if (!moved || !target) return;
+                    const cards = Array.from(grid.querySelectorAll('.widget-card[data-widget]'));
+                    const after = cards.indexOf(card) < cards.indexOf(target);
+                    grid.insertBefore(card, after ? target.nextSibling : target);
+                    handle.focus({ preventScroll: true });
+                    persistWidgetGridOrder(grid);
+                };
+                const cancel = current => { if (current.pointerId === event.pointerId) cleanup(); };
+                const escape = current => { if (current.key === 'Escape') cleanup(); };
+                _widgetDragCleanup = cleanup;
+                window.addEventListener('pointermove', move);
+                window.addEventListener('pointerup', finish);
+                window.addEventListener('pointercancel', cancel);
+                window.addEventListener('keydown', escape);
+                window.addEventListener('blur', cleanup);
+                handle.addEventListener('lostpointercapture', cleanup);
+            });
+        });
     }
 
     function getDashboardRolePreviewState() {
@@ -3761,16 +3903,16 @@ const DashboardPage = (() => {
         }).join('');
         menu.innerHTML = `
             <div class="dashboard-role-preview-head">
-                <span>Preview shell</span>
+                <span>Перегляд ролі</span>
                 <strong>${escapeHtml(state.effectiveLabel || roleDisplayName(state.effectiveRole))}</strong>
             </div>
             <div class="dashboard-role-preview-note">
-                Реальна роль акаунта: <b>${escapeHtml(state.realLabel || roleDisplayName(state.realRole))}</b>. Preview змінює тільки shell, меню, dashboard і quick access; API-доступ лишається реальним.
+                Реальна роль акаунта: <b>${escapeHtml(state.realLabel || roleDisplayName(state.realRole))}</b>. Перегляд змінює тільки меню, дашборд і швидкий доступ; права API лишаються реальними.
             </div>
             <div class="dashboard-role-preview-options">${roleButtons}</div>
             <div class="dashboard-role-preview-actions">
                 <button type="button" data-dashboard-role-preview-home>Старт ролі</button>
-                ${state.previewRole ? '<button type="button" data-dashboard-role-preview-clear>Вийти з preview</button>' : ''}
+                ${state.previewRole ? '<button type="button" data-dashboard-role-preview-clear>Вийти з перегляду</button>' : ''}
             </div>
         `;
     }
@@ -3860,26 +4002,14 @@ const DashboardPage = (() => {
     function renderWidgets() {
         const grid = document.getElementById('dashboardGrid');
         if (!grid || !_config) return;
-        applyDashboardConfig(_config);
-        syncBoardToolbar();
+        _config = normalizeDashboardConfig(_config);
+        _widgetDragCleanup?.();
         updateDashboardRolePreviewControl();
-
-        _config.mode = DASHBOARD_WORKSPACE_MODE;
-        _config.layout.mode = DASHBOARD_WORKSPACE_MODE;
-        const boardShell = document.getElementById('dashboardBoardShell');
-        const boardCanvas = document.getElementById('dashboardBoardCanvas');
-        if (!boardShell || !boardCanvas) {
-            renderFlatWidgetGrid(grid);
-            grid.removeAttribute('aria-hidden');
-            grid.classList.remove('dashboard-compat-widget-cache', 'hidden');
-            return;
-        }
-        renderFlatWidgetGrid(grid, { hydrateData: false });
-        grid.setAttribute('aria-hidden', 'true');
-        grid.classList.add('dashboard-compat-widget-cache');
-        grid.classList.add('hidden');
-        ensureUnifiedWorkspaceSeed();
-        renderBoard();
+        _config.presentationMode = 'flat-grid';
+        renderFlatWidgetGrid(grid);
+        renderDayOrientation();
+        loadDayOrientationSources({ missingOnly: true });
+        grid.removeAttribute('aria-hidden');
     }
 
     function ensureUnifiedWorkspaceSeed() {
@@ -5575,29 +5705,154 @@ const DashboardPage = (() => {
         return addBoardWidgetByType(widgetType, point);
     }
 
+    function pickShowcaseBoardWidgets() {
+        const role = getEffectiveDashboardRole();
+        const scene = getEffectiveDashboardScene();
+        const configured = normalizeDashboardWidgets(_config.widgets || []);
+        const rolePool = getRoleSceneWidgetPool(role, scene);
+        const preferred = [
+            ...DASHBOARD_SHOWCASE_WIDGETS,
+            ...configured,
+            ...rolePool
+        ];
+        return [...new Set(preferred)]
+            .filter(widgetType => WIDGET_DEFS[widgetType])
+            .filter(canUseWidget)
+            .slice(0, 6);
+    }
+
     function seedBoardWidgets(options = {}) {
         if (getBoardItems().length) return;
         const shouldPersist = options.persist !== false;
         const shouldRender = options.render !== false;
         if (shouldPersist) pushBoardUndo('seed-widgets');
-        normalizeDashboardWidgets(_config.widgets || [])
-            .filter(canUseWidget)
-            .slice(0, 4)
-            .forEach((widgetType, index) => {
-                const item = normalizeBoardItem({
-                    id: `board-widget-${widgetType}-${Date.now()}-${index}`,
-                    type: 'widget',
-                    widgetType,
-                    title: WIDGET_DEFS[widgetType]?.title || widgetType,
-                    depth: index < getBoardLiveWidgetCap() ? 'live-compact' : 'headline-only',
-                    x: 40 + (index % 2) * 370,
-                    y: 40 + Math.floor(index / 2) * 270,
-                    w: 340,
-                    h: 235,
-                    z: index + 1
-                }, index);
-                if (item) getBoardItems().push(item);
-            });
+        const seededAt = Date.now();
+        const widgetSlots = [
+            { x: 58, y: 70, w: 360, h: 250 },
+            { x: 448, y: 72, w: 320, h: 210 },
+            { x: 58, y: 352, w: 340, h: 220 },
+            { x: 428, y: 326, w: 320, h: 220 },
+            { x: 782, y: 78, w: 318, h: 214 },
+            { x: 780, y: 324, w: 320, h: 212 }
+        ];
+        const boardItems = getBoardItems();
+        const frame = normalizeBoardItem({
+            id: `board-showcase-frame-${seededAt}`,
+            type: 'frame',
+            title: 'Launch board',
+            text: 'Live widgets, boards and notes in one operational cockpit.',
+            tone: 'production',
+            x: 30,
+            y: 36,
+            w: 1110,
+            h: 600,
+            z: 0
+        }, 0);
+        if (frame) boardItems.push(frame);
+
+        const createdWidgets = [];
+        pickShowcaseBoardWidgets().forEach((widgetType, index) => {
+            const slot = widgetSlots[index] || widgetSlots[widgetSlots.length - 1];
+            const item = normalizeBoardItem({
+                id: `board-showcase-widget-${widgetType}-${seededAt}-${index}`,
+                type: 'widget',
+                widgetType,
+                title: WIDGET_DEFS[widgetType]?.title || widgetType,
+                depth: index < getBoardLiveWidgetCap() ? 'live-compact' : 'headline-only',
+                x: slot.x,
+                y: slot.y,
+                w: slot.w,
+                h: slot.h,
+                z: index + 2
+            }, index + 1);
+            if (item) {
+                boardItems.push(item);
+                createdWidgets.push(item);
+            }
+        });
+
+        const noteSeed = [
+            {
+                title: 'Next actions',
+                text: '• Перевірити гарячі ліди\n• Закрити прострочені задачі\n• Підготувати рішення по подіях',
+                tone: 'approved',
+                x: 78,
+                y: 618,
+                w: 300,
+                h: 150
+            },
+            {
+                title: 'Creative brief',
+                text: 'Ідеї, контент, афіші й матеріали тримаємо поруч із live CRM-сигналами.',
+                tone: 'idea',
+                x: 410,
+                y: 604,
+                w: 330,
+                h: 160
+            },
+            {
+                title: 'Decision lane',
+                text: 'Що затвердити сьогодні: команда, бронювання, реклама, follow-up.',
+                tone: 'story',
+                x: 780,
+                y: 570,
+                w: 320,
+                h: 170
+            }
+        ];
+        noteSeed.forEach((note, index) => {
+            const item = normalizeBoardItem({
+                id: `board-showcase-note-${seededAt}-${index}`,
+                type: 'note',
+                ...note,
+                z: 20 + index
+            }, 20 + index);
+            if (item) boardItems.push(item);
+        });
+
+        const space = normalizeBoardItem({
+            id: `board-showcase-breathing-space-${seededAt}`,
+            type: 'space',
+            title: 'Reserved for next widget',
+            text: 'Чистий слот для майбутнього віджета або рекламного акценту.',
+            zoneId: 'showcase-breathing',
+            zoneKind: 'breathing',
+            x: 810,
+            y: 770,
+            w: 300,
+            h: 132,
+            z: 24
+        }, 24);
+        if (space) boardItems.push(space);
+
+        const connectors = getBoardConnectors();
+        if (createdWidgets.length >= 2) {
+            connectors.push(
+                normalizeBoardConnector({
+                    id: `board-showcase-flow-${seededAt}-0`,
+                    from: { itemId: createdWidgets[0].id, anchor: 'right' },
+                    to: { itemId: createdWidgets[1].id, anchor: 'left' },
+                    style: 'curve',
+                    relationType: 'feeds',
+                    color: '#10b981',
+                    label: 'signal flow'
+                }, 0)
+            );
+        }
+        if (createdWidgets.length >= 4) {
+            connectors.push(
+                normalizeBoardConnector({
+                    id: `board-showcase-flow-${seededAt}-1`,
+                    from: { itemId: createdWidgets[2].id, anchor: 'right' },
+                    to: { itemId: createdWidgets[3].id, anchor: 'left' },
+                    style: 'arrow',
+                    relationType: 'depends',
+                    color: '#8b5cf6',
+                    label: 'next action'
+                }, 1)
+            );
+        }
+        _config.boardState.connectors = connectors.filter(Boolean);
         if (shouldPersist) markBoardDirty('seed-widgets');
         if (shouldRender) renderBoard();
     }
@@ -6045,6 +6300,7 @@ const DashboardPage = (() => {
     }
 
     function setDashboardRolePreview(role) {
+        if (_widgetLayoutSaving) return;
         if (!window.RolePreview?.canPreview?.()) return;
         const nextRole = String(role || '').trim();
         const state = getDashboardRolePreviewState();
@@ -6299,12 +6555,7 @@ const DashboardPage = (() => {
         const list = Array.isArray(widgets)
             ? widgets.filter(Boolean).filter(widgetKey => WIDGET_DEFS[widgetKey] && !DASHBOARD_RETIRED_WIDGETS.has(widgetKey))
             : [];
-        const funnelDef = WIDGET_DEFS.funnel;
-        const canSeeFunnel = funnelDef && (!funnelDef.minRole || typeof hasMinRole !== 'function' || hasMinRole(funnelDef.minRole));
-        if (canSeeFunnel && !list.includes('funnel')) {
-            return ['funnel', ...list];
-        }
-        return list;
+        return [...new Set(list)];
     }
 
     function isTeamOnlineHistoryEnabled() {
@@ -6430,7 +6681,7 @@ const DashboardPage = (() => {
     }
 
     function isWidgetDataFresh(type, requestKey = dashboardWidgetRequestContext(type).key) {
-        if (!hasCurrentWidgetData(type, requestKey)) return false;
+        if (!hasCurrentWidgetData(type, requestKey) || _widgetDataMeta[type]?.error) return false;
         const fetchedAt = Number(_widgetDataMeta[type]?.fetchedAt || 0);
         return fetchedAt > 0 && (Date.now() - fetchedAt) <= WIDGET_DATA_TTL_MS;
     }
@@ -6509,9 +6760,14 @@ const DashboardPage = (() => {
         _widgetDataContextKeys.set(type, requestKey);
         _widgetDataMeta[type] = { fetchedAt: Date.now(), error: null };
         renderWidgetDataAcrossContainers(type, _widgetData[type], targetContainer, { fetchedAt: _widgetDataMeta[type].fetchedAt });
+        renderDayOrientation();
     }
 
     function renderWidgetFailure(type, targetContainer, requestKey, error, options = {}) {
+        if (options.denied) {
+            delete _widgetData[type];
+            _widgetDataContextKeys.delete(type);
+        }
         const hasLastData = Object.prototype.hasOwnProperty.call(_widgetData, type);
         const message = options.message || error?.message || 'Не вдалося отримати дані.';
         _widgetDataMeta[type] = {
@@ -6525,12 +6781,74 @@ const DashboardPage = (() => {
                 stale: true,
                 message
             });
+            renderDayOrientation();
             return { staleData: true };
         }
         _widgetDataContextKeys.delete(type);
-        delete _widgetDataMeta[type];
         renderWidgetState(type, options.denied ? 'denied' : 'error', targetContainer, { message });
+        renderDayOrientation();
         return { staleData: false };
+    }
+
+    function markDayOrientationSourceError(type, message) {
+        _widgetDataMeta[type] = {
+            ...(_widgetDataMeta[type] || {}),
+            error: message || 'Не вдалося отримати дані.',
+            failedAt: Date.now()
+        };
+        renderDayOrientation();
+    }
+
+    async function loadDayOrientationWidgetData(type, options = {}) {
+        if (!type || !WIDGET_DEFS[type] || !canUseWidget(type)) return { skipped: true };
+        if (options.force === true) bumpWidgetInvalidation(type);
+        const requestContext = dashboardWidgetRequestContext(type);
+        if (options.force !== true && isWidgetDataFresh(type, requestContext.key)) return { cached: true };
+        const visibleContainer = dashboardWidgetContainers(type)[0];
+        if (visibleContainer) return loadWidgetData(type, visibleContainer, options);
+        try {
+            const response = await requestWidgetData(type, requestContext);
+            if (!isCurrentWidgetRequest(type, response.requestKey)) return { stale: true };
+            if (response.status === 403 || response.status === 401) {
+                return renderWidgetFailure(type, null, response.requestKey, new Error('Джерело недоступне з поточними правами'), { denied: true });
+            }
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const result = response.result || {};
+            if (result.success === false) throw new Error(result.error || 'API повернув помилку джерела');
+            updateWidgetSuccess(type, result.data || {}, response.requestKey, null);
+            return { success: true };
+        } catch (err) {
+            if (!isCurrentWidgetRequest(type, requestContext.key)) return { stale: true };
+            const message = err?.message || 'Не вдалося отримати дані.';
+            markDayOrientationSourceError(type, message);
+            return { error: message };
+        }
+    }
+
+    function loadDayOrientationSources(options = {}) {
+        const container = document.getElementById('dashboardDayOrientation');
+        if (!container) return Promise.resolve([]);
+        const types = DAY_ORIENTATION_SOURCE_TYPES
+            .filter(type => WIDGET_DEFS[type] && canUseWidget(type))
+            .filter(type => options.force === true || !isWidgetDataFresh(type));
+        if (!types.length) {
+            renderDayOrientation();
+            return Promise.resolve([]);
+        }
+        _dashboardDayOrientationLoading = Number(_dashboardDayOrientationLoading) + 1;
+        renderDayOrientation();
+        return Promise.allSettled(types.map(type => loadDayOrientationWidgetData(type, options)))
+            .finally(() => {
+                _dashboardDayOrientationLoading -= 1;
+                renderDayOrientation();
+            });
+    }
+
+    async function refreshDayOrientation(event) {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        if (_dashboardDayOrientationLoading) return;
+        return loadDayOrientationSources({ force: true, missingOnly: false });
     }
 
     async function loadWidgetData(type, targetContainer = null, options = {}) {
@@ -6672,7 +6990,7 @@ const DashboardPage = (() => {
                         <strong>${total}</strong>
                         <span>активних</span>
                     </div>
-                    <div class="dashboard-funnel-metric warning">
+                    <div class="dashboard-funnel-metric ${waitingAction > 0 ? 'warning' : ''}">
                         <strong>${waitingAction}</strong>
                         <span>чекає дії</span>
                     </div>
@@ -6693,6 +7011,286 @@ const DashboardPage = (() => {
         `;
     }
 
+    function getKyivDashboardDateKey(date = new Date()) {
+        try {
+            return new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Europe/Kyiv',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).format(date);
+        } catch {
+            return new Date(date).toISOString().slice(0, 10);
+        }
+    }
+
+    function formatUkrainianCount(count, forms) {
+        const value = Math.abs(Number(count || 0));
+        const mod10 = value % 10;
+        const mod100 = value % 100;
+        if (mod10 === 1 && mod100 !== 11) return `${count} ${forms[0]}`;
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} ${forms[1]}`;
+        return `${count} ${forms[2]}`;
+    }
+
+    function isDayOrientationSourceReady(type) {
+        if (!canUseWidget(type) || !isWidgetDataFresh(type)) return false;
+        const data = _widgetData[type];
+        if (type === 'nearest_event') return data.event === null || Boolean(data.event && data.preparation && Number.isFinite(data.preparation.totalCount));
+        if (type === 'my_focus') return Array.isArray(data.tasks) && Number.isFinite(data.overdueCount) && Number.isFinite(data.waitingCount);
+        if (type === 'funnel') return Number.isFinite(data.meta?.funnelInsights?.waitingAction);
+        return false;
+    }
+
+    function dayOrientationSourceIssueText() {
+        const availableTypes = DAY_ORIENTATION_SOURCE_TYPES.filter(type => WIDGET_DEFS[type] && canUseWidget(type));
+        const issues = availableTypes
+            .filter(type => !isDayOrientationSourceReady(type))
+            .map(type => DAY_ORIENTATION_SOURCE_LABELS[type] || type);
+        if (!issues.length) return '';
+        return `Не вдалося оновити: ${issues.join(', ')}.`;
+    }
+
+    function normalizeDashboardEventTime(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        const match = raw.match(/(\d{1,2}):(\d{2})/);
+        if (!match) return raw.slice(0, 16);
+        return `${match[1].padStart(2, '0')}:${match[2]}`;
+    }
+
+    function dashboardEventHref(event = {}) {
+        const href = String(event.canonicalHref || '').trim();
+        if (href) return href;
+        const date = String(event.date || '').trim();
+        return date ? `/?date=${encodeURIComponent(date)}` : '/';
+    }
+
+    function isBookingConfirmationActionable(status, label) {
+        const value = String(status || label || '').trim().toLowerCase();
+        if (!value) return false;
+        return ['preliminary', 'pending', 'draft', 'tentative', 'unconfirmed', 'new'].some(marker => value.includes(marker))
+            || ['поперед', 'очіку', 'не підтвер'].some(marker => value.includes(marker));
+    }
+
+    function buildFunnelOrientationSignal() {
+        if (!isDayOrientationSourceReady('funnel')) return null;
+        const queue = _widgetData.funnel || {};
+        const funnel = queue?.meta?.funnelInsights || {};
+        const waitingAction = Number(funnel.waitingAction || 0);
+        if (waitingAction <= 0) return null;
+        const stages = Array.isArray(funnel.stages) ? funnel.stages : [];
+        const hotStage = funnel.hotStage || stages
+            .filter(stage => Number(stage.waitingAction || 0) > 0 || Number(stage.total || 0) > 0)
+            .sort((a, b) => Number(b.waitingAction || 0) - Number(a.waitingAction || 0) || Number(b.total || 0) - Number(a.total || 0))[0] || null;
+        const href = hotStage?.href || `/sales-funnel${hotStage?.stage ? `?view=kanban&pipeline_stage=${encodeURIComponent(hotStage.stage)}` : ''}`;
+        const stageLabel = hotStage?.label || hotStage?.stage || 'воронці';
+        return {
+            tone: 'sales',
+            source: 'Воронка',
+            title: `У воронці ${formatUkrainianCount(waitingAction, ['лід чекає', 'ліди чекають', 'лідів чекають'])} дії.`,
+            reason: `Найгарячіший етап: ${stageLabel}. Дані взяті з поточної воронки CRM.`,
+            href,
+            cta: 'Відкрити етап',
+            priority: '4'
+        };
+    }
+
+    function buildFocusOrientationSignal() {
+        if (!isDayOrientationSourceReady('my_focus')) return null;
+        const focus = _widgetData.my_focus || {};
+        const tasks = Array.isArray(focus.tasks) ? focus.tasks.filter(task => !isDashboardTaskClosed(task)) : [];
+        const overdue = Number(focus.overdueCount || 0);
+        const waiting = Number(focus.waitingCount || 0);
+        const firstTask = tasks[0] || null;
+        if (overdue > 0) {
+            const overdueTask = tasks.find(task => task.deadline && new Date(task.deadline).getTime() < Date.now());
+            return {
+                tone: 'urgent',
+                source: 'Мій фокус',
+                title: `У фокусі ${formatUkrainianCount(overdue, ['прострочена задача', 'прострочені задачі', 'прострочених задач'])}.`,
+                reason: overdueTask ? `Почніть із “${String(overdueTask.title || 'задача без назви').slice(0, 80)}”.` : 'Перегляньте прострочені задачі у своєму списку.',
+                href: overdueTask?.id ? `/tasks?open=${encodeURIComponent(overdueTask.id)}` : '/tasks',
+                cta: overdueTask?.id ? 'Відкрити задачу' : 'Відкрити задачі',
+                priority: '3'
+            };
+        }
+        if (waiting > 0) {
+            const waitingTask = tasks.find(task => task.workflow_state === 'waiting' || task.task_kind === 'waiting');
+            return {
+                tone: 'focus',
+                source: 'Мій фокус',
+                title: `У фокусі ${formatUkrainianCount(waiting, ['задача чекає', 'задачі чекають', 'задач чекають'])} дії.`,
+                reason: waitingTask ? `Найближчий крок: “${String(waitingTask.title || 'задача без назви').slice(0, 80)}”.` : 'Перегляньте задачі в очікуванні у своєму списку.',
+                href: waitingTask?.id ? `/tasks?open=${encodeURIComponent(waitingTask.id)}` : '/tasks',
+                cta: waitingTask?.id ? 'Відкрити задачу' : 'Відкрити задачі',
+                priority: '3'
+            };
+        }
+        if (firstTask) {
+            const deadline = firstTask.deadline ? formatDeadline(firstTask.deadline) : 'без дедлайну';
+            return {
+                tone: 'focus',
+                source: 'Мій фокус',
+                title: `Наступний крок: “${String(firstTask.title || 'задача без назви').slice(0, 80)}”.`,
+                reason: `Це перша активна задача у вашому фокусі; дедлайн: ${deadline}.`,
+                href: `/tasks?open=${encodeURIComponent(firstTask.id)}`,
+                cta: 'Відкрити задачу',
+                priority: '3'
+            };
+        }
+        return null;
+    }
+
+    function buildNearestEventOrientationSignal() {
+        if (!isDayOrientationSourceReady('nearest_event')) return null;
+        const nearest = _widgetData.nearest_event || {};
+        const event = nearest.event || null;
+        if (!event) return null;
+        const preparation = nearest.preparation || {};
+        const confirmation = nearest.confirmation || {};
+        const openCount = Number(preparation.openCount || 0);
+        const overdueCount = Number(preparation.overdueCount || 0);
+        const totalCount = Number(preparation.totalCount || 0);
+        const time = normalizeDashboardEventTime(event.time || event.startTime);
+        const eventTimeText = time ? `о ${time}` : 'сьогодні';
+        const href = dashboardEventHref(event);
+        if (overdueCount > 0 || openCount > 0) {
+            const actionableCount = overdueCount > 0 ? overdueCount : openCount;
+            const countText = formatUkrainianCount(actionableCount, ['задача', 'задачі', 'задач']);
+            const openVerb = actionableCount === 1 ? 'залишилася' : 'залишилися';
+            const title = overdueCount > 0
+                ? `До події ${eventTimeText} є ${countText} із простроченням.`
+                : `До події ${eventTimeText} ${openVerb} ${countText}.`;
+            return {
+                tone: overdueCount > 0 ? 'urgent' : 'event',
+                source: 'Найближча подія',
+                title,
+                reason: `Підготовка прив’язана до бронювання: ${openCount} відкрито, ${Number(preparation.doneCount || 0)} виконано.`,
+                href,
+                cta: 'Відкрити подію',
+                priority: '1'
+            };
+        }
+        if (isBookingConfirmationActionable(confirmation.status || event.status, confirmation.label)) {
+            return {
+                tone: 'event',
+                source: 'Найближча подія',
+                title: `Подія ${eventTimeText} ще потребує підтвердження бронювання.`,
+                reason: `Статус у CRM: ${nearestEventStatusLabel(confirmation.status || event.status, confirmation.label)}.`,
+                href,
+                cta: 'Відкрити подію',
+                priority: '2'
+            };
+        }
+        if (totalCount <= 0) {
+            return {
+                tone: 'neutral',
+                source: 'Найближча подія',
+                title: `Подія ${eventTimeText} є в розкладі, але доступних підготовчих задач немає.`,
+                reason: 'Готовність не підтверджена. Перевірте підготовку події з відповідальним.',
+                href,
+                cta: 'Перевірити подію',
+                priority: '5'
+            };
+        }
+        return null;
+    }
+
+    function buildDayOrientation() {
+        // Priority order for the presentation block:
+        // 1) nearest event preparation, 2) nearest event confirmation,
+        // 3) personal focus, 4) sales funnel, 5) honest incomplete/calm state.
+        const sourceIssue = dayOrientationSourceIssueText();
+        const nearestSignal = buildNearestEventOrientationSignal();
+        const signal = (nearestSignal?.priority !== '5' ? nearestSignal : null)
+            || buildFocusOrientationSignal()
+            || buildFunnelOrientationSignal()
+            || nearestSignal;
+        if (!_dashboardDayOrientationLoading && signal) return { ...signal, note: sourceIssue };
+        if (_dashboardDayOrientationLoading) {
+            return {
+                tone: 'loading',
+                source: 'Орієнтир дня',
+                title: 'Збираю актуальні сигнали…',
+                reason: 'Оновлюю подію, особисті задачі та воронку.',
+                cta: 'Оновити сигнали',
+                action: 'refresh',
+                priority: '—',
+                note: ''
+            };
+        }
+        if (sourceIssue) {
+            return {
+                tone: 'neutral',
+                source: 'Орієнтир дня',
+                title: 'Частина сигналів дня недоступна.',
+                reason: 'Оновіть дані, щоб визначити наступний крок.',
+                cta: 'Оновити сигнали',
+                action: 'refresh',
+                priority: '—',
+                note: sourceIssue
+            };
+        }
+        return {
+            tone: 'calm',
+            source: 'Орієнтир дня',
+            title: 'Термінових справ у доступних даних немає.',
+            reason: 'Можна переглянути свої задачі та запланувати наступний крок.',
+            href: '/tasks',
+            cta: 'Переглянути задачі',
+            priority: '5'
+        };
+    }
+
+    function renderDayOrientation() {
+        const container = document.getElementById('dashboardDayOrientation');
+        if (!container) return;
+        const orientation = buildDayOrientation();
+        container.dataset.tone = orientation.tone || 'neutral';
+        container.dataset.priority = orientation.priority || '';
+        const action = orientation.action === 'refresh'
+            ? `<button type="button" class="dashboard-day-orientation-action" onclick="DashboardPage.refreshDayOrientation(event)" ${_dashboardDayOrientationLoading ? 'disabled aria-busy="true"' : ''}>${_dashboardDayOrientationLoading ? 'Оновлюю…' : escapeHtml(orientation.cta || 'Оновити')}</button>`
+            : `<a class="dashboard-day-orientation-action" href="${escapeHtml(orientation.href || '/dashboard')}">${escapeHtml(orientation.cta || 'Відкрити')}</a>`;
+        const note = orientation.note ? `<span class="dashboard-day-orientation-note">${escapeHtml(orientation.note)}</span>` : '';
+        container.innerHTML = `
+            <div class="dashboard-day-orientation-badge" aria-hidden="true">→</div>
+            <div class="dashboard-day-orientation-main">
+                <span class="dashboard-day-orientation-kicker">Орієнтир дня${orientation.source && orientation.source !== 'Орієнтир дня' ? ` · ${escapeHtml(orientation.source)}` : ''}</span>
+                <strong>${escapeHtml(orientation.title || '')}</strong>
+                <span>${escapeHtml(orientation.reason || '')}</span>
+                ${note}
+            </div>
+            ${action}
+        `;
+    }
+
+    function checkDashboardDayBoundary(now = new Date()) {
+        if (document.hidden) return;
+        const nextKey = getKyivDashboardDateKey(now);
+        const changedDay = _dashboardDayOrientationDateKey && nextKey !== _dashboardDayOrientationDateKey;
+        _dashboardDayOrientationDateKey = nextKey;
+        if (changedDay) {
+            invalidateWidgetData('all');
+            renderGreeting();
+        } else {
+            const event = _widgetData.nearest_event?.event;
+            const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
+            if (event && (event.date !== nextKey || normalizeDashboardEventTime(event.time || event.startTime) < time)) {
+                invalidateWidgetData('nearest_event');
+            }
+        }
+        return Promise.allSettled([refreshStaleVisibleWidgets(), loadDayOrientationSources()]);
+    }
+
+    function initDashboardDayOrientationClock() {
+        if (_dashboardDayOrientationClock || !document.getElementById('dashboardDayOrientation')) return;
+        _dashboardDayOrientationDateKey = getKyivDashboardDateKey();
+        const clock = window.setInterval?.(checkDashboardDayBoundary, 60 * 1000);
+        if (clock && typeof clock.unref === 'function') clock.unref();
+        _dashboardDayOrientationClock = clock || true;
+    }
+
     function renderWidgetContent(type, data, container) {
         switch (type) {
             case 'funnel':
@@ -6709,6 +7307,9 @@ const DashboardPage = (() => {
                 break;
             case 'personal_tasker':
                 renderPersonalTasker(data, container);
+                break;
+            case 'nearest_event':
+                renderNearestEvent(data, container);
                 break;
             case 'bookings_today':
                 renderBookings(data, container);
@@ -6805,7 +7406,7 @@ const DashboardPage = (() => {
     function renderEventRiskSummary(data, container) {
         const cards = Array.isArray(data.cards) ? data.cards : [];
         if (!cards.length) {
-            container.innerHTML = '<div class="widget-empty">Немає event-risk summary</div>';
+            container.innerHTML = '<div class="widget-empty">Ризиків по подіях немає</div>';
             return;
         }
         const html = cards.map(card => {
@@ -6815,7 +7416,7 @@ const DashboardPage = (() => {
                 : (count > 0 ? 'warning' : 'quiet');
             return `
                 <a class="event-risk-card ${tone}" href="${escapeHtml(card.href || '/tasks')}" title="${escapeHtml(card.why || '')}">
-                    <span>${escapeHtml(card.label || card.key || 'Risk')}</span>
+                    <span>${escapeHtml(card.label || card.key || 'Ризик')}</span>
                     <strong>${count}</strong>
                 </a>
             `;
@@ -6824,7 +7425,7 @@ const DashboardPage = (() => {
         container.innerHTML = `
             <div class="event-risk-summary-grid">${html}</div>
             <p class="event-risk-summary-note">
-                Дані без universal score: confirmation/prep/resource cues окремо. ${meta.eventSoonSemantics ? escapeHtml(meta.eventSoonSemantics) : ''}
+                Підтвердження, підготовка і ресурси показані окремо. ${meta.eventSoonSemantics ? escapeHtml(meta.eventSoonSemantics) : ''}
             </p>
         `;
     }
@@ -6896,7 +7497,7 @@ const DashboardPage = (() => {
             const deadline = t.deadline ? formatDeadline(t.deadline) : '';
             const catInfo = { event: '🎉', purchase: '🛒', admin: '📎', trampoline: '🤸', personal: '👤', improvement: '⚡' };
             const catIcon = catInfo[t.category] || '📋';
-            const statusLabel = t.status === 'in_progress' ? 'В роботі' : t.status === 'todo' ? 'Todo' : t.status;
+            const statusLabel = taskerStatusLabel(t.status);
             const subtaskPreview = renderDashboardTaskSubtasks(t, { variant: 'widget', limit: 3 });
             return `<div class="widget-task-item" onclick="DashboardPage.openTask(${t.id})" title="Відкрити задачу">
                 <div class="widget-task-icon ${priorityCls}"></div>
@@ -6913,6 +7514,32 @@ const DashboardPage = (() => {
         container.innerHTML = `<div class="widget-task-list">${items}</div>${footer}`;
     }
 
+    function isDashboardTaskClosed(task = {}) {
+        return ['done', 'completed', 'complete', 'cancelled', 'canceled', 'archived'].includes(String(task.status || '').trim().toLowerCase());
+    }
+
+    function renderFocusTaskCompleteAction(task = {}) {
+        const id = Number(task.id || 0);
+        if (!id || isDashboardTaskClosed(task)) return '';
+        const pending = _dashboardTaskCompletionPending.has(id);
+        const error = _dashboardTaskCompletionErrors.get(id) || '';
+        const label = pending ? 'Виконується…' : (error ? 'Повторити' : 'Виконати');
+        return `
+            <div class="focus-task-action-row">
+                <button type="button"
+                        class="focus-task-complete-btn"
+                        data-dashboard-task-complete="${id}"
+                        onclick="DashboardPage.completeFocusTask(${id}, this, event)"
+                        onpointerdown="event.stopPropagation()"
+                        onmousedown="event.stopPropagation()"
+                        ${pending ? 'disabled aria-busy="true"' : ''}>
+                    ${escapeHtml(label)}
+                </button>
+                ${error ? `<span class="focus-task-action-error" role="alert">${escapeHtml(error)}</span>` : ''}
+            </div>
+        `;
+    }
+
     function renderMyFocus(data, container) {
         const tasks = Array.isArray(data.tasks) ? data.tasks : [];
         const overdue = Number(data.overdueCount || 0);
@@ -6921,20 +7548,22 @@ const DashboardPage = (() => {
             const deadline = t.deadline ? formatDeadline(t.deadline) : '';
             const priorityCls = t.priority || 'medium';
             const subtaskPreview = renderDashboardTaskSubtasks(t, { variant: 'widget', limit: 2 });
-            return `<div class="widget-task-item" onclick="DashboardPage.openTask(${Number(t.id) || 0})" title="Відкрити задачу">
+            const action = renderFocusTaskCompleteAction(t);
+            return `<div class="widget-task-item">
                 <div class="widget-task-icon ${priorityCls}"></div>
                 <div class="widget-task-info">
-                    <div class="widget-task-title">${escapeHtml(t.title || 'Задача без назви')}</div>
+                    <a class="widget-task-title focus-task-detail-link" href="/tasks?open=${encodeURIComponent(t.id)}">${escapeHtml(t.title || 'Задача без назви')}</a>
                     <div class="widget-task-meta">${deadline || 'Без дедлайну'}${t.ownerLabel ? ' · ' + escapeHtml(t.ownerLabel) : ''}</div>
                     ${subtaskPreview}
+                    ${action}
                 </div>
                 <div class="widget-task-arrow">›</div>
             </div>`;
         }).join('');
         container.innerHTML = `
             <div class="personal-tasker-metrics compact">
-                <div class="personal-tasker-metric danger"><strong>${overdue}</strong><span>прострочено</span></div>
-                <div class="personal-tasker-metric warning"><strong>${waiting}</strong><span>чекає</span></div>
+                <div class="personal-tasker-metric ${overdue > 0 ? 'danger' : 'success'}"><strong>${overdue}</strong><span>прострочено</span></div>
+                <div class="personal-tasker-metric ${waiting > 0 ? 'warning' : ''}"><strong>${waiting}</strong><span>чекає</span></div>
                 <div class="personal-tasker-metric"><strong>${tasks.length}</strong><span>у фокусі</span></div>
             </div>
             ${items ? `<div class="widget-task-list">${items}</div>` : '<div class="widget-empty">Особистий фокус чистий</div>'}
@@ -6943,8 +7572,8 @@ const DashboardPage = (() => {
     }
 
     function taskerStatusLabel(status) {
-        const labels = { todo: 'Todo', in_progress: 'В роботі', done: 'Готово', cancelled: 'Скасовано', archived: 'Архів' };
-        return labels[status] || status || 'Todo';
+        const labels = { todo: 'До виконання', in_progress: 'В роботі', done: 'Виконано', cancelled: 'Скасовано', archived: 'Архів' };
+        return labels[status] || status || 'До виконання';
     }
 
     function personalTaskerViewData(data) {
@@ -6974,7 +7603,7 @@ const DashboardPage = (() => {
             </button>`;
         }).join('');
         const metricCards = [
-            ['todo', 'Todo', stats.todo || 0, ''],
+            ['todo', 'До виконання', stats.todo || 0, ''],
             ['in_progress', 'В роботі', stats.inProgress || 0, 'warning'],
             ['done_today', 'Готово сьогодні', stats.doneToday || 0, 'success'],
             ['overdue', 'Прострочено', stats.overdue || 0, stats.overdue ? 'danger' : 'success']
@@ -7009,9 +7638,9 @@ const DashboardPage = (() => {
                 <div class="personal-tasker-head">
                     <div>
                         <span>Creator-only</span>
-                        <strong>Особистий tasker</strong>
+                        <strong>Особисті задачі</strong>
                     </div>
-                    ${fullscreen ? '<button type="button" class="dashboard-btn" onclick="DashboardPage.closePersonalTaskerFullscreen()">Закрити</button>' : '<button type="button" class="dashboard-btn primary" onclick="DashboardPage.openPersonalTaskerFullscreen()">Fullscreen</button>'}
+                    ${fullscreen ? '<button type="button" class="dashboard-btn" onclick="DashboardPage.closePersonalTaskerFullscreen()">Закрити</button>' : '<button type="button" class="dashboard-btn primary" onclick="DashboardPage.openPersonalTaskerFullscreen()">На весь екран</button>'}
                 </div>
                 <div class="personal-tasker-tabs">${tabs}</div>
                 <div class="personal-tasker-metrics">${metricCards}</div>
@@ -7071,10 +7700,10 @@ const DashboardPage = (() => {
         container.innerHTML = `
             <div class="personal-tasker-metrics compact">
                 <div class="personal-tasker-metric success"><strong>${healthy}</strong><span>здорові</span></div>
-                <div class="personal-tasker-metric warning"><strong>${warning}</strong><span>ризик</span></div>
-                <div class="personal-tasker-metric danger"><strong>${critical}</strong><span>критичні</span></div>
+                <div class="personal-tasker-metric ${warning > 0 ? 'warning' : ''}"><strong>${warning}</strong><span>ризик</span></div>
+                <div class="personal-tasker-metric ${critical > 0 ? 'danger' : ''}"><strong>${critical}</strong><span>критичні</span></div>
             </div>
-            <div class="task-health-bar" aria-label="Automation hygiene score ${avg}">
+            <div class="task-health-bar" aria-label="Стан задач ${avg}">
                 <span style="width:${Math.max(0, Math.min(100, avg))}%"></span>
             </div>
             <div class="widget-footer"><a href="/tasks" class="widget-footer-link">Перевірити задачі →</a></div>
@@ -7093,6 +7722,111 @@ const DashboardPage = (() => {
     function dashboardWidgetBookingTimeText(booking = {}) {
         const time = booking.start_time ? String(booking.start_time).substring(0, 5) : '';
         return dashboardWidgetBookingIsBanquet(booking) && time ? `Прихід гостей: ${time}` : time;
+    }
+
+
+    function nearestEventStatusClass(status) {
+        const value = String(status || '').trim().toLowerCase();
+        if (value === 'confirmed') return 'confirmed';
+        if (value === 'preliminary') return 'preliminary';
+        if (value === 'completed') return 'completed';
+        return 'unknown';
+    }
+
+    function nearestEventStatusLabel(status, fallback) {
+        const value = String(status || '').trim().toLowerCase();
+        if (value === 'confirmed') return 'Підтверджено';
+        if (value === 'preliminary') return 'Попередньо';
+        if (value === 'completed') return 'Завершено';
+        return fallback || (status ? String(status) : 'Статус не вказаний');
+    }
+
+    function nearestEventTaskStatusLabel(status) {
+        const value = String(status || '').trim().toLowerCase();
+        if (value === 'todo') return 'До виконання';
+        if (value === 'in_progress') return 'В роботі';
+        if (value === 'done' || value === 'completed' || value === 'complete') return 'Виконано';
+        if (value === 'waiting') return 'Очікує';
+        return status ? String(status) : 'Статус не вказаний';
+    }
+
+    function renderNearestEvent(data, container) {
+        const event = data?.event || null;
+        if (!event) {
+            container.innerHTML = `
+                <div class="nearest-event-empty">
+                    <div class="nearest-event-empty-icon" aria-hidden="true">🌿</div>
+                    <div>
+                        <strong>Сьогодні більше немає майбутніх подій у видимому розкладі.</strong>
+                        <span>Якщо подія має бути тут, перевірте дату, час або доступ до бронювання.</span>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        const confirmation = data?.confirmation || {};
+        const preparation = data?.preparation || {};
+        const tasks = Array.isArray(preparation.tasks) ? preparation.tasks : [];
+        const time = event.time || event.startTime || '—';
+        const title = event.program || event.programName || event.programCode || 'Програма не вказана';
+        const client = event.clientName ? `<span>${escapeHtml(event.clientName)}</span>` : '';
+        const room = event.room || 'Кімната не вказана';
+        const responsible = event.responsibleLabel || 'Відповідальний не вказаний';
+        const statusLabel = nearestEventStatusLabel(confirmation.status || event.status, confirmation.label);
+        const statusClass = nearestEventStatusClass(confirmation.status || event.status);
+        const taskRows = tasks.slice(0, 4).map(task => {
+            const status = nearestEventTaskStatusLabel(task.status);
+            const deadline = task.deadline ? formatDeadline(task.deadline) : '';
+            const owner = task.ownerLabel ? ` · ${escapeHtml(task.ownerLabel)}` : '';
+            const subtaskPreview = renderDashboardTaskSubtasks(task, { variant: 'nearest-event', limit: 2 });
+            return `
+                <div class="nearest-event-task">
+                    <div class="nearest-event-task-main">
+                        <strong>${escapeHtml(task.title || 'Підготовча задача')}</strong>
+                        <span>${escapeHtml(status)}${deadline ? ` · ${escapeHtml(deadline)}` : ''}${owner}</span>
+                    </div>
+                    ${subtaskPreview}
+                </div>
+            `;
+        }).join('');
+        const taskSummary = Number(preparation.totalCount || tasks.length) > 0
+            ? `${preparation.openCount || 0} відкрито · ${preparation.doneCount || 0} виконано${preparation.overdueCount ? ` · ${preparation.overdueCount} протерм.` : ''}`
+            : 'Підготовчі задачі не знайдені у надійному зв’язку з бронюванням.';
+        const honestEmptyNote = Number(preparation.totalCount || tasks.length) > 0
+            ? ''
+            : '<p class="nearest-event-honest-note">Це не означає, що все готово — у CRM просто немає прив’язаних задач підготовки.</p>';
+        const footerHref = event.canonicalHref || `/?date=${encodeURIComponent(event.date || '')}`;
+
+        container.innerHTML = `
+            <div class="nearest-event-widget">
+                <div class="nearest-event-hero">
+                    <div class="nearest-event-time">${escapeHtml(time)}</div>
+                    <div class="nearest-event-title-block">
+                        <div class="nearest-event-kicker">Найближча подія сьогодні</div>
+                        <h3>${escapeHtml(title)}</h3>
+                        <div class="nearest-event-client">${client}</div>
+                    </div>
+                    <a class="nearest-event-open" href="${escapeHtml(footerHref)}" aria-label="Відкрити огляд події">Відкрити</a>
+                </div>
+                <div class="nearest-event-facts">
+                    <div><span>Кімната</span><strong>${escapeHtml(room)}</strong></div>
+                    <div><span>Відповідальний</span><strong>${escapeHtml(responsible)}</strong></div>
+                </div>
+                <div class="nearest-event-readiness">
+                    <section>
+                        <div class="nearest-event-section-title">Підтвердження бронювання</div>
+                        <span class="nearest-event-status ${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span>
+                    </section>
+                    <section>
+                        <div class="nearest-event-section-title">Підготовка</div>
+                        <strong>${escapeHtml(taskSummary)}</strong>
+                        ${honestEmptyNote}
+                        ${taskRows ? `<div class="nearest-event-task-list">${taskRows}</div>` : ''}
+                    </section>
+                </div>
+            </div>
+        `;
     }
 
     function renderBookings(data, container) {
@@ -7773,6 +8507,7 @@ const DashboardPage = (() => {
         if (!overlay) return true;
 
         const closeNow = () => {
+            if (typeof closeModal === 'function') closeModal(overlay);
             overlay.remove();
             _settingsOverlayInitialState = '';
         };
@@ -7804,12 +8539,22 @@ const DashboardPage = (() => {
         return openSettings();
     }
 
+    function isWidgetConfigReady() {
+        if (_dashboardConfigState === 'ready') return true;
+        notifyDashboardIssue(_dashboardConfigState === 'loading'
+            ? 'Зачекайте, завантажуємо налаштування дашборду.'
+            : 'Спочатку завантажте налаштування дашборду — натисніть «Повторити».');
+        return false;
+    }
+
     // Settings modal with drag & drop reordering
     function openSettings() {
+        if (!isWidgetConfigReady()) return;
+        if (_widgetLayoutSaving) {
+            setWidgetLayoutStatus('Зачекайте, зберігаємо порядок…', 'saving');
+            return;
+        }
         const effectiveRole = getEffectiveDashboardRole();
-        const effectiveScene = getEffectiveDashboardScene();
-        const sceneOptions = normalizeSceneOptions(_config?.sceneOptions);
-        const boardPrefs = safeObject(_config?.boardState?.preferences, {});
         const availableWidgets = Object.entries(WIDGET_DEFS)
             .filter(([key]) => canUseWidgetForRole(key, effectiveRole));
 
@@ -7835,7 +8580,7 @@ const DashboardPage = (() => {
                 </span>
                 <span class="settings-widget-order" ${order ? '' : 'hidden'}>${order}</span>
                 <label class="settings-toggle">
-                    <input type="checkbox" ${isActive ? 'checked' : ''} onchange="DashboardPage.toggleSettingsWidget(this)">
+                    <input type="checkbox" aria-label="Показувати: ${escapeHtml(def.title || key)}" ${isActive ? 'checked' : ''} onchange="DashboardPage.toggleSettingsWidget(this)">
                     <span class="settings-toggle-slider"></span>
                 </label>
             </div>`;
@@ -7854,71 +8599,7 @@ const DashboardPage = (() => {
             <div class="settings-modal">
                 <div class="settings-modal-header">
                     <h2>Налаштування дашборду</h2>
-                    <p>Керуйте доступними віджетами, порядком, board-сценою і персональним набором dashboard.</p>
-                </div>
-                <div class="dashboard-settings-scene-card">
-                    <div class="dashboard-settings-scene-summary">
-                        <span>Активна сцена</span>
-                        <strong>${escapeHtml(roleDisplayName(effectiveRole))}</strong>
-                        <em>${escapeHtml(effectiveScene.title || 'Mixed scene')}</em>
-                    </div>
-                    <label class="dashboard-settings-scene-row">
-                        <span>Writing lane справа</span>
-                        <span class="settings-toggle">
-                            <input type="checkbox" id="settingsWritingLane" ${sceneOptions.writingLane ? 'checked' : ''}>
-                            <span class="settings-toggle-slider"></span>
-                        </span>
-                    </label>
-                    <label class="dashboard-settings-scene-row">
-                        <span>Керована асиметрія зліва</span>
-                        <span class="settings-toggle">
-                            <input type="checkbox" id="settingsControlledChaos" ${sceneOptions.controlledChaos ? 'checked' : ''}>
-                            <span class="settings-toggle-slider"></span>
-                        </span>
-                    </label>
-                </div>
-                <div class="dashboard-settings-scene-card dashboard-settings-board-card">
-                    <div class="dashboard-settings-scene-summary">
-                        <span>Board editor</span>
-                        <strong>Сцена + дошка</strong>
-                        <em>Єдиний простір редагування: інструмент, сітка, snap і стиль ліній.</em>
-                    </div>
-                    <label class="dashboard-settings-scene-row">
-                        <span>Прив’язка до сітки</span>
-                        <span class="settings-toggle">
-                            <input type="checkbox" id="settingsBoardSnapToGrid" ${boardPrefs.snapToGrid === true ? 'checked' : ''}>
-                            <span class="settings-toggle-slider"></span>
-                        </span>
-                    </label>
-                    <label class="dashboard-settings-scene-row">
-                        <span>Показувати сітку</span>
-                        <span class="settings-toggle">
-                            <input type="checkbox" id="settingsBoardShowGrid" ${boardPrefs.showGrid !== false ? 'checked' : ''}>
-                            <span class="settings-toggle-slider"></span>
-                        </span>
-                    </label>
-                    <label class="dashboard-settings-scene-row">
-                        <span>Показувати напрямні</span>
-                        <span class="settings-toggle">
-                            <input type="checkbox" id="settingsBoardShowGuides" ${boardPrefs.showGuides !== false ? 'checked' : ''}>
-                            <span class="settings-toggle-slider"></span>
-                        </span>
-                    </label>
-                    <label class="dashboard-settings-scene-row">
-                        <span>Показувати планувальні зони</span>
-                        <span class="settings-toggle">
-                            <input type="checkbox" id="settingsBoardShowPlanner" ${boardPrefs.showPlanner !== false ? 'checked' : ''}>
-                            <span class="settings-toggle-slider"></span>
-                        </span>
-                    </label>
-                    <label class="dashboard-settings-scene-row dashboard-settings-inline-control">
-                        <span>Колір інструменту</span>
-                        <input type="color" id="settingsBoardStrokeColor" value="${escapeHtml(boardPrefs.strokeColor || '#10b981')}">
-                    </label>
-                    <label class="dashboard-settings-scene-row dashboard-settings-inline-control">
-                        <span>Товщина лінії</span>
-                        <input type="range" id="settingsBoardStrokeWidth" min="1" max="12" value="${Number(boardPrefs.strokeWidth || 2)}">
-                    </label>
+                    <p>Оберіть потрібні віджети та їхній порядок на робочому екрані.</p>
                 </div>
                 <div class="settings-widget-list" id="settingsWidgetList">${widgetItems}</div>
                 <div class="settings-modal-footer">
@@ -7940,6 +8621,10 @@ const DashboardPage = (() => {
         _initDragAndDrop();
         _initSettingsWidgetFilters(overlay);
         updateSettingsWidgetSummary();
+        if (typeof openModal === 'function') openModal(overlay, document.activeElement, {
+            initialFocus: '#settingsWidgetSearch',
+            onRequestClose: () => closeSettingsOverlay(false)
+        });
     }
 
     function hydrateSettingsOverlayLayout(overlay, counts = {}) {
@@ -7954,9 +8639,9 @@ const DashboardPage = (() => {
         if (header) {
             header.innerHTML = `
                 <div class="settings-modal-title">
-                    <span>Dashboard builder</span>
+                    <span>Конструктор дашборду</span>
                     <h2 id="settingsModalTitle">Налаштування дашборду</h2>
-                    <p>Зберіть робочий екран: сцена, board-поведінка, видимі віджети і порядок показу.</p>
+                    <p>Увімкніть потрібні віджети. Порядок можна змінити тут або перетягуванням карток на дашборді.</p>
                 </div>
                 <button type="button" class="settings-modal-close" onclick="DashboardPage.closeSettingsOverlay(false)" aria-label="Закрити">×</button>
             `;
@@ -7972,7 +8657,7 @@ const DashboardPage = (() => {
 
         const configColumn = document.createElement('section');
         configColumn.className = 'settings-config-column';
-        configColumn.setAttribute('aria-label', 'Параметри сцени і дошки');
+        configColumn.setAttribute('aria-label', 'Параметри дашборду');
         cards.forEach(card => configColumn.appendChild(card));
 
         const widgetPanel = document.createElement('section');
@@ -8001,7 +8686,9 @@ const DashboardPage = (() => {
         `;
         widgetPanel.insertBefore(widgetList, widgetPanel.querySelector('#settingsWidgetEmptyState'));
 
-        body.append(configColumn, widgetPanel);
+        if (cards.length) body.appendChild(configColumn);
+        else body.style.gridTemplateColumns = 'minmax(0, 1fr)';
+        body.appendChild(widgetPanel);
         modal.insertBefore(body, footer);
     }
 
@@ -8132,6 +8819,7 @@ const DashboardPage = (() => {
     async function saveSettings() {
         const list = document.getElementById('settingsWidgetList');
         if (!list) return;
+        if (!isWidgetConfigReady()) return;
 
         const selected = [];
         list.querySelectorAll('.settings-widget-item').forEach(el => {
@@ -8141,44 +8829,13 @@ const DashboardPage = (() => {
             }
         });
 
-        if (selected.length === 0) {
-            selected.push('tasks', 'weather');
-        }
-
-        if (!_config) _config = { widgets: [], layout: {}, theme: 'default' };
-        _config.widgets = selected;
-        _config.presentationMode = 'mixed-scene';
-        _config.sceneOptions = {
-            writingLane: document.getElementById('settingsWritingLane')?.checked !== false,
-            controlledChaos: document.getElementById('settingsControlledChaos')?.checked !== false
-        };
-        const currentBoardState = normalizeBoardState(_config.boardState || {});
-        currentBoardState.preferences = {
-            ...safeObject(currentBoardState.preferences, {}),
-            snapToGrid: document.getElementById('settingsBoardSnapToGrid')?.checked !== false,
-            showGrid: document.getElementById('settingsBoardShowGrid')?.checked !== false,
-            showGuides: document.getElementById('settingsBoardShowGuides')?.checked !== false,
-            showPlanner: document.getElementById('settingsBoardShowPlanner')?.checked !== false,
-            strokeColor: String(document.getElementById('settingsBoardStrokeColor')?.value || currentBoardState.preferences?.strokeColor || '#10b981').slice(0, 32),
-            strokeWidth: safeNumber(document.getElementById('settingsBoardStrokeWidth')?.value, currentBoardState.preferences?.strokeWidth || 2, 1, 12)
-        };
-        _config.boardState = normalizeBoardState(currentBoardState);
-        _config.layout = {
-            ...safeObject(_config.layout, {}),
-            mode: DASHBOARD_WORKSPACE_MODE,
-            presentationMode: _config.presentationMode,
-            roleScenePreset: _config.roleScenePreset || null,
-            sceneOptions: _config.sceneOptions,
-            boardMeta: _config.boardMeta,
-            boardState: _config.boardState
-        };
-
-        const result = await saveDashboardConfig({
-            widgets: selected,
-            presentationMode: _config.presentationMode,
-            sceneOptions: _config.sceneOptions,
-            boardState: _config.boardState
-        });
+        if (_widgetLayoutSaving) return;
+        _widgetLayoutSaving = true;
+        const selectedKeys = new Set(selected);
+        const hiddenWidgets = (_config?.widgets || []).filter(key => !canUseWidget(key));
+        const widgets = [...selectedKeys, ...hiddenWidgets.filter(key => !selectedKeys.has(key))];
+        const result = await saveDashboardConfig({ widgets, widgetsOnly: true });
+        _widgetLayoutSaving = false;
         if (!result?.success) {
             notifyDashboardIssue(result?.error || 'Не вдалося зберегти налаштування dashboard');
             return;
@@ -8188,7 +8845,9 @@ const DashboardPage = (() => {
         if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.markClean(overlay);
         await closeSettingsOverlay(true);
 
+        _config.widgets = widgets;
         renderWidgets();
+        setWidgetLayoutStatus('Віджети збережено');
     }
 
     // Test panel for creator
@@ -8448,7 +9107,7 @@ const DashboardPage = (() => {
         if (prev) prev.remove();
 
         const priorityLabels = { critical: 'Критичний', high: 'Високий', medium: 'Середній', low: 'Низький' };
-        const statusLabels = { todo: 'Todo', in_progress: 'В роботі', done: 'Готово', cancelled: 'Скасовано' };
+        const statusLabels = { todo: 'До виконання', in_progress: 'В роботі', done: 'Виконано', cancelled: 'Скасовано' };
         const catLabels = { event: '🎉 Івент', purchase: '🛒 Закупівлі', admin: '📎 Адмін', trampoline: '🤸 Батути', personal: '👤 Особисті', improvement: '⚡ Покращення' };
 
         const priorityCls = t.priority === 'high' || t.priority === 'critical' ? 'high' : t.priority === 'low' ? 'low' : 'medium';
@@ -8845,6 +9504,90 @@ const DashboardPage = (() => {
                 actionLabel: 'Задачу виконано через канонічне поле tasks.status.'
             }
         );
+    }
+
+    function setFocusTaskCompletionBusy(taskId, busy) {
+        const id = Number(taskId || 0);
+        if (!id) return;
+        document.querySelectorAll(`[data-dashboard-task-complete="${id}"]`).forEach(button => {
+            button.disabled = Boolean(busy);
+            button.toggleAttribute('aria-busy', Boolean(busy));
+            button.textContent = busy ? 'Виконується…' : (_dashboardTaskCompletionErrors.has(id) ? 'Повторити' : 'Виконати');
+        });
+    }
+
+    function renderFocusTaskCompletionError(taskId, message) {
+        const id = Number(taskId || 0);
+        const focusData = _widgetData.my_focus;
+        if (!id || !focusData) return;
+        renderWidgetDataAcrossContainers('my_focus', focusData, null, { fetchedAt: _widgetDataMeta.my_focus?.fetchedAt });
+    }
+
+    async function completeFocusTask(taskId, button, event) {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        const id = Number(taskId || 0);
+        if (!id || _dashboardTaskCompletionPending.has(id)) return;
+        const mutationContextKey = dashboardWidgetRequestContext('my_focus').key;
+        const scrollSnapshot = { x: window.scrollX || 0, y: window.scrollY || 0 };
+        _dashboardTaskCompletionPending.add(id);
+        _dashboardTaskCompletionErrors.delete(id);
+        setFocusTaskCompletionBusy(id, true);
+
+        try {
+            const resp = await fetch(dashboardScopedApiUrl(`/api/tasks/${encodeURIComponent(id)}/status`), {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    status: 'done',
+                    sourceSurface: 'manager_queue_task_execution_v2'
+                })
+            });
+            const result = await dashboardMutationJson(resp, 'Не вдалося виконати задачу');
+            if (!result.success) throw new Error(result.error || 'Не вдалося виконати задачу');
+            if (String(result.task?.status || '').trim().toLowerCase() !== 'done') {
+                throw new Error('Сервер не підтвердив виконання задачі');
+            }
+            if (!isCurrentWidgetRequest('my_focus', mutationContextKey)) return { ...result, stale: true };
+
+            // Retain the acknowledged task status if a subsequent widget refresh fails.
+            // Counts still come exclusively from refreshed server projections.
+            for (const type of ['my_focus', 'tasks']) {
+                const task = _widgetData[type]?.tasks?.find(item => Number(item.id) === id);
+                if (task) task.status = result.task.status;
+            }
+
+            if (typeof showNotification === 'function') {
+                showNotification('Задачу виконано. Оновлюю Dashboard…', 'success');
+            }
+            await refreshTaskRelatedWidgets();
+            window.dispatchEvent(new CustomEvent('crm:tasks-updated', {
+                detail: {
+                    source: 'dashboard_my_focus',
+                    action: 'task_status',
+                    taskId: id,
+                    status: 'done',
+                    dashboardAlreadyRefreshed: true
+                }
+            }));
+            window.scrollTo?.(scrollSnapshot.x, scrollSnapshot.y);
+            return result;
+        } catch (err) {
+            if (!isCurrentWidgetRequest('my_focus', mutationContextKey)) return { success: false, stale: true };
+            const message = err?.message || 'Не вдалося виконати задачу';
+            console.error('Dashboard focus task completion error:', err);
+            _dashboardTaskCompletionErrors.set(id, message);
+            notifyDashboardIssue(message);
+            renderFocusTaskCompletionError(id, message);
+            window.scrollTo?.(scrollSnapshot.x, scrollSnapshot.y);
+            return { success: false, error: message };
+        } finally {
+            _dashboardTaskCompletionPending.delete(id);
+            setFocusTaskCompletionBusy(id, false);
+        }
     }
 
     function rescheduleQueueTask(taskId, button) {
@@ -9315,11 +10058,23 @@ const DashboardPage = (() => {
         );
     }
 
-    const TASK_RELATED_WIDGET_TYPES = ['tasks', 'personal_tasker', 'my_focus', 'team_tasks', 'task_health'];
+    const TASK_RELATED_WIDGET_TYPES = ['tasks', 'personal_tasker', 'my_focus', 'team_tasks', 'task_health', 'nearest_event', 'quick_stats'];
     const ALERT_RELATED_WIDGET_TYPES = ['alerts', 'exceptions', 'event_risk_summary'];
 
     function refreshTaskRelatedWidgets() {
-        return Promise.allSettled(TASK_RELATED_WIDGET_TYPES.map(type => refreshWidget(type)));
+        const orientationContainer = document.getElementById('dashboardDayOrientation');
+        const orientationSources = orientationContainer
+            ? DAY_ORIENTATION_SOURCE_TYPES.filter(type => WIDGET_DEFS[type] && canUseWidget(type))
+            : [];
+        orientationSources.forEach(type => bumpWidgetInvalidation(type));
+        const orientationSourceSet = new Set(orientationSources);
+        const refreshes = TASK_RELATED_WIDGET_TYPES.map(type => refreshWidget(type, {
+            invalidate: !orientationSourceSet.has(type)
+        }));
+        if (orientationSources.length) {
+            refreshes.push(loadDayOrientationSources({ missingOnly: false, force: false }));
+        }
+        return Promise.allSettled(refreshes);
     }
 
     function refreshAlertRelatedWidgets() {
@@ -9338,7 +10093,10 @@ const DashboardPage = (() => {
 
     function handleDashboardContextChanged() {
         invalidateWidgetData('all');
-        return refreshStaleVisibleWidgets();
+        // The shared user setter also fires during bootstrap, before permissions/config hydrate.
+        if (_dashboardConfigState !== 'ready') return refreshStaleVisibleWidgets();
+        renderDayOrientation();
+        return Promise.allSettled([refreshStaleVisibleWidgets(), loadDayOrientationSources()]);
     }
 
     // Helpers
@@ -9417,8 +10175,12 @@ const DashboardPage = (() => {
         updateDashboardRolePreviewControl();
         announceDashboardContextToAssistant();
     });
-    window.addEventListener('crm:tasks-updated', () => {
-        refreshTaskRelatedWidgets();
+    window.addEventListener('crm:tasks-updated', event => {
+        if (event?.detail?.dashboardAlreadyRefreshed === true) {
+            renderDayOrientation();
+            return;
+        }
+        refreshTaskRelatedWidgets().finally(renderDayOrientation);
     });
     window.addEventListener('crm:alerts-updated', () => {
         refreshAlertRelatedWidgets();
@@ -9430,10 +10192,16 @@ const DashboardPage = (() => {
         handleDashboardContextChanged();
     });
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) refreshStaleVisibleWidgets();
+        if (!document.hidden) {
+            checkDashboardDayBoundary();
+            refreshStaleVisibleWidgets().finally(renderDayOrientation);
+        }
     });
     window.addEventListener('pageshow', event => {
-        if (event.persisted) refreshStaleVisibleWidgets();
+        if (event.persisted) {
+            checkDashboardDayBoundary();
+            refreshStaleVisibleWidgets().finally(renderDayOrientation);
+        }
     });
 
     return {
@@ -9463,6 +10231,8 @@ const DashboardPage = (() => {
         closeTaskOwnerPicker,
         saveTaskOwnerPicker,
         completeQueueTask,
+        completeFocusTask,
+        refreshDayOrientation,
         rescheduleQueueTask,
         confirmQueueBooking,
         snoozeReplySla,
@@ -9527,6 +10297,7 @@ const DashboardPage = (() => {
         openTask,
         toggleOnboardingWidget,
         saveOnboarding,
+        retryDashboard: loadConfig,
         openWidgetManager,
         openSettings,
         closeSettingsOverlay,

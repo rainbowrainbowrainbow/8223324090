@@ -56,7 +56,7 @@ test('dashboard board has direct manipulation, pan, and geometry endpoint contra
     assert.match(css, /box-shadow: 0 0 0 1px var\(--workspace-selection-ring/);
 });
 
-test('dashboard board uses one unified interaction mode instead of forced view/edit', () => {
+test('legacy dashboard board interaction data remains compatible without exposing editor controls', () => {
     const pageJs = read('js/dashboard-page.js');
     const html = read('dashboard.html');
     const css = readCssWithImports('css/dashboard.css');
@@ -67,9 +67,21 @@ test('dashboard board uses one unified interaction mode instead of forced view/e
     assert.doesNotMatch(pageJs, /_boardInteractionMode === 'view'/);
     assert.doesNotMatch(pageJs, /_boardInteractionMode = 'edit'/);
     assert.doesNotMatch(pageJs, /_boardInteractionMode = 'view'/);
-    assert.match(html, /boardUnifiedModeLabel/);
+    assert.doesNotMatch(html, /boardUnifiedModeLabel|boardEditControls|boardToolOptions/);
     assert.doesNotMatch(html, /boardViewModeBtn|boardEditModeBtn/);
     assert.doesNotMatch(css, /data-interaction-mode="edit"|data-interaction-mode="view"|boardViewModeBtn|boardEditModeBtn/);
+});
+
+test('dashboard opens with a widget workspace and no drawing canvas or promotional panels', () => {
+    const html = read('dashboard.html');
+    const dom = new JSDOM(html);
+    const doc = dom.window.document;
+
+    assert.ok(doc.getElementById('dashboardGrid'));
+    assert.equal(doc.querySelector('#dashboardBoardCanvas, #dashboardBoardToolbar, #boardEditControls, [data-board-tool]'), null);
+    assert.equal(doc.querySelector('.dashboard-showcase-strip'), null);
+    assert.ok(doc.querySelector('[onclick="DashboardPage.openWidgetManager()"]'));
+    dom.window.close();
 });
 
 test('dashboard board Android openability has guarded init, viewport, and touch fallbacks', () => {
@@ -412,8 +424,7 @@ test('dashboard shape allow-lists and sanitizer preserve legacy rect/ellipse whi
     assert.match(routeJs, /function normalizeBoardShapeDimensions/);
     assert.match(pageJs, /if \(type === 'shape'\) \{\s*const dimensions = normalizeBoardShapeDimensions\(safe\.shape, safe\.w, safe\.h\);/);
     assert.match(routeJs, /if \(type === 'shape'\) \{\s*const dimensions = normalizeBoardShapeDimensions\(safe\.shape, safe\.w, safe\.h\);/);
-    assert.match(html, /data-board-tool="square"/);
-    assert.match(html, /data-board-tool="circle"/);
+    assert.doesNotMatch(html, /data-board-tool="square"|data-board-tool="circle"/);
     assert.match(css, /\.board-shape-circle/);
     assert.match(css, /\.board-shape-square/);
 });
@@ -497,6 +508,13 @@ test('dashboard board persistence normalizes legacy and modern saved content con
     assert.equal(secondSave.boardState.connectors.length, 2);
     assert.equal(secondItems['modern-circle'].w, secondItems['modern-circle'].h);
     assert.equal(secondItems['widget-snapshot'].depth, 'snapshot-static');
+
+    const widgetOnlySave = routeTest.buildPersistedDashboardConfig(secondSave, {
+        widgets: ['weather', 'tasks']
+    }, 'creator');
+    assert.deepEqual(widgetOnlySave.widgets, ['weather', 'tasks']);
+    assert.deepEqual(widgetOnlySave.boardState, secondSave.boardState, 'reordering widgets must preserve legacy drawings, notes, and connectors');
+    assert.deepEqual(widgetOnlySave.layout.boardState, secondSave.layout.boardState);
 });
 
 test('dashboard board persistence path stays canonical Postgres and excludes Supabase', () => {

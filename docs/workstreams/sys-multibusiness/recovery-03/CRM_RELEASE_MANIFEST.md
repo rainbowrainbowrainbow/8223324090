@@ -15,10 +15,11 @@ Second business after CRM PASS: `maysternya_doli`, with a fresh preflight, manif
 
 - Live URL: `https://8223324090-production.up.railway.app`
 - Live branch from `/api/version`: `codex/eventgenix-production`
-- Live SHA from `/api/version` before this release: `487e9e872cef1455627aa0d6d31a9ef2ce9d7211`
-- Remote production branch base used for candidate: `a06742e0d95ff286feff9bf79238cd1607b03412`
+- Live SHA from `/api/version` before this release: `8b21b3fcbd159c6c1e793d22508953d303c6c212`
+- Remote production branch base used for candidate: `8b21b3fcbd159c6c1e793d22508953d303c6c212`
 - Candidate source branch: `codex/sys-mb-recover-03-20260913`
-- Release version: `v0.81.156`
+- Candidate HEAD before this manifest refresh: `d448d125c94398fbd7bc2922bc6fee6b224c0290`
+- Release version: `v0.81.157`
 - Release label: `SYS-MB: перехід CRM`
 
 ## Railway target
@@ -32,7 +33,7 @@ Second business after CRM PASS: `maysternya_doli`, with a fresh preflight, manif
 
 ## Candidate scope
 
-The candidate preserves production branch hotfix `a06742e0d95ff286feff9bf79238cd1607b03412` and adds SYS-MB commits on top.
+The candidate preserves production branch hotfixes through `8b21b3fcbd159c6c1e793d22508953d303c6c212` and adds SYS-MB commits on top.
 
 Scope families:
 
@@ -40,7 +41,7 @@ Scope families:
 - RECOVER-02 atomic reserved business apply and guarded release workflow.
 - Additive migrations 357, 363, 364, 365.
 - SYS-MB tests and recovery documentation.
-- Version/cache/changelog marker `v0.81.156 — SYS-MB: перехід CRM`.
+- Version/cache/changelog marker `v0.81.157 — SYS-MB: перехід CRM`.
 
 ## Migration hashes
 
@@ -67,9 +68,8 @@ Scope families:
 
 - CRM: `HOLD_REVIEW_REQUIRED`, `INCOMPLETE`, issue `SELECT_PERMISSION_REQUIRED`, private file hash `6253dc37dbec14f32836faf0d2cb4e2dc2ff9844d034456e040f0cc0508c1a2e`.
 - Maysternya: `HOLD_REVIEW_REQUIRED`, `INCOMPLETE`, issue `SELECT_PERMISSION_REQUIRED`, private file hash `c1dc03833f16a9c6cdb4599c58cddd1fd8d0240b2b6529e87a569fb3fcd32a1b`.
-- Live schema currently has membership schema applied but cutover journal schema not applied.
 
-This is the remaining technical blocker before data apply. The release block must allow either a temporary bounded read-lease for the preflight tables or a fresh equivalent read-only preflight after deploying schema. Do not use write credentials as read-only fallback.
+The release block must allow either a temporary bounded read-lease for the preflight tables or a fresh equivalent read-only preflight after deploying schema. Do not use write credentials as read-only fallback.
 
 ## Data predicates for CRM apply
 
@@ -83,12 +83,12 @@ This is the remaining technical blocker before data apply. The release block mus
 
 ## Local verification before owner block
 
-- PASS: `npm run check:runtime` — Node 22.23.1 / npm 10.9.8
-- PASS: `npm run check:version` — v0.81.156 — SYS-MB: перехід CRM in sync
-- PASS: `npm run check:migrations` — Migration governance passed; SQL range 001-365
-- PASS: `node --test tests/production-block-controller.test.js` — 45/45 tests passed
-- PASS: `BUSINESS_CUTOVER_LOCAL_POSTGRES_TEST=1 node tests/integration/business-cutover-journal-postgres.test.js under disposable local PostgreSQL` — 2/2 tests passed
-- PASS: `npm run test:sys-mb` — Passed before rebase: legacy-containment 68, business-cabinets 84, lead-integrity 20, d05-domain-ownership 25
+- PASS: `npm run check:runtime` — to rerun after this manifest refresh
+- PASS: `npm run check:version` — v0.81.157 — SYS-MB: перехід CRM in sync before this docs refresh
+- PASS: `npm run check:migrations` — to rerun after this manifest refresh
+- PASS: `node --test tests/production-block-controller.test.js` — to rerun after this manifest refresh
+- PASS: `npm run test:sys-mb` — to rerun after this manifest refresh
+- PASS: `BUSINESS_CUTOVER_LOCAL_POSTGRES_TEST=1 node tests/integration/business-cutover-journal-postgres.test.js` — to rerun after this manifest refresh
 
 ## Required owner block
 

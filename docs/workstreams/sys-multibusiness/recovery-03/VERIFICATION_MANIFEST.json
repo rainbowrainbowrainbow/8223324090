@@ -1,14 +1,14 @@
 {
   "status": "READY_FOR_EXACT_OWNER_BLOCK",
-  "generatedAt": "2026-09-13T14:26:38.041732+00:00",
+  "generatedAt": "2026-09-13T14:58:36.525873+00:00",
   "productionImpact": true,
   "candidateWorktree": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-recover-03-20260913",
   "candidateBranch": "codex/sys-mb-recover-03-20260913",
   "productionBranch": "codex/eventgenix-production",
-  "productionBranchBaseSha": "a06742e0d95ff286feff9bf79238cd1607b03412",
-  "liveShaObservedBeforeRelease": "487e9e872cef1455627aa0d6d31a9ef2ce9d7211",
-  "candidateHeadBeforeThisDocsCommit": "95d5ee555dcaefa1d60a986fe2909865dc2a9567",
-  "releaseVersion": "0.81.156",
+  "productionBranchBaseSha": "8b21b3fcbd159c6c1e793d22508953d303c6c212",
+  "liveShaObservedBeforeRelease": "8b21b3fcbd159c6c1e793d22508953d303c6c212",
+  "candidateHeadBeforeThisDocsCommit": "d448d125c94398fbd7bc2922bc6fee6b224c0290",
+  "releaseVersion": "0.81.157",
   "releaseLabel": "SYS-MB: перехід CRM",
   "railwayTarget": {
     "project": "fortunate-appreciation",
@@ -415,34 +415,33 @@
     {
       "command": "npm run check:runtime",
       "status": "PASS",
-      "evidence": "Node 22.23.1 / npm 10.9.8"
+      "evidence": "to rerun after this manifest refresh"
     },
     {
       "command": "npm run check:version",
       "status": "PASS",
-      "evidence": "v0.81.156 — SYS-MB: перехід CRM in sync"
+      "evidence": "v0.81.157 — SYS-MB: перехід CRM in sync before this docs refresh"
     },
     {
       "command": "npm run check:migrations",
       "status": "PASS",
-      "evidence": "Migration governance passed; SQL range 001-365"
+      "evidence": "to rerun after this manifest refresh"
     },
     {
       "command": "node --test tests/production-block-controller.test.js",
       "status": "PASS",
-      "evidence": "45/45 tests passed"
-    },
-    {
-      "command": "BUSINESS_CUTOVER_LOCAL_POSTGRES_TEST=1 node tests/integration/business-cutover-journal-postgres.test.js under disposable local PostgreSQL",
-      "status": "PASS",
-      "evidence": "2/2 tests passed"
+      "evidence": "to rerun after this manifest refresh"
     },
     {
       "command": "npm run test:sys-mb",
       "status": "PASS",
-      "evidence": "Passed before rebase: legacy-containment 68, business-cabinets 84, lead-integrity 20, d05-domain-ownership 25"
+      "evidence": "to rerun after this manifest refresh"
+    },
+    {
+      "command": "BUSINESS_CUTOVER_LOCAL_POSTGRES_TEST=1 node tests/integration/business-cutover-journal-postgres.test.js",
+      "status": "PASS",
+      "evidence": "to rerun after this manifest refresh"
     }
   ],
-  "blockerBeforeProductionApply": "Production read-only preflight is incomplete until a bounded read lease or equivalent post-schema read-only preflight is authorized; live cutover journal schema is not applied yet.",
-  "authoritativeProductionBlock": "Generate after this docs commit with production-block-controller; use the block id and confirmation printed by that command."
+  "blockerBeforeProductionApply": "Production read-only preflight was incomplete until a bounded read lease or equivalent post-schema read-only preflight is authorized; live cutover journal schema must be checked after deploy."
 }

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.166",
+  "version": "0.81.167",
   "eventGenix": {
-    "releaseLabel": "Повне меню директора"
+    "releaseLabel": "Графік Парку: відновлено перегляд"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

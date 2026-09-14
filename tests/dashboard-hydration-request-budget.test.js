@@ -749,34 +749,25 @@ test('my focus completion keeps task open and shows retry when the server denies
     harness.dom.window.close();
 });
 
-test('my focus secondary actions use canonical focus and snooze endpoints and refresh dependent widgets', async () => {
+test('my focus hides redundant focus action and uses canonical snooze endpoint', async () => {
     const harness = loadDashboardHarness();
     const mutations = [];
-    let phase = 'before';
-    let focusResolve;
-    const focusDeferred = new Promise(resolve => { focusResolve = resolve; });
     harness.setFetchImplementation((url, init = {}) => {
-        if (url.includes('/api/tasks/14/focus')) {
-            mutations.push({ url, init });
-            return focusDeferred;
-        }
         if (url.includes('/api/tasks/14/snooze')) {
             mutations.push({ url, init });
             return response({}, { payload: { success: true, task: { id: 14, status: 'todo', snoozedUntil: '2026-09-15T12:00:00Z' } } });
         }
         if (url.includes('/widgets/my_focus')) {
-            return response(phase === 'before'
-                ? {
-                    tasks: [
-                        { id: 14, title: 'Поставити в особистий фокус', status: 'todo', focus_rank: 0 },
-                        { id: 15, title: 'Відкласти не термінове', status: 'todo', focus_rank: 1 }
-                    ],
-                    overdueCount: 0,
-                    waitingCount: 0
-                }
-                : { tasks: [{ id: 14, title: 'Поставити в особистий фокус', status: 'todo', focus_rank: 1 }], overdueCount: 0, waitingCount: 0 });
+            return response({
+                tasks: [
+                    { id: 14, title: 'Поставити в особистий фокус', status: 'todo', focus_rank: 0 },
+                    { id: 15, title: 'Відкласти не термінове', status: 'todo', focus_rank: 1 }
+                ],
+                overdueCount: 0,
+                waitingCount: 0
+            });
         }
-        if (url.includes('/widgets/tasks')) return response({ tasks: phase === 'before' ? [{ id: 14, title: 'Поставити в особистий фокус' }] : [] });
+        if (url.includes('/widgets/tasks')) return response({ tasks: [] });
         if (url.includes('/widgets/nearest_event')) return response({ event: null, preparation: null, meta: { state: 'empty' } });
         if (url.includes('/widgets/quick_stats')) return response({ bookingsToday: 0, activeTasks: 0, revenueToday: 0 });
         return response({});
@@ -790,45 +781,22 @@ test('my focus secondary actions use canonical focus and snooze endpoints and re
 
     await harness.api.loadWidgetData('my_focus');
     const focusButton = harness.dom.window.document.querySelector('[data-dashboard-task-action="focus"][data-dashboard-task-id="14"]');
-    const snoozeButton = harness.dom.window.document.querySelector('[data-dashboard-task-action="snooze"][data-dashboard-task-id="15"]');
-    assert.ok(focusButton);
+    const snoozeButton = harness.dom.window.document.querySelector('[data-dashboard-task-action="snooze"][data-dashboard-task-id="14"]');
+    assert.equal(focusButton, null, 'tasks already rendered in My Focus must not show a redundant focus action');
     assert.ok(snoozeButton);
 
-    const firstFocus = harness.api.focusDashboardTask(14, focusButton, { preventDefault() {}, stopPropagation() {} });
-    const secondFocus = harness.api.focusDashboardTask(14, focusButton, { preventDefault() {}, stopPropagation() {} });
-    await flushHydration();
-    assert.equal(mutations.length, 1, 'focus double click while pending must not send a second mutation');
-    assert.equal(focusButton.disabled, true);
-    assert.equal(harness.notifications.length, 0);
-    assert.equal(mutations[0].url, '/api/tasks/14/focus?businessContext=event_genix');
-    assert.equal(mutations[0].init.method, 'POST');
-    assert.deepEqual(JSON.parse(mutations[0].init.body), {
-        enabled: true,
-        rank: 1,
-        sourceSurface: 'dashboard_my_focus'
-    });
-
-    phase = 'after';
-    focusResolve(response({}, { payload: { success: true, task: { id: 14, status: 'todo', focus_rank: 1 } } }));
-    await firstFocus;
-    await secondFocus;
-    await flushHydration();
-    assert.ok(harness.notifications.some(entry => entry.type === 'success' && /фокус/.test(entry.message)));
-
-    const refreshedSnoozeButton = harness.dom.window.document.querySelector('[data-dashboard-task-action="snooze"][data-dashboard-task-id="14"]');
-    assert.ok(refreshedSnoozeButton);
-    const snoozeResult = await harness.api.snoozeDashboardTask(14, refreshedSnoozeButton, { preventDefault() {}, stopPropagation() {} });
+    const snoozeResult = await harness.api.snoozeDashboardTask(14, snoozeButton, { preventDefault() {}, stopPropagation() {} });
     assert.equal(snoozeResult.success, true);
-    assert.equal(mutations.length, 2);
-    assert.equal(mutations[1].url, '/api/tasks/14/snooze?businessContext=event_genix');
-    assert.deepEqual(JSON.parse(mutations[1].init.body), {
+    assert.equal(mutations.length, 1);
+    assert.equal(mutations[0].url, '/api/tasks/14/snooze?businessContext=event_genix');
+    assert.deepEqual(JSON.parse(mutations[0].init.body), {
         hours: 24,
         sourceSurface: 'dashboard_my_focus'
     });
     const counts = widgetRequestCounts(harness.requests);
-    assert.ok(counts['/api/dashboard/widgets/my_focus?businessContext=event_genix'] >= 3);
-    assert.ok(counts['/api/dashboard/widgets/tasks?businessContext=event_genix'] >= 2);
-    assert.ok(counts['/api/dashboard/widgets/nearest_event?businessContext=event_genix'] >= 2);
+    assert.ok(counts['/api/dashboard/widgets/my_focus?businessContext=event_genix'] >= 2);
+    assert.ok(counts['/api/dashboard/widgets/tasks?businessContext=event_genix'] >= 1);
+    assert.ok(counts['/api/dashboard/widgets/nearest_event?businessContext=event_genix'] >= 1);
     harness.dom.window.close();
 });
 

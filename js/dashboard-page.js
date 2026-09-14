@@ -7737,13 +7737,13 @@ const DashboardPage = (() => {
             || '';
     }
 
-    function renderFocusTaskActions(task = {}) {
+    function renderFocusTaskActions(task = {}, options = {}) {
         const id = Number(task.id || 0);
         if (!id || isDashboardTaskClosed(task)) return '';
         const pendingComplete = _dashboardTaskCompletionPending.has(id) || _dashboardTaskActionPending.has(dashboardTaskActionKey(id, 'complete'));
         const pendingFocus = _dashboardTaskActionPending.has(dashboardTaskActionKey(id, 'focus'));
         const pendingSnooze = _dashboardTaskActionPending.has(dashboardTaskActionKey(id, 'snooze'));
-        const inFocus = Number(task.focusRank ?? task.focus_rank ?? 0) > 0;
+        const inFocus = Boolean(options.inFocusContext) || Number(task.focusRank ?? task.focus_rank ?? 0) > 0;
         const error = dashboardTaskActionError(id);
         const completeLabel = pendingComplete ? 'Виконується…' : (error ? 'Повторити' : 'Виконати');
         const focusButton = inFocus ? '' : `
@@ -7796,7 +7796,7 @@ ${focusButton}
             const deadline = t.deadline ? formatDeadline(t.deadline) : '';
             const priorityCls = t.priority || 'medium';
             const subtaskPreview = renderDashboardTaskSubtasks(t, { variant: 'widget-summary', preview: false });
-            const action = renderFocusTaskActions(t);
+            const action = renderFocusTaskActions(t, { inFocusContext: true });
             return `<div class="widget-task-item">
                 <div class="widget-task-icon ${priorityCls}"></div>
                 <div class="widget-task-info">

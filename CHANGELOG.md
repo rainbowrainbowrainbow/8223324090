@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.173 - Dashboard: фокус без зайвої дії
+
+### Release / Versioning / (14.09.2026) [codex]
+- **Dashboard: фокус без зайвої дії** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.172 - Dashboard: чистіша робоча композиція
 
 ### Release / Versioning / (14.09.2026) [codex]

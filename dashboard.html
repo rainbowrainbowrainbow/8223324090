@@ -114,7 +114,7 @@
                             </button>
                             <div class="dashboard-role-preview-menu hidden" id="dashboardRolePreviewMenu" role="menu" onclick="DashboardPage.handleRolePreviewMenuClick(event)"></div>
                         </div>
-                        <button type="button" class="dashboard-btn" onclick="DashboardPage.openWidgetManager()">Додати віджет</button>
+                        <button type="button" class="dashboard-btn dashboard-add-widget-btn" id="dashboardAddWidgetButton" onclick="DashboardPage.openWidgetManager()" hidden>Додати віджет</button>
                         <button type="button" class="dashboard-btn" id="dashboardCustomizeButton" aria-pressed="false" onclick="DashboardPage.toggleLayoutEditing()">Налаштувати</button>
                     </div>
                     <section class="dashboard-day-orientation" id="dashboardDayOrientation" role="status" aria-live="polite" data-tone="loading">

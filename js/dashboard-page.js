@@ -3813,12 +3813,22 @@ const DashboardPage = (() => {
     function toggleLayoutEditing() {
         if (!isWidgetConfigReady()) return;
         _layoutEditing = !_layoutEditing;
+        syncDashboardLayoutModeControls();
+        setWidgetLayoutStatus(_layoutEditing ? 'Перетягніть віджети або використайте «Вище / Нижче». Зміни зберігаються автоматично.' : '');
+    }
+
+    function syncDashboardLayoutModeControls() {
         document.getElementById('dashboardGrid')?.classList.toggle('is-layout-editing', _layoutEditing);
-        const button = document.getElementById('dashboardCustomizeButton');
-        if (button) { button.textContent = _layoutEditing ? 'Готово' : 'Налаштувати'; button.setAttribute('aria-pressed', String(_layoutEditing)); }
+        const customizeButton = document.getElementById('dashboardCustomizeButton');
+        if (customizeButton) {
+            customizeButton.textContent = _layoutEditing ? 'Готово' : 'Налаштувати';
+            customizeButton.setAttribute('aria-pressed', String(_layoutEditing));
+            customizeButton.setAttribute('aria-label', _layoutEditing ? 'Завершити налаштування дашборду' : 'Відкрити налаштування дашборду');
+        }
+        const addButton = document.getElementById('dashboardAddWidgetButton');
+        if (addButton) addButton.hidden = !_layoutEditing;
         const hint = document.getElementById('dashboardWidgetHint');
         if (hint) hint.hidden = !_layoutEditing;
-        setWidgetLayoutStatus(_layoutEditing ? 'Перетягніть віджети або використайте «Вище / Нижче». Зміни зберігаються автоматично.' : '');
     }
 
     function moveLayoutWidget(key, offset) {
@@ -3914,7 +3924,8 @@ const DashboardPage = (() => {
     }
 
     function renderFlatWidgetGrid(grid, options = {}) {
-        grid.className = 'dashboard-grid dashboard-widget-grid';
+        grid.className = 'dashboard-grid dashboard-widget-grid' + (_layoutEditing ? ' is-layout-editing' : '');
+        syncDashboardLayoutModeControls();
         const widgets = Array.isArray(options.widgetKeys)
             ? normalizeDashboardWidgets(options.widgetKeys)
             : normalizeDashboardWidgets(_config.widgets || []);
@@ -7632,6 +7643,15 @@ const DashboardPage = (() => {
         return '↗';
     }
 
+    function dashboardOrientationStatusLabel(orientation = {}) {
+        if (orientation.tone === 'urgent') return 'Терміново';
+        if (orientation.tone === 'event') return 'Подія';
+        if (orientation.tone === 'sales') return 'Продажі';
+        if (orientation.tone === 'loading') return 'Оновлення';
+        if (orientation.tone === 'calm') return 'Спокійно';
+        return 'Сигнал';
+    }
+
     function renderDayOrientation() {
         const container = document.getElementById('dashboardDayOrientation');
         if (!container) return;
@@ -7645,7 +7665,10 @@ const DashboardPage = (() => {
         container.innerHTML = `
             <div class="dashboard-day-orientation-badge" aria-hidden="true">${escapeHtml(dashboardOrientationIcon(orientation))}</div>
             <div class="dashboard-day-orientation-main">
-                <span class="dashboard-day-orientation-kicker">Орієнтир дня${orientation.source && orientation.source !== 'Орієнтир дня' ? ` · ${escapeHtml(orientation.source)}` : ''}</span>
+                <div class="dashboard-day-orientation-meta">
+                    <span class="dashboard-day-orientation-kicker">Орієнтир дня${orientation.source && orientation.source !== 'Орієнтир дня' ? ` · ${escapeHtml(orientation.source)}` : ''}</span>
+                    <span class="dashboard-day-orientation-status" data-tone="${escapeHtml(orientation.tone || 'neutral')}">${escapeHtml(dashboardOrientationStatusLabel(orientation))}</span>
+                </div>
                 <strong>${escapeHtml(orientation.title || '')}</strong>
                 <span>${escapeHtml(orientation.reason || '')}</span>
                 ${note}
@@ -7986,6 +8009,14 @@ ${focusButton}
         return 'Робочий строк не вказано';
     }
 
+    function dashboardFocusTaskStatusLabel(task = {}, candidate = {}) {
+        if (candidate.tone === 'urgent') return 'Терміново';
+        if (task.dueState === 'overdue') return 'Прострочено';
+        if (task.dueState === 'review') return 'Перегляд';
+        if (candidate.selected) return 'Фокус';
+        return 'Наступний крок';
+    }
+
     function renderMyFocus(data, container) {
         const candidates = dashboardFocusTaskCandidates(data).slice(0, 3);
         const selectedCount = data.selectedCount ?? (data.tasks || []).filter(task => Number(task.focus_rank || 0) > 0).length;
@@ -7993,8 +8024,9 @@ ${focusButton}
         const total = data.actionableCount ?? (selectedCount + recommendedCount);
         const items = candidates.map(candidate => {
             const t = candidate.task;
-            return '<div class="widget-task-item" data-focus-task="' + Number(t.id) + '">'
-                + '<div class="widget-task-info"><span class="focus-task-source">' + candidate.source + '</span>'
+            const status = dashboardFocusTaskStatusLabel(t, candidate);
+            return '<div class="widget-task-item focus-task-card ' + escapeHtml(candidate.tone || 'focus') + '" data-focus-task="' + Number(t.id) + '">'
+                + '<div class="widget-task-info"><div class="focus-task-head"><span class="focus-task-source">' + escapeHtml(candidate.source || '') + '</span><span class="focus-task-status">' + escapeHtml(status) + '</span></div>'
                 + '<a class="widget-task-title focus-task-detail-link" href="' + escapeHtml(candidate.href) + '">' + escapeHtml(t.title || 'Задача без назви') + '</a>'
                 + '<div class="widget-task-meta">' + escapeHtml(dashboardTaskDueLabel(t)) + (t.ownerLabel ? ' · ' + escapeHtml(t.ownerLabel) : '') + '</div>'
                 + renderDashboardTaskSubtasks(t, { preview:false })

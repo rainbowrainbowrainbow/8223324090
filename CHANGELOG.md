@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.171 - Dashboard: чистіший перший екран
+
+### Release / Versioning / (14.09.2026) [codex]
+- **Dashboard: чистіший перший екран** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.170 - Dashboard: українські етапи воронки
 
 ### Dashboard / Воронка / (14.09.2026) [codex]
@@ -19139,4 +19146,3 @@
 ---
 
 *Формат: останні версії детально, старі — коротко.*
-

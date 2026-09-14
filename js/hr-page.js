@@ -464,6 +464,17 @@ function canExportHrReports() {
     return canUseHrCapability('hr.reports.export') && hasExportData;
 }
 
+function setReportExportAvailability(enabled = false) {
+    const reportExport = document.getElementById('reportExport');
+    if (!reportExport) return;
+    reportExport.hidden = !canExportHrReports();
+    reportExport.disabled = reportExport.hidden || enabled !== true;
+    reportExport.setAttribute('aria-disabled', reportExport.disabled ? 'true' : 'false');
+    reportExport.title = !reportExport.hidden && enabled !== true
+        ? 'Експорт доступний після успішного завантаження звіту за поточний період'
+        : '';
+}
+
 function canViewPayrollWorkspace() {
     return canUseHrCapability('hr.payroll.view');
 }
@@ -565,8 +576,16 @@ let pollTimer = null;
 let hrProfessions = [];
 let professionCatalogStructureNodes = [];
 let professionCatalogInventory = null;
+let professionCatalogAccess = null;
 let professionCatalogLoadState = 'idle';
 let professionCatalogLoadError = '';
+let reportRequestSeq = 0;
+let reportState = {
+    loadState: 'idle',
+    month: '',
+    error: '',
+    exportReady: false
+};
 let hrPrintDocumentsState = {
     initialized: false,
     open: false,
@@ -4376,10 +4395,20 @@ function canEditProfessionCatalog() {
     return typeof canAccess === 'function' && canAccess('hr.staff.manage') === true;
 }
 
+function isProfessionCatalogPartial() {
+    return professionCatalogAccess?.partial === true;
+}
+
+function isProfessionWorkspaceUnsupported() {
+    return isProfessionCatalogPartial()
+        && Array.isArray(professionCatalogAccess.unsupportedFields)
+        && professionCatalogAccess.unsupportedFields.includes('workspace');
+}
+
 function syncProfessionCatalogCapabilityUi() {
     const button = document.getElementById('btnAddProfession');
     if (!button) return;
-    const editable = canEditProfessionCatalog();
+    const editable = canEditProfessionCatalog() && !isProfessionCatalogPartial();
     button.hidden = !editable;
     button.disabled = !editable;
     button.setAttribute('aria-hidden', editable ? 'false' : 'true');
@@ -4601,6 +4630,7 @@ async function ensureProfessionsLoaded(options = {}) {
     if (hrProfessions.length && professionCatalogLoadState === 'ready' && !options.force) return hrProfessions;
     professionCatalogLoadState = 'loading';
     professionCatalogLoadError = '';
+    professionCatalogAccess = null;
     if (!options.silent) renderProfessions();
     const data = await hrFetch('/professions').catch(() => null);
     if (!data?.success) {
@@ -4612,6 +4642,7 @@ async function ensureProfessionsLoaded(options = {}) {
     hrProfessions = Array.isArray(data.data) ? data.data : [];
     professionCatalogStructureNodes = Array.isArray(data.structureNodes) ? data.structureNodes : [];
     professionCatalogInventory = data.inventory || null;
+    professionCatalogAccess = data.professionCatalogAccess || data.catalogAccess || null;
     professionCatalogLoadState = 'ready';
     renderProfessionCatalogFilterOptions();
     return hrProfessions;
@@ -4653,12 +4684,15 @@ function professionMatchesCatalogFilters(item = {}) {
     const nodeId = item.structure_node_id || item.structureNodeId || '';
     if (professionCatalogFilters.structureNode === 'none' && nodeId) return false;
     if (!['all', 'none'].includes(professionCatalogFilters.structureNode) && nodeId !== professionCatalogFilters.structureNode) return false;
-    const staffCount = Number(item.staffCount || 0);
-    if (professionCatalogFilters.staff === 'with' && staffCount === 0) return false;
-    if (professionCatalogFilters.staff === 'without' && staffCount > 0) return false;
-    const hasChecklist = item.hasChecklist === true || (item.checklist || []).length > 0;
-    if (professionCatalogFilters.checklist === 'with' && !hasChecklist) return false;
-    if (professionCatalogFilters.checklist === 'without' && hasChecklist) return false;
+    const hasStaffCount = Object.hasOwn(item, 'staffCount') || Object.hasOwn(item, 'staff_count');
+    const staffCount = Number(item.staffCount ?? item.staff_count);
+    if (hasStaffCount && professionCatalogFilters.staff === 'with' && staffCount === 0) return false;
+    if (hasStaffCount && professionCatalogFilters.staff === 'without' && staffCount > 0) return false;
+    const hasChecklistCount = Object.hasOwn(item, 'checklistCount') || Object.hasOwn(item, 'checklist_count') || Array.isArray(item.checklist);
+    const checklistCount = Array.isArray(item.checklist) ? item.checklist.length : Number(item.checklistCount ?? item.checklist_count);
+    const hasChecklist = item.hasChecklist === true || (hasChecklistCount && checklistCount > 0);
+    if (hasChecklistCount && professionCatalogFilters.checklist === 'with' && !hasChecklist) return false;
+    if (hasChecklistCount && professionCatalogFilters.checklist === 'without' && hasChecklist) return false;
     if (!query) return true;
     return normalizeSearchText([
         item.title,
@@ -4674,16 +4708,28 @@ function professionMasterRowHtml(item = {}, initialTab = 'main') {
     const active = item.is_active !== false && item.isActive !== false;
     const source = item.source === 'system' || item.isVirtual ? 'system' : 'db';
     const nodeTitle = item.structureNode?.title || companyStructureNodeTitle(item.structure_node_id || item.structureNodeId) || 'Без вузла';
-    const checklistCount = Number(item.checklistCount ?? item.checklist?.length ?? 0);
+    const hasStaffCount = Object.hasOwn(item, 'staffCount') || Object.hasOwn(item, 'staff_count');
+    const staffCount = Number(item.staffCount ?? item.staff_count);
+    const hasChecklistCount = Object.hasOwn(item, 'checklistCount') || Object.hasOwn(item, 'checklist_count') || Array.isArray(item.checklist);
+    const checklistCount = Array.isArray(item.checklist) ? item.checklist.length : Number(item.checklistCount ?? item.checklist_count);
+    const workspaceUnsupported = isProfessionWorkspaceUnsupported();
+    const rowTag = workspaceUnsupported ? 'div' : 'button';
+    const rowAttributes = workspaceUnsupported
+        ? 'role="listitem" aria-disabled="true"'
+        : `type="button" data-profession-open-key="${escapeHtml(item.key)}" data-profession-open-tab="${escapeHtml(initialTab)}"`;
+    const staffText = hasStaffCount && Number.isFinite(staffCount) ? `${staffCount} людей` : '— людей';
+    const checklistText = hasChecklistCount && Number.isFinite(checklistCount)
+        ? (checklistCount ? `${checklistCount} пунктів` : 'Без чекліста')
+        : 'Чекліст недоступний';
     return `
-        <button type="button" class="hr-profession-master-row${active ? '' : ' is-archived'}" data-profession-open-key="${escapeHtml(item.key)}" data-profession-open-tab="${escapeHtml(initialTab)}">
+        <${rowTag} class="hr-profession-master-row${active ? '' : ' is-archived'}${workspaceUnsupported ? ' is-read-only' : ''}" ${rowAttributes}>
             <span class="hr-profession-master-title"><strong>${escapeHtml(item.title || item.key)}</strong><small>${escapeHtml(item.key)} · ${source === 'system' ? 'system profession' : 'DB profession'}</small></span>
             <span class="hr-profession-master-cell">${escapeHtml(item.department || 'Без напряму')}</span>
             <span class="hr-profession-master-cell">${escapeHtml(nodeTitle)}</span>
-            <span class="hr-profession-master-cell">${Number(item.staffCount || 0)} людей</span>
-            <span class="hr-profession-master-cell">${checklistCount ? `${checklistCount} пунктів` : 'Без чекліста'}</span>
-            <span class="hr-profession-master-state${active ? '' : ' is-archived'}">${source === 'system' ? 'Readonly' : (active ? 'Активна' : 'Архівна')}</span>
-        </button>`;
+            <span class="hr-profession-master-cell">${escapeHtml(staffText)}</span>
+            <span class="hr-profession-master-cell">${escapeHtml(checklistText)}</span>
+            <span class="hr-profession-master-state${active ? '' : ' is-archived'}">${workspaceUnsupported ? 'Лише список' : (source === 'system' ? 'Readonly' : (active ? 'Активна' : 'Архівна'))}</span>
+        </${rowTag}>`;
 }
 
 function bindProfessionMasterRows(root) {
@@ -4713,7 +4759,10 @@ function renderProfessions() {
         return;
     }
     const items = hrProfessions.filter(professionMatchesCatalogFilters);
-    if (stats) stats.textContent = `Показано ${items.length} із ${hrProfessions.length} · system: ${hrProfessions.filter(item => item.source === 'system').length} · архівних: ${hrProfessions.filter(item => item.is_active === false || item.isActive === false).length}`;
+    if (stats) {
+        const partialNote = isProfessionCatalogPartial() ? ' · скорочений read-only список: люди й чеклісти недоступні' : '';
+        stats.textContent = `Показано ${items.length} із ${hrProfessions.length} · system: ${hrProfessions.filter(item => item.source === 'system').length} · архівних: ${hrProfessions.filter(item => item.is_active === false || item.isActive === false).length}${partialNote}`;
+    }
     if (!items.length) {
         root.innerHTML = '<div class="hr-account-empty">Професій за вибраними фільтрами не знайдено.</div>';
         return;
@@ -5780,6 +5829,14 @@ function renderProfessionWorkspace() {
 }
 
 async function openProfessionWorkspace({ id = null, key = null, initialTab = 'main', returnContext = null, historyMode = 'push', defaults = {} } = {}) {
+    if (!id && !key && isProfessionCatalogPartial()) {
+        showNotification('Створення професій недоступне у скороченому read-only каталозі', 'error');
+        return null;
+    }
+    if ((id || key) && isProfessionWorkspaceUnsupported()) {
+        showNotification('Картка професії недоступна у скороченому read-only каталозі', 'error');
+        return null;
+    }
     bindProfessionWorkspaceControls();
     rememberProfessionChecklistDraft();
     loadProfessionChecklistDrafts();
@@ -16359,6 +16416,25 @@ function updateReportHeaderMetrics(metrics = {}) {
     setReportHeaderMetricText('reportHeroTasksMeta', formatReportOverdueTasks(totalTasksOverdue));
 }
 
+function renderReportsUnavailable(message = 'Звіт недоступний для цього періоду') {
+    setReportHeaderMetricText('reportHeroAttendance', '—');
+    setReportHeaderMetricText('reportHeroAttendanceMeta', message);
+    setReportHeaderMetricText('reportHeroLate', '—');
+    setReportHeaderMetricText('reportHeroLateMeta', 'дані не отримано');
+    setReportHeaderMetricText('reportHeroAbsent', '—');
+    setReportHeaderMetricText('reportHeroAbsentMeta', 'дані не отримано');
+    setReportHeaderMetricText('reportHeroTasks', '—');
+    setReportHeaderMetricText('reportHeroTasksMeta', 'дані не отримано');
+    const summary = document.getElementById('reportSummary');
+    const head = document.getElementById('reportHead');
+    const body = document.getElementById('reportBody');
+    if (summary) {
+        summary.innerHTML = `<div class="hr-report-stat hr-report-stat--overdue"><div class="stat-value">!</div><div class="stat-label">${escapeHtml(message)}</div></div>`;
+    }
+    if (head) head.innerHTML = '';
+    if (body) body.innerHTML = `<tr><td colspan="12">${escapeHtml(message)}</td></tr>`;
+}
+
 async function loadReports() {
     // Fill month selector
     const sel = document.getElementById('reportMonth');
@@ -16372,23 +16448,29 @@ async function loadReports() {
         }
         sel.addEventListener('change', loadReports);
         const reportExport = document.getElementById('reportExport');
-        if (reportExport) {
-            reportExport.hidden = !canExportHrReports();
-            reportExport.disabled = !canExportHrReports();
-            reportExport.addEventListener('click', exportCSV);
-        }
+        if (reportExport) reportExport.addEventListener('click', exportCSV);
     }
 
     const month = sel.value;
-    const data = await hrFetch(`/report/monthly?month=${month}`);
+    const requestSeq = ++reportRequestSeq;
+    reportState = { loadState: 'loading', month, error: '', exportReady: false };
+    setReportExportAvailability(false);
+    renderReportsUnavailable('Завантаження звіту…');
+    const data = await hrFetch(`/report/monthly?month=${month}`).catch(() => null);
+    if (requestSeq !== reportRequestSeq) return;
     if (!data || !data.success) {
-        updateReportHeaderMetrics();
-        await loadRoleAssignmentsReport();
+        const message = data?.error || 'Не вдалося завантажити HR-звіт';
+        reportState = { loadState: 'error', month, error: message, exportReady: false };
+        renderReportsUnavailable(message);
+        setReportExportAvailability(false);
+        await loadRoleAssignmentsReport(requestSeq);
         return;
     }
 
+    reportState = { loadState: 'ready', month, error: '', exportReady: true };
     renderReports(data);
-    await loadRoleAssignmentsReport();
+    setReportExportAvailability(true);
+    await loadRoleAssignmentsReport(requestSeq);
 }
 
 function renderReports(data) {
@@ -16448,13 +16530,14 @@ function roleReportPillClass(value = '') {
     return 'muted';
 }
 
-async function loadRoleAssignmentsReport() {
+async function loadRoleAssignmentsReport(expectedRequestSeq = reportRequestSeq) {
     const summaryRoot = document.getElementById('roleReportSummary');
     const head = document.getElementById('roleReportHead');
     const body = document.getElementById('roleReportBody');
     if (!summaryRoot || !head || !body) return;
     summaryRoot.innerHTML = '<div class="hr-report-stat hr-report-stat--roles"><div class="stat-value">...</div><div class="stat-label">Ролі</div></div>';
     const data = await hrFetch('/role-assignments/report').catch(() => null);
+    if (expectedRequestSeq !== reportRequestSeq) return;
     if (!data?.success) {
         summaryRoot.innerHTML = `<div class="hr-report-stat hr-report-stat--overdue"><div class="stat-value">!</div><div class="stat-label">${escapeHtml(data?.error || 'Не вдалося завантажити ролі')}</div></div>`;
         head.innerHTML = '';
@@ -16494,6 +16577,11 @@ async function exportCSV() {
         return;
     }
     const month = document.getElementById('reportMonth')?.value;
+    if (!reportState.exportReady || reportState.month !== month || reportState.loadState !== 'ready') {
+        showNotification('Експорт доступний після успішного завантаження звіту за поточний період', 'error');
+        setReportExportAvailability(false);
+        return;
+    }
     const from = `${month}-01`;
     const d = new Date(from);
     d.setMonth(d.getMonth() + 1);

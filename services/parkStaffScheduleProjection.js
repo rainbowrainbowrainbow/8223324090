@@ -157,8 +157,18 @@ function projectParkStaffSchedulePayload(routerId, routePath, payload) {
     if (!payload || payload.success !== true) return payload;
     const path = String(routePath || '/').replace(/\/+$/, '') || '/';
     if (routerId === 'hr' && path === '/professions') {
-        return { success: true, data: mapRows(payload.data, row => pick(row,
-            ['id', 'key', 'title', 'department', 'color', 'is_active', 'structure_node_id', 'sort_order'])) };
+        return {
+            success: true,
+            data: mapRows(payload.data, row => pick(row,
+                ['id', 'key', 'title', 'department', 'color', 'is_active', 'structure_node_id', 'sort_order'])),
+            professionCatalogAccess: {
+                readOnly: true,
+                partial: true,
+                businessContext: 'event_genix',
+                reason: 'park_schedule_recovery_projection',
+                unsupportedFields: ['people', 'staffCount', 'checklist', 'checklistCount', 'workspace']
+            }
+        };
     }
     if (routerId === 'hr' && path === '/today') {
         return { ...pick(payload, ['success', 'date', 'displayGroups']), data: mapRows(payload.data, projectToday),

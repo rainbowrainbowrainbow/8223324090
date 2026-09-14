@@ -633,7 +633,7 @@ test('protected financial UI hides redacted values instead of presenting fake ze
     assert.match(customersPage, /function canViewCustomerRevenue\(\)[\s\S]*canAccess\('view_revenue'\)/);
     assert.match(customersPage, /function canExportCustomerData\(includeRevenue = false\)[\s\S]*canAccess\('export_data'\)[\s\S]*canViewCustomerRevenue\(\)/);
     assert.match(customersPage, /const revenueCard = canViewCustomerRevenue\(\) \? `[\s\S]*s\.averages\?\.avg_spent[\s\S]*` : '';/);
-    assert.match(customersPage, /const canViewRevenue = canViewCustomerRevenue\(\);[\s\S]*\$\{canViewRevenue \? `<td>[\s\S]*c\.totalSpent[\s\S]*` : ''\}/);
+    assert.match(customersPage, /const canViewRevenue = canViewCustomerRevenue\(\);[\s\S]*\$\{canViewRevenue \? `<td[^`>]*>[\s\S]*c\.totalSpent[\s\S]*` : ''\}/);
     assert.match(customersPage, /\$\{canViewRevenue \? `<div class="detail-field">[\s\S]*customer\.totalSpent[\s\S]*` : ''\}/);
     assert.doesNotMatch(customersPage, /formatMoney\((?:customer\.totalSpent|c\.totalSpent)\s*(?:\|\||\?\?)\s*0\)/);
 

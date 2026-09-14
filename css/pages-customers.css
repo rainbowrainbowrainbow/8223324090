@@ -289,7 +289,7 @@ html[data-theme="dark"] .customer-list-row:focus-visible {
     }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
     .customer-list-table-wrap {
         max-height: none;
         overflow: visible;

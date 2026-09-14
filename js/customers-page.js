@@ -3545,7 +3545,7 @@ async function initPage() {
     bindChildrenReviewTools();
 
     // Filters with debounce
-    document.getElementById('searchInput')?.addEventListener('input', (e) => {
+    document.getElementById('customerSearchInput')?.addEventListener('input', (e) => {
         clearTimeout(searchTimeout);
         searchTimeout = setTimeout(async () => {
             CrmState.filters.search = e.target.value;

@@ -204,7 +204,7 @@ async function verifyCreatedCustomerUi(page, customerName, childName) {
     await page.locator('#customerDetailModal .modal-close').click();
     await page.waitForFunction(() => document.getElementById('customerDetailModal')?.classList.contains('hidden'));
 
-    await page.fill('#searchInput', customerName);
+    await page.fill('#customerSearchInput', customerName);
     await page.waitForTimeout(450);
     await page.waitForFunction(name => document.body.innerText.includes(name), customerName);
     const bodyText = await page.locator('body').textContent();

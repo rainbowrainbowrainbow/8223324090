@@ -1094,9 +1094,9 @@ async function buildEventRiskSummary(user, businessScope = null) {
         cards: [
             { key: 'today_unconfirmed', label: 'Непідтверджені сьогодні', count: summary.todayUnconfirmed, kind: 'needs_confirmation', href: '/', why: 'preliminary bookings with event date today' },
             { key: 'tomorrow_unconfirmed', label: 'Непідтверджені завтра', count: summary.tomorrowUnconfirmed, kind: 'needs_confirmation', href: '/', why: 'preliminary bookings with event date tomorrow' },
-            { key: 'late_preliminary', label: 'Критично пізні preliminary', count: summary.latePreliminary, kind: 'late_preliminary', href: '/', why: 'preliminary bookings starting in the next 2 hours' },
-            { key: 'booking_linked_overdue_prep', label: 'Прострочені prep-задачі по бронюваннях', count: summary.bookingLinkedOverduePrep, kind: 'booking_linked_overdue_prep', href: '/tasks?source_type=booking&overdue=1', why: 'only tasks with source_type=booking and matching source_id are counted' },
-            { key: 'resource_warnings', label: 'Resource warnings сьогодні', count: summary.resourceWarnings, kind: 'resource_warning', href: '/dashboard#widget-exceptions', why: 'today bookings without assigned line/animator' }
+            { key: 'late_preliminary', label: 'Попередні бронювання скоро стартують', count: summary.latePreliminary, kind: 'late_preliminary', href: '/', why: 'preliminary bookings starting in the next 2 hours' },
+            { key: 'booking_linked_overdue_prep', label: 'Прострочена підготовка бронювань', count: summary.bookingLinkedOverduePrep, kind: 'booking_linked_overdue_prep', href: '/tasks?source_type=booking&overdue=1', why: 'only tasks with source_type=booking and matching source_id are counted' },
+            { key: 'resource_warnings', label: 'Ресурси не призначені сьогодні', count: summary.resourceWarnings, kind: 'resource_warning', href: '/dashboard#widget-exceptions', why: 'today bookings without assigned line/animator' }
         ],
         meta: {
             globalScore: false,
@@ -1108,7 +1108,7 @@ async function buildEventRiskSummary(user, businessScope = null) {
             denialSemantics: 'hidden bookings are absent from dashboard event-risk counts',
             missingDurableScopes: ['team', 'line', 'location'],
             prepSource: 'tasks.source_type=booking AND tasks.source_id=bookings.id',
-            eventSoonSemantics: 'event_soon remains a timing review cue and is not counted as booking readiness'
+            eventSoonSemantics: 'Подія, що скоро почнеться, є сигналом для перевірки часу, а не оцінкою готовності бронювання'
         }
     };
 }

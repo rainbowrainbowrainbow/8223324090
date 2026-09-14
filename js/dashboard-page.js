@@ -3813,13 +3813,25 @@ const DashboardPage = (() => {
     }
 
     let _widgetLayoutSaving = false;
+    let _widgetLayoutStatusTimer = null;
     let _widgetDragCleanup = null;
 
     function setWidgetLayoutStatus(message, state = 'saved') {
         const status = document.getElementById('dashboardLayoutStatus');
         if (!status) return;
-        status.textContent = message;
-        status.dataset.state = state;
+        if (_widgetLayoutStatusTimer) {
+            window.clearTimeout?.(_widgetLayoutStatusTimer);
+            _widgetLayoutStatusTimer = null;
+        }
+        status.textContent = message || '';
+        status.dataset.state = state || '';
+        if (state === 'saved' && message) {
+            _widgetLayoutStatusTimer = window.setTimeout?.(() => {
+                status.textContent = '';
+                delete status.dataset.state;
+                _widgetLayoutStatusTimer = null;
+            }, 1800) || null;
+        }
     }
 
     function restoreWidgetOrder(grid, order) {
@@ -6680,7 +6692,26 @@ const DashboardPage = (() => {
             : [];
         if (scope.mode === 'all') return 'усі бізнеси';
         if (scope.mode === 'multi' && selected.length > 1) return `${selected.length} бізнеси`;
-        return String(scope.activeContext || selected[0] || 'поточний бізнес').replace(/[_-]+/g, ' ');
+        const raw = String(scope.activeContext || selected[0] || '').trim();
+        const labels = {
+            event_genix: 'Event Genix',
+            eventgenix: 'Event Genix',
+            dar: 'DAR',
+            park: 'Парк'
+        };
+        if (raw && labels[raw.toLowerCase()]) return labels[raw.toLowerCase()];
+        return raw ? raw.replace(/[_-]+/g, ' ') : 'поточний бізнес';
+    }
+
+    function formatDashboardPeriodLabel(period = {}) {
+        const key = String(period.date || '').slice(0, 10);
+        if (!key) return 'Поточний період';
+        if (key === getKyivDashboardDateKey()) return 'Сьогодні';
+        try {
+            return new Date(`${key}T12:00:00`).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long' });
+        } catch {
+            return key;
+        }
     }
 
     function widgetInvalidationVersion(type) {
@@ -7267,7 +7298,7 @@ const DashboardPage = (() => {
                 tone: 'urgent',
                 source: 'Мій фокус',
                 title: `У фокусі ${formatUkrainianCount(overdue, ['прострочена задача', 'прострочені задачі', 'прострочених задач'])}.`,
-                reason: overdueTask ? `Почніть із “${String(overdueTask.title || 'задача без назви').slice(0, 80)}”.` : 'Перегляньте прострочені задачі у своєму списку.',
+                reason: overdueTask ? `Строк минув: “${String(overdueTask.title || 'задача без назви').slice(0, 80)}”.` : 'Перегляньте прострочені задачі у своєму списку.',
                 href: overdueTask?.id ? `/tasks?open=${encodeURIComponent(overdueTask.id)}` : '/tasks',
                 cta: overdueTask?.id ? 'Відкрити задачу' : 'Відкрити задачі',
                 priority: '3'
@@ -7290,8 +7321,8 @@ const DashboardPage = (() => {
             return {
                 tone: 'focus',
                 source: 'Мій фокус',
-                title: `Наступний крок: “${String(firstTask.title || 'задача без назви').slice(0, 80)}”.`,
-                reason: `Це перша активна задача у вашому фокусі; дедлайн: ${deadline}.`,
+                title: `Почніть із “${String(firstTask.title || 'задача без назви').slice(0, 80)}”.`,
+                reason: `Це перша активна задача у вашому фокусі. Строк: ${deadline}.`,
                 href: `/tasks?open=${encodeURIComponent(firstTask.id)}`,
                 cta: 'Відкрити задачу',
                 priority: '3'
@@ -7402,6 +7433,15 @@ const DashboardPage = (() => {
         };
     }
 
+    function dashboardOrientationIcon(orientation = {}) {
+        if (orientation.tone === 'urgent') return '⚠️';
+        if (orientation.tone === 'event') return '📅';
+        if (orientation.tone === 'sales') return '💬';
+        if (orientation.tone === 'loading') return '↻';
+        if (orientation.tone === 'calm') return '✓';
+        return '🎯';
+    }
+
     function renderDayOrientation() {
         const container = document.getElementById('dashboardDayOrientation');
         if (!container) return;
@@ -7413,7 +7453,7 @@ const DashboardPage = (() => {
             : `<a class="dashboard-day-orientation-action" href="${escapeHtml(orientation.href || '/dashboard')}">${escapeHtml(orientation.cta || 'Відкрити')}</a>`;
         const note = orientation.note ? `<span class="dashboard-day-orientation-note">${escapeHtml(orientation.note)}</span>` : '';
         container.innerHTML = `
-            <div class="dashboard-day-orientation-badge" aria-hidden="true">→</div>
+            <div class="dashboard-day-orientation-badge" aria-hidden="true">${escapeHtml(dashboardOrientationIcon(orientation))}</div>
             <div class="dashboard-day-orientation-main">
                 <span class="dashboard-day-orientation-kicker">Орієнтир дня${orientation.source && orientation.source !== 'Орієнтир дня' ? ` · ${escapeHtml(orientation.source)}` : ''}</span>
                 <strong>${escapeHtml(orientation.title || '')}</strong>
@@ -7544,13 +7584,12 @@ const DashboardPage = (() => {
     function renderQuickStats(data, container) {
         const meta = data.meta || {};
         const period = meta.period || {};
-        const periodText = period.date
-            ? `сьогодні, ${period.date} · ${formatDashboardBusinessScopeLabel(meta)}`
-            : `поточний період · ${formatDashboardBusinessScopeLabel(meta)}`;
+        const periodText = `${formatDashboardPeriodLabel(period)} · ${formatDashboardBusinessScopeLabel(meta)}`;
+        const coldLeads = Number(data.coldLeads || 0);
         const revenueStat = canViewDashboardRevenue() ? `
-                <div class="stat-item">
+                <div class="stat-item" title="Вартість підтверджених бронювань">
                     <div class="stat-value">${formatCurrency(data.revenueToday || 0)}</div>
-                    <div class="stat-label">Вартість підтв. бронювань</div>
+                    <div class="stat-label">Вартість бронювань</div>
                 </div>` : '';
         container.innerHTML = `
             <div class="stats-grid">
@@ -7564,7 +7603,7 @@ const DashboardPage = (() => {
                 </div>
                 ${revenueStat}
             </div>
-            <div class="dashboard-widget-footnote">${escapeHtml(periodText)} · без контакту &gt;48 год: ${Number(data.coldLeads || 0)}</div>
+            <div class="dashboard-widget-footnote">${escapeHtml(periodText)} · Без контакту понад 48 год: ${coldLeads}</div>
         `;
     }
 
@@ -7586,11 +7625,10 @@ const DashboardPage = (() => {
                 </a>
             `;
         }).join('');
-        const meta = data.meta || {};
         container.innerHTML = `
             <div class="event-risk-summary-grid">${html}</div>
             <p class="event-risk-summary-note">
-                Підтвердження, підготовка і ресурси показані окремо. ${meta.eventSoonSemantics ? escapeHtml(meta.eventSoonSemantics) : ''}
+                Підтвердження, підготовка і ресурси показані окремо. Подія, що скоро почнеться, є сигналом для перевірки часу, а не оцінкою готовності бронювання.
             </p>
         `;
     }
@@ -7619,15 +7657,17 @@ const DashboardPage = (() => {
     function renderDashboardTaskSubtasks(task, options = {}) {
         const summary = dashboardTaskSubtaskSummary(task);
         if (!summary.total) return '';
+        const showPreview = options.preview !== false;
         const limit = Math.max(1, Number.parseInt(options.limit, 10) || 3);
         const variant = options.variant || 'widget';
-        const preview = summary.subtasks.slice(0, limit).map(item => `
+        const preview = showPreview ? summary.subtasks.slice(0, limit).map(item => `
             <span class="dashboard-task-subtask ${item.isDone ? 'is-done' : ''}">
                 <span aria-hidden="true">${item.isDone ? '✓' : '•'}</span>
                 ${escapeHtml(item.title)}
             </span>
-        `).join('');
-        const overflow = Math.max(0, summary.total - Math.min(summary.total, summary.subtasks.length, limit));
+        `).join('') : '';
+        const overflow = showPreview ? Math.max(0, summary.total - Math.min(summary.total, summary.subtasks.length, limit)) : 0;
+        const detailHref = task.id ? `/tasks?open=${encodeURIComponent(task.id)}` : '/tasks';
         return `
             <div class="dashboard-task-subtasks ${escapeHtml(variant)}" aria-label="Підзадачі ${summary.done} з ${summary.total}">
                 <div class="dashboard-task-subtasks-head">
@@ -7635,7 +7675,7 @@ const DashboardPage = (() => {
                     <strong>${summary.done}/${summary.total}${summary.progress !== null ? ` · ${summary.progress}%` : ''}</strong>
                 </div>
                 <div class="dashboard-task-subtasks-bar" aria-hidden="true"><span style="width:${Math.max(0, Math.min(100, summary.progress || 0))}%"></span></div>
-                ${preview ? `<div class="dashboard-task-subtask-list">${preview}${overflow ? `<span class="dashboard-task-subtask is-more">+${overflow}</span>` : ''}</div>` : '<div class="dashboard-task-subtask-list"><span class="dashboard-task-subtask is-more">деталі на сторінці задачі</span></div>'}
+                ${preview ? `<div class="dashboard-task-subtask-list">${preview}${overflow ? `<span class="dashboard-task-subtask is-more">+${overflow}</span>` : ''}</div>` : `<div class="dashboard-task-subtask-list"><a class="dashboard-task-subtask-more" href="${escapeHtml(detailHref)}">Деталі підзадач →</a></div>`}
             </div>
         `;
     }
@@ -7706,6 +7746,17 @@ const DashboardPage = (() => {
         const inFocus = Number(task.focusRank ?? task.focus_rank ?? 0) > 0;
         const error = dashboardTaskActionError(id);
         const completeLabel = pendingComplete ? 'Виконується…' : (error ? 'Повторити' : 'Виконати');
+        const focusButton = inFocus ? '' : `
+                <button type="button"
+                        class="focus-task-action-btn secondary"
+                        data-dashboard-task-action="focus"
+                        data-dashboard-task-id="${id}"
+                        onclick="DashboardPage.focusDashboardTask(${id}, this, event)"
+                        onpointerdown="event.stopPropagation()"
+                        onmousedown="event.stopPropagation()"
+                        ${pendingFocus ? 'disabled aria-busy="true"' : ''}>
+                    ${pendingFocus ? 'Додаю…' : 'У фокус'}
+                </button>`;
         return `
             <div class="focus-task-action-row">
                 <button type="button"
@@ -7719,17 +7770,7 @@ const DashboardPage = (() => {
                         ${pendingComplete ? 'disabled aria-busy="true"' : ''}>
                     ${escapeHtml(completeLabel)}
                 </button>
-                <button type="button"
-                        class="focus-task-action-btn secondary"
-                        data-dashboard-task-action="focus"
-                        data-dashboard-task-id="${id}"
-                        onclick="DashboardPage.focusDashboardTask(${id}, this, event)"
-                        onpointerdown="event.stopPropagation()"
-                        onmousedown="event.stopPropagation()"
-                        ${pendingFocus || inFocus ? 'disabled' : ''}
-                        ${pendingFocus ? 'aria-busy="true"' : ''}>
-                    ${pendingFocus ? 'Додаю…' : (inFocus ? 'У фокусі' : 'У фокус')}
-                </button>
+${focusButton}
                 <button type="button"
                         class="focus-task-action-btn secondary"
                         data-dashboard-task-action="snooze"
@@ -7754,7 +7795,7 @@ const DashboardPage = (() => {
         const items = visibleTasks.map(t => {
             const deadline = t.deadline ? formatDeadline(t.deadline) : '';
             const priorityCls = t.priority || 'medium';
-            const subtaskPreview = renderDashboardTaskSubtasks(t, { variant: 'widget', limit: 1 });
+            const subtaskPreview = renderDashboardTaskSubtasks(t, { variant: 'widget-summary', preview: false });
             const action = renderFocusTaskActions(t);
             return `<div class="widget-task-item">
                 <div class="widget-task-icon ${priorityCls}"></div>
@@ -10535,7 +10576,7 @@ const DashboardPage = (() => {
         const diffMs = d - now;
         const diffHours = Math.round(diffMs / 3600000);
 
-        if (diffHours < 0) return 'Протерм.';
+        if (diffHours < 0) return 'строк минув';
         if (diffHours < 1) return `${Math.round(diffMs / 60000)} хв`;
         if (diffHours < 24) return `${diffHours} год`;
         return d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });

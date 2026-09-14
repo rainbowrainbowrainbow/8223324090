@@ -99,8 +99,10 @@ test('dashboard event risk summary is visible-scope, explainable, and booking-li
         assert.equal(data.data.meta.visibleScopeOnly, true);
         assert.equal(data.data.meta.bookingVisibilityBoundary, 'canonical object-level booking visibility scope');
         assert.match(data.data.meta.bookingVisibilityScopeSource, /booking-operational|full-role/);
-        assert.match(data.data.meta.eventSoonSemantics, /timing review cue/);
+        assert.match(data.data.meta.eventSoonSemantics, /сигналом для перевірки часу/);
         assert.ok(data.data.cards.some(card => card.key === 'booking_linked_overdue_prep' && /source_type=booking/.test(card.why)));
+        assert.ok(data.data.cards.some(card => card.key === 'resource_warnings' && card.label === 'Ресурси не призначені сьогодні'));
+        assert.doesNotMatch(data.data.cards.map(card => card.label).join(' '), /Resource warnings|preliminary|prep-/);
 
         const prepQuery = queries.find(query => /FROM tasks t JOIN bookings b/i.test(query.text));
         assert.ok(prepQuery, 'summary must derive prep readiness only from booking-linked tasks');

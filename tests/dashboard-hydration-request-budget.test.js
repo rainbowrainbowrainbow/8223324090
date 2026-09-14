@@ -285,10 +285,11 @@ test('quick stats renders truthful labels, period, business context, and stale l
     await h.api.loadWidgetData('quick_stats');
     const text = h.dom.window.document.getElementById('widget-quick_stats').textContent;
     assert.match(text, /Задачі в роботі/);
-    assert.match(text, /Вартість підтв\. бронювань/);
-    assert.match(text, /сьогодні, 2026-09-14/);
-    assert.match(text, /event genix/);
-    assert.match(text, /без контакту >48 год: 6/);
+    assert.match(text, /Вартість бронювань/);
+    assert.match(text, /Сьогодні/);
+    assert.match(text, /Event Genix/);
+    assert.match(text, /Без контакту понад 48 год: 6/);
+    assert.doesNotMatch(text, /2026-09-14|event genix|підтв\./);
     assert.doesNotMatch(text, /Виручка/);
     assert.doesNotMatch(text, /прибут/i);
     h.dom.window.close();
@@ -472,7 +473,9 @@ test('my focus keeps the first screen to three tasks and sends overflow to detai
     const container = harness.dom.window.document.getElementById('widget-my_focus');
     assert.equal(container.querySelectorAll('.widget-task-item').length, 3);
     assert.match(container.textContent, /Ще 1 у фокусі/);
-    assert.equal(container.querySelectorAll('.dashboard-task-subtask:not(.is-more)').length, 1);
+    assert.equal(container.querySelectorAll('.dashboard-task-subtask:not(.is-more)').length, 0);
+    assert.equal(container.querySelectorAll('.dashboard-task-subtask-more[href^="/tasks?open="]').length, 1);
+    assert.match(container.textContent, /Деталі підзадач/);
     harness.dom.window.close();
 });
 

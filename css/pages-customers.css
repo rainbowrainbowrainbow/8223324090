@@ -298,8 +298,10 @@ html[data-theme="dark"] .customer-list-row:focus-visible {
         background: transparent;
     }
 
-    .customer-list-table {
+    .crm-table.customer-list-table {
         display: block;
+        width: 100%;
+        max-width: 100%;
         min-width: 0;
         border-collapse: separate;
         background: transparent;
@@ -319,6 +321,8 @@ html[data-theme="dark"] .customer-list-row:focus-visible {
 
     .customer-list-table tbody {
         display: grid;
+        width: 100%;
+        max-width: 100%;
         gap: 8px;
     }
 
@@ -329,7 +333,10 @@ html[data-theme="dark"] .customer-list-row:focus-visible {
             "identity phone"
             "last visits";
         gap: 8px 10px;
+        width: 100%;
+        max-width: 100%;
         min-height: 72px;
+        box-sizing: border-box;
         padding: 12px;
         border: 1px solid var(--gray-100);
         border-radius: 14px;

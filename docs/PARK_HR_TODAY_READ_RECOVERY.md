@@ -44,11 +44,19 @@ tests, frontend tests and the existing Today browser smoke cover the recovery.
 
 The initial targeted tests reproduced two failures: missing Today access and
 missing Today response projection. After the backend fix, all 15 access/projection
-tests passed on Node 22.23.1 / npm 10.9.8. Production delivery additionally requires
-the exact candidate SHA's GitHub CI, manual Railway helper, exact version proof
-and read-only live Today plus schedule regression QA.
+tests passed on Node 22.23.1 / npm 10.9.8. The complete local `npm test` also
+passed after integrating the concurrent Dashboard release. Its recovery suite
+contains 45 passing tests, including six Today frontend tests and seven actual
+Today router tests. The full existing Today Chromium smoke plus the new recovery,
+filters, counters, error/retry and desktop/mobile scenarios passed; synthetic
+screenshots were inspected. Production delivery additionally requires the exact
+candidate SHA's GitHub CI, manual Railway helper, exact version proof and
+read-only live Today plus schedule regression QA.
 
-The candidate worktree starts at the live `48f03e9b9ff3aa0c13a935fe324fa675ea47995b`.
+The candidate worktree started at `48f03e9b9ff3aa0c13a935fe324fa675ea47995b`.
+The concurrent production Dashboard release `0.81.168` at
+`44e9a2cdb3bf27010021f21b4e71549b8acd5fb4` was merged without conflicts; its
+changes are preserved. The functional Today commit is `f2ee9c212`.
 No migration rollback is needed. A functional rollback should revert only this
 follow-up through a new reviewed patch release, preserving the previous schedule
 recovery and shared production history.

@@ -1671,6 +1671,12 @@ const Sidebar = (() => {
         return href ? MAYSTERNYA_SIDEBAR_HREFS.has(href) : true;
     }
 
+    function _sidebarUserHasDirectorNavigation(user = _getCurrentSidebarUser()) {
+        if (window.RolePreview?.getPreviewRole?.()) return false;
+        if (_getSidebarPrimaryRole(user) !== 'director') return false;
+        return !user?.accessContext?.status || user.accessContext.status === 'ready';
+    }
+
     function _businessAllowsSidebarItem(item = {}, user = _getCurrentSidebarUser()) {
         const moduleId = _businessModuleForItem(item);
         const api = window.CrmBusinessContext;
@@ -1683,6 +1689,9 @@ const Sidebar = (() => {
             if (item.href === '/maysternya-doli' && current !== 'maysternya_doli') return creatorSurface;
         }
         if (creatorSurface && current !== 'maysternya_doli') return true;
+        // Directors retain the same page navigation as Creator. Page permissions
+        // and server-side business/action guards still decide what can be opened.
+        if (current && current !== 'maysternya_doli' && _sidebarUserHasDirectorNavigation(user)) return true;
         return api.hasModule(current, moduleId);
     }
 

@@ -3969,7 +3969,7 @@ function createFakePool() {
             if (/SELECT COALESCE\(SUM\((?:b\.)?price\), 0\) as total FROM bookings(?: b)? WHERE (?:b\.)?date = \$1 AND (?:b\.)?status = 'confirmed'/i.test(text)) {
                 return { rows: [{ total: 0 }] };
             }
-            if (/SELECT COALESCE\(SUM\(amount\), 0\) as total FROM finance_transactions WHERE date = \$1 AND type = 'expense'/i.test(text)) {
+            if (/SELECT COALESCE\(SUM\((?:ft\.)?amount\), 0\) as total FROM finance_transactions(?: ft)? WHERE (?:ft\.)?date = \$1 AND (?:ft\.)?type = 'expense'/i.test(text)) {
                 return { rows: [{ total: 0 }] };
             }
             if (/SELECT COUNT\(\*\) as count FROM bookings(?: b)? WHERE (?:b\.)?date = \$1 AND (?:b\.)?status != 'cancelled'/i.test(text)) {
@@ -6564,7 +6564,13 @@ describe('route-level API safety smoke', () => {
         const accountantFinance = await request('GET', '/api/dashboard/widgets/finance_today', undefined, withAuth({}, 'accountant'));
         assert.equal(accountantFinance.status, 200, JSON.stringify(accountantFinance.data));
         assert.equal(accountantFinance.data.success, true);
-        assert.equal(accountantFinance.data.data.profit, 0);
+        assert.equal(accountantFinance.data.data.bookingValue, 0);
+        assert.equal(accountantFinance.data.data.expenses, 0);
+        assert.equal(accountantFinance.data.data.profit, null);
+        assert.deepEqual(accountantFinance.data.data.meta.sourceStates, {
+            bookingValue: 'ready', expenses: 'ready', bookings: 'ready'
+        });
+        assert.equal(accountantFinance.data.data.meta.partial, false);
     });
 
     it('supports HR vacancy resume intake with pasted text, file upload, and download metadata', async () => {

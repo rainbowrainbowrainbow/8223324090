@@ -244,6 +244,8 @@ function leadsHarness() {
         let currentTypeFilter = '';
         let currentDateFilter = '';
         let currentPipelineStage = '';
+        let currentLeadAttentionFilter = '';
+        let currentLeadLifecycleFilter = '';
         let leadsData = [];
         let leadLoadSeq = 1;
         const LEAD_TABLE_PAGE_SIZE = 100;
@@ -263,6 +265,8 @@ function leadsHarness() {
                 if ('type' in values) currentTypeFilter = values.type;
                 if ('date' in values) currentDateFilter = values.date;
                 if ('stage' in values) currentPipelineStage = values.stage;
+                if ('attention' in values) currentLeadAttentionFilter = values.attention;
+                if ('lifecycle' in values) currentLeadLifecycleFilter = values.lifecycle;
                 if ('leads' in values) leadsData = values.leads;
                 if ('tablePage' in values) leadPagination = values.tablePage;
                 if ('kanbanPages' in values) leadKanbanPagination = values.kanbanPages;

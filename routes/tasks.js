@@ -10,6 +10,8 @@ const {
     parseOptionalRevenueAmount
 } = require('../services/revenueAccessPolicy');
 const { buildTaskPaginationMetadata } = require('../services/taskPagination');
+const { taskKpiCanonicalOverdueSql } = require('../services/taskPerformancePolicy');
+const { getVisibleBookingScope } = require('../services/bookingVisibility');
 
 // v39.8: Security — require authentication for all task endpoints
 router.use(authenticateToken);
@@ -1320,7 +1322,7 @@ router.get('/', async (req, res) => {
             date_from, date_to, page, limit: lim, mine, private: privateOnly, focus,
             related_entity_type, relatedEntityType, related_entity_id, relatedEntityId, source_module, sourceModule,
             source_entity_type, sourceEntityType, source_entity_id, sourceEntityId, pack_id, packId, pack_status, packStatus,
-            view, include_duplicates, includeDuplicates, pagination, paginated, priority, source, search, q,
+            view, include_duplicates, includeDuplicates, pagination, paginated, priority, source, source_type, overdue, dashboardFilter, search, q,
             archive_system, archiveSystem, system_archive, systemArchive
         } = req.query;
         const conditions = [];
@@ -1518,6 +1520,28 @@ router.get('/', async (req, res) => {
         if (req.user) {
             const visibility = buildTaskVisibilityScope(req.user, params, 't');
             if (visibility) conditions.push(visibility.replace(/^AND\s+/i, ''));
+            idx = params.length + 1;
+        }
+
+        // Dashboard preparation drilldown uses the same canonical overdue and
+        // linked-booking visibility predicates as its aggregate count.
+        if (source_type === 'booking' && isTruthy(overdue)) {
+            const bookingVisibility = getVisibleBookingScope(req.user, params, 'b');
+            const bookingBusinessScope = pushTaskBusinessScopeCondition(params, businessScope, 'b');
+            conditions.push(taskKpiCanonicalOverdueSql('t'));
+            conditions.push(`EXISTS (
+                SELECT 1 FROM bookings b
+                WHERE t.source_type = 'booking' AND t.source_id = b.id::text
+                  AND COALESCE(b.status, 'confirmed') <> 'cancelled'
+                  ${bookingVisibility.sql}
+                  AND ${bookingBusinessScope}
+            )`);
+            idx = params.length + 1;
+        }
+
+        if (dashboardFilter === 'my-overdue') {
+            conditions.push(taskKpiCanonicalOverdueSql('t'), buildTaskOwnerMatch(req.user, params, 't'));
+            conditions.push(`(COALESCE(t.focus_rank, 0) > 0 OR t.scheduled_start_at IS NULL OR t.scheduled_start_at <= NOW())`);
             idx = params.length + 1;
         }
 

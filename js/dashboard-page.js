@@ -344,7 +344,7 @@ const DashboardPage = (() => {
         alerts:         { icon: '🔔', title: 'Сповіщення', minRole: null },
         event_risk_summary: { icon: '⚠️', title: 'Ризики подій', minRole: 'admin' },
         exceptions:     { icon: '🚨', title: 'Що потребує уваги', minRole: 'admin' },
-        leads_new:      { icon: '🔥', title: 'Нові ліди', minRole: 'manager' },
+        leads_new:      { icon: '🔥', title: 'Ліди на етапі «Нові»', minRole: 'manager' },
         funnel:         { icon: '◈', title: 'Воронка', minRole: 'manager' },
         finance_today:  { icon: '💰', title: 'Фінанси сьогодні', minRole: 'senior_manager' },
         weather:        { icon: '🌤', title: 'Погода', minRole: null },
@@ -358,7 +358,7 @@ const DashboardPage = (() => {
         team_tasks:     { icon: '📝', title: 'Задачі команди', minRole: 'manager' },
         task_health:    { icon: '🧭', title: 'Стан задач', minRole: 'manager' },
         hr_overview:    { icon: '🏥', title: 'HR дайджест', minRole: 'hr' },
-        director_pnl:   { icon: '💹', title: 'Фінансовий пульс', minRole: 'director' },
+        director_pnl:   { icon: '💹', title: 'Вартість бронювань', minRole: 'director' },
         content_pipeline: { icon: '🎨', title: 'Контент-пайплайн', minRole: 'art_director' },
         operations:     { icon: '⚙️', title: 'Операції', minRole: 'vice_director' },
     };
@@ -409,30 +409,31 @@ const DashboardPage = (() => {
         'alerts'
     ]);
     const DASHBOARD_RECOMMENDED_WIDGET_SETS = {
-        creator: ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'bookings_today', 'staff_today', 'team_online', 'event_risk_summary', 'personal_tasker', 'director_pnl', 'content_pipeline', 'announcements', 'weather', 'currency', 'alerts', 'tasks', 'my_schedule'],
-        director: ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'bookings_today', 'staff_today', 'team_online', 'event_risk_summary', 'task_health', 'director_pnl', 'announcements', 'weather', 'currency', 'alerts'],
-        vice_director: ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'bookings_today', 'staff_today', 'team_online', 'event_risk_summary', 'operations', 'team_tasks', 'announcements', 'weather', 'alerts'],
-        senior_manager: ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'bookings_today', 'staff_today', 'team_tasks', 'task_health', 'event_risk_summary', 'team_online', 'announcements', 'weather', 'alerts'],
-        manager: ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'leads_new', 'bookings_today', 'team_tasks', 'task_health', 'staff_today', 'team_online', 'announcements', 'weather', 'alerts'],
-        admin: ['quick_stats', 'my_focus', 'nearest_event', 'bookings_today', 'staff_today', 'event_risk_summary', 'tasks', 'my_schedule', 'announcements', 'weather', 'alerts', 'catalogs'],
-        hr: ['my_focus', 'nearest_event', 'hr_overview', 'staff_today', 'team_online', 'tasks', 'my_schedule', 'announcements', 'weather', 'alerts'],
-        art_director: ['my_focus', 'nearest_event', 'content_pipeline', 'tasks', 'bookings_today', 'catalogs', 'announcements', 'weather', 'my_schedule', 'alerts', 'quick_stats'],
-        _default: ['my_focus', 'nearest_event', 'tasks', 'my_schedule', 'announcements', 'weather', 'alerts']
+        creator: ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'bookings_today', 'event_risk_summary', 'staff_today', 'team_tasks'],
+        director: ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'bookings_today', 'event_risk_summary', 'staff_today', 'team_tasks'],
+        vice_director: ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'bookings_today', 'event_risk_summary', 'staff_today', 'team_tasks'],
+        senior_manager: ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'leads_new', 'bookings_today'],
+        manager: ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'leads_new', 'bookings_today'],
+        admin: ['quick_stats', 'my_focus', 'nearest_event', 'bookings_today', 'event_risk_summary', 'staff_today'],
+        hr: ['my_focus', 'hr_overview', 'staff_today', 'team_online'],
+        art_director: ['my_focus', 'nearest_event', 'content_pipeline', 'tasks', 'bookings_today'],
+        _default: ['my_focus', 'nearest_event', 'my_schedule', 'bookings_today']
     };
+
     const DASHBOARD_WIDGET_SIZES = {
         quick_stats: 'full',
         my_focus: 'wide',
         personal_tasker: 'wide',
-        nearest_event: 'side',
+        nearest_event: 'standard',
         funnel: 'standard',
         bookings_today: 'standard',
         staff_today: 'standard',
         team_online: 'standard',
         event_risk_summary: 'standard',
         announcements: 'standard',
-        weather: 'compact',
-        currency: 'compact',
-        alerts: 'compact'
+        weather: 'standard',
+        currency: 'standard',
+        alerts: 'standard'
     };
 
     const ROLE_DASHBOARD_BASE_WIDGETS = {
@@ -891,7 +892,8 @@ const DashboardPage = (() => {
     }
 
     function getWidgetPresentationSize(widgetKey) {
-        return DASHBOARD_WIDGET_SIZES[widgetKey] || 'standard';
+        const value = _config?.layout?.widgetSizes?.[widgetKey] || DASHBOARD_WIDGET_SIZES[widgetKey];
+        return ['standard', 'wide', 'full'].includes(value) ? value : 'standard';
     }
 
     function roleMeetsMinRole(role, minRole) {
@@ -1177,6 +1179,7 @@ const DashboardPage = (() => {
                 baseRevision: _dashboardServerRevision || null,
                 widgets: patch.widgets || [],
                 layout: {
+                    ...safeObject(patch.layout, {}),
                     presentationMode: 'flat-grid',
                     widgetGridVersion: 1
                 }
@@ -1799,7 +1802,7 @@ const DashboardPage = (() => {
         revealDashboardShell();
         const grid = document.getElementById('dashboardGrid');
         if (grid) {
-            grid.className = 'dashboard-grid dashboard-widget-grid';
+            grid.className = 'dashboard-grid dashboard-widget-grid' + (_layoutEditing ? ' is-layout-editing' : '');
             grid.removeAttribute('aria-hidden');
             grid.innerHTML = `
                 <div class="widget-empty" role="alert" data-dashboard-open-fallback="${escapeHtml(source)}">
@@ -1859,6 +1862,7 @@ const DashboardPage = (() => {
 
     async function loadConfig() {
         if (_dashboardConfigState === 'loading') return;
+        const loadOwner = dashboardConfigOwnerKey();
         _dashboardConfigState = 'loading';
         _dashboardConfigWritable = false;
         _dashboardConfigLoadError = null;
@@ -1869,6 +1873,11 @@ const DashboardPage = (() => {
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             const data = await resp.json();
 
+            if (loadOwner !== dashboardConfigOwnerKey()) {
+                _dashboardConfigState = 'idle';
+                return loadConfig();
+            }
+
             if (!data.success) {
                 throw new Error(data.error || 'Не вдалося завантажити налаштування');
             }
@@ -1878,6 +1887,11 @@ const DashboardPage = (() => {
             _dashboardConfigLoadError = null;
             _boardLegacyUpgradePending = false;
             applyDashboardConfig(data.config);
+            if (data.isDefault === true || data.config?.isDefault === true) {
+                _config.widgets = getRecommendedDashboardWidgets();
+                _config.layout = { ..._config.layout, ...recommendedLayoutMetadata(_config.widgets) };
+            }
+            _dashboardContextFingerprint = dashboardContextFingerprint();
             setBoardRecoveryKey();
             _dashboardLocalRevision = 0;
             _dashboardLastConfirmedRevision = 0;
@@ -1898,7 +1912,9 @@ const DashboardPage = (() => {
         const greetingEl = document.getElementById('dashboardGreeting');
         if (!greetingEl || !AppState.currentUser) return;
 
-        const hour = new Date().getHours();
+        const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+        const contextEl = document.getElementById('dashboardContext');
+        if (contextEl) contextEl.textContent = new Date().toLocaleDateString('uk-UA', { timeZone:'Europe/Kyiv', weekday:'long', day:'numeric', month:'long' }) + ' · ' + formatDashboardBusinessScopeLabel({});
         let greeting = 'Привіт';
         if (hour < 6) greeting = 'Доброї ночі';
         else if (hour < 12) greeting = 'Доброго ранку';
@@ -3623,7 +3639,8 @@ const DashboardPage = (() => {
     }
 
     function roleDisplayName(role) {
-        return (typeof ROLE_NAMES !== 'undefined' && ROLE_NAMES[role]) ? ROLE_NAMES[role] : role;
+        const labels = { creator: 'Творець', director: 'Керівник', vice_director: 'Заступник керівника', senior_manager: 'Старший менеджер', manager: 'Менеджер', admin: 'Адміністратор', hr: 'HR', art_director: 'Артдиректор', animator: 'Аніматор', employee: 'Співробітник' };
+        return (typeof ROLE_NAMES !== 'undefined' && ROLE_NAMES[role]) || labels[role] || role;
     }
 
     function getRoleSceneWidgetPool(role, scene) {
@@ -3732,13 +3749,21 @@ const DashboardPage = (() => {
             <section class="widget-card scene-tone-${escapeHtml(tone)}" data-widget="${safeKey}" data-widget-size="${escapeHtml(size)}">
                 <div class="widget-header">
                     <button type="button" class="widget-drag-handle" title="Перетягніть віджет або змініть порядок клавішами зі стрілками" aria-label="Перемістити: ${escapeHtml(def.title)}" aria-describedby="dashboardWidgetHint">⠿</button>
-                    <div class="widget-title">
-                        <span class="widget-title-icon">${escapeHtml(def.icon)}</span>
+                    <h2 class="widget-title" tabindex="-1">
+                        <span class="widget-title-icon">${dashboardWidgetIcon(widgetKey)}</span>
                         ${escapeHtml(def.title)}
-                    </div>
+                    </h2>
                     <div class="widget-actions">
                         <button class="widget-action-btn" onclick="DashboardPage.refreshWidget('${escapeJsString(widgetKey)}')" title="Оновити" aria-label="Оновити">↻</button>
                     </div>
+                </div>
+                <div class="widget-layout-controls">
+                    <button type="button" onclick="DashboardPage.moveLayoutWidget('${safeKey}', -1)" aria-label="Вище: ${escapeHtml(def.title)}">Вище</button>
+                    <button type="button" onclick="DashboardPage.moveLayoutWidget('${safeKey}', 1)" aria-label="Нижче: ${escapeHtml(def.title)}">Нижче</button>
+                    <label class="widget-layout-size">Розмір <select aria-label="Розмір: ${escapeHtml(def.title)}" onchange="DashboardPage.resizeLayoutWidget('${safeKey}', this.value)">
+                        ${[['standard', 'Звичайний'], ['wide', 'Широкий'], ['full', 'На всю ширину']].map(([value, label]) => '<option value="' + value + '"' + (size === value ? ' selected' : '') + '>' + label + '</option>').join('')}
+                    </select></label>
+                    <button type="button" onclick="DashboardPage.hideLayoutWidget('${safeKey}')">Приховати</button>
                 </div>
                 <div class="widget-body" id="widget-${safeKey}">
                     <div class="widget-loading">Завантаження...</div>
@@ -3746,6 +3771,103 @@ const DashboardPage = (() => {
             </section>
         `;
     }
+
+    function dashboardWidgetIcon(key) {
+        const paths = {
+            my_focus: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M17 7l4-4M17 3v4h4"/>',
+            nearest_event: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-13 5h4"/>',
+            quick_stats: '<path d="M4 20V10m8 10V4m8 16v-7"/>',
+            funnel: '<path d="M3 4h18l-7 8v7l-4 2v-9z"/>',
+            tasks: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v4H9m0 6 2 2 4-4"/>',
+            staff_today: '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m1-16a3 3 0 0 1 0 6m3 10v-3a6 6 0 0 0-3-5"/>',
+            event_risk_summary: '<path d="m12 3 10 18H2zM12 9v5m0 3v1"/>',
+            weather: '<path d="M6 19a4 4 0 1 1 1-8 6 6 0 0 1 11 1 4 4 0 0 1 0 8H6z"/>',
+            currency: '<path d="M16 6H9a4 4 0 0 0 0 8h6a4 4 0 0 1 0 8H6M12 2v20"/>',
+            announcements: '<path d="m3 9 15-5v16L3 15zm3 7 2 6m13-12v4"/>'
+        };
+        const aliases = { bookings_today: 'nearest_event', my_schedule: 'nearest_event', team_tasks: 'tasks', personal_tasker: 'tasks', task_health: 'tasks', team_online: 'staff_today', hr_overview: 'staff_today', leads_new: 'funnel', alerts: 'event_risk_summary', exceptions: 'event_risk_summary', finance_today: 'quick_stats', director_pnl: 'quick_stats', operations: 'quick_stats' };
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (paths[key] || paths[aliases[key]] || '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>') + '</svg>';
+    }
+
+    function recommendedLayoutMetadata(widgets) {
+        const priority = ['my_focus', 'nearest_event', 'quick_stats'];
+        return {
+            widgetSizes: Object.fromEntries(widgets.map(key => [key, DASHBOARD_WIDGET_SIZES[key] || 'standard'])),
+            mobileOrder: [...priority.filter(key => widgets.includes(key)), ...widgets.filter(key => !priority.includes(key))]
+        };
+    }
+
+    function isRecommendedMobileLayout() {
+        return window.matchMedia?.('(max-width: 767px)').matches && Array.isArray(_config?.layout?.mobileOrder);
+    }
+
+    function syncDashboardMobileOrder(grid = document.getElementById('dashboardGrid')) {
+        if (!grid || !_config || _widgetLayoutSaving) return;
+        const widgets = normalizeDashboardWidgets(_config.widgets || []);
+        const order = isRecommendedMobileLayout()
+            ? [..._config.layout.mobileOrder.filter(key => widgets.includes(key)), ...widgets.filter(key => !_config.layout.mobileOrder.includes(key))]
+            : widgets;
+        restoreWidgetOrder(grid, order);
+    }
+
+    function toggleLayoutEditing() {
+        if (!isWidgetConfigReady()) return;
+        _layoutEditing = !_layoutEditing;
+        document.getElementById('dashboardGrid')?.classList.toggle('is-layout-editing', _layoutEditing);
+        const button = document.getElementById('dashboardCustomizeButton');
+        if (button) { button.textContent = _layoutEditing ? 'Готово' : 'Налаштувати'; button.setAttribute('aria-pressed', String(_layoutEditing)); }
+        const hint = document.getElementById('dashboardWidgetHint');
+        if (hint) hint.hidden = !_layoutEditing;
+        setWidgetLayoutStatus(_layoutEditing ? 'Перетягніть віджети або використайте «Вище / Нижче». Зміни зберігаються автоматично.' : '');
+    }
+
+    function moveLayoutWidget(key, offset) {
+        if (!_layoutEditing || _widgetLayoutSaving) return;
+        const grid = document.getElementById('dashboardGrid');
+        const cards = Array.from(grid?.querySelectorAll('.widget-card[data-widget]') || []);
+        const index = cards.findIndex(card => card.dataset.widget === key);
+        const target = cards[index + offset];
+        if (index < 0 || !target) return;
+        grid.insertBefore(cards[index], offset > 0 ? target.nextSibling : target);
+        persistWidgetGridOrder(grid);
+    }
+
+    async function saveLayoutChange(patch, restoreFocusKey) {
+        if (_widgetLayoutSaving || !isWidgetConfigReady()) return;
+        const previous = deepClone(_config);
+        const owner = dashboardConfigOwnerKey();
+        _widgetLayoutSaving = true;
+        setWidgetLayoutStatus('Зберігаємо вигляд…', 'saving');
+        try {
+            const result = await saveDashboardConfig({ widgets: _config.widgets, ...patch, widgetsOnly: true });
+            if (owner !== dashboardConfigOwnerKey()) return;
+            if (!result?.success || result.staleLocalChanges) throw new Error(result?.error || 'Не вдалося зберегти вигляд');
+            renderWidgets();
+            setWidgetLayoutStatus('Вигляд збережено');
+        } catch (err) {
+            if (owner !== dashboardConfigOwnerKey()) return;
+            applyDashboardConfig(previous);
+            renderWidgets();
+            setWidgetLayoutStatus('Не збережено. Попередній вигляд відновлено — спробуйте ще раз.', 'error');
+        } finally {
+            _widgetLayoutSaving = false;
+            syncDashboardMobileOrder();
+            const card = Array.from(document.querySelectorAll('.widget-card[data-widget]')).find(item => item.dataset.widget === restoreFocusKey);
+            (card?.querySelector('.widget-layout-controls button') || document.getElementById('dashboardCustomizeButton'))?.focus({ preventScroll: true });
+        }
+    }
+
+    function resizeLayoutWidget(key, value) {
+        if (!_layoutEditing || !canUseWidget(key) || !['standard', 'wide', 'full'].includes(value)) return;
+        return saveLayoutChange({ layout: { widgetSizes: { ...(_config.layout.widgetSizes || {}), [key]: value } } }, key);
+    }
+
+    function hideLayoutWidget(key) {
+        if (!_layoutEditing || !canUseWidget(key)) return;
+        return saveLayoutChange({ widgets: _config.widgets.filter(item => item !== key) }, key);
+    }
+
+    window.matchMedia?.('(max-width: 767px)').addEventListener?.('change', () => syncDashboardMobileOrder());
 
     function getWritingZoneStorageKey(zoneId) {
         const user = AppState.currentUser || {};
@@ -3809,10 +3931,14 @@ const DashboardPage = (() => {
         if (renderedCount === 0) {
             grid.innerHTML = '<div class="widget-empty">Оберіть потрібні віджети для свого робочого дня.<br><button type="button" class="dashboard-btn primary" onclick="DashboardPage.openWidgetManager()">Додати віджет</button></div>';
         }
+        syncDashboardMobileOrder(grid);
         initWidgetGridDragging(grid);
     }
 
     let _widgetLayoutSaving = false;
+    let _layoutEditing = false;
+    let _settingsRecommendedPending = false;
+    let _dashboardContextFingerprint = '';
     let _widgetLayoutStatusTimer = null;
     let _widgetDragCleanup = null;
 
@@ -3844,7 +3970,9 @@ const DashboardPage = (() => {
 
     async function persistWidgetGridOrder(grid) {
         if (_widgetLayoutSaving) return;
-        const previous = [..._config.widgets];
+        const owner = dashboardConfigOwnerKey();
+        const mobile = isRecommendedMobileLayout();
+        const previous = [...(mobile ? _config.layout.mobileOrder : _config.widgets)];
         const visible = Array.from(grid.querySelectorAll('.widget-card[data-widget]')).map(card => card.dataset.widget);
         const visibleKeys = new Set(visible);
         let position = 0;
@@ -3855,12 +3983,16 @@ const DashboardPage = (() => {
         grid.setAttribute('aria-busy', 'true');
         setWidgetLayoutStatus('Зберігаємо порядок…', 'saving');
         try {
-            const result = await saveDashboardConfig({ widgets: next, widgetsOnly: true });
+            const result = await saveDashboardConfig({ widgets: mobile ? _config.widgets : next, layout: mobile ? { mobileOrder: next } : {}, widgetsOnly: true });
+            if (owner !== dashboardConfigOwnerKey()) return;
             if (!result?.success) throw new Error(result?.error || 'Не вдалося зберегти порядок');
-            _config.widgets = next;
+            if (mobile) _config.layout.mobileOrder = next;
+            else _config.widgets = next;
             setWidgetLayoutStatus('Порядок збережено');
         } catch (err) {
-            _config.widgets = previous;
+            if (owner !== dashboardConfigOwnerKey()) return;
+            if (mobile) _config.layout.mobileOrder = previous;
+            else _config.widgets = previous;
             restoreWidgetOrder(grid, previous);
             setWidgetLayoutStatus('Не збережено. Попередній порядок відновлено — спробуйте ще раз.', 'error');
             notifyDashboardIssue(err.message || 'Не вдалося зберегти порядок віджетів');
@@ -3876,7 +4008,7 @@ const DashboardPage = (() => {
                 const offsets = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 };
                 if (!(event.key in offsets)) return;
                 event.preventDefault();
-                if (_widgetLayoutSaving) return;
+                if (_widgetLayoutSaving || !_layoutEditing) return;
                 const card = handle.closest('.widget-card');
                 const cards = Array.from(grid.querySelectorAll('.widget-card[data-widget]'));
                 const index = cards.indexOf(card);
@@ -3887,7 +4019,7 @@ const DashboardPage = (() => {
                 persistWidgetGridOrder(grid);
             });
             handle.addEventListener('pointerdown', event => {
-                if (event.button !== 0 || event.isPrimary === false || _widgetLayoutSaving) return;
+                if (event.button !== 0 || event.isPrimary === false || _widgetLayoutSaving || !_layoutEditing) return;
                 event.preventDefault();
                 _widgetDragCleanup?.();
                 const card = handle.closest('.widget-card');
@@ -3982,7 +4114,7 @@ const DashboardPage = (() => {
             const label = window.RoleShell?.getRoleLabel?.(role) || roleDisplayName(role);
             return `<button type="button" class="dashboard-role-preview-option${isActive ? ' active' : ''}" data-dashboard-role-preview-role="${escapeHtml(role)}" role="menuitem">
                 <span>${escapeHtml(label)}</span>
-                <em>${isReal ? 'реальна роль' : 'preview'}</em>
+                <em>${isReal ? 'реальна роль' : 'перегляд'}</em>
             </button>`;
         }).join('');
         menu.innerHTML = `
@@ -4001,14 +4133,16 @@ const DashboardPage = (() => {
         `;
     }
 
-    function closeDashboardRolePreviewMenu() {
+    function closeDashboardRolePreviewMenu(event) {
         const menu = document.getElementById('dashboardRolePreviewMenu');
         const button = document.getElementById('dashboardRolePreviewButton');
         if (menu) menu.classList.add('hidden');
         if (button) button.setAttribute('aria-expanded', 'false');
+        document.removeEventListener('keydown', handleDashboardRolePreviewKeydown);
+        if (event?.key === 'Escape') button?.focus({ preventScroll: true });
         document.removeEventListener('click', handleDashboardRolePreviewOutsideClick, true);
         window.removeEventListener('resize', closeDashboardRolePreviewMenu);
-        window.removeEventListener('scroll', closeDashboardRolePreviewMenu, true);
+        window.removeEventListener('scroll', handleDashboardRolePreviewScroll, true);
     }
 
     function openDashboardRolePreviewMenu() {
@@ -4020,9 +4154,20 @@ const DashboardPage = (() => {
         renderDashboardRolePreviewMenu();
         menu.classList.remove('hidden');
         button.setAttribute('aria-expanded', 'true');
+        document.addEventListener('keydown', handleDashboardRolePreviewKeydown);
+        menu.querySelector('button')?.focus({ preventScroll: true });
         document.addEventListener('click', handleDashboardRolePreviewOutsideClick, true);
         window.addEventListener('resize', closeDashboardRolePreviewMenu, { once: true });
-        window.addEventListener('scroll', closeDashboardRolePreviewMenu, { once: true, capture: true });
+        window.addEventListener('scroll', handleDashboardRolePreviewScroll, { capture: true });
+    }
+
+    function handleDashboardRolePreviewKeydown(event) {
+        if (event.key === 'Escape') { event.preventDefault(); closeDashboardRolePreviewMenu(event); }
+    }
+
+    function handleDashboardRolePreviewScroll(event) {
+        const menu = document.getElementById('dashboardRolePreviewMenu');
+        if (!menu?.contains(event.target)) closeDashboardRolePreviewMenu();
     }
 
     function toggleRolePreviewMenu(event) {
@@ -6686,7 +6831,7 @@ const DashboardPage = (() => {
     }
 
     function formatDashboardBusinessScopeLabel(meta = {}) {
-        const scope = meta.businessScope || {};
+        const scope = meta.businessScope || dashboardBusinessScopeKey();
         const selected = Array.isArray(scope.selectedContexts)
             ? scope.selectedContexts.map(value => String(value || '').trim()).filter(Boolean)
             : [];
@@ -6731,16 +6876,23 @@ const DashboardPage = (() => {
             || { available: false, message: 'Очікуємо перевірку доступу до каталогів.' };
     }
 
-    function invalidateLegacyCatalogWidgets() {
+    function refreshLegacyCatalogWidgets() {
+        return Promise.allSettled(['catalogs', 'content_pipeline'].flatMap(type =>
+            dashboardWidgetContainers(type).map(container => loadWidgetData(type, container))
+        ));
+    }
+
+    function invalidateLegacyCatalogWidgets(options = {}) {
         legacyCatalogWidgetGeneration++;
         for (const type of ['catalogs', 'content_pipeline']) {
             delete _widgetData[type];
+            delete _widgetDataMeta[type];
             _widgetDataContextKeys.delete(type);
-            const container = document.getElementById(`widget-${type}`);
-            if (!container) continue;
-            container.innerHTML = '<div class="widget-empty" role="status">Оновлюємо доступ до даних…</div>';
-            void loadWidgetData(type, container, { force: true });
+            dashboardWidgetContainers(type).forEach(container => {
+                container.innerHTML = '<div class="widget-empty" role="status">Оновлюємо доступ до даних…</div>';
+            });
         }
+        return options.refresh === false ? Promise.resolve([]) : refreshLegacyCatalogWidgets();
     }
 
     function dashboardWidgetRequestContext(type) {
@@ -6827,7 +6979,32 @@ const DashboardPage = (() => {
     }
 
     function renderWidgetData(type, data, container, options = {}) {
+        const sourceStates = data?.meta?.sourceStates || {};
+        const unavailable = Object.entries(sourceStates).filter(([, state]) => state !== 'ready' && state !== 'ok');
+        const knownPartialEvent = type === 'nearest_event' && data?.event && sourceStates.bookings === 'ready';
+        if (unavailable.length && !knownPartialEvent && !['funnel', 'content_pipeline', 'finance_today', 'director_pnl'].includes(type)) {
+            container.innerHTML = renderWidgetStateMarkup(type, 'error', {
+                message: 'Частина джерел недоступна. Показники не можна підтвердити — повторіть оновлення.',
+                compact: true
+            });
+            return;
+        }
         renderWidgetContent(type, data || {}, container);
+        // Legacy widget renderers use inline styles; keep their text on the scoped theme scale.
+        container.querySelectorAll('[style]').forEach(element => {
+            if (element.style.fontSize && Number.parseFloat(element.style.fontSize) < 12) element.style.fontSize = '12px';
+            if (element.style.color === 'rgb(245, 158, 11)') element.style.color = 'var(--dash-warning)';
+            if (element.style.color === 'rgb(239, 68, 68)') element.style.color = 'var(--dash-danger)';
+        });
+        container.querySelectorAll('.stat-value, .personal-tasker-metric strong, .finance-stat-value').forEach(value => {
+            if (/^0(?:[.,]0+)?(?:\s*₴)?$/.test(value.textContent.trim())) value.style.color = 'var(--dash-text)';
+        });
+        if (unavailable.length) {
+            container.insertAdjacentHTML('afterbegin', renderWidgetStateMarkup(type, 'error', {
+                message: 'Показано доступну частину даних. Деякі джерела недоступні.',
+                compact: true
+            }));
+        }
         appendWidgetRefreshMeta(type, container, options);
         if (options.stale) {
             container.insertAdjacentHTML('afterbegin', renderWidgetStateMarkup(type, 'stale', {
@@ -6846,7 +7023,7 @@ const DashboardPage = (() => {
         const safeType = escapeJsString(type);
         const labels = {
             loading: ['Завантаження…', 'Отримую актуальні дані.'],
-            error: ['Не вдалося оновити', 'Це помилка API або мережі, а не порожня статистика.'],
+            error: ['Не вдалося оновити', 'Повторіть оновлення, щоб отримати актуальні показники.'],
             denied: ['Недоступно для ролі', 'Цей віджет не відкривається з поточними правами.'],
             stale: ['Дані можуть бути застарілими', 'Показано останній успішний результат.']
         };
@@ -7103,14 +7280,14 @@ const DashboardPage = (() => {
             const href = dashboardFunnelHref(stage);
             const attentionHref = dashboardFunnelHref(stage, { attention: 'stale_contact_48h' });
             return `
-                <a class="dashboard-funnel-stage-chip${waiting > 0 ? ' needs-action' : ''}" href="${escapeHtml(waiting > 0 ? attentionHref : href)}">
+                <a class="dashboard-funnel-stage-chip${waiting > 0 ? ' needs-action' : ''}" href="${escapeHtml(waiting > 0 ? attentionHref : href)}" title="${waiting > 0 ? 'Без контакту понад 48 год' : 'Усі активні ліди етапу'}">
                     <span>${escapeHtml(dashboardFunnelStageLabel(stage))}</span>
-                    <strong>${waiting}/${count}</strong>
+                    <strong>${waiting > 0 ? waiting : count}</strong>${waiting > 0 ? '<small>без контакту</small>' : ''}
                 </a>
             `;
         }).join('');
         const allFunnelHref = dashboardFunnelHref(null);
-        const waitingHref = dashboardFunnelHref(hotStage || null, { attention: 'stale_contact_48h' });
+        const waitingHref = dashboardFunnelHref(null, { attention: 'stale_contact_48h' });
         const hotStageHref = hotStage ? dashboardFunnelHref(hotStage) : allFunnelHref;
 
         container.innerHTML = `
@@ -7166,6 +7343,7 @@ const DashboardPage = (() => {
     function isDayOrientationSourceReady(type) {
         if (!canUseWidget(type) || !isWidgetDataFresh(type)) return false;
         const data = _widgetData[type];
+        if (data?.meta?.partial || Object.values(data?.meta?.sourceStates || {}).some(state => !['ready', 'ok'].includes(state))) return false;
         if (type === 'nearest_event') return data.event === null || Boolean(data.event && data.preparation && Number.isFinite(data.preparation.totalCount));
         if (type === 'my_focus') return Array.isArray(data.tasks) && Number.isFinite(data.overdueCount) && Number.isFinite(data.waitingCount);
         if (type === 'funnel') return !data.meta?.partial && Number.isFinite(data.meta?.funnelInsights?.waitingAction);
@@ -7224,12 +7402,13 @@ const DashboardPage = (() => {
         } else {
             stageKey = String(stage || '').trim();
         }
-        return dashboardHrefWithParams(baseHref, {
+        return dashboardScopedApiUrl(dashboardHrefWithParams(baseHref, {
             view: 'kanban',
             lead_type: 'quality',
             pipeline_stage: stageKey,
-            attention: options.attention || ''
-        });
+            attention: options.attention || '',
+            lifecycle: 'active'
+        }));
     }
 
     function dashboardFunnelStageLabel(stage = null) {
@@ -7285,51 +7464,58 @@ const DashboardPage = (() => {
         };
     }
 
-    function buildFocusOrientationSignal() {
-        if (!isDayOrientationSourceReady('my_focus')) return null;
-        const focus = _widgetData.my_focus || {};
-        const tasks = Array.isArray(focus.tasks) ? focus.tasks.filter(task => !isDashboardTaskClosed(task)) : [];
-        const overdue = Number(focus.overdueCount || 0);
-        const waiting = Number(focus.waitingCount || 0);
-        const firstTask = tasks[0] || null;
-        if (overdue > 0) {
-            const overdueTask = tasks.find(task => task.deadline && new Date(task.deadline).getTime() < Date.now());
-            return {
-                tone: 'urgent',
-                source: 'Мій фокус',
-                title: `У фокусі ${formatUkrainianCount(overdue, ['прострочена задача', 'прострочені задачі', 'прострочених задач'])}.`,
-                reason: overdueTask ? `Строк минув: “${String(overdueTask.title || 'задача без назви').slice(0, 80)}”.` : 'Перегляньте прострочені задачі у своєму списку.',
-                href: overdueTask?.id ? `/tasks?open=${encodeURIComponent(overdueTask.id)}` : '/tasks',
-                cta: overdueTask?.id ? 'Відкрити задачу' : 'Відкрити задачі',
-                priority: '3'
-            };
-        }
-        if (waiting > 0) {
-            const waitingTask = tasks.find(task => task.workflow_state === 'waiting' || task.task_kind === 'waiting');
-            return {
-                tone: 'focus',
-                source: 'Мій фокус',
-                title: `У фокусі ${formatUkrainianCount(waiting, ['задача чекає', 'задачі чекають', 'задач чекають'])} дії.`,
-                reason: waitingTask ? `Найближчий крок: “${String(waitingTask.title || 'задача без назви').slice(0, 80)}”.` : 'Перегляньте задачі в очікуванні у своєму списку.',
-                href: waitingTask?.id ? `/tasks?open=${encodeURIComponent(waitingTask.id)}` : '/tasks',
-                cta: waitingTask?.id ? 'Відкрити задачу' : 'Відкрити задачі',
-                priority: '3'
-            };
-        }
-        if (firstTask) {
-            const deadline = firstTask.deadline ? formatDeadline(firstTask.deadline) : 'без дедлайну';
-            return {
-                tone: 'focus',
-                source: 'Мій фокус',
-                title: `Почніть із “${String(firstTask.title || 'задача без назви').slice(0, 80)}”.`,
-                reason: `Це перша активна задача у вашому фокусі. Строк: ${deadline}.`,
-                href: `/tasks?open=${encodeURIComponent(firstTask.id)}`,
-                cta: 'Відкрити задачу',
-                priority: '3'
-            };
-        }
-        return null;
+    function dashboardFocusTaskCandidates(data = _widgetData.my_focus || {}) {
+        const rows = [...(data.selectedTasks || []), ...(data.recommendedTasks || []), ...(data.tasks || [])];
+        const unique = new Map(rows.filter(task => task?.id).map(task => [String(task.id), task]));
+        const now = Date.now();
+        return [...unique.values()].filter(task => !isDashboardTaskClosed(task) && !task.archived_at
+            && !(task.snoozed_until && new Date(task.snoozed_until).getTime() > now)).map(task => {
+            const selected = task.isSelectedFocus === true || Number(task.focus_rank ?? task.focusRank ?? 0) > 0;
+            const dueAt = task.effectiveDueAt || null;
+            const nearDue = dueAt && new Date(dueAt).getTime() >= now && new Date(dueAt).getTime() <= now + 2 * 3600000;
+            const urgent = nearDue || (['urgent', 'high', 'critical'].includes(task.priority) && task.dueState === 'today');
+            const priority = urgent ? 1 : selected ? 3 : ['overdue', 'review'].includes(task.dueState) ? 5 : 4;
+            const reason = urgent ? 'Наближається актуальний робочий строк.'
+                : selected ? 'Ви обрали цю задачу у фокус.'
+                : ['overdue', 'review'].includes(task.dueState) ? 'Накопичена справа: перегляньте актуальність і наступний крок.'
+                : 'Актуальна доступна задача у вашій черзі.';
+            return { task, priority, dueAt, selected, tone: urgent ? 'urgent' : 'focus',
+                source: selected ? 'Обрано у фокус' : 'Рекомендовано',
+                title: String(task.title || 'Задача без назви'), reason,
+                href: '/tasks?open=' + encodeURIComponent(task.id), cta: 'Відкрити задачу' };
+        }).sort((a, b) => a.priority - b.priority
+            || (a.selected && b.selected ? Number(a.task.focus_rank || 0) - Number(b.task.focus_rank || 0) : 0)
+            || (a.dueAt || '9999').localeCompare(b.dueAt || '9999'));
     }
+
+    function dashboardDayCandidates() {
+        const candidates = isDayOrientationSourceReady('my_focus') ? dashboardFocusTaskCandidates() : [];
+        const nearest = buildNearestEventOrientationSignal();
+        if (nearest) candidates.push(nearest);
+        const funnel = _widgetData.funnel || {};
+        const followUps = Array.isArray(funnel.meta?.followUps) ? funnel.meta.followUps : [];
+        if (canUseWidget('funnel') && isWidgetDataFresh('funnel') && funnel.meta?.sourceStates?.followUps === 'ready') {
+            followUps.filter(item => item.dueAt && new Date(item.dueAt).getTime() <= Date.now()).forEach(item => {
+                candidates.push({ priority: 2, tone: 'sales', source: 'Домовленість із клієнтом',
+                    title: item.title || 'Настав час зв’язатися з клієнтом',
+                    reason: 'Незавершена домовленість зі строком: ' + new Date(item.dueAt).toLocaleString('uk-UA', {timeZone:'Europe/Kyiv', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}),
+                    href: item.href || item.link || '/sales-funnel', cta: 'Відкрити домовленість', dueAt: item.dueAt });
+            });
+        }
+        const staleContact = buildFunnelOrientationSignal();
+        if (staleContact) candidates.push({ ...staleContact, priority: 7,
+            title: 'Перегляньте лідів без контакту понад 48 год',
+            reason: 'Перегляньте, чи потрібен наступний контакт із цими клієнтами.' });
+        const dueTime = value => { const parsed = Date.parse(value || ''); return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER; };
+        return candidates.sort((a,b) => Number(a.priority)-Number(b.priority)
+            || (a.selected && b.selected ? Number(a.task.focus_rank || a.task.focusRank || 0) - Number(b.task.focus_rank || b.task.focusRank || 0) : 0)
+            || dueTime(a.dueAt) - dueTime(b.dueAt));
+    }
+
+    function buildFocusOrientationSignal() {
+        return isDayOrientationSourceReady('my_focus') ? dashboardFocusTaskCandidates()[0] || null : null;
+    }
+
 
     function buildNearestEventOrientationSignal() {
         if (!isDayOrientationSourceReady('nearest_event')) return null;
@@ -7345,6 +7531,12 @@ const DashboardPage = (() => {
         const dayText = dashboardNearestEventDayText(nearest, event);
         const eventTimeText = time ? (dayText === 'сьогодні' ? `о ${time}` : `${dayText} о ${time}`) : dayText;
         const href = dashboardEventHref(event);
+        const currentTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+        const minutes = value => { const parts = String(value).split(':').map(Number); return parts[0] * 60 + parts[1]; };
+        const untilStart = minutes(time) - minutes(currentTime);
+        const imminent = dayText === 'сьогодні' && untilStart >= 0 && untilStart <= 120;
+        const eventPriority = overdueCount > 0 || imminent ? 1 : 4;
+        const dueAt = event.startsAt || null;
         if (overdueCount > 0 || openCount > 0) {
             const actionableCount = overdueCount > 0 ? overdueCount : openCount;
             const countText = formatUkrainianCount(actionableCount, ['задача', 'задачі', 'задач']);
@@ -7359,7 +7551,8 @@ const DashboardPage = (() => {
                 reason: `Підготовка прив’язана до бронювання: ${openCount} відкрито, ${Number(preparation.doneCount || 0)} виконано.`,
                 href,
                 cta: 'Відкрити подію',
-                priority: '1'
+                priority: eventPriority,
+                dueAt
             };
         }
         if (isBookingConfirmationActionable(confirmation.status || event.status, confirmation.label)) {
@@ -7370,7 +7563,8 @@ const DashboardPage = (() => {
                 reason: `Статус у CRM: ${nearestEventStatusLabel(confirmation.status || event.status, confirmation.label)}.`,
                 href,
                 cta: 'Відкрити подію',
-                priority: '2'
+                priority: eventPriority,
+                dueAt
             };
         }
         if (totalCount <= 0) {
@@ -7381,22 +7575,18 @@ const DashboardPage = (() => {
                 reason: 'Готовність не підтверджена. Перевірте підготовку події з відповідальним.',
                 href,
                 cta: 'Перевірити подію',
-                priority: '5'
+                priority: 6,
+                dueAt
             };
         }
         return null;
     }
 
     function buildDayOrientation() {
-        // Priority order for the presentation block:
-        // 1) nearest event preparation, 2) nearest event confirmation,
-        // 3) personal focus, 4) sales funnel, 5) honest incomplete/calm state.
+        // Shared order: urgent action/event, due follow-up, selected focus,
+        // other current work, accumulated overdue work, then review-only signals.
         const sourceIssue = dayOrientationSourceIssueText();
-        const nearestSignal = buildNearestEventOrientationSignal();
-        const signal = (nearestSignal?.priority !== '5' ? nearestSignal : null)
-            || buildFocusOrientationSignal()
-            || buildFunnelOrientationSignal()
-            || nearestSignal;
+        const signal = dashboardDayCandidates()[0] || null;
         if (!_dashboardDayOrientationLoading && signal) return { ...signal, note: sourceIssue };
         if (_dashboardDayOrientationLoading) {
             return {
@@ -7434,12 +7624,12 @@ const DashboardPage = (() => {
     }
 
     function dashboardOrientationIcon(orientation = {}) {
-        if (orientation.tone === 'urgent') return '⚠️';
-        if (orientation.tone === 'event') return '📅';
-        if (orientation.tone === 'sales') return '💬';
+        if (orientation.tone === 'urgent') return '↗';
+        if (orientation.tone === 'event') return '↗';
+        if (orientation.tone === 'sales') return '↗';
         if (orientation.tone === 'loading') return '↻';
         if (orientation.tone === 'calm') return '✓';
-        return '🎯';
+        return '↗';
     }
 
     function renderDayOrientation() {
@@ -7588,8 +7778,8 @@ const DashboardPage = (() => {
         const coldLeads = Number(data.coldLeads || 0);
         const revenueStat = canViewDashboardRevenue() ? `
                 <div class="stat-item" title="Вартість підтверджених бронювань">
-                    <div class="stat-value">${formatCurrency(data.revenueToday || 0)}</div>
-                    <div class="stat-label">Вартість бронювань</div>
+                    <div class="stat-value">${formatCurrency(data.revenueToday)} ₴</div>
+                    <div class="stat-label">Вартість підтверджених бронювань</div>
                 </div>` : '';
         container.innerHTML = `
             <div class="stats-grid">
@@ -7610,7 +7800,7 @@ const DashboardPage = (() => {
     function renderEventRiskSummary(data, container) {
         const cards = Array.isArray(data.cards) ? data.cards : [];
         if (!cards.length) {
-            container.innerHTML = '<div class="widget-empty">Ризиків по подіях немає</div>';
+            container.innerHTML = '<div class="widget-empty">Немає доступних сигналів ризику подій</div>';
             return;
         }
         const html = cards.map(card => {
@@ -7657,7 +7847,8 @@ const DashboardPage = (() => {
     function renderDashboardTaskSubtasks(task, options = {}) {
         const summary = dashboardTaskSubtaskSummary(task);
         if (!summary.total) return '';
-        const showPreview = options.preview !== false;
+        const showPreview = options.variant === 'triage' && options.preview !== false;
+        if (!showPreview) return `<div class="dashboard-task-subtask-summary">Виконано ${summary.done} із ${summary.total} · <a href="/tasks?open=${encodeURIComponent(task.id)}">Деталі</a></div>`;
         const limit = Math.max(1, Number.parseInt(options.limit, 10) || 3);
         const variant = options.variant || 'widget';
         const preview = showPreview ? summary.subtasks.slice(0, limit).map(item => `
@@ -7697,9 +7888,9 @@ const DashboardPage = (() => {
             return;
         }
 
-        const items = data.tasks.slice(0, 6).map(t => {
+        const items = data.tasks.slice(0, 3).map(t => {
             const priorityCls = t.priority || 'medium';
-            const deadline = t.deadline ? formatDeadline(t.deadline) : '';
+            const deadline = dashboardTaskDueLabel(t);
             const catInfo = { event: '🎉', purchase: '🛒', admin: '📎', trampoline: '🤸', personal: '👤', improvement: '⚡' };
             const catIcon = catInfo[t.category] || '📋';
             const statusLabel = taskerStatusLabel(t.status);
@@ -7743,7 +7934,8 @@ const DashboardPage = (() => {
         const pendingComplete = _dashboardTaskCompletionPending.has(id) || _dashboardTaskActionPending.has(dashboardTaskActionKey(id, 'complete'));
         const pendingFocus = _dashboardTaskActionPending.has(dashboardTaskActionKey(id, 'focus'));
         const pendingSnooze = _dashboardTaskActionPending.has(dashboardTaskActionKey(id, 'snooze'));
-        const inFocus = Boolean(options.inFocusContext) || Number(task.focusRank ?? task.focus_rank ?? 0) > 0;
+        const inFocus = task.isSelectedFocus === true || Number(task.focusRank ?? task.focus_rank ?? 0) > 0;
+        const pending = pendingComplete || pendingFocus || pendingSnooze;
         const error = dashboardTaskActionError(id);
         const completeLabel = pendingComplete ? 'Виконується…' : (error ? 'Повторити' : 'Виконати');
         const focusButton = inFocus ? '' : `
@@ -7754,7 +7946,7 @@ const DashboardPage = (() => {
                         onclick="DashboardPage.focusDashboardTask(${id}, this, event)"
                         onpointerdown="event.stopPropagation()"
                         onmousedown="event.stopPropagation()"
-                        ${pendingFocus ? 'disabled aria-busy="true"' : ''}>
+                        ${pending ? 'disabled aria-busy="true"' : ''}>
                     ${pendingFocus ? 'Додаю…' : 'У фокус'}
                 </button>`;
         return `
@@ -7767,7 +7959,7 @@ const DashboardPage = (() => {
                         onclick="DashboardPage.completeFocusTask(${id}, this, event)"
                         onpointerdown="event.stopPropagation()"
                         onmousedown="event.stopPropagation()"
-                        ${pendingComplete ? 'disabled aria-busy="true"' : ''}>
+                        ${pending ? 'disabled aria-busy="true"' : ''}>
                     ${escapeHtml(completeLabel)}
                 </button>
 ${focusButton}
@@ -7778,7 +7970,7 @@ ${focusButton}
                         onclick="DashboardPage.snoozeDashboardTask(${id}, this, event)"
                         onpointerdown="event.stopPropagation()"
                         onmousedown="event.stopPropagation()"
-                        ${pendingSnooze ? 'disabled aria-busy="true"' : ''}>
+                        ${pending ? 'disabled aria-busy="true"' : ''}>
                     ${pendingSnooze ? 'Відкладаю…' : 'Відкласти'}
                 </button>
                 ${error ? `<span class="focus-task-action-error" role="alert">${escapeHtml(error)}</span>` : ''}
@@ -7786,38 +7978,35 @@ ${focusButton}
         `;
     }
 
-    function renderMyFocus(data, container) {
-        const tasks = Array.isArray(data.tasks) ? data.tasks : [];
-        const overdue = Number(data.overdueCount || 0);
-        const waiting = Number(data.waitingCount || 0);
-        const visibleTasks = tasks.slice(0, 3);
-        const hiddenTaskCount = Math.max(0, tasks.length - visibleTasks.length);
-        const items = visibleTasks.map(t => {
-            const deadline = t.deadline ? formatDeadline(t.deadline) : '';
-            const priorityCls = t.priority || 'medium';
-            const subtaskPreview = renderDashboardTaskSubtasks(t, { variant: 'widget-summary', preview: false });
-            const action = renderFocusTaskActions(t, { inFocusContext: true });
-            return `<div class="widget-task-item">
-                <div class="widget-task-icon ${priorityCls}"></div>
-                <div class="widget-task-info">
-                    <a class="widget-task-title focus-task-detail-link" href="/tasks?open=${encodeURIComponent(t.id)}">${escapeHtml(t.title || 'Задача без назви')}</a>
-                    <div class="widget-task-meta">${deadline || 'Без дедлайну'}${t.ownerLabel ? ' · ' + escapeHtml(t.ownerLabel) : ''}</div>
-                    ${subtaskPreview}
-                    ${action}
-                </div>
-                <div class="widget-task-arrow">›</div>
-            </div>`;
-        }).join('');
-        container.innerHTML = `
-            <div class="personal-tasker-metrics compact">
-                <div class="personal-tasker-metric ${overdue > 0 ? 'danger' : 'success'}"><strong>${overdue}</strong><span>прострочено</span></div>
-                <div class="personal-tasker-metric ${waiting > 0 ? 'warning' : ''}"><strong>${waiting}</strong><span>чекає</span></div>
-                <div class="personal-tasker-metric"><strong>${tasks.length}</strong><span>у фокусі</span></div>
-            </div>
-            ${items ? `<div class="widget-task-list">${items}</div>` : '<div class="widget-empty">Особистий фокус чистий</div>'}
-            <div class="widget-footer">${hiddenTaskCount ? `<span class="focus-task-overflow">Ще ${hiddenTaskCount} у фокусі</span>` : ''}<a href="/tasks" class="widget-footer-link">Відкрити задачі →</a></div>
-        `;
+    function dashboardTaskDueLabel(task) {
+        const date = task.effectiveDate;
+        if (task.effectiveDueAt) return new Date(task.effectiveDueAt).toLocaleString('uk-UA', { timeZone:'Europe/Kyiv', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+        if (date) return (task.dueState === 'today' ? 'Сьогодні' : new Date(date + 'T12:00:00Z').toLocaleDateString('uk-UA', { timeZone:'Europe/Kyiv', day:'numeric', month:'short' }))
+            + (task.dueState === 'overdue' ? ' · робочий строк минув' : '');
+        return 'Робочий строк не вказано';
     }
+
+    function renderMyFocus(data, container) {
+        const candidates = dashboardFocusTaskCandidates(data).slice(0, 3);
+        const selectedCount = data.selectedCount ?? (data.tasks || []).filter(task => Number(task.focus_rank || 0) > 0).length;
+        const recommendedCount = data.recommendedCount ?? 0;
+        const total = data.actionableCount ?? (selectedCount + recommendedCount);
+        const items = candidates.map(candidate => {
+            const t = candidate.task;
+            return '<div class="widget-task-item" data-focus-task="' + Number(t.id) + '">'
+                + '<div class="widget-task-info"><span class="focus-task-source">' + candidate.source + '</span>'
+                + '<a class="widget-task-title focus-task-detail-link" href="' + escapeHtml(candidate.href) + '">' + escapeHtml(t.title || 'Задача без назви') + '</a>'
+                + '<div class="widget-task-meta">' + escapeHtml(dashboardTaskDueLabel(t)) + (t.ownerLabel ? ' · ' + escapeHtml(t.ownerLabel) : '') + '</div>'
+                + renderDashboardTaskSubtasks(t, { preview:false })
+                + renderFocusTaskActions(t) + '</div></div>';
+        }).join('');
+        container.innerHTML = '<div class="focus-summary"><span><strong>' + Number(selectedCount) + '</strong> обрано у фокус</span>'
+            + '<span><strong>' + Number(recommendedCount) + '</strong> рекомендовано</span>'
+            + (Number(data.overdueCount) > 0 ? '<a href="' + escapeHtml(dashboardHrefWithParams('/tasks', { dashboardFilter: 'my-overdue', businessContext: dashboardBusinessScopeKey().activeContext })) + '">' + Number(data.overdueCount) + ' прострочено за робочим строком</a>' : '') + '</div>'
+            + (items ? '<div class="widget-task-list">' + items + '</div>' : '<div class="widget-empty">Доступних актуальних задач немає. Можна обрати наступну справу.</div>')
+            + '<div class="widget-footer"><span>' + (total > candidates.length ? 'Ще ' + (total-candidates.length) + ' у черзі' : '') + '</span><a href="/tasks" class="widget-footer-link">Усі задачі →</a></div>';
+    }
+
 
     function taskerStatusLabel(status) {
         const labels = { todo: 'До виконання', in_progress: 'В роботі', done: 'Виконано', cancelled: 'Скасовано', archived: 'Архів' };
@@ -7865,7 +8054,7 @@ ${focusButton}
         `).join('');
         const visibleTasks = tasks.slice(0, fullscreen ? 18 : 6);
         const taskRows = visibleTasks.map(t => {
-            const deadline = t.deadline ? formatDeadline(t.deadline) : 'без дедлайну';
+            const deadline = dashboardTaskDueLabel(t);
             const priority = t.priority || 'medium';
             const overdueClass = t.isOverdue ? ' is-overdue' : '';
             const owner = t.ownerLabel || t.assigned_to || t.owner || '';
@@ -8029,7 +8218,7 @@ ${focusButton}
         const hiddenPrepTasks = Math.max(0, tasks.length - visiblePrepTasks.length);
         const taskRows = visiblePrepTasks.map(task => {
             const status = nearestEventTaskStatusLabel(task.status);
-            const deadline = task.deadline ? formatDeadline(task.deadline) : '';
+            const deadline = dashboardTaskDueLabel(task);
             const owner = task.ownerLabel ? ` · ${escapeHtml(task.ownerLabel)}` : '';
             const subtaskPreview = renderDashboardTaskSubtasks(task, { variant: 'nearest-event', limit: 1 });
             return `
@@ -8045,10 +8234,15 @@ ${focusButton}
         const overflowRow = hiddenPrepTasks
             ? `<a class="nearest-event-task-more" href="${escapeHtml(event.canonicalHref || `/?date=${encodeURIComponent(event.date || '')}`)}">Ще ${hiddenPrepTasks} у деталях події →</a>`
             : '';
-        const taskSummary = Number(preparation.totalCount || tasks.length) > 0
+        const preparationUnavailable = data?.meta?.sourceStates?.preparation === 'error' || (data.preparation === null && data?.meta?.partial);
+        const taskSummary = preparationUnavailable
+            ? 'Не вдалося завантажити підготовчі задачі.'
+            : Number(preparation.totalCount || tasks.length) > 0
             ? `${preparation.openCount || 0} відкрито · ${preparation.doneCount || 0} виконано${preparation.overdueCount ? ` · ${preparation.overdueCount} протерм.` : ''}`
             : 'Підготовчі задачі не знайдені у надійному зв’язку з бронюванням.';
-        const honestEmptyNote = Number(preparation.totalCount || tasks.length) > 0
+        const honestEmptyNote = preparationUnavailable
+            ? '<p class="nearest-event-honest-note">Стан підготовки невідомий. Повторіть оновлення.</p>'
+            : Number(preparation.totalCount || tasks.length) > 0
             ? ''
             : '<p class="nearest-event-honest-note">Це не означає, що все готово — у CRM просто немає прив’язаних задач підготовки.</p>';
         const footerHref = event.canonicalHref || `/?date=${encodeURIComponent(event.date || '')}`;
@@ -8280,7 +8474,7 @@ ${focusButton}
 
     function renderExceptions(data, container) {
         if (!data.exceptions || data.exceptions.length === 0) {
-            container.innerHTML = '<div class="widget-empty">✅ Все під контролем — жодних виключень</div>';
+            container.innerHTML = '<div class="widget-empty">У доступних перевірках винятків немає</div>';
             return;
         }
         const catLabels = {
@@ -8296,7 +8490,7 @@ ${focusButton}
             .join('');
         const summary = summaryParts ? `<div class="exc-summary">${summaryParts}</div>` : '';
 
-        const items = data.exceptions.slice(0, 8).map(e => {
+        const items = data.exceptions.slice(0, 4).map(e => {
             const lvlCls = e.level === 'critical' ? 'alert-critical' : e.level === 'warning' ? 'alert-warning' : 'alert-info';
             const link = e.link || '/';
             return `<a href="${link}" class="dash-alert-item ${lvlCls}" title="${escapeHtml(e.action?.prompt || '')}">
@@ -8310,15 +8504,15 @@ ${focusButton}
 
     function renderLeadsNew(data, container) {
         if (!data.leads || data.leads.length === 0) {
-            container.innerHTML = '<div class="widget-empty">Немає нових лідів</div>';
+            container.innerHTML = '<div class="widget-empty">На етапі «Нові» немає лідів</div>';
             return;
         }
         const sourceColors = { telegram: '#0088cc', facebook: '#1877F2', instagram: '#E4405F', viber: '#7360F2', website: '#38A169', phone: '#DD6B20' };
-        const items = data.leads.slice(0, 6).map(l => {
+        const items = data.leads.slice(0, 3).map(l => {
             const color = sourceColors[l.source] || '#718096';
             const date = new Date(l.created_at).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
             const leadId = l.id || l.lead_id || l.leadId;
-            const href = leadId ? `/sales-funnel?lead=${encodeURIComponent(leadId)}` : '/sales-funnel';
+            const href = dashboardScopedApiUrl(leadId ? `/sales-funnel?lead=${encodeURIComponent(leadId)}` : '/sales-funnel');
             const name = l.name || 'Без імені';
             return `<a class="widget-lead-item" href="${escapeHtml(href)}" aria-label="Відкрити лід ${escapeHtml(name)}">
                 <div class="lead-source-dot" style="background:${color}" title="${escapeHtml(l.source || '')}"></div>
@@ -8328,39 +8522,19 @@ ${focusButton}
                 </div>
             </a>`;
         }).join('');
-        container.innerHTML = `<div class="widget-lead-list">${items}</div>`;
+        container.innerHTML = `<div class="widget-lead-list">${items}</div><div class="widget-footer"><a href="${escapeHtml(dashboardFunnelHref('new'))}">Усі на етапі «Нові»${data.total != null ? ' · ' + Number(data.total) : ''} →</a></div>`;
     }
 
     function renderFinanceToday(data, container) {
-        if (!canViewDashboardRevenue()) {
-            container.innerHTML = '';
-            return;
-        }
-        const fmt = (v) => {
-            if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-            return Math.round(v) + '';
-        };
-        container.innerHTML = `
-            <div class="finance-today-grid">
-                <div class="finance-stat revenue">
-                    <div class="finance-stat-value">${fmt(data.revenue || 0)} ₴</div>
-                    <div class="finance-stat-label">Виручка</div>
-                </div>
-                <div class="finance-stat expenses">
-                    <div class="finance-stat-value">${fmt(data.expenses || 0)} ₴</div>
-                    <div class="finance-stat-label">Витрати</div>
-                </div>
-                <div class="finance-stat profit">
-                    <div class="finance-stat-value ${(data.profit || 0) >= 0 ? 'positive' : 'negative'}">${(data.profit || 0) >= 0 ? '+' : ''}${fmt(data.profit || 0)} ₴</div>
-                    <div class="finance-stat-label">Прибуток</div>
-                </div>
-                <div class="finance-stat bookings">
-                    <div class="finance-stat-value">${data.bookings || 0}</div>
-                    <div class="finance-stat-label">Бронювань</div>
-                </div>
-            </div>
-        `;
+        if (!canViewDashboardRevenue()) { container.innerHTML = ''; return; }
+        const amount = data.bookingValue ?? data.revenue;
+        container.innerHTML = '<div class="stats-grid"><div class="stat-item"><div class="stat-value">' + formatCurrency(amount)
+            + '</div><div class="stat-label">Вартість підтверджених бронювань · ₴</div></div>'
+            + '<div class="stat-item"><div class="stat-value">' + (data.bookings ?? '—')
+            + '</div><div class="stat-label">Бронювань сьогодні</div></div></div>'
+            + '<p class="dashboard-widget-footnote">Сума цін бронювань. Фактичні оплати та прибуток тут не обчислюються.</p>';
     }
+
 
     function renderReportsToday(data, container) {
         if (!canViewDashboardRevenue()) {
@@ -8479,7 +8653,7 @@ ${focusButton}
         let html = `<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">На зміні: <b>${data.onShift?.length || 0}</b></div>`;
         for (const [dept, staff] of Object.entries(deptGroups)) {
             html += `<div style="font-size:11px;font-weight:700;color:var(--gray-400);margin:6px 0 2px">${DEPT_LABELS[dept] || dept}</div>`;
-            staff.forEach(s => {
+            staff.slice(0, 5).forEach(s => {
                 const initials = (s.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2);
                 html += `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px">
                     <div style="width:24px;height:24px;border-radius:50%;background:${s.color || '#6366f1'}30;color:${s.color || '#6366f1'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${initials}</div>
@@ -8508,7 +8682,7 @@ ${focusButton}
         }
         const dayNames = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
         const revenueStat = canViewDashboardRevenue()
-            ? `<div class="stat-item"><div class="stat-value">${formatCurrency(data.days.reduce((sum, day) => sum + (day.revenue || 0), 0))}</div><div class="stat-label">Виручка</div></div>`
+            ? `<div class="stat-item"><div class="stat-value">${formatCurrency(data.days.reduce((sum, day) => sum + (day.revenue || 0), 0))}</div><div class="stat-label">Вартість бронювань</div></div>`
             : '';
         const totalCount = data.days.reduce((s, d) => s + (d.count || 0), 0);
         let html = `<div class="stats-grid" style="margin-bottom:8px">
@@ -8538,13 +8712,13 @@ ${focusButton}
     function renderTeamTasks(data, container) {
         const s = data.stats || {};
         let html = `<div class="stats-grid" style="margin-bottom:8px">
-            <div class="stat-item"><div class="stat-value" style="color:#f59e0b">${s.todo || 0}</div><div class="stat-label">Очікують</div></div>
+            <div class="stat-item"><div class="stat-value">${s.todo || 0}</div><div class="stat-label">Очікують</div></div>
             <div class="stat-item"><div class="stat-value" style="color:var(--primary)">${s.in_progress || 0}</div><div class="stat-label">В роботі</div></div>
-            <div class="stat-item"><div class="stat-value" style="color:#ef4444">${s.overdue || 0}</div><div class="stat-label">Прострочено</div></div>
+            <div class="stat-item"><div class="stat-value" style="color:${s.overdue > 0 ? 'var(--dash-danger)' : 'var(--dash-text)'}">${s.overdue || 0}</div><div class="stat-label">Прострочено</div></div>
         </div>`;
         if (data.tasks?.length) {
             html += '<div class="team-task-widget-list">';
-            data.tasks.slice(0, 10).forEach(t => {
+            data.tasks.slice(0, 3).forEach(t => {
                 const overdue = t.is_overdue ? ' is-overdue' : '';
                 const pIcon = t.priority === 'high' ? '🔴 ' : '';
                 const subtaskPreview = renderDashboardTaskSubtasks(t, { variant: 'team', limit: 2 });
@@ -8552,7 +8726,7 @@ ${focusButton}
                     <div class="team-task-widget-title">${pIcon}${escapeHtml(t.title?.slice(0, 50) || '')}</div>
                     <div class="team-task-widget-meta">
                         ${t.assigned_to ? '👤 ' + escapeHtml(t.assigned_to) : '— нікому'}
-                        ${t.deadline ? ' · ⏰ ' + new Date(t.deadline).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) : ''}
+                        · ${escapeHtml(dashboardTaskDueLabel(t))}
                     </div>
                     ${subtaskPreview}
                 </div>`;
@@ -8589,38 +8763,22 @@ ${focusButton}
             });
             html += '</div>';
         }
-        if (!html) html = '<div class="widget-empty">Все спокійно в HR</div>';
+        if (!html) html = '<div class="widget-empty">Немає доступних заявок та кадрових подій</div>';
         html += `<div style="text-align:center;margin-top:8px"><a href="/hr" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">HR →</a></div>`;
         container.innerHTML = html;
     }
 
     // v39.10: Director P&L
     function renderDirectorPnl(data, container) {
-        if (!canViewDashboardRevenue()) {
-            container.innerHTML = '';
-            return;
-        }
-        const w = data.week || {};
-        const m = data.month || {};
-        container.innerHTML = `
-            <div style="font-size:11px;font-weight:700;color:var(--gray-400);margin-bottom:4px">📊 Цей тиждень</div>
-            <div class="stats-grid" style="margin-bottom:12px">
-                <div class="stat-item"><div class="stat-value" style="color:#22c55e">${formatCurrency(w.revenue || 0)}</div><div class="stat-label">Дохід</div></div>
-                <div class="stat-item"><div class="stat-value" style="color:#ef4444">${formatCurrency(w.expenses || 0)}</div><div class="stat-label">Витрати</div></div>
-                <div class="stat-item"><div class="stat-value" style="color:${(w.profit||0)>=0?'#22c55e':'#ef4444'}">${formatCurrency(w.profit || 0)}</div><div class="stat-label">Прибуток</div></div>
-            </div>
-            <div style="font-size:11px;font-weight:700;color:var(--gray-400);margin-bottom:4px">📅 Цей місяць</div>
-            <div class="stats-grid" style="margin-bottom:8px">
-                <div class="stat-item"><div class="stat-value" style="color:#22c55e">${formatCurrency(m.revenue || 0)}</div><div class="stat-label">Дохід</div></div>
-                <div class="stat-item"><div class="stat-value" style="color:#ef4444">${formatCurrency(m.expenses || 0)}</div><div class="stat-label">Витрати</div></div>
-                <div class="stat-item"><div class="stat-value" style="color:${(m.profit||0)>=0?'#22c55e':'#ef4444'}">${formatCurrency(m.profit || 0)}</div><div class="stat-label">Прибуток</div></div>
-            </div>
-            <div style="font-size:11px;color:var(--gray-500)">👥 ${data.staffCount || 0} співробітників</div>
-            <div style="text-align:center;margin-top:8px"><a href="/finance" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">Фінанси →</a></div>
-        `;
+        if (!canViewDashboardRevenue()) { container.innerHTML = ''; return; }
+        const period = (label, value) => '<div class="stat-item"><div class="stat-value">' + formatCurrency(value) + '</div><div class="stat-label">' + label + '</div></div>';
+        container.innerHTML = '<p class="dashboard-widget-footnote">Вартість підтверджених бронювань · ₴</p><div class="stats-grid">'
+            + period('Цей тиждень', data.week?.bookingValue ?? data.week?.revenue)
+            + period('Цей місяць', data.month?.bookingValue ?? data.month?.revenue)
+            + '</div><p class="dashboard-widget-footnote">За цінами бронювань. Фактичні оплати та прибуток тут не обчислюються.</p><div class="widget-footer"><a href="/finance">Фінанси →</a></div>';
     }
 
-    // v39.10: Art director content pipeline
+
     function renderContentPipeline(data, container) {
         let html = '';
         if (data.inReview?.length) {
@@ -8630,7 +8788,7 @@ ${focusButton}
             });
             html += '</div>';
         }
-        html += `<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">✅ Затверджено за тиждень: <b>${data.approvedThisWeek || 0}</b></div>`;
+        html += `<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">Затверджено за тиждень: <b>${data.approvedThisWeek ?? '—'}</b></div>`;
         if (data.designTasks?.length) {
             html += `<div style="margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:4px">🎨 Дизайн-задачі</div>`;
             data.designTasks.forEach(t => {
@@ -8654,9 +8812,9 @@ ${focusButton}
     function renderOperations(data, container) {
         const q = data.quality || {};
         let html = `<div class="stats-grid" style="margin-bottom:8px">
-            <div class="stat-item"><div class="stat-value">${q.avg_rating || '—'}</div><div class="stat-label">Рейтинг (30д)</div></div>
-            <div class="stat-item"><div class="stat-value" style="color:#ef4444">${data.complaintsWeek || 0}</div><div class="stat-label">Скарги (7д)</div></div>
-            <div class="stat-item"><div class="stat-value" style="color:#f59e0b">${data.staffNotCheckedIn || 0}</div><div class="stat-label">Не на місці</div></div>
+            <div class="stat-item"><div class="stat-value">${q.avg_rating == null ? '—' : q.avg_rating}</div><div class="stat-label">Оцінки за 30 днів</div></div>
+            <div class="stat-item"><div class="stat-value">${data.complaintsWeek ?? '—'}</div><div class="stat-label">Скарги (7д)</div></div>
+            <div class="stat-item"><div class="stat-value">${data.staffInactiveInCrm ?? '—'}</div><div class="stat-label">Без активності в CRM понад 30 хв</div></div>
         </div>`;
         if (data.procurement?.length) {
             html += `<div style="margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:var(--gray-400);margin-bottom:4px">🛒 Закупки (${data.procurement.length})</div>`;
@@ -8765,6 +8923,7 @@ ${focusButton}
             if (typeof closeModal === 'function') closeModal(overlay);
             overlay.remove();
             _settingsOverlayInitialState = '';
+            _settingsRecommendedPending = false;
         };
 
         if (window.UnsafeDismissGuard) {
@@ -8828,7 +8987,7 @@ ${focusButton}
             const accessLabel = def.minRole ? `Від ролі: ${roleDisplayName(def.minRole)}` : 'Доступно всім ролям';
             return `<div class="settings-widget-item ${isActive ? 'active' : ''}" data-widget="${escapeHtml(key)}" data-widget-state="${isActive ? 'active' : 'inactive'}" data-widget-title="${escapeHtml(String(def.title || key).toLowerCase())}" data-widget-access="${escapeHtml(accessLabel)}" draggable="true">
                 <span class="settings-drag-handle" title="Перетягнути">⠿</span>
-                <span class="settings-widget-icon">${escapeHtml(def.icon || '◫')}</span>
+                <span class="settings-widget-icon">${dashboardWidgetIcon(key)}</span>
                 <span class="settings-widget-main">
                     <span class="settings-widget-name">${escapeHtml(def.title || key)}</span>
                     <span class="settings-widget-meta">${isActive ? 'Показується на дашборді' : 'Приховано'} · ${escapeHtml(accessLabel)}</span>
@@ -9030,6 +9189,7 @@ ${focusButton}
         if (!list) return;
         const role = getEffectiveDashboardRole();
         const recommended = getRecommendedDashboardWidgets(role);
+        _settingsRecommendedPending = true;
         const recommendedSet = new Set(recommended);
         const items = Array.from(list.querySelectorAll('.settings-widget-item'));
         const byKey = new Map(items.map(item => [item.dataset.widget, item]));
@@ -9184,7 +9344,7 @@ ${focusButton}
         const selectedKeys = new Set(selected);
         const hiddenWidgets = (_config?.widgets || []).filter(key => !canUseWidget(key));
         const widgets = [...selectedKeys, ...hiddenWidgets.filter(key => !selectedKeys.has(key))];
-        const result = await saveDashboardConfig({ widgets, widgetsOnly: true });
+        const result = await saveDashboardConfig({ widgets, layout: _settingsRecommendedPending ? recommendedLayoutMetadata(widgets) : {}, widgetsOnly: true });
         _widgetLayoutSaving = false;
         if (!result?.success) {
             notifyDashboardIssue(result?.error || 'Не вдалося зберегти налаштування dashboard');
@@ -9196,6 +9356,7 @@ ${focusButton}
         await closeSettingsOverlay(true);
 
         _config.widgets = widgets;
+        _settingsRecommendedPending = false;
         renderWidgets();
         setWidgetLayoutStatus('Віджети збережено');
     }
@@ -9876,10 +10037,10 @@ ${focusButton}
     function setDashboardTaskActionBusy(taskId, action, busy, label = '') {
         const id = Number(taskId || 0);
         if (!id || !action) return;
-        document.querySelectorAll(`[data-dashboard-task-action="${action}"][data-dashboard-task-id="${id}"]`).forEach(button => {
+        document.querySelectorAll(`[data-dashboard-task-id="${id}"]`).forEach(button => {
             button.disabled = Boolean(busy);
             button.toggleAttribute('aria-busy', Boolean(busy));
-            if (label) button.textContent = label;
+            if (label && button.dataset.dashboardTaskAction === action) button.textContent = label;
         });
         if (action === 'complete') setFocusTaskCompletionBusy(id, busy);
     }
@@ -9888,7 +10049,9 @@ ${focusButton}
         window.scrollTo?.(snapshot.x || 0, snapshot.y || 0);
         if (!snapshot.focusSelector) return;
         window.setTimeout(() => {
-            const target = document.querySelector(snapshot.focusSelector);
+            const target = document.querySelector(snapshot.focusSelector)
+                || document.querySelector('#widget-my_focus [data-dashboard-task-action="complete"]')
+                || document.querySelector('[data-widget="my_focus"] .widget-title');
             if (target && typeof target.focus === 'function') target.focus({ preventScroll: true });
         }, 0);
     }
@@ -9898,7 +10061,7 @@ ${focusButton}
         options.event?.stopPropagation?.();
         const id = Number(taskId || 0);
         const key = dashboardTaskActionKey(id, action);
-        if (!id || !action || _dashboardTaskActionPending.has(key)) return;
+        if (!id || !action || ['complete', 'focus', 'snooze'].some(kind => _dashboardTaskActionPending.has(dashboardTaskActionKey(id, kind)))) return;
         const mutationContextKey = dashboardWidgetRequestContext('my_focus').key;
         const focusSelector = options.button?.dataset?.dashboardTaskAction
             ? `[data-dashboard-task-action="${escapeJsString(options.button.dataset.dashboardTaskAction)}"][data-dashboard-task-id="${id}"]`
@@ -10556,18 +10719,57 @@ ${focusButton}
         }));
     }
 
+    function dashboardConfigOwnerKey() {
+        return JSON.stringify([currentDashboardUserIdentity(), localStorage.getItem('pzp_auth_session_generation') || '']);
+    }
+
+    function dashboardContextFingerprint() {
+        const context = dashboardWidgetRequestContext('my_focus');
+        const identity = JSON.parse(context.key);
+        delete identity.invalidationVersion;
+        const user = AppState.currentUser || {};
+        identity.permissions = Object.keys(WIDGET_DEFS).filter(key => canUseWidget(key)).sort();
+        identity.accountRole = user.role || '';
+        identity.configOwner = dashboardConfigOwnerKey();
+        return JSON.stringify(identity);
+    }
+
     function handleDashboardContextChanged() {
+        const fingerprint = dashboardContextFingerprint();
+        if (_dashboardContextFingerprint === fingerprint) return Promise.resolve([]);
+        const previous = _dashboardContextFingerprint ? JSON.parse(_dashboardContextFingerprint) : null;
+        const previousOwner = previous?.configOwner;
+        _dashboardContextFingerprint = fingerprint;
         invalidateWidgetData('all');
+        renderGreeting();
+        if (previousOwner && previousOwner !== dashboardConfigOwnerKey()) {
+            _widgetDragCleanup?.();
+            return loadConfig();
+        }
         // The shared user setter also fires during bootstrap, before permissions/config hydrate.
+        if (_dashboardConfigState === 'loading') return Promise.resolve([]);
         if (_dashboardConfigState !== 'ready') return refreshStaleVisibleWidgets();
+        const current = JSON.parse(fingerprint);
+        if (previous && (previous.role !== current.role || JSON.stringify(previous.permissions) !== JSON.stringify(current.permissions))) renderWidgets();
         renderDayOrientation();
         return Promise.allSettled([refreshStaleVisibleWidgets(), loadDayOrientationSources()]);
     }
 
+    function handleDashboardLegacyContextChanged() {
+        const previousOwner = _dashboardContextFingerprint
+            ? JSON.parse(_dashboardContextFingerprint).configOwner : null;
+        // Invalidate both scopes before either refresh can capture its request key.
+        invalidateLegacyCatalogWidgets({ refresh: false });
+        const contextRefresh = handleDashboardContextChanged();
+        // A new account/session must load its own config before rendering any widgets.
+        if ((previousOwner && previousOwner !== dashboardConfigOwnerKey()) || _dashboardConfigState === 'loading') return contextRefresh;
+        return Promise.allSettled([contextRefresh, refreshLegacyCatalogWidgets()]);
+    }
+
     // Helpers
     function formatCurrency(amount) {
-        if (amount >= 1000) return Math.round(amount / 1000) + 'k';
-        return Math.round(amount) + '';
+        if (amount == null || !Number.isFinite(Number(amount))) return '—';
+        return new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(Number(amount));
     }
 
     function formatDeadline(dateStr) {
@@ -10618,25 +10820,19 @@ ${focusButton}
         return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '');
     }
 
-    for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessContextHydrated',
-        'crmBusinessProfileChanged', 'permissions:lifecycle', 'workingRoleChanged', 'rolePreviewChanged']) {
-        window.addEventListener(eventName, invalidateLegacyCatalogWidgets);
-    }
     window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
         if (event.detail?.surface === 'catalogs') invalidateLegacyCatalogWidgets();
     });
 
     window.addEventListener('rolePreviewChanged', () => {
+        handleDashboardLegacyContextChanged();
         if (!_config) return;
-        invalidateWidgetData('all');
-        renderWidgets();
         updateDashboardRolePreviewControl();
         announceDashboardContextToAssistant();
     });
     window.addEventListener('workingRoleChanged', () => {
+        handleDashboardLegacyContextChanged();
         if (!_config) return;
-        invalidateWidgetData('all');
-        renderWidgets();
         updateDashboardRolePreviewControl();
         announceDashboardContextToAssistant();
     });
@@ -10656,6 +10852,9 @@ ${focusButton}
     window.addEventListener('timeline:business-context-changed', () => {
         handleDashboardContextChanged();
     });
+    for (const contextEvent of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessContextHydrated', 'crmBusinessProfileChanged', 'permissions:lifecycle']) {
+        window.addEventListener(contextEvent, handleDashboardLegacyContextChanged);
+    }
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
             checkDashboardDayBoundary();
@@ -10671,6 +10870,7 @@ ${focusButton}
 
     return {
         init,
+        toggleLayoutEditing, moveLayoutWidget, resizeLayoutWidget, hideLayoutWidget,
         refreshWorkQueue,
         setWorkQueueReplyScope,
         setReplyConsoleFilter,

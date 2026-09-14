@@ -267,7 +267,7 @@ test(`same-key ${eventName} generation prevents an older salary response replaci
 }
 
 function dashboardFixture(t) {
-    const dom = fixtureDom('<div id="widget-catalogs"></div><div id="widget-content_pipeline"></div>', 'dashboard');
+    const dom = fixtureDom('<div id="dashboardGrid"><div id="widget-catalogs"></div><div id="widget-content_pipeline"></div></div>', 'dashboard');
     t.after(() => dom.window.close());
     const window = dom.window;
     let availability = { available: true };
@@ -373,6 +373,81 @@ test(`dashboard ${eventName} clears cached catalog widgets and rejects older sam
     assert.match(f.container('catalogs').textContent, /New server verdict/);
     assert.match(f.container('content_pipeline').textContent, /Fresh scoped Art/);
     assert.equal(f.requests.length, 3);
+});
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'permissions:lifecycle']) {
+test(`dashboard ${eventName} refreshes each visible catalog widget once after a real business change`, async t => {
+    const f = dashboardFixture(t);
+    Object.defineProperty(f.window.document, 'hidden', { value: false, configurable: true });
+    for (const type of ['catalogs', 'content_pipeline']) f.container(type).dataset.widget = type;
+    f.emit(eventName);
+    await flush();
+    assert.equal(f.requests.length, 2, 'Initial context and legacy refresh share one request per widget');
+
+    const old = deferred();
+    f.setTransport(() => old.promise);
+    const pending = f.api.loadWidgetData('catalogs', f.container('catalogs'), { force: true });
+    const originalKey = f.api.dashboardWidgetRequestContext('catalogs').key;
+    const beforeChange = f.requests.length;
+    f.setBusiness('dar');
+    f.setContextKey('fixture-account:dar:profile-2');
+    f.setTransport(async () => response({ success: true, data: {
+        legacyCatalogs: { available: true }, recentItems: [{ name: 'Fresh Dar catalog' }],
+        inReview: [{ title: 'Fresh Dar Art' }]
+    } }));
+    f.emit(eventName);
+    assert.notEqual(f.api.dashboardWidgetRequestContext('catalogs').key, originalKey);
+    assert.equal(f.api.getData('catalogs'), undefined);
+    await flush();
+    assert.deepEqual(f.requests.slice(beforeChange).sort(), [
+        '/api/dashboard/widgets/catalogs?businessContext=dar',
+        '/api/dashboard/widgets/content_pipeline?businessContext=dar'
+    ]);
+    assert.match(f.container('catalogs').textContent, /Fresh Dar catalog/);
+    assert.match(f.container('content_pipeline').textContent, /Fresh Dar Art/);
+    assert.equal(f.api.getData('catalogs').recentItems[0].name, 'Fresh Dar catalog');
+
+    old.resolve(response({ success: true, data: poisonedCatalogData({ available: true }) }));
+    assert.equal((await pending).stale, true);
+    assert.doesNotMatch(f.window.document.body.textContent, /PRIVATE_CATALOG/);
+    assert.equal(f.requests.length, beforeChange + 2, 'Late old-context responses do not cause another refresh');
+});
+}
+
+for (const change of ['account', 'session']) {
+test(`dashboard lifecycle waits for the new ${change} config before refreshing legacy widgets`, async t => {
+    const f = dashboardFixture(t);
+    Object.defineProperty(f.window.document, 'hidden', { value: false, configurable: true });
+    for (const type of ['catalogs', 'content_pipeline']) f.container(type).dataset.widget = type;
+    f.emit();
+    await flush();
+    const old = deferred();
+    f.setTransport(() => old.promise);
+    const pending = f.api.loadWidgetData('catalogs', f.container('catalogs'), { force: true });
+    const beforeChange = f.requests.length;
+    const config = deferred();
+    f.setTransport(url => {
+        assert.equal(url, '/api/dashboard/config', 'Old account layout cannot start new widget reads');
+        return config.promise;
+    });
+    if (change === 'account') f.window.AppState.currentUser = { id: 8, username: 'new-fixture-director', role: 'director' };
+    else f.window.localStorage.setItem('pzp_auth_session_generation', 'fixture-session-2');
+    f.emit('permissions:lifecycle');
+    assert.deepEqual(f.requests.slice(beforeChange), ['/api/dashboard/config']);
+    assert.equal(f.api.getData('catalogs'), undefined);
+    f.emit('permissions:lifecycle');
+    f.setBusiness('dar');
+    f.emit('crmBusinessContextChanged');
+    assert.deepEqual(f.requests.slice(beforeChange), ['/api/dashboard/config'],
+        'Further lifecycle and business events must wait for the pending account config');
+    old.resolve(response({ success: true, data: poisonedCatalogData({ available: true }) }));
+    assert.equal((await pending).stale, true);
+    config.resolve(response({ success: true, config: { widgets: [], layout: {} } }));
+    await flush();
+    assert.equal(f.container('catalogs'), null, 'The new account empty layout replaces old widget containers');
+    assert.doesNotMatch(f.window.document.body.textContent, /PRIVATE_CATALOG/);
+    assert.equal(f.requests.length, beforeChange + 1);
 });
 }
 

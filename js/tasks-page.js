@@ -318,7 +318,7 @@ let taskTeamControlFilters = { from: '', to: '', ownerUserId: '', department: ''
 const TASK_CENTER_URL_STATUSES = Object.freeze(['todo', 'in_progress', 'waiting', 'scheduled', 'done', 'archived', 'cancelled']);
 const TASK_CENTER_URL_PRIORITIES = Object.freeze(['urgent', 'high', 'normal', 'low']);
 const TASK_CENTER_URL_SOURCES = Object.freeze(['manual', 'booking', 'lead', 'customer', 'event', 'order', 'hr', 'finance', 'automation']);
-let taskCenterQueryState = { mode: 'overview', queue: 'inbox', ownerUserId: '', dateFrom: '', dateTo: '', status: [], priority: [], category: '', source: '', search: '' };
+let taskCenterQueryState = { mode: 'overview', queue: 'inbox', ownerUserId: '', dateFrom: '', dateTo: '', status: [], priority: [], category: '', source: '', search: '', bookingOverdue: false, personalOverdue: false };
 let taskSavedViews = [];
 let taskSavedViewsRevision = 0;
 let taskCenterSavedViewSaving = false;
@@ -357,7 +357,9 @@ function normalizeTaskCenterQueryState(input = {}) {
         source: TASK_CENTER_URL_SOURCES.includes(String(input.source || '').trim().toLowerCase())
             ? String(input.source).trim().toLowerCase()
             : '',
-        search: String(input.search ?? input.q ?? '').trim().slice(0, 120)
+        search: String(input.search ?? input.q ?? '').trim().slice(0, 120),
+        bookingOverdue: input.bookingOverdue === true,
+        personalOverdue: input.personalOverdue === true && input.bookingOverdue !== true
     };
 }
 
@@ -373,14 +375,16 @@ function taskCenterQueryStateFromUrl(params = new URLSearchParams(window.locatio
         priority: params.get('priority'),
         category: params.get('category'),
         source: params.get('source'),
-        search: params.get('search') || params.get('q')
+        search: params.get('search') || params.get('q'),
+        bookingOverdue: params.get('source_type') === 'booking' && params.get('overdue') === '1',
+        personalOverdue: params.get('dashboardFilter') === 'my-overdue'
     });
 }
 
 function taskCenterUrlForState(state = taskCenterQueryState) {
     const normalized = normalizeTaskCenterQueryState(state);
     const url = new URL(window.location.href);
-    ['view', 'queue', 'owner', 'from', 'to', 'status', 'priority', 'category', 'source', 'search', 'q'].forEach(key => url.searchParams.delete(key));
+    ['view', 'queue', 'owner', 'from', 'to', 'status', 'priority', 'category', 'source', 'source_type', 'overdue', 'dashboardFilter', 'search', 'q'].forEach(key => url.searchParams.delete(key));
     url.searchParams.set('mode', normalized.mode);
     url.searchParams.set('queue', normalized.queue);
     if (normalized.ownerUserId) url.searchParams.set('owner', normalized.ownerUserId);
@@ -391,6 +395,11 @@ function taskCenterUrlForState(state = taskCenterQueryState) {
     if (normalized.category) url.searchParams.set('category', normalized.category);
     if (normalized.source) url.searchParams.set('source', normalized.source);
     if (normalized.search) url.searchParams.set('search', normalized.search);
+    if (normalized.bookingOverdue) {
+        url.searchParams.set('source_type', 'booking');
+        url.searchParams.set('overdue', '1');
+    }
+    if (normalized.personalOverdue) url.searchParams.set('dashboardFilter', 'my-overdue');
     return url;
 }
 
@@ -1396,7 +1405,11 @@ function syncTaskCenterShell() {
     const description = document.getElementById('taskCenterModeDescription');
     const context = document.getElementById('taskCenterBusinessContext');
     if (shell) shell.dataset.taskMode = mode;
-    if (description) description.textContent = TASK_CENTER_MODE_CONFIG[mode].description;
+    if (description) description.textContent = taskCenterQueryState.personalOverdue
+        ? 'Мої прострочені задачі за чинними правилами обліку у вибраному бізнесі.'
+        : taskCenterQueryState.bookingOverdue
+        ? 'Прострочена підготовка доступних подій у вибраному бізнесі.'
+        : TASK_CENTER_MODE_CONFIG[mode].description;
     if (context) {
         const businessContext = taskBusinessContext();
         context.textContent = businessContext
@@ -1475,13 +1488,15 @@ function renderTaskCenterQueryControls() {
         shell.appendChild(host);
     }
     const state = taskCenterQueryState;
+    const drilldownActive = state.bookingOverdue || state.personalOverdue;
+    const drilldownLabel = state.personalOverdue ? 'Мої прострочені задачі' : 'Прострочена підготовка подій';
     const categoryOptions = [`<option value="">\u0423\u0441\u0456 \u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0456\u0457</option>`, ...getTopLevelTaskCategoryOrder().map(category =>
         `<option value="${escapeHtml(category)}" ${state.category === category ? 'selected' : ''}>${escapeHtml(getCategoryConfig(category).label)}</option>`
     )].join('');
     const savedOptions = [`<option value="">\u0417\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u0456 \u0432\u0438\u0433\u043b\u044f\u0434\u0438</option>`, ...taskSavedViews.map(view =>
         `<option value="${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`
     )].join('');
-    host.innerHTML = `<div class="task-center-query-row">
+    host.innerHTML = `${drilldownActive ? '<div class="task-center-query-row"><button type="button" class="btn-secondary" data-task-clear-dashboard-overdue aria-label="Прибрати фільтр: ' + drilldownLabel + '">' + drilldownLabel + ' ×</button></div>' : ''}<div class="task-center-query-row">
         <label><span>\u041f\u043e\u0448\u0443\u043a</span><input type="search" data-task-center-query="search" value="${escapeHtml(state.search)}" placeholder="\u041d\u0430\u0437\u0432\u0430, ID, \u0432\u0438\u043a\u043e\u043d\u0430\u0432\u0435\u0446\u044c \u0430\u0431\u043e CRM-\u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442"></label>
         <label><span>\u0412\u0438\u043a\u043e\u043d\u0430\u0432\u0435\u0446\u044c</span><select data-task-center-query="ownerUserId">${taskCenterOwnerOptions()}</select></label>
         <label><span>\u0412\u0456\u0434</span><input type="date" data-task-center-query="dateFrom" value="${state.dateFrom}"></label>
@@ -1492,7 +1507,7 @@ function renderTaskCenterQueryControls() {
         <label><span>\u0414\u0436\u0435\u0440\u0435\u043b\u043e</span><select data-task-center-query="source">${taskCenterSelectOptions(TASK_CENTER_URL_SOURCES, state.source ? [state.source] : [], '\u0423\u0441\u0456')}</select></label>
     </div><div class="task-center-saved-views-row">
         <select data-task-saved-view>${savedOptions}</select>
-        <button type="button" class="btn-secondary" data-task-save-view ${taskCenterSavedViewSaving ? 'disabled aria-busy="true"' : ''}>\u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438 \u0432\u0438\u0433\u043b\u044f\u0434</button>
+        <button type="button" class="btn-secondary" data-task-save-view ${taskCenterSavedViewSaving ? 'disabled aria-busy="true"' : drilldownActive ? 'disabled title="Цей зріз можна зберегти як посилання. Для збереженого вигляду приберіть фільтр прострочених задач."' : ''}>\u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438 \u0432\u0438\u0433\u043b\u044f\u0434</button>
         <button type="button" class="btn-secondary" data-task-delete-saved-view disabled>\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438</button>
     </div>`;
     if (host.dataset.bound === 'true') return;
@@ -1510,11 +1525,12 @@ function renderTaskCenterQueryControls() {
             return;
         }
         const view = taskSavedViews.find(item => item.id === event.target?.value);
-        if (event.target?.dataset?.taskSavedView && view?.state) updateTaskCenterQueryState(view.state);
+        if (event.target?.dataset?.taskSavedView && view?.state) updateTaskCenterQueryState({ ...view.state, bookingOverdue: false, personalOverdue: false });
         const remove = host.querySelector('[data-task-delete-saved-view]');
         if (remove) { remove.disabled = !view; remove.dataset.taskSavedViewId = view?.id || ''; }
     });
     host.addEventListener('click', event => {
+        if (event.target.closest('[data-task-clear-dashboard-overdue]')) updateTaskCenterQueryState({ bookingOverdue: false, personalOverdue: false });
         if (event.target.closest('[data-task-save-view]')) void saveCurrentTaskCenterView();
         const remove = event.target.closest('[data-task-delete-saved-view]');
         if (remove?.dataset.taskSavedViewId) void deleteTaskCenterSavedView(remove.dataset.taskSavedViewId);
@@ -1545,7 +1561,7 @@ async function persistTaskSavedViews(nextViews) {
 }
 
 async function saveCurrentTaskCenterView() {
-    if (taskCenterSavedViewSaving) return;
+    if (taskCenterSavedViewSaving || taskCenterQueryState.bookingOverdue || taskCenterQueryState.personalOverdue) return;
     if (typeof formModal !== 'function') {
         showNotification('\u0424\u043e\u0440\u043c\u0430 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u043d\u044f \u0432\u0438\u0433\u043b\u044f\u0434\u0443 \u0442\u0438\u043c\u0447\u0430\u0441\u043e\u0432\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430.', 'error');
         return;
@@ -1624,6 +1640,7 @@ function applyTaskViewShell(view = currentView) {
 function activateTaskView(view = 'inbox', { mode = taskCenterModeForView(view), skipUrl = false } = {}) {
     const nextView = TASK_CENTER_LEGACY_VIEWS.includes(view) ? view : 'inbox';
     assistantTaskFilter = '';
+    taskCenterQueryState = { ...taskCenterQueryState, bookingOverdue: false, personalOverdue: false };
     setBoardView(nextView, mode);
     taskCenterQueryState = normalizeTaskCenterQueryState({ ...taskCenterQueryState, mode: currentTaskMode, queue: nextView });
     if (!skipUrl) syncTaskCenterUrl();
@@ -2012,6 +2029,15 @@ async function apiGetTasksPage({ view = currentView, page = 1, limit = 100, sign
         limit: String(Math.max(1, Math.min(500, Number(limit) || 100)))
     });
     const state = taskCenterQueryState;
+    if (state.bookingOverdue || state.personalOverdue) {
+        params.set('view', 'board');
+        params.set('include_duplicates', '1');
+    }
+    if (state.bookingOverdue) {
+        params.set('source_type', 'booking');
+        params.set('overdue', '1');
+    }
+    if (state.personalOverdue) params.set('dashboardFilter', 'my-overdue');
     if (state.ownerUserId) params.set('owner_user_id', state.ownerUserId);
     if (state.dateFrom) params.set('date_from', state.dateFrom);
     if (state.dateTo) params.set('date_to', state.dateTo);
@@ -2440,8 +2466,9 @@ async function loadTaskTeamControl(options = {}) {
 }
 async function loadAllTasks(options = {}) {
     const { fatal = false, append = false } = options;
-    if (!append && typeof currentTaskMode !== 'undefined' && currentTaskMode === 'overview') return loadTaskOverview({ fatal });
-    if (!append && typeof currentTaskMode !== 'undefined' && ['team', 'planning'].includes(currentTaskMode)) return loadTaskTeamControl({ fatal });
+    const dashboardOverdue = typeof taskCenterQueryState !== 'undefined' && (taskCenterQueryState.bookingOverdue || taskCenterQueryState.personalOverdue);
+    if (!append && !dashboardOverdue && typeof currentTaskMode !== 'undefined' && currentTaskMode === 'overview') return loadTaskOverview({ fatal });
+    if (!append && !dashboardOverdue && typeof currentTaskMode !== 'undefined' && ['team', 'planning'].includes(currentTaskMode)) return loadTaskTeamControl({ fatal });
     if (!append) {
         window.__taskCenterRequestAbortController?.abort();
         window.__taskCenterRequestAbortController = typeof AbortController === 'function' ? new AbortController() : null;
@@ -3093,6 +3120,15 @@ function renderBoard() {
     updateTaskExplainability();
     renderMaysternyaTaskOpsBar();
     renderOperationsSummary();
+    if (taskCenterQueryState.bookingOverdue || taskCenterQueryState.personalOverdue) {
+        const tasks = sortTasksForDisplay(filterByCategory(allTasks));
+        const label = taskCenterQueryState.personalOverdue ? 'Мої прострочені задачі' : 'Прострочена підготовка подій';
+        container.innerHTML = `<h2>${label} · ${Number(taskPagination.total || 0)}</h2>${tasks.length
+            ? tasks.map(task => renderTaskCard(task)).join('')
+            : '<div class="empty-state">Немає доступних задач за цими умовами.</div>'}`;
+        renderTaskPagination(container);
+        return;
+    }
     if (taskOverviewModeActive()) {
         renderTaskOverview(container);
         return;

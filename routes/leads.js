@@ -979,7 +979,7 @@ function parseLeadListOffset(value) {
 }
 
 function buildLeadListFilters(query, businessScope) {
-    const { status, assigned_to, source, search, pipeline_stage, lead_type, attention } = query;
+    const { status, assigned_to, source, search, pipeline_stage, lead_type, attention, lifecycle } = query;
     const conditions = [];
     const params = [];
     conditions.push(leadScopeCondition(params, businessScope, 'l'));
@@ -1024,6 +1024,14 @@ function buildLeadListFilters(query, businessScope) {
             return { error: 'Некоректний attention' };
         }
         conditions.push(`COALESCE(l.last_contact_at, l.created_at) < NOW() - INTERVAL '48 hours'`);
+    }
+    if (lifecycle && cleanText(lifecycle) !== 'active') {
+        return { error: 'Некоректний lifecycle' };
+    }
+    if (lifecycle || attention) {
+        // Dashboard active/stale counts share the canonical WorkQueue terminal-stage boundary.
+        params.push(['completed', 'closed', 'lost']);
+        conditions.push(`COALESCE(l.pipeline_stage, 'new') <> ALL($${params.length}::text[])`);
     }
     if (search) {
         const pattern = `%${search}%`;

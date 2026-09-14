@@ -517,6 +517,59 @@ test('dashboard board persistence normalizes legacy and modern saved content con
     assert.deepEqual(widgetOnlySave.layout.boardState, secondSave.layout.boardState);
 });
 
+test('dashboard layout partial saves preserve personal presentation and unknown layout fields', () => {
+    const { normalizeDashboardConfig, buildPersistedDashboardConfig } = require(path.join(ROOT, 'routes/dashboard')).__boardTest;
+    const original = {
+        widgets: ['funnel', 'my_focus', 'nearest_event'],
+        server_revision: '2026-09-14T12:00:00.000Z',
+        layout: {
+            presentationMode: 'flat-grid',
+            widgetSizes: { my_focus: 'wide', funnel: 'compact', nearest_event: 'side' },
+            mobileOrder: ['my_focus', 'nearest_event', 'funnel'],
+            futurePreferences: { density: 'comfortable', userChoice: true }
+        }
+    };
+    const normalized = normalizeDashboardConfig(original, 'creator');
+    assert.deepEqual(normalized.layout.widgetSizes, { my_focus: 'wide', funnel: 'standard', nearest_event: 'standard' });
+    assert.deepEqual(normalized.widgets, original.widgets, 'normalization must not recommend a replacement order');
+    assert.equal(normalized.serverRevision, original.server_revision);
+
+    const saved = buildPersistedDashboardConfig(original, {
+        widgets: ['nearest_event', 'funnel', 'my_focus'],
+        layout: { presentationMode: 'flat-grid', widgetGridVersion: 1 }
+    }, 'creator');
+    const reloaded = normalizeDashboardConfig({ ...saved, layout: JSON.stringify(saved.layout) }, 'creator');
+    assert.deepEqual(reloaded.layout.futurePreferences, original.layout.futurePreferences);
+    assert.deepEqual(reloaded.layout.widgetSizes, normalized.layout.widgetSizes);
+    assert.deepEqual(reloaded.layout.mobileOrder, original.layout.mobileOrder);
+    assert.deepEqual(reloaded.widgets, ['nearest_event', 'funnel', 'my_focus']);
+    assert.deepEqual(original.layout.widgetSizes, { my_focus: 'wide', funnel: 'compact', nearest_event: 'side' }, 'save must not mutate the source object');
+});
+
+test('dashboard layout opt-in values normalize without populating absent preferences or resetting empty widgets', () => {
+    const { normalizeDashboardConfig, buildPersistedDashboardConfig } = require(path.join(ROOT, 'routes/dashboard')).__boardTest;
+    const existing = { widgets: ['my_focus'], layout: { unrelated: { keep: 1 } } };
+    const unchanged = buildPersistedDashboardConfig(existing, { layout: { widgetGridVersion: 1 } }, 'creator');
+    assert.equal(Object.hasOwn(unchanged.layout, 'widgetSizes'), false);
+    assert.equal(Object.hasOwn(unchanged.layout, 'mobileOrder'), false);
+    assert.deepEqual(unchanged.widgets, ['my_focus']);
+    const saved = buildPersistedDashboardConfig(existing, {
+        widgets: [],
+        layout: {
+            widgetSizes: { my_focus: 'full', funnel: 'wide', weather: 'standard', invalid: 'giant', '__bad': 'full', team_online: null },
+            mobileOrder: ['my_focus', 'nearest_event', 'my_focus', null, '', '../bad']
+        }
+    }, 'creator');
+    assert.deepEqual(saved.widgets, []);
+    assert.deepEqual(saved.layout.widgetSizes, { my_focus: 'full', funnel: 'wide', weather: 'standard' });
+    assert.deepEqual(saved.layout.mobileOrder, ['my_focus', 'nearest_event']);
+    assert.deepEqual(saved.layout.unrelated, { keep: 1 });
+    const cleared = buildPersistedDashboardConfig(saved, { layout: { widgetSizes: {}, mobileOrder: [] } }, 'creator');
+    assert.deepEqual(cleared.layout.widgetSizes, {});
+    assert.deepEqual(cleared.layout.mobileOrder, []);
+    assert.deepEqual(normalizeDashboardConfig(cleared, 'creator').widgets, []);
+});
+
 test('dashboard board persistence path stays canonical Postgres and excludes Supabase', () => {
     const routeJs = read('routes/dashboard.js');
     const pageJs = read('js/dashboard-page.js');

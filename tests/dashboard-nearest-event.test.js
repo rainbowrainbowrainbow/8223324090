@@ -37,6 +37,7 @@ function resetState() {
     state = {
         queries: [],
         eventRows: [],
+        tomorrowRows: [],
         taskRows: [],
         failQuery: null,
         nowTime: '14:30',
@@ -53,8 +54,9 @@ function installDashboardMocks() {
                 if (state.failQuery === state.queries.length || state.failQuery === 'all') {
                     throw new Error('planned dashboard source failure');
                 }
-                if (state.queries.length === 1) return { rows: state.eventRows };
-                if (state.queries.length === 2) return { rows: state.taskRows };
+                if (/FROM tasks t/.test(sql)) return { rows: state.taskRows };
+                if (/FROM bookings b/.test(sql) && /LIMIT 1/.test(sql)) return { rows: /::time >=/.test(sql) ? state.eventRows : state.tomorrowRows };
+                if (/b.status = 'preliminary'/.test(sql)) return { rows: [{ count: params[0] === state.today ? '2' : '1' }] };
                 return { rows: [] };
             }
         }
@@ -166,6 +168,7 @@ describe('dashboard nearest event widget', () => {
             id: 42,
             date: '2026-09-13',
             start_time: '15:00:00',
+            starts_at: '2026-09-13T12:00:00.000Z',
             client_name: 'День народження Софії',
             program: 'Laser party',
             room: 'Зала 2',
@@ -185,6 +188,7 @@ describe('dashboard nearest event widget', () => {
 
         assert.equal(payload.event.id, 42);
         assert.equal(payload.event.time, '15:00');
+        assert.equal(payload.event.startsAt, '2026-09-13T12:00:00.000Z');
         assert.equal(payload.event.canonicalHref, '/booking-summary.html?id=42&businessContext=event_genix&return=%2Fdashboard');
         assert.equal(payload.event.responsibleLabel, 'Марина');
         assert.deepEqual(payload.confirmation, {
@@ -201,6 +205,7 @@ describe('dashboard nearest event widget', () => {
         assert.equal(Object.hasOwn(payload, 'readinessScore'), false);
 
         const eventQuery = state.queries[0];
+        assert.match(eventQuery.sql, /AT TIME ZONE 'Europe\/Kyiv' AS starts_at/);
         assert.match(eventQuery.sql, /LEFT\(BTRIM\(b\.time::text\), 5\)::time >= \$2::time/);
         assert.match(eventQuery.sql, /ORDER BY LEFT\(BTRIM\(b\.time::text\), 5\)::time ASC, b\.id ASC\s+LIMIT 1/);
         assert.match(eventQuery.sql, /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/);
@@ -210,7 +215,7 @@ describe('dashboard nearest event widget', () => {
         const taskQuery = state.queries[1];
         assert.match(taskQuery.sql, /t\.source_type = 'booking'/);
         assert.match(taskQuery.sql, /t\.source_id = \$1/);
-        assert.match(taskQuery.sql, /COALESCE\(t\.status, 'todo'\) NOT IN \('cancelled','archived'\)/);
+        assert.match(taskQuery.sql, /LOWER\(COALESCE\(t\.status, 'todo'\)\) NOT IN \('cancelled','canceled','archived'\)/);
         assert.match(taskQuery.sql, /COUNT\(\*\) OVER \(\)::int AS preparation_total/);
         assert.deepEqual(taskQuery.params, ['42', 5, 'event_genix']);
     });
@@ -228,7 +233,9 @@ describe('dashboard nearest event widget', () => {
         assert.equal(payload.preparation, null);
         assert.equal(payload.meta.state, 'empty');
         assert.equal(payload.meta.scopeSource, 'mock-booking-visibility');
-        assert.equal(state.queries.length, 1);
+        assert.equal(state.queries.length, 2);
+        assert.ok(state.queries.every(query => /FROM bookings b/.test(query.sql)));
+        assert.equal(state.queries[1].params[0], dashboard.__boardTest.dashboardKyivDateOffset(1));
     });
 
     it('keeps missing responsible and missing preparation tasks explicit instead of marking the event ready', async () => {
@@ -271,6 +278,17 @@ describe('dashboard nearest event widget', () => {
         );
     });
 
+    it('preserves the known event but marks unavailable preparation explicitly', async () => {
+        const dashboard = loadDashboard();
+        state.eventRows = [{ id: 1, date: state.today, start_time: '19:00', status: 'confirmed' }];
+        state.failQuery = 2;
+        const payload = await dashboard.__boardTest.loadNearestEventWidgetData({ id: 5, role: 'admin' }, { activeContext: 'event_genix' });
+        assert.equal(payload.event.id, 1);
+        assert.equal(payload.preparation, null);
+        assert.equal(payload.meta.sourceStates.preparation, 'error');
+        assert.equal(payload.meta.partial, true);
+    });
+
     it('counts all visible preparation tasks while bounding only the task preview', async () => {
         const dashboard = loadDashboard();
         state.eventRows = [{ id: 'QA-7', date: state.today, time: '18:00', status: 'confirmed' }];
@@ -300,7 +318,7 @@ describe('dashboard nearest event widget', () => {
 
         assert.equal(payload.eventRiskSummary.todayUnconfirmed, 2);
         assert.equal(payload.eventRiskSummary.tomorrowUnconfirmed, 1);
-        assert.equal(state.queries.length, 5);
+        assert.equal(state.queries.length, 6);
         const latePreliminaryQuery = state.queries[2].sql;
         assert.match(latePreliminaryQuery, /CASE\s+WHEN LEFT\(BTRIM\(COALESCE\(b\.time::text, ''\)\), 5\) ~/);
         assert.match(latePreliminaryQuery, /ELSE NULL/);
@@ -311,6 +329,15 @@ describe('dashboard nearest event widget', () => {
         const dashboardRouteSource = fs.readFileSync(path.join(__dirname, '..', 'routes', 'dashboard.js'), 'utf8');
         assert.doesNotMatch(dashboardRouteSource, /SUBSTRING\(b\d?\.time FROM [^)]+\)::int/);
         assert.doesNotMatch(dashboardRouteSource, /\bline_id\s*=\s*0\b/);
+    });
+
+    it('advances calendar days through DST and finds Monday from Sunday', () => {
+        const { dashboardKyivDateOffset, dashboardWeekStart } = loadDashboard().__boardTest;
+        assert.equal(dashboardKyivDateOffset(1, new Date('2026-10-24T21:30:00Z')), '2026-10-26');
+        assert.equal(dashboardKyivDateOffset(1, new Date('2026-03-28T21:30:00Z')), '2026-03-29');
+        assert.equal(dashboardKyivDateOffset(1, new Date('2026-12-31T21:30:00Z')), '2027-01-01');
+        assert.equal(dashboardWeekStart('2026-09-13'), '2026-09-07');
+        assert.equal(dashboardWeekStart('2026-09-14'), '2026-09-14');
     });
 
     it('uses a single Kyiv clock at midnight, minute boundaries and both DST transitions', () => {

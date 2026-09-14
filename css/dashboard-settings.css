@@ -297,9 +297,9 @@
 
 .team-task-widget-list {
     display: grid;
-    gap: 5px;
-    max-height: 220px;
-    overflow-y: auto;
+    gap: 8px;
+    max-height: none;
+    overflow: visible;
 }
 
 .team-task-widget-row {
@@ -1097,4 +1097,68 @@
 
 .dark-mode .dashboard-settings-overlay .settings-modal-footer {
     background: rgba(15, 23, 42, 0.88);
+}
+
+/* Personal layout controls share the Dashboard's accessible surface palette. */
+body[data-crm-page="dashboard"] .dashboard-settings-overlay {
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 14px;
+    color: var(--dash-text);
+}
+
+body[data-crm-page="dashboard"] .dashboard-settings-overlay :is(
+    .settings-modal, .settings-widget-panel, .settings-widget-item,
+    .settings-modal-close, .settings-widget-search input,
+    .settings-recommend-preview, .settings-modal-footer
+) {
+    color: var(--dash-text);
+    background: var(--dash-surface);
+    border-color: var(--dash-border);
+}
+
+body[data-crm-page="dashboard"] .dashboard-settings-overlay :is(
+    .dashboard-settings-scene-card, .settings-widget-filters,
+    .settings-recommend-card, .settings-widget-empty-state
+) {
+    background: var(--dash-subtle);
+    border-color: var(--dash-border);
+}
+
+body[data-crm-page="dashboard"] .dashboard-settings-overlay :is(
+    .settings-modal-title p, .settings-modal-title span, .settings-widget-panel-head span,
+    .settings-widget-meta, .settings-widget-empty-state, .settings-recommend-card p,
+    .settings-recommend-preview p, .settings-recommend-preview ul,
+    .settings-widget-search span, .dashboard-settings-scene-summary span,
+    .dashboard-settings-scene-summary em, .settings-widget-filter
+) {
+    color: var(--dash-muted);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.45;
+}
+
+body[data-crm-page="dashboard"] .dashboard-settings-overlay :is(
+    .settings-widget-name, .settings-modal-title h2, .settings-widget-panel-head h3,
+    .settings-recommend-card strong, .settings-recommend-preview strong,
+    .dashboard-settings-scene-summary strong, .dashboard-settings-scene-row
+) { color: var(--dash-text); }
+
+body[data-crm-page="dashboard"] .dashboard-settings-overlay .settings-widget-item.active {
+    border-color: var(--dash-accent);
+    background: var(--dash-accent-soft);
+}
+
+body[data-crm-page="dashboard"] .dashboard-settings-overlay .settings-widget-filter.active {
+    background: var(--dash-accent-fill);
+    color: #fff;
+    font-weight: 600;
+}
+
+.dashboard-settings-overlay :is(button, select, input, a):focus-visible {
+    outline: 2px solid var(--dash-accent);
+    outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-settings-overlay *, .dashboard-settings-overlay *::before { transition: none !important; animation: none !important; }
 }

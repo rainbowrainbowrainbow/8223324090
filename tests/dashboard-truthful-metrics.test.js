@@ -22,34 +22,7 @@ function clearModules() {
     });
 }
 
-const ROLE_LEVEL = {
-    creator: 0,
-    director: 1,
-    vice_director: 2,
-    senior_manager: 3,
-    manager: 4,
-    accountant: 5,
-    art_director: 6,
-    marketer: 7,
-    it_specialist: 8,
-    hr: 9,
-    admin: 10,
-    security: 11,
-    senior_instructor: 12,
-    instructor: 13,
-    head_chef: 14,
-    cook: 15,
-    head_pastry: 16,
-    pastry_chef: 17,
-    animator: 18,
-    reception: 19,
-    barista: 20,
-    wardrobe: 21,
-    cleaning: 22,
-    maintenance: 23,
-    dishwasher: 24,
-    waiter: 25
-};
+const ROLE_LEVEL = Object.fromEntries(require('../services/accountAccessPolicy').ROLE_HIERARCHY.map((role, index) => [role, index]));
 
 function listen(app) {
     return new Promise(resolve => {
@@ -76,7 +49,7 @@ async function withDashboardApp(fakePool, fn, mocks = {}) {
     installMock('../db', { pool: fakePool, query: fakePool.query.bind(fakePool) });
     installMock('../middleware/auth', {
         authenticateToken: (req, res, next) => {
-            req.user = { id: 20, username: 'senior-manager-user', name: 'Senior manager user', role: 'senior_manager' };
+            req.user = { id: 20, username: 'senior-manager-user', name: 'Senior manager user', role: mocks.role || 'senior_manager', ...(mocks.user || {}) };
             next();
         },
         canUseAction: () => true,
@@ -165,7 +138,7 @@ test('my focus overdue count follows the same canonical policy as task KPIs', as
     const fakePool = {
         query: async (sql) => {
             const text = normalizedSql(sql);
-            if (/SELECT t\.id, t\.title, t\.status/i.test(text) && /ORDER BY CASE WHEN COALESCE\(t\.focus_rank, 0\) > 0 THEN 0 ELSE 1 END/i.test(text)) {
+            if (/WITH candidates AS/i.test(text)) {
                 return { rows: [] };
             }
             if (/COUNT\(\*\) FILTER/i.test(text) && /AS overdue_count/i.test(text)) {
@@ -286,4 +259,165 @@ test('funnel widget preserves source warnings instead of turning partial data in
         assert.equal(data.data.meta.sourceErrors[0].source, 'leads_funnel_summary');
         assert.equal(data.data.meta.warnings.length, 2);
     }, { workQueue });
+});
+
+
+test('focus totals are independent of previews and rank-zero tasks remain recommendations', async () => {
+    const fakePool = { query: async sql => {
+        const text = normalizedSql(sql);
+        if (/WITH candidates AS/.test(text)) {
+            assert.match(text, /PARTITION BY \(COALESCE\(t.focus_rank, 0\) > 0\)/);
+            assert.match(text, /snoozed_until IS NOT NULL AND t.snoozed_until > NOW\(\)/);
+            assert.match(text, /t.archived_at IS NULL/);
+            assert.match(text, /'completed', 'complete', 'cancelled', 'canceled', 'archived'/);
+            assert.match(text, /COALESCE\(t.visibility, 'team'\) = 'team'/);
+            assert.match(text, /COALESCE\(t.business_context, 'event_genix'\)/);
+            return { rows: [
+                { id: 1, title: 'Selected task', focus_rank: 2, status: 'todo', effective_date: '2026-09-15', scheduled_start_at: '2026-09-15T07:00:00Z', deadline: '2026-02-01T09:00:00Z', is_overdue: false },
+                { id: 2, title: 'Suggested task', focus_rank: 0, status: 'todo', is_overdue: false }
+            ] };
+        }
+        assert.match(text, /COUNT\(\*\) FILTER \(WHERE COALESCE\(t.focus_rank, 0\) > 0\)/);
+        assert.doesNotMatch(text, /LIMIT\s+\d+\s*$/);
+        return { rows: [{ selected_count: 12, recommended_count: 28, actionable_count: 40, overdue_count: 0, waiting_count: 4 }] };
+    } };
+    await withDashboardApp(fakePool, async baseUrl => {
+        const res = await fetch(`${baseUrl}/api/dashboard/widgets/my_focus`);
+        const { data } = await res.json();
+        assert.equal(res.status, 200);
+        assert.equal(data.selectedCount, 12);
+        assert.equal(data.recommendedCount, 28);
+        assert.equal(data.actionableCount, 40);
+        assert.equal(data.selectedTasks.length, 1);
+        assert.equal(data.recommendedTasks.length, 1);
+        assert.equal(data.selectedTasks[0].isSelectedFocus, true);
+        assert.equal(data.recommendedTasks[0].isSelectedFocus, false);
+        assert.equal(data.selectedTasks[0].effectiveDueAt, '2026-09-15T07:00:00Z');
+        assert.equal(data.selectedTasks[0].isOverdue, false);
+        assert.equal(data.meta.sourceStates.tasks, 'ready');
+    });
+});
+
+test('finance scopes every source and preserves failed expenses as unknown instead of fabricated profit', async () => {
+    const queries = [];
+    const fakePool = { query: async (sql, params) => {
+        const text = normalizedSql(sql); queries.push(text);
+        assert.ok(params.includes('event_genix'));
+        if (/FROM finance_transactions ft/.test(text)) {
+            assert.match(text, /COALESCE\(ft.business_context, 'event_genix'\)/);
+            throw new Error('planned finance source failure');
+        }
+        assert.match(text, /COALESCE\(b.business_context, 'event_genix'\)/);
+        return { rows: [/SUM/.test(text) ? { total: '1900' } : { count: '3' }] };
+    } };
+    await withDashboardApp(fakePool, async baseUrl => {
+        const res = await fetch(`${baseUrl}/api/dashboard/widgets/finance_today`);
+        const { data } = await res.json();
+        assert.equal(res.status, 200);
+        assert.equal(data.bookingValue, 1900);
+        assert.equal(data.revenue, 1900);
+        assert.equal(data.expenses, null);
+        assert.equal(data.profit, null);
+        assert.equal(data.meta.partial, true);
+        assert.equal(data.meta.sourceStates.expenses, 'error');
+        assert.equal(data.meta.warnings[0].source, 'expenses');
+    });
+    assert.equal(queries.length, 3);
+});
+
+test('new stage leads expose full matching count rather than preview length', async () => {
+    await withDashboardApp({ query: async sql => {
+        assert.match(normalizedSql(sql), /COUNT\(\*\) OVER\(\)::int AS total_count/);
+        return { rows: [{ id: 4, name: 'Lead', total_count: 28 }] };
+    } }, async baseUrl => {
+        const response = await fetch(`${baseUrl}/api/dashboard/widgets/leads_new`);
+        const { data } = await response.json();
+        assert.equal(response.status, 200);
+        assert.equal(data.total, 28);
+        assert.equal(data.leads.length, 1);
+        assert.match(data.href, /stage=new/);
+    });
+});
+
+test('content tasks apply existing private visibility and business scope while unavailable art stays unknown', async () => {
+    const queries = [];
+    await withDashboardApp({ query: async sql => {
+        const text = normalizedSql(sql); queries.push(text);
+        assert.match(text, /FROM tasks WHERE category = 'improvement'/);
+        assert.match(text, /COALESCE\(tasks.visibility, 'team'\) = 'team'/);
+        assert.match(text, /COALESCE\(tasks.business_context, 'event_genix'\)/);
+        assert.match(text, /tasks.archived_at IS NULL/);
+        return { rows: [] };
+    } }, async baseUrl => {
+        const response = await fetch(`${baseUrl}/api/dashboard/widgets/content_pipeline`);
+        const { data } = await response.json();
+        assert.equal(response.status, 200);
+        assert.deepEqual(data.designTasks, []);
+        assert.equal(data.approvedThisWeek, null);
+        assert.equal(data.meta.sourceStates.designTasks, 'ready');
+        assert.equal(data.meta.sourceStates.inReview, 'unavailable');
+    }, { role: 'art_director' });
+    assert.equal(queries.length, 1);
+});
+
+test('HR birthdays query crosses month and year boundaries without inventing contract expiry from hire date', async () => {
+    const queries = [];
+    await withDashboardApp({ query: async sql => {
+        const text = normalizedSql(sql); queries.push(text);
+        if (/birth_date/.test(text)) {
+            assert.match(text, /generate_series\(\$1::date, \$2::date, INTERVAL '1 day'\)/);
+            throw new Error('planned birthdays failure');
+        }
+        assert.doesNotMatch(text, /hire_date/);
+        return { rows: [] };
+    } }, async baseUrl => {
+        const response = await fetch(`${baseUrl}/api/dashboard/widgets/hr_overview`);
+        const { data } = await response.json();
+        assert.equal(response.status, 200);
+        assert.equal(data.meta.sourceStates.birthdays, 'error');
+        assert.equal(data.meta.contractsExpiryAvailable, false);
+        assert.equal(data.meta.partial, true);
+    }, { role: 'hr', user: { businessMembershipAccess: { membershipEnabled: false, invalid: false, registry: [] } } });
+    assert.equal(queries.length, 3);
+});
+
+
+test('funnel keeps the earliest follow-up independently of an earlier task bucket', async () => {
+    const callback = { id: 'callback:1', bucket: 'callback_due', title: 'Call client', dueAt: '2026-09-14T09:00:00Z', href: '/sales-funnel?lead=17&businessContext=event_genix' };
+    const workQueue = { buildWorkQueue: async ({ limit }) => {
+        assert.equal(limit, 1, 'one item per SQL source is sufficient for the next recommendation');
+        return { items: [{ bucket: 'overdue', title: 'Old task' }, callback],
+            buckets: [{ key: 'overdue', items: [{ bucket: 'overdue', title: 'Old task' }] }, { key: 'callback_due', items: [callback] }],
+            meta: { funnelInsights: {}, warnings: [] } };
+    } };
+    await withDashboardApp({ query: async () => { throw new Error('duplicate source load'); } }, async baseUrl => {
+        const response = await fetch(`${baseUrl}/api/dashboard/widgets/funnel`);
+        const { data } = await response.json();
+        assert.equal(response.status, 200);
+        assert.deepEqual(data.meta.followUps, [callback]);
+        assert.equal(data.meta.sourceStates.followUps, 'ready');
+        assert.equal(data.meta.partial, false);
+    }, { workQueue });
+});
+
+test('booking and finance aggregation bind the currently selected business on every request', async () => {
+    const bindings = [];
+    const fakePool = { query: async (sql, params) => {
+        const text = normalizedSql(sql);
+        assert.match(text, /COALESCE\([a-z]+.business_context, 'event_genix'\) = \$\d+/);
+        const context = params.at(-1);
+        assert.ok(['dar', 'event_genix'].includes(context));
+        bindings.push(context);
+        return { rows: [/SUM/.test(text) ? { total: context === 'dar' ? 200 : 100 } : { count: context === 'dar' ? 2 : 1 }] };
+    } };
+    await withDashboardApp(fakePool, async baseUrl => {
+        for (const context of ['event_genix', 'dar']) {
+            const response = await fetch(`${baseUrl}/api/dashboard/widgets/finance_today?businessContext=${context}`);
+            const { data } = await response.json();
+            assert.equal(response.status, 200);
+            assert.equal(data.bookingValue, context === 'dar' ? 200 : 100);
+            assert.equal(data.meta.businessScope.activeContext, context);
+        }
+    }, { role: 'director' });
+    assert.deepEqual(bindings, ['event_genix', 'event_genix', 'event_genix', 'dar', 'dar', 'dar']);
 });

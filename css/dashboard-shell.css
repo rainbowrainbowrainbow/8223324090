@@ -2,6 +2,39 @@
  * css/dashboard.css — Dashboard page styles (v22.0.0)
  */
 
+/* Dashboard surfaces are local to this page; shared CRM chrome keeps its tokens. */
+body[data-crm-page="dashboard"] {
+    --dash-canvas: #f3f5f7;
+    --dash-surface: #ffffff;
+    --dash-subtle: #f5f7f9;
+    --dash-hover: #edf1f5;
+    --dash-text: #17212f;
+    --dash-muted: #536273;
+    --dash-border: #dce3e9;
+    --dash-accent: #047857;
+    --dash-accent-fill: #047857;
+    --dash-accent-soft: #ecfdf5;
+    --dash-danger: #b91c1c;
+    --dash-warning: #92400e;
+    --dash-shadow: 0 3px 12px rgba(21, 34, 50, 0.035);
+}
+
+body[data-crm-page="dashboard"].dark-mode {
+    --dash-canvas: #11161d;
+    --dash-surface: #1b222c;
+    --dash-subtle: #242d39;
+    --dash-hover: #2d3947;
+    --dash-text: #f0f4f8;
+    --dash-muted: #b0bdcb;
+    --dash-border: #374454;
+    --dash-accent: #6ee7b7;
+    --dash-accent-fill: #047857;
+    --dash-accent-soft: #163b32;
+    --dash-danger: #fca5a5;
+    --dash-warning: #fcd34d;
+    --dash-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+}
+
 /* Dashboard grid layout */
 .dashboard-page,
 .dashboard-page *,
@@ -10,7 +43,7 @@
     box-sizing: border-box;
 }
 
-.dashboard-page {
+body[data-crm-page="dashboard"] main .dashboard-page {
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -18,47 +51,100 @@
     min-height: calc(100vh - 86px);
     min-height: calc(100dvh - 86px);
     min-height: calc(var(--eg-viewport-height, 100dvh) - 86px);
-    border-radius: 24px;
-    background:
-        radial-gradient(circle at 8% 0%, rgba(16, 185, 129, 0.10), transparent 30%),
-        linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(241, 245, 249, 0.76));
+    border-radius: 20px;
+    background: var(--dash-canvas);
+    color: var(--dash-text);
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    --text-primary: var(--dash-text);
+    --text-secondary: var(--dash-muted);
+    --gray-400: var(--dash-muted);
+    --gray-500: var(--dash-muted);
+    --gray-600: var(--dash-muted);
+    --gray-700: var(--dash-text);
+    --gray-800: var(--dash-text);
+    --gray-900: var(--dash-text);
+    --primary: var(--dash-accent);
 }
 
-.dashboard-header {
+body[data-crm-page="dashboard"] .dashboard-page .dashboard-header {
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    display: flex;
+    position: relative;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 12px;
-    padding: 14px 16px;
-    border: 1px solid rgba(148, 163, 184, 0.14);
-    border-radius: 20px;
-    background: rgba(255, 255, 255, 0.78);
-    box-shadow: 0 16px 42px rgba(15, 23, 42, 0.06);
-    backdrop-filter: blur(18px);
+    margin-bottom: 16px;
+    gap: 16px;
+    padding: 4px 0 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
 }
 
-.dashboard-header h1 {
+body[data-crm-page="dashboard"] .dashboard-page .dashboard-header h1 {
     font-size: 32px;
     font-weight: 900;
     margin: 0;
-    letter-spacing: 0;
-    line-height: 1.04;
-    background: linear-gradient(135deg, #0f172a 0%, #047857 48%, #10b981 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    font-family: Nunito, Inter, system-ui, sans-serif;
+    letter-spacing: -0.5px;
+    line-height: 1.15;
+    background: none;
+    color: var(--dash-text);
+    -webkit-text-fill-color: var(--dash-text);
 }
 
-.dashboard-greeting {
+.dashboard-heading {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+}
+
+.dashboard-heading .dashboard-greeting {
     font-size: 14px;
-    color: var(--gray-500, #a0aec0);
-    margin-top: 8px;
-    font-weight: 800;
+    color: var(--dash-muted);
+    margin: 0;
+    font-weight: 400;
+}
+
+.dashboard-context {
+    flex-basis: 100%;
+    font-size: 12px;
+    color: var(--dash-muted);
+}
+
+.dashboard-context:empty {
+    display: none;
+}
+
+.dashboard-page :is(button, a, select, input):focus-visible {
+    outline: 2px solid var(--dash-accent);
+    outline-offset: 3px;
+}
+
+@media (max-width: 767px) {
+    body[data-crm-page="dashboard"] main .dashboard-page { padding: 12px 8px; }
+    body[data-crm-page="dashboard"] .dashboard-page .dashboard-header { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    body[data-crm-page="dashboard"] .dashboard-page .dashboard-header h1 { font-size: 28px; }
+    .dashboard-heading { gap: 2px 8px; }
+    .dashboard-heading .dashboard-greeting { font-size: 13px; }
+    .dashboard-page .dashboard-actions { gap: 8px; flex-wrap: wrap; }
+    .dashboard-page .dashboard-role-preview { width: auto; }
+    .dashboard-page .dashboard-role-preview-btn { min-height: 40px; }
+    .dashboard-page .dashboard-actions > .dashboard-btn { min-height: 40px; padding: 6px 10px; font-size: 12px; }
+    .dashboard-page .dashboard-role-preview-btn span { display: none; }
+    body[data-crm-page="dashboard"] .dashboard-role-preview-menu {
+        position: fixed; left: 12px; right: 12px; top: 180px; width: auto;
+        max-height: calc(100dvh - 196px);
+    }
 }
 
 .dashboard-showcase-strip {
@@ -697,7 +783,7 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 
 .dashboard-role-preview-btn span {
     color: var(--gray-600, #475569);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 800;
     line-height: 1.05;
     text-transform: uppercase;
@@ -721,9 +807,12 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     right: 0;
     z-index: 1200;
     width: min(320px, calc(100vw - 24px));
+    max-height: min(560px, calc(100dvh - 160px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 12px;
     border: 1px solid rgba(15, 23, 42, 0.12);
-    border-radius: 8px;
+    border-radius: 16px;
     background: rgba(255, 255, 255, 0.98);
     box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
     color: var(--text-primary, #172033);
@@ -742,7 +831,7 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 .dashboard-role-preview-head span,
 .dashboard-role-preview-option em {
     color: var(--gray-500, #64748b);
-    font-size: 10px;
+    font-size: 12px;
     font-style: normal;
     font-weight: 800;
     line-height: 1.2;
@@ -855,6 +944,48 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 .dashboard-btn.primary {
     background: var(--primary, #C9A84C);
     color: var(--text, #1a202c);
+}
+
+body[data-crm-page="dashboard"] .dashboard-btn,
+body[data-crm-page="dashboard"] .dashboard-role-preview-btn,
+body[data-crm-page="dashboard"] .dashboard-role-preview-menu {
+    color: var(--dash-text);
+    background: var(--dash-surface);
+    border: 1px solid var(--dash-border);
+    border-radius: 12px;
+    box-shadow: var(--dash-shadow);
+    font-family: Inter, system-ui, sans-serif;
+    transition: background 160ms, border-color 160ms;
+}
+
+body[data-crm-page="dashboard"] .dashboard-btn:hover,
+body[data-crm-page="dashboard"] .dashboard-role-preview-btn:hover {
+    background: var(--dash-hover);
+    border-color: var(--dash-muted);
+}
+
+body[data-crm-page="dashboard"] .dashboard-btn.primary,
+body[data-crm-page="dashboard"] .dashboard-btn[aria-pressed="true"] {
+    background: var(--dash-accent-fill);
+    border-color: var(--dash-accent-fill);
+    color: #ffffff;
+}
+
+body[data-crm-page="dashboard"] .dashboard-role-preview-menu {
+    box-shadow: 0 20px 56px rgba(0, 0, 0, 0.24);
+}
+
+body[data-crm-page="dashboard"] .dashboard-role-preview-option,
+body[data-crm-page="dashboard"] .dashboard-role-preview-note,
+body[data-crm-page="dashboard"] .dashboard-role-preview-actions button {
+    background: var(--dash-subtle);
+    border-color: var(--dash-border);
+    color: var(--dash-text);
+}
+
+body[data-crm-page="dashboard"] .dashboard-role-preview-option.active {
+    border-color: var(--dash-accent);
+    background: var(--dash-accent-soft);
 }
 
 .dashboard-workspace-toolbar {

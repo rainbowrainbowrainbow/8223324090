@@ -110,6 +110,13 @@ function loadDashboardHarness(options = {}) {
     });
 
     const requests = [];
+    if (options.now) {
+        const NativeDate = dom.window.Date;
+        dom.window.Date = class extends NativeDate {
+            constructor(...args) { super(...(args.length ? args : [options.now])); }
+            static now() { return new NativeDate(options.now).getTime(); }
+        };
+    }
     let role = options.role || 'manager';
     let business = options.business || 'event_genix';
     let sessionGeneration = options.sessionGeneration || 'session-1';
@@ -209,6 +216,119 @@ function orientationFixture(type, overrides = {}) {
     }[type] || {};
 }
 
+test('orientation preserves the selected focus rank when another selected task has an earlier nonurgent date', async () => {
+    const harness = loadDashboardHarness({ now: '2026-09-13T10:30:00Z' });
+    const orientation = addDayOrientationContainer(harness);
+    const tasks = [
+        { id: 901, title: 'First selected priority', status: 'todo', focus_rank: 1, isSelectedFocus: true, dueState: 'upcoming', effectiveDueAt: '2026-09-16T09:00:00Z' },
+        { id: 902, title: 'Second selected priority', status: 'todo', focus_rank: 2, isSelectedFocus: true, dueState: 'upcoming', effectiveDueAt: '2026-09-14T09:00:00Z' }
+    ];
+    harness.setFetchImplementation(async url => {
+        if (url.includes('/widgets/my_focus')) return response({ tasks, selectedTasks: tasks, selectedCount: 2, recommendedCount: 0, actionableCount: 2, overdueCount: 0, waitingCount: 0 });
+        if (url.includes('/widgets/nearest_event')) return response({ event: null, preparation: null });
+        if (url.includes('/widgets/funnel')) return response({ meta: { funnelInsights: { waitingAction: 0 } } });
+        return response({});
+    });
+    harness.api.setConfig(boardConfig(['my_focus']));
+    harness.api.renderWidgets();
+    await flushHydration();
+    await flushHydration();
+    assert.equal(orientation.querySelector('a.dashboard-day-orientation-action')?.getAttribute('href'), '/tasks?open=901');
+    assert.equal(harness.dom.window.document.querySelector('[data-focus-task]')?.getAttribute('data-focus-task'), '901');
+    harness.dom.window.close();
+});
+
+test('a known nearest event remains available when only preparation fails without inventing empty tasks', async () => {
+    const harness = loadDashboardHarness();
+    harness.dom.window.document.getElementById('dashboardGrid').innerHTML = '<section data-widget="nearest_event"><div id="widget-nearest_event"></div></section>';
+    harness.setFetchImplementation(async () => response({
+        event: { id: 903, date: '2026-09-15', dateScope: 'tomorrow', time: '12:00', program: 'Known event', canonicalHref: '/booking-summary?id=903' },
+        confirmation: { status: 'confirmed' }, preparation: null,
+        meta: { partial: true, sourceStates: { bookings: 'ready', preparation: 'error' }, warnings: [{ source: 'preparation', code: 'source_unavailable' }] }
+    }));
+    await harness.api.loadWidgetData('nearest_event');
+    const widget = harness.dom.window.document.getElementById('widget-nearest_event');
+    assert.match(widget.textContent, /Known event/);
+    assert.equal(widget.querySelector('.nearest-event-open')?.getAttribute('href'), '/booking-summary?id=903');
+    assert.match(widget.textContent, /Стан підготовки невідомий/);
+    assert.doesNotMatch(widget.textContent, /Підготовчі задачі не знайдені|0 відкрито|все готово/);
+    assert.ok(widget.querySelector('.widget-retry-btn'));
+    harness.dom.window.close();
+});
+
+test('due client commitment outranks selected focus but current urgent work outranks both', async t => {
+    const h = loadDashboardHarness();
+    t.after(() => h.dom.window.close());
+    addDayOrientationContainer(h);
+    let urgent = false;
+    h.setFetchImplementation(url => response(orientationFixture(new URL(url, 'http://localhost').pathname.split('/').pop(), {
+        my_focus: { tasks: [
+            { id: 1, title: 'Selected old task', focus_rank: 1, status:'todo', dueState:'review' },
+            { id: 2, title: 'Current urgent task', focus_rank: 0, status:'todo', priority:'high', dueState: urgent ? 'today' : 'review' }
+        ], selectedCount:1, recommendedCount:1, actionableCount:2, overdueCount:99, waitingCount:0 },
+        funnel: { meta: { sourceStates:{funnel:'ready',followUps:'ready'}, funnelInsights:{waitingAction:500,total:500},
+            followUps:[{title:'Call customer as agreed',dueAt:'2020-01-01T12:00:00Z',href:'/sales-funnel?lead=72'}] } }
+    })));
+    await h.api.loadDayOrientationSources();
+    assert.equal(h.api.buildDayOrientation().href, '/sales-funnel?lead=72');
+    assert.equal(h.api.buildDayOrientation().source, 'Домовленість із клієнтом');
+    urgent = true;
+    await h.api.refreshDayOrientation();
+    assert.equal(h.api.buildDayOrientation().href, '/tasks?open=2');
+    assert.equal(h.api.buildDayOrientation().source, 'Рекомендовано');
+    assert.match(h.api.buildDayOrientation().reason, /робочий строк/);
+});
+
+test('one task lock blocks different simultaneous actions until the server answers', async t => {
+    const h = loadDashboardHarness();
+    t.after(() => h.dom.window.close());
+    const gate = deferred();
+    const mutations = [];
+    h.dom.window.document.getElementById('dashboardGrid').innerHTML = '<section data-widget="my_focus"><div id="widget-my_focus"></div></section>';
+    h.setFetchImplementation((url, init) => {
+        if (init.method === 'PATCH' || init.method === 'POST') { mutations.push(url); return gate.promise; }
+        if (url.includes('/my_focus')) return response({tasks:[{id:7,title:'One task',status:'todo',focus_rank:0}],selectedCount:0,recommendedCount:1,actionableCount:1,overdueCount:0,waitingCount:0});
+        return response({});
+    });
+    await h.api.loadWidgetData('my_focus');
+    const button = h.dom.window.document.querySelector('[data-dashboard-task-action="complete"]');
+    const completing = h.api.completeFocusTask(7, button);
+    const snoozing = await h.api.snoozeDashboardTask(7);
+    const selecting = await h.api.focusDashboardTask(7);
+    assert.equal(mutations.length, 1);
+    assert.equal(snoozing, undefined);
+    assert.equal(selecting, undefined);
+    assert.ok([...h.dom.window.document.querySelectorAll('[data-dashboard-task-id="7"]')].every(control => control.disabled));
+    assert.equal(h.notifications.length, 0, 'pending request must not announce success');
+    gate.resolve(response({}, {ok:false,status:503,payload:{success:false,error:'Temporary failure'}}));
+    const result = await completing;
+    assert.equal(result.success, false);
+    assert.ok(h.dom.window.document.querySelector('[data-dashboard-task-action="complete"]'));
+    assert.ok([...h.dom.window.document.querySelectorAll('[data-dashboard-task-id="7"]')].every(control => !control.disabled));
+});
+
+test('repeated identity event reuses data but real business change refreshes once', async t => {
+    const h = loadDashboardHarness();
+    t.after(() => h.dom.window.close());
+    h.api.setConfig(boardConfig(['my_focus']));
+    h.setFetchImplementation(url => response(orientationFixture(new URL(url,'http://localhost').pathname.split('/').pop())));
+    h.api.renderWidgets();
+    h.dom.window.dispatchEvent(new h.dom.window.Event('app:user-changed'));
+    await flushHydration();
+    const before = h.requests.length;
+    for(let i=0;i<5;i++) {
+        h.setUser({id:41,username:'manager.one',role:'manager',last_seen_at:String(i)});
+        h.dom.window.dispatchEvent(new h.dom.window.Event('app:user-changed'));
+    }
+    await flushHydration();
+    assert.equal(h.requests.length,before);
+    h.setBusiness('park');
+    h.dom.window.dispatchEvent(new h.dom.window.Event('timeline:business-context-changed'));
+    await flushHydration();
+    const parkReads=h.requests.filter(url=>url.includes('widgets/my_focus')&&url.includes('businessContext=park'));
+    assert.equal(parkReads.length,1);
+});
+
 test('orientation shows retry when every source fails and never loops in loading', async () => {
     const h = loadDashboardHarness();
     const el = addDayOrientationContainer(h);
@@ -227,11 +347,11 @@ test('unknown preparation does not outrank an actionable focus task or funnel', 
         const type = new URL(url, 'http://localhost').pathname.split('/').pop();
         return response(orientationFixture(type, {
             nearest_event: { event: { id: 4, time: '18:00', status: 'confirmed' }, preparation: { totalCount: 0 } },
-            my_focus: { tasks: [{ id: 8, title: 'Call QA', status: 'todo' }], overdueCount: 0, waitingCount: 0 }
+            my_focus: { tasks: [{ id: 8, title: 'Call QA', status: 'todo', focus_rank: 1, isSelectedFocus: true }], overdueCount: 0, waitingCount: 0 }
         }));
     });
     await h.api.loadDayOrientationSources();
-    assert.equal(h.api.buildDayOrientation().priority, '3');
+    assert.equal(h.api.buildDayOrientation().priority, 3);
     assert.equal(h.api.buildDayOrientation().href, '/tasks?open=8');
     h.dom.window.close();
 });
@@ -244,7 +364,7 @@ test('failed refresh or revoked access cannot recommend previously cached tasks'
             my_focus: { tasks: [{ id: 8, title: 'Old QA task', status: 'todo' }], overdueCount: 1, waitingCount: 0 }
         })));
         await h.api.loadDayOrientationSources();
-        assert.match(h.api.buildDayOrientation().title, /прострочена/);
+        assert.match(h.api.buildDayOrientation().title, /Old QA task/);
         h.setFetchImplementation(() => response({}, { ok: false, status }));
         await h.api.refreshDayOrientation();
         assert.equal(h.api.buildDayOrientation().tone, 'neutral');
@@ -285,7 +405,8 @@ test('quick stats renders truthful labels, period, business context, and stale l
     await h.api.loadWidgetData('quick_stats');
     const text = h.dom.window.document.getElementById('widget-quick_stats').textContent;
     assert.match(text, /Задачі в роботі/);
-    assert.match(text, /Вартість бронювань/);
+    assert.match(text, /Вартість підтверджених бронювань/);
+    assert.match(text, /12\s800 ₴/);
     assert.match(text, /Сьогодні/);
     assert.match(text, /Event Genix/);
     assert.match(text, /Без контакту понад 48 год: 6/);
@@ -406,9 +527,10 @@ test('an overdue recommendation never points to an unrelated non-overdue focus t
         my_focus: { tasks: [{ id: 8, title: 'Next week', deadline: '2099-01-01T12:00:00Z', status: 'todo' }], overdueCount: 3, waitingCount: 0 }
     })));
     await h.api.loadDayOrientationSources();
-    assert.match(h.api.buildDayOrientation().title, /3 прострочені/);
-    assert.equal(h.api.buildDayOrientation().href, '/tasks');
-    assert.doesNotMatch(h.api.buildDayOrientation().reason, /Next week/);
+    assert.equal(h.api.buildDayOrientation().title, 'Next week');
+    assert.equal(h.api.buildDayOrientation().href, '/tasks?open=8');
+    assert.doesNotMatch(h.api.buildDayOrientation().title + h.api.buildDayOrientation().reason, /прострочен/,
+        'a separate overdue counter must not label the recommended current task overdue');
     h.dom.window.close();
 });
 
@@ -445,7 +567,7 @@ test('default dashboard composition is today-first and gives key widgets support
     ]);
     assert.equal(cards[0].dataset.widgetSize, 'full');
     assert.equal(cards[1].dataset.widgetSize, 'wide');
-    assert.equal(cards[2].dataset.widgetSize, 'side');
+    assert.equal(cards[2].dataset.widgetSize, 'standard');
     assert.equal(harness.api.getConfigWidgets()[0], 'quick_stats');
     harness.dom.window.close();
 });
@@ -458,6 +580,7 @@ test('my focus keeps the first screen to three tasks and sends overflow to detai
         if (url.includes('/widgets/my_focus')) return response({
             overdueCount: 0,
             waitingCount: 1,
+            selectedCount: 0, recommendedCount: 4, actionableCount: 4,
             tasks: [
                 { id: 1, title: 'Very long focus task name that should stay inside the card without breaking the dashboard layout', deadline: '2026-09-14T11:00:00Z', status: 'todo', subtasks: [{ title: 'First subtask', status: 'todo' }, { title: 'Second subtask', status: 'todo' }] },
                 { id: 2, title: 'Second focus task', status: 'todo' },
@@ -472,10 +595,12 @@ test('my focus keeps the first screen to three tasks and sends overflow to detai
 
     const container = harness.dom.window.document.getElementById('widget-my_focus');
     assert.equal(container.querySelectorAll('.widget-task-item').length, 3);
-    assert.match(container.textContent, /Ще 1 у фокусі/);
+    assert.match(container.textContent, /Ще 1 у черзі/);
+    assert.match(container.textContent, /0 обрано у фокус/);
+    assert.match(container.textContent, /4 рекомендовано/);
     assert.equal(container.querySelectorAll('.dashboard-task-subtask:not(.is-more)').length, 0);
-    assert.equal(container.querySelectorAll('.dashboard-task-subtask-more[href^="/tasks?open="]').length, 1);
-    assert.match(container.textContent, /Деталі підзадач/);
+    assert.equal(container.querySelectorAll('.dashboard-task-subtask-summary a[href="/tasks?open=1"]').length, 1);
+    assert.match(container.textContent, /Виконано 0 із 2 · Деталі/);
     harness.dom.window.close();
 });
 
@@ -703,7 +828,8 @@ test('my focus completion uses canonical task status endpoint once and refreshes
     assert.equal(counts['/api/dashboard/widgets/my_focus?businessContext=event_genix'], 2);
     assert.equal(counts['/api/dashboard/widgets/tasks?businessContext=event_genix'], 2);
     assert.equal(counts['/api/dashboard/widgets/nearest_event?businessContext=event_genix'], 2);
-    assert.match(harness.dom.window.document.getElementById('widget-my_focus').textContent, /Особистий фокус чистий/);
+    assert.match(harness.dom.window.document.getElementById('widget-my_focus').textContent, /Доступних актуальних задач немає/);
+    assert.equal(harness.dom.window.document.querySelectorAll('#widget-my_focus [data-dashboard-task-action="complete"]').length, 0);
     assert.doesNotMatch(harness.dom.window.document.getElementById('widget-my_focus').textContent, /Терміново підготувати реквізит/);
     harness.dom.window.close();
 });
@@ -749,7 +875,7 @@ test('my focus completion keeps task open and shows retry when the server denies
     harness.dom.window.close();
 });
 
-test('my focus hides redundant focus action and uses canonical snooze endpoint', async () => {
+test('rank zero allows selection, selected focus hides it, and snooze uses canonical endpoint', async () => {
     const harness = loadDashboardHarness();
     const mutations = [];
     harness.setFetchImplementation((url, init = {}) => {
@@ -782,7 +908,8 @@ test('my focus hides redundant focus action and uses canonical snooze endpoint',
     await harness.api.loadWidgetData('my_focus');
     const focusButton = harness.dom.window.document.querySelector('[data-dashboard-task-action="focus"][data-dashboard-task-id="14"]');
     const snoozeButton = harness.dom.window.document.querySelector('[data-dashboard-task-action="snooze"][data-dashboard-task-id="14"]');
-    assert.equal(focusButton, null, 'tasks already rendered in My Focus must not show a redundant focus action');
+    assert.ok(focusButton, 'rank zero is a recommendation, not selected focus');
+    assert.equal(harness.dom.window.document.querySelector('[data-dashboard-task-action="focus"][data-dashboard-task-id="15"]'), null, 'rank one is selected and hides redundant focus action');
     assert.ok(snoozeButton);
 
     const snoozeResult = await harness.api.snoozeDashboardTask(14, snoozeButton, { preventDefault() {}, stopPropagation() {} });
@@ -809,7 +936,8 @@ test('my focus completion action is isolated from opening task details or draggi
     assert.match(source, /onmousedown="event\.stopPropagation\(\)"/);
     assert.match(source, /event\?\.preventDefault\?\.\(\);/);
     assert.match(source, /event\?\.stopPropagation\?\.\(\);/);
-    assert.match(source, /class="widget-task-title focus-task-detail-link" href="\/tasks\?open=/);
+    assert.match(source, /class="widget-task-title focus-task-detail-link" href=/);
+    assert.match(source, /href: '\/tasks\?open=' \+ encodeURIComponent\(task.id\)/);
     const focusRenderer = source.slice(source.indexOf('    function renderMyFocus('), source.indexOf('    function taskerStatusLabel('));
     assert.doesNotMatch(focusRenderer, /class="widget-task-item" onclick=/, 'details use a keyboard accessible link separate from completion');
 });
@@ -908,7 +1036,7 @@ test('empty dashboard and denied revenue widget do not issue forbidden reads', a
 
 
 test('day orientation prioritizes real nearest-event preparation over focus and funnel signals', async () => {
-    const harness = loadDashboardHarness();
+    const harness = loadDashboardHarness({ now: '2026-09-13T10:30:00Z' });
     const orientation = addDayOrientationContainer(harness);
     harness.setFetchImplementation(async url => {
         if (url.includes('/widgets/nearest_event')) return response({
@@ -995,9 +1123,11 @@ test('nearest event and funnel widgets expose tomorrow context and exact sales a
     const waitingLink = Array.from(funnel.querySelectorAll('a.dashboard-funnel-metric'))
         .find(link => /без контакту 48 год/.test(link.textContent));
     assert.ok(waitingLink);
-    assert.equal(waitingLink.getAttribute('href'), '/sales-funnel?view=kanban&pipeline_stage=deal&lead_type=quality&attention=stale_contact_48h');
+    assert.equal(waitingLink.getAttribute('href'), '/sales-funnel?view=kanban&lead_type=quality&attention=stale_contact_48h&lifecycle=active&businessContext=event_genix', 'The global counter must include every active stage in the same business');
     const stageLink = funnel.querySelector('.dashboard-funnel-stage-chip.needs-action');
-    assert.equal(stageLink.getAttribute('href'), '/sales-funnel?view=kanban&pipeline_stage=deal&lead_type=quality&attention=stale_contact_48h');
+    assert.equal(stageLink.getAttribute('href'), '/sales-funnel?view=kanban&pipeline_stage=deal&lead_type=quality&attention=stale_contact_48h&lifecycle=active&businessContext=event_genix');
+    assert.equal(stageLink.querySelector('strong')?.textContent, '3', 'The stage attention link shows only its matching filtered count');
+    assert.match(stageLink.textContent, /без контакту/);
     harness.dom.window.close();
 });
 
@@ -1024,7 +1154,7 @@ test('day orientation is honest when a source is unavailable and does not claim 
 });
 
 test('day orientation refreshes from hidden source widgets after completing a focus task', async () => {
-    const harness = loadDashboardHarness();
+    const harness = loadDashboardHarness({ now: '2026-09-13T10:30:00Z' });
     const orientation = addDayOrientationContainer(harness);
     const mutations = [];
     let phase = 'before';
@@ -1073,8 +1203,9 @@ test('day orientation refreshes from hidden source widgets after completing a fo
     await flushHydration();
 
     assert.equal(result.success, true);
-    assert.match(orientation.textContent, /У воронці 3 ліди чекають дії/);
-    assert.equal(orientation.querySelector('a.dashboard-day-orientation-action')?.getAttribute('href'), '/sales-funnel?view=kanban&pipeline_stage=new&lead_type=quality&attention=stale_contact_48h');
+    assert.match(orientation.textContent, /лідів без контакту понад 48 год/);
+    assert.doesNotMatch(orientation.textContent, /прострочена домовленість/);
+    assert.equal(orientation.querySelector('a.dashboard-day-orientation-action')?.getAttribute('href'), '/sales-funnel?view=kanban&pipeline_stage=new&lead_type=quality&attention=stale_contact_48h&lifecycle=active&businessContext=event_genix');
     const counts = widgetRequestCounts(harness.requests);
     assert.ok(counts['/api/dashboard/widgets/nearest_event?businessContext=event_genix'] >= 2);
     assert.ok(counts['/api/dashboard/widgets/my_focus?businessContext=event_genix'] >= 2);

@@ -5,8 +5,6 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { JSDOM } = require('jsdom');
 
-require('./dashboard-hydration-request-budget.test');
-
 const ROOT = path.join(__dirname, '..');
 
 function read(relPath) {
@@ -178,6 +176,8 @@ test('pointer drag reorders live widgets, preserves their DOM, and survives conf
     const weatherCard = grid.querySelector('[data-widget="weather"]');
     const taskBody = taskCard.querySelector('.widget-body');
     const originalBoard = harness.savedConfig().layout.boardState;
+    dom.window.DashboardPage.toggleLayoutEditing();
+    assert.equal(grid.classList.contains('is-layout-editing'), true);
     [...grid.querySelectorAll('.widget-card')].forEach((card, index) => {
         card.getBoundingClientRect = () => ({ left: index * 300, right: index * 300 + 280, top: 100, bottom: 380 });
     });
@@ -217,6 +217,10 @@ test('keyboard reorder serializes saves and restores the previous order when per
     const grid = doc.getElementById('dashboardGrid');
     const handle = grid.querySelector('[data-widget="tasks"] .widget-drag-handle');
     const key = value => new dom.window.KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: value });
+
+    handle.dispatchEvent(key('ArrowRight'));
+    assert.equal(requests.filter(request => request.method === 'PUT').length, 0, 'view mode cannot reorder');
+    dom.window.DashboardPage.toggleLayoutEditing();
 
     handle.dispatchEvent(key('ArrowRight'));
     assert.equal(grid.getAttribute('aria-busy'), 'true');

@@ -205,6 +205,7 @@ let currentLeadQueue = DEFAULT_LEAD_QUEUE;
 let currentDateFilter = '';
 let currentPipelineStage = '';
 let currentLeadAttentionFilter = '';
+let currentLeadLifecycleFilter = '';
 let currentBusinessContext = 'event_genix';
 let leadsData = [];
 let leadStatsData = null;
@@ -932,13 +933,8 @@ async function loadLeads() {
     leadCustomerSearchMatches = [];
     leadCustomerSearchQuery = '';
     try {
-        const params = new URLSearchParams();
-        if (currentFilter) params.set('status', currentFilter);
-        if (currentTypeFilter) params.set('lead_type', currentTypeFilter);
-        if (currentDateFilter) params.set('event_date', currentDateFilter);
-        if (currentPipelineStage) params.set('pipeline_stage', currentPipelineStage);
+        const params = leadListParams();
         const search = document.getElementById('leadsSearch')?.value?.trim();
-        if (search) params.set('search', search);
         const statsPromise = loadLeadQueueStats();
         let leadsResult;
         if (currentView === 'kanban') {
@@ -1045,6 +1041,7 @@ function leadListParams() {
     if (currentDateFilter) params.set('event_date', currentDateFilter);
     if (currentPipelineStage) params.set('pipeline_stage', currentPipelineStage);
     if (currentLeadAttentionFilter) params.set('attention', currentLeadAttentionFilter);
+    if (currentLeadLifecycleFilter) params.set('lifecycle', currentLeadLifecycleFilter);
     const search = document.getElementById('leadsSearch')?.value?.trim();
     if (search) params.set('search', search);
     return params;
@@ -1404,6 +1401,7 @@ function applyLeadQueryParams() {
     currentPipelineStage = PIPELINE_STAGES.some(stage => stage.key === requestedStage) ? requestedStage : '';
     const requestedAttention = params.get('attention') || '';
     currentLeadAttentionFilter = requestedAttention === 'stale_contact_48h' ? requestedAttention : '';
+    currentLeadLifecycleFilter = params.get('lifecycle') === 'active' ? 'active' : '';
     currentFilter = params.get('status') || currentFilter;
     const requestedQueue = params.get('lead_queue') || params.get('queue');
     if (LEAD_QUEUE_FILTERS[requestedQueue]) {
@@ -1457,6 +1455,7 @@ function syncLeadUrlState({ replace = true } = {}) {
     setOrDelete('event_date', currentDateFilter);
     setOrDelete('pipeline_stage', currentPipelineStage);
     setOrDelete('attention', currentLeadAttentionFilter);
+    setOrDelete('lifecycle', currentLeadLifecycleFilter);
     url.searchParams.delete('stage');
     setOrDelete('search', document.getElementById('leadsSearch')?.value?.trim() || '');
 
@@ -1478,6 +1477,7 @@ function getLeadFilterSummary() {
         currentLeadQueue !== DEFAULT_LEAD_QUEUE ? { label: maysternyaMode ? 'Черга заявок' : 'Черга лідів', value: leadQueueMeta().label } : null,
         currentPipelineStage ? { label: 'Етап воронки', value: leadPipelineStageLabel(currentPipelineStage) } : null,
         currentLeadAttentionFilter === 'stale_contact_48h' ? { label: 'Увага', value: 'Без контакту понад 48 год' } : null,
+        currentLeadLifecycleFilter === 'active' ? { label: 'Стан воронки', value: 'Незавершені ліди' } : null,
         currentFilter ? { label: 'Статус', value: STATUS_MAP[currentFilter]?.label || currentFilter } : null,
         currentDateFilter ? { label: maysternyaMode ? 'Дата консультації' : 'Дата події', value: leadDateFilterLabel(currentDateFilter) } : null,
         search ? { label: 'Пошук', value: search } : null
@@ -1603,6 +1603,7 @@ function resetLeadFilters() {
     currentDateFilter = '';
     currentPipelineStage = '';
     currentLeadAttentionFilter = '';
+    currentLeadLifecycleFilter = '';
     const search = document.getElementById('leadsSearch');
     if (search) search.value = '';
     syncLeadQueueUi();

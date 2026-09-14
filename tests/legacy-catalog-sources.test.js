@@ -116,7 +116,7 @@ test('pre-cutover Park keeps its legacy product catalog contract plus an availab
 });
 
 for (const [context, membership] of [['event_genix', true], ['dar', true], ['crm', false], ['maysternya_doli', false]]) {
-    test(`${context} dashboard suppresses only the legacy catalog component`, async () => {
+    test(`${context} dashboard scopes tasks and withholds unavailable global catalog and Art components`, async () => {
         const pool = routePool();
         const router = loadModule('routes/dashboard.js', { '../db': { pool }, '../middleware/auth': authFixture() });
         await withHttp(router, principal(context, membership), async request => {
@@ -129,12 +129,27 @@ for (const [context, membership] of [['event_genix', true], ['dar', true], ['crm
             assert.equal(pipeline.status, 200, JSON.stringify(pipeline.body));
             assertUnavailable(pipeline.body.data.legacyCatalogs);
             assert.deepEqual(pipeline.body.data.catalogs, []);
-            assert.equal(pipeline.body.data.approvedThisWeek, 3);
-            assert.equal(pipeline.body.data.inReview[0].id, 41);
+            if (context === 'event_genix') {
+                assert.equal(pipeline.body.data.approvedThisWeek, 3);
+                assert.equal(pipeline.body.data.inReview[0].id, 41);
+                assert.equal(pipeline.body.data.meta.sourceStates.approvedThisWeek, 'ready');
+                assert.equal(pool.queries.filter(item => /FROM art_director_content/.test(item.sql)).length, 2);
+            } else {
+                assert.equal(pipeline.body.data.approvedThisWeek, null);
+                assert.deepEqual(pipeline.body.data.inReview, []);
+                assert.equal(pipeline.body.data.meta.sourceStates.approvedThisWeek, 'unavailable');
+                assert.equal(pipeline.body.data.meta.sourceStates.inReview, 'unavailable');
+                assert.equal(pool.queries.filter(item => /FROM art_director_content/.test(item.sql)).length, 0);
+            }
             assert.equal(pipeline.body.data.designTasks[0].id, 51);
-            assert.equal(pool.queries.length, 3);
+            assert.equal(pool.queries.length, context === 'event_genix' ? 3 : 1);
             assert.ok(pool.queries.every(item => !/catalog_definitions|catalog_items/.test(item.sql)));
-            assert.deepEqual(Array.from(pool.queries.find(item => /FROM tasks/.test(item.sql)).params), [context]);
+            const taskQuery = pool.queries.find(item => /FROM tasks/.test(item.sql));
+            assert.deepEqual(Array.from(taskQuery.params), ['catalog_fixture', 21, 21, context]);
+            assert.match(taskQuery.sql, /visibility/);
+            assert.match(taskQuery.sql, /owner_user_id/);
+            assert.match(taskQuery.sql, /business_context[^]*= \$4/);
+            assert.equal(pipeline.body.data.meta.sourceStates.designTasks, 'ready');
         });
     });
 }

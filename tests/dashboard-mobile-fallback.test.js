@@ -109,7 +109,11 @@ function loadHarness() {
     };
     dom.window.localStorage.setItem('pzp_token', 'test-token');
     dom.window.localStorage.setItem('pzp_auth_session_generation', 'session-1');
-    dom.window.fetch = async () => ({ ok: true, status: 200, json: async () => ({ success: true, data: {} }) });
+    const requests = [];
+    dom.window.fetch = async (url, options = {}) => {
+        requests.push({ url: String(url), method: options.method || 'GET' });
+        return { ok: true, status: 200, json: async () => ({ success: true, data: {} }) };
+    };
     dom.window.setTimeout = () => 0;
     dom.window.clearTimeout = () => {};
     const nativeAddEventListener = dom.window.document.addEventListener.bind(dom.window.document);
@@ -121,11 +125,12 @@ function loadHarness() {
     vm.runInContext(instrumentDashboardSource(), dom.getInternalVMContext(), { filename: 'js/dashboard-page.js' });
     return {
         dom,
+        requests,
         api: dom.window.__dashboardMobileFallbackTest
     };
 }
 
-test('dashboard render fallback shows visible board widgets without mutating board state', async () => {
+test('dashboard render failure shows an accessible retry without resurrecting or mutating the old board', async () => {
     const harness = loadHarness();
     harness.api.setConfig(boardConfig());
     const before = harness.api.boardSnapshot();
@@ -139,15 +144,19 @@ test('dashboard render fallback shows visible board widgets without mutating boa
     assert.equal(harness.api.boardSnapshot(), before, 'fallback must not mutate board state');
     assert.equal(grid.classList.contains('hidden'), false, 'fallback grid is visible');
     assert.equal(grid.getAttribute('aria-hidden'), null, 'fallback grid is exposed to assistive tech');
-    assert.equal(shell.classList.contains('dashboard-render-fallback'), true, 'shell is marked as render fallback');
-    assert.ok(document.querySelector('.dashboard-fallback-banner'), 'fallback explains the reduced view');
-    assert.ok(document.getElementById('widget-weather'), 'visible board widget absent from config.widgets is shown');
-    assert.ok(document.getElementById('widget-tasks'), 'legacy config widget is preserved in fallback');
+    assert.equal(shell.classList.contains('hidden'), true, 'old board stays closed after a render failure');
+    const alert = document.querySelector('[role="alert"][data-dashboard-open-fallback="unit-test"]');
+    assert.ok(alert, 'render failure is exposed as an accessible alert');
+    assert.match(alert.textContent, /Не вдалося відкрити віджети/);
+    assert.match(alert.querySelector('button').getAttribute('onclick'), /DashboardPage\.retryDashboard\(\)/);
+    assert.equal(document.getElementById('widget-weather'), null, 'board-only widgets are not resurrected');
+    assert.equal(document.getElementById('widget-tasks'), null, 'failed render does not claim widgets were rendered');
     assert.equal(document.getElementById('widget-alerts'), null, 'hidden board widget is not shown');
-    assert.ok(document.querySelector('[data-dashboard-open-fallback="unit-test"]'), 'fallback source is recorded');
+    assert.equal(document.getElementById('dashboardBoardCanvas').childElementCount, 0, 'no drawing canvas content is created');
+    assert.equal(harness.requests.some(request => request.method !== 'GET'), false, 'failure does not autosave or reset configuration');
 });
 
-test('dashboard render retry restores board shell without autosave/reset fallback state', () => {
+test('dashboard render retry restores only active flat widgets without autosave or board resurrection', () => {
     const harness = loadHarness();
     harness.api.setConfig(boardConfig());
     harness.api.renderDashboardOpenFallback(new Error('forced render failure'), 'unit-test');
@@ -156,11 +165,18 @@ test('dashboard render retry restores board shell without autosave/reset fallbac
     const result = harness.api.retryDashboardBoardRender();
 
     const { document } = harness.dom.window;
-    assert.equal(result, true, 'retry renders the board successfully');
+    assert.equal(result, true, 'retry renders active widgets successfully');
     assert.equal(harness.api.boardSnapshot(), before, 'retry does not rewrite board state');
-    assert.equal(document.getElementById('dashboardGrid').classList.contains('hidden'), true, 'compat grid is hidden after successful retry');
+    assert.equal(document.getElementById('dashboardGrid').classList.contains('hidden'), false, 'active widget grid is visible after retry');
+    assert.equal(document.getElementById('dashboardGrid').getAttribute('aria-hidden'), null, 'retried grid is exposed to assistive tech');
     assert.equal(document.getElementById('dashboardBoardShell').classList.contains('dashboard-render-fallback'), false, 'fallback marker is cleared');
-    assert.ok(document.getElementById('board-widget-board-weather'), 'board widget is rendered back on the canvas');
+    assert.equal(document.getElementById('dashboardBoardShell').classList.contains('hidden'), true, 'old board shell remains closed');
+    assert.ok(document.getElementById('widget-tasks'), 'active config widget is restored');
+    assert.equal(document.getElementById('widget-weather'), null, 'board-only widget is not silently added');
+    assert.equal(document.getElementById('board-widget-board-weather'), null, 'board widget is not resurrected');
+    assert.equal(document.getElementById('dashboardBoardCanvas').childElementCount, 0, 'retry adds no drawing canvas content');
+    assert.equal(document.querySelector('[data-dashboard-open-fallback]'), null, 'successful retry clears the failure state');
+    assert.equal(harness.requests.some(request => request.method !== 'GET'), false, 'retry does not autosave or reset configuration');
 });
 
 test('dashboard render fallback delegates to config-load retry when confirmed config is unavailable', () => {

@@ -36,6 +36,14 @@ function close(server) {
     });
 }
 
+function installRouteAuthFixture() {
+    installMock('../middleware/auth', {
+        authenticateToken: (req, res, next) => { req.user = { id: 20, username: 'manager-user', name: 'manager user', role: 'manager' }; next(); },
+        canUseAction: () => true,
+        ROLE_LEVEL: Object.fromEntries(require('../services/accountAccessPolicy').ROLE_HIERARCHY.map((role, index) => [role, index]))
+    });
+}
+
 function tokenFor(role = 'manager') {
     return jwt.sign({ id: 20, username: `${role}-user`, name: `${role} user`, role }, TEST_JWT_SECRET, { expiresIn: '1h' });
 }
@@ -47,6 +55,7 @@ function createFakePool(queries) {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             queries.push({ text, params });
 
+            if (/FROM bookings b1/i.test(text)) return { rows: [{ booking1: 'A', booking2: 'B', total_count: 7 }] };
             if (/FROM bookings b/i.test(text) && /b\.status = 'preliminary'/i.test(text) && /BETWEEN 0 AND 120/i.test(text)) {
                 return { rows: [{ count: 1 }] };
             }
@@ -74,6 +83,7 @@ test('dashboard event risk summary is visible-scope, explainable, and booking-li
     const fakePool = createFakePool(queries);
     installMock('../db', { pool: fakePool, query: fakePool.query.bind(fakePool) });
     installMock('../services/websocket', { getOnlineUserIds: () => new Set() });
+    installRouteAuthFixture();
 
     const app = express();
     app.use(express.json());
@@ -93,14 +103,15 @@ test('dashboard event risk summary is visible-scope, explainable, and booking-li
             tomorrowUnconfirmed: 5,
             latePreliminary: 1,
             bookingLinkedOverduePrep: 4,
-            resourceWarnings: 2
+            resourceWarnings: 2,
+            roomConflicts: 7
         });
         assert.equal(data.data.meta.globalScore, false);
         assert.equal(data.data.meta.visibleScopeOnly, true);
         assert.equal(data.data.meta.bookingVisibilityBoundary, 'canonical object-level booking visibility scope');
         assert.match(data.data.meta.bookingVisibilityScopeSource, /booking-operational|full-role/);
         assert.match(data.data.meta.eventSoonSemantics, /сигналом для перевірки часу/);
-        assert.ok(data.data.cards.some(card => card.key === 'booking_linked_overdue_prep' && /source_type=booking/.test(card.why)));
+        assert.ok(data.data.cards.some(card => card.key === 'booking_linked_overdue_prep' && /пов’язані/.test(card.why)));
         assert.ok(data.data.cards.some(card => card.key === 'resource_warnings' && card.label === 'Ресурси не призначені сьогодні'));
         assert.doesNotMatch(data.data.cards.map(card => card.label).join(' '), /Resource warnings|preliminary|prep-/);
 
@@ -109,6 +120,16 @@ test('dashboard event risk summary is visible-scope, explainable, and booking-li
         assert.match(prepQuery.text, /t\.source_type = 'booking'/);
         assert.match(prepQuery.text, /t\.source_id = b\.id::text/);
         assert.doesNotMatch(prepQuery.text, /category\s*=\s*'event'/i);
+
+        const conflictQuery = queries.find(query => /FROM bookings b1/.test(query.text));
+        assert.ok(conflictQuery, 'conflicts must query two independently scoped parent bookings');
+        for (const alias of ['b1', 'b2']) {
+            assert.ok(conflictQuery.text.includes(`NULLIF(BTRIM(COALESCE(${alias}.linked_to, '')), '') IS NULL`), 'linked package children must not become independent conflicts');
+            assert.ok(conflictQuery.text.includes(`COALESCE(${alias}.business_context, 'event_genix')`));
+        }
+        assert.doesNotMatch(conflictQuery.text, /ABS\(/, 'overlap must compare both event end points, not absolute start difference');
+        assert.ok(conflictQuery.text.includes('COALESCE(b1.duration, 120)'));
+        assert.ok(conflictQuery.text.includes('COALESCE(b2.duration, 120)'));
 
         const resourceQuery = queries.find(query => /b\.line_id::text/i.test(query.text));
         assert.ok(resourceQuery, 'resource warnings must use the text-safe line_id contract');
@@ -151,6 +172,7 @@ test('dashboard staff_today casts legacy staff_schedule date column before date 
     };
     installMock('../db', { pool: fakePool, query: fakePool.query.bind(fakePool) });
     installMock('../services/websocket', { getOnlineUserIds: () => new Set() });
+    installRouteAuthFixture();
 
     const app = express();
     app.use(express.json());
@@ -203,6 +225,7 @@ test('dashboard config PUT rejects stale two-tab revision without overwriting se
     };
     installMock('../db', { pool: fakePool, query: fakePool.query.bind(fakePool) });
     installMock('../services/websocket', { getOnlineUserIds: () => new Set() });
+    installRouteAuthFixture();
 
     const app = express();
     app.use(express.json());
@@ -280,6 +303,7 @@ test('dashboard config PUT uses server revision for conditional update and retur
     };
     installMock('../db', { pool: fakePool, query: fakePool.query.bind(fakePool) });
     installMock('../services/websocket', { getOnlineUserIds: () => new Set() });
+    installRouteAuthFixture();
 
     const app = express();
     app.use(express.json());

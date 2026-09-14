@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.172 - Dashboard: чистіша робоча композиція
+
+### Release / Versioning / (14.09.2026) [codex]
+- **Dashboard: чистіша робоча композиція** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.171 - Dashboard: чистіший перший екран
 
 ### Release / Versioning / (14.09.2026) [codex]

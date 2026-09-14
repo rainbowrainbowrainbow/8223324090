@@ -9,6 +9,7 @@ const ExcelJS = require('exceljs');
 const { buildStaffScheduleWorkbookBuffer } = require('../../services/staffScheduleWorkbook');
 const { listStaffScheduleCategoryContract } = require('../../services/staffDisplayGroups');
 const { buildCapabilitySnapshot } = require('../../services/accountAccessPolicy');
+const { projectParkStaffSchedulePayload } = require('../../services/parkStaffScheduleProjection');
 
 const ROOT = path.join(__dirname, '..', '..');
 const HEADLESS = process.env.STAFF_SCHEDULE_BROWSER_SMOKE_HEADLESS !== 'false';
@@ -1074,7 +1075,7 @@ async function captureStableScheduleScreenshot(page, filename, selector = '#sche
 }
 
 async function openStaffPage(browser, base, viewport, options = {}) {
-    const context = await browser.newContext({ viewport, acceptDownloads: true });
+    const context = await browser.newContext({ viewport, acceptDownloads: true, serviceWorkers: options.serviceWorkers || 'allow' });
     await context.addInitScript(({ user, ignoreAbort, darkMode }) => {
         localStorage.setItem('pzp_token', 'staff-schedule-smoke-token');
         localStorage.setItem('pzp_access_token', 'staff-schedule-smoke-token');
@@ -1106,6 +1107,7 @@ async function openStaffPage(browser, base, viewport, options = {}) {
         console.error('Staff schedule browser page error:', err.stack || err.message);
         throw err;
     });
+    if (typeof options.preparePage === 'function') await options.preparePage(page);
     const search = String(options.search || '').trim();
     const normalizedSearch = search ? (search.startsWith('?') ? search : `?${search}`) : '';
     await page.goto(`${base}/staff${normalizedSearch}`, { waitUntil: 'domcontentloaded' });
@@ -3731,6 +3733,82 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
     }
 }
 
+async function runRecoveryReadOnlyFlow(browser, base) {
+    const forbiddenRequests = [];
+    const readRequests = [];
+    const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 1000 }, {
+        search: '?businessContext=event_genix',
+        serviceWorkers: 'block',
+        preparePage: currentPage => currentPage.route('**/api/**', async route => {
+            const request = route.request();
+            const url = new URL(request.url());
+            const routerId = url.pathname.startsWith('/api/staff') ? 'staff' : 'hr';
+            if (!url.pathname.startsWith('/api/staff') && url.pathname !== '/api/hr/professions') {
+                return route.continue();
+            }
+            const routePath = url.pathname.slice(`/api/${routerId}`.length) || '/';
+            if (request.method() !== 'GET' || routePath.endsWith('/shift-preferences')) {
+                forbiddenRequests.push(`${request.method()} ${url.pathname}`);
+                return route.fulfill({ status: 403, json: { success: false, error: 'Read-only recovery' } });
+            }
+            readRequests.push({ path: url.pathname, context: request.headers()['x-business-context'] });
+            const original = await route.fetch();
+            const payload = await original.json();
+            if (routePath === '/schedule') {
+                const target = payload.data.find(row => row.staff_id === 101 && row.date === '2026-07-16');
+                if (target) Object.assign(target, {
+                    status: 'working', profession_key: 'animator', primary_profession_key: 'animator',
+                    shift_start: '11:00', shift_end: '20:00',
+                    segments: [{
+                        professionKey: 'animator', shiftStart: '11:00', shiftEnd: '20:00', breakMinutes: 0,
+                        additionalProfessionKeys: ['reception'],
+                        additionalRoles: [{ professionKey: 'reception', compensationMode: 'paid_hourly', payMultiplier: 1 }]
+                    }]
+                });
+            }
+            const projected = projectParkStaffSchedulePayload(routerId, routePath, payload);
+            if (routerId === 'staff' && ['/', '/schedule'].includes(routePath)) {
+                projected.scheduleAccess = { readOnly: true, businessContext: 'event_genix' };
+            }
+            return route.fulfill({ status: original.status(), contentType: 'application/json', body: JSON.stringify(projected) });
+        })
+    });
+    try {
+        await applyManualRange(page, '2026-07-16', '2026-07-17');
+        await waitForCommittedScheduleRange(page, '2026-07-16', '2026-07-17');
+        await activateScheduleDepartment(page, 'animators');
+        await expandScheduleGroup(page, 'animators');
+        for (const id of ['addStaffBtn', 'copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'exportExcelBtn']) {
+            assert.equal(await page.locator(`#${id}`).isVisible(), false, `${id} is hidden in recovery`);
+            if (await page.locator(`#${id}`).count()) {
+                assert.equal(await page.locator(`#${id}`).isDisabled(), true, `${id} is disabled in recovery`);
+            }
+        }
+        assert.equal(await page.locator('#printBtn').isDisabled(), false, 'read-only print stays available');
+        const cell = page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-16"]');
+        assert.equal(await cell.getAttribute('aria-readonly'), 'true');
+        await cell.click();
+        await page.locator('#schModalOverlay.visible').waitFor();
+        assert.match(await page.locator('#schModalTitle').innerText(), /Перегляд плану/);
+        assert.match(await page.locator('#schPlanSummary').innerText(), /9 год[\s\S]*Фізичний час/);
+        assert.match(await page.locator('#schPlanSummary').innerText(), /План дня коректний/);
+        assert.match(await page.locator('[data-paid-role-preview]').innerText(), /Дані оплати недоступні в режимі перегляду/);
+        assert.equal(await page.locator('[data-segment-field="paid-profession"]').inputValue(), 'reception');
+        assert.equal(await page.locator('#schSaveBtn').isVisible(), false);
+        assert.equal(await page.locator('#schShiftPreferencePanel').isVisible(), false);
+        assert.doesNotMatch(await page.locator('#schModalOverlay').innerText(), /Додайте її в HR|Де додати ставку|немає явної.*ставки|грн\/год/);
+        assert.equal(await page.locator('#schSegmentsList input:enabled, #schSegmentsList select:enabled, #schSegmentsList button:enabled').count(), 0);
+        await captureStableScheduleScreenshot(page, 'park-recovery-readonly-plan.png', '#schModalOverlay .sch-modal');
+        await page.locator('#schPlanSummary').scrollIntoViewIfNeeded();
+        await captureStableScheduleScreenshot(page, 'park-recovery-readonly-summary.png', '#schModalOverlay .sch-modal');
+        assert.deepEqual(forbiddenRequests, [], 'recovery sends no writes or unavailable shift-preference read');
+        assert.ok(readRequests.length >= 5);
+        assert.ok(readRequests.every(request => request.context === 'event_genix'), 'all recovery reads retain the Park context');
+    } finally {
+        await context.close();
+    }
+}
+
 async function runDesktopFlow(browser, base) {
     const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
     try {
@@ -4050,6 +4128,12 @@ async function runSidebarIdentityWrapFlow(browser, base, viewport, label, darkMo
     const { server, base } = await createServer();
     const browser = await chromium.launch({ headless: HEADLESS });
     try {
+        await runRecoveryReadOnlyFlow(browser, base);
+        if (process.argv.includes('--recovery-readonly-only')) {
+            console.log('Park recovery read-only browser smoke passed');
+            console.log(`Screenshots: ${path.relative(ROOT, OUTPUT_DIR)}`);
+            return;
+        }
         await runInitialRangeFailureFlow(browser, base);
         await runPeriodReliabilityFlow(browser, base);
         await runScheduleHistoryIsolationFlow(browser, base);

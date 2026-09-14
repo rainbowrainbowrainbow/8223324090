@@ -3,6 +3,8 @@
 const { BUSINESS_SCOPE_SINGLE, DEFAULT_BUSINESS_CONTEXT, resolveBusinessScope } = require('./businessContext');
 const { userBusinessModuleState } = require('./businessModuleRegistry');
 const { recordCompatibilityTelemetrySafe } = require('./businessCutover');
+const { canReadParkStaffSchedule, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
+const { projectParkStaffSchedulePayload } = require('./parkStaffScheduleProjection');
 
 const SURFACES = Object.freeze({
     catalogs: { code: 'catalogs_not_migrated', label: 'Спільні каталоги' },
@@ -61,11 +63,26 @@ function legacyBusinessSurfaceAccess(req, surface = 'catalogs') {
     return available();
 }
 
-function requireLegacyBusinessSurface(surface) {
+function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null } = {}) {
     unavailable(surface); // Reject a programming error when mounting, not during a request.
+    if (parkScheduleRouter && (surface !== 'staff' || !['staff', 'hr'].includes(parkScheduleRouter))) {
+        throw new TypeError('Park schedule recovery must be mounted on a staff or HR surface');
+    }
     return (req, res, next) => {
         const access = legacyBusinessSurfaceAccess(req, surface);
         if (access.available) return next();
+        if (access.code === 'staff_not_migrated' && canReadParkStaffSchedule(req, parkScheduleRouter)) {
+            const routePath = parkStaffScheduleRoutePath(req);
+            const sendJson = res.json.bind(res);
+            res.json = payload => {
+                const projected = projectParkStaffSchedulePayload(parkScheduleRouter, routePath, payload);
+                if (projected?.success === true && parkScheduleRouter === 'staff' && ['/', '/schedule'].includes(routePath)) {
+                    return sendJson({ ...projected, scheduleAccess: { readOnly: true, businessContext: DEFAULT_BUSINESS_CONTEXT } });
+                }
+                return sendJson(projected);
+            };
+            return next();
+        }
         return res.status(access.status).json({ success: false, code: access.code, error: access.message });
     };
 }

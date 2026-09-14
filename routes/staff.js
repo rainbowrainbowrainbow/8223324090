@@ -131,7 +131,7 @@ const log = createLogger('Staff');
 
 // v39.8: Security — require authentication for all staff endpoints
 router.use(authenticateToken);
-router.use(requireLegacyBusinessSurface('staff'));
+router.use(requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'staff' }));
 
 const ACCOUNT_MANAGER_PRIMARY_ROLES = new Set(['creator', 'director']);
 const STAFF_COPY_WEEK_RAW_DEPARTMENT_ALLOWLIST = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);

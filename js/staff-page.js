@@ -106,6 +106,7 @@ const StaffState = {
     canExportSchedule: false,
     canViewStaff: false,
     canManageStaff: false,
+    recoveryReadOnly: false,
     linkData: [],           // v39.1: link-status data
     linkStats: null,        // v39.1: { total, linked, unlinked, freelance }
     allUsers: [],           // v39.1: all users for linking
@@ -3103,8 +3104,9 @@ function syncScheduleRangeActionAvailability() {
     ['fillWeekBtn', 'copyWeekBtn'].forEach(id => {
         const button = document.getElementById(id);
         if (!button) return;
-        button.disabled = !ready;
-        button.setAttribute('aria-disabled', ready ? 'false' : 'true');
+        const enabled = ready && StaffState.canManageSchedule;
+        button.disabled = !enabled;
+        button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
     });
 }
 
@@ -3431,12 +3433,27 @@ function focusScheduleStaff(staffId, options = {}) {
 // API CALLS
 // ==========================================
 
+function applyScheduleReadAccess(data) {
+    if (data?.scheduleAccess?.readOnly !== true) return;
+    // The legacy Park read lane cannot mutate staff or run the POST workbook export.
+    // Server metadata may reduce capabilities, but never grants new permissions.
+    StaffState.recoveryReadOnly = true;
+    StaffState.canManageSchedule = false;
+    StaffState.canManageStaff = false;
+    StaffState.canExportSchedule = false;
+    ['addStaffBtn', 'copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn'].forEach(id => {
+        const control = document.getElementById(id);
+        if (!control) return;
+        control.hidden = true;
+        control.disabled = true;
+        control.style.display = 'none';
+        control.setAttribute('aria-disabled', 'true');
+    });
+}
+
 async function fetchHrProfessions() {
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch('/api/hr/professions', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await staffApiFetch('/api/hr/professions');
         if (!res.ok) return { success: false };
         const data = await res.json();
         if (data.success) {
@@ -3452,12 +3469,11 @@ async function fetchHrProfessions() {
 
 async function fetchStaff() {
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch('/api/staff?active=true', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await staffApiFetch('/api/staff?active=true');
         const data = await res.json();
+        if (!res.ok) return { ...data, success: false, status: res.status };
         if (data.success) {
+            applyScheduleReadAccess(data);
             StaffState.displayGroups = normalizeScheduleDisplayGroups(data.displayGroups || data.display_groups || StaffState.displayGroups);
             StaffState.scheduleCategoryContract = normalizeScheduleCategoryContract(
                 data.scheduleCategoryContract || data.schedule_category_contract || StaffState.scheduleCategoryContract
@@ -3500,13 +3516,12 @@ async function parseScheduleReadResponse(response, fallbackError) {
 
 async function fetchSchedule(from, to, options = {}) {
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch(`/api/staff/schedule?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
-            headers: { 'Authorization': `Bearer ${token}` },
+        const res = await staffApiFetch(`/api/staff/schedule?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
             signal: options.signal
         });
         const parsed = await parseScheduleReadResponse(res, 'Не вдалося завантажити графік');
         if (!parsed.success) return parsed;
+        applyScheduleReadAccess(parsed.data);
 
         const schedule = {};
         const scheduleRawEntries = [];
@@ -3537,9 +3552,7 @@ async function fetchSchedule(from, to, options = {}) {
 
 async function fetchScheduleAttendance(from, to, options = {}) {
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch(`/api/staff/attendance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
-            headers: { 'Authorization': `Bearer ${token}` },
+        const res = await staffApiFetch(`/api/staff/attendance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
             signal: options.signal
         });
         if (res.status === 403) {
@@ -3658,9 +3671,7 @@ async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, no
 
 async function fetchScheduleHistory(staffId, date, options = {}) {
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch(`/api/staff/schedule/history/${encodeURIComponent(staffId)}/${encodeURIComponent(date)}?limit=50`, {
-            headers: { 'Authorization': `Bearer ${token}` },
+        const res = await staffApiFetch(`/api/staff/schedule/history/${encodeURIComponent(staffId)}/${encodeURIComponent(date)}?limit=50`, {
             signal: options.signal
         });
         const data = await res.json().catch(() => ({}));
@@ -3719,9 +3730,7 @@ async function copyWeekSchedule(fromMonday, toMonday, options = {}) {
 
 async function fetchScheduleHours(from, to, options = {}) {
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch(`/api/staff/schedule/hours?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
-            headers: { 'Authorization': `Bearer ${token}` },
+        const res = await staffApiFetch(`/api/staff/schedule/hours?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
             signal: options.signal
         });
         const parsed = await parseScheduleReadResponse(res, 'Не вдалося завантажити години');
@@ -4663,6 +4672,10 @@ function scheduleCanViewPayrollAmounts() {
     return STAFF_SCHEDULE_PAYROLL_READ_ROLES.has(String(user?.role || '').trim().toLowerCase());
 }
 
+function isScheduleRecoveryReadOnly(scope) {
+    return scope === 'schedule' && StaffState.recoveryReadOnly;
+}
+
 function scheduleExplicitProfessionRate(staff, professionKey) {
     const normalizedKey = normalizeProfessionKey(professionKey);
     const profession = StaffState.professions.find(item => normalizeProfessionKey(item.key) === normalizedKey);
@@ -4710,6 +4723,7 @@ function scheduleFormatMoney(amount) {
 }
 
 function schedulePaidRolePreview(scope, role, segment) {
+    if (isScheduleRecoveryReadOnly(scope)) return 'Дані оплати недоступні в режимі перегляду';
     if (!role?.professionKey) {
         return 'Необов’язково. Фізичний час працівника при цьому не подвоюється.';
     }
@@ -4736,7 +4750,7 @@ function schedulePaidRoleOptions(scope, professionOptions, segment) {
             const isPrimary = option.value === segment.professionKey;
             const selected = option.value === paidRole?.professionKey;
             const rateInfo = schedulePaidRoleRate(scope, option.value);
-            const suffix = rateInfo.available ? '' : ' · немає явної ставки';
+            const suffix = rateInfo.available || isScheduleRecoveryReadOnly(scope) ? '' : ' · немає явної ставки';
             return `<option value="${escapeHtml(option.value)}" ${selected ? 'selected' : ''} ${isPrimary ? 'disabled' : ''}>${escapeHtml(option.label)}${escapeHtml(suffix)}</option>`;
         })
     ].join('');
@@ -4780,7 +4794,7 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
     const paidEnd = paidRole?.intervalEnd || segment.shiftEnd;
     const paidMultiplier = Number(paidRole?.payMultiplier || 1);
     const paidRate = paidRole ? schedulePaidRoleRate(scope, paidRole.professionKey) : null;
-    const paidRateError = paidRole && !paidRate?.available
+    const paidRateError = paidRole && !paidRate?.available && !isScheduleRecoveryReadOnly(scope)
         ? `<div class="sch-paid-rate-error">
             <span>${escapeHtml(paidRate?.reason || 'Відсутня явна погодинна ставка.')}</span>
             <a href="/hr">Де додати ставку</a>
@@ -4844,7 +4858,7 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                         <input type="time" id="${escapeHtml(paidEndId)}" data-segment-field="paid-end" value="${escapeHtml(paidEnd)}" ${paidRole ? '' : 'disabled'}>
                         <div class="sch-field-error" data-field-error="paid-end"></div>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" ${isScheduleRecoveryReadOnly(scope) ? 'hidden style="display:none"' : ''}>
                         <label for="${escapeHtml(paidMultiplierId)}">Multiplier</label>
                         <input type="number" id="${escapeHtml(paidMultiplierId)}" data-segment-field="paid-multiplier" min="1" max="1" step="0.1" value="${paidMultiplier.toFixed(1)}" readonly aria-readonly="true">
                     </div>
@@ -5360,7 +5374,7 @@ function validateSchedulePlan(scope, options = {}) {
                 fieldErrors.push({ index, field: 'paid-profession', message: 'Для чинної політики multiplier має дорівнювати 1.0.' });
             }
             const rateInfo = schedulePaidRoleRate(scope, paidRole.professionKey);
-            if (!rateInfo.available) {
+            if (!rateInfo.available && !isScheduleRecoveryReadOnly(scope)) {
                 addCodedError(
                     'HR_SHIFT_PAID_ROLE_RATE_REQUIRED',
                     `${label}: ${professionLabel(paidRole.professionKey)} — ${rateInfo.reason}`
@@ -5565,7 +5579,8 @@ function updateSchedulePlanSummary(scope) {
             ? `${metrics.envelopeStart}–${metrics.envelopeEnd}`
             : '—';
         const hasOverlap = validation.overlapIndexes.length > 0;
-        const paidRoleHours = hasOverlap
+        const recoveryReadOnly = isScheduleRecoveryReadOnly(scope);
+        const paidRoleHours = hasOverlap || recoveryReadOnly
             ? '—'
             : formatScheduleMinutes(metrics.paidRoleMinutes);
         summary.classList.toggle('has-error', !validation.valid);
@@ -5573,15 +5588,15 @@ function updateSchedulePlanSummary(scope) {
             <div class="sch-plan-summary-metrics">
                 <span><b>${escapeHtml(envelope)}</b> Період дня</span>
                 <span><b>${escapeHtml(formatScheduleMinutes(metrics.physicalMinutes))}</b> Фізичний час</span>
-                <span class="${hasOverlap ? 'is-unavailable' : ''}">
+                <span class="${hasOverlap || recoveryReadOnly ? 'is-unavailable' : ''}">
                     <b>${escapeHtml(paidRoleHours)}</b>
                     Оплачувані роль-години
-                    ${hasOverlap ? '<small>після нормалізації</small>' : ''}
+                    ${recoveryReadOnly ? '<small>Дані оплати недоступні в режимі перегляду</small>' : (hasOverlap ? '<small>після нормалізації</small>' : '')}
                 </span>
                 <span><b>${metrics.roleCount}</b> Ролей</span>
             </div>
             ${validation.errors.length ? `<ul>${validation.errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}</ul>` : '<div class="sch-plan-valid">План дня коректний.</div>'}
-            ${validation.overlapCandidate ? (() => {
+            ${!recoveryReadOnly && validation.overlapCandidate ? (() => {
                 const candidate = validation.overlapCandidate;
                 const rateInfo = schedulePaidRoleRate(scope, candidate.professionKey);
                 const needsBreakChoice = Number(candidate.breakMinutes || 0) > 0;
@@ -6228,11 +6243,13 @@ function openEditModal(staffId, date, options = {}) {
     if (window.ModalLayer) window.ModalLayer.ensureTopLayer(overlay);
     if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.remember(overlay);
     loadScheduleCellHistory(staffId, date);
-    loadScheduleShiftPreferences(staffId, {
-        autoApply: (!entry?.shift_start && !entry?.shift_end) ? 'missing-only' : false,
-        onlyIfState: stateBeforePreferences,
-        resetInitialState: true
-    });
+    if (!StaffState.recoveryReadOnly) {
+        loadScheduleShiftPreferences(staffId, {
+            autoApply: (!entry?.shift_start && !entry?.shift_end) ? 'missing-only' : false,
+            onlyIfState: stateBeforePreferences,
+            resetInitialState: true
+        });
+    }
 }
 
 async function refreshStaleScheduleModalPlan(session) {
@@ -6497,9 +6514,19 @@ function setScheduleModalReadOnly(readOnly) {
         if (readOnly) element.disabled = true;
     });
     const saveBtn = document.getElementById('schSaveBtn');
-    if (saveBtn) saveBtn.hidden = readOnly;
+    if (saveBtn) {
+        saveBtn.hidden = readOnly;
+        if (StaffState.recoveryReadOnly) saveBtn.style.display = 'none';
+    }
     const readOnlyHint = document.getElementById('schReadOnlyHint');
-    if (readOnlyHint) readOnlyHint.hidden = !readOnly;
+    if (readOnlyHint) {
+        readOnlyHint.hidden = !readOnly;
+        if (StaffState.recoveryReadOnly) {
+            readOnlyHint.textContent = 'Режим перегляду графіка Парку: редагування та дані оплати недоступні.';
+        }
+    }
+    const preferencePanel = document.getElementById('schShiftPreferencePanel');
+    if (preferencePanel && StaffState.recoveryReadOnly) preferencePanel.hidden = true;
     const overlay = document.getElementById('schModalOverlay');
     if (overlay) {
         if (readOnly) overlay.setAttribute('aria-describedby', 'schReadOnlyHint');

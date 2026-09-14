@@ -414,7 +414,7 @@ function shapeHrStaffList(rows, capability, user) {
     return shapeHrPayrollFields(rows, user);
 }
 router.use(requireHrCapabilityContract);
-router.use(requireLegacyBusinessSurface('staff'));
+router.use(requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'hr' }));
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 

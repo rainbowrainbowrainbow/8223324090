@@ -66,8 +66,18 @@ test('Park profession dependency exposes labels without people, rates or unrelat
         department: 'animators', color: '#abcdef', is_active: true, people: [{ explicitRate: 450, fallbackRate: 400,
             storedExplicitRate: 450, ignoredExplicitRate: 450, hourlyRate: 450 }], checklist: ['PRIVATE'] }],
     inventory: { private: 'PRIVATE' }, structureNodes: [{ private: 'PRIVATE' }] });
-    assert.deepEqual(output, { success: true, data: [{ id: 4, key: 'animator', title: 'Аніматор',
-        department: 'animators', color: '#abcdef', is_active: true }] });
+    assert.deepEqual(output, {
+        success: true,
+        data: [{ id: 4, key: 'animator', title: 'Аніматор',
+            department: 'animators', color: '#abcdef', is_active: true }],
+        professionCatalogAccess: {
+            readOnly: true,
+            partial: true,
+            businessContext: 'event_genix',
+            reason: 'park_schedule_recovery_projection',
+            unsupportedFields: ['people', 'staffCount', 'checklist', 'checklistCount', 'workspace']
+        }
+    });
 });
 
 test('Park attendance retains factual time and allocation aliases while excluding compensation snapshots', () => {
@@ -135,9 +145,20 @@ test('Park history projects object and JSON audit details and hides compensation
 });
 
 test('Park recovery preserves empty and error responses, supports static metadata and denies unknown projections', () => {
-    for (const [router, path] of [['staff', '/'], ['staff', '/schedule'], ['staff', '/attendance'], ['hr', '/professions']]) {
+    for (const [router, path] of [['staff', '/'], ['staff', '/schedule'], ['staff', '/attendance']]) {
         assert.deepEqual(project(router, path, { success: true, data: [] }), { success: true, data: [] });
     }
+    assert.deepEqual(project('hr', '/professions', { success: true, data: [] }), {
+        success: true,
+        data: [],
+        professionCatalogAccess: {
+            readOnly: true,
+            partial: true,
+            businessContext: 'event_genix',
+            reason: 'park_schedule_recovery_projection',
+            unsupportedFields: ['people', 'staffCount', 'checklist', 'checklistCount', 'workspace']
+        }
+    });
     const error = { success: false, code: 'SYNTHETIC_READ_ERROR', error: 'Unable to read' };
     assert.equal(project('staff', '/schedule', error), error);
     const stale = project('staff', '/schedule/history/7/2026-09-14', { success: true, data: [{ details: {

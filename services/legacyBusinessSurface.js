@@ -79,6 +79,9 @@ function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null } = {
                 if (projected?.success === true && parkScheduleRouter === 'staff' && ['/', '/schedule'].includes(routePath)) {
                     return sendJson({ ...projected, scheduleAccess: { readOnly: true, businessContext: DEFAULT_BUSINESS_CONTEXT } });
                 }
+                if (projected?.success === true && parkScheduleRouter === 'hr' && routePath === '/today') {
+                    return sendJson({ ...projected, todayAccess: { readOnly: true, businessContext: DEFAULT_BUSINESS_CONTEXT } });
+                }
                 return sendJson(projected);
             };
             return next();

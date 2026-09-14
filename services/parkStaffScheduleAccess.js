@@ -11,14 +11,15 @@ function parkStaffScheduleRoutePath(req) {
 }
 
 // Owner confirmed on 2026-09-14 that the existing staff and schedule namespace
-// belongs exclusively to Park. This is a read-only recovery, not HR/payroll
+// belongs exclusively to Park. Today uses the same read-only ownership boundary,
+// with its own view capability. This is not HR/payroll
 // module activation or permission to create another business's staff here.
 function canReadParkStaffSchedule(req, routerId) {
     if (req.method !== 'GET') return false;
     const path = parkStaffScheduleRoutePath(req);
     const routeAllowed = routerId === 'staff'
         ? STAFF_READ_PATHS.has(path) || STAFF_HISTORY_PATH.test(path)
-        : routerId === 'hr' && path === '/professions';
+        : routerId === 'hr' && ['/professions', '/today'].includes(path);
     if (!routeAllowed || !req.user) return false;
 
     const scope = resolveBusinessScope(req);
@@ -39,7 +40,8 @@ function canReadParkStaffSchedule(req, routerId) {
         && member.businessContext === DEFAULT_BUSINESS_CONTEXT && member.accessMode === 'membership'
         && member.businessId === business.businessId && member.organizationId === business.organizationId)) return false;
 
-    return resolveCapability(req.user, 'hr.schedule.view', { type: 'action' }).allowed;
+    const capability = routerId === 'hr' && path === '/today' ? 'hr.today.view' : 'hr.schedule.view';
+    return resolveCapability(req.user, capability, { type: 'action' }).allowed;
 }
 
 module.exports = { canReadParkStaffSchedule, parkStaffScheduleRoutePath };

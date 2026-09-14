@@ -22,15 +22,18 @@ department names are not used to infer data ownership.
   `requireLegacyBusinessSurface`'s `parkScheduleRouter` option.
 - Recovery requires a fresh, valid, single-business Park membership; registry,
   membership and resolved active business must agree on organization/business
-  IDs. The existing `hr.schedule.view` permission remains required. Existing
+  IDs. The existing `hr.schedule.view` permission remains required for schedule
+  reads; the Today follow-up uses its own `hr.today.view` permission. Existing
   endpoint-specific permission checks continue to run.
 - Allowed staff GET paths: roster, departments, display groups, schedule,
   schedule hours, attendance and a specific cell's schedule history.
-- The only allowed HR GET path is the professions catalog; its existing
-  `hr.staff.view` capability requirement is preserved.
+- Allowed HR GET paths are the professions catalog and the Today follow-up.
+  The catalog's existing `hr.staff.view` capability requirement is preserved.
+  See `PARK_HR_TODAY_READ_RECOVERY.md` for the independently authorized Today scope.
 - Recovery projects responses to schedule data. It removes account identifiers,
   compensation payloads and unrelated HR catalog details. Roster and schedule
-  responses declare `scheduleAccess.readOnly` to the UI.
+  responses declare `scheduleAccess.readOnly` to the UI; Today responses declare
+  `todayAccess.readOnly` without changing schedule or staff-card permissions.
 - The frontend sends the selected business through the existing authenticated
   request helper. It preserves aborted requests, failure handling and atomic
   date-range confirmation. A read-only response only reduces capabilities;

@@ -111,3 +111,27 @@ test('membership role and explicit capability denies are preserved without a pla
     assert.equal(narrow.user.role, 'animator');
     assert.equal(canReadParkStaffSchedule(narrow, 'staff'), false);
 });
+
+test('Park Today uses its own view capability without granting schedule or staff access', () => {
+    const todayOnly = request('event_genix', { request: { path: '/today' }, memberships: [membership('event_genix', {
+        action_allowlist: ['hr.today.view'], action_denylist: ['hr.schedule.view', 'hr.staff.view']
+    })] });
+    assert.equal(canReadParkStaffSchedule(todayOnly, 'hr'), true);
+    assert.equal(canReadParkStaffSchedule(todayOnly, 'staff'), false);
+    assert.equal(canReadParkStaffSchedule({ ...todayOnly, path: '/schedule' }, 'staff'), false);
+    assert.equal(canReadParkStaffSchedule({ ...todayOnly, path: '/professions' }, 'hr'), false);
+    const denied = request('event_genix', { request: { path: '/today' }, memberships: [membership('event_genix', {
+        action_denylist: ['hr.today.view']
+    })] });
+    assert.equal(canReadParkStaffSchedule(denied, 'hr'), false);
+});
+
+test('Today recovery retains Park ownership, fresh membership and GET-only boundaries', () => {
+    for (const context of contexts.slice(1)) {
+        assert.equal(canReadParkStaffSchedule(request(context, { request: { path: '/today' } }), 'hr'), false);
+    }
+    assert.equal(canReadParkStaffSchedule(request('event_genix', { memberships: [], request: { path: '/today' } }), 'hr'), false);
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']) {
+        assert.equal(canReadParkStaffSchedule(request('event_genix', { request: { path: '/today', method } }), 'hr'), false);
+    }
+});

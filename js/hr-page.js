@@ -2541,6 +2541,7 @@ function closeHrPrintDocuments() {
 }
 
 async function openHrPrintDocuments(event) {
+    if (isTodayRecoveryReadOnly()) return;
     const overlay = document.getElementById('hrPrintDocumentsModal');
     if (!canExportHrReports()) {
         showNotification('HR export permission required', 'error');
@@ -3541,6 +3542,7 @@ function hrTodayActionIconSvg(type) {
 }
 
 function renderTodayStaffProfileAction(staffId, staffName) {
+    if (isTodayRecoveryReadOnly()) return '';
     const link = typeof _staffLinkCache !== 'undefined' && Array.isArray(_staffLinkCache)
         ? _staffLinkCache.find(item => Number(item.id) === Number(staffId))
         : null;
@@ -3554,6 +3556,7 @@ function renderTodayStaffProfileAction(staffId, staffName) {
 }
 
 function renderTodayStaffScheduleAction(staffId, staffName) {
+    if (isTodayRecoveryReadOnly() && !canUseHrCapability('hr.schedule.view')) return '';
     const label = `Відкрити графік: ${staffName}`;
     const id = Number(staffId);
     if (!Number.isInteger(id) || id <= 0) return '';
@@ -3561,6 +3564,7 @@ function renderTodayStaffScheduleAction(staffId, staffName) {
 }
 
 async function openTodayStaffSchedule(staffId) {
+    if (isTodayRecoveryReadOnly() && !canUseHrCapability('hr.schedule.view')) return;
     const id = Number(staffId);
     if (!Number.isInteger(id) || id <= 0) return;
     await activateHrTab('schedule', { updateHash: true });
@@ -3569,21 +3573,44 @@ async function openTodayStaffSchedule(staffId) {
     }
 }
 
+function isTodayRecoveryReadOnly(data = todayData) {
+    return data?.todayAccess?.readOnly === true;
+}
+
 async function loadToday() {
-    if (typeof _loadStaffLinks === 'function') await _loadStaffLinks().catch(() => []);
     const data = await hrFetch('/today');
     if (!data || !data.success) {
+        todayData = null;
+        todayActiveMetric = null;
         updateTodayHeaderDate();
         updateTodayHeaderMetrics();
+        bindTodayMetricChips([]);
+        document.getElementById('todayMetricPeoplePanel')?.replaceChildren();
+        renderTodayDepartmentSegments([]);
+        renderTodayFilterInfo([], []);
+        document.getElementById('todaySummary').innerHTML = '';
+        document.getElementById('todayList').innerHTML = '<div role="alert" style="text-align:center;color:var(--gray-400);padding:40px;">Не вдалося завантажити дані за сьогодні. Спробуйте оновити сторінку.</div>';
+        document.getElementById('contextMenu')?.classList.remove('visible');
         return;
     }
     setStaffDisplayGroupsContract(data.displayGroups || data.display_groups || staffDisplayGroupsContract);
     todayData = data;
+    if (!isTodayRecoveryReadOnly(data) && typeof _loadStaffLinks === 'function') {
+        await _loadStaffLinks().catch(() => []);
+    }
     renderToday(data);
 }
 
 function renderToday(data) {
     updateTodayHeaderDate();
+    const recoveryReadOnly = isTodayRecoveryReadOnly(data);
+    const printDocumentsButton = document.getElementById('btnHrPrintDocuments');
+    if (printDocumentsButton && recoveryReadOnly) {
+        printDocumentsButton.hidden = true;
+        printDocumentsButton.disabled = true;
+        printDocumentsButton.style.display = 'none';
+    }
+    if (recoveryReadOnly) document.getElementById('contextMenu')?.classList.remove('visible');
 
     const allItems = Array.isArray(data.data) ? data.data : [];
     bindTodayFilterControls();
@@ -3715,7 +3742,11 @@ function renderToday(data) {
             departmentMeta && departmentMeta !== displayGroupLabel ? departmentMeta : ''
         ].filter(Boolean).join(' · ');
 
-        return `<div class="hr-staff-row${arrived ? ' hr-staff-row--arrived' : ''}" data-staff-id="${item.staff_id}" data-attendance-state="${arrived ? 'arrived' : 'pending'}" tabindex="-1" oncontextmenu="showContext(event, ${item.staff_id})">
+        if (recoveryReadOnly) {
+            disabled = 'disabled aria-disabled="true" title="Режим перегляду"';
+            if (btnClass === 'clock-in') btnText = shift ? 'Прихід не зафіксовано' : 'Немає відмітки';
+        }
+        return `<div class="hr-staff-row${arrived ? ' hr-staff-row--arrived' : ''}" data-staff-id="${item.staff_id}" data-attendance-state="${arrived ? 'arrived' : 'pending'}" tabindex="-1" ${recoveryReadOnly ? '' : `oncontextmenu="showContext(event, ${item.staff_id})"`}>
             <div class="hr-staff-indicator ${indicator}"></div>
             <div class="hr-staff-info">
                 <div class="hr-staff-name">
@@ -3728,13 +3759,14 @@ function renderToday(data) {
                 <div class="hr-staff-meta">${roleMeta}${meta ? ' · ' + meta : ''}</div>
             </div>
             <button type="button" class="hr-clock-btn ${btnClass}" ${disabled}
-                onclick="handleClock(${item.staff_id}, '${isTodayItemOnShift(item) ? 'out' : 'in'}', '${escapeHtml(item.staff_name)}', ${rec ? rec.total_worked_minutes || 0 : 0})"
+                ${recoveryReadOnly ? '' : `onclick="handleClock(${item.staff_id}, '${isTodayItemOnShift(item) ? 'out' : 'in'}', '${escapeHtml(item.staff_name)}', ${rec ? rec.total_worked_minutes || 0 : 0})"`}
             >${btnText}</button>
         </div>`;
     }).join('');
 }
 
 async function handleClock(staffId, action, name, workedMin) {
+    if (isTodayRecoveryReadOnly()) return;
     const todayItem = todayData?.data?.find(item => Number(item.staff_id) === Number(staffId));
     if (action !== 'out' && todayItem && !isHrScheduleableStaffForDate(todayItem, todayStr())) {
         showNotification(hrScheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
@@ -3826,6 +3858,7 @@ function initContextMenu() {
 
     document.querySelectorAll('.hr-context-item').forEach(btn => {
         btn.addEventListener('click', async () => {
+            if (isTodayRecoveryReadOnly()) return;
             const action = btn.dataset.action;
             if (action === 'correct') {
                 openCorrectionModal(contextStaffId);
@@ -3847,6 +3880,7 @@ function initContextMenu() {
 
 function showContext(e, staffId) {
     e.preventDefault();
+    if (isTodayRecoveryReadOnly()) return;
     contextStaffId = staffId;
     const menu = document.getElementById('contextMenu');
     menu.style.left = `${Math.min(e.clientX, window.innerWidth - 200)}px`;
@@ -3855,6 +3889,7 @@ function showContext(e, staffId) {
 }
 
 function openCorrectionModal(staffId) {
+    if (isTodayRecoveryReadOnly()) return;
     if (!todayData) return;
     const item = todayData.data.find(d => d.staff_id === staffId);
     if (!item || !item.record || !item.record.id) {
@@ -16603,6 +16638,7 @@ function initModals() {
 }
 
 async function saveCorrection() {
+    if (isTodayRecoveryReadOnly()) return;
     const recordId = document.getElementById('corrRecordId')?.value;
     const clockIn = document.getElementById('corrClockIn')?.value;
     const clockOut = document.getElementById('corrClockOut')?.value;

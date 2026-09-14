@@ -3,6 +3,40 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { projectParkStaffSchedulePayload: project } = require('../services/parkStaffScheduleProjection');
+const { summarizeHrTodayItems } = require('../services/hrAttendance');
+
+test('Park Today retains attendance counters and cards while excluding birth date, account and payroll details', () => {
+    const data = [{ staff_id: 7, staff_name: 'Synthetic Worker', department: 'animators', staff_color: '#abcdef',
+        role_type: 'animator', has_photo: false, is_birthday_today: true, birth_date: 'PRIVATE', account_user_id: 'PRIVATE',
+        shift: { planned_start: '09:00', planned_end: '17:00', shift_type: 'regular', planned_minutes: 480,
+            salary: 'PRIVATE', segments: [{ professionKey: 'animator', shiftStart: '09:00', shiftEnd: '17:00',
+                hourlyRate: 'PRIVATE', additionalRoles: [{ professionKey: 'reception', compensationMode: 'paid_hourly', payMultiplier: 1 }] }] },
+        record: { id: 10, clock_in: '2026-09-14T06:12:00Z', clock_out: null, status: 'late', late_minutes: 12,
+            planned_start: '09:00', planned_end: '17:00', actualMinutes: 60, total_worked_minutes: 60,
+            attendance_facts: { lateMinutes: 12, earlyLeaveMinutes: 0, overtimeMinutes: 0, private: 'PRIVATE' },
+            plan_warning: { code: 'SYNTHETIC', message: 'Synthetic warning', private: 'PRIVATE' },
+            compensation_snapshot: 'PRIVATE', compensation_allocations: ['PRIVATE'], correction_reason: 'PRIVATE' }
+    }, { staff_id: 8, staff_name: 'Synthetic Absent', shift: { planned_start: '09:00', planned_end: '17:00' }, record: null },
+    { staff_id: 9, staff_name: 'Synthetic Unscheduled', shift: null, record: null }];
+    const summary = summarizeHrTodayItems(data);
+    const payload = { success: true, date: '2026-09-14', displayGroups: [{ key: 'animators' }], data,
+        summary: { ...summary, payroll: 'PRIVATE' }, internal: 'PRIVATE' };
+    const before = structuredClone(payload);
+    const output = project('hr', '/today', payload);
+    assert.equal(output.date, payload.date);
+    assert.deepEqual(output.summary, summary);
+    assert.deepEqual(summarizeHrTodayItems(output.data), summary);
+    assert.equal(output.data[0].is_birthday_today, true);
+    assert.equal(output.data[0].record.actualMinutes, 60);
+    assert.equal(output.data[0].record.id, 10);
+    assert.deepEqual(output.data[0].record.plan_warning, { code: 'SYNTHETIC', message: 'Synthetic warning' });
+    assert.equal(output.data[0].shift.segments[0].shiftEnd, '17:00');
+    assert.equal(output.data[1].record, null);
+    assert.equal(output.data[2].shift, null);
+    assert.equal(JSON.stringify(output).includes('PRIVATE'), false);
+    assert.equal(JSON.stringify(output).includes('payMultiplier'), false);
+    assert.deepEqual(payload, before);
+});
 
 test('Park roster preserves schedule grouping and badges without account or contact details', () => {
     const payload = { success: true, data: [{ id: 7, name: 'Synthetic Worker', role_type: 'animator',

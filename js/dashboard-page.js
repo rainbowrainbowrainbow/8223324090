@@ -374,6 +374,25 @@ const DashboardPage = (() => {
         my_focus: 'мій фокус',
         funnel: 'воронка'
     };
+    const FUNNEL_STAGE_LABELS = Object.freeze({
+        new: 'Нові',
+        contacted: 'Контакт встановлено',
+        info_sent: 'Інформацію надіслано',
+        deal: 'В роботі',
+        deposit_received: 'Депозит отримано',
+        waiting: 'Очікування',
+        completed: 'Завершено',
+        closed: 'Закрито',
+        lost: 'Втрачено',
+        booked: 'Заброньовано'
+    });
+    const FUNNEL_STAGE_RAW_LABELS = Object.freeze({
+        new: 'Нові',
+        deal: 'В роботі',
+        waiting: 'Очікування',
+        deposit_received: 'Депозит отримано',
+        'deposit received': 'Депозит отримано'
+    });
     const DASHBOARD_TODAY_DEFAULT_WIDGETS = Object.freeze([
         'quick_stats',
         'my_focus',
@@ -2744,7 +2763,7 @@ const DashboardPage = (() => {
 
         const stageChips = stages.map(stage => `
             <a class="work-queue-funnel-chip" href="${escapeHtml(stage.href || `/sales-funnel?view=kanban&pipeline_stage=${encodeURIComponent(stage.stage || '')}`)}">
-                <span>${escapeHtml(stage.label || stage.stage || 'Етап')}</span>
+                <span>${escapeHtml(dashboardFunnelStageLabel(stage))}</span>
                 <strong>${Number(stage.waitingAction || 0)}/${Number(stage.total || 0)}</strong>
             </a>
         `).join('');
@@ -2761,7 +2780,7 @@ const DashboardPage = (() => {
                 <div class="work-queue-funnel-metrics">
                     <span><strong>${total}</strong> активних</span>
                     <span><strong>${waitingAction}</strong> чекає дії</span>
-                    <span><strong>${escapeHtml(hotStage?.label || 'Без етапу')}</strong> найгарячіше</span>
+                    <span><strong>${escapeHtml(hotStage ? dashboardFunnelStageLabel(hotStage) : 'Без етапу')}</strong> найгарячіше</span>
                 </div>
                 <div class="work-queue-funnel-stages">${stageChips}</div>
             </section>
@@ -7054,7 +7073,7 @@ const DashboardPage = (() => {
             const attentionHref = dashboardFunnelHref(stage, { attention: 'stale_contact_48h' });
             return `
                 <a class="dashboard-funnel-stage-chip${waiting > 0 ? ' needs-action' : ''}" href="${escapeHtml(waiting > 0 ? attentionHref : href)}">
-                    <span>${escapeHtml(stage.label || stage.stage || 'Етап')}</span>
+                    <span>${escapeHtml(dashboardFunnelStageLabel(stage))}</span>
                     <strong>${waiting}/${count}</strong>
                 </a>
             `;
@@ -7075,7 +7094,7 @@ const DashboardPage = (() => {
                         <span>без контакту 48 год</span>
                     </a>
                     <a class="dashboard-funnel-metric subtle" href="${escapeHtml(hotStageHref)}">
-                        <strong>${escapeHtml(hotStage?.label || 'без етапу')}</strong>
+                        <strong>${escapeHtml(hotStage ? dashboardFunnelStageLabel(hotStage) : 'без етапу')}</strong>
                         <span>гарячий етап</span>
                     </a>
                 </div>
@@ -7182,6 +7201,16 @@ const DashboardPage = (() => {
         });
     }
 
+    function dashboardFunnelStageLabel(stage = null) {
+        const stageKey = String(stage?.stage || stage?.pipelineStage || stage?.key || '').trim();
+        if (stageKey && FUNNEL_STAGE_LABELS[stageKey]) return FUNNEL_STAGE_LABELS[stageKey];
+        const rawLabel = String(stage?.label || '').trim();
+        const normalizedRawLabel = rawLabel.toLowerCase().replace(/[_-]+/g, ' ');
+        if (normalizedRawLabel && FUNNEL_STAGE_RAW_LABELS[normalizedRawLabel]) return FUNNEL_STAGE_RAW_LABELS[normalizedRawLabel];
+        if (rawLabel && !rawLabel.includes('_')) return rawLabel;
+        return stageKey ? stageKey.replace(/[_-]+/g, ' ') : 'Етап';
+    }
+
     function dashboardNearestEventDayText(nearest = {}, event = {}) {
         const scope = event.dateScope || nearest?.meta?.dateScope || '';
         if (scope === 'tomorrow') return 'завтра';
@@ -7213,7 +7242,7 @@ const DashboardPage = (() => {
         const href = hotStage
             ? dashboardFunnelHref(hotStage, { attention: 'stale_contact_48h' })
             : dashboardFunnelHref(null, { attention: 'stale_contact_48h' });
-        const stageLabel = hotStage?.label || hotStage?.stage || 'воронці';
+        const stageLabel = hotStage ? dashboardFunnelStageLabel(hotStage) : 'воронці';
         return {
             tone: 'sales',
             source: 'Воронка',

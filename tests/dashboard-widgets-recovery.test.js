@@ -71,6 +71,17 @@ test('dashboard restores widget manager, full registry, and creator tasker contr
     assert.match(css, /\.personal-tasker-fullscreen-overlay/);
 });
 
+test('dashboard funnel widget translates pipeline stage ids for users', () => {
+    const pageJs = read('js/dashboard-page.js');
+
+    assert.match(pageJs, /const FUNNEL_STAGE_LABELS = Object\.freeze\(\{/);
+    assert.match(pageJs, /deposit_received: 'Депозит отримано'/);
+    assert.match(pageJs, /waiting: 'Очікування'/);
+    assert.match(pageJs, /function dashboardFunnelStageLabel\(stage = null\)/);
+    assert.match(pageJs, /dashboardFunnelStageLabel\(stage\)/);
+    assert.match(pageJs, /dashboardFunnelStageLabel\(hotStage\)/);
+});
+
 async function openWidgetWorkspace(options = {}) {
     const pageJs = read('js/dashboard-page.js').replace(
         /    return \{\r?\n        init,/,

@@ -7,7 +7,7 @@
     </script>
 
     <script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","w841e2emn0");</script>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script>
     // v29.2.0: Trampoline — catch cached 301 from /leads→/customers?tab=leads
     // v0.63.21: Customers no longer owns a separate funnel surface; leads funnel is canonical.
@@ -1346,6 +1346,9 @@
                 flex-direction: column;
                 align-items: stretch;
             }
+            .crm-filters:not(.is-open) {
+                display: none;
+            }
             .crm-search { min-width: 0; }
             .crm-filter-date { width: 100%; }
             .crm-filter-select { min-width: 0; }
@@ -1429,10 +1432,15 @@
             <div class="page-header">
                 <h2>База клієнтів</h2>
                 <div class="customer-toolbar-actions">
-                    <button type="button" id="exportVcfBtn" class="btn-page-secondary" title="Завантажити клієнтів у файл .vcf" aria-label="Експорт клієнтів у vCard" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">Експорт vCard</button>
-                    <button type="button" id="importVcfBtn" class="btn-page-secondary" title="Імпортувати клієнтів із файлу .vcf або .vcard" aria-label="Імпорт клієнтів із vCard" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">Імпорт vCard</button>
-                    <button type="button" id="exportCsvBtn" class="btn-page-secondary" style="display:none">Експорт CSV</button>
                     <button type="button" id="addCustomerBtn" class="btn-page-primary" style="display:none">+ Новий клієнт</button>
+                    <div class="customer-actions-menu" id="customerActionsMenu" style="display:none">
+                        <button type="button" id="customerActionsMenuBtn" class="btn-page-secondary customer-actions-menu-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="customerActionsMenuList">Дії</button>
+                        <div id="customerActionsMenuList" class="customer-actions-menu-list" role="menu" aria-label="Дії з клієнтами">
+                            <button type="button" id="exportVcfBtn" class="customer-actions-menu-item" role="menuitem" title="Завантажити клієнтів у файл .vcf" aria-label="Експорт клієнтів у vCard" style="display:none">Експорт vCard</button>
+                            <button type="button" id="importVcfBtn" class="customer-actions-menu-item" role="menuitem" title="Імпортувати клієнтів із файлу .vcf або .vcard" aria-label="Імпорт клієнтів із vCard" style="display:none">Імпорт vCard</button>
+                            <button type="button" id="exportCsvBtn" class="customer-actions-menu-item" role="menuitem" style="display:none">Експорт CSV</button>
+                        </div>
+                    </div>
                     <input type="file" id="vcfFileInput" accept=".vcf,.vcard" style="display:none">
                 </div>
             </div>
@@ -1453,40 +1461,64 @@
             <!-- List tab -->
             <div id="tabList">
                 <!-- Filters -->
-                <div class="crm-filters">
-                    <input type="text" id="searchInput" class="crm-search" aria-label="Пошук по імені, телефону, Instagram..." placeholder="Пошук по імені, телефону, Instagram...">
-                    <select id="tagFilter" class="crm-filter-select">
-                        <option value="">Всі теги</option>
-                    </select>
-                    <select id="sourceFilter" class="crm-filter-select">
-                        <option value="">Всі джерела</option>
-                        <option value="unknown">Не вказано</option>
-                        <option value="instagram">Instagram</option>
-                        <option value="google">Google</option>
-                        <option value="recommendation">За рекомендацією</option>
-                        <option value="repeat">Повторне звернення</option>
-                        <option value="maysternya_site">Сайт Майстерні</option>
-                        <option value="maysternya_bot">Бот Майстерні</option>
-                        <option value="telegram">Telegram</option>
-                        <option value="facebook">Facebook</option>
-                        <option value="viber">Viber</option>
-                        <option value="tiktok">TikTok</option>
-                        <option value="turbo">Turbo</option>
-                        <option value="bnderoga">BnD</option>
-                        <option value="manual">Ручне внесення</option>
-                        <option value="other">Інше</option>
-                    </select>
-                    <select id="sortFilter" class="crm-filter-select">
-                        <option value="updated_at">За оновленням</option>
-                        <option value="name">За іменем</option>
-                        <option value="total_bookings">За візитами</option>
-                        <option value="total_spent">За витратами</option>
-                        <option value="last_visit">За останнім візитом</option>
-                        <option value="created_at">За створенням</option>
-                        <option value="ltv">За LTV</option>
-                    </select>
-                    <input type="date" id="dateFromFilter" class="crm-filter-date" title="Візити від" aria-label="Дата від">
-                    <input type="date" id="dateToFilter" class="crm-filter-date" title="Візити до" aria-label="Дата до">
+                <div class="customer-list-toolbar">
+                    <div class="customer-search-field">
+                        <label for="searchInput">Пошук клієнта</label>
+                        <input type="text" id="searchInput" class="crm-search" aria-label="Пошук по імені, телефону, Instagram..." placeholder="Ім’я, телефон, Instagram...">
+                    </div>
+                    <button type="button" id="customerFilterToggle" class="btn-page-secondary customer-filter-toggle" aria-expanded="false" aria-controls="customerFiltersPanel">
+                        Фільтри <span id="customerFilterCount" class="customer-filter-count" hidden>0</span>
+                    </button>
+                </div>
+                <div id="customerFilterChips" class="customer-filter-chips" aria-live="polite"></div>
+                <div class="crm-filters customer-filters-panel" id="customerFiltersPanel">
+                    <div class="customer-filter-field">
+                        <label for="tagFilter">Тег</label>
+                        <select id="tagFilter" class="crm-filter-select">
+                            <option value="">Всі теги</option>
+                        </select>
+                    </div>
+                    <div class="customer-filter-field">
+                        <label for="sourceFilter">Джерело</label>
+                        <select id="sourceFilter" class="crm-filter-select">
+                            <option value="">Всі джерела</option>
+                            <option value="unknown">Не вказано</option>
+                            <option value="instagram">Instagram</option>
+                            <option value="google">Google</option>
+                            <option value="recommendation">За рекомендацією</option>
+                            <option value="repeat">Повторне звернення</option>
+                            <option value="maysternya_site">Сайт Майстерні</option>
+                            <option value="maysternya_bot">Бот Майстерні</option>
+                            <option value="telegram">Telegram</option>
+                            <option value="facebook">Facebook</option>
+                            <option value="viber">Viber</option>
+                            <option value="tiktok">TikTok</option>
+                            <option value="turbo">Turbo</option>
+                            <option value="bnderoga">BnD</option>
+                            <option value="manual">Ручне внесення</option>
+                            <option value="other">Інше</option>
+                        </select>
+                    </div>
+                    <div class="customer-filter-field">
+                        <label for="sortFilter">Сортування</label>
+                        <select id="sortFilter" class="crm-filter-select">
+                            <option value="updated_at">За оновленням</option>
+                            <option value="name">За іменем</option>
+                            <option value="total_bookings">За візитами</option>
+                            <option value="total_spent">За витратами</option>
+                            <option value="last_visit">За останнім візитом</option>
+                            <option value="created_at">За створенням</option>
+                            <option value="ltv">За LTV</option>
+                        </select>
+                    </div>
+                    <div class="customer-filter-field">
+                        <label for="dateFromFilter">Візити від</label>
+                        <input type="date" id="dateFromFilter" class="crm-filter-date" title="Візити від" aria-label="Дата від">
+                    </div>
+                    <div class="customer-filter-field">
+                        <label for="dateToFilter">Візити до</label>
+                        <input type="date" id="dateToFilter" class="crm-filter-date" title="Візити до" aria-label="Дата до">
+                    </div>
                 </div>
 
                 <div id="customerExplainability" hidden></div>

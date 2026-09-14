@@ -1590,6 +1590,7 @@ function setCustomerFilterInputsFromState() {
         const el = document.getElementById(id);
         if (el) el.value = value;
     });
+    renderCustomerFilterControls();
 }
 
 function customerLifecycleUrl(stage) {
@@ -1672,6 +1673,79 @@ function renderCustomerExplainability() {
     Explainability.setRegion('customerExplainability', html);
 }
 
+function customerSelectText(id, value, fallback = '') {
+    if (!value) return fallback;
+    const select = document.getElementById(id);
+    const option = select ? Array.from(select.options || []).find(item => item.value === String(value)) : null;
+    return option?.textContent?.replace(/\s+\(\d+\)$/, '').trim() || fallback || String(value);
+}
+
+function getCustomerActiveFilterChips() {
+    const f = CrmState.filters || {};
+    const chips = [];
+    if (f.journeyLabel) chips.push({ key: 'journey', label: 'Сегмент', value: f.journeyLabel });
+    else if (hasVisitBound(f.minVisits) || hasVisitBound(f.maxVisits)) {
+        const from = hasVisitBound(f.minVisits) ? `${f.minVisits}+` : 'будь-яка';
+        const to = hasVisitBound(f.maxVisits) ? `до ${f.maxVisits}` : 'без межі';
+        chips.push({ key: 'visits', label: 'Візити', value: `${from}, ${to}` });
+    }
+    if (f.search) chips.push({ key: 'search', label: 'Пошук', value: f.search });
+    if (f.tag) chips.push({ key: 'tag', label: 'Тег', value: f.tag });
+    if (f.source) chips.push({ key: 'source', label: 'Джерело', value: getCustomerSourceLabel(f.source) });
+    if (f.sortBy && f.sortBy !== 'updated_at') {
+        chips.push({ key: 'sort', label: 'Сортування', value: customerSelectText('sortFilter', f.sortBy, f.sortBy) });
+    }
+    if (f.dateFrom) chips.push({ key: 'dateFrom', label: 'Візити від', value: f.dateFrom });
+    if (f.dateTo) chips.push({ key: 'dateTo', label: 'Візити до', value: f.dateTo });
+    return chips;
+}
+
+function renderCustomerFilterControls() {
+    const chipsEl = document.getElementById('customerFilterChips');
+    const countEl = document.getElementById('customerFilterCount');
+    const chips = getCustomerActiveFilterChips();
+    if (countEl) {
+        countEl.textContent = String(chips.length);
+        countEl.hidden = chips.length === 0;
+    }
+    if (!chipsEl) return;
+    chipsEl.innerHTML = chips.length ? `
+        ${chips.map(chip => `
+            <span class="customer-filter-chip">
+                <span>${escapeHtml(chip.label)}: ${escapeHtml(chip.value)}</span>
+                <button type="button" data-customer-filter-remove="${escapeHtml(chip.key)}" aria-label="Прибрати фільтр ${escapeHtml(chip.label)}">×</button>
+            </span>
+        `).join('')}
+        <button type="button" class="customer-filter-reset" data-customer-filter-reset>Скинути фільтри</button>
+    ` : '';
+}
+
+async function clearCustomerFilterCondition(key) {
+    if (!key) return;
+    clearTimeout(searchTimeout);
+    if (key === 'journey' || key === 'visits') {
+        CrmState.filters.journeySegment = '';
+        CrmState.filters.journeyLabel = '';
+        CrmState.filters.minVisits = null;
+        CrmState.filters.maxVisits = null;
+    } else if (key === 'search') {
+        CrmState.filters.search = '';
+    } else if (key === 'tag') {
+        CrmState.filters.tag = '';
+    } else if (key === 'source') {
+        CrmState.filters.source = '';
+    } else if (key === 'sort') {
+        CrmState.filters.sortBy = 'updated_at';
+    } else if (key === 'dateFrom') {
+        CrmState.filters.dateFrom = '';
+    } else if (key === 'dateTo') {
+        CrmState.filters.dateTo = '';
+    }
+    CrmState.page = 1;
+    setCustomerFilterInputsFromState();
+    await reloadCustomers();
+}
+
 async function resetCustomerFilters() {
     CrmState.filters = {
         search: '',
@@ -1698,6 +1772,7 @@ async function resetCustomerFilters() {
         const el = document.getElementById(id);
         if (el) el.value = value;
     });
+    renderCustomerFilterControls();
     await reloadCustomers();
 }
 
@@ -2136,6 +2211,7 @@ function renderCustomerTable() {
     const canViewRevenue = canViewCustomerRevenue();
     syncCustomerPresentationUi();
     renderCustomerExplainability();
+    renderCustomerFilterControls();
     if (CrmState.customers.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${canViewRevenue ? 7 : 6}">
             ${customerEmptyHtml()}
@@ -3298,6 +3374,99 @@ function downloadCSV() {
     });
 }
 
+function customerActionMenuItems() {
+    return Array.from(document.querySelectorAll('.customer-actions-menu-item'));
+}
+
+function isCustomerActionVisible(item) {
+    return item && item.style.display !== 'none';
+}
+
+function closeCustomerActionsMenu() {
+    const menu = document.getElementById('customerActionsMenu');
+    const toggle = document.getElementById('customerActionsMenuBtn');
+    menu?.classList.remove('is-open');
+    toggle?.setAttribute('aria-expanded', 'false');
+}
+
+function openCustomerActionsMenu({ focusFirst = false } = {}) {
+    const menu = document.getElementById('customerActionsMenu');
+    const toggle = document.getElementById('customerActionsMenuBtn');
+    if (!menu || !toggle || menu.style.display === 'none') return;
+    menu.classList.add('is-open');
+    toggle.setAttribute('aria-expanded', 'true');
+    if (focusFirst) customerActionMenuItems().find(isCustomerActionVisible)?.focus();
+}
+
+function syncCustomerActionsMenu() {
+    const menu = document.getElementById('customerActionsMenu');
+    if (!menu) return;
+    const hasActions = customerActionMenuItems().some(isCustomerActionVisible);
+    menu.style.display = hasActions ? '' : 'none';
+    if (!hasActions) closeCustomerActionsMenu();
+}
+
+function bindCustomerActionsMenu() {
+    const menu = document.getElementById('customerActionsMenu');
+    const toggle = document.getElementById('customerActionsMenuBtn');
+    if (!menu || !toggle) return;
+    toggle.addEventListener('click', () => {
+        if (menu.classList.contains('is-open')) closeCustomerActionsMenu();
+        else openCustomerActionsMenu();
+    });
+    toggle.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowDown') return;
+        event.preventDefault();
+        openCustomerActionsMenu({ focusFirst: true });
+    });
+    menu.addEventListener('keydown', (event) => {
+        const items = customerActionMenuItems().filter(isCustomerActionVisible);
+        const currentIndex = items.indexOf(document.activeElement);
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeCustomerActionsMenu();
+            toggle.focus();
+        } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            items[(currentIndex + 1 + items.length) % items.length]?.focus();
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            items[(currentIndex - 1 + items.length) % items.length]?.focus();
+        }
+    });
+    menu.addEventListener('click', (event) => {
+        if (event.target.closest('.customer-actions-menu-item')) closeCustomerActionsMenu();
+    });
+    document.addEventListener('click', (event) => {
+        if (!menu.contains(event.target)) closeCustomerActionsMenu();
+    });
+    document.addEventListener('focusin', (event) => {
+        if (!menu.contains(event.target)) closeCustomerActionsMenu();
+    });
+}
+
+function bindCustomerFilterControls() {
+    const toggle = document.getElementById('customerFilterToggle');
+    const panel = document.getElementById('customerFiltersPanel');
+    toggle?.addEventListener('click', () => {
+        const isOpen = panel?.classList.toggle('is-open');
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    });
+    document.getElementById('customerFilterChips')?.addEventListener('click', async (event) => {
+        const remove = event.target.closest('[data-customer-filter-remove]');
+        if (remove) {
+            event.preventDefault();
+            await clearCustomerFilterCondition(remove.dataset.customerFilterRemove);
+            return;
+        }
+        const reset = event.target.closest('[data-customer-filter-reset]');
+        if (reset) {
+            event.preventDefault();
+            await resetCustomerFilters();
+        }
+    });
+}
+
 // ==========================================
 // INIT
 // ==========================================
@@ -3331,6 +3500,7 @@ async function initPage() {
     document.getElementById('exportCsvBtn').style.display = canManage && canExportCustomerData(true) ? '' : 'none';
     document.getElementById('exportVcfBtn').style.display = canManage && canExportCustomerData() ? '' : 'none';
     document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';
+    syncCustomerActionsMenu();
     const childrenReviewTab = document.querySelector('.crm-tab[data-tab="children-review"]');
     if (childrenReviewTab) childrenReviewTab.style.display = canReviewChildren ? '' : 'none';
     const rfmTab = document.querySelector('.crm-tab[data-tab="rfm"]');
@@ -3352,6 +3522,9 @@ async function initPage() {
     else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
 
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
+    bindCustomerActionsMenu();
+    bindCustomerFilterControls();
+    renderCustomerFilterControls();
 
     // Tabs
     document.querySelectorAll('.crm-tab').forEach(tab => {

@@ -19,29 +19,29 @@ function normalizeSql(sql) {
 }
 
 function makePool() {
-    return {
+    const client = {
         async query(sql, params = []) {
             const text = normalizeSql(sql);
-            state.queries.push({ text, params });
+            state.queries.push({ text, params, client: true });
 
-            if (text.startsWith('SELECT * FROM event_queue WHERE status =')) {
-                const rows = state.eventQueue.filter(row =>
-                    row.status === 'failed' &&
-                    row.attempts < row.max_attempts
-                );
-                return { rows, rowCount: rows.length };
+            if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') {
+                state.transactions.push(text);
+                return { rows: [], rowCount: 0 };
             }
 
-            if (text.startsWith('DELETE FROM event_queue WHERE status =')) {
+            if (text.startsWith('SELECT id, event_type, payload, last_error, idempotency_key')) {
+                assert.match(text, /FOR UPDATE SKIP LOCKED/);
                 const dead = state.eventQueue.filter(row =>
                     row.status === 'terminal_failed' ||
                     (row.status === 'failed' && row.attempts >= row.max_attempts)
                 );
-                state.eventQueue = state.eventQueue.filter(row => !dead.includes(row));
                 return { rows: dead, rowCount: dead.length };
             }
 
             if (text.startsWith('INSERT INTO event_dead_letter')) {
+                if (state.failDeadLetterInsert) {
+                    throw new Error('dead letter insert failed');
+                }
                 state.deadLetter.push({
                     original_event_id: params[0],
                     event_type: params[1],
@@ -54,6 +54,31 @@ function makePool() {
                     terminal_reason: params[8]
                 });
                 return { rows: [], rowCount: 1 };
+            }
+
+            if (text.startsWith('DELETE FROM event_queue WHERE id = $1')) {
+                state.eventQueue = state.eventQueue.filter(row => String(row.id) !== String(params[0]));
+                return { rows: [], rowCount: 1 };
+            }
+
+            throw new Error(`Unexpected convergence client query: ${text}`);
+        },
+        release() {
+            state.transactions.push('RELEASE');
+        }
+    };
+
+    return {
+        async query(sql, params = []) {
+            const text = normalizeSql(sql);
+            state.queries.push({ text, params });
+
+            if (text.startsWith('SELECT * FROM event_queue WHERE status =')) {
+                const rows = state.eventQueue.filter(row =>
+                    row.status === 'failed' &&
+                    row.attempts < row.max_attempts
+                );
+                return { rows, rowCount: rows.length };
             }
 
             if (text.startsWith('SELECT * FROM rule_definitions')) {
@@ -75,6 +100,9 @@ function makePool() {
             }
 
             throw new Error(`Unexpected convergence query: ${text}`);
+        },
+        connect() {
+            return client;
         }
     };
 }
@@ -118,7 +146,9 @@ describe('Guardian delivery convergence and dead-letter movement', () => {
                     failure_class: 'configuration_missing'
                 }
             ],
-            deadLetter: []
+            deadLetter: [],
+            transactions: [],
+            failDeadLetterInsert: false
         };
 
         clearModules();
@@ -144,5 +174,19 @@ describe('Guardian delivery convergence and dead-letter movement', () => {
             ]
         );
         assert.equal(state.deadLetter[0].idempotency_key, 'guardian.mute.telegram:2');
+        assert.deepEqual(state.transactions, ['BEGIN', 'COMMIT', 'RELEASE']);
+        assert.equal(state.eventQueue.some(row => row.id === 2 || row.id === 3), false);
+    });
+
+    it('keeps source event_queue rows when dead-letter insertion fails', async () => {
+        state.eventQueue = state.eventQueue.filter(row => row.id !== 1);
+        state.failDeadLetterInsert = true;
+        const { processFailedEvents } = require('../services/eventBus');
+
+        await processFailedEvents();
+
+        assert.equal(state.deadLetter.length, 0);
+        assert.deepEqual(state.eventQueue.map(row => row.id), [2, 3]);
+        assert.deepEqual(state.transactions, ['BEGIN', 'ROLLBACK', 'RELEASE']);
     });
 });

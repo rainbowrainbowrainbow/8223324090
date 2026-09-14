@@ -21,6 +21,7 @@ function fixture() {
         if (/FROM businesses/.test(text)) return { rows: state.registry };
         if (/FROM rule_definitions/.test(text)) return { rows: [{ id: 7, code: 'fixture_income',
             conditions: {}, actions: [{ type: 'log', message: 'ACTION_SENTINEL' }] }] };
+        if (/SELECT output FROM rule_execution_log/.test(text)) return { rows: [], rowCount: 0 };
         if (/UPDATE event_queue|INSERT INTO rule_execution_log/.test(text)) return { rows: [], rowCount: 1 };
         throw new Error('Unexpected fixture SQL');
     } };

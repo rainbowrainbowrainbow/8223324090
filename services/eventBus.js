@@ -35,6 +35,14 @@ const {
 
 const log = createLogger('EventBus');
 
+class RuleActionFailure extends Error {
+    constructor(message, details = {}) {
+        super(message);
+        this.name = 'RuleActionFailure';
+        this.details = details;
+    }
+}
+
 function trustedQaRunPublicIdFromPayload(payload = {}) {
     if (!payload || typeof payload !== 'object') return null;
     const direct = String(payload.trustedQaRunPublicId || payload.trusted_qa_run_public_id || '').trim();
@@ -90,6 +98,8 @@ async function publish(eventType, payload, idempotencyKey) {
  */
 async function processEventRules(event) {
     let applied = 0;
+    let acceptedActions = 0;
+    let sawNoop = false;
     try {
         if (event?.event_type === 'finance.income') {
             await assertFinanceIncomeNotificationScope(pool, event.payload);
@@ -122,34 +132,107 @@ async function processEventRules(event) {
 
                 // Execute actions
                 const actions = typeof rule.actions === 'string' ? JSON.parse(rule.actions) : (rule.actions || []);
+                const completedActionIndexes = await getCompletedRuleActionIndexes(rule.id, event.id);
                 let actionsExecuted = 0;
+                const skippedActionIndexes = [];
+                const newlyCompletedActionIndexes = [];
 
-                for (const action of actions) {
+                for (const [actionIndex, action] of actions.entries()) {
+                    if (completedActionIndexes.has(actionIndex)) {
+                        skippedActionIndexes.push(actionIndex);
+                        continue;
+                    }
                     try {
                         await executeAction(action, payload, event);
                         actionsExecuted++;
+                        acceptedActions++;
+                        completedActionIndexes.add(actionIndex);
+                        newlyCompletedActionIndexes.push(actionIndex);
                     } catch (actionErr) {
                         log.error(`Action ${action.type} failed for rule ${rule.code}: ${actionErr.message}`);
+                        const failureOutput = {
+                            actions_count: actionsExecuted,
+                            actions_total: actions.length,
+                            failed_actions: 1,
+                            failed_action_indexes: [actionIndex],
+                            completed_action_indexes: [...completedActionIndexes].sort((a, b) => a - b),
+                            skipped_action_indexes: skippedActionIndexes,
+                            newly_completed_action_indexes: newlyCompletedActionIndexes,
+                            event_id: event.id
+                        };
+                        await pool.query(
+                            `INSERT INTO rule_execution_log (rule_id, event_id, trigger_event, result, error, output, trusted_qa_run_public_id)
+                             VALUES ($1, $2, $3, 'error', $4, $5, $6)`,
+                            [
+                                rule.id,
+                                event.id,
+                                event.event_type,
+                                actionErr.message,
+                                JSON.stringify(failureOutput),
+                                trustedQaRunPublicId
+                            ]
+                        );
+                        throw new RuleActionFailure(
+                            `Rule ${rule.code || rule.id} action ${action.type || actionIndex} failed: ${actionErr.message}`,
+                            {
+                                ruleId: rule.id,
+                                ruleCode: rule.code,
+                                actionIndex,
+                                completedActionIndexes: failureOutput.completed_action_indexes
+                            }
+                        );
                     }
                 }
 
-                // Log successful execution
+                const allActionsAlreadyCompleted = actions.length > 0 && skippedActionIndexes.length === actions.length;
+                if (allActionsAlreadyCompleted) {
+                    acceptedActions++;
+                }
+                if (actions.length === 0) {
+                    sawNoop = true;
+                }
+
                 await pool.query(
-                    `INSERT INTO rule_execution_log (rule_id, trigger_event, result, output, trusted_qa_run_public_id)
-                     VALUES ($1, $2, 'success', $3, $4)`,
-                    [rule.id, event.event_type, JSON.stringify({ actions_count: actionsExecuted, event_id: event.id }), trustedQaRunPublicId]
+                    `INSERT INTO rule_execution_log (rule_id, event_id, trigger_event, result, output, trusted_qa_run_public_id)
+                     VALUES ($1, $2, $3, 'success', $4, $5)`,
+                    [
+                        rule.id,
+                        event.id,
+                        event.event_type,
+                        JSON.stringify({
+                            actions_count: actionsExecuted,
+                            actions_total: actions.length,
+                            skipped_action_indexes: skippedActionIndexes,
+                            completed_action_indexes: [...completedActionIndexes].sort((a, b) => a - b),
+                            outcome: actions.length === 0 ? 'no_action' : 'accepted',
+                            event_id: event.id
+                        }),
+                        trustedQaRunPublicId
+                    ]
                 );
                 applied++;
             } catch (ruleErr) {
-                await pool.query(
-                    `INSERT INTO rule_execution_log (rule_id, trigger_event, result, error, output, trusted_qa_run_public_id)
-                     VALUES ($1, $2, 'error', $3, $4, $5)`,
-                    [rule.id, event.event_type, ruleErr.message, JSON.stringify({ event_id: event.id }), trustedQaRunPublicId]
-                );
+                if (!(ruleErr instanceof RuleActionFailure)) {
+                    await pool.query(
+                        `INSERT INTO rule_execution_log (rule_id, event_id, trigger_event, result, error, output, trusted_qa_run_public_id)
+                         VALUES ($1, $2, $3, 'error', $4, $5, $6)`,
+                        [
+                            rule.id,
+                            event.id,
+                            event.event_type,
+                            ruleErr.message,
+                            JSON.stringify({ event_id: event.id }),
+                            trustedQaRunPublicId
+                        ]
+                    );
+                }
+                throw ruleErr;
             }
         }
 
         // Mark event as processed
+        const convergenceOutcome = internalResult?.outcome
+            || (acceptedActions > 0 ? 'accepted' : (sawNoop || applied === 0 ? 'no_action' : 'processed'));
         await pool.query(
             `UPDATE event_queue
              SET status = 'processed',
@@ -160,7 +243,7 @@ async function processEventRules(event) {
                  last_error = NULL,
                  last_convergence_at = NOW()
              WHERE id = $1`,
-            [event.id, internalResult?.outcome || 'processed']
+            [event.id, convergenceOutcome]
         );
     } catch (err) {
         log.error('Process rules error', err);
@@ -188,6 +271,37 @@ async function processEventRules(event) {
         ).catch(() => {});
     }
     return applied;
+}
+
+async function getCompletedRuleActionIndexes(ruleId, eventId) {
+    if (!ruleId || !eventId) return new Set();
+    const completed = new Set();
+    const result = await pool.query(
+        `SELECT output
+         FROM rule_execution_log
+         WHERE rule_id = $1 AND event_id = $2
+         ORDER BY executed_at ASC, id ASC`,
+        [ruleId, eventId]
+    );
+    for (const row of result.rows || []) {
+        const output = typeof row.output === 'string' ? safeParseJson(row.output) : row.output;
+        const indexes = Array.isArray(output?.completed_action_indexes)
+            ? output.completed_action_indexes
+            : [];
+        for (const index of indexes) {
+            const numeric = Number(index);
+            if (Number.isInteger(numeric) && numeric >= 0) completed.add(numeric);
+        }
+    }
+    return completed;
+}
+
+function safeParseJson(value) {
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
+    }
 }
 
 async function processInternalEventHandler(event) {
@@ -390,19 +504,37 @@ async function processFailedEvents() {
             );
         }
 
-        // Move permanently failed events to dead letter
-        const deadResult = await pool.query(
-            `DELETE FROM event_queue
+        const deadLetterMoved = await moveFailedEventsToDeadLetter();
+
+        if (result.rows.length > 0 || deadLetterMoved > 0) {
+            log.info(`Event queue: ${result.rows.length} retried, ${deadLetterMoved} moved to DLQ`);
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('processFailedEvents error', err);
+        }
+    }
+}
+
+async function moveFailedEventsToDeadLetter() {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const deadResult = await client.query(
+            `SELECT id, event_type, payload, last_error, idempotency_key,
+                    attempts, max_attempts, failure_class, status
+             FROM event_queue
              WHERE status = 'terminal_failed'
                 OR (status = 'failed' AND attempts >= max_attempts)
-             RETURNING id, event_type, payload, last_error, idempotency_key,
-                       attempts, max_attempts, failure_class, status`
+             ORDER BY created_at ASC
+             LIMIT 100
+             FOR UPDATE SKIP LOCKED`
         );
 
         for (const dead of deadResult.rows) {
             const failureClass = dead.failure_class
                 || (dead.status === 'failed' ? 'max_attempts_exceeded' : 'terminal_failed');
-            await pool.query(
+            await client.query(
                 `INSERT INTO event_dead_letter (
                     original_event_id, event_type, payload, error, idempotency_key,
                     attempts, max_attempts, failure_class, terminal_reason
@@ -420,16 +552,17 @@ async function processFailedEvents() {
                     dead.last_error || failureClass
                 ]
             );
+            await client.query('DELETE FROM event_queue WHERE id = $1', [dead.id]);
             log.warn(`Event ${dead.id} moved to dead letter: ${dead.event_type}`);
         }
 
-        if (result.rows.length > 0 || deadResult.rows.length > 0) {
-            log.info(`Event queue: ${result.rows.length} retried, ${deadResult.rows.length} moved to DLQ`);
-        }
+        await client.query('COMMIT');
+        return deadResult.rows.length;
     } catch (err) {
-        if (!err.message.includes('does not exist')) {
-            log.error('processFailedEvents error', err);
-        }
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
     }
 }
 

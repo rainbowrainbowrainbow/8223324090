@@ -323,6 +323,12 @@ router.get('/overview', shapeReadOnlyEventRevenueText, async (req, res) => {
                 COUNT(*) FILTER (WHERE status = 'pending') as pending,
                 COUNT(*) FILTER (WHERE status = 'processed') as processed,
                 COUNT(*) FILTER (WHERE status = 'failed') as failed,
+                COUNT(*) FILTER (WHERE status = 'terminal_failed') as terminal_failed,
+                COUNT(*) FILTER (WHERE status = 'failed' AND attempts < max_attempts AND (next_retry_at IS NULL OR next_retry_at <= NOW())) as retry_due,
+                COUNT(*) FILTER (WHERE status = 'failed' AND attempts >= max_attempts) as retry_exhausted,
+                COUNT(*) FILTER (WHERE status = 'processed' AND convergence_status = 'accepted') as accepted,
+                COUNT(*) FILTER (WHERE status = 'processed' AND convergence_status = 'delivered') as delivered,
+                COUNT(*) FILTER (WHERE status = 'processed' AND convergence_status = 'no_action') as no_action,
                 COUNT(*) as total
              FROM event_queue`),
             pool.query('SELECT COUNT(*) as count FROM event_dead_letter'),

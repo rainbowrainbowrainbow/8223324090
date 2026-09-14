@@ -25,7 +25,9 @@
         items: [],
         stats: null,
         detailId: null,
-        detailCert: null
+        detailCert: null,
+        singleSubmitting: false,
+        batchSubmitting: false
     };
 
     const STATUS_META = {
@@ -54,6 +56,37 @@
         if (typeof showNotification === 'function') {
             showNotification(message, type);
         }
+    }
+
+    function syncCertificateAvailability() {
+        const availability = getLegacyBusinessSurfaceAvailability('certificates');
+        let notice = $('certificateBusinessAvailability');
+        if (!notice) {
+            notice = document.createElement('div');
+            notice.id = 'certificateBusinessAvailability';
+            notice.className = 'page-fatal-error';
+            notice.setAttribute('role', 'alert');
+            $('certificatesListView')?.before(notice);
+        }
+        notice.hidden = availability.available;
+        notice.textContent = availability.message || '';
+        for (const id of ['certificatePageForm', 'certificateBatchPageForm']) {
+            $(id)?.querySelectorAll('input, select, textarea, button').forEach(element => {
+                element.disabled = !availability.available;
+            });
+        }
+        if ($('certPageSubmitBtn')) $('certPageSubmitBtn').disabled = !availability.available || state.singleSubmitting;
+        if ($('certBatchPageSubmitBtn')) $('certBatchPageSubmitBtn').disabled = !availability.available || state.batchSubmitting;
+        if (!availability.available) {
+            state.items = [];
+            state.stats = null;
+            if ($('certPageStats')) $('certPageStats').textContent = '';
+            if ($('certPageList')) $('certPageList').textContent = '';
+            $('certificatePageDetailModal')?.classList.add('hidden');
+            $('certCreateResult')?.classList.add('hidden');
+            $('certBatchResult')?.classList.add('hidden');
+        }
+        return availability.available;
     }
 
     async function confirmCertificateAction(message, okText = 'Видалити') {
@@ -164,7 +197,7 @@
 
         if (mode === 'new') initializeSingleForm();
         if (mode === 'batch') initializeBatchForm();
-        if (mode === 'list') loadCertificatesPage();
+        if (syncCertificateAvailability() && mode === 'list') loadCertificatesPage();
     }
 
     function detectMode() {
@@ -237,7 +270,8 @@
 
     async function loadCertificatesPage() {
         const container = $('certPageList');
-        if (!container) return;
+        if (!container || !syncCertificateAvailability()) return;
+        const context = getLegacyBusinessSurfaceContextKey('certificates');
         const filters = {
             status: $('certPageStatus')?.value || '',
             search: $('certPageSearch')?.value.trim() || '',
@@ -246,9 +280,19 @@
 
         container.innerHTML = '<div class="empty-state">Завантаження...</div>';
         const result = await apiGetCertificates(filters);
+        if (context !== getLegacyBusinessSurfaceContextKey('certificates')) return;
         if (result.authTransient) {
             container.innerHTML = '<div class="page-fatal-error" role="alert"><h3>Сесію тимчасово не підтверджено</h3><p>Сертифікати не завантажені, але ваш вхід збережено.</p><button type="button" class="btn-page-primary" data-cert-load-retry>Повторити</button></div>';
             container.querySelector('[data-cert-load-retry]')?.addEventListener('click', () => loadCertificatesPage());
+            return;
+        }
+        if (result.success === false) {
+            state.items = [];
+            state.stats = null;
+            if ($('certPageStats')) $('certPageStats').textContent = '';
+            if (!syncCertificateAvailability()) return;
+            container.innerHTML = `<div class="page-fatal-error" role="alert"><h3>Не вдалося завантажити сертифікати</h3><p>${esc(result.error || 'Спробуйте ще раз.')}</p><button type="button" class="btn-page-primary" data-cert-load-retry>Повторити</button></div>`;
+            container.querySelector('[data-cert-load-retry]')?.addEventListener('click', loadCertificatesPage);
             return;
         }
         state.items = Array.isArray(result.items) ? result.items : [];
@@ -315,8 +359,11 @@
 
     async function handleSingleSubmit(event) {
         event.preventDefault();
+        if (state.singleSubmitting || !syncCertificateAvailability()) return;
         const displayValue = validateSingleIdentity({ focus: true });
         if (!displayValue) return;
+        state.singleSubmitting = true;
+        const context = getLegacyBusinessSurfaceContextKey('certificates');
 
         const btn = $('certPageSubmitBtn');
         const original = btn?.textContent || SINGLE_ISSUE_LABEL;
@@ -339,7 +386,9 @@
 
         try {
             const result = await apiCreateCertificate(data);
+            if (context !== getLegacyBusinessSurfaceContextKey('certificates')) return;
             if (!result.success) {
+                if (!syncCertificateAvailability()) return;
                 notify(result.error || 'Не вдалося видати сертифікат або абонемент', 'error');
                 return;
             }
@@ -347,11 +396,14 @@
             $('certificatePageForm')?.reset();
             initializeSingleForm();
             notify(`Сертифікат або абонемент ${result.certificate.certCode} видано`, 'success');
+        } catch (error) {
+            notify(error.message || 'Не вдалося видати сертифікат', 'error');
         } finally {
+            state.singleSubmitting = false;
             if (btn) {
-                btn.disabled = false;
                 btn.textContent = original;
             }
+            syncCertificateAvailability();
         }
     }
 
@@ -379,6 +431,7 @@
 
     async function handleBatchSubmit(event) {
         event.preventDefault();
+        if (state.batchSubmitting || !syncCertificateAvailability()) return;
         const btn = $('certBatchPageSubmitBtn');
         const original = btn?.textContent || 'Згенерувати пакет';
         const quantity = Number(document.querySelector('input[name="certPageBatchQty"]:checked')?.value || 0);
@@ -388,6 +441,8 @@
             notify('Оберіть кількість сертифікатів', 'error');
             return;
         }
+        state.batchSubmitting = true;
+        const context = getLegacyBusinessSurfaceContextKey('certificates');
         if (btn) {
             btn.disabled = true;
             btn.textContent = `Генерую ${quantity} шт...`;
@@ -401,17 +456,22 @@
                 validUntil: $('certPageBatchValidUntil')?.value || undefined,
                 season: $('certPageBatchSeason')?.value || currentSeason()
             });
+            if (context !== getLegacyBusinessSurfaceContextKey('certificates')) return;
             if (!result.success) {
+                if (!syncCertificateAvailability()) return;
                 notify(result.error || 'Не вдалося згенерувати пакет', 'error');
                 return;
             }
             renderBatchResult(result.certificates || []);
             notify(`Згенеровано ${quantity} сертифікатів`, 'success');
+        } catch (error) {
+            notify(error.message || 'Не вдалося згенерувати пакет', 'error');
         } finally {
+            state.batchSubmitting = false;
             if (btn) {
-                btn.disabled = false;
                 btn.textContent = original;
             }
+            syncCertificateAvailability();
         }
     }
 
@@ -826,6 +886,14 @@
         }
 
         bindEvents();
+        const refreshAvailability = () => {
+            if (syncCertificateAvailability() && state.mode === 'list') loadCertificatesPage();
+        };
+        window.addEventListener('crmBusinessContextChanged', refreshAvailability);
+        window.addEventListener('crmBusinessProfileChanged', refreshAvailability);
+        window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+            if (event.detail?.surface === 'certificates') syncCertificateAvailability();
+        });
         setMode(detectMode());
         if (window.Sidebar && typeof window.Sidebar.markShellReady === 'function') {
             window.Sidebar.markShellReady();

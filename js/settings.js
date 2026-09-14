@@ -3665,6 +3665,12 @@ async function loadCertificates() {
     container.innerHTML = '<p class="empty-state">Завантаження...</p>';
 
     const result = await apiGetCertificates({ status, search, limit: 200 });
+    if (result.success === false) {
+        container.innerHTML = `<p class="empty-state" role="alert">${_escS(result.error || 'Не вдалося завантажити сертифікати')}</p>`;
+        const stats = document.getElementById('certPanelStats');
+        if (stats) stats.textContent = '';
+        return;
+    }
     if (!result.items || result.items.length === 0) {
         container.innerHTML = '<p class="empty-state">Сертифікатів не знайдено</p>';
         renderCertStats([]);

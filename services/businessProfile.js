@@ -11,6 +11,7 @@ const { getBusinessCabinetSettings, businessCabinetForUser } = require('./busine
 const { getOmniAccountStatusesAsync } = require('./omni-accounts');
 const { authAccessContext } = require('./authBusinessProfile');
 const { businessModuleCatalog, configuredBusinessModuleEnabled } = require('./businessModuleRegistry');
+const { parkLegacySurfaceAvailability } = require('./parkLegacyModuleAccess');
 
 const START_PAGE_PATHS = Object.freeze({
   dashboard: '/dashboard',
@@ -194,6 +195,7 @@ async function buildBusinessEntry(db, context, options = {}) {
     timeline: timelineDisplay,
     cabinet: effectiveCabinet,
     modules,
+    legacySurfaces: parkLegacySurfaceAvailability(options.user, key),
     shell: {
       startPage,
       startPagePath: startPath,

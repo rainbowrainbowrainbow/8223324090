@@ -59,56 +59,56 @@ const NEXT_STATUS = {
 // API CALLS
 // ==========================================
 
-async function apiGet(path) {
+function syncArtBusinessAvailability() {
+    const availability = getLegacyBusinessSurfaceAvailability('art');
+    const page = document.querySelector('.artdir-page');
+    let notice = document.getElementById('artBusinessAvailability');
+    if (page && !notice) {
+        notice = document.createElement('div');
+        notice.id = 'artBusinessAvailability';
+        notice.className = 'artdir-empty';
+        notice.setAttribute('role', 'alert');
+        page.before(notice);
+    }
+    if (notice) {
+        notice.hidden = availability.available;
+        notice.textContent = availability.message || '';
+    }
+    page?.classList.toggle('hidden', !availability.available);
+    if (!availability.available) {
+        overviewData = null;
+        contentItems = []; templates = []; brandGuidelines = []; costumes = [];
+        ['contentModal', 'detailModal', 'brandModal'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+    }
+    return availability;
+}
+
+async function artApiRequest(path, method = 'GET', body) {
+    const availability = syncArtBusinessAvailability();
+    if (!availability.available) return { success: false, error: availability.message, code: availability.code };
+    const context = getLegacyBusinessSurfaceContextKey('art');
     try {
-        const response = await fetch(`${API_BASE}/art-director${path}`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return null;
-        if (!response.ok) throw new Error('API error');
-        return await response.json();
+        const response = await apiFetchWithAuthRetry(`${API_BASE}/art-director${path}`, {
+            method, headers: getAuthHeaders(method !== 'GET'),
+            ...(body === undefined ? {} : { body: JSON.stringify(body) })
+        });
+        if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
+        if (!response.ok) throw await apiErrorFromResponse(response);
+        const data = await response.json();
+        if (context !== getLegacyBusinessSurfaceContextKey('art')) return { success: false, error: 'Бізнес змінено. Оновіть сторінку.' };
+        return data;
     } catch (err) {
-        console.error(`API GET ${path} error:`, err);
-        return null;
+        const failure = { success: false, error: err.message, code: err.code || err.payload?.code || null, status: err.status || null };
+        noteLegacyBusinessSurfaceUnavailable('art', failure, context);
+        syncArtBusinessAvailability();
+        return failure;
     }
 }
 
-async function apiPost(path, body) {
-    try {
-        const response = await fetch(`${API_BASE}/art-director${path}`, {
-            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(body)
-        });
-        if (handleAuthError(response)) return { success: false };
-        return await response.json();
-    } catch (err) {
-        console.error(`API POST ${path} error:`, err);
-        return { success: false, error: err.message };
-    }
-}
-
-async function apiPut(path, body) {
-    try {
-        const response = await fetch(`${API_BASE}/art-director${path}`, {
-            method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(body)
-        });
-        if (handleAuthError(response)) return { success: false };
-        return await response.json();
-    } catch (err) {
-        console.error(`API PUT ${path} error:`, err);
-        return { success: false, error: err.message };
-    }
-}
-
-async function apiDelete(path) {
-    try {
-        const response = await fetch(`${API_BASE}/art-director${path}`, {
-            method: 'DELETE', headers: getAuthHeaders()
-        });
-        if (handleAuthError(response)) return { success: false };
-        return await response.json();
-    } catch (err) {
-        console.error(`API DELETE ${path} error:`, err);
-        return { success: false, error: err.message };
-    }
-}
+function apiGet(path) { return artApiRequest(path); }
+function apiPost(path, body) { return artApiRequest(path, 'POST', body); }
+function apiPut(path, body) { return artApiRequest(path, 'PUT', body); }
+function apiDelete(path) { return artApiRequest(path, 'DELETE'); }
 
 // ==========================================
 // HELPERS
@@ -208,7 +208,7 @@ function lazyLoadIframe(tabName) {
 async function loadOverview() {
     const data = await apiGet('/overview');
     if (!data || !data.success) {
-        document.getElementById('overviewStats').innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
+        document.getElementById('overviewStats').innerHTML = `<div class="artdir-empty" role="alert">${escapeHtml(data?.error || 'Помилка завантаження')}</div>`;
         return;
     }
     overviewData = data;
@@ -292,7 +292,7 @@ async function loadPipeline() {
 
     const data = await apiGet(`/content${query}`);
     if (!data || !data.success) {
-        document.getElementById('pipelineKanban').innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
+        document.getElementById('pipelineKanban').innerHTML = `<div class="artdir-empty" role="alert">${escapeHtml(data?.error || 'Помилка завантаження')}</div>`;
         return;
     }
     contentItems = data.items || [];
@@ -691,7 +691,7 @@ async function loadTemplates() {
     const query = templateCategoryFilter ? `?category=${templateCategoryFilter}` : '';
     const data = await apiGet(`/templates${query}`);
     if (!data || !data.success) {
-        document.getElementById('templatesGrid').innerHTML = '<div class="artdir-empty">Помилка завантаження шаблонів</div>';
+        document.getElementById('templatesGrid').innerHTML = `<div class="artdir-empty" role="alert">${escapeHtml(data?.error || 'Помилка завантаження шаблонів')}</div>`;
         return;
     }
     templates = data.templates || [];
@@ -748,7 +748,7 @@ function useTemplate(templateId) {
 async function loadBrand() {
     const data = await apiGet('/brand');
     if (!data || !data.success) {
-        document.getElementById('brandContent').innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
+        document.getElementById('brandContent').innerHTML = `<div class="artdir-empty" role="alert">${escapeHtml(data?.error || 'Помилка завантаження')}</div>`;
         return;
     }
     brandGuidelines = data.guidelines || [];
@@ -861,7 +861,7 @@ async function loadCostumes() {
     container.innerHTML = '<div class="artdir-loading">Завантаження...</div>';
     const data = await apiGet('/costumes');
     if (!data || !data.success) {
-        container.innerHTML = '<div class="artdir-empty">Не вдалося завантажити костюмерну</div>';
+        container.innerHTML = `<div class="artdir-empty" role="alert">${escapeHtml(data?.error || 'Не вдалося завантажити костюмерну')}</div>`;
         return;
     }
     costumes = Array.isArray(data.data) ? data.data : [];
@@ -952,6 +952,10 @@ async function initAuth() {
     }
 
     AppState.currentUser = user;
+    await hydrateBusinessOperatingProfile(user);
+    const permissions = await hydrateActionPermissions(user);
+    if (!permissions) throw new Error('Не вдалося завантажити права доступу');
+    if (typeof enforceCurrentPageAccess === 'function' && !enforceCurrentPageAccess(user)) return false;
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const ART_WORKSPACE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'art_director', 'marketer'];
@@ -1070,7 +1074,14 @@ async function initArtDirectorPage() {
 
     initSidebar();
 
-    const authed = await initAuth();
+    let authed;
+    try {
+        authed = await initAuth();
+    } catch (error) {
+        const page = document.querySelector('.artdir-page');
+        if (page) page.innerHTML = `<div class="artdir-empty" role="alert">${escapeHtml(error.message || 'Не вдалося відкрити Art Director. Оновіть сторінку.')}</div>`;
+        return;
+    }
     if (!authed) return;
 
     if (!canAccessArtWorkspace) {
@@ -1085,6 +1096,13 @@ async function initArtDirectorPage() {
             </div>`;
         return;
     }
+
+    window.addEventListener('crmBusinessContextChanged', syncArtBusinessAvailability);
+    window.addEventListener('crmBusinessProfileChanged', syncArtBusinessAvailability);
+    window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+        if (event.detail?.surface === 'art') syncArtBusinessAvailability();
+    });
+    if (!syncArtBusinessAvailability().available) return;
 
     setupTabs();
     setupModals();

@@ -1098,7 +1098,8 @@ function getLegacyBusinessSurfaceAvailability(surface = 'catalogs') {
     const labels = {
         catalogs: 'Спільні каталоги', booking_templates: 'Шаблони бронювань',
         recurring: 'Повторювані бронювання', finance_salary: 'Розрахунок зарплати',
-        contractors_procurement: 'Спільні підрядники та закупівлі'
+        contractors_procurement: 'Спільні підрядники та закупівлі',
+        certificates: 'Сертифікати', art: 'Art-матеріали'
     };
     const key = Object.prototype.hasOwnProperty.call(labels, surface) ? surface : 'catalogs';
     const denied = legacyBusinessSurfaceDenials.get(key);
@@ -1109,7 +1110,9 @@ function getLegacyBusinessSurfaceAvailability(surface = 'catalogs') {
     const ready = Boolean(user && profile?.accessContext?.status === 'ready'
         && user.accessContext?.status === 'ready'
         && profile.activeBusinessId === scope.activeContext);
-    const available = ready && profile.membershipMode === 'compatibility'
+    const recovered = ['certificates', 'art'].includes(key)
+        && profile?.activeProfile?.legacySurfaces?.[key]?.available === true;
+    const available = ready && (profile.membershipMode === 'compatibility' || recovered)
         && scope.mode === CRM_BUSINESS_SCOPE_SINGLE && scope.activeContext === CRM_BUSINESS_DEFAULT_CONTEXT;
     return {
         available,
@@ -1161,6 +1164,7 @@ function crmBusinessContextHasModule(context, moduleId) {
     if (!moduleId) return true;
     const profile = getCrmBusinessProfileForContext(context);
     if (profile?.accessMode === 'membership' || profile?.modules?.source === 'business_registry') {
+        if (['certificates', 'art'].includes(moduleId)) return profile.legacySurfaces?.[moduleId]?.available === true;
         return profile.modules?.enabled?.[moduleId] === true;
     }
     if (profile?.modules?.enabled && Object.prototype.hasOwnProperty.call(profile.modules.enabled, moduleId)) {
@@ -4877,7 +4881,14 @@ async function apiGamificationCoinHistory() {
 }
 
 // v8.4: Certificates API
+function certificateApiFailure(error, context) {
+    const failure = { success: false, error: error.message || 'Не вдалося завантажити сертифікати', code: error.code || error.payload?.code || null, status: error.status || null };
+    noteLegacyBusinessSurfaceUnavailable('certificates', failure, context);
+    return failure;
+}
+
 async function apiGetCertificates(filters = {}) {
+    const context = getLegacyBusinessSurfaceContextKey('certificates');
     try {
         const params = new URLSearchParams();
         if (filters.status) params.set('status', filters.status);
@@ -4890,22 +4901,22 @@ async function apiGetCertificates(filters = {}) {
         if (!response) {
             const failure = getApiAuthSessionFailure();
             return {
-                items: [],
-                total: 0,
-                stats: null,
+                success: false,
+                error: 'Сесію тимчасово не вдалося підтвердити',
                 authTransient: isApiAuthSessionFailureTransient(failure),
                 authFailure: failure
             };
         }
-        if (!response.ok) throw new Error('API error');
+        if (!response.ok) throw await apiErrorFromResponse(response, 'Не вдалося завантажити сертифікати');
         return await response.json();
     } catch (err) {
         console.error('API getCertificates error:', err);
-        return { items: [], total: 0, stats: null };
+        return certificateApiFailure(err, context);
     }
 }
 
 async function apiCreateCertificate(data) {
+    const context = getLegacyBusinessSurfaceContextKey('certificates');
     try {
         const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates`, {
             method: 'POST',
@@ -4913,19 +4924,17 @@ async function apiCreateCertificate(data) {
             body: JSON.stringify(data)
         });
         if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
-        if (!response.ok) {
-            const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
-        }
+        if (!response.ok) throw await apiErrorFromResponse(response);
         const cert = await response.json();
         return { success: true, certificate: cert };
     } catch (err) {
         console.error('API createCertificate error:', err);
-        return { success: false, error: err.message };
+        return certificateApiFailure(err, context);
     }
 }
 
 async function apiBatchCreateCertificates(data) {
+    const context = getLegacyBusinessSurfaceContextKey('certificates');
     try {
         const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/batch`, {
             method: 'POST',
@@ -4933,14 +4942,11 @@ async function apiBatchCreateCertificates(data) {
             body: JSON.stringify(data)
         });
         if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
-        if (!response.ok) {
-            const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
-        }
+        if (!response.ok) throw await apiErrorFromResponse(response);
         return await response.json();
     } catch (err) {
         console.error('API batchCreateCertificates error:', err);
-        return { success: false, error: err.message };
+        return certificateApiFailure(err, context);
     }
 }
 
@@ -4957,6 +4963,7 @@ async function apiGetCertificateByCode(code) {
 }
 
 async function apiUpdateCertificateStatus(id, status, reason) {
+    const context = getLegacyBusinessSurfaceContextKey('certificates');
     try {
         const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/${id}/status`, {
             method: 'PATCH',
@@ -4964,19 +4971,17 @@ async function apiUpdateCertificateStatus(id, status, reason) {
             body: JSON.stringify({ status, reason })
         });
         if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
-        if (!response.ok) {
-            const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
-        }
+        if (!response.ok) throw await apiErrorFromResponse(response);
         const cert = await response.json();
         return { success: true, certificate: cert };
     } catch (err) {
         console.error('API updateCertificateStatus error:', err);
-        return { success: false, error: err.message };
+        return certificateApiFailure(err, context);
     }
 }
 
 async function apiUpdateCertificate(id, data) {
+    const context = getLegacyBusinessSurfaceContextKey('certificates');
     try {
         const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/${id}`, {
             method: 'PUT',
@@ -4984,33 +4989,28 @@ async function apiUpdateCertificate(id, data) {
             body: JSON.stringify(data)
         });
         if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
-        if (!response.ok) {
-            const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
-        }
+        if (!response.ok) throw await apiErrorFromResponse(response);
         const cert = await response.json();
         return { success: true, certificate: cert };
     } catch (err) {
         console.error('API updateCertificate error:', err);
-        return { success: false, error: err.message };
+        return certificateApiFailure(err, context);
     }
 }
 
 async function apiDeleteCertificate(id) {
+    const context = getLegacyBusinessSurfaceContextKey('certificates');
     try {
         const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/${id}`, {
             method: 'DELETE',
             headers: getAuthHeaders(false)
         });
         if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
-        if (!response.ok) {
-            const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
-        }
+        if (!response.ok) throw await apiErrorFromResponse(response);
         return await response.json();
     } catch (err) {
         console.error('API deleteCertificate error:', err);
-        return { success: false, error: err.message };
+        return certificateApiFailure(err, context);
     }
 }
 

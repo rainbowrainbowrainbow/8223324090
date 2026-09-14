@@ -5,6 +5,7 @@ const { userBusinessModuleState } = require('./businessModuleRegistry');
 const { recordCompatibilityTelemetrySafe } = require('./businessCutover');
 const { canReadParkStaffSchedule, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
 const { projectParkStaffSchedulePayload } = require('./parkStaffScheduleProjection');
+const { canUseParkLegacySurface } = require('./parkLegacyModuleAccess');
 
 const SURFACES = Object.freeze({
     catalogs: { code: 'catalogs_not_migrated', label: 'Спільні каталоги' },
@@ -58,6 +59,7 @@ function legacyBusinessSurfaceAccess(req, surface = 'catalogs') {
         const moduleState = userBusinessModuleState(req.user, DEFAULT_BUSINESS_CONTEXT, 'catalogs');
         return moduleState.available ? available() : denied;
     }
+    if (access.membershipEnabled === true && canUseParkLegacySurface(req, surface, scope)) return available();
     if (access.membershipEnabled !== false
         || (business && (business.accessMode !== 'compatibility' || business.active !== true))) return denied;
     return available();

@@ -1524,17 +1524,17 @@
                 <div id="customerExplainability" hidden></div>
 
                 <!-- Table -->
-                <div class="crm-table-wrap">
-                    <table class="crm-table">
+                <div class="crm-table-wrap customer-list-table-wrap">
+                    <table class="crm-table customer-list-table">
                         <thead>
                             <tr>
-                                <th>Клієнт</th>
-                                <th>Телефон</th>
-                                <th>Instagram</th>
-                                <th>Джерело</th>
-                                <th>Візити</th>
-                                <th id="customerSpentHeader">Витрачено</th>
-                                <th>Останній візит</th>
+                                <th class="customer-list-col customer-list-col--identity">Клієнт</th>
+                                <th class="customer-list-col customer-list-col--phone">Телефон</th>
+                                <th class="customer-list-col customer-list-col--secondary">Instagram</th>
+                                <th class="customer-list-col customer-list-col--secondary">Джерело</th>
+                                <th class="customer-list-col customer-list-col--number">Візити</th>
+                                <th id="customerSpentHeader" class="customer-list-col customer-list-col--number customer-list-col--secondary">Витрачено</th>
+                                <th class="customer-list-col customer-list-col--last-visit">Останній візит</th>
                             </tr>
                         </thead>
                         <tbody id="customerTableBody"></tbody>

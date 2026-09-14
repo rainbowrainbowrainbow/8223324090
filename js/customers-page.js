@@ -2209,6 +2209,8 @@ function renderCustomerTable() {
     const tbody = document.getElementById('customerTableBody');
     const maysternyaMode = isMaysternyaCustomerContext();
     const canViewRevenue = canViewCustomerRevenue();
+    const visitLabel = maysternyaMode ? 'Сесій' : 'Візитів';
+    const lastVisitLabel = maysternyaMode ? 'Остання сесія' : 'Останній візит';
     syncCustomerPresentationUi();
     renderCustomerExplainability();
     renderCustomerFilterControls();
@@ -2225,24 +2227,34 @@ function renderCustomerTable() {
         const tagsHtml = (c.tags || []).map(t => renderCustomerTagPill(t)).join('');
         const childrenLabel = customerChildrenInlineLabel(c);
         const ltvBadge = canViewRevenue && c.ltv > 10000 ? ' 🔥' : '';
-        return `<tr data-id="${c.id}">
-            <td>
+        const phone = c.phone ? escapeHtml(c.phone) : 'Немає телефону';
+        const lastVisit = formatDate(c.lastVisit);
+        const visits = Number.isFinite(Number(c.totalBookings)) ? Number(c.totalBookings) : 0;
+        const rowLabel = `Відкрити картку клієнта ${c.name || 'без імені'}, телефон ${c.phone || 'не вказано'}, ${visitLabel.toLowerCase()} ${visits}, ${lastVisitLabel.toLowerCase()} ${lastVisit}`;
+        return `<tr class="customer-list-row" data-id="${c.id}" tabindex="0" aria-label="${escapeHtml(rowLabel)}">
+            <td class="customer-list-cell customer-list-cell--identity" data-label="Клієнт">
                 <div class="customer-name">${escapeHtml(c.name)}${ltvBadge}</div>
                 ${!maysternyaMode && childrenLabel ? `<div class="customer-child">${escapeHtml(childrenLabel)}</div>` : ''}
                 ${tagsHtml ? `<div class="crm-tags-row">${tagsHtml}</div>` : ''}
             </td>
-            <td>${escapeHtml(c.phone) || '—'}</td>
-            <td>${c.instagram ? '@' + escapeHtml(c.instagram) : '—'}</td>
-            <td><span class="badge badge-source badge-source-${escapeHtml(sourceKey)}">${escapeHtml(sourceLabel)}</span></td>
-            <td><span class="badge badge-visits">${c.totalBookings}</span></td>
-            ${canViewRevenue ? `<td><span class="badge badge-spent">${formatMoney(c.totalSpent)}</span></td>` : ''}
-            <td>${formatDate(c.lastVisit)}</td>
+            <td class="customer-list-cell customer-list-cell--phone" data-label="Телефон"><span class="customer-list-phone">${phone}</span></td>
+            <td class="customer-list-cell customer-list-cell--secondary" data-label="Instagram">${c.instagram ? '@' + escapeHtml(c.instagram) : '—'}</td>
+            <td class="customer-list-cell customer-list-cell--secondary" data-label="Джерело"><span class="badge badge-source badge-source-${escapeHtml(sourceKey)}">${escapeHtml(sourceLabel)}</span></td>
+            <td class="customer-list-cell customer-list-cell--visits customer-list-cell--numeric" data-label="${escapeHtml(visitLabel)}"><span class="badge badge-visits">${visits}</span></td>
+            ${canViewRevenue ? `<td class="customer-list-cell customer-list-cell--spent customer-list-cell--numeric customer-list-cell--secondary" data-label="${maysternyaMode ? 'Оплачено' : 'Витрачено'}"><span class="badge badge-spent">${formatMoney(c.totalSpent)}</span></td>` : ''}
+            <td class="customer-list-cell customer-list-cell--last-visit" data-label="${escapeHtml(lastVisitLabel)}">${lastVisit}</td>
         </tr>`;
     }).join('');
 
     // Click handler for rows
     tbody.querySelectorAll('tr[data-id]').forEach(row => {
         row.addEventListener('click', () => {
+            const id = parseInt(row.dataset.id);
+            showCustomerDetail(id);
+        });
+        row.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
             const id = parseInt(row.dataset.id);
             showCustomerDetail(id);
         });

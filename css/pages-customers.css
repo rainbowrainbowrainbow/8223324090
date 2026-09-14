@@ -223,6 +223,37 @@ html[data-theme="dark"] .customer-filter-reset {
     color: #CBD5E1;
 }
 
+.customer-list-table-wrap {
+    max-height: min(72vh, 760px);
+    overflow: auto;
+}
+
+.customer-list-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 12;
+}
+
+.customer-list-col--number,
+.customer-list-cell--numeric {
+    text-align: right;
+}
+
+.customer-list-row:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    background: rgba(16, 185, 129, 0.06);
+}
+
+.customer-list-phone {
+    overflow-wrap: anywhere;
+}
+
+body.dark-mode .customer-list-row:focus-visible,
+html[data-theme="dark"] .customer-list-row:focus-visible {
+    background: rgba(16, 185, 129, 0.12);
+}
+
 @media (max-width: 768px) {
     .customer-toolbar-actions {
         width: 100%;
@@ -255,6 +286,139 @@ html[data-theme="dark"] .customer-filter-reset {
         border: 1px solid var(--gray-100);
         border-radius: 8px;
         background: rgba(15, 118, 110, 0.03);
+    }
+}
+
+@media (max-width: 640px) {
+    .customer-list-table-wrap {
+        max-height: none;
+        overflow: visible;
+        border: 0;
+        box-shadow: none;
+        background: transparent;
+    }
+
+    .customer-list-table {
+        display: block;
+        min-width: 0;
+        border-collapse: separate;
+        background: transparent;
+    }
+
+    .customer-list-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .customer-list-table tbody {
+        display: grid;
+        gap: 8px;
+    }
+
+    .customer-list-table .customer-list-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(104px, auto);
+        grid-template-areas:
+            "identity phone"
+            "last visits";
+        gap: 8px 10px;
+        min-height: 72px;
+        padding: 12px;
+        border: 1px solid var(--gray-100);
+        border-radius: 14px;
+        background: var(--white);
+        box-shadow: var(--shadow-xs);
+    }
+
+    .customer-list-table .customer-list-cell {
+        display: block;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+    }
+
+    .customer-list-cell--identity {
+        grid-area: identity;
+    }
+
+    .customer-list-cell--phone {
+        grid-area: phone;
+        align-self: start;
+        color: var(--gray-600);
+        font-size: 12px;
+        font-weight: 800;
+        text-align: right;
+    }
+
+    .customer-list-cell--last-visit {
+        grid-area: last;
+        color: var(--gray-500);
+        font-size: 12px;
+        font-weight: 800;
+    }
+
+    .customer-list-cell--visits {
+        grid-area: visits;
+        text-align: right;
+    }
+
+    .customer-list-cell--last-visit::before,
+    .customer-list-cell--visits::before {
+        content: attr(data-label) ": ";
+        color: var(--gray-400);
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    .customer-list-cell--secondary,
+    .customer-list-table .crm-tags-row,
+    .customer-list-table .customer-child {
+        display: none;
+    }
+
+    .customer-list-table .customer-name {
+        overflow-wrap: anywhere;
+        line-height: 1.35;
+    }
+
+    .customer-list-table .badge-visits {
+        min-width: 24px;
+        text-align: center;
+    }
+
+    .customer-list-table td[colspan] {
+        display: block;
+        padding: 0;
+        border: 0;
+    }
+
+    body.dark-mode .customer-list-table .customer-list-row,
+    html[data-theme="dark"] .customer-list-table .customer-list-row {
+        background: rgba(15, 23, 42, 0.92);
+        border-color: rgba(148, 163, 184, 0.16);
+        box-shadow: 0 18px 40px rgba(2, 6, 23, 0.18);
+    }
+
+    body.dark-mode .customer-list-cell--phone,
+    html[data-theme="dark"] .customer-list-cell--phone,
+    body.dark-mode .customer-list-cell--last-visit,
+    html[data-theme="dark"] .customer-list-cell--last-visit {
+        color: #CBD5E1;
+    }
+
+    body.dark-mode .customer-list-cell--last-visit::before,
+    html[data-theme="dark"] .customer-list-cell--last-visit::before,
+    body.dark-mode .customer-list-cell--visits::before,
+    html[data-theme="dark"] .customer-list-cell--visits::before {
+        color: #94A3B8;
     }
 }
 

@@ -979,7 +979,7 @@ function parseLeadListOffset(value) {
 }
 
 function buildLeadListFilters(query, businessScope) {
-    const { status, assigned_to, source, search, pipeline_stage, lead_type } = query;
+    const { status, assigned_to, source, search, pipeline_stage, lead_type, attention } = query;
     const conditions = [];
     const params = [];
     conditions.push(leadScopeCondition(params, businessScope, 'l'));
@@ -1017,6 +1017,13 @@ function buildLeadListFilters(query, businessScope) {
         if (normalizedLeadType.error) return { error: normalizedLeadType.error };
         params.push(normalizedLeadType.value);
         conditions.push(`COALESCE(NULLIF(l.lead_type, ''), '${SALES_LEAD_TYPE}') = $${params.length}`);
+    }
+    if (attention) {
+        const normalizedAttention = cleanText(attention);
+        if (normalizedAttention !== 'stale_contact_48h') {
+            return { error: 'Некоректний attention' };
+        }
+        conditions.push(`COALESCE(l.last_contact_at, l.created_at) < NOW() - INTERVAL '48 hours'`);
     }
     if (search) {
         const pattern = `%${search}%`;

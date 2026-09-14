@@ -451,6 +451,67 @@
     color: #ffffff;
 }
 
+.settings-recommend-card,
+.settings-recommend-preview {
+    margin: 12px 16px 0;
+    padding: 12px;
+    border: 1px solid rgba(16, 185, 129, 0.18);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(236, 253, 245, 0.72), rgba(255, 255, 255, 0.82));
+}
+
+.settings-recommend-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+}
+
+.settings-recommend-card span {
+    display: block;
+    color: #047857;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.settings-recommend-card strong,
+.settings-recommend-preview strong {
+    display: block;
+    color: #172033;
+    font-size: 14px;
+    font-weight: 950;
+}
+
+.settings-recommend-card p,
+.settings-recommend-preview p {
+    margin: 4px 0 0;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.settings-recommend-preview {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.88);
+}
+
+.settings-recommend-preview[hidden] {
+    display: none;
+}
+
+.settings-recommend-preview ul {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    color: #334155;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
 .dashboard-settings-overlay .settings-widget-list {
     flex: 1;
     min-height: 360px;
@@ -579,6 +640,13 @@
 
     .settings-widget-toolbar {
         grid-template-columns: 1fr;
+    }
+
+    .settings-recommend-card,
+    .settings-recommend-preview {
+        grid-template-columns: 1fr;
+        margin-left: 12px;
+        margin-right: 12px;
     }
 
     .settings-widget-filters {
@@ -973,7 +1041,9 @@
 .dark-mode .settings-widget-panel,
 .dark-mode .settings-widget-search input,
 .dark-mode .settings-widget-filters,
-.dark-mode .settings-widget-empty-state {
+.dark-mode .settings-widget-empty-state,
+.dark-mode .settings-recommend-card,
+.dark-mode .settings-recommend-preview {
     background: rgba(15, 23, 42, 0.58);
     border-color: rgba(148, 163, 184, 0.18);
     color: #E2E8F0;
@@ -984,7 +1054,10 @@
 .dark-mode .settings-widget-panel-head span,
 .dark-mode .settings-widget-search span,
 .dark-mode .settings-widget-meta,
-.dark-mode .settings-widget-empty-state {
+.dark-mode .settings-widget-empty-state,
+.dark-mode .settings-recommend-card p,
+.dark-mode .settings-recommend-preview p,
+.dark-mode .settings-recommend-preview ul {
     color: #94A3B8;
 }
 
@@ -995,6 +1068,11 @@
 }
 
 .dark-mode .settings-widget-panel-head h3 {
+    color: #F8FAFC;
+}
+
+.dark-mode .settings-recommend-card strong,
+.dark-mode .settings-recommend-preview strong {
     color: #F8FAFC;
 }
 

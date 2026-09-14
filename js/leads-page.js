@@ -204,6 +204,7 @@ let currentTypeFilter = '';
 let currentLeadQueue = DEFAULT_LEAD_QUEUE;
 let currentDateFilter = '';
 let currentPipelineStage = '';
+let currentLeadAttentionFilter = '';
 let currentBusinessContext = 'event_genix';
 let leadsData = [];
 let leadStatsData = null;
@@ -1043,6 +1044,7 @@ function leadListParams() {
     if (currentTypeFilter) params.set('lead_type', currentTypeFilter);
     if (currentDateFilter) params.set('event_date', currentDateFilter);
     if (currentPipelineStage) params.set('pipeline_stage', currentPipelineStage);
+    if (currentLeadAttentionFilter) params.set('attention', currentLeadAttentionFilter);
     const search = document.getElementById('leadsSearch')?.value?.trim();
     if (search) params.set('search', search);
     return params;
@@ -1400,6 +1402,8 @@ function applyLeadQueryParams() {
     if (LEAD_VIEW_MODES.has(requestedView)) currentView = requestedView;
     const requestedStage = params.get('pipeline_stage') || params.get('stage') || '';
     currentPipelineStage = PIPELINE_STAGES.some(stage => stage.key === requestedStage) ? requestedStage : '';
+    const requestedAttention = params.get('attention') || '';
+    currentLeadAttentionFilter = requestedAttention === 'stale_contact_48h' ? requestedAttention : '';
     currentFilter = params.get('status') || currentFilter;
     const requestedQueue = params.get('lead_queue') || params.get('queue');
     if (LEAD_QUEUE_FILTERS[requestedQueue]) {
@@ -1452,6 +1456,7 @@ function syncLeadUrlState({ replace = true } = {}) {
     url.searchParams.delete('lead_type');
     setOrDelete('event_date', currentDateFilter);
     setOrDelete('pipeline_stage', currentPipelineStage);
+    setOrDelete('attention', currentLeadAttentionFilter);
     url.searchParams.delete('stage');
     setOrDelete('search', document.getElementById('leadsSearch')?.value?.trim() || '');
 
@@ -1472,6 +1477,7 @@ function getLeadFilterSummary() {
     return [
         currentLeadQueue !== DEFAULT_LEAD_QUEUE ? { label: maysternyaMode ? 'Черга заявок' : 'Черга лідів', value: leadQueueMeta().label } : null,
         currentPipelineStage ? { label: 'Етап воронки', value: leadPipelineStageLabel(currentPipelineStage) } : null,
+        currentLeadAttentionFilter === 'stale_contact_48h' ? { label: 'Увага', value: 'Без контакту понад 48 год' } : null,
         currentFilter ? { label: 'Статус', value: STATUS_MAP[currentFilter]?.label || currentFilter } : null,
         currentDateFilter ? { label: maysternyaMode ? 'Дата консультації' : 'Дата події', value: leadDateFilterLabel(currentDateFilter) } : null,
         search ? { label: 'Пошук', value: search } : null
@@ -1596,6 +1602,7 @@ function resetLeadFilters() {
     currentTypeFilter = leadTypeForCurrentQueue();
     currentDateFilter = '';
     currentPipelineStage = '';
+    currentLeadAttentionFilter = '';
     const search = document.getElementById('leadsSearch');
     if (search) search.value = '';
     syncLeadQueueUi();

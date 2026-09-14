@@ -75,6 +75,23 @@ describe('Sales Funnel deposit_received local regression', () => {
         assert.match(routeSmoke, /assert\.equal\(childInserts\.length, 3\)/);
         assert.match(routeSmoke, /assert\.deepEqual\(childInserts\.map\(q => q\.params\[4\]\), \['Anna', 'Bohdan', 'Sofia'\]\)/);
     });
+
+    it('dashboard sales attention links use the canonical leads filter surface', () => {
+        const leadsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'leads.js'), 'utf8');
+        const leadsPage = fs.readFileSync(path.join(ROOT, 'js', 'leads-page.js'), 'utf8');
+        const dashboardPage = fs.readFileSync(path.join(ROOT, 'js', 'dashboard-page.js'), 'utf8');
+
+        assert.match(leadsRoute, /const \{ status, assigned_to, source, search, pipeline_stage, lead_type, attention \} = query;/);
+        assert.match(leadsRoute, /normalizedAttention !== 'stale_contact_48h'/);
+        assert.match(leadsRoute, /COALESCE\(l\.last_contact_at, l\.created_at\) < NOW\(\) - INTERVAL '48 hours'/);
+        assert.match(leadsPage, /let currentLeadAttentionFilter = '';/);
+        assert.match(leadsPage, /params\.set\('attention', currentLeadAttentionFilter\)/);
+        assert.match(leadsPage, /currentLeadAttentionFilter = requestedAttention === 'stale_contact_48h'/);
+        assert.match(leadsPage, /setOrDelete\('attention', currentLeadAttentionFilter\)/);
+        assert.match(leadsPage, /Без контакту понад 48 год/);
+        assert.match(dashboardPage, /attention: options\.attention \|\| ''/);
+        assert.match(dashboardPage, /dashboardFunnelHref\(hotStage, \{ attention: 'stale_contact_48h' \}\)/);
+    });
 });
 
 liveDescribe('Sales Funnel v29.1.0 — Lead Types & Pipeline', () => {

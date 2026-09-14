@@ -21,6 +21,8 @@ function instrumentDashboardSource() {
         refreshWidget,
         loadWidgetData,
         completeFocusTask,
+        focusDashboardTask,
+        snoozeDashboardTask,
         renderDayOrientation,
         loadDayOrientationSources,
         refreshDayOrientation,
@@ -262,6 +264,67 @@ test('incomplete success payload is not interpreted as a calm day', async () => 
     h.dom.window.close();
 });
 
+test('quick stats renders truthful labels, period, business context, and stale lead count', async () => {
+    const h = loadDashboardHarness();
+    h.dom.window.resolveCapability = () => ({ allowed: true });
+    h.dom.window.document.getElementById('dashboardGrid').innerHTML = '<div id="widget-quick_stats"></div>';
+    h.setFetchImplementation(url => {
+        if (url.includes('/widgets/quick_stats')) return response({
+            bookingsToday: 4,
+            activeTasks: 7,
+            revenueToday: 12800,
+            coldLeads: 6,
+            meta: {
+                period: { key: 'today', date: '2026-09-14', timezone: 'Europe/Kyiv' },
+                businessScope: { mode: 'single', activeContext: 'event_genix', selectedContexts: ['event_genix'] }
+            }
+        });
+        return response({});
+    });
+
+    await h.api.loadWidgetData('quick_stats');
+    const text = h.dom.window.document.getElementById('widget-quick_stats').textContent;
+    assert.match(text, /Задачі в роботі/);
+    assert.match(text, /Вартість підтв\. бронювань/);
+    assert.match(text, /сьогодні, 2026-09-14/);
+    assert.match(text, /event genix/);
+    assert.match(text, /без контакту >48 год: 6/);
+    assert.doesNotMatch(text, /Виручка/);
+    assert.doesNotMatch(text, /прибут/i);
+    h.dom.window.close();
+});
+
+test('partial funnel data blocks calm orientation and renders an honest widget state', async () => {
+    const h = loadDashboardHarness();
+    const orientation = addDayOrientationContainer(h);
+    h.dom.window.document.getElementById('dashboardGrid').innerHTML = '<div id="widget-funnel"></div>';
+    h.setFetchImplementation(url => {
+        if (url.includes('/widgets/nearest_event')) return response({ event: null, preparation: null });
+        if (url.includes('/widgets/my_focus')) return response({ tasks: [], overdueCount: 0, waitingCount: 0 });
+        if (url.includes('/widgets/funnel')) return response({
+            meta: {
+                funnelInsights: { total: 0, waitingAction: 0, stages: [], href: '/sales-funnel' },
+                partial: true,
+                sourceErrors: [{ source: 'leads_funnel_summary', error: 'database unavailable' }]
+            }
+        });
+        return response({});
+    });
+
+    await h.api.loadDayOrientationSources({ missingOnly: false });
+    h.api.renderDayOrientation();
+    assert.match(orientation.textContent, /Частина сигналів дня недоступна/);
+    assert.match(orientation.textContent, /воронка/);
+    assert.doesNotMatch(orientation.textContent, /Термінових справ.*немає/);
+
+    await h.api.loadWidgetData('funnel');
+    const funnelText = h.dom.window.document.getElementById('widget-funnel').textContent;
+    assert.match(funnelText, /Частина воронки недоступна/);
+    assert.match(funnelText, /не роблю висновок про спокійний день/);
+    assert.doesNotMatch(funnelText, /Воронка спокійна/);
+    h.dom.window.close();
+});
+
 test('business switch refreshes hidden orientation sources once in the new context', async () => {
     const h = loadDashboardHarness();
     addDayOrientationContainer(h);
@@ -360,6 +423,56 @@ test('cold widget-grid hydration requests every enabled visible widget endpoint 
         '/api/dashboard/widgets/weather?businessContext=event_genix': 1
     });
     assert.notEqual(harness.dom.window.document.getElementById('dashboardGrid').getAttribute('aria-hidden'), 'true');
+    harness.dom.window.close();
+});
+
+test('default dashboard composition is today-first and gives key widgets supported sizes', async () => {
+    const harness = loadDashboardHarness({ role: 'admin' });
+    harness.api.setConfig({ layout: {} });
+
+    harness.api.renderWidgets();
+    await flushHydration();
+
+    const cards = [...harness.dom.window.document.querySelectorAll('#dashboardGrid > .widget-card[data-widget]')];
+    assert.deepEqual(cards.slice(0, 6).map(card => card.dataset.widget), [
+        'quick_stats',
+        'my_focus',
+        'nearest_event',
+        'bookings_today',
+        'staff_today',
+        'event_risk_summary'
+    ]);
+    assert.equal(cards[0].dataset.widgetSize, 'full');
+    assert.equal(cards[1].dataset.widgetSize, 'wide');
+    assert.equal(cards[2].dataset.widgetSize, 'side');
+    assert.equal(harness.api.getConfigWidgets()[0], 'quick_stats');
+    harness.dom.window.close();
+});
+
+test('my focus keeps the first screen to three tasks and sends overflow to details', async () => {
+    const harness = loadDashboardHarness();
+    const grid = harness.dom.window.document.getElementById('dashboardGrid');
+    grid.innerHTML = '<div id="widget-my_focus"></div>';
+    harness.setFetchImplementation(url => {
+        if (url.includes('/widgets/my_focus')) return response({
+            overdueCount: 0,
+            waitingCount: 1,
+            tasks: [
+                { id: 1, title: 'Very long focus task name that should stay inside the card without breaking the dashboard layout', deadline: '2026-09-14T11:00:00Z', status: 'todo', subtasks: [{ title: 'First subtask', status: 'todo' }, { title: 'Second subtask', status: 'todo' }] },
+                { id: 2, title: 'Second focus task', status: 'todo' },
+                { id: 3, title: 'Third focus task', status: 'todo' },
+                { id: 4, title: 'Hidden from first screen', status: 'todo' }
+            ]
+        });
+        return response({});
+    });
+
+    await harness.api.loadWidgetData('my_focus');
+
+    const container = harness.dom.window.document.getElementById('widget-my_focus');
+    assert.equal(container.querySelectorAll('.widget-task-item').length, 3);
+    assert.match(container.textContent, /Ще 1 у фокусі/);
+    assert.equal(container.querySelectorAll('.dashboard-task-subtask:not(.is-more)').length, 1);
     harness.dom.window.close();
 });
 
@@ -633,9 +746,94 @@ test('my focus completion keeps task open and shows retry when the server denies
     harness.dom.window.close();
 });
 
+test('my focus secondary actions use canonical focus and snooze endpoints and refresh dependent widgets', async () => {
+    const harness = loadDashboardHarness();
+    const mutations = [];
+    let phase = 'before';
+    let focusResolve;
+    const focusDeferred = new Promise(resolve => { focusResolve = resolve; });
+    harness.setFetchImplementation((url, init = {}) => {
+        if (url.includes('/api/tasks/14/focus')) {
+            mutations.push({ url, init });
+            return focusDeferred;
+        }
+        if (url.includes('/api/tasks/14/snooze')) {
+            mutations.push({ url, init });
+            return response({}, { payload: { success: true, task: { id: 14, status: 'todo', snoozedUntil: '2026-09-15T12:00:00Z' } } });
+        }
+        if (url.includes('/widgets/my_focus')) {
+            return response(phase === 'before'
+                ? {
+                    tasks: [
+                        { id: 14, title: 'Поставити в особистий фокус', status: 'todo', focus_rank: 0 },
+                        { id: 15, title: 'Відкласти не термінове', status: 'todo', focus_rank: 1 }
+                    ],
+                    overdueCount: 0,
+                    waitingCount: 0
+                }
+                : { tasks: [{ id: 14, title: 'Поставити в особистий фокус', status: 'todo', focus_rank: 1 }], overdueCount: 0, waitingCount: 0 });
+        }
+        if (url.includes('/widgets/tasks')) return response({ tasks: phase === 'before' ? [{ id: 14, title: 'Поставити в особистий фокус' }] : [] });
+        if (url.includes('/widgets/nearest_event')) return response({ event: null, preparation: null, meta: { state: 'empty' } });
+        if (url.includes('/widgets/quick_stats')) return response({ bookingsToday: 0, activeTasks: 0, revenueToday: 0 });
+        return response({});
+    });
+    harness.dom.window.document.getElementById('dashboardGrid').innerHTML = `
+        <section data-widget="my_focus"><div id="widget-my_focus"></div></section>
+        <section data-widget="tasks"><div id="widget-tasks"></div></section>
+        <section data-widget="nearest_event"><div id="widget-nearest_event"></div></section>
+        <section data-widget="quick_stats"><div id="widget-quick_stats"></div></section>
+    `;
+
+    await harness.api.loadWidgetData('my_focus');
+    const focusButton = harness.dom.window.document.querySelector('[data-dashboard-task-action="focus"][data-dashboard-task-id="14"]');
+    const snoozeButton = harness.dom.window.document.querySelector('[data-dashboard-task-action="snooze"][data-dashboard-task-id="15"]');
+    assert.ok(focusButton);
+    assert.ok(snoozeButton);
+
+    const firstFocus = harness.api.focusDashboardTask(14, focusButton, { preventDefault() {}, stopPropagation() {} });
+    const secondFocus = harness.api.focusDashboardTask(14, focusButton, { preventDefault() {}, stopPropagation() {} });
+    await flushHydration();
+    assert.equal(mutations.length, 1, 'focus double click while pending must not send a second mutation');
+    assert.equal(focusButton.disabled, true);
+    assert.equal(harness.notifications.length, 0);
+    assert.equal(mutations[0].url, '/api/tasks/14/focus?businessContext=event_genix');
+    assert.equal(mutations[0].init.method, 'POST');
+    assert.deepEqual(JSON.parse(mutations[0].init.body), {
+        enabled: true,
+        rank: 1,
+        sourceSurface: 'dashboard_my_focus'
+    });
+
+    phase = 'after';
+    focusResolve(response({}, { payload: { success: true, task: { id: 14, status: 'todo', focus_rank: 1 } } }));
+    await firstFocus;
+    await secondFocus;
+    await flushHydration();
+    assert.ok(harness.notifications.some(entry => entry.type === 'success' && /фокус/.test(entry.message)));
+
+    const refreshedSnoozeButton = harness.dom.window.document.querySelector('[data-dashboard-task-action="snooze"][data-dashboard-task-id="14"]');
+    assert.ok(refreshedSnoozeButton);
+    const snoozeResult = await harness.api.snoozeDashboardTask(14, refreshedSnoozeButton, { preventDefault() {}, stopPropagation() {} });
+    assert.equal(snoozeResult.success, true);
+    assert.equal(mutations.length, 2);
+    assert.equal(mutations[1].url, '/api/tasks/14/snooze?businessContext=event_genix');
+    assert.deepEqual(JSON.parse(mutations[1].init.body), {
+        hours: 24,
+        sourceSurface: 'dashboard_my_focus'
+    });
+    const counts = widgetRequestCounts(harness.requests);
+    assert.ok(counts['/api/dashboard/widgets/my_focus?businessContext=event_genix'] >= 3);
+    assert.ok(counts['/api/dashboard/widgets/tasks?businessContext=event_genix'] >= 2);
+    assert.ok(counts['/api/dashboard/widgets/nearest_event?businessContext=event_genix'] >= 2);
+    harness.dom.window.close();
+});
+
 test('my focus completion action is isolated from opening task details or dragging cards', () => {
     const source = DASHBOARD_SOURCE;
     assert.match(source, /onclick="DashboardPage\.completeFocusTask\(\$\{id\}, this, event\)"/);
+    assert.match(source, /onclick="DashboardPage\.focusDashboardTask\(\$\{id\}, this, event\)"/);
+    assert.match(source, /onclick="DashboardPage\.snoozeDashboardTask\(\$\{id\}, this, event\)"/);
     assert.match(source, /onpointerdown="event\.stopPropagation\(\)"/);
     assert.match(source, /onmousedown="event\.stopPropagation\(\)"/);
     assert.match(source, /event\?\.preventDefault\?\.\(\);/);
@@ -753,7 +951,7 @@ test('day orientation prioritizes real nearest-event preparation over focus and 
             tasks: [{ id: 9, title: 'Прострочена задача', status: 'todo', deadline: '2026-09-12T09:00:00Z' }]
         });
         if (url.includes('/widgets/funnel')) return response({
-            meta: { funnelInsights: { waitingAction: 6, total: 8, hotStage: { label: 'Нові ліди', href: '/sales-funnel?view=kanban&pipeline_stage=new' }, stages: [] } }
+            meta: { funnelInsights: { waitingAction: 6, total: 8, hotStage: { label: 'Нові ліди', href: '/sales-funnel?view=kanban&pipeline_stage=new&lead_type=quality&attention=stale_contact_48h' }, stages: [] } }
         });
         return response({});
     });
@@ -771,6 +969,64 @@ test('day orientation prioritizes real nearest-event preparation over focus and 
     assert.equal(widgetRequestCounts(harness.requests)['/api/dashboard/widgets/nearest_event?businessContext=event_genix'], 1);
     assert.equal(widgetRequestCounts(harness.requests)['/api/dashboard/widgets/my_focus?businessContext=event_genix'], 1);
     assert.equal(widgetRequestCounts(harness.requests)['/api/dashboard/widgets/funnel?businessContext=event_genix'], 1);
+    harness.dom.window.close();
+});
+
+test('nearest event and funnel widgets expose tomorrow context and exact sales attention links', async () => {
+    const harness = loadDashboardHarness();
+    harness.setFetchImplementation(async url => {
+        if (url.includes('/widgets/nearest_event')) return response({
+            event: {
+                id: 91,
+                time: '09:30:00',
+                date: '2026-09-15',
+                dateScope: 'tomorrow',
+                program: 'Test party',
+                canonicalHref: '/booking-summary.html?id=91&businessContext=event_genix&return=%2Fdashboard'
+            },
+            confirmation: { status: 'confirmed', label: 'Підтверджено' },
+            preparation: { totalCount: 0, openCount: 0, doneCount: 0, overdueCount: 0, tasks: [], noTasksMeans: 'unknown' },
+            meta: { dateScope: 'tomorrow', searchedDates: ['2026-09-14', '2026-09-15'], lookaheadDays: 1 }
+        });
+        if (url.includes('/widgets/funnel')) return response({
+            meta: {
+                funnelInsights: {
+                    total: 8,
+                    waitingAction: 3,
+                    href: '/sales-funnel',
+                    hotStage: { stage: 'deal', label: 'Угода', total: 4, waitingAction: 3, href: '/sales-funnel?view=kanban&pipeline_stage=deal' },
+                    stages: [
+                        { stage: 'deal', label: 'Угода', total: 4, waitingAction: 3, href: '/sales-funnel?view=kanban&pipeline_stage=deal' },
+                        { stage: 'new', label: 'Нові', total: 4, waitingAction: 0, href: '/sales-funnel?view=kanban&pipeline_stage=new&lead_type=quality&attention=stale_contact_48h' }
+                    ]
+                }
+            }
+        });
+        return response({});
+    });
+    harness.dom.window.document.getElementById('dashboardGrid').innerHTML = `
+        <section data-widget="nearest_event"><div id="widget-nearest_event"></div></section>
+        <section data-widget="funnel"><div id="widget-funnel"></div></section>
+    `;
+
+    await Promise.all([
+        harness.api.loadWidgetData('nearest_event'),
+        harness.api.loadWidgetData('funnel')
+    ]);
+
+    const nearest = harness.dom.window.document.getElementById('widget-nearest_event');
+    assert.match(nearest.textContent, /Найближча подія завтра/);
+    assert.match(nearest.textContent, /Підготовчі задачі не знайдені/);
+    assert.match(nearest.textContent, /Це не означає, що все готово/);
+    assert.equal(nearest.querySelector('.nearest-event-open')?.getAttribute('href'), '/booking-summary.html?id=91&businessContext=event_genix&return=%2Fdashboard');
+
+    const funnel = harness.dom.window.document.getElementById('widget-funnel');
+    const waitingLink = Array.from(funnel.querySelectorAll('a.dashboard-funnel-metric'))
+        .find(link => /без контакту 48 год/.test(link.textContent));
+    assert.ok(waitingLink);
+    assert.equal(waitingLink.getAttribute('href'), '/sales-funnel?view=kanban&pipeline_stage=deal&lead_type=quality&attention=stale_contact_48h');
+    const stageLink = funnel.querySelector('.dashboard-funnel-stage-chip.needs-action');
+    assert.equal(stageLink.getAttribute('href'), '/sales-funnel?view=kanban&pipeline_stage=deal&lead_type=quality&attention=stale_contact_48h');
     harness.dom.window.close();
 });
 
@@ -823,7 +1079,7 @@ test('day orientation refreshes from hidden source widgets after completing a fo
             ? { overdueCount: 0, waitingCount: 0, tasks: [{ id: 31, title: 'Перевірити тестову залу', status: 'todo' }] }
             : { overdueCount: 0, waitingCount: 0, tasks: [] });
         if (url.includes('/widgets/funnel')) return response({
-            meta: { funnelInsights: { waitingAction: phase === 'before' ? 0 : 3, total: 3, hotStage: { label: 'Нові ліди', href: '/sales-funnel?view=kanban&pipeline_stage=new' }, stages: [] } }
+            meta: { funnelInsights: { waitingAction: phase === 'before' ? 0 : 3, total: 3, hotStage: { label: 'Нові ліди', href: '/sales-funnel?view=kanban&pipeline_stage=new&lead_type=quality&attention=stale_contact_48h' }, stages: [] } }
         });
         return response({});
     });
@@ -847,7 +1103,7 @@ test('day orientation refreshes from hidden source widgets after completing a fo
 
     assert.equal(result.success, true);
     assert.match(orientation.textContent, /У воронці 3 ліди чекають дії/);
-    assert.equal(orientation.querySelector('a.dashboard-day-orientation-action')?.getAttribute('href'), '/sales-funnel?view=kanban&pipeline_stage=new');
+    assert.equal(orientation.querySelector('a.dashboard-day-orientation-action')?.getAttribute('href'), '/sales-funnel?view=kanban&pipeline_stage=new&lead_type=quality&attention=stale_contact_48h');
     const counts = widgetRequestCounts(harness.requests);
     assert.ok(counts['/api/dashboard/widgets/nearest_event?businessContext=event_genix'] >= 2);
     assert.ok(counts['/api/dashboard/widgets/my_focus?businessContext=event_genix'] >= 2);

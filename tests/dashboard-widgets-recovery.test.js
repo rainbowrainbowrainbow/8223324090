@@ -251,6 +251,39 @@ test('widget manager can save an empty selection without restoring defaults or c
     assert.deepEqual(widgetOrder(doc), []);
 });
 
+test('recommended dashboard layout previews changes before replacing the personal widget set', async t => {
+    const harness = await openWidgetWorkspace();
+    const { dom, requests } = harness;
+    t.after(() => dom.window.close());
+    const doc = dom.window.document;
+
+    dom.window.DashboardPage.openWidgetManager();
+    const overlay = doc.getElementById('settingsOverlay');
+    assert.ok(overlay);
+
+    dom.window.DashboardPage.previewRecommendedDashboardLayout();
+    const preview = doc.getElementById('settingsRecommendedLayoutPreview');
+    assert.equal(preview.hidden, false);
+    assert.match(preview.textContent, /Що зміниться/);
+    assert.match(preview.textContent, /Мій фокус/);
+    assert.equal(requests.some(request => request.method === 'PUT'), false, 'preview must not save');
+    assert.deepEqual(widgetOrder(doc), ['funnel', 'tasks', 'weather']);
+
+    dom.window.DashboardPage.applyRecommendedDashboardLayout();
+    const selectedBeforeSave = [...doc.querySelectorAll('.settings-widget-item')]
+        .filter(item => item.querySelector('input').checked)
+        .map(item => item.dataset.widget);
+    assert.deepEqual(selectedBeforeSave.slice(0, 5), ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'bookings_today']);
+    assert.equal(requests.some(request => request.method === 'PUT'), false, 'apply in the modal still waits for Save');
+
+    await dom.window.DashboardPage.saveSettings();
+    const saves = requests.filter(request => request.method === 'PUT');
+    assert.equal(saves.length, 1);
+    assert.deepEqual(saves[0].payload.widgets.slice(0, 5), ['quick_stats', 'my_focus', 'nearest_event', 'funnel', 'bookings_today']);
+    assert.ok(saves[0].payload.widgets.includes('director_pnl'), 'role-hidden existing widgets remain preserved in saved config');
+    await settleWidgetRequests();
+});
+
 test('widget manager cannot overwrite a failed config load and recovers after retry', async t => {
     let failLoad = true;
     const harness = await openWidgetWorkspace({

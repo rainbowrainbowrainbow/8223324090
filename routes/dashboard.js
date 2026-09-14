@@ -34,6 +34,7 @@ const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurfa
 
 const log = createLogger('Dashboard');
 const SALES_LEAD_TYPE_FILTER = "COALESCE(lead_type, 'quality') = 'quality'";
+const CLOSED_LEAD_STAGES = ['completed', 'closed', 'lost'];
 
 function safeBookingStartMinutesSql(alias = 'b') {
     return `
@@ -208,19 +209,23 @@ function dashboardEventSummaryHref(id, businessScope) {
 
 function normalizeNearestEventPayload(row = null, preparationTasks = [], options = {}) {
     const today = options.today || getKyivDateStr();
+    const date = options.date || today;
     const nowTime = options.nowTime || dashboardKyivClock().nowTime;
     if (!row) {
         return {
             event: null,
             preparation: null,
-            date: today,
+            date,
             nowTime,
             meta: {
                 state: 'empty',
                 timeZone: 'Europe/Kyiv',
                 source: 'bookings',
                 visibleScopeOnly: true,
-                scopeSource: options.bookingScopeSource || null
+                scopeSource: options.bookingScopeSource || null,
+                dateScope: options.dateScope || 'none',
+                searchedDates: Array.isArray(options.searchedDates) ? options.searchedDates : [today],
+                lookaheadDays: Number.isFinite(Number(options.lookaheadDays)) ? Number(options.lookaheadDays) : 0
             }
         };
     }
@@ -237,12 +242,14 @@ function normalizeNearestEventPayload(row = null, preparationTasks = [], options
         || row.responsible_username
         || null;
     const time = normalizeDashboardTime(row.start_time || row.time);
-    const date = String(row.date || today).slice(0, 10);
+    const eventDate = String(row.date || date).slice(0, 10);
+    const dateScope = options.dateScope || (eventDate === today ? 'today' : 'date');
 
     return {
         event: {
             id: row.id,
-            date,
+            date: eventDate,
+            dateScope,
             time,
             startTime: time,
             clientName: row.client_name || row.label || null,
@@ -270,7 +277,7 @@ function normalizeNearestEventPayload(row = null, preparationTasks = [], options
             source: 'tasks.source_type=booking AND tasks.source_id=bookings.id',
             noTasksMeans: 'unknown'
         },
-        date,
+        date: eventDate,
         nowTime,
         meta: {
             state: 'ready',
@@ -278,7 +285,10 @@ function normalizeNearestEventPayload(row = null, preparationTasks = [], options
             source: 'bookings',
             visibleScopeOnly: true,
             scopeSource: options.bookingScopeSource || null,
-            preparationVisibilitySource: options.preparationScopeSource || null
+            preparationVisibilitySource: options.preparationScopeSource || null,
+            dateScope,
+            searchedDates: Array.isArray(options.searchedDates) ? options.searchedDates : [today],
+            lookaheadDays: Number.isFinite(Number(options.lookaheadDays)) ? Number(options.lookaheadDays) : 0
         }
     };
 }
@@ -291,40 +301,71 @@ function dashboardKyivClock(now = new Date()) {
     return { today: `${parts.year}-${parts.month}-${parts.day}`, nowTime: `${parts.hour}:${parts.minute}:${parts.second}` };
 }
 
-async function loadNearestEventWidgetData(user, businessScope, options = {}) {
-    const { today, nowTime } = dashboardKyivClock(options.now);
-    const eventParams = [today, nowTime];
-    const bookingVisibility = getVisibleBookingScope(user, eventParams, 'b');
-    const bookingBusinessCondition = appendDashboardBusinessScope(eventParams, businessScope, 'b');
-    const eventResult = await pool.query(`
-        SELECT b.id, b.date, b.label AS client_name, b.program_name AS program,
-               b.program_name, b.program_code, b.time AS start_time, b.room, b.status,
-               b.line_id, b.confirmed_at, b.confirmed_by, b.confirmation_source,
-               s.name AS responsible_name,
-               ep.full_name AS responsible_profile_name,
-               u.name AS responsible_user_name,
-               u.username AS responsible_username
-        FROM bookings b
-        LEFT JOIN staff s ON s.id::text = NULLIF(BTRIM(b.line_id::text), '')
-        LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
-        LEFT JOIN users u ON u.id = ep.user_id
-        WHERE b.date = $1
-          AND ${dashboardActiveBookingStatusSql('b')}
-          AND NULLIF(BTRIM(b.time::text), '') IS NOT NULL
-          AND LEFT(BTRIM(b.time::text), 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-          AND LEFT(BTRIM(b.time::text), 5)::time >= $2::time
-          ${bookingVisibility.sql}
-          ${bookingBusinessCondition}
-        ORDER BY LEFT(BTRIM(b.time::text), 5)::time ASC, b.id ASC
-        LIMIT 1
-    `, eventParams);
+function dashboardKyivDateOffset(days = 0, now = new Date()) {
+    const base = now instanceof Date ? now : new Date(now);
+    const shifted = new Date(base.getTime() + (Number(days) || 0) * 24 * 60 * 60 * 1000);
+    return dashboardKyivClock(shifted).today;
+}
 
-    const event = eventResult.rows[0] || null;
+async function loadNearestEventWidgetData(user, businessScope, options = {}) {
+    const now = options.now || new Date();
+    const { today, nowTime } = dashboardKyivClock(now);
+    const tomorrow = dashboardKyivDateOffset(1, now);
+    const searchedDates = [today, tomorrow].filter((date, index, list) => date && list.indexOf(date) === index);
+
+    async function findNearestBookingForDate(date, minTime = null) {
+        const eventParams = [date];
+        const timeFilter = minTime ? `AND LEFT(BTRIM(b.time::text), 5)::time >= $${eventParams.length + 1}::time` : '';
+        if (minTime) eventParams.push(minTime);
+        const bookingVisibility = getVisibleBookingScope(user, eventParams, 'b');
+        const bookingBusinessCondition = appendDashboardBusinessScope(eventParams, businessScope, 'b');
+        const eventResult = await pool.query(`
+            SELECT b.id, b.date, b.label AS client_name, b.program_name AS program,
+                   b.program_name, b.program_code, b.time AS start_time, b.room, b.status,
+                   b.line_id, b.confirmed_at, b.confirmed_by, b.confirmation_source,
+                   s.name AS responsible_name,
+                   ep.full_name AS responsible_profile_name,
+                   u.name AS responsible_user_name,
+                   u.username AS responsible_username
+            FROM bookings b
+            LEFT JOIN staff s ON s.id::text = NULLIF(BTRIM(b.line_id::text), '')
+            LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
+            LEFT JOIN users u ON u.id = ep.user_id
+            WHERE b.date = $1
+              AND ${dashboardActiveBookingStatusSql('b')}
+              AND NULLIF(BTRIM(b.time::text), '') IS NOT NULL
+              AND LEFT(BTRIM(b.time::text), 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+              ${timeFilter}
+              ${bookingVisibility.sql}
+              ${bookingBusinessCondition}
+            ORDER BY LEFT(BTRIM(b.time::text), 5)::time ASC, b.id ASC
+            LIMIT 1
+        `, eventParams);
+        return {
+            event: eventResult.rows[0] || null,
+            bookingScopeSource: bookingVisibility.scopeSource
+        };
+    }
+
+    const todaySearch = await findNearestBookingForDate(today, nowTime);
+    const tomorrowSearch = todaySearch.event ? null : await findNearestBookingForDate(tomorrow);
+    const event = todaySearch.event || tomorrowSearch?.event || null;
+    const selectedDate = event ? String(event.date || today).slice(0, 10) : today;
+    const dateScope = event && selectedDate === tomorrow ? 'tomorrow' : (event ? 'today' : 'none');
+    const bookingScopeSource = (event && selectedDate === tomorrow)
+        ? tomorrowSearch?.bookingScopeSource
+        : todaySearch.bookingScopeSource;
+
     if (!event) {
         return normalizeNearestEventPayload(null, [], {
             today,
             nowTime,
-            bookingScopeSource: bookingVisibility.scopeSource
+            date: today,
+            dateScope,
+            tomorrow,
+            searchedDates,
+            lookaheadDays: 1,
+            bookingScopeSource
         });
     }
 
@@ -360,8 +401,13 @@ async function loadNearestEventWidgetData(user, businessScope, options = {}) {
     return normalizeNearestEventPayload(event, taskResult.rows, {
         today,
         nowTime,
+        date: selectedDate,
+        dateScope,
+        tomorrow,
+        searchedDates,
+        lookaheadDays: 1,
         businessScope,
-        bookingScopeSource: bookingVisibility.scopeSource,
+        bookingScopeSource,
         preparationScopeSource: taskVisibility ? 'taskPolicy' : null
     });
 }
@@ -1293,10 +1339,12 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                 `, params);
                 const countParams = [];
                 const countOwn = buildOwnTaskFilter(req.user, countParams, 't');
+                countParams.push(getKyivDateStr());
+                const countTodayRef = `$${countParams.length}`;
                 const countBusinessCondition = appendDashboardBusinessScope(countParams, businessScope, 't');
                 const counts = await pool.query(`
                     SELECT
-                        COUNT(*) FILTER (WHERE t.deadline IS NOT NULL AND t.deadline < NOW() AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived'))::int AS overdue_count,
+                        COUNT(*) FILTER (WHERE ${taskKpiCanonicalOverdueSql('t', `${countTodayRef}::date`)})::int AS overdue_count,
                         COUNT(*) FILTER (WHERE (COALESCE(t.workflow_state, 'todo') = 'waiting' OR COALESCE(t.task_kind, 'action') = 'waiting') AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived'))::int AS waiting_count
                     FROM tasks t
                     WHERE 1=1 ${countOwn} ${countBusinessCondition}
@@ -1470,6 +1518,8 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                 const activeTaskBusinessCondition = appendDashboardBusinessScope(activeTaskParams, businessScope, 't');
                 const overdueTaskParams = [];
                 const overdueTaskVisibility = buildTaskVisibilityScope(req.user, overdueTaskParams, 't');
+                overdueTaskParams.push(today);
+                const overdueTodayRef = `$${overdueTaskParams.length}`;
                 const overdueTaskBusinessCondition = appendDashboardBusinessScope(overdueTaskParams, businessScope, 't');
                 const bookingCountParams = [today];
                 const bookingCountVisibility = getVisibleBookingScope(req.user, bookingCountParams, 'b');
@@ -1482,16 +1532,16 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                 const unconfirmedBusinessCondition = appendDashboardBusinessScope(unconfirmedParams, businessScope, 'b');
                 const lowStockParams = [];
                 const lowStockBusinessCondition = appendDashboardBusinessScope(lowStockParams, businessScope, 'ws');
-                const coldLeadParams = [];
+                const coldLeadParams = [CLOSED_LEAD_STAGES];
                 const coldLeadBusinessCondition = appendDashboardBusinessScope(coldLeadParams, businessScope, 'l');
                 const [bookings, tasks, revenue, overdueQS, unconfirmedQS, lowStockQS, coldLeadsQS] = await Promise.all([
                     pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql} ${bookingCountBusinessCondition}`, bookingCountParams),
                     pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE t.status = 'in_progress' ${activeTaskVisibility} ${activeTaskBusinessCondition}`, activeTaskParams),
                     pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql} ${revenueBusinessCondition}`, revenueParams),
-                    pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE t.deadline < NOW() AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived') ${overdueTaskVisibility} ${overdueTaskBusinessCondition}`, overdueTaskParams),
+                    pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE ${taskKpiCanonicalOverdueSql('t', `${overdueTodayRef}::date`)} ${overdueTaskVisibility} ${overdueTaskBusinessCondition}`, overdueTaskParams),
                     pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql} ${unconfirmedBusinessCondition}`, unconfirmedParams),
                     pool.query(`SELECT COUNT(*) as count FROM warehouse_stock ws WHERE ws.quantity <= ws.min_quantity AND ws.is_active = true ${lowStockBusinessCondition}`, lowStockParams),
-                    pool.query(`SELECT COUNT(*) as count FROM leads l WHERE COALESCE(l.pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} AND l.created_at < NOW() - INTERVAL '48 hours' ${coldLeadBusinessCondition}`, coldLeadParams)
+                    pool.query(`SELECT COUNT(*) as count FROM leads l WHERE COALESCE(l.pipeline_stage, 'new') <> ALL($1::text[]) AND ${SALES_LEAD_TYPE_FILTER} AND COALESCE(l.last_contact_at, l.created_at) < NOW() - INTERVAL '48 hours' ${coldLeadBusinessCondition}`, coldLeadParams)
                 ]);
                 const ov = parseInt(overdueQS.rows[0].count);
                 const uc = parseInt(unconfirmedQS.rows[0].count);
@@ -1508,6 +1558,19 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                     coldLeads: cl,
                     meta: {
                         businessScope: dashboardBusinessScopeMeta(businessScope),
+                        period: {
+                            key: 'today',
+                            date: today,
+                            timezone: 'Europe/Kyiv'
+                        },
+                        metricContracts: {
+                            bookingsToday: 'visible non-cancelled bookings for the selected Kyiv date',
+                            activeTasks: "visible tasks with status='in_progress'",
+                            revenueToday: "SUM(bookings.price) for visible confirmed bookings on the selected Kyiv date; not payments or profit",
+                            overdueTasks: 'visible tasks matching the canonical task KPI overdue policy',
+                            coldLeads: 'visible quality leads outside closed/lost stages where last contact or creation is older than 48 hours',
+                            needsAttention: 'sum of separate warning counters; not a score'
+                        },
                         scopedCounters: ['bookingsToday', 'activeTasks', 'revenueToday', 'overdueTasks', 'unconfirmedBookings', 'lowStockItems', 'coldLeads'],
                         globalCounters: []
                     }
@@ -1642,7 +1705,16 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                     replyEscalation: 'all',
                     businessScope
                 });
-                data = { meta: { funnelInsights: queue?.meta?.funnelInsights || {} } };
+                const warnings = Array.isArray(queue?.meta?.warnings) ? queue.meta.warnings : [];
+                const funnelWarnings = warnings.filter(warning => String(warning?.source || '') === 'leads_funnel_summary');
+                data = {
+                    meta: {
+                        funnelInsights: queue?.meta?.funnelInsights || {},
+                        warnings,
+                        partial: funnelWarnings.length > 0,
+                        sourceErrors: funnelWarnings
+                    }
+                };
                 break;
             }
 

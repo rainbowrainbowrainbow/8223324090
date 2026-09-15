@@ -384,37 +384,43 @@ test('incomplete success payload is not interpreted as a calm day', async () => 
     h.dom.window.close();
 });
 
-test('quick stats renders truthful labels, period, business context, and stale lead count', async () => {
-    const h = loadDashboardHarness();
-    h.dom.window.resolveCapability = () => ({ allowed: true });
-    h.dom.window.document.getElementById('dashboardGrid').innerHTML = '<div id="widget-quick_stats"></div>';
-    h.setFetchImplementation(url => {
-        if (url.includes('/widgets/quick_stats')) return response({
-            bookingsToday: 4,
-            activeTasks: 7,
-            revenueToday: 12800,
-            coldLeads: 6,
-            meta: {
-                period: { key: 'today', date: '2026-09-14', timezone: 'Europe/Kyiv' },
-                businessScope: { mode: 'single', activeContext: 'event_genix', selectedContexts: ['event_genix'] }
-            }
+for (const periodCase of [
+    { name: 'today in Kyiv before UTC midnight', now: '2026-09-13T21:30:00Z', expected: /Сьогодні/, absent: /14 вересня/ },
+    { name: 'older date after Kyiv midnight', now: '2026-09-14T21:30:00Z', expected: /14 вересня/, absent: /Сьогодні/ }
+]) {
+    test(`quick stats renders truthful labels, period, business context, and stale lead count: ${periodCase.name}`, async () => {
+        const h = loadDashboardHarness({ now: periodCase.now });
+        h.dom.window.resolveCapability = () => ({ allowed: true });
+        h.dom.window.document.getElementById('dashboardGrid').innerHTML = '<div id="widget-quick_stats"></div>';
+        h.setFetchImplementation(url => {
+            if (url.includes('/widgets/quick_stats')) return response({
+                bookingsToday: 4,
+                activeTasks: 7,
+                revenueToday: 12800,
+                coldLeads: 6,
+                meta: {
+                    period: { key: 'today', date: '2026-09-14', timezone: 'Europe/Kyiv' },
+                    businessScope: { mode: 'single', activeContext: 'event_genix', selectedContexts: ['event_genix'] }
+                }
+            });
+            return response({});
         });
-        return response({});
-    });
 
-    await h.api.loadWidgetData('quick_stats');
-    const text = h.dom.window.document.getElementById('widget-quick_stats').textContent;
-    assert.match(text, /Задачі в роботі/);
-    assert.match(text, /Вартість підтверджених бронювань/);
-    assert.match(text, /12\s800 ₴/);
-    assert.match(text, /Сьогодні/);
-    assert.match(text, /Event Genix/);
-    assert.match(text, /Без контакту понад 48 год: 6/);
-    assert.doesNotMatch(text, /2026-09-14|event genix|підтв\./);
-    assert.doesNotMatch(text, /Виручка/);
-    assert.doesNotMatch(text, /прибут/i);
-    h.dom.window.close();
-});
+        await h.api.loadWidgetData('quick_stats');
+        const text = h.dom.window.document.getElementById('widget-quick_stats').textContent;
+        assert.match(text, /Задачі в роботі/);
+        assert.match(text, /Вартість підтверджених бронювань/);
+        assert.match(text, /12\s800 ₴/);
+        assert.match(text, periodCase.expected);
+        assert.doesNotMatch(text, periodCase.absent);
+        assert.match(text, /Event Genix/);
+        assert.match(text, /Без контакту понад 48 год: 6/);
+        assert.doesNotMatch(text, /2026-09-14|event genix|підтв\./);
+        assert.doesNotMatch(text, /Виручка/);
+        assert.doesNotMatch(text, /прибут/i);
+        h.dom.window.close();
+    });
+}
 
 test('partial funnel data blocks calm orientation and renders an honest widget state', async () => {
     const h = loadDashboardHarness();

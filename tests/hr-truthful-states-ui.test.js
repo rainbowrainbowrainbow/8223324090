@@ -51,6 +51,62 @@ window.__hrTruthfulState = () => ({ reportState, professionCatalogAccess, profes
     return { dom, win };
 }
 
+test('salary denial clears stale amounts, keeps an explicit error during filtering and recovers on retry', async () => {
+    let fail = true;
+    const { dom, win } = harness(elementOuterHtml('tab-salary'), {
+        fetch: async url => url.includes('/professions')
+            ? response(200, { success: true, data: [] })
+            : fail ? response(403, { success: false, code: 'staff_not_migrated', error: 'Synthetic payroll unavailable' })
+                : response(200, { success: true, data: [], totals: {}, month: '2026-09' })
+    });
+    try {
+        const d = win.document;
+        d.getElementById('salaryTotals').textContent = 'Stale salary';
+        d.getElementById('salaryList').textContent = 'Stale employee';
+        await win.loadSalary();
+        assert.match(d.querySelector('#salaryList [role="alert"]').textContent, /Synthetic payroll unavailable/);
+        assert.equal(d.getElementById('salaryTotals').textContent, '');
+        assert.equal(d.getElementById('salaryFilterInfo').textContent, 'Дані недоступні');
+        assert.equal(d.getElementById('btnCommitSalary').disabled, true);
+        win.renderPayrollVisibleRows('salary');
+        assert.ok(d.querySelector('[data-salary-retry]'));
+        fail = false;
+        d.querySelector('[data-salary-retry]').click();
+        for (let i = 0; i < 30 && d.getElementById('salaryFilterInfo').textContent === 'Завантаження…'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(d.querySelector('#salaryList [role="alert"]'), null);
+        assert.match(d.getElementById('salaryFilterInfo').textContent, /0/);
+        assert.match(d.getElementById('salaryTotals').textContent, /Всього/);
+    } finally { dom.window.close(); }
+});
+
+test('late salary response cannot restore payroll data after business context changes', async () => {
+    let resolveSalary;
+    const pending = new Promise(resolve => { resolveSalary = resolve; });
+    const { dom, win } = harness(elementOuterHtml('tab-salary'), {
+        fetch: async url => url.includes('/professions') ? response(200, { success: true, data: [] }) : pending
+    });
+    try {
+        let context = 'park';
+        win.getLegacyBusinessSurfaceContextKey = () => context;
+        const request = win.loadSalary();
+        context = 'another-business';
+        win.dispatchEvent(new win.Event('crmBusinessContextChanged'));
+        resolveSalary(response(200, { success: true, data: [], totals: { total_salary: 999 }, month: '2026-09' }));
+        await request;
+        assert.match(win.document.querySelector('#salaryList [role="alert"]').textContent, /Бізнес або доступ змінився/);
+        assert.equal(win.document.getElementById('salaryTotals').textContent, '');
+    } finally { dom.window.close(); }
+});
+
+test('network failure in salary load offers retry instead of empty payroll', async () => {
+    const { dom, win } = harness(elementOuterHtml('tab-salary'), { fetch: async () => { throw new Error('Synthetic network failure'); } });
+    try {
+        await win.loadSalary();
+        assert.match(win.document.querySelector('#salaryList [role="alert"]').textContent, /Synthetic network failure/);
+        assert.ok(win.document.querySelector('[data-salary-retry]'));
+    } finally { dom.window.close(); }
+});
+
 test('partial Park profession catalog shows unknown counts and disables unsupported workspace actions', async () => {
     const markup = [
         elementOuterHtml('tab-professions'),

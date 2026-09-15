@@ -17157,6 +17157,7 @@ function renderPayrollGroupedList(view, root, rows = [], options = {}) {
 }
 
 function renderPayrollVisibleRows(view) {
+    if (view === 'salary' && ['loading', 'error'].includes(salaryLoadState.status)) return;
     const visibleRows = payrollFilteredRows(view);
     if (view === 'salary') renderSalaryRows(visibleRows);
     if (view === 'kpi') renderKpiRows(visibleRows);
@@ -17327,7 +17328,49 @@ function salaryPayrollLegacyBlockedMessage(data = {}) {
     return data.error || 'Payroll дія заблокована для цього періоду';
 }
 
+let salaryLoadRequest = 0;
+let salaryLoadState = { status: 'idle', context: null };
+
+function salaryAccessContext() {
+    return typeof getLegacyBusinessSurfaceContextKey === 'function'
+        ? getLegacyBusinessSurfaceContextKey('staff')
+        : JSON.stringify([AppState.currentUser?.id, AppState.currentUser?.activeBusinessContext]);
+}
+
+function renderSalaryLoadState(status, message) {
+    salaryLoadState = { status, context: salaryAccessContext() };
+    payrollViewState.salary.allRows = [];
+    for (const id of ['salaryTotals', 'salaryPeriodStatus', 'salaryReconciliation', 'salaryPeriodEvents', 'salaryDepartmentFilters']) {
+        const element = document.getElementById(id);
+        if (element) element.innerHTML = '';
+    }
+    const info = document.getElementById('salaryFilterInfo');
+    if (info) info.textContent = status === 'loading' ? 'Завантаження…' : 'Дані недоступні';
+    for (const id of ['btnAddAdjustment', 'btnCommitSalary', 'btnRefreshSalaryReconciliation',
+        'btnLockSalaryPeriod', 'btnUnlockSalaryPeriod', 'btnReverseSalary']) {
+        const button = document.getElementById(id);
+        if (button) button.disabled = true;
+    }
+    const list = document.getElementById('salaryList');
+    if (list) {
+        list.innerHTML = `<div class="hr-salary-period-note" role="${status === 'error' ? 'alert' : 'status'}">${escapeHtml(message)}${status === 'error'
+            ? '<div><button type="button" class="btn-add hr-salary-secondary" data-salary-retry>Повторити спробу</button></div>' : ''}</div>`;
+        list.querySelector('[data-salary-retry]')?.addEventListener('click', () => void loadSalary());
+    }
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged']) {
+    window.addEventListener(eventName, () => {
+        if (salaryLoadState.status === 'idle' || salaryLoadState.context === salaryAccessContext()) return;
+        salaryLoadRequest++;
+        zrsSalaryContextCache.clear();
+        renderSalaryLoadState('error', 'Бізнес або доступ змінився. Оновіть розрахунок зарплати.');
+    });
+}
+
 async function loadSalary() {
+    const request = ++salaryLoadRequest;
+    const context = salaryAccessContext();
     const monthSelect = document.getElementById('salaryMonth');
     ensurePayrollMonthOptions(monthSelect);
     const month = monthSelect?.value || '';
@@ -17335,15 +17378,28 @@ async function loadSalary() {
     const zrsMonth = document.getElementById('zrsMonth');
     if (zrsMonth && !zrsMonth.options.length) ensurePayrollMonthOptions(zrsMonth, month);
     const query = salaryPeriodQueryString();
-    if (!query) return;
-    const [data] = await Promise.all([
-        hrFetch(`/salary?${query}`),
-        ensureProfessionsLoaded({ silent: true })
-    ]);
-    if (!data || !data.success) return;
-    normalizeSalaryPayrollActivation(data);
-    if (!currentSalaryPeriod()?.isCustom) zrsSalaryContextCache.set(zrsSalaryCacheKey(month), data);
-    renderSalary(data);
+    renderSalaryLoadState('loading', 'Завантажуємо розрахунок зарплати…');
+    if (!query) {
+        renderSalaryLoadState('error', 'Оберіть коректний період зарплати.');
+        return;
+    }
+    try {
+        const [data] = await Promise.all([
+            hrFetch(`/salary?${query}`),
+            ensureProfessionsLoaded({ silent: true })
+        ]);
+        if (request !== salaryLoadRequest || context !== salaryAccessContext()) return;
+        if (!data?.success || !Array.isArray(data.data)) {
+            throw new Error(data?.error || 'Не вдалося завантажити розрахунок зарплати. Повторіть спробу.');
+        }
+        normalizeSalaryPayrollActivation(data);
+        if (!currentSalaryPeriod()?.isCustom) zrsSalaryContextCache.set(zrsSalaryCacheKey(month), data);
+        renderSalary(data);
+    } catch (error) {
+        if (request !== salaryLoadRequest || context !== salaryAccessContext()) return;
+        zrsSalaryContextCache.delete(zrsSalaryCacheKey(month));
+        renderSalaryLoadState('error', error.message || 'Не вдалося завантажити розрахунок зарплати. Повторіть спробу.');
+    }
 }
 
 function renderSalaryRateSummary(row = {}) {
@@ -18114,6 +18170,7 @@ function renderSalaryRows(rows = []) {
 }
 
 function renderSalary(data) {
+    salaryLoadState = { status: 'ready', context: salaryAccessContext() };
     const totals = data.totals || {};
     payrollViewState.salary.allRows = Array.isArray(data.data) ? data.data : [];
     renderSalaryPeriodControls(data);

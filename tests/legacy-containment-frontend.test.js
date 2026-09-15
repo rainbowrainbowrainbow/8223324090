@@ -46,6 +46,141 @@ async function setup(html = '') {
     };
 }
 
+async function warehouseActionsSetup() {
+    const h = await setup(read('warehouse.html'));
+    const w = h.w;
+    const calls = [];
+    w.escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    w.API_BASE = '/api';
+    w.handleAuthError = () => false;
+    w.apiNetworkFetch = async (url, options) => { calls.push({ url, ...options }); return response(200, { success: true }); };
+    w.apiGetContractors = async () => ({ contractors: [] });
+    w.apiGetProcurementLists = async () => ({ lists: [] });
+    w.eval(fragment('js/api.js', 'async function apiCreateContractor(', 'async function apiUpdateContractor('));
+    w.eval(fragment('js/api.js', 'async function apiCreateProcurementList(', 'async function apiUpdateProcurementList('));
+    w.eval(read('js/warehouse-page.js'));
+    h.calls = calls;
+    return h;
+}
+
+test('warehouse denies opening and submitting both legacy forms without requests and preserves drafts', async () => {
+    const h = await warehouseActionsSetup();
+    try {
+        const w = h.w;
+        w.fixtureProfile.membershipMode = 'membership';
+        w.document.getElementById('cf-name').value = 'Synthetic draft';
+        w.document.getElementById('pf-title').value = 'Synthetic list';
+        w.syncWarehouseLegacyActions();
+        assert.equal(w.document.querySelectorAll('[data-warehouse-legacy-action]:disabled').length, 4);
+        w.openContractorForm();
+        w.openProcForm();
+        await w.saveContractor();
+        await w.saveProcList();
+        assert.equal(h.calls.length, 0);
+        assert.equal(w.document.getElementById('cf-name').value, 'Synthetic draft');
+        assert.equal(w.document.getElementById('pf-title').value, 'Synthetic list');
+    } finally { h.close(); }
+});
+
+test('compatible warehouse forms save normally and a fresh server denial disables further submission', async () => {
+    const h = await warehouseActionsSetup();
+    try {
+        const w = h.w;
+        w.syncWarehouseLegacyActions();
+        assert.equal(w.document.querySelectorAll('[data-warehouse-legacy-action]:disabled').length, 0);
+        w.openContractorForm();
+        w.document.getElementById('cf-name').value = 'Synthetic contractor';
+        await w.saveContractor();
+        w.openProcForm();
+        w.document.getElementById('pf-title').value = 'Synthetic list';
+        await w.saveProcList();
+        assert.deepEqual(h.calls.map(item => [item.method, item.url]), [['POST', '/api/contractors'], ['POST', '/api/procurement']]);
+        let deniedCalls = 0;
+        w.apiNetworkFetch = async () => { deniedCalls++; return response(403, { success: false, code: 'contractors_procurement_not_migrated', error: 'Synthetic denied' }); };
+        w.openContractorForm();
+        w.document.getElementById('cf-name').value = 'Retained after denial';
+        await w.saveContractor();
+        await w.saveContractor();
+        assert.equal(deniedCalls, 1);
+        assert.equal(w.document.querySelectorAll('[data-warehouse-legacy-action]:disabled').length, 4);
+        assert.equal(w.document.getElementById('cf-name').value, 'Retained after denial');
+    } finally { h.close(); }
+});
+
+test('warehouse ignores a stale list response after changing business', async () => {
+    const h = await warehouseActionsSetup();
+    try {
+        const pending = deferred();
+        h.w.apiGetContractors = () => pending.promise;
+        const request = h.w.loadWarehouseContractors();
+        h.switch('dar');
+        pending.resolve({ contractors: [{ id: 1, name: 'Stale private contractor' }] });
+        await request;
+        assert.doesNotMatch(h.w.document.getElementById('contractorCards').textContent, /Stale private/);
+        assert.equal(h.w.document.querySelectorAll('[data-warehouse-legacy-action]:disabled').length, 4);
+    } finally { h.close(); }
+});
+
+async function chatActionsSetup() {
+    const h = await setup(read('chat.html'));
+    const w = h.w;
+    const calls = [];
+    w._headers = () => ({});
+    w._esc = value => String(value ?? '');
+    for (const name of ['_closeChatTransientPanels', '_renderChannels', '_rememberPendingDialogOpen', '_showDialogLoadingState', '_renderDialogEmptyState', '_chatBootStep']) w[name] = () => {};
+    w._selectChannel = async () => {};
+    w._ensureAssistantDialogChannelFromBridge = async () => null;
+    w._resolveInitialChannelTarget = () => null;
+    w._getInitialDialogEmptyState = () => ({});
+    w.fetch = async (url, options) => { calls.push({ url, ...options }); return response(200, options.method === 'GET' ? [] : { id: 1 }); };
+    w.eval("var API_BASE = '/api/chat'; var _chatActionError = null; var _channels = []; var _chatUsers = [];");
+    w.eval(fragment('js/chat-page.js', '    async function _api(', '    function _clampNumber('));
+    w.eval(fragment('js/chat-page.js', '    function _setChatActionError(', '    function _handleChatInitError('));
+    w.eval(fragment('js/chat-page.js', '    function _setChatComposerEnabled(', '    function _showDialogLoadingState('));
+    w.eval(fragment('js/chat-page.js', '    // Create channel modal', '    // DM MODAL'));
+    w.eval(fragment('js/chat-page.js', '    async function _init()', '    function _renderChannels()'));
+    h.calls = calls;
+    return h;
+}
+
+test('fatal chat initialization disables creation and retry restores the valid create flow', async () => {
+    const h = await chatActionsSetup();
+    try {
+        const w = h.w;
+        w._renderChatFatalError(new Error('Synthetic chat unavailable'));
+        assert.equal(w.document.getElementById('chatNewChannel').disabled, true);
+        assert.equal(w.document.getElementById('chatNewChannelCreate').disabled, true);
+        await assert.rejects(w._api('POST', '/channels', { name: 'Blocked' }), /Synthetic chat unavailable/);
+        assert.equal(h.calls.length, 0);
+        await w._init();
+        assert.equal(w.document.getElementById('chatNewChannel').disabled, false);
+        w.document.getElementById('chatNewChannel').click();
+        await settle();
+        w.document.getElementById('chatNewChannelName').value = 'Synthetic channel';
+        w.document.getElementById('chatNewChannelCreate').click();
+        await settle();
+        assert.equal(h.calls.filter(item => item.method === 'POST').length, 1);
+        assert.equal(w.document.getElementById('chatNewChannelOverlay').style.display, 'none');
+    } finally { h.close(); }
+});
+
+test('chat namespace denial keeps create disabled but a per-channel mute does not disable the whole chat', async () => {
+    const h = await chatActionsSetup();
+    try {
+        const w = h.w;
+        w.fetch = async () => response(403, { error: 'Synthetic muted', code: 'muted' });
+        await assert.rejects(w._api('POST', '/channels/1/messages', { content: 'Synthetic' }), /Synthetic muted/);
+        assert.equal(w.document.getElementById('chatNewChannel').disabled, false);
+        w.fetch = async () => response(403, { error: 'Synthetic namespace denied', code: 'chat_not_migrated' });
+        w.document.getElementById('chatNewChannelName').value = 'Retained draft';
+        w.document.getElementById('chatNewChannelCreate').click();
+        await settle();
+        assert.equal(w.document.getElementById('chatNewChannelCreate').disabled, true);
+        assert.equal(w.document.getElementById('chatNewChannel').disabled, true);
+        assert.equal(w.document.getElementById('chatNewChannelName').value, 'Retained draft');
+    } finally { h.close(); }
+});
+
 test('legacy availability requires a fresh ready compatibility Park profile and a single scope', async () => {
     const h = await setup();
     try {

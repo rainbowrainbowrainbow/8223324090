@@ -10,6 +10,7 @@ function jsonResponse(data, status = 200) {
     return {
         ok: status >= 200 && status < 300,
         status,
+        clone() { return jsonResponse(data, status); },
         json: async () => data,
         blob: async () => new Blob([JSON.stringify(data)])
     };
@@ -48,6 +49,9 @@ async function setupReportsDom(setupOptions = {}) {
     window.fetch = async (url, fetchOptions = {}) => {
         const target = String(url);
         requests.push({ url: target, options: fetchOptions });
+        if (setupOptions.deniedSummary && target.startsWith('/api/reports/summary')) {
+            return jsonResponse({ error: 'Synthetic revenue permission denied', code: 'action_denied' }, 403);
+        }
         if (target.startsWith('/api/reports/templates')) {
             return jsonResponse({ success: true, templates: setupOptions.backendTemplates || [], canManage: true });
         }
@@ -199,11 +203,30 @@ async function setupReportsDom(setupOptions = {}) {
         return jsonResponse({});
     };
 
+    if (setupOptions.useSharedAuth) {
+        window.__sharedAuthCalls = 0;
+        window.apiFetchWithAuthRetry = async (...args) => {
+            window.__sharedAuthCalls++;
+            return window.fetch(...args);
+        };
+    }
     window.eval(js);
     window.document.dispatchEvent(new window.Event('DOMContentLoaded', { bubbles: true }));
     await waitFor(() => window.document.querySelectorAll('.rpt-sheet-input').length > 0, 'reports workspace init');
     return { window, requests };
 }
+
+test('reports permission denial preserves the session and uses the shared authenticated request path', async () => {
+    const { window, requests } = await setupReportsDom({ deniedSummary: true, useSharedAuth: true });
+    try {
+        await waitFor(() => requests.some(item => item.url.startsWith('/api/reports/summary')), 'denied summary request');
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.equal(window.localStorage.getItem('pzp_token'), 'test-token');
+        assert.equal(window.location.pathname, '/reports');
+        assert.ok(window.__sharedAuthCalls > 0);
+        assert.match(window.document.querySelector('#summaryCards [role="alert"]').textContent, /Synthetic revenue permission denied/);
+    } finally { window.close(); }
+});
 
 test('reports workspace protects dirty table state and manages rows/columns', async () => {
     const { window } = await setupReportsDom();

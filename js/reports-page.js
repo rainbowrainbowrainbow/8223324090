@@ -316,11 +316,13 @@ const ReportsPage = (() => {
         if (token) headers['Authorization'] = `Bearer ${token}`;
         if (body) headers['Content-Type'] = 'application/json';
         const requestBody = body ? reportsPayload(body) : undefined;
-        const res = await fetch(reportsApiUrl(url), {
+        const sendRequest = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+        const res = await sendRequest(reportsApiUrl(url), {
             method,
             headers,
             body: requestBody ? JSON.stringify(requestBody) : undefined
         });
+        if (!res) throw new Error('Не вдалося підтвердити сесію. Оновіть сторінку та повторіть спробу.');
         if (res.status === 403) {
             const payload = await res.clone().json().catch(() => ({}));
             if (payload.code === 'business_scope_read_only') {
@@ -329,17 +331,14 @@ const ReportsPage = (() => {
                 throw new Error(message);
             }
         }
-        if (res.status === 401 || res.status === 403) {
-            localStorage.removeItem('pzp_token');
-        window.location.href = '/';
-        throw new Error('Unauthorized');
-        }
         if (!res.ok) {
             if (window.CrmApiErrors?.fromResponse) {
                 throw await window.CrmApiErrors.fromResponse(res, 'Request failed');
             }
             const err = await res.json().catch(() => ({}));
             const error = new Error(err.error || 'Request failed');
+            error.status = res.status;
+            error.code = err.code || null;
             error.requestId = err.requestId || err.request_id || '';
             throw error;
         }
@@ -1375,6 +1374,15 @@ const ReportsPage = (() => {
             renderSummaryCards();
         } catch (err) {
             console.error('Load summary error:', err);
+            _summary = null;
+            const cards = document.getElementById('summaryCards');
+            if (cards) {
+                cards.innerHTML = '';
+                const notice = document.createElement('div');
+                notice.setAttribute('role', 'alert');
+                notice.textContent = err.message || 'Не вдалося завантажити підсумок звітів.';
+                cards.appendChild(notice);
+            }
         }
     }
 

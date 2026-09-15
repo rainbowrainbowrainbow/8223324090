@@ -10,6 +10,7 @@
     var _currentChannel = null;
     var _channels = [];
     var _chatUsers = [];
+    var _chatActionError = 'Чат ще завантажується. Дочекайтеся завершення.';
     var ASSISTANT_CHAT_RETURN_URL_KEY = 'eg_assistant_chat_return_url';
     var ASSISTANT_CHAT_RETURN_LABEL_KEY = 'eg_assistant_chat_return_label';
     var ASSISTANT_CHAT_REOPEN_KEY = 'eg_assistant_chat_reopen_panel';
@@ -181,6 +182,9 @@
     }
 
     async function _api(method, path, body) {
+        if (_chatActionError && !['GET', 'HEAD'].includes(String(method).toUpperCase())) {
+            throw new Error(_chatActionError);
+        }
         var opts = { method: method, headers: _headers() };
         if (body) opts.body = JSON.stringify(body);
         var resp = await fetch(API_BASE + path, opts);
@@ -192,7 +196,10 @@
         if (resp.status === 403) {
             // 403 from mute = not auth failure, just blocked
             var errData = await resp.json().catch(function () { return {}; });
-            throw new Error(errData.error || 'Доступ заборонено');
+            var denied = new Error(errData.error || 'Доступ заборонено');
+            denied.code = errData.code;
+            if (denied.code === 'chat_not_migrated') _setChatActionError(denied.message);
+            throw denied;
         }
         if (!resp.ok) {
             var err = await resp.json().catch(function () { return {}; });
@@ -348,7 +355,20 @@
         else console.info('[chat:boot] ' + label);
     }
 
+    function _setChatActionError(message) {
+        _chatActionError = message || null;
+        ['chatNewChannel', 'chatNewChannelCreate'].forEach(function (id) {
+            var button = document.getElementById(id);
+            if (button) {
+                button.disabled = Boolean(_chatActionError);
+                button.title = _chatActionError || '';
+            }
+        });
+        if (_chatActionError) _setChatComposerEnabled(false);
+    }
+
     function _renderChatFatalError(err) {
+        _setChatActionError(err && err.message || 'Чат тимчасово недоступний. Оновіть сторінку.');
         if (typeof renderStandaloneFatalError === 'function') {
             renderStandaloneFatalError({
                 moduleName: 'chat',
@@ -448,8 +468,8 @@
     function _setChatComposerEnabled(enabled) {
         var input = document.getElementById('chatInput');
         var sendBtn = document.getElementById('chatSendBtn');
-        if (input) input.disabled = !enabled;
-        if (sendBtn) sendBtn.disabled = !enabled;
+        if (input) input.disabled = !enabled || Boolean(_chatActionError);
+        if (sendBtn) sendBtn.disabled = !enabled || Boolean(_chatActionError);
     }
 
     function _showDialogLoadingState(title, hint) {
@@ -1800,6 +1820,7 @@
 
     if (_newChannelBtn) {
         _newChannelBtn.addEventListener('click', async function () {
+            if (_chatActionError) return;
             _closeChatTransientPanels();
             _newChannelOverlay.style.display = 'flex';
             _newChannelName.value = '';
@@ -1854,7 +1875,7 @@
             } catch (err) {
                 if (typeof showNotification === 'function') showNotification(err.message || 'Помилка створення каналу', 'error');
             } finally {
-                _newChannelCreate.disabled = false;
+                _newChannelCreate.disabled = Boolean(_chatActionError);
             }
         });
     }
@@ -3895,6 +3916,7 @@
 
     async function _init() {
         try {
+            _setChatActionError('Чат ще завантажується. Дочекайтеся завершення.');
             _showDialogLoadingState();
             var results = await Promise.all([
                 _api('GET', '/channels'),
@@ -3902,6 +3924,7 @@
             ]);
             _channels = results[0] || [];
             _chatUsers = results[1] || [];
+            _setChatActionError(null);
             _chatBootStep('channels:loaded', { channels: _channels.length, users: _chatUsers.length });
 
             _renderChannels();
@@ -3927,6 +3950,7 @@
                 _showDialogLoadingState('Оновлюю діалоги…', 'Перевіряємо доступні канали та останню активну розмову');
             }
             _channels = await _api('GET', '/channels') || [];
+            _setChatActionError(null);
             _renderChannels();
             if (options.reselect !== false) {
                 var assistantChannel = await _ensureAssistantDialogChannelFromBridge(_channels);

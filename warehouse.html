@@ -1231,7 +1231,7 @@
                     <h2>Закупки</h2>
                     <div style="display:flex;gap:8px;">
                         <button type="button" id="procurementExportXlsxBtn" onclick="exportProcXlsx()" class="btn-page-secondary">Excel</button>
-                        <button type="button" onclick="openProcForm()" class="btn-page-primary">+ Новий список</button>
+                        <button type="button" onclick="openProcForm()" class="btn-page-primary" data-warehouse-legacy-action disabled>+ Новий список</button>
                     </div>
                 </div>
 
@@ -1268,7 +1268,7 @@
                 <div class="page-header">
                     <h2>Підрядники</h2>
                     <div style="display:flex;gap:8px;">
-                        <button type="button" onclick="openContractorForm()" class="btn-page-primary">+ Підрядник</button>
+                        <button type="button" onclick="openContractorForm()" class="btn-page-primary" data-warehouse-legacy-action disabled>+ Підрядник</button>
                     </div>
                 </div>
 
@@ -1364,7 +1364,7 @@
             </div>
             <input type="hidden" id="pf-id" value="">
             <div class="wh-modal-actions">
-                <button type="button" onclick="saveProcList()" class="btn-page-primary">Зберегти</button>
+                <button type="button" onclick="saveProcList()" class="btn-page-primary" data-warehouse-legacy-action disabled>Зберегти</button>
                 <button type="button" onclick="closeProcForm()" class="btn-page-secondary">Скасувати</button>
             </div>
         </div>
@@ -1493,7 +1493,7 @@
             </label>
             <input type="hidden" id="cf-id">
             <div class="wh-modal-actions">
-                <button type="button" onclick="saveContractor()" class="btn-page-primary">Зберегти</button>
+                <button type="button" onclick="saveContractor()" class="btn-page-primary" data-warehouse-legacy-action disabled>Зберегти</button>
                 <button type="button" onclick="closeContractorForm()" class="btn-page-secondary">Скасувати</button>
             </div>
         </div>

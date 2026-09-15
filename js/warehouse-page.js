@@ -137,6 +137,7 @@ async function initPage() {
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'];
     canManage = MANAGE_ROLES.includes(user.role);
+    syncWarehouseLegacyActions();
     const addBtn = document.getElementById('addItemBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
     const addLocationBtn = document.getElementById('addLocationBtn');
@@ -1260,10 +1261,39 @@ function switchPageTab(tab) {
 // CONTRACTORS
 // ==========================================
 
-async function loadWarehouseContractors(options = {}) {
+function syncWarehouseLegacyActions(notify = false) {
     const availability = typeof getLegacyBusinessSurfaceAvailability === 'function'
         ? getLegacyBusinessSurfaceAvailability('contractors_procurement')
-        : { available: true };
+        : { available: false, message: 'Не вдалося перевірити доступ. Оновіть сторінку.' };
+    document.querySelectorAll('[data-warehouse-legacy-action]').forEach(button => {
+        button.disabled = !availability.available;
+        button.title = availability.available ? '' : availability.message || 'Розділ тимчасово недоступний.';
+    });
+    if (notify && !availability.available) showNotification(availability.message || 'Розділ тимчасово недоступний.', 'error');
+    return availability;
+}
+
+function noteWarehouseLegacyFailure(result, context) {
+    if (result?.code !== 'contractors_procurement_not_migrated') return;
+    if (typeof noteLegacyBusinessSurfaceUnavailable === 'function') {
+        noteLegacyBusinessSurfaceUnavailable('contractors_procurement', { ...result, message: result.error }, context);
+    }
+    syncWarehouseLegacyActions();
+}
+
+window.addEventListener('crmBusinessContextChanged', () => {
+    syncWarehouseLegacyActions();
+    void loadWarehouseContractors();
+    void loadProcLists();
+});
+window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+    if (event.detail?.surface === 'contractors_procurement') syncWarehouseLegacyActions();
+});
+window.addEventListener('crmBusinessProfileChanged', () => syncWarehouseLegacyActions());
+window.addEventListener('crmBusinessScopeChanged', () => syncWarehouseLegacyActions());
+
+async function loadWarehouseContractors(options = {}) {
+    const availability = syncWarehouseLegacyActions();
     if (!availability.available) {
         warehouseContractors = [];
         renderContractorCards();
@@ -1274,9 +1304,11 @@ async function loadWarehouseContractors(options = {}) {
         }
         return;
     }
+    const context = window.getLegacyBusinessSurfaceContextKey?.('contractors_procurement');
     const category = document.getElementById('contractorCategoryFilter')?.value || '';
     const q = document.getElementById('contractorSearchInput')?.value.trim() || '';
     const data = await apiGetContractors({ category, q, active: true });
+    if (context !== window.getLegacyBusinessSurfaceContextKey?.('contractors_procurement')) return;
     warehouseContractors = data.contractors || [];
     renderContractorCards();
     populateContractorSelects();
@@ -1328,6 +1360,7 @@ function renderContractorCards() {
 }
 
 function openContractorForm(id = null) {
+    if (!syncWarehouseLegacyActions(true).available) return;
     const c = id ? warehouseContractors.find(x => String(x.id) === String(id)) : null;
     document.getElementById('cf-id').value = c?.id || '';
     document.getElementById('cf-name').value = c?.name || '';
@@ -1350,6 +1383,8 @@ function closeContractorForm() {
 }
 
 async function saveContractor() {
+    if (!syncWarehouseLegacyActions(true).available) return;
+    const context = window.getLegacyBusinessSurfaceContextKey?.('contractors_procurement');
     const id = document.getElementById('cf-id')?.value;
     const payload = {
         name: document.getElementById('cf-name')?.value.trim(),
@@ -1371,6 +1406,8 @@ async function saveContractor() {
         return;
     }
     const result = id ? await apiUpdateContractor(id, payload) : await apiCreateContractor(payload);
+    if (context !== window.getLegacyBusinessSurfaceContextKey?.('contractors_procurement')) return;
+    noteWarehouseLegacyFailure(result, context);
     if (result?.success) {
         showNotification('Підрядника збережено', 'success');
         closeContractorForm();
@@ -1490,9 +1527,7 @@ async function createKitchenDemandProcurement(stockId) {
 }
 
 async function loadProcLists() {
-    const availability = typeof getLegacyBusinessSurfaceAvailability === 'function'
-        ? getLegacyBusinessSurfaceAvailability('contractors_procurement')
-        : { available: true };
+    const availability = syncWarehouseLegacyActions();
     if (!availability.available) {
         procLists = [];
         renderProcLists();
@@ -1503,9 +1538,11 @@ async function loadProcLists() {
         }
         return;
     }
+    const context = window.getLegacyBusinessSurfaceContextKey?.('contractors_procurement');
     const dept = document.getElementById('procDeptFilter')?.value || '';
     const status = document.getElementById('procStatusFilter')?.value || '';
     const data = await apiGetProcurementLists({ department: dept, status: status });
+    if (context !== window.getLegacyBusinessSurfaceContextKey?.('contractors_procurement')) return;
     procLists = data.lists || [];
     renderProcLists();
 }
@@ -1551,6 +1588,7 @@ function renderProcLists() {
 }
 
 function openProcForm(listId = null) {
+    if (!syncWarehouseLegacyActions(true).available) return;
     document.getElementById('pf-id').value = '';
     document.getElementById('pf-title').value = '';
     document.getElementById('pf-department').value = document.getElementById('procDeptFilter')?.value || 'animators';
@@ -1583,6 +1621,8 @@ function closeProcForm() {
 }
 
 async function saveProcList() {
+    if (!syncWarehouseLegacyActions(true).available) return;
+    const context = window.getLegacyBusinessSurfaceContextKey?.('contractors_procurement');
     const id = document.getElementById('pf-id')?.value;
     const data = {
         title: document.getElementById('pf-title')?.value.trim(),
@@ -1605,6 +1645,8 @@ async function saveProcList() {
         result = await apiCreateProcurementList(data);
     }
 
+    if (context !== window.getLegacyBusinessSurfaceContextKey?.('contractors_procurement')) return;
+    noteWarehouseLegacyFailure(result, context);
     if (result && result.success) {
         showNotification(id ? 'Список оновлено' : 'Список створено', 'success');
         closeProcForm();

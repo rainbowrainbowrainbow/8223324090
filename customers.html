@@ -30,15 +30,15 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.184">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.184">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.184">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.184">
-    <link rel="stylesheet" href="css/pages-customers.css?v=0.81.184">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.184">
-    <link rel="stylesheet" href="css/entity-card.css?v=0.81.184">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.184">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.184">
+    <link rel="stylesheet" href="css/base.css?v=0.81.185">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.185">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.185">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.185">
+    <link rel="stylesheet" href="css/pages-customers.css?v=0.81.185">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.185">
+    <link rel="stylesheet" href="css/entity-card.css?v=0.81.185">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.185">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.185">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -87,6 +87,7 @@
             flex-wrap: wrap;
         }
 
+        .crm-search,
         .crm-filters input,
         .crm-filters select {
             padding: 8px 12px;
@@ -98,6 +99,7 @@
             box-sizing: border-box;
         }
 
+        .crm-search:focus,
         .crm-filters input:focus,
         .crm-filters select:focus {
             outline: none;
@@ -468,6 +470,7 @@
         [data-theme="dark"] .crm-table-wrap {
             border-color: var(--gray-700);
         }
+        [data-theme="dark"] .crm-search,
         [data-theme="dark"] .crm-filters input,
         [data-theme="dark"] .crm-filters select {
             background: var(--gray-800);
@@ -1243,6 +1246,8 @@
             box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.24), 0 10px 24px rgba(2, 6, 23, 0.18);
         }
 
+        body.dark-mode .crm-search,
+        html[data-theme="dark"] .crm-search,
         body.dark-mode .crm-filters input,
         body.dark-mode .crm-filters select,
         html[data-theme="dark"] .crm-filters input,
@@ -1259,6 +1264,8 @@
             color-scheme: dark;
         }
 
+        body.dark-mode .crm-search::placeholder,
+        html[data-theme="dark"] .crm-search::placeholder,
         body.dark-mode .crm-filters input::placeholder,
         html[data-theme="dark"] .crm-filters input::placeholder,
         body.dark-mode .bulk-form input::placeholder,
@@ -1698,15 +1705,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.81.184"></script>
-    <script src="js/notification.js?v=0.81.184"></script>
-    <script src="js/api.js?v=0.81.184"></script>
-    <script src="js/auth.js?v=0.81.184"></script>
-    <script src="js/ui.js?v=0.81.184"></script>
-    <script src="js/components/sidebar.js?v=0.81.184"></script>
+    <script src="js/config.js?v=0.81.185"></script>
+    <script src="js/notification.js?v=0.81.185"></script>
+    <script src="js/api.js?v=0.81.185"></script>
+    <script src="js/auth.js?v=0.81.185"></script>
+    <script src="js/ui.js?v=0.81.185"></script>
+    <script src="js/components/sidebar.js?v=0.81.185"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/crm-create-handoff.js?v=0.81.184"></script>
-    <script src="js/customers-page.js?v=0.81.184"></script>
-<script src="js/alerts.js?v=0.81.184"></script>
+    <script src="js/crm-create-handoff.js?v=0.81.185"></script>
+    <script src="js/customers-page.js?v=0.81.185"></script>
+<script src="js/alerts.js?v=0.81.185"></script>
 </body>
 </html>

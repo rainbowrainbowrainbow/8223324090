@@ -11,13 +11,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.188">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.188">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.188">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.188">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.188">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.188">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.188">
+    <link rel="stylesheet" href="css/base.css?v=0.81.189">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.189">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.189">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.189">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.189">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.189">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.189">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -2106,7 +2106,7 @@
         }
 
     </style>
-    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.188">
+    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.189">
 </head>
 <body data-page-group="system">
     <script>
@@ -2285,7 +2285,7 @@
                         </div>
                         <div class="omni-chat-header-actions">
                             <select id="omniConversationStatus" aria-label="Статус діалогу" title="Статус діалогу"><option value="open">Відкрита</option><option value="pending">Очікує</option><option value="closed">Закрита</option><option value="spam">Спам</option></select><select id="omniAssignee" aria-label="Відповідальний" title="Відповідальний"><option value="">Без відповідального</option></select>
-                            <details class="omni-chat-more">
+                            <details class="omni-chat-more" id="omniChatMore" open>
                                 <summary aria-label="Додаткові дії розмови">Ще</summary>
                                 <div class="omni-chat-more-menu">
                                     <button type="button" id="omniCreateLead" class="omni-lead-action" title="Створити лід з діалогу">Створити лід</button><button type="button" id="omniToggleAI" title="AI-помічник для ліда і відповіді">AI-помічник</button><button type="button" id="omniCloseConv" title="Закрити діалог">Закрити діалог</button>
@@ -2373,12 +2373,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.81.188"></script>
-    <script src="js/api.js?v=0.81.188"></script>
-    <script src="js/auth.js?v=0.81.188"></script>
-    <script src="js/components/sidebar.js?v=0.81.188"></script>
+    <script src="js/config.js?v=0.81.189"></script>
+    <script src="js/api.js?v=0.81.189"></script>
+    <script src="js/auth.js?v=0.81.189"></script>
+    <script src="js/components/sidebar.js?v=0.81.189"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.81.188"></script>
+    <script src="js/ws.js?v=0.81.189"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -2445,6 +2445,7 @@
         const inputArea = $('omniInputArea');
         const chatHeader = $('omniChatHeader');
         const mobileBackBtn = $('omniMobileBack');
+        const chatMore = $('omniChatMore');
         const emptyState = $('omniEmpty');
         const quickRepliesEl = $('omniQuickReplies');
         const statsEl = $('omniStats');
@@ -5708,7 +5709,12 @@
             omniContainer.style.setProperty('--omni-viewport-height', height + 'px');
             omniContainer.style.setProperty('--omni-viewport-top', (viewport?.offsetTop || 0) + 'px');
             omniContainer.classList.toggle('omni-compact-input', height < 540);
+            if (chatMore && window.innerWidth <= 768 && !chatMore.dataset.userToggled) chatMore.open = false;
+            if (chatMore && window.innerWidth > 768) chatMore.open = true;
         }
+        if (chatMore) chatMore.addEventListener('toggle', () => {
+            if (window.innerWidth <= 768) chatMore.dataset.userToggled = chatMore.open ? 'true' : 'false';
+        });
         window.addEventListener('resize', syncOmniViewport);
         window.visualViewport?.addEventListener('resize', syncOmniViewport);
         window.visualViewport?.addEventListener('scroll', syncOmniViewport);
@@ -6011,7 +6017,7 @@
         });
     })();
     </script>
-<script src="js/ui.js?v=0.81.188"></script>
-    <script src="js/alerts.js?v=0.81.188"></script>
+<script src="js/ui.js?v=0.81.189"></script>
+    <script src="js/alerts.js?v=0.81.189"></script>
 </body>
 </html>

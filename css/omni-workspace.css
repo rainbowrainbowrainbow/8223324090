@@ -161,6 +161,7 @@
     }
     .omni-container.has-conversation[data-omni-mode="inbox"] .omni-sidebar { display: none; }
     .omni-container.has-conversation .omni-chat { min-height: 0; height: 100%; }
+    .omni-mobile-back { display: inline-flex; align-items: center; }
     .omni-chat-header { padding: 10px 12px; gap: 8px; }
     .omni-chat-header-actions { width: 100%; margin-left: 0; }
     .omni-chat-header-actions select { flex: 1; max-width: 100%; }
@@ -244,6 +245,11 @@
 
         /* Omni inbox layout guard: keep the workspace inside the available
            main-content height and give the two work surfaces their own scroll. */
+        body:has(.omni-workspace-shell) #mainApp {
+            height: 100dvh;
+            min-height: 0;
+        }
+
         body[data-page-group="system"] .main-content {
             display: flex;
             flex-direction: column;
@@ -290,13 +296,14 @@
             min-height: 34px;
         }
 
-        .omni-container {
-            flex: 1 1 auto;
-            min-width: 0;
-            min-height: 0;
-            grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
-            overflow: hidden;
-        }
+.omni-container {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+    overflow: hidden;
+}
 
         .omni-sidebar,
         .omni-chat {
@@ -822,3 +829,6 @@
 .omni-conv-avatar { position: relative; overflow: hidden; }
 .omni-conv-avatar img[data-omni-avatar-image] { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .omni-avatar-fallback { position: relative; z-index: 0; }
+@media (max-width: 1100px) {
+    .omni-mobile-back { display: inline-flex; align-items: center; }
+}

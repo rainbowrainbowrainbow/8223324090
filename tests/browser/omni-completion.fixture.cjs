@@ -23,15 +23,16 @@ function playwright() {
   const login = await api.post(base+'/api/auth/login', {data:{username:config.LIVE_SMOKE_USER,password:config.LIVE_SMOKE_PASS}});
   assert.equal(login.status(),200);
   const session = await login.json();
+  const fixtureOwner = session.user?.username || 'fixture-manager';
   const browser = await chromium.launch({channel:'chrome',headless:true});
   try {
     const context = await browser.newContext({viewport:{width:1440,height:1000}, serviceWorkers:'block'});
     await context.addInitScript(data => {
       localStorage.setItem('pzp_token',data.token);
       localStorage.setItem('pzp_access_token',data.accessToken||data.token);
-      localStorage.setItem('pzp_current_user',JSON.stringify(data.user));
+      localStorage.setItem('pzp_current_user',JSON.stringify({...data.user,username:data.fixtureOwner,name:'Тестовий менеджер'}));
       localStorage.setItem('pzp_dark_mode','true');
-    },session);
+    },{...session,fixtureOwner});
     const channels = ['telegram','viber','sms','facebook','instagram'];
     const accounts=channels.map(channel=>({channel,label:channel,status:channel==='telegram'?'connected':'disconnected',connected:channel==='telegram',sendCapable:channel==='telegram',receiveCapable:channel==='telegram',setupFields:[],supportedActions:['connect','test','recheck'],accountName:'QA fixture'}));
     const conversations=Array.from({length:105},(_,i)=>({id:9001+i,channel:'telegram',externalId:'fixture-'+i,customerName:'Тестовий діалог '+(i+1),lastMessage:'Тестовий текст',lastMessageAt:'2099-01-01T12:00:00Z',businessContext:'event_genix',sendCapable:true,meta:{ai_enabled:false},status:'open'}));
@@ -71,13 +72,13 @@ function playwright() {
           if(p.endsWith('/recheck')||p.endsWith('/test')) return json({success:false,error:'Тестова помилка перевірки'},500);
           return json({success:false,error:'Тестова помилка закриття'},500);
         }
-        if(p==='/operators') return json({success:true,data:[{username:'fixture-manager',label:'Тестовий менеджер'}]});
+        if(p==='/operators') return json({success:true,data:[{username:fixtureOwner,label:'Тестовий менеджер'}]});
         if(p==='/accounts') return json({success:true,accounts});
         if(p==='/stats') return json({success:true,data:{total:105,byStatus:{open:105}}});
         if(p==='/quick-replies') return json({success:true,data:[]});
         if(p==='/conversations') {
           const search=url.searchParams.get('search')||'', channel=url.searchParams.get('channel');
-          const filtered=conversations.filter(c=>(!channel||c.channel===channel)&&(!search||c.customerName.includes(search))&&(!url.searchParams.get('status')||c.status===url.searchParams.get('status'))&&(url.searchParams.get('mine')!=='true'||c.assignedTo==='fixture-manager'));
+          const filtered=conversations.filter(c=>(!channel||c.channel===channel)&&(!search||c.customerName.includes(search))&&(!url.searchParams.get('status')||c.status===url.searchParams.get('status'))&&(url.searchParams.get('mine')!=='true'||c.assignedTo===fixtureOwner));
           const offset=Number(url.searchParams.get('offset')||0),limit=Number(url.searchParams.get('limit')||100);
           return json({success:true,data:{conversations:filtered.slice(offset,offset+limit),total:filtered.length}});
         }
@@ -133,21 +134,22 @@ function playwright() {
     await page.locator('#omniCloseConv').click();await page.waitForTimeout(300);
     assert.ok(await page.locator('#omniChatHeader').isVisible());
     assert.ok((await page.locator('#omniSendTruth').textContent()).includes('Тестова помилка закриття'));
-    await page.locator('#omniAssignee').selectOption('fixture-manager');
+    await page.locator('#omniAssignee').selectOption(fixtureOwner);
     await page.waitForFunction(()=>!document.querySelector('#omniAssignee').disabled);
     await page.locator('#omniConversationStatus').selectOption('pending');
     await page.waitForFunction(()=>!document.querySelector('#omniConversationStatus').disabled);
-    await page.locator('#omniOnlyMine').check();
+    await page.locator('[data-omni-view-filter="mine"]').click();
     await page.waitForFunction(()=>document.querySelectorAll('.omni-conv-item').length===1);
-    await page.locator('#omniOnlyMine').uncheck();
+    await page.locator('[data-omni-view-filter="all"]').click();
+    await page.locator('#omniStatusFilters > summary').click();
     await page.locator('#omniStatusSelect').selectOption('closed');
     await page.waitForFunction(()=>document.querySelectorAll('.omni-conv-item').length===0);
-    await page.locator('#omniConvList').getByRole('button',{name:'Показати всі розмови',exact:true}).click();
+    await page.locator('#omniExplainability').getByRole('button',{name:'Очистити',exact:true}).click();
     await page.waitForFunction(()=>document.querySelectorAll('.omni-conv-item').length===100);
     assert.equal(await page.locator('#omniStatusSelect').inputValue(),'all');
     await select(9002);
     await page.waitForFunction(()=>!document.querySelector('#omniAssignee').disabled);
-    assert.equal(await page.locator('#omniAssignee').inputValue(),'fixture-manager');
+    assert.equal(await page.locator('#omniAssignee').inputValue(),fixtureOwner);
     assert.equal(await page.locator('#omniConversationStatus').inputValue(),'pending');
     await page.getByRole('tab',{name:'Канали',exact:true}).click();
     await page.locator('#omniAccountsGrid [data-channel="telegram"][data-account-action="recheck"]').click();
@@ -190,7 +192,7 @@ function playwright() {
     assert.equal(await page.locator('#omniInput').evaluate(el => el.clientHeight), draftHeight, 'multiline_draft_height_lost');
     await page.locator('#omniInput').fill('');
     const metrics=[];
-    for(const [width,height] of [[1440,900],[1024,768],[390,844],[360,640],[390,420]]) {
+    for(const [width,height] of [[1440,900],[1024,768],[390,844],[320,640],[390,420]]) {
       await page.setViewportSize({width,height});await page.waitForTimeout(250);
       if (height < 540) await page.locator('#omniInput').focus();
       const measurement=await page.evaluate(()=>({viewport:innerWidth,width:document.documentElement.scrollWidth,textWrap:getComputedStyle(document.querySelector('.omni-msg-content')).whiteSpace}));
@@ -215,7 +217,19 @@ function playwright() {
     await page.evaluate(()=>{document.body.classList.remove('dark-mode');document.documentElement.classList.remove('dark-mode');document.documentElement.setAttribute('data-theme','light');document.documentElement.style.colorScheme='light';});
     await page.locator('#omniInput').scrollIntoViewIfNeeded();
     await page.screenshot({path:path.join(artifactDir,'fixture-omni-mobile-light.png'),mask:[page.locator('#sidebarNav,.header-user')],animations:'disabled'});
+    await page.setViewportSize({width:1024,height:600});
+    const zoomMetrics = [];
+    for (const plus of [0,1,2]) {
+      await page.keyboard.press('Control+0');
+      for (let i=0;i<plus;i++) await page.keyboard.press('Control++');
+      await page.waitForTimeout(150);
+      const zoom = await page.evaluate(()=>({scale:window.visualViewport?.scale||1,innerWidth,innerHeight,scrollWidth:document.documentElement.scrollWidth,composer:document.querySelector('#omniInput')?.getBoundingClientRect().toJSON()}));
+      assert.ok(zoom.scrollWidth <= zoom.innerWidth + 1, 'zoom_horizontal_overflow');
+      assert.ok(zoom.composer && zoom.composer.top >= 0 && zoom.composer.bottom <= zoom.innerHeight + 1, 'zoom_composer_outside_viewport');
+      zoomMetrics.push({requested:[100,125,150][plus],...zoom});
+    }
+    await page.keyboard.press('Control+0');
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({ok:true,fixturesOnly:true,realWrites:0,conversationPagination:105,historyPagination:105,draftIsolation:true,staleMessageGuard:true,sendTargetGuard:true,idempotencyKey:true,managerAssignment:true,statusAndMineFilters:true,filterReset:true,failedCloseVisible:true,channelFeedbackVisible:true,mobileComposerReachable:true,mobileBack:true,metrics,simulatedMutations:mutations.length}));
+    console.log(JSON.stringify({ok:true,fixturesOnly:true,realWrites:0,conversationPagination:105,historyPagination:105,draftIsolation:true,staleMessageGuard:true,sendTargetGuard:true,idempotencyKey:true,managerAssignment:true,statusAndMineFilters:true,filterReset:true,failedCloseVisible:true,channelFeedbackVisible:true,mobileComposerReachable:true,mobileBack:true,metrics,zoomMetrics,simulatedMutations:mutations.length}));
   } finally {await browser.close();await api.dispose();}
 })().catch(e=>{console.log(JSON.stringify({ok:false,error:e.message.replace(/https?:\/\/\S+/g,'[url]').slice(0,300)}));process.exitCode=1;});

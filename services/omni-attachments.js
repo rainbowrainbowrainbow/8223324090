@@ -8,8 +8,10 @@ const TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'application/pdf': 'pdf
 const fail = (text, statusCode = 400) => Object.assign(new Error(text), { statusCode });
 
 function capabilities(channel) {
-  const imageLimit = channel === 'viber' ? 1024 * 1024 : channel === 'instagram' ? 8 * 1024 * 1024 : MAX_BYTES;
-  if (!['telegram', 'viber', 'facebook', 'instagram'].includes(channel)) return [];
+  const imageLimit = channel === 'viber' ? 1024 * 1024
+    : channel === 'whatsapp' ? 5 * 1024 * 1024
+    : channel === 'instagram' ? 8 * 1024 * 1024 : MAX_BYTES;
+  if (!['telegram', 'viber', 'facebook', 'instagram', 'whatsapp'].includes(channel)) return [];
   return Object.keys(TYPES).filter(mime => channel !== 'instagram' || mime !== 'application/pdf')
     .map(mime => ({ mime, maxBytes: mime === 'application/pdf' ? MAX_BYTES : imageLimit }));
 }
@@ -90,6 +92,9 @@ async function grantedFile(token) {
 
 async function sendAttachment(channel, externalId, text, file, businessContext) {
   validateFile({ buffer: file.content, mimetype: file.mime_type, originalname: file.filename }, channel);
+  if (channel === 'whatsapp') {
+    return require('./omni-whatsapp').sendWhatsAppAttachment(externalId, text, file, { businessContext });
+  }
   if (channel === 'telegram') {
     const { botToken } = await require('./omni-accounts').resolveOmniRuntimeConfig(channel, { businessContext });
     if (!botToken) throw fail('Telegram не підключено.', 409);

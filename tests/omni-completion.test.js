@@ -277,6 +277,12 @@ test('attachment policies reject spoofed files, oversized images and unsupported
   mock('../db', { pool: {} }); const files = fresh('../services/omni-attachments');
   const png = Buffer.from('89504e470d0a1a0a0000000049454e44ae426082', 'hex');
   assert.equal(files.validateFile({ buffer: png, mimetype: 'image/png', originalname: '../file.png' }, 'telegram').mime, 'image/png');
+  assert.deepEqual(files.capabilities('whatsapp'), [
+    { mime: 'image/jpeg', maxBytes: 5 * 1024 * 1024 },
+    { mime: 'image/png', maxBytes: 5 * 1024 * 1024 },
+    { mime: 'application/pdf', maxBytes: 10 * 1024 * 1024 },
+  ]);
+  assert.equal(files.validateFile({ buffer: png, mimetype: 'image/png', originalname: '../file.png' }, 'whatsapp').mime, 'image/png');
   assert.throws(() => files.validateFile({ buffer: png, mimetype: 'application/pdf' }, 'telegram'), { statusCode: 415 });
   assert.throws(() => files.validateFile({ buffer: png }, 'sms'), { statusCode: 415 });
   const huge = Buffer.alloc(1024 * 1024 + 1); png.copy(huge);
@@ -316,6 +322,49 @@ test('Telegram attachment transport sends one scoped multipart request', async t
   t.mock.method(global, 'fetch', async () => { throw new Error('fixture transport URL containing token'); });
   const uncertain = await files.sendAttachment('telegram', 'fixture-recipient', '', file, 'dar');
   assert.equal(uncertain.uncertain, true); assert.doesNotMatch(uncertain.error, /token/);
+});
+
+test('WhatsApp attachment transport uploads scoped media and sends its media ID', async t => {
+  mock('../db', { pool: {} });
+  mock('../services/omni-accounts', { resolveOmniRuntimeConfig: async (channel, options) => {
+    assert.equal(channel, 'whatsapp'); assert.equal(options.businessContext, 'dar');
+    return { accessToken: 'fixture-token', phoneNumberId: 'phone-42', apiVersion: 'v26.0' };
+  } });
+  const fetchCalls = [];
+  t.mock.method(global, 'fetch', async (url, options) => {
+    fetchCalls.push({ url, options });
+    assert.equal(url, 'https://graph.facebook.com/v26.0/phone-42/media');
+    assert.equal(options.method, 'POST');
+    assert.equal(options.headers.Authorization, 'Bearer fixture-token');
+    assert.equal(options.body.get('messaging_product'), 'whatsapp');
+    assert.equal(options.body.get('type'), 'application/pdf');
+    assert.equal(options.body.get('file').name, 'fixture.pdf');
+    return { ok: true, status: 200, text: async () => JSON.stringify({ id: 'media-42' }) };
+  });
+  let request;
+  t.mock.method(https, 'request', (options, callback) => {
+    const req = new EventEmitter(); let body = '';
+    req.write = chunk => { body += chunk; }; req.destroy = error => req.emit('error', error);
+    req.end = () => queueMicrotask(() => {
+      request = { options, body: JSON.parse(body) };
+      const res = new EventEmitter(); res.statusCode = 200; callback(res);
+      res.emit('data', JSON.stringify({ messages: [{ id: 'wamid.media-42' }] })); res.emit('end');
+    });
+    return req;
+  });
+  const files = fresh('../services/omni-attachments');
+  const result = await files.sendAttachment('whatsapp', '+380671112233', 'Документ', {
+    content: Buffer.from('%PDF-fixture'), mime_type: 'application/pdf', filename: 'fixture.pdf',
+  }, 'dar');
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(request.options.path, '/v26.0/phone-42/messages');
+  assert.equal(request.options.headers.Authorization, 'Bearer fixture-token');
+  assert.deepEqual(request.body, {
+    messaging_product: 'whatsapp', recipient_type: 'individual', to: '380671112233', type: 'document',
+    document: { id: 'media-42', caption: 'Документ', filename: 'fixture.pdf' },
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.messageId, 'wamid.media-42');
 });
 
 test('remote attachment downloads block private DNS results before any HTTP request', async t => {

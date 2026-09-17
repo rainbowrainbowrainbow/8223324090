@@ -5252,9 +5252,9 @@
             if (conv?.channel === 'viber' && conv.meta?.connectorType === 'viber_personal_bridge') return [];
             const advertised = omniAccountForChannel(conv?.channel)?.attachmentTypes;
             if (Array.isArray(advertised)) return advertised;
-            return ['telegram', 'viber', 'facebook', 'instagram'].includes(conv?.channel)
+            return ['telegram', 'viber', 'facebook', 'instagram', 'whatsapp'].includes(conv?.channel)
                 ? ['image/jpeg', 'image/png', ...(conv.channel === 'instagram' ? [] : ['application/pdf'])].map(mime => ({ mime,
-                    maxBytes: (mime === 'application/pdf' ? 10 : conv.channel === 'viber' ? 1 : conv.channel === 'instagram' ? 8 : 10) * 1024 * 1024 })) : [];
+                    maxBytes: (mime === 'application/pdf' ? 10 : conv.channel === 'viber' ? 1 : conv.channel === 'whatsapp' ? 5 : conv.channel === 'instagram' ? 8 : 10) * 1024 * 1024 })) : [];
         }
         function renderFileComposer(conv = currentConversation()) {
             const policy = filePolicy(conv);

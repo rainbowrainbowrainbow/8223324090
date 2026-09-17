@@ -1786,7 +1786,8 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
     }
     attachment = await require('./omni-attachments').getFile(options.attachmentId, conversationId, conversation.businessContext);
     require('./omni-attachments').validateFile({ buffer: attachment.content, mimetype: attachment.mime_type, originalname: attachment.filename }, conversation.channel);
-    const captionLimit = conversation.channel === 'telegram' ? 1024 : conversation.channel === 'viber' && attachment.mime_type.startsWith('image/') ? 768 : 0;
+    const captionLimit = ['telegram', 'whatsapp'].includes(conversation.channel) ? 1024
+      : conversation.channel === 'viber' && attachment.mime_type.startsWith('image/') ? 768 : 0;
     if (text.length > captionLimit) throw Object.assign(new Error(captionLimit ? 'Підпис завеликий: максимум ' + captionLimit + ' символів.' : 'Цей формат не підтримує підпис. Надішліть текст окремим повідомленням.'), { statusCode: 400 });
   }
   const replyExpectation = normalizeReplyExpectationOptions(options);

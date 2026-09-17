@@ -2710,6 +2710,64 @@
             '</span>';
         }
 
+        const AVATAR_URL_KEYS = ['avatarUrl', 'avatar_url', 'photoUrl', 'photo_url', 'profilePhotoUrl', 'profile_photo_url', 'imageUrl', 'image_url', 'avatar'];
+
+        function safeConversationAvatarUrl(value) {
+            const raw = String(value || '').trim();
+            if (!raw || raw.length > 1000) return '';
+            try {
+                const url = new URL(raw, window.location.origin);
+                if (url.username || url.password) return '';
+                if (url.protocol !== 'https:' && url.origin !== window.location.origin) return '';
+                return url.href;
+            } catch { return ''; }
+        }
+
+        function conversationAvatarUrl(conversation, extraMeta) {
+            const sources = [conversation, conversation?.meta, extraMeta];
+            for (const source of sources) {
+                if (!source || typeof source !== 'object') continue;
+                for (const key of AVATAR_URL_KEYS) {
+                    const url = safeConversationAvatarUrl(source[key]);
+                    if (url) return url;
+                }
+            }
+            return '';
+        }
+
+        function conversationInitials(conversation) {
+            return (conversation?.customerName || conversation?.externalId || '?').slice(0, 2).toUpperCase();
+        }
+
+        function conversationAvatarMarkup(conversation, extraMeta) {
+            const initials = conversationInitials(conversation);
+            const url = conversationAvatarUrl(conversation, extraMeta);
+            return url
+                ? '<img src="' + esc(url) + '" alt="" aria-hidden="true" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-omni-avatar-image><span class="omni-avatar-fallback" aria-hidden="true">' + esc(initials) + '</span>'
+                : esc(initials);
+        }
+
+        function bindAvatarFallbacks(root) {
+            if (!root) return;
+            root.querySelectorAll('[data-omni-avatar-image]').forEach(image => {
+                image.addEventListener('error', () => {
+                    const avatar = image.closest('.omni-conv-avatar');
+                    if (!avatar) return;
+                    image.remove();
+                    const fallback = avatar.querySelector('.omni-avatar-fallback');
+                    avatar.textContent = fallback?.textContent || '?';
+                    avatar.classList.remove('has-image');
+                }, { once: true });
+            });
+        }
+
+        function renderConversationAvatar(element, conversation, extraMeta) {
+            if (!element) return;
+            element.innerHTML = conversationAvatarMarkup(conversation, extraMeta);
+            element.classList.toggle('has-image', Boolean(element.querySelector('[data-omni-avatar-image]')));
+            bindAvatarFallbacks(element);
+        }
+
         function setOmniMode(mode) {
             const nextMode = ['inbox', 'channels', 'health'].includes(mode) ? mode : 'inbox';
             omniMode = nextMode;
@@ -2845,6 +2903,18 @@
             messageHistory = Array.from(new Map(combined.map(message => [message.id, message])).values())
                 .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt) || Number(a.id) - Number(b.id));
             messageTotal = Number(res.data?.total) || messageHistory.length;
+            const avatarMeta = [...messageHistory].reverse()
+                .map(message => parseMessageMeta(message.meta))
+                .find(meta => conversationAvatarUrl(null, meta));
+            const avatarUrl = conversationAvatarUrl(null, avatarMeta);
+            const selected = currentConversation();
+            if (selected && avatarUrl && !conversationAvatarUrl(selected)) {
+                selected.meta = { ...(selected.meta || {}), avatarUrl };
+                const listed = conversations.find(conversation => conversation.id === selected.id);
+                if (listed) listed.meta = { ...(listed.meta || {}), avatarUrl };
+                renderConversations();
+            }
+            if (selected) renderConversationAvatar($('omniChatAvatar'), selected, avatarMeta);
             renderMessages(messageHistory, { scrollToBottom: !options.older && (!options.refresh || wasAtBottom) });
             if (options.older) messages.scrollTop = previousTop + messages.scrollHeight - previousHeight;
             else if (options.refresh && !wasAtBottom) messages.scrollTop = previousTop;
@@ -3625,13 +3695,12 @@
             }
             convList.innerHTML = rows.map(c => {
                 const isActive = c.id === currentConvId;
-                const initials = (c.customerName || c.externalId || '?').slice(0, 2).toUpperCase();
                 const time = c.lastMessageAt ? formatTime(c.lastMessageAt) : '';
                 const badge = c.unreadCount > 0 ? '<span class="omni-conv-badge">' + c.unreadCount + '</span>' : '';
                 const waiting = replyWaitingBadge(c);
                 return '<div class="omni-conv-item' + (isActive ? ' active' : '') + '" data-id="' + c.id + '" role="button" tabindex="0" aria-pressed="' + isActive + '">' +
                     '<div class="omni-conv-avatar-shell">' +
-                        '<div class="omni-conv-avatar ch-' + c.channel + '">' + initials + '</div>' +
+                        '<div class="omni-conv-avatar ch-' + c.channel + (conversationAvatarUrl(c) ? ' has-image' : '') + '">' + conversationAvatarMarkup(c) + '</div>' +
                         renderChannelDot(c.channel) +
                     '</div>' +
                     '<div class="omni-conv-info">' +
@@ -3649,6 +3718,7 @@
                 '</div>';
             }).join('') + errorHtml + (rows.length < conversationTotal
                 ? '<div class="omni-list-feedback"><button type="button" data-omni-conversations-more' + (conversationsLoading ? ' disabled' : '') + '>Ще розмови</button><span>' + rows.length + ' з ' + conversationTotal + '</span></div>' : '');
+            bindAvatarFallbacks(convList);
             convList.scrollTop = Math.max(0, previousScrollTop);
         }
 
@@ -5267,7 +5337,7 @@
             $('omniChatName').textContent = conv.customerName || conv.externalId;
             $('omniChatChannel').innerHTML = renderChannelBadge(conv.channel, 'header') + replyWaitingBadge(conv, 'omni-reply-state');
             $('omniChatAvatar').className = 'omni-conv-avatar ch-' + conv.channel;
-            $('omniChatAvatar').textContent = (conv.customerName || conv.externalId || '?').slice(0, 2).toUpperCase();
+            renderConversationAvatar($('omniChatAvatar'), conv);
 
             const aiBtn = $('omniToggleAI');
             const leadLinked = linkedLeadIdFromConversation(conv);

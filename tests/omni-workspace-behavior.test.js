@@ -242,6 +242,17 @@ test('status filter participates in requests and reset restores the full list', 
     assert.equal(h.document.getElementById('omniCloseConv').textContent, 'Відкрити діалог');
 });
 
+test('conversation avatars use safe URLs and fall back to initials on load failure', t => {
+    const h = harness(t, [{ ...conversation(1), meta: { avatarUrl: 'https://cdn.example/avatar.jpg' } }]);
+    const avatar = h.document.querySelector('.omni-conv-avatar');
+    const image = avatar.querySelector('[data-omni-avatar-image]');
+    assert.ok(image);
+    image.dispatchEvent(new h.window.Event('error'));
+    assert.equal(avatar.textContent, 'CU');
+    h.app.setRecords([{ ...conversation(1), meta: { avatarUrl: 'javascript:alert(1)' } }]);
+    assert.equal(h.document.querySelector('[data-omni-avatar-image]'), null);
+});
+
 test('mine view delegates ownership filtering to the server', async t => {
     const h = harness(t); const calls = [];
     h.app.setApi(async path => { calls.push(path); return h.defaultApi(path); });

@@ -32,6 +32,7 @@ and focused tests in the same pack.
 | `content.html` | `/content` | content | canonical-page | Content matrix page. |
 | `copilot.html` | `/copilot` | copilot | canonical-page | Sales/copilot workspace. |
 | `customers.html` | `/customers` | customers | canonical-page | Customer CRM page. |
+| `data-deletion.html` | `/data-deletion.html` | legal | public-page | User-data deletion instructions for Meta integrations. |
 | `dashboard.html` | `/dashboard` | dashboard | canonical-page | Authenticated dashboard page. |
 | `demo.html` | `/demo` | demo | canonical-page | Demo mode page. |
 | `designer.html` | `/designer` | designer | canonical-page | Designer production workspace. |
@@ -51,6 +52,7 @@ and focused tests in the same pack.
 | `omni.html` | `/omni` | omnichannel | canonical-page | Omnichannel inbox page. |
 | `profile.html` | `/profile` | profile | canonical-page | Gamification profile page. |
 | `programs.html` | `/programs` | programs | canonical-page | Also served at `/embed/programs`. |
+| `privacy-policy.html` | `/privacy-policy.html` | legal | public-page | Privacy policy for EventGenix CRM and Meta integrations. |
 | `quiz.html` | `/quiz` | quiz | canonical-page | Quiz page. |
 | `report-agent.html` | `/report-agent` | reports | canonical-page | Report agent page. |
 | `reports.html` | `/reports` | reports | canonical-page | Reports page. |
@@ -60,6 +62,7 @@ and focused tests in the same pack.
 | `staff.html` | `/staff` | staff | canonical-page | Staff operations page. |
 | `status.html` | `/status` | status | canonical-page | Status page. |
 | `tasks.html` | `/tasks` | tasks | canonical-page | Task management page. |
+| `terms-of-service.html` | `/terms-of-service.html` | legal | public-page | Terms for EventGenix CRM communication channels. |
 | `training.html` | `/training` | training | canonical-page | Training page. |
 | `warehouse.html` | `/warehouse` | warehouse | canonical-page | Warehouse operations page. |
 
@@ -88,7 +91,9 @@ and focused tests in the same pack.
 
 Static root files are not all equivalent:
 
-- Public root page: `invite.html` at `/invite`.
+- Public root pages: `invite.html` at `/invite`, `privacy-policy.html` at
+  `/privacy-policy.html`, `terms-of-service.html` at `/terms-of-service.html`,
+  and `data-deletion.html` at `/data-deletion.html`.
 - Root shell: `index.html` at `/`.
 - Public landing files: `landing/index.html`, `landing/manager-guide.html`,
   and `landing/sales-deck.html`.

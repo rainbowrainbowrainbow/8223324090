@@ -1,5 +1,29 @@
 const ROOT_HTML_SURFACE = [
     {
+        file: 'data-deletion.html',
+        canonicalPath: '/data-deletion.html',
+        owner: 'legal',
+        status: 'public-page',
+        aliases: [],
+        purpose: 'Public user-data deletion instructions for Meta integrations.'
+    },
+    {
+        file: 'privacy-policy.html',
+        canonicalPath: '/privacy-policy.html',
+        owner: 'legal',
+        status: 'public-page',
+        aliases: [],
+        purpose: 'Public privacy policy for EventGenix CRM and Meta integrations.'
+    },
+    {
+        file: 'terms-of-service.html',
+        canonicalPath: '/terms-of-service.html',
+        owner: 'legal',
+        status: 'public-page',
+        aliases: [],
+        purpose: 'Public terms of service for EventGenix CRM communication channels.'
+    },
+    {
         file: 'analytics.html',
         canonicalPath: '/analytics',
         owner: 'analytics',
@@ -376,7 +400,7 @@ const LEGACY_STATIC_REDIRECTS = [
 ];
 
 const STATIC_PAGE_EXPOSURE = {
-    publicRootFiles: ['invite.html'],
+    publicRootFiles: ['data-deletion.html', 'invite.html', 'privacy-policy.html', 'terms-of-service.html'],
     rootShellFiles: ['index.html'],
     publicLandingFiles: ['landing/index.html', 'landing/manager-guide.html', 'landing/sales-deck.html'],
     embeddedAliases: ['/embed/designs', '/embed/programs', '/embed/graduation'],

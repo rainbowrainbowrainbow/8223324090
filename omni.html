@@ -3827,7 +3827,9 @@
             const connectorChannel = channel === 'viber' && conv.meta?.connectorType === 'viber_personal_bridge'
                 ? 'viber_personal' : channel;
             const account = omniAccountForChannel(connectorChannel) || conv.accountStatus || null;
-            if (account && (!account.connected || account.sendCapable === false)) return false;
+            if (account) {
+                return Boolean(account.connected && account.sendCapable !== false && !SEND_DISABLED_CHANNELS.has(channel));
+            }
             return Boolean(conv.sendCapable !== false && !SEND_DISABLED_CHANNELS.has(channel));
         }
 

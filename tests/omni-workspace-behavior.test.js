@@ -35,6 +35,7 @@ function harness(t, records = [conversation(1), conversation(2)]) {
         runAccountAction, setOmniMode, refreshOmniWorkspace, analyzeLeadAssistant,
         openLeadAssistantPanel, createLeadFromDraft, fillLeadDraftFromAi,
         accountNeedsAttention, renderOmniAccountsAlarm,
+        canSendConversation,
         updateConversationField, syncConversationControls,
         request: api,
         setApi(fn) { api = fn; },
@@ -66,6 +67,30 @@ test('an inbound failure requires attention even when sending still works', t =>
     const h = harness(t);
     assert.equal(h.app.accountNeedsAttention({ channel: 'telegram', connected: true, sendCapable: true, receiveCapable: false }), true);
     assert.equal(h.app.accountNeedsAttention({ channel: 'sms', connected: true, sendCapable: true, receiveCapable: false }), false);
+});
+
+test('live account status overrides a stale conversation send snapshot', async t => {
+    const staleConversation = { ...conversation(1, 'whatsapp'), sendCapable: false };
+    const h = harness(t, [staleConversation]);
+    h.app.setApi(requestPath => requestPath === '/accounts'
+        ? Promise.resolve({ success: true, accounts: [{ channel: 'whatsapp', connected: true, sendCapable: true, receiveCapable: true }] })
+        : h.defaultApi(requestPath));
+
+    await h.app.loadOmniAccounts();
+
+    assert.equal(h.app.canSendConversation(staleConversation), true);
+});
+
+test('live account status still blocks sending when the connector is unavailable', async t => {
+    const staleConversation = { ...conversation(1, 'whatsapp'), sendCapable: true };
+    const h = harness(t, [staleConversation]);
+    h.app.setApi(requestPath => requestPath === '/accounts'
+        ? Promise.resolve({ success: true, accounts: [{ channel: 'whatsapp', connected: true, sendCapable: false, receiveCapable: true }] })
+        : h.defaultApi(requestPath));
+
+    await h.app.loadOmniAccounts();
+
+    assert.equal(h.app.canSendConversation(staleConversation), false);
 });
 
 test('search typing rejects an older response immediately and clear keeps the channel filter', async t => {

@@ -2236,14 +2236,14 @@
                         </div>
                         <!-- Legacy hooks keep bookmarked/test automation selectors working while the visible UI uses one channel select. -->
                         <div id="omniLegacyFilterHooks" hidden aria-hidden="true">
-                            <button type="button" data-channel="all">Усі</button>
-                            <button type="button" data-channel="telegram">TG</button>
-                            <button type="button" data-channel="viber">Viber</button>
-                            <button type="button" data-channel="sms">SMS</button>
-                            <button type="button" data-channel="facebook">FB</button>
-                            <button type="button" data-channel="instagram">IG</button>
-                            <button type="button" data-channel="whatsapp">WA</button>
-                            <button type="button" data-channel="binotel">Телефонія</button>
+                            <button type="button" class="omni-channel-btn" data-channel="all">Усі</button>
+                            <button type="button" class="omni-channel-btn" data-channel="telegram">TG</button>
+                            <button type="button" class="omni-channel-btn" data-channel="viber">Viber</button>
+                            <button type="button" class="omni-channel-btn" data-channel="sms">SMS</button>
+                            <button type="button" class="omni-channel-btn" data-channel="facebook">FB</button>
+                            <button type="button" class="omni-channel-btn" data-channel="instagram">IG</button>
+                            <button type="button" class="omni-channel-btn" data-channel="whatsapp">WA</button>
+                            <button type="button" class="omni-channel-btn" data-channel="binotel">Телефонія</button>
                             <select id="omniStatusFilter" aria-label="Сумісний фільтр статусу">
                                 <option value="all">Усі статуси</option>
                                 <option value="open">Відкриті</option>
@@ -3621,6 +3621,11 @@
                 btn.setAttribute('aria-pressed', active ? 'true' : 'false');
             });
             if (channelSelect) channelSelect.value = activeChannel;
+            document.querySelectorAll('#omniLegacyFilterHooks .omni-channel-btn').forEach(btn => {
+                const active = btn.dataset.channel === activeChannel;
+                btn.classList.toggle('active', active);
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
             if (statusSelect) statusSelect.value = activeStatus;
             if (statusFilterValue) {
                 const selected = statusSelect?.selectedOptions?.[0];

@@ -81,7 +81,8 @@ test('search typing rejects an older response immediately and clear keeps the ch
     await previous;
     assert.notEqual(h.app.state().conversations[0]?.id, 99);
     h.app.setApi(h.defaultApi);
-    h.document.querySelector('[data-channel="telegram"]').click();
+    const channel = h.document.getElementById('omniChannelSelect');
+    channel.value = 'telegram'; channel.dispatchEvent(new h.window.Event('change'));
     await h.flush();
     h.app.setApi(async requestPath => { requests.push(requestPath); return h.defaultApi(requestPath); });
     h.document.getElementById('omniClearSearch').click();
@@ -235,10 +236,18 @@ test('attachments are accessible without exposing Telegram credentials or unsafe
 test('status filter participates in requests and reset restores the full list', async t => {
     const h = harness(t); const calls = [];
     h.app.setApi(async path => { calls.push(path); return h.defaultApi(path); });
-    const filter = h.document.getElementById('omniStatusFilter'); filter.value = 'closed'; filter.dispatchEvent(new h.window.Event('change'));
+    const filter = h.document.getElementById('omniStatusSelect'); filter.value = 'closed'; filter.dispatchEvent(new h.window.Event('change'));
     await h.flush(); assert.ok(calls.some(path => path.includes('status=closed')));
     const closed = { ...conversation(1), status: 'closed' }; h.app.setRecords([closed]); h.app.selectConversation(1);
     assert.equal(h.document.getElementById('omniCloseConv').textContent, 'Відкрити діалог');
+});
+
+test('mine view delegates ownership filtering to the server', async t => {
+    const h = harness(t); const calls = [];
+    h.app.setApi(async path => { calls.push(path); return h.defaultApi(path); });
+    h.document.querySelector('[data-omni-view-filter="mine"]').click();
+    await h.flush();
+    assert.ok(calls.some(path => path.includes('mine=true')));
 });
 
 test('opening visible history clears only the acknowledged unread boundary', async t => {
@@ -258,14 +267,15 @@ test('rapid channel changes keep the latest filter response', async t => {
     const telegram = deferred();
     const all = deferred();
     h.app.setApi(requestPath => requestPath.includes('channel=telegram') ? telegram.promise : all.promise);
-    h.document.querySelector('[data-channel="telegram"]').click();
-    h.document.querySelector('[data-channel="all"]').click();
+    const channel = h.document.getElementById('omniChannelSelect');
+    channel.value = 'telegram'; channel.dispatchEvent(new h.window.Event('change'));
+    channel.value = 'all'; channel.dispatchEvent(new h.window.Event('change'));
     all.resolve({ success: true, data: { conversations: [conversation(2, 'viber')], total: 1 } });
     await h.flush();
     telegram.resolve({ success: true, data: { conversations: [conversation(1)], total: 1 } });
     await h.flush();
     assert.equal(h.app.state().conversations[0].id, 2);
-    assert.equal(h.document.querySelector('.omni-channel-btn.active').dataset.channel, 'all');
+    assert.equal(h.document.getElementById('omniChannelSelect').value, 'all');
 });
 
 test('late history and context responses cannot replace a different selected chat', async t => {
@@ -474,15 +484,16 @@ test('filter excluding a selected chat clears it safely and preserves its draft'
             ? Promise.resolve({ success: true, data: { conversations: [], total: 0 } })
             : h.defaultApi(requestPath);
     });
-    assert.ok(h.document.querySelector('[data-channel="whatsapp"]'));
-    h.document.querySelector('[data-channel="whatsapp"]').click();
+    const channel = h.document.getElementById('omniChannelSelect');
+    assert.ok([...channel.options].some(option => option.value === 'whatsapp'));
+    channel.value = 'whatsapp'; channel.dispatchEvent(new h.window.Event('change'));
     await h.flush();
     assert.ok(requests.some(requestPath => requestPath.includes('channel=whatsapp')));
-    h.document.querySelector('[data-channel="viber"]').click();
+    channel.value = 'viber'; channel.dispatchEvent(new h.window.Event('change'));
     await h.flush();
     assert.equal(h.app.state().currentConvId, null);
     assert.equal(h.document.getElementById('omniInputArea').style.display, 'none');
-    h.document.querySelector('[data-channel="all"]').click();
+    channel.value = 'all'; channel.dispatchEvent(new h.window.Event('change'));
     await h.flush();
     h.app.selectConversation(1);
     assert.equal(h.document.getElementById('omniInput').value, 'Keep this draft');

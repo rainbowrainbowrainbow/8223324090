@@ -745,3 +745,32 @@
 .dark-mode .omni-accounts-alarm { background: rgba(30,41,59,0.72); color: #cbd5e1; }
 .dark-mode .omni-accounts-alarm.is-warning { background: rgba(120,53,15,0.28); color: #fcd34d; }
 .dark-mode .omni-accounts-alarm.is-danger { background: rgba(127,29,29,0.26); color: #fca5a5; }
+
+/* Conversation list hierarchy: search first, quick views second, filters third. */
+.omni-sidebar-header {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.omni-sidebar-header > .omni-search-field { order: 1; }
+.omni-sidebar-header > .omni-view-filter-row { order: 2; min-height: 32px; }
+.omni-sidebar-header > .omni-filter-controls { order: 3; margin-top: 0; }
+.omni-sidebar-header > #omniExplainability { order: 4; }
+.omni-sidebar-header > .omni-business-label { order: 5; padding-top: 0; }
+.omni-view-filter-row { justify-content: flex-start; }
+.omni-view-filters { gap: 6px; }
+.omni-view-filter { min-height: 32px; padding: 6px 11px; border-radius: 9px; font-size: 12px; font-weight: 600; }
+.omni-view-filter.active { box-shadow: inset 0 0 0 1px rgba(16,185,129,0.08); }
+.omni-filter-controls { gap: 8px; }
+.omni-filter-field > span { font-weight: 600; }
+.omni-filter-field select, .omni-status-filters summary { font-weight: 600; }
+#omniExplainability { margin-top: 0; max-height: 40px; }
+#omniExplainability .explain-filter-summary { padding: 5px 7px; }
+.omni-stats { border-top: 1px solid var(--border-color, #cbd5e1); }
+.omni-conv-item { gap: 10px; padding: 10px 14px; }
+.omni-conv-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.omni-conv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.omni-conv-meta { flex: 0 0 auto; min-width: 42px; }
+@media (max-width: 360px) {
+    .omni-filter-controls { grid-template-columns: 1fr; }
+}

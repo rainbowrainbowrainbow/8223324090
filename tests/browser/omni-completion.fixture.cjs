@@ -140,11 +140,11 @@ function playwright() {
     await page.locator('#omniOnlyMine').check();
     await page.waitForFunction(()=>document.querySelectorAll('.omni-conv-item').length===1);
     await page.locator('#omniOnlyMine').uncheck();
-    await page.locator('#omniStatusFilter').selectOption('closed');
+    await page.locator('#omniStatusSelect').selectOption('closed');
     await page.waitForFunction(()=>document.querySelectorAll('.omni-conv-item').length===0);
     await page.locator('#omniConvList').getByRole('button',{name:'Показати всі розмови',exact:true}).click();
     await page.waitForFunction(()=>document.querySelectorAll('.omni-conv-item').length===100);
-    assert.equal(await page.locator('#omniStatusFilter').inputValue(),'');
+    assert.equal(await page.locator('#omniStatusSelect').inputValue(),'all');
     await select(9002);
     await page.waitForFunction(()=>!document.querySelector('#omniAssignee').disabled);
     assert.equal(await page.locator('#omniAssignee').inputValue(),'fixture-manager');

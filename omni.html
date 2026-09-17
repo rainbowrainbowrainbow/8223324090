@@ -176,23 +176,6 @@
             flex-wrap: wrap;
         }
 
-        .omni-channel-btn {
-            padding: 4px 10px;
-            border: 1px solid var(--border-color, #e2e8f0);
-            border-radius: 16px;
-            font-size: 12px;
-            cursor: pointer;
-            background: transparent;
-            color: var(--text-secondary, #718096);
-            transition: all 0.15s;
-        }
-
-        .omni-channel-btn.active {
-            background: var(--accent-color, #F5C842);
-            color: #000;
-            border-color: var(--accent-color, #F5C842);
-        }
-
         .omni-accounts-panel {
             padding: 16px;
             border: 1px solid var(--border-color, #e2e8f0);
@@ -2202,12 +2185,12 @@
                 <!-- Conversation sidebar -->
                 <div class="omni-sidebar" id="omniSidebar">
                         <div class="omni-sidebar-header">
-                        <div class="omni-sidebar-heading">
-                            <h2>Розмови</h2>
+                        <h2 class="sr-only">Розмови</h2>
+                        <div class="omni-sidebar-heading omni-view-filter-row">
                             <div class="omni-view-filters" id="omniViewFilters" role="group" aria-label="Швидкі фільтри розмов">
-                                <button type="button" class="omni-view-filter active" data-omni-view-filter="all">Усі <b id="omniViewAllCount"></b></button>
-                                <button type="button" class="omni-view-filter" data-omni-view-filter="open">Відкриті <b id="omniViewOpenCount"></b></button>
-                                <button type="button" class="omni-view-filter" data-omni-view-filter="mine">Мої <b id="omniViewMineCount"></b></button>
+                                <button type="button" class="omni-view-filter active" data-omni-view-filter="all">Усі</button>
+                                <button type="button" class="omni-view-filter" data-omni-view-filter="open">Відкриті</button>
+                                <button type="button" class="omni-view-filter" data-omni-view-filter="mine">Мої</button>
                             </div>
                         </div>
                         <div class="omni-search-field">
@@ -2229,7 +2212,7 @@
                                 </select>
                             </label>
                             <details class="omni-status-filters" id="omniStatusFilters">
-                                <summary>Статус <span id="omniStatusFilterValue">Усі</span></summary>
+                                <summary><span>Додаткові фільтри</span><span id="omniStatusFilterValue">Усі</span></summary>
                                 <label class="omni-filter-field">
                                     <span class="sr-only">Статус розмови</span>
                                     <select id="omniStatusSelect" aria-label="Фільтр за статусом">
@@ -2241,24 +2224,6 @@
                                     </select>
                                 </label>
                             </details>
-                        </div>
-                        <!-- Legacy hooks keep bookmarked/test automation selectors working while the visible UI uses one channel select. -->
-                        <div id="omniLegacyFilterHooks" hidden aria-hidden="true">
-                            <button type="button" class="omni-channel-btn" data-channel="all">Усі</button>
-                            <button type="button" class="omni-channel-btn" data-channel="telegram">TG</button>
-                            <button type="button" class="omni-channel-btn" data-channel="viber">Viber</button>
-                            <button type="button" class="omni-channel-btn" data-channel="sms">SMS</button>
-                            <button type="button" class="omni-channel-btn" data-channel="facebook">FB</button>
-                            <button type="button" class="omni-channel-btn" data-channel="instagram">IG</button>
-                            <button type="button" class="omni-channel-btn" data-channel="whatsapp">WA</button>
-                            <button type="button" class="omni-channel-btn" data-channel="binotel">Телефонія</button>
-                            <select id="omniStatusFilter" aria-label="Сумісний фільтр статусу">
-                                <option value="all">Усі статуси</option>
-                                <option value="open">Відкриті</option>
-                                <option value="pending">Очікують</option>
-                                <option value="closed">Закриті</option>
-                                <option value="spam">Спам</option>
-                            </select>
                         </div>
                         <div id="omniExplainability" hidden></div>
                         <div class="omni-business-label" id="omniBusinessLabel" aria-live="polite"></div>
@@ -2815,6 +2780,7 @@
                 ? activeStatus
                 : (activeViewFilter === 'open' ? 'open' : '');
             if (requestedStatus) params.set('status', requestedStatus);
+            if (activeViewFilter === 'mine') params.set('mine', 'true');
             if (searchQuery) params.set('search', searchQuery);
             $('omniBusinessLabel').textContent = 'Бізнес: ' + ({ event_genix: 'Парк', dar: 'Дар', maysternya_doli: 'Майстерня долі', crm: 'CRM продажі' }[context] || context);
             const res = await api('/conversations?' + params);
@@ -2929,10 +2895,6 @@
                     '<span class="omni-stat">Відкриті <b>' + (byStatus.open || 0) + '</b></span>' +
                     '<span class="omni-stat">Очікують <b>' + (byStatus.pending || 0) + '</b></span>' +
                     '<span class="omni-stat">Спам <b>' + (byStatus.spam || 0) + '</b></span>';
-                const allCount = $('omniViewAllCount');
-                const openCount = $('omniViewOpenCount');
-                if (allCount) allCount.textContent = d.total || 0;
-                if (openCount) openCount.textContent = byStatus.open || 0;
             }
         }
 
@@ -3640,18 +3602,11 @@
                 btn.setAttribute('aria-pressed', active ? 'true' : 'false');
             });
             if (channelSelect) channelSelect.value = activeChannel;
-            document.querySelectorAll('#omniLegacyFilterHooks .omni-channel-btn').forEach(btn => {
-                const active = btn.dataset.channel === activeChannel;
-                btn.classList.toggle('active', active);
-                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-            });
             if (statusSelect) statusSelect.value = activeStatus;
             if (statusFilterValue) {
                 const selected = statusSelect?.selectedOptions?.[0];
                 statusFilterValue.textContent = selected?.textContent || 'Усі';
             }
-            const mineCount = $('omniViewMineCount');
-            if (mineCount) mineCount.textContent = activeViewFilter === 'mine' ? visibleConversations().length : '';
         }
 
         function renderConversations() {
@@ -3716,12 +3671,11 @@
         function renderOmniExplainability() {
             if (!window.Explainability) return;
             const filters = getOmniFilterSummary();
-            const html = Explainability.renderFilterSummary(filters, {
+            const html = filters.length ? Explainability.renderFilterSummary(filters, {
                 label: 'Фільтри',
-                clearAction: filters.length ? 'omni' : '',
-                clearLabel: 'Очистити',
-                note: 'Бізнес: ' + omniBusinessContextLabel()
-            });
+                clearAction: 'omni',
+                clearLabel: 'Очистити'
+            }) : '';
             Explainability.setRegion('omniExplainability', html);
         }
 
@@ -3736,7 +3690,6 @@
                         : 'Коли зʼявиться повідомлення з підключеного каналу, воно буде тут.',
                     clearAction: filters.length ? 'omni' : '',
                     clearLabel: 'Очистити',
-                note: 'Бізнес: ' + omniBusinessContextLabel()
                 });
             }
             return '<div style="padding:24px;text-align:center;color:var(--text-secondary,#718096)">Немає розмов</div>';
@@ -5763,20 +5716,6 @@
             renderOmniFilterControls();
             syncOmniFilterUrl();
             loadConversations();
-        });
-
-        document.querySelectorAll('#omniLegacyFilterHooks [data-channel]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                if (!channelSelect) return;
-                channelSelect.value = btn.dataset.channel || 'all';
-                channelSelect.dispatchEvent(new Event('change', { bubbles: true }));
-            });
-        });
-        const legacyStatusFilter = $('omniStatusFilter');
-        if (legacyStatusFilter) legacyStatusFilter.addEventListener('change', () => {
-            if (!statusSelect) return;
-            statusSelect.value = legacyStatusFilter.value || 'all';
-            statusSelect.dispatchEvent(new Event('change', { bubbles: true }));
         });
 
         if (accountsRefresh) {

@@ -2393,6 +2393,7 @@
         const API_BASE = (window.APP_CONFIG && APP_CONFIG.API_URL) || '';
         let conversations = [];
         let currentConvId = null;
+        let messageScrollPosition = null;
         let selectedConversationRecord = null;
         let selectedDraftKey = null;
         const attachmentDrafts = new Map();
@@ -2774,6 +2775,7 @@
 
         function setOmniMode(mode) {
             const nextMode = ['inbox', 'channels', 'health'].includes(mode) ? mode : 'inbox';
+            if (omniMode === 'inbox' && nextMode !== 'inbox') rememberMessagePosition();
             omniMode = nextMode;
             $('omniModeBack').hidden = nextMode === 'inbox';
             omniShell.querySelector('h1').hidden = nextMode !== 'inbox';
@@ -2788,6 +2790,7 @@
             if (nextMode === 'health') renderOmniHealthWorkspace();
             if (nextMode === 'channels') highlightAccountFromQuery();
             renderOmniAccountsAlarm();
+            if (nextMode === 'inbox') restoreMessagePosition();
         }
 
         function isNarrowOmniViewport() {
@@ -2805,6 +2808,7 @@
             if (omniShell.style.getPropertyValue('--omni-shell-height') !== value) omniShell.style.setProperty('--omni-shell-height', value);
             omniShell.classList.toggle('omni-narrow', isNarrowOmniViewport());
             omniShell.classList.toggle('omni-short', available < 480);
+            if (currentConvId && omniMode === 'inbox') resizeComposer();
             const wideActions = $('omniChat').clientWidth >= 660;
             if (chatMore && chatMore.dataset.wide !== String(wideActions)) {
                 chatMore.open = wideActions;
@@ -2934,6 +2938,7 @@
             if (options.older) messages.scrollTop = previousTop + messages.scrollHeight - previousHeight;
             else if (options.refresh && !wasAtBottom) messages.scrollTop = previousTop;
             renderHistoryControls();
+            rememberMessagePosition();
             if (!options.older && (wasAtBottom || !options.refresh)) markVisibleMessagesRead();
         }
 
@@ -3993,6 +3998,24 @@
                 '</div>';
             }).join('');
             if (options.scrollToBottom !== false) messages.scrollTop = messages.scrollHeight;
+            rememberMessagePosition();
+        }
+
+        function rememberMessagePosition() {
+            if (omniMode !== 'inbox' || !currentConvId || !messages.clientHeight) return;
+            messageScrollPosition = {
+                conversationId: currentConvId,
+                top: messages.scrollTop,
+                atBottom: messages.scrollHeight - messages.scrollTop - messages.clientHeight < 32,
+                width: messages.clientWidth,
+                height: messages.clientHeight
+            };
+        }
+
+        function restoreMessagePosition() {
+            if (omniMode !== 'inbox' || !messages.clientHeight || messageScrollPosition?.conversationId !== currentConvId) return;
+            messages.scrollTop = messageScrollPosition.atBottom ? messages.scrollHeight : messageScrollPosition.top;
+            rememberMessagePosition();
         }
 
         function renderQuickReplies() {
@@ -5314,6 +5337,7 @@
             if (!conv) return;
             saveCurrentDraft();
             currentConvId = convId;
+            messageScrollPosition = null;
             selectedConversationRecord = conv;
             selectedDraftKey = getOmniBusinessContext() + ':' + convId;
             const draft = conversationDrafts.get(selectedDraftKey) || { text: '', replyExpected: false };
@@ -5640,7 +5664,12 @@
             setSendFeedback(null, 'Ручну перевірку збережено окремо від статусу провайдера.');
             await loadMessages(id, { refresh: true });
         });
-        messages.addEventListener('scroll', () => { if (messages.scrollHeight - messages.scrollTop - messages.clientHeight < 64) markVisibleMessagesRead(); });
+        messages.addEventListener('scroll', () => {
+            // Resize-induced scrolling must not replace the user's reading position
+            // before ResizeObserver restores it in the new geometry.
+            if (!messageScrollPosition || (messages.clientWidth === messageScrollPosition.width && messages.clientHeight === messageScrollPosition.height)) rememberMessagePosition();
+            if (messages.scrollHeight - messages.scrollTop - messages.clientHeight < 64) markVisibleMessagesRead();
+        });
         document.addEventListener('visibilitychange', () => { if (!document.hidden) markVisibleMessagesRead(); });
         messages.addEventListener('click', async event => {
             const button = event.target.closest('[data-omni-attachment]');
@@ -5740,6 +5769,7 @@
             const layoutObserver = new ResizeObserver(syncOmniViewportSize);
             layoutObserver.observe($('mainContent'));
             layoutObserver.observe(document.querySelector('.header'));
+            new ResizeObserver(restoreMessagePosition).observe(messages);
         }
 
         $('omniCloseConv').addEventListener('click', closeConversation);

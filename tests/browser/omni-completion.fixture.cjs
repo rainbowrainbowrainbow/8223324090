@@ -24,9 +24,11 @@ function playwright() {
   assert.equal(login.status(),200);
   const session = await login.json();
   const fixtureOwner = session.user?.username || 'fixture-manager';
-  const browser = await chromium.launch({channel:'chrome',headless:true});
+  const zoomBrowser = process.env.OMNI_NATIVE_ZOOM === '1' ? await require('./omni-native-zoom.cjs').launch(chromium) : null;
+  const browser = zoomBrowser ? null : await chromium.launch({channel:'chrome',headless:true});
   try {
-    const context = await browser.newContext({viewport:{width:1440,height:1000}, serviceWorkers:'block'});
+    const context = zoomBrowser?.context || await browser.newContext({viewport:{width:1440,height:1000}, serviceWorkers:'block'});
+    await context.routeWebSocket('**/*', () => {});
     await context.addInitScript(data => {
       localStorage.setItem('pzp_token',data.token);
       localStorage.setItem('pzp_access_token',data.accessToken||data.token);
@@ -36,6 +38,7 @@ function playwright() {
     const channels = ['telegram','viber','sms','facebook','instagram'];
     const accounts=channels.map(channel=>({channel,label:channel,status:channel==='telegram'?'connected':'disconnected',connected:channel==='telegram',sendCapable:channel==='telegram',receiveCapable:channel==='telegram',setupFields:[],supportedActions:['connect','test','recheck'],accountName:'QA fixture'}));
     const conversations=Array.from({length:105},(_,i)=>({id:9001+i,channel:'telegram',externalId:'fixture-'+i,customerName:'Тестовий діалог '+(i+1),lastMessage:'Тестовий текст',lastMessageAt:'2099-01-01T12:00:00Z',businessContext:'event_genix',sendCapable:true,meta:{ai_enabled:false},status:'open'}));
+    if (process.env.OMNI_LAYOUT_ONLY === '1' || zoomBrowser) conversations[0].customerName = 'Fedorova Nataliy — довге ім’я клієнта групового діалогу';
     const history=new Map(conversations.map(c=>[c.id,Array.from({length:c.id===9001?105:2},(_,i)=>({id:c.id*1000+i,conversationId:c.id,direction:'inbound',content:'Діалог '+c.id+' повідомлення '+(i+1)+'\nДругий рядок',createdAt:'2099-01-01T12:00:00Z'}))]));
     let delayA=false, sendResolve, sendStartedResolve;
     let sendStarted=new Promise(resolve=>{sendStartedResolve=resolve;});
@@ -98,7 +101,11 @@ function playwright() {
       if(local.has(url.pathname)) {
         const file=local.get(url.pathname);
         const content=fs.readFileSync(path.join(root,file),'utf8');
-        return route.fulfill({status:200,contentType:file.endsWith('.css')?'text/css':'text/html',body:file.endsWith('.html')?content.replace('// ---- Events ----','window.__omniFixtureRefresh = loadConversations; // ---- Events ----'):content});
+        return route.fulfill({status:200,contentType:file.endsWith('.css')?'text/css':'text/html',body:file.endsWith('.html')?content.replace('// ---- Events ----','window.__omniFixtureRefresh = loadConversations; window.__omniFixtureRefreshAccounts = loadOmniAccounts; // ---- Events ----'):content});
+      }
+      const staticFile = path.resolve(root, '.' + url.pathname);
+      if (staticFile.startsWith(root + path.sep) && /\.(?:css|js|png|svg|webp|ico|woff2?)$/i.test(staticFile) && fs.existsSync(staticFile)) {
+        return route.fulfill({path:staticFile});
       }
       return route.continue();
     });
@@ -106,6 +113,16 @@ function playwright() {
     const errors=[];page.on('pageerror',e=>errors.push(e.message.slice(0,120)));
     await page.goto(base+'/omni?businessContext=event_genix',{waitUntil:'domcontentloaded'});
     await page.waitForSelector('body.shell-ready .omni-conv-item',{timeout:60000});
+    if (zoomBrowser) {
+      await zoomBrowser.check(page, artifactDir);
+      assert.deepEqual(errors,[]);
+      return;
+    }
+    if (process.env.OMNI_LAYOUT_ONLY === '1') {
+      await require('./omni-layout.checks.cjs')(page, artifactDir);
+      assert.deepEqual(errors,[]);
+      return;
+    }
     const select=id=>page.locator('.omni-conv-item[data-id="'+id+'"]').click();
     await page.locator('[data-omni-conversations-more]').click();
     await page.waitForFunction(()=>document.querySelectorAll('.omni-conv-item').length===105);
@@ -199,37 +216,28 @@ function playwright() {
       assert.ok(measurement.width<=width+1);assert.equal(measurement.textWrap,'pre-wrap');metrics.push(measurement);
       const bounds = await page.locator('#omniInput').boundingBox();
       assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= height + 1, 'composer_outside_viewport');
-      if (width <= 1100) {
+      if (await page.locator('.omni-workspace-shell').evaluate(el=>el.classList.contains('omni-narrow'))) {
         const historyBounds = await page.locator('#omniMessages').boundingBox();
         assert.ok(historyBounds.height >= 64, 'history_collapsed');
         assert.ok(await page.locator('#omniMobileBack').isVisible());
       }
-      await page.screenshot({path:path.join(artifactDir,'fixture-omni-'+width+'x'+height+'.png'),mask:[page.locator('#sidebarNav,.header-user')],animations:'disabled'});
+      await page.screenshot({path:path.join(artifactDir,'fixture-omni-'+width+'x'+height+'.png'),animations:'disabled'});
     }
     await page.setViewportSize({width:390,height:844});
     await page.locator('#omniInput').scrollIntoViewIfNeeded();
     const composer = await page.locator('#omniInput').boundingBox();
     assert.ok(composer.width >= 200 && composer.y >= 0 && composer.y + composer.height <= 844);
-    await page.screenshot({path:path.join(artifactDir,'fixture-omni-mobile-composer.png'),mask:[page.locator('#sidebarNav,.header-user')],animations:'disabled'});
+    await page.screenshot({path:path.join(artifactDir,'fixture-omni-mobile-composer.png'),animations:'disabled'});
     await page.locator('#omniMobileBack').click();
     assert.ok(await page.locator('.omni-sidebar').isVisible());
     await select(9002);
     await page.evaluate(()=>{document.body.classList.remove('dark-mode');document.documentElement.classList.remove('dark-mode');document.documentElement.setAttribute('data-theme','light');document.documentElement.style.colorScheme='light';});
     await page.locator('#omniInput').scrollIntoViewIfNeeded();
-    await page.screenshot({path:path.join(artifactDir,'fixture-omni-mobile-light.png'),mask:[page.locator('#sidebarNav,.header-user')],animations:'disabled'});
+    await page.screenshot({path:path.join(artifactDir,'fixture-omni-mobile-light.png'),animations:'disabled'});
     await page.setViewportSize({width:1024,height:600});
-    const zoomMetrics = [];
-    for (const plus of [0,1,2]) {
-      await page.keyboard.press('Control+0');
-      for (let i=0;i<plus;i++) await page.keyboard.press('Control++');
-      await page.waitForTimeout(150);
-      const zoom = await page.evaluate(()=>({scale:window.visualViewport?.scale||1,innerWidth,innerHeight,scrollWidth:document.documentElement.scrollWidth,composer:document.querySelector('#omniInput')?.getBoundingClientRect().toJSON()}));
-      assert.ok(zoom.scrollWidth <= zoom.innerWidth + 1, 'zoom_horizontal_overflow');
-      assert.ok(zoom.composer && zoom.composer.top >= 0 && zoom.composer.bottom <= zoom.innerHeight + 1, 'zoom_composer_outside_viewport');
-      zoomMetrics.push({requested:[100,125,150][plus],...zoom});
-    }
-    await page.keyboard.press('Control+0');
+    // Browser keyboard events do not prove native zoom in headless Chrome.
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({ok:true,fixturesOnly:true,realWrites:0,conversationPagination:105,historyPagination:105,draftIsolation:true,staleMessageGuard:true,sendTargetGuard:true,idempotencyKey:true,managerAssignment:true,statusAndMineFilters:true,filterReset:true,failedCloseVisible:true,channelFeedbackVisible:true,mobileComposerReachable:true,mobileBack:true,metrics,zoomMetrics,simulatedMutations:mutations.length}));
-  } finally {await browser.close();await api.dispose();}
+    console.log(JSON.stringify({ok:true,fixturesOnly:true,realWrites:0,conversationPagination:105,historyPagination:105,draftIsolation:true,staleMessageGuard:true,sendTargetGuard:true,idempotencyKey:true,managerAssignment:true,statusAndMineFilters:true,filterReset:true,failedCloseVisible:true,channelFeedbackVisible:true,mobileComposerReachable:true,mobileBack:true,metrics,browserZoom:"not measured",simulatedMutations:mutations.length}));
+  } finally {if (zoomBrowser) await zoomBrowser.close(); else await browser.close(); await api.dispose();}
 })().catch(e=>{console.log(JSON.stringify({ok:false,error:e.message.replace(/https?:\/\/\S+/g,'[url]').slice(0,300)}));process.exitCode=1;});
+

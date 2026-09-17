@@ -1446,7 +1446,7 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniHtml, /function renderChannelDot/);
         assert.match(omniHtml, /function renderChannelBadge/);
         assert.match(omniHtml, /renderChannelDot\(c\.channel\)/);
-        assert.match(omniHtml, /renderChannelBadge\(c\.channel,\s*'list'\)/);
+        assert.doesNotMatch(omniHtml, /renderChannelBadge\(c\.channel,\s*'list'\)/, 'list uses one channel marker beside the avatar');
         assert.match(omniHtml, /renderChannelBadge\(conv\.channel,\s*'header'\)/);
         assert.match(omniHtml, /omni-channel-badge--telegram/);
         assert.match(omniHtml, /omni-channel-dot--instagram/);

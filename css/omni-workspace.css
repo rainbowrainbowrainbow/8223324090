@@ -1,198 +1,3 @@
-/* Pulse-aligned surfaces and controls; preserve existing mode and mobile behavior. */
- .omni-workspace-title { min-width: 0; }
- .omni-workspace-shell .sr-only {
-     position: absolute;
-     width: 1px;
-     height: 1px;
-     padding: 0;
-     margin: -1px;
-     overflow: hidden;
-     clip: rect(0, 0, 0, 0);
-     white-space: nowrap;
-     border: 0;
- }
-.omni-msg-content { white-space: pre-wrap; overflow-wrap: anywhere; }
-.omni-history-controls, .omni-list-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 16px; font-size: 12px; color: var(--text-secondary); }
-.omni-history-controls[hidden], .omni-channel-action-feedback[hidden] { display: none; }
-.omni-history-controls button, .omni-list-feedback button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-primary); background: var(--bg-secondary); font: inherit; cursor: pointer; }
-.omni-channel-action-feedback { margin: 0 20px 12px; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-primary); background: var(--bg-secondary); overflow-wrap: anywhere; }
-.omni-channel-action-feedback.error { border-color: var(--danger, #ef4444); }
-.omni-workspace-shell:has(.omni-container[data-omni-mode="inbox"]) > .omni-channel-action-feedback { display: none; }
-.dark-mode .omni-case-pill.unresolved { color: #e2e8f0; background: #334155; }
-.omni-channel-badge--telegram { color: #075985; }
-.omni-channel-badge--viber { color: #5b21b6; }
-.omni-channel-badge--sms { color: #166534; }
-.omni-channel-badge--facebook { color: #1e40af; }
-.omni-channel-badge--instagram { color: #831843; }
-.omni-channel-badge--binotel { color: #9a3412; }
-.dark-mode .omni-channel-badge--telegram { color: #7dd3fc; }
-.dark-mode .omni-channel-badge--viber { color: #c7bfff; }
-.dark-mode .omni-channel-badge--sms { color: #86efac; }
-.dark-mode .omni-channel-badge--facebook { color: #93c5fd; }
-.dark-mode .omni-channel-badge--instagram { color: #ffd6ec; }
-.dark-mode .omni-channel-badge--binotel { color: #fdba74; }
-.omni-container[data-omni-mode="channels"] .omni-history-controls,
-.omni-container[data-omni-mode="health"] .omni-history-controls { display: none; }
-.omni-conv-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
-.omni-workspace-title p { max-width: 52ch; line-height: 1.5; }
-.omni-workspace-modes {
-    gap: 6px;
-    padding: 6px;
-    border-radius: 12px;
-    border-color: rgba(20,184,166,0.18);
-    background: linear-gradient(135deg, rgba(255,255,255,0.82), rgba(248,250,252,0.70));
-}
-.omni-mode-btn {
-    min-height: 44px;
-    border: 1px solid transparent;
-    border-radius: 12px;
-    background: rgba(255,255,255,0.48);
-}
-.omni-mode-btn.active {
-    color: #0f766e;
-    border-color: rgba(20,184,166,0.48);
-    background: linear-gradient(135deg, rgba(20,184,166,0.14), rgba(255,255,255,0.84));
-    box-shadow: 0 8px 18px rgba(20,184,166,0.10);
-}
-.omni-sidebar, .omni-chat, .omni-mode-panel, .omni-conv-list { min-width: 0; }
-.omni-sidebar-header, .omni-mode-panel { padding: 20px; }
-.omni-stats { gap: 6px 16px; padding: 12px 20px; line-height: 1.5; }
-.omni-stat { white-space: nowrap; }
-.omni-conv-list > .explain-empty { padding: 32px 20px; }
-.omni-search { min-height: 44px; border-radius: 12px; }
-.omni-channel-filters { gap: 6px; flex-wrap: wrap; }
-.omni-channel-btn { min-height: 36px; border-radius: 10px; }
-.omni-settings-link, .omni-secondary-action, .omni-accounts-refresh,
-.omni-account-btn, .omni-chat-header-actions button, .omni-quick-replies button {
-    min-height: 40px;
-    border-radius: 12px;
-    font-family: inherit;
-    line-height: 1.35;
-}
-.omni-workspace-shell button:focus-visible,
-.omni-workspace-shell a:focus-visible,
-.omni-workspace-shell input:focus-visible,
-.omni-workspace-shell textarea:focus-visible {
-    outline: 2px solid var(--primary, #14b8a6);
-    outline-offset: 3px;
-}
-.omni-workspace-shell button:disabled { cursor: not-allowed; opacity: 0.55; }
-.omni-mode-panel-head p, .omni-panel-note, .omni-account-impact,
-.omni-health-message, .omni-connection-webhook, .omni-state-card {
-    overflow-wrap: anywhere;
-    line-height: 1.5;
-}
-.omni-chat-empty { padding: 24px; }
-.omni-chat-empty-card { max-width: 480px; border-radius: 16px; }
-.omni-account-card, .omni-health-kpi, .omni-health-list { border-radius: 14px; }
-.omni-chat-header { flex-wrap: wrap; gap: 12px; }
-.omni-chat-header-actions, .omni-empty-actions { flex-wrap: wrap; }
-.omni-msg.outbound { background: #d1fae5; color: #064e3b; border: 1px solid rgba(20,184,166,0.28); }
-.omni-msg.outbound.ai { background: #ede9fe; color: #4c1d95; border-color: rgba(139,92,246,0.28); }
-.omni-send-btn { background: var(--primary); color: #fff; border-radius: 12px; }
-.omni-send-btn:hover { background: var(--primary-dark); }
-.omni-send-state { line-height: 1.5; }
-.dark-mode .omni-msg.outbound { background: #123e3b; color: #ecfdf5; }
-.dark-mode .omni-msg.outbound.ai { background: #35285a; color: #f5f3ff; }
-.dark-mode .omni-send-state.info, .dark-mode .omni-send-truth.info { color: #93c5fd; }
-.dark-mode .omni-send-state.success, .dark-mode .omni-send-truth.success { color: #6ee7b7; }
-.dark-mode .omni-send-state.warning, .dark-mode .omni-send-truth.warning,
-.dark-mode .omni-case-link.suggested, .dark-mode .omni-case-pill.suggested { color: #fcd34d; }
-.dark-mode .omni-send-state.error, .dark-mode .omni-send-truth.error { color: #fca5a5; }
-.omni-channel-btn.active { background: rgba(20,184,166,0.14); border-color: rgba(20,184,166,0.48); color: #0f766e; }
-.dark-mode .omni-workspace-shell { border-color: rgba(148,163,184,0.18); box-shadow: none; }
-.dark-mode .omni-workspace-modes { background: rgba(15,23,42,0.52); border-color: rgba(148,163,184,0.18); }
-.dark-mode .omni-mode-btn { background: rgba(30,41,59,0.48); color: #cbd5e1; }
-.dark-mode .omni-mode-btn.active { background: rgba(20,184,166,0.12); color: #a7f3d0; border-color: rgba(20,184,166,0.42); box-shadow: inset 0 0 0 1px rgba(20,184,166,0.10); }
-.dark-mode .omni-channel-btn.active { background: rgba(20,184,166,0.14); color: #a7f3d0; border-color: rgba(20,184,166,0.42); }
-@media (max-width: 1100px) {
-    .omni-workspace-topbar { flex-wrap: wrap; gap: 12px; }
-    .omni-workspace-title { flex: 1 1 100%; }
-}
-@media (max-width: 768px) {
-    .omni-container.has-conversation[data-omni-mode="inbox"] .omni-sidebar { display: none; }
-    .omni-chat-input { flex-wrap: wrap; }
-    .omni-chat-input textarea { flex-basis: calc(100% - 60px); }
-    .omni-reply-toggle { order: 2; flex-basis: 100%; }
-    .omni-workspace-shell { height: auto; min-height: calc(100dvh - 80px); }
-    .omni-sidebar-header, .omni-mode-panel { padding: 16px; }
-    .omni-stats { padding-inline: 16px; }
-    .omni-chat-empty { padding: 20px 16px; }
-    .omni-chat-empty-card { padding: 20px 16px; }
-    .omni-workspace-modes { box-sizing: border-box; }
-    .omni-mode-btn { min-width: 0; padding-inline: 10px; }
-}
-/* Inbox workflow controls share the workspace surfaces and focus treatment. */
-.omni-delivery-review { display: grid; gap: 8px; margin-top: 10px; min-width: 0; }
-.omni-delivery-review summary { cursor: pointer; padding-block: 8px; font-size: 12px; }
-.omni-delivery-review form, .omni-delivery-review label { display: grid; gap: 8px; min-width: 0; }
-.omni-delivery-review select, .omni-delivery-review textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); font: inherit; }
-.omni-delivery-review :is(select, textarea, summary):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.omni-delivery-note { margin-top: 8px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; color: var(--text-secondary); }
-.omni-status-filter { display: flex; align-items: center; gap: 8px; padding-top: 10px; font-size: 12px; }
-.omni-status-filter select { min-width: 0; flex: 1; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); font: inherit; }
-.omni-status-filter select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.omni-msg .omni-secondary-action { display: inline-flex; margin-top: 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-.omni-business-label { padding-top: 10px; font-size: 12px; color: var(--text-secondary); }
-.omni-chat-header { flex-wrap: wrap; gap: 10px; }
-.omni-chat-header-actions { flex-wrap: wrap; min-width: 0; }
-.omni-chat-header-actions select { width: auto; max-width: 170px; min-width: 0; min-height: 36px; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-primary); background: var(--bg-secondary); font: inherit; font-size: 12px; }
-.omni-chat-header-actions select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-@media (max-width: 768px) {
-    .omni-chat-header-actions { width: 100%; margin-left: 0; }
-    .omni-chat-header-actions select { flex: 1 1 100px; max-width: 100%; }
-    .omni-chat-header-actions #omniAssignee { order: 1; flex-basis: 100%; }
-}
-.omni-file-composer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-basis: 100%; min-width: 0; font-size: 12px; }
-.omni-file-composer span { overflow-wrap: anywhere; }
-.omni-file-composer [hidden] { display: none !important; }
-.omni-file-error { padding: 8px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 12px; }
-#omniInputArea { flex-wrap: wrap; }
-.omni-comment-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 8px; align-items: center; }
-
-/* Keep long histories inside the conversation instead of below the phone viewport. */
-.omni-search-field { position: relative; }
-.omni-search-field .omni-search { padding-right: 44px; }
-.omni-search::-webkit-search-cancel-button { display: none; }
-#omniClearSearch { position: absolute; right: 2px; top: 2px; width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font-size: 24px; cursor: pointer; }
-#omniClearSearch[hidden] { display: none; }
-.omni-chat-identity { min-width: 0; flex: 1; overflow-wrap: anywhere; }
-.omni-chat-messages { min-height: 0; overscroll-behavior: contain; }
-.omni-chat-header, .omni-history-controls, .omni-chat-input, .omni-send-truth { flex-shrink: 0; }
-@media (max-width: 1100px) {
-    body:has(.omni-container.has-conversation[data-omni-mode="inbox"]) { overflow: hidden; }
-    #mainContent:has(.omni-container.has-conversation[data-omni-mode="inbox"]) { animation: none !important; transform: none !important; z-index: 1900; }
-    .omni-container.has-conversation[data-omni-mode="inbox"] {
-        position: fixed; z-index: 1900; left: 0; right: 0;
-        top: var(--omni-viewport-top, 0px); height: var(--omni-viewport-height, 100dvh);
-        min-height: 0; grid-template-columns: minmax(0, 1fr); overflow: hidden;
-        background: var(--bg-primary);
-        padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
-        box-sizing: border-box;
-    }
-    .omni-container.has-conversation[data-omni-mode="inbox"] .omni-sidebar { display: none; }
-    .omni-container.has-conversation .omni-chat { min-height: 0; height: 100%; }
-    .omni-mobile-back { display: inline-flex; align-items: center; }
-    .omni-chat-header { padding: 10px 12px; gap: 8px; }
-    .omni-chat-header-actions { width: 100%; margin-left: 0; }
-    .omni-chat-header-actions select { flex: 1; max-width: 100%; }
-    .omni-case-context { max-height: 76px; overflow: auto; flex-shrink: 0; }
-    .omni-quick-replies { max-height: 60px; overflow: auto; flex-shrink: 0; }
-    .omni-container.has-conversation[data-omni-mode="inbox"] #omniInputArea { display: grid !important; grid-template-columns: minmax(0, 1fr) 44px; padding: 10px 12px; gap: 6px 8px; }
-    .omni-file-composer, .omni-reply-toggle { grid-column: 1 / -1; }
-    .omni-file-composer { max-height: 94px; overflow: auto; }
-    .omni-file-composer #omniFileHint { font-size: 11px; }
-    #omniInput { grid-column: 1; grid-row: 2; font-size: 16px; width: 100%; box-sizing: border-box; }
-    #omniSendBtn { grid-column: 2; grid-row: 2; width: 44px; min-height: 44px; }
-    .omni-reply-toggle { min-height: 30px; }
-    .omni-compact-input .omni-chat-header { max-height: 100px; overflow: auto; }
-    .omni-compact-input .omni-case-context { max-height: 32px; }
-    .omni-compact-input .omni-history-controls { max-height: 40px; overflow: auto; }
-    .omni-compact-input #omniFileHint { display: none; }
-    .omni-compact-input:has(#omniInput:focus) .omni-chat-header-actions,
-    .omni-compact-input:has(#omniInput:focus) .omni-case-context,
-    .omni-compact-input:has(#omniInput:focus) .omni-quick-replies { display: none !important; }
-}
 .omni-account-preflight { margin-top: 8px; padding: 8px; border-radius: 10px; background: rgba(15,23,42,0.04); }
 .omni-account-preflight-title { margin-bottom: 6px; font-size: 11px; font-weight: 900; color: var(--text-secondary, #64748b); text-transform: uppercase; letter-spacing: 0.04em; }
 .omni-account-preflight-grid { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -253,593 +58,200 @@
     background: rgba(16, 185, 129, 0.08);
 }
 
-
-        /* Omni inbox layout guard: keep the workspace inside the available
-           main-content height and give the two work surfaces their own scroll. */
-        body:has(.omni-workspace-shell) #mainApp {
-            height: 100dvh;
-            min-height: 0;
-        }
-
-        body[data-page-group="system"] .main-content {
-            display: flex;
-            flex-direction: column;
-            min-height: 0;
-            overflow: hidden;
-        }
-
-        .omni-workspace-shell {
-            flex: 1 1 auto;
-            height: auto;
-            min-height: 0;
-            overflow: hidden;
-        }
-
-        .omni-workspace-topbar {
-            flex: 0 0 auto;
-            min-height: 58px;
-            padding: 10px 16px;
-            gap: 12px;
-        }
-
-        .omni-workspace-title {
-            display: flex;
-            align-items: center;
-            min-width: 0;
-        }
-
-        .omni-workspace-title h1 {
-            font-size: 19px;
-            line-height: 1.1;
-            white-space: nowrap;
-        }
-
-        .omni-workspace-title p {
-            display: none;
-        }
-
-        .omni-workspace-modes {
-            margin-left: auto;
-        }
-
-        .omni-mode-btn,
-        .omni-settings-link {
-            min-height: 34px;
-        }
-
-.omni-container {
-    flex: 1 1 auto;
-    min-width: 0;
-    min-height: 0;
-    grid-template-rows: minmax(0, 1fr);
-    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
-    overflow: hidden;
-}
-
-        .omni-sidebar,
-        .omni-chat {
-            min-width: 0;
-            min-height: 0;
-        }
-
-        .omni-sidebar {
-            overflow: hidden;
-        }
-
-        .omni-sidebar-header {
-            flex: 0 0 auto;
-            min-width: 0;
-            padding: 12px 14px 10px;
-        }
-
-        .omni-sidebar-header h2 {
-            margin-bottom: 0;
-            font-size: 16px;
-            line-height: 1.2;
-        }
-
-        .omni-sidebar-heading {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            min-width: 0;
-        }
-
-        .omni-view-filters {
-            display: inline-flex;
-            gap: 3px;
-            min-width: 0;
-        }
-
-        .omni-view-filter {
-            min-height: 27px;
-            padding: 4px 7px;
-            border: 1px solid var(--border-color, #cbd5e0);
-            border-radius: 7px;
-            background: transparent;
-            color: var(--text-secondary, #718096);
-            font-size: 11px;
-            font-weight: 800;
-            cursor: pointer;
-            white-space: nowrap;
-        }
-
-        .omni-view-filter.active {
-            border-color: rgba(16,185,129,0.56);
-            background: rgba(16,185,129,0.14);
-            color: var(--text-primary, #0f172a);
-        }
-
-        .omni-view-filter b {
-            margin-left: 2px;
-            font-size: 10px;
-            opacity: 0.72;
-        }
-
-        .omni-filter-controls {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 6px;
-            margin-top: 8px;
-        }
-
-        .omni-filter-field {
-            display: grid;
-            gap: 3px;
-            min-width: 0;
-        }
-
-        .omni-filter-field > span {
-            color: var(--text-secondary, #718096);
-            font-size: 10px;
-            font-weight: 800;
-        }
-
-        .omni-filter-field select {
-            width: 100%;
-            min-height: 32px;
-            padding: 5px 8px;
-            border: 1px solid var(--border-color, #cbd5e0);
-            border-radius: 8px;
-            background: var(--bg-secondary, #f7fafc);
-            color: var(--text-primary, #1a202c);
-            font-size: 12px;
-            font-weight: 700;
-        }
-
-        .omni-status-filters {
-            min-width: 0;
-        }
-
-        .omni-status-filters summary {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            min-height: 32px;
-            padding: 5px 8px;
-            border: 1px solid var(--border-color, #cbd5e0);
-            border-radius: 8px;
-            color: var(--text-secondary, #718096);
-            font-size: 11px;
-            font-weight: 800;
-            cursor: pointer;
-            list-style: none;
-        }
-
-        .omni-status-filters summary::-webkit-details-marker { display: none; }
-        .omni-status-filters summary::after { content: '⌄'; margin-left: 5px; }
-        .omni-status-filters[open] summary::after { content: '⌃'; }
-        .omni-status-filters summary span { margin-left: auto; color: var(--text-primary, #1a202c); }
-        .omni-status-filters .omni-filter-field { margin-top: 4px; }
-
-        .omni-channel-status-dot {
-            width: 8px;
-            height: 8px;
-            flex: 0 0 auto;
-            border-radius: 50%;
-            background: #10B981;
-        }
-
-        .omni-channel-status-dot.warning { background: #F59E0B; }
-        .omni-channel-status-dot.danger { background: #EF4444; }
-
-        .omni-channel-status-details { min-width: 0; }
-        .omni-channel-status-details summary { cursor: pointer; color: inherit; font-weight: 900; }
-        .omni-channel-status-details ul { margin: 4px 0 0; padding-left: 18px; }
-        .omni-channel-status-details li { margin: 2px 0; }
-        .omni-channel-status-ok { color: #059669; }
-
-        .omni-search {
-            min-height: 38px;
-            padding: 8px 10px;
-        }
-
-        .omni-channel-filters {
-            flex-wrap: nowrap;
-            gap: 5px;
-            margin-top: 8px;
-            padding-bottom: 2px;
-            overflow-x: auto;
-            scrollbar-width: thin;
-            scrollbar-color: var(--border-color, #cbd5e0) transparent;
-        }
-
-        .omni-channel-btn {
-            flex: 0 0 auto;
-            min-height: 32px;
-            padding: 6px 9px;
-        }
-
-        #omniExplainability {
-            max-height: 46px;
-            margin-top: 6px;
-            overflow-y: auto;
-        }
-
-        #omniExplainability .explain-filter-summary {
-            gap: 6px;
-            margin: 0;
-            padding: 6px 8px;
-        }
-
-        #omniExplainability .explain-clear-btn {
-            min-height: 28px;
-            padding: 4px 8px;
-        }
-
-        .omni-stats {
-            flex: 0 0 auto;
-            gap: 10px;
-            padding: 7px 14px;
-            font-size: 11px;
-        }
-
-        .omni-conv-list {
-            flex: 1 1 auto;
-            min-height: 0;
-            overflow-y: auto;
-            overscroll-behavior: contain;
-            scrollbar-width: thin;
-        }
-
-        .omni-conv-item {
-            min-width: 0;
-            padding: 11px 14px;
-        }
-
-        .omni-chat {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .omni-mobile-back {
-            display: none;
-            align-items: center;
-            min-height: 32px;
-            padding: 5px 8px;
-            border: 1px solid var(--border-color, #cbd5e0);
-            border-radius: 8px;
-            background: transparent;
-            color: var(--text-primary, #1a202c);
-            font-size: 12px;
-            font-weight: 900;
-            cursor: pointer;
-        }
-
-        .omni-chat-empty,
-        .omni-chat-header,
-        .omni-case-context,
-        .omni-chat-messages,
-        .omni-quick-replies,
-        .omni-chat-input,
-        .omni-send-truth {
-            min-width: 0;
-        }
-
-        .omni-chat-messages {
-            flex: 1 1 auto;
-            min-height: 0;
-            overflow-y: auto;
-            overscroll-behavior: contain;
-        }
-
-        .omni-chat-input {
-            flex: 0 0 auto;
-        }
-
-        .omni-accounts-alarm {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex: 0 0 auto;
-            margin: 6px 16px;
-            padding: 7px 10px;
-            font-size: 12px;
-        }
-
-        .omni-accounts-alarm strong { min-width: 0; }
-        .omni-accounts-alarm button { margin-left: auto; flex: 0 0 auto; }
-
-        .dark-mode .omni-filter-field select,
-        .dark-mode .omni-status-filters summary {
-            background: rgba(15,23,42,0.82);
-            border-color: rgba(148,163,184,0.24);
-            color: #F8FAFC;
-        }
-
-        .dark-mode .omni-view-filter { border-color: rgba(148,163,184,0.24); color: #CBD5E1; }
-        .dark-mode .omni-view-filter.active { color: #F8FAFC; }
-        .dark-mode .omni-channel-status-ok { color: #6EE7B7; }
-
-        @media (max-width: 768px) {
-            body[data-page-group="system"] .main-content {
-                display: block;
-                min-height: 0;
-                overflow: hidden;
-            }
-
-            .omni-workspace-shell {
-                height: var(--omni-shell-height, calc(100dvh - 56px));
-                min-height: 0;
-                overflow: hidden;
-            }
-
-            .omni-workspace-topbar {
-                align-items: center;
-                flex-direction: row;
-                flex-wrap: wrap;
-                padding: 10px 12px;
-            }
-
-            .omni-workspace-title {
-                flex: 1 1 auto;
-            }
-
-            .omni-workspace-modes {
-                order: 3;
-                width: 100%;
-                margin-left: 0;
-            }
-
-            .omni-settings-link {
-                width: auto;
-            }
-
-            .omni-container {
-                height: 100%;
-                min-height: 0;
-                grid-template-columns: minmax(0, 1fr);
-                overflow: hidden;
-            }
-
-            .omni-container[data-omni-mode="inbox"][data-mobile-view="list"] .omni-chat {
-                display: none;
-            }
-
-            .omni-container[data-omni-mode="inbox"][data-mobile-view="list"] .omni-sidebar {
-                display: flex;
-                border-right: 0;
-            }
-
-            .omni-container[data-omni-mode="inbox"][data-mobile-view="conversation"] .omni-sidebar {
-                display: none;
-            }
-
-            .omni-container[data-omni-mode="inbox"][data-mobile-view="conversation"] .omni-chat {
-                display: flex;
-                min-height: 0;
-            }
-
-            .omni-mobile-back {
-                display: inline-flex;
-            }
-
-            .omni-chat-header {
-                padding: 9px 10px;
-                gap: 8px;
-            }
-
-            .omni-chat-header-actions {
-                gap: 4px;
-            }
-
-            .omni-chat-header-actions button {
-                min-height: 32px;
-                padding: 5px 8px;
-            }
-
-            .omni-channel-filters {
-                overflow-x: auto;
-            }
-
-            .omni-filter-controls {
-                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            }
-
-            .omni-case-context {
-                padding: 6px 10px;
-            }
-
-            .omni-case-details summary {
-                min-height: 28px;
-            }
-
-            .omni-chat-input {
-                padding: 8px 10px;
-                padding-bottom: max(8px, env(safe-area-inset-bottom));
-            }
-        }
-
-        @media (max-width: 360px) {
-            .omni-chat-input {
-                flex-wrap: wrap;
-            }
-
-            .omni-chat-input textarea {
-                flex: 1 1 calc(100% - 50px);
-            }
-
-            .omni-reply-toggle {
-                order: 3;
-                flex: 0 0 100%;
-                min-height: 24px;
-                padding: 0;
-            }
-        }
-
-        @media (max-height: 640px) and (min-width: 769px) {
-            .omni-workspace-topbar {
-                min-height: 50px;
-                padding-top: 6px;
-                padding-bottom: 6px;
-            }
-
-            .omni-sidebar-header {
-                padding-top: 9px;
-                padding-bottom: 7px;
-            }
-
-            .omni-stats {
-                padding-top: 5px;
-                padding-bottom: 5px;
-            }
-        }
-
-
-        .omni-case-details {
-            min-width: 0;
-        }
-
-        .omni-case-details summary {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            min-height: 26px;
-            color: var(--text-secondary, #718096);
-            font-size: 11px;
-            font-weight: 900;
-            cursor: pointer;
-            list-style: none;
-        }
-
-        .omni-case-details summary::-webkit-details-marker { display: none; }
-        .omni-case-details summary::before { content: '›'; font-size: 18px; line-height: 1; }
-        .omni-case-details[open] summary::before { transform: rotate(90deg); }
-        .omni-case-details .omni-case-row { padding-top: 5px; }
-
-/* Final Omni topbar surface overrides. */
-.omni-workspace-shell,
-.omni-workspace-shell :is(button, input, select, textarea) { font-family: var(--font-family, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif); }
-.omni-workspace-topbar { min-height: 54px; padding: 8px 14px; gap: 10px; background: var(--bg-primary, #fff); }
-.omni-workspace-title h1 { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
-.omni-workspace-modes { gap: 2px; padding: 3px; border: 1px solid var(--border-color, #cbd5e1); border-radius: 10px; background: transparent; }
-.omni-mode-btn { min-height: 36px; padding: 7px 13px; border: 0; border-radius: 8px; color: var(--text-secondary, #475569); background: transparent; font-size: 13px; font-weight: 600; }
-.omni-mode-btn.active { color: var(--primary-700, #047857); background: rgba(16,185,129,0.12); box-shadow: none; }
-.omni-settings-link { width: 40px; min-width: 40px; min-height: 40px; padding: 0; border: 1px solid var(--border-color, #cbd5e1); border-radius: 10px; background: transparent; color: var(--text-secondary, #475569); }
-.omni-settings-link:hover { background: rgba(16,185,129,0.08); color: var(--primary-700, #047857); }
-.omni-settings-icon,
-.omni-settings-icon svg { width: 19px; height: 19px; display: block; }
+.omni-delivery-review { display: grid; gap: 8px; margin-top: 10px; min-width: 0; }
+.omni-delivery-review summary { cursor: pointer; padding-block: 8px; font-size: 12px; }
+.omni-delivery-review form, .omni-delivery-review label { display: grid; gap: 8px; min-width: 0; }
+.omni-delivery-review select, .omni-delivery-review textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); font: inherit; }
+.omni-delivery-review :is(select, textarea, summary):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.omni-delivery-note { margin-top: 8px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; color: var(--text-secondary); }
+
+/* One layout owner for Omni. Breakpoints use the available workspace/chat width,
+   so CRM navigation and browser zoom cannot squeeze the conversation identity. */
+body:has(.omni-workspace-shell) #mainApp { height: 100dvh; min-height: 0; }
+body:has(.omni-workspace-shell) .header { flex-shrink: 0; }
+body[data-page-group="system"] #mainContent { display: flex; min-height: 0; overflow: hidden; }
+.omni-workspace-shell { position: relative; container: omni / inline-size; flex: 1; height: var(--omni-shell-height, 100%); min-width: 0; min-height: 0; overflow: hidden; box-shadow: none; font-family: var(--font-family); }
+.omni-workspace-shell :is(button,input,select,textarea,h1,h2,h3) { font-family: inherit; }
+.omni-workspace-shell [hidden] { display: none !important; }
+.omni-workspace-shell .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.omni-workspace-shell :is(button,a,input,select,textarea,summary):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.omni-workspace-shell button:disabled { cursor: not-allowed; opacity: .55; }
+.omni-workspace-topbar { position: relative; display: flex; flex-direction: row; flex-wrap: nowrap; flex: 0 0 auto; align-items: center; gap: 8px; min-height: 54px; padding: 6px 12px; background: var(--bg-primary); }
+.omni-workspace-title { min-width: 0; margin-right: auto; }
+.omni-workspace-title h1 { font-size: 19px; font-weight: 700; white-space: nowrap; }
+.omni-workspace-modes { display: flex; padding: 0; gap: 2px; border: 0; border-radius: 0; background: transparent; }
+.omni-mode-btn { min-height: 38px; padding: 8px 10px; font-size: 13px; font-weight: 600; background: transparent; border: 0; box-shadow: none; }
+.omni-mode-btn.active { background: rgba(16,185,129,.12); color: #047857; box-shadow: none; }
+.omni-settings-link { width: 38px; min-width: 38px; min-height: 38px; padding: 0; border: 0; background: transparent; }
+.omni-settings-icon, .omni-settings-icon svg { display: block; width: 20px; height: 20px; }
 .omni-settings-icon svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.omni-accounts-alarm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 38px; margin: 0; padding: 7px 12px; border-width: 0 0 1px; border-radius: 0; background: var(--bg-secondary, #f8fafc); color: var(--text-secondary, #475569); font-weight: 500; }
-.omni-accounts-alarm strong { font-weight: 600; }
-.omni-accounts-alarm button { margin-left: auto; padding: 5px 10px; border-radius: 8px; font: inherit; font-weight: 600; }
-.omni-accounts-alarm.is-warning { border-color: rgba(245,158,11,0.32); background: rgba(245,158,11,0.10); color: #92400e; }
-.omni-accounts-alarm.is-danger { border-color: rgba(239,68,68,0.32); background: rgba(239,68,68,0.10); color: #991b1b; }
-.omni-channel-status-details summary { font-weight: 600; }
-@media (max-width: 1100px) and (min-width: 769px) {
-    .omni-workspace-topbar { flex-wrap: nowrap; padding-inline: 12px; }
-    .omni-workspace-title { flex: 1 1 auto; }
-    .omni-workspace-modes { margin-left: auto; }
-}
-.dark-mode .omni-workspace-topbar { background: var(--bg-primary, #0f172a); }
-.dark-mode .omni-workspace-modes { background: transparent; border-color: rgba(148,163,184,0.24); }
-.dark-mode .omni-mode-btn { background: transparent; color: #cbd5e1; }
-.dark-mode .omni-mode-btn.active { color: #a7f3d0; background: rgba(20,184,166,0.14); box-shadow: none; }
-.dark-mode .omni-settings-link { background: transparent; color: #cbd5e1; }
-.dark-mode .omni-accounts-alarm { background: rgba(30,41,59,0.72); color: #cbd5e1; }
-.dark-mode .omni-accounts-alarm.is-warning { background: rgba(120,53,15,0.28); color: #fcd34d; }
-.dark-mode .omni-accounts-alarm.is-danger { background: rgba(127,29,29,0.26); color: #fca5a5; }
-
-/* Conversation list hierarchy: search first, quick views second, filters third. */
-.omni-sidebar-header {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-.omni-sidebar-header > .omni-search-field { order: 1; }
-.omni-sidebar-header > .omni-view-filter-row { order: 2; min-height: 32px; }
-.omni-sidebar-header > .omni-filter-controls { order: 3; margin-top: 0; }
-.omni-sidebar-header > #omniExplainability { order: 4; }
-.omni-sidebar-header > .omni-business-label { order: 5; padding-top: 0; }
-.omni-view-filter-row { justify-content: flex-start; }
-.omni-view-filters { gap: 6px; }
-.omni-view-filter { min-height: 32px; padding: 6px 11px; border-radius: 9px; font-size: 12px; font-weight: 600; }
-.omni-view-filter.active { box-shadow: inset 0 0 0 1px rgba(16,185,129,0.08); }
-.omni-filter-controls { gap: 8px; }
-.omni-filter-field > span { font-weight: 600; }
-.omni-filter-field select, .omni-status-filters summary { font-weight: 600; }
-#omniExplainability { margin-top: 0; max-height: 40px; }
-#omniExplainability .explain-filter-summary { padding: 5px 7px; }
-.omni-stats { border-top: 1px solid var(--border-color, #cbd5e1); }
-.omni-conv-item { gap: 10px; padding: 10px 14px; }
-.omni-conv-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.omni-conv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.omni-conv-meta { flex: 0 0 auto; min-width: 42px; }
-@media (max-width: 360px) {
-    .omni-filter-controls { grid-template-columns: 1fr; }
-}
-
-/* Open conversation: keep the header and CRM context quiet so messages win the space. */
-.omni-chat-header {
-    min-height: 56px;
-    padding: 8px 14px;
-    gap: 8px;
-}
-.omni-chat-header > .omni-conv-avatar { width: 36px; height: 36px; font-size: 13px; }
-.omni-chat-header-name { font-size: 15px; font-weight: 600; }
-.omni-chat-header-channel { padding: 0; background: transparent; }
-.omni-chat-header .omni-channel-badge--header { margin-right: 4px; padding: 2px 5px; border: 0; background: transparent; font-size: 11px; font-weight: 600; }
-.omni-chat-header .omni-channel-badge--header .omni-channel-badge-icon { font-size: 11px; }
-.omni-chat-header-actions { gap: 6px; }
-.omni-chat-header-actions select,
-.omni-chat-header-actions button { min-height: 34px; padding: 6px 9px; border-radius: 9px; font-weight: 600; }
-.omni-chat-more { display: contents; }
-.omni-chat-more > summary { display: none; }
-.omni-chat-more-menu { display: contents; }
-.omni-case-context { padding: 4px 14px; background: transparent; }
-.omni-case-details summary { min-height: 28px; font-size: 12px; font-weight: 600; }
-.omni-case-row { gap: 6px; }
-.omni-case-title { font-weight: 600; }
-.omni-chat-messages { padding: 12px 16px; gap: 6px; }
-.omni-msg { max-width: min(76%, 620px); padding: 9px 12px; border-radius: 14px; }
-.omni-msg-time { font-size: 11px; margin-top: 3px; opacity: 0.65; }
-.omni-chat-input { padding: 10px 14px; gap: 8px; }
-.omni-send-btn { width: 44px; height: 44px; flex: 0 0 44px; font-weight: 700; }
-@media (min-width: 769px) {
-    .omni-chat-header-actions { width: auto; margin-left: auto; }
-    .omni-chat-more:not([open]) > .omni-chat-more-menu { display: contents; }
-}
-
-@media (max-width: 768px) {
-    .omni-chat-header { padding: 7px 10px; }
-    .omni-chat-header-actions { display: flex; align-items: center; gap: 5px; }
-    .omni-chat-header-actions select { flex: 1 1 0; min-width: 0; max-width: none; }
-    .omni-chat-more { position: relative; display: block; flex: 0 0 auto; }
-    .omni-chat-more > summary { display: inline-flex; align-items: center; min-height: 34px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 9px; color: var(--text-primary); background: var(--bg-secondary); cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; list-style: none; }
-    .omni-chat-more > summary::-webkit-details-marker { display: none; }
-    .omni-chat-more:not([open]) > .omni-chat-more-menu { display: none; }
-    .omni-chat-more[open] > .omni-chat-more-menu { position: absolute; z-index: 5; top: calc(100% + 5px); right: 0; display: grid; min-width: 170px; padding: 5px; gap: 4px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); box-shadow: var(--shadow-md, 0 8px 20px rgba(0,0,0,.16)); }
-    .omni-chat-more-menu button { width: 100%; justify-content: flex-start; text-align: left; }
-    .omni-chat-messages { padding: 10px 12px; }
-    .omni-msg { max-width: 88%; }
-    .omni-chat-input { padding: 8px 10px; }
-}
-
-/* Shared avatar renderer: a fixed box prevents layout shifts while a safe URL loads. */
+.omni-accounts-alarm { position: static; flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text-secondary); font-weight: 500; }
+.omni-channel-status-details > summary { display: flex; align-items: center; gap: 6px; padding: 8px 4px; min-height: 38px; list-style: none; cursor: pointer; font-weight: 500; }
+.omni-channel-status-details > summary::-webkit-details-marker { display: none; }
+.omni-channel-status-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--primary); }
+.omni-channel-status-dot.warning { background: #f59e0b; }
+.omni-channel-status-dot.danger { background: #ef4444; }
+.omni-channel-popover, .omni-filter-popover, .omni-chat-more-menu { z-index: 20; padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.omni-channel-popover { position: absolute; right: 10px; top: calc(100% - 2px); width: min(360px, calc(100% - 20px)); max-height: min(340px, 50dvh); overflow: auto; font-size: 13px; line-height: 1.5; }
+.omni-channel-popover ul { padding-left: 20px; margin: 8px 0; }
+.omni-channel-popover button { min-height: 36px; margin: 4px 0 0; border-radius: 8px; font: inherit; }
+.omni-container { flex: 1; display: grid; grid-template-columns: 300px minmax(0,1fr); grid-template-rows: minmax(0,1fr); min-width: 0; min-height: 0; height: auto; overflow: hidden; }
+.omni-sidebar, .omni-chat { min-width: 0; min-height: 0; overflow: hidden; }
+.omni-sidebar { display: flex; flex-direction: column; }
+.omni-sidebar-header { display: flex; flex-direction: column; flex: 0 0 auto; min-width: 0; padding: 10px 12px 8px; gap: 8px; overflow: visible; }
+.omni-search-field { position: relative; order: 1; }
+.omni-search { min-height: 38px; padding: 8px 38px 8px 10px; }
+.omni-search::-webkit-search-cancel-button { display: none; }
+#omniClearSearch { position: absolute; top: 0; right: 0; width: 38px; height: 38px; border: 0; background: transparent; color: var(--text-secondary); font-size: 22px; cursor: pointer; }
+.omni-view-filter-row { order: 2; }
+.omni-view-filters { display: flex; gap: 8px; }
+.omni-view-filter { min-height: 34px; padding: 6px 11px; border: 1px solid var(--border-color); border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; }
+.omni-view-filter.active { color: var(--text-primary); background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.35); }
+.omni-filter-controls { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 8px; order: 3; }
+.omni-filter-field { display: grid; min-width: 0; }
+.omni-filter-field select, .omni-status-filters summary { width: 100%; min-width: 0; min-height: 36px; padding: 7px 9px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; font-weight: 500; }
+.omni-status-filters { position: relative; }
+.omni-status-filters summary { cursor: pointer; list-style: none; white-space: nowrap; }
+.omni-status-filters summary::-webkit-details-marker { display: none; }
+.omni-status-filters summary::after { content: '⌄'; margin-left: 8px; }
+.omni-status-filters[open] summary::after { content: '⌃'; }
+.omni-status-filters summary { font-weight: 600; }
+.omni-filter-popover { position: absolute; top: calc(100% + 6px); right: 0; width: 240px; max-width: calc(100cqw - 32px); }
+.omni-stats { display: flex; flex-wrap: wrap; padding: 10px 0 0; gap: 6px 12px; border: 0; font-size: 12px; }
+.omni-stat { white-space: nowrap; }
+.omni-business-label { order: 5; padding: 0; font-size: 12px; color: var(--text-secondary); line-height: 18px; }
+#omniExplainability { order: 4; min-width: 0; overflow-x: auto; }
+#omniExplainability .explain-filter-summary { display: flex; flex-wrap: nowrap; gap: 6px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; font-size: 12px; }
+#omniExplainability .explain-filter-label { display: none; }
+#omniExplainability .explain-filter-main { display: flex; flex-wrap: nowrap; min-width: 0; overflow-x: auto; }
+#omniExplainability .explain-chip { white-space: nowrap; }
+#omniExplainability .explain-clear-btn { flex-shrink: 0; min-height: 30px; padding: 4px 8px; font-size: 12px; }
+.omni-conv-list { flex: 1; min-height: 0; max-height: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.omni-conv-item { min-width: 0; min-height: 64px; padding: 10px 12px; gap: 10px; align-items: center; }
+.omni-conv-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.omni-conv-name, .omni-conv-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.omni-conv-name { font-weight: 600; }
+.omni-conv-meta { flex: 0 0 auto; min-width: 36px; }
 .omni-conv-avatar { position: relative; overflow: hidden; }
 .omni-conv-avatar img[data-omni-avatar-image] { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .omni-avatar-fallback { position: relative; z-index: 0; }
-@media (max-width: 1100px) {
-    .omni-mobile-back { display: inline-flex; align-items: center; }
+.omni-chat { display: flex; flex-direction: column; container: conversation / inline-size; }
+.omni-chat-header { flex-direction: column; align-items: stretch; flex: 0 0 auto; min-width: 0; padding: 8px 12px; gap: 8px; }
+.omni-chat-person { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.omni-chat-person > .omni-conv-avatar { width: 36px; height: 36px; }
+.omni-chat-identity { flex: 1; min-width: 0; }
+.omni-chat-header-name { font-size: 15px; font-weight: 600; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.omni-chat-header-channel { display: flex; align-items: center; gap: 4px; padding: 0; background: transparent; min-width: 0; flex-wrap: wrap; }
+.omni-channel-badge--header { background: transparent; border: 0; padding: 0; line-height: 1.3; }
+.omni-channel-badge--telegram { color: #075985; }
+.omni-channel-badge--viber { color: #5b21b6; }
+.omni-channel-badge--sms, .omni-channel-badge--whatsapp { color: #166534; }
+.omni-channel-badge--facebook { color: #1e40af; }
+.omni-channel-badge--instagram { color: #831843; }
+.omni-channel-badge--binotel { color: #9a3412; }
+.dark-mode .omni-channel-badge--telegram { color: #7dd3fc; }
+.dark-mode .omni-channel-badge--viber { color: #c7bfff; }
+.dark-mode .omni-channel-badge--sms, .dark-mode .omni-channel-badge--whatsapp { color: #86efac; }
+.dark-mode .omni-channel-badge--facebook { color: #93c5fd; }
+.dark-mode .omni-channel-badge--instagram { color: #ffd6ec; }
+.dark-mode .omni-channel-badge--binotel { color: #fdba74; }
+.omni-chat-header-actions { display: flex; flex-wrap: nowrap; align-items: center; width: 100%; min-width: 0; margin: 0; gap: 8px; }
+.omni-chat-header-actions select, .omni-chat-header-actions button, .omni-chat-more > summary { min-height: 36px; padding: 7px 9px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; font-weight: 500; }
+.omni-chat-header-actions select { min-width: 0; max-width: 220px; flex: 1 1 0; }
+.omni-chat-more { position: relative; flex: 0 0 auto; }
+.omni-chat-more > summary { display: flex; align-items: center; cursor: pointer; list-style: none; }
+.omni-chat-more > summary::-webkit-details-marker { display: none; }
+.omni-chat-more-menu { display: grid; position: absolute; top: calc(100% + 5px); right: 0; width: 190px; gap: 6px; }
+.omni-chat-more:not([open]) > .omni-chat-more-menu { display: none; }
+.omni-chat-more-menu button { width: 100%; text-align: left; }
+.omni-mobile-back { display: none; flex-shrink: 0; min-height: 38px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); background: transparent; font-size: 13px; font-weight: 600; cursor: pointer; }
+.omni-case-context { flex: 0 0 auto; max-height: 100px; overflow: auto; padding: 4px 12px; background: transparent; }
+.omni-case-details { min-width: 0; }
+.omni-case-details summary { display: flex; align-items: center; gap: 6px; min-height: 26px; color: var(--text-secondary); font-size: 12px; font-weight: 500; cursor: pointer; list-style: none; }
+.omni-case-details summary::before { content: '›'; font-size: 18px; }
+.omni-case-details[open] summary::before { transform: rotate(90deg); }
+.omni-case-details summary::-webkit-details-marker { display: none; }
+.omni-case-row { padding-top: 5px; }
+.omni-history-controls, .omni-list-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 12px; font-size: 12px; color: var(--text-secondary); }
+.omni-history-controls { flex: 0 0 auto; max-height: 60px; overflow: auto; }
+.omni-history-controls button, .omni-list-feedback button { min-height: 32px; padding: 5px 8px; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); background: var(--bg-secondary); font: inherit; cursor: pointer; }
+.omni-chat-messages { flex: 1; min-width: 0; min-height: 0; padding: 12px; gap: 8px; overflow-y: auto; overscroll-behavior: contain; }
+.omni-msg { max-width: min(88%,620px); padding: 9px 12px; border-radius: 12px; }
+.omni-msg-content { white-space: pre-wrap; overflow-wrap: anywhere; }
+.omni-msg-time { font-size: 11px; margin-top: 4px; opacity: .7; }
+.omni-quick-replies { flex: 0 0 auto; max-height: 48px; overflow: auto; }
+.omni-quick-replies:empty { display: none !important; }
+.omni-chat-input { flex: 0 0 auto; grid-template-columns: minmax(0,1fr) 44px; gap: 6px 8px; min-width: 0; padding: 8px 12px; }
+#omniInput { grid-column: 1; grid-row: 1; min-width: 0; width: 100%; min-height: 44px; max-height: 120px; font-size: 14px; }
+#omniSendBtn { grid-column: 2; grid-row: 1; width: 44px; height: 44px; align-self: end; border-radius: 10px; background: var(--primary); color: #fff; }
+.omni-file-composer { grid-column: 1/-1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; font-size: 12px; max-height: 72px; overflow: auto; }
+.omni-file-composer span { overflow-wrap: anywhere; }
+.omni-file-composer .omni-secondary-action { min-height: 30px; padding: 4px 8px; font-size: 12px; font-weight: 500; }
+.omni-reply-toggle { margin: 0 0 0 auto; min-height: 30px; white-space: nowrap; }
+.omni-send-truth { flex: 0 0 auto; max-height: 78px; overflow: auto; overflow-wrap: anywhere; }
+.omni-file-error { padding: 8px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 12px; }
+.omni-comment-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 8px; align-items: center; }
+.omni-msg .omni-secondary-action { display: inline-flex; margin-top: 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.omni-channel-action-feedback { margin: 8px 12px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; max-height: 96px; overflow: auto; flex-shrink: 0; }
+.omni-channel-action-feedback.error { border-color: var(--danger,#ef4444); }
+.omni-workspace-shell:has(.omni-container[data-omni-mode="inbox"]) > .omni-channel-action-feedback { display: none; }
+.omni-container:not([data-omni-mode="inbox"]) .omni-history-controls { display: none; }
+.omni-mode-panel { min-width: 0; min-height: 0; padding: 16px; overflow: auto; }
+.omni-account-card, .omni-health-row { min-width: 0; overflow-wrap: anywhere; }
+.omni-chat-empty { min-width: 0; min-height: 0; padding: 16px; overflow: auto; }
+.omni-chat-empty-card { max-width: 440px; padding: 24px; box-shadow: none; }
+.omni-chat-empty-title { font-weight: 600; }
+.omni-mode-panel-head p, .omni-panel-note, .omni-account-impact, .omni-health-message, .omni-connection-webhook, .omni-state-card { overflow-wrap: anywhere; }
+.dark-mode .omni-workspace-topbar, .dark-mode .omni-workspace-modes, .dark-mode .omni-accounts-alarm { background: transparent; }
+.dark-mode .omni-accounts-alarm { border: 0; color: var(--text-secondary); }
+.dark-mode .omni-mode-btn { background: transparent; box-shadow: none; }
+.dark-mode .omni-mode-btn.active { background: rgba(16,185,129,.14); color: #a7f3d0; box-shadow: none; }
+.dark-mode .omni-msg.outbound { background: #123e3b; color: #ecfdf5; }
+.dark-mode .omni-msg.outbound.ai { background: #35285a; color: #f5f3ff; }
+.dark-mode .omni-send-state.info, .dark-mode .omni-send-truth.info { color: #93c5fd; }
+.dark-mode .omni-send-state.success, .dark-mode .omni-send-truth.success { color: #6ee7b7; }
+.dark-mode .omni-send-state.warning, .dark-mode .omni-send-truth.warning, .dark-mode .omni-case-link.suggested, .dark-mode .omni-case-pill.suggested { color: #fcd34d; }
+.dark-mode .omni-send-state.error, .dark-mode .omni-send-truth.error { color: #fca5a5; }
+.dark-mode .omni-case-pill.unresolved { color: #e2e8f0; background: #334155; }
+@container conversation (min-width: 660px) {
+    .omni-chat-more { display: contents; }
+    .omni-chat-more > summary { display: none; }
+    .omni-chat-more-menu, .omni-chat-more:not([open]) > .omni-chat-more-menu { position: static; display: flex; padding: 0; width: auto; border: 0; background: transparent; box-shadow: none; gap: 8px; }
+    .omni-chat-more-menu button { width: auto; white-space: nowrap; }
 }
+@container conversation (max-width: 659px) {
+    #omniFileHint { display: none; }
+}
+@container omni (max-width: 719px) {
+    .omni-workspace-topbar { display: grid; grid-template-columns: minmax(0,1fr) auto 38px; gap: 2px 8px; padding: 6px 10px; }
+    .omni-workspace-modes { grid-row: 2; grid-column: 1/-1; width: 100%; }
+    .omni-mode-btn { flex: 1; }
+    .omni-settings-link { grid-column: 3; grid-row: 1; }
+    .omni-accounts-alarm { grid-column: 2; grid-row: 1; }
+    .omni-container { grid-template-columns: minmax(0,1fr); }
+    .omni-container[data-omni-mode="inbox"][data-mobile-view="list"] .omni-chat,
+    .omni-container[data-omni-mode="inbox"][data-mobile-view="conversation"] .omni-sidebar { display: none; }
+    .omni-container[data-omni-mode="inbox"][data-mobile-view="list"] .omni-sidebar { display: flex; border-right: 0; }
+    .omni-container[data-omni-mode="inbox"][data-mobile-view="conversation"] .omni-chat { display: flex; }
+    .omni-mobile-back { display: inline-flex; align-items: center; }
+    .omni-chat-header { padding: 8px 10px; }
+    .omni-mode-panel-head { flex-direction: column; }
+    .omni-accounts-grid, .omni-health-hero, .omni-health-row { grid-template-columns: minmax(0,1fr); }
+}
+@media (max-width: 768px) {
+    body[data-page-group="system"] #mainContent { padding: 0 !important; }
+    .omni-workspace-shell { border-radius: 0; }
+    #omniInput { font-size: 16px; }
+}
+/* The visual viewport shrinks with a phone keyboard. Keep navigation and input
+   available; secondary surfaces scroll rather than pushing the input offscreen. */
+.omni-narrow.omni-short:has(.has-conversation[data-omni-mode="inbox"]) .omni-workspace-topbar { display: none; }
+.omni-short .omni-case-context { max-height: 36px; padding-block: 0; }
+.omni-short .omni-case-details summary { min-height: 24px; }
+.omni-short #omniFileHint { display: none; }
+.omni-short .omni-chat-input { padding-block: 4px; }
+.omni-short .omni-chat-header { padding-block: 4px; gap: 4px; }
+.omni-short #omniInput { max-height: 44px; overflow-y: auto; }
+.omni-short .omni-file-composer { max-height: 36px; }
+.omni-narrow.omni-short .omni-chat-header-actions { gap: 6px; }
+.omni-narrow.omni-short .omni-history-controls { max-height: 36px; padding-block: 2px; }

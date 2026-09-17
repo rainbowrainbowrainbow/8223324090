@@ -21,7 +21,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        .main-content { padding: clamp(12px, 2vw, 24px) !important; max-width: none !important; }
+        .main-content { padding: 12px !important; max-width: none !important; }
 
         /* OmniClaw Layout */
         .omni-workspace-shell {
@@ -2163,12 +2163,14 @@
                 <div class="omni-workspace-topbar">
                     <div class="omni-workspace-title">
                         <h1>OmniClaw</h1>
+                        <button type="button" class="omni-secondary-action" id="omniModeBack" data-omni-mode="inbox" hidden>← До розмов</button>
                     </div>
                     <div class="omni-workspace-modes" role="tablist" aria-label="Режими OmniClaw">
                         <button type="button" class="omni-mode-btn active" data-omni-mode="inbox" role="tab" aria-selected="true">Inbox</button>
                         <button type="button" class="omni-mode-btn" data-omni-mode="channels" role="tab" aria-selected="false">Канали</button>
                         <button type="button" class="omni-mode-btn" data-omni-mode="health" role="tab" aria-selected="false">Стан</button>
                     </div>
+                    <div class="omni-accounts-alarm hidden" id="omniAccountsAlarm"></div>
                     <a class="omni-settings-link" href="/chat-settings" aria-label="Налаштування чатів" title="Налаштування чатів">
                         <span class="omni-settings-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -2179,7 +2181,6 @@
                         <span class="sr-only">Налаштування</span>
                     </a>
                 </div>
-                <div class="omni-accounts-alarm hidden" id="omniAccountsAlarm" role="alert" aria-live="assertive"></div>
                 <div class="omni-channel-action-feedback" id="omniChannelActionFeedback" hidden role="status" aria-live="polite"></div>
                 <div class="omni-container" id="omniContainer" data-omni-mode="inbox">
                 <!-- Conversation sidebar -->
@@ -2199,7 +2200,7 @@
                         </div>
                         <div class="omni-filter-controls">
                             <label class="omni-filter-field">
-                                <span>Канал</span>
+                                <span class="sr-only">Канал</span>
                                 <select id="omniChannelSelect" aria-label="Фільтр за каналом">
                                     <option value="all">Усі канали</option>
                                     <option value="telegram">Telegram</option>
@@ -2212,7 +2213,8 @@
                                 </select>
                             </label>
                             <details class="omni-status-filters" id="omniStatusFilters">
-                                <summary><span>Додаткові фільтри</span><span id="omniStatusFilterValue">Усі</span></summary>
+                                <summary><span>Фільтри</span><span id="omniStatusFilterValue" class="sr-only">Усі</span></summary>
+                                <div class="omni-filter-popover">
                                 <label class="omni-filter-field">
                                     <span class="sr-only">Статус розмови</span>
                                     <select id="omniStatusSelect" aria-label="Фільтр за статусом">
@@ -2223,13 +2225,12 @@
                                         <option value="spam">Спам</option>
                                     </select>
                                 </label>
+                                <div class="omni-stats" id="omniStats" aria-label="Статистика розмов"></div>
+                                </div>
                             </details>
                         </div>
                         <div id="omniExplainability" hidden></div>
                         <div class="omni-business-label" id="omniBusinessLabel" aria-live="polite"></div>
-                    </div>
-                <div class="omni-stats" id="omniStats">
-                        <!-- Filled by JS -->
                     </div>
                     <div class="omni-conv-list" id="omniConvList">
                         <!-- Filled by JS -->
@@ -2277,15 +2278,17 @@
                         <div id="omniHealthContent" class="omni-health-content" aria-live="polite"></div>
                     </section>
                     <div class="omni-chat-header" id="omniChatHeader" style="display:none">
+                        <div class="omni-chat-person">
                         <button type="button" class="omni-mobile-back" id="omniMobileBack" hidden aria-label="Повернутися до списку розмов">← <span>Назад</span></button>
                         <div class="omni-conv-avatar" id="omniChatAvatar"></div>
                         <div class="omni-chat-identity">
                             <div class="omni-chat-header-name" id="omniChatName"></div>
                             <div class="omni-chat-header-channel" id="omniChatChannel"></div>
                         </div>
+                        </div>
                         <div class="omni-chat-header-actions">
                             <select id="omniConversationStatus" aria-label="Статус діалогу" title="Статус діалогу"><option value="open">Відкрита</option><option value="pending">Очікує</option><option value="closed">Закрита</option><option value="spam">Спам</option></select><select id="omniAssignee" aria-label="Відповідальний" title="Відповідальний"><option value="">Без відповідального</option></select>
-                            <details class="omni-chat-more" id="omniChatMore" open>
+                            <details class="omni-chat-more" id="omniChatMore">
                                 <summary aria-label="Додаткові дії розмови">Ще</summary>
                                 <div class="omni-chat-more-menu">
                                     <button type="button" id="omniCreateLead" class="omni-lead-action" title="Створити лід з діалогу">Створити лід</button><button type="button" id="omniToggleAI" title="AI-помічник для ліда і відповіді">AI-помічник</button><button type="button" id="omniCloseConv" title="Закрити діалог">Закрити діалог</button>
@@ -2305,12 +2308,12 @@
                             <span id="omniSelectedFile" aria-live="polite"></span>
                             <span id="omniReplyTarget" aria-live="polite"></span>
                             <button type="button" class="omni-secondary-action" id="omniCancelFile" hidden>Скасувати файл</button>
+                            <label class="omni-reply-toggle" title="Позначити, що після цього повідомлення очікуємо відповідь клієнта">
+                                <input type="checkbox" id="omniReplyExpected">
+                                <span>Очікуємо відповідь</span>
+                            </label>
                         </div>
                         <textarea id="omniInput" rows="1" placeholder="Написати повідомлення..." maxlength="4000" aria-label="Повідомлення"></textarea>
-                        <label class="omni-reply-toggle" title="Позначити, що після цього повідомлення очікуємо відповідь клієнта">
-                            <input type="checkbox" id="omniReplyExpected">
-                            <span>Очікуємо відповідь</span>
-                        </label>
                         <button type="button" class="omni-send-btn" id="omniSendBtn" title="Відправити" aria-label="Надіслати повідомлення">&gt;</button>
                     </div>
                     <div class="omni-send-truth" id="omniSendTruth" hidden aria-live="polite"></div>
@@ -2699,7 +2702,7 @@
 
         function renderChannelDot(channel) {
             const visual = getChannelVisual(channel);
-            return '<span class="omni-channel-dot omni-channel-dot--' + esc(visual.key) + '" title="' + esc('Канал: ' + visual.label) + '" aria-hidden="true">' + esc(visual.icon) + '</span>';
+            return '<span class="omni-channel-dot omni-channel-dot--' + esc(visual.key) + '" title="' + esc('Канал: ' + visual.label) + '" role="img" aria-label="' + esc('Канал: ' + visual.label) + '">' + esc(visual.icon) + '</span>';
         }
 
         function renderChannelBadge(channel, variant = 'list') {
@@ -2772,6 +2775,8 @@
         function setOmniMode(mode) {
             const nextMode = ['inbox', 'channels', 'health'].includes(mode) ? mode : 'inbox';
             omniMode = nextMode;
+            $('omniModeBack').hidden = nextMode === 'inbox';
+            omniShell.querySelector('h1').hidden = nextMode !== 'inbox';
             if (omniContainer) omniContainer.setAttribute('data-omni-mode', nextMode);
             document.querySelectorAll('[data-omni-mode]').forEach(btn => {
                 if (!btn.classList.contains('omni-mode-btn')) return;
@@ -2786,20 +2791,25 @@
         }
 
         function isNarrowOmniViewport() {
-            return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches;
+            return !!omniShell && omniShell.clientWidth < 720;
         }
 
         function syncOmniViewportSize() {
             if (!omniShell) return;
-            if (!isNarrowOmniViewport()) {
-                omniShell.style.removeProperty('--omni-shell-height');
-                return;
-            }
-            const header = document.querySelector('.header');
             const viewportHeight = window.visualViewport?.height || window.innerHeight;
-            const headerHeight = header?.getBoundingClientRect().height || 0;
-            const available = Math.max(240, Math.round(viewportHeight - headerHeight));
-            omniShell.style.setProperty('--omni-shell-height', available + 'px');
+            const viewportTop = window.visualViewport?.offsetTop || 0;
+            const main = $('mainContent');
+            const bottomPadding = parseFloat(getComputedStyle(main).paddingBottom) || 0;
+            const available = Math.max(0, Math.floor(viewportHeight + viewportTop - omniShell.getBoundingClientRect().top - bottomPadding));
+            const value = available + 'px';
+            if (omniShell.style.getPropertyValue('--omni-shell-height') !== value) omniShell.style.setProperty('--omni-shell-height', value);
+            omniShell.classList.toggle('omni-narrow', isNarrowOmniViewport());
+            omniShell.classList.toggle('omni-short', available < 480);
+            const wideActions = $('omniChat').clientWidth >= 660;
+            if (chatMore && chatMore.dataset.wide !== String(wideActions)) {
+                chatMore.open = wideActions;
+                chatMore.dataset.wide = String(wideActions);
+            }
         }
 
         function setMobileInboxView(view, options = {}) {
@@ -2809,21 +2819,25 @@
             if (omniContainer) omniContainer.setAttribute('data-mobile-view', nextView);
             if (mobileBackBtn) mobileBackBtn.hidden = nextView !== 'conversation';
             if (nextView === 'conversation' && isNarrowOmniViewport() && mobileBackBtn) {
-                const focusBack = () => mobileBackBtn.focus();
+                const focusBack = () => {
+                    if (mobileInboxView === 'conversation') mobileBackBtn.focus({ preventScroll: true });
+                };
                 if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(focusBack);
                 else focusBack();
             }
             if (nextView === 'list' && convList) {
                 const restore = () => {
+                    if (mobileInboxView !== 'list') return;
                     convList.scrollTop = omniListScrollTop;
                     if (!options.focus) return;
-                    const target = currentConvId
-                        ? convList.querySelector('[data-id="' + currentConvId + '"]')
+                    const targetId = options.focusId || currentConvId;
+                    const target = targetId
+                        ? convList.querySelector('[data-id="' + targetId + '"]')
                         : null;
-                    (target || searchInput)?.focus();
+                    (target || searchInput)?.focus({ preventScroll: true });
                 };
+                restore();
                 if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(restore);
-                else restore();
             }
         }
 
@@ -3046,7 +3060,7 @@
             accountSummaryEl.innerHTML =
                 '<div class="omni-account-summary-item"><strong>' + connected + '</strong><span>готові</span></div>' +
                 '<div class="omni-account-summary-item"><strong>' + warnings + '</strong><span>частково</span></div>' +
-                '<div class="omni-account-summary-item"><strong>' + broken + '</strong><span>зламані</span></div>';
+                '<div class="omni-account-summary-item"><strong>' + broken + '</strong><span>не підключені</span></div>';
         }
 
         function accountDisplayLabel(acc) {
@@ -3302,35 +3316,30 @@
         function renderOmniAccountsAlarm() {
             if (!accountsAlarm) return;
             const detailsOpen = accountsAlarm.querySelector('.omni-channel-status-details')?.open === true;
-            if (!omniAccounts.length) {
-                accountsAlarm.classList.remove('hidden');
-                accountsAlarm.classList.remove('is-warning');
-                accountsAlarm.classList.add('is-danger');
-                accountsAlarm.setAttribute('role', 'alert');
-                accountsAlarm.innerHTML = '<span class="omni-channel-status-dot danger" aria-hidden="true"></span><strong>Канали: стан не завантажено</strong><button type="button" data-omni-mode="channels">Деталі</button>';
-                return;
-            }
+            const focusedAction = accountsAlarm.contains(document.activeElement)
+                ? document.activeElement.tagName.toLowerCase() : null;
             const ready = omniAccounts.filter(a => a.connected && !accountNeedsAttention(a)).length;
             const limited = omniAccounts.filter(a => a.connected && accountNeedsAttention(a)).length;
             const disconnected = omniAccounts.filter(a => !a.connected).length;
-            const tone = limited ? 'warning' : 'healthy';
+            const tone = !omniAccounts.length ? 'danger' : limited ? 'warning' : 'healthy';
             accountsAlarm.classList.toggle('is-warning', tone === 'warning');
-            accountsAlarm.classList.toggle('is-danger', false);
-            accountsAlarm.setAttribute('role', tone === 'healthy' ? 'status' : 'alert');
+            accountsAlarm.classList.toggle('is-danger', tone === 'danger');
             const detailRows = omniAccounts
-                .filter(a => !a.connected || !a.sendCapable)
+                .filter(a => !a.connected || accountNeedsAttention(a))
                 .map(a => '<li><strong>' + esc(accountDisplayLabel(a)) + '</strong>: ' + esc(accountImpactText(a) || omniAccountStatusLabel(a)) + '</li>')
                 .join('');
             const actionMode = omniMode === 'inbox' ? 'channels' : 'inbox';
             const actionLabel = omniMode === 'inbox' ? 'Керувати' : '← До розмов';
+            const label = !omniAccounts.length ? 'Стан невідомий' : limited ? 'Увага: ' + limited : 'Канали ОК';
             accountsAlarm.classList.remove('hidden');
             accountsAlarm.innerHTML =
-                '<span class="omni-channel-status-dot ' + tone + '" aria-hidden="true"></span>' +
-                '<strong>Канали: ' + ready + ' готові · ' + limited + ' потребують уваги · ' + disconnected + ' не підключені</strong>' +
-                (detailRows ? '<details class="omni-channel-status-details"><summary>Деталі</summary><ul>' + detailRows + '</ul></details>' : '<span class="omni-channel-status-ok">Усі канали готові до роботи</span>') +
-                '<button type="button" data-omni-mode="' + actionMode + '">' + actionLabel + '</button>';
+                '<details class="omni-channel-status-details"><summary aria-label="Стан каналів: ' + label + '"><span class="omni-channel-status-dot ' + tone + '" aria-hidden="true"></span>' + label + '</summary>' +
+                '<div class="omni-channel-popover"><strong>' + (!omniAccounts.length ? 'Стан каналів не завантажено' : ready + ' готові · ' + limited + ' потребують уваги · ' + disconnected + ' не підключені') + '</strong>' +
+                (detailRows ? '<ul>' + detailRows + '</ul>' : '') +
+                '<button type="button" data-omni-mode="' + actionMode + '">' + actionLabel + '</button></div></details>';
             const details = accountsAlarm.querySelector('.omni-channel-status-details');
             if (details && detailsOpen) details.open = true;
+            if (focusedAction) accountsAlarm.querySelector(focusedAction)?.focus({ preventScroll: true });
         }
 
         function renderOmniHealthWorkspace() {
@@ -3707,7 +3716,6 @@
                     '<div class="omni-conv-info">' +
                         '<div class="omni-conv-title-row">' +
                             '<div class="omni-conv-name">' + esc(c.customerName || c.externalId) + '</div>' +
-                            renderChannelBadge(c.channel, 'list') +
                         '</div>' +
                         '<div class="omni-conv-preview">' + esc(c.lastMessage || '') + '</div>' +
                     '</div>' +
@@ -5330,7 +5338,7 @@
             emptyState.style.display = 'none';
             chatHeader.style.display = 'flex';
             messages.style.display = 'flex';
-            inputArea.style.display = 'flex';
+            inputArea.style.display = 'grid';
             quickRepliesEl.style.display = 'flex';
             setMobileInboxView('conversation');
             resizeComposer();
@@ -5682,10 +5690,8 @@
         function returnToConversationList() {
             const selectedId = currentConvId;
             clearConversationSelection();
-            setMobileInboxView('list', { focus: true });
             renderConversations();
-            const previous = convList.querySelector('[data-id="' + selectedId + '"]');
-            if (previous) previous.focus();
+            setMobileInboxView('list', { focus: true, focusId: selectedId });
         }
         if (mobileBackBtn) mobileBackBtn.addEventListener('click', returnToConversationList);
 
@@ -5709,16 +5715,32 @@
             omniContainer.style.setProperty('--omni-viewport-height', height + 'px');
             omniContainer.style.setProperty('--omni-viewport-top', (viewport?.offsetTop || 0) + 'px');
             omniContainer.classList.toggle('omni-compact-input', height < 540);
-            if (chatMore && window.innerWidth <= 768 && !chatMore.dataset.userToggled) chatMore.open = false;
-            if (chatMore && window.innerWidth > 768) chatMore.open = true;
+            syncOmniViewportSize();
         }
-        if (chatMore) chatMore.addEventListener('toggle', () => {
-            if (window.innerWidth <= 768) chatMore.dataset.userToggled = chatMore.open ? 'true' : 'false';
+        document.addEventListener('click', event => {
+            [chatMore, $('omniStatusFilters'), accountsAlarm.querySelector('details')].forEach(details => {
+                if (details === chatMore && chatMore.dataset.wide === 'true') return;
+                if (details?.open && !details.contains(event.target)) details.open = false;
+            });
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            [chatMore, $('omniStatusFilters'), accountsAlarm.querySelector('details')].forEach(details => {
+                if (!details?.open) return;
+                if (details === chatMore && chatMore.dataset.wide === 'true') return;
+                details.open = false;
+                details.querySelector('summary')?.focus({ preventScroll: true });
+            });
         });
         window.addEventListener('resize', syncOmniViewport);
         window.visualViewport?.addEventListener('resize', syncOmniViewport);
         window.visualViewport?.addEventListener('scroll', syncOmniViewport);
         syncOmniViewport();
+        if (typeof ResizeObserver === 'function') {
+            const layoutObserver = new ResizeObserver(syncOmniViewportSize);
+            layoutObserver.observe($('mainContent'));
+            layoutObserver.observe(document.querySelector('.header'));
+        }
 
         $('omniCloseConv').addEventListener('click', closeConversation);
         $('omniCreateLead').addEventListener('click', openLeadAction);
@@ -5788,6 +5810,8 @@
 
         if (statusSelect) statusSelect.addEventListener('change', () => {
             activeStatus = statusSelect.value || 'all';
+            $('omniStatusFilters').open = false;
+            $('omniStatusFilters').querySelector('summary').focus({ preventScroll: true });
             if (activeStatus === 'open') activeViewFilter = 'open';
             else if (activeViewFilter === 'open') activeViewFilter = 'all';
             conversationQueryApplied = true;

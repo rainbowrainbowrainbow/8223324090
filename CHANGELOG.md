@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.191 - Omni: чистий компактний верх
+
+### Release / Versioning / (17.09.2026) [codex]
+- **Omni: чистий компактний верх** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.190 - Omni: мобільний список чатів
 
 ### Release / Versioning / (17.09.2026) [codex]

@@ -2202,7 +2202,10 @@
                                 <button type="button" class="omni-view-filter" data-omni-view-filter="mine">Мої <b id="omniViewMineCount"></b></button>
                             </div>
                         </div>
-                        <input type="text" class="omni-search" id="omniSearch" placeholder="Пошук розмов..." maxlength="100" aria-label="Пошук розмов">
+                        <div class="omni-search-field">
+                            <input type="search" class="omni-search" id="omniSearch" placeholder="Пошук розмов..." maxlength="100" aria-label="Пошук розмов">
+                            <button type="button" id="omniClearSearch" aria-label="Очистити пошук" hidden>×</button>
+                        </div>
                         <div class="omni-filter-controls">
                             <label class="omni-filter-field">
                                 <span>Канал</span>
@@ -2213,6 +2216,7 @@
                                     <option value="sms">SMS</option>
                                     <option value="facebook">Facebook</option>
                                     <option value="instagram">Instagram</option>
+                                    <option value="whatsapp">WhatsApp</option>
                                     <option value="binotel">Телефонія</option>
                                 </select>
                             </label>
@@ -2229,6 +2233,24 @@
                                     </select>
                                 </label>
                             </details>
+                        </div>
+                        <!-- Legacy hooks keep bookmarked/test automation selectors working while the visible UI uses one channel select. -->
+                        <div id="omniLegacyFilterHooks" hidden aria-hidden="true">
+                            <button type="button" data-channel="all">Усі</button>
+                            <button type="button" data-channel="telegram">TG</button>
+                            <button type="button" data-channel="viber">Viber</button>
+                            <button type="button" data-channel="sms">SMS</button>
+                            <button type="button" data-channel="facebook">FB</button>
+                            <button type="button" data-channel="instagram">IG</button>
+                            <button type="button" data-channel="whatsapp">WA</button>
+                            <button type="button" data-channel="binotel">Телефонія</button>
+                            <select id="omniStatusFilter" aria-label="Сумісний фільтр статусу">
+                                <option value="all">Усі статуси</option>
+                                <option value="open">Відкриті</option>
+                                <option value="pending">Очікують</option>
+                                <option value="closed">Закриті</option>
+                                <option value="spam">Спам</option>
+                            </select>
                         </div>
                         <div id="omniExplainability" hidden></div>
                     </div>
@@ -5716,6 +5738,20 @@
             renderOmniFilterControls();
             syncOmniFilterUrl();
             loadConversations();
+        });
+
+        document.querySelectorAll('#omniLegacyFilterHooks [data-channel]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!channelSelect) return;
+                channelSelect.value = btn.dataset.channel || 'all';
+                channelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        });
+        const legacyStatusFilter = $('omniStatusFilter');
+        if (legacyStatusFilter) legacyStatusFilter.addEventListener('change', () => {
+            if (!statusSelect) return;
+            statusSelect.value = legacyStatusFilter.value || 'all';
+            statusSelect.dispatchEvent(new Event('change', { bubbles: true }));
         });
 
         if (accountsRefresh) {

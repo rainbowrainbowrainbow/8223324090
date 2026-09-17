@@ -200,7 +200,7 @@ function playwright() {
       if (width <= 1100) {
         const historyBounds = await page.locator('#omniMessages').boundingBox();
         assert.ok(historyBounds.height >= 64, 'history_collapsed');
-        assert.ok(await page.locator('#omniBackToList').isVisible());
+        assert.ok(await page.locator('#omniMobileBack').isVisible());
       }
       await page.screenshot({path:path.join(artifactDir,'fixture-omni-'+width+'x'+height+'.png'),mask:[page.locator('#sidebarNav,.header-user')],animations:'disabled'});
     }
@@ -209,7 +209,7 @@ function playwright() {
     const composer = await page.locator('#omniInput').boundingBox();
     assert.ok(composer.width >= 200 && composer.y >= 0 && composer.y + composer.height <= 844);
     await page.screenshot({path:path.join(artifactDir,'fixture-omni-mobile-composer.png'),mask:[page.locator('#sidebarNav,.header-user')],animations:'disabled'});
-    await page.locator('#omniBackToList').click();
+    await page.locator('#omniMobileBack').click();
     assert.ok(await page.locator('.omni-sidebar').isVisible());
     await select(9002);
     await page.evaluate(()=>{document.body.classList.remove('dark-mode');document.documentElement.classList.remove('dark-mode');document.documentElement.setAttribute('data-theme','light');document.documentElement.style.colorScheme='light';});

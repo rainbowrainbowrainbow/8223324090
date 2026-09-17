@@ -3,8 +3,7 @@
 .omni-msg-content { white-space: pre-wrap; overflow-wrap: anywhere; }
 .omni-history-controls, .omni-list-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 16px; font-size: 12px; color: var(--text-secondary); }
 .omni-history-controls[hidden], .omni-channel-action-feedback[hidden] { display: none; }
-.omni-history-controls button, .omni-list-feedback button, .omni-back-button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-primary); background: var(--bg-secondary); font: inherit; cursor: pointer; }
-.omni-back-button { display: none; }
+.omni-history-controls button, .omni-list-feedback button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-primary); background: var(--bg-secondary); font: inherit; cursor: pointer; }
 .omni-channel-action-feedback { margin: 0 20px 12px; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-primary); background: var(--bg-secondary); overflow-wrap: anywhere; }
 .omni-channel-action-feedback.error { border-color: var(--danger, #ef4444); }
 .omni-workspace-shell:has(.omni-container[data-omni-mode="inbox"]) > .omni-channel-action-feedback { display: none; }
@@ -100,7 +99,6 @@
     .omni-workspace-title { flex: 1 1 100%; }
 }
 @media (max-width: 768px) {
-    .omni-back-button { display: inline-flex; align-items: center; }
     .omni-container.has-conversation[data-omni-mode="inbox"] .omni-sidebar { display: none; }
     .omni-chat-input { flex-wrap: wrap; }
     .omni-chat-input textarea { flex-basis: calc(100% - 60px); }
@@ -163,7 +161,6 @@
     }
     .omni-container.has-conversation[data-omni-mode="inbox"] .omni-sidebar { display: none; }
     .omni-container.has-conversation .omni-chat { min-height: 0; height: 100%; }
-    .omni-back-button { display: inline-flex; align-items: center; }
     .omni-chat-header { padding: 10px 12px; gap: 8px; }
     .omni-chat-header-actions { width: 100%; margin-left: 0; }
     .omni-chat-header-actions select { flex: 1; max-width: 100%; }
@@ -773,4 +770,50 @@
 .omni-conv-meta { flex: 0 0 auto; min-width: 42px; }
 @media (max-width: 360px) {
     .omni-filter-controls { grid-template-columns: 1fr; }
+}
+
+/* Open conversation: keep the header and CRM context quiet so messages win the space. */
+.omni-chat-header {
+    min-height: 56px;
+    padding: 8px 14px;
+    gap: 8px;
+}
+.omni-chat-header > .omni-conv-avatar { width: 36px; height: 36px; font-size: 13px; }
+.omni-chat-header-name { font-size: 15px; font-weight: 600; }
+.omni-chat-header-channel { padding: 0; background: transparent; }
+.omni-chat-header .omni-channel-badge--header { margin-right: 4px; padding: 2px 5px; border: 0; background: transparent; font-size: 11px; font-weight: 600; }
+.omni-chat-header .omni-channel-badge--header .omni-channel-badge-icon { font-size: 11px; }
+.omni-chat-header-actions { gap: 6px; }
+.omni-chat-header-actions select,
+.omni-chat-header-actions button { min-height: 34px; padding: 6px 9px; border-radius: 9px; font-weight: 600; }
+.omni-chat-more { display: contents; }
+.omni-chat-more > summary { display: none; }
+.omni-chat-more-menu { display: contents; }
+.omni-case-context { padding: 4px 14px; background: transparent; }
+.omni-case-details summary { min-height: 28px; font-size: 12px; font-weight: 600; }
+.omni-case-row { gap: 6px; }
+.omni-case-title { font-weight: 600; }
+.omni-chat-messages { padding: 12px 16px; gap: 6px; }
+.omni-msg { max-width: min(76%, 620px); padding: 9px 12px; border-radius: 14px; }
+.omni-msg-time { font-size: 11px; margin-top: 3px; opacity: 0.65; }
+.omni-chat-input { padding: 10px 14px; gap: 8px; }
+.omni-send-btn { width: 44px; height: 44px; flex: 0 0 44px; font-weight: 700; }
+@media (min-width: 769px) {
+    .omni-chat-header-actions { width: auto; margin-left: auto; }
+    .omni-chat-more:not([open]) > .omni-chat-more-menu { display: contents; }
+}
+
+@media (max-width: 768px) {
+    .omni-chat-header { padding: 7px 10px; }
+    .omni-chat-header-actions { display: flex; align-items: center; gap: 5px; }
+    .omni-chat-header-actions select { flex: 1 1 0; min-width: 0; max-width: none; }
+    .omni-chat-more { position: relative; display: block; flex: 0 0 auto; }
+    .omni-chat-more > summary { display: inline-flex; align-items: center; min-height: 34px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 9px; color: var(--text-primary); background: var(--bg-secondary); cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; list-style: none; }
+    .omni-chat-more > summary::-webkit-details-marker { display: none; }
+    .omni-chat-more:not([open]) > .omni-chat-more-menu { display: none; }
+    .omni-chat-more[open] > .omni-chat-more-menu { position: absolute; z-index: 5; top: calc(100% + 5px); right: 0; display: grid; min-width: 170px; padding: 5px; gap: 4px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); box-shadow: var(--shadow-md, 0 8px 20px rgba(0,0,0,.16)); }
+    .omni-chat-more-menu button { width: 100%; justify-content: flex-start; text-align: left; }
+    .omni-chat-messages { padding: 10px 12px; }
+    .omni-msg { max-width: 88%; }
+    .omni-chat-input { padding: 8px 10px; }
 }

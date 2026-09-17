@@ -2278,15 +2278,19 @@
                     </section>
                     <div class="omni-chat-header" id="omniChatHeader" style="display:none">
                         <button type="button" class="omni-mobile-back" id="omniMobileBack" hidden aria-label="Повернутися до списку розмов">← <span>Назад</span></button>
-                        <button type="button" class="omni-back-button" id="omniBackToList" aria-label="Повернутися до розмов">← Розмови</button>
                         <div class="omni-conv-avatar" id="omniChatAvatar"></div>
                         <div class="omni-chat-identity">
                             <div class="omni-chat-header-name" id="omniChatName"></div>
                             <div class="omni-chat-header-channel" id="omniChatChannel"></div>
                         </div>
                         <div class="omni-chat-header-actions">
-                            <select id="omniConversationStatus" aria-label="Статус діалогу" title="Статус діалогу"><option value="open">Відкрита</option><option value="pending">Очікує</option><option value="closed">Закрита</option><option value="spam">Спам</option></select><select id="omniAssignee" aria-label="Відповідальний" title="Відповідальний"><option value="">Без відповідального</option></select><button type="button" id="omniCreateLead" class="omni-lead-action" title="Створити лід з діалогу">Створити лід</button><button type="button" id="omniToggleAI" title="AI-помічник для ліда і відповіді">AI-помічник</button>
-                            <button type="button" id="omniCloseConv" title="Закрити діалог">Закрити діалог</button>
+                            <select id="omniConversationStatus" aria-label="Статус діалогу" title="Статус діалогу"><option value="open">Відкрита</option><option value="pending">Очікує</option><option value="closed">Закрита</option><option value="spam">Спам</option></select><select id="omniAssignee" aria-label="Відповідальний" title="Відповідальний"><option value="">Без відповідального</option></select>
+                            <details class="omni-chat-more">
+                                <summary aria-label="Додаткові дії розмови">Ще</summary>
+                                <div class="omni-chat-more-menu">
+                                    <button type="button" id="omniCreateLead" class="omni-lead-action" title="Створити лід з діалогу">Створити лід</button><button type="button" id="omniToggleAI" title="AI-помічник для ліда і відповіді">AI-помічник</button><button type="button" id="omniCloseConv" title="Закрити діалог">Закрити діалог</button>
+                                </div>
+                            </details>
                         </div>
                     </div>
                     <div class="omni-case-context" id="omniCaseContext" hidden></div>
@@ -5604,13 +5608,15 @@
             if (!button) return;
             loadMessages(currentConvId, button.dataset.omniHistory === 'older' ? { older: true } : { refresh: true });
         });
-        $('omniBackToList').addEventListener('click', () => {
+        function returnToConversationList() {
             const selectedId = currentConvId;
             clearConversationSelection();
+            setMobileInboxView('list', { focus: true });
             renderConversations();
             const previous = convList.querySelector('[data-id="' + selectedId + '"]');
             if (previous) previous.focus();
-        });
+        }
+        if (mobileBackBtn) mobileBackBtn.addEventListener('click', returnToConversationList);
 
         $('omniSendBtn').addEventListener('click', sendMessage);
         input.addEventListener('keydown', e => {
@@ -5683,10 +5689,6 @@
             e.preventDefault();
             selectConversation(parseInt(item.dataset.id));
         });
-        if (mobileBackBtn) {
-            mobileBackBtn.addEventListener('click', () => setMobileInboxView('list', { focus: true }));
-        }
-
         // Compact conversation filters
         document.querySelectorAll('[data-omni-view-filter]').forEach(btn => {
             btn.addEventListener('click', () => {

@@ -504,7 +504,7 @@ test('keyboard selection and back restore an accessible list', async t => {
     h.document.querySelector('.omni-conv-item').dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     assert.equal(h.app.state().currentConvId, 1);
     assert.equal(h.document.getElementById('omniContainer').classList.contains('has-conversation'), true);
-    h.document.getElementById('omniBackToList').click();
+    h.document.getElementById('omniMobileBack').click();
     assert.equal(h.app.state().currentConvId, null);
     assert.equal(h.document.activeElement.dataset.id, '1');
     h.app.selectConversation(2);

@@ -11,13 +11,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.186">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.186">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.186">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.186">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.186">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.186">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.186">
+    <link rel="stylesheet" href="css/base.css?v=0.81.187">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.187">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.187">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.187">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.187">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.187">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.187">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1126,6 +1126,27 @@
             display: none !important;
         }
 
+        .omni-case-details {
+            min-width: 0;
+        }
+
+        .omni-case-details summary {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 26px;
+            color: var(--text-secondary, #718096);
+            font-size: 11px;
+            font-weight: 900;
+            cursor: pointer;
+            list-style: none;
+        }
+
+        .omni-case-details summary::-webkit-details-marker { display: none; }
+        .omni-case-details summary::before { content: '›'; font-size: 18px; line-height: 1; }
+        .omni-case-details[open] summary::before { transform: rotate(90deg); }
+        .omni-case-details .omni-case-row { padding-top: 5px; }
+
         .omni-case-row {
             display: flex;
             align-items: center;
@@ -2121,8 +2142,454 @@
         .dark-mode .omni-accounts-alarm {
             color: #FBBF24;
         }
+
+        /* Omni inbox layout guard: keep the workspace inside the available
+           main-content height and give the two work surfaces their own scroll. */
+        body[data-page-group="system"] .main-content {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .omni-workspace-shell {
+            flex: 1 1 auto;
+            height: auto;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .omni-workspace-topbar {
+            flex: 0 0 auto;
+            min-height: 58px;
+            padding: 10px 16px;
+            gap: 12px;
+        }
+
+        .omni-workspace-title {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+        }
+
+        .omni-workspace-title h1 {
+            font-size: 19px;
+            line-height: 1.1;
+            white-space: nowrap;
+        }
+
+        .omni-workspace-title p {
+            display: none;
+        }
+
+        .omni-workspace-modes {
+            margin-left: auto;
+        }
+
+        .omni-mode-btn,
+        .omni-settings-link {
+            min-height: 34px;
+        }
+
+        .omni-container {
+            flex: 1 1 auto;
+            min-width: 0;
+            min-height: 0;
+            grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+            overflow: hidden;
+        }
+
+        .omni-sidebar,
+        .omni-chat {
+            min-width: 0;
+            min-height: 0;
+        }
+
+        .omni-sidebar {
+            overflow: hidden;
+        }
+
+        .omni-sidebar-header {
+            flex: 0 0 auto;
+            min-width: 0;
+            padding: 12px 14px 10px;
+        }
+
+        .omni-sidebar-header h2 {
+            margin-bottom: 0;
+            font-size: 16px;
+            line-height: 1.2;
+        }
+
+        .omni-sidebar-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .omni-view-filters {
+            display: inline-flex;
+            gap: 3px;
+            min-width: 0;
+        }
+
+        .omni-view-filter {
+            min-height: 27px;
+            padding: 4px 7px;
+            border: 1px solid var(--border-color, #cbd5e0);
+            border-radius: 7px;
+            background: transparent;
+            color: var(--text-secondary, #718096);
+            font-size: 11px;
+            font-weight: 800;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .omni-view-filter.active {
+            border-color: rgba(16,185,129,0.56);
+            background: rgba(16,185,129,0.14);
+            color: var(--text-primary, #0f172a);
+        }
+
+        .omni-view-filter b {
+            margin-left: 2px;
+            font-size: 10px;
+            opacity: 0.72;
+        }
+
+        .omni-filter-controls {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .omni-filter-field {
+            display: grid;
+            gap: 3px;
+            min-width: 0;
+        }
+
+        .omni-filter-field > span {
+            color: var(--text-secondary, #718096);
+            font-size: 10px;
+            font-weight: 800;
+        }
+
+        .omni-filter-field select {
+            width: 100%;
+            min-height: 32px;
+            padding: 5px 8px;
+            border: 1px solid var(--border-color, #cbd5e0);
+            border-radius: 8px;
+            background: var(--bg-secondary, #f7fafc);
+            color: var(--text-primary, #1a202c);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .omni-status-filters {
+            min-width: 0;
+        }
+
+        .omni-status-filters summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 32px;
+            padding: 5px 8px;
+            border: 1px solid var(--border-color, #cbd5e0);
+            border-radius: 8px;
+            color: var(--text-secondary, #718096);
+            font-size: 11px;
+            font-weight: 800;
+            cursor: pointer;
+            list-style: none;
+        }
+
+        .omni-status-filters summary::-webkit-details-marker { display: none; }
+        .omni-status-filters summary::after { content: '⌄'; margin-left: 5px; }
+        .omni-status-filters[open] summary::after { content: '⌃'; }
+        .omni-status-filters summary span { margin-left: auto; color: var(--text-primary, #1a202c); }
+        .omni-status-filters .omni-filter-field { margin-top: 4px; }
+
+        .omni-channel-status-dot {
+            width: 8px;
+            height: 8px;
+            flex: 0 0 auto;
+            border-radius: 50%;
+            background: #10B981;
+        }
+
+        .omni-channel-status-dot.warning { background: #F59E0B; }
+        .omni-channel-status-dot.danger { background: #EF4444; }
+
+        .omni-channel-status-details { min-width: 0; }
+        .omni-channel-status-details summary { cursor: pointer; color: inherit; font-weight: 900; }
+        .omni-channel-status-details ul { margin: 4px 0 0; padding-left: 18px; }
+        .omni-channel-status-details li { margin: 2px 0; }
+        .omni-channel-status-ok { color: #059669; }
+
+        .omni-search {
+            min-height: 38px;
+            padding: 8px 10px;
+        }
+
+        .omni-channel-filters {
+            flex-wrap: nowrap;
+            gap: 5px;
+            margin-top: 8px;
+            padding-bottom: 2px;
+            overflow-x: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-color, #cbd5e0) transparent;
+        }
+
+        .omni-channel-btn {
+            flex: 0 0 auto;
+            min-height: 32px;
+            padding: 6px 9px;
+        }
+
+        #omniExplainability {
+            max-height: 46px;
+            margin-top: 6px;
+            overflow-y: auto;
+        }
+
+        #omniExplainability .explain-filter-summary {
+            gap: 6px;
+            margin: 0;
+            padding: 6px 8px;
+        }
+
+        #omniExplainability .explain-clear-btn {
+            min-height: 28px;
+            padding: 4px 8px;
+        }
+
+        .omni-stats {
+            flex: 0 0 auto;
+            gap: 10px;
+            padding: 7px 14px;
+            font-size: 11px;
+        }
+
+        .omni-conv-list {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-width: thin;
+        }
+
+        .omni-conv-item {
+            min-width: 0;
+            padding: 11px 14px;
+        }
+
+        .omni-chat {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .omni-mobile-back {
+            display: none;
+            align-items: center;
+            min-height: 32px;
+            padding: 5px 8px;
+            border: 1px solid var(--border-color, #cbd5e0);
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-primary, #1a202c);
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .omni-chat-empty,
+        .omni-chat-header,
+        .omni-case-context,
+        .omni-chat-messages,
+        .omni-quick-replies,
+        .omni-chat-input,
+        .omni-send-truth {
+            min-width: 0;
+        }
+
+        .omni-chat-messages {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+        }
+
+        .omni-chat-input {
+            flex: 0 0 auto;
+        }
+
+        .omni-accounts-alarm {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 auto;
+            margin: 6px 16px;
+            padding: 7px 10px;
+            font-size: 12px;
+        }
+
+        .omni-accounts-alarm strong { min-width: 0; }
+        .omni-accounts-alarm button { margin-left: auto; flex: 0 0 auto; }
+
+        .dark-mode .omni-filter-field select,
+        .dark-mode .omni-status-filters summary {
+            background: rgba(15,23,42,0.82);
+            border-color: rgba(148,163,184,0.24);
+            color: #F8FAFC;
+        }
+
+        .dark-mode .omni-view-filter { border-color: rgba(148,163,184,0.24); color: #CBD5E1; }
+        .dark-mode .omni-view-filter.active { color: #F8FAFC; }
+        .dark-mode .omni-channel-status-ok { color: #6EE7B7; }
+
+        @media (max-width: 768px) {
+            body[data-page-group="system"] .main-content {
+                display: block;
+                min-height: 0;
+                overflow: hidden;
+            }
+
+            .omni-workspace-shell {
+                height: var(--omni-shell-height, calc(100dvh - 56px));
+                min-height: 0;
+                overflow: hidden;
+            }
+
+            .omni-workspace-topbar {
+                align-items: center;
+                flex-direction: row;
+                flex-wrap: wrap;
+                padding: 10px 12px;
+            }
+
+            .omni-workspace-title {
+                flex: 1 1 auto;
+            }
+
+            .omni-workspace-modes {
+                order: 3;
+                width: 100%;
+                margin-left: 0;
+            }
+
+            .omni-settings-link {
+                width: auto;
+            }
+
+            .omni-container {
+                height: 100%;
+                min-height: 0;
+                grid-template-columns: minmax(0, 1fr);
+                overflow: hidden;
+            }
+
+            .omni-container[data-omni-mode="inbox"][data-mobile-view="list"] .omni-chat {
+                display: none;
+            }
+
+            .omni-container[data-omni-mode="inbox"][data-mobile-view="list"] .omni-sidebar {
+                display: flex;
+                border-right: 0;
+            }
+
+            .omni-container[data-omni-mode="inbox"][data-mobile-view="conversation"] .omni-sidebar {
+                display: none;
+            }
+
+            .omni-container[data-omni-mode="inbox"][data-mobile-view="conversation"] .omni-chat {
+                display: flex;
+                min-height: 0;
+            }
+
+            .omni-mobile-back {
+                display: inline-flex;
+            }
+
+            .omni-chat-header {
+                padding: 9px 10px;
+                gap: 8px;
+            }
+
+            .omni-chat-header-actions {
+                gap: 4px;
+            }
+
+            .omni-chat-header-actions button {
+                min-height: 32px;
+                padding: 5px 8px;
+            }
+
+            .omni-channel-filters {
+                overflow-x: auto;
+            }
+
+            .omni-filter-controls {
+                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            }
+
+            .omni-case-context {
+                padding: 6px 10px;
+            }
+
+            .omni-case-details summary {
+                min-height: 28px;
+            }
+
+            .omni-chat-input {
+                padding: 8px 10px;
+                padding-bottom: max(8px, env(safe-area-inset-bottom));
+            }
+        }
+
+        @media (max-width: 360px) {
+            .omni-chat-input {
+                flex-wrap: wrap;
+            }
+
+            .omni-chat-input textarea {
+                flex: 1 1 calc(100% - 50px);
+            }
+
+            .omni-reply-toggle {
+                order: 3;
+                flex: 0 0 100%;
+                min-height: 24px;
+                padding: 0;
+            }
+        }
+
+        @media (max-height: 640px) and (min-width: 769px) {
+            .omni-workspace-topbar {
+                min-height: 50px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+            }
+
+            .omni-sidebar-header {
+                padding-top: 9px;
+                padding-bottom: 7px;
+            }
+
+            .omni-stats {
+                padding-top: 5px;
+                padding-bottom: 5px;
+            }
+        }
     </style>
-    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.186">
+    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.187">
 </head>
 <body data-page-group="system">
     <script>
@@ -2179,7 +2646,6 @@
                 <div class="omni-workspace-topbar">
                     <div class="omni-workspace-title">
                         <h1>OmniClaw</h1>
-                        <p>Повідомлення клієнтів і відповіді команди в одному місці.</p>
                     </div>
                     <div class="omni-workspace-modes" role="tablist" aria-label="Режими OmniClaw">
                         <button type="button" class="omni-mode-btn active" data-omni-mode="inbox" role="tab" aria-selected="true">Inbox</button>
@@ -2193,25 +2659,46 @@
                 <div class="omni-container" id="omniContainer" data-omni-mode="inbox">
                 <!-- Conversation sidebar -->
                 <div class="omni-sidebar" id="omniSidebar">
-                    <div class="omni-sidebar-header">
-                        <h2>Розмови</h2>
-                        <div class="omni-search-field">
-                            <input type="search" class="omni-search" id="omniSearch" placeholder="Ім’я, телефон або текст повідомлення" maxlength="100" aria-label="Пошук розмов">
-                            <button type="button" id="omniClearSearch" aria-label="Очистити пошук" hidden>×</button>
+                        <div class="omni-sidebar-header">
+                        <div class="omni-sidebar-heading">
+                            <h2>Розмови</h2>
+                            <div class="omni-view-filters" id="omniViewFilters" role="group" aria-label="Швидкі фільтри розмов">
+                                <button type="button" class="omni-view-filter active" data-omni-view-filter="all">Усі <b id="omniViewAllCount"></b></button>
+                                <button type="button" class="omni-view-filter" data-omni-view-filter="open">Відкриті <b id="omniViewOpenCount"></b></button>
+                                <button type="button" class="omni-view-filter" data-omni-view-filter="mine">Мої <b id="omniViewMineCount"></b></button>
+                            </div>
                         </div>
-                        <div class="omni-channel-filters" id="omniFilters">
-                            <button type="button" class="omni-channel-btn active" data-channel="all">Всі</button>
-                            <button type="button" class="omni-channel-btn" data-channel="telegram">TG</button>
-                            <button type="button" class="omni-channel-btn" data-channel="viber">Viber</button>
-                            <button type="button" class="omni-channel-btn" data-channel="sms">SMS</button>
-                            <button type="button" class="omni-channel-btn" data-channel="facebook">FB</button>
-                            <button type="button" class="omni-channel-btn" data-channel="instagram">IG</button>
-                            <button type="button" class="omni-channel-btn" data-channel="whatsapp">WA</button>
-                            <button type="button" class="omni-channel-btn" data-channel="binotel">Tel</button>
+                        <input type="text" class="omni-search" id="omniSearch" placeholder="Пошук розмов..." maxlength="100" aria-label="Пошук розмов">
+                        <div class="omni-filter-controls">
+                            <label class="omni-filter-field">
+                                <span>Канал</span>
+                                <select id="omniChannelSelect" aria-label="Фільтр за каналом">
+                                    <option value="all">Усі канали</option>
+                                    <option value="telegram">Telegram</option>
+                                    <option value="viber">Viber</option>
+                                    <option value="sms">SMS</option>
+                                    <option value="facebook">Facebook</option>
+                                    <option value="instagram">Instagram</option>
+                                    <option value="binotel">Телефонія</option>
+                                </select>
+                            </label>
+                            <details class="omni-status-filters" id="omniStatusFilters">
+                                <summary>Статус <span id="omniStatusFilterValue">Усі</span></summary>
+                                <label class="omni-filter-field">
+                                    <span class="sr-only">Статус розмови</span>
+                                    <select id="omniStatusSelect" aria-label="Фільтр за статусом">
+                                        <option value="all">Усі статуси</option>
+                                        <option value="open">Відкриті</option>
+                                        <option value="pending">Очікують</option>
+                                        <option value="closed">Закриті</option>
+                                        <option value="spam">Спам</option>
+                                    </select>
+                                </label>
+                            </details>
                         </div>
-                        <label class="omni-status-filter">Статус <select id="omniStatusFilter" aria-label="Статус розмов"><option value="">Усі статуси</option><option value="open">Відкриті</option><option value="pending">Очікують</option><option value="closed">Закриті</option><option value="spam">Спам</option></select></label><label class="omni-status-filter"><input type="checkbox" id="omniOnlyMine"> Тільки мої розмови</label><div class="omni-business-label" id="omniBusinessLabel"></div><div id="omniExplainability" hidden></div>
+                        <div id="omniExplainability" hidden></div>
                     </div>
-                    <div class="omni-stats" id="omniStats">
+                <div class="omni-stats" id="omniStats">
                         <!-- Filled by JS -->
                     </div>
                     <div class="omni-conv-list" id="omniConvList">
@@ -2260,6 +2747,7 @@
                         <div id="omniHealthContent" class="omni-health-content" aria-live="polite"></div>
                     </section>
                     <div class="omni-chat-header" id="omniChatHeader" style="display:none">
+                        <button type="button" class="omni-mobile-back" id="omniMobileBack" hidden aria-label="Повернутися до списку розмов">← <span>Назад</span></button>
                         <button type="button" class="omni-back-button" id="omniBackToList" aria-label="Повернутися до розмов">← Розмови</button>
                         <div class="omni-conv-avatar" id="omniChatAvatar"></div>
                         <div class="omni-chat-identity">
@@ -2351,12 +2839,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.81.186"></script>
-    <script src="js/api.js?v=0.81.186"></script>
-    <script src="js/auth.js?v=0.81.186"></script>
-    <script src="js/components/sidebar.js?v=0.81.186"></script>
+    <script src="js/config.js?v=0.81.187"></script>
+    <script src="js/api.js?v=0.81.187"></script>
+    <script src="js/auth.js?v=0.81.187"></script>
+    <script src="js/components/sidebar.js?v=0.81.187"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.81.186"></script>
+    <script src="js/ws.js?v=0.81.187"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -2400,9 +2888,9 @@
         let caseContextRequestSeq = 0;
         let quickReplies = [];
         let activeChannel = 'all';
+        let activeStatus = 'all';
+        let activeViewFilter = 'all';
         let searchQuery = '';
-        let activeStatus = '';
-        let onlyMine = false;
         let connectionReturnFocus = null;
         let assistantReturnFocus = null;
         const readThrough = new Map();
@@ -2410,15 +2898,19 @@
         let accountPanelChannel = null;
         let openAccountPanel = false;
         let omniMode = 'inbox';
+        let mobileInboxView = 'list';
+        let omniListScrollTop = 0;
 
         // DOM refs
         const $ = id => document.getElementById(id);
         const omniContainer = $('omniContainer');
+        const omniShell = document.querySelector('.omni-workspace-shell');
         const convList = $('omniConvList');
         const messages = $('omniMessages');
         const historyControls = $('omniHistoryControls');
         const inputArea = $('omniInputArea');
         const chatHeader = $('omniChatHeader');
+        const mobileBackBtn = $('omniMobileBack');
         const emptyState = $('omniEmpty');
         const quickRepliesEl = $('omniQuickReplies');
         const statsEl = $('omniStats');
@@ -2436,6 +2928,9 @@
         const connectionCancel = $('omniConnectionCancel');
         const connectionClose = $('omniConnectionClose');
         const searchInput = $('omniSearch');
+        const channelSelect = $('omniChannelSelect');
+        const statusSelect = $('omniStatusSelect');
+        const statusFilterValue = $('omniStatusFilterValue');
         const input = $('omniInput');
         const sendBtn = $('omniSendBtn');
         const replyExpectedEl = $('omniReplyExpected');
@@ -2696,11 +3191,53 @@
             if (nextMode === 'channels') highlightAccountFromQuery();
         }
 
+        function isNarrowOmniViewport() {
+            return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches;
+        }
+
+        function syncOmniViewportSize() {
+            if (!omniShell) return;
+            if (!isNarrowOmniViewport()) {
+                omniShell.style.removeProperty('--omni-shell-height');
+                return;
+            }
+            const header = document.querySelector('.header');
+            const viewportHeight = window.visualViewport?.height || window.innerHeight;
+            const headerHeight = header?.getBoundingClientRect().height || 0;
+            const available = Math.max(240, Math.round(viewportHeight - headerHeight));
+            omniShell.style.setProperty('--omni-shell-height', available + 'px');
+        }
+
+        function setMobileInboxView(view, options = {}) {
+            const nextView = view === 'conversation' && currentConvId ? 'conversation' : 'list';
+            if (nextView === 'conversation' && convList) omniListScrollTop = convList.scrollTop;
+            mobileInboxView = nextView;
+            if (omniContainer) omniContainer.setAttribute('data-mobile-view', nextView);
+            if (mobileBackBtn) mobileBackBtn.hidden = nextView !== 'conversation';
+            if (nextView === 'conversation' && isNarrowOmniViewport() && mobileBackBtn) {
+                const focusBack = () => mobileBackBtn.focus();
+                if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(focusBack);
+                else focusBack();
+            }
+            if (nextView === 'list' && convList) {
+                const restore = () => {
+                    convList.scrollTop = omniListScrollTop;
+                    if (!options.focus) return;
+                    const target = currentConvId
+                        ? convList.querySelector('[data-id="' + currentConvId + '"]')
+                        : null;
+                    (target || searchInput)?.focus();
+                };
+                if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(restore);
+                else restore();
+            }
+        }
+
         // ---- Load data ----
         async function loadConversations(options = {}) {
             const epoch = workspaceEpoch;
             const context = getOmniBusinessContext();
-            const filterKey = [context, activeChannel, activeStatus, onlyMine, searchQuery].join('\n');
+            const filterKey = [context, activeChannel, activeStatus, activeViewFilter, searchQuery].join('\n');
             const sameFilter = loadedConversationFilter === filterKey;
             const append = !!options.append && sameFilter;
             const requestSeq = ++conversationsRequestSeq;
@@ -2708,9 +3245,11 @@
             conversationLoadError = '';
             const params = new URLSearchParams({ limit: '100', offset: String(append ? conversations.length : 0) });
             if (activeChannel !== 'all') params.set('channel', activeChannel);
+            const requestedStatus = activeStatus !== 'all'
+                ? activeStatus
+                : (activeViewFilter === 'open' ? 'open' : '');
+            if (requestedStatus) params.set('status', requestedStatus);
             if (searchQuery) params.set('search', searchQuery);
-            if (activeStatus) params.set('status', activeStatus);
-            if (onlyMine) params.set('mine', 'true');
             $('omniBusinessLabel').textContent = 'Бізнес: ' + ({ event_genix: 'Парк', dar: 'Дар', maysternya_doli: 'Майстерня долі', crm: 'CRM продажі' }[context] || context);
             const res = await api('/conversations?' + params);
             if (requestSeq !== conversationsRequestSeq || epoch !== workspaceEpoch || context !== getOmniBusinessContext()) return;
@@ -2726,6 +3265,7 @@
                 conversationTotal = Number(res.data?.total) || 0;
                 conversations = conversations.slice(0, conversationTotal);
                 loadedConversationFilter = filterKey;
+                renderOmniFilterControls();
                 const selected = conversations.find(conv => conv.id === currentConvId);
                 if (selected) selectedConversationRecord = selected;
                 else if (!sameFilter && currentConvId) clearConversationSelection();
@@ -2819,9 +3359,14 @@
                 const d = res.data;
                 const byStatus = d.byStatus || {};
                 statsEl.innerHTML =
-                    '<span class="omni-stat">Всього: <b>' + (d.total || 0) + '</b></span>' +
-                    '<span class="omni-stat">Відкриті: <b>' + (byStatus.open || 0) + '</b></span>' +
-                    '<span class="omni-stat">Очікують: <b>' + (byStatus.pending || 0) + '</b></span>';
+                    '<span class="omni-stat">Усі <b>' + (d.total || 0) + '</b></span>' +
+                    '<span class="omni-stat">Відкриті <b>' + (byStatus.open || 0) + '</b></span>' +
+                    '<span class="omni-stat">Очікують <b>' + (byStatus.pending || 0) + '</b></span>' +
+                    '<span class="omni-stat">Спам <b>' + (byStatus.spam || 0) + '</b></span>';
+                const allCount = $('omniViewAllCount');
+                const openCount = $('omniViewOpenCount');
+                if (allCount) allCount.textContent = d.total || 0;
+                if (openCount) openCount.textContent = byStatus.open || 0;
             }
         }
 
@@ -3153,18 +3698,26 @@
 
         function renderOmniAccountsAlarm() {
             if (!accountsAlarm) return;
-            const limited = omniAccounts.filter(a => a.connected && accountNeedsAttention(a));
-            if (!limited.length) {
-                accountsAlarm.classList.add('hidden');
-                accountsAlarm.textContent = '';
+            if (!omniAccounts.length) {
+                accountsAlarm.classList.remove('hidden');
+                accountsAlarm.innerHTML = '<span class="omni-channel-status-dot danger" aria-hidden="true"></span><strong>Канали: стан не завантажено</strong><button type="button" data-omni-mode="channels">Деталі</button>';
                 return;
             }
-            const disconnected = limited.filter(a => !a.connected);
+            const ready = omniAccounts.filter(a => a.connected && a.sendCapable).length;
+            const limited = omniAccounts.filter(a => a.connected && !a.sendCapable).length;
+            const disconnected = omniAccounts.filter(a => !a.connected).length;
+            const tone = disconnected ? 'danger' : (limited ? 'warning' : 'healthy');
+            accountsAlarm.setAttribute('role', tone === 'healthy' ? 'status' : 'alert');
+            const detailRows = omniAccounts
+                .filter(a => !a.connected || !a.sendCapable)
+                .map(a => '<li><strong>' + esc(accountDisplayLabel(a)) + '</strong>: ' + esc(accountImpactText(a) || omniAccountStatusLabel(a)) + '</li>')
+                .join('');
             accountsAlarm.classList.remove('hidden');
-            const message = disconnected.length
-                ? 'Не підключено каналів: ' + disconnected.length + '. Перевірте стан потрібного каналу в налаштуваннях.'
-                : 'Omni: частина каналів працює в обмеженому режимі. Відкрийте картку, щоб побачити наслідки і наступну дію.';
-            accountsAlarm.innerHTML = esc(message) + '<button type="button" data-omni-mode="channels">Відкрити канали</button>';
+            accountsAlarm.innerHTML =
+                '<span class="omni-channel-status-dot ' + tone + '" aria-hidden="true"></span>' +
+                '<strong>Канали: ' + ready + ' готові · ' + limited + ' обмежені · ' + disconnected + ' потребують підключення</strong>' +
+                (detailRows ? '<details class="omni-channel-status-details"><summary>Деталі</summary><ul>' + detailRows + '</ul></details>' : '<span class="omni-channel-status-ok">Усі канали готові до роботи</span>') +
+                '<button type="button" data-omni-mode="channels">Керувати</button>';
         }
 
         function renderOmniHealthWorkspace() {
@@ -3483,15 +4036,54 @@
             return text ? '<span class="' + (cls || 'omni-conv-waiting') + '">' + esc(text) + '</span>' : '';
         }
 
+        function omniCurrentUserTokens() {
+            const user = (typeof AppState !== 'undefined' && AppState.currentUser) || {};
+            return [user.id, user.userId, user.username, user.name, user.email]
+                .filter(value => value !== undefined && value !== null && String(value).trim())
+                .map(value => String(value).trim().toLowerCase());
+        }
+
+        function conversationBelongsToCurrentUser(conv) {
+            const tokens = new Set(omniCurrentUserTokens());
+            if (!tokens.size) return false;
+            return [conv?.assignedTo, conv?.replyOwner, conv?.replyOwnerUserId,
+                conv?.meta?.assignedTo, conv?.meta?.assigned_to]
+                .filter(value => value !== undefined && value !== null && String(value).trim())
+                .some(value => tokens.has(String(value).trim().toLowerCase()));
+        }
+
+        function visibleConversations() {
+            if (activeViewFilter !== 'mine') return conversations;
+            return conversations.filter(conversationBelongsToCurrentUser);
+        }
+
+        function renderOmniFilterControls() {
+            document.querySelectorAll('[data-omni-view-filter]').forEach(btn => {
+                const active = btn.dataset.omniViewFilter === activeViewFilter;
+                btn.classList.toggle('active', active);
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+            if (channelSelect) channelSelect.value = activeChannel;
+            if (statusSelect) statusSelect.value = activeStatus;
+            if (statusFilterValue) {
+                const selected = statusSelect?.selectedOptions?.[0];
+                statusFilterValue.textContent = selected?.textContent || 'Усі';
+            }
+            const mineCount = $('omniViewMineCount');
+            if (mineCount) mineCount.textContent = activeViewFilter === 'mine' ? visibleConversations().length : '';
+        }
+
         function renderConversations() {
             $('omniClearSearch').hidden = !searchInput.value;
             renderOmniExplainability();
             const errorHtml = conversationLoadError ? '<div class="omni-list-feedback" role="status">' + esc(conversationLoadError) + '<button type="button" data-omni-conversations-retry>Спробувати ще</button></div>' : '';
-            if (!conversations.length) {
+            const rows = visibleConversations();
+            const previousScrollTop = convList ? convList.scrollTop : 0;
+            if (!rows.length) {
                 convList.innerHTML = errorHtml || omniEmptyHtml();
                 return;
             }
-            convList.innerHTML = conversations.map(c => {
+            convList.innerHTML = rows.map(c => {
                 const isActive = c.id === currentConvId;
                 const initials = (c.customerName || c.externalId || '?').slice(0, 2).toUpperCase();
                 const time = c.lastMessageAt ? formatTime(c.lastMessageAt) : '';
@@ -3515,27 +4107,39 @@
                         waiting +
                     '</div>' +
                 '</div>';
-            }).join('') + errorHtml + (conversations.length < conversationTotal
-                ? '<div class="omni-list-feedback"><button type="button" data-omni-conversations-more' + (conversationsLoading ? ' disabled' : '') + '>Ще розмови</button><span>' + conversations.length + ' з ' + conversationTotal + '</span></div>' : '');
+            }).join('') + errorHtml + (rows.length < conversationTotal
+                ? '<div class="omni-list-feedback"><button type="button" data-omni-conversations-more' + (conversationsLoading ? ' disabled' : '') + '>Ще розмови</button><span>' + rows.length + ' з ' + conversationTotal + '</span></div>' : '');
+            convList.scrollTop = Math.max(0, previousScrollTop);
         }
 
         function getOmniFilterSummary() {
             const filters = [];
             if (activeChannel !== 'all') filters.push({ label: 'Канал', value: CHANNEL_NAMES[activeChannel] || activeChannel });
+            if (activeViewFilter === 'open' && activeStatus === 'open') filters.push({ label: 'Вид', value: 'Відкриті' });
+            if (activeViewFilter === 'mine') filters.push({ label: 'Власник', value: 'Мої розмови' });
+            if (activeStatus !== 'all' && !(activeViewFilter === 'open' && activeStatus === 'open')) {
+                const statusLabels = { open: 'Відкриті', pending: 'Очікують', closed: 'Закриті', spam: 'Спам' };
+                filters.push({ label: 'Статус', value: statusLabels[activeStatus] || activeStatus });
+            }
             if (searchQuery) filters.push({ label: 'Пошук', value: searchQuery });
-            if (activeStatus) filters.push({ label: 'Статус', value: $('omniStatusFilter').selectedOptions[0]?.textContent || activeStatus });
-            if (onlyMine) filters.push({ label: 'Відповідальний', value: 'Мої розмови' });
             if (selectedConversationQueryId && !currentConvId) filters.push({ label: 'Посилання', value: 'розмова #' + selectedConversationQueryId });
             return filters;
+        }
+
+        function omniBusinessContextLabel() {
+            const context = getOmniBusinessContext();
+            const labels = { event_genix: 'Парк' };
+            return labels[context] || context.replace(/[_-]+/g, ' ');
         }
 
         function renderOmniExplainability() {
             if (!window.Explainability) return;
             const filters = getOmniFilterSummary();
             const html = Explainability.renderFilterSummary(filters, {
-                label: 'Зріз розмов',
+                label: 'Фільтри',
                 clearAction: filters.length ? 'omni' : '',
-                clearLabel: 'Показати всі розмови'
+                clearLabel: 'Очистити',
+                note: 'Бізнес: ' + omniBusinessContextLabel()
             });
             Explainability.setRegion('omniExplainability', html);
         }
@@ -3547,30 +4151,46 @@
                     icon: '✉',
                     title: filters.length ? 'Розмов за цим зрізом немає' : 'Розмов ще немає',
                     message: filters.length
-                        ? 'Поточний пошук, канал або точне посилання звузили список. Скиньте зріз, щоб повернути всі доступні розмови.'
+                        ? 'Поточний пошук, канал, статус або вид звузили список. Очистіть фільтри, щоб повернути всі доступні розмови.'
                         : 'Коли зʼявиться повідомлення з підключеного каналу, воно буде тут.',
                     clearAction: filters.length ? 'omni' : '',
-                    clearLabel: 'Показати всі розмови'
+                    clearLabel: 'Очистити',
+                note: 'Бізнес: ' + omniBusinessContextLabel()
                 });
             }
             return '<div style="padding:24px;text-align:center;color:var(--text-secondary,#718096)">Немає розмов</div>';
         }
 
+        function syncOmniFilterUrl() {
+            const url = new URL(window.location.href);
+            const setOrDelete = (key, value, fallback) => {
+                if (value && value !== fallback) url.searchParams.set(key, value);
+                else url.searchParams.delete(key);
+            };
+            setOrDelete('channel', activeChannel, 'all');
+            setOrDelete('status', activeStatus, 'all');
+            setOrDelete('view', activeViewFilter, 'all');
+            if (searchQuery) url.searchParams.set('search', searchQuery);
+            else url.searchParams.delete('search');
+            history.replaceState({}, '', url.pathname + url.search + url.hash);
+        }
+
         function resetOmniFilters() {
             activeChannel = 'all';
-            activeStatus = '';
-            onlyMine = false;
-            $('omniOnlyMine').checked = false;
-            $('omniStatusFilter').value = '';
+            activeStatus = 'all';
+            activeViewFilter = 'all';
             searchQuery = '';
             selectedConversationQueryId = null;
             conversationQueryApplied = true;
             if (searchInput) searchInput.value = '';
-            document.querySelectorAll('.omni-channel-btn').forEach(b => b.classList.toggle('active', b.dataset.channel === 'all'));
+            renderOmniFilterControls();
             const url = new URL(window.location.href);
             url.searchParams.delete('search');
             url.searchParams.delete('conversation');
             url.searchParams.delete('conversationId');
+            url.searchParams.delete('channel');
+            url.searchParams.delete('status');
+            url.searchParams.delete('view');
             history.replaceState({}, '', url.pathname + url.search + url.hash);
             loadConversations();
         }
@@ -4899,7 +5519,7 @@
                 conversationQueryApplied = true;
                 if (caseContextEl) {
                     caseContextEl.hidden = false;
-                    caseContextEl.innerHTML = '<div class="omni-case-row"><span class="omni-case-pill unresolved">Розмову не знайдено</span><span class="omni-case-meta">Перевірте посилання або відкрийте розмову зі списку.</span></div>';
+                    caseContextEl.innerHTML = renderCaseContextDetails('CRM-контекст · розмову не знайдено', '<div class="omni-case-row"><span class="omni-case-pill unresolved">Розмову не знайдено</span><span class="omni-case-meta">Перевірте посилання або відкрийте розмову зі списку.</span></div>');
                 }
             }
         }
@@ -4907,6 +5527,13 @@
         function caseLink(href, label, cls) {
             if (!href) return '';
             return '<a class="omni-case-link ' + (cls || '') + '" href="' + esc(href) + '">' + esc(label) + '</a>';
+        }
+
+        function renderCaseContextDetails(summary, content) {
+            return '<details class="omni-case-details">' +
+                '<summary>' + esc(summary || 'CRM-контекст') + '</summary>' +
+                content +
+            '</details>';
         }
 
         function renderCaseContext(context) {
@@ -4940,14 +5567,16 @@
             ].join('') : '';
 
             caseContextEl.hidden = false;
-            caseContextEl.innerHTML =
+            const contextSummary = [pillText, title !== 'Без прив’язки до кейсу' ? title : null].filter(Boolean).join(' · ');
+            caseContextEl.innerHTML = renderCaseContextDetails(contextSummary,
                 '<div class="omni-case-row">' +
                     '<span class="omni-case-pill ' + pillClass + '">' + pillText + '</span>' +
                     '<span class="omni-case-title">' + esc(title) + '</span>' +
                     (meta ? '<span class="omni-case-meta">' + esc(meta) + '</span>' : '') +
                     exactActions +
                     suggestedActions +
-                '</div>';
+                '</div>'
+            );
         }
 
         async function loadCaseContext(convId) {
@@ -4955,13 +5584,13 @@
             const requestSeq = ++caseContextRequestSeq;
             const epoch = workspaceEpoch;
             caseContextEl.hidden = false;
-            caseContextEl.innerHTML = '<div class="omni-case-row"><span class="omni-case-pill unresolved">Завантаження CRM-контексту...</span></div>';
+            caseContextEl.innerHTML = renderCaseContextDetails('CRM-контекст · завантаження', '<div class="omni-case-row"><span class="omni-case-pill unresolved">Завантаження CRM-контексту...</span></div>');
             const context = await fetchConversationContext(convId);
             if (requestSeq !== caseContextRequestSeq || epoch !== workspaceEpoch || convId !== currentConvId) return;
             if (context) {
                 renderCaseContext(context);
             } else {
-                caseContextEl.innerHTML = '<div class="omni-case-row"><span class="omni-case-pill unresolved">CRM-контекст недоступний</span><span class="omni-case-meta">Розмову можна вести без прив’язки до кейсу.</span></div>';
+                caseContextEl.innerHTML = renderCaseContextDetails('CRM-контекст недоступний', '<div class="omni-case-row"><span class="omni-case-pill unresolved">CRM-контекст недоступний</span><span class="omni-case-meta">Розмову можна вести без прив’язки до кейсу.</span></div>');
             }
         }
 
@@ -5094,6 +5723,7 @@
             messages.style.display = 'flex';
             inputArea.style.display = 'flex';
             quickRepliesEl.style.display = 'flex';
+            setMobileInboxView('conversation');
             resizeComposer();
 
             $('omniChatName').textContent = conv.customerName || conv.externalId;
@@ -5356,7 +5986,6 @@
         $('omniChooseFile').addEventListener('click', () => $('omniFileInput').click());
         $('omniFileInput').addEventListener('change', event => { const file = event.target.files[0]; event.target.value = ''; chooseAttachment(file); });
         $('omniCancelFile').addEventListener('click', () => { if (!isSending) { attachmentDrafts.delete(selectedDraftKey); updateSendControls(currentConversation()); } });
-        $('omniOnlyMine').addEventListener('change', event => { onlyMine = event.target.checked; loadConversations(); });
         $('omniConversationStatus').addEventListener('change', event => updateConversationField(event.target, 'status'));
         $('omniAssignee').addEventListener('change', event => updateConversationField(event.target, 'assigned_to'));
         for (const id of ['omniConversationStatus', 'omniAssignee']) {
@@ -5394,7 +6023,6 @@
             setSendFeedback(null, 'Ручну перевірку збережено окремо від статусу провайдера.');
             await loadMessages(id, { refresh: true });
         });
-        $('omniStatusFilter').addEventListener('change', event => { activeStatus = event.target.value; loadConversations(); });
         messages.addEventListener('scroll', () => { if (messages.scrollHeight - messages.scrollTop - messages.clientHeight < 64) markVisibleMessagesRead(); });
         document.addEventListener('visibilitychange', () => { if (!document.hidden) markVisibleMessagesRead(); });
         messages.addEventListener('click', async event => {
@@ -5515,14 +6143,44 @@
             });
         }
 
-        // Channel filters
-        $('omniFilters').addEventListener('click', e => {
-            const btn = e.target.closest('.omni-channel-btn');
-            if (!btn) return;
-            document.querySelectorAll('.omni-channel-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            activeChannel = btn.dataset.channel;
+        convList.addEventListener('keydown', e => {
+            const item = e.target.closest('.omni-conv-item');
+            if (!item || (e.key !== 'Enter' && e.key !== ' ')) return;
+            e.preventDefault();
+            selectConversation(parseInt(item.dataset.id));
+        });
+        if (mobileBackBtn) {
+            mobileBackBtn.addEventListener('click', () => setMobileInboxView('list', { focus: true }));
+        }
+
+        // Compact conversation filters
+        document.querySelectorAll('[data-omni-view-filter]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                activeViewFilter = btn.dataset.omniViewFilter || 'all';
+                if (activeViewFilter === 'all') activeStatus = 'all';
+                if (activeViewFilter === 'open') activeStatus = 'open';
+                conversationQueryApplied = true;
+                renderOmniFilterControls();
+                syncOmniFilterUrl();
+                loadConversations();
+            });
+        });
+
+        if (channelSelect) channelSelect.addEventListener('change', () => {
+            activeChannel = channelSelect.value || 'all';
             conversationQueryApplied = true;
+            renderOmniFilterControls();
+            syncOmniFilterUrl();
+            loadConversations();
+        });
+
+        if (statusSelect) statusSelect.addEventListener('change', () => {
+            activeStatus = statusSelect.value || 'all';
+            if (activeStatus === 'open') activeViewFilter = 'open';
+            else if (activeViewFilter === 'open') activeViewFilter = 'all';
+            conversationQueryApplied = true;
+            renderOmniFilterControls();
+            syncOmniFilterUrl();
             loadConversations();
         });
 
@@ -5565,29 +6223,20 @@
             });
         }
         document.addEventListener('keydown', e => {
-            if (e.target.matches('.omni-mode-btn') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
-                const tabs = Array.from(document.querySelectorAll('.omni-mode-btn'));
-                const index = tabs.indexOf(e.target);
-                const next = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (index + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-                e.preventDefault(); setOmniMode(tabs[next].dataset.omniMode); tabs[next].focus();
-            }
             if (e.key === 'Escape' && leadAssistantState.open) {
                 closeLeadAssistantPanel();
                 return;
             }
             if (e.key === 'Escape' && connectionModal && !connectionModal.hidden) closeConnectionModal();
-            if (e.key === 'Tab') {
-                const modal = connectionModal && !connectionModal.hidden ? connectionModal : (leadAssistantState.open ? leadAssistantDrawer : null);
-                if (!modal) return;
-                const controls = Array.from(modal.querySelectorAll('button, input, select, textarea, a[href], [tabindex="0"]')).filter(el => !el.disabled && !el.hidden && el.getClientRects().length);
-                if (!controls.length) return;
-                const first = controls[0], last = controls[controls.length - 1];
-                if (e.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
-                else if (!e.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
-            }
         });
         document.addEventListener('click', async e => {
-            const modeBtn = e.target.closest('button[data-omni-mode]');
+            const clear = e.target.closest('[data-explain-clear="omni"]');
+            if (clear) {
+                e.preventDefault();
+                resetOmniFilters();
+                return;
+            }
+            const modeBtn = e.target.closest('button[data-omni-mode], a[data-omni-mode]');
             if (modeBtn && modeBtn.dataset.omniMode) {
                 e.preventDefault();
                 setOmniMode(modeBtn.dataset.omniMode);
@@ -5608,10 +6257,6 @@
                 showAccountPanelForChannel(jump.dataset.accountJump);
                 return;
             }
-            const clear = e.target.closest('[data-explain-clear="omni"]');
-            if (!clear) return;
-            e.preventDefault();
-            resetOmniFilters();
         });
 
         // Search
@@ -5684,6 +6329,19 @@
                 selectedConversationQueryId = queryConversation;
                 conversationQueryApplied = false;
             }
+            const queryChannel = (params.get('channel') || '').trim().toLowerCase();
+            if (channelSelect && [...channelSelect.options].some(option => option.value === queryChannel)) {
+                activeChannel = queryChannel || 'all';
+                channelSelect.value = activeChannel;
+            }
+            const queryStatus = (params.get('status') || '').trim().toLowerCase();
+            if (statusSelect && [...statusSelect.options].some(option => option.value === queryStatus)) {
+                activeStatus = queryStatus || 'all';
+                statusSelect.value = activeStatus;
+            }
+            const queryView = (params.get('view') || '').trim().toLowerCase();
+            if (['all', 'open', 'mine'].includes(queryView)) activeViewFilter = queryView;
+            if (activeViewFilter === 'open') activeStatus = 'open';
             const querySearch = (params.get('search') || '').trim();
             if (!querySearch) return;
             searchQuery = querySearch;
@@ -5706,6 +6364,8 @@
         // ---- Init ----
         async function init() {
             applyQueryContext();
+            renderOmniFilterControls();
+            syncOmniViewportSize();
             await loadOmniAccounts();
             if (openAccountPanel || accountPanelChannel) setOmniMode('channels');
             await Promise.all([loadConversations(), loadQuickReplies(), loadStats()]);
@@ -5716,6 +6376,9 @@
                 if (!document.hidden) refreshOmniWorkspace();
             });
         }
+
+        window.addEventListener('resize', syncOmniViewportSize);
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', syncOmniViewportSize);
 
         // Auth check (standalone page pattern — same as chat-page.js)
         document.addEventListener('DOMContentLoaded', async function() {
@@ -5742,7 +6405,7 @@
         });
     })();
     </script>
-<script src="js/ui.js?v=0.81.186"></script>
-    <script src="js/alerts.js?v=0.81.186"></script>
+<script src="js/ui.js?v=0.81.187"></script>
+    <script src="js/alerts.js?v=0.81.187"></script>
 </body>
 </html>

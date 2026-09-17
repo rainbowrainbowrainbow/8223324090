@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { buildMembershipAccess, applyMembershipAccess } = require('../services/businessMembership');
-const { canReadParkStaffSchedule } = require('../services/parkStaffScheduleAccess');
+const { canReadParkStaffSchedule, canUseParkStaffSchedule } = require('../services/parkStaffScheduleAccess');
 
 const contexts = ['event_genix', 'dar', 'crm', 'foreign_business'];
 const principal = { id: 81, username: 'schedule_access_fixture', role: 'director',
@@ -35,14 +35,35 @@ test('Park membership can read only the schedule dependencies without enabling t
     assert.equal(canReadParkStaffSchedule(request(), null), false);
 });
 
-test('all mutation verbs, HEAD and unrelated staff/HR reads remain contained', () => {
+test('read helper remains GET-only while the writable schedule lane is explicit and bounded', () => {
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']) {
         for (const [routerId, path] of [['staff', '/schedule'], ['staff', '/'], ['hr', '/professions']]) {
             assert.equal(canReadParkStaffSchedule(request('event_genix', { request: { method, path } }), routerId), false, `${method} ${path}`);
         }
     }
+    for (const [method, path] of [
+        ['PUT', '/schedule'],
+        ['POST', '/schedule/bulk'],
+        ['POST', '/schedule/copy-week'],
+        ['POST', '/schedule/12/replace'],
+        ['POST', '/schedule/12/replacement-clear'],
+        ['PUT', '/12/shift-preferences'],
+        ['POST', '/schedule/export-xlsx']
+    ]) {
+        assert.equal(canUseParkStaffSchedule(request('event_genix', { request: { method, path } }), 'staff'), true, `${method} ${path}`);
+    }
+    assert.equal(canUseParkStaffSchedule(request('event_genix', {
+        request: { method: 'GET', path: '/12/shift-preferences' }
+    }), 'staff'), true);
+    assert.equal(canUseParkStaffSchedule(request('event_genix', {
+        request: { method: 'PUT', path: '/schedule' },
+        memberships: [membership('event_genix', { action_denylist: ['hr.schedule.manage'] })]
+    }), 'staff'), false);
+    const aggregate = request('event_genix', { request: { method: 'PUT', path: '/schedule' } });
+    aggregate.query = { businessScope: 'all', businessContexts: 'event_genix,dar' };
+    assert.equal(canUseParkStaffSchedule(aggregate, 'staff'), false);
     for (const path of ['/payroll', '/face-descriptors', '/checkins', '/link-status', '/account-stats', '/12',
-        '/12/shift-preferences', '/schedule/check/2026-09-14', '/schedule/export-xlsx', '/schedule/bulk',
+        '/schedule/check/2026-09-14',
         '/schedule/history/12/2026-09-14/extra', '/schedule/history/-1/2026-09-14']) {
         assert.equal(canReadParkStaffSchedule(request('event_genix', { request: { path } }), 'staff'), false, path);
     }

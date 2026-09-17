@@ -192,10 +192,10 @@ async function withActualRouters(run) {
     }
 }
 
-test('Park schedule recovery through the actual Express staff and HR routers', async t => {
+test('Park schedule ownership through the actual Express staff and HR routers', async t => {
     await withActualRouters(async ({ state, request, calls }) => {
         await t.test('all schedule GET dependencies load using real handlers and preserve operational values', async () => {
-            state.actor = {};
+            state.actor = { deny: ['hr.payroll.view'] };
             const responses = new Map();
             for (const path of READ_PATHS) {
                 const result = await request(path);
@@ -206,14 +206,26 @@ test('Park schedule recovery through the actual Express staff and HR routers', a
             const roster = responses.get(READ_PATHS[0]);
             assert.equal(roster.data[0].id, STAFF_ID);
             assert.equal(roster.data[0].display_group, 'animators');
-            assert.deepEqual(roster.scheduleAccess, { readOnly: true, businessContext: 'event_genix' });
+            assert.deepEqual(roster.scheduleAccess, {
+                readOnly: false,
+                editable: true,
+                businessContext: 'event_genix',
+                owner: 'park',
+                source: 'park_staff_schedule_ownership'
+            });
             const schedule = responses.get(READ_PATHS[1]);
             assert.equal(schedule.data[0].date, '2026-09-14');
             assert.equal(schedule.data[0].shift_start, '10:00');
             assert.equal(schedule.data[0].shift_end, '18:00');
             assert.equal(schedule.data[0].plannedMinutes, 450);
             assert.equal(schedule.data[0].segments[0].professionKey, 'animator');
-            assert.deepEqual(schedule.scheduleAccess, { readOnly: true, businessContext: 'event_genix' });
+            assert.deepEqual(schedule.scheduleAccess, {
+                readOnly: false,
+                editable: true,
+                businessContext: 'event_genix',
+                owner: 'park',
+                source: 'park_staff_schedule_ownership'
+            });
             assert.equal(responses.get(READ_PATHS[2]).data[STAFF_ID].totalHours, 7.5);
             assert.equal(responses.get(READ_PATHS[3]).data[0].staff_id, STAFF_ID);
             assert.equal(responses.get(READ_PATHS[6]).data[0].action, 'staff_schedule_update');
@@ -221,7 +233,7 @@ test('Park schedule recovery through the actual Express staff and HR routers', a
             for (const [path, body] of responses) {
                 const text = JSON.stringify(body);
                 assert.equal(text.includes(PRIVATE), false, `${path} excludes private fields`);
-                assert.doesNotMatch(text, /"(?:hourlyRate|hourly_rate|explicitRate|fallbackRate|payMultiplier|compensation_snapshot|account_username|ip_address)"/, path);
+                assert.doesNotMatch(text, /"(?:hourlyRate|hourly_rate|explicitRate|fallbackRate|compensation_snapshot|account_username|ip_address)"/, path);
             }
         });
 
@@ -272,14 +284,12 @@ test('Park schedule recovery through the actual Express staff and HR routers', a
             }
         });
 
-        await t.test('schedule writes and unrelated staff or HR endpoints remain closed before DB access', async () => {
+        await t.test('unrelated staff or HR endpoints remain closed before DB access', async () => {
             state.actor = {};
             const denied = [
-                ['POST', '/api/staff'], ['PUT', '/api/staff/schedule'], ['POST', '/api/staff/schedule/bulk'],
-                ['POST', '/api/staff/schedule/copy-week'], ['POST', '/api/staff/schedule/export-xlsx'],
-                ['POST', '/api/staff/schedule/9601/replace'], ['DELETE', '/api/staff/9701'],
+                ['POST', '/api/staff'], ['DELETE', '/api/staff/9701'],
                 ['GET', '/api/staff/face-descriptors'], ['GET', '/api/staff/payroll'],
-                ['GET', '/api/staff/9701/shift-preferences'], ['GET', '/api/staff/schedule/check/2026-09-14'],
+                ['GET', '/api/staff/schedule/check/2026-09-14'],
                 ['GET', '/api/hr/staff'], ['GET', '/api/hr/salary'], ['GET', '/api/hr/shifts'],
                 ['POST', '/api/hr/professions'], ['POST', '/api/hr/shifts'],
                 ['HEAD', `/api/staff/schedule?${RANGE}`]

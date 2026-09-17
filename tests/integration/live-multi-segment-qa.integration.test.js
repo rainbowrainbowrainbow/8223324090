@@ -154,6 +154,31 @@ test('isolated live QA helper preserves 540 physical minutes and 510 paid simult
     assert.deepEqual(savedDay.segments[0].paidAdditionalProfessionKeys, []);
     assert.deepEqual(savedDay.segments[1].paidAdditionalProfessionKeys, [additionalProfession]);
 
+    const originalPaidRole = structuredClone(savedDay.segments[1].additionalRoles[0]);
+    const noteOnly = `live_multi_segment_qa:note_only:${runId}`;
+    const noteUpdate = await authRequest('PUT', '/api/staff/schedule', {
+        staffId,
+        date,
+        status: savedDay.status,
+        note: noteOnly,
+        professionKey: savedDay.profession_key,
+        primaryProfessionKey: savedDay.primaryProfessionKey || savedDay.primary_profession_key,
+        segments: savedDay.segments,
+        expectedUpdatedAt: savedDay.planUpdatedAt || savedDay.plan_updated_at || savedDay.hr_plan_updated_at
+    });
+    assert.equal(noteUpdate.status, 200, JSON.stringify(noteUpdate.data));
+    assert.equal(noteUpdate.data?.data?.note, noteOnly);
+
+    const afterNoteUpdate = await authRequest('GET', `/api/staff/schedule?from=${date}&to=${date}`);
+    const noteUpdatedDay = (afterNoteUpdate.data?.data || []).find(row => Number(row.staff_id) === staffId);
+    assert.equal(afterNoteUpdate.status, 200);
+    assert.equal(noteUpdatedDay?.note, noteOnly);
+    assert.equal(Number(noteUpdatedDay?.planned_minutes), 540);
+    assert.deepEqual(noteUpdatedDay?.segments?.[1]?.additionalRoles?.[0], originalPaidRole,
+        'a note-only save must preserve paid-role multiplier, interval and policy fields');
+    assert.ok(noteUpdatedDay?.planUpdatedAt || noteUpdatedDay?.plan_updated_at || noteUpdatedDay?.hr_plan_updated_at,
+        'note-only save returns a fresh version token');
+
     const bulk = await authRequest('POST', '/api/staff/schedule/bulk', {
         entries: [{
             staffId,

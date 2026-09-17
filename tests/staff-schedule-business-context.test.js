@@ -22,10 +22,10 @@ function response(status, body) {
     };
 }
 
-function loadSchedule(fetchImpl, businessContext = 'event_genix') {
+function loadSchedule(fetchImpl, businessContext = 'event_genix', role = 'director') {
     const user = {
         id: 9701,
-        role: 'director',
+        role,
         activeBusinessContext: businessContext,
         businessContextPolicy: {
             allowed: ['event_genix', 'park_restaurant'],
@@ -82,6 +82,11 @@ window.scheduleReads = {
     fetchScheduleAttendance,
     fetchScheduleHours,
     fetchScheduleHistory,
+    saveScheduleEntry,
+    replaceScheduleEntry,
+    clearScheduleReplacement,
+    bulkSaveSchedule,
+    copyWeekSchedule,
     syncScheduleRangeActionAvailability,
     validateSchedulePlan,
     schedulePaidRolePreview,
@@ -95,6 +100,24 @@ window.scheduleReads = {
 window.StaffSchedulePage = {`), context, { filename: 'js/staff-page.js' });
     return { api: context.window.scheduleReads, elements, context, storage };
 }
+
+test('all schedule mutations use the authenticated client and selected business context', async () => {
+    const calls = [];
+    const { api } = loadSchedule(async (url, options) => {
+        calls.push({ url, options });
+        return response(200, { success: true, data: {}, count: 1 });
+    });
+    await api.saveScheduleEntry(9701, dateRange[0], '10:00', '18:00', 'working', 'note');
+    await api.replaceScheduleEntry(12, 9702, 'replacement');
+    await api.clearScheduleReplacement(12);
+    await api.bulkSaveSchedule([{ staffId: 9701, date: dateRange[0], status: 'dayoff' }]);
+    await api.copyWeekSchedule('2026-09-14', '2026-09-21', { staffIds: [9701] });
+    assert.equal(calls.length, 5);
+    for (const call of calls) {
+        assert.equal(call.options.headers['X-Business-Context'], 'event_genix', call.url);
+        assert.equal(call.options.headers.Authorization, 'Bearer test-access-token', call.url);
+    }
+});
 
 const reads = [
     ['fetchHrProfessions', [], '/api/hr/professions'],
@@ -210,6 +233,53 @@ test('compatibility responses do not grant or remove existing capabilities', asy
     assert.equal(api.state.canManageSchedule, true);
     assert.equal(api.state.canManageStaff, false);
     assert.equal(api.state.canExportSchedule, false);
+});
+
+test('writable Park metadata clears stale recovery mode without granting client capabilities', async () => {
+    const { api } = loadSchedule(async () => response(200, {
+        success: true,
+        data: [],
+        departments: {},
+        scheduleAccess: { readOnly: false, editable: true, businessContext: 'event_genix', owner: 'park' }
+    }));
+    Object.assign(api.state, { recoveryReadOnly: true, canManageSchedule: false, canManageStaff: false, canExportSchedule: false });
+    await api.fetchStaff();
+    assert.equal(api.state.recoveryReadOnly, false);
+    assert.equal(api.state.canManageSchedule, false);
+    assert.equal(api.state.canManageStaff, false);
+    assert.equal(api.state.canExportSchedule, false);
+});
+
+test('hidden configured rate permits schedule editing without exposing the rate amount', async () => {
+    const projected = projectParkStaffSchedulePayload('staff', '/schedule', {
+        success: true,
+        data: [{ staff_id: 9701, date: dateRange[0], status: 'working', profession_key: 'animator',
+            primaryProfessionKey: 'animator', planUpdatedAt: 'version-1', segments: [{
+                professionKey: 'animator', shiftStart: '10:00', shiftEnd: '18:00', breakMinutes: 0,
+                additionalProfessionKeys: ['reception'], additionalRoles: [{ professionKey: 'reception',
+                    compensationMode: 'paid_hourly', payMultiplier: 1, intervalStart: '11:00', intervalEnd: '13:00' }]
+            }] }]
+    });
+    const { api, elements } = loadSchedule(async url => {
+        if (url === '/api/hr/professions') return response(200, { success: true, data: [{ key: 'reception', people: [{
+            id: 9701, isActive: true, assignmentStatus: 'active', admissionStatus: 'approved',
+            hasExplicitHourlyRate: true
+        }] }] });
+        return response(200, { ...projected, scheduleAccess: { readOnly: false, editable: true, businessContext: 'event_genix' } });
+    }, 'event_genix', 'manager');
+    api.state.staff = [{ id: 9701, role_type: 'animator', secondary_professions: ['reception'] }];
+    api.state.editingCell = { staffId: 9701, date: dateRange[0] };
+    elements.set('schStatus', { value: 'working' });
+    elements.set('schPrimaryProfession', { value: 'animator' });
+    const segments = api.usePlan(projected.data[0]);
+    await api.fetchHrProfessions();
+    await api.fetchSchedule(...dateRange);
+    const validation = api.validateSchedulePlan('schedule');
+    assert.equal(validation.valid, true, validation.errors.join('; '));
+    assert.equal(validation.errorCodes.includes('HR_SHIFT_PAID_ROLE_RATE_REQUIRED'), false);
+    assert.equal(api.schedulePaidRolePreview('schedule', segments[0].additionalRoles[0], segments[0]),
+        'Ставка налаштована · 120 хв · multiplier 1.0');
+    assert.equal(JSON.stringify(api.state.professions).includes('explicitRate'), false);
 });
 
 test('projected recovery plan preserves physical validation without inventing missing payroll rates', async () => {

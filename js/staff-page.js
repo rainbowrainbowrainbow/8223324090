@@ -3434,7 +3434,11 @@ function focusScheduleStaff(staffId, options = {}) {
 // ==========================================
 
 function applyScheduleReadAccess(data) {
-    if (data?.scheduleAccess?.readOnly !== true) return;
+    if (!data?.scheduleAccess) return;
+    if (data.scheduleAccess.readOnly !== true) {
+        StaffState.recoveryReadOnly = false;
+        return;
+    }
     // The legacy Park read lane cannot mutate staff or run the POST workbook export.
     // Server metadata may reduce capabilities, but never grants new permissions.
     StaffState.recoveryReadOnly = true;
@@ -3654,16 +3658,15 @@ async function postAttendanceAction(action, staffId) {
 }
 
 async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey = null, dayPlan = null) {
-    const token = localStorage.getItem('pzp_token');
     const payload = { staffId, date, shiftStart, shiftEnd, status, note, professionKey };
     if (dayPlan) {
         payload.segments = dayPlan.segments;
         payload.primaryProfessionKey = dayPlan.primaryProfessionKey;
         if (dayPlan.expectedUpdatedAt) payload.expectedUpdatedAt = dayPlan.expectedUpdatedAt;
     }
-    const res = await fetch('/api/staff/schedule', {
+    const res = await staffApiFetch('/api/staff/schedule', {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     });
     return await res.json();
@@ -3685,10 +3688,9 @@ async function fetchScheduleHistory(staffId, date, options = {}) {
 }
 
 async function replaceScheduleEntry(scheduleId, replacementStaffId, reason) {
-    const token = localStorage.getItem('pzp_token');
-    const res = await fetch(`/api/staff/schedule/${scheduleId}/replace`, {
+    const res = await staffApiFetch(`/api/staff/schedule/${scheduleId}/replace`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             replacement_staff_id: replacementStaffId,
             reason: reason || null
@@ -3698,31 +3700,28 @@ async function replaceScheduleEntry(scheduleId, replacementStaffId, reason) {
 }
 
 async function clearScheduleReplacement(scheduleId) {
-    const token = localStorage.getItem('pzp_token');
-    const res = await fetch(`/api/staff/schedule/${scheduleId}/replacement-clear`, {
+    const res = await staffApiFetch(`/api/staff/schedule/${scheduleId}/replacement-clear`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' }
     });
     return await res.json();
 }
 
 async function bulkSaveSchedule(entries) {
-    const token = localStorage.getItem('pzp_token');
-    const res = await fetch('/api/staff/schedule/bulk', {
+    const res = await staffApiFetch('/api/staff/schedule/bulk', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entries })
     });
     return await res.json();
 }
 
 async function copyWeekSchedule(fromMonday, toMonday, options = {}) {
-    const token = localStorage.getItem('pzp_token');
     const payload = scheduleCopyWeekPayload(fromMonday, toMonday, options);
     if (payload.error) return { success: false, error: payload.error, copyMode: payload.mode };
-    const res = await fetch('/api/staff/schedule/copy-week', {
+    const res = await staffApiFetch('/api/staff/schedule/copy-week', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload.body)
     });
     return await res.json();
@@ -4668,6 +4667,7 @@ const STAFF_SCHEDULE_PAYROLL_READ_ROLES = new Set([
 ]);
 
 function scheduleCanViewPayrollAmounts() {
+    if (typeof canAccess === 'function') return canAccess('hr.payroll.view') === true;
     const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
     return STAFF_SCHEDULE_PAYROLL_READ_ROLES.has(String(user?.role || '').trim().toLowerCase());
 }
@@ -4682,20 +4682,22 @@ function scheduleExplicitProfessionRate(staff, professionKey) {
     const assignment = (Array.isArray(profession?.people) ? profession.people : [])
         .find(person => Number(person.id) === Number(staff?.id));
     const explicitRate = Number(assignment?.explicitRate);
+    const visibleRateAvailable = assignment?.rateUnit === 'hour'
+        && assignment?.rateSource === 'staff_profession_rates.hourly_rate'
+        && Number.isFinite(explicitRate)
+        && explicitRate > 0;
+    const hiddenConfiguredRate = assignment?.hasExplicitHourlyRate === true && !visibleRateAvailable;
     const available = Boolean(
         staff
         && assignment
         && assignment.isActive !== false
         && assignment.assignmentStatus === 'active'
         && assignment.admissionStatus === 'approved'
-        && assignment.rateUnit === 'hour'
-        && assignment.rateSource === 'staff_profession_rates.hourly_rate'
-        && Number.isFinite(explicitRate)
-        && explicitRate > 0
+        && (hiddenConfiguredRate || visibleRateAvailable)
     );
     return {
         available,
-        rate: available ? explicitRate : null,
+        rate: available && visibleRateAvailable ? explicitRate : null,
         assignment,
         reason: !staff
             ? 'Оберіть одного працівника.'

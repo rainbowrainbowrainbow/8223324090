@@ -61,23 +61,41 @@ test('Park roster preserves schedule grouping and badges without account or cont
     assert.deepEqual(payload, before, 'Projection must not mutate shared source rows');
 });
 
-test('Park profession dependency exposes labels without people, rates or unrelated HR inventory', () => {
+test('Park profession dependency exposes rate presence without rate amounts or unrelated HR inventory', () => {
     const output = project('hr', '/professions', { success: true, data: [{ id: 4, key: 'animator', title: 'Аніматор',
-        department: 'animators', color: '#abcdef', is_active: true, people: [{ explicitRate: 450, fallbackRate: 400,
-            storedExplicitRate: 450, ignoredExplicitRate: 450, hourlyRate: 450 }], checklist: ['PRIVATE'] }],
+        department: 'animators', color: '#abcdef', is_active: true, people: [{ id: 7, isActive: true,
+            assignmentStatus: 'active', admissionStatus: 'approved', explicitRate: 450, fallbackRate: 400,
+            storedExplicitRate: 450, ignoredExplicitRate: 450, hourlyRate: 450, rateUnit: 'hour',
+            rateSource: 'staff_profession_rates.hourly_rate' }], checklist: ['PRIVATE'] }],
     inventory: { private: 'PRIVATE' }, structureNodes: [{ private: 'PRIVATE' }] });
     assert.deepEqual(output, {
         success: true,
-        data: [{ id: 4, key: 'animator', title: 'Аніматор',
-            department: 'animators', color: '#abcdef', is_active: true }],
+        data: [{ id: 4, key: 'animator', title: 'Аніматор', department: 'animators', color: '#abcdef', is_active: true,
+            people: [{ id: 7, isActive: true, assignmentStatus: 'active', admissionStatus: 'approved',
+                hasExplicitHourlyRate: true }] }],
         professionCatalogAccess: {
             readOnly: true,
             partial: true,
             businessContext: 'event_genix',
             reason: 'park_schedule_recovery_projection',
-            unsupportedFields: ['people', 'staffCount', 'checklist', 'checklistCount', 'workspace']
+            payrollDataAccess: false,
+            unsupportedFields: ['staffCount', 'checklist', 'checklistCount', 'workspace']
         }
     });
+    assert.equal(JSON.stringify(output).includes('450'), false);
+});
+
+test('Park payroll viewers receive only explicit rate fields needed for schedule planning', () => {
+    const output = project('hr', '/professions', { success: true, data: [{ id: 4, key: 'animator', title: 'Аніматор',
+        people: [{ id: 7, name: 'PRIVATE', isActive: true, isPrimary: false, assignmentStatus: 'active',
+            admissionStatus: 'approved', internshipStatus: 'none', explicitRate: 450, fallbackRate: 400,
+            rateUnit: 'hour', rateSource: 'staff_profession_rates.hourly_rate' }] }] }, { includePayroll: true });
+    assert.deepEqual(output.data[0].people, [{ id: 7, isActive: true, isPrimary: false,
+        assignmentStatus: 'active', admissionStatus: 'approved', internshipStatus: 'none',
+        hasExplicitHourlyRate: true, explicitRate: 450, rateUnit: 'hour',
+        rateSource: 'staff_profession_rates.hourly_rate' }]);
+    assert.equal(output.professionCatalogAccess.payrollDataAccess, true);
+    assert.equal(JSON.stringify(output).includes('PRIVATE'), false);
 });
 
 test('Park attendance retains factual time and allocation aliases while excluding compensation snapshots', () => {
@@ -103,24 +121,48 @@ test('Park attendance retains factual time and allocation aliases while excludin
     assert.equal(JSON.stringify(output).includes('PRIVATE'), false);
 });
 
-test('Park schedule keeps dates, versions, ordered segments and concurrent role identities without pay values', () => {
+test('Park schedule keeps dates, versions, ordered segments and paid-role round-trip fields without rate amounts', () => {
     const output = project('staff', '/schedule/', { success: true, data: [{ id: 91, staff_id: 7, date: '2026-09-14',
         status: 'working', shift_start: '22:00', shift_end: '02:00', primaryProfessionKey: 'animator',
         planned_minutes: 240, planUpdatedAt: '2026-09-14T09:00:00.123456Z', original_staff_name: 'Synthetic Original',
         replacement_reason: 'Synthetic replacement', hourly_rate: 1234, segments: [{ id: 12, professionKey: 'animator',
             shiftStart: '22:00', shiftEnd: '02:00', breakMinutes: 0, additionalProfessionKeys: ['reception'],
             paidAdditionalProfessionKeys: ['reception'], estimatedSalary: 9876, additionalRoles: [{ professionKey: 'reception',
-                compensationMode: 'paid_hourly', payMultiplier: 2, policyVersion: 'v1', hourlyRate: 1234 }] }] }] });
+                compensationMode: 'paid_hourly', payMultiplier: 2, intervalStart: '23:00', intervalEnd: '01:00',
+                policyVersion: 'v1', hourlyRate: 1234 }] }] }] });
     const row = output.data[0];
     assert.equal(row.date, '2026-09-14');
     assert.equal(row.shift_end, '02:00');
     assert.equal(row.planned_minutes, 240);
     assert.equal(row.planUpdatedAt, '2026-09-14T09:00:00.123456Z');
     assert.equal(row.original_staff_name, 'Synthetic Original');
-    assert.deepEqual(row.segments[0].additionalRoles, [{ professionKey: 'reception', compensationMode: 'paid_hourly', policyVersion: 'v1' }]);
+    assert.deepEqual(row.segments[0].additionalRoles, [{ professionKey: 'reception', compensationMode: 'paid_hourly',
+        payMultiplier: 2, intervalStart: '23:00', intervalEnd: '01:00', policyVersion: 'v1' }]);
     assert.deepEqual(row.segments[0].paidAdditionalProfessionKeys, ['reception']);
     assert.equal(Object.hasOwn(row, 'hourly_rate'), false);
     assert.equal(Object.hasOwn(row.segments[0], 'estimatedSalary'), false);
+});
+
+test('Park shift preferences and successful mutations expose only scheduling response fields', () => {
+    const preferencePayload = { success: true, staffId: 7, allowedProfessions: ['animator'], count: 1,
+        ensuredFallbackCount: 0, data: [{ id: 11, staff_id: 7, profession_key: 'animator', day_type: 'weekday',
+            start_time: '10:00', end_time: '18:00', is_active: true, privateField: 'PRIVATE' }] };
+    for (const method of ['GET', 'PUT']) {
+        const output = project('staff', '/7/shift-preferences', preferencePayload, { method });
+        assert.equal(output.data[0].start_time, '10:00');
+        assert.equal(JSON.stringify(output).includes('PRIVATE'), false);
+    }
+    const mutation = project('staff', '/schedule', { success: true, data: {
+        staff_id: 7, date: '2026-09-14', status: 'working', note: 'Updated', planUpdatedAt: 'v2',
+        privateField: 'PRIVATE', segments: [{ professionKey: 'animator', shiftStart: '10:00', shiftEnd: '18:00',
+            additionalRoles: [{ professionKey: 'reception', compensationMode: 'paid_hourly', payMultiplier: 1.5,
+                intervalStart: '11:00', intervalEnd: '13:00', hourlyRate: 999 }] }]
+    } }, { method: 'PUT' });
+    assert.equal(mutation.data.note, 'Updated');
+    assert.equal(mutation.data.planUpdatedAt, 'v2');
+    assert.equal(mutation.data.segments[0].additionalRoles[0].payMultiplier, 1.5);
+    assert.equal(JSON.stringify(mutation).includes('PRIVATE'), false);
+    assert.equal(JSON.stringify(mutation).includes('hourlyRate'), false);
 });
 
 test('Park history projects object and JSON audit details and hides compensation change records and IPs', () => {
@@ -156,7 +198,8 @@ test('Park recovery preserves empty and error responses, supports static metadat
             partial: true,
             businessContext: 'event_genix',
             reason: 'park_schedule_recovery_projection',
-            unsupportedFields: ['people', 'staffCount', 'checklist', 'checklistCount', 'workspace']
+            payrollDataAccess: false,
+            unsupportedFields: ['staffCount', 'checklist', 'checklistCount', 'workspace']
         }
     });
     const error = { success: false, code: 'SYNTHETIC_READ_ERROR', error: 'Unable to read' };

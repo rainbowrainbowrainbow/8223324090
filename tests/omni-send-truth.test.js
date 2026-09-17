@@ -1451,6 +1451,8 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniHtml, /omni-channel-badge--telegram/);
         assert.match(omniHtml, /omni-channel-dot--instagram/);
         assert.match(omniHtml, /omni-channel-dot--whatsapp/);
-        assert.match(omniHtml, /data-channel="whatsapp"/);
+        // Channel identity is exposed through the visible channel filter and
+        // the shared badge renderer; do not rely on hidden legacy filter hooks.
+        assert.match(omniHtml, /<option value="whatsapp">WhatsApp<\/option>/);
     });
 });

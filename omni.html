@@ -2186,7 +2186,15 @@
                         <button type="button" class="omni-mode-btn" data-omni-mode="channels" role="tab" aria-selected="false">Канали</button>
                         <button type="button" class="omni-mode-btn" data-omni-mode="health" role="tab" aria-selected="false">Стан</button>
                     </div>
-                    <a class="omni-settings-link" href="/chat-settings">Налаштування</a>
+                    <a class="omni-settings-link" href="/chat-settings" aria-label="Налаштування чатів" title="Налаштування чатів">
+                        <span class="omni-settings-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.82l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.08.08a2 2 0 1 1-3.84 0L10 20a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.82.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1l-.08-.08a2 2 0 1 1 0-3.84L4 10a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.82l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6l.08-.08a2 2 0 1 1 3.84 0L14 4a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.82-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 9c.15.36.35.7.6 1l.08.08a2 2 0 1 1 0 3.84L20 14c-.25.3-.45.64-.6 1Z"></path>
+                            </svg>
+                        </span>
+                        <span class="sr-only">Налаштування</span>
+                    </a>
                 </div>
                 <div class="omni-accounts-alarm hidden" id="omniAccountsAlarm" role="alert" aria-live="assertive"></div>
                 <div class="omni-channel-action-feedback" id="omniChannelActionFeedback" hidden role="status" aria-live="polite"></div>
@@ -2746,6 +2754,7 @@
             });
             if (nextMode === 'health') renderOmniHealthWorkspace();
             if (nextMode === 'channels') highlightAccountFromQuery();
+            renderOmniAccountsAlarm();
         }
 
         function isNarrowOmniViewport() {
@@ -3255,26 +3264,36 @@
 
         function renderOmniAccountsAlarm() {
             if (!accountsAlarm) return;
+            const detailsOpen = accountsAlarm.querySelector('.omni-channel-status-details')?.open === true;
             if (!omniAccounts.length) {
                 accountsAlarm.classList.remove('hidden');
+                accountsAlarm.classList.remove('is-warning');
+                accountsAlarm.classList.add('is-danger');
+                accountsAlarm.setAttribute('role', 'alert');
                 accountsAlarm.innerHTML = '<span class="omni-channel-status-dot danger" aria-hidden="true"></span><strong>Канали: стан не завантажено</strong><button type="button" data-omni-mode="channels">Деталі</button>';
                 return;
             }
-            const ready = omniAccounts.filter(a => a.connected && a.sendCapable).length;
-            const limited = omniAccounts.filter(a => a.connected && !a.sendCapable).length;
+            const ready = omniAccounts.filter(a => a.connected && !accountNeedsAttention(a)).length;
+            const limited = omniAccounts.filter(a => a.connected && accountNeedsAttention(a)).length;
             const disconnected = omniAccounts.filter(a => !a.connected).length;
-            const tone = disconnected ? 'danger' : (limited ? 'warning' : 'healthy');
+            const tone = limited ? 'warning' : 'healthy';
+            accountsAlarm.classList.toggle('is-warning', tone === 'warning');
+            accountsAlarm.classList.toggle('is-danger', false);
             accountsAlarm.setAttribute('role', tone === 'healthy' ? 'status' : 'alert');
             const detailRows = omniAccounts
                 .filter(a => !a.connected || !a.sendCapable)
                 .map(a => '<li><strong>' + esc(accountDisplayLabel(a)) + '</strong>: ' + esc(accountImpactText(a) || omniAccountStatusLabel(a)) + '</li>')
                 .join('');
+            const actionMode = omniMode === 'inbox' ? 'channels' : 'inbox';
+            const actionLabel = omniMode === 'inbox' ? 'Керувати' : '← До розмов';
             accountsAlarm.classList.remove('hidden');
             accountsAlarm.innerHTML =
                 '<span class="omni-channel-status-dot ' + tone + '" aria-hidden="true"></span>' +
-                '<strong>Канали: ' + ready + ' готові · ' + limited + ' обмежені · ' + disconnected + ' потребують підключення</strong>' +
+                '<strong>Канали: ' + ready + ' готові · ' + limited + ' потребують уваги · ' + disconnected + ' не підключені</strong>' +
                 (detailRows ? '<details class="omni-channel-status-details"><summary>Деталі</summary><ul>' + detailRows + '</ul></details>' : '<span class="omni-channel-status-ok">Усі канали готові до роботи</span>') +
-                '<button type="button" data-omni-mode="channels">Керувати</button>';
+                '<button type="button" data-omni-mode="' + actionMode + '">' + actionLabel + '</button>';
+            const details = accountsAlarm.querySelector('.omni-channel-status-details');
+            if (details && detailsOpen) details.open = true;
         }
 
         function renderOmniHealthWorkspace() {

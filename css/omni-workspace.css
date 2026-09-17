@@ -712,3 +712,36 @@
         .omni-case-details summary::before { content: '›'; font-size: 18px; line-height: 1; }
         .omni-case-details[open] summary::before { transform: rotate(90deg); }
         .omni-case-details .omni-case-row { padding-top: 5px; }
+
+/* Final Omni topbar surface overrides. */
+.omni-workspace-shell,
+.omni-workspace-shell :is(button, input, select, textarea) { font-family: var(--font-family, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif); }
+.omni-workspace-topbar { min-height: 54px; padding: 8px 14px; gap: 10px; background: var(--bg-primary, #fff); }
+.omni-workspace-title h1 { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.omni-workspace-modes { gap: 2px; padding: 3px; border: 1px solid var(--border-color, #cbd5e1); border-radius: 10px; background: transparent; }
+.omni-mode-btn { min-height: 36px; padding: 7px 13px; border: 0; border-radius: 8px; color: var(--text-secondary, #475569); background: transparent; font-size: 13px; font-weight: 600; }
+.omni-mode-btn.active { color: var(--primary-700, #047857); background: rgba(16,185,129,0.12); box-shadow: none; }
+.omni-settings-link { width: 40px; min-width: 40px; min-height: 40px; padding: 0; border: 1px solid var(--border-color, #cbd5e1); border-radius: 10px; background: transparent; color: var(--text-secondary, #475569); }
+.omni-settings-link:hover { background: rgba(16,185,129,0.08); color: var(--primary-700, #047857); }
+.omni-settings-icon,
+.omni-settings-icon svg { width: 19px; height: 19px; display: block; }
+.omni-settings-icon svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.omni-accounts-alarm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 38px; margin: 0; padding: 7px 12px; border-width: 0 0 1px; border-radius: 0; background: var(--bg-secondary, #f8fafc); color: var(--text-secondary, #475569); font-weight: 500; }
+.omni-accounts-alarm strong { font-weight: 600; }
+.omni-accounts-alarm button { margin-left: auto; padding: 5px 10px; border-radius: 8px; font: inherit; font-weight: 600; }
+.omni-accounts-alarm.is-warning { border-color: rgba(245,158,11,0.32); background: rgba(245,158,11,0.10); color: #92400e; }
+.omni-accounts-alarm.is-danger { border-color: rgba(239,68,68,0.32); background: rgba(239,68,68,0.10); color: #991b1b; }
+.omni-channel-status-details summary { font-weight: 600; }
+@media (max-width: 1100px) and (min-width: 769px) {
+    .omni-workspace-topbar { flex-wrap: nowrap; padding-inline: 12px; }
+    .omni-workspace-title { flex: 1 1 auto; }
+    .omni-workspace-modes { margin-left: auto; }
+}
+.dark-mode .omni-workspace-topbar { background: var(--bg-primary, #0f172a); }
+.dark-mode .omni-workspace-modes { background: transparent; border-color: rgba(148,163,184,0.24); }
+.dark-mode .omni-mode-btn { background: transparent; color: #cbd5e1; }
+.dark-mode .omni-mode-btn.active { color: #a7f3d0; background: rgba(20,184,166,0.14); box-shadow: none; }
+.dark-mode .omni-settings-link { background: transparent; color: #cbd5e1; }
+.dark-mode .omni-accounts-alarm { background: rgba(30,41,59,0.72); color: #cbd5e1; }
+.dark-mode .omni-accounts-alarm.is-warning { background: rgba(120,53,15,0.28); color: #fcd34d; }
+.dark-mode .omni-accounts-alarm.is-danger { background: rgba(127,29,29,0.26); color: #fca5a5; }

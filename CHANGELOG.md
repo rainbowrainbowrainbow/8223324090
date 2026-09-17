@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.190 - Omni: мобільний список чатів
+
+### Release / Versioning / (17.09.2026) [codex]
+- **Omni: мобільний список чатів** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.189 - Omni: фінальна адаптивна робоча область
 
 ### Release / Versioning / (17.09.2026) [codex]

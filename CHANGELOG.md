@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.188 - WhatsApp webhook для Omni
+
+### Omni / WhatsApp / (17.09.2026) [codex]
+- **Meta тепер бачить webhook без входу в CRM** — перевірка Callback URL і доставка подій WhatsApp проходять центральну JWT-межу до власної перевірки verify token або HMAC-підпису.
+- **Захист збережено** — `GET` повертає challenge лише з правильним verify token, а `POST` приймає події лише з коректним підписом Meta.
+- **Додано регресійні перевірки** — auth boundary окремо покриває обидва WhatsApp-маршрути.
+
+---
+
 ## v0.81.187 - Адаптивний inbox Omni
 
 ### Omni / Комунікації / (17.09.2026) [codex]

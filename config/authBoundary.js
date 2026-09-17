@@ -1,7 +1,7 @@
 const INTEGRATION_AUTH_CONTRACTS = Object.freeze({
     omniAttachmentGrant: { owner: 'omnichannel', authentication: 'expiring single-file random grant', guardFiles: [{ file: 'routes/omnichannel.js', needles: ["router.get('/media/:grant/:filename'", 'grantedFile(req.params.grant)'] }, { file: 'services/omni-attachments.js', needles: ['g.expires_at > NOW()', 'token_hash = $1'] }], testFiles: ['tests/omni-completion.test.js'] },
     telegramWebhook: { owner: 'telegram', authentication: 'webhook secret header', guardFiles: [{ file: 'routes/telegram.js', needles: ["router.post('/webhook'", 'secretHeader !== WEBHOOK_SECRET'] }], testFiles: ['tests/auth-boundary.test.js', 'tests/route-smoke.test.js'] },
-    omniWebhooks: { owner: 'omnichannel', authentication: 'provider secret or signature', guardFiles: [{ file: 'routes/omnichannel.js', needles: ['verifyViberSignature', 'verifyWebhookSecret', 'verifyMetaSignature'] }], testFiles: ['tests/auth-boundary.test.js', 'tests/omni-provider-lifecycle.test.js'] },
+    omniWebhooks: { owner: 'omnichannel', authentication: 'provider secret or signature', guardFiles: [{ file: 'routes/omnichannel.js', needles: ['verifyViberSignature', 'verifyWebhookSecret', 'verifyMetaSignature', 'verifyWhatsAppSignature'] }], testFiles: ['tests/auth-boundary.test.js', 'tests/omni-provider-lifecycle.test.js'] },
     viberPersonalBridge: { owner: 'omnichannel', authentication: 'connector-scoped bearer token and exact bridge/account/business tuple', guardFiles: [{ file: 'routes/omnichannel.js', needles: ["router.post('/bridge/v1/heartbeat'", "router.post('/bridge/v1/events'", "router.post('/bridge/v1/commands/pull'", "router.post('/bridge/v1/commands/:commandId/result'"] }, { file: 'services/omni-viber-personal-bridge.js', needles: ['function authenticate(runtime, authorization, scope)', 'safeEqual(token, runtime.bridgeToken)', "throw new BridgeError('BRIDGE_SCOPE_MISMATCH'"] }], testFiles: ['tests/auth-boundary.test.js', 'tests/omni-viber-personal-bridge.test.js'] },
     checkboxWebhook: { owner: 'checkbox', authentication: 'route-specific raw-body HMAC signature', guardFiles: [{ file: 'routes/checkbox-webhook.js', needles: ["express.raw({ type: '*/*', limit: '256kb' })", 'verifyCheckboxWebhookSignature', 'CHECKBOX_WEBHOOK_SIGNATURE_HEADER'] }, { file: 'server.js', needles: ["app.use('/api/checkbox/webhook', require('./routes/checkbox-webhook'))"] }], testFiles: ['tests/auth-boundary.test.js', 'tests/checkbox-webhook-reconciliation.test.js'] },
     reportBotWebhook: { owner: 'report-bot', authentication: 'webhook secret header', guardFiles: [{ file: 'routes/report-bot.js', needles: ["router.post('/webhook'", 'secretHeader !== expectedSecret'] }], testFiles: ['tests/auth-boundary.test.js', 'tests/route-smoke.test.js'] },
@@ -92,6 +92,20 @@ const PUBLIC_API_ROUTES = [
         owner: 'omnichannel',
         integrationContract: 'omniWebhooks',
         reason: 'Omni Meta webhook is guarded by a required provider HMAC signature before inbox processing.'
+    },
+    {
+        method: 'GET',
+        path: '/omni/webhook/whatsapp',
+        owner: 'omnichannel',
+        integrationContract: 'omniWebhooks',
+        reason: 'WhatsApp webhook verification requires the configured provider verify token before returning a challenge.'
+    },
+    {
+        method: 'POST',
+        path: '/omni/webhook/whatsapp',
+        owner: 'omnichannel',
+        integrationContract: 'omniWebhooks',
+        reason: 'Omni WhatsApp webhook is guarded by the required Meta app-secret HMAC signature before inbox processing.'
     },
     {
         method: 'POST',

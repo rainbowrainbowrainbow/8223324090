@@ -88,6 +88,8 @@ describe('API auth boundary middleware', () => {
         app.post('/api/omni/webhook/sms', (req, res) => res.json({ ok: true, public: true, provider: 'sms' }));
         app.get('/api/omni/webhook/meta', (req, res) => res.json({ ok: true, public: true, provider: 'meta' }));
         app.post('/api/omni/webhook/meta', (req, res) => res.json({ ok: true, public: true, provider: 'meta' }));
+        app.get('/api/omni/webhook/whatsapp', (req, res) => res.json({ ok: true, public: true, provider: 'whatsapp', challenge: req.query['hub.challenge'] }));
+        app.post('/api/omni/webhook/whatsapp', (req, res) => res.json({ ok: true, public: true, provider: 'whatsapp' }));
         app.post('/api/omni/webhook/binotel', (req, res) => res.json({ ok: true, public: true, provider: 'binotel' }));
         app.post('/api/omni/bridge/v1/heartbeat', (req, res) => res.json({ ok: true, public: true, provider: 'viber-personal' }));
         app.post('/api/omni/bridge/v1/events', (req, res) => res.json({ ok: true, public: true, provider: 'viber-personal' }));
@@ -121,6 +123,8 @@ describe('API auth boundary middleware', () => {
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/sms' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/omni/webhook/meta' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/meta' }), true);
+        assert.equal(isPublicApiRequest({ method: 'GET', path: '/omni/webhook/whatsapp' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/whatsapp' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/binotel' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/bridge/v1/heartbeat' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/bridge/v1/events' }), true);
@@ -199,6 +203,24 @@ describe('API auth boundary middleware', () => {
         });
         assert.equal(res.status, 200, JSON.stringify(res.data));
         assert.equal(res.data.provider, 'telegram');
+    });
+
+    it('allows WhatsApp verification and signed-event routes to reach provider-level guards without user JWT', async () => {
+        const verification = await request(
+            baseUrl,
+            'GET',
+            '/api/omni/webhook/whatsapp?hub.mode=subscribe&hub.verify_token=provider-token&hub.challenge=boundary-challenge'
+        );
+        assert.equal(verification.status, 200, JSON.stringify(verification.data));
+        assert.equal(verification.data.provider, 'whatsapp');
+        assert.equal(verification.data.challenge, 'boundary-challenge');
+
+        const event = await request(baseUrl, 'POST', '/api/omni/webhook/whatsapp', {
+            object: 'whatsapp_business_account',
+            entry: []
+        });
+        assert.equal(event.status, 200, JSON.stringify(event.data));
+        assert.equal(event.data.provider, 'whatsapp');
     });
 
     it('lets Hermes reach route-level custom-secret auth without becoming open', async () => {

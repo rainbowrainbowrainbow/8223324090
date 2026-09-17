@@ -32,6 +32,8 @@ focused tests.
 | `POST /omni/webhook/sms` | omnichannel | Omni SMS webhook is guarded by a required provider secret before inbox processing. |
 | `GET /omni/webhook/meta` | omnichannel | Meta verification requires the configured provider verify token before returning a challenge. |
 | `POST /omni/webhook/meta` | omnichannel | Omni Meta webhook is guarded by a required provider HMAC signature before inbox processing. |
+| `GET /omni/webhook/whatsapp` | omnichannel | WhatsApp verification requires the configured provider verify token before returning a challenge. |
+| `POST /omni/webhook/whatsapp` | omnichannel | Omni WhatsApp webhook is guarded by the required Meta app-secret HMAC signature before inbox processing. |
 | `POST /omni/webhook/binotel` | omnichannel | Omni Binotel webhook is guarded by a required provider secret before inbox processing. |
 | `POST /omni/bridge/v1/heartbeat` | omnichannel | Viber Personal Bridge authenticates with its connector-scoped Bearer credential and exact bridge/account/business tuple. |
 | `POST /omni/bridge/v1/events` | omnichannel | Viber Personal Bridge authenticates before durable event processing; ACKs identify committed event IDs only. |
@@ -109,6 +111,8 @@ is not an integration credential.
 | `POST /omni/webhook/sms` | omnichannel | SMS secret, required | Omni lifecycle/inbound canonical persistence | Request-scoped installed channel | Generic acknowledgement or 403 |
 | `GET /omni/webhook/meta` | omnichannel | Meta verify token, required | Verification challenge only | Installed Meta channel | Challenge or 403 |
 | `POST /omni/webhook/meta` | omnichannel | Meta HMAC, required | Omni canonical inbound persistence | Request-scoped installed channel | Generic acknowledgement or 403 |
+| `GET /omni/webhook/whatsapp` | omnichannel | WhatsApp verify token, required | Verification challenge only | Installed WhatsApp channel | Challenge or 403 |
+| `POST /omni/webhook/whatsapp` | omnichannel | Meta app-secret HMAC, required | Omni canonical inbound persistence | Request-scoped installed WhatsApp channel | Generic acknowledgement or 401 |
 | `POST /omni/webhook/binotel` | omnichannel | Binotel secret, required | Omni lifecycle/inbound canonical persistence | Request-scoped installed channel | Generic acknowledgement or 403 |
 | `POST /omni/bridge/v1/*` | omnichannel | Connector Bearer token + exact bridge/account/business scope | Event ID and command ID ledgers | Credential-bound Viber Personal connector | Protocol-only ACK/result without message content or secrets |
 

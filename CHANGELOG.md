@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.189 - Omni: фінальна адаптивна робоча область
+
+### Release / Versioning / (17.09.2026) [codex]
+- **Omni: фінальна адаптивна робоча область** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.188 - WhatsApp webhook для Omni
 
 ### Omni / WhatsApp / (17.09.2026) [codex]

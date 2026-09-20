@@ -275,3 +275,15 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
 .omni-short .omni-template-composer { max-height: 52%; padding-block: 6px; }
 .omni-narrow.omni-short .omni-chat-header-actions { gap: 6px; }
 .omni-narrow.omni-short .omni-history-controls { max-height: 36px; padding-block: 2px; }
+
+/* Local Omni channel logos are reusable across the inbox, connection cards and status views. */
+.omni-account-card-title, .omni-health-channel, .omni-connection-head h3 { display: inline-flex; align-items: center; gap: 7px; }
+.omni-account-card-title .omni-channel-mark { width: 30px; height: 30px; }
+.omni-health-channel .omni-channel-mark, .omni-connection-head h3 .omni-channel-mark { width: 22px; height: 22px; }
+.omni-account-card-title .omni-channel-logo, .omni-health-channel .omni-channel-logo, .omni-connection-head h3 .omni-channel-logo { width: 100%; height: 100%; }
+.omni-channel-mark { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; box-sizing: border-box; line-height: 1; }
+.omni-channel-logo { display: block; width: 1em; height: 1em; object-fit: contain; }
+.omni-channel-dot .omni-channel-mark, .omni-channel-dot .omni-channel-logo { width: 100%; height: 100%; }
+.omni-channel-dot--logo { background: transparent !important; border-color: transparent !important; box-shadow: none; }
+.omni-channel-mark--sms-fly { padding: 1px; border-radius: 4px; background: #f8fafc; }
+.omni-channel-badge-icon .omni-channel-logo { width: 12px; height: 12px; }

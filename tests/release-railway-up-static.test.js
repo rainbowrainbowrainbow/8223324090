@@ -11,6 +11,7 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     const scriptPath = path.join(ROOT, 'scripts', 'railway-release-up.js');
     const script = fs.readFileSync(scriptPath, 'utf8');
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const ci = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
 
     assert.match(pkg.scripts['release:railway-up'], /scripts\/railway-release-up\.js/);
     assert.match(pkg.scripts['release:railway-up:branch'], /scripts\/railway-release-up\.js --branch$/);
@@ -31,6 +32,8 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.match(script, /fetchLiveVersionSnapshot\(liveUrl\)/);
     assert.match(script, /assertPreDeployLiveSafety\(\{/);
     assert.match(script, /assertReleaseDescendsFromLive\(preDeploy\.liveCommit, head\)/);
+    assert.match(script, /fetchRequiredOmniCiCheck\(originUrl, head\)/);
+    assert.match(script, /Required CI check/);
     assert.match(script, /merge-base', '--is-ancestor'/);
     assert.match(script, /Refusing same-version deploy/);
     assert.match(script, /Refusing to deploy v\$\{localVersion\} over newer live/);
@@ -52,4 +55,10 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.doesNotMatch(script, /RELEASE_DEPLOY_BRANCH=\$\{options\.branch\}/);
     assert.doesNotMatch(script, /--skip-variable-set|--no-clean-export/);
     assert.doesNotMatch(pkg.scripts['release:railway-up'], /migrate-live-source-branch/);
+    assert.equal(pkg.scripts['test:browser:omni'], 'npm exec --yes --package=playwright -c "node tests/browser/omni-responsive-browser-smoke.js"');
+    assert.match(ci, /omni-browser:\s*\n\s*name: Omni browser regression/);
+    assert.match(ci, /name: Run Omni browser regression\s*\n\s*run: npm run test:browser:omni/);
+    assert.match(ci, /name: Upload Omni browser diagnostics\s*\n\s*if: always\(\)/);
+    assert.match(ci, /name: omni-browser-\$\{\{ github\.sha \}\}/);
+    assert.doesNotMatch(ci, /^\s+paths(?:-ignore)?:/m);
 });

@@ -439,7 +439,7 @@ module.exports = async function checkLayout(page, artifacts) {
   const breakpoints = await testBreakpointEdges(page);
   await testMobileNavigation(page);
   const faultInjection = await testIntentionalFaults(page, artifacts);
-  console.log(JSON.stringify({
+  const summary = {
     layoutInteractions:true, javascript:true, realClicks:true,
     channels:['telegram','viber','sms','facebook','instagram','whatsapp'],
     filters:true, loadingEmptyError:true, attachments:true, deliveryErrors:true,
@@ -448,5 +448,7 @@ module.exports = async function checkLayout(page, artifacts) {
     breakpointEdges:breakpoints, faultInjection,
     viewports:matrix.map(result => [result.width,result.height]),
     browserZoom:'not measured', realWrites:0
-  }));
+  };
+  console.log(JSON.stringify(summary));
+  return summary;
 };

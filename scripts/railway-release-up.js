@@ -20,6 +20,7 @@ const DEFAULT_POST_DEPLOY_SMOKE_ATTEMPTS = 36;
 const DEFAULT_POST_DEPLOY_SMOKE_DELAY_MS = 5000;
 const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const COMPLETE_DEPLOYMENT_METADATA_STATUSES = new Set(['railway', 'manifest']);
+const REQUIRED_OMNI_CI_CHECK = 'Omni browser regression';
 
 function isPlainObject(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -53,6 +54,76 @@ function missingOptionValue(value) {
 function normalizeCommit(value) {
     const commit = String(value || '').trim().toLowerCase();
     return FULL_COMMIT_SHA_PATTERN.test(commit) ? commit : '';
+}
+
+function githubRepositoryFromRemote(remoteUrl) {
+    const value = String(remoteUrl || '').trim().replace(/[?#].*$/, '').replace(/\/$/, '');
+    const match = value.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/i);
+    if (!match) throw new Error('Could not resolve the GitHub repository from origin');
+    return `${match[1]}/${match[2]}`;
+}
+
+function assertRequiredOmniCiCheck(payload, expectedSha, requiredName = REQUIRED_OMNI_CI_CHECK) {
+    const sha = normalizeCommit(expectedSha);
+    if (!sha) throw new Error('Omni CI proof requires an exact 40-character release SHA');
+    if (!isPlainObject(payload) || !Array.isArray(payload.check_runs)) {
+        throw new Error(`Required CI check "${requiredName}" result is unavailable`);
+    }
+    const namedRuns = payload.check_runs.filter(run => String(run?.name || '') === requiredName);
+    const exactRuns = namedRuns.filter(run => normalizeCommit(run?.head_sha) === sha);
+    if (!exactRuns.length) {
+        if (namedRuns.length) throw new Error(`Required CI check "${requiredName}" belongs to a different SHA`);
+        throw new Error(`Required CI check "${requiredName}" is missing for ${shortSha(sha)}`);
+    }
+    const latest = exactRuns.slice().sort((left, right) => {
+        const leftTime = Date.parse(left.completed_at || left.started_at || '') || 0;
+        const rightTime = Date.parse(right.completed_at || right.started_at || '') || 0;
+        if (leftTime !== rightTime) return rightTime - leftTime;
+        return Number(right.id || 0) - Number(left.id || 0);
+    })[0];
+    const status = String(latest.status || 'unknown').toLowerCase();
+    const conclusion = String(latest.conclusion || 'unknown').toLowerCase();
+    if (status !== 'completed' || conclusion !== 'success') {
+        throw new Error(`Required CI check "${requiredName}" is ${status}/${conclusion} for ${shortSha(sha)}`);
+    }
+    return {
+        name: requiredName,
+        sha,
+        status,
+        conclusion,
+        detailsUrl: String(latest.details_url || '')
+    };
+}
+
+async function fetchRequiredOmniCiCheck(remoteUrl, expectedSha, options = {}) {
+    const fetchImpl = options.fetchImpl || globalThis.fetch;
+    if (typeof fetchImpl !== 'function') throw new Error('fetch is required to verify GitHub CI');
+    const repository = githubRepositoryFromRemote(remoteUrl);
+    const sha = normalizeCommit(expectedSha);
+    if (!sha) throw new Error('Cannot query GitHub CI without an exact 40-character SHA');
+    const apiBase = String(options.apiBase || 'https://api.github.com').replace(/\/$/, '');
+    const url = `${apiBase}/repos/${repository}/commits/${sha}/check-runs?filter=latest&per_page=100`;
+    const token = String(options.token || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '').trim();
+    const headers = {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'eventgenix-release-helper',
+        'X-GitHub-Api-Version': '2022-11-28'
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetchImpl(url, {
+        headers,
+        signal: options.signal || AbortSignal.timeout(15000)
+    });
+    if (!response || response.ok !== true) {
+        throw new Error(`GitHub CI check lookup returned HTTP ${response?.status || 'unknown'}`);
+    }
+    let payload;
+    try {
+        payload = JSON.parse(await response.text());
+    } catch {
+        throw new Error('GitHub CI check lookup did not return JSON');
+    }
+    return assertRequiredOmniCiCheck(payload, sha);
 }
 
 function assertCompleteLiveDeploymentMetadata(live) {
@@ -547,6 +618,13 @@ async function main() {
         if (remoteSha !== head) fail(`origin/${options.branch} is ${remoteSha}, but local HEAD is ${head}. Push and wait for CI first.`);
     }
 
+    let omniCiProof = null;
+    if (!options.dryRun) {
+        const originUrl = git(['remote', 'get-url', 'origin']);
+        omniCiProof = await fetchRequiredOmniCiCheck(originUrl, head);
+        console.log(`[release:railway-up] requiredCI=${omniCiProof.name} ${omniCiProof.status}/${omniCiProof.conclusion} ${shortSha(omniCiProof.sha)}`);
+    }
+
     const liveSnapshot = await fetchLiveVersionSnapshot(liveUrl);
     const preDeploy = assertPreDeployLiveSafety({
         live: liveSnapshot,
@@ -618,6 +696,9 @@ module.exports = {
     compareVersions,
     assertPreDeployLiveSafety,
     fetchLiveVersionSnapshot,
+    githubRepositoryFromRemote,
+    assertRequiredOmniCiCheck,
+    fetchRequiredOmniCiCheck,
     validateExport,
     createCleanExport,
     runPostDeploySmoke

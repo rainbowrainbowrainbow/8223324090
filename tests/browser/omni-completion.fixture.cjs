@@ -2,9 +2,44 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '../..');
 const artifactDir = path.join(root, 'output', 'playwright', 'omni-completion');
 fs.mkdirSync(artifactDir, { recursive: true });
+const layoutOnly = process.env.OMNI_LAYOUT_ONLY === '1';
+const sanitize = value => String(value || '').replace(/https?:\/\/\S+/g, '[url]');
+const gitHead = (() => {
+  const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', shell: false });
+  return result.status === 0 ? String(result.stdout || '').trim() : '';
+})();
+const runReport = {
+  schemaVersion: 1,
+  suite: 'Omni browser regression',
+  status: 'running',
+  sha: String(process.env.GITHUB_SHA || gitHead || 'unknown'),
+  environment: {
+    ci: process.env.CI === 'true',
+    event: process.env.GITHUB_EVENT_NAME || 'local',
+    ref: process.env.GITHUB_REF || 'local',
+    os: `${process.platform} ${process.arch}`,
+    node: process.version,
+    npm: process.env.npm_config_user_agent || 'unknown',
+    javascript: true,
+    fixtureData: true,
+    providerRequests: false
+  },
+  startedAt: new Date().toISOString(),
+  scenarios: null,
+  pageErrors: [],
+  realWrites: 0,
+  trace: layoutOnly ? 'trace.zip' : null
+};
+
+function writeRunReport() {
+  runReport.finishedAt = new Date().toISOString();
+  fs.writeFileSync(path.join(artifactDir, 'omni-browser-report.json'), JSON.stringify(runReport, null, 2));
+}
+
 function playwright() {
   for (const entry of process.env.PATH.split(path.delimiter)) {
     if (!/node_modules[\\/]\.bin$/i.test(entry)) continue;
@@ -16,18 +51,55 @@ function playwright() {
 (async () => {
   const {chromium, request} = playwright();
   const base = 'https://8223324090-production.up.railway.app';
-  const source = fs.readFileSync(path.join(os.homedir(), '.eventgenix/codex-crm-secrets.ps1'), 'utf8');
-  const config = {};
-  for (const m of source.matchAll(/^\s*\$env:(LIVE_SMOKE_USER|LIVE_SMOKE_PASS)\s*=\s*(['"])(.*?)\2\s*$/gm)) config[m[1]]=m[3];
-  const api = await request.newContext();
-  const login = await api.post(base+'/api/auth/login', {data:{username:config.LIVE_SMOKE_USER,password:config.LIVE_SMOKE_PASS}});
-  assert.equal(login.status(),200);
-  const session = await login.json();
+  let api = null;
+  let session;
+  if (layoutOnly) {
+    session = {
+      token: 'omni-browser-fixture-token',
+      accessToken: 'omni-browser-fixture-token',
+      user: {
+        id: 9001,
+        username: 'fixture-manager',
+        role: 'creator',
+        roles: ['creator'],
+        name: 'Тестовий менеджер',
+        businessContexts: ['event_genix'],
+        defaultBusinessContext: 'event_genix',
+        activeBusinessContext: 'event_genix',
+        accessContext: { status: 'ready' }
+      }
+    };
+  } else {
+    const source = fs.readFileSync(path.join(os.homedir(), '.eventgenix/codex-crm-secrets.ps1'), 'utf8');
+    const config = {};
+    for (const m of source.matchAll(/^\s*\$env:(LIVE_SMOKE_USER|LIVE_SMOKE_PASS)\s*=\s*(['"])(.*?)\2\s*$/gm)) config[m[1]]=m[3];
+    api = await request.newContext();
+    const login = await api.post(base+'/api/auth/login', {data:{username:config.LIVE_SMOKE_USER,password:config.LIVE_SMOKE_PASS}});
+    assert.equal(login.status(),200);
+    session = await login.json();
+  }
   const fixtureOwner = session.user?.username || 'fixture-manager';
+  const fixtureBusinessProfile = {
+    activeBusinessId: 'event_genix',
+    activeBusinessContext: 'event_genix',
+    scope: { mode: 'single', activeContext: 'event_genix', selectedContexts: ['event_genix'], readOnly: false, canWrite: true },
+    businesses: [{
+      key: 'event_genix',
+      id: 'event_genix',
+      businessContext: 'event_genix',
+      modules: { enabled: { timeline: true, tasks: true, customers: true, leads: true, omni: true, chat: true } }
+    }]
+  };
   const zoomBrowser = process.env.OMNI_NATIVE_ZOOM === '1' ? await require('./omni-native-zoom.cjs').launch(chromium) : null;
-  const browser = zoomBrowser ? null : await chromium.launch({channel:'chrome',headless:true});
+  const browser = zoomBrowser ? null : await chromium.launch(layoutOnly ? {headless:true} : {channel:'chrome',headless:true});
+  let context = null;
+  let tracingStarted = false;
   try {
-    const context = zoomBrowser?.context || await browser.newContext({viewport:{width:1440,height:1000}, serviceWorkers:'block'});
+    context = zoomBrowser?.context || await browser.newContext({viewport:{width:1440,height:1000}, serviceWorkers:'block'});
+    if (layoutOnly) {
+      await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+      tracingStarted = true;
+    }
     await context.routeWebSocket('**/*', () => {});
     await context.addInitScript(data => {
       localStorage.setItem('pzp_token',data.token);
@@ -35,7 +107,7 @@ function playwright() {
       localStorage.setItem('pzp_current_user',JSON.stringify({...data.user,username:data.fixtureOwner,name:'Тестовий менеджер'}));
       localStorage.setItem('pzp_dark_mode','true');
     },{...session,fixtureOwner});
-    const layoutMode = process.env.OMNI_LAYOUT_ONLY === '1' || Boolean(zoomBrowser);
+    const layoutMode = layoutOnly || Boolean(zoomBrowser);
     const channels = ['telegram','viber','sms','facebook','instagram','whatsapp'];
     const accounts=channels.map(channel=>({channel,label:channel,status:channel==='telegram'?'connected':'disconnected',connected:channel==='telegram',sendCapable:channel==='telegram',receiveCapable:channel==='telegram',setupFields:[],supportedActions:['connect','test','recheck'],accountName:'QA fixture'}));
     const conversations=Array.from({length:105},(_,i)=>({
@@ -91,6 +163,7 @@ function playwright() {
       while (conversationWaiters.length) conversationWaiters.shift()();
     };
     const mutations=[];
+    const unexpectedFixtureRequests=[];
     const attachment = { id: '11111111-1111-4111-8111-111111111111', filename: 'fixture.pdf', size: 12, mime: 'application/pdf', checksum: 'fixture-checksum' };
     await context.exposeFunction('__omniFixtureSetConversationMode', mode => {
       conversationFixtureMode = String(mode || 'normal');
@@ -109,6 +182,21 @@ function playwright() {
       const req=route.request(), url=new URL(req.url());
       if(url.origin!==base) return route.abort();
       const json=(body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+      if (layoutOnly && url.pathname === '/api/auth/verify') return json({ success: true, user: session.user });
+      if (layoutOnly && url.pathname === '/api/auth/business-profile') {
+        return json({ success: true, user: session.user, businessProfile: fixtureBusinessProfile });
+      }
+      if (layoutOnly && /^\/api\/bookings\/\d{4}-\d{2}-\d{2}$/.test(url.pathname)) return json([]);
+      if (layoutOnly && url.pathname === '/api/dashboard/widgets/currency') return json({ success: true, data: {} });
+      if (layoutOnly && url.pathname === '/api/dashboard/alerts') return json({ alerts: [], count: 0 });
+      if (layoutOnly && url.pathname === '/api/business/live-counters') {
+        return json({
+          success: true,
+          scope: fixtureBusinessProfile.scope,
+          counters: { byBusiness: { event_genix: { leads: { new: 0 } } }, total: { leads: { new: 0 } } }
+        });
+      }
+      if (layoutOnly && url.pathname === '/api/my-day/timer') return json({ success: true, timer: null });
       if(url.pathname.startsWith('/api/omni/')) {
         const p=url.pathname.slice('/api/omni'.length);
         if(req.method()!=='GET') {
@@ -164,6 +252,10 @@ function playwright() {
         }
         return json({success:true,data:[]});
       }
+      if (layoutOnly && url.pathname.startsWith('/api/')) {
+        unexpectedFixtureRequests.push(`${req.method()} ${url.pathname}`);
+        return json({ success: false, error: `Unhandled Omni browser fixture API: ${url.pathname}` }, 404);
+      }
       if(!['GET','HEAD'].includes(req.method())) return route.abort();
       const local=new Map([['/omni','omni.html'],['/css/omni-workspace.css','css/omni-workspace.css']]);
       if(local.has(url.pathname)) {
@@ -175,10 +267,14 @@ function playwright() {
       if (staticFile.startsWith(root + path.sep) && /\.(?:css|js|png|svg|webp|ico|woff2?)$/i.test(staticFile) && fs.existsSync(staticFile)) {
         return route.fulfill({path:staticFile});
       }
+      if (layoutOnly) {
+        unexpectedFixtureRequests.push(`${req.method()} ${url.pathname}`);
+        return route.abort('blockedbyclient');
+      }
       return route.continue();
     });
     const page=await context.newPage();
-    const errors=[];page.on('pageerror',e=>errors.push(e.message.slice(0,120)));
+    const errors=[];page.on('pageerror',e=>{ errors.push(e.message.slice(0,120)); runReport.pageErrors = errors.slice(); });
     await page.goto(base+'/omni?businessContext=event_genix',{waitUntil:'domcontentloaded'});
     await page.waitForSelector('body.shell-ready .omni-conv-item',{timeout:60000});
     if (zoomBrowser) {
@@ -186,9 +282,12 @@ function playwright() {
       assert.deepEqual(errors,[]);
       return;
     }
-    if (process.env.OMNI_LAYOUT_ONLY === '1') {
-      await require('./omni-layout.checks.cjs')(page, artifactDir);
+    if (layoutOnly) {
+      runReport.scenarios = await require('./omni-layout.checks.cjs')(page, artifactDir);
       assert.deepEqual(errors,[]);
+      runReport.unexpectedFixtureRequests = unexpectedFixtureRequests.slice();
+      assert.deepEqual(unexpectedFixtureRequests, [], 'Omni browser fixture attempted an unhandled same-origin request');
+      runReport.status = 'passed';
       return;
     }
     const select=id=>page.locator('.omni-conv-item[data-id="'+id+'"]').click();
@@ -306,9 +405,26 @@ function playwright() {
     // Browser keyboard events do not prove native zoom in headless Chrome.
     assert.deepEqual(errors,[]);
     console.log(JSON.stringify({ok:true,fixturesOnly:true,realWrites:0,conversationPagination:105,historyPagination:105,draftIsolation:true,staleMessageGuard:true,sendTargetGuard:true,idempotencyKey:true,managerAssignment:true,statusAndMineFilters:true,filterReset:true,failedCloseVisible:true,channelFeedbackVisible:true,mobileComposerReachable:true,mobileBack:true,metrics,browserZoom:"not measured",simulatedMutations:mutations.length}));
-  } finally {if (zoomBrowser) await zoomBrowser.close(); else await browser.close(); await api.dispose();}
+  } catch (error) {
+    runReport.status = 'failed';
+    runReport.error = sanitize(error?.stack || error?.message || error).slice(0, 6000);
+    throw error;
+  } finally {
+    if (layoutOnly && tracingStarted) {
+      try {
+        await context.tracing.stop({ path: path.join(artifactDir, 'trace.zip') });
+      } catch (error) {
+        runReport.traceError = sanitize(error?.message || error).slice(0, 500);
+      }
+    }
+    if (layoutOnly) writeRunReport();
+    if (zoomBrowser) await zoomBrowser.close(); else await browser.close();
+    if (api) await api.dispose();
+  }
 })().catch(e=>{
-  const sanitize = value => String(value || '').replace(/https?:\/\/\S+/g,'[url]');
+  runReport.status = 'failed';
+  runReport.error = sanitize(e?.stack || e?.message || e).slice(0, 6000);
+  if (layoutOnly) writeRunReport();
   console.log(JSON.stringify({ok:false,error:sanitize(e.message).slice(0,500),stack:sanitize(e.stack).slice(0,1800)}));
   process.exitCode=1;
 });

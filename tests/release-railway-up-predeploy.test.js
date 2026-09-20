@@ -4,9 +4,12 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+    assertRequiredOmniCiCheck,
     assertPreDeployLiveSafety,
     compareVersions,
+    fetchRequiredOmniCiCheck,
     fetchLiveVersionSnapshot,
+    githubRepositoryFromRemote,
     parseArgs
 } = require('../scripts/railway-release-up');
 
@@ -26,6 +29,78 @@ const LIVE = {
         warnings: []
     }
 };
+
+function omniCheckRun(overrides = {}) {
+    return {
+        id: 100,
+        name: 'Omni browser regression',
+        head_sha: HEAD,
+        status: 'completed',
+        conclusion: 'success',
+        completed_at: '2026-09-20T12:00:00Z',
+        details_url: 'https://github.example.test/check/100',
+        ...overrides
+    };
+}
+
+test('Railway release CI guard accepts only the successful Omni job for the exact SHA', () => {
+    const result = assertRequiredOmniCiCheck({ check_runs: [omniCheckRun()] }, HEAD);
+    assert.deepEqual(result, {
+        name: 'Omni browser regression',
+        sha: HEAD,
+        status: 'completed',
+        conclusion: 'success',
+        detailsUrl: 'https://github.example.test/check/100'
+    });
+    assert.throws(() => assertRequiredOmniCiCheck({
+        check_runs: [omniCheckRun({ head_sha: RELEASE_HEAD })]
+    }, HEAD), /different SHA/);
+});
+
+test('Railway release CI guard blocks failed, cancelled, skipped, and pending Omni jobs', () => {
+    for (const [status, conclusion] of [
+        ['completed', 'failure'],
+        ['completed', 'cancelled'],
+        ['completed', 'skipped'],
+        ['pending', null],
+        ['queued', null],
+        ['in_progress', null]
+    ]) {
+        assert.throws(() => assertRequiredOmniCiCheck({
+            check_runs: [omniCheckRun({ status, conclusion })]
+        }, HEAD), new RegExp(`${status}/${conclusion || 'unknown'}`));
+    }
+});
+
+test('Railway release CI guard blocks missing and unavailable Omni results', async () => {
+    assert.throws(() => assertRequiredOmniCiCheck({ check_runs: [] }, HEAD), /is missing/);
+    assert.throws(() => assertRequiredOmniCiCheck(null, HEAD), /result is unavailable/);
+    await assert.rejects(() => fetchRequiredOmniCiCheck(
+        'https://github.com/rainbowrainbowrainbow/8223324090.git',
+        HEAD,
+        { fetchImpl: async () => ({ ok: false, status: 503 }) }
+    ), /HTTP 503/);
+});
+
+test('Railway release CI lookup requests the exact SHA with optional authentication', async () => {
+    const calls = [];
+    const result = await fetchRequiredOmniCiCheck(
+        'git@github.com:rainbowrainbowrainbow/8223324090.git',
+        HEAD,
+        {
+            token: 'test-token',
+            fetchImpl: async (url, options) => {
+                calls.push({ url, headers: options.headers });
+                return { ok: true, status: 200, text: async () => JSON.stringify({ check_runs: [omniCheckRun()] }) };
+            }
+        }
+    );
+    assert.equal(result.sha, HEAD);
+    assert.equal(githubRepositoryFromRemote('https://github.com/rainbowrainbowrainbow/8223324090.git'), 'rainbowrainbowrainbow/8223324090');
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].url, new RegExp(`/commits/${HEAD}/check-runs\\?filter=latest&per_page=100$`));
+    assert.equal(calls[0].headers.Authorization, 'Bearer test-token');
+});
 
 test('Railway release predeploy guard accepts exact live SHA redeploy on the confirmed branch', () => {
     const result = assertPreDeployLiveSafety({

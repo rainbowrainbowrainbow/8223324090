@@ -35,15 +35,76 @@ function playwright() {
       localStorage.setItem('pzp_current_user',JSON.stringify({...data.user,username:data.fixtureOwner,name:'Тестовий менеджер'}));
       localStorage.setItem('pzp_dark_mode','true');
     },{...session,fixtureOwner});
-    const channels = ['telegram','viber','sms','facebook','instagram'];
+    const layoutMode = process.env.OMNI_LAYOUT_ONLY === '1' || Boolean(zoomBrowser);
+    const channels = ['telegram','viber','sms','facebook','instagram','whatsapp'];
     const accounts=channels.map(channel=>({channel,label:channel,status:channel==='telegram'?'connected':'disconnected',connected:channel==='telegram',sendCapable:channel==='telegram',receiveCapable:channel==='telegram',setupFields:[],supportedActions:['connect','test','recheck'],accountName:'QA fixture'}));
-    const conversations=Array.from({length:105},(_,i)=>({id:9001+i,channel:'telegram',externalId:'fixture-'+i,customerName:'Тестовий діалог '+(i+1),lastMessage:'Тестовий текст',lastMessageAt:'2099-01-01T12:00:00Z',businessContext:'event_genix',sendCapable:true,meta:{ai_enabled:false},status:'open'}));
-    if (process.env.OMNI_LAYOUT_ONLY === '1' || zoomBrowser) conversations[0].customerName = 'Fedorova Nataliy — довге ім’я клієнта групового діалогу';
+    const conversations=Array.from({length:105},(_,i)=>({
+      id:9001+i,
+      channel:layoutMode ? channels[i % channels.length] : 'telegram',
+      externalId:'fixture-'+i,
+      customerName:'Тестовий діалог '+(i+1),
+      lastMessage:layoutMode && i === 0
+        ? 'Довге останнє повідомлення перевіряє обрізання без розширення рядка розмови'
+        : 'Тестовий текст',
+      lastMessageAt:'2099-01-01T12:00:00Z',
+      businessContext:'event_genix',
+      sendCapable:!layoutMode || i % channels.length === 0,
+      unreadCount:i % 9 === 0 ? 3 : 0,
+      meta:{ai_enabled:false},
+      status:'open'
+    }));
+    if (layoutMode) conversations[0].customerName = 'Fedorova Nataliy — довге ім’я клієнта групового діалогу';
     const history=new Map(conversations.map(c=>[c.id,Array.from({length:c.id===9001?105:2},(_,i)=>({id:c.id*1000+i,conversationId:c.id,direction:'inbound',content:'Діалог '+c.id+' повідомлення '+(i+1)+'\nДругий рядок',createdAt:'2099-01-01T12:00:00Z'}))]));
+    if (layoutMode) {
+      const primaryHistory = history.get(9001);
+      primaryHistory[primaryHistory.length - 3] = {
+        id: 99001001,
+        conversationId: 9001,
+        direction: 'inbound',
+        content: 'Вкладення з довгою назвою не повинно розширювати історію повідомлень',
+        createdAt: '2099-01-01T12:02:00Z',
+        meta: { storedAttachments: [{ id: 'fixture-layout-file', filename: 'дуже-довга-назва-вкладення-для-перевірки-адаптивності.pdf', size: 4096 }] }
+      };
+      primaryHistory[primaryHistory.length - 2] = {
+        id: 99001002,
+        conversationId: 9001,
+        direction: 'outbound',
+        content: 'Повідомлення з помилкою доставки',
+        deliveryStatus: 'later_failed',
+        deliveryError: 'Тестова помилка доставки',
+        createdAt: '2099-01-01T12:03:00Z'
+      };
+      primaryHistory[primaryHistory.length - 1] = {
+        id: 99001003,
+        conversationId: 9001,
+        direction: 'inbound',
+        content: 'Останнє дуже довге повідомлення перевіряє перенесення тексту, досяжність кінця історії та збереження позиції після зміни режиму й ширини.\nДругий рядок лишається всередині бульбашки.',
+        createdAt: '2099-01-01T12:04:00Z'
+      };
+    }
     let delayA=false, sendResolve, sendStartedResolve;
     let sendStarted=new Promise(resolve=>{sendStartedResolve=resolve;});
+    let conversationFixtureMode = 'normal';
+    let pendingConversationRequests = 0;
+    const conversationWaiters = [];
+    const releaseConversationWaiters = () => {
+      while (conversationWaiters.length) conversationWaiters.shift()();
+    };
     const mutations=[];
     const attachment = { id: '11111111-1111-4111-8111-111111111111', filename: 'fixture.pdf', size: 12, mime: 'application/pdf', checksum: 'fixture-checksum' };
+    await context.exposeFunction('__omniFixtureSetConversationMode', mode => {
+      conversationFixtureMode = String(mode || 'normal');
+      if (conversationFixtureMode !== 'loading') releaseConversationWaiters();
+    });
+    await context.exposeFunction('__omniFixtureConversationState', () => ({
+      mode: conversationFixtureMode,
+      pending: pendingConversationRequests
+    }));
+    await context.exposeFunction('__omniFixtureUpdateConversation', update => {
+      const conversation = conversations.find(item => item.id === Number(update?.id));
+      if (conversation) Object.assign(conversation, update);
+      return Boolean(conversation);
+    });
     await context.route('**/*',async route=>{
       const req=route.request(), url=new URL(req.url());
       if(url.origin!==base) return route.abort();
@@ -80,6 +141,13 @@ function playwright() {
         if(p==='/stats') return json({success:true,data:{total:105,byStatus:{open:105}}});
         if(p==='/quick-replies') return json({success:true,data:[]});
         if(p==='/conversations') {
+          if (conversationFixtureMode === 'loading') {
+            pendingConversationRequests++;
+            await new Promise(resolve => conversationWaiters.push(resolve));
+            pendingConversationRequests--;
+          }
+          if (conversationFixtureMode === 'error') return json({success:false,error:'Тестова помилка завантаження розмов'},500);
+          if (conversationFixtureMode === 'empty') return json({success:true,data:{conversations:[],total:0}});
           const search=url.searchParams.get('search')||'', channel=url.searchParams.get('channel');
           const filtered=conversations.filter(c=>(!channel||c.channel===channel)&&(!search||c.customerName.includes(search))&&(!url.searchParams.get('status')||c.status===url.searchParams.get('status'))&&(url.searchParams.get('mine')!=='true'||c.assignedTo===fixtureOwner));
           const offset=Number(url.searchParams.get('offset')||0),limit=Number(url.searchParams.get('limit')||100);
@@ -101,7 +169,7 @@ function playwright() {
       if(local.has(url.pathname)) {
         const file=local.get(url.pathname);
         const content=fs.readFileSync(path.join(root,file),'utf8');
-        return route.fulfill({status:200,contentType:file.endsWith('.css')?'text/css':'text/html',body:file.endsWith('.html')?content.replace('// ---- Events ----','window.__omniFixtureRefresh = loadConversations; window.__omniFixtureRefreshAccounts = loadOmniAccounts; // ---- Events ----'):content});
+        return route.fulfill({status:200,contentType:file.endsWith('.css')?'text/css':'text/html',body:file.endsWith('.html')?content.replace('// ---- Events ----','window.__omniFixtureRefresh = loadConversations; window.__omniFixtureRefreshAccounts = loadOmniAccounts; window.__omniFixtureDebug = () => ({ currentConvId, selectedDraftKey, input: input.value, draft: selectedDraftKey ? conversationDrafts.get(selectedDraftKey) || null : null, mode: omniMode, mobileView: mobileInboxView }); // ---- Events ----'):content});
       }
       const staticFile = path.resolve(root, '.' + url.pathname);
       if (staticFile.startsWith(root + path.sep) && /\.(?:css|js|png|svg|webp|ico|woff2?)$/i.test(staticFile) && fs.existsSync(staticFile)) {
@@ -239,5 +307,9 @@ function playwright() {
     assert.deepEqual(errors,[]);
     console.log(JSON.stringify({ok:true,fixturesOnly:true,realWrites:0,conversationPagination:105,historyPagination:105,draftIsolation:true,staleMessageGuard:true,sendTargetGuard:true,idempotencyKey:true,managerAssignment:true,statusAndMineFilters:true,filterReset:true,failedCloseVisible:true,channelFeedbackVisible:true,mobileComposerReachable:true,mobileBack:true,metrics,browserZoom:"not measured",simulatedMutations:mutations.length}));
   } finally {if (zoomBrowser) await zoomBrowser.close(); else await browser.close(); await api.dispose();}
-})().catch(e=>{console.log(JSON.stringify({ok:false,error:e.message.replace(/https?:\/\/\S+/g,'[url]').slice(0,300)}));process.exitCode=1;});
+})().catch(e=>{
+  const sanitize = value => String(value || '').replace(/https?:\/\/\S+/g,'[url]');
+  console.log(JSON.stringify({ok:false,error:sanitize(e.message).slice(0,500),stack:sanitize(e.stack).slice(0,1800)}));
+  process.exitCode=1;
+});
 

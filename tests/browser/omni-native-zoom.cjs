@@ -45,12 +45,54 @@ exports.launch = async chromium => {
           assert.ok(metrics.input.top>=0&&metrics.input.bottom<=metrics.height+1,'native zoom composer clipped');
           assert.ok(metrics.name.width>=100,'native zoom identity crushed');
           assert.equal(await page.locator('#omniInput').inputValue(),'Чернетка під час масштабування');
-          await page.screenshot({path:path.join(artifacts,`native-zoom-${width}-${zoom*100}.png`)});
-          results.push({screen:[width,height],zoom:actual,...metrics});
+          const more = page.locator('#omniChatMore > summary');
+          const compactActions = await more.isVisible();
+          let summaryAccess = null;
+          if (compactActions) {
+            summaryAccess = await more.evaluate(node => {
+              const rect = node.getBoundingClientRect();
+              const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+              return {
+                inside: rect.left >= -1 && rect.right <= innerWidth + 1 && rect.top >= -1 && rect.bottom <= innerHeight + 1,
+                hit: Boolean(hit && (hit === node || node.contains(hit))),
+                rect: rect.toJSON()
+              };
+            });
+            assert.ok(summaryAccess.inside && summaryAccess.hit,
+              `native zoom hid the additional-actions trigger: ${JSON.stringify(summaryAccess)}`);
+            await more.click();
+            await page.locator('#omniChatMore[open]').waitFor();
+          }
+          const actionAccess = await page.evaluate(() => {
+            const viewport = { width: innerWidth, height: innerHeight };
+            const ids = ['omniCreateLead', 'omniToggleAI', 'omniCloseConv'];
+            const inspect = id => {
+              const node = document.getElementById(id);
+              const rect = node?.getBoundingClientRect();
+              const visible = Boolean(node?.offsetParent && rect && rect.width > 0 && rect.height > 0);
+              const inside = Boolean(visible && rect.left >= -1 && rect.right <= viewport.width + 1 && rect.top >= -1 && rect.bottom <= viewport.height + 1);
+              const hit = visible ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
+              return { id, visible, inside, hit: Boolean(hit && (hit === node || node.contains(hit))), rect: rect?.toJSON() || null };
+            };
+            return ids.map(inspect);
+          });
+          assert.ok(actionAccess.every(action => action.visible && action.inside && action.hit),
+            `native zoom hid a conversation action: ${JSON.stringify(actionAccess)}`);
+          if (compactActions) {
+            await page.keyboard.press('Escape');
+            await page.locator('#omniChatMore:not([open])').waitFor();
+          }
+          const screenshot = `native-zoom-${width}-${zoom*100}.png`;
+          // Playwright viewport screenshots clip native-zoom rendering in CSS
+          // pixels. CDP captures the complete physical browser viewport.
+          const capture = await cdp.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+          fs.writeFileSync(path.join(artifacts,screenshot), Buffer.from(capture.data,'base64'));
+          results.push({screen:[width,height],zoom:actual,screenshot,actionMode:compactActions?'menu':'direct',summary:summaryAccess,actions:actionAccess,...metrics});
         }
       }
       fs.writeFileSync(path.join(artifacts,'native-zoom.json'),JSON.stringify(results,null,2));
       console.log(JSON.stringify({nativeBrowserZoom:true,results}));
+      return results;
     },
     async close() {
       await context.close();

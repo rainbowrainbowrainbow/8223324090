@@ -157,7 +157,7 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
 .dark-mode .omni-channel-badge--binotel { color: #fdba74; }
 .omni-chat-header-actions { display: flex; flex-wrap: nowrap; align-items: center; width: 100%; min-width: 0; margin: 0; gap: 8px; }
 .omni-chat-header-actions select, .omni-chat-header-actions button, .omni-chat-more > summary { min-height: 36px; padding: 7px 9px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; font-weight: 500; }
-.omni-chat-header-actions select { min-width: 0; max-width: 220px; flex: 1 1 0; }
+.omni-chat-header-actions select { width: 0; min-width: 0; max-width: 220px; flex: 1 1 0; }
 .omni-chat-more { position: relative; flex: 0 0 auto; }
 .omni-chat-more > summary { display: flex; align-items: center; cursor: pointer; list-style: none; }
 .omni-chat-more > summary::-webkit-details-marker { display: none; }
@@ -213,13 +213,13 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
 .dark-mode .omni-send-state.warning, .dark-mode .omni-send-truth.warning, .dark-mode .omni-case-link.suggested, .dark-mode .omni-case-pill.suggested { color: #fcd34d; }
 .dark-mode .omni-send-state.error, .dark-mode .omni-send-truth.error { color: #fca5a5; }
 .dark-mode .omni-case-pill.unresolved { color: #e2e8f0; background: #334155; }
-@container conversation (min-width: 660px) {
+@container conversation (min-width: 760px) {
     .omni-chat-more { display: contents; }
     .omni-chat-more > summary { display: none; }
     .omni-chat-more-menu, .omni-chat-more:not([open]) > .omni-chat-more-menu { position: static; display: flex; padding: 0; width: auto; border: 0; background: transparent; box-shadow: none; gap: 8px; }
     .omni-chat-more-menu button { width: auto; white-space: nowrap; }
 }
-@container conversation (max-width: 659px) {
+@container conversation (max-width: 759px) {
     #omniFileHint { display: none; }
 }
 @container omni (max-width: 719px) {

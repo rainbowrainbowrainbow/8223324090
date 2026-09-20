@@ -7,6 +7,8 @@ const root = path.resolve(__dirname, '../..');
 const artifactDir = path.join(root, 'output', 'playwright', 'omni-completion');
 fs.mkdirSync(artifactDir, { recursive: true });
 const layoutOnly = process.env.OMNI_LAYOUT_ONLY === '1';
+const nativeZoom = process.env.OMNI_NATIVE_ZOOM === '1';
+const FIXED_BROWSER_TIME = '2099-01-01T12:30:00.000Z';
 const sanitize = value => String(value || '').replace(/https?:\/\/\S+/g, '[url]');
 const gitHead = (() => {
   const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', shell: false });
@@ -90,7 +92,7 @@ function playwright() {
       modules: { enabled: { timeline: true, tasks: true, customers: true, leads: true, omni: true, chat: true } }
     }]
   };
-  const zoomBrowser = process.env.OMNI_NATIVE_ZOOM === '1' ? await require('./omni-native-zoom.cjs').launch(chromium) : null;
+  const zoomBrowser = nativeZoom ? await require('./omni-native-zoom.cjs').launch(chromium) : null;
   const browser = zoomBrowser ? null : await chromium.launch(layoutOnly ? {headless:true} : {channel:'chrome',headless:true});
   let context = null;
   let tracingStarted = false;
@@ -108,6 +110,18 @@ function playwright() {
       localStorage.setItem('pzp_dark_mode','true');
     },{...session,fixtureOwner});
     const layoutMode = layoutOnly || Boolean(zoomBrowser);
+    if (layoutMode) {
+      await context.addInitScript(fixedTime => {
+        const NativeDate = Date;
+        const fixedEpoch = NativeDate.parse(fixedTime);
+        class FixedDate extends NativeDate {
+          constructor(...args) { super(...(args.length ? args : [fixedEpoch])); }
+          static now() { return fixedEpoch; }
+        }
+        Object.setPrototypeOf(FixedDate, NativeDate);
+        window.Date = FixedDate;
+      }, FIXED_BROWSER_TIME);
+    }
     const channels = ['telegram','viber','sms','facebook','instagram','whatsapp'];
     const accounts=channels.map(channel=>({channel,label:channel,status:channel==='telegram'?'connected':'disconnected',connected:channel==='telegram',sendCapable:channel==='telegram',receiveCapable:channel==='telegram',setupFields:[],supportedActions:['connect','test','recheck'],accountName:'QA fixture'}));
     const conversations=Array.from({length:105},(_,i)=>({
@@ -180,7 +194,10 @@ function playwright() {
     });
     await context.route('**/*',async route=>{
       const req=route.request(), url=new URL(req.url());
-      if(url.origin!==base) return route.abort();
+      if(url.origin!==base) {
+        if (layoutMode && ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(url.hostname)) return route.continue();
+        return route.abort();
+      }
       const json=(body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
       if (layoutOnly && url.pathname === '/api/auth/verify') return json({ success: true, user: session.user });
       if (layoutOnly && url.pathname === '/api/auth/business-profile') {
@@ -277,9 +294,41 @@ function playwright() {
     const errors=[];page.on('pageerror',e=>{ errors.push(e.message.slice(0,120)); runReport.pageErrors = errors.slice(); });
     await page.goto(base+'/omni?businessContext=event_genix',{waitUntil:'domcontentloaded'});
     await page.waitForSelector('body.shell-ready .omni-conv-item',{timeout:60000});
+    const typography = await page.evaluate(async () => {
+      await document.fonts.ready;
+      const shell = document.querySelector('.omni-workspace-shell');
+      const control = document.querySelector('#omniSearch');
+      return {
+        status: document.fonts.status,
+        interFaces: Array.from(document.fonts)
+          .filter(face => face.family.replace(/["']/g, '').toLowerCase() === 'inter')
+          .filter(face => face.status === 'loaded')
+          .map(face => ({ weight: face.weight, style: face.style, status: face.status })),
+        shellFamily: shell ? getComputedStyle(shell).fontFamily : '',
+        controlFamily: control ? getComputedStyle(control).fontFamily : ''
+      };
+    });
+    if (layoutMode) {
+      assert.equal(typography.status, 'loaded', 'web fonts did not finish loading');
+      assert.ok(['400', '600', '700'].every(weight => typography.interFaces.some(face => face.weight === weight)),
+        `Inter font faces are unavailable: ${JSON.stringify(typography.interFaces)}`);
+      assert.match(typography.shellFamily, /^Inter\b/i, 'Omni does not use the CRM base font');
+      assert.match(typography.controlFamily, /^Inter\b/i, 'Omni controls do not inherit the CRM base font');
+      runReport.environment.typography = typography;
+      runReport.environment.fixedBrowserTime = FIXED_BROWSER_TIME;
+      runReport.environment.externalResources = ['fonts.googleapis.com', 'fonts.gstatic.com'];
+    }
     if (zoomBrowser) {
-      await zoomBrowser.check(page, artifactDir);
+      const zoomResults = await zoomBrowser.check(page, artifactDir);
       assert.deepEqual(errors,[]);
+      runReport.scenarios = {
+        nativeBrowserZoom: true,
+        separateTemporaryProfile: true,
+        zoomFactors: [1, 1.25, 1.5],
+        screens: [[1366, 768], [1024, 600]],
+        results: zoomResults
+      };
+      runReport.status = 'passed';
       return;
     }
     if (layoutOnly) {

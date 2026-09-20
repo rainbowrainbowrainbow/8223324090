@@ -2811,7 +2811,7 @@
             // leave less than one complete message visible on a short laptop screen.
             omniShell.classList.toggle('omni-short', available < 600);
             if (currentConvId && omniMode === 'inbox') resizeComposer();
-            const wideActions = $('omniChat').clientWidth >= 660;
+            const wideActions = $('omniChat').clientWidth >= 760;
             if (chatMore && chatMore.dataset.wide !== String(wideActions)) {
                 chatMore.open = wideActions;
                 chatMore.dataset.wide = String(wideActions);

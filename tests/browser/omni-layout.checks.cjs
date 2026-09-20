@@ -16,6 +16,28 @@ async function waitForLayout(page) {
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
+async function waitForVisualReady(page) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  assert.equal(await page.evaluate(() => document.fonts.status), 'loaded', 'visual fonts are not loaded');
+  const interFaces = await page.evaluate(() => Array.from(document.fonts)
+    .filter(face => face.family.replace(/["']/g, '').toLowerCase() === 'inter')
+    .filter(face => face.status === 'loaded')
+    .map(face => face.weight));
+  assert.ok(['400', '600', '700'].every(weight => interFaces.includes(weight)),
+    `Inter font faces are unavailable: ${JSON.stringify(interFaces)}`);
+}
+
+async function setTheme(page, theme) {
+  const wantsDark = theme === 'dark';
+  const isDark = await page.evaluate(() => document.body.classList.contains('dark-mode'));
+  if (isDark !== wantsDark) await page.locator('.header-theme-toggle').click();
+  await page.waitForFunction(expected => document.body.classList.contains('dark-mode') === expected, wantsDark);
+  await waitForVisualReady(page);
+}
+
 async function collectLayout(page, width, height, label) {
   return page.evaluate(({ width, height, label }) => {
     const element = selector => document.querySelector(selector);
@@ -129,8 +151,9 @@ function assertHealthyLayout(result) {
 }
 
 async function setViewportForElementWidth(page, selector, targetWidth, height) {
-  let viewportWidth = Math.max(800, Math.round(targetWidth + 320));
-  for (let attempt = 0; attempt < 6; attempt++) {
+  const surroundingWidth = selector === '.omni-chat' ? 550 : 320;
+  let viewportWidth = Math.max(800, Math.round(targetWidth + surroundingWidth));
+  for (let attempt = 0; attempt < 10; attempt++) {
     await page.setViewportSize({ width: viewportWidth, height });
     await waitForLayout(page);
     const actual = await page.locator(selector).evaluate(node => node.getBoundingClientRect().width);
@@ -323,6 +346,80 @@ async function testResponsiveMatrix(page, artifacts) {
   return results;
 }
 
+async function captureVisualAcceptance(page, artifacts) {
+  const baseUrl = new URL(page.url());
+  for (const name of ['channel', 'search', 'conversation', 'conversationId']) baseUrl.searchParams.delete(name);
+  const cases = [];
+
+  const reset = async (width, height, theme) => {
+    await page.setViewportSize({ width, height });
+    await page.goto(baseUrl.href, { waitUntil: 'domcontentloaded' });
+    await page.locator('.omni-conv-item[data-id="9001"]').waitFor();
+    await setTheme(page, theme);
+  };
+  const capture = async definition => {
+    const screenshot = `visual-${definition.id}.png`;
+    await waitForVisualReady(page);
+    const state = await page.evaluate(() => ({
+      viewport: { width: innerWidth, height: innerHeight },
+      pageWidth: document.documentElement.scrollWidth,
+      theme: document.body.classList.contains('dark-mode') ? 'dark' : 'light',
+      fontStatus: document.fonts.status,
+      interLoaded: ['400', '600', '700'].every(weight => Array.from(document.fonts)
+        .filter(face => face.family.replace(/["']/g, '').toLowerCase() === 'inter')
+        .some(face => face.status === 'loaded' && face.weight === weight)),
+      fontFamily: getComputedStyle(document.querySelector('.omni-workspace-shell')).fontFamily
+    }));
+    assert.equal(state.theme, definition.theme, `${definition.id}: theme mismatch`);
+    assert.ok(state.pageWidth <= state.viewport.width + 1, `${definition.id}: horizontal overflow`);
+    assert.match(state.fontFamily, /^Inter\b/i, `${definition.id}: CRM font is not inherited`);
+    await page.screenshot({ path: path.join(artifacts, screenshot), animations: 'disabled' });
+    cases.push({ ...definition, screenshot, ...state });
+  };
+
+  await reset(1366, 768, 'dark');
+  await capture({ id: 'desktop-list-dark', surface: 'list', theme: 'dark', features: ['conversation rows', 'active filters'] });
+
+  await page.locator('.omni-conv-item[data-id="9001"]').click();
+  await page.locator('#omniInput').fill(LONG_DRAFT);
+  await page.locator('#omniMessages .omni-msg:last-child').waitFor();
+  await page.locator('#omniMessages').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  await setTheme(page, 'light');
+  assert.ok(await page.locator('.omni-send-state.error').isVisible(), 'desktop delivery error is not visible');
+  await capture({ id: 'desktop-chat-light', surface: 'conversation', theme: 'light', features: ['long name', 'multiline draft', 'attachment', 'delivery error'] });
+
+  await reset(1024, 600, 'dark');
+  await page.locator('#omniStatusFilters > summary').click();
+  await page.locator('#omniStatusFilters .omni-filter-popover').waitFor({ state: 'visible' });
+  await capture({ id: 'desktop-filters-dark', surface: 'list', theme: 'dark', features: ['expanded filters', 'four complete rows target'] });
+
+  await reset(390, 844, 'light');
+  await capture({ id: 'mobile-list-light', surface: 'list', theme: 'light', features: ['mobile navigation', 'conversation rows'] });
+
+  await setTheme(page, 'dark');
+  await page.locator('.omni-conv-item[data-id="9001"]').click();
+  await page.locator('#omniInput').fill(LONG_DRAFT);
+  await page.locator('#omniMessages .omni-msg:last-child').waitFor();
+  await page.locator('#omniMessages').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  assert.ok(await page.locator('.omni-send-state.error').isVisible(), 'mobile delivery error is not visible');
+  await capture({ id: 'mobile-chat-dark', surface: 'conversation', theme: 'dark', features: ['long name', 'multiline draft', 'delivery error', 'composer'] });
+
+  await page.locator('#omniChatMore > summary').click();
+  await page.locator('#omniChatMore[open]').waitFor();
+  await capture({ id: 'mobile-more-dark', surface: 'conversation', theme: 'dark', features: ['additional actions menu'] });
+
+  const matrix = {
+    schemaVersion: 1,
+    fixtureTime: '2099-01-01T12:30:00.000Z',
+    deterministicFixtureData: true,
+    screenshotsMasked: false,
+    manualReviewRequired: true,
+    cases
+  };
+  fs.writeFileSync(path.join(artifacts, 'visual-acceptance.json'), JSON.stringify(matrix, null, 2));
+  return matrix;
+}
+
 async function testBreakpointEdges(page) {
   const start = new URL(page.url());
   start.searchParams.set('channel', 'telegram');
@@ -342,11 +439,11 @@ async function testBreakpointEdges(page) {
   await waitForLayout(page);
   assert.ok(workspaceAbove.actual > 719, `workspace above breakpoint measured ${workspaceAbove.actual}`);
   assert.equal(await page.locator('.omni-workspace-shell').evaluate(node => node.classList.contains('omni-narrow')), false);
-  const chatBelow = await setViewportForElementWidth(page, '.omni-chat', 658, 700);
-  assert.ok(chatBelow.actual < 660, `chat below breakpoint measured ${chatBelow.actual}`);
+  const chatBelow = await setViewportForElementWidth(page, '.omni-chat', 758, 700);
+  assert.ok(chatBelow.actual < 760, `chat below breakpoint measured ${chatBelow.actual}`);
   assert.ok(await page.locator('#omniChatMore > summary').isVisible());
-  const chatAbove = await setViewportForElementWidth(page, '.omni-chat', 662, 700);
-  assert.ok(chatAbove.actual >= 660, `chat above breakpoint measured ${chatAbove.actual}`);
+  const chatAbove = await setViewportForElementWidth(page, '.omni-chat', 762, 700);
+  assert.ok(chatAbove.actual >= 760, `chat above breakpoint measured ${chatAbove.actual}`);
   assert.equal(await page.locator('#omniChatMore > summary').isVisible(), false);
   assert.ok(await page.locator('#omniCloseConv').isVisible());
   return { workspaceBelow, workspaceAbove, chatBelow, chatAbove };
@@ -438,6 +535,7 @@ module.exports = async function checkLayout(page, artifacts) {
   const matrix = await testResponsiveMatrix(page, artifacts);
   const breakpoints = await testBreakpointEdges(page);
   await testMobileNavigation(page);
+  const visualAcceptance = await captureVisualAcceptance(page, artifacts);
   const faultInjection = await testIntentionalFaults(page, artifacts);
   const summary = {
     layoutInteractions:true, javascript:true, realClicks:true,
@@ -445,7 +543,7 @@ module.exports = async function checkLayout(page, artifacts) {
     filters:true, loadingEmptyError:true, attachments:true, deliveryErrors:true,
     conversationRefresh:true, navigation:true, drafts:true,
     historyAndListScroll:true, focusRestoration:true,
-    breakpointEdges:breakpoints, faultInjection,
+    breakpointEdges:breakpoints, visualAcceptance, faultInjection,
     viewports:matrix.map(result => [result.width,result.height]),
     browserZoom:'not measured', realWrites:0
   };

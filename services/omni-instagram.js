@@ -2,7 +2,7 @@
  * services/omni-instagram.js — Instagram Messaging API channel adapter
  *
  * Sends DMs and replies to comments via the Instagram Graph API
- * (uses the same Facebook Graph API endpoint with an IG-specific token).
+ * (uses the same Facebook Graph API endpoint with the linked Facebook Page ID and Page access token).
  * Uses native https module (no axios / no npm deps).
  */
 const https = require('https');
@@ -118,7 +118,7 @@ async function sendInstagram(recipientId, text, options = {}) {
 
         log.debug('Sending Instagram DM', { recipientId });
 
-        const response = await igRequest('POST', '/' + encodeURIComponent(runtime.instagramAccountId || 'me') + '/messages', body, token);
+        const response = await igRequest('POST', '/' + encodeURIComponent(runtime.pageId || 'me') + '/messages', body, token);
 
         log.info('Instagram DM sent', { recipientId, messageId: response.message_id });
         return { success: true, messageId: response.message_id };
@@ -164,7 +164,7 @@ async function sendPrivateReply(commentId, text, options = {}) {
     const token = runtime.pageToken || runtime.token;
     if (!token) return { success: false, error: 'Instagram не підключено.' };
     try {
-        const result = await igRequest('POST', '/' + encodeURIComponent(runtime.instagramAccountId || 'me') + '/messages', { recipient: { comment_id: commentId }, message: { text } }, token);
+        const result = await igRequest('POST', '/' + encodeURIComponent(runtime.pageId || 'me') + '/messages', { recipient: { comment_id: commentId }, message: { text } }, token);
         return { success: true, messageId: result.message_id };
     } catch (err) { return { success: false, uncertain: !err.statusCode || err.statusCode >= 500, error: err.message }; }
 }

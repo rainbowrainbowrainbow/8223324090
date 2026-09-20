@@ -164,3 +164,85 @@ for (const channel of ['viber', 'facebook', 'instagram']) {
         }
     });
 }
+
+for (const businessContext of ['event_genix', 'dar']) {
+    for (const kind of ['text', 'attachment', 'private reply']) {
+        test(`Instagram ${kind} uses the Facebook Page endpoint for ${businessContext}`, async t => {
+            const requests = [];
+            const runtime = {
+                pageId: `fixture-page-${businessContext}`,
+                instagramAccountId: `fixture-instagram-${businessContext}`,
+                pageToken: `fixture-page-token-${businessContext}`,
+            };
+            mock('../services/omni-accounts', { resolveOmniRuntimeConfig: async (channel, options) => {
+                assert.equal(channel, 'instagram');
+                assert.equal(options.businessContext, businessContext);
+                return runtime;
+            } });
+            fakeHttps(t, (options, body) => {
+                requests.push({ options, body: JSON.parse(body) });
+                return { message_id: 'fixture-instagram-message' };
+            });
+            const adapter = fresh('../services/omni-instagram');
+            const attachment = { type: 'image', payload: { url: 'https://example.com/fixture.png' } };
+            const result = kind === 'private reply'
+                ? await adapter.sendPrivateReply('fixture-comment', 'Fixture reply', { businessContext })
+                : await adapter.sendInstagram('fixture-igsid', kind === 'attachment' ? '' : 'Fixture reply', {
+                    businessContext, ...(kind === 'attachment' ? { attachment } : {}),
+                });
+            assert.deepEqual(result, { success: true, messageId: 'fixture-instagram-message' });
+            assert.equal(requests.length, 1);
+            assert.equal(requests[0].options.hostname, 'graph.facebook.com');
+            assert.equal(requests[0].options.method, 'POST');
+            assert.equal(requests[0].options.path, `/${process.env.IG_API_VERSION || 'v21.0'}/${runtime.pageId}/messages`);
+            assert.equal(requests[0].options.headers.Authorization, `Bearer ${runtime.pageToken}`);
+            assert.deepEqual(requests[0].body.recipient, kind === 'private reply' ? { comment_id: 'fixture-comment' } : { id: 'fixture-igsid' });
+            assert.deepEqual(requests[0].body.message, kind === 'attachment' ? { attachment } : { text: 'Fixture reply' });
+        });
+    }
+}
+
+for (const method of ['sendInstagram', 'sendPrivateReply']) {
+    test(`Instagram ${method} retains token-scoped /me fallback without a Page ID`, async t => {
+        mock('../services/omni-accounts', { resolveOmniRuntimeConfig: async () => ({
+            pageToken: 'fixture-page-token', instagramAccountId: 'fixture-instagram-id',
+        }) });
+        const requests = [];
+        fakeHttps(t, options => { requests.push(options); return { message_id: 'fixture-message' }; });
+        const result = await fresh('../services/omni-instagram')[method]('fixture-recipient', 'Fixture', { businessContext: 'dar' });
+        assert.equal(result.success, true);
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0].path, `/${process.env.IG_API_VERSION || 'v21.0'}/me/messages`);
+    });
+    test(`Instagram ${method} does not send without the selected business token`, async t => {
+        mock('../services/omni-accounts', { resolveOmniRuntimeConfig: async () => ({ pageId: 'fixture-page' }) });
+        let requests = 0;
+        fakeHttps(t, () => { requests++; return { message_id: 'unexpected' }; });
+        const result = await fresh('../services/omni-instagram')[method]('fixture-recipient', 'Fixture', { businessContext: 'dar' });
+        assert.equal(result.success, false);
+        assert.equal(requests, 0);
+    });
+}
+
+test('Instagram keeps a Meta capability rejection failed without retrying another endpoint', async t => {
+    mock('../services/omni-accounts', { resolveOmniRuntimeConfig: async () => ({
+        pageId: 'fixture-page', instagramAccountId: 'fixture-instagram', pageToken: 'fixture-token',
+    }) });
+    let requests = 0;
+    t.mock.method(https, 'request', (options, callback) => {
+        requests++;
+        const request = new EventEmitter();
+        request.setTimeout = () => request;
+        request.write = () => {};
+        request.end = () => queueMicrotask(() => {
+            const response = new EventEmitter(); response.statusCode = 400;
+            callback(response);
+            response.emit('data', JSON.stringify({ error: { code: 3, message: 'Fixture capability rejection' } }));
+            response.emit('end'); request.emit('close');
+        });
+        return request;
+    });
+    const result = await fresh('../services/omni-instagram').sendInstagram('fixture-igsid', 'Fixture', { businessContext: 'dar' });
+    assert.deepEqual(result, { success: false, uncertain: false, error: 'Fixture capability rejection' });
+    assert.equal(requests, 1);
+});

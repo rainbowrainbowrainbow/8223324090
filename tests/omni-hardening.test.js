@@ -46,6 +46,47 @@ test('attachment and comment sends require an idempotency key before dispatch', 
   assert.equal(sends, 1);
 });
 
+test('WhatsApp template routes preserve business scope and require an idempotency key', async t => {
+  const calls = [];
+  const routes = router({
+    getWhatsAppTemplatesForConversation: async (...args) => {
+      calls.push(['list', ...args]);
+      return {
+        templates: [{ name: 'follow_up', language: 'uk', status: 'APPROVED' }],
+        replyWindow: { open: false },
+        conversation: { id: 7, channel: 'whatsapp', businessContext: 'dar' },
+      };
+    },
+    sendWhatsAppTemplateMessage: async (...args) => {
+      calls.push(['send', ...args]);
+      return { message: { id: 70 }, sendTruth: { status: 'provider_attempted' }, conversation: { id: 7 } };
+    },
+  });
+
+  const list = await request(t, routes, '/conversations/7/whatsapp-templates?businessContext=dar&refresh=true', { method: 'GET' });
+  assert.equal(list.status, 200);
+  assert.equal(JSON.parse(list.text).data[0].name, 'follow_up');
+  assert.equal(calls[0][2].businessContext, 'dar');
+  assert.equal(calls[0][2].refresh, true);
+
+  const missingKey = await request(t, routes, '/conversations/7/whatsapp-template?businessContext=dar', {
+    raw: JSON.stringify({ template: { name: 'follow_up', language: 'uk' } }),
+  });
+  assert.equal(missingKey.status, 400);
+
+  const sent = await request(t, routes, '/conversations/7/whatsapp-template?businessContext=dar', {
+    raw: JSON.stringify({
+      client_request_id: '0123456789abcdef0123456789abcdef01234567',
+      template: { name: 'follow_up', language: 'uk', parameters: { body: { 1: 'Сергій' } } },
+    }),
+  });
+  assert.equal(sent.status, 200);
+  assert.equal(JSON.parse(sent.text).sendTruth.status, 'provider_attempted');
+  assert.equal(calls[1][1], 7);
+  assert.equal(calls[1][2].name, 'follow_up');
+  assert.equal(calls[1][4].businessContext, 'dar');
+});
+
 test('Viber setup binds both the provider token and callback URL to the selected business', async t => {
   const calls = [];
   mock('../services/omni-viber', { setViberWebhook: async (...args) => { calls.push(args); return { success: true }; } });

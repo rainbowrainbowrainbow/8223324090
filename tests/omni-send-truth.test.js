@@ -32,6 +32,14 @@ function clearModules() {
 function loadHub(pool, providerMocks = {}) {
     clearModules();
     installMock('../db', { pool: pool || { query: async () => ({ rows: [] }) } });
+    if (providerMocks.omniAccountStatus) {
+        installMock('../services/omni-accounts', {
+            getOmniAccountStatus: () => providerMocks.omniAccountStatus,
+            getOmniAccountStatusAsync: async () => providerMocks.omniAccountStatus,
+            getOmniUnavailableMessage: () => 'Fixture channel unavailable',
+            getOmniUnavailableMessageAsync: async () => 'Fixture channel unavailable',
+        });
+    }
     installMock('../services/kleshnya-chat', { generateChatResponse: async () => '' });
     installMock('../services/websocket', { broadcastBusinessEvent: async () => 0 });
     installMock('../services/telegram', { sendTelegramMessage: providerMocks.sendTelegramMessage || (async () => ({ ok: true, result: { message_id: 42 } })) });
@@ -42,6 +50,15 @@ function loadHub(pool, providerMocks = {}) {
     installMock('../services/omni-instagram', { sendInstagram: providerMocks.sendInstagram || (async () => ({ success: true, messageId: 'ig-46' })) });
     installMock('../services/omni-whatsapp', {
         sendWhatsApp: providerMocks.sendWhatsApp || (async () => ({ success: true, messageId: 'wamid.out-47', messages: [{ id: 'wamid.out-47' }] })),
+        sendWhatsAppTemplate: providerMocks.sendWhatsAppTemplate || (async () => ({ success: true, messageId: 'wamid.template-47', messages: [{ id: 'wamid.template-47' }] })),
+        fetchApprovedWhatsAppTemplates: providerMocks.fetchApprovedWhatsAppTemplates || (async () => []),
+        prepareWhatsAppTemplateRequest: providerMocks.prepareWhatsAppTemplateRequest || (async request => ({
+            name: request.name,
+            language: request.language,
+            category: 'UTILITY',
+            preview: 'Template preview',
+            components: [],
+        })),
         whatsappReplyWindowState: providerMocks.whatsappReplyWindowState || (() => ({ open: true })),
         WHATSAPP_REPLY_WINDOW_MS: 24 * 60 * 60 * 1000,
     });
@@ -72,18 +89,23 @@ function createManualSendPool(conversation) {
         deliveryUpdates: [],
         conversationUpdates: [],
         replyExpectationUpdates: [],
-        connectionStatusQueries: []
+        connectionStatusQueries: [],
+        insertedMeta: null,
+        prior: null,
     };
     const client = {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
-            if (text === 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))') { assert.match(params[0], /^omni-message:\d+$/); return { rows: [] }; }
+            if (text === 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))') { assert.match(params[0], /omni-send/); return { rows: [] }; }
+            if (/meta->>'clientRequestId'/i.test(text)) return { rows: state.prior ? [state.prior] : [] };
             if (/SELECT reply_expected_message_id FROM conversations/i.test(text)) {
                 return { rows: [] };
             }
             if (/INSERT INTO conversation_messages/i.test(text)) {
-                return { rows: [{ ...inserted, sender_name: params[1], content: params[2] }] };
+                state.insertedMeta = JSON.parse(params[3]);
+                state.prior = { ...inserted, sender_name: params[1], content: params[2], meta: state.insertedMeta };
+                return { rows: [state.prior] };
             }
             if (/UPDATE conversations/i.test(text) && /last_outbound_at = NOW\(\)/i.test(text)) {
                 state.conversationUpdates.push(text);
@@ -151,7 +173,7 @@ function createManualSendPool(conversation) {
                 return {
                     rows: [{
                         ...inserted,
-                        meta: { sendTruth },
+                        meta: { ...(state.insertedMeta || {}), sendTruth },
                         provider_message_id: update.providerMessageId,
                         delivery_status: update.deliveryStatus,
                         delivery_error: update.deliveryError,
@@ -1057,6 +1079,107 @@ describe('Communication Send Truth v1', () => {
             if (previousPublicAppUrl === undefined) delete process.env.PUBLIC_APP_URL;
             else process.env.PUBLIC_APP_URL = previousPublicAppUrl;
         }
+    });
+
+    it('lists approved WhatsApp templates only for the scoped WhatsApp conversation', async () => {
+        const pool = createManualSendPool({
+            id: 917,
+            business_context: 'dar',
+            channel: 'whatsapp',
+            external_id: '380671112233',
+            customer_name: 'QA WhatsApp',
+            status: 'open',
+            last_inbound_at: '2099-05-11T09:30:00Z',
+            meta: {}
+        });
+        const calls = [];
+        const hub = loadHub(pool, {
+            omniAccountStatus: { channel: 'whatsapp', connected: true, sendCapable: true, status: 'connected' },
+            fetchApprovedWhatsAppTemplates: async options => {
+                calls.push(options);
+                return [{ name: 'follow_up', language: 'uk', status: 'APPROVED', supported: true }];
+            },
+            whatsappReplyWindowState: () => ({ open: false, closesAt: '2099-05-12T09:30:00Z', remainingMs: 0 }),
+        });
+
+        const result = await hub.getWhatsAppTemplatesForConversation(917, { businessContext: 'dar', refresh: true });
+        assert.equal(result.templates.length, 1);
+        assert.equal(result.replyWindow.open, false);
+        assert.deepEqual(calls, [{ businessContext: 'dar', refresh: true }]);
+    });
+
+    it('sends an approved template outside the reply window through the shared idempotent lifecycle', async () => {
+        const pool = createManualSendPool({
+            id: 918,
+            business_context: 'dar',
+            channel: 'whatsapp',
+            external_id: '380671112233',
+            customer_name: 'QA WhatsApp',
+            status: 'open',
+            last_inbound_at: '2099-05-11T09:30:00Z',
+            meta: {}
+        });
+        const sends = [];
+        const hub = loadHub(pool, {
+            omniAccountStatus: { channel: 'whatsapp', connected: true, sendCapable: true, status: 'connected' },
+            whatsappReplyWindowState: () => ({ open: false }),
+            prepareWhatsAppTemplateRequest: async (request, options) => {
+                assert.equal(options.businessContext, 'dar');
+                assert.equal(request.name, 'follow_up');
+                return { name: 'follow_up', language: 'uk', category: 'UTILITY', preview: 'Вітаємо, Сергію', components: [{ type: 'body', parameters: [{ type: 'text', text: 'Сергію' }] }] };
+            },
+            sendWhatsAppTemplate: async (...args) => {
+                sends.push(args);
+                return { success: true, messages: [{ id: 'wamid.template-918' }] };
+            },
+        });
+        const options = {
+            businessContext: 'dar',
+            clientRequestId: 'aaaaaaaaaaaaaaaaaaaa',
+            whatsappTemplate: { name: 'follow_up', language: 'uk', parameters: { body: { 1: 'Сергію' } } },
+        };
+
+        const first = await hub.sendManualMessage(918, '', 'Manager', options);
+        const duplicate = await hub.sendManualMessage(918, '', 'Manager', options);
+
+        assert.equal(sends.length, 1);
+        assert.equal(sends[0][0], '380671112233');
+        assert.equal(sends[0][1].name, 'follow_up');
+        assert.equal(first.message.providerMessageId, 'wamid.template-918');
+        assert.deepEqual(pool.state.insertedMeta.whatsappTemplate, { name: 'follow_up', language: 'uk', category: 'UTILITY' });
+        assert.equal(duplicate.duplicate, true);
+    });
+
+    it('persists a Meta template rejection beside the concrete outbound message', async () => {
+        const pool = createManualSendPool({
+            id: 920, business_context: 'dar', channel: 'whatsapp', external_id: '380671112233',
+            customer_name: 'QA WhatsApp', status: 'open', last_inbound_at: '2099-05-11T09:30:00Z', meta: {}
+        });
+        const hub = loadHub(pool, {
+            omniAccountStatus: { channel: 'whatsapp', connected: true, sendCapable: true, status: 'connected' },
+            whatsappReplyWindowState: () => ({ open: false }),
+            prepareWhatsAppTemplateRequest: async () => ({ name: 'follow_up', language: 'uk', category: 'UTILITY', preview: 'Вітаємо', components: [] }),
+            sendWhatsAppTemplate: async () => ({ success: false, code: 'provider_error', error: 'Template is paused' }),
+        });
+
+        const result = await hub.sendWhatsAppTemplateMessage(920, { name: 'follow_up', language: 'uk' }, 'Manager', {
+            businessContext: 'dar', clientRequestId: 'cccccccccccccccccccc'
+        });
+
+        assert.equal(result.sendTruth.status, 'provider_failed_immediate');
+        assert.equal(result.message.deliveryStatus, 'failed');
+        assert.match(result.message.meta.sendTruth.error, /Template is paused/);
+        assert.deepEqual(pool.state.insertedMeta.whatsappTemplate, { name: 'follow_up', language: 'uk', category: 'UTILITY' });
+    });
+
+    it('rejects a WhatsApp template for a different channel', async () => {
+        const pool = createManualSendPool({ id: 919, business_context: 'dar', channel: 'telegram', external_id: '42', status: 'open', meta: {} });
+        const hub = loadHub(pool);
+        await assert.rejects(
+            () => hub.sendWhatsAppTemplateMessage(919, { name: 'follow_up', language: 'uk' }, 'Manager', { businessContext: 'dar', clientRequestId: 'bbbbbbbbbbbbbbbbbbbb' }),
+            error => error.code === 'WHATSAPP_TEMPLATE_WRONG_CHANNEL' && error.statusCode === 400
+        );
+        assert.equal(pool.state.connectCalled, false);
     });
 
     it('sends Telegram inbox replies without the global forum thread id', async () => {

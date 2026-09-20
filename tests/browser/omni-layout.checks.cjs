@@ -17,6 +17,12 @@ async function waitForLayout(page) {
 }
 
 async function waitForVisualReady(page) {
+  await page.waitForFunction(() => {
+    const content = document.querySelector('.main-content');
+    if (!content) return false;
+    return content.getAnimations({ subtree: false })
+      .every(animation => animation.playState === 'finished' || animation.playState === 'idle');
+  });
   await page.evaluate(async () => {
     await document.fonts.ready;
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -302,6 +308,63 @@ async function testPrimaryFlow(page, artifacts) {
   await page.screenshot({ path: path.join(artifacts, 'layout-primary-flow.png'), animations: 'disabled' });
 }
 
+async function testWhatsappTemplateFlow(page, artifacts) {
+  const start = new URL(page.url());
+  for (const name of ['channel', 'search', 'conversation', 'conversationId']) start.searchParams.delete(name);
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await page.goto(start.href, { waitUntil: 'domcontentloaded' });
+  await page.locator('.omni-conv-item[data-id="9001"]').click();
+  assert.equal(await page.locator('#omniWhatsappTemplateArea').isVisible(), false,
+    'WhatsApp template controls appeared in a Telegram conversation');
+  await page.locator('#omniChannelSelect').selectOption('whatsapp');
+  const conversation = page.locator('.omni-conv-item[data-id="9006"]');
+  await conversation.waitFor();
+  await conversation.click();
+  const templateArea = page.locator('#omniWhatsappTemplateArea');
+  await templateArea.waitFor({ state: 'visible' });
+  await page.locator('#omniWhatsappTemplateSelect').waitFor();
+  assert.equal(await page.locator('#omniInputArea').isVisible(), false, 'free-form composer is visible after the WhatsApp window closed');
+  await page.locator('[data-template-name="customer_name"]').fill('Сергій');
+  await page.locator('[data-template-name="1"]').fill('о 18:00');
+  assert.match(await page.locator('#omniWhatsappTemplatePreview').textContent(), /Вітаємо, Сергій\. Чекаємо о 18:00\./);
+
+  await page.setViewportSize({ width: 320, height: 640 });
+  await waitForLayout(page);
+  assert.ok(await templateArea.isVisible(), 'template composer disappeared on mobile');
+  assert.ok(await page.locator('#omniWhatsappTemplateSend').isEnabled(), 'template send is unavailable after variables are filled');
+  await page.locator('#omniWhatsappTemplateSend').scrollIntoViewIfNeeded();
+  const sendBounds = await page.locator('#omniWhatsappTemplateSend').boundingBox();
+  assert.ok(sendBounds && sendBounds.y >= 0 && sendBounds.y + sendBounds.height <= 641, 'template send is outside the mobile viewport');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'WhatsApp template composer causes horizontal overflow');
+  await page.screenshot({ path: path.join(artifacts, 'layout-whatsapp-template-mobile.png'), animations: 'disabled' });
+  await page.locator('#omniWhatsappTemplateSend').click();
+  await page.getByText('Вітаємо, Сергій. Чекаємо о 18:00.', { exact: true }).waitFor();
+  assert.equal(await page.locator('#omniInputArea').isVisible(), false, 'template delivery incorrectly opened the free-form composer');
+  assert.ok(await templateArea.isVisible(), 'template picker disappeared before a new inbound message');
+
+  await page.evaluate(() => window.__omniFixtureUpdateConversation({
+    id: 9006,
+    lastInboundAt: '2099-01-01T12:20:00Z',
+    whatsappReplyWindow: { open: true, closesAt: '2099-01-02T12:20:00Z', remainingMs: 85800000 }
+  }));
+  await page.evaluate(() => window.__omniFixtureRefresh());
+  await page.locator('#omniInput').waitFor({ state: 'visible' });
+  assert.equal(await templateArea.isVisible(), false, 'template picker stayed open after a new inbound message');
+  assert.ok(await page.locator('#omniWhatsappWindow').isVisible(), 'reply-window status is missing after inbound refresh');
+  const freeformText = 'Звичайна відповідь у відкритому 24-годинному вікні';
+  await page.locator('#omniInput').fill(freeformText);
+  await page.locator('#omniSendBtn').click();
+  await page.getByText(freeformText, { exact: true }).waitFor();
+  assert.equal(await page.locator('#omniInput').inputValue(), '', 'successful WhatsApp send did not clear the draft');
+  return {
+    closedWindowPicker: true,
+    mobileTemplateSend: true,
+    freeformRequiresInbound: true,
+    openWindowFreeformSend: true,
+    templatesHiddenOutsideWhatsapp: true
+  };
+}
+
 async function testResponsiveMatrix(page, artifacts) {
   const start = new URL(page.url());
   start.searchParams.delete('channel');
@@ -360,18 +423,44 @@ async function captureVisualAcceptance(page, artifacts) {
   const capture = async definition => {
     const screenshot = `visual-${definition.id}.png`;
     await waitForVisualReady(page);
-    const state = await page.evaluate(() => ({
-      viewport: { width: innerWidth, height: innerHeight },
-      pageWidth: document.documentElement.scrollWidth,
-      theme: document.body.classList.contains('dark-mode') ? 'dark' : 'light',
-      fontStatus: document.fonts.status,
-      interLoaded: ['400', '600', '700'].every(weight => Array.from(document.fonts)
-        .filter(face => face.family.replace(/["']/g, '').toLowerCase() === 'inter')
-        .some(face => face.status === 'loaded' && face.weight === weight)),
-      fontFamily: getComputedStyle(document.querySelector('.omni-workspace-shell')).fontFamily
-    }));
+    const state = await page.evaluate(() => {
+      const viewportWidth = innerWidth;
+      const overflowingElements = Array.from(document.querySelectorAll('body *'))
+        .filter(element => {
+          const style = getComputedStyle(element);
+          if (style.display === 'none' || style.visibility === 'hidden') return false;
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.right > viewportWidth + 1;
+        })
+        .slice(0, 12)
+        .map(element => {
+          const rect = element.getBoundingClientRect();
+          return {
+            tag: element.tagName.toLowerCase(),
+            id: element.id || '',
+            className: typeof element.className === 'string' ? element.className : '',
+            left: Math.round(rect.left * 100) / 100,
+            right: Math.round(rect.right * 100) / 100,
+            width: Math.round(rect.width * 100) / 100,
+            scrollWidth: element.scrollWidth,
+            clientWidth: element.clientWidth
+          };
+        });
+      return {
+        viewport: { width: viewportWidth, height: innerHeight },
+        pageWidth: document.documentElement.scrollWidth,
+        theme: document.body.classList.contains('dark-mode') ? 'dark' : 'light',
+        fontStatus: document.fonts.status,
+        interLoaded: ['400', '600', '700'].every(weight => Array.from(document.fonts)
+          .filter(face => face.family.replace(/["']/g, '').toLowerCase() === 'inter')
+          .some(face => face.status === 'loaded' && face.weight === weight)),
+        fontFamily: getComputedStyle(document.querySelector('.omni-workspace-shell')).fontFamily,
+        overflowingElements
+      };
+    });
     assert.equal(state.theme, definition.theme, `${definition.id}: theme mismatch`);
-    assert.ok(state.pageWidth <= state.viewport.width + 1, `${definition.id}: horizontal overflow`);
+    assert.ok(state.pageWidth <= state.viewport.width + 1,
+      `${definition.id}: horizontal overflow ${JSON.stringify({ viewport: state.viewport, pageWidth: state.pageWidth, elements: state.overflowingElements })}`);
     assert.match(state.fontFamily, /^Inter\b/i, `${definition.id}: CRM font is not inherited`);
     await page.screenshot({ path: path.join(artifacts, screenshot), animations: 'disabled' });
     cases.push({ ...definition, screenshot, ...state });
@@ -532,6 +621,7 @@ async function testIntentionalFaults(page, artifacts) {
 module.exports = async function checkLayout(page, artifacts) {
   await testListStates(page);
   await testPrimaryFlow(page, artifacts);
+  const whatsappTemplates = await testWhatsappTemplateFlow(page, artifacts);
   const matrix = await testResponsiveMatrix(page, artifacts);
   const breakpoints = await testBreakpointEdges(page);
   await testMobileNavigation(page);
@@ -543,7 +633,7 @@ module.exports = async function checkLayout(page, artifacts) {
     filters:true, loadingEmptyError:true, attachments:true, deliveryErrors:true,
     conversationRefresh:true, navigation:true, drafts:true,
     historyAndListScroll:true, focusRestoration:true,
-    breakpointEdges:breakpoints, visualAcceptance, faultInjection,
+    breakpointEdges:breakpoints, whatsappTemplates, visualAcceptance, faultInjection,
     viewports:matrix.map(result => [result.width,result.height]),
     browserZoom:'not measured', realWrites:0
   };

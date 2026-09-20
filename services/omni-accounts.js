@@ -261,7 +261,7 @@ const CHANNELS = [
     ],
     webhookPath: '/api/omni/webhook/whatsapp',
     webhookNote: 'У Meta Webhooks підпишіть WhatsApp Business Account на messages. CRM приймає тільки підписані події з очікуваними WABA ID та Phone Number ID.',
-    businessImpact: 'WhatsApp у CRM працює через офіційну WhatsApp Business Platform / Cloud API. Ручна довільна відповідь можлива лише у 24-годинному customer care window; template-відправки не входять у цей MVP.',
+    businessImpact: 'WhatsApp у CRM працює через офіційну WhatsApp Business Platform / Cloud API. Довільна відповідь можлива лише у 24-годинному customer service window; після його завершення Omni може надіслати схвалений у Meta шаблон.',
     localValidation: validateWhatsApp,
     verifier: verifyWhatsApp,
     envWarning: 'WhatsApp Cloud API is not configured',

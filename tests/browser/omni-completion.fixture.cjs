@@ -123,7 +123,7 @@ function playwright() {
       }, FIXED_BROWSER_TIME);
     }
     const channels = ['telegram','viber','sms','facebook','instagram','whatsapp'];
-    const accounts=channels.map(channel=>({channel,label:channel,status:channel==='telegram'?'connected':'disconnected',connected:channel==='telegram',sendCapable:channel==='telegram',receiveCapable:channel==='telegram',setupFields:[],supportedActions:['connect','test','recheck'],accountName:'QA fixture'}));
+    const accounts=channels.map(channel=>({channel,label:channel,status:['telegram','whatsapp'].includes(channel)?'connected':'disconnected',connected:['telegram','whatsapp'].includes(channel),sendCapable:['telegram','whatsapp'].includes(channel),receiveCapable:['telegram','whatsapp'].includes(channel),setupFields:[],supportedActions:['connect','test','recheck'],accountName:'QA fixture'}));
     const conversations=Array.from({length:105},(_,i)=>({
       id:9001+i,
       channel:layoutMode ? channels[i % channels.length] : 'telegram',
@@ -134,12 +134,18 @@ function playwright() {
         : 'Тестовий текст',
       lastMessageAt:'2099-01-01T12:00:00Z',
       businessContext:'event_genix',
-      sendCapable:!layoutMode || i % channels.length === 0,
+      sendCapable:!layoutMode || [0,5].includes(i % channels.length),
       unreadCount:i % 9 === 0 ? 3 : 0,
       meta:{ai_enabled:false},
       status:'open'
     }));
     if (layoutMode) conversations[0].customerName = 'Fedorova Nataliy — довге ім’я клієнта групового діалогу';
+    if (layoutMode) {
+      const whatsappConversation = conversations.find(conversation => conversation.channel === 'whatsapp');
+      whatsappConversation.customerName = 'WhatsApp QA — шаблон після 24 годин';
+      whatsappConversation.lastInboundAt = '2098-12-30T08:00:00Z';
+      whatsappConversation.whatsappReplyWindow = { open: false, closesAt: '2098-12-31T08:00:00Z', remainingMs: 0 };
+    }
     const history=new Map(conversations.map(c=>[c.id,Array.from({length:c.id===9001?105:2},(_,i)=>({id:c.id*1000+i,conversationId:c.id,direction:'inbound',content:'Діалог '+c.id+' повідомлення '+(i+1)+'\nДругий рядок',createdAt:'2099-01-01T12:00:00Z'}))]));
     if (layoutMode) {
       const primaryHistory = history.get(9001);
@@ -225,14 +231,26 @@ function playwright() {
             if(body.assigned_to !== undefined || ['pending','open'].includes(body.status)) { if(body.assigned_to !== undefined)conv.assignedTo=body.assigned_to; if(body.status)conv.status=body.status; return json({success:true,data:conv}); }
           }
           if (p.endsWith('/attachments')) return json({success:true,data:attachment});
+          if(p.endsWith('/whatsapp-template')) {
+            const body = req.postDataJSON();
+            assert.match(body.client_request_id,/^[a-f0-9]{40}$/);
+            assert.equal(body.template.name,'appointment_reminder');
+            const id = Number(p.split('/')[2]);
+            history.get(id).push({id:99000004,conversationId:id,direction:'outbound',content:'Вітаємо, Сергій. Чекаємо о 18:00.',deliveryStatus:'accepted',providerMessageId:'wamid.fixture-template',createdAt:'2099-01-01T12:05:00Z',meta:{whatsappTemplate:{name:'appointment_reminder',language:'uk'},sendTruth:{status:'provider_attempted',providerAccepted:true}}});
+            return json({success:true,data:history.get(id).at(-1),sendTruth:{status:'provider_attempted',providerAccepted:true,providerReference:'wamid.fixture-template'},conversation:conversations.find(c=>c.id===id)});
+          }
           if(p.endsWith('/send')) {
             assert.match(req.postDataJSON().client_request_id,/^[a-f0-9]{40}$/);
             const body = req.postDataJSON();
-            if (body.attachment_id || body.reply_mode) {
+            if (layoutMode || body.attachment_id || body.reply_mode) {
               const id = Number(p.split('/')[2]);
               if (body.attachment_id) assert.equal(body.attachment_id, attachment.id);
-              history.get(id).push({id:99000001,conversationId:id,direction:'outbound',content:body.text,deliveryStatus:'accepted',createdAt:'2099-01-01T12:05:00Z',meta:body.attachment_id?{attachment}:{commentReply:{mode:body.reply_mode}}});
-              return json({success:true,sendTruth:{status:'provider_attempted',providerAccepted:true}});
+              history.get(id).push({
+                id:99000001,conversationId:id,direction:'outbound',content:body.text,
+                deliveryStatus:'accepted',createdAt:'2099-01-01T12:05:00Z',
+                meta:body.attachment_id?{attachment}:(body.reply_mode?{commentReply:{mode:body.reply_mode}}:{sendTruth:{status:'provider_attempted',providerAccepted:true}})
+              });
+              return json({success:true,data:history.get(id).at(-1),sendTruth:{status:'provider_attempted',providerAccepted:true}});
             }
             sendStartedResolve();
             await new Promise(resolve=>{sendResolve=resolve;});
@@ -245,6 +263,15 @@ function playwright() {
         if(p==='/accounts') return json({success:true,accounts});
         if(p==='/stats') return json({success:true,data:{total:105,byStatus:{open:105}}});
         if(p==='/quick-replies') return json({success:true,data:[]});
+        const templateMatch=p.match(/^\/conversations\/(\d+)\/whatsapp-templates$/);
+        if(templateMatch) {
+          const id=Number(templateMatch[1]),conversation=conversations.find(c=>c.id===id);
+          return json({success:true,data:[{
+            id:'fixture-template-1',name:'appointment_reminder',language:'uk',category:'UTILITY',status:'APPROVED',
+            header:'Нагадування',body:'Вітаємо, {{customer_name}}. Чекаємо {{1}}.',footer:'EventGenix',
+            parameters:{header:[],body:['customer_name','1']},buttons:[{index:0,type:'quick_reply',text:'Підтверджую'}],supported:true,unsupportedReason:null
+          }],replyWindow:conversation?.whatsappReplyWindow,conversation});
+        }
         if(p==='/conversations') {
           if (conversationFixtureMode === 'loading') {
             pendingConversationRequests++;

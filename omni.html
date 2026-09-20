@@ -2300,6 +2300,17 @@
                     <div class="omni-history-controls" id="omniHistoryControls" hidden aria-live="polite"></div>
                     <div class="omni-chat-messages" id="omniMessages" style="display:none"></div>
                     <div class="omni-quick-replies" id="omniQuickReplies" style="display:none"></div>
+                    <div class="omni-whatsapp-window" id="omniWhatsappWindow" hidden aria-live="polite"></div>
+                    <section class="omni-template-composer" id="omniWhatsappTemplateArea" hidden aria-labelledby="omniWhatsappTemplateTitle">
+                        <div class="omni-template-head">
+                            <div>
+                                <strong id="omniWhatsappTemplateTitle">WhatsApp template</strong>
+                                <p>24-годинне вікно закрите. Звичайна відповідь стане доступною після нового повідомлення клієнта.</p>
+                            </div>
+                            <button type="button" class="omni-secondary-action" id="omniWhatsappTemplateRefresh">Оновити</button>
+                        </div>
+                        <div id="omniWhatsappTemplateContent"></div>
+                    </section>
                     <div class="omni-chat-input" id="omniInputArea" style="display:none">
                         <div class="omni-file-composer">
                             <button type="button" class="omni-secondary-action" id="omniChooseFile">Додати файл</button>
@@ -2452,6 +2463,10 @@
         const chatMore = $('omniChatMore');
         const emptyState = $('omniEmpty');
         const quickRepliesEl = $('omniQuickReplies');
+        const whatsappWindowEl = $('omniWhatsappWindow');
+        const whatsappTemplateArea = $('omniWhatsappTemplateArea');
+        const whatsappTemplateContent = $('omniWhatsappTemplateContent');
+        const whatsappTemplateRefresh = $('omniWhatsappTemplateRefresh');
         const statsEl = $('omniStats');
         const accountsGrid = $('omniAccountsGrid');
         const accountSummaryEl = $('omniAccountSummary');
@@ -2484,6 +2499,7 @@
         const leadAssistantSettingsEl = $('omniLeadAssistantSettings');
         let connectionModalState = null;
         let isSending = false;
+        const whatsappTemplateStates = new Map();
         let leadAssistantState = {
             open: false,
             mode: 'draft',
@@ -3835,6 +3851,138 @@
             return Boolean(conv.sendCapable !== false && !SEND_DISABLED_CHANNELS.has(channel));
         }
 
+        function whatsappReplyWindow(conv) {
+            if (!conv || String(conv.channel).toLowerCase() !== 'whatsapp') return null;
+            const lastInbound = conv.lastInboundAt ? new Date(conv.lastInboundAt).getTime() : NaN;
+            const closesAt = Number.isFinite(lastInbound) ? lastInbound + (24 * 60 * 60 * 1000)
+                : new Date(conv.whatsappReplyWindow?.closesAt || '').getTime();
+            const remainingMs = Number.isFinite(closesAt) ? Math.max(0, closesAt - Date.now()) : 0;
+            return {
+                open: remainingMs > 0,
+                closesAt: Number.isFinite(closesAt) ? new Date(closesAt).toISOString() : null,
+                remainingMs
+            };
+        }
+
+        function canSendFreeform(conv) {
+            if (!canSendConversation(conv)) return false;
+            const windowState = whatsappReplyWindow(conv);
+            return !windowState || windowState.open;
+        }
+
+        function whatsappTemplateState(conv = currentConversation()) {
+            const key = conv ? getOmniBusinessContext() + ':' + conv.id : '';
+            if (!key) return null;
+            if (!whatsappTemplateStates.has(key)) whatsappTemplateStates.set(key, {
+                loading: false,
+                loaded: false,
+                templates: [],
+                error: '',
+                selected: '',
+                values: { header: {}, body: {} },
+                sending: false,
+                request: null
+            });
+            return whatsappTemplateStates.get(key);
+        }
+
+        function selectedWhatsappTemplate(state) {
+            return state?.templates.find(template => template.name + '|' + template.language === state.selected) || null;
+        }
+
+        function fillTemplateText(text, values) {
+            return String(text || '').replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_match, name) => values?.[name] || '…');
+        }
+
+        function whatsappTemplatePreview(template, state) {
+            if (!template) return '';
+            return [
+                fillTemplateText(template.header, state.values.header),
+                fillTemplateText(template.body, state.values.body),
+                template.footer
+            ].filter(Boolean).join('\n');
+        }
+
+        function renderWhatsappTemplatePreview() {
+            const state = whatsappTemplateState();
+            const template = selectedWhatsappTemplate(state);
+            const preview = $('omniWhatsappTemplatePreview');
+            if (preview) preview.textContent = whatsappTemplatePreview(template, state);
+            const button = $('omniWhatsappTemplateSend');
+            if (button && template) {
+                const missing = template.parameters.header.some(name => !(state.values.header[name] || '').trim())
+                    || template.parameters.body.some(name => !(state.values.body[name] || '').trim());
+                button.disabled = state.sending || missing || !template.supported;
+            }
+        }
+
+        function renderWhatsappTemplateComposer(conv = currentConversation()) {
+            if (!whatsappTemplateArea || !whatsappTemplateContent) return;
+            const closedWhatsapp = conv?.channel === 'whatsapp' && !whatsappReplyWindow(conv)?.open && canSendConversation(conv);
+            whatsappTemplateArea.hidden = !closedWhatsapp;
+            if (!closedWhatsapp) return;
+            const state = whatsappTemplateState(conv);
+            whatsappTemplateRefresh.disabled = state.loading || state.sending;
+            if (state.loading) {
+                whatsappTemplateContent.innerHTML = '<div class="omni-template-state">Завантажуємо approved templates…</div>';
+                return;
+            }
+            if (state.error) {
+                whatsappTemplateContent.innerHTML = '<div class="omni-template-state error">' + esc(state.error) + '</div>';
+                return;
+            }
+            const available = state.templates.filter(template => template.supported);
+            if (!state.loaded || !available.length) {
+                const detail = state.loaded && state.templates.length
+                    ? 'Approved templates є, але їхні компоненти поки не підтримуються в Omni.'
+                    : 'Approved templates не знайдено. Створення й approval виконуються в Meta.';
+                whatsappTemplateContent.innerHTML = '<div class="omni-template-state">' + esc(detail) + '</div>';
+                return;
+            }
+            if (!available.some(template => template.name + '|' + template.language === state.selected)) {
+                state.selected = available[0].name + '|' + available[0].language;
+                state.values = { header: {}, body: {} };
+            }
+            const template = selectedWhatsappTemplate(state);
+            const fields = ['header', 'body'].flatMap(section => template.parameters[section].map(name =>
+                '<label class="omni-template-field"><span>' + esc(section === 'header' ? 'Заголовок · ' + name : 'Текст · ' + name) + '</span>' +
+                '<input type="text" maxlength="4096" data-template-section="' + section + '" data-template-name="' + esc(name) + '" value="' + esc(state.values[section][name] || '') + '" autocomplete="off"></label>'
+            )).join('');
+            const buttons = template.buttons.length
+                ? '<div class="omni-template-buttons">Кнопки: ' + template.buttons.map(button => esc(button.text)).join(' · ') + '</div>' : '';
+            whatsappTemplateContent.innerHTML =
+                '<label class="omni-template-select"><span>Шаблон</span><select id="omniWhatsappTemplateSelect">' +
+                available.map(item => '<option value="' + esc(item.name + '|' + item.language) + '"' + (state.selected === item.name + '|' + item.language ? ' selected' : '') + '>' + esc(item.name + ' · ' + item.language) + '</option>').join('') +
+                '</select></label>' +
+                '<div class="omni-template-meta">' + esc(template.category || 'Template') + ' · ' + esc(template.language) + '</div>' +
+                (fields ? '<div class="omni-template-fields">' + fields + '</div>' : '') +
+                '<div class="omni-template-preview"><span>Попередній перегляд</span><pre id="omniWhatsappTemplatePreview"></pre></div>' +
+                buttons +
+                '<button type="button" class="omni-template-send" id="omniWhatsappTemplateSend"' + (state.sending ? ' disabled' : '') + '>' + (state.sending ? 'Надсилаємо…' : 'Надіслати шаблон') + '</button>';
+            renderWhatsappTemplatePreview();
+        }
+
+        async function loadWhatsappTemplates(options = {}) {
+            const conv = currentConversation();
+            if (!conv || conv.channel !== 'whatsapp' || whatsappReplyWindow(conv)?.open) return;
+            const state = whatsappTemplateState(conv);
+            if (state.loading || (state.loaded && !options.refresh)) return renderWhatsappTemplateComposer(conv);
+            const convId = conv.id;
+            const epoch = workspaceEpoch;
+            state.loading = true;
+            state.error = '';
+            renderWhatsappTemplateComposer(conv);
+            const suffix = options.refresh ? '?refresh=true' : '';
+            const res = await api('/conversations/' + convId + '/whatsapp-templates' + suffix);
+            if (epoch !== workspaceEpoch || currentConvId !== convId) return;
+            state.loading = false;
+            state.loaded = res.success;
+            state.templates = res.success && Array.isArray(res.data) ? res.data : [];
+            state.error = res.success ? '' : (res.error || 'Не вдалося завантажити WhatsApp templates.');
+            if (res.conversation) applyConversationResponse(res.conversation);
+            renderWhatsappTemplateComposer(currentConversation());
+        }
+
         function sendTruthTone(sendTruth) {
             const status = sendTruth?.status || '';
             if (status === 'provider_failed_immediate' || status === 'provider_failed_later' || status === 'channel_unavailable') return 'error';
@@ -3930,14 +4078,27 @@
         }
 
         function updateSendControls(conv) {
-            const canSend = canSendConversation(conv);
+            const canSend = canSendFreeform(conv);
             input.disabled = !canSend || isSending;
             sendBtn.disabled = !canSend || isSending;
+            inputArea.style.display = conv && (conv.channel !== 'whatsapp' || whatsappReplyWindow(conv)?.open) ? 'grid' : 'none';
+            const windowState = whatsappReplyWindow(conv);
+            if (whatsappWindowEl) {
+                whatsappWindowEl.hidden = !windowState || !windowState.open;
+                if (windowState?.open) {
+                    const minutes = Math.max(1, Math.ceil(windowState.remainingMs / 60000));
+                    whatsappWindowEl.textContent = minutes >= 60
+                        ? 'WhatsApp: звичайна відповідь доступна ще приблизно ' + Math.ceil(minutes / 60) + ' год.'
+                        : 'WhatsApp: звичайна відповідь доступна ще приблизно ' + minutes + ' хв.';
+                }
+            }
             renderFileComposer(conv);
+            renderWhatsappTemplateComposer(conv);
+            renderQuickReplies();
             if (replyExpectedEl) replyExpectedEl.disabled = !canSend || isSending;
-            input.placeholder = canSend ? 'Написати повідомлення...' : 'Канал доступний лише для перегляду';
+            input.placeholder = canSend ? 'Написати повідомлення...' : (windowState && !windowState.open ? 'Використайте approved template' : 'Канал доступний лише для перегляду');
             if (!canSend && replyExpectedEl) replyExpectedEl.checked = false;
-            if (!canSend && conv) {
+            if (!canSendConversation(conv) && conv) {
                 setSendFeedback({
                     status: 'channel_unavailable',
                     channel: conv.channel,
@@ -4023,7 +4184,8 @@
         }
 
         function renderQuickReplies() {
-            const disabled = !canSendConversation(currentConversation());
+            const disabled = !canSendFreeform(currentConversation());
+            quickRepliesEl.style.display = disabled ? 'none' : 'flex';
             quickRepliesEl.innerHTML = quickReplies.map(qr =>
                 '<button type="button" class="omni-quick-btn" data-content="' + esc(qr.content) + '"' + (disabled ? ' disabled aria-disabled="true"' : '') + '>' + esc(qr.title) + '</button>'
             ).join('');
@@ -5261,7 +5423,7 @@
         function renderFileComposer(conv = currentConversation()) {
             const policy = filePolicy(conv);
             const draft = attachmentDrafts.get(selectedDraftKey);
-            $('omniChooseFile').disabled = !canSendConversation(conv) || isSending || !policy.length || !!draft?.uploading;
+            $('omniChooseFile').disabled = !canSendFreeform(conv) || isSending || !policy.length || !!draft?.uploading;
             $('omniFileInput').accept = policy.map(item => item.mime).join(',');
             $('omniFileHint').textContent = policy.length ? policy.map(item => item.mime.split('/')[1].toUpperCase() + ' ≤ ' + item.maxBytes / 1024 / 1024 + ' МБ').join(' · ') : 'Цей канал не підтримує вкладення';
             $('omniSelectedFile').textContent = draft ? draft.filename + ' · ' + Math.ceil(draft.size / 1024) + ' КБ' + (draft.uploading ? ' · Збереження…' : '') : '';
@@ -5324,6 +5486,8 @@
             messages.innerHTML = '';
             inputArea.style.display = 'none';
             quickRepliesEl.style.display = 'none';
+            if (whatsappWindowEl) whatsappWindowEl.hidden = true;
+            if (whatsappTemplateArea) whatsappTemplateArea.hidden = true;
             if (historyControls) historyControls.hidden = true;
             if (caseContextEl) caseContextEl.hidden = true;
             closeLeadAssistantPanel();
@@ -5396,6 +5560,7 @@
             loadConversationControls(conv);
             loadCaseContext(convId);
             renderQuickReplies();
+            loadWhatsappTemplates();
         }
 
         function conversationFieldKey(id, field, epoch = workspaceEpoch) {
@@ -5433,6 +5598,8 @@
             renderConversations();
             syncConversationControls(selectedConversationRecord, true);
             updateLeadAction(selectedConversationRecord);
+            updateSendControls(selectedConversationRecord);
+            loadWhatsappTemplates();
         }
 
         async function loadConversationControls(conv) {
@@ -5477,13 +5644,57 @@
             loadConversations(); loadStats();
         }
 
+        async function sendWhatsappTemplate() {
+            const conv = currentConversation();
+            const state = whatsappTemplateState(conv);
+            const template = selectedWhatsappTemplate(state);
+            if (!conv || conv.channel !== 'whatsapp' || !template || state.sending) return;
+            const parameters = { header: { ...state.values.header }, body: { ...state.values.body } };
+            const signature = JSON.stringify([template.name, template.language, parameters]);
+            if (!state.request || state.request.signature !== signature) {
+                state.request = {
+                    signature,
+                    id: Array.from(crypto.getRandomValues(new Uint8Array(20)), value => value.toString(16).padStart(2, '0')).join('')
+                };
+            }
+            const convId = conv.id;
+            const epoch = workspaceEpoch;
+            state.sending = true;
+            renderWhatsappTemplateComposer(conv);
+            setSendFeedback({ status: 'saved', channel: 'whatsapp', message: 'Надсилаємо approved WhatsApp template…' });
+            const res = await api('/conversations/' + convId + '/whatsapp-template', {
+                method: 'POST',
+                body: JSON.stringify({
+                    client_request_id: state.request.id,
+                    template: { name: template.name, language: template.language, parameters }
+                })
+            });
+            state.sending = false;
+            if (epoch !== workspaceEpoch || currentConvId !== convId) return;
+            if (res.success) {
+                state.request = null;
+                setSendFeedback(res.sendTruth || res.data?.meta?.sendTruth || {
+                    status: 'provider_unknown', channel: 'whatsapp',
+                    message: 'Template збережено, але стан провайдера не повернувся.'
+                });
+                loadMessages(convId, { refresh: true });
+                loadConversations();
+            } else {
+                setSendFeedback(res.sendTruth || {
+                    status: 'provider_failed_immediate', channel: 'whatsapp',
+                    message: res.error || 'Не вдалося надіслати WhatsApp template.'
+                });
+            }
+            renderWhatsappTemplateComposer(currentConversation());
+        }
+
         async function sendMessage() {
             const text = input.value.trim();
             const conv = currentConversation();
             const attachment = attachmentDrafts.get(selectedDraftKey);
             const commentReply = commentReplyDrafts.get(selectedDraftKey);
             if ((!text && !attachment?.id) || attachment?.uploading || !currentConvId || isSending) return;
-            if (!canSendConversation(conv)) {
+            if (!canSendFreeform(conv)) {
                 updateSendControls(conv);
                 return;
             }
@@ -5549,6 +5760,9 @@
                 });
                 loadMessages(convId, { refresh: true });
             } else if (!res.success && isCurrent) {
+                if (res.code === 'WHATSAPP_REPLY_WINDOW_CLOSED' && conv?.channel === 'whatsapp') {
+                    conv.whatsappReplyWindow = { open: false, closesAt: conv.whatsappReplyWindow?.closesAt || null, remainingMs: 0 };
+                }
                 setSendFeedback(res.sendTruth || {
                     status: 'provider_failed_immediate',
                     channel: conv?.channel,
@@ -5558,6 +5772,7 @@
             if (epoch === workspaceEpoch) loadConversations();
             isSending = pendingSends.has(selectedDraftKey);
             updateSendControls(currentConversation());
+            if (res.code === 'WHATSAPP_REPLY_WINDOW_CLOSED') loadWhatsappTemplates();
         }
 
         async function closeConversation() {
@@ -5729,6 +5944,29 @@
         if (mobileBackBtn) mobileBackBtn.addEventListener('click', returnToConversationList);
 
         $('omniSendBtn').addEventListener('click', sendMessage);
+        if (whatsappTemplateRefresh) whatsappTemplateRefresh.addEventListener('click', () => loadWhatsappTemplates({ refresh: true }));
+        if (whatsappTemplateContent) {
+            whatsappTemplateContent.addEventListener('change', event => {
+                if (event.target.id !== 'omniWhatsappTemplateSelect') return;
+                const state = whatsappTemplateState();
+                state.selected = event.target.value;
+                state.values = { header: {}, body: {} };
+                state.request = null;
+                renderWhatsappTemplateComposer(currentConversation());
+            });
+            whatsappTemplateContent.addEventListener('input', event => {
+                const section = event.target.dataset.templateSection;
+                const name = event.target.dataset.templateName;
+                if (!section || !name) return;
+                const state = whatsappTemplateState();
+                state.values[section][name] = event.target.value;
+                state.request = null;
+                renderWhatsappTemplatePreview();
+            });
+            whatsappTemplateContent.addEventListener('click', event => {
+                if (event.target.closest('#omniWhatsappTemplateSend')) sendWhatsappTemplate();
+            });
+        }
         input.addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
                 e.preventDefault();
@@ -5768,6 +6006,16 @@
         window.addEventListener('resize', syncOmniViewport);
         window.visualViewport?.addEventListener('resize', syncOmniViewport);
         window.visualViewport?.addEventListener('scroll', syncOmniViewport);
+        setInterval(() => {
+            const conv = currentConversation();
+            if (conv?.channel === 'whatsapp') {
+                const wasOpen = conv.whatsappReplyWindow?.open !== false;
+                const isOpen = whatsappReplyWindow(conv)?.open === true;
+                if (wasOpen && !isOpen) conv.whatsappReplyWindow = { ...(conv.whatsappReplyWindow || {}), open: false, remainingMs: 0 };
+                updateSendControls(conv);
+                if (!isOpen) loadWhatsappTemplates();
+            }
+        }, 60000);
         syncOmniViewport();
         if (typeof ResizeObserver === 'function') {
             const layoutObserver = new ResizeObserver(syncOmniViewportSize);

@@ -14,7 +14,13 @@ const { sendViber } = require('./omni-viber');
 const { sendSMS } = require('./omni-sms');
 const { sendFacebook } = require('./omni-facebook');
 const { sendInstagram } = require('./omni-instagram');
-const { sendWhatsApp, whatsappReplyWindowState } = require('./omni-whatsapp');
+const {
+  sendWhatsApp,
+  sendWhatsAppTemplate,
+  fetchApprovedWhatsAppTemplates,
+  prepareWhatsAppTemplateRequest,
+  whatsappReplyWindowState,
+} = require('./omni-whatsapp');
 const { sendTelegramBridgeMessage } = require('./omni-telegram-bridge');
 const {
   getOmniAccountStatus,
@@ -400,6 +406,9 @@ function mapConversationRow(row) {
   const accountSendCapable = accountStatus
     ? accountStatus.connected && accountStatus.sendCapable
     : channelSendCapable;
+  const whatsappReplyWindow = row.channel === 'whatsapp'
+    ? whatsappReplyWindowState(row.last_inbound_at)
+    : null;
   return {
     id: row.id,
     businessContext,
@@ -440,6 +449,7 @@ function mapConversationRow(row) {
     sendReadiness: channelSendCapable && accountSendCapable
       ? 'send_capable'
       : (accountStatus?.status || 'inbound_only'),
+    whatsappReplyWindow,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1756,7 +1766,25 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
   } else {
     await assertRuntimeSendCapable(conversation.channel, { businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT });
   }
-  if (conversation.channel === 'whatsapp') {
+  let whatsappTemplate = null;
+  if (options.whatsappTemplate) {
+    if (conversation.channel !== 'whatsapp') {
+      throw Object.assign(new Error('WhatsApp template можна надіслати лише у WhatsApp-діалог.'), {
+        statusCode: 400,
+        code: 'WHATSAPP_TEMPLATE_WRONG_CHANNEL',
+      });
+    }
+    if (options.attachmentId || options.replyToMessageId) {
+      throw Object.assign(new Error('WhatsApp template не можна поєднати з вкладенням або відповіддю на коментар.'), {
+        statusCode: 400,
+        code: 'WHATSAPP_TEMPLATE_INVALID_REQUEST',
+      });
+    }
+    whatsappTemplate = await prepareWhatsAppTemplateRequest(options.whatsappTemplate, {
+      businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT,
+    });
+    text = whatsappTemplate.preview;
+  } else if (conversation.channel === 'whatsapp') {
     const windowState = whatsappReplyWindowState(conversation.lastInboundAt);
     if (!windowState.open) {
       throw Object.assign(new Error(windowState.message), {
@@ -1808,6 +1836,10 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
       if (prior.rows.length) {
         if (prior.rows[0].content !== text || (prior.rows[0].meta?.attachment?.checksum || null) !== (attachment?.checksum || null)) throw Object.assign(new Error('Цей ідентифікатор вже використаний для іншого повідомлення'), { statusCode: 409 });
         if (JSON.stringify(prior.rows[0].meta?.commentReply || null) !== JSON.stringify(commentReply)) throw Object.assign(new Error('Цей запит уже використаний для іншого типу відповіді.'), { statusCode: 409 });
+        const priorTemplateMeta = prior.rows[0].meta?.whatsappTemplate || null;
+        const priorTemplate = priorTemplateMeta ? { name: priorTemplateMeta.name, language: priorTemplateMeta.language } : null;
+        const requestedTemplate = whatsappTemplate ? { name: whatsappTemplate.name, language: whatsappTemplate.language } : null;
+        if (JSON.stringify(priorTemplate) !== JSON.stringify(requestedTemplate)) throw Object.assign(new Error('Цей запит уже використаний для іншого WhatsApp template.'), { statusCode: 409 });
         await client.query('COMMIT');
         const message = mapMessageRow(prior.rows[0]);
         const sendTruth = message.meta?.sendTruth || buildSendTruth('provider_unknown', {
@@ -1826,7 +1858,8 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
       [conversationId, safeTruncate(senderName, MAX_NAME_LEN) || 'Operator', text,
         JSON.stringify({ ...(options.clientRequestId ? { clientRequestId: options.clientRequestId } : {}),
           ...(attachment ? { attachment: require('./omni-attachments').metadata(attachment) } : {}),
-          ...(commentReply ? { commentReply } : {}) })]
+          ...(commentReply ? { commentReply } : {}),
+          ...(whatsappTemplate ? { whatsappTemplate: { name: whatsappTemplate.name, language: whatsappTemplate.language, category: whatsappTemplate.category } } : {}) })]
     );
 
     await client.query(
@@ -1864,7 +1897,10 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
       messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || messageWithTruth;
     } else try {
       messageWithTruth = await markMessageSendAttempted(saved.id, sendTruth) || messageWithTruth;
-      const delivery = commentReply ? await require('./omni-meta-events').sendReply(commentReply, text, conversation.businessContext)
+      const delivery = whatsappTemplate ? await sendWhatsAppTemplate(conversation.externalId, whatsappTemplate, {
+        businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT,
+      })
+        : commentReply ? await require('./omni-meta-events').sendReply(commentReply, text, conversation.businessContext)
         : attachment ? await require('./omni-attachments').sendAttachment(conversation.channel, conversation.externalId, text, attachment, conversation.businessContext)
         : await sendToChannel(conversation.channel, conversation.externalId, text, {
         businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT
@@ -1960,6 +1996,38 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
   } finally {
     if (client) client.release();
   }
+}
+
+async function getWhatsAppTemplatesForConversation(conversationId, options = {}) {
+  const businessContext = options.businessContext ? omniBusinessContext(options) : null;
+  const params = [conversationId];
+  const businessCondition = businessContext
+    ? ` AND ${scopedConversationCondition(params, businessContext)}`
+    : '';
+  const result = await pool.query(`SELECT * FROM conversations WHERE id = $1${businessCondition}`, params);
+  if (!result.rows.length) throw Object.assign(new Error(`Conversation ${conversationId} not found`), { statusCode: 404 });
+  const conversation = mapConversationRow(result.rows[0]);
+  if (conversation.channel !== 'whatsapp') {
+    throw Object.assign(new Error('Templates доступні лише для WhatsApp-діалогів.'), {
+      statusCode: 400,
+      code: 'WHATSAPP_TEMPLATE_WRONG_CHANNEL',
+    });
+  }
+  await assertRuntimeSendCapable('whatsapp', {
+    businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT,
+  });
+  const templates = await fetchApprovedWhatsAppTemplates({
+    businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT,
+    refresh: options.refresh === true,
+  });
+  return { conversation, templates, replyWindow: conversation.whatsappReplyWindow };
+}
+
+async function sendWhatsAppTemplateMessage(conversationId, request, senderName, options = {}) {
+  return sendManualMessage(conversationId, '', senderName, {
+    ...options,
+    whatsappTemplate: request,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2144,6 +2212,8 @@ module.exports = {
   getConversations,
   getMessages,
   sendManualMessage,
+  getWhatsAppTemplatesForConversation,
+  sendWhatsAppTemplateMessage,
   saveMessageSendTruth,
   applyProviderLifecycleReceipt,
   setReplyExpectation,

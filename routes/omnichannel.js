@@ -947,6 +947,71 @@ router.get('/messages/:id/attachment', auth, async (req, res) => {
     }
 });
 
+router.get('/conversations/:id/whatsapp-templates', auth, async (req, res) => {
+    try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
+        const result = await getHub().getWhatsAppTemplatesForConversation(id, {
+            businessContext,
+            refresh: req.query.refresh === 'true',
+        });
+        res.json({
+            success: true,
+            data: result.templates,
+            replyWindow: result.replyWindow,
+            conversation: result.conversation,
+        });
+    } catch (err) {
+        log.warn('WhatsApp templates load failed', { code: err.code || null, statusCode: err.statusCode || null });
+        const status = [400, 404, 409, 422].includes(err.statusCode) ? err.statusCode : 502;
+        res.status(status).json({ success: false, error: err.message || 'Не вдалося завантажити WhatsApp templates.', code: err.code || null });
+    }
+});
+
+router.post('/conversations/:id/whatsapp-template', auth, async (req, res) => {
+    try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
+        const clientRequestId = req.body?.client_request_id;
+        if (typeof clientRequestId !== 'string' || !/^[a-zA-Z0-9_-]{16,80}$/.test(clientRequestId)) {
+            return res.status(400).json({ success: false, error: 'Невалідний ідентифікатор відправки' });
+        }
+        const template = req.body?.template;
+        if (!template || typeof template !== 'object' || Array.isArray(template)) {
+            return res.status(400).json({ success: false, error: 'Оберіть WhatsApp template.' });
+        }
+        const message = await getHub().sendWhatsAppTemplateMessage(
+            id,
+            {
+                name: template.name,
+                language: template.language,
+                parameters: template.parameters,
+            },
+            req.user.username,
+            { businessContext, clientRequestId }
+        );
+        res.json({
+            success: true,
+            data: message.message || message,
+            sendTruth: message.sendTruth || message.message?.meta?.sendTruth || null,
+            conversation: message.conversation || null,
+        });
+    } catch (err) {
+        log.warn('WhatsApp template send failed', { code: err.code || null, statusCode: err.statusCode || null });
+        const status = [400, 404, 409, 413, 415, 422].includes(err.statusCode) ? err.statusCode : 502;
+        res.status(status).json({
+            success: false,
+            error: err.message || 'Не вдалося надіслати WhatsApp template.',
+            code: err.code || null,
+            sendTruth: err.sendTruth || null,
+        });
+    }
+});
+
 // Send message from CRM
 router.post('/conversations/:id/send', auth, async (req, res) => {
     try {
@@ -995,7 +1060,12 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
         });
     } catch (err) {
         log.error('Send message error:', err.message);
-        if ([400, 404, 409, 413, 415].includes(err.statusCode)) return res.status(err.statusCode).json({ success: false, error: err.message });
+        if ([400, 404, 409, 413, 415, 422].includes(err.statusCode)) return res.status(err.statusCode).json({
+            success: false,
+            error: err.message,
+            code: err.code || null,
+            sendTruth: err.sendTruth || null
+        });
         if (err.code === 'CHANNEL_UNAVAILABLE') {
             return res.status(err.statusCode || 400).json({
                 success: false,

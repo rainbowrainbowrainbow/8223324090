@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.203 - Omni: контрастні підкладки Instagram і WhatsApp
+
+### Release / Versioning / (20.09.2026) [codex]
+- **Omni: контрастні підкладки Instagram і WhatsApp** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.202 - Omni: фірмові іконки каналів
 
 ### Release / Versioning / (20.09.2026) [codex]

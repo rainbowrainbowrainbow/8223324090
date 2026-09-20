@@ -286,4 +286,7 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
 .omni-channel-dot .omni-channel-mark, .omni-channel-dot .omni-channel-logo { width: 100%; height: 100%; }
 .omni-channel-dot--logo { background: transparent !important; border-color: transparent !important; box-shadow: none; }
 .omni-channel-mark--sms-fly { padding: 1px; border-radius: 4px; background: #f8fafc; }
+.omni-channel-mark--instagram-fill, .omni-channel-mark--whatsapp-fill { padding: 1px; background: #fff; }
+.omni-channel-mark--instagram-fill { border-radius: 5px; }
+.omni-channel-mark--whatsapp-fill { border-radius: 50%; }
 .omni-channel-badge-icon .omni-channel-logo { width: 12px; height: 12px; }

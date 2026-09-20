@@ -2741,7 +2741,11 @@
             const visual = getChannelVisual(channel);
             const assetPath = getChannelAsset(channel, provider);
             if (assetPath) {
-                const modifier = assetPath.endsWith('/sms-fly.png') ? ' omni-channel-mark--sms-fly' : '';
+                const modifier = assetPath.endsWith('/sms-fly.png')
+                    ? ' omni-channel-mark--sms-fly'
+                    : (visual.key === 'instagram'
+                        ? ' omni-channel-mark--instagram-fill'
+                        : (visual.key === 'whatsapp' ? ' omni-channel-mark--whatsapp-fill' : ''));
                 return '<span class="omni-channel-mark' + modifier + '"><img class="omni-channel-logo" src="' + assetPath + '" alt="" aria-hidden="true" decoding="async"></span>';
             }
             return '<span class="omni-channel-mark" aria-hidden="true">' + esc(visual.icon) + '</span>';

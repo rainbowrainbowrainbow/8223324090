@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.201 - Omni: фірмові іконки каналів
+
+### Release / Versioning / (20.09.2026) [codex]
+- **Omni: фірмові іконки каналів** - локальні логотипи Telegram, Instagram, Facebook, WhatsApp, Viber і FlySMS додано до списку діалогів, карток підключень, статусів і заголовків; cache tags та видима версія синхронізовані.
+
+---
+
 ## v0.81.200 - Omni: відправка Instagram
 
 ### Release / Versioning / (20.09.2026) [codex]

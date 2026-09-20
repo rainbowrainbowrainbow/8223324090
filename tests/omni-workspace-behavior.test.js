@@ -799,3 +799,20 @@ test('history failure exposes retry and does not display the previous customer h
     assert.match(h.document.getElementById('omniHistoryControls').textContent, /History offline/);
     assert.ok(h.document.querySelector('[data-omni-history="retry"]'));
 });
+
+test('Facebook profile refresh updates the list and open header while preserving the draft', async t => {
+    const records = [{ ...conversation(1, 'facebook'), externalId: '456', customerName: 'Unknown' }];
+    const h = harness(t, records);
+    h.app.selectConversation(1);
+    await h.flush();
+    h.document.getElementById('omniInput').value = 'Keep this reply';
+    assert.equal(h.document.getElementById('omniChatName').textContent, 'Unknown');
+
+    records[0] = { ...records[0], customerName: 'Fixture Person' };
+    await h.app.loadConversations();
+
+    assert.equal(h.document.getElementById('omniChatName').textContent, 'Fixture Person');
+    assert.match(h.document.querySelector('.omni-conv-name').textContent, /Fixture Person/);
+    assert.match(h.document.getElementById('omniChatAvatar').textContent, /FI/);
+    assert.equal(h.document.getElementById('omniInput').value, 'Keep this reply');
+});

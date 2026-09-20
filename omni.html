@@ -2898,8 +2898,11 @@
                 loadedConversationFilter = filterKey;
                 renderOmniFilterControls();
                 const selected = conversations.find(conv => conv.id === currentConvId);
-                if (selected) selectedConversationRecord = selected;
-                else if (!sameFilter && currentConvId) clearConversationSelection();
+                if (selected) {
+                    selectedConversationRecord = selected;
+                    $('omniChatName').textContent = selected.customerName || selected.externalId;
+                    renderConversationAvatar($('omniChatAvatar'), selected);
+                } else if (!sameFilter && currentConvId) clearConversationSelection();
                 renderConversations();
                 await selectConversationFromQuery();
                 updateSendControls(currentConversation());

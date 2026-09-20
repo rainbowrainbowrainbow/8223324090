@@ -7,6 +7,7 @@
 const https = require('https');
 const { createLogger } = require('../utils/logger');
 const { resolveOmniRuntimeConfig } = require('./omni-accounts');
+const { normalizeBusinessContext } = require('./businessContext');
 
 const log = createLogger('OmniFacebook');
 
@@ -27,7 +28,7 @@ if (!FB_PAGE_TOKEN) {
  * @param {object|null} body - JSON payload (null for GET)
  * @returns {Promise<object>} parsed response
  */
-function fbRequest(method, path, body, token = FB_PAGE_TOKEN) {
+function fbRequest(method, path, body, token = FB_PAGE_TOKEN, limits = {}) {
     return new Promise((resolve, reject) => {
         const payload = body ? JSON.stringify(body) : null;
 
@@ -47,7 +48,16 @@ function fbRequest(method, path, body, token = FB_PAGE_TOKEN) {
 
         const req = https.request(options, (httpRes) => {
             let data = '';
-            httpRes.on('data', (chunk) => { data += chunk; });
+            let responseBytes = 0;
+            httpRes.on('error', reject);
+            httpRes.on('data', (chunk) => {
+                responseBytes += Buffer.byteLength(chunk);
+                if (limits.maxResponseBytes && responseBytes > limits.maxResponseBytes) {
+                    req.destroy(Object.assign(new Error('Facebook response too large'), { code: 'PROFILE_RESPONSE_TOO_LARGE' }));
+                    return;
+                }
+                data += chunk;
+            });
             httpRes.on('end', () => {
                 try {
                     const parsed = JSON.parse(data);
@@ -69,13 +79,13 @@ function fbRequest(method, path, body, token = FB_PAGE_TOKEN) {
             });
         });
 
-        req.setTimeout(SOCKET_TIMEOUT, () => {
-            req.destroy(new Error('Facebook API socket timeout'));
+        req.setTimeout(limits.timeoutMs || SOCKET_TIMEOUT, () => {
+            req.destroy(Object.assign(new Error('Facebook API socket timeout'), { code: 'ETIMEDOUT' }));
         });
 
         const responseTimer = setTimeout(() => {
-            req.destroy(new Error('Facebook API response timeout'));
-        }, RESPONSE_TIMEOUT);
+            req.destroy(Object.assign(new Error('Facebook API response timeout'), { code: 'ETIMEDOUT' }));
+        }, limits.timeoutMs || RESPONSE_TIMEOUT);
 
         req.on('close', () => clearTimeout(responseTimer));
 
@@ -199,21 +209,25 @@ async function sendPrivateReply(commentId, text, options = {}) {
  * Get a Facebook user's profile information.
  * @param {string} userId - Facebook user PSID
  * @param {string[]} [fields] - Fields to request (default: name, profile_pic)
- * @returns {Promise<{success: boolean, profile?: object, error?: string}>}
+ * @param {object} options - Must contain an explicit businessContext
+ * @returns {Promise<{success: boolean, profile?: object, code?: string, error?: string}>}
  */
-async function getUserProfile(userId, fields) {
-    const runtime = await resolveOmniRuntimeConfig('facebook');
-    const token = runtime.pageToken || runtime.token;
-    if (!token) {
-        log.warn('getUserProfile called but FB_PAGE_TOKEN not configured');
-        return { success: false, error: 'FB_PAGE_TOKEN not configured' };
+async function getUserProfile(userId, fields, options = {}) {
+    const context = options.businessContext || options.business_context;
+    if (typeof context !== 'string' || !/^[a-z][a-z0-9_]{2,63}$/.test(context.trim())) {
+        return { success: false, code: 'PROFILE_CONTEXT_REQUIRED', error: 'Explicit business context is required.' };
     }
-
-    if (!userId) {
-        return { success: false, error: 'userId is required' };
+    if (!/^[0-9]{1,64}$/.test(String(userId || ''))) {
+        return { success: false, code: 'PROFILE_ID_INVALID', error: 'A Facebook PSID is required.' };
     }
 
     try {
+        const businessContext = normalizeBusinessContext(context);
+        const runtime = await resolveOmniRuntimeConfig('facebook', { businessContext, strict: true });
+        const token = runtime.pageToken || runtime.token;
+        if (!token || !runtime.pageId) {
+            return { success: false, code: 'PROFILE_CONFIG_MISSING', error: 'Facebook Page configuration is missing for this business.' };
+        }
         const validFieldPattern = /^[a-z_]+$/i;
         const defaultFields = 'first_name,last_name,profile_pic';
         let fieldList = defaultFields;
@@ -222,11 +236,8 @@ async function getUserProfile(userId, fields) {
             fieldList = sanitized.length > 0 ? sanitized.join(',') : defaultFields;
         }
 
-        log.debug('Fetching FB user profile', { userId, fields: fieldList });
-
-        const response = await fbRequest('GET', `/${userId}?fields=${encodeURIComponent(fieldList)}`, null, token);
-
-        log.info('FB user profile fetched', { userId, name: response.first_name });
+        const response = await fbRequest('GET', `/${userId}?fields=${encodeURIComponent(fieldList)}`, null, token,
+            { timeoutMs: 3000, maxResponseBytes: 64 * 1024 });
         return {
             success: true,
             profile: {
@@ -238,8 +249,11 @@ async function getUserProfile(userId, fields) {
             }
         };
     } catch (err) {
-        log.error('getUserProfile failed', err);
-        return { success: false, error: err.message };
+        const code = err.code === 'ETIMEDOUT' ? 'PROFILE_TIMEOUT'
+            : err.fbErrorCode === 190 ? 'PROFILE_TOKEN_INVALID'
+            : [10, 100, 200].includes(err.fbErrorCode) || err.statusCode === 403 ? 'PROFILE_ACCESS_DENIED'
+            : 'PROFILE_UNAVAILABLE';
+        return { success: false, code, error: 'Facebook profile lookup unavailable.' };
     }
 }
 

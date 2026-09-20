@@ -46,14 +46,19 @@ $env:LIVE_OMNI_QA_CONVERSATION_IDS = '<explicitly-approved-id>[,<explicitly-appr
 npm run smoke:omni:live
 ```
 
-The runner loads the production URL and QA login from the local EventGenix
-secrets file. It refuses to select a conversation without an explicit numeric
-allowlist. Browser-side business writes, including read receipts and message
-sends, are blocked and recorded as sanitized paths. A blocked write proves the
-guard worked; it does not prove the backend operation works.
+The allowlist can also be stored as `LIVE_OMNI_QA_CONVERSATION_IDS` in the local
+EventGenix secrets file. The runner requires that local file, loads the
+production URL and QA login from it, and fails closed when the file, numeric
+allowlist, credentials, or an allowlisted conversation are unavailable.
+Browser-side business writes, including read receipts and message sends, are
+blocked and recorded as sanitized paths. A blocked write proves the guard
+worked; it does not prove the backend operation works.
 
-Artifacts are written to `output/playwright/omni-live-smoke/`: `report.json`,
-desktop list/conversation screenshots, and the mobile conversation screenshot.
-The report distinguishes read-only behavior from backend operations that were
-not confirmed. Never put conversation names, credentials, tokens, or real
-customer IDs into committed configuration.
+Artifacts are written to `output/playwright/omni-live-smoke/`: `report.json`, a
+sanitized `network-summary.json`, a sanitized action-only `trace.json`, and the
+desktop/mobile screenshots. Production screenshots mask names, avatars, message
+text, and previews while retaining the tested layout geometry. A normal
+Playwright DOM/network trace is intentionally not captured because it can retain
+production response bodies and customer text. The report distinguishes read-only
+behavior from backend operations that were not confirmed. Never put conversation
+names, credentials, tokens, or real customer IDs into committed configuration.

@@ -20,6 +20,28 @@ const SECRET_FILE = path.join(os.homedir(), '.eventgenix', 'codex-crm-secrets.ps
 const OUTPUT_DIR = path.join(ROOT, 'output', 'playwright', 'omni-live-smoke');
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const SAFE_AUTH_POSTS = new Set(['/api/auth/login', '/api/auth/refresh']);
+const LIVE_VIEWPORTS = Object.freeze({
+    laptop: Object.freeze({ width: 1024, height: 600 }),
+    desktop: Object.freeze({ width: 1366, height: 768 }),
+    mobile: Object.freeze({ width: 390, height: 844 }),
+    smallMobile: Object.freeze({ width: 320, height: 640 }),
+    shortMobile: Object.freeze({ width: 390, height: 420 })
+});
+const SCREENSHOT_REDACTION_SELECTOR = [
+    '#currentUser',
+    '#sidebarUserName',
+    '.sidebar-identity-name',
+    '.sidebar-identity-role',
+    '.omni-conv-avatar',
+    '.omni-conv-name',
+    '.omni-conv-preview',
+    '#omniChatAvatar',
+    '#omniChatName',
+    '.omni-msg-sender',
+    '.omni-msg-content',
+    '[data-omni-attachment]',
+    '.omni-file-error'
+].join(', ');
 const DRAFT = [
     'QA чернетка Omni — не надсилати.',
     'Другий рядок перевіряє збереження стану та доступність composer.'
@@ -35,7 +57,13 @@ function readEnv(...names) {
 
 function parseSecretAssignments(source) {
     const values = Object.create(null);
-    const allowed = 'LIVE_SMOKE_URL|LIVE_SMOKE_USER|LIVE_SMOKE_PASS';
+    const allowed = [
+        'LIVE_SMOKE_URL',
+        'LIVE_SMOKE_USER',
+        'LIVE_SMOKE_PASS',
+        'LIVE_OMNI_QA_CONVERSATION_IDS',
+        'LIVE_OMNI_QA_BUSINESS_CONTEXT'
+    ].join('|');
     const pattern = new RegExp(`^\\s*\\$env:(${allowed})\\s*=\\s*(['"])(.*?)\\2\\s*$`, 'gm');
     for (const match of String(source || '').matchAll(pattern)) values[match[1]] = match[3];
     return values;
@@ -44,22 +72,48 @@ function parseSecretAssignments(source) {
 function parseConversationIds(value) {
     const ids = String(value || '').split(',').map(item => item.trim()).filter(Boolean);
     assert.ok(ids.every(id => /^\d+$/.test(id) && Number(id) > 0),
-        'LIVE_OMNI_QA_CONVERSATION_IDS must contain comma-separated positive integer IDs');
+        'blocked: LIVE_OMNI_QA_CONVERSATION_IDS must contain comma-separated positive integer IDs');
     return [...new Set(ids)];
 }
 
 function loadLocalConfig(secretFile = SECRET_FILE) {
-    const fileValues = fs.existsSync(secretFile)
+    const secretsFilePresent = fs.existsSync(secretFile);
+    const fileValues = secretsFilePresent
         ? parseSecretAssignments(fs.readFileSync(secretFile, 'utf8'))
         : Object.create(null);
     return {
+        secretsFilePresent,
         url: readEnv('LIVE_OMNI_SMOKE_URL', 'LIVE_SMOKE_URL') || fileValues.LIVE_SMOKE_URL || '',
         username: readEnv('LIVE_OMNI_SMOKE_USER', 'LIVE_SMOKE_USER') || fileValues.LIVE_SMOKE_USER || '',
         password: readEnv('LIVE_OMNI_SMOKE_PASS', 'LIVE_SMOKE_PASS') || fileValues.LIVE_SMOKE_PASS || '',
         token: readEnv('LIVE_OMNI_SMOKE_TOKEN', 'LIVE_SMOKE_TOKEN', 'LIVE_SMOKE_BEARER_TOKEN'),
-        conversationIds: parseConversationIds(readEnv('LIVE_OMNI_QA_CONVERSATION_IDS', 'LIVE_OMNI_QA_CONVERSATION_ID')),
-        businessContext: readEnv('LIVE_OMNI_QA_BUSINESS_CONTEXT', 'LIVE_SMOKE_BUSINESS_CONTEXT') || 'event_genix'
+        conversationIds: parseConversationIds(
+            readEnv('LIVE_OMNI_QA_CONVERSATION_IDS', 'LIVE_OMNI_QA_CONVERSATION_ID')
+            || fileValues.LIVE_OMNI_QA_CONVERSATION_IDS
+        ),
+        businessContext: readEnv('LIVE_OMNI_QA_BUSINESS_CONTEXT', 'LIVE_SMOKE_BUSINESS_CONTEXT')
+            || fileValues.LIVE_OMNI_QA_BUSINESS_CONTEXT
+            || 'event_genix'
     };
+}
+
+function assertLiveSmokePreflight(config) {
+    assert.ok(config?.secretsFilePresent,
+        'blocked: local EventGenix secrets file is unavailable');
+    assert.ok(config?.conversationIds?.length,
+        'blocked: set LIVE_OMNI_QA_CONVERSATION_IDS to explicitly allowed QA conversation IDs');
+    assert.ok(config.token || (config.username && config.password),
+        'blocked: local EventGenix secrets do not contain usable live QA credentials');
+    try {
+        return normalizeProductionBase(config.url);
+    } catch (error) {
+        throw new Error(`blocked: ${error.message}`);
+    }
+}
+
+function selectAllowedConversationId(allowedIds, availableIds) {
+    const available = new Set((availableIds || []).map(String));
+    return (allowedIds || []).map(String).find(id => available.has(id)) || null;
 }
 
 function normalizeProductionBase(value) {
@@ -91,6 +145,31 @@ function classifyBrowserRequest(method, value, productionOrigin) {
         return { decision: 'allow-auth', method: normalizedMethod, path: requestPath };
     }
     return { decision: 'block-write', method: normalizedMethod, path: sanitizedPath(url.href) };
+}
+
+function summarizeRequests(requests) {
+    const counts = new Map();
+    for (const request of requests || []) {
+        const key = `${request.decision}|${request.method}|${sanitizedPath(request.path)}`;
+        counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return [...counts.entries()].map(([key, count]) => {
+        const [decision, method, requestPath] = key.split('|');
+        return { decision, method, path: requestPath, count };
+    }).sort((left, right) => `${left.method} ${left.path}`.localeCompare(`${right.method} ${right.path}`));
+}
+
+function writeJson(filename, value) {
+    fs.writeFileSync(path.join(OUTPUT_DIR, filename), `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function captureSanitizedScreenshot(page, filename) {
+    await page.screenshot({
+        path: path.join(OUTPUT_DIR, filename),
+        fullPage: false,
+        mask: [page.locator(SCREENSHOT_REDACTION_SELECTOR)],
+        maskColor: '#111827'
+    });
 }
 
 function requirePlaywright() {
@@ -174,10 +253,26 @@ async function layoutSnapshot(page) {
     });
 }
 
+async function assertConversationViewport(page, label, options = {}) {
+    await waitForStableUi(page);
+    await page.locator('#omniMessages').evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await waitForStableUi(page);
+    const layout = await layoutSnapshot(page);
+    const viewport = { left: 0, top: 0, right: layout.viewport.width, bottom: layout.viewport.height };
+    assert.ok(layout.pageWidth <= layout.viewport.width + 1, `${label}: page has horizontal overflow`);
+    assert.ok(layout.name?.width >= (options.minNameWidth || 80), `${label}: conversation name is crushed`);
+    assert.ok(layout.messages?.height >= 60, `${label}: message history has no usable area`);
+    assert.ok(inside(layout.composer, viewport) && inside(layout.send, viewport), `${label}: composer is outside the viewport`);
+    assert.ok(layout.inputHit && layout.sendHit, `${label}: composer controls are covered`);
+    assert.ok(layout.latest && layout.messages
+        && layout.latest.bottom <= layout.messages.bottom + 3
+        && layout.latest.bottom >= layout.messages.top,
+    `${label}: latest message is not reachable`);
+    return layout;
+}
+
 async function runLiveSmoke(config) {
-    const base = normalizeProductionBase(config.url);
-    assert.ok(config.conversationIds.length,
-        'blocked: set LIVE_OMNI_QA_CONVERSATION_IDS to explicitly allowed QA conversation IDs');
+    const base = assertLiveSmokePreflight(config);
     const token = await resolveToken(base, config);
     const version = await fetchJson(base, '/api/version');
     const { chromium } = requirePlaywright();
@@ -196,10 +291,12 @@ async function runLiveSmoke(config) {
         checks: Object.create(null)
     };
     const browser = await chromium.launch({ headless: readEnv('LIVE_OMNI_SMOKE_HEADLESS', 'LIVE_SMOKE_HEADLESS') !== 'false' });
-    const context = await browser.newContext({ viewport: { width: 1024, height: 600 }, serviceWorkers: 'block' });
+    const context = await browser.newContext({ viewport: LIVE_VIEWPORTS.laptop, serviceWorkers: 'block' });
     const page = await context.newPage();
     page.setDefaultTimeout(Number(readEnv('LIVE_OMNI_SMOKE_TIMEOUT_MS', 'LIVE_SMOKE_TIMEOUT_MS') || 45_000));
     const seenRequests = [];
+    const actionTrace = [];
+    const traceStep = name => actionTrace.push({ name, at: new Date().toISOString() });
     let selectedId = null;
     try {
         await context.addInitScript(({ accessToken, businessContext }) => {
@@ -228,11 +325,12 @@ async function runLiveSmoke(config) {
         await page.locator('.omni-conv-item').first().waitFor();
         await waitForStableUi(page);
         report.checks.listLoaded = true;
+        traceStep('production Omni list loaded');
 
-        for (const id of config.conversationIds) {
-            if (await page.locator(`.omni-conv-item[data-id="${id}"]`).count()) { selectedId = id; break; }
-        }
-        assert.ok(selectedId, 'none of the explicitly allowed QA conversations is present in the loaded list');
+        const availableConversationIds = await page.locator('.omni-conv-item[data-id]').evaluateAll(nodes =>
+            nodes.map(node => node.dataset.id).filter(Boolean));
+        selectedId = selectAllowedConversationId(config.conversationIds, availableConversationIds);
+        assert.ok(selectedId, 'blocked: none of the explicitly allowed QA conversations is present in the loaded list');
         const selectedRow = page.locator(`.omni-conv-item[data-id="${selectedId}"]`);
         const channelClass = await selectedRow.locator('.omni-channel-dot').evaluate(node =>
             [...node.classList].find(name => name.startsWith('omni-channel-dot--')) || '');
@@ -246,10 +344,11 @@ async function runLiveSmoke(config) {
             await page.locator(`.omni-conv-item[data-id="${selectedId}"]`).waitFor();
         }
         report.checks.filterApplied = channel || 'all';
-        await page.screenshot({ path: path.join(OUTPUT_DIR, 'live-desktop-list.png'), fullPage: false });
-        report.screenshots.push('live-desktop-list.png');
+        traceStep('allowlisted conversation located and channel filter applied');
+        await captureSanitizedScreenshot(page, 'live-laptop-list-1024x600.png');
+        report.screenshots.push('live-laptop-list-1024x600.png');
 
-        await page.setViewportSize({ width: 390, height: 420 });
+        await page.setViewportSize(LIVE_VIEWPORTS.shortMobile);
         await waitForStableUi(page);
         const listBefore = await page.locator('#omniConvList').evaluate((node, id) => {
             const row = node.querySelector(`[data-id="${id}"]`);
@@ -264,6 +363,7 @@ async function runLiveSmoke(config) {
         await page.locator('#omniInput').waitFor({ state: 'visible' });
         await page.locator('#omniMessages .omni-msg').first().waitFor();
         report.checks.qaConversationOpened = true;
+        traceStep('allowlisted conversation opened');
         const status = await page.locator('#omniConversationStatus').inputValue();
 
         await page.locator('#omniInput').fill(DRAFT);
@@ -280,6 +380,7 @@ async function runLiveSmoke(config) {
         assert.ok(Math.abs(await page.locator('#omniMessages').evaluate(node => node.scrollTop) - readingTop) < 4,
             'mode switch lost the reading position');
         report.checks.modeRoundTrip = true;
+        traceStep('channels and health round trip preserved draft and reading position');
 
         await page.locator('#omniMobileBack').click();
         await page.locator('.omni-sidebar').waitFor({ state: 'visible' });
@@ -291,38 +392,47 @@ async function runLiveSmoke(config) {
         await page.locator(`.omni-conv-item[data-id="${selectedId}"]`).click();
         assert.equal(await page.locator('#omniInput').inputValue(), DRAFT, 'reopening the conversation lost the draft');
         assert.equal(await page.locator('#omniConversationStatus').inputValue(), status, 'conversation status changed during read-only QA');
+        traceStep('mobile back and reopen preserved list state, focus, draft, and status');
 
-        await page.locator('#omniMessages').evaluate(node => { node.scrollTop = node.scrollHeight; });
-        await waitForStableUi(page);
-        const mobile = await layoutSnapshot(page);
-        const viewport = { left: 0, top: 0, right: mobile.viewport.width, bottom: mobile.viewport.height };
-        assert.ok(mobile.pageWidth <= mobile.viewport.width + 1, 'mobile page has horizontal overflow');
-        assert.ok(mobile.name?.width >= 100, 'conversation name is crushed');
-        assert.ok(mobile.messages?.height >= 60, 'message history has no usable area');
-        assert.ok(inside(mobile.composer, viewport) && inside(mobile.send, viewport), 'composer is outside the mobile viewport');
-        assert.ok(mobile.inputHit && mobile.sendHit, 'composer controls are covered');
-        assert.ok(mobile.latest && mobile.messages
-            && mobile.latest.bottom <= mobile.messages.bottom + 3
-            && mobile.latest.bottom >= mobile.messages.top,
-        'latest message is not reachable');
-        report.checks.mobileLayout = mobile;
-        await page.screenshot({ path: path.join(OUTPUT_DIR, 'live-mobile-conversation.png'), fullPage: false });
-        report.screenshots.push('live-mobile-conversation.png');
+        report.checks.viewportMatrix = Object.create(null);
+        for (const [name, viewportSize] of [
+            ['shortMobile', LIVE_VIEWPORTS.shortMobile],
+            ['mobile', LIVE_VIEWPORTS.mobile],
+            ['smallMobile', LIVE_VIEWPORTS.smallMobile],
+            ['laptop', LIVE_VIEWPORTS.laptop],
+            ['desktop', LIVE_VIEWPORTS.desktop]
+        ]) {
+            await page.setViewportSize(viewportSize);
+            report.checks.viewportMatrix[name] = await assertConversationViewport(page, name, {
+                minNameWidth: name === 'smallMobile' ? 72 : 80
+            });
+            const filename = `live-${name}-${viewportSize.width}x${viewportSize.height}.png`;
+            await captureSanitizedScreenshot(page, filename);
+            report.screenshots.push(filename);
+            traceStep(`${name} viewport checked`);
+        }
 
-        await page.setViewportSize({ width: 1366, height: 768 });
-        await waitForStableUi(page);
-        const desktop = await layoutSnapshot(page);
-        assert.ok(desktop.pageWidth <= desktop.viewport.width + 1, 'desktop page has horizontal overflow');
-        assert.ok(inside(desktop.composer, desktop.chat) && inside(desktop.send, desktop.chat), 'desktop composer escaped the chat');
-        report.checks.desktopLayout = desktop;
-        await page.screenshot({ path: path.join(OUTPUT_DIR, 'live-desktop-conversation.png'), fullPage: false });
-        report.screenshots.push('live-desktop-conversation.png');
+        await page.setViewportSize(LIVE_VIEWPORTS.mobile);
+        const sidebarToggle = page.locator('#sidebarToggle');
+        await sidebarToggle.click();
+        await page.waitForFunction(() => document.getElementById('sidebarNav')?.classList.contains('open')
+            && document.body.classList.contains('sidebar-mobile-open'));
+        report.checks.mobileNavigationOpen = true;
+        await captureSanitizedScreenshot(page, 'live-mobile-navigation-open-390x844.png');
+        report.screenshots.push('live-mobile-navigation-open-390x844.png');
+        await page.locator('#sidebarOverlay').click();
+        await page.waitForFunction(() => !document.getElementById('sidebarNav')?.classList.contains('open')
+            && !document.body.classList.contains('sidebar-mobile-open'));
+        assert.equal(await page.locator('#omniInput').inputValue(), DRAFT, 'mobile navigation round trip lost the draft');
+        report.checks.mobileNavigationClosed = true;
+        traceStep('mobile CRM navigation opened and closed without losing the draft');
 
         assert.equal(report.browserWrites.blockedBusiness.some(request => request.path.endsWith('/send')), false,
             'the smoke attempted to send a message');
         report.checks.readReceiptBlocked = report.browserWrites.blockedBusiness
             .some(request => request.method === 'POST' && request.path.endsWith('/read'));
         report.checks.requestCount = seenRequests.length;
+        report.artifacts = ['report.json', 'trace.json', 'network-summary.json', ...report.screenshots];
         report.status = 'passed';
         return report;
     } catch (error) {
@@ -333,15 +443,27 @@ async function runLiveSmoke(config) {
     } finally {
         report.finishedAt = new Date().toISOString();
         report.selectedQaConversation = selectedId ? 'allowlisted' : null;
-        fs.writeFileSync(path.join(OUTPUT_DIR, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
+        writeJson('network-summary.json', {
+            schemaVersion: 1,
+            targetOrigin: base,
+            requests: summarizeRequests(seenRequests),
+            businessWritesAllowed: false
+        });
+        writeJson('trace.json', {
+            schemaVersion: 1,
+            kind: 'sanitized-action-trace',
+            note: 'Playwright DOM/network tracing is intentionally disabled because production payloads may contain customer data.',
+            steps: actionTrace
+        });
+        writeJson('report.json', report);
         await context.close().catch(() => {});
         await browser.close().catch(() => {});
     }
 }
 
 async function main() {
-    const config = loadLocalConfig();
     try {
+        const config = loadLocalConfig();
         const report = await runLiveSmoke(config);
         process.stdout.write(`${JSON.stringify({
             status: report.status,
@@ -370,6 +492,17 @@ async function main() {
     }
 }
 
-module.exports = { classifyBrowserRequest, loadLocalConfig, normalizeProductionBase, parseConversationIds, parseSecretAssignments, sanitizedPath };
+module.exports = {
+    LIVE_VIEWPORTS,
+    assertLiveSmokePreflight,
+    classifyBrowserRequest,
+    loadLocalConfig,
+    normalizeProductionBase,
+    parseConversationIds,
+    parseSecretAssignments,
+    sanitizedPath,
+    selectAllowedConversationId,
+    summarizeRequests
+};
 
 if (require.main === module) main();

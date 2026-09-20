@@ -38,3 +38,22 @@ overlaps, active states, usable history area, composer/actions, and duplicated
 service information. Automated geometry checks and a newly generated screenshot
 do not constitute visual approval. Record what was automatically checked,
 visually reviewed, and not checked in the task report.
+
+## Production read-only smoke
+
+```powershell
+$env:LIVE_OMNI_QA_CONVERSATION_IDS = '<explicitly-approved-id>[,<explicitly-approved-id>]'
+npm run smoke:omni:live
+```
+
+The runner loads the production URL and QA login from the local EventGenix
+secrets file. It refuses to select a conversation without an explicit numeric
+allowlist. Browser-side business writes, including read receipts and message
+sends, are blocked and recorded as sanitized paths. A blocked write proves the
+guard worked; it does not prove the backend operation works.
+
+Artifacts are written to `output/playwright/omni-live-smoke/`: `report.json`,
+desktop list/conversation screenshots, and the mobile conversation screenshot.
+The report distinguishes read-only behavior from backend operations that were
+not confirmed. Never put conversation names, credentials, tokens, or real
+customer IDs into committed configuration.

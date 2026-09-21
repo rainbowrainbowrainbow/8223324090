@@ -3279,6 +3279,10 @@
         }
 
         function accountActionsHtml(acc, actionLabel) {
+            if (acc?.channel === 'binotel') {
+                return '<button type="button" class="omni-account-btn" data-account-action="connect" data-channel="binotel">' +
+                    (acc.connected ? 'Налаштування Binotel' : 'Налаштувати Binotel') + '</button>';
+            }
             if (acc?.channel !== 'viber_personal') {
                 return '<button type="button" class="omni-account-btn" data-account-action="connect" data-channel="' + esc(acc.channel) + '">' + actionLabel + '</button>' +
                     '<button type="button" class="omni-account-btn secondary" data-account-action="recheck" data-channel="' + esc(acc.channel) + '">Перевірити</button>' +
@@ -3427,11 +3431,13 @@
                 const tone = omniAccountTone(acc);
                 const label = omniAccountStatusLabel(acc);
                 const message = accountNextActionText(acc) || accountImpactText(acc);
+                const action = acc.channel === 'binotel' ? 'connect' : (acc.connected ? 'recheck' : 'connect');
+                const actionLabel = acc.channel === 'binotel' ? 'Налаштувати' : (acc.connected ? 'Перевірити' : 'Підключити');
                 return '<div class="omni-health-row">' +
                     '<div class="omni-health-channel">' + renderChannelMark(acc.channel, acc.provider) + '<span>' + esc(accountDisplayLabel(acc)) + '</span></div>' +
                     '<span class="omni-account-status ' + tone + '">' + esc(label) + '</span>' +
                     '<div class="omni-health-message">' + esc(message) + '<br>' + esc(accountDiagnosticsText(acc)) + '</div>' +
-                    '<button type="button" class="omni-account-btn secondary" data-account-action="' + (acc.connected ? 'recheck' : 'connect') + '" data-channel="' + esc(acc.channel) + '">' + (acc.connected ? 'Перевірити' : 'Підключити') + '</button>' +
+                    '<button type="button" class="omni-account-btn secondary" data-account-action="' + action + '" data-channel="' + esc(acc.channel) + '">' + actionLabel + '</button>' +
                 '</div>';
             }).join('');
             healthContent.innerHTML =
@@ -3459,6 +3465,11 @@
             const card = document.querySelector('[data-account-channel="' + accountPanelChannel + '"]');
             if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
+
+        window.addEventListener('omni:configure-binotel', () => {
+            showAccountPanelForChannel('binotel');
+            requestAnimationFrame(() => openConnectModal('binotel'));
+        });
 
         function highlightAccountFromQuery() {
             if (!accountPanelChannel) return;
@@ -3574,8 +3585,10 @@
                 ? 'Звичайний Viber-акаунт підключається через локальний Windows-міст. У цій формі немає bot token і webhook.'
                 : acc.channel === 'telegram'
                 ? 'Це окремий inbox binding для робочих діалогів OmniClaw. Бот звітів тут не використовується і не блокує повторне підключення.'
+                : acc.channel === 'binotel'
+                ? 'Збереження перевіряє поля та зберігає конфігурацію. Доступ до журналу дзвінків буде перевірено після окремого підключення офіційного Binotel API.'
                 : (acc.businessImpact || 'Заповніть дані провайдера і запустіть перевірку.');
-            connectionSubmit.textContent = 'Зберегти і перевірити';
+            connectionSubmit.textContent = acc.channel === 'binotel' ? 'Зберегти налаштування' : 'Зберегти і перевірити';
             connectionSubmit.className = 'primary';
             connectionSubmit.hidden = acc.channel === 'viber_personal';
             renderConnectModalBody(acc, provider);

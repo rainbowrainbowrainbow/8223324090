@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createBinotelClient, BinotelCapabilityError } = require('../services/binotel-client');
 const { mapCanonicalBinotelCall, BinotelCallMappingError } = require('../services/binotel-call-mapper');
+const { providerDefinition } = require('../services/omni-accounts');
 
 test('Binotel client never falls back to a default business context', async () => {
   let calls = 0;
@@ -43,6 +44,13 @@ test('Binotel client preserves account scope but refuses undocumented provider o
     return true;
   });
   assert.deepEqual(queried, [{ channel: 'binotel', scope: { businessContext: 'event_genix' } }]);
+});
+
+test('Binotel settings verification stays partial until the provider transport exists', async () => {
+  const result = await providerDefinition('binotel').verifier({ accountName: 'Test Binotel' });
+  assert.equal(result.status, 'partial');
+  assert.equal(result.details.receiveCapable, false);
+  assert.match(result.message, /API журналу дзвінків ще не перевірено/);
 });
 
 test('canonical call mapping preserves numeric zero and large string identities', () => {

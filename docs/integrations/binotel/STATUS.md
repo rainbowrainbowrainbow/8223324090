@@ -1,5 +1,38 @@
 # Binotel integration status
 
+## TEL page delivery — 2026-09-21
+
+- Production base: `151c432c032f9d156830bc29708e74d7dbf07082` (`origin/codex/eventgenix-production`) before the feature candidate.
+- Branch/worktree: `codex/binotel-crm-integration` / `C:\Users\Plotva\.codex\worktrees\binotel-crm-integration\EventGenix`.
+- Production data, Binotel credentials, provider requests, schema and access grants: not changed.
+
+| Card | Status | Evidence |
+| --- | --- | --- |
+| TEL-01 — direct Sales entry | Done locally | `Телефонія` follows `Комунікації`, opens `/omni?telView=all`, and reuses the existing `/omni` capability through `pageAccess`. Permission registry and search have the same route. |
+| TEL-02 — usable pre-activation screen | Done locally | A `not_configured` journal response renders a direct `Налаштувати Binotel` action; one unreferenced local controller was removed after a repository-wide reference check. |
+| TEL-03 — honest CRM settings | Done locally | Binotel form opens from both the workspace and account health. Saving configuration is `partial`, not a false API-success result; API journal verification remains unavailable until an official transport exists. |
+| TEL-04 — verification | Done locally | Focused tests, Omni browser fixture, `npm run check:syntax`, `npm run check:access`, `npm run check:theme-surface`, and the full `npm test` completed successfully on Node `22.23.1` / npm `10.9.8`. |
+| TEL-05 — publish | In progress | Local candidate is ready for feature commit, push, PR and CI. Production merge/deploy/live QA still require the separately bounded production authorization. |
+
+### TEL verification evidence
+
+| Command | Result |
+| --- | --- |
+| `node --test tests/permission-registry-contract.test.js tests/binotel-client.test.js tests/omni-telephony-ui.test.js` | Passed: 22/22. |
+| `npm run test:browser:omni` | Passed on the synthetic fixture: filters, pagination, Back/Forward, keyboard tabs, safe unavailable controls, customer deep link and Inbox draft preservation. No provider request or write. |
+| `npm run check:access` | Passed: 26 roles, 43 page entries, 50 sidebar links. |
+| `npm run check:syntax` | Passed: 1,279 JavaScript files. |
+| `npm run check:theme-surface` | Passed: 45 root HTML pages, 16 inline and 23 CSS debt budgets. |
+| `npm test` | Passed: full local baseline plus `test:sys-mb`. |
+
+### TEL visual evidence
+
+Synthetic local fixture only, with no production data or credentials: `output/binotel/binotel-telephony-desktop-dark.png`, `output/binotel/binotel-telephony-mobile-light.png`, `output/binotel/binotel-telephony-native-zoom-200.png`.
+
+### Remaining provider boundary
+
+This publishes a ready CRM page and the safe configuration path. It does **not** activate Binotel: official account-specific REST/Webhook/WebSocket documentation, a provider transport, and separate authorization for a read-only test account are still required before real history, recordings, live calls, queues or webhook persistence can be implemented.
+
 ## BNT-01
 
 - `taskStatus`: `PARTIAL_CAPABILITY_GAP`

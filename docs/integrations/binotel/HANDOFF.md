@@ -1,5 +1,13 @@
 # Binotel telephony local handoff
 
+## 2026-09-21 page-delivery update
+
+The local candidate now contains the owner-facing CRM page delivery: Sales navigation opens `/omni?telView=all` immediately after Communications, and the pre-activation state routes to the existing Binotel settings form. A saved configuration is intentionally shown as API-unverified, not connected. The unreferenced duplicate telephony controller was removed.
+
+Local evidence is green: focused tests (22/22), the synthetic Omni browser smoke (including telephony), access and syntax guards, theme surface guard, and full `npm test` on Node 22/npm 10. Screenshots remain synthetic-only in `output/binotel/`.
+
+Publishing remains pending: feature commit, push, PR and CI are the next Green delivery steps. Production merge/deploy and read-only live QA require one explicit bounded production authorization. Real Binotel activation remains a separate phase requiring official provider documentation and read-only test-account authorization.
+
 ## Candidate
 
 - Base SHA: `d328eebee940dd5985917fa79a172b6e9ab65738`

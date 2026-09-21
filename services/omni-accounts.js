@@ -693,6 +693,7 @@ function warningForStatus(def, status, connected, sendCapable, receiveCapable) {
   if (status === 'misconfigured') return `${def.label}: бракує обовʼязкових полів або налаштування неповне.`;
   if (status === 'webhook_missing') return `${def.label}: відправка можлива, але webhook/прийом подій потребує налаштування.`;
   if (status === 'provider_unreachable') return `${def.label}: CRM зберегла конфігурацію, але провайдер не відповів під час перевірки.`;
+  if (def.channel === 'binotel' && !receiveCapable) return `${def.label}: налаштування збережено, але доступ до API журналу дзвінків ще не перевірено.`;
   if (def.channel === 'viber_personal' && (!sendCapable || !receiveCapable)) return `${def.label}: очікуємо фактичний доказ runtime, scan, binding, receive і send adapter.`;
   if (!sendCapable && def.inboundOnly) return def.limitedWarning || `${def.label} працює тільки на прийом/історію.`;
   if (!sendCapable && def.sendSupported) return `${def.label}: відправка з CRM зараз недоступна.`;
@@ -706,6 +707,7 @@ function nextActionForStatus(def, status, connected, sendCapable, receiveCapable
   if (status === 'token_expired') return 'Відкрийте налаштування, вставте новий токен і запустіть перевірку.';
   if (status === 'webhook_missing') return 'Скопіюйте webhook URL у кабінет провайдера і натисніть «Перевірити».';
   if (status === 'provider_unreachable') return 'Перевірте інтернет/кабінет провайдера і повторіть «Тест».';
+  if (def.channel === 'binotel' && !receiveCapable) return 'Налаштування збережено. Дочекайтеся окремого підключення Binotel API перед перевіркою журналу дзвінків.';
   if (def.channel === 'viber_personal' && (!sendCapable || !receiveCapable)) return 'Відкрийте Onboarding: перевірте Windows-міст, Viber Desktop, binding, приймання і sender gate.';
   if (!sendCapable && def.inboundOnly) return 'Цей канал не відправляє з CRM. Використовуйте його для історії та вхідних подій.';
   if (!receiveCapable && def.receiveSupported) return 'Перевірте webhook, щоб нові події автоматично приходили в CRM.';
@@ -1852,10 +1854,11 @@ async function verifyWhatsApp(runtime) {
 
 async function verifyBinotel(runtime) {
   return {
-    status: 'success',
-    message: 'Webhook secret збережено. Binotel у CRM працює як history-only канал без відправки.',
-    warning: 'Binotel не підтримує відправку з CRM.',
+    status: 'partial',
+    message: 'Налаштування Binotel збережено. Доступ до API журналу дзвінків ще не перевірено.',
+    warning: 'Binotel не відправляє повідомлення з CRM, а API журналу дзвінків буде перевірено після окремого підключення transport.',
     displayName: runtime.accountName || 'Binotel',
+    details: { receiveCapable: false },
   };
 }
 

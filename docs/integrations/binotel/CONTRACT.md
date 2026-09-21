@@ -1,7 +1,7 @@
 # Binotel telephony contract
 
-Status: `PARTIAL_CAPABILITY_GAP`  
-Base: `d328eebee940dd5985917fa79a172b6e9ab65738` (`codex/eventgenix-production`, fetched 2026-09-20)  
+Status: `PARTIAL_CAPABILITY_GAP`
+Base: `d328eebee940dd5985917fa79a172b6e9ab65738` (`codex/eventgenix-production`, fetched 2026-09-20)
 Scope: local read-only CRM implementation only. This document is not authorization to enable credentials, alter a provider account, change a public-webhook guard, or deploy.
 
 ## Evidence and capability matrix

@@ -93,3 +93,18 @@ test('telephony ignores a stale response and clears it on an Omni business-conte
   await flush();
   assert.match(window.document.body.textContent, /Завантажуємо журнал/);
 });
+
+test('unconfigured Binotel gives the owner a direct settings action', async t => {
+  const window = harness(t, async () => response({
+    success: false,
+    error: 'Binotel is not configured',
+    capabilities: { historical: 'not_configured' },
+  }, false));
+  let settingsOpened = 0;
+  window.addEventListener('omni:configure-binotel', () => { settingsOpened += 1; });
+  await flush(); await flush();
+  const button = [...window.document.querySelectorAll('button')].find(item => item.textContent === 'Налаштувати Binotel');
+  assert.ok(button);
+  button.click();
+  assert.equal(settingsOpened, 1);
+});

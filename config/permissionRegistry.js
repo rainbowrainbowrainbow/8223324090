@@ -386,7 +386,7 @@ const PAGE_PERMISSIONS = Object.freeze([
     }),
     page({
         key: '/omni', label: 'Комунікації', group: 'sales', canonicalPath: '/omni',
-        defaultRoles: MANAGER_UP, risk: 'high', sidebarLinks: ['/omni', '/omni#accounts'],
+        defaultRoles: MANAGER_UP, risk: 'high', sidebarLinks: ['/omni', '/omni?telView=all', '/omni#accounts'],
         frontendConsumers: [source('omni.html', 'js/auth.js')],
         apiConsumers: [api('routes/omnichannel.js', '/api/omni', null, 'CRM UI access is role/JWT based; public provider webhooks use the independent machine-auth contract in config/authBoundary.js.')]
     }),

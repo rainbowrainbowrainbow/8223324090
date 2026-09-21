@@ -171,6 +171,7 @@ const Sidebar = (() => {
         { href: '/customers',    icon: '👥', label: 'Клієнти',       access: 'customers',      group: 'sales' },
         { href: '/sales-funnel', icon: '🔥', label: 'Ліди',          access: 'leads',          group: 'sales', statusKey: 'leads' },
         { href: '/omni',         icon: '✉', label: 'Комунікації',    access: 'omni',           group: 'sales', statusKey: 'omni' },
+        { href: '/omni?telView=all', pageAccess: '/omni', icon: '☎', label: 'Телефонія', access: 'omni', group: 'sales', businessModule: 'omni' },
         { href: '/omni#accounts', icon: '🔌', label: 'Підключення чатів', access: 'omni', group: 'sales', businessModule: 'omni' },
         { href: '/reports',      icon: '📋', label: 'Звіти',         access: 'reports',        group: 'sales' },
         { href: '/finance',      icon: '📊', label: 'Фінанси та аналітика', access: 'finance', group: 'sales' },
@@ -777,6 +778,7 @@ const Sidebar = (() => {
         const href = String(item?.href || '');
         if (href.startsWith('/certificates')) return 'реєстр / видача / пакет';
         if (href === '/sales-funnel') return 'воронка лідів';
+        if (href === '/omni?telView=all') return 'журнал телефонії';
         if (href === '/omni#accounts') return 'підключення каналів';
         if (href === '/omni') return 'комунікації';
         if (href === '/finance') return 'фінанси';
@@ -793,6 +795,7 @@ const Sidebar = (() => {
         if (href === '/tasks') return 'особистий фокус задач';
         if (href === '/chat') return 'командні повідомлення';
         if (href.startsWith('/certificates')) return 'сертифікати та швидка видача';
+        if (href === '/omni?telView=all') return 'журнал дзвінків і налаштування Binotel';
         if (href === '/omni#accounts') return 'канали та інтеграції';
         if (href === '/afisha') return 'афіша та події';
         if (href === '/customers') return 'клієнтська база';

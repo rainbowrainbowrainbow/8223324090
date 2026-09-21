@@ -106,8 +106,12 @@
       : 'Поточні дзвінки недоступні: Binotel ще не надав live-read API, ліміти та права акаунта.';
   }
 
+  function capabilityKind(payload) {
+    return payload?.capabilities?.historical || payload?.capabilities?.live || payload?.capabilities?.queues || 'unavailable';
+  }
+
   function capabilityMessage(payload) {
-    const capability = payload?.capabilities?.historical || payload?.capabilities?.live || payload?.capabilities?.queues;
+    const capability = capabilityKind(payload);
     if (capability === 'not_configured') return 'Телефонія не налаштована для цього бізнесу.';
     if (capability === 'unsupported_capability') return 'Ця можливість ще не підтверджена для Binotel-акаунта.';
     return payload?.error || 'Телефонія тимчасово недоступна.';
@@ -138,7 +142,8 @@
     state.page = { cursor, previous, next: null }; writeLocation({ push });
     abortRequest();
     if (!isHistorical(state.view)) {
-      state.loading = false; state.result = null; state.summary = null; state.error = null; state.capability = unsupportedMessage(state.view); render();
+      state.loading = false; state.result = null; state.summary = null; state.error = null;
+      state.capability = { kind: 'unsupported_capability', message: unsupportedMessage(state.view) }; render();
       return;
     }
     const request = { id: ++state.requestId, context: currentContext(), controller: new AbortController() };
@@ -151,7 +156,10 @@
         fetchJson(`/api/omni/telephony/summary?${summaryQuery}`, request),
       ]);
       if (!isCurrent(request)) return;
-      if (!calls.ok || !calls.payload?.success) { state.capability = capabilityMessage(calls.payload); return; }
+      if (!calls.ok || !calls.payload?.success) {
+        state.capability = { kind: capabilityKind(calls.payload), message: capabilityMessage(calls.payload) };
+        return;
+      }
       state.result = calls.payload; state.page.next = calls.payload.page?.cursor || null;
       if (summary.ok && summary.payload?.success) state.summary = summary.payload;
       else state.summaryError = capabilityMessage(summary.payload);
@@ -255,7 +263,14 @@
     const content = el('div', { className: 'omni-telephony-content', 'aria-live': 'polite' });
     if (state.loading) content.append(el('p', { className: 'omni-telephony-state', text: 'Завантажуємо журнал телефонії…', role: 'status' }));
     else if (state.error) content.append(el('p', { className: 'omni-telephony-state error', text: state.error, role: 'alert' }));
-    else if (state.capability) content.append(el('p', { className: 'omni-telephony-state unsupported', text: state.capability, role: 'status' }));
+    else if (state.capability) {
+      content.append(el('p', { className: 'omni-telephony-state unsupported', text: state.capability.message, role: 'status' }));
+      if (state.capability.kind === 'not_configured') {
+        const settings = el('button', { type: 'button', className: 'omni-secondary-action', text: 'Налаштувати Binotel' });
+        settings.addEventListener('click', () => window.dispatchEvent(new CustomEvent('omni:configure-binotel')));
+        content.append(settings);
+      }
+    }
     else if (state.result) {
       content.append(el('div', { className: 'omni-telephony-meta' }, [
         el('span', { text: `Джерело: ${text(state.result.freshness)}` }),

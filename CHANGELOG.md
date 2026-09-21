@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.207 - Omni: доступні режими на короткому екрані
+
+### Release / Versioning / (21.09.2026) [codex]
+- **Omni: доступні режими на короткому екрані** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.206 - Телефонія: Binotel workspace
 
 ### Release / Versioning / (21.09.2026) [codex]

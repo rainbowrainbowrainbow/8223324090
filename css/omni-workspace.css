@@ -297,6 +297,28 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
    available; secondary surfaces scroll rather than pushing the input offscreen. */
 .omni-narrow.omni-short:has(.has-conversation[data-omni-mode="inbox"]) .omni-workspace-topbar { display: none; }
 .omni-narrow.omni-short .has-conversation[data-omni-mode="inbox"] .omni-mobile-mode-action { display: block; }
+.omni-narrow.omni-short:has(.omni-container[data-omni-mode="inbox"][data-mobile-view="list"]) .omni-workspace-topbar {
+    grid-template-columns: minmax(0,1fr) 38px;
+    min-height: 44px;
+    padding: 3px 8px;
+}
+.omni-narrow.omni-short:has(.omni-container[data-omni-mode="inbox"][data-mobile-view="list"]) .omni-workspace-title,
+.omni-narrow.omni-short:has(.omni-container[data-omni-mode="inbox"][data-mobile-view="list"]) .omni-accounts-alarm { display: none; }
+.omni-narrow.omni-short:has(.omni-container[data-omni-mode="inbox"][data-mobile-view="list"]) .omni-workspace-modes {
+    grid-column: 1;
+    grid-row: 1;
+}
+.omni-narrow.omni-short:has(.omni-container[data-omni-mode="inbox"][data-mobile-view="list"]) .omni-settings-link {
+    grid-column: 2;
+    grid-row: 1;
+}
+.omni-narrow.omni-short .omni-sidebar-header { padding: 6px 10px; gap: 6px; }
+.omni-narrow.omni-short .omni-search { min-height: 34px; padding-block: 6px; }
+.omni-narrow.omni-short .omni-view-filters { gap: 4px; }
+.omni-narrow.omni-short .omni-view-filter { min-height: 30px; padding: 4px 8px; }
+.omni-narrow.omni-short .omni-filter-controls { gap: 6px; }
+.omni-narrow.omni-short .omni-filter-field select,
+.omni-narrow.omni-short .omni-status-filters summary { min-height: 32px; padding-block: 5px; }
 .omni-short .omni-case-context { max-height: 36px; padding-block: 0; }
 .omni-short .omni-case-details summary { min-height: 24px; }
 .omni-short #omniFileHint { display: none; }

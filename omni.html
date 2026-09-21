@@ -3820,9 +3820,9 @@
             convList.scrollTop = Math.max(0, previousScrollTop);
         }
 
-        function getOmniFilterSummary() {
+        function getOmniFilterSummary(options = {}) {
             const filters = [];
-            if (activeChannel !== 'all') filters.push({ label: 'Канал', value: CHANNEL_NAMES[activeChannel] || activeChannel });
+            if (options.includeChannel !== false && activeChannel !== 'all') filters.push({ label: 'Канал', value: CHANNEL_NAMES[activeChannel] || activeChannel });
             if (activeViewFilter === 'open' && activeStatus === 'open') filters.push({ label: 'Вид', value: 'Відкриті' });
             if (activeViewFilter === 'mine') filters.push({ label: 'Власник', value: 'Мої розмови' });
             if (activeStatus !== 'all' && !(activeViewFilter === 'open' && activeStatus === 'open')) {
@@ -3842,7 +3842,7 @@
 
         function renderOmniExplainability() {
             if (!window.Explainability) return;
-            const filters = getOmniFilterSummary();
+            const filters = getOmniFilterSummary({ includeChannel: false });
             const html = filters.length ? Explainability.renderFilterSummary(filters, {
                 label: 'Фільтри',
                 clearAction: 'omni',

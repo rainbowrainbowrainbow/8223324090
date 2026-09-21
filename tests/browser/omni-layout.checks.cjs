@@ -335,6 +335,31 @@ async function testPrimaryFlow(page, artifacts) {
   await page.screenshot({ path: path.join(artifacts, 'layout-primary-flow.png'), animations: 'disabled' });
 }
 
+async function testShortMobileList(page, artifacts) {
+  await page.setViewportSize({ width: 390, height: 420 });
+  await page.goto(page.url().split('?')[0] + '?businessContext=event_genix&channel=telegram', { waitUntil: 'domcontentloaded' });
+  await page.locator('.omni-conv-item[data-id="9001"]').waitFor();
+  await waitForLayout(page);
+  const state = await page.locator('#omniConvList').evaluate(node => {
+    const row = node.querySelector('.omni-conv-item');
+    return {
+      clientHeight: node.clientHeight,
+      scrollHeight: node.scrollHeight,
+      rowHeight: row?.getBoundingClientRect().height || 0,
+      completeRows: Array.from(node.querySelectorAll('.omni-conv-item')).filter(item => {
+        const listRect = node.getBoundingClientRect();
+        const rowRect = item.getBoundingClientRect();
+        return rowRect.top >= listRect.top - 1 && rowRect.bottom <= listRect.bottom + 1;
+      }).length
+    };
+  });
+  assert.ok(state.rowHeight >= 48 && state.clientHeight >= state.rowHeight && state.completeRows >= 1,
+    `short-mobile list has no complete usable conversation row: ${JSON.stringify(state)}`);
+  assert.equal(await page.locator('#omniExplainability').isVisible(), false,
+    'selected channel is duplicated in an active-filter card on the short-mobile list');
+  await page.screenshot({ path: path.join(artifacts, 'layout-short-mobile-list.png'), animations: 'disabled' });
+}
+
 async function testWhatsappTemplateFlow(page, artifacts) {
   const start = new URL(page.url());
   for (const name of ['channel', 'search', 'conversation', 'conversationId']) start.searchParams.delete(name);
@@ -693,6 +718,7 @@ async function testTelephony(page, artifacts) {
 
 module.exports = async function checkLayout(page, artifacts) {
   await testListStates(page);
+  await testShortMobileList(page, artifacts);
   await testPrimaryFlow(page, artifacts);
   const whatsappTemplates = await testWhatsappTemplateFlow(page, artifacts);
   const matrix = await testResponsiveMatrix(page, artifacts);

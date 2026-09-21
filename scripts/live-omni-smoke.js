@@ -352,11 +352,20 @@ async function runLiveSmoke(config) {
         await waitForStableUi(page);
         const listBefore = await page.locator('#omniConvList').evaluate((node, id) => {
             const row = node.querySelector(`[data-id="${id}"]`);
-            if (row) node.scrollTop = Math.max(1, Math.min(row.offsetTop, node.scrollHeight - node.clientHeight));
-            else node.scrollTop = Math.max(1, node.scrollHeight - node.clientHeight);
-            return { scrollTop: node.scrollTop, scrollHeight: node.scrollHeight, clientHeight: node.clientHeight };
+            node.scrollTop = Math.max(1, node.scrollHeight - node.clientHeight);
+            if (row) row.scrollIntoView({ block: 'nearest' });
+            return {
+                scrollTop: node.scrollTop,
+                scrollHeight: node.scrollHeight,
+                clientHeight: node.clientHeight,
+                selectedRowHeight: row?.getBoundingClientRect().height || 0
+            };
         }, selectedId);
-        assert.ok(listBefore.scrollHeight > listBefore.clientHeight && listBefore.scrollTop > 0,
+        await captureSanitizedScreenshot(page, 'live-short-mobile-list-390x420.png');
+        report.screenshots.push('live-short-mobile-list-390x420.png');
+        assert.ok(listBefore.clientHeight >= listBefore.selectedRowHeight && listBefore.selectedRowHeight >= 48,
+            `short-mobile conversation list has no complete usable row: ${JSON.stringify(listBefore)}`);
+        assert.ok(listBefore.scrollHeight > listBefore.clientHeight,
             'conversation list did not provide an independently scrollable live surface');
         const expectedListTop = listBefore.scrollTop;
         await page.locator(`.omni-conv-item[data-id="${selectedId}"]`).click();
@@ -391,8 +400,13 @@ async function runLiveSmoke(config) {
         await page.locator('#omniMobileBack').click();
         await page.locator('.omni-sidebar').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#omniChannelSelect').inputValue(), channel || 'all', 'mobile back lost the channel filter');
-        assert.ok(Math.abs(await page.locator('#omniConvList').evaluate(node => node.scrollTop) - expectedListTop) < 4,
-            'mobile back lost the list position');
+        const restoredListState = await page.locator('#omniConvList').evaluate(node => ({
+            scrollTop: node.scrollTop,
+            scrollHeight: node.scrollHeight,
+            clientHeight: node.clientHeight
+        }));
+        assert.ok(Math.abs(restoredListState.scrollTop - expectedListTop) < 4,
+            `mobile back lost the list position (before ${JSON.stringify(listBefore)}, after ${JSON.stringify(restoredListState)})`);
         assert.equal(await page.evaluate(() => document.activeElement?.dataset.id), selectedId,
             'mobile back did not restore focus to the QA conversation');
         await page.locator(`.omni-conv-item[data-id="${selectedId}"]`).click();

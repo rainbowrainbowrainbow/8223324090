@@ -459,7 +459,15 @@ async function runLiveSmoke(config) {
         report.checks.mobileNavigationOpen = true;
         await captureSanitizedScreenshot(page, 'live-mobile-navigation-open-390x844.png');
         report.screenshots.push('live-mobile-navigation-open-390x844.png');
-        await page.locator('#sidebarOverlay').click();
+        const mobileOverlay = page.locator('#sidebarOverlay');
+        const mobileOverlayBox = await mobileOverlay.boundingBox();
+        assert.ok(mobileOverlayBox, 'mobile navigation overlay has no clickable geometry');
+        await mobileOverlay.click({
+            position: {
+                x: Math.max(1, mobileOverlayBox.width - 10),
+                y: Math.min(200, Math.max(1, mobileOverlayBox.height - 10))
+            }
+        });
         await page.waitForFunction(() => !document.getElementById('sidebarNav')?.classList.contains('open')
             && !document.body.classList.contains('sidebar-mobile-open'));
         assert.equal(await page.locator('#omniInput').inputValue(), DRAFT, 'mobile navigation round trip lost the draft');

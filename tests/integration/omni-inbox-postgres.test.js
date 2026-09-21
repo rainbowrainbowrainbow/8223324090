@@ -84,6 +84,33 @@ test('Omni PostgreSQL concurrency, idempotency, read boundaries and provider iso
     const metaMessage = (await pool.query(`INSERT INTO conversation_messages (conversation_id, direction, provider_message_id, created_at) VALUES ($1, 'outbound', 'meta-mid', NOW() - INTERVAL '1 minute') RETURNING id`, [metaConv.id])).rows[0];
     await inbox.applyMetaReceipt('instagram', { sender: { id: 'meta-customer' }, read: { watermark: Date.now() } }, 'dar');
     assert.equal((await pool.query('SELECT delivery_status FROM conversation_messages WHERE id = $1', [metaMessage.id])).rows[0].delivery_status, 'read');
+    const metaFixtures = [];
+    for (const channel of ['facebook', 'instagram']) {
+        for (const businessContext of ['event_genix', 'dar']) {
+            for (const customer of ['receipt-customer', 'other-customer']) {
+                const conv = await hub.findOrCreateConversation(channel, customer, 'Fixture', null, { businessContext });
+                const msg = (await pool.query(`INSERT INTO conversation_messages
+                    (conversation_id, direction, provider_message_id, delivery_status, created_at)
+                    VALUES ($1, 'outbound', 'shared-meta-mid', 'accepted', NOW() - INTERVAL '1 minute') RETURNING id`, [conv.id])).rows[0];
+                metaFixtures.push({ id: msg.id, channel, businessContext, customer });
+            }
+        }
+    }
+    for (const channel of ['facebook', 'instagram']) {
+        const expected = metaFixtures.find(item => item.channel === channel && item.businessContext === 'dar' && item.customer === 'receipt-customer');
+        const delivered = { sender: { id: 'receipt-customer' }, delivery: { mids: ['shared-meta-mid'] } };
+        const read = { sender: { id: 'receipt-customer' }, read: channel === 'instagram'
+            ? { mid: 'shared-meta-mid' } : { watermark: Date.now() } };
+        await inbox.applyMetaReceipt(channel, delivered, 'dar');
+        await inbox.applyMetaReceipt(channel, delivered, 'dar');
+        assert.equal((await pool.query('SELECT delivery_status FROM conversation_messages WHERE id = $1', [expected.id])).rows[0].delivery_status, 'delivered');
+        await inbox.applyMetaReceipt(channel, read, 'dar');
+        await inbox.applyMetaReceipt(channel, read, 'dar');
+        await inbox.applyMetaReceipt(channel, delivered, 'dar');
+        assert.equal((await pool.query('SELECT delivery_status FROM conversation_messages WHERE id = $1', [expected.id])).rows[0].delivery_status, 'read');
+        const untouched = metaFixtures.filter(item => item.channel === channel && item.id !== expected.id).map(item => item.id);
+        assert.deepEqual((await pool.query('SELECT delivery_status FROM conversation_messages WHERE id = ANY($1::int[])', [untouched])).rows.map(row => row.delivery_status), ['accepted', 'accepted', 'accepted']);
+    }
     await pool.query(`INSERT INTO users(username, role) VALUES ('fixture-manager', 'manager')`);
     assert.deepEqual(await inbox.listOmniOperators('event_genix'), [{ username: 'fixture-manager', label: 'fixture-manager' }]);
 });

@@ -71,6 +71,24 @@ test('Meta receipts match the business, channel and customer, and cannot downgra
     await service.applyMetaReceipt('instagram', { sender: { id: 'customer' }, read: {} }, 'dar'); assert.equal(queries.length, 1);
 });
 
+test('Meta receipt wire formats preserve exact message IDs and ignore events without evidence', async () => {
+    const queries = [];
+    const service = inbox({ query: async (sql, params) => { queries.push({ sql, params }); return { rows: [] }; } });
+    await service.applyMetaReceipt('facebook', { sender: { id: 'customer' }, delivery: { mids: ['mid-1', 'mid-2'], watermark: 1750000000000 } }, 'event_genix');
+    await service.applyMetaReceipt('facebook', { sender: { id: 'customer' }, read: { watermark: 1750000000000 } }, 'event_genix');
+    await service.applyMetaReceipt('instagram', { sender: { id: 'customer' }, read: { mid: 'ig-mid' } }, 'dar');
+    assert.deepEqual(queries[0].params.slice(0, 5), ['facebook', 'customer', 'event_genix', 'delivered', ['mid-1', 'mid-2']]);
+    assert.equal(queries[1].params[3], 'read');
+    assert.equal(queries[1].params[5], new Date(1750000000000).toISOString());
+    assert.deepEqual(queries[2].params, ['instagram', 'customer', 'dar', 'read', ['ig-mid'], null]);
+    for (const event of [{ read: { mid: 'missing-customer' } }, { sender: { id: 'customer' }, read: {} },
+        { sender: { id: 'customer' }, message: { text: 'A reply is not a receipt' } },
+        { sender: { id: 'customer' }, delivery: { watermark: 'invalid' } }]) {
+        await service.applyMetaReceipt('instagram', event, 'dar');
+    }
+    assert.equal(queries.length, 3);
+});
+
 function fakeHttps(t, resolve) {
     t.mock.method(https, 'request', (options, callback) => {
         const request = new EventEmitter(); let body = '';

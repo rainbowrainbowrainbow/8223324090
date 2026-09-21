@@ -1335,6 +1335,22 @@
             line-height: 1.35;
         }
 
+        .omni-msg-footer {
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 4px 8px;
+            margin-top: 4px;
+        }
+
+        .omni-msg-footer .omni-msg-time,
+        .omni-msg-footer .omni-send-state { margin-top: 0; }
+        .omni-send-state.neutral { color: var(--text-secondary, #718096); }
+        .omni-send-compact summary { cursor: pointer; }
+        .omni-send-compact summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+        .omni-send-hint { display: block; max-width: 280px; padding-top: 4px; overflow-wrap: anywhere; }
+        .omni-send-error { overflow-wrap: anywhere; }
+
         .omni-quick-replies {
             display: flex;
             gap: 6px;
@@ -4050,6 +4066,8 @@
         }
 
         function sendTruthTone(sendTruth) {
+            const metaState = metaSendState(sendTruth);
+            if (metaState) return sendTruth?.persistencePending ? 'warning' : metaState.tone;
             const status = sendTruth?.status || '';
             if (status === 'provider_failed_immediate' || status === 'provider_failed_later' || status === 'channel_unavailable') return 'error';
             if (status === 'provider_unknown' || status === 'saved') return 'warning';
@@ -4060,6 +4078,8 @@
 
         function sendTruthLabel(sendTruth) {
             if (!sendTruth) return '';
+            const metaState = metaSendState(sendTruth);
+            if (metaState) return [metaState.label, metaState.detail].filter(Boolean).join('. ');
             if (sendTruth.message) return sendTruth.message;
             switch (sendTruth.status) {
                 case 'provider_attempted':
@@ -4089,6 +4109,31 @@
             try { return JSON.parse(meta); } catch { return {}; }
         }
 
+        function metaSendState(sendTruth) {
+            const channel = sendTruth?.channel || currentConversation()?.channel;
+            if (!['facebook', 'instagram'].includes(channel) || sendTruth?.status === 'channel_unavailable') return null;
+            const states = {
+                saved: { label: 'Надсилається', tone: 'neutral' },
+                provider_attempted: { label: 'Надіслано', tone: 'neutral', hint: 'Meta прийняла повідомлення. Підтвердження доставки ще немає' },
+                provider_delivered: { label: 'Доставлено', tone: 'success' },
+                provider_read: { label: 'Прочитано', tone: 'success' },
+                provider_failed_immediate: { label: 'Не надіслано', tone: 'error' },
+                provider_failed_later: { label: 'Не доставлено', tone: 'error' },
+                provider_unknown: { label: 'Статус невідомий', tone: 'warning' }
+            };
+            const status = sendTruth?.status === 'provider_attempted' && sendTruth.providerAccepted === false
+                ? 'provider_unknown' : sendTruth?.status;
+            const state = { ...(states[status] || states.provider_unknown) };
+            if (sendTruth?.persistencePending) {
+                state.detail = sendTruth.message || 'CRM не змогла зберегти статус. Не надсилайте повторно.';
+                state.detailTone = 'warning';
+            } else if (['error', 'warning'].includes(state.tone)) {
+                state.detail = sendTruth?.error || (state.tone === 'error' ? sendTruth?.message : '') || '';
+                state.detailTone = state.tone;
+            }
+            return state;
+        }
+
         function sendTruthFromDurableStatus(message) {
             switch (message?.deliveryStatus) {
                 case 'saved':
@@ -4115,7 +4160,15 @@
             const meta = parseMessageMeta(message?.meta);
             const durable = sendTruthFromDurableStatus(message);
             if (['delivered', 'read', 'later_failed'].includes(message?.deliveryStatus) && durable) return durable;
-            return message?.sendTruth || meta.sendTruth || durable;
+            const stored = message?.sendTruth || meta.sendTruth;
+            // Durable Meta status wins over historical success metadata; an unpersisted result remains explicit.
+            if (metaSendState(stored) && durable && !stored?.persistencePending) return {
+                ...stored, ...durable,
+                providerAccepted: message.deliveryStatus === 'accepted' ? true : stored?.providerAccepted,
+                error: durable.error || (stored?.status === durable.status ? stored.error : null),
+                message: stored?.status === durable.status ? stored.message : undefined
+            };
+            return stored || durable;
         }
 
         function renderSendTruthState(sendTruth) {
@@ -4217,15 +4270,24 @@
                 const cls = 'omni-msg ' + dir + (isAI ? ' ai' : '');
                 const sender = dir === 'outbound' ? (m.senderName || 'Оператор') : '';
                 const senderHtml = sender ? '<div class="omni-msg-sender">' + esc(sender) + (isAI ? ' (AI)' : '') + '</div>' : '';
-                const sendTruthHtml = dir === 'outbound' ? renderSendTruthState(sendTruthFromMessage(m)) : '';
+                const truth = dir === 'outbound' ? sendTruthFromMessage(m) : null;
+                const metaState = dir === 'outbound' ? metaSendState(truth) : null;
+                const sendTruthHtml = dir === 'outbound' && !metaState ? renderSendTruthState(truth) : '';
+                const timeHtml = '<div class="omni-msg-time">' + formatTime(m.createdAt) + '</div>';
+                const labelHtml = metaState ? '<span class="omni-status-label">' + esc(metaState.label) + '</span>' : '';
+                const statusHtml = !metaState ? '' : metaState.hint
+                    ? '<details class="omni-send-state omni-send-compact ' + metaState.tone + '"><summary>' + labelHtml + '</summary><span class="omni-send-hint">' + esc(metaState.hint) + '</span></details>'
+                    : '<span class="omni-send-state ' + metaState.tone + '">' + labelHtml + '</span>';
+                const errorHtml = metaState?.detail ? '<div class="omni-send-state omni-send-error ' + metaState.detailTone + '">' + esc(metaState.detail) + '</div>' : '';
                 return '<div class="' + cls + '">' +
                     senderHtml +
                     '<div class="omni-msg-content">' + esc(m.content || '') + '</div>' +
                     renderAttachments(m) +
                     renderCommentActions(m) +
                     sendTruthHtml +
+                    errorHtml +
                     renderDeliveryReview(m) +
-                    '<div class="omni-msg-time">' + formatTime(m.createdAt) + '</div>' +
+                    (metaState ? '<div class="omni-msg-footer">' + timeHtml + statusHtml + '</div>' : timeHtml) +
                 '</div>';
             }).join('');
             if (options.scrollToBottom !== false) messages.scrollTop = messages.scrollHeight;

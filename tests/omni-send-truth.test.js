@@ -469,6 +469,20 @@ describe('Communication Send Truth v1', () => {
         assert.equal(accepted.deliveryConfirmed, false);
     });
 
+    it('Meta acceptance keeps a provider reference without claiming delivery', () => {
+        const hub = loadHub();
+        for (const channel of ['facebook', 'instagram']) {
+            const accepted = hub.normalizeProviderResult(channel, { success: true, messageId: 'fixture-meta-mid' });
+            assert.equal(accepted.status, 'provider_attempted');
+            assert.equal(accepted.providerAccepted, true);
+            assert.equal(accepted.providerReference, 'fixture-meta-mid');
+            assert.equal(accepted.deliveryConfirmed, false);
+            assert.doesNotMatch(accepted.message, /у v1/);
+            assert.equal(hub.normalizeProviderResult(channel, { success: false, error: 'Permission denied' }).status, 'provider_failed_immediate');
+            assert.equal(hub.normalizeProviderResult(channel, { success: false, uncertain: true, error: 'Timeout' }).status, 'provider_unknown');
+        }
+    });
+
     it('blocks inbound-only conversations before persisting outbound rows', async () => {
         const pool = createManualSendPool({
             id: 903,

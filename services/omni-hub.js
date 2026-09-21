@@ -157,7 +157,7 @@ function sendTruthMessage(status, details = {}) {
     case 'saved':
       return 'Повідомлення збережено в CRM. Зовнішня доставка ще не підтверджена.';
     case 'provider_attempted':
-      return 'Повідомлення збережено в CRM. Провайдер прийняв запит, але фінальна доставка у v1 не підтверджується.';
+      return 'Повідомлення збережено в CRM. Провайдер прийняв запит. Підтвердження доставки ще немає.';
     case 'provider_delivered':
       return 'Повідомлення доставлено за підтвердженням провайдера.';
     case 'provider_read':

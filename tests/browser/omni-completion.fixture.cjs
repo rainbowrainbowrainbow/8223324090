@@ -147,6 +147,21 @@ function playwright() {
       whatsappConversation.whatsappReplyWindow = { open: false, closesAt: '2098-12-31T08:00:00Z', remainingMs: 0 };
     }
     const history=new Map(conversations.map(c=>[c.id,Array.from({length:c.id===9001?105:2},(_,i)=>({id:c.id*1000+i,conversationId:c.id,direction:'inbound',content:'Діалог '+c.id+' повідомлення '+(i+1)+'\nДругий рядок',createdAt:'2099-01-01T12:00:00Z'}))]));
+    if (layoutOnly && process.env.OMNI_META_STATUS_ONLY === '1') {
+      for (const account of accounts.filter(item => ['facebook', 'instagram'].includes(item.channel))) {
+        Object.assign(account, { status: 'connected', connected: true, sendCapable: true, receiveCapable: true });
+      }
+      for (const conversation of conversations.filter(item => ['facebook', 'instagram'].includes(item.channel))) {
+        conversation.sendCapable = true;
+        history.set(conversation.id, ['accepted', 'delivered', 'read', 'failed', 'unknown'].map((status, index) => ({
+          id: conversation.id * 1000 + index, conversationId: conversation.id, direction: 'outbound',
+          content: ['Дякуємо за звернення!', 'Підтверджуємо бронювання.', 'До зустрічі!', 'Тест відмови', 'Тест затримки'][index],
+          createdAt: '2099-01-01T12:00:00Z', deliveryStatus: status,
+          deliveryError: status === 'failed' ? 'Meta відхилила запит: немає дозволу на відправку.' : status === 'unknown' ? 'Timeout. Повторно автоматично не надсилаємо.' : null,
+          meta: { sendTruth: { status: 'provider_attempted', message: 'Фінальна доставка у v1 не підтверджується.' } }
+        })));
+      }
+    }
     const telephonyCalls = [
       { callId: 'fixture-call-1', direction: 'incoming', status: 'completed', customerPhone: '+380000000001', companyPhone: '100', agent: { name: 'Олена', group: 'Продажі' }, startedAt: '2099-01-01T10:00:00Z', waitingSeconds: 0, talkSeconds: 63, recording: { available: true }, customer: { id: '42', name: 'Тестовий клієнт' } },
       { callId: 'fixture-call-2', direction: 'outgoing', status: 'answered', customerPhone: '+380000000002', companyPhone: '101', agent: { name: 'Ігор', group: 'Продажі' }, startedAt: '2099-01-01T10:05:00Z', waitingSeconds: 4, talkSeconds: 120, recording: { available: false }, customer: { id: null, name: null } },
@@ -372,7 +387,9 @@ function playwright() {
     }
     if (layoutOnly) {
       const checks = require('./omni-layout.checks.cjs');
-      runReport.scenarios = process.env.OMNI_TELEPHONY_ONLY === '1'
+      runReport.scenarios = process.env.OMNI_META_STATUS_ONLY === '1'
+        ? await require('./omni-meta-status.checks.cjs')(page, artifactDir)
+        : process.env.OMNI_TELEPHONY_ONLY === '1'
         ? { telephony: await checks.telephony(page, artifactDir) }
         : await checks(page, artifactDir);
       assert.deepEqual(errors,[]);

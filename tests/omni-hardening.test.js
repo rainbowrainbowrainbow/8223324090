@@ -31,6 +31,28 @@ async function request(t, routes, url, {raw,headers={},method='POST'}={}) {
 }
 function signed(raw, key, meta=false){return (meta?'sha256=':'')+crypto.createHmac('sha256',key).update(raw).digest('hex');}
 
+for (const channel of ['facebook', 'instagram']) {
+  test(`${channel} receipts reach the scoped inbox and refresh the conversation without creating messages`, async t => {
+    const receipts = [], notifications = [];
+    const routes = router({
+      processInboundMessage: async () => { assert.fail('Receipt must not create an inbound message'); },
+      notifyCRM: (...args) => notifications.push(args)
+    });
+    mock('../services/omni-inbox', { applyMetaReceipt: async (...args) => { receipts.push(args); return [7]; } });
+    const event = { sender: { id: 'fixture-customer' }, recipient: { id: 'fixture-page' },
+      ...(channel === 'instagram' ? { read: { mid: 'fixture-mid' } } : { delivery: { mids: ['fixture-mid'] } }) };
+    const raw = JSON.stringify({ object: channel === 'instagram' ? 'instagram' : 'page', entry: [{ id: 'fixture-page', messaging: [event] }] });
+    for (let repeat = 0; repeat < 2; repeat++) {
+      const response = await request(t, routes, '/webhook/meta?businessContext=dar', {
+        raw, headers: { 'x-hub-signature-256': signed(raw, config[channel].appSecret, true) }
+      });
+      assert.equal(response.status, 200);
+    }
+    assert.deepEqual(receipts, [[channel, event, 'dar'], [channel, event, 'dar']]);
+    assert.deepEqual(notifications[0], ['omni:conversation', { conversation: { id: 7, businessContext: 'dar' } }]);
+  });
+}
+
 test('attachment and comment sends require an idempotency key before dispatch', async t => {
   let sends = 0;
   const routes = router({ sendManualMessage: async () => { sends++; return {}; } });

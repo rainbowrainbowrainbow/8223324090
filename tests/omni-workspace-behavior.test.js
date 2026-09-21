@@ -34,7 +34,7 @@ function harness(t, records = [conversation(1), conversation(2)]) {
         selectConversation, sendMessage, closeConversation, clearConversationSelection, renderMessages,
         runAccountAction, setOmniMode, refreshOmniWorkspace, analyzeLeadAssistant,
         openLeadAssistantPanel, createLeadFromDraft, fillLeadDraftFromAi,
-        accountNeedsAttention, renderOmniAccountsAlarm,
+        accountNeedsAttention, renderOmniAccountsAlarm, setSendFeedback,
         canSendConversation,
         updateConversationField, syncConversationControls,
         request: api,
@@ -67,6 +67,94 @@ test('an inbound failure requires attention even when sending still works', t =>
     const h = harness(t);
     assert.equal(h.app.accountNeedsAttention({ channel: 'telegram', connected: true, sendCapable: true, receiveCapable: false }), true);
     assert.equal(h.app.accountNeedsAttention({ channel: 'sms', connected: true, sendCapable: true, receiveCapable: false }), false);
+});
+
+for (const channel of ['facebook', 'instagram']) {
+    test(`${channel} immediate send feedback removes legacy copy but preserves real failures`, async t => {
+        const h = harness(t, [conversation(1, channel)]);
+        h.app.selectConversation(1); await h.flush();
+        h.app.setSendFeedback({ channel, status: 'provider_attempted', providerAccepted: true,
+            message: 'Фінальна доставка у v1 не підтверджується.' });
+        const feedback = h.document.querySelector('.omni-send-truth');
+        assert.equal(feedback.textContent, 'Надіслано');
+        assert.equal(feedback.classList.contains('warning'), false);
+        h.app.setSendFeedback({ channel, status: 'provider_failed_immediate', error: 'Permission denied' });
+        assert.match(feedback.textContent, /Не надіслано.*Permission denied/);
+        assert.equal(feedback.classList.contains('error'), true);
+    });
+
+    test(`${channel} renders evidence-based compact statuses and ignores legacy success copy`, async t => {
+        const h = harness(t, [conversation(1, channel)]);
+        h.app.selectConversation(1); await h.flush();
+        const legacy = { status: 'provider_attempted', message: 'Фінальна доставка у v1 не підтверджується.' };
+        for (const [deliveryStatus, label] of Object.entries({ saved: 'Надсилається', accepted: 'Надіслано',
+            delivered: 'Доставлено', read: 'Прочитано', failed: 'Не надіслано', later_failed: 'Не доставлено',
+            attempted: 'Статус невідомий', unknown: 'Статус невідомий' })) {
+            h.app.renderMessages([{ ...message(1), direction: 'outbound', deliveryStatus,
+                meta: JSON.stringify({ sendTruth: legacy }), deliveryError: deliveryStatus === 'failed' ? 'Permission denied <script>' : null }]);
+            const bubble = h.document.querySelector('.omni-msg.outbound');
+            assert.equal(bubble.querySelector('.omni-msg-footer .omni-status-label')?.textContent, label, deliveryStatus);
+            assert.ok(bubble.querySelector('.omni-msg-footer .omni-msg-time'));
+            assert.doesNotMatch(bubble.textContent, /у v1/);
+            if (deliveryStatus === 'accepted') {
+                const hint = bubble.querySelector('details');
+                assert.equal(hint.open, false);
+                assert.match(hint.textContent, /Meta прийняла повідомлення. Підтвердження доставки ще немає/);
+                assert.equal(bubble.querySelector('.omni-send-error'), null);
+            }
+            if (deliveryStatus === 'failed') {
+                assert.match(bubble.querySelector('.omni-send-error').textContent, /Permission denied <script>/);
+                assert.equal(bubble.querySelector('script'), null);
+            }
+        }
+    });
+
+    test(`${channel} refreshes receipt status from the server and preserves a draft`, async t => {
+        const h = harness(t, [conversation(1, channel)]);
+        let status = 'accepted';
+        h.app.setApi(requestPath => requestPath.includes('/messages?')
+            ? Promise.resolve({ success: true, data: { messages: [{ ...message(1), direction: 'outbound', deliveryStatus: status,
+                meta: { sendTruth: { status: 'provider_attempted', message: 'Old success text' } } }], total: 1 } })
+            : h.defaultApi(requestPath));
+        h.app.selectConversation(1); await h.flush();
+        h.document.getElementById('omniInput').value = 'Unsent draft';
+        for (const [next, label] of [['accepted', 'Надіслано'], ['delivered', 'Доставлено'], ['read', 'Прочитано']]) {
+            status = next;
+            await h.app.refreshOmniWorkspace();
+            assert.equal(h.document.querySelector('.omni-status-label').textContent, label);
+            assert.equal(h.document.getElementById('omniInput').value, 'Unsent draft');
+        }
+    });
+}
+
+test('Meta timeout and persistence failures remain visible without claiming delivery', async t => {
+    const h = harness(t, [conversation(1, 'facebook')]);
+    h.app.selectConversation(1); await h.flush();
+    const warning = 'CRM не змогла зберегти статус. Не надсилайте повторно.';
+    h.app.renderMessages([
+        { ...message(1), direction: 'outbound', sendTruth: { status: 'provider_unknown', error: 'Timeout' } },
+        { ...message(2), direction: 'outbound', deliveryStatus: 'attempted', sendTruth: {
+            status: 'provider_attempted', providerAccepted: true, persistencePending: true, message: warning } },
+        { ...message(3), direction: 'outbound' }
+    ]);
+    const bubbles = h.document.querySelectorAll('.omni-msg.outbound');
+    assert.equal(bubbles[0].querySelector('.omni-status-label').textContent, 'Статус невідомий');
+    assert.match(bubbles[0].textContent, /Timeout/);
+    assert.match(bubbles[1].querySelector('.omni-send-error').textContent, /Не надсилайте повторно/);
+    assert.equal(bubbles[2].querySelector('.omni-status-label').textContent, 'Статус невідомий');
+    assert.equal(h.document.querySelector('[data-delivery-reconcile]') !== null, true);
+    h.app.renderMessages([{ ...message(4), direction: 'outbound', deliveryStatus: 'failed',
+        meta: { sendTruth: { status: 'provider_failed_immediate', error: 'Legacy error reason' } } }]);
+    assert.match(h.document.querySelector('.omni-send-error').textContent, /Legacy error reason/);
+});
+
+test('non-Meta channels keep their existing send explanations', async t => {
+    const h = harness(t);
+    h.app.selectConversation(1); await h.flush();
+    h.app.renderMessages([{ ...message(1), direction: 'outbound', deliveryStatus: 'accepted',
+        sendTruth: { status: 'provider_attempted', message: 'Provider-specific explanation' } }]);
+    assert.equal(h.document.querySelector('.omni-send-state').textContent, 'Provider-specific explanation');
+    assert.equal(h.document.querySelector('.omni-msg-footer'), null);
 });
 
 test('live account status overrides a stale conversation send snapshot', async t => {

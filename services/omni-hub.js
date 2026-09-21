@@ -1589,11 +1589,11 @@ async function processInboundMessage(normalized, options = {}) {
   notifyCRM('omni:conversation', { conversation: updatedConversation });
 
   // Optional enrichment must never delay persistence or Meta's webhook acknowledgement.
-  if (normalized.channel === 'facebook') {
-    require('./omni-facebook-profile').enrichFacebookConversation(updatedConversation, businessContext)
+  if (normalized.channel === 'facebook' || normalized.channel === 'instagram') {
+    require('./omni-facebook-profile').enrichMetaConversation(updatedConversation, businessContext)
       .then(updated => {
         if (updated) return notifyCRM('omni:conversation', { conversation: updated });
-      }).catch(() => logger.warn('Facebook profile update notification failed'));
+      }).catch(() => logger.warn('Meta profile update notification failed'));
   }
 
   // Omni is a human-operated inbox. AI suggestions require an explicit manager action.

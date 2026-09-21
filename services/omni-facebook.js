@@ -8,6 +8,7 @@ const https = require('https');
 const { createLogger } = require('../utils/logger');
 const { resolveOmniRuntimeConfig } = require('./omni-accounts');
 const { normalizeBusinessContext } = require('./businessContext');
+const { profileErrorCode } = require('./omni-meta-profile-errors');
 
 const log = createLogger('OmniFacebook');
 
@@ -47,34 +48,45 @@ function fbRequest(method, path, body, token = FB_PAGE_TOKEN, limits = {}) {
         };
 
         const req = https.request(options, (httpRes) => {
-            let data = '';
+            const responseChunks = [];
             let responseBytes = 0;
+            let responseTooLarge = false;
             httpRes.on('error', reject);
             httpRes.on('data', (chunk) => {
-                responseBytes += Buffer.byteLength(chunk);
+                if (responseTooLarge) return;
+                const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+                responseBytes += buffer.length;
                 if (limits.maxResponseBytes && responseBytes > limits.maxResponseBytes) {
+                    responseTooLarge = true;
                     req.destroy(Object.assign(new Error('Facebook response too large'), { code: 'PROFILE_RESPONSE_TOO_LARGE' }));
                     return;
                 }
-                data += chunk;
+                responseChunks.push(buffer);
             });
             httpRes.on('end', () => {
+                if (responseTooLarge) return;
+                const data = Buffer.concat(responseChunks, responseBytes).toString('utf8');
                 try {
                     const parsed = JSON.parse(data);
                     if (parsed.error) {
                         const err = new Error(parsed.error.message || JSON.stringify(parsed.error));
                         err.statusCode = httpRes.statusCode;
                         err.fbErrorCode = parsed.error.code;
+                        err.fbErrorSubcode = parsed.error.error_subcode;
                         reject(err);
                         return;
                     }
                     if (httpRes.statusCode >= 400) {
-                        reject(new Error(`Facebook API HTTP ${httpRes.statusCode}: ${data.slice(0, 200)}`));
+                        const err = new Error(`Facebook API HTTP ${httpRes.statusCode}: ${data.slice(0, 200)}`);
+                        if (limits.maxResponseBytes) err.statusCode = httpRes.statusCode;
+                        reject(err);
                         return;
                     }
                     resolve(parsed);
                 } catch (err) {
-                    reject(new Error(`FB API returned non-JSON (HTTP ${httpRes.statusCode}): ${data.slice(0, 200)}`));
+                    const parseError = new Error(`FB API returned non-JSON (HTTP ${httpRes.statusCode}): ${data.slice(0, 200)}`);
+                    if (limits.maxResponseBytes) parseError.statusCode = httpRes.statusCode;
+                    reject(parseError);
                 }
             });
         });
@@ -208,7 +220,7 @@ async function sendPrivateReply(commentId, text, options = {}) {
 /**
  * Get a Facebook user's profile information.
  * @param {string} userId - Facebook user PSID
- * @param {string[]} [fields] - Fields to request (default: name, profile_pic)
+ * @param {string[]} [fields] - Fields to request (default: first_name, last_name, profile_pic)
  * @param {object} options - Must contain an explicit businessContext
  * @returns {Promise<{success: boolean, profile?: object, code?: string, error?: string}>}
  */
@@ -238,6 +250,9 @@ async function getUserProfile(userId, fields, options = {}) {
 
         const response = await fbRequest('GET', `/${userId}?fields=${encodeURIComponent(fieldList)}`, null, token,
             { timeoutMs: 3000, maxResponseBytes: 64 * 1024 });
+        if (!response || typeof response.id !== 'string' || response.id !== String(userId)) {
+            return { success: false, code: 'PROFILE_ID_MISMATCH', error: 'Facebook profile identity does not match the requested user.' };
+        }
         return {
             success: true,
             profile: {
@@ -249,10 +264,7 @@ async function getUserProfile(userId, fields, options = {}) {
             }
         };
     } catch (err) {
-        const code = err.code === 'ETIMEDOUT' ? 'PROFILE_TIMEOUT'
-            : err.fbErrorCode === 190 ? 'PROFILE_TOKEN_INVALID'
-            : [10, 100, 200].includes(err.fbErrorCode) || err.statusCode === 403 ? 'PROFILE_ACCESS_DENIED'
-            : 'PROFILE_UNAVAILABLE';
+        const code = profileErrorCode(err);
         return { success: false, code, error: 'Facebook profile lookup unavailable.' };
     }
 }

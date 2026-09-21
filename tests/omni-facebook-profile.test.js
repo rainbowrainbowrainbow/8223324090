@@ -77,6 +77,12 @@ function enrichment(getUserProfile, query = async () => ({ rows: [{ id: 7 }] }))
     mock('../db', { pool: { query } });
     return fresh('../services/omni-facebook-profile').enrichFacebookConversation;
 }
+function metaEnrichment(facebook, instagram, query = async () => ({ rows: [{ id: 7 }] })) {
+    mock('../services/omni-facebook', { getUserProfile: facebook });
+    mock('../services/omni-instagram', { getUserProfile: instagram });
+    mock('../db', { pool: { query } });
+    return fresh('../services/omni-facebook-profile').enrichMetaConversation;
+}
 
 test('profile lookup requires an explicit valid business and PSID before resolving credentials', async t => {
     logs();
@@ -172,12 +178,12 @@ for (const name of [null, '', '  ', 'Unknown', ' unknown ']) {
             assert.equal(id, '456');
             assert.deepEqual(fields, ['first_name', 'last_name']);
             assert.deepEqual(options, { businessContext: 'dar' });
-            return { success: true, profile: { firstName: ' Fixture ', lastName: ' Person ' } };
+            return { success: true, profile: { id: '456', firstName: ' Fixture ', lastName: ' Person ' } };
         }, async q => { query = q; return { rows: [{ id: 7 }] }; });
         assert.deepEqual(await enrich(conversation({ customerName: name }), 'dar'), { id: 7, businessContext: 'dar' });
-        assert.deepEqual(query.values, ['Fixture Person', 7, '456', 'dar']);
+        assert.deepEqual(query.values, ['Fixture Person', 7, '456', 'dar', 'facebook']);
         assert.equal(query.query_timeout, 3000);
-        assert.match(query.text, /channel = 'facebook'/);
+        assert.match(query.text, /channel = \$5/);
         assert.match(query.text, /external_id = \$3/);
         assert.match(query.text, /business_context, 'event_genix'\) = \$4/);
         assert.match(query.text, /customer_name IS NULL OR BTRIM\(customer_name\) = ''/);
@@ -209,7 +215,7 @@ test('a manual rename while the request is running wins the conditional update',
     });
     const result = enrich(conversation(), 'dar');
     currentName = 'Manager-assigned name';
-    pending.resolve({ success: true, profile: { firstName: 'API name' } });
+    pending.resolve({ success: true, profile: { id: '456', firstName: 'API name' } });
     assert.equal(await result, null);
     assert.equal(currentName, 'Manager-assigned name');
 });
@@ -237,7 +243,7 @@ test('identical PSIDs in separate businesses do not share a lookup or name updat
     logs(); const calls = []; const writes = [];
     const enrich = enrichment(async (_id, _fields, options) => {
         calls.push(options.businessContext);
-        return { success: true, profile: { firstName: 'Fixture ' + options.businessContext } };
+        return { success: true, profile: { id: '456', firstName: 'Fixture ' + options.businessContext } };
     }, async query => { writes.push(query.values); return { rows: [{ id: 7 }] }; });
     await Promise.all(['dar', 'event_genix'].map(businessContext => enrich(conversation({ businessContext }), businessContext)));
     assert.deepEqual(calls.sort(), ['dar', 'event_genix']);
@@ -246,10 +252,10 @@ test('identical PSIDs in separate businesses do not share a lookup or name updat
 
 test('empty profiles and rejected database updates leave the fallback without leaking details', async () => {
     const entries = logs();
-    let profile = {};
+    let profile = { id: '456' };
     const enrich = enrichment(async () => ({ success: true, profile }), async () => { throw new Error('private-name private-token'); });
     assert.equal(await enrich(conversation(), 'dar'), null);
-    profile = { firstName: 'private-name' };
+    profile = { id: '456', firstName: 'private-name' };
     assert.equal(await enrich(conversation({ id: 8 }), 'dar'), null);
     assert.match(JSON.stringify(entries), /PROFILE_NAME_EMPTY/);
     assert.match(JSON.stringify(entries), /PROFILE_ENRICHMENT_FAILED/);
@@ -267,16 +273,134 @@ test('bursts cannot start more than sixteen concurrent enrichments', async () =>
     await Promise.all(attempts);
 });
 
+for (const [profile, expected] of [
+    [{ name: ' Fixture Instagram ', username: 'fixture_handle' }, 'Fixture Instagram'],
+    [{ name: '', username: ' fixture_handle ' }, 'fixture_handle'],
+    [{ username: 'fixture_handle' }, 'fixture_handle'],
+    [{ name: 'Unknown', username: 'fixture_handle' }, 'fixture_handle'],
+]) {
+    test('Instagram fills the available name or username: ' + expected + ' / ' + JSON.stringify(profile.name), async () => {
+        logs(); const writes = [];
+        const enrich = metaEnrichment(() => assert.fail('Must use the Instagram adapter'), async (id, fields, options) => {
+            assert.equal(id, '456');
+            assert.deepEqual(fields, ['name', 'username']);
+            assert.deepEqual(options, { businessContext: 'dar' });
+            return { success: true, profile: { id, ...profile } };
+        }, async query => { writes.push(query); return { rows: [{ id: 7 }] }; });
+        assert.deepEqual(await enrich(conversation({ channel: 'instagram' }), 'dar'), { id: 7, businessContext: 'dar' });
+        assert.deepEqual(writes[0].values, [expected, 7, '456', 'dar', 'instagram']);
+    });
+}
+
+for (const channel of ['facebook', 'instagram']) {
+    for (const [profile, expectedCode] of [
+        [{ id: '789', firstName: 'Wrong person', name: 'Wrong person' }, 'PROFILE_ID_MISMATCH'],
+        [{ firstName: 'Missing ID', username: 'missing_id' }, 'PROFILE_ID_MISMATCH'],
+        [{ id: '456', name: ' ', username: ' ' }, 'PROFILE_NAME_EMPTY'],
+    ]) {
+        test(channel + ' rejects unusable profile: ' + expectedCode + ' / ' + String(profile.id), async () => {
+            const entries = logs();
+            const lookup = async () => ({ success: true, profile });
+            const enrich = metaEnrichment(lookup, lookup, () => assert.fail('Unverified names must never be written'));
+            assert.equal(await enrich(conversation({ channel }), 'dar'), null);
+            assert.match(JSON.stringify(entries), new RegExp(expectedCode));
+            assert.doesNotMatch(JSON.stringify(entries), /Wrong person|Missing ID|789|456/);
+        });
+    }
+}
+
+test('shared enrichment rejects meaningful names, unsupported channels, malformed IDs and mismatched contexts', async () => {
+    logs();
+    const unexpected = () => assert.fail('No provider request or DB write is allowed');
+    const enrich = metaEnrichment(unexpected, unexpected, unexpected);
+    for (const record of [
+        conversation({ channel: 'instagram', customerName: 'Manager-assigned name' }),
+        conversation({ channel: 'sms' }),
+        conversation({ channel: 'instagram', externalId: 'comment:456' }),
+        conversation({ channel: 'instagram', businessContext: 'event_genix' }),
+        conversation({ id: 'not-a-conversation-id' }),
+    ]) assert.equal(await enrich(record, 'dar'), null);
+    assert.equal(await enrich(conversation({ channel: 'instagram' }), undefined), null);
+});
+
+test('channel and business identity isolate shared pending lookups and cooldowns', async () => {
+    logs(); const pending = deferred(); const calls = [];
+    const lookup = channel => async (id, _fields, options) => {
+        calls.push([channel, options.businessContext, id]);
+        return pending.promise;
+    };
+    const enrich = metaEnrichment(lookup('facebook'), lookup('instagram'));
+    const attempts = [];
+    for (const channel of ['facebook', 'instagram']) {
+        for (const businessContext of ['dar', 'event_genix']) {
+            const record = conversation({ channel, businessContext });
+            const first = enrich(record, businessContext);
+            assert.equal(enrich({ ...record, id: '7' }, businessContext), first);
+            attempts.push(first);
+        }
+    }
+    await Promise.resolve();
+    assert.equal(calls.length, 4);
+    assert.equal(new Set(calls.map(call => JSON.stringify(call))).size, 4);
+    pending.resolve({ success: false, code: 'PROFILE_OBJECT_UNAVAILABLE' });
+    await Promise.all(attempts);
+    for (const channel of ['facebook', 'instagram']) {
+        for (const businessContext of ['dar', 'event_genix']) {
+            assert.equal(await enrich(conversation({ channel, businessContext }), businessContext), null);
+        }
+    }
+    assert.equal(calls.length, 4);
+});
+
+test('both channels share the sixteen-request concurrency bound', async () => {
+    logs(); const pending = deferred(); let calls = 0;
+    const lookup = () => { calls++; return pending.promise; };
+    const enrich = metaEnrichment(lookup, lookup);
+    const attempts = Array.from({ length: 18 }, (_, index) => enrich(conversation({
+        id: index + 1, channel: index % 2 ? 'instagram' : 'facebook',
+    }), 'dar'));
+    await Promise.resolve();
+    assert.equal(calls, 16);
+    assert.equal(await attempts[16], null);
+    assert.equal(await attempts[17], null);
+    pending.resolve({ success: false, code: 'PROFILE_TIMEOUT' });
+    await Promise.all(attempts);
+});
+
+test('Instagram preserves a manual rename and snapshots identity before asynchronous work', async () => {
+    logs(); const pending = deferred(); let currentName = 'Unknown'; let lookupId; let attemptedUpdate;
+    const enrich = metaEnrichment(() => assert.fail('Unexpected Facebook lookup'), id => {
+        lookupId = id; return pending.promise;
+    }, async query => {
+        attemptedUpdate = query;
+        return { rows: currentName === 'Unknown' ? [{ id: 7 }] : [] };
+    });
+    const record = conversation({ channel: 'instagram' });
+    const result = enrich(record, 'dar');
+    record.id = 8;
+    record.externalId = '789';
+    record.channel = 'facebook';
+    currentName = 'Manager-assigned name';
+    pending.resolve({ success: true, profile: { id: '456', name: 'Profile name' } });
+    assert.equal(await result, null);
+    assert.equal(lookupId, '456');
+    assert.deepEqual(attemptedUpdate.values, ['Profile name', 7, '456', 'dar', 'instagram']);
+    assert.match(attemptedUpdate.text, /AND \(customer_name IS NULL OR BTRIM\(customer_name\) = '' OR LOWER\(BTRIM\(customer_name\)\) = 'unknown'\)/);
+    assert.equal(currentName, 'Manager-assigned name');
+});
+
 // Exercise real hub and enrichment together; the fake store models message identity and commits.
-function inboundHarness(profileResponse, { existing = false, customerName = 'Unknown' } = {}) {
+function inboundHarness(profileResponse, { existing = false, customerName = 'Unknown', channel = 'facebook' } = {}) {
     const entries = logs();
     const state = { row: existing ? {
-        id: 7, channel: 'facebook', external_id: '456', customer_name: customerName,
+        id: 7, channel, external_id: '456', customer_name: customerName,
         business_context: 'dar', unread_count: 0, meta: {},
     } : null, messages: [], committed: 0, profileCalls: 0, events: [] };
     const query = async (sql, params = []) => {
         if (typeof sql === 'object') {
             assert.equal(sql.values[3], 'dar');
+            assert.equal(sql.values[4], channel);
+            assert.equal(sql.values[2], state.row.external_id);
             if (!state.row.customer_name || state.row.customer_name.trim().toLowerCase() === 'unknown') {
                 state.row.customer_name = sql.values[0];
                 return { rows: [{ id: 7 }] };
@@ -306,27 +430,31 @@ function inboundHarness(profileResponse, { existing = false, customerName = 'Unk
     mock('../db', { pool: { query, connect: async () => ({ query, release() {} }) } });
     mock('../services/omni-accounts', { getOmniAccountStatus: () => ({ connected: true, sendCapable: true }) });
     mock('../services/websocket', { broadcastBusinessEvent: (...args) => { state.events.push(args); return 1; } });
-    for (const path of ['telegram', 'omni-viber', 'omni-sms', 'omni-instagram', 'omni-whatsapp', 'omni-telegram-bridge', 'replyEscalation']) {
+    for (const path of ['telegram', 'omni-viber', 'omni-sms', 'omni-whatsapp', 'omni-telegram-bridge', 'replyEscalation']) {
         mock('../services/' + path, {});
     }
-    mock('../services/omni-facebook', { getUserProfile: async (_id, _fields, options) => {
-        assert.equal(options.businessContext, 'dar');
-        assert.ok(state.committed >= 2, 'both conversation and message are committed before fetching the name');
-        state.profileCalls++;
-        return profileResponse;
-    } });
+    for (const adapterChannel of ['facebook', 'instagram']) {
+        mock('../services/omni-' + adapterChannel, { getUserProfile: async (_id, _fields, options) => {
+            assert.equal(adapterChannel, channel);
+            assert.equal(options.businessContext, 'dar');
+            assert.ok(state.committed >= 2, 'both conversation and message are committed before fetching the name');
+            state.profileCalls++;
+            return profileResponse;
+        } });
+    }
     fresh('../services/omni-facebook-profile');
     const hub = fresh('../services/omni-hub');
     const inbound = externalMessageId => hub.processInboundMessage({
-        channel: 'facebook', externalId: '456', senderName: null, content: 'Fixture message', contentType: 'text', externalMessageId,
+        channel, externalId: '456', senderName: null, content: 'Fixture message', contentType: 'text', externalMessageId,
     }, { businessContext: 'dar' });
     return { state, entries, inbound };
 }
 
-for (const existing of [false, true]) {
-    test((existing ? 'existing Unknown' : 'new conversation') + ' gains its name without delaying inbound or duplicating retried messages', async () => {
+for (const channel of ['facebook', 'instagram']) {
+  for (const existing of [false, true]) {
+    test(channel + ' ' + (existing ? 'existing Unknown' : 'new conversation') + ' gains its name without delaying inbound or duplicating retried messages', async () => {
         const profile = deferred();
-        const h = inboundHarness(profile.promise, { existing });
+        const h = inboundHarness(profile.promise, { existing, channel });
         const result = await h.inbound('mid.fixture-1');
         assert.equal(result.conversation.customerName, 'Unknown');
         assert.equal(h.state.messages.length, 1);
@@ -337,7 +465,7 @@ for (const existing of [false, true]) {
         assert.equal(h.state.messages.length, 1);
         assert.equal(h.state.row.unread_count, 1);
         assert.equal(h.state.profileCalls, 1);
-        profile.resolve({ success: true, profile: { firstName: 'Fixture', lastName: 'Person' } });
+        profile.resolve({ success: true, profile: { id: '456', firstName: 'Fixture', lastName: 'Person', name: 'Fixture Person' } });
         await new Promise(resolve => setImmediate(resolve));
         assert.equal(h.state.row.customer_name, 'Fixture Person');
         assert.equal(h.state.events.length, 3, 'two initial events plus the name refresh');
@@ -346,10 +474,12 @@ for (const existing of [false, true]) {
         assert.equal(h.state.messages.length, 2);
         assert.equal(h.state.profileCalls, 1, 'a resolved name does not cause more lookups');
     });
+  }
 }
 
-test('profile timeout leaves message acceptance and subsequent messages intact', async () => {
-    const h = inboundHarness({ success: false, code: 'PROFILE_TIMEOUT' }, { existing: true });
+for (const channel of ['facebook', 'instagram']) {
+  test(channel + ' profile timeout leaves message acceptance and subsequent messages intact', async () => {
+    const h = inboundHarness({ success: false, code: 'PROFILE_TIMEOUT' }, { existing: true, channel });
     assert.ok((await h.inbound('mid.timeout-1')).message);
     await new Promise(resolve => setImmediate(resolve));
     assert.ok((await h.inbound('mid.timeout-2')).message);
@@ -357,4 +487,5 @@ test('profile timeout leaves message acceptance and subsequent messages intact',
     assert.equal(h.state.row.customer_name, 'Unknown');
     assert.equal(h.state.profileCalls, 1);
     assert.equal(h.state.events.length, 4, 'only normal message/conversation events');
-});
+  });
+}

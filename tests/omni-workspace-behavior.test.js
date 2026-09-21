@@ -941,8 +941,9 @@ test('history failure exposes retry and does not display the previous customer h
     assert.ok(h.document.querySelector('[data-omni-history="retry"]'));
 });
 
-test('Facebook profile refresh updates the list and open header while preserving the draft', async t => {
-    const records = [{ ...conversation(1, 'facebook'), externalId: '456', customerName: 'Unknown' }];
+for (const channel of ['facebook', 'instagram']) {
+  test(channel + ' profile refresh updates the list and open header while preserving the draft', async t => {
+    const records = [{ ...conversation(1, channel), externalId: '456', customerName: 'Unknown' }];
     const h = harness(t, records);
     h.app.selectConversation(1);
     await h.flush();
@@ -956,4 +957,5 @@ test('Facebook profile refresh updates the list and open header while preserving
     assert.match(h.document.querySelector('.omni-conv-name').textContent, /Fixture Person/);
     assert.match(h.document.getElementById('omniChatAvatar').textContent, /FI/);
     assert.equal(h.document.getElementById('omniInput').value, 'Keep this reply');
-});
+  });
+}

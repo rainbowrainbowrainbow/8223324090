@@ -164,6 +164,7 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
 .omni-chat-more-menu { display: grid; position: absolute; top: calc(100% + 5px); right: 0; width: 190px; gap: 6px; }
 .omni-chat-more:not([open]) > .omni-chat-more-menu { display: none; }
 .omni-chat-more-menu button { width: 100%; text-align: left; }
+.omni-mobile-mode-action { display: none; }
 .omni-mobile-back { display: none; flex-shrink: 0; min-height: 38px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); background: transparent; font-size: 13px; font-weight: 600; cursor: pointer; }
 .omni-case-context { flex: 0 0 auto; max-height: 100px; overflow: auto; padding: 4px 12px; background: transparent; }
 .omni-case-details { min-width: 0; }
@@ -295,6 +296,7 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
 /* The visual viewport shrinks with a phone keyboard. Keep navigation and input
    available; secondary surfaces scroll rather than pushing the input offscreen. */
 .omni-narrow.omni-short:has(.has-conversation[data-omni-mode="inbox"]) .omni-workspace-topbar { display: none; }
+.omni-narrow.omni-short .has-conversation[data-omni-mode="inbox"] .omni-mobile-mode-action { display: block; }
 .omni-short .omni-case-context { max-height: 36px; padding-block: 0; }
 .omni-short .omni-case-details summary { min-height: 24px; }
 .omni-short #omniFileHint { display: none; }

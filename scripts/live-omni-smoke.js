@@ -370,7 +370,13 @@ async function runLiveSmoke(config) {
         await page.locator('#omniMessages').evaluate(node => { node.scrollTop = Math.max(1, node.scrollHeight / 2); });
         const readingTop = await page.locator('#omniMessages').evaluate(node => node.scrollTop);
         assert.ok(readingTop > 0, 'message history did not provide an independently scrollable live surface');
-        await page.getByRole('tab', { name: 'Канали', exact: true }).click();
+        assert.equal(await page.locator('.omni-workspace-topbar').isVisible(), false,
+            'short-mobile conversation did not enter the compact keyboard-safe layout');
+        await page.locator('#omniChatMore > summary').click();
+        const mobileChannelsAction = page.locator('#omniChatMore .omni-mobile-mode-action[data-omni-mode="channels"]');
+        assert.ok(await mobileChannelsAction.isVisible(),
+            'channels action is inaccessible while the short-mobile topbar is hidden');
+        await mobileChannelsAction.click();
         await page.locator('#omniChannelsWorkspace').waitFor({ state: 'visible' });
         await page.getByRole('tab', { name: 'Стан', exact: true }).click();
         await page.locator('#omniHealthWorkspace').waitFor({ state: 'visible' });

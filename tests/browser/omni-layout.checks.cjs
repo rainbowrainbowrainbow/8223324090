@@ -283,6 +283,33 @@ async function testPrimaryFlow(page, artifacts) {
   assert.ok(await page.locator('#omniInput').evaluate(node =>
     node.scrollHeight <= node.clientHeight + 2 || ['auto','scroll'].includes(getComputedStyle(node).overflowY)),
   'resized long draft is clipped');
+
+  await page.setViewportSize({ width: 390, height: 420 });
+  await waitForLayout(page);
+  assert.equal(await page.locator('.omni-workspace-topbar').isVisible(), false,
+    'short mobile conversation should reserve the topbar space for history and composer');
+  await page.locator('#omniMessages').evaluate(node => { node.scrollTop = Math.max(1, node.scrollHeight / 2); });
+  const shortReadingPosition = await page.locator('#omniMessages').evaluate(node => node.scrollTop);
+  assert.ok(shortReadingPosition > 0, 'short mobile history did not move to a reading position');
+  await page.locator('#omniChatMore > summary').click();
+  const mobileChannelsAction = page.locator('#omniChatMore .omni-mobile-mode-action[data-omni-mode="channels"]');
+  assert.ok(await mobileChannelsAction.isVisible(), 'channels action is inaccessible while the short-mobile topbar is hidden');
+  await page.screenshot({ path: path.join(artifacts, 'layout-short-mobile-more.png'), animations: 'disabled' });
+  await mobileChannelsAction.click();
+  await page.locator('#omniChannelsWorkspace').waitFor({ state: 'visible' });
+  await page.getByRole('tab', { name: 'Стан', exact: true }).click();
+  await page.locator('#omniHealthWorkspace').waitFor({ state: 'visible' });
+  await page.locator('#omniModeBack').click();
+  await page.locator('#omniInput').waitFor({ state: 'visible' });
+  await waitForLayout(page);
+  assert.equal(await page.locator('#omniInput').inputValue(), LONG_DRAFT, 'short-mobile mode switch lost the draft');
+  assert.ok(Math.abs(await page.locator('#omniMessages').evaluate(node => node.scrollTop) - shortReadingPosition) < 3,
+    'short-mobile mode switch lost the reading position');
+  assert.equal(await page.locator('#omniChatMore').getAttribute('open'), null,
+    'conversation action menu stayed open after the mode round trip');
+
+  await page.setViewportSize({ width: 320, height: 640 });
+  await waitForLayout(page);
   await page.locator('#omniMobileBack').click();
   await page.locator('.omni-sidebar').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#omniChannelSelect').inputValue(), 'telegram');

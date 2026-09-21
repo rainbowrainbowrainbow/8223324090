@@ -2296,6 +2296,7 @@
                             <details class="omni-chat-more" id="omniChatMore">
                                 <summary aria-label="Додаткові дії розмови">Ще</summary>
                                 <div class="omni-chat-more-menu">
+                                    <button type="button" class="omni-mobile-mode-action" data-omni-mode="channels">Канали</button><button type="button" class="omni-mobile-mode-action" data-omni-mode="health">Стан</button>
                                     <button type="button" id="omniCreateLead" class="omni-lead-action" title="Створити лід з діалогу">Створити лід</button><button type="button" id="omniToggleAI" title="AI-помічник для ліда і відповіді">AI-помічник</button><button type="button" id="omniCloseConv" title="Закрити діалог">Закрити діалог</button>
                                 </div>
                             </details>
@@ -2837,6 +2838,7 @@
         function setOmniMode(mode) {
             const nextMode = ['inbox', 'telephony', 'channels', 'health'].includes(mode) ? mode : 'inbox';
             if (omniMode === 'inbox' && nextMode !== 'inbox') rememberMessagePosition();
+            if (chatMore) chatMore.open = false;
             omniMode = nextMode;
             $('omniModeBack').hidden = nextMode === 'inbox';
             omniShell.querySelector('h1').hidden = nextMode !== 'inbox';

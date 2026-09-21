@@ -3,6 +3,11 @@
 const { pool } = require('../db');
 const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext } = require('./businessContext');
 const { listLeadConversationLinks } = require('./leadConversationLinks');
+const {
+  conversationIdFromExternalId,
+  conversationIdsFromRawPayload,
+  leadIdsFromConversationMeta,
+} = require('./leadConversationLinkBackfill');
 const { deriveReplySlaState, isActiveWaitingReply } = require('./replySla');
 const { getOmniAccountStatus } = require('./omni-accounts');
 
@@ -106,7 +111,7 @@ function mapSuggestion(row, lead) {
 
 async function findLeadForConversationContext(db, leadId, businessContext) {
   const result = await db.query(
-    `SELECT id, business_context, client_name, phone
+    `SELECT id, business_context, client_name, phone, source_channel, external_id, raw_payload
        FROM leads
       WHERE id = $1
         AND COALESCE(business_context, $2) = $2
@@ -114,6 +119,66 @@ async function findLeadForConversationContext(db, leadId, businessContext) {
     [leadId, businessContext]
   );
   return result.rows[0] || null;
+}
+
+function parseJsonObject(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function legacyConversationCandidate(lead) {
+  const externalConversationId = conversationIdFromExternalId(lead.external_id);
+  const rawConversationIds = conversationIdsFromRawPayload(parseJsonObject(lead.raw_payload));
+  if (externalConversationId && rawConversationIds.some(id => id !== externalConversationId)) return null;
+  const candidateIds = Array.from(new Set([
+    externalConversationId,
+    ...rawConversationIds,
+  ].filter(Boolean)));
+  return candidateIds.length === 1 ? candidateIds[0] : null;
+}
+
+async function findLegacyConfirmedLink(db, lead, businessContext) {
+  const conversationId = legacyConversationCandidate(lead);
+  if (!conversationId) return null;
+
+  const result = await db.query(
+    `SELECT c.id, c.business_context, c.channel, c.status AS conversation_status,
+            c.last_message_at, c.customer_name, c.customer_phone, c.customer_id,
+            c.assigned_to, c.unread_count, c.last_inbound_at, c.last_outbound_at,
+            c.reply_expected, c.awaiting_reply_since, c.reply_expected_message_id,
+            c.reply_owner, c.reply_owner_user_id, c.reply_sla_at, c.meta
+       FROM conversations c
+      WHERE c.id = $1
+        AND COALESCE(c.business_context, $2) = $2
+      LIMIT 1`,
+    [conversationId, businessContext]
+  );
+  const conversation = result.rows[0];
+  if (!conversation) return null;
+  if (lead.source_channel && conversation.channel && lead.source_channel !== conversation.channel) return null;
+
+  const evidence = [];
+  if (conversationIdFromExternalId(lead.external_id) === conversationId) evidence.push('lead.external_id');
+  if (conversationIdsFromRawPayload(parseJsonObject(lead.raw_payload)).includes(conversationId)) evidence.push('lead.raw_payload');
+  const metaLeadIds = leadIdsFromConversationMeta(parseJsonObject(conversation.meta));
+  if (metaLeadIds.length && !metaLeadIds.includes(lead.id)) return null;
+  if (metaLeadIds.includes(lead.id)) evidence.push('conversation.meta');
+  if (evidence.length < 2) return null;
+
+  return {
+    ...conversation,
+    conversationId,
+    isOrigin: true,
+    isPrimary: true,
+    source: 'omni_legacy_compatibility',
+    metadata: { evidence: evidence.sort() },
+  };
 }
 
 async function listConversationSuggestions(db, lead, businessContext, limit) {
@@ -176,10 +241,15 @@ async function resolveLeadConversationContext(input = {}, options = {}) {
 
   const listConfirmedLinks = options.listConfirmedLinks || listLeadConversationLinks;
   const links = await listConfirmedLinks({ businessContext, leadId }, { db });
-  const confirmedLinks = links.map(link => mapConfirmedLink(link, {
+  const canonicalLinks = links.map(link => mapConfirmedLink(link, {
     available: omniAvailable,
     businessContext,
   }));
+  const legacyLinkFinder = options.findLegacyConfirmedLink || findLegacyConfirmedLink;
+  const legacyLink = canonicalLinks.length ? null : await legacyLinkFinder(db, lead, businessContext);
+  const confirmedLinks = legacyLink
+    ? [mapConfirmedLink(legacyLink, { available: omniAvailable, businessContext })]
+    : canonicalLinks;
   const suggestions = omniAvailable ? await listConversationSuggestions(db, lead, businessContext, limit) : [];
   return {
     leadId,
@@ -192,6 +262,7 @@ async function resolveLeadConversationContext(input = {}, options = {}) {
 
 module.exports = {
   mapConfirmedLink,
+  findLegacyConfirmedLink,
   resolveLeadConversationTarget,
   resolveLeadConversationContext,
 };

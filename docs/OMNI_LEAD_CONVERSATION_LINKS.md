@@ -96,11 +96,15 @@ the current conversation is both origin and initial primary. A retry or a reuse
 only attaches the confirmed pair; it never changes `is_origin` or a manager's
 chosen `is_primary`.
 
-Until the legacy records are backfilled, the Omni creation path reads canonical
-links first. It falls back to saved legacy IDs only when the conversation has no
-canonical links. `leads.external_id`, `leads.raw_payload.conversationId`, and
-`conversations.meta.lead_id` / `leadIds` remain compatibility evidence; phone,
-name, and customer matches never create or choose a link.
+Until the legacy records are backfilled, the resolver reads canonical links first.
+Only when a lead has no canonical link, it may expose one temporary confirmed
+legacy pair. That pair needs one unambiguous saved conversation ID and at least
+two independent pieces of stored evidence from `leads.external_id`,
+`leads.raw_payload.conversationId`, and `conversations.meta.lead_id` / `leadIds`.
+The lead and conversation must also share a business context and, when present,
+the saved source channel. Conflicts, missing conversations, and one-source
+matches are ignored. This compatibility read never writes a link; phone, name,
+and customer matches never create or choose a link.
 
 `npm run audit:omni-lead-conversation-links` is a dry-run by default. It requires
 `OMNI_LINK_BACKFILL_READONLY_DATABASE_URL`, reports `ready`, `alreadyLinked`,

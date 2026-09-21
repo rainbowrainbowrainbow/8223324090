@@ -65,6 +65,9 @@ test('lead conversation context exposes confirmed links separately from suggesti
       isPrimary: true,
       source: 'omni_lead_manual',
     }],
+    findLegacyConfirmedLink: async () => {
+      throw new Error('Canonical links must take precedence over legacy compatibility');
+    },
   });
 
   assert.equal(context.resolution.action, 'open');
@@ -72,4 +75,56 @@ test('lead conversation context exposes confirmed links separately from suggesti
   assert.deepEqual(context.confirmedLinks.map(link => link.id), [10]);
   assert.deepEqual(context.suggestions.map(link => link.id), [27]);
   assert.equal(context.suggestions[0].confidence, 'suggested');
+});
+
+test('lead conversation context safely reads a confirmed legacy Omni link until backfill completes', async () => {
+  const db = {
+    async query(sql) {
+      if (/FROM leads/i.test(sql)) {
+        return { rows: [{
+          id: 137, business_context: 'event_genix', client_name: 'НВ', phone: '+380661111111',
+          source_channel: 'instagram', external_id: 'omni_conv_10', raw_payload: { conversationId: 10 },
+        }] };
+      }
+      if (/WHERE c\.id = \$1/i.test(sql)) {
+        return { rows: [{
+          id: 10, business_context: 'event_genix', channel: 'instagram', conversation_status: 'open',
+          customer_name: 'НВ', meta: { leadIds: [137] },
+        }] };
+      }
+      if (/FROM conversations/i.test(sql)) return { rows: [] };
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+  };
+
+  const context = await resolveLeadConversationContext({ leadId: 137, businessContext: 'event_genix' }, {
+    db,
+    listConfirmedLinks: async () => [],
+  });
+
+  assert.deepEqual(context.confirmedLinks.map(item => ({
+    id: item.id, channel: item.channel, isOrigin: item.isOrigin, isPrimary: item.isPrimary, source: item.source,
+  })), [{ id: 10, channel: 'instagram', isOrigin: true, isPrimary: true, source: 'omni_legacy_compatibility' }]);
+  assert.deepEqual(context.resolution, { action: 'open', reason: 'primary', conversationId: 10 });
+});
+
+test('legacy compatibility never promotes conflicting saved identifiers', async () => {
+  const db = {
+    async query(sql) {
+      if (/FROM leads/i.test(sql)) {
+        return { rows: [{
+          id: 137, business_context: 'event_genix', client_name: 'НВ', phone: '+380661111111',
+          source_channel: 'instagram', external_id: 'omni_conv_10', raw_payload: { conversationId: 11 },
+        }] };
+      }
+      if (/FROM conversations/i.test(sql)) return { rows: [] };
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+  };
+  const context = await resolveLeadConversationContext({ leadId: 137, businessContext: 'event_genix' }, {
+    db,
+    listConfirmedLinks: async () => [],
+  });
+  assert.equal(context.confirmedLinks.length, 0);
+  assert.deepEqual(context.resolution, { action: 'empty', reason: 'no_conversations', conversationId: null });
 });

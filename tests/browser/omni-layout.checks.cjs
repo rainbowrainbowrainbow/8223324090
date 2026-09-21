@@ -618,6 +618,52 @@ async function testIntentionalFaults(page, artifacts) {
   return { nameFaultDetected: true, composerFaultDetected: true };
 }
 
+async function testTelephony(page, artifacts) {
+  const url = new URL(page.url());
+  for (const name of ['channel', 'search', 'conversation', 'conversationId', 'telCursor']) url.searchParams.delete(name);
+  url.searchParams.set('telView', 'all');
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto(url.href, { waitUntil: 'domcontentloaded' });
+  await page.locator('#omniTelephonyWorkspace').waitFor({ state: 'visible' });
+  await page.getByText('Тестовий клієнт', { exact: true }).waitFor();
+  assert.equal(await page.locator('#omniContainer').getAttribute('data-omni-mode'), 'telephony');
+  assert.equal(await page.locator('.omni-telephony-customer-link').getAttribute('href'), '/customers?open=42&businessContext=event_genix');
+  assert.ok(await page.locator('button[title*="server-side recording"]').isDisabled());
+  assert.ok(await page.getByRole('tab', { name: 'Просто зараз', exact: true }).isDisabled());
+  assert.ok(await page.getByRole('tab', { name: 'Моніторинг черг', exact: true }).isDisabled());
+  await page.getByRole('tab', { name: 'Вхідні', exact: true }).click();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('telView') === 'incoming');
+  const customerNumber = page.getByLabel('Номер клієнта');
+  await customerNumber.fill('+380000000001');
+  await page.getByRole('button', { name: 'Застосувати', exact: true }).click();
+  await page.getByText('Тестовий клієнт', { exact: true }).waitFor();
+  assert.equal(await page.locator('.omni-telephony-table tbody tr').count(), 1);
+  await page.getByRole('button', { name: 'Очистити', exact: true }).click();
+  await page.getByText('Тестовий клієнт', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Наступна', exact: true }).click();
+  await page.getByText('+380000000002', { exact: true }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('telCursor'), 'fixture-page-2');
+  await page.goBack();
+  await page.getByText('Тестовий клієнт', { exact: true }).waitFor();
+  const active = page.locator('.omni-telephony-tabs button.active');
+  await active.focus(); await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('telView') === 'outgoing');
+  await setTheme(page, 'dark');
+  await page.screenshot({ path: path.join(artifacts, 'binotel-telephony-desktop-dark.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setTheme(page, 'light');
+  await page.locator('.omni-telephony-tabs').scrollIntoViewIfNeeded();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'telephony creates horizontal page overflow on mobile');
+  await page.screenshot({ path: path.join(artifacts, 'binotel-telephony-mobile-light.png'), animations: 'disabled' });
+  await page.getByRole('tab', { name: 'Inbox', exact: true }).click();
+  await page.locator('.omni-conv-item[data-id="9001"]').click();
+  await page.locator('#omniInput').fill('Чернетка перед телефонією');
+  await page.getByRole('tab', { name: 'Телефонія', exact: true }).click();
+  await page.getByRole('tab', { name: 'Inbox', exact: true }).click();
+  assert.equal(await page.locator('#omniInput').inputValue(), 'Чернетка перед телефонією');
+  return { fixtureData: true, filters: true, pagination: true, urlBackForward: true, keyboardTabs: true, customerDeepLink: true, recordingSafeUnavailable: true, liveAndQueuesDisabled: true, inboxDraftPreserved: true };
+}
+
 module.exports = async function checkLayout(page, artifacts) {
   await testListStates(page);
   await testPrimaryFlow(page, artifacts);
@@ -627,6 +673,7 @@ module.exports = async function checkLayout(page, artifacts) {
   await testMobileNavigation(page);
   const visualAcceptance = await captureVisualAcceptance(page, artifacts);
   const faultInjection = await testIntentionalFaults(page, artifacts);
+  const telephony = await testTelephony(page, artifacts);
   const summary = {
     layoutInteractions:true, javascript:true, realClicks:true,
     channels:['telegram','viber','sms','facebook','instagram','whatsapp'],
@@ -634,9 +681,12 @@ module.exports = async function checkLayout(page, artifacts) {
     conversationRefresh:true, navigation:true, drafts:true,
     historyAndListScroll:true, focusRestoration:true,
     breakpointEdges:breakpoints, whatsappTemplates, visualAcceptance, faultInjection,
+    telephony,
     viewports:matrix.map(result => [result.width,result.height]),
     browserZoom:'not measured', realWrites:0
   };
   console.log(JSON.stringify(summary));
   return summary;
 };
+
+module.exports.telephony = testTelephony;

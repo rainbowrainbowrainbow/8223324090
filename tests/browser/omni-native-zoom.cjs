@@ -90,6 +90,24 @@ exports.launch = async chromium => {
           results.push({screen:[width,height],zoom:actual,screenshot,actionMode:compactActions?'menu':'direct',summary:summaryAccess,actions:actionAccess,...metrics});
         }
       }
+      await worker.evaluate(({ id }) => chrome.tabs.setZoom(id, 2), { id: tab.id });
+      const telephonyUrl = new URL(page.url());
+      telephonyUrl.searchParams.set('telView', 'all');
+      await page.goto(telephonyUrl.href, { waitUntil: 'domcontentloaded' });
+      await page.locator('#omniTelephonyWorkspace').waitFor({ state: 'visible' });
+      await page.getByText('Тестовий клієнт', { exact: true }).waitFor();
+      const telephonyMetrics = await page.evaluate(() => {
+        const filters = document.querySelector('.omni-telephony-filters')?.getBoundingClientRect();
+        const tabs = document.querySelector('.omni-telephony-tabs')?.getBoundingClientRect();
+        return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, filters: filters?.toJSON() || null, tabs: tabs?.toJSON() || null };
+      });
+      assert.equal(await worker.evaluate(id => chrome.tabs.getZoom(id), tab.id), 2);
+      assert.ok(telephonyMetrics.scrollWidth <= telephonyMetrics.width + 1, `telephony has horizontal page overflow at 200%: ${JSON.stringify(telephonyMetrics)}`);
+      assert.ok(telephonyMetrics.filters?.width > 0 && telephonyMetrics.tabs?.width > 0, 'telephony controls disappeared at 200% zoom');
+      const telephonyScreenshot = 'binotel-telephony-native-zoom-200.png';
+      const telephonyCapture = await cdp.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+      fs.writeFileSync(path.join(artifacts,telephonyScreenshot), Buffer.from(telephonyCapture.data,'base64'));
+      results.push({ screen: [telephonyMetrics.width, telephonyMetrics.height], zoom: 2, telephony: true, screenshot: telephonyScreenshot, ...telephonyMetrics });
       fs.writeFileSync(path.join(artifacts,'native-zoom.json'),JSON.stringify(results,null,2));
       console.log(JSON.stringify({nativeBrowserZoom:true,results}));
       return results;

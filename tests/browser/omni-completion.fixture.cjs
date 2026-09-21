@@ -4,7 +4,7 @@ const os = require('node:os');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '../..');
-const artifactDir = path.join(root, 'output', 'playwright', 'omni-completion');
+const artifactDir = path.resolve(process.env.OMNI_BROWSER_ARTIFACT_DIR || path.join(root, 'output', 'playwright', 'omni-completion'));
 fs.mkdirSync(artifactDir, { recursive: true });
 const layoutOnly = process.env.OMNI_LAYOUT_ONLY === '1';
 const nativeZoom = process.env.OMNI_NATIVE_ZOOM === '1';
@@ -147,6 +147,10 @@ function playwright() {
       whatsappConversation.whatsappReplyWindow = { open: false, closesAt: '2098-12-31T08:00:00Z', remainingMs: 0 };
     }
     const history=new Map(conversations.map(c=>[c.id,Array.from({length:c.id===9001?105:2},(_,i)=>({id:c.id*1000+i,conversationId:c.id,direction:'inbound',content:'Діалог '+c.id+' повідомлення '+(i+1)+'\nДругий рядок',createdAt:'2099-01-01T12:00:00Z'}))]));
+    const telephonyCalls = [
+      { callId: 'fixture-call-1', direction: 'incoming', status: 'completed', customerPhone: '+380000000001', companyPhone: '100', agent: { name: 'Олена', group: 'Продажі' }, startedAt: '2099-01-01T10:00:00Z', waitingSeconds: 0, talkSeconds: 63, recording: { available: true }, customer: { id: '42', name: 'Тестовий клієнт' } },
+      { callId: 'fixture-call-2', direction: 'outgoing', status: 'answered', customerPhone: '+380000000002', companyPhone: '101', agent: { name: 'Ігор', group: 'Продажі' }, startedAt: '2099-01-01T10:05:00Z', waitingSeconds: 4, talkSeconds: 120, recording: { available: false }, customer: { id: null, name: null } },
+    ];
     if (layoutMode) {
       const primaryHistory = history.get(9001);
       primaryHistory[primaryHistory.length - 3] = {
@@ -260,6 +264,14 @@ function playwright() {
           return json({success:false,error:'Тестова помилка закриття'},500);
         }
         if(p==='/operators') return json({success:true,data:[{username:fixtureOwner,label:'Тестовий менеджер'}]});
+        if (p === '/telephony/calls') {
+          const cursor = url.searchParams.get('cursor');
+          const customerNumber = url.searchParams.get('customerNumber');
+          const rows = customerNumber ? telephonyCalls.filter(call => call.customerPhone.includes(customerNumber)) : telephonyCalls;
+          const page = cursor ? rows.slice(1) : rows.slice(0, 1);
+          return json({ success: true, freshness: 'fixture 2099-01-01 12:30', page: { cursor: cursor ? null : (rows.length > 1 ? 'fixture-page-2' : null), complete: !cursor }, data: page });
+        }
+        if (p === '/telephony/summary') return json({ success: true, completeness: 'complete', data: { total: telephonyCalls.length, incoming: 1, outgoing: 1, missed: 0, averageWaitingSeconds: 2, averageTalkSeconds: 91.5 } });
         if(p==='/accounts') return json({success:true,accounts});
         if(p==='/stats') return json({success:true,data:{total:105,byStatus:{open:105}}});
         if(p==='/quick-replies') return json({success:true,data:[]});
@@ -359,7 +371,10 @@ function playwright() {
       return;
     }
     if (layoutOnly) {
-      runReport.scenarios = await require('./omni-layout.checks.cjs')(page, artifactDir);
+      const checks = require('./omni-layout.checks.cjs');
+      runReport.scenarios = process.env.OMNI_TELEPHONY_ONLY === '1'
+        ? { telephony: await checks.telephony(page, artifactDir) }
+        : await checks(page, artifactDir);
       assert.deepEqual(errors,[]);
       runReport.unexpectedFixtureRequests = unexpectedFixtureRequests.slice();
       assert.deepEqual(unexpectedFixtureRequests, [], 'Omni browser fixture attempted an unhandled same-origin request');

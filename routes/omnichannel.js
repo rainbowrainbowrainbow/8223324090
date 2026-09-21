@@ -45,9 +45,11 @@ const {
     publicWebhookUrl,
     providerDefinition,
 } = require('../services/omni-accounts');
+const { createBinotelJournal } = require('../services/binotel-journal');
 
 const log = createLogger('OmniRoutes');
 const omniLeadPreviewLimiter = createWriteRateLimiter('omni-lead-preview', { windowMs: 60_000, max: 12, methods: ['POST'] });
+const binotelJournal = createBinotelJournal();
 
 router.use((req, res, next) => {
     const name = req.path.match(/^\/webhook\/(telegram|viber|sms|meta|whatsapp)$/)?.[1];
@@ -1156,6 +1158,51 @@ router.get('/stats', auth, async (req, res) => {
         log.error('Get stats error:', err.message);
         res.status(500).json({ success: false, error: 'Помилка статистики' });
     }
+});
+
+function sendBinotelJournalError(res, err) {
+    const status = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+    const code = err?.code || 'BINOTEL_JOURNAL_UNAVAILABLE';
+    const capability = err?.details?.capability || null;
+    if (status >= 500) log.warn('Binotel journal request unavailable', { code, capability });
+    return res.status(status).json({
+        success: false,
+        code,
+        error: status === 400 ? err.message : 'Журнал телефонії тимчасово недоступний.',
+        ...(capability ? { capabilities: { historical: capability } } : {}),
+    });
+}
+
+router.get('/telephony/calls', auth, async (req, res) => {
+    try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        res.json({ success: true, ...(await binotelJournal.calls({ businessContext }, req.query)) });
+    } catch (err) { return sendBinotelJournalError(res, err); }
+});
+
+router.get('/telephony/summary', auth, async (req, res) => {
+    try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        res.json({ success: true, ...(await binotelJournal.summary({ businessContext }, req.query)) });
+    } catch (err) { return sendBinotelJournalError(res, err); }
+});
+
+router.get('/telephony/live', auth, async (req, res) => {
+    try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        res.json({ success: true, ...(await binotelJournal.live({ businessContext })) });
+    } catch (err) { return sendBinotelJournalError(res, err); }
+});
+
+router.get('/telephony/queues', auth, async (req, res) => {
+    try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        res.json({ success: true, ...(await binotelJournal.queues({ businessContext })) });
+    } catch (err) { return sendBinotelJournalError(res, err); }
 });
 
 // Quick replies CRUD

@@ -214,6 +214,36 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
 .omni-channel-action-feedback.error { border-color: var(--danger,#ef4444); }
 .omni-workspace-shell:has(.omni-container[data-omni-mode="inbox"]) > .omni-channel-action-feedback { display: none; }
 .omni-container:not([data-omni-mode="inbox"]) .omni-history-controls { display: none; }
+.omni-container[data-omni-mode="telephony"] { grid-template-columns: minmax(0,1fr); }
+.omni-container[data-omni-mode="telephony"] .omni-sidebar,
+.omni-container[data-omni-mode="telephony"] .omni-chat > :not(.omni-telephony-workspace) { display: none !important; }
+.omni-container[data-omni-mode="telephony"] .omni-telephony-workspace { display: block !important; }
+.omni-telephony-workspace { display: none; }
+.omni-telephony-filters { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; padding: 12px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-secondary); }
+.omni-telephony-filters label { display: grid; gap: 4px; min-width: 0; color: var(--text-secondary); font-size: 12px; }
+.omni-telephony-filters input, .omni-telephony-filters select, .omni-telephony-filters button { min-height: 38px; min-width: 0; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.omni-telephony-tabs { display: flex; gap: 7px; overflow-x: auto; padding: 12px 0; }
+.omni-telephony-tabs button { flex: 0 0 auto; min-height: 34px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 999px; background: transparent; color: var(--text-secondary); font: inherit; cursor: pointer; }
+.omni-telephony-tabs button.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--text-primary); }
+.omni-telephony-content { overflow-x: auto; }
+.omni-telephony-state { padding: 16px; border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-secondary); }
+.omni-telephony-state.error { border-color: var(--danger, #dc2626); color: var(--danger, #dc2626); }
+.omni-telephony-state.unsupported { border-color: #d97706; color: var(--text-primary); }
+.omni-telephony-table { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 13px; }
+.omni-telephony-table th, .omni-telephony-table td { padding: 10px; border-bottom: 1px solid var(--border-color); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.omni-telephony-table th { color: var(--text-secondary); font-size: 12px; }
+.omni-telephony-filters label > span { overflow-wrap: anywhere; }
+.omni-telephony-filters button:disabled, .omni-telephony-tabs button:disabled, .omni-telephony-table button:disabled { cursor: not-allowed; opacity: .58; }
+.omni-telephony-meta, .omni-telephony-pagination { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 0; color: var(--text-secondary); font-size: 12px; }
+.omni-telephony-summary { display: grid; grid-template-columns: repeat(6, minmax(90px,1fr)); gap: 8px; padding: 0 0 12px; }
+.omni-telephony-summary-item { display: grid; gap: 2px; padding: 9px; border: 1px solid var(--border-color); border-radius: 9px; background: var(--bg-secondary); }
+.omni-telephony-summary-item strong { color: var(--text-primary); font-size: 16px; }
+.omni-telephony-summary-item span, .omni-telephony-summary-note { color: var(--text-secondary); font-size: 12px; }
+.omni-telephony-pagination { justify-content: flex-end; }
+.omni-telephony-pagination button, .omni-telephony-table button { min-height: 34px; padding: 6px 9px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.omni-telephony-customer-link { display: inline-block; margin-top: 4px; color: var(--primary); font-size: 12px; font-weight: 600; }
+@container omni (max-width: 719px) { .omni-telephony-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container omni (max-width: 719px) { .omni-telephony-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .omni-telephony-pagination { justify-content: flex-start; } }
 .omni-mode-panel { min-width: 0; min-height: 0; padding: 16px; overflow: auto; }
 .omni-account-card, .omni-health-row { min-width: 0; overflow-wrap: anywhere; }
 .omni-chat-empty { min-width: 0; min-height: 0; padding: 16px; overflow: auto; }

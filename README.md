@@ -301,6 +301,7 @@ The current ownership map and intentional exceptions live in [docs/ACCESS_SURFAC
 - [docs/SERVICE_WORKER_CACHE_POLICY.md](docs/SERVICE_WORKER_CACHE_POLICY.md) - Service Worker API cache and offline mutation policy
 - [docs/STATIC_SURFACE.md](docs/STATIC_SURFACE.md) - root HTML, landing page, and legacy static route ownership
 - [docs/STORAGE_SURFACE.md](docs/STORAGE_SURFACE.md) - local upload path and Supabase Storage bucket ownership
+- [docs/integrations/binotel/HANDOFF.md](docs/integrations/binotel/HANDOFF.md) - local Binotel telephony contract, capability gaps, and activation checklist
 - [CHANGELOG.md](CHANGELOG.md) - release history
 - [docs/archive/README.md](docs/archive/README.md) - archive index for historical, non-authoritative docs
 - [docs/archive/CLAUDE.md](docs/archive/CLAUDE.md) - older Claude/OpenClaw-oriented project guidance

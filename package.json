@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.3",
+  "version": "0.82.4",
   "eventGenix": {
-    "releaseLabel": "Omni: підтверджений прийом WhatsApp"
+    "releaseLabel": "Omni: імена Facebook та Instagram"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

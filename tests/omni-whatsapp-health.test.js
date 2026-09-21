@@ -70,6 +70,9 @@ test('provider failures and an explicit disconnection cannot be hidden by old in
     const result = await state(health);
     assert.equal(result.receiveCapable, false, status);
     assert.notEqual(result.status, 'connected', status);
+    const envResult = await state(health, { source: 'environment', lastChangedAt: null });
+    assert.equal(envResult.receiveCapable, false);
+    assert.notEqual(envResult.status, 'limited', status);
   }
   const { health } = fixture();
   assert.equal((await state(health, { connected: false, configured: false, status: 'disconnected' })).receiveCapable, false);

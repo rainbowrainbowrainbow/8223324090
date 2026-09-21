@@ -94,11 +94,14 @@ function whatsappHealth(account, health) {
   const verifiedInbound = account.source === 'database' && Number.isFinite(changedAt) && inboundAt > changedAt;
   const activeError = Boolean(health?.last_error_code && errorAt >= changedAt
     && (!verifiedInbound || errorAt >= inboundAt));
-  const providerStatus = currentCheck ? health?.check_result?.status : null;
+  const providerStatus = currentCheck || account.source === 'environment' ? health?.check_result?.status : null;
   const failures = { failed_auth: 'token_expired', missing_config: 'misconfigured',
     provider_unreachable: 'provider_unreachable', webhook_missing: 'webhook_missing' };
   const providerFailure = failures[providerStatus];
   if (!account.configured || ['disconnected', 'needs_rebind'].includes(account.status)) {
+    return { ...account, receiveCapable: false };
+  }
+  if (!currentCheck && ['token_expired', 'misconfigured', 'provider_unreachable'].includes(account.status)) {
     return { ...account, receiveCapable: false };
   }
   if (providerFailure) {

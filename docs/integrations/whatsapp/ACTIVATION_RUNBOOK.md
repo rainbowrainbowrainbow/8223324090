@@ -1,10 +1,24 @@
 # WhatsApp Business Platform activation runbook
 
-Updated 2026-09-12 for OMNI-WA1. Production impact: no for this preparation packet. Production impact becomes yes only in a separately approved activation task that explicitly allows production secrets/settings, Meta subscriptions, the real phone number, and controlled test messages.
+Оновлено 21.09.2026: підключення PARK уже виконано після початкового пакета OMNI-WA1 від 12.09.2026. Production impact: no для цього оновлення документації.
 
 This document does not authorize connecting a real number, changing Meta or Railway settings, changing production secrets, subscribing webhooks, or sending WhatsApp messages.
 
-## Current production preflight evidence
+## Актуальний стан PARK — 21.09.2026
+
+WhatsApp для `event_genix` уже підключений. Не повторюйте початкову активацію або перенесення номера за історичним checklist нижче.
+
+Read-only перевірка у цьому чаті підтвердила:
+
+| Business context | Status | Connected | Configured | Send capable | Receive capable | Preflight |
+|---|---|---|---|---|---|---|
+| `event_genix` | `limited` | `true` | `true` | `true` | `false` | `ready=true`, `missing=[]`, read-only, redacted |
+
+Live: `v0.82.2`, SHA `f2e4dac078838165cf96e0e28db2dd140337b473`, гілка `codex/eventgenix-production`; `/api/health`: `ok`, база `connected`. Прапорець непідтвердженого прийому залишається відкритим питанням діагностики, а не підставою повторно підключати номер. Перевірка доступу Meta та підтвердження реальної доставки фото/PDF ведуться у задачі «Підключити WhatsApp до CRM». Цей запис не є новим доказом доставки; повідомлення не надсилалися.
+
+Стан `maysternya_doli` 21.09.2026 не перевірявся; історичну таблицю нижче не можна використовувати як поточний preflight. Для нового бізнесу або погодженого перепідключення спочатку потрібна свіжа перевірка саме його конфігурації.
+
+## Historical production preflight evidence — 2026-09-12
 
 Read-only live check against `https://8223324090-production.up.railway.app` on 2026-09-12T11:40:26Z:
 
@@ -35,6 +49,8 @@ The Omni account status preflight reports only `present` or `missing` for these 
 | Callback URL | Public HTTPS CRM URL for `/api/omni/webhook/whatsapp`. | Public setup URL; safe to copy into Meta, but it should still be handled as operational configuration. |
 
 ## Operator checklist before activation
+
+This checklist is for a new activation or an explicitly approved reconnection. PARK is already connected; the historical missing categories above are not a current action list for PARK.
 
 The owner/operator must provide or confirm these items before Codex or an engineer changes production configuration:
 

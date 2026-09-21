@@ -1,5 +1,28 @@
 # OMNI chat to lead progress
 
+## Актуальний підсумок — 21.09.2026
+
+Початкову реалізацію та випуски L1–L5 / L4, TD1–TD7 і пакет підготовки WA1 завершено. WhatsApp для PARK (`event_genix`) уже підключений. Старе `ACTIVATION_PENDING` у записах нижче — історичний стан на момент відповідних релізів, а не поточний блокер чи доручення перепідключити номер.
+
+Докази read-only перевірки OMNI-DOCS-CLOSE 21.09.2026 о 16:25 UTC:
+
+- `/api/version`: `0.82.2`, «Omni: сумісність зі старими зв’язками», SHA `f2e4dac078838165cf96e0e28db2dd140337b473`, `codex/eventgenix-production`, metadata `manifest`.
+- `/api/health`: `status=ok`, `database=connected`.
+- `/api/omni/accounts?businessContext=event_genix`: WhatsApp `connected=true`, `configured=true`, `sendCapable=true`, `receiveCapable=false`, `status=limited`.
+- Activation preflight: `ready=true`, `missing=[]`, `readOnly=true`, `redacted=true`. Значення конфігурації та секретів не виводилися.
+- Поточний стан `maysternya_doli` не перевірявся. Підключення PARK не підтверджує підключення іншого бізнесу.
+
+Межі завершення: реалізацію початкового пакета закрито; цей запис не оголошує завершеними всі пізніші Omni-задачі чи end-to-end перевірку WhatsApp. Залишки ведуться окремо:
+
+- «Підключити WhatsApp до CRM»: узгодження діагностики прийому з фактичними webhook-подіями, перевірка довговічності доступу Meta, підтвердження доставки фото/PDF. Поточний прапорець `receiveCapable=false` збережено як факт; він сам по собі не доводить відсутність історичних вхідних повідомлень.
+- Зв’язки «лід ↔ діалог» уже випущені: implementation `e42407fb6b3fd00e80e0be89bd6ff9b87e18a23f`, legacy fix `be6fe25bfc222dd755a3346db22b3397b905779f` входять у live SHA `f2e4dac078838165cf96e0e28db2dd140337b473`; [CI релізу 35617170580](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/35617170580) — success. Це доказ випуску коду; новий сценарій створення/прив’язування ліда в цій перевірці не запускався. [Контракт і межі legacy backfill](OMNI_LEAD_CONVERSATION_LINKS.md): масове перенесення старих записів не оголошується виконаним.
+
+Це оновлення лише документації. Воно використовує свіжі read-only докази, не запускає повторну активацію, AI-preview, відправлення повідомлень, зміну секретів чи бізнесових записів. Deploy і тест доставки не виконуються. Version bump не потрібен. Локально перевірено diff та посилання; повний набір тестів делеговано CI docs-коміту. Результат для його точного SHA фіксується у фінальному звіті OMNI-DOCS-CLOSE.
+
+## Історичні докази виконання — 11–12.09.2026
+
+Усі наведені нижче «current», «remains» та статуси активації стосуються дати відповідного кроку. Поточний підсумок наведено вище.
+
 ## OMNI-TD1 — baseline sync and documentation refresh
 
 Status: complete as docs-only synchronization. No version bump, code change, commit, push, deploy, secret change or real provider activation was performed in this task.

@@ -8,6 +8,7 @@ const {
   DEFAULT_BUSINESS_CONTEXT,
   normalizeBusinessContext,
 } = require('./businessContext');
+const { linkLeadConversation } = require('./leadConversationLinks');
 const { DEFAULT_MODELS, callUnifiedChatCompletion } = require('./ai-config');
 const { legacyBusinessSurfaceAccess, loadLegacyBusinessSurfaceAccess } = require('./legacyBusinessSurface');
 
@@ -2099,7 +2100,35 @@ async function findExistingLeadByExternalId({ businessContext, sourceChannel, ex
   return byExternal.rows[0] || null;
 }
 
+async function findCanonicalLinkedLead(conversation, db = pool) {
+  const businessContext = normalizeBusinessContext(conversation?.business_context || DEFAULT_BUSINESS_CONTEXT);
+  const defaultExternalId = `omni_conv_${conversation.id}`;
+  const result = await db.query(
+    `SELECT leads.*
+       FROM lead_conversation_links
+       JOIN leads ON leads.id = lead_conversation_links.lead_id
+      WHERE lead_conversation_links.business_context = $1
+        AND lead_conversation_links.conversation_id = $2
+        AND COALESCE(leads.business_context, $1) = $1
+      ORDER BY CASE WHEN leads.external_id = $3 THEN 0 ELSE 1 END,
+               lead_conversation_links.is_origin DESC,
+               lead_conversation_links.updated_at DESC,
+               leads.id ASC
+      LIMIT 2`,
+    [businessContext, conversation.id, defaultExternalId]
+  );
+  const canonicalLead = result.rows.find(lead => lead.external_id === defaultExternalId)
+    || (result.rows.length === 1 ? result.rows[0] : null);
+  return {
+    hasLinks: result.rows.length > 0,
+    lead: canonicalLead,
+  };
+}
+
 async function findExistingLinkedLead(conversation, db = pool) {
+  const canonical = await findCanonicalLinkedLead(conversation, db);
+  if (canonical.hasLinks) return canonical.lead;
+
   const businessContext = normalizeBusinessContext(conversation?.business_context || DEFAULT_BUSINESS_CONTEXT);
   const metaLeadId = linkedLeadIdFromMeta(conversation?.meta);
   if (metaLeadId) {
@@ -2488,6 +2517,12 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
     };
     const existing = draft.newOpportunity ? null : await findExistingLinkedLead(lockedConversation, client);
     if (existing) {
+      await linkLeadConversation({
+        businessContext: draft.businessContext,
+        leadId: existing.id,
+        conversationId: lockedConversation.id,
+        source: 'omni_lead_reuse',
+      }, { client });
       await markConversationLead(lockedConversation, existing.id, analysis, client, createOptions);
       await client.query('COMMIT');
       return { created: false, lead: existing, analysis, newOpportunity: false };
@@ -2551,16 +2586,36 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
     if (!lead) {
       lead = draft.newOpportunity
         ? await findExistingLeadByExternalId(draft, client)
-        : await findExistingLinkedLead(lockedConversation, client);
+        : await findExistingLeadByExternalId(draft, client)
+          || await findExistingLinkedLead(lockedConversation, client);
       if (!lead) {
         const err = new Error('Лід уже створюється. Оновіть розмову й повторіть дію.');
         err.status = 409;
         throw err;
       }
+      await linkLeadConversation({
+        businessContext: draft.businessContext,
+        leadId: lead.id,
+        conversationId: lockedConversation.id,
+        source: 'omni_lead_duplicate_submit',
+      }, { client });
       await markConversationLead(lockedConversation, lead.id, analysis, client, createOptions);
       await client.query('COMMIT');
       return { created: false, lead, analysis, newOpportunity: draft.newOpportunity };
     }
+
+    await linkLeadConversation({
+      businessContext: draft.businessContext,
+      leadId: lead.id,
+      conversationId: lockedConversation.id,
+      isOrigin: true,
+      isPrimary: true,
+      source: leadCreateSource(options),
+      metadata: {
+        newOpportunity: draft.newOpportunity,
+        externalId: draft.externalId,
+      },
+    }, { client });
 
     if (draft.eventPreference) {
       const eventPreference = await saveLeadEventPreference(client, {

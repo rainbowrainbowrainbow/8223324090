@@ -3171,6 +3171,51 @@ function createFakePool() {
             if (/FROM communication_log cl LEFT JOIN users u ON cl\.created_by = u\.id WHERE cl\.customer_id = \$1/i.test(text)) {
                 return { rows: [{ id: 902, customer_id: params[0], type: 'note', direction: 'internal', summary: 'Customer prefers Telegram', created_by_name: 'Dasha Manager', created_at: '2099-05-02T11:00:00Z' }] };
             }
+            if (/FROM lead_conversation_links lcl[\s\S]*JOIN conversations c/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 9031,
+                        business_context: 'event_genix',
+                        lead_id: params[1],
+                        conversation_id: 903,
+                        is_origin: true,
+                        is_primary: true,
+                        source: 'omni_lead_manual',
+                        metadata: {},
+                        channel: 'telegram',
+                        customer_name: 'Workspace Customer',
+                        customer_phone: '+380000000001',
+                        customer_id: 701,
+                        conversation_status: 'open',
+                        assigned_to: 'Dasha Manager',
+                        unread_count: 1,
+                        last_message_at: '2099-05-02T12:00:00Z',
+                        last_inbound_at: '2099-05-01T12:00:00Z',
+                        last_outbound_at: '2099-05-02T12:00:00Z',
+                        reply_expected: true,
+                        awaiting_reply_since: '2099-05-02T12:00:00Z',
+                        reply_expected_message_id: 1203,
+                        reply_owner: 'Dasha Manager',
+                        reply_owner_user_id: 2,
+                        reply_sla_at: '2099-05-03T12:00:00Z',
+                        reply_expected_delivery_status: 'accepted',
+                        last_message: 'Hello'
+                    }]
+                };
+            }
+            if (/SELECT c\.id, c\.channel[\s\S]*AS customer_linked[\s\S]*FROM conversations c/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 904,
+                        channel: 'telegram',
+                        customer_name: 'Workspace Customer',
+                        customer_phone: '+380000000001',
+                        status: 'open',
+                        last_message_at: '2099-05-02T12:00:00Z',
+                        customer_linked: true
+                    }]
+                };
+            }
             if (/FROM conversations c .*LEFT JOIN LATERAL/i.test(text)) {
                 return {
                     rows: [{
@@ -6002,7 +6047,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.workspace.bookings[0].id, 'BK-WS');
         assert.equal(res.data.workspace.tasks[0].sourceType, 'lead');
         assert.equal(res.data.workspace.conversations[0].channel, 'telegram');
-        assert.equal(res.data.workspace.conversations[0].confidence, 'exact');
+        assert.equal(res.data.workspace.conversations[0].confidence, 'confirmed');
+        assert.equal(res.data.workspace.conversationContext.resolution.reason, 'primary');
         assert.equal(res.data.workspace.conversations[0].replyOwner, 'Dasha Manager');
         assert.equal(res.data.workspace.conversations[0].replyOwnerUserId, 2);
     });

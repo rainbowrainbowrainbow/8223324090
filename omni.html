@@ -5461,10 +5461,14 @@
             const links = context.links || {};
             const suggestedLinks = context.suggestedLinks || {};
             const relatedBookings = context.relatedBookings || [];
+            const confirmedLeads = Array.isArray(context.confirmed?.leads) ? context.confirmed.leads : [];
+            const hasConfirmedLeads = confirmedLeads.length > 0;
             const hasExact = exact.lead || exact.customer || exact.booking;
             const hasSuggestion = suggestions.lead || suggestions.customer || suggestions.booking;
-            const pillClass = hasExact ? '' : (hasSuggestion ? 'suggested' : 'unresolved');
-            const pillText = hasExact ? 'Точний CRM-зв’язок' : (hasSuggestion ? 'Ймовірний збіг' : 'CRM-зв’язок не знайдено');
+            const pillClass = hasConfirmedLeads || hasExact ? '' : (hasSuggestion ? 'suggested' : 'unresolved');
+            const pillText = hasConfirmedLeads
+                ? (confirmedLeads.length === 1 ? 'Підтверджене звернення' : `Підтверджені звернення: ${confirmedLeads.length}`)
+                : (hasExact ? 'Точний CRM-зв’язок' : (hasSuggestion ? 'Ймовірний збіг' : 'CRM-зв’язок не знайдено'));
             const title = exact.lead?.clientName || exact.customer?.name || suggestions.lead?.clientName || suggestions.customer?.name || 'Без прив’язки до кейсу';
             const meta = [
                 exact.lead ? 'лід #' + exact.lead.id : null,
@@ -5473,8 +5477,22 @@
                 !exact.booking && relatedBookings.length ? 'бронювань клієнта: ' + relatedBookings.length : null
             ].filter(Boolean).join(' · ');
 
+            const confirmedLeadActions = confirmedLeads.map(item => {
+                const lead = item?.lead || {};
+                if (!lead.id) return '';
+                const href = new URL('/sales-funnel', window.location.origin);
+                if (getOmniBusinessContext() !== 'event_genix') href.searchParams.set('businessContext', getOmniBusinessContext());
+                href.searchParams.set('lead', String(lead.id));
+                const tags = [item.link?.isPrimary ? 'основний' : '', item.link?.isOrigin ? 'джерело' : ''].filter(Boolean).join(', ');
+                const label = lead.clientName || `Звернення ${lead.id}`;
+                return '<div class="omni-case-row omni-case-confirmed-lead">' +
+                    '<span class="omni-case-title">' + esc(label) + '</span>' +
+                    (tags ? '<span class="omni-case-meta">' + esc(tags) + '</span>' : '') +
+                    caseLink(href.pathname + href.search, 'Відкрити звернення', 'primary') +
+                '</div>';
+            }).join('');
             const exactActions = [
-                caseLink(links.leadWorkspace, 'Відкрити кейс', 'primary'),
+                !hasConfirmedLeads ? caseLink(links.leadWorkspace, 'Відкрити кейс', 'primary') : '',
                 caseLink(links.customer, 'Клієнт', ''),
                 caseLink(links.booking, 'Таймлайн', '')
             ].join('');
@@ -5493,7 +5511,8 @@
                     (meta ? '<span class="omni-case-meta">' + esc(meta) + '</span>' : '') +
                     exactActions +
                     suggestedActions +
-                '</div>'
+                '</div>' +
+                (confirmedLeadActions ? '<div class="omni-case-confirmed-leads">' + confirmedLeadActions + '</div>' : '')
             );
         }
 

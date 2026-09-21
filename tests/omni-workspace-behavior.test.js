@@ -31,7 +31,7 @@ function harness(t, records = [conversation(1), conversation(2)]) {
     const script = Array.from(window.document.scripts).find(node => node.textContent.includes('OmniClaw Page —')).textContent;
     const exports = `window.__omniTest = {
         loadConversations, loadMessages, loadOmniAccounts, loadCaseContext, reloadOmniForBusinessContext,
-        selectConversation, sendMessage, closeConversation, clearConversationSelection, renderMessages,
+        selectConversation, selectConversationFromQuery, sendMessage, closeConversation, clearConversationSelection, renderMessages,
         runAccountAction, setOmniMode, refreshOmniWorkspace, analyzeLeadAssistant,
         openLeadAssistantPanel, createLeadFromDraft, fillLeadDraftFromAi,
         accountNeedsAttention, renderOmniAccountsAlarm, setSendFeedback,
@@ -40,6 +40,7 @@ function harness(t, records = [conversation(1), conversation(2)]) {
         request: api,
         setApi(fn) { api = fn; },
         setRecords(value) { conversations = value; conversationTotal = value.length; renderConversations(); },
+        setQueryConversation(value) { selectedConversationQueryId = value; conversationQueryApplied = false; },
         state() { return { currentConvId, conversations, conversationTotal, messageHistory, messageTotal,
             accounts: omniAccounts, analysis: leadAssistantState.analysis, leadMode: leadAssistantState.mode,
             leadDrafts: Array.from(leadDrafts.entries()), selectedDraftKey, messagesLoading }; }
@@ -204,6 +205,58 @@ test('search typing rejects an older response immediately and clear keeps the ch
     assert.equal(h.document.getElementById('omniClearSearch').hidden, true);
     assert.ok(requests.at(-1).includes('channel=telegram'));
     assert.ok(!requests.at(-1).includes('search='));
+});
+
+test('a direct conversation link opens its exact record despite the active list filters', async t => {
+    const h = harness(t, [conversation(1, 'telegram')]);
+    const linked = { ...conversation(77, 'instagram'), customerName: 'НВ' };
+    const requests = [];
+    h.app.setQueryConversation(77);
+    h.app.setApi(async requestPath => {
+        requests.push(requestPath);
+        if (requestPath.startsWith('/conversations?')) return { success: true, data: { conversations: [conversation(1)], total: 1 } };
+        if (requestPath === '/conversations/77/context') return { success: true, data: { conversation: linked, confirmed: { leads: [] } } };
+        return h.defaultApi(requestPath);
+    });
+
+    await h.app.loadConversations();
+
+    assert.equal(h.app.state().currentConvId, 77);
+    assert.equal(h.document.getElementById('omniChatName').textContent, 'НВ');
+    assert.ok(requests.includes('/conversations/77/context'));
+    assert.ok(h.app.state().conversations.some(item => item.id === 77));
+});
+
+test('Omni exposes every confirmed lead as an explicit selectable CRM context', async t => {
+    const h = harness(t);
+    h.app.selectConversation(1);
+    h.app.setApi(async requestPath => {
+        if (requestPath === '/conversations/1/context') {
+            return {
+                success: true,
+                data: {
+                    conversation: conversation(1, 'instagram'),
+                    confirmed: {
+                        leads: [
+                            { lead: { id: 137, clientName: 'НВ' }, link: { isPrimary: true, isOrigin: true } },
+                            { lead: { id: 138, clientName: 'Повторне звернення' }, link: { isPrimary: false, isOrigin: false } }
+                        ]
+                    },
+                    exact: { lead: { id: 137, clientName: 'НВ' } },
+                    suggestions: {}, links: {}, suggestedLinks: {}, relatedBookings: []
+                }
+            };
+        }
+        return h.defaultApi(requestPath);
+    });
+
+    await h.app.loadCaseContext(1);
+
+    const context = h.document.getElementById('omniCaseContext');
+    assert.match(context.textContent, /Підтверджені звернення: 2/);
+    assert.match(context.textContent, /НВ/);
+    assert.match(context.textContent, /Повторне звернення/);
+    assert.equal(context.querySelectorAll('.omni-case-confirmed-lead a').length, 2);
 });
 
 test('IME confirmation and Shift+Enter do not send a draft', async t => {

@@ -9,6 +9,7 @@ const {
   normalizeBusinessContext,
   normalizeKnownBusinessContext,
 } = require('./businessContext');
+const { listConversationLeadLinks } = require('./leadConversationLinks');
 
 const { sendViber } = require('./omni-viber');
 const { sendSMS } = require('./omni-sms');
@@ -681,6 +682,26 @@ async function resolveConversationContext(conversationId, options = {}) {
   const exact = { customer: null, lead: null, booking: null };
   const suggestions = { customer: null, lead: null, booking: null };
   const reasons = [];
+  const canonicalLinks = await listConversationLeadLinks({ businessContext, conversationId: id });
+  const confirmedLeads = [];
+  for (const link of canonicalLinks) {
+    const lead = await findLeadById(link.leadId, businessContext);
+    if (lead) {
+      confirmedLeads.push({
+        lead,
+        link: {
+          id: link.id,
+          isOrigin: link.isOrigin,
+          isPrimary: link.isPrimary,
+          source: link.source,
+        },
+      });
+    }
+  }
+  if (confirmedLeads.length) {
+    exact.lead = confirmedLeads[0].lead;
+    reasons.push('lead_conversation_links');
+  }
 
   if (rawConversation.customer_id) {
     const customerResult = await pool.query(
@@ -694,15 +715,17 @@ async function resolveConversationContext(conversationId, options = {}) {
     if (exact.customer) reasons.push('conversation.customer_id');
   }
 
-  const metaLeadId = normalizeOptionalPositiveInt(
-    rawConversation.meta?.lead_id
-    || rawConversation.meta?.leadId
-    || rawConversation.meta?.crm?.leadId
-    || rawConversation.meta?.leadAssistant?.leadId
-  );
-  if (metaLeadId) {
-    exact.lead = await findLeadById(metaLeadId, businessContext);
-    if (exact.lead) reasons.push('conversation.meta.lead_id');
+  if (!exact.lead) {
+    const metaLeadId = normalizeOptionalPositiveInt(
+      rawConversation.meta?.lead_id
+      || rawConversation.meta?.leadId
+      || rawConversation.meta?.crm?.leadId
+      || rawConversation.meta?.leadAssistant?.leadId
+    );
+    if (metaLeadId) {
+      exact.lead = await findLeadById(metaLeadId, businessContext);
+      if (exact.lead) reasons.push('conversation.meta.lead_id');
+    }
   }
 
   if (!exact.lead && exact.customer?.leadId) {
@@ -744,6 +767,7 @@ async function resolveConversationContext(conversationId, options = {}) {
   return {
     conversation: mapConversationRow(rawConversation),
     confidence,
+    confirmed: { leads: confirmedLeads },
     exact,
     suggestions,
     relatedBookings,

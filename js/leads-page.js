@@ -236,6 +236,15 @@ let leadCustomerLinkState = {
     customers: [],
     searchTimer: null
 };
+let leadConversationLinkState = {
+    leadId: null,
+    workspaceSeq: 0,
+    options: [],
+    searchTimer: null,
+    searchSeq: 0,
+    actionInFlight: false,
+    modal: null
+};
 let kanbanDragState = null;
 const pendingLeadStageMoves = new Set();
 let kanbanLeadTypeMenuEventsBound = false;
@@ -374,6 +383,12 @@ function leadBusinessContext() {
 
 function leadApiUrl(url) {
     if (!/^\/api\/(leads|customers)\b/.test(String(url))) return url;
+    return window.CrmBusinessContext?.apiUrl
+        ? window.CrmBusinessContext.apiUrl(url, leadBusinessContext())
+        : url;
+}
+
+function leadOmniApiUrl(url) {
     return window.CrmBusinessContext?.apiUrl
         ? window.CrmBusinessContext.apiUrl(url, leadBusinessContext())
         : url;
@@ -2378,12 +2393,6 @@ function workspaceList(items, renderer, emptyText) {
     return `<div class="workspace-list">${items.map(renderer).join('')}</div>`;
 }
 
-function leadOmniSearch(workspace) {
-    const lead = workspace.lead || {};
-    const customer = workspace.customer || {};
-    return lead.phone || customer.phone || lead.clientName || customer.name || '';
-}
-
 function leadCrmContextHref(path, params = {}, context = leadBusinessContext()) {
     const normalized = window.CrmBusinessContext?.normalize?.(context) || context || 'event_genix';
     const url = new URL(path, window.location.origin);
@@ -2397,21 +2406,49 @@ function leadCrmContextHref(path, params = {}, context = leadBusinessContext()) 
 
 function leadOmniHref(workspace, conversation) {
     const context = leadContextFromRecord(workspace?.lead || {});
-    if (conversation?.id) return leadCrmContextHref('/omni', { conversation: conversation.id }, context);
-    const conversations = workspace.conversations || [];
-    const exactConversation = conversations.find(conv => conv && conv.id);
-    if (exactConversation) return leadCrmContextHref('/omni', { conversation: exactConversation.id }, context);
-    const omniSearch = leadOmniSearch(workspace);
-    return omniSearch ? leadCrmContextHref('/omni', { search: omniSearch }, context) : null;
+    const confirmedLinks = workspace?.conversationContext?.confirmedLinks || workspace?.conversations || [];
+    const selected = conversation?.id
+        ? confirmedLinks.find(item => String(item.id) === String(conversation.id) && item.confidence === 'confirmed')
+        : null;
+    if (selected?.available) return leadCrmContextHref('/omni', { conversation: selected.id }, context);
+    const resolution = workspace?.conversationContext?.resolution;
+    if (resolution?.action === 'open' && resolution.conversationId) {
+        return leadCrmContextHref('/omni', { conversation: resolution.conversationId }, context);
+    }
+    return null;
+}
+
+function leadConversationChannelLabel(conversation) {
+    const channel = String(conversation?.channel || '').trim().toLowerCase();
+    const labels = {
+        telegram: 'Telegram',
+        viber: 'Viber',
+        viber_personal: 'Viber',
+        facebook: 'Facebook',
+        instagram: 'Instagram',
+        whatsapp: 'WhatsApp',
+        sms: 'SMS',
+        binotel: 'Binotel'
+    };
+    return labels[channel] || (channel ? channel.charAt(0).toUpperCase() + channel.slice(1) : 'Omni');
+}
+
+function leadConversationOpenLabel(conversation) {
+    return `Відкрити ${leadConversationChannelLabel(conversation)}`;
+}
+
+function leadConversationDisplayName(conversation) {
+    return conversation?.customerName || conversation?.customerPhone || leadConversationChannelLabel(conversation);
 }
 
 function leadContactLinks(lead, workspace) {
     const phone = lead.phone || workspace.customer?.phone || '';
     const tel = phone ? 'tel:' + phone.replace(/[^+\d]/g, '') : null;
-    const omni = leadOmniHref(workspace);
+    const exactConversation = exactLeadConversation(workspace);
+    const omni = leadOmniHref(workspace, exactConversation);
     return [
         workspaceLink(tel, 'Подзвонити', 'success'),
-        workspaceLink(omni, 'Telegram у CRM', 'primary'),
+        workspaceLink(omni, exactConversation ? leadConversationOpenLabel(exactConversation) : 'Комунікації недоступні', 'primary'),
         workspaceLink(omni, 'Комунікації')
     ].join('');
 }
@@ -2436,13 +2473,15 @@ function workspaceAction(action) {
 }
 
 function exactLeadConversation(workspace) {
-    return (workspace.conversations || []).find(conv => conv && conv.id && conv.confidence === 'exact') || null;
+    const resolution = workspace?.conversationContext?.resolution;
+    if (resolution?.action !== 'open' || !resolution.conversationId) return null;
+    return (workspace.conversationContext?.confirmedLinks || workspace.conversations || [])
+        .find(conv => String(conv?.id) === String(resolution.conversationId) && conv.available) || null;
 }
 
 function waitingReplyConversation(workspace) {
     const conversations = workspace.conversations || [];
-    return conversations.find(conv => conv && conv.waitingReply && conv.confidence === 'exact')
-        || conversations.find(conv => conv && conv.waitingReply)
+    return conversations.find(conv => conv && conv.waitingReply && conv.confidence === 'confirmed')
         || null;
 }
 
@@ -2530,11 +2569,11 @@ function renderManagerActionStrip(workspace) {
             note: exactBooking ? 'є повʼязаний запис' : 'драфт у Майстерні'
         } : null,
         {
-            label: 'Omni exact',
+            label: exactConversation ? leadConversationOpenLabel(exactConversation) : 'Комунікації',
             href: exactConversation ? leadOmniHref(workspace, exactConversation) : null,
             cls: 'primary',
             disabled: !exactConversation,
-            note: exactConversation ? '' : 'немає точної розмови'
+            note: exactConversation ? '' : 'немає підтвердженої розмови'
         },
         {
             label: 'Картка клієнта',
@@ -2604,6 +2643,97 @@ function renderManagerActionStrip(workspace) {
             ${waitingConversation ? `<div class="manager-action-strip-note waiting">${escapeHtml(waitingReplyText(waitingConversation))}</div>` : ''}
             <div class="manager-action-grid">
                 ${actions.map(workspaceAction).join('')}
+            </div>
+        </section>
+    `;
+}
+
+function leadConversationTags(conversation) {
+    return [
+        conversation?.isPrimary ? workspaceBadge('Основний', 'stage') : '',
+        conversation?.isOrigin ? workspaceBadge('Джерело ліда', 'warning') : '',
+        conversation?.confidence === 'suggested' ? workspaceBadge('Непідтверджений збіг', 'warning') : ''
+    ].filter(Boolean).join('');
+}
+
+function renderConfirmedLeadConversation(workspace, conversation) {
+    const href = conversation?.available ? leadOmniHref(workspace, conversation) : null;
+    const account = conversation?.businessAccountName || 'Бізнес-акаунт не вказано';
+    const activity = conversation?.lastMessageAt
+        ? `Остання активність: ${workspaceDateTime(conversation.lastMessageAt)}`
+        : 'Активність ще не зафіксована';
+    const action = conversation?.available
+        ? workspaceLink(href, leadConversationOpenLabel(conversation), 'primary')
+        : '<span class="workspace-btn" aria-disabled="true">Діалог недоступний</span>';
+    const primaryAction = !conversation?.isPrimary && conversation?.available
+        ? `<button type="button" class="workspace-btn" onclick="makeLeadConversationPrimary(${Number(workspace.lead?.id)}, ${Number(conversation.id)})">Зробити основним</button>`
+        : '';
+    return `
+        <div class="workspace-row workspace-conversation-row">
+            <div class="workspace-row-top">
+                <div>
+                    <div class="workspace-row-title">${workspaceText(leadConversationDisplayName(conversation))}</div>
+                    <div class="workspace-row-meta">${workspaceText(leadConversationChannelLabel(conversation))} · ${workspaceText(account)}</div>
+                    <div class="workspace-row-meta">${escapeHtml(activity)}</div>
+                    ${conversation?.waitingReply ? `<div class="workspace-row-meta waiting">${escapeHtml(waitingReplyText(conversation))}</div>` : ''}
+                    ${conversation?.lastMessage ? `<div class="workspace-row-meta">${workspaceText(conversation.lastMessage)}</div>` : ''}
+                    <div class="workspace-badge-row workspace-conversation-tags">${leadConversationTags(conversation)}</div>
+                </div>
+            </div>
+            <div class="workspace-actions workspace-conversation-actions">${action}${primaryAction}</div>
+        </div>
+    `;
+}
+
+function renderSuggestedLeadConversation(conversation, leadId) {
+    const activity = conversation?.lastMessageAt
+        ? `Остання активність: ${workspaceDateTime(conversation.lastMessageAt)}`
+        : 'Активність ще не зафіксована';
+    return `
+        <div class="workspace-row workspace-conversation-row suggested">
+            <div class="workspace-row-top">
+                <div>
+                    <div class="workspace-row-title">${workspaceText(leadConversationDisplayName(conversation))}</div>
+                    <div class="workspace-row-meta">${workspaceText(leadConversationChannelLabel(conversation))} · ${escapeHtml(activity)}</div>
+                    <div class="workspace-badge-row workspace-conversation-tags">${leadConversationTags(conversation)}</div>
+                </div>
+            </div>
+            <div class="workspace-actions workspace-conversation-actions">
+                <button type="button" class="workspace-btn" onclick="openLeadConversationLinkDialog(${Number(leadId)}, ${Number(conversation.id)})">Прив’язати діалог</button>
+            </div>
+        </div>
+    `;
+}
+
+function renderLeadCommunications(workspace) {
+    const leadId = Number(workspace?.lead?.id || 0);
+    const context = workspace?.conversationContext || {};
+    const confirmed = context.confirmedLinks || workspace?.conversations || [];
+    const suggestions = context.suggestions || [];
+    const resolution = context.resolution || {};
+    const primaryConversation = exactLeadConversation(workspace);
+    const primaryAction = primaryConversation
+        ? workspaceLink(leadOmniHref(workspace, primaryConversation), leadConversationOpenLabel(primaryConversation), 'primary')
+        : (resolution.action === 'unavailable'
+            ? '<span class="workspace-btn primary" aria-disabled="true">Діалог недоступний</span>'
+            : `<button type="button" class="workspace-btn primary" onclick="openLeadConversationLinkDialog(${leadId})">${resolution.action === 'choose' ? 'Обрати діалог' : 'Прив’язати діалог'}</button>`);
+    const confirmedHtml = confirmed.length
+        ? `<div class="workspace-list">${confirmed.map(conversation => renderConfirmedLeadConversation(workspace, conversation)).join('')}</div>`
+        : '<div class="workspace-empty">Підтверджених діалогів ще немає. Прив’яжіть потрібний діалог лише після перевірки менеджером.</div>';
+    const suggestionsHtml = suggestions.length
+        ? `
+            <div class="workspace-conversation-subhead">Можливі збіги — не прив’язані</div>
+            <div class="workspace-list">${suggestions.map(conversation => renderSuggestedLeadConversation(conversation, leadId)).join('')}</div>
+        `
+        : '';
+    return `
+        <section class="workspace-section full">
+            <h3>Комунікації</h3>
+            ${confirmedHtml}
+            ${suggestionsHtml}
+            <div class="workspace-actions workspace-conversation-actions" style="justify-content:flex-start;margin-top:12px">
+                ${primaryAction}
+                <button type="button" class="workspace-btn" onclick="openLeadConversationLinkDialog(${leadId})">Прив’язати діалог</button>
             </div>
         </section>
     `;
@@ -2740,25 +2870,7 @@ function renderLeadWorkspaceContent(workspace) {
                 ${workspaceList(noteAndInteractionRows, renderWorkspaceInteractionRow, 'Взаємодій і коментарів ще немає')}
             </section>
 
-            <section class="workspace-section full">
-                <h3>Комунікації</h3>
-                ${workspaceList(workspace.conversations || [], conv => `
-                    <div class="workspace-row">
-                        <div class="workspace-row-top">
-                            <div>
-                                <div class="workspace-row-title">${workspaceText(conv.customerName || conv.customerPhone || conv.channel)}</div>
-                                <div class="workspace-row-meta">${workspaceText(conv.channel)} · ${workspaceText(conv.status)} · ${workspaceDateTime(conv.lastMessageAt)}</div>
-                                ${conv.waitingReply ? `<div class="workspace-row-meta waiting">${escapeHtml(waitingReplyText(conv))}</div>` : ''}
-                                <div class="workspace-row-meta">${workspaceText(conv.lastMessage, 'Останнього повідомлення немає')}</div>
-                            </div>
-                            <a class="workspace-row-link" href="${escapeHtml(leadOmniHref(workspace, conv))}">Omni</a>
-                        </div>
-                    </div>
-                `, 'Розмови не знайдено. Відкрийте комунікації з контекстним пошуком.')}
-                <div class="workspace-actions" style="justify-content:flex-start;margin-top:12px">
-                    ${workspaceLink(leadOmniHref(workspace), 'Відкрити комунікації', 'primary')}
-                </div>
-            </section>
+            ${renderLeadCommunications(workspace)}
         </div>
     `;
 }
@@ -5428,6 +5540,235 @@ function ensureLeadCustomerLinkModal() {
     return modal;
 }
 
+function normalizeLeadConversationOption(conversation, confidence = 'search') {
+    const id = Number(conversation?.id || 0);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    return {
+        id,
+        channel: conversation.channel || '',
+        customerName: conversation.customerName || conversation.customer_name || conversation.customerPhone || conversation.customer_phone || '',
+        lastMessageAt: conversation.lastMessageAt || conversation.last_message_at || null,
+        lastMessage: conversation.lastMessage || conversation.last_message || '',
+        status: conversation.status || '',
+        confidence
+    };
+}
+
+function mergeLeadConversationOptions(conversations, confidence = 'search') {
+    const byId = new Map(leadConversationLinkState.options.map(item => [item.id, item]));
+    (conversations || []).map(item => normalizeLeadConversationOption(item, confidence)).filter(Boolean).forEach(item => {
+        const existing = byId.get(item.id);
+        byId.set(item.id, existing?.confidence === 'suggested' ? existing : item);
+    });
+    leadConversationLinkState.options = Array.from(byId.values())
+        .sort((a, b) => Number(b.lastMessageAt ? new Date(b.lastMessageAt) : 0) - Number(a.lastMessageAt ? new Date(a.lastMessageAt) : 0));
+}
+
+function leadConversationOptionLabel(conversation) {
+    const parts = [
+        leadConversationDisplayName(conversation),
+        leadConversationChannelLabel(conversation),
+        conversation.lastMessageAt ? `активність ${workspaceDateTime(conversation.lastMessageAt)}` : null,
+        conversation.confidence === 'suggested' ? 'непідтверджений збіг' : null
+    ].filter(Boolean);
+    return parts.join(' · ');
+}
+
+function ensureLeadConversationLinkModal() {
+    let modal = document.getElementById('leadConversationLinkModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'leadConversationLinkModal';
+    modal.className = 'lead-modal-overlay hidden';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'leadConversationLinkTitle');
+    modal.innerHTML = `
+        <div class="lead-modal lead-customer-link-modal">
+            <h2 id="leadConversationLinkTitle">Прив’язати діалог</h2>
+            <p class="lead-customer-link-hint" id="leadConversationLinkHint">Оберіть діалог свідомо. Можливі збіги не стають підтвердженими без цієї дії.</p>
+            <div class="form-group">
+                <label for="leadConversationSearch">Пошук діалогів</label>
+                <input type="search" id="leadConversationSearch" placeholder="Ім’я, номер або текст розмови" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="leadConversationSelect">Діалог</label>
+                <select id="leadConversationSelect" aria-describedby="leadConversationLinkPreview">
+                    <option value="">Завантаження діалогів...</option>
+                </select>
+            </div>
+            <div class="lead-customer-link-preview is-empty" id="leadConversationLinkPreview" role="status">Діалог ще не вибрано.</div>
+            <div class="modal-btns">
+                <button type="button" class="btn-cancel" id="leadConversationLinkCancel">Скасувати</button>
+                <button type="button" class="btn-save" id="leadConversationLinkSubmit">Прив’язати діалог</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', event => {
+        if (event.target === modal) closeLeadConversationLinkDialog();
+    });
+    modal.querySelector('#leadConversationLinkCancel')?.addEventListener('click', closeLeadConversationLinkDialog);
+    modal.querySelector('#leadConversationLinkSubmit')?.addEventListener('click', submitLeadConversationLink);
+    modal.querySelector('#leadConversationSelect')?.addEventListener('change', renderLeadConversationLinkPreview);
+    modal.querySelector('#leadConversationSearch')?.addEventListener('input', event => {
+        clearTimeout(leadConversationLinkState.searchTimer);
+        leadConversationLinkState.searchTimer = setTimeout(() => loadLeadConversationLinkOptions(event.target.value), 300);
+    });
+    leadConversationLinkState.modal = modal;
+    return modal;
+}
+
+function renderLeadConversationLinkOptions(selectedId = '') {
+    const select = document.getElementById('leadConversationSelect');
+    if (!select) return;
+    const options = leadConversationLinkState.options;
+    if (!options.length) {
+        select.innerHTML = '<option value="">Нічого не знайдено</option>';
+        renderLeadConversationLinkPreview();
+        return;
+    }
+    select.innerHTML = '<option value="">Оберіть діалог</option>' + options.map(conversation =>
+        `<option value="${conversation.id}"${String(conversation.id) === String(selectedId) ? ' selected' : ''}>${escapeHtml(leadConversationOptionLabel(conversation))}</option>`
+    ).join('');
+    renderLeadConversationLinkPreview();
+}
+
+function renderLeadConversationLinkPreview() {
+    const preview = document.getElementById('leadConversationLinkPreview');
+    const select = document.getElementById('leadConversationSelect');
+    if (!preview || !select) return;
+    const conversation = leadConversationLinkState.options.find(item => item.id === Number(select.value || 0));
+    if (!conversation) {
+        preview.className = 'lead-customer-link-preview is-empty';
+        preview.textContent = 'Діалог ще не вибрано.';
+        return;
+    }
+    preview.className = 'lead-customer-link-preview';
+    preview.innerHTML = `<strong>${escapeHtml(leadConversationDisplayName(conversation))}</strong><span>${escapeHtml(leadConversationChannelLabel(conversation))}${conversation.lastMessageAt ? ' · ' + escapeHtml(workspaceDateTime(conversation.lastMessageAt)) : ''}${conversation.confidence === 'suggested' ? ' · непідтверджений збіг' : ''}</span>`;
+}
+
+async function loadLeadConversationLinkOptions(query = '') {
+    const select = document.getElementById('leadConversationSelect');
+    const leadId = leadConversationLinkState.leadId;
+    const requestSeq = ++leadConversationLinkState.searchSeq;
+    if (!select || !leadId) return;
+    const trimmed = String(query || '').trim();
+    if (!trimmed) {
+        renderLeadConversationLinkOptions();
+        return;
+    }
+    select.innerHTML = '<option value="">Пошук діалогів...</option>';
+    try {
+        const params = new URLSearchParams({ search: trimmed, limit: '20' });
+        const res = await apiFetch(leadOmniApiUrl(`/api/omni/conversations?${params}`));
+        const data = res ? await res.json() : null;
+        if (requestSeq !== leadConversationLinkState.searchSeq || leadId !== leadConversationLinkState.leadId) return;
+        if (!res?.ok || !data?.success) throw new Error(data?.error || 'Не вдалося знайти діалоги');
+        const conversations = data?.data?.conversations || [];
+        leadConversationLinkState.options = leadConversationLinkState.options.filter(item => item.confidence === 'suggested');
+        mergeLeadConversationOptions(conversations);
+        renderLeadConversationLinkOptions();
+    } catch (error) {
+        if (requestSeq !== leadConversationLinkState.searchSeq) return;
+        select.innerHTML = '<option value="">Помилка пошуку діалогів</option>';
+        if (typeof showNotification === 'function') showNotification(error.message || 'Не вдалося знайти діалоги', 'error');
+    }
+}
+
+function closeLeadConversationLinkDialog() {
+    clearTimeout(leadConversationLinkState.searchTimer);
+    leadConversationLinkState.searchSeq += 1;
+    const modal = document.getElementById('leadConversationLinkModal');
+    if (modal && typeof closeModal === 'function') closeModal(modal, { hide: el => el.classList.remove('active') });
+    else modal?.classList.remove('active');
+}
+
+async function openLeadConversationLinkDialog(leadId, suggestedConversationId = null) {
+    if (!guardLeadWrite('прив’язувати діалог до ліда')) return;
+    const workspace = currentWorkspaceData?.lead?.id === Number(leadId) ? currentWorkspaceData : null;
+    if (!workspace) return;
+    const modal = ensureLeadConversationLinkModal();
+    leadConversationLinkState.leadId = Number(leadId);
+    leadConversationLinkState.workspaceSeq = workspaceRequestSeq;
+    leadConversationLinkState.options = [];
+    leadConversationLinkState.actionInFlight = false;
+    const suggestions = workspace.conversationContext?.suggestions || [];
+    mergeLeadConversationOptions(suggestions, 'suggested');
+    const input = modal.querySelector('#leadConversationSearch');
+    const hint = modal.querySelector('#leadConversationLinkHint');
+    if (hint) hint.textContent = suggestions.length
+        ? 'Можливі збіги позначені окремо. Перевірте канал і клієнта перед підтвердженням зв’язку.'
+        : 'Знайдіть діалог і підтвердьте зв’язок лише після перевірки менеджером.';
+    if (input) input.value = '';
+    renderLeadConversationLinkOptions(suggestedConversationId || '');
+    if (typeof openModal === 'function') {
+        openModal(modal, document.activeElement, {
+            show: el => el.classList.remove('hidden') || el.classList.add('active'),
+            hide: el => el.classList.remove('active'),
+            initialFocus: '#leadConversationSearch',
+            onRequestClose: closeLeadConversationLinkDialog
+        });
+    } else {
+        modal.classList.add('active');
+        setTimeout(() => input?.focus(), 0);
+    }
+}
+
+async function submitLeadConversationLink() {
+    if (leadConversationLinkState.actionInFlight) return;
+    const select = document.getElementById('leadConversationSelect');
+    const conversationId = Number(select?.value || 0);
+    const leadId = leadConversationLinkState.leadId;
+    if (!Number.isInteger(conversationId) || conversationId <= 0) {
+        if (typeof showNotification === 'function') showNotification('Оберіть діалог зі списку', 'error');
+        select?.focus();
+        return;
+    }
+    leadConversationLinkState.actionInFlight = true;
+    const submit = document.getElementById('leadConversationLinkSubmit');
+    if (submit) submit.disabled = true;
+    try {
+        const res = await apiFetch(`/api/leads/${leadId}/conversation-links`, {
+            method: 'POST',
+            body: JSON.stringify(leadPayload({ conversationId }))
+        });
+        const data = res ? await res.json() : null;
+        if (!res?.ok || !data?.success) throw new Error(data?.error || 'Не вдалося прив’язати діалог');
+        closeLeadConversationLinkDialog();
+        if (typeof showNotification === 'function') showNotification('Діалог підтверджено для цього ліда.', 'success');
+        if (workspaceLeadId === leadId && leadConversationLinkState.workspaceSeq === workspaceRequestSeq) {
+            await openLeadWorkspace(leadId, { pushState: false });
+        }
+    } catch (error) {
+        if (typeof showNotification === 'function') showNotification(error.message || 'Не вдалося прив’язати діалог', 'error');
+    } finally {
+        leadConversationLinkState.actionInFlight = false;
+        if (submit) submit.disabled = false;
+    }
+}
+
+async function makeLeadConversationPrimary(leadId, conversationId) {
+    const actionKey = `${leadId}:${conversationId}`;
+    if (leadConversationLinkState.actionInFlight) return;
+    leadConversationLinkState.actionInFlight = true;
+    try {
+        const res = await apiFetch(`/api/leads/${leadId}/conversation-links/${conversationId}/make-primary`, {
+            method: 'POST',
+            body: JSON.stringify(leadPayload({}))
+        });
+        const data = res ? await res.json() : null;
+        if (!res?.ok || !data?.success) throw new Error(data?.error || 'Не вдалося змінити основний діалог');
+        if (typeof showNotification === 'function') showNotification('Основний діалог оновлено. Джерело ліда не змінено.', 'success');
+        if (workspaceLeadId === Number(leadId)) await openLeadWorkspace(leadId, { pushState: false });
+    } catch (error) {
+        console.error('Make lead conversation primary error', actionKey, error);
+        if (typeof showNotification === 'function') showNotification(error.message || 'Не вдалося змінити основний діалог', 'error');
+    } finally {
+        leadConversationLinkState.actionInFlight = false;
+    }
+}
+
 function normalizeLeadCustomerOption(customer) {
     if (!customer || !customer.id) return null;
     return {
@@ -5633,6 +5974,8 @@ window.createLeadWorkspaceFollowUpTask = createLeadWorkspaceFollowUpTask;
 window.completeLeadWorkspaceTask = completeLeadWorkspaceTask;
 window.confirmLeadWorkspaceBooking = confirmLeadWorkspaceBooking;
 window.openLeadCustomerCard = openLeadCustomerCard;
+window.openLeadConversationLinkDialog = openLeadConversationLinkDialog;
+window.makeLeadConversationPrimary = makeLeadConversationPrimary;
 window.linkWorkspaceLeadCustomer = linkWorkspaceLeadCustomer;
 window.closeLeadCustomerLinkModal = closeLeadCustomerLinkModal;
 window.moveLeadWorkspaceStage = moveLeadWorkspaceStage;

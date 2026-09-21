@@ -25,16 +25,14 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
 const { authenticateToken, canUseAction, requireRole, requireMinRole } = require('../middleware/auth');
+const { resolveCapability } = require('../services/accountAccessPolicy');
+const { resolveLeadConversationContext } = require('../services/leadConversationResolver');
+const { linkLeadConversation, setLeadPrimaryConversation } = require('../services/leadConversationLinks');
 const { redactRevenueFieldKeys } = require('../services/revenueAccessPolicy');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { buildTaskVisibilityScope } = require('../services/taskPolicy');
 const { getAssignableTaskOwner } = require('../services/taskExecution');
 const { businessUserAccessSql } = require('../services/businessUserAccess');
-const {
-    booleanValue,
-    deriveReplySlaState,
-    isActiveWaitingReply
-} = require('../services/replySla');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     normalizeBusinessContext,
@@ -3753,6 +3751,94 @@ router.get('/:id/booking-context', async (req, res) => {
     }
 });
 
+function omniAvailableForLeadWorkspace(user) {
+    return resolveCapability(user, '/omni', { type: 'page' }).allowed;
+}
+
+async function leadConversationContextResponse(req, res, leadId, businessContext, lead = null) {
+    return resolveLeadConversationContext({
+        leadId,
+        businessContext,
+        lead,
+        omniAvailable: omniAvailableForLeadWorkspace(req.user),
+        limit: req.query?.conversationLimit,
+    });
+}
+
+// GET /api/leads/:id/conversation-context — canonical confirmed links and separate suggestions.
+router.get('/:id/conversation-context', async (req, res) => {
+    try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        const leadId = parseInt(req.params.id, 10);
+        if (!Number.isInteger(leadId) || leadId <= 0) {
+            return res.status(400).json({ success: false, error: 'Некоректний ID ліда' });
+        }
+        const context = await leadConversationContextResponse(req, res, leadId, businessContext);
+        return res.json({ success: true, context });
+    } catch (err) {
+        if (err.status) return res.status(err.status).json({ success: false, error: err.message, code: err.code || null });
+        log.error('GET /leads/:id/conversation-context error', err);
+        return res.status(500).json({ success: false, error: 'Помилка завантаження контексту діалогів' });
+    }
+});
+
+// POST /api/leads/:id/conversation-links — manager-confirmed link only; suggestions are never promoted automatically.
+router.post('/:id/conversation-links', async (req, res) => {
+    try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        if (!omniAvailableForLeadWorkspace(req.user)) {
+            return res.status(403).json({ success: false, error: 'Немає доступу до Omni' });
+        }
+        const leadId = parseInt(req.params.id, 10);
+        const conversationId = parseInt(req.body?.conversationId ?? req.body?.conversation_id, 10);
+        if (!Number.isInteger(leadId) || leadId <= 0 || !Number.isInteger(conversationId) || conversationId <= 0) {
+            return res.status(400).json({ success: false, error: 'Некоректний ID ліда або діалогу' });
+        }
+        const link = await linkLeadConversation({
+            businessContext,
+            leadId,
+            conversationId,
+            source: 'lead_workspace_manual',
+            createdBy: req.user?.id || null,
+        });
+        return res.status(201).json({ success: true, link });
+    } catch (err) {
+        if (err.status) return res.status(err.status).json({ success: false, error: err.message, code: err.code || null });
+        log.error('POST /leads/:id/conversation-links error', err);
+        return res.status(500).json({ success: false, error: 'Не вдалося прив’язати діалог' });
+    }
+});
+
+// POST /api/leads/:id/conversation-links/:conversationId/make-primary — preserves origin history.
+router.post('/:id/conversation-links/:conversationId/make-primary', async (req, res) => {
+    try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        if (!omniAvailableForLeadWorkspace(req.user)) {
+            return res.status(403).json({ success: false, error: 'Немає доступу до Omni' });
+        }
+        const leadId = parseInt(req.params.id, 10);
+        const conversationId = parseInt(req.params.conversationId, 10);
+        if (!Number.isInteger(leadId) || leadId <= 0 || !Number.isInteger(conversationId) || conversationId <= 0) {
+            return res.status(400).json({ success: false, error: 'Некоректний ID ліда або діалогу' });
+        }
+        const link = await setLeadPrimaryConversation({
+            businessContext,
+            leadId,
+            conversationId,
+            source: 'lead_workspace_manual_primary',
+            createdBy: req.user?.id || null,
+        });
+        return res.json({ success: true, link });
+    } catch (err) {
+        if (err.status) return res.status(err.status).json({ success: false, error: err.message, code: err.code || null });
+        log.error('POST /leads/:id/conversation-links/:conversationId/make-primary error', err);
+        return res.status(500).json({ success: false, error: 'Не вдалося змінити основний діалог' });
+    }
+});
+
 
 // GET /api/leads/:id/workspace — unified manager workspace case composition
 router.get('/:id/workspace', shapeRevenueResponse, async (req, res) => {
@@ -3960,47 +4046,7 @@ router.get('/:id/workspace', shapeRevenueResponse, async (req, res) => {
             `, [customerId])
             : { rows: [] };
 
-        const conversationConditions = [];
-        const conversationParams = [];
-        if (customerId) {
-            conversationParams.push(customerId);
-            conversationConditions.push(`c.customer_id = $${conversationParams.length}`);
-        }
-        if (phoneDigits) {
-            conversationParams.push(phoneDigits);
-            conversationConditions.push(`regexp_replace(COALESCE(c.customer_phone, ''), '\\D', '', 'g') = $${conversationParams.length}`);
-        }
-        if (lead.clientName) {
-            conversationParams.push(`%${lead.clientName}%`);
-            conversationConditions.push(`c.customer_name ILIKE $${conversationParams.length}`);
-        }
-        conversationParams.push(businessContext);
-        const conversationBusinessRef = `$${conversationParams.length}`;
-        const conversationsResult = conversationConditions.length > 0
-            ? await optionalWorkspaceQuery(`
-                SELECT c.id, c.channel, c.customer_name, c.customer_phone, c.customer_id, c.status,
-                       c.assigned_to, c.unread_count, c.last_message_at, c.updated_at,
-                       c.last_inbound_at, c.last_outbound_at,
-                       c.reply_expected, c.awaiting_reply_since, c.reply_expected_message_id,
-                       c.reply_owner, c.reply_owner_user_id, c.reply_sla_at,
-                       expected_msg.delivery_status AS reply_expected_delivery_status,
-                       m.content AS last_message
-                FROM conversations c
-                LEFT JOIN conversation_messages expected_msg ON expected_msg.id = c.reply_expected_message_id
-                  AND expected_msg.conversation_id = c.id
-                LEFT JOIN LATERAL (
-                    SELECT content
-                    FROM conversation_messages
-                    WHERE conversation_id = c.id
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                ) m ON true
-                WHERE (${conversationConditions.join(' OR ')})
-                  AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = ${conversationBusinessRef}
-                ORDER BY c.last_message_at DESC NULLS LAST, c.updated_at DESC
-                LIMIT 8
-            `, conversationParams)
-            : { rows: [] };
+        const conversationContext = await leadConversationContextResponse(req, res, leadId, businessContext, rawLead);
 
         const eventDates = [
             lead.eventDate,
@@ -4033,30 +4079,8 @@ router.get('/:id/workspace', shapeRevenueResponse, async (req, res) => {
                 tasks,
                 interactions: interactionsResult.rows,
                 communications: communicationsResult.rows,
-                conversations: conversationsResult.rows.map(c => ({
-                    id: c.id,
-                    channel: c.channel,
-                    customerName: c.customer_name,
-                    customerPhone: c.customer_phone,
-                    customerId: c.customer_id,
-                    confidence: customerId && Number(c.customer_id) === Number(customerId) ? 'exact' : 'suggested',
-                    status: c.status,
-                    assignedTo: c.assigned_to,
-                    unreadCount: c.unread_count,
-                    lastMessageAt: c.last_message_at,
-                    lastInboundAt: c.last_inbound_at,
-                    lastOutboundAt: c.last_outbound_at,
-                    replyExpected: booleanValue(c.reply_expected),
-                    awaitingReplySince: c.awaiting_reply_since,
-                    replyExpectedMessageId: c.reply_expected_message_id,
-                    replyOwner: c.reply_owner,
-                    replyOwnerUserId: c.reply_owner_user_id || null,
-                    replySlaAt: c.reply_sla_at,
-                    replySlaState: deriveReplySlaState(c),
-                    waitingReply: isActiveWaitingReply(c),
-                    replyDeliveryStatus: c.reply_expected_delivery_status,
-                    lastMessage: c.last_message
-                })),
+                conversationContext,
+                conversations: conversationContext.confirmedLinks,
                 urgency: {
                     eventDate: nextEventDate,
                     daysUntilEvent: calculateDaysUntil(nextEventDate),

@@ -19,6 +19,7 @@ function clearModules() {
     [
         '../db',
         '../services/omni-hub',
+        '../services/leadConversationLinks',
         '../services/kleshnya-chat',
         '../services/websocket',
         '../services/telegram',
@@ -31,7 +32,7 @@ function clearModules() {
     });
 }
 
-function loadHubWithQuery(query) {
+function loadHubWithQuery(query, confirmedLinks = []) {
     clearModules();
     installMock('../db', { pool: { query } });
     installMock('../services/kleshnya-chat', { generateChatResponse: async () => '' });
@@ -41,6 +42,7 @@ function loadHubWithQuery(query) {
     installMock('../services/omni-sms', { sendSMS: async () => ({ success: true }) });
     installMock('../services/omni-facebook', { sendFacebook: async () => ({ success: true }) });
     installMock('../services/omni-instagram', { sendInstagram: async () => ({ success: true }) });
+    installMock('../services/leadConversationLinks', { listConversationLeadLinks: async () => confirmedLinks });
     return require('../services/omni-hub');
 }
 
@@ -108,6 +110,34 @@ describe('Omni Case Link v1', () => {
         assert.equal(context.suggestedLinks.leadWorkspace, '/sales-funnel?lead=502');
     });
 
+    it('returns every canonical lead linked to a conversation without trusting its latest legacy meta lead', async () => {
+        const hub = loadHubWithQuery(async (sql, params = []) => {
+            const text = String(sql).replace(/\s+/g, ' ').trim();
+            assertBusinessScope(text, params, 'maysternya_doli');
+            if (/SELECT \* FROM conversations WHERE id = \$1 /i.test(text)) {
+                return {
+                    rows: [{
+                        id: params[0], business_context: 'maysternya_doli', channel: 'instagram', external_id: 'ig-1',
+                        customer_name: '', customer_phone: '', customer_id: null, status: 'open', meta: { lead_id: 999 }
+                    }]
+                };
+            }
+            if (/FROM leads l LEFT JOIN users u ON l\.assigned_to = u\.id WHERE l\.id = \$1 /i.test(text)) {
+                return { rows: [{ id: params[0], client_name: `Lead ${params[0]}`, pipeline_stage: 'new', status: 'new', booking_id: null }] };
+            }
+            throw new Error(`Unexpected query: ${text}`);
+        }, [
+            { id: 71, leadId: 501, isOrigin: true, isPrimary: true, source: 'omni_lead_manual' },
+            { id: 72, leadId: 502, isOrigin: false, isPrimary: false, source: 'lead_workspace_manual' },
+        ]);
+
+        const context = await hub.resolveConversationContext(905, { businessContext: 'maysternya_doli' });
+        assert.deepEqual(context.confirmed.leads.map(item => item.lead.id), [501, 502]);
+        assert.equal(context.exact.lead.id, 501);
+        assert.ok(context.reasons.includes('lead_conversation_links'));
+        assert.equal(context.reasons.includes('conversation.meta.lead_id'), false);
+    });
+
     it('wires exact Omni URL state and lead workspace exact handoff in static UI', () => {
         const repoRoot = path.resolve(__dirname, '..');
         const omniHtml = fs.readFileSync(path.join(repoRoot, 'omni.html'), 'utf8');
@@ -124,14 +154,28 @@ describe('Omni Case Link v1', () => {
         };
         vm.createContext(linkContext);
         vm.runInContext(leadsPage.slice(leadsPage.indexOf('function leadCrmContextHref('), leadsPage.indexOf('function leadContactLinks(')), linkContext);
-        const href = linkContext.leadOmniHref({ lead: { businessContext: 'maysternya_doli' } }, { id: 903 });
+        const href = linkContext.leadOmniHref({
+            lead: { businessContext: 'maysternya_doli' },
+            conversationContext: { confirmedLinks: [{ id: 903, confidence: 'confirmed', available: true }] }
+        }, { id: 903 });
         const url = new URL(href, 'https://crm.example.test');
         assert.equal(url.pathname, '/omni');
         assert.equal(url.searchParams.get('conversation'), '903');
         assert.equal(url.searchParams.get('businessContext'), 'maysternya_doli');
         assert.match(leadsPage, /leadOmniHref/);
+        assert.match(leadsPage, /leadConversationOpenLabel/);
+        assert.match(leadsPage, /Прив’язати діалог/);
+        assert.match(leadsPage, /makeLeadConversationPrimary/);
+        assert.match(leadsPage, /\/api\/omni\/conversations\?/);
         assert.match(leadsPage, /waitingReplyConversation/);
         assert.match(leadsPage, /workspaceBadge\(waitingReplyText\(waitingConversation\), 'waiting'\)/);
         assert.match(leadsPage, /manager-action-strip-note waiting/);
+    });
+
+    it('renders confirmed Omni lead links as manager-selectable entries', () => {
+        const omniHtml = fs.readFileSync(path.resolve(__dirname, '..', 'omni.html'), 'utf8');
+        assert.match(omniHtml, /context\.confirmed\?\.leads/);
+        assert.match(omniHtml, /omni-case-confirmed-lead/);
+        assert.match(omniHtml, /Відкрити звернення/);
     });
 });

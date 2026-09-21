@@ -227,6 +227,45 @@ function createConversationFixture(overrides = {}) {
     };
 }
 
+function canonicalLinkResponse(text, params = [], options = {}) {
+    if (/FROM lead_conversation_links[\s\S]*JOIN leads/i.test(text)) return { rows: [] };
+    if (/pg_advisory_xact_lock/i.test(text)) return { rows: [] };
+    if (/FROM leads l[\s\S]*JOIN conversations c/i.test(text)) {
+        return { rows: [{ lead_id: params[1], conversation_id: params[2] }] };
+    }
+    if (/INSERT INTO lead_conversation_links/i.test(text)) {
+        if (options.failOnInsert) throw new Error('synthetic canonical link failure');
+        return {
+            rows: [{
+                id: 901,
+                business_context: params[0],
+                lead_id: params[1],
+                conversation_id: params[2],
+                source: params[3],
+                metadata: JSON.parse(params[4]),
+                is_origin: false,
+                is_primary: false,
+            }]
+        };
+    }
+    if (/UPDATE lead_conversation_links/i.test(text) && /SET is_origin = FALSE|SET is_primary = FALSE/i.test(text)) return { rows: [] };
+    if (/UPDATE lead_conversation_links/i.test(text) && /SET is_origin = TRUE|SET is_primary = TRUE/i.test(text)) {
+        return {
+            rows: [{
+                id: 901,
+                business_context: params[0],
+                lead_id: params[1],
+                conversation_id: params[2],
+                source: 'omni_test',
+                metadata: {},
+                is_origin: true,
+                is_primary: true,
+            }]
+        };
+    }
+    return null;
+}
+
 function omniPreviewRaw(overrides = {}) {
     const draft = {
         clientName: null,
@@ -380,6 +419,8 @@ test('creates a reviewed Omni draft atomically with owner and event preference',
         async query(text, params = []) {
             clientQueries.push({ text, params });
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            const canonical = canonicalLinkResponse(text, params);
+            if (canonical) return canonical;
             if (/FROM conversations/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [conversation] };
             if (/FROM leads/i.test(text) && /external_id = \$3/i.test(text)) return { rows: [] };
             if (/FROM users/i.test(text) && /\(username = \$1 OR name = \$1\)/i.test(text)) return { rows: [{ id: 12 }] };
@@ -437,6 +478,13 @@ test('creates a reviewed Omni draft atomically with owner and event preference',
     assert.equal(result.lead.eventPreference.preferredDate, '2026-06-14');
     assert.equal(result.lead.eventPreference.adultsCount, 4);
     assert.match(result.lead.notes, /Любить динозаврів/);
+    const leadInsertIndex = clientQueries.findIndex(query => /INSERT INTO leads/i.test(query.text));
+    const linkInsertIndex = clientQueries.findIndex(query => /INSERT INTO lead_conversation_links/i.test(query.text));
+    const preferenceInsertIndex = clientQueries.findIndex(query => /INSERT INTO lead_event_preferences/i.test(query.text));
+    const legacyMetaIndex = clientQueries.findIndex(query => /UPDATE conversations/i.test(query.text));
+    assert.ok(linkInsertIndex > leadInsertIndex);
+    assert.ok(linkInsertIndex < preferenceInsertIndex);
+    assert.ok(linkInsertIndex < legacyMetaIndex);
     assert.ok(clientQueries.some(query => query.text === 'COMMIT'));
     assert.ok(!clientQueries.some(query => query.text === 'ROLLBACK'));
 }));
@@ -451,8 +499,10 @@ test('returns the existing Omni lead when insert loses the unique-source race', 
         throw new Error(`Unexpected pool query: ${text}`);
     });
     fake.setConnect(async () => ({
-        async query(text) {
+        async query(text, params = []) {
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            const canonical = canonicalLinkResponse(text, params);
+            if (canonical) return canonical;
             if (/FROM conversations/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [conversation] };
             if (/FROM leads/i.test(text) && /external_id = \$3/i.test(text)) {
                 externalLookupCount += 1;
@@ -475,6 +525,45 @@ test('returns the existing Omni lead when insert loses the unique-source race', 
     assert.equal(result.lead.id, 777);
 }));
 
+test('uses a canonical Omni link before legacy conversation metadata', withFakeOmniPool(async fake => {
+    const conversation = createConversationFixture({ meta: { lead_id: 501, leadIds: [501] } });
+    const canonicalLead = { id: 777, business_context: 'event_genix', source_channel: 'telegram', external_id: 'omni_conv_77' };
+    let leadInsertAttempted = false;
+    fake.setQuery(async (text) => {
+        if (/SELECT \* FROM conversations WHERE id = \$1/i.test(text)) return { rows: [conversation] };
+        if (/FROM conversation_messages/i.test(text)) return { rows: [] };
+        throw new Error(`Unexpected pool query: ${text}`);
+    });
+    fake.setConnect(async () => ({
+        async query(text, params = []) {
+            if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (/FROM lead_conversation_links[\s\S]*JOIN leads/i.test(text)) return { rows: [canonicalLead] };
+            const canonical = canonicalLinkResponse(text, params);
+            if (canonical) return canonical;
+            if (/FROM conversations/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [conversation] };
+            if (/FROM leads/i.test(text) && /WHERE id = \$1/i.test(text)) {
+                throw new Error('legacy metadata must not decide when canonical links exist');
+            }
+            if (/INSERT INTO leads/i.test(text)) {
+                leadInsertAttempted = true;
+                return { rows: [] };
+            }
+            if (/UPDATE conversations/i.test(text)) return { rows: [], rowCount: 1 };
+            throw new Error(`Unexpected client query: ${text}`);
+        },
+        release() {}
+    }));
+
+    const result = await createLeadFromConversation(77, null, {
+        businessContext: 'event_genix',
+        leadDraft: { clientName: 'Олена' }
+    });
+
+    assert.equal(result.created, false);
+    assert.equal(result.lead.id, 777);
+    assert.equal(leadInsertAttempted, false);
+}));
+
 test('creates an explicit new opportunity lead in the same Omni conversation', withFakeOmniPool(async fake => {
     const conversation = createConversationFixture({
         meta: {
@@ -494,6 +583,8 @@ test('creates an explicit new opportunity lead in the same Omni conversation', w
         async query(text, params = []) {
             clientQueries.push({ text, params });
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            const canonical = canonicalLinkResponse(text, params);
+            if (canonical) return canonical;
             if (/FROM conversations/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [conversation] };
             if (/FROM leads/i.test(text) && /WHERE id = \$1/i.test(text)) {
                 throw new Error('new opportunity must not return the currently linked lead before insert');
@@ -575,6 +666,8 @@ test('repeated explicit new opportunity creation returns the same lead after uni
     fake.setConnect(async () => ({
         async query(text, params = []) {
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            const canonical = canonicalLinkResponse(text, params);
+            if (canonical) return canonical;
             if (/FROM conversations/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [conversation] };
             if (/FROM users/i.test(text)) return { rows: [{ id: 12 }] };
             if (/INSERT INTO leads/i.test(text)) return { rows: [] };
@@ -624,11 +717,13 @@ test('rolls back the Omni lead insert when conversation linking fails', withFake
         async query(text, params = []) {
             clientQueries.push({ text, params });
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            const canonical = canonicalLinkResponse(text, params, { failOnInsert: true });
+            if (canonical) return canonical;
             if (/FROM conversations/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [conversation] };
             if (/FROM leads/i.test(text) && /external_id = \$3/i.test(text)) return { rows: [] };
             if (/FROM users/i.test(text)) return { rows: [] };
             if (/INSERT INTO leads/i.test(text)) return { rows: [{ id: 501, business_context: 'event_genix' }] };
-            if (/UPDATE conversations/i.test(text)) throw new Error('synthetic link failure');
+            if (/UPDATE conversations/i.test(text)) throw new Error('synthetic legacy metadata failure');
             throw new Error(`Unexpected client query: ${text}`);
         },
         release() {}
@@ -639,7 +734,7 @@ test('rolls back the Omni lead insert when conversation linking fails', withFake
             businessContext: 'event_genix',
             leadDraft: { clientName: 'Олена' }
         }),
-        /synthetic link failure/
+        /synthetic canonical link failure/
     );
     assert.ok(clientQueries.some(query => query.text === 'ROLLBACK'));
     assert.ok(!clientQueries.some(query => query.text === 'COMMIT'));

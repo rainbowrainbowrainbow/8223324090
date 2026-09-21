@@ -266,7 +266,9 @@ describe('operations flow static contracts', () => {
         assert.match(customersRoute, /function normalizeCustomerPayload/);
         assert.match(customersRoute, /Дата народження має бути у форматі YYYY-MM-DD/);
         assert.match(leadsPage, /linkWorkspaceLeadCustomer/);
-        assert.match(leadsPage, /Telegram у CRM/);
+        assert.match(leadsPage, /function leadConversationOpenLabel/);
+        assert.match(leadsPage, /conversation: selected\.id/);
+        assert.doesNotMatch(leadsPage, /Telegram у CRM/);
         assert.match(customersPage, /function customerHubDialogTarget/);
         assert.match(customersPage, /customerHubDialogIcon\(dialogTarget\)/);
         assert.match(customersPage, /links\.omniExact/);

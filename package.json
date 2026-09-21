@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.203",
+  "version": "0.81.204",
   "eventGenix": {
-    "releaseLabel": "Omni: контрастні підкладки Instagram і WhatsApp"
+    "releaseLabel": "Телефонія: Binotel workspace"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

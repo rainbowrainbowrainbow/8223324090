@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.204 - Телефонія: Binotel workspace
+
+### Release / Versioning / (21.09.2026) [codex]
+- **Телефонія: Binotel workspace** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.203 - Omni: контрастні підкладки Instagram і WhatsApp
 
 ### Release / Versioning / (20.09.2026) [codex]

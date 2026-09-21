@@ -1353,15 +1353,20 @@ async function recheckOmniConnection(channel, user = {}, options = {}) {
     updatedRow = result.rows[0] || row;
   }
 
-  const account = applyVerifiedDirections(
+  let account = applyVerifiedDirections(
     statusFromRowOrEnv(def, updatedRow, new Date(), scopedOptions),
     check
   );
   await require('./omni-health').saveCheck(def.channel, businessContext, check);
+  if (def.channel === 'whatsapp') {
+    [account] = await require('./omni-health').attachHealth([account], businessContext);
+  }
   return {
     account,
-    result: safeVerificationResult(check),
-    message: messageForVerification(def, check, options.mode === 'test' ? 'Тест виконано.' : 'Статус перевірено.'),
+    result: safeVerificationResult(def.channel === 'whatsapp' && account.receiveCapable
+      ? { ...check, status: 'success', warning: null, message: account.nextActionHint } : check),
+    message: def.channel === 'whatsapp' ? account.warning || account.nextActionHint
+      : messageForVerification(def, check, options.mode === 'test' ? 'Тест виконано.' : 'Статус перевірено.'),
   };
 }
 

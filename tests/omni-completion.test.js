@@ -77,6 +77,44 @@ test('Telegram current webhook failure is limited, recovered historical error is
   assert.equal((await verify()).status, 'success');
 });
 
+test('WhatsApp recheck response and following status read retain accepted inbound evidence', async t => {
+  const previousUrl = process.env.PUBLIC_APP_URL;
+  process.env.PUBLIC_APP_URL = 'https://crm.test';
+  t.after(() => { if (previousUrl === undefined) delete process.env.PUBLIC_APP_URL; else process.env.PUBLIC_APP_URL = previousUrl; });
+  const row = { channel: 'whatsapp', business_context: 'event_genix', status: 'limited',
+    last_changed_at: '2026-09-17T10:00:00Z', credentials: { values: { phoneNumberId: 'fixture-phone',
+      wabaId: 'fixture-waba', accessToken: 'fixture-token', appSecret: 'fixture-secret', verifyToken: 'fixture-verify' } } };
+  const healthRow = { channel: 'whatsapp', last_inbound_at: '2026-09-18T10:00:00Z' };
+  mock('../db', { pool: { query: async (sql, values) => {
+    if (sql.includes('INSERT INTO omni_channel_health')) {
+      assert.equal(values[0], 'event_genix');
+      healthRow.checked_at = new Date(); healthRow.check_result = JSON.parse(values[2]); return { rows: [] };
+    }
+    if (sql.includes('SELECT * FROM omni_channel_health')) return { rows: [healthRow] };
+    if (sql.includes('omni_provider_connections')) {
+      assert.equal(values[sql.includes('UPDATE') ? 10 : 1], 'event_genix');
+      return { rows: [row] };
+    }
+    throw new Error('Unexpected fixture query');
+  } } });
+  fresh('../services/omni-health');
+  const accounts = fresh('../services/omni-accounts');
+  fakeHttps(t, options => {
+    assert.equal(options.method, 'GET');
+    assert.match(options.path, /fixture-phone\?fields=/);
+    return { id: 'fixture-phone' };
+  });
+  for (let i = 0; i < 2; i++) {
+    const checked = await accounts.recheckOmniConnection('whatsapp', {}, { businessContext: 'event_genix' });
+    const read = await accounts.getOmniAccountStatusAsync('whatsapp', { businessContext: 'event_genix' });
+    assert.equal(checked.account.receiveCapable, true);
+    assert.equal(read.receiveCapable, true);
+    assert.equal(checked.account.status, read.status);
+    assert.equal(checked.result.status, 'success');
+    assert.doesNotMatch(checked.message, /ще.*потребує/);
+  }
+});
+
 test('an environment-only binding has no fabricated check time', () => {
   const previous = process.env.TELEGRAM_BOT_TOKEN;
   process.env.TELEGRAM_BOT_TOKEN = 'fixture-token';

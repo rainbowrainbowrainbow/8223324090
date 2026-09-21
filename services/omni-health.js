@@ -74,12 +74,52 @@ async function recordWebhook(channel, businessContext, { inbound = false, proces
        last_error_at = COALESCE(EXCLUDED.last_error_at, omni_channel_health.last_error_at),
        last_error_code = CASE WHEN $5::boolean AND $4::text IS NULL THEN NULL ELSE COALESCE(EXCLUDED.last_error_code, omni_channel_health.last_error_code) END,
        failed_events = omni_channel_health.failed_events + EXCLUDED.failed_events`,
-    [businessContext, channel, inbound, error, processed || inbound]
+    [businessContext, channel, inbound, error, channel === 'whatsapp' ? inbound : processed || inbound]
   );
   if (error) await pool.query(
     'INSERT INTO omni_channel_errors (business_context, channel, error_code) VALUES ($1, $2, $3)',
     [businessContext, channel, error]
   );
+}
+
+function whatsappHealth(account, health) {
+  const timestamp = value => value ? Date.parse(value) : NaN;
+  const changedAt = timestamp(account.lastChangedAt);
+  const checkedAt = timestamp(health?.checked_at);
+  const inboundAt = timestamp(health?.last_inbound_at);
+  const errorAt = timestamp(health?.last_error_at);
+  // Database configuration changes advance lastChangedAt; a routine recheck does not.
+  // Environment-only bindings have no configuration generation, so old inbound is not proof.
+  const currentCheck = Number.isFinite(changedAt) && checkedAt >= changedAt;
+  const verifiedInbound = account.source === 'database' && Number.isFinite(changedAt) && inboundAt > changedAt;
+  const activeError = Boolean(health?.last_error_code && errorAt >= changedAt
+    && (!verifiedInbound || errorAt >= inboundAt));
+  const providerStatus = currentCheck ? health?.check_result?.status : null;
+  const failures = { failed_auth: 'token_expired', missing_config: 'misconfigured',
+    provider_unreachable: 'provider_unreachable', webhook_missing: 'webhook_missing' };
+  const providerFailure = failures[providerStatus];
+  if (!account.configured || ['disconnected', 'needs_rebind'].includes(account.status)) {
+    return { ...account, receiveCapable: false };
+  }
+  if (providerFailure) {
+    const labels = { token_expired: 'Токен недійсний', misconfigured: 'Перевірте налаштування',
+      provider_unreachable: 'Провайдер недоступний', webhook_missing: 'Потрібен webhook' };
+    return { ...account, status: providerFailure, statusLabel: labels[providerFailure], limited: true,
+      connected: !['token_expired', 'misconfigured'].includes(providerFailure),
+      sendCapable: providerFailure === 'webhook_missing' && account.sendCapable,
+      receiveCapable: false, warning: `WhatsApp: ${labels[providerFailure]}.`,
+      nextActionHint: 'Перевірте діагностику каналу; попередній прийом не скасовує нову помилку провайдера.' };
+  }
+  const receiveCapable = Boolean(account.connected && verifiedInbound && !activeError
+    && ['success', 'partial'].includes(providerStatus));
+  return { ...account, receiveCapable, status: receiveCapable ? 'connected' : 'limited',
+    statusLabel: receiveCapable ? 'Підключено' : 'Обмежено', limited: !receiveCapable,
+    warning: receiveCapable ? null : activeError
+      ? 'WhatsApp: нова помилка обробки webhook; прийом потребує перевірки.'
+      : 'WhatsApp: прийом для поточного підключення ще не підтверджено.',
+    nextActionHint: receiveCapable
+      ? 'Прийом підтверджено вхідним повідомленням після зміни підключення. Відсутність нових повідомлень не є помилкою.'
+      : 'Перевірте діагностику та очікуване вхідне повідомлення; не перепідключайте номер лише через цей індикатор.' };
 }
 
 async function attachHealth(accounts, businessContext, now = new Date()) {
@@ -91,7 +131,9 @@ async function attachHealth(accounts, businessContext, now = new Date()) {
     const checkedSend = health?.check_result?.sendCapable;
     const checkedReceive = health?.check_result?.receiveCapable;
     const hasVerifiedDirections = typeof checkedSend === 'boolean' || typeof checkedReceive === 'boolean';
-    if ((account.source === 'environment' || hasVerifiedDirections) && health?.checked_at) {
+    if (account.channel === 'whatsapp') {
+      account = whatsappHealth(account, health);
+    } else if ((account.source === 'environment' || hasVerifiedDirections) && health?.checked_at) {
       const statuses = { success: 'connected', partial: 'limited', webhook_missing: 'webhook_missing', failed_auth: 'token_expired', missing_config: 'misconfigured', provider_unreachable: 'provider_unreachable' };
       const status = account.status === 'history_only' && health.check_result?.status === 'success' ? 'history_only' : statuses[health.check_result?.status] || 'limited';
       const configured = account.configured;

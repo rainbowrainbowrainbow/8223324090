@@ -23,8 +23,14 @@ Unresolved conversations retry on a later inbound message after 5 minutes.
 This is best effort, not a durable background job: after a process restart,
 an unresolved name is retried when another message arrives. Viewing a chat,
 sending an outbound reply, or receiving a duplicate webhook does not trigger
-enrichment. Existing Unknown chats without new inbound messages still need the
-separate bounded recovery workstream; this change does not backfill them.
+enrichment. Existing Unknown chats without new inbound messages can be inspected
+and recovered explicitly with `scripts/repair-omni-meta-names.js`; there is no
+automatic backfill. The operator tool defaults to dry-run, selects at most three
+exactly scoped records and requires a previously reviewed scope digest for apply.
+It shares `lookupMetaName` / `updateMetaName` with inbound enrichment and adds
+native-timestamp snapshot guards before writing. See the commands, authorization
+boundaries and sanitized evidence in
+[the task 2 handoff](OMNI_META_NAMES_TASK2_HANDOFF_2026-09-21.md).
 
 `services/omni-facebook-profile.js` retains `enrichFacebookConversation` as a
 Facebook-only compatibility wrapper. The hub uses `enrichMetaConversation` for
@@ -51,8 +57,10 @@ No account permissions or credentials are changed by this implementation.
 The separate, authorized diagnostic on 2026-09-21 returned a matching Facebook
 profile with first_name/last_name and an Instagram profile with name/username;
 a different Facebook profile returned code 100/subcode 33. This confirms access
-for those two profiles only, not blanket access to all customers. No production
-profile requests are repeated during implementation.
+for those two profiles only, not blanket access to all customers. Task 1 made no
+additional profile requests. A separate explicit task 2 allowance authorized a
+bounded dry-run: three additional profile GETs confirmed the same two available
+names and one unavailable object; no production names were written.
 
 ## Diagnostics and verification
 
@@ -75,7 +83,7 @@ not mark the messaging channel unhealthy.
 | PROFILE_ENRICHMENT_FAILED | Enrichment or conditional database update failed |
 
 Run the focused test and the existing workspace behavior tests:
-    node --test tests/omni-facebook-profile.test.js tests/omni-meta-profile-adapters.test.js tests/omni-workspace-behavior.test.js
+    node --test tests/omni-facebook-profile.test.js tests/omni-meta-profile-adapters.test.js tests/omni-meta-name-repair.test.js tests/omni-workspace-behavior.test.js
 
 After an authorized deployment, use only designated test Meta accounts.
 Verify a new conversation and an existing Unknown conversation after another

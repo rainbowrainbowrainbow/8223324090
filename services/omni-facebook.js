@@ -235,7 +235,8 @@ async function getUserProfile(userId, fields, options = {}) {
 
     try {
         const businessContext = normalizeBusinessContext(context);
-        const runtime = await resolveOmniRuntimeConfig('facebook', { businessContext, strict: true });
+        const runtime = await resolveOmniRuntimeConfig('facebook', { businessContext, strict: true,
+            ...(options.ownershipClient && { ownershipClient: options.ownershipClient }) });
         const token = runtime.pageToken || runtime.token;
         if (!token || !runtime.pageId) {
             return { success: false, code: 'PROFILE_CONFIG_MISSING', error: 'Facebook Page configuration is missing for this business.' };

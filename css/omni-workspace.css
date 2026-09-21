@@ -163,6 +163,7 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
 .omni-chat-more > summary::-webkit-details-marker { display: none; }
 .omni-chat-more-menu { display: grid; position: absolute; top: calc(100% + 5px); right: 0; width: 190px; gap: 6px; }
 .omni-chat-more:not([open]) > .omni-chat-more-menu { display: none; }
+.omni-chat-more-menu select { width: 100%; min-width: 0; max-width: none; }
 .omni-chat-more-menu button { width: 100%; text-align: left; }
 .omni-mobile-mode-action { display: none; }
 .omni-mobile-back { display: none; flex-shrink: 0; min-height: 38px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); background: transparent; font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -266,11 +267,13 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
     .omni-chat-more { display: contents; }
     .omni-chat-more > summary { display: none; }
     .omni-chat-more-menu, .omni-chat-more:not([open]) > .omni-chat-more-menu { position: static; display: flex; padding: 0; width: auto; border: 0; background: transparent; box-shadow: none; gap: 8px; }
+    .omni-chat-more-menu select { width: 0; min-width: 0; max-width: 220px; flex: 1 1 0; }
     .omni-chat-more-menu button { width: auto; white-space: nowrap; }
 }
 @container conversation (max-width: 759px) {
     #omniFileHint { display: none; }
     .omni-template-fields { grid-template-columns: minmax(0,1fr); }
+    .omni-chat-more-menu { max-height: min(320px, calc(100dvh - 160px)); overflow-y: auto; overscroll-behavior: contain; }
 }
 @container omni (max-width: 719px) {
     .omni-workspace-topbar { display: grid; grid-template-columns: minmax(0,1fr) auto 38px; gap: 2px 8px; padding: 6px 10px; }
@@ -324,6 +327,8 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
 .omni-short #omniFileHint { display: none; }
 .omni-short .omni-chat-input { padding-block: 4px; }
 .omni-short .omni-chat-header { padding-block: 4px; gap: 4px; }
+.omni-narrow.omni-short .omni-chat-header:has(.omni-chat-more) { position: relative; padding-right: 58px; }
+.omni-narrow.omni-short .omni-chat-header-actions { position: absolute; top: 4px; right: 10px; width: auto; }
 .omni-short #omniInput { max-height: 44px; overflow-y: auto; }
 .omni-short .omni-file-composer { max-height: 36px; }
 .omni-short .omni-template-composer { max-height: 52%; padding-block: 6px; }

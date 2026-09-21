@@ -261,7 +261,14 @@ async function assertConversationViewport(page, label, options = {}) {
     const viewport = { left: 0, top: 0, right: layout.viewport.width, bottom: layout.viewport.height };
     assert.ok(layout.pageWidth <= layout.viewport.width + 1, `${label}: page has horizontal overflow`);
     assert.ok(layout.name?.width >= (options.minNameWidth || 80), `${label}: conversation name is crushed`);
-    assert.ok(layout.messages?.height >= 60, `${label}: message history has no usable area`);
+    assert.ok(layout.messages?.height >= 60,
+        `${label}: message history has no usable area: ${JSON.stringify({
+            chatHeight: layout.chat?.height || 0,
+            messagesTop: layout.messages?.top || 0,
+            messagesHeight: layout.messages?.height || 0,
+            composerTop: layout.composer?.top || 0,
+            composerHeight: layout.composer?.height || 0
+        })}`);
     assert.ok(inside(layout.composer, viewport) && inside(layout.send, viewport), `${label}: composer is outside the viewport`);
     assert.ok(layout.inputHit && layout.sendHit, `${label}: composer controls are covered`);
     assert.ok(layout.latest && layout.messages
@@ -349,16 +356,28 @@ async function runLiveSmoke(config) {
         report.screenshots.push('live-laptop-list-1024x600.png');
 
         await page.setViewportSize(LIVE_VIEWPORTS.shortMobile);
+        await page.waitForFunction(() => {
+            const navigation = document.getElementById('sidebarNav');
+            if (!navigation) return false;
+            return !navigation.classList.contains('open')
+                && navigation.getBoundingClientRect().right <= 1;
+        });
         await waitForStableUi(page);
         const listBefore = await page.locator('#omniConvList').evaluate((node, id) => {
             const row = node.querySelector(`[data-id="${id}"]`);
+            const navigation = document.getElementById('sidebarNav');
+            const navigationRect = navigation?.getBoundingClientRect();
             node.scrollTop = Math.max(1, node.scrollHeight - node.clientHeight);
             if (row) row.scrollIntoView({ block: 'nearest' });
             return {
+                viewportWidth: window.innerWidth,
                 scrollTop: node.scrollTop,
                 scrollHeight: node.scrollHeight,
                 clientHeight: node.clientHeight,
-                selectedRowHeight: row?.getBoundingClientRect().height || 0
+                selectedRowHeight: row?.getBoundingClientRect().height || 0,
+                navigationOpen: navigation?.classList.contains('open') || false,
+                navigationRight: navigationRect?.right || 0,
+                navigationTransform: navigation ? getComputedStyle(navigation).transform : ''
             };
         }, selectedId);
         await captureSanitizedScreenshot(page, 'live-short-mobile-list-390x420.png');
@@ -423,12 +442,12 @@ async function runLiveSmoke(config) {
             ['desktop', LIVE_VIEWPORTS.desktop]
         ]) {
             await page.setViewportSize(viewportSize);
-            report.checks.viewportMatrix[name] = await assertConversationViewport(page, name, {
-                minNameWidth: name === 'smallMobile' ? 72 : 80
-            });
             const filename = `live-${name}-${viewportSize.width}x${viewportSize.height}.png`;
             await captureSanitizedScreenshot(page, filename);
             report.screenshots.push(filename);
+            report.checks.viewportMatrix[name] = await assertConversationViewport(page, name, {
+                minNameWidth: name === 'smallMobile' ? 72 : 80
+            });
             traceStep(`${name} viewport checked`);
         }
 

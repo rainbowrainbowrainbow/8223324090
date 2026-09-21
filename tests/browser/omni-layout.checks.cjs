@@ -292,8 +292,27 @@ async function testPrimaryFlow(page, artifacts) {
   const shortReadingPosition = await page.locator('#omniMessages').evaluate(node => node.scrollTop);
   assert.ok(shortReadingPosition > 0, 'short mobile history did not move to a reading position');
   await page.locator('#omniChatMore > summary').click();
+  assert.ok(await page.locator('#omniConversationStatus').isVisible(), 'conversation status is inaccessible in the short-mobile action menu');
+  assert.ok(await page.locator('#omniAssignee').isVisible(), 'conversation assignee is inaccessible in the short-mobile action menu');
   const mobileChannelsAction = page.locator('#omniChatMore .omni-mobile-mode-action[data-omni-mode="channels"]');
   assert.ok(await mobileChannelsAction.isVisible(), 'channels action is inaccessible while the short-mobile topbar is hidden');
+  const actionMenu = page.locator('#omniChatMore .omni-chat-more-menu');
+  const actionMenuState = await actionMenu.evaluate(node => {
+    const rect = node.getBoundingClientRect();
+    return {
+      bottom: rect.bottom,
+      viewportHeight: innerHeight,
+      clientHeight: node.clientHeight,
+      scrollHeight: node.scrollHeight,
+      overflowY: getComputedStyle(node).overflowY
+    };
+  });
+  assert.ok(actionMenuState.bottom <= actionMenuState.viewportHeight + 1,
+    `short-mobile action menu leaves the viewport: ${JSON.stringify(actionMenuState)}`);
+  assert.ok(actionMenuState.scrollHeight <= actionMenuState.clientHeight + 1 || ['auto','scroll'].includes(actionMenuState.overflowY),
+    `short-mobile action menu clips actions without scrolling: ${JSON.stringify(actionMenuState)}`);
+  await page.locator('#omniCloseConv').scrollIntoViewIfNeeded();
+  assert.ok(await page.locator('#omniCloseConv').isVisible(), 'last short-mobile conversation action is unreachable');
   await page.screenshot({ path: path.join(artifacts, 'layout-short-mobile-more.png'), animations: 'disabled' });
   await mobileChannelsAction.click();
   await page.locator('#omniChannelsWorkspace').waitFor({ state: 'visible' });
@@ -336,10 +355,28 @@ async function testPrimaryFlow(page, artifacts) {
 }
 
 async function testShortMobileList(page, artifacts) {
-  await page.setViewportSize({ width: 390, height: 420 });
+  await page.setViewportSize({ width: 1024, height: 600 });
   await page.goto(page.url().split('?')[0] + '?businessContext=event_genix&channel=telegram', { waitUntil: 'domcontentloaded' });
   await page.locator('.omni-conv-item[data-id="9001"]').waitFor();
   await waitForLayout(page);
+  await page.setViewportSize({ width: 390, height: 420 });
+  await page.waitForFunction(() => {
+    const navigation = document.getElementById('sidebarNav');
+    if (!navigation) return false;
+    return !navigation.classList.contains('open')
+      && navigation.getBoundingClientRect().right <= 1;
+  });
+  await waitForLayout(page);
+  const navigationState = await page.locator('#sidebarNav').evaluate(node => {
+    const rect = node.getBoundingClientRect();
+    return {
+      open: node.classList.contains('open'),
+      right: rect.right,
+      transform: getComputedStyle(node).transform
+    };
+  });
+  assert.ok(!navigationState.open && navigationState.right <= 1,
+    `desktop-to-mobile resize left CRM navigation open: ${JSON.stringify(navigationState)}`);
   const state = await page.locator('#omniConvList').evaluate(node => {
     const row = node.querySelector('.omni-conv-item');
     return {

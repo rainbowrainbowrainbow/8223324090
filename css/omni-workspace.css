@@ -181,6 +181,22 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
 .omni-msg { max-width: min(88%,620px); padding: 9px 12px; border-radius: 12px; }
 .omni-msg-content { white-space: pre-wrap; overflow-wrap: anywhere; }
 .omni-msg-time { font-size: 11px; margin-top: 4px; opacity: .7; }
+
+/* Meta statuses stay next to the timestamp; details open only on demand. */
+.omni-msg-footer {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-top: 4px;
+}
+.omni-msg-footer .omni-msg-time,
+.omni-msg-footer .omni-send-state { margin-top: 0; }
+.omni-send-state.neutral { color: var(--text-secondary, #718096); }
+.omni-send-compact summary { cursor: pointer; }
+.omni-send-compact summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.omni-send-hint { display: block; max-width: 280px; padding-top: 4px; overflow-wrap: anywhere; }
+.omni-send-error { overflow-wrap: anywhere; }
 .omni-quick-replies { flex: 0 0 auto; max-height: 48px; overflow: auto; }
 .omni-quick-replies:empty { display: none !important; }
 .omni-whatsapp-window { flex: 0 0 auto; padding: 5px 12px; border-top: 1px solid var(--border-color); color: var(--text-secondary); background: var(--bg-secondary); font-size: 12px; }

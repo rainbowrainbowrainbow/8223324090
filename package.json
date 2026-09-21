@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.1",
+  "version": "0.82.2",
   "eventGenix": {
-    "releaseLabel": "Omni: зв’язки лідів і діалогів"
+    "releaseLabel": "Omni: сумісність зі старими зв’язками"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

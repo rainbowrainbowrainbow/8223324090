@@ -2,6 +2,19 @@
 
 const { spawnSync } = require('node:child_process');
 
+const UNIT_TEST_COMMAND_PREFIX = 'node scripts/run-unit-tests.js ';
+
+function getConfiguredUnitTestArgs(packageJson = require('../package.json')) {
+    const command = packageJson.scripts?.['test:unit:files'];
+    if (typeof command !== 'string' || !command.startsWith(UNIT_TEST_COMMAND_PREFIX)) {
+        throw new Error('package.json must define test:unit:files with the explicit unit test list.');
+    }
+
+    const args = command.slice(UNIT_TEST_COMMAND_PREFIX.length).trim().split(/\s+/).filter(Boolean);
+    if (args.length === 0) throw new Error('The configured unit test file list is empty.');
+    return args;
+}
+
 function runUnitTests(args, {
     platform = process.platform,
     spawnSyncImpl = spawnSync,
@@ -26,6 +39,17 @@ function runUnitTests(args, {
     return result.status;
 }
 
-if (require.main === module) process.exitCode = runUnitTests(process.argv.slice(2));
+if (require.main === module) {
+    let args = process.argv.slice(2);
+    if (args.length === 0) {
+        try {
+            args = getConfiguredUnitTestArgs();
+        } catch (error) {
+            console.error(error.message);
+            process.exitCode = 1;
+        }
+    }
+    if (args.length > 0) process.exitCode = runUnitTests(args);
+}
 
-module.exports = { runUnitTests };
+module.exports = { getConfiguredUnitTestArgs, runUnitTests };

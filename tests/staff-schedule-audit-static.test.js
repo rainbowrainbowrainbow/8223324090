@@ -217,12 +217,13 @@ test('staff schedule release verification stays standalone, complete, and read-o
         packageJson.scripts['release:staff-schedule:verify'],
         'node scripts/staff-schedule-release-verify.js'
     );
+    const unitTestManifest = `${packageJson.scripts['test:unit']} ${packageJson.scripts['test:unit:files']}`;
     for (const focusedTest of [
         'tests/staff-schedule-history-static.test.js',
         'tests/staff-schedule-audit-static.test.js',
         'tests/staff-schedule-workbook.test.js'
     ]) {
-        assert.match(packageJson.scripts['test:unit'], new RegExp(focusedTest.replaceAll('.', '\\.')));
+        assert.match(unitTestManifest, new RegExp(focusedTest.replaceAll('.', '\\.')));
     }
 
     assert.match(script, /normalizeLiveUrl\(/);

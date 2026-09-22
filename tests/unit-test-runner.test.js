@@ -6,7 +6,26 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { runUnitTests } = require('../scripts/run-unit-tests');
+const { getConfiguredUnitTestArgs, runUnitTests } = require('../scripts/run-unit-tests');
+
+test('unit runner reads the explicit package test list without invoking a shell', () => {
+    const packageJson = {
+        scripts: {
+            'test:unit:files': 'node scripts/run-unit-tests.js tests/first.test.js tests/second.test.js'
+        }
+    };
+    assert.deepEqual(getConfiguredUnitTestArgs(packageJson), [
+        'tests/first.test.js',
+        'tests/second.test.js'
+    ]);
+});
+
+test('unit runner rejects a missing or empty package test list', () => {
+    assert.throws(() => getConfiguredUnitTestArgs({ scripts: {} }), /must define test:unit:files/);
+    assert.throws(() => getConfiguredUnitTestArgs({
+        scripts: { 'test:unit:files': 'node scripts/run-unit-tests.js ' }
+    }), /file list is empty/);
+});
 
 for (const platform of ['win32', 'linux']) {
     test(`unit runner preserves all file arguments and uses the ${platform} concurrency policy`, () => {

@@ -91,7 +91,9 @@
                 commitPending: false,
                 structurePreference: '',
                 editingField: '',
-                editingOriginalValue: ''
+                editingOriginalValue: '',
+                secondaryExpanded: false,
+                activeBundleClientId: ''
             };
             stateByRoot.set(root, state);
         }
@@ -267,6 +269,27 @@
         return 'потрібно підтвердити';
     }
 
+    function reviewOwnerLabel(record = {}) {
+        return String(record.ownerSuggestion?.name || record.ownerName || record.owner_name || '').trim() || 'Собі';
+    }
+
+    function reviewChecklistCount(record = {}) {
+        const subtasks = Array.isArray(record.subtasks) ? record.subtasks : [];
+        return subtasks.length;
+    }
+
+    function renderReviewMetadata(record = {}, preview = {}) {
+        const date = normalizeScheduleDate(record.scheduleDate || record.schedule_date || record.dueDate || record.due_date);
+        const priority = normalizePriorityValue(record.priority) || 'normal';
+        return `<dl class="task-ai-review-meta">
+            <div><dt>Дата</dt><dd>${escapeHtml(date || 'Без дати')}</dd></div>
+            <div><dt>Пріоритет</dt><dd>${escapeHtml(priorityLabel(priority))}</dd></div>
+            <div><dt>Виконавець</dt><dd>${escapeHtml(reviewOwnerLabel(record))}</dd></div>
+            <div class="task-ai-review-meta-impacts"><dt>Впливи</dt><dd>${renderImpacts(record.impactIds || [], preview)}</dd></div>
+            <div><dt>Чекліст</dt><dd>${reviewChecklistCount(record)}</dd></div>
+        </dl>`;
+    }
+
     const BUNDLE_REVIEW_FIELDS = Object.freeze(['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority']);
 
     function canonicalBundleField(field) {
@@ -316,28 +339,32 @@
         </div>`;
     }
 
-    function renderBundleTaskCard(task = {}, index = 0, preview = {}) {
+    function renderBundleTaskCard(task = {}, index = 0, preview = {}, state = {}) {
         const number = index + 1;
         const needsImpactReview = !Array.isArray(task.impactIds) || !task.impactIds.length;
+        const isSelected = state.activeBundleClientId === task.clientId && !task.rejected;
         const owners = bundleOwnerCatalog(preview);
         const selectedOwnerId = Number(task.ownerSuggestion?.userId || 0);
         const ownerOptions = [
             `<option value="" ${selectedOwnerId ? '' : 'selected'}>Собі</option>`,
             ...owners.map(owner => `<option value="${owner.id}" ${owner.id === selectedOwnerId ? 'selected' : ''}>${escapeHtml(owner.label)}${owner.role ? ` (${escapeHtml(owner.role)})` : ''}</option>`)
         ].join('');
-        return `<article class="task-ai-bundle-card ${task.accepted ? 'is-accepted' : ''} ${task.rejected ? 'is-rejected' : ''} ${task.userEdited ? 'is-user-edited' : ''} ${needsImpactReview ? 'needs-impact-review' : ''}" data-task-ai-bundle-card="${escapeHtml(task.clientId)}">
+        return `<article class="task-ai-bundle-card ${task.accepted ? 'is-accepted' : ''} ${task.rejected ? 'is-rejected' : ''} ${task.userEdited ? 'is-user-edited' : ''} ${needsImpactReview ? 'needs-impact-review' : ''} ${isSelected ? 'is-selected' : ''}" data-task-ai-bundle-card="${escapeHtml(task.clientId)}">
             <header class="task-ai-bundle-card-head">
-                <div>
-                    <strong>Задача ${number}</strong>
+                <div class="task-ai-bundle-card-title">
+                    <span>Задача ${number}</span>
+                    <strong>${escapeHtml(compactText(task.title, 100))}</strong>
                     <span>${escapeHtml(bundleTaskStatus(task))}</span>
                 </div>
                 <div class="task-ai-bundle-card-actions">
                     <button type="button" data-task-ai-bundle-accept="${escapeHtml(task.clientId)}">Прийняти задачу</button>
-                    <button type="button" data-task-ai-bundle-edit="${escapeHtml(task.clientId)}">Редагувати</button>
+                    <button type="button" data-task-ai-bundle-edit="${escapeHtml(task.clientId)}" aria-expanded="${isSelected ? 'true' : 'false'}">${isSelected ? 'Згорнути' : 'Редагувати'}</button>
                     <button type="button" data-task-ai-bundle-reject="${escapeHtml(task.clientId)}">${task.rejected ? 'Повернути' : 'Відхилити'}</button>
                 </div>
             </header>
-            <div class="task-ai-bundle-fields">
+            ${renderReviewMetadata(task, preview)}
+            ${needsImpactReview && !task.rejected ? '<p class="task-ai-draft-impact-warning">AI не визначив вплив. Оберіть щонайменше один, щоб прийняти задачу.</p>' : ''}
+            ${isSelected ? `<div class="task-ai-bundle-fields" data-task-ai-bundle-editor>
                 <label>
                     <span>Назва</span>
                     <input type="text" data-task-ai-bundle-field="title" value="${escapeHtml(task.title)}" ${task.rejected ? 'disabled' : ''}>
@@ -366,12 +393,11 @@
                 </label>
                 <div class="task-ai-bundle-field-wide">
                     <span class="task-ai-bundle-field-label">Впливи</span>
-                    ${needsImpactReview ? '<p class="task-ai-draft-impact-warning">AI не визначив вплив. Оберіть щонайменше один, щоб прийняти задачу.</p>' : ''}
                     ${renderBundleImpactEditor(task, preview)}
                 </div>
             </div>
             ${renderBundleFieldStates(task)}
-            <p class="task-ai-bundle-review-note">AI-пропозиція. Виконавець, дата і пріоритет застосуються тільки після явного підтвердження.</p>
+            <p class="task-ai-bundle-review-note">Виконавець, дата і пріоритет застосуються тільки після явного підтвердження.</p>` : ''}
         </article>`;
     }
 
@@ -392,6 +418,7 @@
         const tasks = state.bundleTasks || [];
         const activeCount = activeBundleTasks(state).length;
         const acceptedCount = acceptedBundleTasks(state).length;
+        const needsReviewCount = Math.max(0, activeCount - acceptedCount);
         const canCreate = activeCount >= 2 && acceptedCount === activeCount;
         host.hidden = false;
         host.innerHTML = `
@@ -401,12 +428,16 @@
                         <strong>AI пропонує створити ${bundleCountLabel(activeCount)}</strong>
                         <span>Це окремі задачі, не dependencies і не чекліст.</span>
                     </div>
-                    <span class="task-ai-bundle-counter">${acceptedCount}/${activeCount} підтверджено</span>
+                    <div class="task-ai-bundle-counters" aria-label="Стан перевірки пакета">
+                        <span>${activeCount} всього</span>
+                        <span>${acceptedCount} прийнято</span>
+                        <span>${needsReviewCount} перевірити</span>
+                    </div>
                 </div>
                 ${renderStructureSelector(preview, 'bundle')}
                 ${activeCount === 1 ? '<p class="task-ai-bundle-warning">Залишилась 1 задача. Скасуйте bundle і створіть її через звичайну single-task форму — bundle потребує щонайменше дві окремі задачі.</p>' : ''}
                 <div class="task-ai-bundle-list">
-                    ${tasks.map((task, index) => renderBundleTaskCard(task, index, preview)).join('')}
+                    ${tasks.map((task, index) => renderBundleTaskCard(task, index, preview, state)).join('')}
                 </div>
                 <div class="task-ai-draft-actions task-ai-bundle-actions">
                     <button type="button" class="task-ai-draft-primary" data-task-ai-draft-submit-intent data-task-ai-draft-bundle-create ${canCreate ? '' : 'disabled'}>Створити ${bundleCountLabel(activeCount)}</button>
@@ -580,39 +611,52 @@
         const headline = decision === 'checklist'
             ? 'AI пропонує одну складну задачу'
             : 'AI пропонує зміни';
+        const proposal = preview.proposal || {};
+        const reviewedCount = fields.filter(field => state.accepted.has(field) || state.rejected.has(field) || state.userEdited.has(field)).length;
+        const secondaryFields = fields.filter(field => ['description', 'subtasks'].includes(field));
+        const primaryFields = fields.filter(field => !secondaryFields.includes(field));
+        const renderField = field => {
+            const accepted = state.accepted.has(field);
+            const rejected = state.rejected.has(field);
+            const edited = state.userEdited.has(field);
+            const isEditing = state.editingField === field;
+            return `<article class="task-ai-draft-field ${accepted ? 'is-accepted' : ''} ${rejected ? 'is-rejected' : ''} ${edited ? 'is-user-edited' : ''}" data-task-ai-draft-field="${escapeHtml(field)}">
+                <header>
+                    <strong>${escapeHtml(fieldLabel(field))}</strong>
+                    <span>${edited ? 'відредаговано вручну' : (accepted ? 'прийнято' : (rejected ? 'відхилено' : 'очікує рішення'))}</span>
+                </header>
+                ${isEditing ? renderInlineEditor(state, field) : `<div class="task-ai-draft-compare">
+                    <div><small>Було</small><div>${renderValue(field, fieldBeforeValue(state, field), preview)}</div></div>
+                    <div><small>AI пропонує</small><div>${renderValue(field, fieldAfterValue(preview, field), preview)}</div></div>
+                </div>`}
+                <div class="task-ai-draft-row-actions">
+                    <button type="button" data-task-ai-draft-accept="${escapeHtml(field)}">Прийняти</button>
+                    <button type="button" data-task-ai-draft-reject="${escapeHtml(field)}">Відхилити</button>
+                    <button type="button" data-task-ai-draft-edit="${escapeHtml(field)}">${isEditing ? 'Продовжити редагування' : 'Редагувати'}</button>
+                </div>
+            </article>`;
+        };
         host.innerHTML = `
             <section class="task-ai-draft-review" aria-label="Перевірка AI-пропозиції">
                 <div class="task-ai-draft-review-head">
-                    <strong>${escapeHtml(headline)}</strong>
-                    <span>${checklistCount >= 2 ? `${checklistCount} пункти чекліста. ` : ''}Нічого не збережеться, поки ви не створите задачу.</span>
+                    <div>
+                        <span>${escapeHtml(headline)}</span>
+                        <strong>${escapeHtml(compactText(proposal.title || state.beforeDraft?.title || 'Нова задача', 120))}</strong>
+                    </div>
+                    <span>${reviewedCount}/${fields.length} перевірено</span>
                 </div>
+                ${renderReviewMetadata(proposal, preview)}
                 ${renderStructureSelector(preview, decision === 'checklist' ? 'checklist' : '')}
                 ${fields.includes('impactIds') && !(Array.isArray(fieldAfterValue(preview, 'impactIds')) && fieldAfterValue(preview, 'impactIds').length)
                     ? '<p class="task-ai-draft-impact-warning">AI не зміг надійно визначити вплив. Оберіть його вручну перед прийняттям цього поля.</p>'
                     : ''}
                 <div class="task-ai-draft-fields">
-                    ${fields.map(field => {
-                        const accepted = state.accepted.has(field);
-                        const rejected = state.rejected.has(field);
-                        const edited = state.userEdited.has(field);
-                        const isEditing = state.editingField === field;
-                        return `<article class="task-ai-draft-field ${accepted ? 'is-accepted' : ''} ${rejected ? 'is-rejected' : ''} ${edited ? 'is-user-edited' : ''}" data-task-ai-draft-field="${escapeHtml(field)}">
-                            <header>
-                                <strong>${escapeHtml(fieldLabel(field))}</strong>
-                                <span>${edited ? 'відредаговано вручну' : (accepted ? 'прийнято' : (rejected ? 'відхилено' : 'очікує рішення'))}</span>
-                            </header>
-                            ${isEditing ? renderInlineEditor(state, field) : `<div class="task-ai-draft-compare">
-                                <div><small>Було</small><div>${renderValue(field, fieldBeforeValue(state, field), preview)}</div></div>
-                                <div><small>AI пропонує</small><div>${renderValue(field, fieldAfterValue(preview, field), preview)}</div></div>
-                            </div>`}
-                            <div class="task-ai-draft-row-actions">
-                                <button type="button" data-task-ai-draft-accept="${escapeHtml(field)}">Прийняти</button>
-                                <button type="button" data-task-ai-draft-reject="${escapeHtml(field)}">Відхилити</button>
-                                <button type="button" data-task-ai-draft-edit="${escapeHtml(field)}">${isEditing ? 'Продовжити редагування' : 'Редагувати'}</button>
-                            </div>
-                        </article>`;
-                    }).join('')}
+                    ${primaryFields.map(renderField).join('')}
                 </div>
+                ${secondaryFields.length ? `<details class="task-ai-draft-secondary" data-task-ai-draft-secondary ${state.secondaryExpanded ? 'open' : ''}>
+                    <summary aria-expanded="${state.secondaryExpanded ? 'true' : 'false'}">Опис і чекліст <span>${secondaryFields.length}</span></summary>
+                    <div class="task-ai-draft-fields">${secondaryFields.map(renderField).join('')}</div>
+                </details>` : ''}
                 <div class="task-ai-draft-actions">
                     <button type="button" class="task-ai-draft-primary" data-task-ai-draft-accept-all>Прийняти все безпечне</button>
                     <button type="button" data-task-ai-draft-cancel>Скасувати AI-зміни</button>
@@ -767,6 +811,7 @@
         const task = findBundleTask(state, clientId);
         if (!task || task.rejected) return;
         if (!Array.isArray(task.impactIds) || !task.impactIds.length) {
+            state.activeBundleClientId = clientId;
             renderBundleReview(root, state);
             setStatus(root, 'Оберіть щонайменше один вплив перед прийняттям задачі.', 'warning');
             focusBundleField(root, clientId, 'impactIds');
@@ -782,6 +827,7 @@
         if (!task) return;
         task.rejected = !task.rejected;
         task.accepted = false;
+        if (task.rejected && state.activeBundleClientId === clientId) state.activeBundleClientId = '';
         renderBundleReview(root, state);
     }
 
@@ -789,8 +835,13 @@
         const state = rootState(root);
         const task = findBundleTask(state, clientId);
         if (!task || task.rejected) return;
+        if (state.activeBundleClientId === clientId) {
+            state.activeBundleClientId = '';
+            renderBundleReview(root, state);
+            return;
+        }
+        state.activeBundleClientId = clientId;
         task.accepted = false;
-        task.userEdited = true;
         renderBundleReview(root, state);
         focusBundleField(root, clientId, 'title');
     }
@@ -914,6 +965,7 @@
         }
         state.editingField = field;
         const value = editableFieldValue(root, state, field);
+        if (field === 'description' || field === 'subtasks') state.secondaryExpanded = true;
         state.editingOriginalValue = field === 'impactIds'
             ? (Array.isArray(value) ? [...value] : [])
             : String(value ?? '');
@@ -979,6 +1031,8 @@
         state.rejected.clear();
         state.userEdited.clear();
         state.bundleTasks = [];
+        state.activeBundleClientId = '';
+        state.secondaryExpanded = false;
         state.idempotencyKey = '';
         state.commitPending = false;
         state.editingField = '';
@@ -1023,6 +1077,8 @@
         state.rejected.clear();
         state.userEdited.clear();
         state.bundleTasks = [];
+        state.activeBundleClientId = '';
+        state.secondaryExpanded = false;
         state.idempotencyKey = randomId('commit');
         setLoading(root, true);
         setStatus(root, 'AI готує чернетку. Нічого ще не збережено.', '');
@@ -1185,6 +1241,13 @@
             if (bundleControl) updateBundleTaskFromControl(root, bundleControl);
             if (event.target.matches('[data-my-day-composer-impact-chip]')) markUserEdited(root, 'impactIds');
         });
+        root.addEventListener('toggle', event => {
+            const details = event.target.closest?.('[data-task-ai-draft-secondary]');
+            if (!details) return;
+            const state = rootState(root);
+            state.secondaryExpanded = details.open;
+            details.querySelector('summary')?.setAttribute('aria-expanded', details.open ? 'true' : 'false');
+        }, true);
     }
 
     function commitPayloadFor(root) {

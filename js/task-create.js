@@ -602,23 +602,32 @@
         const details = [];
         if (count > 1) {
             const names = created.slice(0, 3).map((item, index) => shortTaskText(item.title || draftList[index]?.title || `Задача ${index + 1}`, 34)).filter(Boolean);
-            if (names.length) details.push(`Задачі: ${names.join('; ')}${count > names.length ? ` +${count - names.length}` : ''}`);
-            details.push(`Дата першої: ${taskNotificationDateLabel(task, draft)}`);
-            details.push(`Кому: ${taskNotificationOwnerLabel(task, draft)}`);
+            if (warningCount > 0) details.push(`Потрібно перевірити додаткові кроки: ${warningCount}`);
+            return {
+                type: warningCount > 0 ? 'warning' : 'success',
+                title: warningCount > 0 ? `Створено ${count} задач з попередженням` : `Створено ${count} задач`,
+                message: names.length
+                    ? `${names.join(' · ')}${count > names.length ? ` · +${count - names.length}` : ''}`
+                    : 'Готово до роботи',
+                details,
+                durationMs: 8000,
+                fadeDurationMs: 850,
+                pauseOnInteract: true,
+                closeButton: true
+            };
         } else {
-            details.push(`Створено на: ${taskNotificationDateLabel(task, draft)}`);
-            details.push(`Пріоритет: ${taskNotificationPriorityLabel(task, draft)}`);
-            details.push(`Кому: ${taskNotificationOwnerLabel(task, draft)}`);
-            details.push(`Категорія: ${taskNotificationCategoryLabel(task, draft)}`);
-            details.push(`Тип: ${taskNotificationModeLabel(task, draft)}`);
+            details.push(`${taskNotificationDateLabel(task, draft)} · ${taskNotificationOwnerLabel(task, draft)} · ${taskNotificationPriorityLabel(task, draft)}`);
             const subtaskLabel = taskNotificationSubtaskLabel(task, draft);
-            if (subtaskLabel) details.push(`Підзадачі: ${subtaskLabel}`);
+            const secondary = [];
+            if (subtaskLabel) secondary.push(`Чекліст: ${subtaskLabel}`);
+            if (warningCount > 0) secondary.push(`Потрібно перевірити: ${warningCount}`);
+            if (secondary.length) details.push(secondary.join(' · '));
         }
-        if (warningCount > 0) details.push(`Додаткові кроки синхронізуються: ${warningCount}`);
 
         return {
-            title: count > 1 ? 'Задачі успішно створено' : 'Задачу успішно створено',
-            message: count > 1 ? `Створено ${count} задач.` : `«${titleText}»`,
+            type: warningCount > 0 ? 'warning' : 'success',
+            title: warningCount > 0 ? 'Задачу створено з попередженням' : 'Задачу створено',
+            message: `«${titleText}»`,
             details,
             durationMs: 8000,
             fadeDurationMs: 850,

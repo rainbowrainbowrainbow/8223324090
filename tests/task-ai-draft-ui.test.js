@@ -173,6 +173,9 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(aiCode, /data-task-ai-bundle-edit=/);
     assert.match(aiCode, /data-task-ai-bundle-accept-all/);
     assert.match(aiCode, /data-task-ai-draft-submit-intent/);
+    assert.match(aiCode, /data-task-ai-draft-secondary/);
+    assert.match(aiCode, /aria-expanded=/);
+    assert.match(aiCode, /data-task-ai-bundle-editor/);
     assert.match(aiCode, /bundlePayloadFor/);
     assert.match(aiCode, /renderStructureSelector/);
     assert.match(aiCode, /activeTasks\.length < 2/);
@@ -208,6 +211,8 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(css, /task-ai-bundle-counter/);
     assert.match(css, /task-ai-draft-structure/);
     assert.match(css, /task-ai-draft-inline-editor/);
+    assert.match(css, /task-ai-review-meta/);
+    assert.match(css, /task-ai-draft-secondary/);
 });
 
 test('AI draft details edit opens a visible textarea and stores edited text in commit payload', async () => {
@@ -220,7 +225,13 @@ test('AI draft details edit opens a visible textarea and stores edited text in c
     await tick();
 
     assert.equal(aiButton.textContent, 'Заповнити з AI');
+    const disclosure = ctx.root.querySelector('[data-task-ai-draft-secondary]');
+    assert.ok(disclosure);
+    assert.equal(disclosure.open, false);
+    assert.equal(disclosure.querySelector('summary').getAttribute('aria-expanded'), 'false');
     ctx.root.querySelector('[data-task-ai-draft-edit="description"]').click();
+    assert.equal(ctx.root.querySelector('[data-task-ai-draft-secondary]').open, true);
+    assert.equal(ctx.root.querySelector('[data-task-ai-draft-secondary] summary').getAttribute('aria-expanded'), 'true');
     const editor = ctx.root.querySelector('[data-task-ai-draft-edit-input="description"]');
     assert.ok(editor, 'details editor is rendered inline');
     assert.equal(ctx.window.document.activeElement, editor, 'focus moves into the visible details editor');
@@ -456,6 +467,40 @@ test('AI draft delayed stale response does not open an old preview after source 
     assert.equal(ctx.createCalls, 0);
 });
 
+test('task create notifications keep single and bundle feedback within two compact rows', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', {
+        runScripts: 'outside-only',
+        url: 'https://crm.test/tasks'
+    });
+    dom.window.eval(read('js/task-create.js'));
+
+    const single = dom.window.TaskCreate.buildCreateNotification([{
+        id: 7,
+        title: 'Prepare CRM handoff',
+        priority: 'high',
+        deadline: '2026-09-23',
+        ownerName: 'Olena',
+        subtaskCount: 3
+    }], [{}], { postCreateWarningCount: 1 });
+    assert.equal(single.type, 'warning');
+    assert.equal(single.details.length, 2);
+    assert.match(single.details[0], /Olena/);
+    assert.match(single.details[1], /Чекліст: 3/);
+    assert.match(single.details[1], /Потрібно перевірити: 1/);
+
+    const bundle = dom.window.TaskCreate.buildCreateNotification([
+        { title: 'CRM audit' },
+        { title: 'Hermes worker' },
+        { title: 'AI verification' },
+        { title: 'Content release' }
+    ], [{}, {}, {}, {}]);
+    assert.equal(bundle.type, 'success');
+    assert.equal(bundle.details.length, 0);
+    assert.match(bundle.message, /CRM audit/);
+    assert.match(bundle.message, /\+1/);
+    assert.doesNotMatch(bundle.message, /Content release/);
+});
+
 test('AI draft requires manual impact selection when classification has no safe match', async () => {
     const ctx = createSingleTaskDraftDom({
         title: 'Review an ambiguous work item',
@@ -598,7 +643,12 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.equal(root.querySelectorAll('[data-task-ai-bundle-card]').length, 2);
     assert.match(root.textContent, /AI .*2/);
     assert.match(root.textContent, /dependencies/);
+    assert.match(root.textContent, /2 всього/);
+    assert.equal(root.querySelectorAll('[data-task-ai-bundle-editor]').length, 0, 'bundle starts in compact scan mode');
+    root.querySelector('[data-task-ai-bundle-edit]').click();
     assert.ok(root.querySelector('.task-ai-bundle-field-states'));
+    assert.equal(root.querySelectorAll('[data-task-ai-bundle-editor]').length, 1, 'only one task editor is expanded');
+    assert.equal(root.querySelector('[data-task-ai-bundle-edit]').getAttribute('aria-expanded'), 'true');
     assert.equal(root.querySelector('[data-task-ai-bundle-field="subtasks"]').value, 'Check validation path');
     assert.equal(root.querySelector('[data-task-ai-bundle-field="ownerUserId"]').value, '');
     assert.ok(root.querySelector('[data-task-ai-draft-submit-intent]').disabled);
@@ -607,7 +657,8 @@ test('AI draft composer renders interactive task bundle review without single-ta
 
     root.querySelector('[data-task-ai-bundle-accept-all]').click();
     assert.equal(root.querySelector('[data-task-ai-draft-submit-intent]').disabled, true);
-    assert.match(root.textContent, /1\/2/);
+    assert.match(root.textContent, /1 прийнято/);
+    assert.match(root.textContent, /1 перевірити/);
     root.querySelector('[data-task-ai-bundle-accept]').click();
     assert.equal(root.querySelector('[data-task-ai-draft-submit-intent]').disabled, false);
     assert.equal(window.TaskAiDraft.bundlePayloadFor(root).tasks.length, 2);

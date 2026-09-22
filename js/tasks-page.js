@@ -1692,21 +1692,31 @@ function showTaskCreateSuccessToast(createdTasks = [], drafts = [], postCreateWa
     const payload = window.TaskCreate?.buildCreateNotification
         ? window.TaskCreate.buildCreateNotification(createdTasks, drafts, { postCreateWarningCount })
         : {
+            type: postCreateWarningCount > 0 ? 'warning' : 'success',
             title: createdTasks.length > 1 ? 'Задачі успішно створено' : 'Задачу успішно створено',
             message: createdTasks.length > 1 ? `Створено ${createdTasks.length} задач.` : 'Задачу додано в основний список',
-            details: postCreateWarningCount > 0 ? [`Додаткові кроки синхронізуються: ${postCreateWarningCount}`] : [],
+            details: postCreateWarningCount > 0 ? [`Потрібно перевірити: ${postCreateWarningCount}`] : [],
             durationMs: 8000,
             fadeDurationMs: 850,
             pauseOnInteract: true,
             closeButton: true
         };
     if (firstTaskId) {
-        payload.actions = [{
-            label: 'Відкрити',
-            onClick: () => openTaskDetail(firstTaskId)
-        }];
+        payload.actions = [
+            {
+                label: 'Відкрити',
+                onClick: () => openTaskDetail(firstTaskId)
+            },
+            {
+                label: 'Редагувати',
+                onClick: async () => {
+                    await openTaskDetail(firstTaskId, { mode: 'edit' });
+                    window.requestAnimationFrame?.(() => document.getElementById('_tdTitle')?.focus());
+                }
+            }
+        ];
     }
-    showNotification(payload, 'success');
+    showNotification(payload, payload.type || 'success');
 }
 
 function setupTaskFilterToggle() {

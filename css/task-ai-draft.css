@@ -80,6 +80,8 @@
 }
 
 .task-ai-draft-review-head strong {
+    display: block;
+    margin-top: 2px;
     color: #0f172a;
     font-size: 15px;
 }
@@ -94,7 +96,85 @@
 
 .task-ai-draft-fields {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+}
+
+.task-ai-draft-field[data-task-ai-draft-field="title"],
+.task-ai-draft-field[data-task-ai-draft-field="description"],
+.task-ai-draft-field[data-task-ai-draft-field="impactIds"],
+.task-ai-draft-field[data-task-ai-draft-field="subtasks"] {
+    grid-column: 1 / -1;
+}
+
+.task-ai-review-meta {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, auto));
+    gap: 6px 12px;
+    margin: 0;
+    padding: 8px 10px;
+    border-block: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.task-ai-review-meta > div {
+    min-width: 0;
+}
+
+.task-ai-review-meta dt {
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.task-ai-review-meta dd {
+    margin: 2px 0 0;
+    min-width: 0;
+    color: #1e293b;
+    font-size: 12px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.task-ai-review-meta .task-ai-review-meta-impacts {
+    min-width: 120px;
+}
+
+.task-ai-review-meta .task-ai-draft-impact-chip {
+    padding: 2px 6px;
+    font-size: 10px;
+}
+
+.task-ai-review-meta .task-ai-draft-chip-list {
+    gap: 3px;
+}
+
+.task-ai-draft-secondary {
+    border-top: 1px solid rgba(148, 163, 184, 0.28);
+    padding-top: 8px;
+}
+
+.task-ai-draft-secondary summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 2px;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.task-ai-draft-secondary summary:focus-visible,
+.task-ai-bundle-card-actions button:focus-visible,
+.task-ai-draft-row-actions button:focus-visible,
+.task-ai-draft-actions button:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.45);
+    outline-offset: 2px;
+}
+
+.task-ai-draft-secondary[open] summary {
+    margin-bottom: 8px;
 }
 
 .task-ai-draft-structure {
@@ -128,8 +208,8 @@
 
 .task-ai-draft-field {
     border: 1px solid rgba(148, 163, 184, 0.32);
-    border-radius: 16px;
-    padding: 12px;
+    border-radius: 8px;
+    padding: 10px;
     background: rgba(255, 255, 255, 0.72);
 }
 
@@ -259,7 +339,7 @@
 
 .task-ai-bundle-review {
     border: 1px solid rgba(99, 102, 241, 0.24);
-    border-radius: 18px;
+    border-radius: 8px;
     padding: 12px;
     background: rgba(255, 255, 255, 0.42);
 }
@@ -268,7 +348,8 @@
     align-items: flex-start;
 }
 
-.task-ai-bundle-counter {
+.task-ai-bundle-counter,
+.task-ai-bundle-counters span {
     display: inline-flex;
     align-items: center;
     border: 1px solid rgba(20, 184, 166, 0.28);
@@ -289,6 +370,13 @@
     color: #92400e;
     font-size: 13px;
     font-weight: 800;
+}
+
+.task-ai-bundle-counters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .task-ai-draft-impact-warning {
@@ -313,10 +401,9 @@
 
 .task-ai-bundle-card {
     border: 1px solid rgba(148, 163, 184, 0.34);
-    border-radius: 18px;
-    padding: 13px;
+    border-radius: 8px;
+    padding: 10px;
     background: rgba(255, 255, 255, 0.80);
-    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
 }
 
 .task-ai-bundle-card.is-accepted {
@@ -336,6 +423,11 @@
     border-color: rgba(220, 38, 38, 0.58);
 }
 
+.task-ai-bundle-card.is-selected {
+    border-color: rgba(37, 99, 235, 0.52);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.10);
+}
+
 .task-ai-bundle-card-head {
     display: flex;
     justify-content: space-between;
@@ -349,6 +441,12 @@
     display: block;
     color: #0f172a;
     font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+.task-ai-bundle-card-title {
+    min-width: 0;
+    flex: 1 1 260px;
 }
 
 .task-ai-bundle-card-head span,
@@ -379,6 +477,7 @@
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px;
+    margin-top: 10px;
 }
 
 .task-ai-bundle-fields label,
@@ -547,6 +646,13 @@ body.dark-mode .task-ai-draft-compare > div {
     color: #e2e8f0;
 }
 
+html[data-theme="dark"] .task-ai-review-meta dd,
+body.dark-mode .task-ai-review-meta dd,
+html[data-theme="dark"] .task-ai-draft-secondary summary,
+body.dark-mode .task-ai-draft-secondary summary {
+    color: #e2e8f0;
+}
+
 html[data-theme="dark"] .task-ai-created-marker,
 body.dark-mode .task-ai-created-marker {
     border-color: rgba(129, 140, 248, 0.45);
@@ -599,6 +705,19 @@ body.dark-mode .task-ai-draft-structure button[aria-pressed="true"] {
 
     .task-ai-draft-compare {
         grid-template-columns: 1fr;
+    }
+
+    .task-ai-draft-fields,
+    .task-ai-review-meta {
+        grid-template-columns: 1fr;
+    }
+
+    .task-ai-review-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .task-ai-review-meta .task-ai-review-meta-impacts {
+        grid-column: 1 / -1;
     }
 
     .task-ai-bundle-fields {

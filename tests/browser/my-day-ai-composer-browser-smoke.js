@@ -8,6 +8,7 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const HEADLESS = process.env.MY_DAY_AI_COMPOSER_BROWSER_SMOKE_HEADLESS !== 'false';
+const SCREENSHOT_DIR = String(process.env.MY_DAY_AI_COMPOSER_SCREENSHOT_DIR || '').trim();
 const MIME = {
     '.css': 'text/css; charset=utf-8',
     '.html': 'text/html; charset=utf-8',
@@ -302,6 +303,16 @@ function createStaticServer() {
     });
 }
 
+async function captureReview(page, label, dark, viewport) {
+    if (!SCREENSHOT_DIR) return;
+    fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+    const theme = dark ? 'dark' : 'light';
+    await page.screenshot({
+        path: path.join(SCREENSHOT_DIR, `${label}-${viewport.width}x${viewport.height}-${theme}.png`),
+        fullPage: true
+    });
+}
+
 async function runScenario(browser, fixture, { dark, viewport }) {
     const context = await browser.newContext({ serviceWorkers: 'block', viewport });
     const page = await context.newPage();
@@ -314,6 +325,13 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.click('[data-task-ai-draft-preview]');
         await page.waitForSelector('.task-ai-draft-review');
         assert.equal(await page.locator('[data-task-ai-draft-field]').count(), 7);
+        const secondary = page.locator('[data-task-ai-draft-secondary]');
+        assert.equal(await secondary.getAttribute('open'), null);
+        assert.equal(await secondary.locator('summary').getAttribute('aria-expanded'), 'false');
+        await captureReview(page, 'single-review', dark, viewport);
+        await secondary.locator('summary').focus();
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => document.querySelector('[data-task-ai-draft-secondary] summary')?.getAttribute('aria-expanded') === 'true');
         await page.click('[data-task-ai-draft-edit="title"]');
         await page.locator('[data-task-ai-draft-edit-input="title"]').fill('Edited CRM and Hermes AI workflow');
         await page.click('[data-task-ai-draft-edit-apply="title"]');
@@ -383,6 +401,11 @@ async function runBundleScenario(browser, fixture, { dark, viewport }) {
         await page.click('[data-task-ai-draft-preview]');
         await page.waitForSelector('.task-ai-bundle-review');
         assert.equal(await page.locator('[data-task-ai-bundle-card]').count(), 4);
+        assert.equal(await page.locator('[data-task-ai-bundle-editor]').count(), 0);
+        await captureReview(page, 'bundle-review', dark, viewport);
+        await page.locator('[data-task-ai-bundle-edit]').first().click();
+        assert.equal(await page.locator('[data-task-ai-bundle-editor]').count(), 1);
+        assert.equal(await page.locator('[data-task-ai-bundle-edit]').first().getAttribute('aria-expanded'), 'true');
         await page.locator('[data-task-ai-bundle-card]').first().locator('[data-task-ai-bundle-field="title"]').fill('Edited CRM booking funnel');
         assert.equal(await page.locator('[data-task-ai-draft-bundle-create]').isDisabled(), true);
         await page.locator('[data-task-ai-bundle-reject]').nth(3).click();
@@ -422,9 +445,11 @@ async function runBundleScenario(browser, fixture, { dark, viewport }) {
     try {
         await runScenario(browser, fixture, { dark: false, viewport: { width: 1440, height: 900 } });
         await runScenario(browser, fixture, { dark: true, viewport: { width: 1440, height: 900 } });
+        await runScenario(browser, fixture, { dark: false, viewport: { width: 1024, height: 768 } });
         await runScenario(browser, fixture, { dark: false, viewport: { width: 390, height: 844 } });
         await runScenario(browser, fixture, { dark: true, viewport: { width: 390, height: 844 } });
         await runBundleScenario(browser, fixture, { dark: false, viewport: { width: 1440, height: 900 } });
+        await runBundleScenario(browser, fixture, { dark: false, viewport: { width: 1024, height: 768 } });
         await runBundleScenario(browser, fixture, { dark: true, viewport: { width: 390, height: 844 } });
         console.log('My Day AI composer browser smoke passed');
     } finally {

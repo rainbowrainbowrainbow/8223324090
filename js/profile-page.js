@@ -8589,9 +8589,10 @@ function showCabinetTaskCreateSuccessToast(result = {}, draft = {}, verification
     const payload = window.TaskCreate?.buildCreateNotification
         ? window.TaskCreate.buildCreateNotification([task], [draft], { postCreateWarningCount })
         : {
+            type: postCreateWarningCount > 0 ? 'warning' : 'success',
             title: 'Задачу створено в основних задачах',
             message: draft.title ? `«${draft.title}»` : 'Задачу додано в основний список',
-            details: postCreateWarningCount > 0 ? [`Додаткові кроки синхронізуються: ${postCreateWarningCount}`] : [],
+            details: postCreateWarningCount > 0 ? [`Потрібно перевірити: ${postCreateWarningCount}`] : [],
             durationMs: 8000,
             fadeDurationMs: 850,
             pauseOnInteract: true,
@@ -8599,14 +8600,18 @@ function showCabinetTaskCreateSuccessToast(result = {}, draft = {}, verification
         };
     payload.title = 'Задачу створено в основних задачах';
     if (taskId) {
-        payload.actions = [{
-            label: 'Відкрити',
-            onClick: () => {
-                window.location.href = `/tasks?view=my&open=${encodeURIComponent(taskId)}`;
+        payload.actions = [
+            {
+                label: 'Відкрити',
+                href: `/tasks?view=my&open=${encodeURIComponent(taskId)}`
+            },
+            {
+                label: 'Редагувати',
+                href: `/tasks?view=my&open=${encodeURIComponent(taskId)}&mode=edit`
             }
-        }];
+        ];
     }
-    showNotification(payload, 'success');
+    showNotification(payload, payload.type || 'success');
 }
 
 async function setCabinetTaskStatus(taskId, status, options = {}) {

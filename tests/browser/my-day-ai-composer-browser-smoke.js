@@ -446,10 +446,14 @@ async function runBundleScenario(browser, fixture, { dark, viewport }) {
         await runScenario(browser, fixture, { dark: false, viewport: { width: 1440, height: 900 } });
         await runScenario(browser, fixture, { dark: true, viewport: { width: 1440, height: 900 } });
         await runScenario(browser, fixture, { dark: false, viewport: { width: 1024, height: 768 } });
+        await runScenario(browser, fixture, { dark: true, viewport: { width: 1024, height: 768 } });
         await runScenario(browser, fixture, { dark: false, viewport: { width: 390, height: 844 } });
         await runScenario(browser, fixture, { dark: true, viewport: { width: 390, height: 844 } });
         await runBundleScenario(browser, fixture, { dark: false, viewport: { width: 1440, height: 900 } });
+        await runBundleScenario(browser, fixture, { dark: true, viewport: { width: 1440, height: 900 } });
         await runBundleScenario(browser, fixture, { dark: false, viewport: { width: 1024, height: 768 } });
+        await runBundleScenario(browser, fixture, { dark: true, viewport: { width: 1024, height: 768 } });
+        await runBundleScenario(browser, fixture, { dark: false, viewport: { width: 390, height: 844 } });
         await runBundleScenario(browser, fixture, { dark: true, viewport: { width: 390, height: 844 } });
         console.log('My Day AI composer browser smoke passed');
     } finally {

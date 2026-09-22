@@ -46,6 +46,7 @@ function recordWebSocketTelemetry(businessContext, allowed) {
     recordCompatibilityTelemetrySafe(pool, {
         businessContext,
         entryFamily: 'websocket',
+        decisionStage: 'serialization',
         authoritySource: businessContext === 'unknown' ? 'unknown' : 'membership',
         outcome: allowed ? 'allowed' : 'denied'
     }, log);

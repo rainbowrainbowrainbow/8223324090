@@ -18,7 +18,8 @@ const { getReleaseMetadata } = require('./release');
 const RESERVED_CONTEXTS = new Set(['maysternya_doli', 'crm']);
 const HASH_64 = /^[a-f0-9]{64}$/;
 const SHA_40 = /^[a-f0-9]{40}$/;
-const ENTRY_FAMILIES = new Set(['http', 'profile', 'service', 'websocket', 'provider', 'job', 'operator', 'public']);
+const ENTRY_FAMILIES = new Set(['http', 'profile', 'service', 'websocket', 'alternate_auth', 'provider', 'job', 'operator', 'public']);
+const DECISION_STAGES = new Set(['ingress', 'admission', 'domain', 'execution', 'serialization']);
 const AUTHORITY_SOURCES = new Set(['membership', 'compatibility', 'machine_principal', 'missing_context', 'unknown']);
 const OUTCOMES = new Set(['allowed', 'denied', 'unavailable']);
 const ORGANIZATION_ROLES = new Set(['owner', 'admin', 'member']);
@@ -321,7 +322,14 @@ async function applyReservedCutover(db, actor, input) {
             await client.query(
                 `INSERT INTO organization_memberships (organization_id, user_id, role, is_active, created_by_user_id)
                  VALUES ($1,$2,$3,true,$4)
-                 ON CONFLICT (organization_id,user_id) DO UPDATE SET role=EXCLUDED.role, is_active=true`,
+                 ON CONFLICT (organization_id,user_id) DO UPDATE SET
+                    role=CASE
+                        WHEN organization_memberships.is_active IS TRUE
+                         AND organization_memberships.role='owner'
+                        THEN 'owner'
+                        ELSE EXCLUDED.role
+                    END,
+                    is_active=true`,
                 [next.organizationId, member.userId, member.organizationRole, owner.id]
             );
             if (member.isDefault) {
@@ -350,6 +358,17 @@ async function applyReservedCutover(db, actor, input) {
                     member.isDefault, owner.id]
             );
             membershipWrites += 1;
+        }
+        const activeOwners = await client.query(
+            `SELECT COUNT(*)::int AS count
+               FROM organization_memberships om
+               JOIN users u ON u.id=om.user_id AND u.is_active IS TRUE
+              WHERE om.organization_id=$1 AND om.role='owner' AND om.is_active IS TRUE`,
+            [next.organizationId]
+        );
+        if (Number(activeOwners.rows[0]?.count || 0) < 1) {
+            throw failure(409, 'cutover_organization_owner_missing',
+                'Reserved business cutover requires an active organization owner');
         }
         const receiptSha256 = cutoverReceiptHash(next, mapping, fingerprint, businessId, membershipWrites);
 
@@ -391,25 +410,57 @@ function cleanTelemetry(input) {
     const entryFamily = String(input?.entryFamily || '').trim();
     const authoritySource = String(input?.authoritySource || '').trim();
     const outcome = String(input?.outcome || '').trim();
+    const decisionStage = String(input?.decisionStage || 'domain').trim();
     const deploymentSha = cleanSha(input?.deploymentSha, 'deploymentSha');
     if (!/^[a-z][a-z0-9_]{2,63}$/.test(businessContext) || !ENTRY_FAMILIES.has(entryFamily)
+        || !DECISION_STAGES.has(decisionStage)
         || !AUTHORITY_SOURCES.has(authoritySource) || !OUTCOMES.has(outcome)) return null;
-    return { businessContext, entryFamily, authoritySource, outcome, deploymentSha };
+    return { businessContext, entryFamily, decisionStage, authoritySource, outcome, deploymentSha };
 }
 
 async function recordCompatibilityTelemetry(db, input) {
     const event = cleanTelemetry(input);
     if (!event) return { recorded: false, reason: 'invalid_event' };
     await db.query(
-        `INSERT INTO business_compatibility_telemetry_hourly
-            (observed_hour, business_context, entry_family, authority_source, outcome, deployment_sha, decision_count)
-         VALUES (date_trunc('hour', clock_timestamp()),$1,$2,$3,$4,$5,1)
-         ON CONFLICT (observed_hour,business_context,entry_family,authority_source,outcome,deployment_sha)
-         DO UPDATE SET decision_count=business_compatibility_telemetry_hourly.decision_count+1,
-             last_observed_at=clock_timestamp()`,
-        [event.businessContext, event.entryFamily, event.authoritySource, event.outcome, event.deploymentSha]
+        `WITH decision AS (
+            INSERT INTO business_compatibility_telemetry_v2_hourly
+                (observed_hour,business_context,entry_family,decision_stage,authority_source,outcome,deployment_sha,
+                 eligible_count,collected_count,gap_count)
+            VALUES (date_trunc('hour',clock_timestamp()),$2,$3,$4,$5,$6,$7,1,1,0)
+            ON CONFLICT (observed_hour,business_context,entry_family,decision_stage,authority_source,outcome,deployment_sha)
+            DO UPDATE SET
+                eligible_count=business_compatibility_telemetry_v2_hourly.eligible_count+1,
+                collected_count=business_compatibility_telemetry_v2_hourly.collected_count+1,
+                last_observed_at=clock_timestamp()
+            RETURNING 1
+         )
+         INSERT INTO business_compatibility_telemetry_runtime
+             (runtime_instance,deployment_sha,eligible_count,persisted_count,failed_count)
+         SELECT $1::uuid,$7,1,1,0 FROM decision
+         ON CONFLICT (runtime_instance,deployment_sha) DO UPDATE SET
+             eligible_count=business_compatibility_telemetry_runtime.eligible_count+1,
+             persisted_count=business_compatibility_telemetry_runtime.persisted_count+1,
+             last_seen_at=clock_timestamp()`,
+        [TELEMETRY_RUNTIME_INSTANCE, event.businessContext, event.entryFamily, event.decisionStage,
+            event.authoritySource, event.outcome, event.deploymentSha]
     );
     return { recorded: true };
+}
+
+const TELEMETRY_RUNTIME_INSTANCE = crypto.randomUUID();
+
+async function recordCompatibilityTelemetryFailure(db, deploymentSha) {
+    if (!SHA_40.test(String(deploymentSha || ''))) return;
+    await db.query(
+        `INSERT INTO business_compatibility_telemetry_runtime
+            (runtime_instance,deployment_sha,eligible_count,persisted_count,failed_count)
+         VALUES ($1::uuid,$2,1,0,1)
+         ON CONFLICT (runtime_instance,deployment_sha) DO UPDATE SET
+            eligible_count=business_compatibility_telemetry_runtime.eligible_count+1,
+            failed_count=business_compatibility_telemetry_runtime.failed_count+1,
+            last_seen_at=clock_timestamp()`,
+        [TELEMETRY_RUNTIME_INSTANCE, deploymentSha]
+    );
 }
 
 function deploymentShaForTelemetry() {
@@ -423,6 +474,7 @@ function recordCompatibilityTelemetrySafe(db, input, logger = null) {
     if (!deploymentSha) return;
     recordCompatibilityTelemetry(db, { ...input, deploymentSha }).catch(error => {
         logger?.warn?.('Compatibility telemetry was not recorded', { code: error?.code || 'telemetry_unavailable' });
+        recordCompatibilityTelemetryFailure(db, deploymentSha).catch(() => {});
     });
 }
 

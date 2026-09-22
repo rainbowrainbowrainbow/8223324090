@@ -27,6 +27,11 @@ const CONTEXT_ACTION_ROLES = {
     }
 };
 const PRIVATE_TIMELINE_CONTEXTS = new Set(['maysternya_doli']);
+const PRIVATE_MEMBERSHIP_ROLES = new Set(['director', 'manager', 'admin']);
+const TIMELINE_ACTION_CAPABILITIES = Object.freeze({
+    create: 'create_booking', edit: 'edit_booking', delete: 'delete_booking',
+    export: 'export_data', sales: 'view_revenue', settings: 'manage_settings'
+});
 
 function isKnownBusinessContextInput(value) {
     const raw = String(value || '').trim().toLowerCase();
@@ -92,12 +97,20 @@ function canAccessTimelineContext(user, context) {
     if (!userBusinessModuleState(user, normalized, 'timeline').available) return false;
     if (!canAccessBusinessContext(user, normalized)) return false;
     if (!PRIVATE_TIMELINE_CONTEXTS.has(normalized)) return true;
+    if (user?.businessMembershipAccess?.configured === true) {
+        return userRoles(user).some(role => PRIVATE_MEMBERSHIP_ROLES.has(role));
+    }
     return userRoles(user).includes('creator');
 }
 
 function canUseTimelineAction(user, context, action) {
     const normalized = context ? normalizeBusinessContext(context) : DEFAULT_TIMELINE_CONTEXT;
     if (!canAccessTimelineContext(user, normalized)) return false;
+    if (PRIVATE_TIMELINE_CONTEXTS.has(normalized) && user?.businessMembershipAccess?.configured === true) {
+        if (action === 'view') return true;
+        const capability = TIMELINE_ACTION_CAPABILITIES[action];
+        return Boolean(capability && resolveCapability(user, capability, { type: 'action' }).allowed);
+    }
     if (action === 'settings' && !resolveCapability(user, 'manage_settings', { type: 'action' }).allowed) return false;
     const allowed = CONTEXT_ACTION_ROLES[normalized]?.[action];
     if (!Array.isArray(allowed)) return true;

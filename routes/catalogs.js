@@ -73,7 +73,11 @@ function getKieJobRecord(taskId) {
 router.get('/definitions', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const defs = await pool.query(
-            'SELECT * FROM catalog_definitions WHERE is_active = true ORDER BY sort_order LIMIT 500'
+            `SELECT * FROM catalog_definitions
+              WHERE is_active = true
+                AND (business_context = 'event_genix'
+                     OR (business_context IS NULL AND ownership_status = 'legacy_unassigned'))
+              ORDER BY sort_order LIMIT 500`
         );
         const subs = await pool.query(
             'SELECT * FROM catalog_subcategories ORDER BY catalog_id, sort_order LIMIT 1000'
@@ -96,13 +100,19 @@ router.post('/definitions', requireRole('admin', 'creator', 'director'), async (
         const { id, name, emoji, description, aiStyle, hasSubcategories, hasSizes, sortOrder } = req.body;
         if (!id || !name) return res.status(400).json({ error: 'id та name required' });
         await pool.query(
-            `INSERT INTO catalog_definitions (id, name, emoji, description, ai_style, has_subcategories, has_sizes, sort_order)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            `INSERT INTO catalog_definitions
+                (id, name, emoji, description, ai_style, has_subcategories, has_sizes, sort_order,
+                 business_context, ownership_status, publication_visibility, ownership_decision_ref, ownership_updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+                     'event_genix','approved','private','catalog-created-after-sys-mb-cutover',clock_timestamp())`,
             [id, name, emoji || '🗂️', description || null, aiStyle || null,
              hasSubcategories || false, hasSizes || false, sortOrder || 0]
         );
         await pool.query(
-            'INSERT INTO catalog_settings (catalog_id) VALUES ($1) ON CONFLICT DO NOTHING', [id]
+            `INSERT INTO catalog_settings
+                (catalog_id,business_context,ownership_decision_ref,ownership_updated_at)
+             VALUES ($1,'event_genix','catalog-created-after-sys-mb-cutover',clock_timestamp())
+             ON CONFLICT DO NOTHING`, [id]
         );
         res.json({ success: true });
     } catch (err) {
@@ -878,7 +888,13 @@ router.post('/:catalogId/public-link', requireRole('admin', 'creator', 'director
         const catalogId = req.params.catalogId;
         const crypto = require('crypto');
         const token = crypto.randomBytes(16).toString('hex');
-        await pool.query('UPDATE catalog_definitions SET public_token=$1 WHERE id=$2', [token, catalogId]);
+        const updated = await pool.query(
+            `UPDATE catalog_definitions
+                SET public_token=$1, publication_visibility='public_approved'
+              WHERE id=$2 AND business_context='event_genix'
+              RETURNING id`, [token, catalogId]
+        );
+        if (!updated.rowCount) return res.status(404).json({ error: 'Catalog not found', code: 'catalog_not_found' });
         res.json({ success: true, token, url: `/catalog/${catalogId}/${token}` });
     } catch (err) {
         log.error('POST /public-link error', err);

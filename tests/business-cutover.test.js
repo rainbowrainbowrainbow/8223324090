@@ -71,6 +71,9 @@ function applyClient(options = {}) {
                 return { rows: [{ id: businessId }] };
             }
             if (/SELECT id, is_active FROM users/.test(sql)) return { rows: [{ id: params[0], is_active: true }] };
+            if (/COUNT\(\*\)::int AS count[\s\S]*om\.role='owner'/.test(sql)) {
+                return { rows: [{ count: options.activeOwners ?? 1 }] };
+            }
             return { rows: [], rowCount: 1 };
         },
         release() {}
@@ -108,8 +111,26 @@ test('cutover apply verifies the approved mapping body and writes membership row
     assert.match(result.receiptSha256, /^[a-f0-9]{64}$/);
     assert.equal(client.calls.some(call => /INSERT INTO businesses/.test(call.sql)), true);
     assert.equal(client.calls.filter(call => /INSERT INTO business_memberships/.test(call.sql)).length, 2);
+    const organizationWrites = client.calls.filter(call => /INSERT INTO organization_memberships/.test(call.sql));
+    assert.equal(organizationWrites.length, 2);
+    assert.match(organizationWrites[0].sql, /organization_memberships\.role='owner'[\s\S]*THEN 'owner'/);
     assert.equal(client.calls.some(call => /state, source_snapshot_sha256/.test(call.sql) && /receipt_sha256/.test(call.sql) && /'applied'/.test(call.sql)), true);
     assert.equal(client.calls.some(call => /^COMMIT$/.test(call.sql)), true);
+});
+
+test('cutover apply fails closed when the organization has no active owner', async () => {
+    const approvedMapping = mapping();
+    const client = applyClient({ activeOwners: 0 });
+    await assert.rejects(
+        applyReservedCutover(database(client), { id: 4, platformRole: 'creator' }, input({
+            mappingSha256: sha256(approvedMapping),
+            approvalRef: approvedMapping.approvalRef,
+            approvedMapping
+        })),
+        { code: 'cutover_organization_owner_missing' }
+    );
+    assert.equal(client.calls.some(call => /^ROLLBACK$/.test(call.sql)), true);
+    assert.equal(client.calls.some(call => /INSERT INTO business_cutover_journal/.test(call.sql)), false);
 });
 
 test('cutover apply fails closed on tampered mappings, creator business roles, and DB fingerprint drift', async () => {
@@ -166,13 +187,16 @@ test('cutover journal replay is idempotent only for the exact reviewed source', 
 
 test('telemetry has bounded labels, no actor fields, and aggregates through one conflict key', async () => {
     assert.equal(cleanTelemetry({ businessContext: 'crm', entryFamily: 'http', authoritySource: 'membership', outcome: 'allowed', deploymentSha: SHA }).businessContext, 'crm');
+    assert.equal(cleanTelemetry({ businessContext: 'event_genix', entryFamily: 'alternate_auth', decisionStage: 'admission', authoritySource: 'machine_principal', outcome: 'allowed', deploymentSha: SHA }).decisionStage, 'admission');
     assert.equal(cleanTelemetry({ businessContext: 'crm', entryFamily: 'anything', authoritySource: 'membership', outcome: 'allowed', deploymentSha: SHA }), null);
     const calls = [];
     await recordCompatibilityTelemetry({ query: async (sql, params) => calls.push({ sql, params }) },
         { businessContext: 'crm', entryFamily: 'http', authoritySource: 'membership', outcome: 'allowed', deploymentSha: SHA });
     assert.match(calls[0].sql, /ON CONFLICT/);
+    assert.match(calls[0].sql, /business_compatibility_telemetry_v2_hourly/);
     assert.equal(calls[0].params.includes(3), false);
-    assert.deepEqual(calls[0].params, ['crm', 'http', 'membership', 'allowed', SHA]);
+    assert.equal(calls[0].params.length, 7);
+    assert.deepEqual(calls[0].params.slice(1), ['crm', 'http', 'domain', 'membership', 'allowed', SHA]);
 });
 
 test('canonical mapping hash is independent of input object key order', () => {

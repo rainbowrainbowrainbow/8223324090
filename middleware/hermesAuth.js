@@ -7,6 +7,7 @@ const {
     BUSINESS_CONTEXTS,
     resolveBusinessContextPolicy
 } = require('../services/businessContext');
+const { recordCompatibilityTelemetrySafe } = require('../services/businessCutover');
 
 const HERMES_INTEGRATION_ID = 'hermes-event-genix-crm';
 const HERMES_SOURCE = 'hermes';
@@ -223,6 +224,11 @@ function createHermesAuthMiddleware(options = {}) {
             authMode: credential.mode,
             actorUserId: actor.id
         };
+
+        recordCompatibilityTelemetrySafe(queryable, {
+            businessContext: 'event_genix', entryFamily: 'alternate_auth', decisionStage: 'admission',
+            authoritySource: 'machine_principal', outcome: 'allowed'
+        });
 
         return next();
     };

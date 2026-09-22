@@ -30,6 +30,7 @@ function fixture(t) {
     const pool = { async query(sql, params = []) {
         const text = String(sql).replace(/\s+/g, ' ').trim();
         state.calls.push({ sql: text, params: structuredClone(params) });
+        if (text.includes('business_compatibility_telemetry_')) return { rows: [], rowCount: 1 };
         if (state.fail) throw state.fail;
         if (text === 'SELECT default_business_context FROM users WHERE id = $1') {
             assert.equal(params[0], user.id);

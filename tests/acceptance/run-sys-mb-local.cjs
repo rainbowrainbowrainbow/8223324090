@@ -15,7 +15,9 @@ const database = 'eventgenix_d06_test_' + crypto.randomUUID().replaceAll('-', ''
 const outputDir = path.join(root, '.codex-temp/sys-mb-d06/runs', runId);
 const records = [];
 const secretValues = [];
-const fixture = { runId, database, date: '2026-09-16', contexts: { park: 'event_genix', dar: 'dar', other: 'd06_other' },
+const fixture = { runId, database, date: '2026-09-16', contexts: {
+    park: 'event_genix', dar: 'dar', maysternya: 'maysternya_doli', crm: 'crm', other: 'd06_other'
+},
     actors: {}, records: {}, organizations: {}, businesses: {}, markers: {} };
 fixture.accounts = fixture.actors;
 const randomSecret = () => { const value = crypto.randomBytes(32).toString('base64url'); secretValues.push(value); return value; };
@@ -153,9 +155,17 @@ async function main() {
         const other = await db.query(`INSERT INTO businesses(organization_id,context_key,label,short_label,access_mode,modules)
             VALUES($1,'d06_other','D06 Other Business','D06 Other','membership',$2::jsonb) RETURNING id`,
             [fixture.organizations.secondaryId, JSON.stringify(modules)]);
+        const maysternya = await db.query(`INSERT INTO businesses(organization_id,context_key,label,short_label,access_mode,modules)
+            VALUES($1,'maysternya_doli','Майстерня долі','МД','membership',$2::jsonb) RETURNING id`,
+            [fixture.organizations.primaryId, JSON.stringify(['dashboard','timeline','tasks','customers','leads','omni','finance','programs','settings'])]);
+        const crm = await db.query(`INSERT INTO businesses(organization_id,context_key,label,short_label,access_mode,modules)
+            VALUES($1,'crm','CRM продажі','CRM','membership',$2::jsonb) RETURNING id`,
+            [fixture.organizations.primaryId, JSON.stringify(['dashboard','tasks','customers','leads','omni','finance','settings'])]);
         const businesses = (await db.query('SELECT id,context_key FROM businesses')).rows;
         fixture.businesses = { parkId: Number(businesses.find(row => row.context_key === 'event_genix').id),
-            darId: Number(businesses.find(row => row.context_key === 'dar').id), customId: Number(other.rows[0].id), customKey: 'd06_other' };
+            darId: Number(businesses.find(row => row.context_key === 'dar').id),
+            maysternyaId: Number(maysternya.rows[0].id), crmId: Number(crm.rows[0].id),
+            customId: Number(other.rows[0].id), customKey: 'd06_other' };
         async function addAccount(key, contexts = ['event_genix','dar'], defaultContext = contexts[0]) {
             const account = { username: `${runId}_${key}`, password: randomSecret() };
             const hash = await bcrypt.hash(account.password, 10);
@@ -163,9 +173,8 @@ async function main() {
                 VALUES($1,$2,$3,'director',$4,$5) RETURNING id`, [account.username,hash,`D06 ${key}`,contexts,defaultContext]);
             account.id = Number(row.rows[0].id); fixture.actors[key] = account;
         }
-        for (const key of ['owner','admin','worker','multiOrg','revocable','unassigned']) await addAccount(key);
+        for (const key of ['owner','admin','manager','worker','multiOrg','revocable','unassigned']) await addAccount(key);
         await addAccount('otherOrg',['d06_other']);
-        await addAccount('compatibility',['maysternya_doli']);
         async function membership(key, organizationId, businessId, role, orgRole = 'member', isDefault = false) {
             const actor = fixture.actors[key];
             await db.query(`INSERT INTO organization_memberships(organization_id,user_id,role)
@@ -177,12 +186,19 @@ async function main() {
             await membership(key,fixture.organizations.primaryId,fixture.businesses.parkId,key === 'admin' ? 'manager':'director',key === 'owner'?'owner':key === 'admin'?'admin':'member',true);
             await membership(key,fixture.organizations.primaryId,fixture.businesses.darId,['worker','multiOrg'].includes(key)?'animator':key==='admin'?'manager':'director',key==='owner'?'owner':key==='admin'?'admin':'member');
         }
+        await membership('owner',fixture.organizations.primaryId,fixture.businesses.maysternyaId,'director','owner');
+        await membership('owner',fixture.organizations.primaryId,fixture.businesses.crmId,'director','owner');
+        await membership('admin',fixture.organizations.primaryId,fixture.businesses.maysternyaId,'admin','admin');
+        await membership('admin',fixture.organizations.primaryId,fixture.businesses.crmId,'admin','admin');
+        await membership('manager',fixture.organizations.primaryId,fixture.businesses.maysternyaId,'manager','member');
+        await membership('worker',fixture.organizations.primaryId,fixture.businesses.maysternyaId,'animator','member');
+        await membership('worker',fixture.organizations.primaryId,fixture.businesses.crmId,'animator','member');
         await membership('otherOrg',fixture.organizations.secondaryId,fixture.businesses.customId,'director','owner',true);
         await membership('multiOrg',fixture.organizations.secondaryId,fixture.businesses.customId,'manager','member',true);
         await db.query("UPDATE organization_memberships SET role='member' WHERE user_id=$1 AND organization_id=$2",[bootstrap.id,fixture.organizations.primaryId]);
         for (const account of Object.values(fixture.actors)) if (account !== bootstrap) await login(account);
         record({ id:'bootstrap-two-organizations',domain:'lifecycle',status:'PASS',expected:'Actual creator bootstrap, explicit synthetic memberships',
-            observed:{ organizations:2,businesses:3,accounts:Object.keys(fixture.actors).length,ownerPlatformRole:'director' } });
+            observed:{ organizations:2,businesses:5,targetBusinesses:4,accounts:Object.keys(fixture.actors).length,ownerPlatformRole:'director' } });
         if (process.argv.includes('--startup-only')) return;
         const domain = require('./sys-mb-domain-scenarios.cjs');
         const readiness = require('./sys-mb-readiness-scenarios.cjs');
@@ -190,6 +206,83 @@ async function main() {
         process.stdout.write('[D06] Domain fixtures prepared\n');
         await readiness.seed({db,fixture});
         process.stdout.write('[D06] Readiness fixtures prepared\n');
+        const catalogCutover = require('../../services/catalogOwnershipCutover');
+        const { recordCompatibilityTelemetry, sha256 } = require('../../services/businessCutover');
+        const missingCatalogs = [
+            ['d06-122112', '122112', true], ['d06-21312', '21312', false],
+            ['d06-4214', '4214', false], ['d06-mushroom-cakes', 'Торти з грибів', false]
+        ];
+        for (const [id, name, hasToken] of missingCatalogs) await db.query(
+            `INSERT INTO catalog_definitions(id,name,is_active,status,public_token)
+             VALUES($1,$2,false,'draft',CASE WHEN $3 THEN $4 ELSE NULL END)
+             ON CONFLICT(id) DO NOTHING`, [id, name, hasToken, hasToken ? randomSecret() : null]
+        );
+        await db.query("UPDATE catalog_definitions SET public_token=COALESCE(public_token,$2) WHERE id=$1", ['cake', randomSecret()]);
+        await db.query("UPDATE catalog_definitions SET public_token=COALESCE(public_token,$2) WHERE id=$1", ['graduation', randomSecret()]);
+        const catalogRows = (await db.query(
+            'SELECT id,name FROM catalog_definitions WHERE name=ANY($1::text[]) ORDER BY id',
+            [catalogCutover.EXPECTED_CATALOG_NAMES]
+        )).rows;
+        const approvedCatalogMapping = { businessContext: 'event_genix',
+            decisionRef: 'SYS-MB-CLOSE-01:disposable-acceptance',
+            catalogs: catalogRows.map(row => ({ id: row.id, name: row.name })),
+            publicCatalogNames: [...catalogCutover.PUBLIC_CATALOG_NAMES] };
+        const catalogPayload = { approvedMapping: approvedCatalogMapping,
+            mappingSha256: sha256(approvedCatalogMapping), decisionRef: approvedCatalogMapping.decisionRef };
+        const preparedCatalogs = await catalogCutover.prepareCatalogOwnershipCutover(db, fixture.actors.owner, catalogPayload);
+        const appliedCatalogs = await catalogCutover.applyCatalogOwnershipCutover(db, fixture.actors.owner,
+            { ...catalogPayload, sourceFingerprintSha256: preparedCatalogs.sourceFingerprintSha256 });
+        const replayedCatalogs = await catalogCutover.applyCatalogOwnershipCutover(db, fixture.actors.owner,
+            { ...catalogPayload, sourceFingerprintSha256: preparedCatalogs.sourceFingerprintSha256 });
+        const verifiedCatalogs = await db.query(
+            `SELECT COUNT(*)::int AS roots,
+                    COUNT(*) FILTER (WHERE ownership_status='approved' AND business_context='event_genix')::int AS approved,
+                    COUNT(*) FILTER (WHERE publication_visibility='public_existing_token')::int AS public_links
+               FROM catalog_definitions WHERE name=ANY($1::text[])`, [catalogCutover.EXPECTED_CATALOG_NAMES]
+        );
+        const publicCatalogs = (await db.query(
+            `SELECT id,public_token FROM catalog_definitions
+              WHERE name=ANY($1::text[]) ORDER BY id`, [catalogCutover.PUBLIC_CATALOG_NAMES]
+        )).rows;
+        const publicStatuses = [];
+        for (const catalog of publicCatalogs) {
+            const response = await fetch(`${baseUrl}/catalog/${encodeURIComponent(catalog.id)}/${encodeURIComponent(catalog.public_token)}`,
+                { signal: AbortSignal.timeout(30000) });
+            publicStatuses.push(response.status);
+        }
+        const privateResponse = await fetch(`${baseUrl}/catalog/d06-21312/${randomSecret()}`,
+            { signal: AbortSignal.timeout(30000) });
+        record({ id: 'catalog.ownership.atomic_apply_replay', domain: 'catalogs',
+            status: Number(verifiedCatalogs.rows[0].roots) === 9 && Number(verifiedCatalogs.rows[0].approved) === 9
+                && Number(verifiedCatalogs.rows[0].public_links) === 3 && replayedCatalogs.replay
+                && publicStatuses.every(status => status === 200) && privateResponse.status === 404 ? 'PASS' : 'FAIL',
+            expected: 'Exact nine Park catalogs and children apply atomically, preserve three links and replay idempotently',
+            observed: { roots: Number(verifiedCatalogs.rows[0].roots), approved: Number(verifiedCatalogs.rows[0].approved),
+                publicLinks: Number(verifiedCatalogs.rows[0].public_links), childCounts: preparedCatalogs.childCounts,
+                publicLinkStatuses: publicStatuses, privateLinkStatus: privateResponse.status,
+                replay: replayedCatalogs.replay, assets: appliedCatalogs.assets } });
+        const telemetryDeployment = 'a'.repeat(40);
+        await recordCompatibilityTelemetry(db, { businessContext: 'maysternya_doli', entryFamily: 'provider',
+            decisionStage: 'admission', authoritySource: 'machine_principal', outcome: 'allowed',
+            deploymentSha: telemetryDeployment });
+        await recordCompatibilityTelemetry(db, { businessContext: 'maysternya_doli', entryFamily: 'provider',
+            decisionStage: 'admission', authoritySource: 'machine_principal', outcome: 'allowed',
+            deploymentSha: telemetryDeployment });
+        const telemetryProof = await db.query(
+            `SELECT (SELECT SUM(eligible_count)::int FROM business_compatibility_telemetry_v2_hourly
+                      WHERE deployment_sha=$1) AS decision_eligible,
+                    (SELECT SUM(collected_count)::int FROM business_compatibility_telemetry_v2_hourly
+                      WHERE deployment_sha=$1) AS decision_collected,
+                    (SELECT SUM(eligible_count)::int FROM business_compatibility_telemetry_runtime
+                      WHERE deployment_sha=$1) AS runtime_eligible,
+                    (SELECT SUM(persisted_count)::int FROM business_compatibility_telemetry_runtime
+                      WHERE deployment_sha=$1) AS runtime_persisted`, [telemetryDeployment]
+        );
+        const telemetryCounts = telemetryProof.rows[0];
+        record({ id: 'telemetry.v2.persistence_reconciliation', domain: 'telemetry',
+            status: Object.values(telemetryCounts).every(value => Number(value) === 2) ? 'PASS' : 'FAIL',
+            expected: 'Eligible, collected and runtime persisted counters reconcile across a repeated decision',
+            observed: Object.fromEntries(Object.entries(telemetryCounts).map(([key, value]) => [key, Number(value)])) });
         const context = {baseUrl,fixture,request,db,record};
         const readinessResult = await readiness.run(context);
         if (readinessResult) writeJson('readiness.json',readinessResult);

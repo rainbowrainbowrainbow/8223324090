@@ -13,8 +13,35 @@ const {
     canUseTimelineAction
 } = require('../services/timelineContext');
 const { ACTION_PERMISSIONS } = require('../middleware/auth');
+const { applyMembershipAccess, buildMembershipAccess } = require('../services/businessMembership');
 
 const ROOT = path.join(__dirname, '..');
+
+function maysternyaMember(role, overrides = {}) {
+    const row = {
+        organization_id: 11,
+        organization_slug: 'event-genix-group',
+        organization_name: 'Event Genix Group',
+        organization_role: 'member',
+        business_id: 44,
+        context_key: 'maysternya_doli',
+        business_label: 'Майстерня долі',
+        business_short_label: 'Майстерня',
+        business_modules: ['timeline'],
+        access_mode: 'membership',
+        business_status: 'active',
+        organization_status: 'active',
+        role,
+        extra_roles: [],
+        page_allowlist: [],
+        page_denylist: [],
+        action_allowlist: overrides.actionAllowlist || [],
+        action_denylist: overrides.actionDenylist || [],
+        is_default: true
+    };
+    const account = { id: 42, role, defaultBusinessContext: 'maysternya_doli' };
+    return applyMembershipAccess(account, buildMembershipAccess(account, [row], 'maysternya_doli', [row]));
+}
 
 test('timeline context preserves custom partitions and rejects malformed internal contexts', () => {
     assert.equal(normalizeTimelineContext(), DEFAULT_TIMELINE_CONTEXT);
@@ -1279,26 +1306,33 @@ test('timeline load routes keep legacy default-context rows visible', () => {
     assert.match(linesRoute, /COALESCE\(l\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
 });
 
-test('Maysternya Doli access accepts creator grants only', () => {
+test('Maysternya Doli keeps creator compatibility before cutover and uses scoped active memberships after cutover', () => {
     assert.equal(canAccessTimelineContext({ role: 'creator' }, 'maysternya_doli'), true);
     assert.equal(canAccessTimelineContext({ role: 'manager', extraRoles: ['creator'] }, 'maysternya_doli'), true);
     assert.equal(canAccessTimelineContext({ role: 'manager', pageAllowlist: ['/maysternya-doli'] }, 'maysternya_doli'), false);
-    assert.equal(canAccessTimelineContext({ role: 'manager' }, 'maysternya_doli'), false);
+    for (const role of ['director', 'manager', 'admin']) assert.equal(canAccessTimelineContext(maysternyaMember(role), 'maysternya_doli'), true);
+    assert.equal(canAccessTimelineContext(maysternyaMember('animator'), 'maysternya_doli'), false);
 });
 
-test('Maysternya Doli actions are creator-scoped inside the allowed surface', () => {
-    const director = { role: 'director', pageAllowlist: ['/maysternya-doli'] };
+test('Maysternya Doli actions use membership role/action permissions after cutover', () => {
+    const director = maysternyaMember('director');
+    const manager = maysternyaMember('manager');
+    const deniedManager = maysternyaMember('manager', { actionDenylist: ['edit_booking'] });
     const managerWithCreatorGrant = { role: 'instructor', extraRoles: ['creator'], businessContexts: ['event_genix', 'maysternya_doli'], pageAllowlist: ['/maysternya-doli'] };
     const creator = { role: 'creator' };
 
-    assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'create'), false);
-    assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'delete'), false);
-    assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'settings'), false);
+    assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'create'), true);
+    assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'delete'), true);
+    assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'settings'), true);
+    assert.equal(canUseTimelineAction(manager, 'maysternya_doli', 'edit'), true);
+    assert.equal(canUseTimelineAction(deniedManager, 'maysternya_doli', 'edit'), false);
     assert.equal(canUseTimelineAction(managerWithCreatorGrant, 'maysternya_doli', 'create'), true);
     assert.equal(canUseTimelineAction(managerWithCreatorGrant, 'maysternya_doli', 'edit'), true);
     assert.equal(canUseTimelineAction(creator, 'maysternya_doli', 'delete'), true);
     assert.equal(canUseTimelineAction(creator, 'maysternya_doli', 'sales'), false);
-    assert.equal(canUseTimelineAction({ role: 'manager', pageAllowlist: ['/maysternya-doli'] }, 'maysternya_doli', 'settings'), false);
+    // Settings remain a non-delegable director capability. Membership grants the
+    // business surface, not critical actions that the role preset does not own.
+    assert.equal(canUseTimelineAction(maysternyaMember('manager'), 'maysternya_doli', 'settings'), false);
 });
 
 test('park timeline delete action is manager-operational while permanent delete stays guarded', () => {

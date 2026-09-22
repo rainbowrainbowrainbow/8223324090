@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "task": "SYS-MB-CLOSE-01",
+  "generatedAt": "2026-09-22T12:36:45.1277988Z",
+  "status": {
+    "localPackage": "READY_FOR_AUTHORIZED_PRODUCTION_RELEASE",
+    "maysternyaReleaseReady": true,
+    "crmCutoverReplayRequired": false,
+    "crmOwnerRepairReady": true,
+    "parkCatalogOwnershipReady": true,
+    "compatibilityExitGate": "HOLD_MEASURED",
+    "globalModelComplete": false,
+    "productionWritesByTask": 0
+  },
+  "source": {
+    "worktree": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-close-01-final-20260922",
+    "branch": "codex/sys-mb-close-01-final-20260922",
+    "baseCommit": "b3ea57bef3c6694fcc19be86011552ca2e97ed7c",
+    "upstreamBranch": "codex/eventgenix-production",
+    "upstreamCommitAtVerification": "b3ea57bef3c6694fcc19be86011552ca2e97ed7c",
+    "functionalCommit": null,
+    "releaseCommit": null
+  },
+  "liveReadOnlyEvidence": {
+    "url": "https://8223324090-production.up.railway.app/api/version",
+    "commit": "b3ea57bef3c6694fcc19be86011552ca2e97ed7c",
+    "branch": "codex/eventgenix-production",
+    "version": "0.82.6",
+    "releaseLabel": "Omni: зрозумілий Facebook fallback",
+    "deploymentMetadataComplete": true,
+    "observedDrift": "No final drift. Package base, production branch, and live deployment match."
+  },
+  "authorizationScope": {
+    "id": "SYS-MB-CLOSE-01-RELEASE",
+    "scopeHash": "0f90b6f0f0ba42836e87ead9dcb24afaa67f5341be4571cee32410f299361ca7",
+    "target": {
+      "branch": "codex/eventgenix-production",
+      "railwayProject": "fortunate-appreciation",
+      "railwayEnvironment": "production",
+      "railwayService": "8223324090"
+    },
+    "limits": {
+      "hours": 6,
+      "releaseAttempts": 3
+    }
+  },
+  "protectedEvidence": {
+    "crmAppliedReceipt": "29436fa0daf1ae01bdfaf7bfaf48680cf92dd77e899b4adc4646555903a07223",
+    "crmApprovedMappingHash": "3e653c3f12cc4edb3476cf4f5a9f06e1f2fbf865a2d410459fccca9163e50a86",
+    "ownerRepair": {
+      "path": "C:\\Users\\Plotva\\.eventgenix\\sys-mb-recover-01-20260913\\close-01-owner-repair-payload.json",
+      "canonicalPayloadHash": "d20cdf51fbf60377993f442cbeac8222b51b87a0748981e9511545c743b8b242",
+      "gitTracked": false
+    },
+    "catalogOwnership": {
+      "path": "C:\\Users\\Plotva\\.eventgenix\\sys-mb-recover-01-20260913\\close-01-catalog-ownership-payload.json",
+      "mappingHash": "0ce0adbf5b372c443a716eabab1869f910d5af3025fb5f2a88ff175d9d310fb0",
+      "gitTracked": false,
+      "rootCount": 9,
+      "existingPublicTokenCount": 3
+    },
+    "maysternyaMapping": {
+      "mappingHash": "7efec32812aa093d5cfb5ce390e4faa68cf36342d13c90aa40d462d8fed6a162",
+      "gitTracked": false
+    }
+  },
+  "migrations": [
+    {
+      "number": 368,
+      "path": "db/migrations/368_catalog_ownership_cutover_journal.sql",
+      "sha256": "f12f38c5ec2c5b3c1f52f5c79e8013975dc485000774e652aed7a659d66c7188",
+      "kind": "additive"
+    },
+    {
+      "number": 369,
+      "path": "db/migrations/369_multibusiness_compatibility_telemetry_v2.sql",
+      "sha256": "9b0062613cb8212e15e2054a693c6f037f4c4d4d9d57cda2bb28eea2a4360095",
+      "kind": "additive"
+    }
+  ],
+  "files": {
+    "config/businessCompatibilityTelemetry.js": "0d7306df65769e0f790d4be5f006101ae9a8856325d1083fdcb9c52b6c088fa6",
+    "middleware/auth.js": "e95b5aa0c6af2085ddc604f4d48d3b56f3146264154431f9308c35904cc22e0a",
+    "middleware/hermesAuth.js": "a01386f23889a4c75f0a43fda950eee661dec8d53abff7bbeb205ff4ea23d0ac",
+    "profile.html": "6de650f338637aa79a09b47f82f3cfa03634e86788f3cac8277cf6326b9f24c0",
+    "routes/catalogs.js": "8f561438673ffa0241fd2ad48f605d6751e7127017270d87513fc7d97fc81ce2",
+    "routes/leads.js": "6d5de017668afb9dfd8c3b7c2e815c184e4c403afee98651c37bb568a5b8fa8c",
+    "routes/organizations.js": "738514d7afe9b9c18afc5214f6af410d4000f8157b711c221d26a1f422d4523b",
+    "scripts/sys-mb-compatibility-telemetry-report.cjs": "568bd3941a0298b3aa9386796dbdc5ec73262ffac0ba5e40985c06d14a8ed1a5",
+    "server.js": "65c5384e102644555277ed534f83fe045ab74b777f1c8ecfadc2435b2d551421",
+    "services/businessCutover.js": "361d2a49f7ee1fba261a36e815d55f39d31ac10d33559b75e6875888a88a76c7",
+    "services/catalogOwnershipCutover.js": "809952adff44cb1518bb5e7281e86bd14a0746285e737535962101aa2d9ef30a",
+    "services/eventBus.js": "c3ae9b6903733db0308cd255234d6e0a39adfa116fe1d07e06558cd67135aaba",
+    "services/legacyBusinessSurface.js": "656ab508007edc679645fbd5d4465a570ad622eee3d3f8f29f1de730b41c692b",
+    "services/timelineContext.js": "29cbd1a071450b8776e4374a9e91330e5646db2118b28a631de5ca73870ed1ce",
+    "services/websocketEventAccess.js": "e2cc64e218326614a64abf0bd971cbe4bef3ce10818093d1e6752db6d9c6ccf4",
+    "tests/acceptance/run-sys-mb-local.cjs": "7ca45e5e29029764483b47e09a60f610f473e2d63f8d7be05964e69e016ede50",
+    "tests/acceptance/sys-mb-browser-scenarios.cjs": "5e03589ed448b04557155b1867eebd2464b5f8e8fe3c5aa3823679f28d7ef7c5",
+    "tests/acceptance/sys-mb-domain-scenarios.cjs": "2704e67ff6e170b4237c1fdae6cf6c8165841a90c9c954dea96658a0e8907b26",
+    "tests/acceptance/sys-mb-readiness-scenarios.cjs": "a585850cb7c79d539449b49575dcf1c3d3b81ca5f98281e9840ce7ce357c530b",
+    "tests/business-cutover.test.js": "90b9ac1fd46e11bd680adebc39cf035f6539e0b1d371548d7bea12ec96084b3e",
+    "tests/catalog-ownership-cutover.test.js": "bfc90e2477c95b61cf136a2d0f7641247dde2240e510f88653fcfd1bfff9a58a",
+    "tests/sys-mb-compatibility-telemetry-report.test.js": "13519b0353c4ecbd76a9c35dcd2619927a14bebedd5c6fb4e0f1445d663f9bbc",
+    "tests/timeline-context.test.js": "fc48d829d74f74258b828a411e644ebf82e02e1f2a43489dd70e45b717db70b4",
+    "tests/websocket-event-access.test.js": "63ebe61787331d99bc84ced1f7567e636049046f2d4fd4ee9ec51e21740b0a48"
+  },
+  "verification": [
+    {
+      "command": "npm run check:runtime",
+      "result": "PASS",
+      "details": "Node 22.23.1 / npm 10.9.8"
+    },
+    {
+      "command": "node --test tests/sys-mb-compatibility-telemetry-report.test.js tests/business-cutover.test.js tests/catalog-ownership-cutover.test.js tests/timeline-context.test.js tests/websocket-event-access.test.js",
+      "result": "PASS",
+      "details": "69/69"
+    },
+    {
+      "command": "npm run test:sys-mb",
+      "result": "PASS"
+    },
+    {
+      "command": "npm run test:ui",
+      "result": "PASS"
+    },
+    {
+      "command": "npm run check:migrations",
+      "result": "PASS",
+      "details": "001-369"
+    },
+    {
+      "command": "npm run check:syntax",
+      "result": "PASS",
+      "details": "1294 files"
+    },
+    {
+      "command": "npm run check:access && npm run check:auth-boundary && npm run check:api-surface && npm run check:static-surface && npm run check:scheduler-surface && npm run check:db-startup-surface && npm run check:service-worker-policy",
+      "result": "PASS",
+      "details": "All protected surface ownership guards passed."
+    },
+    {
+      "command": "SYS_MB_D06_LOCAL=true node tests/acceptance/run-sys-mb-local.cjs",
+      "result": "PASS_WITH_MEASURED_GATE_NOT_TESTABLE",
+      "runId": "d06_1790079382156_b96074",
+      "resultPath": ".codex-temp/sys-mb-d06/runs/d06_1790079382156_b96074/result.json",
+      "browserArtifactPath": "output/playwright/sys-mb-d06/d06_1790079382156_b96074/",
+      "details": "All PostgreSQL/domain/role/rollback/concurrency/cleanup checks and 15 browser scenarios passed; production duration/traffic gate is intentionally not fixture-testable."
+    }
+  ],
+  "qaPlan": {
+    "productionMode": "read_only_existing_test_accounts",
+    "productionCreatedFixtureCounts": {
+      "trustedQaRuns": 0,
+      "organizations": 0,
+      "businesses": 0,
+      "users": 0,
+      "memberships": 0,
+      "operationalRecords": 0,
+      "publicTokens": 0
+    },
+    "productionTtlMinutes": null,
+    "cleanupExpectedRegisteredEntities": 0,
+    "cleanupProof": "Read trusted QA registry before and after live QA and prove no CLOSE-01 run/entity was created. Any unexpected row is a release HOLD.",
+    "sameJwtProof": "Use the authorized MD mapping transition itself with an existing approved test account and the same browser JWT; do not create or mutate an extra QA membership.",
+    "localDisposableFixtureCounts": {
+      "organizations": 2,
+      "businesses": 5,
+      "targetBusinesses": 4,
+      "accounts": 9,
+      "catalogRoots": 9,
+      "catalogChildren": 27,
+      "publicLinks": 3
+    },
+    "localTtl": "process_lifetime",
+    "localCleanup": "Exact disposable PostgreSQL database drop in finally; repeated run and source-stability checks passed."
+  },
+  "productionPlan": {
+    "order": [
+      "Reverify upstream and live version; stop on scope drift.",
+      "Create separate functional and canonical version/cache/changelog commits.",
+      "Push exact final SHA and require green CI for that SHA.",
+      "Deploy only through npm run release:railway-up.",
+      "Apply additive migrations 368 and 369.",
+      "Run bounded post-schema read-only preflight.",
+      "Verify the existing CRM receipt without replaying CRM cutover.",
+      "Apply the exact owner repair only when all predicates and hash match.",
+      "Prepare/apply exact Park catalog ownership mapping with a fresh fingerprint.",
+      "Prepare/apply exact Maysternya mapping with a fresh fingerprint.",
+      "Run read-only live QA with existing approved test accounts, public-link checks, zero-new-fixture proof, and exact live version proof.",
+      "Start measured compatibility observation."
+    ],
+    "rollback": {
+      "beforeCommit": "Atomic database transaction rollback; no data change.",
+      "afterApply": "Forward-only audited lifecycle correction under a new exact block; no destructive schema rollback or token rotation.",
+      "code": "Redeploy the recorded prior live SHA; additive schema remains compatible."
+    },
+    "forbidden": [
+      "force-push",
+      "git reset of other work",
+      "raw railway up",
+      "secret or hosting-setting changes",
+      "payment, payroll, Art, price, or formula changes",
+      "real sends, payments, or generation",
+      "public-token rotation or republishing",
+      "shared-blob reassignment",
+      "production QA fixtures"
+    ]
+  },
+  "documents": [
+    "docs/workstreams/sys-multibusiness/close-01/CLOSE_01_REPORT.md",
+    "docs/workstreams/sys-multibusiness/close-01/DOMAIN_MATRIX.md",
+    "docs/workstreams/sys-multibusiness/close-01/RELEASE_MANIFEST.md",
+    "docs/workstreams/sys-multibusiness/close-01/VERIFICATION_MANIFEST.json",
+    "docs/workstreams/sys-multibusiness/close-01/CONTEXT_HANDOFF.md"
+  ]
+}

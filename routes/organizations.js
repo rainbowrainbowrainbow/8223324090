@@ -8,6 +8,8 @@ const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const lifecycle = require('../services/organizationLifecycle');
 const { lockOrganizationOwnership } = require('../services/organizationOwnership');
 const { applyReservedCutover, prepareReservedCutover } = require('../services/businessCutover');
+const { applyCatalogOwnershipCutover, prepareCatalogOwnershipCutover } = require('../services/catalogOwnershipCutover');
+const { recordCompatibilityTelemetrySafe } = require('../services/businessCutover');
 
 function text(value, max = 160) {
     return String(value || '').trim().slice(0, max);
@@ -152,6 +154,8 @@ router.post('/bootstrap', requireAction('manage_accounts'), async (req, res) => 
 router.post('/cutovers/prepare', requireAction('manage_accounts'), async (req, res) => {
     try {
         const cutover = await prepareReservedCutover(pool, req.user, req.body || {});
+        recordCompatibilityTelemetrySafe(pool, { businessContext: cutover.contextKey, entryFamily: 'operator',
+            decisionStage: 'execution', authoritySource: 'membership', outcome: 'allowed' });
         res.status(cutover.replay ? 200 : 201).json({ success: true, cutover });
     } catch (error) { lifecycleError(res, error, 'cutover_prepare_failed'); }
 });
@@ -161,8 +165,28 @@ router.post('/cutovers/prepare', requireAction('manage_accounts'), async (req, r
 router.post('/cutovers/apply', requireAction('manage_accounts'), async (req, res) => {
     try {
         const cutover = await applyReservedCutover(pool, req.user, req.body || {});
+        recordCompatibilityTelemetrySafe(pool, { businessContext: cutover.contextKey, entryFamily: 'operator',
+            decisionStage: 'execution', authoritySource: 'membership', outcome: 'allowed' });
         res.status(cutover.replay ? 200 : 201).json({ success: true, cutover });
     } catch (error) { lifecycleError(res, error, 'cutover_apply_failed'); }
+});
+
+router.post('/catalog-cutovers/prepare', requireAction('manage_accounts'), async (req, res) => {
+    try {
+        const cutover = await prepareCatalogOwnershipCutover(pool, req.user, req.body || {});
+        recordCompatibilityTelemetrySafe(pool, { businessContext: 'event_genix', entryFamily: 'operator',
+            decisionStage: 'execution', authoritySource: 'membership', outcome: 'allowed' });
+        res.status(cutover.replay ? 200 : 201).json({ success: true, cutover });
+    } catch (error) { lifecycleError(res, error, 'catalog_cutover_prepare_failed'); }
+});
+
+router.post('/catalog-cutovers/apply', requireAction('manage_accounts'), async (req, res) => {
+    try {
+        const cutover = await applyCatalogOwnershipCutover(pool, req.user, req.body || {});
+        recordCompatibilityTelemetrySafe(pool, { businessContext: 'event_genix', entryFamily: 'operator',
+            decisionStage: 'execution', authoritySource: 'membership', outcome: 'allowed' });
+        res.status(cutover.replay ? 200 : 201).json({ success: true, cutover });
+    } catch (error) { lifecycleError(res, error, 'catalog_cutover_apply_failed'); }
 });
 
 router.post('/:organizationId/businesses', async (req, res) => {

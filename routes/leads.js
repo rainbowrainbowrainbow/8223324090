@@ -50,6 +50,7 @@ const {
     createMaysternyaAvailabilityResponse,
     isMaysternyaBookingDryRun
 } = require('../services/maysternyaBookingWebhook');
+const { recordCompatibilityTelemetrySafe } = require('../services/businessCutover');
 const {
     validateChildBirthday,
     replaceCustomerChildren,
@@ -1527,11 +1528,15 @@ async function handleUniversalWebhook(req, res) {
     try {
         const token = bearerTokenFromHeader(req.headers['authorization']);
         if (!timingSafeTextEqual(token, UNIVERSAL_WEBHOOK_TOKEN)) {
+            recordCompatibilityTelemetrySafe(pool, { businessContext: universalWebhookBusinessContext(req, normalizeWebhookSource(req.query.source || 'universal')),
+                entryFamily: 'provider', decisionStage: 'admission', authoritySource: 'unknown', outcome: 'denied' }, log);
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
         const sourceChannel = normalizeWebhookSource(req.query.source || 'universal');
         const businessContext = universalWebhookBusinessContext(req, sourceChannel);
+        recordCompatibilityTelemetrySafe(pool, { businessContext, entryFamily: 'provider', decisionStage: 'admission',
+            authoritySource: 'machine_principal', outcome: 'allowed' }, log);
         const payload = normalizeUniversalWebhookPayload(req.body || {}, sourceChannel);
         const notes = formatUniversalLeadNotes(payload, sourceChannel);
 
@@ -1574,8 +1579,13 @@ async function handleMaysternyaBookingWebhook(req, res) {
     try {
         const token = bearerTokenFromHeader(req.headers['authorization']);
         if (!timingSafeTextEqual(token, UNIVERSAL_WEBHOOK_TOKEN)) {
+            recordCompatibilityTelemetrySafe(pool, { businessContext: 'maysternya_doli', entryFamily: 'provider',
+                decisionStage: 'admission', authoritySource: 'unknown', outcome: 'denied' }, log);
             return res.status(401).json({ error: 'Unauthorized' });
         }
+
+        recordCompatibilityTelemetrySafe(pool, { businessContext: 'maysternya_doli', entryFamily: 'provider',
+            decisionStage: 'admission', authoritySource: 'machine_principal', outcome: 'allowed' }, log);
 
         const result = await createMaysternyaBotBooking(req.body || {}, {
             dryRun: isMaysternyaBookingDryRun(req)
@@ -1607,8 +1617,13 @@ async function handleMaysternyaAvailabilityWebhook(req, res) {
     try {
         const token = bearerTokenFromHeader(req.headers['authorization']);
         if (!timingSafeTextEqual(token, UNIVERSAL_WEBHOOK_TOKEN)) {
+            recordCompatibilityTelemetrySafe(pool, { businessContext: 'maysternya_doli', entryFamily: 'provider',
+                decisionStage: 'admission', authoritySource: 'unknown', outcome: 'denied' }, log);
             return res.status(401).json({ error: 'Unauthorized' });
         }
+
+        recordCompatibilityTelemetrySafe(pool, { businessContext: 'maysternya_doli', entryFamily: 'provider',
+            decisionStage: 'admission', authoritySource: 'machine_principal', outcome: 'allowed' }, log);
 
         const result = await createMaysternyaAvailabilityResponse(req.body || {});
         if (result.error) {

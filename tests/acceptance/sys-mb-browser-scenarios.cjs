@@ -45,7 +45,15 @@ async function runBrowserAcceptance({ baseUrl, fixture, outputDir, playwrightMod
         if (!page || page.isClosed()) return null;
         evidencePage = page;
         const destination = path.join(output, name.replace(/[^a-zA-Z0-9_-]/g, '-') + '.png');
-        await page.screenshot({ path: destination, fullPage, timeout: 30000 });
+        try {
+            await page.screenshot({ path: destination, fullPage, timeout: 30000 });
+        } catch (error) {
+            // Very tall profile/dashboard pages can keep changing while widgets
+            // settle. Evidence capture must not turn an accepted interaction into
+            // a product failure, so retain a bounded viewport proof instead.
+            if (!fullPage || !/Timeout/i.test(String(error?.message || ''))) throw error;
+            await page.screenshot({ path: destination, fullPage: false, timeout: 30000 });
+        }
         return destination;
     }
     async function scenario(id, expected, action) {
@@ -212,7 +220,8 @@ async function runBrowserAcceptance({ baseUrl, fixture, outputDir, playwrightMod
         // The shared sidebar may be collapsed on narrow screens; desktop tests use its real control.
         await select.selectOption(businessContext);
         await page.waitForFunction(context => window.CrmBusinessContext?.current?.() === context
-            && window.AppState?.currentUser?.activeBusinessContext === context, businessContext);
+            && window.AppState?.currentUser?.activeBusinessContext === context
+            && document.querySelector('#sidebarBusinessContextSelect')?.value === context, businessContext);
     }
     async function setTheme(page, dark) {
         const toggle = page.locator('#headerThemeToggle');
@@ -363,6 +372,28 @@ async function runBrowserAcceptance({ baseUrl, fixture, outputDir, playwrightMod
             assert.equal(Number(user.organizationId), Number(fixture.organizations.secondaryId));
             assert.equal(user.role, 'manager');
             return { observed: user, evidence: [await screenshot(session.page, 'two-organization-selection')] };
+        });
+
+        await scenario('D06-B14-four-business-switching', 'The published cabinet UI switches Park, Dar, Maysternya and CRM from server memberships without leaking the previous role', async () => {
+            prerequisite(ownerSession, 'Owner browser session is required');
+            const page = ownerSession.page;
+            const observed = [];
+            for (const businessContext of ['event_genix', 'dar', 'maysternya_doli', 'crm']) {
+                await switchBusiness(page, businessContext);
+                await page.waitForFunction(context => window.AppState?.currentUser?.activeBusinessContext === context, businessContext);
+                observed.push(await page.evaluate(() => ({
+                    context: window.AppState.currentUser.activeBusinessContext,
+                    role: window.AppState.currentUser.role,
+                    organizationId: window.AppState.currentUser.organizationId,
+                    selected: document.querySelector('#sidebarBusinessContextSelect')?.value || null
+                })));
+            }
+            for (const item of observed) {
+                assert.equal(item.context, item.selected);
+                assert.equal(item.role, 'director');
+                assert.equal(Number(item.organizationId), Number(fixture.organizations.primaryId));
+            }
+            return { observed, evidence: [await screenshot(page, 'four-business-switching')] };
         });
 
         await scenario('D06-B12-products-context', 'Actual product cards switch from the Park fixture marker to Dar without retaining the other business data', async () => {
@@ -681,6 +712,8 @@ async function runBrowserAcceptance({ baseUrl, fixture, outputDir, playwrightMod
                 && ['/api/tasks/decomposition-saved-templates', '/api/tasks/ai-draft/status'].includes(item.path)) return 'Animator lacks task-AI management permission';
             if (['multiOrg', 'assigned-worker'].includes(item.actor) && item.context === null
                 && item.path === '/api/dashboard/widgets/currency') return 'Manager/animator lacks protected currency-widget permission';
+            if (item.actor === 'owner' && item.context === 'crm'
+                && /^\/api\/bookings\//.test(item.path)) return 'CRM registry intentionally disables the timeline module';
             if (item.actor === 'multiOrg' && item.context === fixture.contexts.other
                 && item.path === '/api/chat/unread' && item.denialCode === 'chat_not_migrated') return 'Selected membership context correctly receives legacy chat containment';
             return null;

@@ -30,6 +30,7 @@ const { buildProfileAvatarBlobFallbackHandler } = require('./services/profileAva
 const { buildCatalogImageBlobFallbackHandler } = require('./services/imageStorage');
 const { buildChatUploadBlobFallbackHandler } = require('./services/chatUploadStorage');
 const { buildSoundUploadBlobFallbackHandler } = require('./services/audioStorage');
+const { recordCompatibilityTelemetrySafe } = require('./services/businessCutover');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkStaleCatalogImages, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks, checkGraduationOpsAutomation, checkAttendanceReviewTasks, checkHrAttendancePrintAutomations, checkBirthdayTagSync } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
@@ -638,7 +639,22 @@ app.get('/sound', (req, res) => {
 app.get('/catalog/:slug/:token', async (req, res) => {
     try {
         const { pool } = require('./db');
-        const cat = await pool.query('SELECT * FROM catalog_definitions WHERE id=$1 AND public_token=$2', [req.params.slug, req.params.token]);
+        const cat = await pool.query(
+            `SELECT * FROM catalog_definitions
+              WHERE id=$1 AND public_token=$2
+                AND (
+                    (business_context='event_genix'
+                     AND ownership_status='approved'
+                     AND publication_visibility IN ('public_existing_token','public_approved'))
+                    OR (business_context IS NULL
+                        AND ownership_status='legacy_unassigned'
+                        AND publication_visibility='legacy')
+                )`,
+            [req.params.slug, req.params.token]
+        );
+        recordCompatibilityTelemetrySafe(pool, { businessContext: 'event_genix', entryFamily: 'public',
+            decisionStage: 'admission', authoritySource: cat.rowCount ? 'membership' : 'unknown',
+            outcome: cat.rowCount ? 'allowed' : 'denied' }, log);
         if (!cat.rowCount) return res.status(404).send('Каталог не знайдено');
         const pages = await pool.query('SELECT * FROM catalog_pages WHERE catalog_id=$1 AND is_active=true ORDER BY page_number', [req.params.slug]);
         const catalog = cat.rows[0];

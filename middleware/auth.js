@@ -41,6 +41,7 @@ function recordBusinessAuthorityDecision(req, access, outcome) {
     recordCompatibilityTelemetrySafe(pool, {
         businessContext,
         entryFamily: String(req?.path || '').startsWith('/auth/') ? 'profile' : 'http',
+        decisionStage: 'admission',
         authoritySource: access.membershipEnabled ? 'membership' : 'compatibility',
         outcome
     }, log);

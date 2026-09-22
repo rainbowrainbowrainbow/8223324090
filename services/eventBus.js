@@ -28,6 +28,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { isTrustedDisposableQaSource } = require('./disposableQa');
 const { assertFinanceIncomeNotificationScope } = require('./financeIncomeNotification');
+const { recordCompatibilityTelemetrySafe } = require('./businessCutover');
 const {
     MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING,
     buildMachineTaskControlMetaPatch
@@ -101,6 +102,10 @@ async function processEventRules(event) {
     let acceptedActions = 0;
     let sawNoop = false;
     try {
+        const telemetryPayload = typeof event?.payload === 'string' ? safeParseJson(event.payload) : (event?.payload || {});
+        const telemetryContext = String(telemetryPayload?.businessContext || telemetryPayload?.business_context || '').trim();
+        if (telemetryContext) recordCompatibilityTelemetrySafe(pool, { businessContext: telemetryContext,
+            entryFamily: 'job', decisionStage: 'execution', authoritySource: 'membership', outcome: 'allowed' }, log);
         if (event?.event_type === 'finance.income') {
             await assertFinanceIncomeNotificationScope(pool, event.payload);
         }

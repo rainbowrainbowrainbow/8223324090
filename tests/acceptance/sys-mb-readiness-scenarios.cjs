@@ -244,8 +244,9 @@ async function run({ baseUrl, fixture, request, db, record }) {
                 backgroundWorkers: 'HELD_BY_PARENT_HARNESS', outboundProviders: 'FORBIDDEN',
                 zeroUsageEstablished: false } }, sentinelSetup: fixture.readiness || null };
     const cases = [['owner', fixture.contexts.park], ['owner', fixture.contexts.dar],
+        ['owner', fixture.contexts.maysternya], ['owner', fixture.contexts.crm],
+        ['manager', fixture.contexts.maysternya], ['admin', fixture.contexts.crm], ['worker', fixture.contexts.crm],
         ['multiOrg', fixture.contexts.park], ['multiOrg', fixture.contexts.other], ['otherOrg', fixture.contexts.other]];
-    if (fixture.actors.compatibility) cases.push(['compatibility', 'maysternya_doli']);
     for (const [actor, context] of cases) {
         const id = `D06-READINESS-PROFILE-${actor}-${context}`;
         try {

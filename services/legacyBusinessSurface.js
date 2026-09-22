@@ -49,6 +49,7 @@ function legacyTelemetry(db, businessContext, authoritySource, outcome) {
     recordCompatibilityTelemetrySafe(db, {
         businessContext: typeof businessContext === 'string' && businessContext.trim() ? businessContext.trim().toLowerCase() : 'unknown',
         entryFamily: 'service',
+        decisionStage: 'domain',
         authoritySource,
         outcome
     });

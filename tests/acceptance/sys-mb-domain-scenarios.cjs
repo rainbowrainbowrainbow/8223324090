@@ -208,6 +208,41 @@ async function run({ baseUrl, fixture, request, db, record }) {
             });
         }
     }
+    const migratedBusinessReads = [
+        [fixture.contexts.maysternya, 'owner', lists.filter(([domain]) => !['warehouse'].includes(domain))],
+        [fixture.contexts.crm, 'owner', lists.filter(([domain]) => ['customers', 'leads', 'tasks', 'finance'].includes(domain))]
+    ];
+    for (const [context, actor, enabledLists] of migratedBusinessReads) {
+        for (const [domain, path, arrayKey, fixtureKey, responseKey] of enabledLists) {
+            await scenario(`domain.${context}.${domain}.required_read`, domain,
+                'Enabled MD/CRM domain returns its owned sentinel and excludes every foreign business', async () => {
+                    const result = await http({ actor, path, context });
+                    expectStatus(result, 200);
+                    const ids = idSet(arrayAt(result.body, arrayKey), responseKey);
+                    assert.ok(ids.has(String(fixture.records[context][fixtureKey])));
+                    for (const foreignContext of Object.values(fixture.contexts).filter(value => value !== context)) {
+                        assert.ok(!ids.has(String(fixture.records[foreignContext][fixtureKey])));
+                    }
+                });
+        }
+    }
+    await scenario('auth.md_crm_roles', 'auth', 'Director, manager, admin and worker roles come only from active MD/CRM memberships', async () => {
+        const expected = [
+            ['owner', fixture.contexts.maysternya, 200, 'director'],
+            ['owner', fixture.contexts.crm, 200, 'director'],
+            ['manager', fixture.contexts.maysternya, 200, 'manager'],
+            ['manager', fixture.contexts.crm, 403, null],
+            ['admin', fixture.contexts.maysternya, 200, 'admin'],
+            ['admin', fixture.contexts.crm, 200, 'admin'],
+            ['worker', fixture.contexts.maysternya, 200, 'animator'],
+            ['worker', fixture.contexts.crm, 200, 'animator']
+        ];
+        for (const [actor, context, status, role] of expected) {
+            const profile = await http({ actor, context, path: '/api/auth/business-profile' });
+            expectStatus(profile, status);
+            if (role) assert.equal(profile.body.user.role, role);
+        }
+    });
     const details = [
         ['bookings', row => `/api/bookings/detail/${row.bookingId}`, 'bookingId', body => body.booking?.id],
         ['customers', row => `/api/customers/${row.customerId}`, 'customerId', body => body.id],

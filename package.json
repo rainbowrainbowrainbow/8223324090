@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.7",
+  "version": "0.82.8",
   "eventGenix": {
-    "releaseLabel": "Omni: чистий fallback без технічних ID"
+    "releaseLabel": "SYS-MB: Майстерня, каталоги та telemetry"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

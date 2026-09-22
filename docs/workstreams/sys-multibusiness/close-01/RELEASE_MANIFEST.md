@@ -1,7 +1,9 @@
 # SYS-MB-CLOSE-01 — exact production manifest
 
-Manifest scope hash: `0f90b6f0f0ba42836e87ead9dcb24afaa67f5341be4571cee32410f299361ca7`  
-Base/live at final read: `b3ea57bef3c6694fcc19be86011552ca2e97ed7c`  
+Manifest scope hash: `0f90b6f0f0ba42836e87ead9dcb24afaa67f5341be4571cee32410f299361ca7`
+
+Base/live at final read: `b3ea57bef3c6694fcc19be86011552ca2e97ed7c`
+
 Target: `codex/eventgenix-production` → `fortunate-appreciation / production / 8223324090`
 
 This is a pre-commit manifest. The protected controller must be prepared after the functional and version commits exist, and must bind the resulting exact final SHA before push. Any path/hash/base drift invalidates this manifest.

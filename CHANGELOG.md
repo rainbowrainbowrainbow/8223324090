@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.8 - SYS-MB: Майстерня, каталоги та telemetry
+
+### Release / Versioning / (22.09.2026) [codex]
+- **SYS-MB: Майстерня, каталоги та telemetry** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.7 - Omni: чистий fallback без технічних ID
 
 ### Omni / (22.09.2026) [codex]

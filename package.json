@@ -1,6 +1,6 @@
 {
   "name": "event-genix",
-  "version": "0.82.8",
+  "version": "0.82.9",
   "eventGenix": {
     "releaseLabel": "SYS-MB: Майстерня, каталоги та telemetry"
   },

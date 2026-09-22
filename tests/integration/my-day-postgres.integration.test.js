@@ -1225,7 +1225,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         for (let index = 0; index < taskIds.length; index += 1) {
             assert.deepEqual(
                 await readImpactIds(owner.id, taskIds[index]),
-                preview.data.proposal.tasks[index].impactIds
+                preview.data.proposal.tasks[index].impactIds.map(Number).sort((a, b) => a - b)
             );
         }
         const rows = await query(

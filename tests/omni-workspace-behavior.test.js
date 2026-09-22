@@ -948,14 +948,60 @@ for (const channel of ['facebook', 'instagram']) {
     h.app.selectConversation(1);
     await h.flush();
     h.document.getElementById('omniInput').value = 'Keep this reply';
-    assert.equal(h.document.getElementById('omniChatName').textContent, 'Unknown');
+    assert.equal(h.document.getElementById('omniChatName').textContent, (channel === 'facebook' ? 'Facebook' : 'Instagram') + ' · 456');
+    await h.app.openLeadAssistantPanel('draft');
+    h.document.getElementById('omniLeadDraftClientName').value = 'Manual draft name';
+    h.document.getElementById('omniLeadDraftInstagram').value = 'manual_handle';
 
     records[0] = { ...records[0], customerName: 'Fixture Person' };
     await h.app.loadConversations();
+    await h.app.openLeadAssistantPanel('draft');
 
     assert.equal(h.document.getElementById('omniChatName').textContent, 'Fixture Person');
     assert.match(h.document.querySelector('.omni-conv-name').textContent, /Fixture Person/);
     assert.match(h.document.getElementById('omniChatAvatar').textContent, /FI/);
     assert.equal(h.document.getElementById('omniInput').value, 'Keep this reply');
+    assert.equal(h.document.getElementById('omniLeadDraftClientName').value, 'Manual draft name');
+    assert.equal(h.document.getElementById('omniLeadDraftInstagram').value, 'manual_handle');
   });
 }
+
+for (const channel of ['facebook', 'instagram']) {
+  for (const customerName of [null, '', '  ', 'Unknown', ' uNkNoWn ']) {
+    test(channel + ' missing name uses the same honest fallback in list, header and reload: ' + JSON.stringify(customerName), async t => {
+      const record = { ...conversation(1, channel), externalId: '456', customerName };
+      const h = harness(t, [record]);
+      const expected = (channel === 'facebook' ? 'Facebook' : 'Instagram') + ' · 456';
+      h.app.selectConversation(1); await h.flush();
+      assert.equal(h.document.getElementById('omniChatName').textContent, expected);
+      assert.equal(h.document.querySelector('.omni-conv-name').textContent, expected);
+      await h.app.loadConversations();
+      assert.equal(h.document.getElementById('omniChatName').textContent, expected);
+      assert.equal(record.customerName, customerName, 'display fallback never changes persisted names');
+      await h.app.openLeadAssistantPanel('draft');
+      assert.equal(h.document.getElementById('omniLeadDraftClientName').value, '');
+      assert.equal(h.document.getElementById('omniLeadDraftInstagram').value, '', 'scoped numeric ID is never an account tag');
+      assert.equal((h.document.getElementById('omniLeadAssistantStatus').textContent.match(new RegExp(channel === 'facebook' ? 'Facebook' : 'Instagram', 'g')) || []).length, 1,
+        'fallback labels do not repeat the channel');
+    });
+  }
+}
+
+test('Instagram verified handle is displayed and prefills the tag rather than a person name', async t => {
+  const h = harness(t, [{ ...conversation(1, 'instagram'), externalId: '456', customerName: '@fixture_handle' }]);
+  h.app.selectConversation(1); await h.flush();
+  assert.equal(h.document.getElementById('omniChatName').textContent, '@fixture_handle');
+  assert.equal(h.document.querySelector('.omni-conv-name').textContent, '@fixture_handle');
+  await h.app.openLeadAssistantPanel('draft');
+  assert.equal(h.document.getElementById('omniLeadDraftClientName').value, '');
+  assert.equal(h.document.getElementById('omniLeadDraftInstagram').value, 'fixture_handle');
+});
+
+test('a real manual name stays literal and profile text is escaped in the list', async t => {
+  const name = '<img src=x onerror=alert(1)>';
+  const h = harness(t, [{ ...conversation(1, 'instagram'), customerName: name }]);
+  h.app.selectConversation(1); await h.flush();
+  assert.equal(h.document.querySelector('.omni-conv-name').textContent, name);
+  assert.equal(h.document.querySelector('.omni-conv-name img'), null);
+  assert.equal(h.document.getElementById('omniChatName').textContent, name);
+});

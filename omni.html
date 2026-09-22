@@ -2802,8 +2802,31 @@
             return '';
         }
 
+        function conversationName(conversation) {
+            const name = typeof conversation?.customerName === 'string' ? conversation.customerName.trim() : '';
+            return /^unknown$/i.test(name) ? '' : name;
+        }
+
+        function conversationDisplayName(conversation) {
+            const name = conversationName(conversation);
+            if (name) return name;
+            const externalId = String(conversation?.externalId || '').trim();
+            if (['facebook', 'instagram'].includes(conversation?.channel)) {
+                return CHANNEL_NAMES[conversation.channel] + (externalId ? ' · ' + externalId : '');
+            }
+            return externalId || 'Розмова';
+        }
+
+        function conversationContextLabel(conversation) {
+            const displayName = conversationDisplayName(conversation);
+            if (!conversationName(conversation) && ['facebook', 'instagram'].includes(conversation?.channel)) {
+                return displayName;
+            }
+            return displayName + ' · ' + (CHANNEL_NAMES[conversation?.channel] || conversation?.channel || 'Omni');
+        }
+
         function conversationInitials(conversation) {
-            return (conversation?.customerName || conversation?.externalId || '?').slice(0, 2).toUpperCase();
+            return conversationDisplayName(conversation).slice(0, 2).toUpperCase();
         }
 
         function conversationAvatarMarkup(conversation, extraMeta) {
@@ -2934,6 +2957,7 @@
             if (requestSeq !== conversationsRequestSeq || epoch !== workspaceEpoch || context !== getOmniBusinessContext()) return;
             conversationsLoading = false;
             if (res.success) {
+                if (leadAssistantState.open && leadAssistantState.mode === 'draft') saveLeadDraftFromForm();
                 const page = (res.data && res.data.conversations) || [];
                 const prefixUnchanged = sameFilter && page.length === Math.min(100, conversations.length)
                     && page.every((conv, index) => conv.id === conversations[index]?.id);
@@ -2948,7 +2972,7 @@
                 const selected = conversations.find(conv => conv.id === currentConvId);
                 if (selected) {
                     selectedConversationRecord = selected;
-                    $('omniChatName').textContent = selected.customerName || selected.externalId;
+                    $('omniChatName').textContent = conversationDisplayName(selected);
                     renderConversationAvatar($('omniChatAvatar'), selected);
                 } else if (!sameFilter && currentConvId) clearConversationSelection();
                 renderConversations();
@@ -3804,7 +3828,7 @@
                     '</div>' +
                     '<div class="omni-conv-info">' +
                         '<div class="omni-conv-title-row">' +
-                            '<div class="omni-conv-name">' + esc(c.customerName || c.externalId) + '</div>' +
+                            '<div class="omni-conv-name">' + esc(conversationDisplayName(c)) + '</div>' +
                         '</div>' +
                         '<div class="omni-conv-preview">' + esc(c.lastMessage || '') + '</div>' +
                     '</div>' +
@@ -4364,14 +4388,15 @@
         };
 
         function initialLeadDraft(conv, businessContext = getOmniBusinessContext()) {
-            const name = String(conv?.customerName || '').trim();
+            const name = conversationName(conv);
+            const instagramHandle = conv?.channel === 'instagram' && /^@[a-z0-9._]+$/i.test(name) ? name.slice(1) : '';
             const unknownName = !name || /^клієнт$/i.test(name);
             return {
                 businessContext,
                 conversationId: conv?.id || null,
-                clientName: unknownName ? '' : name,
+                clientName: unknownName || instagramHandle ? '' : name,
                 phone: conv?.customerPhone || conv?.phone || '',
-                instagram: String(conv?.channel || '').toLowerCase() === 'instagram' ? String(conv?.externalId || '').replace(/^@/, '') : '',
+                instagram: instagramHandle,
                 source: leadSourceFromConversation(conv),
                 eventType: '',
                 eventDate: '',
@@ -4556,7 +4581,7 @@
                 const lockedByExistingLead = !!linkedLeadId && !newOpportunity;
                 leadAssistantStatus.innerHTML =
                     '<div class="omni-ai-status">' +
-                        '<span>' + esc(conv ? ((conv.customerName || conv.externalId || 'Розмова') + ' · ' + (CHANNEL_NAMES[conv.channel] || conv.channel)) : 'Чернетка ліда') + '</span>' +
+                        '<span>' + esc(conv ? conversationContextLabel(conv) : 'Чернетка ліда') + '</span>' +
                         '<span class="omni-ai-status-pill">' + esc(newOpportunity ? 'Нова подія' : (leadId ? 'Лід привʼязано' : (leadAssistantState.previewingDraft ? 'AI заповнює чернетку' : 'Чернетка під контролем менеджера'))) + '</span>' +
                     '</div>' +
                     '<div class="omni-ai-actions omni-ai-row-actions">' +
@@ -4577,7 +4602,7 @@
                 : (provider?.status === 'ok' ? 'OpenAI готовий' : (provider?.status || loadingText));
             leadAssistantStatus.innerHTML =
                 '<div class="omni-ai-status">' +
-                    '<span>' + esc(conv ? ((conv.customerName || conv.externalId || 'Розмова') + ' · ' + (CHANNEL_NAMES[conv.channel] || conv.channel)) : loadingText) + '</span>' +
+                    '<span>' + esc(conv ? conversationContextLabel(conv) : loadingText) + '</span>' +
                     '<span class="omni-ai-status-pill ' + leadAssistantStatusTone(provider) + '">' + esc(statusText) + '</span>' +
                 '</div>' +
                 '<div class="omni-ai-actions" style="margin-top:10px">' +
@@ -5002,7 +5027,7 @@
             if (leadAssistantDrawer) leadAssistantDrawer.hidden = false;
             if (leadAssistantBackdrop) leadAssistantBackdrop.hidden = false;
             const conv = currentConversation();
-            if (leadAssistantSubtitle) leadAssistantSubtitle.textContent = conv ? (conv.customerName || conv.externalId || 'Розмова') : 'OmniClaw';
+            if (leadAssistantSubtitle) leadAssistantSubtitle.textContent = conv ? conversationDisplayName(conv) : 'OmniClaw';
             renderLeadAssistant();
             const firstDraftInput = $('omniLeadDraftClientName');
             (firstDraftInput || leadAssistantDrawer?.querySelector('button'))?.focus();
@@ -5666,7 +5691,7 @@
             setMobileInboxView('conversation');
             resizeComposer();
 
-            $('omniChatName').textContent = conv.customerName || conv.externalId;
+            $('omniChatName').textContent = conversationDisplayName(conv);
             $('omniChatChannel').innerHTML = renderChannelBadge(conv.channel, 'header', conv.provider) + replyWaitingBadge(conv, 'omni-reply-state');
             $('omniChatAvatar').className = 'omni-conv-avatar ch-' + conv.channel;
             renderConversationAvatar($('omniChatAvatar'), conv);

@@ -5,7 +5,17 @@ sender ID rather than a display name. Omni commits the inbound message first,
 then starts best-effort enrichment with the explicit business's channel Page
 token. Facebook requests first_name/last_name; Instagram requests name/username
 through the existing Facebook Login integration at graph.facebook.com.
-Instagram prefers a meaningful name and falls back to username.
+Instagram prefers a meaningful name and falls back to `@username`. The prefix
+distinguishes a verified account handle from a person's name; blank/Unknown
+handles, a lone `@` and malformed handle syntax are rejected. Existing meaningful
+names remain unchanged.
+
+The inbox uses the same display fallback in its list, selected header, avatar
+and assistant labels. A blank/Unknown Meta name displays the channel and scoped
+ID until a real name or handle is available. A scoped ID is never presented as
+an `@username` or copied into the Instagram field of a new lead draft. A stored
+Instagram `@handle` prefills that field; it does not prefill the person-name field.
+Manual values already entered in an open lead draft survive conversation refreshes.
 
 Only blank or Unknown conversation names are filled. A conditional database
 update checks conversation ID, channel, external ID and business context,
@@ -65,8 +75,9 @@ names and one unavailable object; no production names were written.
 ## Diagnostics and verification
 
 Profile failures emit safe codes under `OmniMetaProfile`, without raw provider
-errors, PSIDs, names, or tokens. Missing profile data leaves Unknown and does
-not mark the messaging channel unhealthy.
+errors, PSIDs, names, or tokens. Missing profile data leaves the stored name
+unchanged and does not mark the messaging channel unhealthy. The UI fallback
+does not write any name or assert why a profile is unavailable.
 
 | Code | Meaning |
 | --- | --- |

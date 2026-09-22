@@ -250,7 +250,7 @@ test('operator uses canonical adapter name selection and exact ownership client'
     delete h.deps.lookup;
     const expectedScopeDigest = await digest(h);
     const report = await runRepair(h.client, { ...base, apply: true, expectedScopeDigest }, h.deps);
-    assert.equal(report.applied, 3); assert.equal(h.rows[2].customerName, 'synthetic_username');
+    assert.equal(report.applied, 3); assert.equal(h.rows[2].customerName, '@synthetic_username');
     assert.ok(calls.every(c => c.options.ownershipClient === h.client && c.options.businessContext === 'event_genix'));
     assert.deepEqual(calls[2].fields, ['name', 'username']);
 });

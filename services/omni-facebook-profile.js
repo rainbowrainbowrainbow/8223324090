@@ -26,10 +26,16 @@ async function lookupMetaName(conversation, options = {}) {
         ...(options.ownershipClient && { ownershipClient: options.ownershipClient }) });
     if (!result.success) return { success: false, code: result.code || 'PROFILE_UNAVAILABLE' };
     if (result.profile?.id !== externalId) return { success: false, code: 'PROFILE_ID_MISMATCH' };
-    const candidate = channel === 'facebook'
+    let candidate = channel === 'facebook'
         ? [result.profile.firstName, result.profile.lastName]
             .filter(value => typeof value === 'string').map(value => value.trim()).filter(Boolean).join(' ')
-        : (needsProfileName(result.profile.name) ? result.profile.username : result.profile.name);
+        : result.profile.name;
+    if (channel === 'instagram' && needsProfileName(candidate)) {
+        const username = typeof result.profile.username === 'string'
+            ? result.profile.username.trim().replace(/^@+/, '') : '';
+        candidate = !needsProfileName(username) && /^[a-z0-9._]{1,30}$/i.test(username)
+            ? '@' + username : '';
+    }
     const name = typeof candidate === 'string' ? candidate.trim().slice(0, 255) : '';
     if (needsProfileName(name)) return { success: false, code: 'PROFILE_NAME_EMPTY' };
     return { success: true, name, profileId: result.profile.id };

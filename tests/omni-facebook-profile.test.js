@@ -275,9 +275,11 @@ test('bursts cannot start more than sixteen concurrent enrichments', async () =>
 
 for (const [profile, expected] of [
     [{ name: ' Fixture Instagram ', username: 'fixture_handle' }, 'Fixture Instagram'],
-    [{ name: '', username: ' fixture_handle ' }, 'fixture_handle'],
-    [{ username: 'fixture_handle' }, 'fixture_handle'],
-    [{ name: 'Unknown', username: 'fixture_handle' }, 'fixture_handle'],
+    [{ name: '', username: ' fixture_handle ' }, '@fixture_handle'],
+    [{ username: 'fixture_handle' }, '@fixture_handle'],
+    [{ name: 'Unknown', username: 'fixture_handle' }, '@fixture_handle'],
+    [{ name: null, username: '@fixture_handle' }, '@fixture_handle'],
+    [{ name: null, username: '@@fixture_handle' }, '@fixture_handle'],
 ]) {
     test('Instagram fills the available name or username: ' + expected + ' / ' + JSON.stringify(profile.name), async () => {
         logs(); const writes = [];
@@ -297,6 +299,9 @@ for (const channel of ['facebook', 'instagram']) {
         [{ id: '789', firstName: 'Wrong person', name: 'Wrong person' }, 'PROFILE_ID_MISMATCH'],
         [{ firstName: 'Missing ID', username: 'missing_id' }, 'PROFILE_ID_MISMATCH'],
         [{ id: '456', name: ' ', username: ' ' }, 'PROFILE_NAME_EMPTY'],
+        [{ id: '456', name: 'Unknown', username: '@' }, 'PROFILE_NAME_EMPTY'],
+        [{ id: '456', name: 'Unknown', username: 'Unknown' }, 'PROFILE_NAME_EMPTY'],
+        [{ id: '456', name: 'Unknown', username: 'invalid handle' }, 'PROFILE_NAME_EMPTY'],
     ]) {
         test(channel + ' rejects unusable profile: ' + expectedCode + ' / ' + String(profile.id), async () => {
             const entries = logs();

@@ -243,7 +243,8 @@ test('Profile My Day shared task handler removes impact chips through a per-task
     assert.match(profile, /refreshCabinetTaskClassificationBadges\(taskId,\s*classification\)/);
     assert.match(profile, /renderTaskBadges\?\.\(task\.myDay,\s*\{ taskId \}\)/);
     assert.match(profile, /function bindCabinetTaskActions/);
-    assert.match(profile, /aria-label="\$\{escapeHtml\(doneActionLabel\)\}"/);
+    assert.match(profile, /const doneTitle = doneBlocked \? cabinetSubtaskCompletionTitle\(task\) : doneActionLabel/);
+    assert.match(profile, /aria-label="\$\{escapeHtml\(doneBlocked \? doneTitle : doneActionLabel\)\}"/);
 });
 
 test('Profile My Day compact cards use stable zones instead of one mixed meta row', () => {

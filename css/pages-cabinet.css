@@ -460,6 +460,7 @@ body.dark-mode .cabinet-list-head p {
 }
 
 body.dark-mode .cabinet-task-composer input,
+body.dark-mode .cabinet-task-composer textarea,
 body.dark-mode .cabinet-task-composer select,
 body.dark-mode .cabinet-due-chip,
 body.dark-mode .cabinet-priority-chip {
@@ -780,12 +781,92 @@ body.dark-mode .cabinet-segments button b {
     font-weight: 800;
 }
 
-.cabinet-task-title-field textarea {
+.cabinet-task-composer .cabinet-task-title-field {
+    gap: 7px;
+    color: var(--gray-900, #111827);
+    font-size: 14px;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.cabinet-capture .cabinet-task-title-field textarea {
     width: 100%;
+    box-sizing: border-box;
     min-height: 46px;
     max-height: 180px;
+    border: 2px solid #94a3b8;
+    background: #fff;
+    color: #0f172a;
     resize: vertical;
     line-height: 1.35;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.cabinet-capture .cabinet-task-title-field textarea::placeholder {
+    color: #64748b;
+    font-weight: 600;
+    opacity: 1;
+}
+
+.cabinet-capture .cabinet-task-title-field textarea:hover {
+    border-color: #64748b;
+}
+
+.cabinet-capture .cabinet-task-title-field textarea:focus-visible {
+    border-color: #2563eb;
+    outline: 3px solid rgba(37, 99, 235, 0.22);
+    outline-offset: 1px;
+    box-shadow: none;
+}
+
+.cabinet-capture .cabinet-task-title-field textarea[aria-invalid="true"] {
+    border-color: #dc2626;
+}
+
+.cabinet-task-title-guidance {
+    min-height: 16px;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.cabinet-task-title-guidance:empty {
+    display: none;
+}
+
+.cabinet-task-title-guidance.error {
+    color: #b91c1c;
+}
+
+body.dark-mode .cabinet-task-composer .cabinet-task-title-field {
+    color: #f8fafc;
+}
+
+body.dark-mode .cabinet-capture .cabinet-task-title-field textarea {
+    border-color: #64748b;
+    background: #0f172a;
+    color: #f8fafc;
+}
+
+body.dark-mode .cabinet-capture .cabinet-task-title-field textarea::placeholder {
+    color: #94a3b8;
+}
+
+body.dark-mode .cabinet-capture .cabinet-task-title-field textarea:hover {
+    border-color: #94a3b8;
+}
+
+body.dark-mode .cabinet-capture .cabinet-task-title-field textarea:focus-visible {
+    border-color: #60a5fa;
+    outline-color: rgba(96, 165, 250, 0.34);
+}
+
+body.dark-mode .cabinet-task-title-guidance.error {
+    color: #fca5a5;
 }
 
 .cabinet-due-presets {
@@ -996,8 +1077,51 @@ body.dark-mode .cabinet-segments button b {
 
 .cabinet-capture .cabinet-task-create-submit {
     border-radius: 12px;
-    background: linear-gradient(180deg, #22c55e, #10b981);
-    box-shadow: 0 12px 26px rgba(16, 185, 129, 0.22);
+    background: #047857;
+    box-shadow: 0 8px 18px rgba(4, 120, 87, 0.20);
+}
+
+.cabinet-capture .cabinet-task-create-submit:hover {
+    background: #065f46;
+}
+
+.cabinet-capture .cabinet-task-create-submit:focus-visible {
+    outline: 3px solid rgba(4, 120, 87, 0.30);
+    outline-offset: 2px;
+}
+
+.cabinet-capture .cabinet-task-ai-fill.task-ai-draft-trigger {
+    align-self: stretch;
+    min-height: 42px;
+    border: 1px solid rgba(71, 85, 105, 0.32);
+    border-radius: 8px;
+    padding: 10px 14px;
+    background: #fff;
+    color: #334155;
+    box-shadow: none;
+}
+
+.cabinet-capture .cabinet-task-ai-fill.task-ai-draft-trigger:hover,
+.cabinet-capture .cabinet-task-ai-fill.task-ai-draft-trigger:focus-visible {
+    border-color: #64748b;
+    background: #f8fafc;
+}
+
+.cabinet-capture .cabinet-task-ai-fill.task-ai-draft-trigger:focus-visible {
+    outline: 3px solid rgba(100, 116, 139, 0.26);
+    outline-offset: 2px;
+}
+
+body.dark-mode .cabinet-capture .cabinet-task-ai-fill.task-ai-draft-trigger {
+    border-color: rgba(148, 163, 184, 0.34);
+    background: #1e293b;
+    color: #e2e8f0;
+}
+
+body.dark-mode .cabinet-capture .cabinet-task-ai-fill.task-ai-draft-trigger:hover,
+body.dark-mode .cabinet-capture .cabinet-task-ai-fill.task-ai-draft-trigger:focus-visible {
+    border-color: #94a3b8;
+    background: #334155;
 }
 
 .cabinet-capture .cabinet-task-composer-toggle {
@@ -1068,6 +1192,21 @@ body.dark-mode .cabinet-capture .cabinet-task-composer-toggle:focus-visible {
 }
 
 @media (max-width: 640px) {
+    .cabinet-task-composer-main {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cabinet-task-composer-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        justify-content: stretch;
+    }
+
+    .cabinet-task-composer-actions .cabinet-task-create-submit {
+        grid-column: 1 / -1;
+        width: 100%;
+    }
+
     .cabinet-due-presets,
     .cabinet-priority-presets {
         display: grid;

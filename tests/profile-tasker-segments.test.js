@@ -947,8 +947,10 @@ test('profile task composer starts collapsed with advanced fields behind an expl
     assert.match(collapsedHtml, /Більше параметрів/);
     assert.match(collapsedHtml, /<textarea id="cabinetTaskTitle"/);
     assert.match(collapsedHtml, /Що потрібно зробити\?/);
-    assert.match(collapsedHtml, /Напишіть коротку назву або опишіть задачу детально/);
-    assert.match(collapsedHtml, /data-cabinet-create-action="plain"[^>]*>Створити</);
+    assert.match(collapsedHtml, /Наприклад: підготувати кошторис до п’ятниці/);
+    assert.match(collapsedHtml, /aria-describedby="cabinetTaskTitleGuidance cabinetTaskComposerStatus"/);
+    assert.match(collapsedHtml, /id="cabinetTaskTitleGuidance"[^>]*role="status"[^>]*aria-live="polite"/);
+    assert.match(collapsedHtml, /data-cabinet-create-action="plain"[^>]*>Додати задачу</);
     assert.match(collapsedHtml, /id="cabinetTaskAiFillBtn"[^>]*data-cabinet-create-action="ai"[^>]*data-task-ai-draft-preview[^>]*>Заповнити з AI</);
     const titleIndex = collapsedHtml.indexOf('id="cabinetTaskTitle"');
     const plainIndex = collapsedHtml.indexOf('data-cabinet-create-action="plain"');
@@ -1709,7 +1711,14 @@ test('profile My Day fallback payload leaves no_date unscheduled', async () => {
 function installCabinetCreateDom(ctx, title) {
     const elements = new Map();
     const addElement = (id, node) => elements.set(id, node);
-    addElement('cabinetTaskTitle', { value: title, focus() {} });
+    addElement('cabinetTaskTitle', {
+        value: title,
+        focused: false,
+        attributes: {},
+        focus() { this.focused = true; },
+        setAttribute(name, value) { this.attributes[name] = String(value); }
+    });
+    addElement('cabinetTaskTitleGuidance', { textContent: '', className: '' });
     addElement('cabinetTaskDetails', { value: '' });
     addElement('cabinetTaskKind', { value: 'action' });
     addElement('cabinetTaskMode', { value: 'personal' });
@@ -1737,6 +1746,33 @@ function installCabinetCreateDom(ctx, title) {
     };
     return elements;
 }
+
+test('profile My Day empty create focuses the task field and keeps inline guidance until text is valid', async () => {
+    const ctx = loadProfileTaskerContext();
+    const elements = installCabinetCreateDom(ctx, '   ');
+    let createCalls = 0;
+    ctx.TaskCreate = {
+        buildPayload: draft => draft,
+        createTask: async () => {
+            createCalls += 1;
+            return { success: true, task: { id: 1 } };
+        }
+    };
+    ctx.showNotification = () => {};
+
+    await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
+
+    assert.equal(createCalls, 0);
+    assert.equal(elements.get('cabinetTaskTitle').focused, true);
+    assert.equal(elements.get('cabinetTaskTitle').attributes['aria-invalid'], 'true');
+    assert.match(elements.get('cabinetTaskTitleGuidance').textContent, /Заповніть назву задачі/);
+    assert.match(elements.get('cabinetTaskTitleGuidance').className, /error/);
+
+    elements.get('cabinetTaskTitle').value = 'Підготувати кошторис';
+    ctx.setCabinetTaskTitleGuidance('');
+    assert.equal(elements.get('cabinetTaskTitle').attributes['aria-invalid'], 'false');
+    assert.equal(elements.get('cabinetTaskTitleGuidance').textContent, '');
+});
 
 test('profile My Day create accepts URL-first titles and confirms the refreshed cabinet projection before success', async () => {
     const ctx = loadProfileTaskerContext();

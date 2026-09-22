@@ -5033,6 +5033,16 @@ function setCabinetTaskComposerStatus(message = '', type = '') {
     node.className = `task-ai-draft-status cabinet-task-composer-status ${type || ''}`.trim();
 }
 
+function setCabinetTaskTitleGuidance(message = '', type = '') {
+    const guidance = document.getElementById('cabinetTaskTitleGuidance');
+    const input = document.getElementById('cabinetTaskTitle');
+    if (guidance) {
+        guidance.textContent = message;
+        guidance.className = `cabinet-task-title-guidance ${type || ''}`.trim();
+    }
+    input?.setAttribute?.('aria-invalid', type === 'error' ? 'true' : 'false');
+}
+
 function autoGrowCabinetTaskInput(input = document.getElementById('cabinetTaskTitle')) {
     if (!input || String(input.tagName || '').toLowerCase() !== 'textarea') return;
     input.style.height = 'auto';
@@ -5495,6 +5505,7 @@ function bindCabinetSubtasks() {
     const cabinetTaskTitle = document.getElementById('cabinetTaskTitle');
     cabinetTaskTitle?.addEventListener('input', () => {
         autoGrowCabinetTaskInput(cabinetTaskTitle);
+        if (String(cabinetTaskTitle.value || '').trim()) setCabinetTaskTitleGuidance('');
         scheduleCabinetDecompositionSuggestions();
     });
     autoGrowCabinetTaskInput(cabinetTaskTitle);
@@ -7078,10 +7089,11 @@ function renderCabinetTaskComposer(options = {}) {
             <div class="cabinet-task-composer-main">
                 <label class="cabinet-task-title-field" for="cabinetTaskTitle">
                     <span>Що потрібно зробити?</span>
-                    <textarea id="cabinetTaskTitle" rows="1" autocomplete="off" placeholder="Напишіть коротку назву або опишіть задачу детально" data-task-ai-source-field="title"></textarea>
+                    <textarea id="cabinetTaskTitle" rows="1" autocomplete="off" placeholder="Наприклад: підготувати кошторис до п’ятниці" data-task-ai-source-field="title" aria-describedby="cabinetTaskTitleGuidance cabinetTaskComposerStatus" aria-invalid="false"></textarea>
+                    <span id="cabinetTaskTitleGuidance" class="cabinet-task-title-guidance" role="status" aria-live="polite"></span>
                 </label>
                 <div class="cabinet-task-composer-actions">
-                    <button type="submit" class="cabinet-task-create-submit" data-cabinet-create-action="plain" aria-busy="false">Створити</button>
+                    <button type="submit" class="cabinet-task-create-submit" data-cabinet-create-action="plain" aria-busy="false">Додати задачу</button>
                     <button type="button" class="cabinet-task-ai-fill task-ai-draft-trigger" id="cabinetTaskAiFillBtn" data-cabinet-create-action="ai" data-task-ai-draft-preview aria-busy="false">Заповнити з AI</button>
                     <button type="button" class="cabinet-task-composer-toggle" data-cabinet-composer-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposerAdvanced">${expanded ? 'Згорнути' : 'Більше параметрів'}</button>
                 </div>
@@ -8810,6 +8822,7 @@ async function createCabinetTask(event, mode) {
     const titleError = !aiCommitPayload ? validateCabinetPlainTaskTitle(title) : '';
     if (titleError) {
         input?.focus();
+        setCabinetTaskTitleGuidance(titleError, 'error');
         setCabinetTaskComposerStatus(titleError, 'error');
         if (typeof showNotification === 'function') showNotification(titleError, 'error');
         return;
@@ -8871,6 +8884,7 @@ async function createCabinetTask(event, mode) {
                 notifyTaskWidgetsChanged({ action: 'create', taskId: id });
             });
             if (input) input.value = '';
+            setCabinetTaskTitleGuidance('');
             const details = document.getElementById('cabinetTaskDetails');
             if (details) details.value = '';
             window.TaskAiDraft?.clear?.(composer);
@@ -9008,6 +9022,7 @@ async function createCabinetTask(event, mode) {
 
     notifyTaskWidgetsChanged({ action: 'create', taskId: verification.taskId });
     if (input) input.value = '';
+    setCabinetTaskTitleGuidance('');
     const details = document.getElementById('cabinetTaskDetails');
     if (details) details.value = '';
     window.TaskAiDraft?.clear?.(composer);

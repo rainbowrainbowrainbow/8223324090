@@ -1223,7 +1223,10 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(hiddenBundle.status, 404, JSON.stringify(hiddenBundle.data));
 
         for (let index = 0; index < taskIds.length; index += 1) {
-            assert.deepEqual(await readImpactIds(owner.id, taskIds[index]), proposal.tasks[index].impactIds);
+            assert.deepEqual(
+                await readImpactIds(owner.id, taskIds[index]),
+                preview.data.proposal.tasks[index].impactIds
+            );
         }
         const rows = await query(
             `SELECT id, source_type, dependency_ids, control_meta

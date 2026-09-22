@@ -972,6 +972,7 @@ async function main() {
         await page.locator('[data-task-ai-bundle-accept-all]').click();
         const editedBundleTitle = `Bundle CRM edited actual app ${RUN_ID}`;
         const firstBundleCard = page.locator('[data-task-ai-bundle-card]').first();
+        await firstBundleCard.locator('[data-task-ai-bundle-edit]').click();
         await firstBundleCard.locator('[data-task-ai-bundle-field="title"]').fill(editedBundleTitle);
         await firstBundleCard.locator('[data-task-ai-bundle-accept]').click();
         await page.locator('[data-task-ai-bundle-card]').nth(2).locator('[data-task-ai-bundle-reject]').click();

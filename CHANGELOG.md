@@ -4,6 +4,14 @@
 
 ---
 
+## v0.82.6 - Omni: зрозумілий Facebook fallback
+
+### Omni / (22.09.2026) [codex]
+- **Зрозумілий Facebook fallback** — якщо Meta не повертає ім'я, CRM показує «Користувач Facebook» без технічного scoped ID.
+- **Єдиний безпечний вигляд** — список, заголовок чату та чернетка ліда більше не видають numeric external ID за ім'я чи тег.
+
+---
+
 ## v0.82.5 - Omni: коректні імена та Instagram-теги
 
 ### Release / Versioning / (22.09.2026) [codex]

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.5",
+  "version": "0.82.6",
   "eventGenix": {
-    "releaseLabel": "Omni: коректні імена та Instagram-теги"
+    "releaseLabel": "Omni: зрозумілий Facebook fallback"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

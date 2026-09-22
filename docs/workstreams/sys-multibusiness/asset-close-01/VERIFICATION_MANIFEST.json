@@ -1,0 +1,299 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-22T21:05:49Z",
+  "task": "SYS-MB-ASSET-CLOSE-02",
+  "status": "ASSET_REPAIR_PASS_ROLE_QA_PASS_OBSERVATION_HOLD",
+  "productionMutations": 4,
+  "worktree": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-asset-close-01-20260922",
+  "branch": "codex/sys-mb-asset-close-01-20260922",
+  "baseSha": "ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79",
+  "productionBranchSha": "ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79",
+  "live": {
+    "sha": "ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79",
+    "branch": "codex/eventgenix-production",
+    "version": "0.82.11",
+    "releaseLabel": "Tasker + My Day UX",
+    "deploymentId": "5d8df6f9-6a95-4490-9f66-e9dbc10c6d22",
+    "acceptedSysMbAncestor": "9822db02e748b451ec0a937071057a8aac802cac"
+  },
+  "railway": {
+    "project": "fortunate-appreciation",
+    "environment": "production",
+    "serviceId": "8223324090",
+    "domain": "8223324090-production.up.railway.app"
+  },
+  "catalogReceiptSha256": "d2fb93fc3cdc7521e8544b3db288441af8f8aa77f5b45c6be40556ad9f20ffd6",
+  "privateMapping": {
+    "path": "C:\\Users\\Plotva\\.eventgenix\\sys-mb-asset-close-01-20260922\\ASSET_REPAIR_MAPPING_PRIVATE.json",
+    "fileSha256": "eb9fa33c336e72257e6ad517b1ee9c5c2158e28c504c0b929adfde7c1a0c2a7c",
+    "mappingSha256": "4040295a1fdc2cc7067ce8f9299c7b6cd6270c38d1633d19d8ddbe7de927844b",
+    "sourceFingerprintSha256": "eb8d1cf62ed2af95a35b8c9025d0604352016b0ba5b46b511fb8e8d1c2085f1d",
+    "approvalStatus": "APPROVED_SYS-MB-ASSET-CLOSE-02-20260922"
+  },
+  "targets": [
+    {
+      "catalogName": "122112",
+      "catalogId": "122112",
+      "pageNumber": 0,
+      "field": "image_url",
+      "pageVersion": 4,
+      "currentValueSha256": "ee0a9bb1090ead02003d8da95b56cdf77ab6ef1317a6fd3b92a88e39c8f15c75",
+      "proposedAction": "clear_broken_reference",
+      "proposedValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "owner": "event_genix"
+    },
+    {
+      "catalogName": "122112",
+      "catalogId": "122112",
+      "pageNumber": 1,
+      "field": "image_url",
+      "pageVersion": 2,
+      "currentValueSha256": "9d01f68ae8e82d1c9c92889de496c44de89a83fe649b909f42142ec34b02f8c5",
+      "proposedAction": "clear_broken_reference",
+      "proposedValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "owner": "event_genix"
+    },
+    {
+      "catalogName": "122112",
+      "catalogId": "122112",
+      "pageNumber": 2,
+      "field": "image_url",
+      "pageVersion": 2,
+      "currentValueSha256": "acf98269eaa9af16ca588faaaecc401b34862cbbb68a27c31e9e99b2992a6c00",
+      "proposedAction": "clear_broken_reference",
+      "proposedValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "owner": "event_genix"
+    },
+    {
+      "catalogName": "Торти",
+      "catalogId": "cake",
+      "pageNumber": 0,
+      "field": "image_url",
+      "pageVersion": 5,
+      "currentValueSha256": "9603b813b7a0d4eca008effc6a1faa0b7fb9f79fc7a11f2d10e72184a6517a49",
+      "proposedAction": "clear_broken_reference",
+      "proposedValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "owner": "event_genix"
+    }
+  ],
+  "replacementEvidence": {
+    "exactHealthyReplacementCount": 0,
+    "cakeContextualHealthyCount": 9,
+    "cakeContextualAcceptedCount": 0,
+    "reason": "contextual assets are legacy_unassigned, lack page identity and have existing consumers",
+    "localExactCopyCount": 0,
+    "gitExactObjectCount": 0,
+    "externalArchiveLookup": "NOT_RUN_POLICY_REJECTED_SENSITIVE_EGRESS"
+  },
+  "checks": [
+    {
+      "name": "live_version_exact",
+      "status": "PASS"
+    },
+    {
+      "name": "production_branch_exact",
+      "status": "PASS"
+    },
+    {
+      "name": "railway_target_exact",
+      "status": "PASS"
+    },
+    {
+      "name": "readonly_postgres_inspection",
+      "status": "PASS",
+      "transaction": "REPEATABLE READ READ ONLY"
+    },
+    {
+      "name": "catalog_receipt_fresh_select",
+      "status": "PASS_LEASE_RETIRED",
+      "dbCode": "42501"
+    },
+    {
+      "name": "catalog_roots_and_token_hashes",
+      "status": "PASS",
+      "catalogCount": 9,
+      "publicTokenCount": 3
+    },
+    {
+      "name": "repair_current_value_predicates",
+      "status": "PASS",
+      "count": 4
+    },
+    {
+      "name": "target_count",
+      "status": "PASS",
+      "count": 4
+    },
+    {
+      "name": "current_asset_http",
+      "status": "PASS_NO_BROKEN_REQUESTS",
+      "http404": 0
+    },
+    {
+      "name": "consumer_graph",
+      "status": "PASS"
+    },
+    {
+      "name": "exact_durable_replacements",
+      "status": "NOT_FOUND"
+    },
+    {
+      "name": "public_viewers_private",
+      "status": "PASS",
+      "viewers": 3,
+      "pageCounts": [
+        3,
+        1,
+        8
+      ]
+    },
+    {
+      "name": "controller_syntax",
+      "status": "PASS"
+    },
+    {
+      "name": "controller_prepare",
+      "status": "PASS_APPROVED_PREDICATES"
+    },
+    {
+      "name": "production_apply",
+      "status": "PASS",
+      "count": 4
+    },
+    {
+      "name": "production_verify",
+      "status": "PASS",
+      "versions": [
+        5,
+        3,
+        3,
+        6
+      ],
+      "history": true
+    },
+    {
+      "name": "post_apply_db",
+      "status": "PASS",
+      "catalogs": 9,
+      "publicTokens": 3,
+      "targets": 4
+    },
+    {
+      "name": "public_browser_qa",
+      "status": "PASS",
+      "combinations": 18,
+      "widths": [
+        390,
+        768,
+        1440
+      ],
+      "themes": [
+        "light",
+        "dark"
+      ]
+    },
+    {
+      "name": "zero_new_fixtures",
+      "status": "PASS",
+      "count": 0
+    },
+    {
+      "name": "telemetry_read",
+      "status": "PASS_EXACT_COLUMN_GRANT"
+    },
+    {
+      "name": "role_and_booking_live_qa",
+      "status": "HOLD_INCOMPLETE"
+    },
+    {
+      "name": "role_specific_live_qa",
+      "status": "HOLD_INCOMPLETE"
+    },
+    {
+      "name": "crm_sidebar_booking_denial",
+      "status": "EXPECTED_SERVER_DENIAL_P2_UI_NOISE"
+    },
+    {
+      "name": "telemetry_collector",
+      "status": "PASS_READ_ONLY_HOLD_GATE",
+      "runtimeReconciled": true,
+      "knownGaps": 0,
+      "unobservedRequiredPairs": 10
+    },
+    {
+      "name": "telemetry_live_sha",
+      "status": "PASS",
+      "sha": "ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79"
+    }
+  ],
+  "reportHashes": {
+    "ASSET_REPAIR_PREFLIGHT.md": "5c34978c5de7eaea5decd415ca4f60944891ebe58151d059a986b32f42030179",
+    "ASSET_REPAIR_MANIFEST.md": "2aa76fd5b6135d7e13651864c9e166a509078c05e7d6c2fffcb9b99db0f893c8",
+    "ASSET_REPAIR_ROLLBACK.md": "4642a88cb3f36ebc2661ece2e4823e15ce47c9f773a3448162b012e1332d1a30",
+    "CONTEXT_HANDOFF.md": "411340dc61266bf550eda04abd10e1347119f0f2e6b03e47ee0ce3ca85f2ade8",
+    "tools/catalog-asset-repair-controller.cjs": "3cd6e2ff5c26be74bcafd992cd5bf802d0649eb69568fab0369d682f7e455d0f",
+    "ASSET_CLOSE_02_REPORT.md": "843b3ebb6cd278e1cd9aa188040667e24608d2432b1fc85cb8952eb3decb597b",
+    "NEXT_OBSERVATION_BLOCK.md": "4aad76575e67f6ac0b2b7b35bfc5fb06b2fc155e4a3e1306bc8db75eefd7ea4d",
+    "TELEMETRY_READ_GRANT_REPORT.md": "6e013b36e20c083d6d9217d4675b8f7a9856813c7254b0ca7afc00f7bd1dc6a5",
+    "ROLE_QA_MANIFEST.md": "450dc0ef8af77a44b7d27c6c57c8baad2644c1681aa120d4fa861cb4783f0e9e",
+    "ROLE_QA_REPORT.md": "e89241a69f97441f3782bc64c48e8a1ece95f2bdbcf87aa16efd9736547426a9",
+    "PRODUCTION_READINESS_20260923.md": "e63079610732888fb0e89b5a37fcb1c9fc0b1bffb25c615743ba5c02df73a46a"
+  },
+  "carriedClose02Hashes": {
+    "CLEANUP_EVIDENCE.md": "9cc7c295ee166bb64749b6f70c39d08827e2a296a095633e9994a8737fbf6f2c",
+    "CONTEXT_HANDOFF.md": "9a342587a024fba5a2c8976d25d54d767be281bdc4773888ee4d79eba3904595",
+    "HOTFIX_RELEASE_MANIFEST.md": "c8e04d41fa1734c93c1d9e8f1a78435747658dd244d615dc0aa8139188a17d78",
+    "LIVE_QA_REPORT.md": "2b9b6e58bf69da4d721e364e4113ae0c4091ad9db6260e52b06939c21b72bb96",
+    "OBSERVATION_START.md": "6f810709e84b55de0db14cc207a28e4ab9bfba20fb2ecc52f5cd865736b02531",
+    "PRODUCTION_DELIVERY_REPORT.md": "d0f452ec097e967595634891faaff909b0cc05f487b0c8022831a90ba41f79f0"
+  },
+  "nextBlock": {
+    "id": "SYS-MB-CLOSE-03-LIVE-ROLE-QA-20260922",
+    "approvedAndConsumed": true,
+    "scope": "existing smoke QA account only; manager/admin/animator transitions in Maysternya and CRM, same-JWT revoke, exact API cleanup; no other membership mutation"
+  },
+  "roleQaPreparation": {
+    "status": "EXECUTED_LIFECYCLE_PASS",
+    "liveSha": "ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79",
+    "privatePreflightSha256": "82a25cb86f7f72a2d9843768138195946766567ce511c088b08c5a859e96977f",
+    "manifestSha256": "450dc0ef8af77a44b7d27c6c57c8baad2644c1681aa120d4fa861cb4783f0e9e",
+    "handoffSha256": "411340dc61266bf550eda04abd10e1347119f0f2e6b03e47ee0ce3ca85f2ade8",
+    "reportSha256": "e89241a69f97441f3782bc64c48e8a1ece95f2bdbcf87aa16efd9736547426a9",
+    "privateReceiptSha256": "1e693969d29426e033a98ac392cfcfb8cff6366ed04644fbba715617edeabf49",
+    "privateTelemetryAfterQaSha256": "bc564b7659af73815d7cd5dc02c22375bc2bdd4e1d3a4547a8d23095d80a0940",
+    "browserBroadEvidenceSha256": "38ecf827e93d67765ce05ed970611aa3a4cf86d77c6bdc139c02da4b0e1b0bd6",
+    "browserFocusedEvidenceSha256": "0c281cb18405ab8c12cf4ab0dda315e6a892c55c7d77a313d9ac3e8fb3b4ece1",
+    "membershipMutationsPerformed": 8,
+    "roleUpdates": 6,
+    "deactivations": 2,
+    "sameJwtRevokes": 2,
+    "activeTemporaryMembershipsAfterCleanup": 0,
+    "residualInactiveMembershipRows": 2
+  },
+  "catalogReceiptLease": {
+    "status": "REVOKED",
+    "durationSeconds": 0.431,
+    "receiptMatched": true,
+    "scope": "journal_receipt_columns_only"
+  },
+  "observation": {
+    "started": false,
+    "startUtc": null,
+    "reason": "TWO_ORGANIZATION_BROWSER_CYCLE_AND_COVERAGE_INCOMPLETE",
+    "passMeasured": false,
+    "globalModelComplete": false,
+    "monitorId": "sys-mb-recover-04-exit-gate-monitor"
+  },
+  "telemetryReadGrant": {
+    "block": "SYS-MB-CLOSE-03-TELEMETRY-READ-20260922",
+    "roleSha256": "940efc5d4989b4cdd1d23b40678c2fec953499bd4b3d6ecb2856374d8719d857",
+    "targetHash": "6fb86cf6959f026d7c55b6c65edffc3499e5bb581d51840a730f915fef0e9cfd",
+    "columnCount": 15,
+    "tableCount": 2,
+    "grantedAt": "2026-09-22T19:32:49.318Z",
+    "active": true,
+    "readOnlyCollector": "HOLD_GATE",
+    "exactRevokeRequired": true
+  },
+  "finalAcceptanceHash": "d6d0d9aa4fd9f11d4faf17be8c9d98165ce41306d3eee6feb902f0313bdd32a3"
+}

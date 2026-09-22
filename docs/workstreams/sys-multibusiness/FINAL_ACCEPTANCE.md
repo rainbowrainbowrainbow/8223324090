@@ -1,6 +1,24 @@
 # SYS-MB final acceptance
 
-Status: **HOLD — NOT_INSTRUMENTED / NOT_COLLECTED**.
+## Production readiness checkpoint — 2026-09-22 21:05 UTC
+
+Current live SHA and remote production branch remain `ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79 / v0.82.11`; no new product runtime diff awaits deploy. Read-only live management shows one organization with four businesses, while the current API can bootstrap only the first organization; the local two-organization test inserts its second fixture directly through SQL. A live owner workflow for a second organization and its first business is therefore not accepted. The enabled scheduler inventory includes an unpaused monthly reset, so the relevant longest cycle must be classified before the observation window can be bounded. See [PRODUCTION_READINESS_20260923.md](asset-close-01/PRODUCTION_READINESS_20260923.md). `startUtc=null`, `PASS_MEASURED=false`, `GLOBAL_MODEL_COMPLETE=false`.
+
+## Live role QA update — 2026-09-22
+
+The owner-approved `SYS-MB-CLOSE-03-LIVE-ROLE-QA-20260922` proved Maysternya/CRM manager/admin/animator profile isolation and immediate same-JWT revoke for the registered smoke account. Cleanup verified zero active temporary grants while retaining two inactive audit-backed membership rows. This supersedes only the earlier role/revoke `NOT_TESTABLE` statement below. Two-organization and independent worker-browser acceptance, complete telemetry coverage, the enabled-cycle bound, 14 complete UTC days and 30 real operations on five days per business remain HOLD. Observation has not started. See [ROLE_QA_REPORT.md](asset-close-01/ROLE_QA_REPORT.md).
+
+Status: **HOLD — INSTRUMENTED / NOT_STARTED / NOT_MEASURED**.
+
+## Current checkpoint — 2026-09-22
+
+The historical 2026-09-13 evidence below is retained as a dated snapshot. It is no longer the current live state. CRM and Maysternya cutovers and the nine-catalog ownership apply have durable receipts, and the four broken catalog image references have been repaired and browser-verified. Current live `/api/version`: `ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79`, branch `codex/eventgenix-production`, `v0.82.11 — Tasker + My Day UX`.
+
+The exact `SYS-MB-CLOSE-03-TELEMETRY-READ-20260922` block granted only 15 read-only telemetry columns to the dedicated audit role. The current-SHA collector ran and reconciled runtime counts without known loss. Its one-day initial lookback is not the exit-gate observation window: `startUtc=null`; ten required context/entry-family pairs had no observed activity; real five-day traffic and the longest enabled cycle are unproven. Separate manager/admin/worker and same-JWT revoke live QA also remain unproven. The exact access and collector evidence are in [TELEMETRY_READ_GRANT_REPORT.md](asset-close-01/TELEMETRY_READ_GRANT_REPORT.md); current status is in [OBSERVATION_START.md](close-02/OBSERVATION_START.md).
+
+`PASS_MEASURED=false`; `GLOBAL_MODEL_COMPLETE=false`. Legacy operational authorization has not been removed, and deprecated columns have not been dropped. The active narrow telemetry SELECT grant must be revoked after the gate or if observation is abandoned.
+
+## Historical checkpoint — 2026-09-13
 
 Observed at: `2026-09-13T12:04:56Z` (read-only evidence refresh).
 

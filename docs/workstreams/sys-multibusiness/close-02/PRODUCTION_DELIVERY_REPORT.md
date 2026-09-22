@@ -1,61 +1,90 @@
 # SYS-MB-CLOSE-02 — production delivery report
 
-Status: `HOTFIX_RELEASE_REQUIRED`
+## Later approved live role QA — 2026-09-22
 
-Generated: 2026-09-22
+The exact `SYS-MB-CLOSE-03-LIVE-ROLE-QA-20260922` block performed only the registered smoke account's temporary Maysternya/CRM membership lifecycle on the already deployed `ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79 / v0.82.11`. Six role updates, two deactivations and same-JWT denials passed; fresh read-back found no active target membership and unchanged Park default. No commit, push, migration or deploy occurred. See [ROLE_QA_REPORT.md](../asset-close-01/ROLE_QA_REPORT.md). Full exit-gate acceptance remains HOLD.
 
-## Published release
 
+Status: `RELEASED_ASSET_REPAIR_PASS_OBSERVATION_HOLD`
+
+## 2026-09-22 telemetry read-access addendum
+
+The owner separately approved `SYS-MB-CLOSE-03-TELEMETRY-READ-20260922`. A column-level SELECT grant on 15 collector fields across two telemetry tables was applied to the existing dedicated read-only role; it has no table-level SELECT, additional readable columns or write privileges. The actual collector succeeded. Its first one-day lookback is `HOLD`, and observation has not started. No code commit, push, deploy, migration or business-data mutation occurred for this grant. The exact ACL/collector evidence and future revoke obligation are in [TELEMETRY_READ_GRANT_REPORT.md](../asset-close-01/TELEMETRY_READ_GRANT_REPORT.md).
+
+## 2026-09-22 asset repair addendum
+
+The separately approved `SYS-MB-ASSET-CLOSE-02-20260922` block cleared only four broken `image_url` references through the existing catalog page API. Mapping hash: `4040295a1fdc2cc7067ce8f9299c7b6cd6270c38d1633d19d8ddbe7de927844b`. Apply/verify observed versions `4→5`, `2→3`, `2→3`, `5→6` and page history. Nine roots and three public token hashes remained unchanged. The catalog receipt was re-read through a column-scoped SELECT lease and matched; the lease was revoked in 0.431 seconds.
+
+This was a data-only repair, so no new commit, CI run or deploy occurred. Final live and remote production SHA: `ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79`, branch `codex/eventgenix-production`, `v0.82.11 — Tasker + My Day UX`. The previous SYS-MB code-release and CI evidence below remains historical evidence, not the current live version. Full exact evidence is in [ASSET_CLOSE_02_REPORT.md](../asset-close-01/ASSET_CLOSE_02_REPORT.md). Compatibility observation remains HOLD pending collector read access and remaining live role/domain QA.
+
+Generated: 2026-09-22T18:01:54Z
+
+## Published hotfix
+
+- Site: https://8223324090-production.up.railway.app
 - Production branch: `codex/eventgenix-production`
-- Previous live SHA: `b3ea57bef3c6694fcc19be86011552ca2e97ed7c`
-- Functional commit: `b05be34a44f0b370e7fcb5ff2177c72fa1220346`
-- Prepared release commit: `8cd718bf084af574c2a654dd99202550c4cc7edd`
-- Live SHA: `a34ee622402776ba23efda393d37d11868640120`
-- Version: `0.82.9`
-- Release label: `SYS-MB: Майстерня, каталоги та telemetry`
-- Railway deployment ID: `80cbf5a3-a532-4b1c-badd-e0a9028fcad6`
-- Exact-SHA CI: https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/35732051360
-- Controller: `EG-20260922T125259Z-8cd718bf`, successful on attempt 2.
+- Previous live SHA: `a34ee622402776ba23efda393d37d11868640120`
+- Authorized initial candidate: `677c74277dbfde756aef8908d1fbf9cc6b4f8db6`
+- Functional hotfix commit: `40377c62939690b3eb613abd62624274ff7271da`
+- Exact live release SHA: `9822db02e748b451ec0a937071057a8aac802cac`
+- Version: `0.82.10`
+- Release label: `SYS-MB: каталог і timeline після cutover`
+- Exact-SHA CI: https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/35759994560 — `success`
+- Railway deployment ID: `d1bbbb30-2d12-43b2-ba18-57866deb1100`
+- Production block: `EG-20260922T162051Z-677c7427`, manifest hash prefix `534d96fbaf89`.
 
-The deploy used `npm run release:railway-up`; raw `railway up` was not used. Live `/api/version` still confirms the exact SHA, branch, version and label above.
+`npm run release:railway-up` performed the deploy. Raw `railway up`, force-push and reset of another stream were not used. `npm run version:smoke` and `npm run release:timeline-proof` both confirmed the exact SHA, branch, version, release label, page asset versions and service-worker cache.
 
-## Schema and protected data operations
+The release consumed the three authorized release attempts:
 
-Migrations `368_catalog_ownership_cutover_journal.sql` and `369_multibusiness_compatibility_telemetry_v2.sql` are deployed and remain additive.
+1. the canonical gate passed, then a local WSL Git SSL-backend mismatch stopped before push;
+2. the canonical gate passed again, exact SHA was pushed and CI became green, then the WSL-to-Windows Railway wrapper failed before upload because it did not translate the helper's `/tmp` export path;
+3. the native Windows helper deployed the already pushed, already green exact SHA and returned live version proof.
 
-Under `SYS-MB-CLOSE-02-DATA-APPLY-20260922`:
+No attempt changed production before the successful helper upload. A temporary unpushed version commit was reverted before the second controller run so the release remained `0.82.10`; the final file diff remained inside the authorized manifest.
 
-- the bounded four-table SELECT lease was created, used for a complete `REPEATABLE READ READ ONLY` preflight and retired within its TTL;
-- the preflight returned complete visibility with zero issues and no writable fallback;
-- exact owner repair predicates matched and payload hash `d20cdf51fbf60377993f442cbeac8222b51b87a0748981e9511545c743b8b242` was applied;
-- the active organization owner count changed from zero to one for the reviewed owner;
-- `maysternya_doli` prepare/apply succeeded from the post-owner fingerprint `8b27234df3045dedb39aba9247a704527b356c2e636bf8eb49fc8a6333251b9e`;
+## Protected data operations
+
+The previously approved owner repair and Maysternya cutover remain durable:
+
+- organization owner repair: `APPLIED` from exact reviewed predicates;
 - Maysternya receipt: `0f3f673a59d63d1f161003dee8e24a01eccd12e0c227a887183a0d9a9bba755f`;
-- live profile evidence now exposes all four businesses to the reviewed owner while the smoke account remains Park-only;
-- CRM cutover was not replayed. The authoritative existing receipt remains `29436fa0daf1ae01bdfaf7bfaf48680cf92dd77e899b4adc4646555903a07223`.
+- CRM was not replayed; its existing receipt authority remains `29436fa0daf1ae01bdfaf7bfaf48680cf92dd77e899b4adc4646555903a07223`.
 
-Fresh direct CRM journal verification remains HOLD because the bounded audit role has no SELECT on the cutover journal and writable credentials were not used as a read-only fallback.
+After the hotfix became live, the exact nine-catalog mapping passed guarded prepare and atomic apply:
 
-## Release-blocking regressions found by the guarded apply and live QA
+- mapping hash: `0ce0adbf5b372c443a716eabab1869f910d5af3025fb5f2a88ff175d9d310fb0`;
+- prepare fingerprint: `c53dfe688540407f5670b392c19ba29b856a5bcf2e2202b68b455015d013a262`;
+- apply receipt: `d2fb93fc3cdc7521e8544b3db288441af8f8aa77f5b45c6be40556ad9f20ffd6`;
+- roots: 9; existing public tokens preserved: 3;
+- direct children: 10 subcategories, 8 items, 9 settings, 17 pages, 9 page-history rows, 0 automations and 0 trend proposals;
+- shared assets remained unassigned pending consumer-level ownership evidence.
 
-1. The exact nine-catalog mapping was rejected before mutation because the cutover validator accepted ASCII IDs only. One reviewed existing catalog uses a printable Unicode/space stable ID.
-2. The published browser redirects the membership-authorized Maysternya timeline route to `/dashboard` because its private-surface guard still accepts only the legacy global `creator` role.
+No public token was generated, rotated or republished. Catalog active/inactive state and draft/ready status were preserved.
 
-Functional hotfix commit `40377c62939690b3eb613abd62624274ff7271da` fixes only those two conditions and adds negative tests. Catalog ownership was not mutated after the validation failure.
+## Live acceptance result
 
-## Verification of the hotfix candidate
+The hotfix behavior passed:
 
-- Node `22.23.1`, npm `10.9.8`: PASS.
-- Catalog cutover tests: 7/7 PASS.
-- Timeline context tests: 30/30 PASS.
-- UI smoke: 1320/1320 PASS plus 4/4 code-splitting tests.
-- `npm run test:sys-mb`: PASS.
-- `npm run check:syntax`: PASS outside the Windows sandbox; the sandbox-only attempt failed uniformly with `spawnSync EPERM` before parsing.
+- creator profile has one active owner organization and four switchable businesses;
+- smoke account remains Park-only and is denied Maysternya;
+- `/maysternya-doli?timelineView=animators` stays on the Maysternya route with the active membership context;
+- required Maysternya page shells, history navigation, keyboard focus, cross-tab opening, light/dark mode and 390/768/1440 widths passed without horizontal overflow;
+- the only Maysternya 403 is `/api/chat/unread`, matching the approved Hermes containment.
 
-The hotfix still needs a new exact controller authorization for push, exact-SHA CI and Railway helper deploy. After that deploy, the existing Red block can continue with catalog prepare/apply and safe live QA.
+Catalog ownership and viewer identity passed, but content QA found four pre-existing broken image references:
+
+- `122112`, inactive draft: page images 0, 1 and 2 return HTTP 404 from the existing external temporary asset host;
+- `Торти`, active draft: page 0 image returns HTTP 404 from the live asset path.
+
+All three existing public links return HTTP 200 and render the correct page count: `122112` = 3, `Торти` = 1, `Випускний` = 8. The current block did not authorize replacement uploads or production asset URL edits, so these 404s are retained as an explicit required HOLD.
+
+## Concurrent production-branch drift
+
+After this deploy, another stream advanced `origin/codex/eventgenix-production` to `20018b1e6fcfbb57484d405d495642d1745c0ff6`; its ancestry includes the `v0.82.11` Tasker release. Auto-deploy is disabled and live still reported the SYS-MB SHA above at the final check. This worktree was not reset, force-pushed or used to overwrite the newer branch state.
 
 ## Rollback
 
-- Hotfix rollback: redeploy `a34ee622402776ba23efda393d37d11868640120` through the helper.
-- Owner repair and Maysternya apply are durable reviewed states and are not automatically reverted.
-- Any future catalog failure stops before or inside its transaction; post-apply correction must be receipt-bound and separately authorized.
+- Code rollback reference: `a34ee622402776ba23efda393d37d11868640120`, deployed only through the Railway helper.
+- Additive migrations 368/369 and durable owner/Maysternya/catalog receipts stay in place during an application rollback.
+- Any catalog correction must be a receipt-bound forward repair. Broad SQL, token rotation and automatic republication remain prohibited.

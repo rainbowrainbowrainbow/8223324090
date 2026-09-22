@@ -4,10 +4,26 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
 
 const habits = require('../services/myDayHabits');
 
 const root = path.resolve(__dirname, '..');
+
+function loadHabitsUi() {
+    const sandbox = {
+        console,
+        fetch: async () => ({ ok: true, status: 200, json: async () => ({ success: true, habits: [] }) }),
+        setTimeout,
+        clearTimeout,
+        document: { querySelector() { return null; } },
+        window: null
+    };
+    sandbox.window = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync(path.join(root, 'js', 'my-day-habits.js'), 'utf8'), sandbox);
+    return sandbox.MyDayHabits;
+}
 
 test('habit payload validates all metrics, all cadences, weekdays, and max impacts', () => {
     assert.equal(habits.normalizeHabitPayload({ name: 'Stretch', metric: 'boolean', cadence: 'daily', targetValue: 1 }).metric, 'boolean');
@@ -51,6 +67,37 @@ test('check-in upsert is idempotent and count/minutes completion is threshold-ba
     assert.equal(complete.completed, true);
     assert.match(calls[1].sql, /ON CONFLICT \(habit_id, user_id, local_date\)/);
     assert.equal(calls.filter(call => /INSERT INTO my_day_habit_checkins/.test(call.sql)).length, 2);
+});
+
+test('minutes UI validates integer bounds without coercing blank values to zero', () => {
+    const ui = loadHabitsUi();
+    assert.deepEqual({ ...ui.parseHabitNumericValue('45', 'minutes') }, { valid: true, value: 45, error: '' });
+    for (const invalid of ['', '   ', 'NaN', '1.5', '-1', '1441']) {
+        const result = ui.parseHabitNumericValue(invalid, 'minutes');
+        assert.equal(result.valid, false, `${JSON.stringify(invalid)} must be rejected`);
+        assert.ok(result.error);
+    }
+    assert.equal(ui.parseHabitNumericValue('0', 'minutes').valid, true);
+    assert.equal(ui.parseHabitNumericValue('1440', 'minutes').valid, true);
+    assert.equal(ui.parseHabitNumericValue('5000', 'count').valid, true, 'count habits keep their existing unbounded integer contract');
+});
+
+test('minutes UI renders a stable stepper, visible unit, inline status, and persisted zero', () => {
+    const ui = loadHabitsUi();
+    const html = ui.renderHabitControl({
+        id: 15,
+        name: 'Читання',
+        metric: 'minutes',
+        progress: { value: 0, target: 30 }
+    });
+    assert.match(html, /data-my-day-habit-entry="15"/);
+    assert.match(html, /data-my-day-habit-step="-1"/);
+    assert.match(html, /data-my-day-habit-step="1"/);
+    assert.match(html, /max="1440"/);
+    assert.match(html, /value="0"/);
+    assert.match(html, /class="my-day-habit-unit"[^>]*>хв</);
+    assert.match(html, /data-my-day-habit-save="15"/);
+    assert.match(html, /data-my-day-habit-status[^>]*role="status"[^>]*aria-live="polite"/);
 });
 
 test('skip, undo route, archive restore, and history retention contracts are explicit', () => {

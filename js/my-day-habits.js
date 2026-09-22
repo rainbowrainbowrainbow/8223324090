@@ -16,6 +16,7 @@
         settingsLoaded: false,
         error: '',
         settingsError: '',
+        numericFeedback: new Map(),
         starterKit: { loading: false, error: '', result: null }
     };
 
@@ -55,6 +56,21 @@
         const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
         const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
         return `${values.year}-${values.month}-${values.day}`;
+    }
+
+    function habitNumericUnit(metric) {
+        return metric === 'minutes' ? 'хв' : 'раз';
+    }
+
+    function parseHabitNumericValue(rawValue, metric = 'count') {
+        const raw = String(rawValue ?? '').trim();
+        const noun = metric === 'minutes' ? 'хвилин' : 'кількість';
+        if (!raw) return { valid: false, error: `Введіть ${noun}.` };
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric) && numeric < 0) return { valid: false, error: 'Значення не може бути від’ємним.' };
+        if (!/^\d+$/.test(raw) || !Number.isSafeInteger(numeric)) return { valid: false, error: 'Введіть ціле число.' };
+        if (metric === 'minutes' && numeric > 1440) return { valid: false, error: 'Максимум 1440 хвилин на день.' };
+        return { valid: true, value: numeric, error: '' };
     }
 
 
@@ -203,8 +219,23 @@
                 <span aria-hidden="true">${habit.completed ? '✓' : '○'}</span>
             </label>`;
         }
-        return `<label class="my-day-habit-value"><span>${habit.metric === 'minutes' ? 'Хв' : 'К-сть'}</span><input type="number" min="0" step="1" value="${escape(habit.progress?.value || '')}" data-my-day-habit-value="${escape(habit.id)}" aria-label="Фактичне значення звички ${escape(habit.name)}"></label>
-            <button type="button" class="my-day-taxonomy-primary" data-my-day-habit-save="${escape(habit.id)}">Зберегти</button>`;
+        const feedback = state.numericFeedback.get(String(habit.id)) || { type: '', message: '' };
+        const unit = habitNumericUnit(habit.metric);
+        const value = habit.progress?.value ?? habit.checkin?.value ?? 0;
+        const max = habit.metric === 'minutes' ? ' max="1440"' : '';
+        return `<div class="my-day-habit-entry" data-my-day-habit-entry="${escape(habit.id)}" data-my-day-habit-metric="${escape(habit.metric)}" aria-busy="false">
+            <div class="my-day-habit-stepper" role="group" aria-label="Фактичне значення звички ${escape(habit.name)}">
+                <button type="button" class="my-day-habit-step" data-my-day-habit-step="-1" aria-label="Зменшити ${escape(unit)}" title="Зменшити">−</button>
+                <label class="my-day-habit-value">
+                    <span class="my-day-habit-value-label">${habit.metric === 'minutes' ? 'Хвилини' : 'Кількість'}</span>
+                    <input type="number" min="0"${max} step="1" inputmode="numeric" value="${escape(value)}" data-my-day-habit-value="${escape(habit.id)}" aria-label="Фактичне значення звички ${escape(habit.name)}" aria-describedby="myDayHabitStatus${escape(habit.id)}" aria-invalid="${feedback.type === 'error' ? 'true' : 'false'}">
+                    <span class="my-day-habit-unit" aria-hidden="true">${escape(unit)}</span>
+                </label>
+                <button type="button" class="my-day-habit-step" data-my-day-habit-step="1" aria-label="Збільшити ${escape(unit)}" title="Збільшити">+</button>
+            </div>
+            <button type="button" class="my-day-habit-save" data-my-day-habit-save="${escape(habit.id)}" aria-label="Зберегти значення звички ${escape(habit.name)}" title="Зберегти"><span aria-hidden="true">✓</span><span>Зберегти</span></button>
+            <p id="myDayHabitStatus${escape(habit.id)}" class="my-day-habit-entry-status ${feedback.type ? `is-${escape(feedback.type)}` : ''}" data-my-day-habit-status role="status" aria-live="polite">${escape(feedback.message)}</p>
+        </div>`;
     }
     function renderHabitCard(habit) {
         const weekly = habit.weeklyProgress ? `<span class="my-day-habit-weekly">Тиждень: ${escape(habit.weeklyProgress.completed)} / ${escape(habit.weeklyProgress.target)}</span>` : '';
@@ -397,6 +428,113 @@
         }
     }
 
+    function setHabitEntryFeedback(entry, type = '', message = '') {
+        const id = String(entry?.dataset?.myDayHabitEntry || '');
+        if (id) {
+            if (message) state.numericFeedback.set(id, { type, message });
+            else state.numericFeedback.delete(id);
+        }
+        const status = entry?.querySelector?.('[data-my-day-habit-status]');
+        if (status) {
+            status.textContent = message;
+            status.className = `my-day-habit-entry-status ${type ? `is-${type}` : ''}`.trim();
+        }
+        const input = entry?.querySelector?.('[data-my-day-habit-value]');
+        input?.setAttribute?.('aria-invalid', type === 'error' ? 'true' : 'false');
+    }
+
+    function setHabitEntryBusy(entry, busy) {
+        entry?.setAttribute?.('aria-busy', busy ? 'true' : 'false');
+        entry?.querySelectorAll?.('button, input').forEach(control => {
+            control.disabled = Boolean(busy);
+        });
+    }
+
+    function applyHabitCheckin(habitId, checkin = {}) {
+        const id = Number(habitId);
+        const apply = habit => {
+            if (Number(habit.id) !== id) return habit;
+            const value = Number(checkin.value ?? 0);
+            const completed = checkin.completed === true;
+            return {
+                ...habit,
+                checkin: { ...checkin, value, completed },
+                completed,
+                skipped: checkin.state === 'skipped',
+                progress: {
+                    ...(habit.progress || {}),
+                    value,
+                    target: Number(habit.progress?.target || habit.targetValue || 1),
+                    completed
+                }
+            };
+        };
+        state.habits = state.habits.map(apply);
+        state.settingsHabits = state.settingsHabits.map(apply);
+    }
+
+    async function saveHabitNumericEntry(entry, onChanged) {
+        const id = String(entry?.dataset?.myDayHabitEntry || '');
+        const metric = entry?.dataset?.myDayHabitMetric || 'count';
+        const input = entry?.querySelector?.('[data-my-day-habit-value]');
+        const parsed = parseHabitNumericValue(input?.value, metric);
+        if (!id || !input || !parsed.valid) {
+            setHabitEntryFeedback(entry, 'error', parsed.error || 'Не вдалося визначити звичку.');
+            input?.focus?.();
+            return { success: false, validation: true };
+        }
+
+        setHabitEntryBusy(entry, true);
+        setHabitEntryFeedback(entry, 'pending', 'Збереження…');
+        try {
+            const payload = await request('/' + encodeURIComponent(id) + '/check-ins/' + encodeURIComponent(state.date), {
+                method: 'PUT',
+                body: JSON.stringify({ state: 'done', value: parsed.value })
+            });
+            if (!payload.checkin) throw new Error('Сервер не повернув збережене значення.');
+            const savedValue = Number(payload.checkin.value);
+            if (!Number.isSafeInteger(savedValue)) throw new Error('Сервер повернув некоректне значення.');
+            applyHabitCheckin(id, payload.checkin);
+            state.settingsLoaded = false;
+            const unit = habitNumericUnit(metric);
+            setHabitEntryFeedback(entry, 'success', `Збережено: ${savedValue} ${unit}`);
+            await onChanged?.();
+            return { success: true, checkin: payload.checkin };
+        } catch (error) {
+            setHabitEntryFeedback(entry, 'error', error.message || 'Не вдалося зберегти значення. Спробуйте ще раз.');
+            return { success: false, error };
+        } finally {
+            if (entry?.isConnected) setHabitEntryBusy(entry, false);
+        }
+    }
+
+    function bindHabitNumericEntry(entry, onChanged) {
+        if (!entry || entry.dataset.myDayHabitEntryBound === 'true') return;
+        entry.dataset.myDayHabitEntryBound = 'true';
+        const input = entry.querySelector('[data-my-day-habit-value]');
+        const metric = entry.dataset.myDayHabitMetric || 'count';
+        entry.querySelectorAll('[data-my-day-habit-step]').forEach(button => {
+            button.addEventListener('click', () => {
+                const parsed = parseHabitNumericValue(input?.value, metric);
+                const current = parsed.valid ? parsed.value : 0;
+                const delta = Number(button.dataset.myDayHabitStep || 0);
+                const max = metric === 'minutes' ? 1440 : Number.MAX_SAFE_INTEGER;
+                input.value = String(Math.max(0, Math.min(max, current + delta)));
+                setHabitEntryFeedback(entry, '', '');
+                input.focus();
+            });
+        });
+        input?.addEventListener('input', () => {
+            if (parseHabitNumericValue(input.value, metric).valid) setHabitEntryFeedback(entry, '', '');
+        });
+        input?.addEventListener('keydown', event => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            saveHabitNumericEntry(entry, onChanged);
+        });
+        entry.querySelector('[data-my-day-habit-save]')?.addEventListener('click', () => saveHabitNumericEntry(entry, onChanged));
+    }
+
     function bind(root, onChanged) {
         root?.querySelectorAll('[data-my-day-life-mode]').forEach(button => {
             if (button.dataset.myDayLifeBound === 'true') return;
@@ -475,6 +613,7 @@
             dateInput.dataset.myDayHabitsDateBound = 'true';
             dateInput.addEventListener('change', async () => {
                 state.date = dateInput.value || kyivDate();
+                state.numericFeedback.clear();
                 state.loaded = false;
                 state.settingsLoaded = false;
                 await load(true);
@@ -513,15 +652,7 @@
                 }
             });
         });
-        root?.querySelectorAll('[data-my-day-habit-save]').forEach(button => {
-            if (button.dataset.myDayHabitSaveBound === 'true') return;
-            button.dataset.myDayHabitSaveBound = 'true';
-            button.addEventListener('click', () => {
-                const id = button.dataset.myDayHabitSave;
-                const value = Number(root.querySelector('[data-my-day-habit-value="' + id + '"]')?.value || 0);
-                return mutate(button, () => request('/' + encodeURIComponent(id) + '/check-ins/' + encodeURIComponent(state.date), { method: 'PUT', body: JSON.stringify({ state: 'done', value }) }), onChanged);
-            });
-        });
+        root?.querySelectorAll('[data-my-day-habit-entry]').forEach(entry => bindHabitNumericEntry(entry, onChanged));
 
         root?.querySelectorAll('[data-my-day-habit-skip]').forEach(button => {
             if (button.dataset.myDayHabitSkipBound === 'true') return;
@@ -727,5 +858,5 @@
         state.pendingFocus = '';
         focusHabitCreateForm();
     }
-    window.MyDayHabits = { bind, closeSetup, focusHabitCreateForm, kyivDate, load, loadSettings, openSettingsCreate, openSetup, renderModeTabs, renderPanel, renderSettings, renderSetupSurface, setSetupEditor, state };
+    window.MyDayHabits = { bind, closeSetup, focusHabitCreateForm, kyivDate, load, loadSettings, openSettingsCreate, openSetup, parseHabitNumericValue, renderHabitControl, renderModeTabs, renderPanel, renderSettings, renderSetupSurface, setSetupEditor, state };
 }());

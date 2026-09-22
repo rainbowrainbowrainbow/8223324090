@@ -948,7 +948,8 @@ for (const channel of ['facebook', 'instagram']) {
     h.app.selectConversation(1);
     await h.flush();
     h.document.getElementById('omniInput').value = 'Keep this reply';
-    assert.equal(h.document.getElementById('omniChatName').textContent, (channel === 'facebook' ? 'Facebook' : 'Instagram') + ' · 456');
+    assert.equal(h.document.getElementById('omniChatName').textContent,
+      'Користувач ' + (channel === 'facebook' ? 'Facebook' : 'Instagram'));
     await h.app.openLeadAssistantPanel('draft');
     h.document.getElementById('omniLeadDraftClientName').value = 'Manual draft name';
     h.document.getElementById('omniLeadDraftInstagram').value = 'manual_handle';
@@ -971,7 +972,7 @@ for (const channel of ['facebook', 'instagram']) {
     test(channel + ' missing name uses the same honest fallback in list, header and reload: ' + JSON.stringify(customerName), async t => {
       const record = { ...conversation(1, channel), externalId: '456', customerName };
       const h = harness(t, [record]);
-      const expected = (channel === 'facebook' ? 'Facebook' : 'Instagram') + ' · 456';
+      const expected = 'Користувач ' + (channel === 'facebook' ? 'Facebook' : 'Instagram');
       h.app.selectConversation(1); await h.flush();
       assert.equal(h.document.getElementById('omniChatName').textContent, expected);
       assert.equal(h.document.querySelector('.omni-conv-name').textContent, expected);

@@ -88,6 +88,7 @@ const expandedCabinetSubtaskIds = new Set();
 const collapsedCabinetSubtaskIds = new Set();
 const cabinetSubtaskCache = new Map();
 const loadingCabinetSubtaskIds = new Set();
+const blockedCabinetSubtaskAttentionIds = new Set();
 const CABINET_TASK_PLAIN_TITLE_MAX_LENGTH = 180;
 const CABINET_TASK_CREATE_UNKNOWN_TTL_MS = 2 * 60 * 1000;
 const CABINET_TASK_CREATE_IDEMPOTENCY_STORAGE_KEY = 'eventGenix.myDay.directCreate.pending.v1';
@@ -6119,7 +6120,7 @@ function cabinetSubtaskCompletionTitle(task = {}) {
     if (!summary.total) return '';
     return summary.done >= summary.total
         ? 'Усі підпункти закриті. Задачу можна виконати.'
-        : `Спочатку закрийте всі підпункти: ${summary.done}/${summary.total}.`;
+        : `Спочатку закрийте підпункти: ${summary.done}/${summary.total}`;
 }
 
 function cabinetTaskCreatedTime(task = {}) {
@@ -6316,6 +6317,7 @@ function updateCabinetTaskSubtaskSummary(taskId, subtasks = []) {
     const id = Number(taskId);
     const total = subtasks.length;
     const done = subtasks.filter(item => normalizeCabinetSubtask(item).isDone).length;
+    if (!total || done >= total) blockedCabinetSubtaskAttentionIds.delete(id);
     if (!myCabinetData || typeof myCabinetData !== 'object') return;
     forEachCabinetProjectionTaskList((owner, key) => {
         owner[key] = owner[key].map(task => {
@@ -6387,6 +6389,7 @@ function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '', expanded = null,
     const taskId = Number(taskIdAttr || 0);
     if (!summary.total || !taskId) return '';
     const isExpanded = expanded === null ? isCabinetSubtasksExpanded(taskId, task) : Boolean(expanded);
+    const blockedAttention = blockedCabinetSubtaskAttentionIds.has(taskId) && summary.done < summary.total;
     const showHead = options.showHead !== false;
     const subtasks = cachedCabinetSubtasks(taskId, task);
     let body = '<div class="cabinet-subtask-inline-empty">Розгорніть, щоб закривати підпункти прямо тут.</div>';
@@ -6396,7 +6399,8 @@ function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '', expanded = null,
         body = subtasks.length
             ? subtasks.map(item => {
                 const subtask = normalizeCabinetSubtask(item);
-                return `<div class="cabinet-subtask-inline-item ${subtask.isDone ? 'is-done' : ''}" data-cabinet-inline-subtask data-task-id="${taskIdAttr}" data-subtask-id="${escapeHtml(subtask.id)}">
+                const needsAttention = blockedAttention && !subtask.isDone;
+                return `<div class="cabinet-subtask-inline-item ${subtask.isDone ? 'is-done' : ''} ${needsAttention ? 'is-blocked-attention' : ''}" data-cabinet-inline-subtask data-task-id="${taskIdAttr}" data-subtask-id="${escapeHtml(subtask.id)}"${needsAttention ? ' data-cabinet-subtask-blocked-attention="true"' : ''}>
                     <button type="button" class="cabinet-subtask-drag-handle" data-cabinet-subtask-drag-handle draggable="true" aria-label="Перетягнути підзадачу" title="Перетягніть, щоб змінити порядок">⋮⋮</button>
                     <label class="cabinet-subtask-inline-check">
                     <input type="checkbox" data-cabinet-subtask-done data-task-id="${taskIdAttr}" data-subtask-id="${escapeHtml(subtask.id)}" ${subtask.isDone ? 'checked' : ''}>
@@ -6406,7 +6410,7 @@ function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '', expanded = null,
             }).join('')
             : '<div class="cabinet-subtask-inline-empty">Підпункти не знайдені.</div>';
     }
-    return `<div id="cabinetSubtasksPanel${taskIdAttr}" class="cabinet-subtask-inline-panel" data-cabinet-subtasks-panel="${taskIdAttr}" ${isExpanded ? '' : 'hidden'}>
+    return `<div id="cabinetSubtasksPanel${taskIdAttr}" class="cabinet-subtask-inline-panel ${blockedAttention ? 'is-completion-blocked-attention' : ''}" data-cabinet-subtasks-panel="${taskIdAttr}" ${isExpanded ? '' : 'hidden'}>
         ${showHead ? `<div class="cabinet-subtask-inline-head">
             <span>Підпункти можна виконувати у будь-якому порядку</span>
             <b>${summary.done}/${summary.total}</b>
@@ -6871,6 +6875,8 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const snoozeActionLabel = 'Відкласти задачу';
     const openActionLabel = 'Відкрити задачу у повному списку';
     const doneBlocked = cabinetTaskCompletionBlockedBySubtasks(task);
+    if (!doneBlocked) blockedCabinetSubtaskAttentionIds.delete(taskId);
+    const blockedSubtaskAttention = doneBlocked && blockedCabinetSubtaskAttentionIds.has(taskId);
     const doneTitle = doneBlocked ? cabinetSubtaskCompletionTitle(task) : doneActionLabel;
     const isDecomposed = cabinetTaskIsDecomposed(task);
     const isMyDayCard = options.surface === 'myday' || activeTab === 'myday';
@@ -6922,6 +6928,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         attentionLevel ? 'attention-level-' + attentionLevel : '',
         `priority-${priority}`,
         isDecomposed ? 'is-decomposed' : '',
+        blockedSubtaskAttention ? 'is-subtask-completion-blocked' : '',
         inlineActive ? 'is-inline-checklist-active' : '',
         isDecomposed && subtasksExpanded ? 'is-subtasks-expanded' : '',
         isDecomposed && !subtasksExpanded ? 'is-subtasks-collapsed' : ''
@@ -6939,7 +6946,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const extraCommandsHtml = options.extraCommandsHtml || '';
     const extraAttrs = options.cardAttrs || '';
     const taskActionsHtml = `<div class="cabinet-task-actions">
-                <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
+                <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneBlocked ? doneTitle : doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${!taskIdAttr ? 'disabled' : (doneBlocked ? 'aria-disabled="true" data-cabinet-completion-blocked="subtasks"' : '')}>✓</button>
                 ${taskTimerActionHtml}
                 ${isMyDayCard ? `<button type="button" class="cabinet-task-action-btn cabinet-task-action-ai" title="AI: розмітити" aria-label="AI: розмітити" data-tooltip="AI: розмітити" data-cabinet-task-action="ai-classification" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>AI</button>` : ''}
                 ${detailToggleHtml}
@@ -7707,6 +7714,39 @@ async function loadCabinetTaskSubtasks(taskId) {
     return subtasks;
 }
 
+function focusFirstBlockedCabinetSubtask(taskId) {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id || typeof document === 'undefined' || typeof document.querySelector !== 'function') return;
+    const focus = () => {
+        const input = document.querySelector(`[data-cabinet-subtasks-panel="${id}"] .cabinet-subtask-inline-item.is-blocked-attention input[data-cabinet-subtask-done]`);
+        if (!input) return;
+        input.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+        try { input.focus({ preventScroll: true }); } catch { input.focus?.(); }
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focus);
+    else setTimeout(focus, 0);
+}
+
+async function revealBlockedCabinetSubtasks(taskId, task = {}) {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id) return false;
+    blockedCabinetSubtaskAttentionIds.add(id);
+    collapsedCabinetSubtaskIds.delete(id);
+    if (activeTab === 'myday') setCabinetActiveInlineTask(id, { expanded: true });
+    else expandedCabinetSubtaskIds.add(id);
+    if (!cabinetSubtaskCache.has(id) && !Array.isArray(task.subtasks)) await loadCabinetTaskSubtasks(id);
+    else rerenderCabinetTaskTabs();
+    const currentTask = findCabinetTask(id) || task;
+    if (!cabinetTaskCompletionBlockedBySubtasks(currentTask)) {
+        blockedCabinetSubtaskAttentionIds.delete(id);
+        rerenderCabinetTaskTabs();
+        return false;
+    }
+    focusFirstBlockedCabinetSubtask(id);
+    if (typeof showNotification === 'function') showNotification(cabinetSubtaskCompletionTitle(currentTask), 'warning');
+    return true;
+}
+
 async function toggleCabinetTaskSubtasks(taskId) {
     const id = normalizeCabinetTaskId(taskId);
     if (!id) return;
@@ -7763,8 +7803,9 @@ async function updateCabinetSubtaskDone(input) {
     cabinetSubtaskCache.set(taskId, updated);
     updateCabinetTaskSubtaskSummary(taskId, updated);
     notifyTaskWidgetsChanged({ action: 'subtask_status', taskId, subtaskId });
-    const summary = cabinetSubtaskSummary(task);
+    const summary = cabinetSubtaskSummary(findCabinetTask(taskId) || task);
     if (summary.total && summary.done >= summary.total && typeof showNotification === 'function') {
+        blockedCabinetSubtaskAttentionIds.delete(taskId);
         showNotification('Усі підпункти закриті. Тепер можна виконати задачу.', 'success');
     }
     rerenderCabinetTaskTabs();
@@ -8454,11 +8495,7 @@ async function handleCabinetTaskActionClick(event) {
     if (action === 'done') {
         const task = findCabinetTask(taskId) || {};
         if (cabinetTaskCompletionBlockedBySubtasks(task)) {
-            if (activeTab === 'myday') setCabinetActiveInlineTask(taskId, { expanded: true });
-            else expandedCabinetSubtaskIds.add(Number(taskId));
-            if (!cabinetSubtaskCache.has(Number(taskId))) await loadCabinetTaskSubtasks(taskId);
-            else rerenderCabinetTaskTabs();
-            if (typeof showNotification === 'function') showNotification(cabinetSubtaskCompletionTitle(task), 'warning');
+            await revealBlockedCabinetSubtasks(taskId, task);
             return;
         }
     }

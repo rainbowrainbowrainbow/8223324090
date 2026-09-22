@@ -2246,6 +2246,72 @@ test('profile task cards expose overdue reschedule action and inline subtasks by
     assert.match(html, /data-cabinet-subtask-done/);
 });
 
+test('profile blocked completion stays interactive, reveals unfinished subtasks, and sends no parent mutation', async () => {
+    const ctx = loadProfileTaskerContext();
+    const task = {
+        id: 44,
+        title: 'Blocked parent task',
+        status: 'todo',
+        subtask_count: 2,
+        subtask_done_count: 1,
+        subtasks: [
+            { id: 1, title: 'Finished item', is_done: true },
+            { id: 2, title: 'Open item', is_done: false }
+        ]
+    };
+    const notices = [];
+    let parentMutationCalls = 0;
+    const focusedInput = { focusCalls: 0, focus() { this.focusCalls += 1; }, scrollIntoView() {} };
+    ctx.document.getElementById = () => null;
+    ctx.document.querySelector = selector => selector.includes('is-blocked-attention') ? focusedInput : null;
+    ctx.apiPost = async () => {
+        parentMutationCalls += 1;
+        return { success: true };
+    };
+    ctx.showNotification = (message, type) => notices.push({ message, type });
+    vm.runInContext(`
+        activeTab = 'myday';
+        myCabinetData = {
+            all: [${JSON.stringify(task)}],
+            today: [${JSON.stringify(task)}],
+            next: [], overdue: [], waiting: [], deferred: [], private: [], completedHistory: []
+        };
+    `, ctx);
+
+    const initialHtml = ctx.renderCabinetTaskCard(task, false, { surface: 'myday' });
+    const initialDoneButton = initialHtml.match(/<button[^>]+data-cabinet-task-action="done"[^>]*>/)?.[0] || '';
+    assert.match(initialDoneButton, /aria-disabled="true"/);
+    assert.match(initialDoneButton, /data-cabinet-completion-blocked="subtasks"/);
+    assert.doesNotMatch(initialDoneButton, /\sdisabled(?:\s|>|=)/);
+
+    await ctx.handleCabinetTaskActionClick({
+        preventDefault() {},
+        stopPropagation() {},
+        currentTarget: {
+            dataset: { cabinetTaskAction: 'done', taskId: '44' },
+            closest() { return { dataset: { taskStatus: 'todo' }, classList: { add() {}, remove() {} } }; }
+        }
+    });
+
+    assert.equal(parentMutationCalls, 0);
+    assert.deepEqual(notices, [{ message: 'Спочатку закрийте підпункти: 1/2', type: 'warning' }]);
+    const blockedHtml = ctx.renderCabinetTaskCard(ctx.findCabinetTask(44), false, { surface: 'myday' });
+    assert.match(blockedHtml, /is-subtask-completion-blocked/);
+    assert.match(blockedHtml, /data-cabinet-subtasks-panel="44"(?![^>]*hidden)/);
+    assert.match(blockedHtml, /is-done[^>]*data-cabinet-inline-subtask[^>]*>[\s\S]*?Finished item/);
+    assert.match(blockedHtml, /is-blocked-attention[^>]*data-cabinet-inline-subtask[^>]*>[\s\S]*?Open item/);
+    assert.equal((blockedHtml.match(/data-cabinet-subtask-blocked-attention="true"/g) || []).length, 1);
+
+    ctx.updateCabinetTaskSubtaskSummary(44, [
+        { id: 1, title: 'Finished item', is_done: true },
+        { id: 2, title: 'Open item', is_done: true }
+    ]);
+    const resolvedHtml = ctx.renderCabinetTaskCard(ctx.findCabinetTask(44), false, { surface: 'myday' });
+    const resolvedDoneButton = resolvedHtml.match(/<button[^>]+data-cabinet-task-action="done"[^>]*>/)?.[0] || '';
+    assert.doesNotMatch(resolvedHtml, /is-subtask-completion-blocked|is-blocked-attention/);
+    assert.doesNotMatch(resolvedDoneButton, /aria-disabled="true"/);
+});
+
 test('profile My Day overdue triage row exposes a single move-to-today action', () => {
     const ctx = loadProfileTaskerContext();
     const html = ctx.renderCabinetOverdueTriageRow({

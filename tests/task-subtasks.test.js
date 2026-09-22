@@ -178,3 +178,20 @@ test('profile subtasks expose persisted reorder contract', () => {
     assert.match(profile, /apiPost\(`\/tasks\/\$\{id\}\/subtasks\/reorder`/);
     assert.match(profile, /notifyTaskWidgetsChanged\(\{ action: 'subtask_reorder'/);
 });
+
+test('blocked parent completion remains explainable on Tasks and My Day without weakening the API guard', () => {
+    const tasksPage = fs.readFileSync(path.join(__dirname, '..', 'js', 'tasks-page.js'), 'utf8');
+    const profile = fs.readFileSync(path.join(__dirname, '..', 'js', 'profile-page.js'), 'utf8');
+    const tasksHtml = fs.readFileSync(path.join(__dirname, '..', 'tasks.html'), 'utf8');
+    const cabinetCss = fs.readFileSync(path.join(__dirname, '..', 'css', 'pages-cabinet.css'), 'utf8');
+
+    assert.match(tasksPage, /data-task-completion-blocked="subtasks"/);
+    assert.doesNotMatch(tasksPage, /completionBlockedBySubtasks \? `disabled aria-disabled=/);
+    assert.match(tasksPage, /await revealBlockedTaskSubtasks\(taskId, currentTask\)/);
+    assert.match(tasksPage, /data-task-subtask-blocked-attention="true"/);
+    assert.match(profile, /data-cabinet-completion-blocked="subtasks"/);
+    assert.match(profile, /await revealBlockedCabinetSubtasks\(taskId, task\)/);
+    assert.match(profile, /data-cabinet-subtask-blocked-attention="true"/);
+    assert.match(tasksHtml, /task-card-subtask-item\.is-blocked-attention/);
+    assert.match(cabinetCss, /cabinet-subtask-inline-item\.is-blocked-attention/);
+});

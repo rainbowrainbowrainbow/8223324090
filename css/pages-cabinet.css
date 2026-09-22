@@ -2891,6 +2891,34 @@ html[data-theme="dark"] body .cabinet-bucket-more {
     text-decoration: line-through;
 }
 
+.cabinet-task-action-done[aria-disabled="true"] {
+    cursor: help;
+    border-color: rgba(220, 38, 38, 0.38);
+    background: rgba(254, 226, 226, 0.82);
+    color: #991b1b;
+}
+
+.cabinet-task-card.is-subtask-completion-blocked {
+    border-color: rgba(220, 38, 38, 0.42);
+    box-shadow: inset 4px 0 0 #dc2626, 0 8px 22px rgba(127, 29, 29, 0.10);
+}
+
+.cabinet-subtask-inline-panel.is-completion-blocked-attention {
+    border-color: rgba(220, 38, 38, 0.36);
+    background: rgba(254, 242, 242, 0.88);
+}
+
+.cabinet-subtask-inline-item.is-blocked-attention {
+    border: 1px solid rgba(220, 38, 38, 0.40);
+    background: #fff1f2;
+    color: #991b1b;
+}
+
+.cabinet-subtask-inline-item.is-blocked-attention input:focus-visible {
+    outline: 3px solid rgba(220, 38, 38, 0.28);
+    outline-offset: 2px;
+}
+
 .cabinet-subtask-inline-item.is-dragging {
     opacity: 0.56;
 }
@@ -3439,6 +3467,19 @@ body.dark-mode .cabinet-subtask-inline-item {
     background: rgba(15, 23, 42, 0.72);
     border-color: rgba(148, 163, 184, 0.20);
     color: var(--profile-dark-text, #f8fafc);
+}
+
+body.dark-mode .cabinet-task-action-done[aria-disabled="true"] {
+    border-color: rgba(248, 113, 113, 0.46);
+    background: rgba(127, 29, 29, 0.28);
+    color: #fecaca;
+}
+
+body.dark-mode .cabinet-subtask-inline-panel.is-completion-blocked-attention,
+body.dark-mode .cabinet-subtask-inline-item.is-blocked-attention {
+    border-color: rgba(248, 113, 113, 0.42);
+    background: rgba(127, 29, 29, 0.24);
+    color: #fecaca;
 }
 
 body.dark-mode .cabinet-subtask-drag-handle {

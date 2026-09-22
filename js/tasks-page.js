@@ -505,6 +505,7 @@ const expandedTaskSubtaskIds = new Set();
 const collapsedTaskSubtaskIds = new Set();
 const taskCardSubtaskCache = new Map();
 const loadingTaskSubtaskIds = new Set();
+const blockedTaskSubtaskAttentionIds = new Set();
 
 function notifyTaskWidgetsChanged(detail = {}) {
     const payload = { source: 'tasks_page', ...detail };
@@ -3635,7 +3636,7 @@ function taskSubtaskCompletionTitle(task = {}) {
     if (!summary.total) return '';
     return summary.done >= summary.total
         ? 'Усі підпункти закриті. Задачу можна виконати.'
-        : `Спочатку закрийте всі підпункти: ${summary.done}/${summary.total}.`;
+        : `Спочатку закрийте підпункти: ${summary.done}/${summary.total}`;
 }
 
 function renderTaskCardSubtasksPanel(task = {}) {
@@ -3644,6 +3645,7 @@ function renderTaskCardSubtasksPanel(task = {}) {
     const taskId = Number(task.id || 0);
     const expanded = isTaskSubtasksExpanded(taskId, task);
     const subtasks = cachedTaskSubtasks(taskId, task);
+    const blockedAttention = blockedTaskSubtaskAttentionIds.has(taskId) && summary.done < summary.total;
     let body = '<div class="task-card-subtasks-empty">Розгорніть, щоб виконувати підпункти прямо тут.</div>';
     if (expanded && loadingTaskSubtaskIds.has(taskId)) {
         body = '<div class="task-card-subtasks-empty">Завантажую підпункти...</div>';
@@ -3651,14 +3653,15 @@ function renderTaskCardSubtasksPanel(task = {}) {
         body = subtasks.length
             ? subtasks.map(item => {
                 const subtask = normalizeTaskCardSubtask(item);
-                return `<label class="task-card-subtask-item ${subtask.isDone ? 'is-done' : ''}">
+                const needsAttention = blockedAttention && !subtask.isDone;
+                return `<label class="task-card-subtask-item ${subtask.isDone ? 'is-done' : ''} ${needsAttention ? 'is-blocked-attention' : ''}"${needsAttention ? ' data-task-subtask-blocked-attention="true"' : ''}>
                     <input type="checkbox" data-task-subtask-done data-task-id="${taskId}" data-subtask-id="${escapeHtml(subtask.id)}" ${subtask.isDone ? 'checked' : ''}>
                     <span>${escapeHtml(subtask.title || 'Підпункт без назви')}</span>
                 </label>`;
             }).join('')
             : '<div class="task-card-subtasks-empty">Підпункти не знайдені.</div>';
     }
-    return `<div class="task-card-subtasks-panel" data-task-subtasks-panel="${taskId}" ${expanded ? '' : 'hidden'}>
+    return `<div class="task-card-subtasks-panel ${blockedAttention ? 'is-completion-blocked-attention' : ''}" data-task-subtasks-panel="${taskId}" ${expanded ? '' : 'hidden'}>
         <div class="task-card-subtasks-head">
             <span>Підпункти можна закривати у будь-якому порядку</span>
             <b>${summary.done}/${summary.total}</b>
@@ -3863,6 +3866,8 @@ function renderTaskCard(task) {
     const hasSubtasks = subtaskCount > 0;
     const subtaskExpanded = isTaskSubtasksExpanded(Number(t.id || 0), t);
     const completionBlockedBySubtasks = nextStatus === 'done' && hasSubtasks && subtaskDone < subtaskCount;
+    if (!completionBlockedBySubtasks) blockedTaskSubtaskAttentionIds.delete(Number(t.id || 0));
+    const blockedSubtaskAttention = completionBlockedBySubtasks && blockedTaskSubtaskAttentionIds.has(Number(t.id || 0));
     const subtaskBadge = hasSubtasks
         ? `<button type="button" class="task-os-badge checklist task-card-subtasks-toggle" data-task-action="subtasks-toggle" data-task-id="${t.id}" aria-expanded="${subtaskExpanded ? 'true' : 'false'}" title="${escapeHtml(taskSubtaskCompletionTitle(t))}">Пункти ${subtaskDone}/${subtaskCount}</button>`
         : '';
@@ -3906,7 +3911,7 @@ function renderTaskCard(task) {
         : ` data-status="${escapeHtml(t.status || '')}"`;
 
     return `
-    <div class="task-card ${isKanbanCard ? '' : 'task-work-row'} cat-${cat} priority-${t.priority} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''} ${isAiCreated ? 'is-ai-created' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-priority="${escapeHtml(t.priority || 'normal')}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${isAiCreated ? ' data-ai-created="true" aria-label="Задача створена з допомогою AI"' : ''}${selfPersonalAttrs}${kanbanAttrs}>
+    <div class="task-card ${isKanbanCard ? '' : 'task-work-row'} cat-${cat} priority-${t.priority} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${blockedSubtaskAttention ? 'is-subtask-completion-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''} ${isAiCreated ? 'is-ai-created' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-priority="${escapeHtml(t.priority || 'normal')}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${isAiCreated ? ' data-ai-created="true" aria-label="Задача створена з допомогою AI"' : ''}${selfPersonalAttrs}${kanbanAttrs}>
         <label class="task-checkbox-wrap">
             <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" aria-label="Вибрати задачу">
         </label>
@@ -3935,7 +3940,7 @@ function renderTaskCard(task) {
         ${renderTaskSubtaskProgress(t)}
         ${renderTaskCardSubtasksPanel(t)}
         <div class="task-card-actions task-row-actions">
-            <button class="task-row-primary ${btnClass}" data-task-action="status" data-task-id="${t.id}" data-next-status="${nextStatus}" ${completionBlockedBySubtasks ? `disabled aria-disabled="true" title="${escapeHtml(taskSubtaskCompletionTitle(t))}"` : ''}>${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
+            <button class="task-row-primary ${btnClass}" data-task-action="status" data-task-id="${t.id}" data-next-status="${nextStatus}" ${completionBlockedBySubtasks ? `aria-disabled="true" data-task-completion-blocked="subtasks" aria-label="${escapeHtml(taskSubtaskCompletionTitle(t))}" title="${escapeHtml(taskSubtaskCompletionTitle(t))}"` : ''}>${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
             ${renderTaskRowMoreAction(t.id)}
         </div>
     </div>`;
@@ -3949,6 +3954,7 @@ function updateTaskSubtaskSummary(taskId, subtasks = []) {
     const id = Number(taskId);
     const total = subtasks.length;
     const done = subtasks.filter(item => normalizeTaskCardSubtask(item).isDone).length;
+    if (!total || done >= total) blockedTaskSubtaskAttentionIds.delete(id);
     allTasks = allTasks.map(task => {
         if (Number(task.id) !== id) return task;
         return {
@@ -3960,6 +3966,38 @@ function updateTaskSubtaskSummary(taskId, subtasks = []) {
             subtasks: subtasks.map(normalizeTaskCardSubtask)
         };
     });
+}
+
+function focusFirstBlockedTaskSubtask(taskId) {
+    const id = Number(taskId);
+    if (!id || typeof document === 'undefined' || typeof document.querySelector !== 'function') return;
+    const focus = () => {
+        const input = document.querySelector(`[data-task-subtasks-panel="${id}"] .task-card-subtask-item.is-blocked-attention input[data-task-subtask-done]`);
+        if (!input) return;
+        input.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+        try { input.focus({ preventScroll: true }); } catch { input.focus?.(); }
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focus);
+    else setTimeout(focus, 0);
+}
+
+async function revealBlockedTaskSubtasks(taskId, task = {}) {
+    const id = Number(taskId);
+    if (!id) return false;
+    blockedTaskSubtaskAttentionIds.add(id);
+    collapsedTaskSubtaskIds.delete(id);
+    expandedTaskSubtaskIds.add(id);
+    if (!taskCardSubtaskCache.has(id) && !Array.isArray(task.subtasks)) await loadTaskCardSubtasks(id);
+    else renderBoard();
+    const currentTask = allTasks.find(item => Number(item.id) === id) || task;
+    if (!taskCompletionBlockedBySubtasks(currentTask)) {
+        blockedTaskSubtaskAttentionIds.delete(id);
+        renderBoard();
+        return false;
+    }
+    focusFirstBlockedTaskSubtask(id);
+    showNotification(taskSubtaskCompletionTitle(currentTask), 'warning');
+    return true;
 }
 
 async function loadTaskCardSubtasks(taskId) {
@@ -4024,6 +4062,7 @@ async function updateTaskCardSubtaskDone(input) {
     updateTaskSubtaskSummary(taskId, updated);
     const summary = taskSubtaskSummary(allTasks.find(task => Number(task.id) === taskId) || {});
     if (summary.total && summary.done >= summary.total) {
+        blockedTaskSubtaskAttentionIds.delete(taskId);
         showNotification('Усі підпункти закриті. Тепер можна виконати задачу.', 'success');
     }
     renderBoard();
@@ -5517,10 +5556,7 @@ async function cycleStatus(taskId, newStatus) {
         return;
     }
     if (newStatus === 'done' && taskCompletionBlockedBySubtasks(currentTask)) {
-        expandedTaskSubtaskIds.add(Number(taskId));
-        if (!taskCardSubtaskCache.has(Number(taskId))) await loadTaskCardSubtasks(taskId);
-        else renderBoard();
-        showNotification(taskSubtaskCompletionTitle(currentTask), 'warning');
+        await revealBlockedTaskSubtasks(taskId, currentTask);
         return;
     }
     let result = newStatus === 'done'

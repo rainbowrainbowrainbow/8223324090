@@ -442,9 +442,21 @@
         return roles.includes('creator') || roles.some(role => allowedRoles.includes(role));
     }
 
+    function hasActiveMembershipContextAccess(ctx = currentContext()) {
+        const profile = window.CrmBusinessContext?.profileFor?.(ctx?.key)
+            || (window.CrmBusinessContext?.activeProfile?.()?.key === ctx?.key
+                ? window.CrmBusinessContext.activeProfile()
+                : null);
+        return profile?.accessMode === 'membership'
+            && profile?.membership
+            && profile.membership.isActive !== false
+            && profile.modules?.enabled?.timeline === true;
+    }
+
     function canAccessContext(user, ctx = currentContext()) {
         if (!ctx?.isPrivateSurface) return Boolean(user);
         if (!user) return false;
+        if (hasActiveMembershipContextAccess(ctx)) return true;
         return userRoles(user).includes('creator');
     }
 

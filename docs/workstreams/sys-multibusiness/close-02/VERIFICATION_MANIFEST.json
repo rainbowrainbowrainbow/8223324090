@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-22T14:22:20.5983206Z",
+  "status": "HOTFIX_RELEASE_REQUIRED",
+  "worktree": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-close-02-release-20260922",
+  "publishedRelease": {
+    "sha": "a34ee622402776ba23efda393d37d11868640120",
+    "branch": "codex/eventgenix-production",
+    "version": "0.82.9",
+    "label": "SYS-MB: Майстерня, каталоги та telemetry",
+    "ciUrl": "https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/35732051360",
+    "deploymentId": "80cbf5a3-a532-4b1c-badd-e0a9028fcad6"
+  },
+  "hotfix": {
+    "baseSha": "a34ee622402776ba23efda393d37d11868640120",
+    "functionalSha": "40377c62939690b3eb613abd62624274ff7271da",
+    "migrations": [],
+    "releaseLabel": "SYS-MB: каталог і timeline після cutover"
+  },
+  "protectedApply": {
+    "ownerRepair": "APPLIED",
+    "maysternyaDoli": "APPLIED",
+    "maysternyaReceiptSha256": "0f3f673a59d63d1f161003dee8e24a01eccd12e0c227a887183a0d9a9bba755f",
+    "crmReplay": false,
+    "crmReceiptAuthoritySha256": "29436fa0daf1ae01bdfaf7bfaf48680cf92dd77e899b4adc4646555903a07223",
+    "catalogs": "NOT_APPLIED_VALIDATOR_BLOCK",
+    "newQaFixtures": 0,
+    "auditLeasesRetired": true
+  },
+  "checks": [
+    { "name": "live_version_before_hotfix", "status": "PASS" },
+    { "name": "ownership_preflight", "status": "PASS" },
+    { "name": "owner_repair", "status": "PASS" },
+    { "name": "maysternya_apply", "status": "PASS" },
+    { "name": "catalog_apply", "status": "HOLD", "reason": "PUBLISHED_ASCII_ONLY_ID_VALIDATOR" },
+    { "name": "maysternya_timeline_live", "status": "FAIL", "reason": "CLIENT_PRIVATE_SURFACE_CREATOR_ONLY_GUARD" },
+    { "name": "targeted_catalog_tests", "status": "PASS", "passed": 7 },
+    { "name": "targeted_timeline_tests", "status": "PASS", "passed": 30 },
+    { "name": "ui_smoke", "status": "PASS", "passed": 1320 },
+    { "name": "sys_mb_suite", "status": "PASS" },
+    { "name": "javascript_syntax", "status": "PASS" },
+    { "name": "fresh_crm_receipt_read", "status": "HOLD", "reason": "NO_SAFE_READONLY_JOURNAL_PATH" },
+    { "name": "role_specific_live_sessions", "status": "NOT_TESTABLE", "reason": "NO_APPROVED_EXISTING_CREDENTIALS" },
+    { "name": "same_jwt_revoke_live", "status": "NOT_TESTABLE", "reason": "NO_PRE_TRANSITION_SESSION_AND_NO_EXTRA_MUTATION" }
+  ],
+  "reportHashes": {
+    "CLEANUP_EVIDENCE.md": "75370f2d77563ee7beeb446147c29cc506c1eaae21c0be3ab9815d1e1e492936",
+    "CONTEXT_HANDOFF.md": "f54d5c14faeb4d137d195943219008510b720b4fa7d2e3f7991fc7eb3bae8cf0",
+    "HOTFIX_RELEASE_MANIFEST.md": "977c0c510837dad4e32f580a9998f6f1d0b518b04beee3075970e2f0eacc7894",
+    "LIVE_QA_REPORT.md": "31f1b45afaad6b90562b9dca0792e0d742be11cbd2459c79ea6466f02b41b1ef",
+    "OBSERVATION_START.md": "e8c7bdfffd23ff8026db90334e9e5a60eeef6e4e92606fe64ec095c7c4e41aec",
+    "PRODUCTION_DELIVERY_REPORT.md": "b6303097c65c9fd5b0d984223c0f349b0e6d15ff66e6b6e0d25d8f3a90502dc6"
+  },
+  "observation": {
+    "started": false,
+    "passMeasured": false,
+    "globalModelComplete": false
+  }
+}

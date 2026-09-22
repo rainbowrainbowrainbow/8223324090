@@ -53,6 +53,52 @@ test('timeline context preserves custom partitions and rejects malformed interna
     assert.equal(canAccessTimelineContext({ role: 'creator', business_contexts: ['event_genix'] }, 'unknown'), false);
 });
 
+test('private timeline accepts an active server-hydrated membership and rejects missing or inactive membership', () => {
+    const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
+    const profile = {
+        key: 'maysternya_doli',
+        accessMode: 'membership',
+        membership: { role: 'director', isActive: true },
+        modules: { enabled: { timeline: true } }
+    };
+    const sandbox = {
+        console,
+        URLSearchParams,
+        CustomEvent: class CustomEvent {},
+        window: {
+            location: { pathname: '/maysternya-doli', search: '', href: 'https://crm.test/maysternya-doli' },
+            CrmBusinessContext: {
+                current: () => 'maysternya_doli',
+                profileFor: context => context === 'maysternya_doli' ? profile : null,
+                activeProfile: () => profile,
+                state: () => ({ activeBusinessId: 'maysternya_doli' })
+            },
+            addEventListener() {},
+            dispatchEvent() {}
+        },
+        document: {
+            readyState: 'loading',
+            body: { classList: { toggle() {}, add() {}, remove() {} }, dataset: {}, setAttribute() {} },
+            getElementById: () => null,
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {}
+        },
+        localStorage: { getItem: () => null, setItem() {}, removeItem() {} }
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+    sandbox.window.CustomEvent = sandbox.CustomEvent;
+    vm.runInNewContext(contextCode, sandbox);
+
+    const user = { role: 'director' };
+    const ctx = sandbox.window.TimelineBusinessContext.CONTEXTS.maysternya_doli;
+    assert.equal(sandbox.window.TimelineBusinessContext.canAccessContext(user, ctx), true);
+    profile.membership.isActive = false;
+    assert.equal(sandbox.window.TimelineBusinessContext.canAccessContext(user, ctx), false);
+    profile.membership = null;
+    assert.equal(sandbox.window.TimelineBusinessContext.canAccessContext(user, ctx), false);
+});
+
 test('timeline context can be resolved from request query, body, or header', () => {
     assert.equal(timelineContextFromRequest({ query: { businessContext: 'maysternya_doli' } }), 'maysternya_doli');
     assert.equal(timelineContextFromRequest({ body: { business_context: 'maysternya_doli' } }), 'maysternya_doli');

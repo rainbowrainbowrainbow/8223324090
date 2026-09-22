@@ -54,6 +54,22 @@ test('catalog mapping requires the exact reviewed nine roots and three existing 
         { code: 'catalog_cutover_public_set_mismatch' });
 });
 
+test('catalog mapping accepts reviewed printable Unicode IDs and rejects control characters', () => {
+    const unicodeCatalogs = catalogs.map((catalog, index) => index === catalogs.length - 1
+        ? { ...catalog, id: 'Торти з грибів' }
+        : catalog);
+    const unicodeMapping = { ...mapping, catalogs: unicodeCatalogs };
+    assert.equal(cleanMapping(payload({ approvedMapping: unicodeMapping,
+        mappingSha256: sha256(unicodeMapping) })).catalogs.at(-1).id, 'Торти з грибів');
+
+    const controlCatalogs = catalogs.map((catalog, index) => index === catalogs.length - 1
+        ? { ...catalog, id: 'catalog\n9' }
+        : catalog);
+    const controlMapping = { ...mapping, catalogs: controlCatalogs };
+    assert.throws(() => cleanMapping(payload({ approvedMapping: controlMapping,
+        mappingSha256: sha256(controlMapping) })), { code: 'catalog_cutover_invalid' });
+});
+
 test('catalog ownership preparation is read-only apart from hash-bound journal evidence', async () => {
     const { db, client } = fakeDb();
     const result = await prepareCatalogOwnershipCutover(db, { id: 10 }, payload());

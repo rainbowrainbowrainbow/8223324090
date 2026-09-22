@@ -2812,7 +2812,7 @@
             if (name) return name;
             const externalId = String(conversation?.externalId || '').trim();
             if (['facebook', 'instagram'].includes(conversation?.channel)) {
-                return 'Користувач ' + CHANNEL_NAMES[conversation.channel];
+                return CHANNEL_NAMES[conversation.channel];
             }
             return externalId || 'Розмова';
         }

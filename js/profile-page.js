@@ -8926,7 +8926,7 @@ async function createCabinetTask(event, mode) {
             if (details) details.value = '';
             window.TaskAiDraft?.clear?.(composer);
             if (typeof showNotification === 'function') showNotification(`Створено ${bundleTasks.length || 'кілька'} AI-задач`, 'success');
-            await refreshMyCabinetTab();
+            await refreshMyCabinetTab({ force: true });
             return;
         }
     }

@@ -197,6 +197,7 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(tasksCode, /commitAiDraft/);
     assert.match(profileCode, /markCommittedTaskId/);
     assert.match(tasksCode, /markCommittedTaskId/);
+    assert.match(profileCode, /await refreshMyCabinetTab\(\{ force: true \}\);\s*return;/);
     assert.match(profileCode, /data-ai-created="true"/);
     assert.match(tasksCode, /data-ai-created="true"/);
 

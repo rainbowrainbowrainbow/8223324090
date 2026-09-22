@@ -13,6 +13,7 @@ const DIRECT_CHILD_TABLES = Object.freeze([
     'catalog_automations', 'trend_proposals'
 ]);
 const HASH_64 = /^[a-f0-9]{64}$/;
+const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F-\u009F]/u;
 
 function failure(status, code, message) {
     return Object.assign(new Error(message), { status, code });
@@ -44,7 +45,7 @@ function cleanMapping(input) {
     const catalogs = Array.isArray(mapping.catalogs) ? mapping.catalogs.map(row => ({
         id: String(row?.id || '').trim(), name: String(row?.name || '').trim()
     })) : [];
-    if (catalogs.some(row => !/^[A-Za-z0-9_-]{1,50}$/.test(row.id) || !row.name)) {
+    if (catalogs.some(row => !row.id || row.id.length > 50 || CONTROL_CHARACTERS.test(row.id) || !row.name)) {
         throw failure(400, 'catalog_cutover_invalid', 'Every approved catalog requires a stable ID and name');
     }
     const names = catalogs.map(row => row.name).sort((a, b) => a.localeCompare(b, 'uk'));

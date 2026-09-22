@@ -889,30 +889,6 @@
             color: var(--gray-400);
             text-decoration: line-through;
         }
-        .task-row-primary[aria-disabled="true"] {
-            cursor: help;
-            opacity: 0.72;
-            border-color: rgba(220, 38, 38, 0.34);
-            background: rgba(254, 226, 226, 0.72);
-            color: #991b1b;
-        }
-        .task-card.is-subtask-completion-blocked {
-            border-color: rgba(220, 38, 38, 0.42);
-            box-shadow: inset 4px 0 0 #dc2626, 0 8px 22px rgba(127, 29, 29, 0.10);
-        }
-        .task-card-subtasks-panel.is-completion-blocked-attention {
-            border-color: rgba(220, 38, 38, 0.36);
-            background: rgba(254, 242, 242, 0.88);
-        }
-        .task-card-subtask-item.is-blocked-attention {
-            border: 1px solid rgba(220, 38, 38, 0.40);
-            background: #fff1f2;
-            color: #991b1b;
-        }
-        .task-card-subtask-item.is-blocked-attention input:focus-visible {
-            outline: 3px solid rgba(220, 38, 38, 0.28);
-            outline-offset: 2px;
-        }
         .task-card-subtasks-empty {
             color: var(--gray-500);
             font-size: 12px;
@@ -1135,20 +1111,6 @@
             background: rgba(15,23,42,0.72);
             border-color: rgba(148,163,184,0.20);
             color: #dbeafe;
-        }
-        html[data-theme="dark"] .task-row-primary[aria-disabled="true"],
-        body.dark-mode .task-row-primary[aria-disabled="true"] {
-            border-color: rgba(248, 113, 113, 0.46);
-            background: rgba(127, 29, 29, 0.28);
-            color: #fecaca;
-        }
-        html[data-theme="dark"] .task-card-subtasks-panel.is-completion-blocked-attention,
-        body.dark-mode .task-card-subtasks-panel.is-completion-blocked-attention,
-        html[data-theme="dark"] .task-card-subtask-item.is-blocked-attention,
-        body.dark-mode .task-card-subtask-item.is-blocked-attention {
-            border-color: rgba(248, 113, 113, 0.42);
-            background: rgba(127, 29, 29, 0.24);
-            color: #fecaca;
         }
         html[data-theme="dark"] .task-batch-toolbar,
         body.dark-mode .task-batch-toolbar {

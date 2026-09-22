@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.10",
+  "version": "0.82.9",
   "eventGenix": {
-    "releaseLabel": "SYS-MB: каталог і timeline після cutover"
+    "releaseLabel": "SYS-MB: Майстерня, каталоги та telemetry"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

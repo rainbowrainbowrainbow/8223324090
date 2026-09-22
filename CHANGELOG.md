@@ -4,13 +4,6 @@
 
 ---
 
-## v0.82.10 - SYS-MB: каталог і timeline після cutover
-
-### Release / Versioning / (22.09.2026) [codex]
-- **SYS-MB: каталог і timeline після cutover** - release marker, cache tags and visible version metadata were prepared automatically.
-
----
-
 ## v0.82.9 - SYS-MB: Майстерня, каталоги та telemetry
 
 ### Release / Versioning / (22.09.2026) [codex]

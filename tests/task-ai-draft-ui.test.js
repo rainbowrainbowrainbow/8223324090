@@ -28,6 +28,7 @@ function createSingleTaskDraftDom(options = {}) {
     const draft = {
         title: options.title || 'Manual task',
         description: options.description || '',
+        impactIds: Array.isArray(options.impactIds) ? [...options.impactIds] : [],
         priority: options.priority || 'normal',
         scheduleDate: options.scheduleDate || '',
         scheduleConfirmed: Boolean(options.scheduleDate)
@@ -97,7 +98,7 @@ function createSingleTaskDraftDom(options = {}) {
     window.TaskAiDraft.bindComposer(root, {
         readDraft: () => ({ ...draft }),
         applyField: (field, value) => {
-            draft[field] = String(value || '');
+            draft[field] = Array.isArray(value) ? [...value] : String(value || '');
             if (field === 'title') input.value = draft[field];
             if (field === 'scheduleDate') draft.scheduleConfirmed = Boolean(draft.scheduleDate);
         },
@@ -453,6 +454,60 @@ test('AI draft delayed stale response does not open an old preview after source 
     assert.match(ctx.root.querySelector('[data-task-ai-draft-status]').textContent, /Чернетка змінилася/);
     assert.equal(ctx.draft.description, '');
     assert.equal(ctx.createCalls, 0);
+});
+
+test('AI draft requires manual impact selection when classification has no safe match', async () => {
+    const ctx = createSingleTaskDraftDom({
+        title: 'Review an ambiguous work item',
+        requestAiDraftPreview: async (_context, { draft }) => ({
+            success: true,
+            proposalToken: 'payload.signature',
+            draftFingerprint: 'draft-hash',
+            proposalHash: 'proposal-hash',
+            catalogVersion: 'catalog-hash',
+            proposal: {
+                decision: 'single_task',
+                action: 'apply',
+                title: draft.title,
+                description: 'AI prepared details',
+                impactIds: [],
+                priority: null,
+                scheduleDate: null,
+                subtasks: []
+            },
+            diff: {
+                changedFields: ['description'],
+                fields: {
+                    description: { before: '', after: 'AI prepared details', changed: true },
+                    impactIds: { before: [], after: [], changed: false }
+                }
+            },
+            impactCatalog: [
+                { id: 101, name: 'Work: CRM', icon: 'CRM', color: '#2563eb' },
+                { id: 102, name: 'Work: Hermes', icon: 'H', color: '#0f766e' }
+            ]
+        })
+    });
+    await tick();
+
+    ctx.root.querySelector('[data-task-ai-draft-preview]').click();
+    await tick();
+    await tick();
+
+    assert.match(ctx.root.textContent, /не зміг надійно визначити вплив/);
+    assert.ok(ctx.root.querySelector('[data-task-ai-draft-field="impactIds"]'));
+    ctx.root.querySelector('[data-task-ai-draft-accept-all]').click();
+    assert.deepEqual(ctx.draft.impactIds, [], 'accept-all must not silently accept an empty impact list');
+
+    ctx.root.querySelector('[data-task-ai-draft-edit="impactIds"]').click();
+    const crmImpact = ctx.root.querySelector('[data-task-ai-draft-impact-option][value="101"]');
+    assert.ok(crmImpact);
+    crmImpact.checked = true;
+    ctx.root.querySelector('[data-task-ai-draft-edit-apply="impactIds"]').click();
+
+    assert.deepEqual(ctx.draft.impactIds, [101]);
+    assert.ok(Array.from(ctx.window.TaskAiDraft.commitPayloadFor(ctx.root).acceptedFieldMask).includes('impactIds'));
+    assert.ok(Array.from(ctx.window.TaskAiDraft.commitPayloadFor(ctx.root).editedFieldMask).includes('impactIds'));
 });
 
 test('AI draft composer renders interactive task bundle review without single-task commit fallback', async () => {

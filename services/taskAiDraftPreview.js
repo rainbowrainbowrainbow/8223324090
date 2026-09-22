@@ -687,11 +687,15 @@ function strengthenProposalQuality(proposal = {}, draft = {}, activeImpacts = []
                 if (!title) {
                     throw createPreviewError('AI task bundle item is missing title.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
                 }
+                const explicitImpactIds = findExplicitImpactIds(task, activeImpacts);
                 return {
                     ...task,
                     title,
                     description: normalizeTaskDraftDescription(task.description, task, title),
-                    impactIds: filterKnownActiveImpactIds(task.impactIds || [], activeImpacts)
+                    impactIds: filterKnownActiveImpactIds(
+                        mergeExplicitImpactIds(explicitImpactIds, task.impactIds || []),
+                        activeImpacts
+                    )
                 };
             })
         };

@@ -153,7 +153,7 @@
     function renderImpacts(ids = [], preview = {}) {
         const catalog = impactCatalog(preview);
         const safeIds = Array.isArray(ids) ? ids.map(Number).filter(Number.isInteger) : [];
-        if (!safeIds.length) return '<span class="task-ai-draft-muted">Впливи не обрано</span>';
+        if (!safeIds.length) return '<span class="task-ai-draft-muted task-ai-draft-impact-missing">Впливи не визначено — оберіть вручну</span>';
         return `<span class="task-ai-draft-chip-list">${safeIds.map(id => {
             const impact = catalog.get(id) || { id, name: `Impact #${id}`, icon: '•', color: '#64748b' };
             return `<span class="my-day-task-chip my-day-task-chip--impact task-ai-draft-impact-chip" style="--my-day-chip-color:${escapeHtml(impact.color || '#64748b')}" title="${escapeHtml(impact.name || `Impact #${id}`)}">${impactIcon(impact, true)}<span>${escapeHtml(impact.name || `Impact #${id}`)}</span></span>`;
@@ -246,7 +246,8 @@
         const editedFields = task.userEditedFields instanceof Set ? task.userEditedFields : new Set();
         const currentUserId = Number(preview.currentUserId || 0);
         const selectedOwnerId = Number(task.ownerSuggestion?.userId || 0);
-        return (Boolean(task.scheduleDate) && !editedFields.has('scheduleDate'))
+        return !Array.isArray(task.impactIds) || !task.impactIds.length
+            || (Boolean(task.scheduleDate) && !editedFields.has('scheduleDate'))
             || (task.priority !== 'normal' && !editedFields.has('priority'))
             || (currentUserId > 0 && selectedOwnerId > 0 && selectedOwnerId !== currentUserId && !editedFields.has('ownerUserId'));
     }
@@ -317,13 +318,14 @@
 
     function renderBundleTaskCard(task = {}, index = 0, preview = {}) {
         const number = index + 1;
+        const needsImpactReview = !Array.isArray(task.impactIds) || !task.impactIds.length;
         const owners = bundleOwnerCatalog(preview);
         const selectedOwnerId = Number(task.ownerSuggestion?.userId || 0);
         const ownerOptions = [
             `<option value="" ${selectedOwnerId ? '' : 'selected'}>Собі</option>`,
             ...owners.map(owner => `<option value="${owner.id}" ${owner.id === selectedOwnerId ? 'selected' : ''}>${escapeHtml(owner.label)}${owner.role ? ` (${escapeHtml(owner.role)})` : ''}</option>`)
         ].join('');
-        return `<article class="task-ai-bundle-card ${task.accepted ? 'is-accepted' : ''} ${task.rejected ? 'is-rejected' : ''} ${task.userEdited ? 'is-user-edited' : ''}" data-task-ai-bundle-card="${escapeHtml(task.clientId)}">
+        return `<article class="task-ai-bundle-card ${task.accepted ? 'is-accepted' : ''} ${task.rejected ? 'is-rejected' : ''} ${task.userEdited ? 'is-user-edited' : ''} ${needsImpactReview ? 'needs-impact-review' : ''}" data-task-ai-bundle-card="${escapeHtml(task.clientId)}">
             <header class="task-ai-bundle-card-head">
                 <div>
                     <strong>Задача ${number}</strong>
@@ -364,6 +366,7 @@
                 </label>
                 <div class="task-ai-bundle-field-wide">
                     <span class="task-ai-bundle-field-label">Впливи</span>
+                    ${needsImpactReview ? '<p class="task-ai-draft-impact-warning">AI не визначив вплив. Оберіть щонайменше один, щоб прийняти задачу.</p>' : ''}
                     ${renderBundleImpactEditor(task, preview)}
                 </div>
             </div>
@@ -431,7 +434,7 @@
         const fields = fromDiff.filter(field => ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow'].includes(field));
         const decision = proposalDecision(preview);
         if (decision === 'single_task' || decision === 'checklist') {
-            ['priority', 'scheduleDate'].forEach(field => {
+            ['priority', 'scheduleDate', 'impactIds'].forEach(field => {
                 if (!fields.includes(field)) fields.push(field);
             });
         }
@@ -440,7 +443,10 @@
 
     function safeAutoAcceptFields(preview = {}) {
         const safe = new Set(['title', 'description', 'mode', 'impactIds', 'subtasks']);
-        return changedFields(preview).filter(field => safe.has(field));
+        return changedFields(preview).filter(field => {
+            if (!safe.has(field)) return false;
+            return field !== 'impactIds' || (Array.isArray(fieldAfterValue(preview, field)) && fieldAfterValue(preview, field).length > 0);
+        });
     }
 
     function hasExistingChecklistItems(state) {
@@ -449,6 +455,10 @@
     }
 
     function canAutoAcceptField(state, field) {
+        if (field === 'impactIds') {
+            const ids = fieldAfterValue(state.preview, field);
+            return Array.isArray(ids) && ids.length > 0;
+        }
         return !(field === 'subtasks' && hasExistingChecklistItems(state));
     }
 
@@ -577,6 +587,9 @@
                     <span>${checklistCount >= 2 ? `${checklistCount} пункти чекліста. ` : ''}Нічого не збережеться, поки ви не створите задачу.</span>
                 </div>
                 ${renderStructureSelector(preview, decision === 'checklist' ? 'checklist' : '')}
+                ${fields.includes('impactIds') && !(Array.isArray(fieldAfterValue(preview, 'impactIds')) && fieldAfterValue(preview, 'impactIds').length)
+                    ? '<p class="task-ai-draft-impact-warning">AI не зміг надійно визначити вплив. Оберіть його вручну перед прийняттям цього поля.</p>'
+                    : ''}
                 <div class="task-ai-draft-fields">
                     ${fields.map(field => {
                         const accepted = state.accepted.has(field);
@@ -611,6 +624,7 @@
     function editableFieldValue(root, state, field) {
         const draft = typeof state.config?.readDraft === 'function' ? state.config.readDraft() : {};
         if (state.accepted.has(field) || state.userEdited.has(field)) {
+            if (field === 'impactIds') return Array.isArray(draft[field]) ? draft[field] : [];
             if (['description', 'title', 'priority', 'scheduleDate'].includes(field)) return draft[field] ?? '';
         }
         return fieldAfterValue(state.preview, field) ?? '';
@@ -618,6 +632,29 @@
 
     function renderInlineEditor(state, field) {
         const value = state.editingOriginalValue ?? '';
+        if (field === 'impactIds') {
+            const catalog = Array.from(impactCatalog(state.preview).values()).filter(impact => Number.isInteger(Number(impact.id)));
+            const selected = new Set((Array.isArray(value) ? value : []).map(Number));
+            const options = catalog.length
+                ? `<div class="task-ai-bundle-impact-grid task-ai-draft-impact-grid" role="group" aria-label="Впливи задачі">${catalog.map(impact => {
+                    const id = Number(impact.id);
+                    const checked = selected.has(id);
+                    const disabled = !checked && selected.size >= maxImpacts();
+                    return `<label class="task-ai-bundle-impact-chip ${checked ? 'is-selected' : ''}">
+                        <input type="checkbox" data-task-ai-draft-impact-option value="${id}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+                        ${impactIcon(impact, true)}<span>${escapeHtml(impact.name || `Impact #${id}`)}</span>
+                    </label>`;
+                }).join('')}</div>`
+                : '<span class="task-ai-draft-muted">Каталог впливів недоступний</span>';
+            return `<div class="task-ai-draft-inline-editor" data-task-ai-draft-inline-editor="${escapeHtml(field)}">
+                <span class="task-ai-draft-inline-label">${escapeHtml(fieldLabel(field))}</span>
+                ${options}
+                <div class="task-ai-draft-inline-actions">
+                    <button type="button" class="task-ai-draft-primary" data-task-ai-draft-edit-apply="${escapeHtml(field)}">Застосувати</button>
+                    <button type="button" data-task-ai-draft-edit-cancel="${escapeHtml(field)}">Скасувати редагування</button>
+                </div>
+            </div>`;
+        }
         if (field === 'priority') {
             const selected = normalizePriorityValue(value);
             return `<div class="task-ai-draft-inline-editor" data-task-ai-draft-inline-editor="${escapeHtml(field)}">
@@ -653,7 +690,9 @@
     }
 
     function focusInlineEditor(root, field) {
-        const input = root.querySelector(`[data-task-ai-draft-edit-input="${field}"]`);
+        const input = field === 'impactIds'
+            ? root.querySelector('[data-task-ai-draft-impact-option]:checked, [data-task-ai-draft-impact-option]')
+            : root.querySelector(`[data-task-ai-draft-edit-input="${field}"]`);
         if (input && typeof input.focus === 'function') {
             input.focus();
             if (typeof input.setSelectionRange === 'function' && input.tagName !== 'SELECT') {
@@ -727,6 +766,12 @@
         const state = rootState(root);
         const task = findBundleTask(state, clientId);
         if (!task || task.rejected) return;
+        if (!Array.isArray(task.impactIds) || !task.impactIds.length) {
+            renderBundleReview(root, state);
+            setStatus(root, 'Оберіть щонайменше один вплив перед прийняттям задачі.', 'warning');
+            focusBundleField(root, clientId, 'impactIds');
+            return;
+        }
         task.accepted = true;
         renderBundleReview(root, state);
     }
@@ -844,6 +889,14 @@
     function acceptField(root, field, focus = false) {
         const state = rootState(root);
         if (!state.preview) return;
+        if (field === 'impactIds') {
+            const ids = fieldAfterValue(state.preview, field);
+            if (!Array.isArray(ids) || !ids.length) {
+                startFieldEdit(root, field);
+                setStatus(root, 'Оберіть щонайменше один вплив перед прийняттям поля.', 'warning');
+                return;
+            }
+        }
         applyField(root, state, field, fieldAfterValue(state.preview, field), 'ai');
         state.accepted.add(field);
         state.rejected.delete(field);
@@ -855,12 +908,15 @@
     function startFieldEdit(root, field) {
         const state = rootState(root);
         if (!state.preview) return;
-        if (!['title', 'description', 'priority', 'scheduleDate'].includes(String(field || ''))) {
+        if (!['title', 'description', 'priority', 'scheduleDate', 'impactIds'].includes(String(field || ''))) {
             acceptField(root, field, true);
             return;
         }
         state.editingField = field;
-        state.editingOriginalValue = String(editableFieldValue(root, state, field) ?? '');
+        const value = editableFieldValue(root, state, field);
+        state.editingOriginalValue = field === 'impactIds'
+            ? (Array.isArray(value) ? [...value] : [])
+            : String(value ?? '');
         renderReview(root, state);
         focusInlineEditor(root, field);
     }
@@ -868,8 +924,20 @@
     function applyFieldEdit(root, field) {
         const state = rootState(root);
         if (!state.preview) return;
-        const input = root.querySelector(`[data-task-ai-draft-edit-input="${field}"]`);
-        const value = String(input?.value ?? '');
+        let value;
+        if (field === 'impactIds') {
+            value = Array.from(root.querySelectorAll('[data-task-ai-draft-impact-option]:checked'))
+                .map(input => Number(input.value))
+                .filter(Number.isInteger)
+                .slice(0, maxImpacts());
+            if (!value.length) {
+                setStatus(root, 'Оберіть щонайменше один вплив.', 'warning');
+                return;
+            }
+        } else {
+            const input = root.querySelector(`[data-task-ai-draft-edit-input="${field}"]`);
+            value = String(input?.value ?? '');
+        }
         applyField(root, state, field, value, 'manual');
         state.accepted.add(field);
         state.rejected.delete(field);

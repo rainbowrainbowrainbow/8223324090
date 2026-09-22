@@ -793,6 +793,60 @@ test('task AI draft preview returns task bundle proposals with review-only task 
     assert.equal(token.proposalHash, preview.proposalHash(result.proposal));
 });
 
+test('task AI draft preview recovers explicit impacts for every bundle item', async () => {
+    const result = await preview.generateTaskAiDraftPreview({
+        draft: {
+            title: 'Prepare CRM and Hermes rollout',
+            description: 'Split the two deliverables into separate tasks.'
+        },
+        impacts,
+        userId: 7,
+        businessScope: { businessContext: 'event_genix' }
+    }, {
+        proposalSecret: 'proposal-secret',
+        openAIClient: async () => ({
+            ok: true,
+            provider: 'openai',
+            model: 'gpt-5.6-luna',
+            text: JSON.stringify(validProposal({
+                decision: 'task_bundle',
+                mode: null,
+                title: null,
+                description: null,
+                impactIds: [],
+                subtasks: [],
+                bundleTitle: 'CRM and Hermes rollout',
+                tasks: [
+                    {
+                        title: 'Fix CRM intake validation',
+                        description: 'Make CRM intake reliable.',
+                        impactIds: [],
+                        subtasks: [],
+                        priority: 'normal',
+                        scheduleDate: null,
+                        ownerSuggestion: { userId: null, name: null, reason: null },
+                        confidence: validProposal().confidence
+                    },
+                    {
+                        title: 'Connect Hermes automation',
+                        description: 'Wire Hermes after validation.',
+                        impactIds: [999_999],
+                        subtasks: [],
+                        priority: 'normal',
+                        scheduleDate: null,
+                        ownerSuggestion: { userId: null, name: null, reason: null },
+                        confidence: validProposal().confidence
+                    }
+                ]
+            }))
+        })
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.proposal.tasks[0].impactIds, [101]);
+    assert.deepEqual(result.proposal.tasks[1].impactIds, [102]);
+});
+
 test('task AI draft preview rejects invalid task bundle shape and unsafe task fields', async () => {
     const oneTaskBundle = await preview.generateTaskAiDraftPreview({
         draft: { title: 'Split CRM plan' },

@@ -11,6 +11,7 @@ Status: `PREPARED / NOT AUTHORIZED / NOT RELEASED`.
 - Functional paths: `services/organizationLifecycle.js`, `routes/organizations.js`, `middleware/auth.js`, `js/business-cabinet-manager.js`, `package.json` (test script), `tests/organization-create.test.js`, `tests/business-cabinet-manager.test.js`, `tests/business-membership-security.test.js`, `tests/integration/organization-lifecycle-postgres.test.js`.
 - Documentation paths: the prior SYS-MB evidence checkpoint and this folder. The version commit changes `package.json`, `package-lock.json`, `CHANGELOG.md`, `index.html`, and generated first-screen/asset cache markers across the existing static files. These are version-only changes; no global menu/router/theme behavior change.
 - Migration delta from live to candidate: **none**. No schema, seed, data-fix, cleanup, dependency, secret, hosting-setting, payment, pricing or formula change.
+- Read-only owner/QA-account preflight passed on the live base without a fixture: private receipt SHA-256 `a72d362dd61f4665c34ba26f08c27a3e9b5a71215cac5c0f91173b53211e6eab`. The current creator credential also has the verified active organization owner membership. Refresh this preflight before any live QA write.
 
 ## Gates before production push
 

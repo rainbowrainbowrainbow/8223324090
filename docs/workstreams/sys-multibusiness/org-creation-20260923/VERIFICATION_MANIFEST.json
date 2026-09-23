@@ -15,6 +15,7 @@
     "businessCabinetUnit": "PASS 90/90",
     "fullNpmTest": "PASS exit 0",
     "organizationLifecyclePostgres": "SKIPPED_NO_DISPOSABLE_POSTGRESQL",
+    "readOnlyLiveOwnerPreflight": "PASS_PRIVATE_RECEIPT_SHA256_a72d362dd61f4665c34ba26f08c27a3e9b5a71215cac5c0f91173b53211e6eab",
     "liveOrganizationCreation": "NOT_RUN_NOT_AUTHORIZED",
     "exactShaCi": "NOT_RUN_NOT_PUSHED",
     "railwayDeploy": "NOT_RUN_NOT_AUTHORIZED"

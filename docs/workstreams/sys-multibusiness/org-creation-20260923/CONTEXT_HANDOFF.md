@@ -1,0 +1,7 @@
+# SYS-MB organization creation handoff
+
+Work in `C:\Users\Plotva\OneDrive\Документи\EventGenix\.worktrees\sys-mb-org-release-20260923` on `codex/sys-mb-org-release-20260923`. It descends from the confirmed production/live base `ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79`. Commits already present before this handoff: SYS-MB evidence `51fc69ac34467a50e90655bef2aaf383cc6d2ea2`, functional change `466a7219fee6cdcd9263aad629a1a38565511785`, and separate `v0.82.12` markers `eecfd316cef8e7ec1d979e445372c53610ab4321`. Use current `git rev-parse HEAD` for the final candidate after handoff documentation is committed.
+
+Read [LOCAL_IMPLEMENTATION_REPORT.md](LOCAL_IMPLEMENTATION_REPORT.md), [RELEASE_CANDIDATE_MANIFEST.md](RELEASE_CANDIDATE_MANIFEST.md), and [QA_FIXTURE_AND_CLEANUP.md](QA_FIXTURE_AND_CLEANUP.md). Refresh remote/live/Railway identity before any release. No authorization from the earlier local block or the September cutover blocks permits this production auth push, deploy, or fixture cleanup. The PostgreSQL lifecycle test is still locally skipped; run it against an owned disposable PostgreSQL database before release or preserve a precise HOLD.
+
+Do not repeat MD/CRM cutovers, nine-catalog ownership mapping, catalog asset repair, or the bounded role QA. Those are prior applied evidence. Existing `observation.startUtc=null`, `PASS_MEASURED=false`, `GLOBAL_MODEL_COMPLETE=false`; the current read-only exit-gate monitor remains in place. Do not infer passage of the measured gate from this release or from calendar time alone.

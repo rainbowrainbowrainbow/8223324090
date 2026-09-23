@@ -1,0 +1,41 @@
+{
+  "workstream": "SYS-MB-ORG-CREATION",
+  "status": "PREPARED_NOT_RELEASED",
+  "sourceWorktree": "C:\\Users\\Plotva\\OneDrive\\Документи\\EventGenix\\.worktrees\\sys-mb-org-release-20260923",
+  "sourceBranch": "codex/sys-mb-org-release-20260923",
+  "productionBranch": "codex/eventgenix-production",
+  "productionBaseSha": "ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79",
+  "functionalCommitSha": "466a7219fee6cdcd9263aad629a1a38565511785",
+  "versionCommitSha": "eecfd316cef8e7ec1d979e445372c53610ab4321",
+  "candidateVersion": "0.82.12",
+  "candidateReleaseLabel": "Організації: створення власником",
+  "migrationsAdded": [],
+  "testEvidence": {
+    "runtime": "Node 22.23.1 / npm 10.9.8 PASS",
+    "businessCabinetUnit": "PASS 90/90",
+    "fullNpmTest": "PASS exit 0",
+    "organizationLifecyclePostgres": "SKIPPED_NO_DISPOSABLE_POSTGRESQL",
+    "liveOrganizationCreation": "NOT_RUN_NOT_AUTHORIZED",
+    "exactShaCi": "NOT_RUN_NOT_PUSHED",
+    "railwayDeploy": "NOT_RUN_NOT_AUTHORIZED"
+  },
+  "sha256": {
+    "services/organizationLifecycle.js": "de5e32d5711cdd026aafe6396f330d39c99b15a8b8326f49554f84e47f68ee8c",
+    "routes/organizations.js": "5fdf152c058d0b1094f2925740ad29e26e22791d21d7d8f2430728c94f03d6e9",
+    "middleware/auth.js": "b75a1af7f8c1b633cc213e851d78080aa85cae4656f4dc8762756a28934ef301",
+    "js/business-cabinet-manager.js": "42cc76707d191412cf0dffae9b2c5e25a1554e0fbe5eafdd1e5751f61d708473",
+    "tests/organization-create.test.js": "8229c3e0c68ea552bf1a38a0c33dbf00825dd871118f5fde8ab3a6ce9cacd489",
+    "tests/integration/organization-lifecycle-postgres.test.js": "ef1561ef48efc0d8709d1e1f9c2b47d9675f05ee7bae7b8d209c6201be5c8771",
+    "package.json": "78fd718c7a01ffcada6f97178d9b7d1ef496ebb2ea3bf36bf69c9c1357a049ad"
+  },
+  "production": {
+    "railwayProject": "fortunate-appreciation",
+    "railwayEnvironment": "production",
+    "railwayService": "8223324090",
+    "previousLiveSha": "ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79",
+    "qaFixtureCreated": false,
+    "observationStartUtc": null,
+    "passMeasured": false,
+    "globalModelComplete": false
+  }
+}

@@ -204,6 +204,49 @@ async function createBusiness(db, actor, organizationId, input, req) {
     });
 }
 
+async function createOrganization(db, actor, input, req) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)
+        || Object.keys(input).some(key => !['sourceOrganizationId', 'name', 'slug'].includes(key))) {
+        throw failure(400, 'organization_invalid', 'Organization details are required');
+    }
+    const sourceId = positiveId(input.sourceOrganizationId, 'organization_invalid');
+    const name = typeof input.name === 'string' ? input.name.trim() : '';
+    const slug = typeof input.slug === 'string' ? input.slug.trim() : '';
+    if (!name || name.length > 160 || !/^[a-z][a-z0-9-]{1,78}[a-z0-9]$/.test(slug)) {
+        throw failure(400, 'organization_invalid', 'A valid name and stable slug are required');
+    }
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        await lockOrganizationOwnership(client);
+        const authority = await client.query(
+            `SELECT o.id FROM organizations o
+             JOIN organization_memberships om ON om.organization_id = o.id
+             JOIN users u ON u.id = om.user_id
+             WHERE o.id = $1 AND o.status = 'active' AND om.user_id = $2
+               AND om.role = 'owner' AND om.is_active IS TRUE AND u.is_active IS TRUE
+             FOR UPDATE OF o, om, u`, [sourceId, actor.id]
+        );
+        if (!authority.rows[0]) throw failure(403, 'organization_management_denied', 'Active organization ownership is required');
+        const created = await client.query(
+            `INSERT INTO organizations (slug, name, created_by_user_id)
+             VALUES ($1, $2, $3) RETURNING id, slug, name, status`, [slug, name, actor.id]
+        );
+        const organization = created.rows[0];
+        await client.query(
+            `INSERT INTO organization_memberships (organization_id, user_id, role, created_by_user_id)
+             VALUES ($1, $2, 'owner', $2)`, [organization.id, actor.id]
+        );
+        await recordAccountSecurityEvent({ actor, target: actor, eventType: 'organization_created',
+            details: { organizationId: organization.id, sourceOrganizationId: sourceId, slug }, req, client, strict: true });
+        await client.query('COMMIT');
+        return { ...organization, role: 'owner', businesses: [] };
+    } catch (error) {
+        try { await client.query('ROLLBACK'); } catch {}
+        throw error;
+    } finally { client.release(); }
+}
+
 async function setBusinessStatus(db, actor, businessId, status, req) {
     const id = positiveId(businessId);
     if (!['active', 'inactive'].includes(status)) throw failure(400, 'business_status_invalid', 'Valid status is required');
@@ -310,7 +353,8 @@ async function manageableOrganizations(db, actor) {
     );
     if (!result.rows.length) throw failure(403, 'organization_management_denied', 'Organization management access is required');
     return { platform, organizations: result.rows.map(row => ({
-        id: Number(row.id), name: row.name, slug: row.slug, role: platform ? 'owner' : row.organization_role
+        id: Number(row.id), name: row.name, slug: row.slug, role: platform ? 'owner' : row.organization_role,
+        canCreateOrganization: row.organization_role === 'owner'
     })) };
 }
 
@@ -435,5 +479,5 @@ async function getMemberAccessProfile(db, actor, targetUserId) {
     };
 }
 
-module.exports = { createBusiness, deactivateBusinessMembership, getMemberAccessProfile, getOrganizationManagement,
+module.exports = { createBusiness, createOrganization, deactivateBusinessMembership, getMemberAccessProfile, getOrganizationManagement,
     initializeBusinessResources, listOrganizationMembers, setBusinessStatus, updateBusinessConfiguration, updateBusinessMembership };

@@ -8,8 +8,8 @@ Use the existing verified organization owner and existing smoke QA account only;
 
 Maximum planned writes through the normal authenticated lifecycle API after deployment and exact approval:
 
-1. One `POST /api/organizations` with the verified source organization, a unique `sys-mb-org-qa-<run-id>` slug and clearly marked QA name. Capture exact returned organization ID and `created_by_user_id` predicate.
-2. One `POST /api/organizations/:organizationId/businesses` with unique `sys_mb_qa_<run_id>` context, QA-only labels, and **zero enabled modules**. Do not initialize resources or create operational records. Capture exact returned business ID.
+1. One `POST /api/organizations` with the verified source organization, exact slug `sys-mb-org-qa-20260923` and clearly marked QA name. The slug must be absent in fresh preflight. Capture exact returned organization ID and `created_by_user_id` predicate.
+2. One `POST /api/organizations/:organizationId/businesses` with exact context `sys_mb_qa_20260923`, QA-only labels, and **zero enabled modules**. The context must be absent in fresh preflight. Do not initialize resources or create operational records. Capture exact returned business ID.
 3. At most two `PUT /api/organizations/:organizationId/members/:userId`: owner gets an explicit business `director` membership; existing smoke account gets organization `member` and business `animator`, both `isDefault=false` and empty extra roles/overrides. The owner membership of the organization itself is created by step 1. Do not modify Park/Dar/MD/CRM memberships or any user's existing default.
 4. Read-only browser/API checks: owner sees two organizations; admin/worker cannot create an organization; the smoke account sees only its explicitly assigned QA business in the second organization; a foreign user cannot read it; legacy four-business access/defaults remain unchanged; keyboard, cross-tab, late response, 390/768/1440, and console/network checks. Keep same-JWT revoke as a separate controlled check of the QA membership only if the block explicitly permits its `DELETE`; previous MD/CRM same-JWT evidence is not repeated.
 

@@ -16,9 +16,9 @@ Status: `PREPARED / NOT AUTHORIZED / NOT RELEASED`.
 ## Gates before production push
 
 1. Refresh `/api/version`, `origin/codex/eventgenix-production`, and Railway status. Require the candidate to descend from the then-current production branch; if remote drifts, integrate without reset/force-push, rerun focused checks, and obtain a new exact SHA envelope.
-2. Run the checked-in Express→PostgreSQL lifecycle test against an **owned disposable** local/CI PostgreSQL database. Its production-URL guard rejects a remote or production-like database. Until that check is actually green, mark the DB-backed gate `HOLD`; current local result is SKIP because no such database is available.
+2. Run the checked-in Express→PostgreSQL lifecycle test against an **owned disposable** local/CI PostgreSQL database if one is available. Its production-URL guard rejects a remote or production-like database. The current local result is **SKIP**, not PASS, because no such database is available and Docker is unavailable. Do not turn CI's unrelated PostgreSQL jobs into evidence for this case. If release proceeds under an exact block, the registered post-deploy lifecycle QA below is the mandatory actual-PostgreSQL verification; a failure triggers HOLD and scoped forward repair/rollback.
 3. Recheck whole diff and `npm test` for the exact candidate; verify no new Red path or migration appears.
-4. Obtain one current explicit **Red auth + Yellow release + exact QA fixture/cleanup** block for the final candidate, target, data predicates, ≤6 hours and ≤3 release attempts. Earlier local and September production blocks do not apply.
+4. Obtain one current explicit **Red auth + Yellow release + exact QA fixture/cleanup** block for the final candidate, target, data predicates, ≤6 hours and ≤3 release attempts. The approval must acknowledge the skipped disposable PostgreSQL case and require live lifecycle QA on the deployed exact SHA. Earlier local and September production blocks do not apply.
 
 ## Authorized ordering only after gates and exact block
 

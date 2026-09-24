@@ -2,11 +2,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { PAGE_PERMISSION_BY_KEY } = require('../config/permissionRegistry');
+const { resolveCapability } = require('../services/accountAccessPolicy');
 const {
     mapCertificateRow,
     normalizeCertificateIdentity,
     certificateIdentityKey,
-    validateCertificateInput
+    validateCertificateInput,
+    buildCertificateCheckUrl,
+    getCertificateEffectiveStatus
 } = require('../services/certificates');
 
 test('certificate row mapping exposes durable issue source metadata', () => {
@@ -66,6 +70,51 @@ test('batch/legacy certificate validation can still map placeholder identity whe
     assert.deepEqual(errors, []);
 });
 
+test('new certificate QR payload opens the authenticated CRM check route', () => {
+    const checkUrl = buildCertificateCheckUrl('https://crm.example.test/some-path', ' cert-2099-00007 ');
+    const parsed = new URL(checkUrl);
+
+    assert.equal(parsed.origin, 'https://crm.example.test');
+    assert.equal(parsed.pathname, '/certificates/check');
+    assert.equal(parsed.searchParams.get('code'), 'CERT-2099-00007');
+});
+
+test('certificate remains valid through its Kyiv expiry date', () => {
+    const cert = { status: 'active', valid_until: '2026-09-23' };
+    assert.equal(getCertificateEffectiveStatus(cert, new Date('2026-09-23T20:59:59Z')), 'active');
+    assert.equal(getCertificateEffectiveStatus(cert, new Date('2026-09-23T21:00:00Z')), 'expired');
+    assert.equal(getCertificateEffectiveStatus({ ...cert, status: 'used' }, new Date('2026-09-23T21:00:00Z')), 'used');
+});
+
+test('certificate date handling preserves PostgreSQL dates across winter and DST boundaries', () => {
+    for (const [day, lastInstant, nextDay] of [
+        ['2026-01-15', '2026-01-15T21:59:59Z', '2026-01-15T22:00:00Z'],
+        ['2026-03-29', '2026-03-29T20:59:59Z', '2026-03-29T21:00:00Z'],
+        ['2026-10-25', '2026-10-25T21:59:59Z', '2026-10-25T22:00:00Z']
+    ]) {
+        const [year, month, date] = day.split('-').map(Number);
+        const cert = { status: 'active', valid_until: new Date(year, month - 1, date) };
+        assert.equal(mapCertificateRow(cert).validUntil, day);
+        assert.equal(getCertificateEffectiveStatus(cert, new Date(lastInstant)), 'active');
+        assert.equal(getCertificateEffectiveStatus(cert, new Date(nextDay)), 'expired');
+    }
+});
+
+test('mobile certificate check grants only the designated Park operational roles', () => {
+    const entry = PAGE_PERMISSION_BY_KEY['/certificates/check'];
+    const allowedRoles = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'security', 'reception', 'animator'];
+
+    assert.deepEqual(entry.defaultRoles, allowedRoles);
+    assert.equal(entry.explicitAllow, false);
+    for (const role of allowedRoles) {
+        assert.equal(resolveCapability({ role }, '/certificates/check', { type: 'page' }).allowed, true, `${role} must be allowed`);
+    }
+    for (const role of ['dishwasher', 'cleaning', 'maintenance', 'barista', 'wardrobe', 'cook', 'instructor']) {
+        assert.equal(resolveCapability({ role }, '/certificates/check', { type: 'page' }).allowed, false, `${role} must be denied`);
+    }
+    assert.equal(resolveCapability({ role: 'dishwasher', page_allowlist: ['/certificates/check'] }, '/certificates/check', { type: 'page' }).allowed, false);
+});
+
 test('animators can issue single and batch certificates without receiving lifecycle management access', () => {
     const routeCode = fs.readFileSync(path.join(__dirname, '..', 'routes', 'certificates.js'), 'utf8');
 
@@ -88,4 +137,21 @@ test('certificate page requests use the shared refresh-safe auth wrapper', () =>
     assert.doesNotMatch(certificateApi, /handleAuthError\(/);
     assert.match(pageCode, /apiFetchWithAuthRetry\(`\$\{API_BASE\}\/certificates\/\$\{encodeURIComponent\(id\)\}`/);
     assert.match(pageCode, /data-cert-load-retry/);
+});
+
+test('mobile certificate check separates lookup from confirmed canonical redemption', () => {
+    const pageCode = fs.readFileSync(path.join(__dirname, '..', 'js', 'certificates-page.js'), 'utf8');
+    const apiCode = fs.readFileSync(path.join(__dirname, '..', 'js', 'api.js'), 'utf8');
+    const routeCode = fs.readFileSync(path.join(__dirname, '..', 'routes', 'certificates.js'), 'utf8');
+
+    assert.match(pageCode, /path\.endsWith\('\/check'\)/);
+    assert.match(pageCode, /getKyivDateKey/);
+    assert.match(pageCode, /CHECK_STATE_META/);
+    assert.match(apiCode, /async function apiLookupCertificateByCode/);
+    assert.match(routeCode, /buildCertificateCheckUrl/);
+    assert.match(routeCode, /function requireCertificateCheckAccess/);
+    assert.match(routeCode, /router\.get\('\/code\/:code', requireCertificateCheckAccess/);
+    assert.match(pageCode, /data-cert-redeem/);
+    assert.match(pageCode, /await confirmCertificateAction/);
+    assert.match(routeCode, /router\.post\('\/:id\/redeem'/);
 });

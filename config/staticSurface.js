@@ -68,8 +68,8 @@ const ROOT_HTML_SURFACE = [
         canonicalPath: '/certificates',
         owner: 'certificates',
         status: 'canonical-page',
-        aliases: ['/certificates/new', '/certificates/batch'],
-        purpose: 'Certificate registry plus standalone single and batch creation flows.'
+        aliases: ['/certificates/new', '/certificates/batch', '/certificates/check'],
+        purpose: 'Certificate registry, issuance flows, and authenticated mobile certificate checking.'
     },
     {
         file: 'chat.html',

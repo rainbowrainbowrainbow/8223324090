@@ -4,6 +4,7 @@
 (function() {
     const BATCH_CERTIFICATE_TYPE_TEXT = 'на одноразовий вхід';
     const SINGLE_ISSUE_LABEL = 'Видати сертифікат або абонемент';
+    const CERTIFICATE_CHECK_CODE_KEY = 'eventgenix_certificate_check_code_v1';
     const IDENTITY_COPY = {
         fio: {
             label: "ПІБ (прізвище та ім'я)",
@@ -27,7 +28,10 @@
         detailId: null,
         detailCert: null,
         singleSubmitting: false,
-        batchSubmitting: false
+        batchSubmitting: false,
+        checkVersion: 0,
+        checkCert: null,
+        redeemSubmitting: false
     };
 
     const STATUS_META = {
@@ -36,6 +40,17 @@
         expired: { label: 'Прострочений', tone: 'expired' },
         revoked: { label: 'Анульований', tone: 'revoked' },
         blocked: { label: 'Заблокований', tone: 'blocked' }
+    };
+
+    const CHECK_STATE_META = {
+        valid: { title: 'Сертифікат дійсний', message: 'Сертифікат активний і може бути використаний.', tone: 'active' },
+        used: { title: 'Сертифікат уже використано', message: 'Повторне використання неможливе.', tone: 'used' },
+        expired: { title: 'Строк дії завершився', message: 'Сертифікат більше не дійсний.', tone: 'expired' },
+        revoked: { title: 'Сертифікат анульовано', message: 'Сертифікат не можна використати.', tone: 'revoked' },
+        blocked: { title: 'Сертифікат заблоковано', message: 'Сертифікат не можна використати.', tone: 'blocked' },
+        missing: { title: 'Сертифікат не знайдено', message: 'Перевірте код і спробуйте ще раз.', tone: 'revoked' },
+        denied: { title: 'Доступ відхилено', message: 'Ваш обліковий запис не має доступу до перевірки сертифікатів.', tone: 'revoked' },
+        error: { title: 'Не вдалося перевірити сертифікат', message: 'Перевірте з’єднання та повторіть спробу.', tone: 'revoked' }
     };
 
     function $(id) {
@@ -78,6 +93,7 @@
         if ($('certPageSubmitBtn')) $('certPageSubmitBtn').disabled = !availability.available || state.singleSubmitting;
         if ($('certBatchPageSubmitBtn')) $('certBatchPageSubmitBtn').disabled = !availability.available || state.batchSubmitting;
         if (!availability.available) {
+            invalidateCertificateCheck();
             state.items = [];
             state.stats = null;
             if ($('certPageStats')) $('certPageStats').textContent = '';
@@ -186,7 +202,8 @@
         const titles = {
             list: ['Сертифікати', 'Реєстр, фільтри, статуси і швидкий перехід до видачі сертифіката або абонемента.'],
             new: [SINGLE_ISSUE_LABEL, "Окрема робоча сторінка для створення одного сертифіката або абонемента з обов'язковим отримувачем."],
-            batch: ['Пакет сертифікатів на одноразовий вхід', 'Пакетна генерація одноразових кодів без вибору іншого типу.']
+            batch: ['Пакет сертифікатів на одноразовий вхід', 'Пакетна генерація одноразових кодів без вибору іншого типу.'],
+            check: ['Перевірка сертифіката', 'Відскануйте QR-код або введіть код після входу працівника в CRM.']
         };
         $('certificatePageTitle').textContent = titles[mode][0];
         $('certificatePageSubtitle').textContent = titles[mode][1];
@@ -194,9 +211,11 @@
         $('certificatesListView').classList.toggle('hidden', mode !== 'list');
         $('certificatesNewView').classList.toggle('hidden', mode !== 'new');
         $('certificatesBatchView').classList.toggle('hidden', mode !== 'batch');
+        $('certificatesCheckView').classList.toggle('hidden', mode !== 'check');
 
         if (mode === 'new') initializeSingleForm();
         if (mode === 'batch') initializeBatchForm();
+        if (mode === 'check') loadCertificateCheck();
         if (syncCertificateAvailability() && mode === 'list') loadCertificatesPage();
     }
 
@@ -204,7 +223,131 @@
         const path = window.location.pathname.replace(/\/+$/, '');
         if (path.endsWith('/new')) return 'new';
         if (path.endsWith('/batch')) return 'batch';
+        if (path.endsWith('/check')) return 'check';
         return 'list';
+    }
+
+    function normalizeCertificateCheckCode(value) {
+        return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
+    }
+
+    function getKyivDateKey(date = new Date()) {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).formatToParts(date);
+        const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+        return `${values.year}-${values.month}-${values.day}`;
+    }
+
+    function certificateCheckState(cert) {
+        if (!cert) return 'missing';
+        if (cert.effectiveStatus) return cert.effectiveStatus === 'active' ? 'valid' : (CHECK_STATE_META[cert.effectiveStatus] ? cert.effectiveStatus : 'error');
+        if (cert.status && cert.status !== 'active') return CHECK_STATE_META[cert.status] ? cert.status : 'error';
+        const validUntil = String(cert.validUntil || '').slice(0, 10);
+        if (validUntil && validUntil < getKyivDateKey()) return 'expired';
+        return 'valid';
+    }
+
+    function readCertificateCheckCode() {
+        const fromQuery = normalizeCertificateCheckCode(new URLSearchParams(window.location.search).get('code'));
+        if (fromQuery) return fromQuery;
+        try { return normalizeCertificateCheckCode(sessionStorage.getItem(CERTIFICATE_CHECK_CODE_KEY)); } catch { return ''; }
+    }
+
+    function retainCertificateCheckCodeAfterLogin(code) {
+        if (!code) return;
+        try { sessionStorage.removeItem(CERTIFICATE_CHECK_CODE_KEY); } catch {}
+        const url = new URL(window.location.href);
+        url.searchParams.set('code', code);
+        window.history?.replaceState?.(null, '', `${url.pathname}${url.search}`);
+    }
+
+    function renderCertificateCheck(stateName, cert = null) {
+        state.checkCert = cert;
+        const result = $('certificateCheckResult');
+        const status = $('certificateCheckStatus');
+        const meta = CHECK_STATE_META[stateName] || CHECK_STATE_META.error;
+        if (status) status.textContent = '';
+        if (!result) return;
+        result.classList.remove('hidden');
+        result.dataset.certCheckState = stateName;
+        const details = cert ? `
+            <dl class="cert-check-result-meta">
+                <dt>Код</dt><dd>${esc(cert.certCode || '')}</dd>
+                <dt>Тип</dt><dd>${esc(cert.typeText || '—')}</dd>
+                <dt>Дійсний до</dt><dd>${esc(formatDate(cert.validUntil))}</dd>
+            </dl>` : '';
+        const redeem = stateName === 'valid' && cert?.canRedeem === true
+            ? '<button type="button" class="btn-page-primary" data-cert-redeem>Погасити сертифікат</button>' : '';
+        result.innerHTML = `<div><span class="cert-page-badge cert-page-badge-${esc(meta.tone)}">${esc(meta.title)}</span><h3>${esc(meta.title)}</h3><p>${esc(meta.message)}</p></div>${details}${redeem}`;
+    }
+
+    function invalidateCertificateCheck() {
+        state.checkVersion++;
+        state.checkCert = null;
+        $('certificateCheckResult')?.classList.add('hidden');
+        if ($('certificateCheckStatus')) $('certificateCheckStatus').textContent = '';
+    }
+
+    async function redeemCheckedCertificate() {
+        const cert = state.checkCert;
+        if (state.redeemSubmitting || !cert?.canRedeem || !syncCertificateAvailability()) return;
+        const version = state.checkVersion;
+        state.redeemSubmitting = true;
+        const button = $('certificateCheckResult')?.querySelector('[data-cert-redeem]');
+        if (button) button.disabled = true;
+        try {
+            const confirmed = await confirmCertificateAction(`Погасити сертифікат ${cert.certCode}? Повторно використати цей код буде неможливо.`, 'Погасити');
+            if (!confirmed || version !== state.checkVersion || !syncCertificateAvailability()) return;
+            if ($('certificateCheckStatus')) $('certificateCheckStatus').textContent = 'Погашаємо сертифікат…';
+            const result = await apiRedeemCertificate(cert.id);
+            if (version !== state.checkVersion) return;
+            if (result?.success) renderCertificateCheck('used', result.certificate);
+            else {
+                notify(result?.error || 'Не вдалося підтвердити погашення. Перевірте статус сертифіката.', 'error');
+                await loadCertificateCheck(cert.certCode);
+            }
+        } catch {
+            if (version === state.checkVersion) {
+                renderCertificateCheck('error');
+                notify('Перевірте статус сертифіката перед наступною спробою.', 'error');
+            }
+        } finally {
+            state.redeemSubmitting = false;
+            if (button) button.disabled = false;
+        }
+    }
+
+    async function loadCertificateCheck(code = readCertificateCheckCode()) {
+        invalidateCertificateCheck();
+        if (!syncCertificateAvailability()) return;
+        const version = state.checkVersion;
+        const input = $('certificateCheckCode');
+        const submit = $('certificateCheckSubmit');
+        const status = $('certificateCheckStatus');
+        const normalizedCode = normalizeCertificateCheckCode(code || input?.value);
+        if (input) input.value = normalizedCode;
+        if (!normalizedCode) {
+            $('certificateCheckResult')?.classList.add('hidden');
+            if (status) status.textContent = 'Введіть код сертифіката для перевірки.';
+            return;
+        }
+
+        retainCertificateCheckCodeAfterLogin(normalizedCode);
+        if (status) status.textContent = 'Перевіряємо сертифікат…';
+        if (submit) submit.disabled = true;
+        try {
+            const result = await apiLookupCertificateByCode(normalizedCode);
+            if (version !== state.checkVersion) return;
+            if (result?.success) renderCertificateCheck(certificateCheckState(result.certificate), result.certificate);
+            else if (result?.missing) renderCertificateCheck('missing');
+            else if (result?.denied) renderCertificateCheck('denied');
+            else renderCertificateCheck('error');
+        } catch {
+            if (version === state.checkVersion) renderCertificateCheck('error');
+        } finally {
+            if (submit) submit.disabled = false;
+        }
     }
 
     function initializeSingleForm() {
@@ -635,7 +778,7 @@
         const pngLabel = isCertificateTouchExportDevice() ? 'Відкрити PNG' : 'Скачати PNG';
         html += `<button type="button" class="btn-page-secondary" data-cert-download="${esc(cert.id)}">${pngLabel}</button>`;
         if (cert.status === 'active') {
-            html += `<button type="button" class="btn-page-primary" data-cert-status="${esc(cert.id)}" data-next-status="used">Використано</button>`;
+            html += `<a class="btn-page-primary" href="/certificates/check?code=${encodeURIComponent(cert.certCode)}">Перевірити й погасити</a>`;
             html += `<button type="button" class="btn-page-danger" data-cert-status="${esc(cert.id)}" data-next-status="revoked">Анульувати</button>`;
             html += `<button type="button" class="btn-page-secondary" data-cert-status="${esc(cert.id)}" data-next-status="blocked">Заблокувати</button>`;
         }
@@ -727,6 +870,13 @@
     }
 
     function bindEvents() {
+        $('certificateCheckResult')?.addEventListener('click', event => {
+            if (event.target.closest('[data-cert-redeem]')) redeemCheckedCertificate();
+        });
+        $('certificateCheckForm')?.addEventListener('submit', (event) => {
+            event.preventDefault();
+            loadCertificateCheck($('certificateCheckCode')?.value);
+        });
         $('certPageRefreshBtn')?.addEventListener('click', loadCertificatesPage);
         $('certPageStatus')?.addEventListener('change', loadCertificatesPage);
         $('certPageSearch')?.addEventListener('input', () => {
@@ -783,6 +933,13 @@
     }
 
     function redirectToLogin() {
+        if (detectMode() === 'check') {
+            const code = readCertificateCheckCode();
+            if (code) {
+                try { sessionStorage.setItem(CERTIFICATE_CHECK_CODE_KEY, code); } catch {}
+            }
+            if (typeof rememberAuthReturnRoute === 'function') rememberAuthReturnRoute('certificate-check-login');
+        }
         if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
         window.location.href = '/';
     }
@@ -887,6 +1044,7 @@
 
         bindEvents();
         const refreshAvailability = () => {
+            invalidateCertificateCheck();
             if (syncCertificateAvailability() && state.mode === 'list') loadCertificatesPage();
         };
         window.addEventListener('crmBusinessContextChanged', refreshAvailability);

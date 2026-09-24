@@ -7,19 +7,23 @@ const { randomUUID } = require('crypto');
 const { pool, generateCertCode } = require('../db');
 const { requireRole, authenticateToken } = require('../middleware/auth'); 
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { resolveCapability } = require('../services/accountAccessPolicy');
 const {
     mapCertificateRow,
     calculateValidUntil,
     normalizeCertificateIdentity,
     validateCertificateInput,
+    buildCertificateCheckUrl,
+    getCertificateEffectiveStatus,
     getCurrentSeason,
     VALID_STATUSES,
     VALID_SEASONS
 } = require('../services/certificates');
-const { sendTelegramMessage, sendTelegramPhoto, getConfiguredChatId, getBotUsername } = require('../services/telegram');
+const { sendTelegramMessage, sendTelegramPhoto, getConfiguredChatId } = require('../services/telegram');
 const { formatCertificateNotification, formatBatchCertificateNotification } = require('../services/templates');
 const { publish: publishEvent } = require('../services/eventBus');
 const { insertHistory } = require('../services/historyLog');
+const { redeemCertificateInTransaction, canRedeemCertificate } = require('../services/certificateRedemption');
 const { createLogger } = require('../utils/logger');
 const QRCode = require('qrcode');
 
@@ -27,6 +31,12 @@ const log = createLogger('Certificates');
 const BATCH_CERTIFICATE_TYPE_TEXT = 'на одноразовий вхід';
 const DUPLICATE_RECIPIENT_CODE = 'CERTIFICATE_RECIPIENT_NOT_UNIQUE';
 const CERTIFICATE_ISSUER_ROLES = ['admin', 'user', 'animator'];
+
+function requireCertificateCheckAccess(req, res, next) {
+    const access = resolveCapability(req.user, '/certificates/check', { type: 'page' });
+    if (!access.allowed) return res.status(403).json({ error: 'Insufficient permissions' });
+    next();
+}
 
 async function assertUniqueCertificateIdentity(db, displayValue, excludeId = null) {
     const normalized = normalizeCertificateIdentity(displayValue);
@@ -126,19 +136,19 @@ router.get('/qr/:code', async (req, res) => {
             return res.status(404).json({ error: 'Certificate not found' });
         }
 
-        const botUsername = await getBotUsername();
-        if (!botUsername) {
-            return res.status(500).json({ error: 'Bot username not available' });
-        }
-
-        const deepLink = `https://t.me/${botUsername}?start=cert_${certCode}`;
-        const dataUrl = await QRCode.toDataURL(deepLink, {
+        const configuredBaseUrl = process.env.PUBLIC_BASE_URL || process.env.CRM_PUBLIC_URL || process.env.APP_URL;
+        const isHttps = req.get('x-forwarded-proto') === 'https' || req.protocol === 'https';
+        const publicBaseUrl = configuredBaseUrl
+            || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')
+            || `${isHttps ? 'https' : 'http'}://${req.get('host')}`;
+        const verificationUrl = buildCertificateCheckUrl(publicBaseUrl, certCode);
+        const dataUrl = await QRCode.toDataURL(verificationUrl, {
             width: 200,
             margin: 1,
             color: { dark: '#0D47A1', light: '#FFFFFF' }
         });
 
-        res.json({ dataUrl, deepLink, certCode });
+        res.json({ dataUrl, deepLink: verificationUrl, verificationUrl, certCode });
     } catch (err) {
         log.error('QR generation error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -146,13 +156,14 @@ router.get('/qr/:code', async (req, res) => {
 });
 
 // GET /api/certificates/code/:code — Find by cert_code
-router.get('/code/:code', async (req, res) => {
+router.get('/code/:code', requireCertificateCheckAccess, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM certificates WHERE cert_code = $1', [req.params.code.trim().toUpperCase()]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Certificate not found' });
         }
-        res.json(mapCertificateRow(result.rows[0]));
+        const cert = result.rows[0];
+        res.json({ ...mapCertificateRow(cert), effectiveStatus: getCertificateEffectiveStatus(cert), canRedeem: canRedeemCertificate(req, cert) });
     } catch (err) {
         log.error('Get by code error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -170,11 +181,11 @@ router.get('/validate/:code', async (req, res) => {
         );
         if (!r.rowCount) return res.json({ valid: false, error: 'Сертифікат не знайдено' });
         const c = r.rows[0];
-        const isExpired = c.valid_until && new Date(c.valid_until) < new Date();
+        const effectiveStatus = getCertificateEffectiveStatus(c);
         res.json({
-            valid: c.status === 'active' && !isExpired,
+            valid: effectiveStatus === 'active',
             certificate: c,
-            reason: c.status !== 'active' ? c.status : (isExpired ? 'expired' : null)
+            reason: effectiveStatus === 'active' ? null : effectiveStatus
         });
     } catch (err) {
         log.error('Certificate validate error', err);
@@ -384,6 +395,24 @@ router.post('/batch', requireRole(...CERTIFICATE_ISSUER_ROLES), async (req, res)
     }
 });
 
+// POST /api/certificates/:id/redeem — Explicit, transactionally audited admission.
+router.post('/:id/redeem', requireCertificateCheckAccess, async (req, res) => {
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const certificate = await redeemCertificateInTransaction(client, req, { id: req.params.id });
+        await client.query('COMMIT');
+        res.json({ success: true, certificate });
+    } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        if (!err.statusCode) log.error('Certificate redemption failed', err);
+        res.status(err.statusCode || 500).json({ success: false, code: err.statusCode ? err.code : 'certificate_redemption_failed', error: err.publicMessage || 'Не вдалося погасити сертифікат. Перевірте його статус.' });
+    } finally {
+        client?.release();
+    }
+});
+
 // PATCH /api/certificates/:id/status — Change status
 router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
     const client = await pool.connect();
@@ -395,30 +424,38 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
             return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
         }
 
-        const existing = await client.query('SELECT * FROM certificates WHERE id = $1', [id]);
+        await client.query('BEGIN');
+        const existing = await client.query('SELECT * FROM certificates WHERE id = $1 FOR UPDATE', [id]);
         if (existing.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Certificate not found' });
         }
 
         const cert = existing.rows[0];
 
-        // One-time use check
-        if (status === 'used' && cert.status === 'used') {
-            return res.status(400).json({ error: 'Сертифікат вже використаний' });
+        if (cert.status === 'used') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                code: 'certificate_used_terminal',
+                error: 'Використаний сертифікат не можна змінити. Для корекції видайте новий код.'
+            });
         }
         if (cert.status === 'expired') {
+            await client.query('ROLLBACK');
             return res.status(400).json({ error: 'Сертифікат прострочений' });
         }
-
-        await client.query('BEGIN');
+        if (status === 'used') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                code: 'certificate_redemption_unavailable',
+                error: 'Скористайтеся кнопкою погашення на сторінці перевірки сертифіката.'
+            });
+        }
 
         const updates = ['status = $1', 'updated_at = NOW()'];
         const params = [status];
         let idx = 2;
 
-        if (status === 'used') {
-            updates.push(`used_at = NOW()`);
-        }
         if (status === 'revoked' || status === 'blocked') {
             updates.push(`invalidated_at = NOW()`);
             if (reason) {

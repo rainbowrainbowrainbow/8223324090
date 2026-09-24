@@ -387,8 +387,8 @@ describe('GET /api/certificates — List with filters', () => {
         assert.equal(createRes.status, 201);
         createdIds.push(createRes.data.id);
 
-        const patchRes = await authRequest('PATCH', `/api/certificates/${createRes.data.id}/status`, { status: 'used' });
-        assert.equal(patchRes.status, 200);
+        const redeemRes = await authRequest('POST', `/api/certificates/${createRes.data.id}/redeem`, {});
+        assert.equal(redeemRes.status, 200);
 
         const res = await authRequest('GET', '/api/certificates?status=used');
         assert.equal(res.status, 200);
@@ -611,13 +611,13 @@ describe('GET /api/certificates/qr/:code — QR generation', () => {
 
     it('GET /api/certificates/qr/:code — QR generation for valid code', async () => {
         const res = await authRequest('GET', `/api/certificates/qr/${testCertCode}`);
-        // 200 if bot configured, 500 if not
-        assert.ok([200, 500].includes(res.status), `Expected 200 or 500, got ${res.status}`);
-        if (res.status === 200) {
-            assert.ok(res.data.dataUrl.startsWith('data:image/png;base64,'), 'dataUrl should be base64 PNG');
-            assert.ok(res.data.deepLink.startsWith('https://t.me/'), 'deepLink should start with https://t.me/');
-            assert.equal(res.data.certCode, testCertCode);
-        }
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}`);
+        assert.ok(res.data.dataUrl.startsWith('data:image/png;base64,'), 'dataUrl should be base64 PNG');
+        const verificationUrl = new URL(res.data.verificationUrl);
+        assert.equal(verificationUrl.pathname, '/certificates/check');
+        assert.equal(verificationUrl.searchParams.get('code'), testCertCode);
+        assert.equal(res.data.deepLink, res.data.verificationUrl);
+        assert.equal(res.data.certCode, testCertCode);
     });
 
     it('GET /api/certificates/qr/:code — non-existent code returns 404', async () => {
@@ -625,14 +625,9 @@ describe('GET /api/certificates/qr/:code — QR generation', () => {
         assert.equal(res.status, 404);
     });
 
-    it('GET /api/certificates/qr/:code — bot not configured returns 500', async () => {
-        // In test env without TELEGRAM_BOT_TOKEN, this should return 500
+    it('GET /api/certificates/qr/:code — does not depend on Telegram bot configuration', async () => {
         const res = await authRequest('GET', `/api/certificates/qr/${testCertCode}`);
-        if (res.status === 500) {
-            assert.ok(res.data.error, 'Should have error message');
-        }
-        // If 200, bot is configured — test still passes
-        assert.ok([200, 500].includes(res.status), `Expected 200 or 500, got ${res.status}`);
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}`);
     });
 });
 
@@ -767,14 +762,13 @@ describe('PATCH /api/certificates/:id/status — Status transitions', () => {
         }
     });
 
-    it('PATCH /api/certificates/:id/status — active → used → 200', async () => {
+    it('PATCH /api/certificates/:id/status — active → used is reserved for atomic redemption', async () => {
         const cert = await createActiveCert();
         const res = await authRequest('PATCH', `/api/certificates/${cert.id}/status`, {
             status: 'used'
         });
-        assert.equal(res.status, 200);
-        assert.equal(res.data.status, 'used');
-        assert.ok(res.data.usedAt, 'usedAt should be set');
+        assert.equal(res.status, 409);
+        assert.equal(res.data.code, 'certificate_redemption_unavailable');
     });
 
     it('PATCH /api/certificates/:id/status — active → revoked (with reason) → 200', async () => {
@@ -810,23 +804,18 @@ describe('PATCH /api/certificates/:id/status — Status transitions', () => {
         assert.equal(res.data.status, 'expired');
     });
 
-    it('PATCH /api/certificates/:id/status — used → used (one-time use check) → 400', async () => {
+    it('PATCH /api/certificates/:id/status — direct use stays blocked on repeat attempts', async () => {
         const cert = await createActiveCert();
-        // First mark as used
         const firstRes = await authRequest('PATCH', `/api/certificates/${cert.id}/status`, {
             status: 'used'
         });
-        assert.equal(firstRes.status, 200);
+        assert.equal(firstRes.status, 409);
 
-        // Try to mark as used again
         const secondRes = await authRequest('PATCH', `/api/certificates/${cert.id}/status`, {
             status: 'used'
         });
-        assert.equal(secondRes.status, 400);
-        assert.ok(
-            secondRes.data.error.includes('вже використаний'),
-            `Error should mention already used, got: ${secondRes.data.error}`
-        );
+        assert.equal(secondRes.status, 409);
+        assert.equal(secondRes.data.code, 'certificate_redemption_unavailable');
     });
 
     it('PATCH /api/certificates/:id/status — expired → anything → 400', async () => {
@@ -886,11 +875,13 @@ describe('PATCH /api/certificates/:id/status — Status transitions', () => {
         assert.equal(res.status, 404);
     });
 
-    it('PATCH /api/certificates/:id/status — history entry recorded for status change', async () => {
+    it('PATCH /api/certificates/:id/status — history entry recorded for lifecycle change', async () => {
         const cert = await createActiveCert();
-        await authRequest('PATCH', `/api/certificates/${cert.id}/status`, { status: 'used' });
+        await authRequest('PATCH', `/api/certificates/${cert.id}/status`, {
+            status: 'revoked', reason: 'Тестова корекція'
+        });
 
-        const historyRes = await authRequest('GET', '/api/history?action=certificate_used');
+        const historyRes = await authRequest('GET', '/api/history?action=certificate_revoked');
         assert.equal(historyRes.status, 200);
         const found = historyRes.data.items.find(h =>
             h.data && h.data.certCode === cert.certCode

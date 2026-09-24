@@ -44,6 +44,20 @@ test('new and batch certificate pages and Art aliases retain explicit denials', 
     assert.equal(parkLegacySurfaceAvailability(artDenied.user, 'event_genix').art.available, false);
 });
 
+test('Park certificate code lookup requires both the check role and current Park membership', () => {
+    const allowed = request('event_genix', 'reception');
+    allowed.path = '/code/CERT-2099-00001';
+    assert.equal(legacyBusinessSurfaceAccess(allowed, 'certificates').available, true);
+
+    const deniedRole = request('event_genix', 'dishwasher');
+    deniedRole.path = '/code/CERT-2099-00001';
+    assert.equal(legacyBusinessSurfaceAccess(deniedRole, 'certificates').available, false);
+
+    const foreignMembership = request('dar', 'reception');
+    foreignMembership.path = '/code/CERT-2099-00001';
+    assert.equal(legacyBusinessSurfaceAccess(foreignMembership, 'certificates').available, false);
+});
+
 test('foreign and aggregate business scopes remain unavailable, even to Creator', () => {
     for (const context of ['dar', 'crm', 'maysternya_doli', 'fixture_foreign']) {
         for (const surface of ['certificates', 'art']) {

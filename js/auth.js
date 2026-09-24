@@ -109,7 +109,7 @@ function installRedirectDiagnosticsRuntime(global = window) {
         'status'
     ]);
     const SAFE_STATIC_ROUTE_CHILDREN = new Map([
-        ['certificates', new Set(['new', 'batch'])],
+        ['certificates', new Set(['new', 'batch', 'check'])],
         ['embed', new Set(['designs', 'programs', 'graduation'])],
         ['omni', new Set(['accounts'])]
     ]);
@@ -1672,7 +1672,7 @@ const AUTH_SAFE_RETURN_ROUTE_MODULES = new Set([
     'status'
 ]);
 const AUTH_SAFE_RETURN_STATIC_CHILDREN = new Map([
-    ['certificates', new Set(['new', 'batch'])],
+    ['certificates', new Set(['new', 'batch', 'check'])],
     ['embed', new Set(['designs', 'programs', 'graduation'])],
     ['omni', new Set(['accounts'])]
 ]);

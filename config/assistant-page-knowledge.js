@@ -183,7 +183,7 @@ const PAGE_KNOWLEDGE = {
     certificates: {
         pageKey: 'certificates',
         label: 'Сертифікати',
-        pathnames: ['/certificates', '/certificates/new', '/certificates/batch', '/certificates.html'],
+        pathnames: ['/certificates', '/certificates/new', '/certificates/batch', '/certificates/check', '/certificates.html'],
         aliases: ['certificates', 'certificate', 'сертифікати', 'сертифікат', 'грамота', 'реєстр сертифікатів'],
         businessPurpose: 'Registry and issue flow для сертифікатів/грамот: один сертифікат, пакетна видача, статуси, QR/code lookup і привʼязка до клієнта.',
         owns: ['реєстр сертифікатів', 'видання одного сертифіката', 'пакетна видача', 'статус/код/QR', 'звʼязок із клієнтом'],

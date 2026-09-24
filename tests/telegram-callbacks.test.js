@@ -268,7 +268,6 @@ function installRouteDependencyMocks(dbState) {
         }),
         installModuleMock('../services/bot', {
             handleBotCommand: async () => null,
-            handleCertUse: async () => null,
             resolveActorName: async (username, id, firstName) => firstName || username || String(id || 'telegram')
         }),
         installModuleMock('../services/bookingAutomation', {
@@ -380,6 +379,16 @@ describe('Telegram callback single-use hardening', () => {
         restoreDeps();
         dbMock.restore();
         telegram.restore();
+    });
+
+    it('retired certificate buttons never redeem and remove the old keyboard', async () => {
+        const res = await postWebhook(baseUrl, 'cert_use:42');
+
+        assert.equal(res.status, 200);
+        const answer = callsByMethod(telegram.calls, 'answerCallbackQuery').at(-1);
+        assert.match(answer.body.text, /CRM/);
+        assert.equal(answer.body.show_alert, true);
+        assert.equal(hasClearedKeyboard(telegram.calls), true);
     });
 
     it('does not send ask-animator buttons when webhook setup is not ready', async () => {

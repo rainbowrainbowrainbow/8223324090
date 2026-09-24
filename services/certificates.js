@@ -4,6 +4,7 @@
  * v8.7: Seasonal certificate backgrounds
  */
 
+const { toPostgresDateOnly } = require('./postgresDateOnly');
 const VALID_SEASONS = ['winter', 'spring', 'summer', 'autumn'];
 
 function getCurrentSeason() {
@@ -22,7 +23,7 @@ function mapCertificateRow(row) {
         displayValue: row.display_value,
         typeText: row.type_text,
         issuedAt: row.issued_at,
-        validUntil: row.valid_until,
+        validUntil: toPostgresDateOnly(row.valid_until),
         issuedByUserId: row.issued_by_user_id,
         issuedByName: row.issued_by_name,
         issueSource: row.issue_source || 'single',
@@ -43,6 +44,31 @@ function calculateValidUntil(issuedDate, defaultDays = 45) {
     const date = issuedDate ? new Date(issuedDate) : new Date();
     date.setDate(date.getDate() + defaultDays);
     return date.toISOString().split('T')[0];
+}
+
+function buildCertificateCheckUrl(publicBaseUrl, certCode) {
+    const baseUrl = String(publicBaseUrl || '').trim();
+    const code = String(certCode || '').trim().toUpperCase();
+    if (!baseUrl || !code) throw new Error('Certificate check URL requires a base URL and certificate code');
+
+    const url = new URL('/certificates/check', baseUrl);
+    url.searchParams.set('code', code);
+    return url.toString();
+}
+
+function getKyivDateKey(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(now);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getCertificateEffectiveStatus(cert, now = new Date()) {
+    if (cert.status !== 'active') return cert.status;
+    const validUntil = cert.valid_until || cert.validUntil;
+    const dateKey = toPostgresDateOnly(validUntil);
+    return dateKey && dateKey < getKyivDateKey(now) ? 'expired' : 'active';
 }
 
 const VALID_STATUSES = ['active', 'used', 'expired', 'revoked', 'blocked'];
@@ -89,6 +115,8 @@ function validateCertificateInput(body, options = {}) {
 module.exports = {
     mapCertificateRow,
     calculateValidUntil,
+    buildCertificateCheckUrl,
+    getCertificateEffectiveStatus,
     normalizeCertificateIdentity,
     certificateIdentityKey,
     certificateIdentityRequiredMessage,

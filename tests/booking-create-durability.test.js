@@ -235,6 +235,7 @@ function stateBackedLineConflict(state) {
 function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, failBanquetMembershipInsert = false } = {}) {
     const state = {
         rows: [],
+        queries: [],
         lines: [
             { business_context: 'event_genix', date: '2099-02-10', line_id: 'line-1', name: 'Line One', color: '#123456' },
             { business_context: 'event_genix', date: '2099-02-13', line_id: 'line-main', name: 'Anna', color: '#123456' },
@@ -258,6 +259,10 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
 
     async function query(text, params = []) {
         const sql = String(text).replace(/\s+/g, ' ').trim();
+        state.queries.push({ sql, params });
+        if (String(sql).startsWith('SELECT * FROM users WHERE id = $1 AND is_active IS TRUE FOR SHARE')) {
+            return { rows: [], rowCount: 0 };
+        }
         if (sql === 'BEGIN' || sql === 'ROLLBACK' || sql === 'SAVEPOINT booking_optional_step'
             || sql === 'RELEASE SAVEPOINT booking_optional_step'
             || sql === 'ROLLBACK TO SAVEPOINT booking_optional_step') {
@@ -1260,6 +1265,31 @@ test('POST /api/bookings keeps booking durable when optional finance write fails
         assert.ok(state.tx.includes('ROLLBACK TO SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('RELEASE SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('COMMIT'));
+    });
+});
+
+test('POST /api/bookings with a certificate code denies a missing current principal before creating a booking', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, { certificateCode: 'CERT-2099-00001' });
+
+        assert.equal(res.status, 403, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'certificate_redemption_denied');
+        assert.equal(state.rows.length, 0);
+        assert.ok(state.tx.includes('BEGIN'));
+        assert.ok(state.tx.includes('ROLLBACK'));
+        assert.ok(
+            state.queries.every(query => !/^UPDATE certificates SET/i.test(query.sql)),
+            'booking creation must not redeem a certificate directly'
+        );
+    });
+});
+
+test('POST /api/bookings/full rejects a certificate instead of silently dropping it', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createFullBooking(baseUrl, { main: { certificateCode: 'CERT-2099-00001' } });
+        assert.equal(res.status, 422);
+        assert.equal(res.data.code, 'certificate_single_booking_required');
+        assert.equal(state.rows.length, 0);
     });
 });
 

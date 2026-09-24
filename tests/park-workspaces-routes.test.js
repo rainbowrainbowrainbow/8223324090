@@ -9,7 +9,7 @@ const CERTIFICATE_INPUT = {
     displayMode: 'fio', displayValue: '  Synthetic Park Recipient  ',
     typeText: 'Synthetic admission', validUntil: '2099-10-29', notes: 'Synthetic fixture', season: 'autumn'
 };
-const READ_PATHS = ['/api/certificates', '/api/art-director/overview', '/api/art-director/templates'];
+const READ_PATHS = ['/api/certificates', '/api/certificates/code/CERT-2099-09981', '/api/art-director/overview', '/api/art-director/templates'];
 
 function createDatabaseFixture() {
     const calls = [];
@@ -56,6 +56,10 @@ function createDatabaseFixture() {
                 result = rows.length ? [{ issue_source: 'single', count: rows.length }] : [];
             } else if (query.startsWith('SELECT * FROM certificates ORDER BY')) {
                 result = rows;
+            } else if (query === 'SELECT * FROM certificates WHERE id = $1' || query === 'SELECT * FROM certificates WHERE id = $1 FOR UPDATE') {
+                result = rows.filter(row => Number(row.id) === Number(params[0]));
+            } else if (query === 'SELECT * FROM certificates WHERE cert_code = $1') {
+                result = rows.filter(row => row.cert_code === params[0]);
             } else if (query === 'SELECT status, COUNT(*) AS count FROM content_items GROUP BY status') {
                 result = [{ status: 'draft', count: '2' }, { status: 'approved', count: '1' }];
             } else if (query === 'SELECT COUNT(*) FROM content_templates WHERE is_active = true') {
@@ -220,6 +224,10 @@ test('Park certificate and Art recovery through actual Express routers', async t
                     const result = await request(path, { ...item, method: 'POST', body: CERTIFICATE_INPUT });
                     assert.equal(result.status, 403, `${path}: ${result.text}`);
                 }
+                const statusResult = await request('/api/certificates/9981/status', {
+                    ...item, method: 'PATCH', body: { status: 'revoked' }
+                });
+                assert.equal(statusResult.status, 403, statusResult.text);
                 assert.equal(fixture.calls.length, calls);
                 assert.equal(fixture.connections, connections);
             }
@@ -255,6 +263,55 @@ test('Park certificate and Art recovery through actual Express routers', async t
             assert.equal(fixture.connections, connections);
         });
 
+        await t.test('status route cannot redeem or reactivate a certificate outside the atomic service', async () => {
+            fixture.rows.push(
+                { id: 9981, cert_code: 'CERT-2099-09981', status: 'active', valid_until: '2099-10-29' },
+                { id: 9982, cert_code: 'CERT-2099-09982', status: 'used', valid_until: '2099-10-29' }
+            );
+            state.actor = { role: 'admin' };
+            const calls = fixture.calls.length;
+
+            const directUse = await request('/api/certificates/9981/status', {
+                method: 'PATCH', body: { status: 'used' }
+            });
+            assert.equal(directUse.status, 409, directUse.text);
+            assert.equal(directUse.body.code, 'certificate_redemption_unavailable');
+
+            const reactivateUsed = await request('/api/certificates/9982/status', {
+                method: 'PATCH', body: { status: 'active' }
+            });
+            assert.equal(reactivateUsed.status, 409, reactivateUsed.text);
+            assert.equal(reactivateUsed.body.code, 'certificate_used_terminal');
+            assert.equal(fixture.rows.find(row => row.id === 9981).status, 'active');
+            assert.equal(fixture.rows.find(row => row.id === 9982).status, 'used');
+            assert.ok(
+                fixture.calls.slice(calls).every(call => !call.sql.startsWith('UPDATE certificates')),
+                'rejected lifecycle requests must not write certificates'
+            );
+        });
+
+        await t.test('Park check route permits a current operational role and repeated scans without mutation', async () => {
+            state.actor = { role: 'animator' };
+            const calls = fixture.calls.length;
+            const first = await request('/api/certificates/code/CERT-2099-09981');
+            const second = await request('/api/certificates/code/CERT-2099-09981');
+
+            assert.equal(first.status, 200, first.text);
+            assert.equal(second.status, 200, second.text);
+            assert.equal(first.body.status, 'active');
+            assert.equal(second.body.status, 'active');
+            assert.ok(
+                fixture.calls.slice(calls).every(call => !/^(BEGIN|UPDATE|INSERT|DELETE)/.test(call.sql)),
+                'certificate scans must remain read-only'
+            );
+
+            state.actor = { role: 'cleaning' };
+            const deniedCalls = fixture.calls.length;
+            const denied = await request('/api/certificates/code/CERT-2099-09981');
+            assert.equal(denied.status, 403, denied.text);
+            assert.equal(fixture.calls.length, deniedCalls, 'denied check must not query certificate data');
+        });
+
         await t.test('aggregate and conflicting selectors cannot widen the recovered workspace', async () => {
             state.actor = {};
             const calls = fixture.calls.length;
@@ -264,6 +321,10 @@ test('Park certificate and Art recovery through actual Express routers', async t
                     const result = await request(`${path}?${query}`);
                     assert.equal(result.status, 403, `${path}?${query}: ${result.text}`);
                 }
+                const statusResult = await request(`/api/certificates/9981/status?${query}`, {
+                    method: 'PATCH', body: { status: 'revoked' }
+                });
+                assert.equal(statusResult.status, 403, statusResult.text);
             }
             assert.equal(fixture.calls.length, calls);
             assert.equal(fixture.connections, connections);

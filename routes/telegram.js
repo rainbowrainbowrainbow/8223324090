@@ -11,7 +11,7 @@ const {
 } = require('../services/telegram');
 const { ensureDefaultLines, validateDate } = require('../services/booking');
 const { buildAndSendDigest, sendTomorrowReminder } = require('../services/scheduler');
-const { handleBotCommand, handleCertUse, resolveActorName } = require('../services/bot');
+const { handleBotCommand, resolveActorName } = require('../services/bot');
 const { handleContractorCallback } = require('../services/bookingAutomation');
 const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
@@ -693,10 +693,8 @@ router.post('/webhook', async (req, res) => {
                 log.info('Animator request approved and line added', { requestId, date, lineId: newLineId, lineName: newName });
 
             } else if (data.startsWith('cert_use:')) {
-                const certId = safeParseInt(data.split(':')[1]);
-                if (!certId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
-                const threadId = message.message_thread_id || null;
-                await handleCertUse(certId, id, chatId, threadId);
+                // Old Telegram messages can still contain this button. It must never redeem a certificate.
+                await answerCallback(id, 'Використання сертифіката доступне у CRM', { show_alert: true });
                 await clearInlineKeyboard(message, 'cert_use');
                 return res.sendStatus(200);
 

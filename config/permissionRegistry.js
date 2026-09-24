@@ -49,6 +49,7 @@ const TRAINING_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'senior_instructor',
 const GUARDIAN_OPS_ACCESS = Object.freeze(['creator', 'director', 'admin', 'security']);
 const FINANCE_ANALYTICS_ACCESS = Object.freeze(['creator', 'director', 'accountant']);
 const PAYMENT_CASHIER_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin', 'art_director', 'reception']);
+const CERTIFICATE_CHECK_ACCESS = Object.freeze(['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'security', 'reception', 'animator']);
 const FISCAL_PHASE1_OPERATOR_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin', 'art_director']);
 const CASHIER_PRO_OPERATOR_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin']);
 const CASHIER_PRO_APPROVER_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager']);
@@ -426,6 +427,13 @@ const PAGE_PERMISSIONS = Object.freeze([
         defaultRoles: ALL_STAFF, risk: 'high', sidebarLinks: ['/certificates/batch'],
         frontendConsumers: [source('certificates.html', 'js/auth.js')],
         apiConsumers: [api('routes/certificates.js', '/api/certificates', null)]
+    }),
+    page({
+        key: '/certificates/check', label: 'Перевірка сертифіката', group: 'product', canonicalPath: '/certificates/check',
+        defaultRoles: CERTIFICATE_CHECK_ACCESS, risk: 'high',
+        explicitAllow: false,
+        frontendConsumers: [source('certificates.html', 'js/auth.js')],
+        apiConsumers: [api('routes/certificates.js', '/api/certificates/code/:code', null)]
     }),
     page({
         key: '/sales-funnel', label: 'Ліди', group: 'sales', canonicalPath: '/sales-funnel', aliases: ['/leads'],

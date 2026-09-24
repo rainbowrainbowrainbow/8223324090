@@ -4951,14 +4951,35 @@ async function apiBatchCreateCertificates(data) {
 }
 
 async function apiGetCertificateByCode(code) {
+    const result = await apiLookupCertificateByCode(code);
+    return result.success ? result.certificate : null;
+}
+
+async function apiLookupCertificateByCode(code) {
     try {
         const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/code/${encodeURIComponent(code)}`, { headers: getAuthHeaders(false) });
-        if (!response) return null;
-        if (!response.ok) return null;
-        return await response.json();
+        if (!response) return { success: false, error: 'auth_session_unavailable' };
+        if (response.status === 404) return { success: false, missing: true };
+        if (response.status === 401 || response.status === 403) return { success: false, denied: true };
+        if (!response.ok) return { success: false, error: 'certificate_lookup_failed', status: response.status };
+        return { success: true, certificate: await response.json() };
     } catch (err) {
         console.error('API getCertificateByCode error:', err);
-        return null;
+        return { success: false, error: 'certificate_lookup_failed' };
+    }
+}
+
+async function apiRedeemCertificate(id) {
+    const context = getLegacyBusinessSurfaceContextKey('certificates');
+    try {
+        const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/${encodeURIComponent(id)}/redeem`, {
+            method: 'POST', headers: getAuthHeaders(), body: '{}'
+        });
+        if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
+        if (!response.ok) throw await apiErrorFromResponse(response);
+        return await response.json();
+    } catch (err) {
+        return certificateApiFailure(err, context);
     }
 }
 

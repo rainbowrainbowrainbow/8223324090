@@ -3,7 +3,7 @@
 const { BUSINESS_SCOPE_SINGLE, DEFAULT_BUSINESS_CONTEXT, resolveBusinessScope } = require('./businessContext');
 const { resolveCapability } = require('./accountAccessPolicy');
 
-const SURFACE_PAGES = Object.freeze({ certificates: ['/certificates', '/certificates/new', '/certificates/batch'], art: ['/art'] });
+const SURFACE_PAGES = Object.freeze({ certificates: ['/certificates', '/certificates/new', '/certificates/batch', '/certificates/check'], art: ['/art'] });
 
 // The authorized recovery keeps these existing namespaces exclusive to Park.
 // Fresh server-resolved membership identity remains mandatory; it never enables
@@ -40,7 +40,10 @@ function canUseParkLegacySurface(req, surface, scope = resolveBusinessScope(req)
     const path = String(req.path || '/').toLowerCase().replace(/\/$/, '') || '/';
     const page = surface === 'art' ? '/art'
         : method === 'POST' && path === '/' ? '/certificates/new'
-            : method === 'POST' && path === '/batch' ? '/certificates/batch' : '/certificates';
+            : method === 'POST' && path === '/batch' ? '/certificates/batch'
+                : (['GET', 'HEAD'].includes(method) && path.startsWith('/code/'))
+                    || (method === 'POST' && /^\/\d+\/redeem$/.test(path)) ? '/certificates/check'
+                    : '/certificates';
     return resolveCapability(req.user, page, { type: 'page' }).allowed;
 }
 

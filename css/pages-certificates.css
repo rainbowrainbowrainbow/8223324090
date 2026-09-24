@@ -70,6 +70,77 @@
     gap: 14px;
 }
 
+.cert-check-view {
+    width: min(100%, 640px);
+    margin: 0 auto;
+}
+
+.cert-check-card,
+.cert-check-result {
+    display: grid;
+    gap: 16px;
+    padding: 22px;
+    border: 1px solid rgba(16, 185, 129, 0.22);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+}
+
+.cert-check-card h2,
+.cert-check-result h3 { margin: 4px 0 6px; color: var(--gray-900); }
+
+.cert-check-card p,
+.cert-check-status,
+.cert-check-result p { margin: 0; color: var(--gray-600); font-weight: 650; }
+
+.cert-check-card .form-field {
+    display: grid;
+    gap: 6px;
+    color: var(--gray-700);
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.cert-check-card input {
+    width: 100%;
+    min-height: 48px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--gray-900);
+    font: inherit;
+    font-size: 16px;
+    letter-spacing: 0.03em;
+    padding: 10px 12px;
+}
+
+.cert-check-card input:focus-visible { outline: 3px solid rgba(20, 184, 166, 0.28); outline-offset: 2px; }
+.cert-check-result[data-cert-check-state="valid"] { border-color: rgba(16, 185, 129, 0.52); }
+.cert-check-result[data-cert-check-state="used"],
+.cert-check-result[data-cert-check-state="expired"] { border-color: rgba(245, 158, 11, 0.52); }
+.cert-check-result[data-cert-check-state="revoked"],
+.cert-check-result[data-cert-check-state="blocked"],
+.cert-check-result[data-cert-check-state="denied"],
+.cert-check-result[data-cert-check-state="missing"],
+.cert-check-result[data-cert-check-state="error"] { border-color: rgba(239, 68, 68, 0.5); }
+
+.cert-check-result-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; margin: 0; }
+.cert-check-result-meta dt { color: var(--gray-500); font-weight: 800; }
+.cert-check-result-meta dd { margin: 0; color: var(--gray-800); font-weight: 800; overflow-wrap: anywhere; }
+body[data-cert-mode="check"] .cert-page-actions { display: none; }
+
+body.dark-mode .cert-check-card,
+body.dark-mode .cert-check-result { background: rgba(30, 30, 56, 0.84); border-color: rgba(255, 255, 255, 0.12); }
+body.dark-mode .cert-check-card h2,
+body.dark-mode .cert-check-result h3,
+body.dark-mode .cert-check-result-meta dd { color: #f8fafc; }
+body.dark-mode .cert-check-card p,
+body.dark-mode .cert-check-status,
+body.dark-mode .cert-check-result p,
+body.dark-mode .cert-check-card .form-field,
+body.dark-mode .cert-check-result-meta dt { color: #cbd5e1; }
+body.dark-mode .cert-check-card input { background: rgba(15, 23, 42, 0.7); border-color: rgba(148, 163, 184, 0.24); color: #f8fafc; }
+
 .cert-page-toolbar {
     display: flex;
     justify-content: space-between;
@@ -792,6 +863,9 @@ body.dark-mode .cert-fixed-type-field strong {
         border-radius: 14px;
         padding: 14px;
     }
+
+    .cert-check-card,
+    .cert-check-result { border-radius: 14px; padding: 16px; }
 
     .cert-batch-code-row {
         grid-template-columns: 28px minmax(0, 1fr);

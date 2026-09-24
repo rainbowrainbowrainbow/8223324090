@@ -27,6 +27,7 @@ const { assertBookingLinkedParent } = require('../services/bookingLinkOwnership'
 const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
 const { insertHistory } = require('../services/historyLog');
+const { redeemCertificateInTransaction } = require('../services/certificateRedemption');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 const { applyBookingPackage, applyBookingPackageEntryCharge, bookingPackageAudit } = require('../services/bookingPackage');
 const { loadBanquetPreorderRuleContract, sanitizeBanquetPreorderRuleContract } = require('../services/banquetPreorderRules');
@@ -3777,24 +3778,11 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             b.id = await generateBookingNumber(client);
         }
 
-        // v33.8.0 Integration 6: Certificate validation (INSIDE transaction)
+        // The booking, certificate and audit commit or roll back together.
         let certificateId = null;
-        if (parkBookingCreateSideEffectsAllowed() && b.certificateCode) {
-            const certRow = await client.query(
-                `SELECT id, status, display_value FROM certificates WHERE cert_code = $1 FOR UPDATE`,
-                [String(b.certificateCode).toUpperCase()]
-            );
-            if (!certRow.rowCount) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'Сертифікат не знайдено' });
-            }
-            const cert = certRow.rows[0];
-            if (cert.status !== 'active') {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ error: `Сертифікат недійсний (статус: ${cert.status})` });
-            }
-            certificateId = cert.id;
-            await client.query(`UPDATE certificates SET status = 'used', used_at = NOW() WHERE id = $1`, [certificateId]);
+        if (b.certificateCode) {
+            const certificate = await redeemCertificateInTransaction(client, req, { code: b.certificateCode, bookingId: b.id });
+            certificateId = certificate.id;
         }
 
         const insertResult = await client.query(
@@ -4497,6 +4485,9 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         const { main } = req.body;
         const linked = Array.isArray(req.body?.linked) ? req.body.linked : [];
         const banquetActivities = Array.isArray(req.body?.banquetActivities) ? req.body.banquetActivities : [];
+        if ([req.body, main, ...linked, ...banquetActivities].some(item => item?.certificateCode)) {
+            return res.status(422).json({ success: false, code: 'certificate_single_booking_required', error: 'Сертифікат можна використати лише для окремого бронювання.' });
+        }
         const banquetContract = validateBookingBanquetCreationContract(res, req.body?.banquetContext);
         if (banquetContract.rejected) return;
         const banquetContext = banquetContract.context;
@@ -5480,14 +5471,6 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
             }
         }
 
-        // v39.9: Restore certificate INSIDE transaction (was fire-and-forget, could lose certs)
-        if (booking.certificate_id) {
-            try {
-                await client.query("UPDATE certificates SET status = 'active', used_at = NULL WHERE id = $1 AND status = 'used'", [booking.certificate_id]);
-                log.info(`[CertRestore] Certificate ${booking.certificate_id} restored in transaction`);
-            } catch (e) { log.warn('[CertRestore] Error:', e.message); }
-        }
-
         await client.query('COMMIT');
 
         // v33.8.0: Restore stock on cancel (fire-and-forget — non-critical)
@@ -5509,8 +5492,6 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
                 } catch (e) { log.warn('[StockRestore] Error:', e.message); }
             });
         }
-        // v39.9: Certificate restore moved inside transaction (above)
-
         if (!suppressTrustedQaSideEffects && sideEffectsAllowedForContext(businessContext)) {
             getLineName(booking.line_id, booking.date, businessContext).then(lineName =>
                 notifyTelegram('delete', booking, { username: req.user?.username, lineName, businessContext }))

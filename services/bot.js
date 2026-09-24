@@ -20,6 +20,7 @@ const { pool } = require('../db');
 const { sendTelegramMessage, telegramRequest } = require('./telegram');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('./bookingVisibility');
+const { buildCertificateCheckUrl, getCertificateEffectiveStatus } = require('./certificates');
 const {
     pushDefaultTimelineBusinessContext,
     timelineBusinessContextJoinSql
@@ -134,7 +135,10 @@ async function handleCertVerify(chatId, threadId, code) {
     const certCode = code.trim().toUpperCase();
 
     try {
-        const result = await pool.query('SELECT * FROM certificates WHERE cert_code = $1', [certCode]);
+        const result = await pool.query(
+            'SELECT cert_code, status, valid_until FROM certificates WHERE cert_code = $1',
+            [certCode]
+        );
 
         if (result.rows.length === 0) {
             return sendBotMessage(chatId, threadId,
@@ -143,6 +147,7 @@ async function handleCertVerify(chatId, threadId, code) {
         }
 
         const cert = result.rows[0];
+        const effectiveStatus = getCertificateEffectiveStatus(cert);
         const statusMap = {
             active: '🟢 Активний',
             used: '🔵 Використаний',
@@ -151,49 +156,23 @@ async function handleCertVerify(chatId, threadId, code) {
             blocked: '⚫ Заблокований'
         };
 
-        const validDate = cert.valid_until
-            ? new Date(cert.valid_until).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Kyiv' })
-            : '—';
-        const issuedDate = cert.issued_at
-            ? new Date(cert.issued_at).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Kyiv' })
-            : '—';
+        const validDate = cert.valid_until instanceof Date
+            ? cert.valid_until.toISOString().slice(0, 10)
+            : String(cert.valid_until || '').slice(0, 10) || '—';
+        let text = `📄 <b>Сертифікат ${escapeHtml(cert.cert_code)}</b>\n`;
+        text += `${statusMap[effectiveStatus] || escapeHtml(effectiveStatus)}\n`;
+        text += `⏳ Дійсний до: ${escapeHtml(validDate)} (Київ)\n\n`;
+        text += 'Перевірка та використання доступні у CRM.';
 
-        let text = `📄 <b>Сертифікат ${cert.cert_code}</b>\n\n`;
-        text += `${statusMap[cert.status] || cert.status}\n\n`;
-        text += `👤 ${escapeHtml(cert.display_value)}\n`;
-        text += `📋 ${escapeHtml(cert.type_text || 'на одноразовий вхід')}\n`;
-        text += `📅 Видано: ${issuedDate}\n`;
-        text += `⏳ Дійсний до: ${validDate}\n`;
-
-        if (cert.status === 'used' && cert.used_at) {
-            const usedDate = new Date(cert.used_at).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Kyiv' });
-            text += `\n✅ Використано: ${usedDate}`;
-        }
-        if (cert.status === 'revoked' || cert.status === 'blocked') {
-            if (cert.invalid_reason) {
-                text += `\n📝 Причина: ${escapeHtml(cert.invalid_reason)}`;
+        const configuredBaseUrl = process.env.PUBLIC_BASE_URL || process.env.CRM_PUBLIC_URL
+            || process.env.APP_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '');
+        if (configuredBaseUrl) {
+            const origin = new URL(configuredBaseUrl);
+            if (origin.protocol === 'https:' || (origin.protocol === 'http:' && origin.hostname === 'localhost')) {
+                const checkUrl = buildCertificateCheckUrl(origin.origin, certCode);
+                text += `\n<a href="${escapeHtml(checkUrl)}">Відкрити в CRM</a>`;
             }
         }
-
-        text += `\n\n🏢 Парк Закревського Періоду`;
-
-        // If certificate is active — show inline button to mark as used
-        if (cert.status === 'active') {
-            const payload = {
-                chat_id: chatId,
-                text: text,
-                parse_mode: 'HTML',
-                disable_notification: true,
-                reply_markup: {
-                    inline_keyboard: [[
-                        { text: '✅ Використати сертифікат', callback_data: `cert_use:${cert.id}` }
-                    ]]
-                }
-            };
-            if (threadId) payload.message_thread_id = threadId;
-            return telegramRequest('sendMessage', payload);
-        }
-
         return sendBotMessage(chatId, threadId, text);
     } catch (err) {
         log.error('handleCertVerify error', err);
@@ -833,107 +812,4 @@ async function handleBotCommand(chatId, threadId, text, fromUsername) {
     }
 }
 
-/**
- * Handle cert_use callback — mark certificate as used
- */
-async function handleCertUse(certId, callbackQueryId, chatId, threadId) {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-
-        // Lock row and check status
-        const result = await client.query(
-            'SELECT * FROM certificates WHERE id = $1 FOR UPDATE',
-            [certId]
-        );
-
-        if (result.rows.length === 0) {
-            await client.query('ROLLBACK');
-            await telegramRequest('answerCallbackQuery', {
-                callback_query_id: callbackQueryId,
-                text: 'Сертифікат не знайдено',
-                show_alert: true
-            });
-            return;
-        }
-
-        const cert = result.rows[0];
-
-        if (cert.status !== 'active') {
-            await client.query('ROLLBACK');
-            const statusNames = {
-                used: 'вже використаний',
-                expired: 'прострочений',
-                revoked: 'скасований',
-                blocked: 'заблокований'
-            };
-            await telegramRequest('answerCallbackQuery', {
-                callback_query_id: callbackQueryId,
-                text: `Сертифікат ${statusNames[cert.status] || cert.status}`,
-                show_alert: true
-            });
-            return;
-        }
-
-        // Mark as used
-        await client.query(
-            `UPDATE certificates SET status = 'used', used_at = NOW(), updated_at = NOW() WHERE id = $1`,
-            [certId]
-        );
-
-        await client.query('COMMIT');
-
-        // Answer callback
-        await telegramRequest('answerCallbackQuery', {
-            callback_query_id: callbackQueryId,
-            text: '✅ Сертифікат активовано!'
-        });
-
-        // Update the message — remove button, show new status
-        const usedDate = new Date().toLocaleDateString('uk-UA', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit',
-            timeZone: 'Europe/Kyiv'
-        });
-
-        let text = `📄 <b>Сертифікат ${cert.cert_code}</b>\n\n`;
-        text += `✅ <b>ВИКОРИСТАНО</b> — ${usedDate}\n\n`;
-        text += `👤 ${escapeHtml(cert.display_value)}\n`;
-        text += `📋 ${escapeHtml(cert.type_text || 'на одноразовий вхід')}\n\n`;
-        text += `🏢 Парк Закревського Періоду`;
-
-        await sendBotMessage(chatId, threadId, text);
-
-        // Fire-and-forget: alert director
-        try {
-            const directorResult = await pool.query(
-                "SELECT value FROM settings WHERE key = 'cert_director_chat_id'"
-            );
-            if (directorResult.rows.length > 0 && directorResult.rows[0].value) {
-                const dirChatId = directorResult.rows[0].value;
-                const alertText = `🔔 <b>Сертифікат використано</b>\n\n`
-                    + `📄 ${cert.cert_code}\n`
-                    + `👤 ${escapeHtml(cert.display_value)}\n`
-                    + `📋 ${escapeHtml(cert.type_text || 'на одноразовий вхід')}\n`
-                    + `⏰ ${usedDate}`;
-                sendBotMessage(dirChatId, null, alertText).catch(() => {});
-            }
-        } catch (e) {
-            log.error('Failed to send director cert alert', e);
-        }
-
-        log.info(`Certificate ${cert.cert_code} marked as used via bot`);
-    } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
-        log.error('handleCertUse error', err);
-        await telegramRequest('answerCallbackQuery', {
-            callback_query_id: callbackQueryId,
-            text: 'Помилка активації сертифікату',
-            show_alert: true
-        });
-    } finally {
-        client.release();
-    }
-}
-
-module.exports = { handleBotCommand, handleCertUse, registerBotCommands, resolveActorName };
+module.exports = { handleBotCommand, registerBotCommands, resolveActorName };

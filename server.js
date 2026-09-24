@@ -624,7 +624,7 @@ app.get(/^\/certificates\/(css|js|images)\/(.+)$/, (req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.redirect(302, `/${bucket}/${asset}${query}`);
 });
-app.get(['/certificates', '/certificates/new', '/certificates/batch'], (req, res) => {
+app.get(['/certificates', '/certificates/new', '/certificates/batch', '/certificates/check'], (req, res) => {
     res.sendFile(path.join(__dirname, 'certificates.html'));
 });
 // Designer and Sound — sendFile or redirect to /art

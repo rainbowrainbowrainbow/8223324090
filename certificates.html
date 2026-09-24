@@ -76,6 +76,24 @@
                 </div>
             </section>
 
+            <section id="certificatesCheckView" class="cert-page-view cert-check-view hidden" aria-labelledby="certificateCheckHeading">
+                <form id="certificateCheckForm" class="cert-check-card" novalidate>
+                    <div>
+                        <span class="cert-result-kicker">Мобільна перевірка</span>
+                        <h2 id="certificateCheckHeading">Перевірка сертифіката</h2>
+                        <p>Відскануйте QR-код або введіть код сертифіката вручну.</p>
+                    </div>
+                    <label class="form-field">
+                        <span>Код сертифіката</span>
+                        <input id="certificateCheckCode" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="80" placeholder="CERT-2026-00001" aria-describedby="certificateCheckHint certificateCheckStatus">
+                        <small id="certificateCheckHint" class="form-hint">Код перевіряється лише після входу працівника в CRM.</small>
+                    </label>
+                    <button type="submit" class="btn-page-primary" id="certificateCheckSubmit">Перевірити</button>
+                </form>
+                <section id="certificateCheckResult" class="cert-check-result hidden" aria-live="polite" aria-atomic="true"></section>
+                <p id="certificateCheckStatus" class="cert-check-status" role="status" aria-live="polite"></p>
+            </section>
+
             <section id="certificatesListView" class="cert-page-view">
                 <div class="cert-page-toolbar">
                     <div class="cert-page-filters">

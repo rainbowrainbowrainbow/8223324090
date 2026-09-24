@@ -2,7 +2,7 @@
 
 ## Route / Location
 
-- Routes: `/certificates`, `/certificates/new`, `/certificates/batch`
+- Routes: `/certificates`, `/certificates/new`, `/certificates/batch`, `/certificates/check`
 - Static file: `certificates.html`
 - Page controller: `js/certificates-page.js`
 - Backend route: `routes/certificates.js`

@@ -106,6 +106,7 @@ const {
     toNotificationOutboxApiEvent
 } = require('../services/notificationOutbox');
 const defaultStaffAccountOnboardingService = require('../services/hermesStaffAccountOnboarding');
+const { createDefaultSecureCredentialHandoff } = require('../services/hermesSecureCredentialHandoff');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Hermes');
@@ -157,6 +158,7 @@ const SUPPORTED_ACTIONS = [
     'staff_account_onboarding.preview',
     'staff_account_onboarding.request',
     'staff_account_onboarding.read',
+    'staff_account_onboarding.credential_handoff.readiness',
     'staff_account_onboarding.approve',
     'staff_account_onboarding.reject',
     'staff_schedule.read',
@@ -2044,6 +2046,8 @@ function buildCapabilitiesPayload(env = process.env, options = {}) {
                 approveRequiresIdempotencyKey: true,
                 approveRequiredStaffCapability: 'hermes.staff.manage',
                 approveRequiresManageAccounts: true,
+                credentialHandoffReadiness: 'GET /api/hermes/staff-account-onboarding/credential-handoff/readiness',
+                credentialHandoffReadinessWrites: 0,
                 rejectRequiresConfirmation: true,
                 rejectRequiresIdempotencyKey: true,
                 oneTimeLoginMaterialStoredInApprovalRequest: false,
@@ -2414,8 +2418,11 @@ function createHermesRouter(options = {}) {
     const query = options.pool || pool;
     const env = options.env || process.env;
     const staffAccountOnboardingService = options.staffAccountOnboardingService || defaultStaffAccountOnboardingService;
-    const secureCredentialHandoff = typeof options.secureCredentialHandoff === 'function'
+    const configuredSecureCredentialHandoff = Object.prototype.hasOwnProperty.call(options, 'secureCredentialHandoff')
         ? options.secureCredentialHandoff
+        : createDefaultSecureCredentialHandoff({ env, pool: query });
+    const secureCredentialHandoff = typeof configuredSecureCredentialHandoff === 'function'
+        ? configuredSecureCredentialHandoff
         : null;
     const menuImageUploadOptions = options.menuImageUploadOptions || {};
     const rateLimiter = options.rateLimiter !== undefined
@@ -2442,6 +2449,64 @@ function createHermesRouter(options = {}) {
 
     router.get('/task-watchdog/preview', taskWatchdogPreviewHandler);
     router.post('/task-watchdog/callback-dry-run', taskWatchdogCallbackDryRunHandler);
+
+    router.get('/staff-account-onboarding/credential-handoff/readiness', async (req, res) => {
+        if (!assertHermesStaffAccountOnboardingAccess(req, res)) return;
+        if (!secureCredentialHandoff) {
+            return sendHermesError(
+                res,
+                409,
+                'HERMES_STAFF_ACCOUNT_ONBOARDING_CREDENTIAL_HANDOFF_NOT_CONFIGURED',
+                'Secure credential handoff is not configured for staff/account onboarding',
+                {
+                    ready: false,
+                    readOnly: true,
+                    nonCredentialSmoke: true,
+                    secureCredentialHandoffConfigured: false,
+                    staffWrites: 0,
+                    accountWrites: 0,
+                    credentialIssued: false,
+                    credentialMaterialReturnedInHermesResponse: false
+                }
+            );
+        }
+        try {
+            const preflight = await assertSecureCredentialHandoffPreflight({
+                secureCredentialHandoff,
+                request: {
+                    requestId: 'non-credential-readiness-smoke',
+                    requestType: 'secure_credential_handoff_readiness',
+                    credentialRequired: false
+                },
+                actor: req.user,
+                req
+            });
+            return res.json({
+                success: true,
+                ready: true,
+                meta: {
+                    ...safeCredentialHandoffMeta(preflight || { ready: true }),
+                    readOnly: true,
+                    nonCredentialSmoke: true,
+                    secureCredentialHandoffConfigured: true,
+                    staffWrites: 0,
+                    accountWrites: 0,
+                    scheduleWrites: 0,
+                    salaryWrites: 0,
+                    staffTelegramNotifications: 0,
+                    credentialIssued: false,
+                    credentialMaterialReturnedInHermesResponse: false
+                }
+            });
+        } catch (err) {
+            return sendStaffAccountOnboardingError(
+                res,
+                err,
+                'HERMES_STAFF_ACCOUNT_ONBOARDING_CREDENTIAL_HANDOFF_READINESS_FAILED',
+                'Secure credential handoff readiness check failed'
+            );
+        }
+    });
 
     router.post('/staff-account-onboarding/preview', async (req, res) => {
         if (!assertHermesStaffAccountOnboardingAccess(req, res)) return;

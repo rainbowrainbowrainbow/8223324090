@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.13 - Staff Account Secure Handoff Owner DM Readiness
+
+### Release / Versioning / (24.09.2026) [codex]
+- **Staff Account Secure Handoff Owner DM Readiness** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.12 - Staff Account Handoff Fail-Closed
 
 ### Release / Versioning / (24.09.2026) [codex]

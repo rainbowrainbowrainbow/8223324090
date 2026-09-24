@@ -1344,6 +1344,7 @@ describe('Hermes read-only task routes', () => {
         assert.ok(res.data.supportedActions.includes('hermes_jobs.result'));
         assert.ok(res.data.supportedActions.includes('hermes_jobs.decision'));
         assert.ok(res.data.supportedActions.includes('staff.read'));
+        assert.ok(res.data.supportedActions.includes('staff_account_onboarding.credential_handoff.readiness'));
         assert.ok(res.data.supportedActions.includes('staff_schedule.read'));
         assert.ok(res.data.supportedActions.includes('staff_schedule.preview'));
         assert.ok(res.data.supportedActions.includes('staff_schedule.apply'));
@@ -1359,6 +1360,8 @@ describe('Hermes read-only task routes', () => {
         assert.equal(res.data.endpoints.staffAccountOnboarding.secureCredentialHandoffRequired, true);
         assert.equal(res.data.endpoints.staffAccountOnboarding.secureCredentialHandoffConfigured, false);
         assert.equal(res.data.endpoints.staffAccountOnboarding.credentialApprovalWithoutHandoffBlocked, true);
+        assert.equal(res.data.endpoints.staffAccountOnboarding.credentialHandoffReadiness, 'GET /api/hermes/staff-account-onboarding/credential-handoff/readiness');
+        assert.equal(res.data.endpoints.staffAccountOnboarding.credentialHandoffReadinessWrites, 0);
         assert.equal(res.data.endpoints.attendance.preview, 'POST /api/hermes/attendance/preview');
         assert.equal(res.data.endpoints.attendance.apply, 'POST /api/hermes/attendance/apply');
         assert.equal(res.data.endpoints.attendance.previewAttendanceWrites, 0);
@@ -3984,6 +3987,74 @@ function createStaffAccountOnboardingRouteService({ requestRow, approveResult } 
 }
 
 describe('Hermes staff/account onboarding credential handoff route safety', () => {
+    it('reports secure handoff readiness as a non-credential smoke without delivery', async () => {
+        const fakePool = createHermesCreateFakePool();
+        let preflightCalls = 0;
+        let deliveryCalls = 0;
+        const secureCredentialHandoff = async () => {
+            deliveryCalls += 1;
+            throw new Error('delivery must not run for readiness smoke');
+        };
+        secureCredentialHandoff.preflight = async ({ request: readinessRequest }) => {
+            preflightCalls += 1;
+            assert.equal(readinessRequest.requestType, 'secure_credential_handoff_readiness');
+            assert.equal(readinessRequest.credentialRequired, false);
+            return {
+                ready: true,
+                channel: 'owner_dm',
+                target: 'owner_private_chat',
+                meta: {
+                    recipientChatId: '777000111',
+                    token: 'must-not-leak',
+                    nonCredentialPreflight: true
+                }
+            };
+        };
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const capabilities = await request(baseUrl, 'GET', '/api/hermes/capabilities');
+            assert.equal(capabilities.status, 200, capabilities.text);
+            assert.equal(capabilities.data.endpoints.staffAccountOnboarding.secureCredentialHandoffConfigured, true);
+            assert.equal(capabilities.data.endpoints.staffAccountOnboarding.credentialApprovalWithoutHandoffBlocked, false);
+
+            const res = await request(
+                baseUrl,
+                'GET',
+                '/api/hermes/staff-account-onboarding/credential-handoff/readiness'
+            );
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.ready, true);
+            assert.equal(res.data.meta.nonCredentialSmoke, true);
+            assert.equal(res.data.meta.staffWrites, 0);
+            assert.equal(res.data.meta.accountWrites, 0);
+            assert.equal(res.data.meta.credentialIssued, false);
+            assert.equal(res.data.meta.credentialMaterialReturnedInHermesResponse, false);
+            assert.equal(res.text.includes('777000111'), false);
+            assert.equal(res.text.includes('must-not-leak'), false);
+            assert.equal(preflightCalls, 1);
+            assert.equal(deliveryCalls, 0);
+        }, { secureCredentialHandoff });
+    });
+
+    it('reports secure handoff readiness not configured without issuing credentials', async () => {
+        const fakePool = createHermesCreateFakePool();
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'GET',
+                '/api/hermes/staff-account-onboarding/credential-handoff/readiness'
+            );
+            assert.equal(res.status, 409, res.text);
+            assert.equal(res.data.success, false);
+            assert.equal(res.data.code, 'HERMES_STAFF_ACCOUNT_ONBOARDING_CREDENTIAL_HANDOFF_NOT_CONFIGURED');
+            assert.equal(res.data.meta.staffWrites, 0);
+            assert.equal(res.data.meta.accountWrites, 0);
+            assert.equal(res.data.meta.credentialIssued, false);
+            assert.equal(res.data.meta.credentialMaterialReturnedInHermesResponse, false);
+        });
+    });
+
     it('blocks credential-producing approval before staff/account writes when secure handoff is not configured', async () => {
         const fakePool = createHermesCreateFakePool();
         const service = createStaffAccountOnboardingRouteService();

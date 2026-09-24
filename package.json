@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.12",
+  "version": "0.82.13",
   "eventGenix": {
-    "releaseLabel": "Staff Account Handoff Fail-Closed"
+    "releaseLabel": "Staff Account Secure Handoff Owner DM Readiness"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -1921,7 +1921,7 @@ async function getHermesOwnerWorkloadDiagnostics(queryable, businessScope) {
     return result.rows.map(normalizeOwnerWorkloadDiagnosticRow);
 }
 
-function buildCapabilitiesPayload(env = process.env) {
+function buildCapabilitiesPayload(env = process.env, options = {}) {
     const ownerAllowlist = parseHermesOwnerAllowlist(env);
     return {
         success: true,
@@ -2049,6 +2049,8 @@ function buildCapabilitiesPayload(env = process.env) {
                 oneTimeLoginMaterialStoredInApprovalRequest: false,
                 credentialMaterialReturnedInHermesResponse: false,
                 secureCredentialHandoffRequired: true,
+                secureCredentialHandoffConfigured: options.secureCredentialHandoffConfigured === true,
+                credentialApprovalWithoutHandoffBlocked: options.secureCredentialHandoffConfigured !== true,
                 scheduleWrites: 0,
                 salaryWrites: 0,
                 staffTelegramNotifications: 0
@@ -2135,6 +2137,158 @@ function staffAccountOnboardingApprovalConfigFromBody(body = {}) {
     return body.approval || body.approvalConfig || body.approval_config || {};
 }
 
+function normalizeStaffAccountOnboardingAccountMode(value) {
+    return String(value || 'create')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_');
+}
+
+function staffAccountOnboardingRequestAlreadyExecuted(request = {}) {
+    const status = normalizeStaffAccountOnboardingAccountMode(request.status || request.requestStatus || request.request_status || '');
+    return status === 'executed'
+        || status === 'completed'
+        || status === 'complete'
+        || status === 'done';
+}
+
+function staffAccountOnboardingRequestNeedsCredentialHandoff(request = {}) {
+    if (staffAccountOnboardingRequestAlreadyExecuted(request)) return false;
+
+    const payload = request.payload && typeof request.payload === 'object' ? request.payload : {};
+    const account = payload.account && typeof payload.account === 'object' ? payload.account : {};
+    const requestType = normalizeStaffAccountOnboardingAccountMode(
+        request.requestType
+        || request.request_type
+        || payload.requestType
+        || payload.request_type
+        || ''
+    );
+
+    if (request.credentialIssued === true || request.credential_issued === true) return true;
+    if (requestType === 'existing_staff_link_existing_account') return false;
+    if (
+        requestType === 'new_staff_with_account'
+        || requestType === 'existing_staff_with_account'
+        || requestType === 'existing_staff_reissue_existing_account'
+        || requestType === 'existing_staff_link_existing_account_reissue_login'
+    ) {
+        return true;
+    }
+
+    const explicitIssueFlag = account.issueOneTimeLogin ?? account.issue_one_time_login;
+    if (explicitIssueFlag === true) return true;
+
+    const accountMode = normalizeStaffAccountOnboardingAccountMode(
+        account.mode
+        || account.action
+        || payload.accountMode
+        || payload.account_mode
+        || (explicitIssueFlag === false ? 'link_existing' : 'create')
+    );
+
+    return accountMode !== 'link_existing'
+        && accountMode !== 'link'
+        && accountMode !== 'existing'
+        && accountMode !== 'existing_account'
+        && accountMode !== 'attach_existing'
+        && accountMode !== 'attach';
+}
+
+const CREDENTIAL_HANDOFF_SECRET_FIELD_RE = /password|passcode|secret|token|api[_-]?key|cookie|session|credential|login|username|user[_-]?name|target|recipient|chat[_-]?id|telegram|phone|email/i;
+const CREDENTIAL_HANDOFF_SECRET_VALUE_RE = /password|passcode|secret|token|api[_-]?key|cookie|session|credential|login|username|bearer\s+|tg:\/\/|https?:\/\/|@|\+?\d[\d\s().-]{5,}/i;
+
+function safeCredentialHandoffLabel(value) {
+    const text = String(value || '').trim();
+    if (!text) return null;
+    if (CREDENTIAL_HANDOFF_SECRET_VALUE_RE.test(text)) return '[REDACTED]';
+    return text.slice(0, 80);
+}
+
+function safeCredentialHandoffMetaValue(value) {
+    if (Array.isArray(value)) return value.map(safeCredentialHandoffMetaValue);
+    if (!value || typeof value !== 'object') {
+        if (typeof value === 'string') return safeCredentialHandoffLabel(value);
+        return value;
+    }
+    const output = {};
+    for (const [key, child] of Object.entries(value)) {
+        output[key] = CREDENTIAL_HANDOFF_SECRET_FIELD_RE.test(key)
+            ? '[REDACTED]'
+            : safeCredentialHandoffMetaValue(child);
+    }
+    return output;
+}
+
+function safeCredentialHandoffMeta(result = {}) {
+    return {
+        ready: result?.ready === undefined ? null : result.ready === true,
+        delivered: result?.delivered === undefined ? null : result.delivered === true,
+        channel: safeCredentialHandoffLabel(result?.channel),
+        target: result?.target ? '[REDACTED]' : null,
+        meta: result?.meta ? safeCredentialHandoffMetaValue(result.meta) : null,
+        credentialMaterialReturnedInHermesResponse: false
+    };
+}
+
+async function assertSecureCredentialHandoffPreflight({ secureCredentialHandoff, request, actor, req }) {
+    const preflight = typeof secureCredentialHandoff?.preflight === 'function'
+        ? secureCredentialHandoff.preflight
+        : (typeof secureCredentialHandoff?.assertReady === 'function' ? secureCredentialHandoff.assertReady : null);
+    if (!preflight) return null;
+
+    let preflightResult;
+    try {
+        preflightResult = await preflight({ request, actor, req });
+    } catch (err) {
+        if (err.statusCode && err.statusCode < 500) throw err;
+        throw hermesHttpError(
+            409,
+            'HERMES_STAFF_ACCOUNT_ONBOARDING_CREDENTIAL_HANDOFF_NOT_READY',
+            'Secure credential handoff preflight failed before account/password writes',
+            { meta: safeCredentialHandoffMeta({ ready: false }) }
+        );
+    }
+    if (preflightResult?.ready === false || preflightResult?.ok === false) {
+        throw hermesHttpError(
+            409,
+            'HERMES_STAFF_ACCOUNT_ONBOARDING_CREDENTIAL_HANDOFF_NOT_READY',
+            'Secure credential handoff is not ready before account/password writes',
+            { meta: safeCredentialHandoffMeta(preflightResult) }
+        );
+    }
+    return preflightResult || null;
+}
+
+async function assertStaffAccountOnboardingCredentialHandoffReady({ pool: query, staffAccountOnboardingService, secureCredentialHandoff, requestId, actor, req }) {
+    const request = await staffAccountOnboardingService.getStaffAccountOnboardingRequest({
+        pool: query,
+        requestId
+    });
+    if (!staffAccountOnboardingRequestNeedsCredentialHandoff(request)) return request;
+    if (secureCredentialHandoff) {
+        await assertSecureCredentialHandoffPreflight({ secureCredentialHandoff, request, actor, req });
+        return request;
+    }
+    throw hermesHttpError(
+        409,
+        'HERMES_STAFF_ACCOUNT_ONBOARDING_CREDENTIAL_HANDOFF_REQUIRED',
+        'Secure credential handoff must be configured before approving a credential-producing staff/account onboarding request',
+        {
+            meta: {
+                requestId: request.requestId || request.request_uuid || String(requestId || '').trim(),
+                requestType: request.requestType || request.request_type || null,
+                status: request.status || null,
+                secureCredentialHandoffRequired: true,
+                credentialMaterialReturnedInHermesResponse: false,
+                staffWrites: 0,
+                accountWrites: 0,
+                credentialIssued: false
+            }
+        }
+    );
+}
+
 function credentialNotice(credential, handoff = {}) {
     if (!credential) {
         return {
@@ -2145,10 +2299,11 @@ function credentialNotice(credential, handoff = {}) {
     }
     return {
         issued: true,
-        username: credential.username || null,
+        username: credential.username ? '[REDACTED]' : null,
         password: '[REDACTED]',
         oneTime: true,
         returned: false,
+        usernameReturned: false,
         handoffAttempted: handoff.attempted === true,
         handoffDelivered: handoff.delivered === true
     };
@@ -2174,19 +2329,38 @@ async function deliverStaffAccountOnboardingCredential({ secureCredentialHandoff
             message: 'Credential was generated but is not returned in Hermes API response; configure secureCredentialHandoff in the bot runtime.'
         };
     }
-    const handoffResult = await secureCredentialHandoff({
-        credential,
-        request: result.request,
-        actor,
-        req
-    });
+    let handoffResult;
+    try {
+        handoffResult = await secureCredentialHandoff({
+            credential,
+            request: result.request,
+            actor,
+            req
+        });
+    } catch (err) {
+        if (err.statusCode && err.statusCode < 500) throw err;
+        throw hermesHttpError(
+            409,
+            'HERMES_STAFF_ACCOUNT_ONBOARDING_CREDENTIAL_HANDOFF_DELIVERY_FAILED',
+            'Secure credential handoff failed; credential material was not returned in the Hermes API response',
+            { meta: safeCredentialHandoffMeta({ delivered: false }) }
+        );
+    }
+    if (handoffResult?.delivered !== true) {
+        throw hermesHttpError(
+            409,
+            'HERMES_STAFF_ACCOUNT_ONBOARDING_CREDENTIAL_HANDOFF_DELIVERY_FAILED',
+            'Secure credential handoff did not confirm delivery; credential material was not returned in the Hermes API response',
+            { meta: safeCredentialHandoffMeta(handoffResult) }
+        );
+    }
     return {
         attempted: true,
         delivered: handoffResult?.delivered === true,
-        channel: handoffResult?.channel || null,
-        target: handoffResult?.target || null,
+        channel: safeCredentialHandoffLabel(handoffResult?.channel),
+        target: handoffResult?.target ? '[REDACTED]' : null,
         password: '[REDACTED]',
-        meta: handoffResult?.meta || null
+        meta: handoffResult?.meta ? safeCredentialHandoffMetaValue(handoffResult.meta) : null
     };
 }
 
@@ -2256,7 +2430,9 @@ function createHermesRouter(options = {}) {
     router.use('/', createHermesScheduleRouter({ pool: query }));
 
     router.get('/capabilities', (req, res) => {
-        res.json(buildCapabilitiesPayload(env));
+        res.json(buildCapabilitiesPayload(env, {
+            secureCredentialHandoffConfigured: Boolean(secureCredentialHandoff)
+        }));
     });
 
     const taskWatchdogPreviewHandler = createTaskWatchdogPreviewHandler({ pool: query });
@@ -2371,6 +2547,14 @@ function createHermesRouter(options = {}) {
         if (!assertHermesStaffAccountOnboardingAccess(req, res)) return;
         try {
             return await withHermesIdempotency(req, res, async () => {
+                await assertStaffAccountOnboardingCredentialHandoffReady({
+                    pool: query,
+                    staffAccountOnboardingService,
+                    secureCredentialHandoff,
+                    requestId: req.params.requestId,
+                    actor: req.user,
+                    req
+                });
                 const result = await staffAccountOnboardingService.approveStaffAccountOnboardingRequest({
                     pool: query,
                     requestId: req.params.requestId,

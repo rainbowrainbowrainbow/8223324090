@@ -1249,7 +1249,9 @@ async function withHermesCreateServer(fakePool, testFn, options = {}) {
         pool: fakePool,
         skipNotifications: options.skipNotifications !== false,
         env: options.env || {},
-        menuImageUploadOptions: options.menuImageUploadOptions || undefined
+        menuImageUploadOptions: options.menuImageUploadOptions || undefined,
+        staffAccountOnboardingService: options.staffAccountOnboardingService || undefined,
+        secureCredentialHandoff: options.secureCredentialHandoff || undefined
     }));
     const { server, baseUrl } = await listen(app);
     try {
@@ -1354,6 +1356,9 @@ describe('Hermes read-only task routes', () => {
         assert.equal(res.data.endpoints.staffSchedule.applyRequiresConfirmation, true);
         assert.equal(res.data.endpoints.staffSchedule.applyRequiresIdempotencyKey, true);
         assert.equal(res.data.endpoints.staffSchedule.applyRequiredCapability, 'hermes.schedule.manage');
+        assert.equal(res.data.endpoints.staffAccountOnboarding.secureCredentialHandoffRequired, true);
+        assert.equal(res.data.endpoints.staffAccountOnboarding.secureCredentialHandoffConfigured, false);
+        assert.equal(res.data.endpoints.staffAccountOnboarding.credentialApprovalWithoutHandoffBlocked, true);
         assert.equal(res.data.endpoints.attendance.preview, 'POST /api/hermes/attendance/preview');
         assert.equal(res.data.endpoints.attendance.apply, 'POST /api/hermes/attendance/apply');
         assert.equal(res.data.endpoints.attendance.previewAttendanceWrites, 0);
@@ -3926,6 +3931,293 @@ describe('Hermes task write routes', () => {
             assert.deepEqual(retry.data, first.data);
             assert.equal(fakePool.historyEvents.length, 1);
             assert.equal(fakePool.calls.filter(call => call.compact?.startsWith("UPDATE tasks SET status = 'done'")).length, 1);
+        });
+    });
+});
+
+
+function staffAccountOnboardingRequestFixture(overrides = {}) {
+    return {
+        requestId: 'staff-account-request-1',
+        requestType: 'new_staff_with_account',
+        status: 'pending_approval',
+        credentialIssued: false,
+        payload: {
+            requestType: 'new_staff_with_account',
+            personal: { name: 'Оператор Тест', username: 'operator.test' },
+            account: { mode: 'create', issueOneTimeLogin: true },
+            staff: { mode: 'new' }
+        },
+        ...overrides
+    };
+}
+
+function createStaffAccountOnboardingRouteService({ requestRow, approveResult } = {}) {
+    const calls = { detail: 0, approve: 0 };
+    const request = requestRow || staffAccountOnboardingRequestFixture();
+    return {
+        calls,
+        async getStaffAccountOnboardingRequest({ requestId }) {
+            calls.detail += 1;
+            assert.equal(requestId, request.requestId);
+            return request;
+        },
+        async approveStaffAccountOnboardingRequest({ requestId }) {
+            calls.approve += 1;
+            assert.equal(requestId, request.requestId);
+            return approveResult || {
+                success: true,
+                request: { ...request, status: 'executed', credentialIssued: true },
+                credential: {
+                    username: 'operator.test',
+                    password: 'UNIT_TEST_ONE_TIME_PASSWORD',
+                    source: 'generated'
+                },
+                meta: {
+                    staffWrites: 1,
+                    accountWrites: 1,
+                    credentialIssued: true
+                }
+            };
+        }
+    };
+}
+
+describe('Hermes staff/account onboarding credential handoff route safety', () => {
+    it('blocks credential-producing approval before staff/account writes when secure handoff is not configured', async () => {
+        const fakePool = createHermesCreateFakePool();
+        const service = createStaffAccountOnboardingRouteService();
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'POST',
+                '/api/hermes/staff-account-onboarding/requests/staff-account-request-1/approve',
+                {},
+                mutationHeaders('staff-account-no-handoff')
+            );
+
+            assert.equal(res.status, 409, res.text);
+            assert.equal(res.data.success, false);
+            assert.equal(res.data.code, 'HERMES_STAFF_ACCOUNT_ONBOARDING_CREDENTIAL_HANDOFF_REQUIRED');
+            assert.equal(service.calls.detail, 1);
+            assert.equal(service.calls.approve, 0);
+            assert.equal(JSON.stringify(res.data).includes('UNIT_TEST_ONE_TIME_PASSWORD'), false);
+        }, {
+            staffAccountOnboardingService: service
+        });
+    });
+
+    it('allows non-credential existing account link approval without secure handoff', async () => {
+        const fakePool = createHermesCreateFakePool();
+        const requestRow = staffAccountOnboardingRequestFixture({
+            requestType: 'existing_staff_link_existing_account',
+            payload: {
+                requestType: 'existing_staff_link_existing_account',
+                personal: { name: 'Працівник Лінк', username: 'worker.link' },
+                account: { mode: 'link_existing', issueOneTimeLogin: false, userId: 49 },
+                staff: { mode: 'existing', id: 936 }
+            }
+        });
+        const service = createStaffAccountOnboardingRouteService({
+            requestRow,
+            approveResult: {
+                success: true,
+                request: { ...requestRow, status: 'executed', credentialIssued: false },
+                credential: null,
+                meta: {
+                    staffWrites: 0,
+                    accountWrites: 0,
+                    credentialIssued: false
+                }
+            }
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'POST',
+                '/api/hermes/staff-account-onboarding/requests/staff-account-request-1/approve',
+                {},
+                mutationHeaders('staff-account-link-no-credential')
+            );
+
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.credential.issued, false);
+            assert.equal(service.calls.detail, 1);
+            assert.equal(service.calls.approve, 1);
+        }, {
+            staffAccountOnboardingService: service
+        });
+    });
+
+    it('blocks credential-producing approval when configured secure handoff preflight is not ready', async () => {
+        const fakePool = createHermesCreateFakePool();
+        const service = createStaffAccountOnboardingRouteService();
+        const secureCredentialHandoff = async () => {
+            throw new Error('delivery must not run when preflight blocks');
+        };
+        let preflightCalls = 0;
+        secureCredentialHandoff.preflight = async ({ request: approvalRequest }) => {
+            preflightCalls += 1;
+            assert.equal(approvalRequest.requestId, 'staff-account-request-1');
+            return {
+                ready: false,
+                channel: 'unit_secure_sink',
+                target: 'operator_private_handoff'
+            };
+        };
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'POST',
+                '/api/hermes/staff-account-onboarding/requests/staff-account-request-1/approve',
+                {},
+                mutationHeaders('staff-account-handoff-preflight-not-ready')
+            );
+
+            assert.equal(res.status, 409, res.text);
+            assert.equal(res.data.success, false);
+            assert.equal(res.data.code, 'HERMES_STAFF_ACCOUNT_ONBOARDING_CREDENTIAL_HANDOFF_NOT_READY');
+            assert.equal(service.calls.detail, 1);
+            assert.equal(service.calls.approve, 0);
+            assert.equal(preflightCalls, 1);
+            assert.equal(JSON.stringify(res.data).includes('UNIT_TEST_ONE_TIME_PASSWORD'), false);
+            assert.equal(JSON.stringify(res.data).includes('operator_private_handoff'), false);
+        }, {
+            staffAccountOnboardingService: service,
+            secureCredentialHandoff
+        });
+    });
+
+    it('approves credential-producing onboarding only through a configured secure redacted handoff', async () => {
+        const fakePool = createHermesCreateFakePool();
+        const service = createStaffAccountOnboardingRouteService();
+        const handoffs = [];
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'POST',
+                '/api/hermes/staff-account-onboarding/requests/staff-account-request-1/approve',
+                {},
+                mutationHeaders('staff-account-with-handoff')
+            );
+
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.success, true);
+            assert.equal(service.calls.detail, 1);
+            assert.equal(service.calls.approve, 1);
+            assert.equal(handoffs.length, 1);
+            assert.equal(handoffs[0].password, 'UNIT_TEST_ONE_TIME_PASSWORD');
+            assert.equal(res.data.credential.username, '[REDACTED]');
+            assert.equal(res.data.credential.usernameReturned, false);
+            assert.equal(res.data.credential.password, '[REDACTED]');
+            assert.equal(res.data.credential.returned, false);
+            assert.equal(res.data.credentialHandoff.delivered, true);
+            assert.equal(res.data.credentialHandoff.target, '[REDACTED]');
+            assert.equal(res.data.credentialHandoff.meta.password, '[REDACTED]');
+            assert.equal(res.data.credentialHandoff.meta.recipientChatId, '[REDACTED]');
+            assert.equal(res.data.credentialHandoff.meta.auditId, 'handoff-audit-1');
+            assert.equal(res.text.includes('UNIT_TEST_ONE_TIME_PASSWORD'), false);
+            assert.equal(res.text.includes('operator_private_handoff'), false);
+            assert.equal(res.text.includes('private-token'), false);
+            assert.equal(res.text.includes('777000111'), false);
+        }, {
+            staffAccountOnboardingService: service,
+            secureCredentialHandoff: async ({ credential }) => {
+                handoffs.push({ ...credential });
+                return {
+                    delivered: true,
+                    channel: 'unit_secure_sink',
+                    target: 'operator_private_handoff',
+                    meta: {
+                        password: 'SHOULD_NOT_LEAK',
+                        recipientChatId: '777000111',
+                        token: 'private-token',
+                        auditId: 'handoff-audit-1'
+                    }
+                };
+            }
+        });
+    });
+
+    it('does not report success when secure handoff delivery is not confirmed', async () => {
+        const fakePool = createHermesCreateFakePool();
+        const service = createStaffAccountOnboardingRouteService();
+        const handoffs = [];
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'POST',
+                '/api/hermes/staff-account-onboarding/requests/staff-account-request-1/approve',
+                {},
+                mutationHeaders('staff-account-handoff-delivery-not-confirmed')
+            );
+
+            assert.equal(res.status, 409, res.text);
+            assert.equal(res.data.success, false);
+            assert.equal(res.data.code, 'HERMES_STAFF_ACCOUNT_ONBOARDING_CREDENTIAL_HANDOFF_DELIVERY_FAILED');
+            assert.equal(service.calls.detail, 1);
+            assert.equal(service.calls.approve, 1);
+            assert.equal(handoffs.length, 1);
+            assert.equal(res.text.includes('UNIT_TEST_ONE_TIME_PASSWORD'), false);
+            assert.equal(res.text.includes('operator_private_handoff'), false);
+        }, {
+            staffAccountOnboardingService: service,
+            secureCredentialHandoff: async ({ credential }) => {
+                handoffs.push({ ...credential });
+                return {
+                    delivered: false,
+                    channel: 'unit_secure_sink',
+                    target: 'operator_private_handoff'
+                };
+            }
+        });
+    });
+
+    it('treats already executed credential requests as idempotent and never re-returns a password', async () => {
+        const fakePool = createHermesCreateFakePool();
+        const requestRow = staffAccountOnboardingRequestFixture({
+            status: 'executed',
+            credentialIssued: true
+        });
+        const service = createStaffAccountOnboardingRouteService({
+            requestRow,
+            approveResult: {
+                success: true,
+                request: { ...requestRow, status: 'executed', credentialIssued: true },
+                credential: null,
+                meta: {
+                    alreadyExecuted: true,
+                    credentialIssued: true,
+                    credentialReturned: false
+                }
+            }
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'POST',
+                '/api/hermes/staff-account-onboarding/requests/staff-account-request-1/approve',
+                {},
+                mutationHeaders('staff-account-already-executed-idempotent')
+            );
+
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.success, true);
+            assert.equal(service.calls.detail, 1);
+            assert.equal(service.calls.approve, 1);
+            assert.equal(res.data.meta.alreadyExecuted, true);
+            assert.equal(res.data.meta.credentialReturned, false);
+            assert.equal(res.data.credential.issued, false);
+            assert.equal(res.text.includes('UNIT_TEST_ONE_TIME_PASSWORD'), false);
+        }, {
+            staffAccountOnboardingService: service
         });
     });
 });

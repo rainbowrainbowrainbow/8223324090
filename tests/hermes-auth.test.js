@@ -432,6 +432,7 @@ describe('Hermes capabilities route auth', () => {
                 'staff_account_onboarding.preview',
                 'staff_account_onboarding.request',
                 'staff_account_onboarding.read',
+                'staff_account_onboarding.credential_handoff.readiness',
                 'staff_account_onboarding.approve',
                 'staff_account_onboarding.reject',
                 'staff_schedule.read',

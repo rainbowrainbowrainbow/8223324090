@@ -97,7 +97,7 @@ test('registry describes the current page catalog and active action contract', (
     const pageKeys = registry.PAGE_PERMISSIONS.map(entry => entry.key);
     const actionKeys = registry.ACTION_PERMISSIONS.filter(entry => entry.deprecated !== true).map(entry => entry.key);
 
-    assert.equal(pageKeys.length, 43);
+    assert.equal(pageKeys.length, 44);
     assert.equal(registry.ACTION_PERMISSIONS.length, 52);
     assert.equal(actionKeys.length, 48);
     assertUnique(pageKeys, 'page permission keys');

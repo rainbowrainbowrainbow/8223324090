@@ -2048,6 +2048,7 @@ function buildCapabilitiesPayload(env = process.env, options = {}) {
                 approveRequiresManageAccounts: true,
                 credentialHandoffReadiness: 'GET /api/hermes/staff-account-onboarding/credential-handoff/readiness',
                 credentialHandoffReadinessWrites: 0,
+                credentialHandoffReadinessRequiresManageAccounts: false,
                 rejectRequiresConfirmation: true,
                 rejectRequiresIdempotencyKey: true,
                 oneTimeLoginMaterialStoredInApprovalRequest: false,
@@ -2451,7 +2452,9 @@ function createHermesRouter(options = {}) {
     router.post('/task-watchdog/callback-dry-run', taskWatchdogCallbackDryRunHandler);
 
     router.get('/staff-account-onboarding/credential-handoff/readiness', async (req, res) => {
-        if (!assertHermesStaffAccountOnboardingAccess(req, res)) return;
+        // Readiness is an auth-only, non-credential preflight. It must not require
+        // manage_accounts because the Hermes integration key may be read-only for
+        // live health checks; credential-producing approvals remain separately gated.
         if (!secureCredentialHandoff) {
             return sendHermesError(
                 res,

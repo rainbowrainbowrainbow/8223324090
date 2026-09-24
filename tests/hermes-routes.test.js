@@ -1362,6 +1362,7 @@ describe('Hermes read-only task routes', () => {
         assert.equal(res.data.endpoints.staffAccountOnboarding.credentialApprovalWithoutHandoffBlocked, true);
         assert.equal(res.data.endpoints.staffAccountOnboarding.credentialHandoffReadiness, 'GET /api/hermes/staff-account-onboarding/credential-handoff/readiness');
         assert.equal(res.data.endpoints.staffAccountOnboarding.credentialHandoffReadinessWrites, 0);
+        assert.equal(res.data.endpoints.staffAccountOnboarding.credentialHandoffReadinessRequiresManageAccounts, false);
         assert.equal(res.data.endpoints.attendance.preview, 'POST /api/hermes/attendance/preview');
         assert.equal(res.data.endpoints.attendance.apply, 'POST /api/hermes/attendance/apply');
         assert.equal(res.data.endpoints.attendance.previewAttendanceWrites, 0);
@@ -4035,6 +4036,43 @@ describe('Hermes staff/account onboarding credential handoff route safety', () =
             assert.equal(preflightCalls, 1);
             assert.equal(deliveryCalls, 0);
         }, { secureCredentialHandoff });
+    });
+
+    it('allows auth-only secure handoff readiness for read-only Hermes health checks', async () => {
+        const fakePool = createHermesCreateFakePool();
+        const secureCredentialHandoff = async () => {
+            throw new Error('delivery must not run for readiness smoke');
+        };
+        secureCredentialHandoff.preflight = async () => ({
+            ready: true,
+            channel: 'owner_dm',
+            target: 'owner_private_chat',
+            meta: { nonCredentialPreflight: true }
+        });
+        const readOnlyAuth = (req, _res, next) => {
+            req.user = {
+                id: 99,
+                username: 'read.only.hermes',
+                role: 'animator',
+                business_contexts: ['event_genix'],
+                defaultBusinessContext: 'event_genix'
+            };
+            req.integration = { id: 'hermes-event-genix-crm', source: 'hermes' };
+            next();
+        };
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'GET',
+                '/api/hermes/staff-account-onboarding/credential-handoff/readiness'
+            );
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.meta.nonCredentialSmoke, true);
+            assert.equal(res.data.meta.staffWrites, 0);
+            assert.equal(res.data.meta.accountWrites, 0);
+        }, { secureCredentialHandoff, authMiddleware: readOnlyAuth });
     });
 
     it('reports secure handoff readiness not configured without issuing credentials', async () => {

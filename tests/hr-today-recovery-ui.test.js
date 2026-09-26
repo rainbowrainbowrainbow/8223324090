@@ -48,7 +48,7 @@ function harness(options = {}) {
     win.localStorage.setItem('pzp_current_user', JSON.stringify(user));
     win.localStorage.setItem('pzp_token', 'test-access-token');
     win.localStorage.setItem('pzp_access_token', 'test-access-token');
-    win.canAccess = action => action === 'hr.today.view' || (!options.todayOnly && ['hr.staff.manage', 'hr.schedule.view'].includes(action));
+    win.canAccess = action => action === 'hr.today.view' || (!options.todayOnly && ['hr.staff.view', 'hr.staff.manage', 'hr.schedule.view'].includes(action));
     const calls = [];
     win.fetch = async (url, request) => {
         calls.push({ url, ...request });
@@ -76,7 +76,9 @@ test('Today recovery sends only its business-scoped read and keeps counters, fil
         }
         assert.equal(win.document.querySelectorAll('#todayList .hr-staff-row').length, 4);
         assert.equal(win.document.querySelectorAll('#todayList .hr-clock-btn:not(:disabled)').length, 0);
-        assert.equal(win.document.querySelectorAll('#todayList [onclick*="handleClock"], #todayList [oncontextmenu], .hr-today-row-action--profile').length, 0);
+        assert.equal(win.document.querySelectorAll('#todayList [onclick*="handleClock"], #todayList [oncontextmenu]').length, 0);
+        assert.equal(win.document.querySelectorAll('#todayList .hr-today-row-action--profile').length, 4);
+        assert.match(win.document.querySelector('[data-staff-id="9701"] .hr-today-row-action--profile').getAttribute('onclick'), /openStaffEdit\(9701\)/);
         assert.equal(win.document.querySelectorAll('.hr-today-row-action--schedule').length, 4);
         assert.equal(win.document.getElementById('btnHrPrintDocuments').hidden, true);
         assert.doesNotMatch(win.document.getElementById('todayList').textContent, /Відмітити прихід|Не з'явився — відмітити/);
@@ -86,6 +88,36 @@ test('Today recovery sends only its business-scoped read and keeps counters, fil
         assert.equal(win.document.getElementById('todayAbsentMetric').textContent, '1');
         assert.equal(win.document.getElementById('todayOnShiftMetric').textContent, '0');
         assert.equal(win.document.querySelectorAll('#todayList .hr-staff-row').length, 1);
+    } finally { dom.window.close(); }
+});
+
+test('recovery profile action stays on the HR card for a linked account and hides on revoked capability or business scope', async () => {
+    const { dom, win, calls } = harness();
+    try {
+        await win.loadToday();
+        win._staffLinkCache = [{ id: 9701, user_id: 2026 }];
+        win.openStaffProfile = () => { throw new Error('account profile must not open'); };
+        win.renderToday(win.__todayRecoveryTestState().todayData);
+        const action = win.document.querySelector('[data-staff-id="9701"] .hr-today-row-action--profile');
+        assert.match(action.getAttribute('onclick'), /openStaffEdit\(9701\)/);
+        assert.doesNotMatch(action.getAttribute('onclick'), /openStaffProfile/);
+        assert.match(action.getAttribute('aria-label'), /HR картку/);
+        assert.equal(calls.some(call => call.url === 'staff-link-helper'), false);
+
+        win.canAccess = action => action === 'hr.today.view' || action === 'hr.schedule.view';
+        win.renderToday(win.__todayRecoveryTestState().todayData);
+        assert.equal(win.document.querySelectorAll('.hr-today-row-action--profile').length, 0);
+        assert.equal(win.document.querySelectorAll('.hr-today-row-action--schedule').length, 4);
+
+        win.canAccess = () => true;
+        win.AppState.currentUser.activeBusinessContext = 'park_restaurant';
+        win.renderToday(win.__todayRecoveryTestState().todayData);
+        assert.equal(win.document.querySelectorAll('.hr-today-row-action--profile').length, 0);
+
+        win.AppState.currentUser.activeBusinessContext = 'event_genix';
+        win.history.replaceState(null, '', '/hr?businessContext=event_genix&businessScope=all#today');
+        win.renderToday(win.__todayRecoveryTestState().todayData);
+        assert.equal(win.document.querySelectorAll('.hr-today-row-action--profile').length, 0);
     } finally { dom.window.close(); }
 });
 

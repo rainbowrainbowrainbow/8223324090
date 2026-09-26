@@ -133,6 +133,7 @@ const HARNESS_CODE = String.raw`
     let holdLazyTabLoads = false;
     let holdStaffUpdates = false;
     let failNextStaffUpdate = false;
+    let failNextProfileRead = false;
     let failNextWorkspaceRequest = '';
     let nextWorkspaceId = 1000;
 
@@ -253,6 +254,7 @@ const HARNESS_CODE = String.raw`
             '</div></div>',
             '<div id="teamGrid" class="hr-team-grid"></div>',
             '</main>',
+            '<div id="todayActionFixture"></div>',
             window.__hrTeamBrowserModalMarkup,
             '<button id="outsideButton">outside</button>'
         ].join('');
@@ -301,6 +303,10 @@ const HARNESS_CODE = String.raw`
                 }
                 if (holdStaffUpdates) return deferredStaffUpdate(id, body);
                 return staffUpdateResponse(id, body);
+            }
+            if (failNextProfileRead) {
+                failNextProfileRead = false;
+                return { success: false, status: 403, error: 'HR_CAPABILITY_REQUIRED' };
             }
             if (holdProfileLoads) return deferredProfile(id);
             return profileResponse(id);
@@ -554,6 +560,7 @@ const HARNESS_CODE = String.raw`
             staffUpdates.length = 0;
             holdStaffUpdates = false;
             failNextStaffUpdate = false;
+            failNextProfileRead = false;
             resetWorkspace();
             document.body.classList.toggle('dark-mode', Boolean(dark));
             teamStaff = Array.from(staffProfiles.values()).map(item => ({ is_active: true, hr_pool_status: 'core', ...item }));
@@ -621,6 +628,16 @@ const HARNESS_CODE = String.raw`
                 .filter(([requestPath]) => requestPath.includes(String(fragment)))
                 .reduce((total, [, count]) => total + Number(count || 0), 0);
         },
+        exactRequestCount: path => Number(requestCounts.get(path) || 0),
+        renderTodayProfileAction({ context = 'event_genix', mode = 'single', staffView = true, linked = true, recovery = true } = {}) {
+            AppState.currentUser = { ...AppState.currentUser, activeBusinessContext: context };
+            window.__staffViewAllowed = staffView;
+            window.__todayScopeMode = mode;
+            todayData = recovery ? { todayAccess: { readOnly: true, businessContext: 'event_genix' } } : {};
+            _staffLinkCache = linked ? [{ id: 1, user_id: 301 }] : [];
+            document.getElementById('todayActionFixture').innerHTML = renderTodayStaffProfileAction(1, 'QA Today Worker');
+        },
+        failNextProfileRead() { failNextProfileRead = true; },
         workspaceOperations: () => workspaceOperations.slice(),
         downloads: () => downloads.slice(),
         offboardingSubmissions: () => offboardingSubmissions.map(item => ({ path: item.path, body: { ...item.body } })),
@@ -694,8 +711,12 @@ async function installHarness(page, options = {}) {
         window.__hrTeamBrowserModalMarkup = markup;
     }, STAFF_EDIT_MODAL_HTML);
     await page.evaluate(() => {
-        window.AppState = { currentUser: { id: 1, role: 'creator', name: 'QA Creator' } };
-        window.resolveCapability = (_user, capability) => ({ allowed: Boolean(capability) });
+        window.AppState = { currentUser: { id: 1, role: 'creator', name: 'QA Creator', activeBusinessContext: 'event_genix' } };
+        window.__staffViewAllowed = true;
+        window.__todayScopeMode = 'single';
+        window.resolveCapability = (_user, capability) => ({ allowed: capability === 'hr.staff.view' ? window.__staffViewAllowed : Boolean(capability) });
+        window.getCrmBusinessScope = user => ({ mode: window.__todayScopeMode, activeContext: user?.activeBusinessContext });
+        window.openStaffProfile = () => { throw new Error('Today recovery must not open the account profile'); };
         window.__notifications = [];
         window.showNotification = (message, type = 'info') => window.__notifications.push({ message, type });
         window.requestAnimationFrame = callback => window.setTimeout(callback, 0);
@@ -1804,6 +1825,40 @@ async function assertRealTeamLoaderStates(page) {
     assert.equal(await page.locator('[data-nav-count="workers"]').textContent(), '—');
 }
 
+async function assertTodayRecoveryProfileAction(page) {
+    await installHarness(page, { dark: false });
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.renderTodayProfileAction());
+    const action = page.locator('#todayActionFixture .hr-today-row-action--profile');
+    assert.equal(await action.count(), 1, 'Park staff viewer sees the Today profile action in recovery');
+    assert.match(await action.getAttribute('aria-label'), /HR картку/);
+    assert.match(await action.getAttribute('onclick'), /openStaffEdit\(1\)/, 'linked account still uses the base HR card');
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextProfileRead());
+    await action.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.getElementById('staffEditModal')?.dataset.cardState === 'error');
+    assert.equal(await page.locator('#staffProfileCardState').getAttribute('role'), 'alert', '403 is an error, not an empty card');
+    assert.match(await page.locator('#staffProfileCardState').textContent(), /HR_CAPABILITY_REQUIRED/);
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.exactRequestCount('/staff/1')), 1);
+
+    await page.locator('#staffProfileCardState button').click();
+    await page.waitForFunction(() => document.getElementById('staffEditModal')?.dataset.cardState === 'ready');
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.exactRequestCount('/staff/1')), 2, 'retry reissues the protected detail GET');
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length), 0, 'opening Today card never writes staff');
+    await page.locator('#editCloseTop').click();
+
+    for (const denied of [
+        { staffView: false }, { context: 'dar' }, { mode: 'multi' }, { mode: 'all' }
+    ]) {
+        await page.evaluate(options => window.__hrTeamBrowserSmoke.renderTodayProfileAction(options), denied);
+        assert.equal(await action.count(), 0, `Today action hidden for ${JSON.stringify(denied)}`);
+    }
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.exactRequestCount('/staff/1')), 2, 'denied contexts do not request detail');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.renderTodayProfileAction({ recovery: false }));
+    const ordinaryAction = await action.getAttribute('onclick');
+    assert.match(ordinaryAction, /openStaffProfile\(301\)/, `ordinary Today linked-account navigation is unchanged: ${ordinaryAction}`);
+}
+
 async function run() {
     const playwright = requirePlaywright();
     const browser = await playwright.chromium.launch({ headless: HEADLESS });
@@ -1819,6 +1874,13 @@ async function run() {
         await assertRealTeamLoaderStates(loaderPage);
         console.log('HR Team real loader states passed');
         await loaderPage.close();
+        const todayPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        try {
+            todayPage.setDefaultTimeout(15000);
+            await assertTodayRecoveryProfileAction(todayPage);
+        } finally {
+            await todayPage.close();
+        }
         await installHarness(page, { dark: false });
         await step('layout', assertCardLayoutAndOverflow);
         await step('navigation', assertTeamNavigation);

@@ -3583,17 +3583,29 @@ function hrTodayActionIconSvg(type) {
 }
 
 function renderTodayStaffProfileAction(staffId, staffName) {
-    if (isTodayRecoveryReadOnly()) return '';
+    const id = Number(staffId);
+    if (!Number.isInteger(id) || id <= 0) return '';
+    const recoveryReadOnly = isTodayRecoveryReadOnly();
+    if (recoveryReadOnly) {
+        const user = getHrCurrentUser();
+        const scope = typeof getCrmBusinessScope === 'function' ? getCrmBusinessScope(user) : null;
+        const requestedScope = typeof crmBusinessScopeFromUrl === 'function' ? crmBusinessScopeFromUrl() : null;
+        if (!canUseHrCapability('hr.staff.view') || scope?.mode !== 'single'
+            || scope.activeContext !== 'event_genix' || (requestedScope && requestedScope.mode !== 'single')
+            || (user?.activeBusinessContext && user.activeBusinessContext !== 'event_genix')
+            || (user?.accessContext && user.accessContext.status !== 'ready')
+            || todayData?.todayAccess?.businessContext !== 'event_genix') return '';
+    }
     const link = typeof _staffLinkCache !== 'undefined' && Array.isArray(_staffLinkCache)
         ? _staffLinkCache.find(item => Number(item.id) === Number(staffId))
         : null;
     const userId = Number(link?.user_id);
-    if (Number.isInteger(userId) && userId > 0 && typeof openStaffProfile === 'function') {
+    if (!recoveryReadOnly && Number.isInteger(userId) && userId > 0 && typeof openStaffProfile === 'function') {
         const label = `Відкрити робочий профіль: ${staffName}`;
         return `<button type="button" class="hr-today-row-action hr-today-row-action--profile" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" onclick="event.stopPropagation();openStaffProfile(${userId})">${hrTodayActionIconSvg('profile')}</button>`;
     }
     const label = `Відкрити HR картку: ${staffName}`;
-    return `<button type="button" class="hr-today-row-action hr-today-row-action--profile" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" onclick="event.stopPropagation();openStaffEdit(${Number(staffId)})">${hrTodayActionIconSvg('profile')}</button>`;
+    return `<button type="button" class="hr-today-row-action hr-today-row-action--profile" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" onclick="event.stopPropagation();openStaffEdit(${id})">${hrTodayActionIconSvg('profile')}</button>`;
 }
 
 function renderTodayStaffScheduleAction(staffId, staffName) {

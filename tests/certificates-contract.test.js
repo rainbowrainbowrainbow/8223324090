@@ -192,6 +192,11 @@ test('booking certificate validation fails closed and ignores stale code or busi
     assert.match(result.textContent, /доступний лише для перевірки/);
     assert.notEqual(result.style.color, 'var(--success, green)');
 
+    fetchImpl = async () => ({ status: 403, json: async () => ({ error: 'business surface unavailable' }) });
+    await validate();
+    assert.match(result.textContent, /недоступна в поточному бізнес-контексті/);
+    assert.notEqual(result.style.color, 'var(--success, green)');
+
     let resolveStaleResponse;
     fetchImpl = () => new Promise(resolve => { resolveStaleResponse = resolve; });
     input.value = 'CERT-STALE';

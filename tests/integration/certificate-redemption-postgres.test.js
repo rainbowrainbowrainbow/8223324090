@@ -191,7 +191,8 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
             const actor = await account();
             const cert = await certificate();
             for (const context of ['dar', 'all']) {
-                assert.equal((await request(actor, '/validate/' + cert.cert_code, 'GET', {}, context)).body.canRedeem, false);
+                const validation = await request(actor, '/validate/' + cert.cert_code, 'GET', {}, context);
+                assert.equal(validation.status, 403, context);
                 assert.equal((await request(actor, `/${cert.id}/redeem`, 'POST', {}, context)).status, 403);
             }
             await pool.query("UPDATE business_memberships SET role = 'security' WHERE user_id = $1 AND business_id = 1", [actor.user.id]);

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.16",
+  "version": "0.82.17",
   "eventGenix": {
-    "releaseLabel": "Сертифікати: стабільні типи та стани"
+    "releaseLabel": "HR Парку: картка команди та стани переходів"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

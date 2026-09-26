@@ -21,6 +21,7 @@ const { sendTelegramMessage, telegramRequest } = require('./telegram');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('./bookingVisibility');
 const { buildCertificateCheckUrl, getCertificateEffectiveStatus } = require('./certificates');
+const { BUSINESS_CERTIFICATE_FILTER } = require('./certificateQa');
 const {
     pushDefaultTimelineBusinessContext,
     timelineBusinessContextJoinSql
@@ -136,7 +137,7 @@ async function handleCertVerify(chatId, threadId, code) {
 
     try {
         const result = await pool.query(
-            'SELECT cert_code, status, valid_until FROM certificates WHERE cert_code = $1',
+            `SELECT cert_code, status, valid_until FROM certificates WHERE cert_code = $1 AND ${BUSINESS_CERTIFICATE_FILTER}`,
             [certCode]
         );
 

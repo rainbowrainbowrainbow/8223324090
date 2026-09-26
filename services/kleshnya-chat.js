@@ -8,6 +8,7 @@
  * AI mode uses the shared OpenRouter rail from services/ai-config.js.
  */
 const { pool } = require('../db');
+const { BUSINESS_CERTIFICATE_FILTER } = require('./certificateQa');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('./bookingVisibility');
 const { legacyBusinessSurfaceAccess } = require('./legacyBusinessSurface');
@@ -198,7 +199,7 @@ async function gatherAIContext(username, dateStr, actor = null, pageContext = nu
 
         // Active certificates
         const certsRes = await pool.query(
-            `SELECT COUNT(*) cnt FROM certificates WHERE status = 'active'`
+            `SELECT COUNT(*) cnt FROM certificates WHERE status = 'active' AND ${BUSINESS_CERTIFICATE_FILTER}`
         );
         ctx.activeCertificates = parseInt(certsRes.rows[0].cnt);
 
@@ -1296,12 +1297,12 @@ async function handleCertificates(lower, username) {
     if (isExpiring) {
         res = await pool.query(
             `SELECT cert_code, display_value, type_text, valid_until, status
-             FROM certificates WHERE status = 'active' AND valid_until <= (CURRENT_DATE + INTERVAL '14 days')
+             FROM certificates WHERE status = 'active' AND ${BUSINESS_CERTIFICATE_FILTER} AND valid_until <= (CURRENT_DATE + INTERVAL '14 days')
              ORDER BY valid_until`
         );
     } else {
         res = await pool.query(
-            `SELECT status, COUNT(*) cnt FROM certificates GROUP BY status ORDER BY
+            `SELECT status, COUNT(*) cnt FROM certificates WHERE ${BUSINESS_CERTIFICATE_FILTER} GROUP BY status ORDER BY
                 CASE status WHEN 'active' THEN 0 WHEN 'used' THEN 1 WHEN 'expired' THEN 2 ELSE 3 END`
         );
     }

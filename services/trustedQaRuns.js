@@ -74,7 +74,8 @@ const TRUSTED_QA_ENTITY_TYPES = new Set([
     'banquet_group',
     'banquet_membership',
     'booking_banquet_link',
-    'product'
+    'product',
+    'certificate'
 ]);
 const TRUSTED_QA_CAPABILITY_STATUS = Object.freeze({
     READABLE: 'readable',
@@ -1075,7 +1076,8 @@ function trustedQaSideEffectScope(inventory, bookingIds, groupIds) {
         entityRowIds: trustedQaEntityRowIds(inventory),
         bookingIds: trustedQaTextArray(bookingIds),
         groupIds: trustedQaTextArray(groupIds),
-        productIds: entityIdsByType(inventory, 'product')
+        productIds: entityIdsByType(inventory, 'product'),
+        certificateIds: entityIdsByType(inventory, 'certificate')
     };
 }
 
@@ -1140,6 +1142,10 @@ function buildTrustedQaAttributionClauses(columns, scope) {
     if (has('product_id') && scope.productIds.length) {
         clauses.push(`${column('product_id')} = ANY(${param(trustedQaTextArray(scope.productIds), 'text[]')})`);
         methods.push('product_id');
+    }
+    if (has('certificate_id') && scope.certificateIds.length) {
+        clauses.push(`${column('certificate_id')}::text = ANY(${param(trustedQaTextArray(scope.certificateIds), 'text[]')})`);
+        methods.push('certificate_id');
     }
     for (const correlationColumn of ['idempotency_key', 'correlation_id', 'request_id', 'request_key']) {
         if (has(correlationColumn) && scope.runPublicId) {
@@ -1427,7 +1433,23 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
     const bookingIds = classified.bookingIds;
     const groupIds = entityIdsByType(inventory, 'banquet_group');
     const productIds = entityIdsByType(inventory, 'product');
+    const certificateIds = entityIdsByType(inventory, 'certificate');
     const context = normalizeBusinessContext(inventory.run.business_context || DEFAULT_BUSINESS_CONTEXT);
+    if (certificateIds.length) {
+        if (certificateIds.length !== 1 || Number(inventory.run.max_entity_count) !== 1) {
+            throw new TrustedQaRunError('Certificate QA manifest is not bounded to one record', 'QA_RUN_CERTIFICATE_LIMIT', {}, 409);
+        }
+        const certRows = await queryable.query(
+            `SELECT id, status, issued_by_user_id, display_value FROM certificates
+              WHERE id::text = ANY($1::text[]) FOR UPDATE`,
+            [certificateIds]
+        );
+        const cert = certRows.rows?.[0];
+        if (certRows.rowCount !== 1 || Number(cert.issued_by_user_id) !== Number(inventory.run.required_user_id)
+            || cert.display_value !== inventory.run.test_customer_marker) {
+            throw new TrustedQaRunError('Certificate QA manifest ownership changed', 'QA_RUN_CERTIFICATE_MANIFEST_DRIFT', {}, 409);
+        }
+    }
     const cleanupRows = await loadTrustedQaCleanupRows(queryable, inventory, bookingIds, groupIds);
     const openTasks = bookingIds.length ? await queryable.query(
         `SELECT id
@@ -1522,6 +1544,14 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
             [productIds, context]
         );
     }
+    if (certificateIds.length) {
+        await queryable.query(
+            `UPDATE certificates SET status = 'revoked', invalidated_at = NOW(),
+                invalid_reason = 'trusted_qa_run_closed', updated_at = NOW()
+              WHERE id::text = ANY($1::text[]) AND status = 'active'`,
+            [certificateIds]
+        );
+    }
     const activeAfter = bookingIds.length ? await queryable.query(
         `SELECT COUNT(*)::int AS count
            FROM bookings
@@ -1543,9 +1573,15 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
             AND is_active = true`,
         [productIds]
     ) : { rows: [{ count: 0 }] };
+    const activeCertificatesAfter = certificateIds.length ? await queryable.query(
+        `SELECT COUNT(*)::int AS count FROM certificates
+          WHERE id::text = ANY($1::text[]) AND status = 'active'`,
+        [certificateIds]
+    ) : { rows: [{ count: 0 }] };
     if (Number(activeAfter.rows?.[0]?.count || 0)
         || Number(activeGroupsAfter.rows?.[0]?.count || 0)
-        || Number(activeProductsAfter.rows?.[0]?.count || 0)) {
+        || Number(activeProductsAfter.rows?.[0]?.count || 0)
+        || Number(activeCertificatesAfter.rows?.[0]?.count || 0)) {
         throw new TrustedQaRunError(
             'Trusted QA cleanup postcondition failed',
             'QA_RUN_CLEANUP_POSTCONDITION_FAILED',
@@ -1579,6 +1615,7 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
             booking_count: bookingIds.length,
             group_count: groupIds.length,
             product_count: productIds.length,
+            certificate_count: certificateIds.length,
             entity_count: classified.entityCount,
             purged_event_queue_count: 0
         }
@@ -1692,6 +1729,7 @@ module.exports = {
     assertTrustedQaFixtureSafePayload,
     classifyCleanupInventory,
     cleanupTrustedQaRun,
+    consumeTrustedQaToken,
     createTrustedQaRun,
     endpointAllowed,
     hasClientDisposableQaMarker,

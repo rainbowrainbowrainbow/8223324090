@@ -21,6 +21,7 @@ const {
 const { buildCapabilitySnapshot } = require('../services/accountAccessPolicy');
 const { shapeRevenuePayload } = require('../services/revenueAccessPolicy');
 const { resolveActiveQaCreatorLease } = require('../services/qaCreatorLease');
+const { BUSINESS_CERTIFICATE_FILTER } = require('../services/certificateQa');
 const { createLogger } = require('../utils/logger');
 const { LOGIN_IDENTITY_WHERE_SQL, normalizeLoginIdentifier } = require('../services/authIdentity');
 const {
@@ -569,7 +570,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
             // 10: Certificates issued WITH details
             pool.query(
                 `SELECT id, cert_code, display_value, status, valid_until, used_at FROM certificates
-                 WHERE issued_by_name = $1
+                 WHERE issued_by_name = $1 AND ${BUSINESS_CERTIFICATE_FILTER}
                  ORDER BY created_at DESC LIMIT 10`,
                 [username]
             ),
@@ -765,7 +766,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
             pool.query(
                 `SELECT COUNT(*)::int AS total
                  FROM certificates
-                 WHERE issued_by_name = $1`,
+                 WHERE issued_by_name = $1 AND ${BUSINESS_CERTIFICATE_FILTER}`,
                 [username]
             ),
             // 25: Staff profile bridge for profession-centered profile surface

@@ -12,6 +12,10 @@ on every push and pull request with an ephemeral PostgreSQL 16 service.
 - The actual Express app and PostgreSQL: booking creation and certificate
   redemption commit together, a failed booking rolls both back, duplicate use
   is rejected, and cancelling the booking leaves the certificate used.
+- Trusted disposable QA certificates: server-bound token/account/context,
+  expiry and one-certificate limit, no creation event, Telegram image, print,
+  booking or finance side effects, business-list exclusion, direct redemption,
+  and close-run preservation/revocation.
 - Browser flow on synthetic local HTTP: scan/lookup, cancel confirmation,
   confirmed redemption, pending-submit protection, verify-only state,
   business-scope changes, stale responses, and mobile layout.

@@ -1,7 +1,18 @@
 # TASK 2 — сертифікати: реалізація та релізні докази
 
 Дата реалізації: 2026-09-24. Базовий SHA ізольованої копії: `ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79`.
-Актуальний статус на 2026-09-26: версія `0.82.16` доставлена; live write-QA погашення **не завершена** через відсутність ізоляції QA-сертифікатів.
+Актуальний статус на 2026-09-26: certificate release `0.82.16` доставлений; production уже працює на `0.82.17` (`814900eab52278a4bd81231aba494f99e9678bbf`). Live write-QA погашення **не завершена**. Ізоляцію QA-сертифікатів реалізовано у гілці `codex/cert-close-03`, але її ще не доставлено.
+
+## CERT-CLOSE-03 — поточний release preflight
+
+- Чистий кандидат від актуального production SHA `814900eab52278a4bd81231aba494f99e9678bbf`: `6f2824ee4a8daa8dd12a7c616ca231f4746f1f1d` (шість перенесених CERT-CLOSE-01/02 commitів без конфліктів). Попередній CI оригінального CERT-CLOSE-02 SHA `c1ef108caac6aeb1f30dd33d14fe12c2e23f402c`: [успішний run](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36235326279). Це не CI нового кандидата.
+- Live `/api/version`: `0.82.17`, SHA і source branch `codex/eventgenix-production` підтверджено. Railway status підтвердив project `fortunate-appreciation`, environment `production`, service `8223324090`, deployment `edde823c-8296-447a-9df0-e7d15b40dc05` зі статусом `SUCCESS`.
+- Єдина нова міграція кандидата: `371_trusted_qa_certificate_lookup.sql`, адитивний і повторюваний частковий індекс на реєстрі trusted QA. Вона не змінює наявні сертифікати. Відкат описано в `docs/CERTIFICATE_TRUSTED_QA.md`.
+- Read-only aggregate audit 2026-09-26 10:36 UTC: 918 сертифікатів, з них 484 доведено одноразові, 3 точні абонементи, 431 невизначений тип; `priorVersionRollback.unsafeGrants=0`, `safeDenials=0`. Жодних кодів або даних отримувачів не вибирали.
+- Канонічний `codex:production-block prepare` зупинив candidate з `PRODUCTION_BLOCK_RED_PATHS`: `routes/auth.js`, `routes/finance.js`. Controller підтримує автоматичний QA scope лише `timeline`/`canary`, тому certificate QA потребує окремого перевіреного запуску через `scripts/trusted-qa-certificate-run.js` після release. Production push, migration, deploy і QA-запис не виконувалися.
+- Локальний Node 22/npm 10: 35/35 цільових certificate/finance/legacy tests — pass; синтетичний certificate browser smoke — pass. `npm test` дійшов до 3099 тестів: 3098 pass, 1 fail у незміненому `tests/checkin-reliability-contract.test.js`. На Windows тест шукає LF-підрядок у CRLF-файлі `checkin.html`; це не certificate failure. Повний baseline усе одно не можна назвати зеленим; потрібний exact-SHA CI на Linux.
+- Read-only перевірка наявного локального тестового акаунта: активний, QA-позначений, без staff profile і з членством Парку, але роль `senior_manager` дозволяє погашення, а не видачу. Другий акаунт із secrets-файлу має роль `creator` і staff profile; він також не підходить для QA-видачі. Існує один ізольований QA-admin акаунт у БД, але його credentials не доступні в дозволеному локальному secrets-файлі. Жодних акаунтів або ролей не змінювали.
+- Цей розділ є preflight, а не доказом завершення. Exact-SHA CI, нова версія, manual deploy, браузерний сценарій, один успішний запис історії та відмова повторного погашення залишаються відкритими.
 
 ## Реліз CERT-FINISH-01–04
 

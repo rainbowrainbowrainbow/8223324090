@@ -71,3 +71,14 @@ applied migration 370. A post-release aggregate-only read-only audit at
 08:52 UTC found the same 918 records and category counts listed above.
 `priorVersionRollback.unsafeGrants` and `.safeDenials` were both zero.
 No certificate QA records were created during this release check.
+
+## CERT-CLOSE-03 pre-release read-only audit (2026-09-26)
+
+At 10:36 UTC, the aggregate-only audit on the current `0.82.17` production
+database again found 918 certificates: 484 `proven_one_time`, 3
+`subscription_exact`, 0 `subscription_variant`, 0 `empty_label`, and 431
+`other_unmapped`. `priorVersionRollback.unsafeGrants=0` and `.safeDenials=0`.
+The audit used a read-only transaction and selected no codes, recipients, or
+raw unknown labels. Migration 371 in the CERT-CLOSE-03 candidate only adds an
+index to the trusted QA entity registry; it does not remap certificate types.
+The candidate is not deployed and no CERT-CLOSE-03 QA certificate was created.

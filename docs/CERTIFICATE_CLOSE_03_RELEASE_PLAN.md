@@ -28,4 +28,18 @@ it does not claim a production deploy or live redemption.
 
 `npm run codex:production-block -- prepare -- --release-label "Сертифікати: узгоджена перевірка та ізольований QA" --qa-scope none` returned `PRODUCTION_BLOCK_RED_PATHS` for `routes/auth.js` and `routes/finance.js`. These files respectively exclude QA records from the staff profile and reject QA certificate finance links. The paths remain Red; they must not be relabelled as ordinary Yellow changes or passed as the unrelated SYS-MB protected workflow. The current controller only accepts automated `timeline`/`canary` QA scopes, so certificate QA cannot be represented as its `allowedQaScope` without a separate, scoped controller change.
 
+The owner authorized `CERT-CLOSE-03-RED-FCE8B674`. The scoped controller update
+adds `certificate-qa-isolation` without changing the Red path classifier. It
+requires exactly `routes/auth.js` and `routes/finance.js` as Red paths, the
+certificate QA implementation, and only migration 371. Its signed QA scope
+contains one run ID, exact test account, Park context, 30-minute maximum TTL,
+and a one-certificate limit. `prepare` runs the existing read-only certificate
+operator plan. After deployment the controller records QA as `pending_manual`;
+the operator creates the one run only after exact live identity and isolation
+checks. The controller does not substitute timeline QA or silently create a
+certificate during deploy.
+The four Ukrainian release-note items in
+`docs/CERTIFICATE_CLOSE_03_RELEASE_NOTES.json` are signed into the production
+block and replace the generated changelog templates before the release commit.
+
 Pending before production: resolve this Red gate through a specific authorized workflow; then produce exact release SHA and green CI, deploy through the canonical controller, confirm live identity and migration, verify the server QA mechanism, run one isolated browser issue/redeem/retry scenario, close the run, and append the exact evidence to this plan and the certificate reports. No production record has been created for CERT-CLOSE-03.

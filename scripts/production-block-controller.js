@@ -19,6 +19,7 @@ const {
 const ROOT = path.resolve(__dirname, '..');
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const TRUSTED_QA_CONTROLLER = path.join(ROOT, 'scripts', 'trusted-qa-timeline-controller.js');
+const CERTIFICATE_QA_OPERATOR = path.join(ROOT, 'scripts', 'trusted-qa-certificate-run.js');
 
 function fail(condition, message, code, details = {}) {
     if (!condition) throw new ProductionBlockError(message, code, details);
@@ -74,6 +75,51 @@ function readBlockFile(file, options = {}) {
     fail(Boolean(file) && fs.existsSync(file), 'Production block file is unavailable', 'PRODUCTION_BLOCK_FILE_MISSING');
     const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
     return validateManifest(manifest, options);
+}
+
+function releaseNotesFromFile(file) {
+    if (!file) return [];
+    const target = path.resolve(ROOT, file);
+    const relative = path.relative(ROOT, target).replaceAll('\\', '/');
+    fail(/^docs\/[a-zA-Z0-9_/-]+\.json$/.test(relative)
+        && !relative.split('/').includes('..'),
+    'Release notes file must be a JSON file under docs/',
+    'PRODUCTION_BLOCK_RELEASE_NOTES_FILE_INVALID');
+    try {
+        return JSON.parse(fs.readFileSync(target, 'utf8'));
+    } catch {
+        throw new ProductionBlockError('Release notes file is missing or invalid JSON',
+            'PRODUCTION_BLOCK_RELEASE_NOTES_FILE_INVALID');
+    }
+}
+
+function escapeReleaseHtml(value) {
+    return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+function applyReleaseNotes(manifest, root = ROOT) {
+    if (!manifest.releaseNotes?.length) return;
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    const version = pkg.version;
+    const label = pkg.eventGenix?.releaseLabel;
+    fail(label === manifest.releaseLabel, 'Release label drifted before release notes were written',
+        'PRODUCTION_BLOCK_RELEASE_NOTES_LABEL_DRIFT');
+    const markdownFile = path.join(root, 'CHANGELOG.md');
+    const htmlFile = path.join(root, 'index.html');
+    const markdown = fs.readFileSync(markdownFile, 'utf8');
+    const html = fs.readFileSync(htmlFile, 'utf8');
+    const defaultMarkdown = `- **${label}** - release marker, cache tags and visible version metadata were prepared automatically.`;
+    const defaultHtml = `<li><b>${escapeReleaseHtml(label)}</b> — release marker, cache tags and visible version metadata were prepared automatically.</li>`;
+    fail(markdown.includes(`## v${version} - ${label}`) && markdown.includes(defaultMarkdown)
+        && html.includes(`<h4>v${version} — ${escapeReleaseHtml(label)}</h4>`) && html.includes(defaultHtml),
+    'Generated release notes templates differ from the signed release',
+    'PRODUCTION_BLOCK_RELEASE_NOTES_TEMPLATE_MISMATCH');
+    const markdownNotes = manifest.releaseNotes.map(item => `- **${item.title}** — ${item.text}`).join('\n');
+    const htmlNotes = manifest.releaseNotes.map(item =>
+        `<li><b>${escapeReleaseHtml(item.title)}</b> — ${escapeReleaseHtml(item.text)}</li>`).join('\n                        ');
+    fs.writeFileSync(markdownFile, markdown.replace(defaultMarkdown, markdownNotes));
+    fs.writeFileSync(htmlFile, html.replace(defaultHtml, htmlNotes));
 }
 
 function resolveSpawnCommand(command, args, options = {}) {
@@ -194,11 +240,14 @@ function defaultRuntime() {
             return resumeAuthorizedQa(manifest, releaseSha);
         },
         async preflightQa(scope, live) {
-            return trustedQaPreflight(scope, live);
+            return scope.kind === 'certificate'
+                ? certificateQaPreflight(scope)
+                : trustedQaPreflight(scope, live);
         },
         async execute(manifest, blockFile) {
             commandResult('npm', ['test'], { inherit: true });
             commandResult('npm', ['run', 'version:bump', '--', 'patch', '--label', manifest.releaseLabel], { inherit: true });
+            applyReleaseNotes(manifest);
             const releasePaths = git(['diff', '--name-only']).split(/\r?\n/).filter(Boolean);
             fail(releasePaths.length > 0, 'Version bump did not produce release artifacts', 'PRODUCTION_BLOCK_RELEASE_ARTIFACTS_MISSING');
             const invalidReleasePaths = releasePaths.filter(file => !isReleaseArtifact(file));
@@ -312,6 +361,39 @@ function trustedQaPreflight(scope, live) {
     return report;
 }
 
+function certificateQaPreflight(scope) {
+    fail(Boolean(process.env.TRUSTED_QA_OPERATOR_DATABASE_URL)
+        && process.env.DATABASE_URL === process.env.TRUSTED_QA_OPERATOR_DATABASE_URL,
+    'Certificate QA preflight requires the exact process-local operator database URL',
+    'PRODUCTION_BLOCK_QA_OPERATOR_DATABASE_MISSING');
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'eventgenix-certificate-qa-preflight-'));
+    const planFile = path.join(directory, 'plan.json');
+    try {
+        fs.writeFileSync(planFile, stableJson({
+            runId: scope.runId,
+            testAccountId: scope.testAccountId,
+            businessContext: scope.businessContext,
+            ttlMinutes: scope.ttlMinutes
+        }), { encoding: 'utf8', mode: 0o600 });
+        const report = parseControllerJson(commandResult(process.execPath, [
+            CERTIFICATE_QA_OPERATOR, '--mode', 'plan', '--plan-file', planFile
+        ]), 'PRODUCTION_BLOCK_QA_PREFLIGHT_MALFORMED');
+        fail(report.plan?.runId === scope.runId
+            && report.plan?.testAccountId === scope.testAccountId
+            && report.plan?.businessContext === scope.businessContext
+            && report.plan?.ttlMinutes === scope.ttlMinutes
+            && report.readiness?.isolated === true
+            && report.readiness?.openCertificateRuns === 0,
+        'Certificate QA read-only preflight did not confirm its exact isolated scope',
+        'PRODUCTION_BLOCK_QA_PREFLIGHT_FAILED');
+        return { success: true, action: 'preflight', collisionFree: true,
+            expectedEntityCount: 1, planHash: report.planHash, runId: scope.runId };
+    } finally {
+        if (fs.existsSync(planFile)) fs.unlinkSync(planFile);
+        fs.rmdirSync(directory);
+    }
+}
+
 function findUnexpiredQaBlocker(status, now = new Date()) {
     return (status?.runs || []).find(run => run?.state === 'active'
         && Number.isFinite(Date.parse(String(run.expiresAt || '')))
@@ -362,6 +444,13 @@ async function resumeAuthorizedQa(manifest, releaseSha, dependencies = {}) {
     fail(String(live.commitSha || '').toLowerCase() === releaseSha
         && live.sourceBranch === manifest.allowedBranch,
     'Live release identity differs from the block release SHA/branch', 'PRODUCTION_BLOCK_QA_LIVE_DRIFT');
+    if (manifest.allowedQaScope.kind === 'certificate') {
+        return sanitize({ status: 'pending_manual', kind: 'certificate',
+            runId: manifest.allowedQaScope.runId,
+            testAccountId: manifest.allowedQaScope.testAccountId,
+            ttlMinutes: manifest.allowedQaScope.ttlMinutes,
+            fixtureLimit: 1 });
+    }
     const blocker = findUnexpiredQaBlocker(await readQaStatus(), dependencies.now || new Date());
     if (blocker) {
         return sanitize({
@@ -401,13 +490,19 @@ function releaseCommandPlan(manifest) {
         `npm run release:railway-up -- --branch ${manifest.allowedBranch} --project ${manifest.railwayProjectId} --environment ${manifest.railwayEnvironment} --service ${manifest.railwayServiceId}`,
         'npm run version:smoke -- <live-url>',
         'npm run release:timeline-proof -- <live-url>',
-        ...(manifest.allowedQaScope?.enabled ? ['npm run qa:timeline:controller -- --action run <authorized-scope>'] : [])
+        ...(manifest.allowedQaScope?.kind === 'certificate'
+            ? ['Certificate QA: one manual plan/create/finish run after exact live identity proof']
+            : manifest.allowedQaScope?.enabled
+                ? ['npm run qa:timeline:controller -- --action run <authorized-scope>'] : [])
     ];
 }
 
 async function prepareAction(options, runtime) {
     const facts = await runtime.facts();
-    const manifest = buildManifest(facts, options);
+    const manifest = buildManifest(facts, {
+        ...options,
+        releaseNotes: options.releaseNotes || releaseNotesFromFile(options.releaseNotesFile)
+    });
     if (manifest.allowedQaScope?.enabled === true) {
         const qaPreflight = await runtime.preflightQa(manifest.allowedQaScope, facts.live);
         manifest.runtimeState.qaPreflight = sanitize(qaPreflight);
@@ -503,6 +598,7 @@ function parseOptions(argv) {
         '--validity-minutes',
         '--max-release-attempts',
         '--release-label',
+        '--release-notes-file',
         '--protected-workflow',
         '--qa-scope',
         '--qa-scope-base64'
@@ -520,6 +616,7 @@ function parseOptions(argv) {
         validityMinutes: Number(argValue(args, '--validity-minutes', '360')),
         maxReleaseAttempts: Number(argValue(args, '--max-release-attempts', '3')),
         releaseLabel: cleanText(argValue(args, '--release-label', 'Autonomy Hardening'), 120),
+        releaseNotesFile: argValue(args, '--release-notes-file'),
         protectedWorkflow: cleanText(argValue(args, '--protected-workflow', 'none'), 80),
         qaScope: parseQaScope(qaScopeValue),
         dryRun: argPresent(args, '--dry-run')
@@ -551,6 +648,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+    applyReleaseNotes,
     assertExecuteDrift,
     defaultBlockFile,
     decodeQaScope,

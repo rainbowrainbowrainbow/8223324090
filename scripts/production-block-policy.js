@@ -17,8 +17,11 @@ const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const BLOCK_ID_PATTERN = /^EG-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$/;
 const SENSITIVE_KEY = /(secret|token|password|database.?url|authorization|cookie)/i;
 const PROTECTED_WORKFLOWS = Object.freeze({
-    SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover'
+    SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover',
+    CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation'
 });
+const CERTIFICATE_QA_RED_PATHS = Object.freeze(['routes/auth.js', 'routes/finance.js']);
+const CERTIFICATE_QA_MIGRATION = 'db/migrations/371_trusted_qa_certificate_lookup.sql';
 const SYS_MB_PROTECTED_PATH_PATTERNS = Object.freeze([
     /^config\/permissionRegistry\.js$/,
     /^middleware\/auth\.js$/,
@@ -157,8 +160,21 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
         fail(redPaths.length === 0, 'Candidate changes include Red protected paths', 'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
         return { enabled: false, kind: null, protectedChangedPaths: [] };
     }
-    fail(workflow === PROTECTED_WORKFLOWS.SYS_MB_AUTH_CUTOVER,
+    fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.CERTIFICATE_QA_ISOLATION) {
+        const changed = normalizePathList(changedPaths);
+        fail(JSON.stringify(redPaths) === JSON.stringify(CERTIFICATE_QA_RED_PATHS),
+            'Certificate QA workflow permits only its two approved Red paths',
+            'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
+        fail(changed.includes('services/certificateQa.js')
+            && changed.includes('scripts/trusted-qa-certificate-run.js')
+            && JSON.stringify(changed.filter(file => /^db\/migrations\//.test(file)))
+                === JSON.stringify([CERTIFICATE_QA_MIGRATION]),
+        'Certificate QA workflow requires its exact implementation and additive migration',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: [...CERTIFICATE_QA_RED_PATHS] };
+    }
     const protectedChangedPaths = normalizePathList(changedPaths).filter(isSysMbProtectedPath);
     const unauthorizedRedPaths = redPaths.filter(file => !isSysMbProtectedPath(file));
     fail(unauthorizedRedPaths.length === 0,
@@ -183,11 +199,26 @@ function validateQaScope(scope) {
             'Disabled QA scope may not contain executable options', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
         return value;
     }
-    const allowedKeys = new Set(['enabled', 'kind', 'date', 'ttlMinutes', 'animators', 'fixtureLimit']);
+    const allowedKeys = new Set(['enabled', 'kind', 'date', 'ttlMinutes', 'animators', 'fixtureLimit',
+        'runId', 'testAccountId', 'businessContext']);
     fail(Object.keys(value).every(key => allowedKeys.has(key)),
         'QA scope contains unsupported options', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
-    fail(['timeline', 'canary'].includes(value.kind),
-        'QA kind must be timeline or canary', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+    fail(['timeline', 'canary', 'certificate'].includes(value.kind),
+        'QA kind must be timeline, canary, or certificate', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+    if (value.kind === 'certificate') {
+        fail(Object.keys(value).every(key => ['enabled', 'kind', 'runId', 'testAccountId',
+            'businessContext', 'ttlMinutes', 'fixtureLimit'].includes(key))
+            && /^[a-zA-Z0-9_-]{8,80}$/.test(String(value.runId || ''))
+            && Number.isSafeInteger(value.testAccountId) && value.testAccountId > 0
+            && value.businessContext === 'event_genix'
+            && Number.isInteger(value.ttlMinutes) && value.ttlMinutes >= 1 && value.ttlMinutes <= 30
+            && value.fixtureLimit === 1,
+        'Certificate QA requires one exact Park account, run, certificate, and 1-30 minute TTL',
+        'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+        return value;
+    }
+    fail(!Object.keys(value).some(key => ['runId', 'testAccountId', 'businessContext'].includes(key)),
+        'Timeline QA does not accept certificate options', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
     fail(/^\d{4}-\d{2}-\d{2}$/.test(String(value.date || '')),
         'QA scope requires an exact YYYY-MM-DD date', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
     fail(Number.isInteger(value.ttlMinutes) && value.ttlMinutes >= 5 && value.ttlMinutes <= 240,
@@ -200,6 +231,22 @@ function validateQaScope(scope) {
     if (value.kind === 'timeline') fail(value.fixtureLimit === undefined,
         'Timeline QA scope does not accept a fixture limit', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
     return value;
+}
+
+function validateReleaseNotes(notes = []) {
+    fail(Array.isArray(notes) && notes.length <= 6,
+        'Release notes must contain at most six items', 'PRODUCTION_BLOCK_RELEASE_NOTES_INVALID');
+    for (const item of notes) {
+        fail(item && typeof item === 'object' && !Array.isArray(item)
+            && Object.keys(item).sort().join(',') === 'text,title'
+            && typeof item.title === 'string' && item.title === item.title.trim()
+            && item.title.length >= 1 && item.title.length <= 80
+            && typeof item.text === 'string' && item.text === item.text.trim()
+            && item.text.length >= 1 && item.text.length <= 260
+            && !/[<>\r\n]/.test(item.title + item.text),
+        'Release notes contain an unsupported item', 'PRODUCTION_BLOCK_RELEASE_NOTES_INVALID');
+    }
+    return notes;
 }
 
 function buildBlockId(now, head) {
@@ -242,6 +289,7 @@ function buildManifest(facts, options = {}) {
         allowedQaScope: validateQaScope(options.qaScope || { enabled: false }),
         allowedProtectedWorkflow: protectedWorkflow,
         releaseLabel: String(options.releaseLabel || 'Autonomy Hardening').trim().slice(0, 120),
+        releaseNotes: validateReleaseNotes(options.releaseNotes || []),
         maxReleaseAttempts: Number(options.maxReleaseAttempts || DEFAULT_MAX_ATTEMPTS),
         realDataMutationAllowed: false,
         settingsMutationAllowed: false,
@@ -294,6 +342,7 @@ function validateManifest(manifest, options = {}) {
         && manifest.protectedContractMutationAllowed === false,
     'Production block attempts to permit a Red action', 'PRODUCTION_BLOCK_RED_PERMISSION');
     validateQaScope(manifest.allowedQaScope);
+    validateReleaseNotes(manifest.releaseNotes);
     const changed = normalizePathList(manifest.changedPaths || []);
     const protectedWorkflow = manifest.allowedProtectedWorkflow || { enabled: false, kind: null, protectedChangedPaths: [] };
     const validatedProtectedWorkflow = validateProtectedWorkflow(
@@ -313,9 +362,11 @@ function confirmationValue(manifest) {
 
 function warningText(manifest) {
     const migrations = manifest.allowedMigrationFiles.length ? manifest.allowedMigrationFiles.join(', ') : 'none';
-    const qa = manifest.allowedQaScope?.enabled
-        ? `${manifest.allowedQaScope.kind || 'trusted QA'}, TTL ${manifest.allowedQaScope.ttlMinutes || '?'} хв`
-        : 'none';
+    const qa = manifest.allowedQaScope?.kind === 'certificate'
+        ? `certificate: 1 запис, run ${manifest.allowedQaScope.runId}, account ${manifest.allowedQaScope.testAccountId}, TTL ${manifest.allowedQaScope.ttlMinutes} хв`
+        : manifest.allowedQaScope?.enabled
+            ? `${manifest.allowedQaScope.kind || 'trusted QA'}, TTL ${manifest.allowedQaScope.ttlMinutes || '?'} хв`
+            : 'none';
     const protectedWorkflow = manifest.allowedProtectedWorkflow?.enabled
         ? `${manifest.allowedProtectedWorkflow.kind}; protected paths: ${manifest.allowedProtectedWorkflow.protectedChangedPaths.join(', ')}`
         : 'none';
@@ -331,6 +382,7 @@ function warningText(manifest) {
         `4. Застосування migrations: ${migrations}.`,
         `5. Disposable QA: ${qa}.`,
         `6. Protected workflow: ${protectedWorkflow}.`,
+        `7. Release notes: ${manifest.releaseNotes.length} підписаних пунктів.`,
         '',
         'Межі: тільки зафіксовані branch/service/migrations/QA scope/protected workflow; real data, settings і secrets заборонені.',
         `Відкат: production SHA ${manifest.baseLiveSha}; migration mapping у block manifest; exact QA cleanup.`,
@@ -357,5 +409,6 @@ module.exports = {
     validateManifest,
     validateProtectedWorkflow,
     validateQaScope,
+    validateReleaseNotes,
     warningText
 };

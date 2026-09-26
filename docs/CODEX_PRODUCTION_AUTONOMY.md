@@ -281,6 +281,20 @@ The controller never accepts arbitrary commands or Railway settings. Its fixed
 sequence is local validation, release artifact commit, exact-SHA push and CI,
 the repository Railway helper, exact live version/release proof, and optional
 trusted QA limited to `allowedQaScope`.
+An optional JSON release-notes file under `docs/` supplies up to six signed
+plain-text title/body items. The controller applies them to `CHANGELOG.md` and
+the login changelog modal after the version bump and before the release commit;
+it fails closed if generated templates differ.
+
+The `certificate-qa-isolation` protected workflow is reserved for the exact
+certificate QA release surface: Red paths `routes/auth.js` and
+`routes/finance.js`, the certificate QA implementation, and migration 371 only.
+It does not change their Red classification. A certificate `allowedQaScope`
+signs one run ID, exact test account, `event_genix` context, TTL up to 30
+minutes, and one-certificate limit. `prepare` verifies the operator plan in a
+read-only transaction. After deploy the block records `pending_manual`; use
+the certificate operator procedure only after exact live SHA and QA isolation
+proof. It never invokes timeline QA for a certificate scope.
 
 Production GitHub auto-deploy is disabled. Deploy manually only after exact-SHA CI
 is green.

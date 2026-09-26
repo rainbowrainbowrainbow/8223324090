@@ -318,6 +318,13 @@ router.post('/preflight', async (req, res) => {
 router.post('/jobs', requirePlainPrintJobData, loadPrintJobTemplate, requirePrintJobRevenue, shapePrintJobRevenue, async (req, res) => {
     try {
         const { template_id, booking_id, certificate_id, data, target } = req.body;
+        if (certificate_id) {
+            const qaCertificate = await pool.query(
+                `SELECT 1 FROM trusted_qa_run_entities WHERE entity_type = 'certificate' AND entity_id = $1 LIMIT 1`,
+                [String(certificate_id)]
+            );
+            if (qaCertificate.rowCount) return res.status(409).json({ code: 'print_qa_certificate_denied', error: 'QA-сертифікат не можна надсилати на друк.' });
+        }
 
         const template = res.locals.printTemplate;
 

@@ -56,6 +56,17 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
         const typeMigration = fs.readFileSync(path.join(__dirname, '../../db/migrations/370_certificate_stable_type_code.sql'), 'utf8');
         await pool.query(typeMigration);
         await pool.query(typeMigration);
+        for (const migration of [333, 334, 335, 371]) {
+            const name = {
+                333: '333_trusted_qa_runs.sql',
+                334: '334_trusted_qa_lifecycle_hardening.sql',
+                335: '335_trusted_qa_execution_window.sql',
+                371: '371_trusted_qa_certificate_lookup.sql'
+            }[migration];
+            const sql = fs.readFileSync(path.join(__dirname, '../../db/migrations', name), 'utf8');
+            await pool.query(sql);
+            if (migration === 371) await pool.query(sql);
+        }
         await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/357_organizations_business_memberships.sql'), 'utf8'));
         await pool.query(`INSERT INTO organizations (id, slug, name) VALUES (1, 'certificate-fixture', 'Certificate Fixture');
             INSERT INTO businesses (id, organization_id, context_key, label, short_label, access_mode) VALUES

@@ -18,10 +18,14 @@ function principal(context = 'dar', membership = true) {
 }
 
 function fixture() {
-    const state = { accounts: [], transactions: [], insertedContexts: [], events: [], queries: [] };
+    const state = { accounts: [], transactions: [], insertedContexts: [], events: [], queries: [], qaCertificateIds: new Set() };
     const pool = { async query(sql, params = []) {
         state.queries.push({ sql, params });
         if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [], rowCount: 0 };
+        if (/FROM trusted_qa_run_entities/.test(sql)) {
+            const found = state.qaCertificateIds.has(String(params[0]));
+            return { rows: found ? [{ exists: 1 }] : [], rowCount: found ? 1 : 0 };
+        }
         if (/INSERT INTO finance_accounts/.test(sql)) {
             const columns = sql.match(/finance_accounts\s*\(([^)]+)\)/)[1].split(',').map(value => value.trim());
             const contextIndex = columns.indexOf('business_context');
@@ -150,5 +154,15 @@ test('empty references and existing legacy compatibility remain accepted', async
         assert.equal((await request('/transactions', { ...transaction, staffId: 2, certificateId: 'legacy_fixture' })).status, 201);
         assert.equal(state.transactions[0].staff_id, 2);
         assert.equal(state.transactions[0].certificate_id, 'legacy_fixture');
+    });
+});
+
+test('a QA certificate cannot be linked to a finance transaction', async () => {
+    await withRoute(principal('crm', false), async (request, state) => {
+        state.qaCertificateIds.add('qa-certificate-1');
+        const result = await request('/transactions', { ...transaction, certificateId: 'qa-certificate-1' });
+        assert.equal(result.status, 409);
+        assert.equal(state.transactions.length, 0);
+        assert.equal(state.events.length, 0);
     });
 });

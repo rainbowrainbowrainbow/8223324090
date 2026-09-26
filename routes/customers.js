@@ -6,6 +6,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
+const { BUSINESS_CERTIFICATE_FILTER } = require('../services/certificateQa');
 const { createLogger } = require('../utils/logger');
 const { exportLimiter } = require('../middleware/rateLimit');
 const { authenticateToken, canUseAction, requireAction, requireRole, requireMinRole } = require('../middleware/auth');
@@ -1287,7 +1288,7 @@ router.get('/export', requireAction('export_data'), requireAction('view_revenue'
 
         // Get cert counts from PostgreSQL
         const certResult = await pool.query(
-            'SELECT customer_id, COUNT(*) AS cnt FROM certificates GROUP BY customer_id'
+            `SELECT customer_id, COUNT(*) AS cnt FROM certificates WHERE ${BUSINESS_CERTIFICATE_FILTER} GROUP BY customer_id`
         );
         const certMap = {};
         for (const r of certResult.rows) certMap[r.customer_id] = parseInt(r.cnt);
@@ -1348,7 +1349,7 @@ router.get('/export-xlsx', requireAction('export_data'), requireAction('view_rev
         ));
 
         const certResult = await pool.query(
-            'SELECT customer_id, COUNT(*) AS cnt FROM certificates GROUP BY customer_id'
+            `SELECT customer_id, COUNT(*) AS cnt FROM certificates WHERE ${BUSINESS_CERTIFICATE_FILTER} GROUP BY customer_id`
         );
         const certMap = {};
         for (const r of certResult.rows) certMap[r.customer_id] = parseInt(r.cnt);
@@ -2452,7 +2453,7 @@ router.get('/:id', async (req, res) => {
         try {
             const certs = await pool.query(
                 `SELECT id, cert_code, display_value, type_text, status, valid_until, issued_at
-                 FROM certificates WHERE customer_id = $1 ORDER BY issued_at DESC`, [numId]
+                 FROM certificates WHERE customer_id = $1 AND ${BUSINESS_CERTIFICATE_FILTER} ORDER BY issued_at DESC`, [numId]
             );
             customer.certificates = certs.rows.map(c => ({
                 id: c.id, certCode: c.cert_code, displayValue: c.display_value,

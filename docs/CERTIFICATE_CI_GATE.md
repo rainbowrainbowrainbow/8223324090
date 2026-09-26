@@ -16,6 +16,7 @@ on every push and pull request with an ephemeral PostgreSQL 16 service.
   expiry and one-certificate limit, no creation event, Telegram image, print,
   booking or finance side effects, business-list exclusion, direct redemption,
   and close-run preservation/revocation.
+- Actual Express booking form in a browser against a disposable PostgreSQL child database: available one-time, verification-only subscription/unknown type, used code, stale code/context responses, mobile keyboard access, and no precheck writes or booking submit.
 - Browser flow on synthetic local HTTP: scan/lookup, cancel confirmation,
   confirmed redemption, pending-submit protection, verify-only state,
   business-scope changes, stale responses, and mobile layout.
@@ -43,6 +44,8 @@ $env:TEST_DATABASE_RESET_CONFIRM = 'RESET_DISPOSABLE_TEST_DATABASE'
 npm run test:integration:certificates:ci
 npm run test:unit:certificates-legacy
 npm run test:browser:certificates
+$env:REQUIRE_CERTIFICATE_POSTGRES_TESTS = '1'
+npm run test:browser:certificates-booking-app
 ```
 
 In CI, a missing PostgreSQL URL is an error rather than a skipped test. The

@@ -9432,7 +9432,10 @@ async function validateCertificate() {
             || document.getElementById('certCodeInput')?.value?.trim() !== code
             || bookingCertificateValidationContext() !== businessContext
             || document.getElementById('certValidationResult') !== resultEl) return;
-        if (data.canRedeem === true) {
+        if (resp.status === 403) {
+            resultEl.textContent = 'Перевірка сертифікатів недоступна в поточному бізнес-контексті.';
+            resultEl.style.color = 'var(--text-secondary, #6b7280)';
+        } else if (data.canRedeem === true) {
             resultEl.innerHTML = '✅ Сертифікат дійсний: <b>' + escapeHtml(data.certificate.display_value) + '</b> (' + escapeHtml(data.certificate.type_text || '') + ')';
             resultEl.style.color = 'var(--success, green)';
         } else {

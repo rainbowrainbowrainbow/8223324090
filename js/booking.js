@@ -9399,10 +9399,30 @@ function invalidateBookingCertificateValidation() {
     resultEl.style.color = '';
 }
 
+function syncBookingCertificateSection() {
+    var section = document.getElementById('bookingCertificateSection');
+    if (!section) return;
+    var inPark = bookingCertificateValidationContext() === 'event_genix';
+    section.hidden = !inPark;
+    section.classList.toggle('hidden', !inPark);
+    if (!inPark) {
+        var input = document.getElementById('certCodeInput');
+        if (input) input.value = '';
+        invalidateBookingCertificateValidation();
+    }
+}
+
 document.addEventListener('input', event => {
     if (event.target?.id === 'certCodeInput') invalidateBookingCertificateValidation();
 });
-window.addEventListener('timeline:business-context-changed', invalidateBookingCertificateValidation);
+document.addEventListener('click', event => {
+    if (event.target?.id === 'certValidateButton') validateCertificate();
+});
+document.addEventListener('DOMContentLoaded', syncBookingCertificateSection);
+window.addEventListener('timeline:business-context-changed', () => {
+    invalidateBookingCertificateValidation();
+    syncBookingCertificateSection();
+});
 
 // v33.8.0: Validate certificate code
 async function validateCertificate() {
@@ -9446,6 +9466,7 @@ async function validateCertificate() {
                 blocked: 'Сертифікат заблокований.',
                 revoked: 'Сертифікат анульований.',
                 verification_only: 'Сертифікат активний, але цей тип доступний лише для перевірки й не може бути використаний у бронюванні.',
+                qa_booking_unavailable: 'Тестовий сертифікат не можна використати в бронюванні.',
                 redemption_unavailable: 'Сертифікат активний, але в поточному бізнес-контексті його не можна погасити.'
             };
             resultEl.textContent = '❌ ' + (messages[reason]

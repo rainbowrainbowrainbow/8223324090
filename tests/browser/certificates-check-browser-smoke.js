@@ -123,6 +123,7 @@ async function main() {
         assert.equal(await page.locator('[data-cert-redeem]').evaluate(element => element === document.activeElement), true);
         await page.keyboard.press('Enter');
         await page.getByRole('dialog').waitFor();
+        await page.waitForFunction(() => document.querySelector('.confirm-overlay')?.contains(document.activeElement));
         await page.keyboard.press('Escape');
         assert.equal(posts, 0, 'keyboard cancel cannot redeem');
         await page.getByRole('dialog').waitFor({ state: 'detached' });

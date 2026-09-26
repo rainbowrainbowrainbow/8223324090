@@ -489,6 +489,14 @@
                     <textarea id="bookingNotes" class="booking-notes-input" rows="3" placeholder="Додаткова інформація..."></textarea>
                 </div>
 
+                <div id="bookingCertificateSection" class="form-section">
+                    <label for="certCodeInput">Сертифікат (опційно)</label>
+                    <input type="text" id="certCodeInput" placeholder="CERT-2026-00001" maxlength="32" autocomplete="off" aria-describedby="certValidationHint certValidationResult">
+                    <button type="button" id="certValidateButton" class="booking-mini-action">Перевірити сертифікат</button>
+                    <small id="certValidationHint" class="form-hint">Попередня перевірка не гарантує використання: сервер повторно перевірить код під час збереження бронювання.</small>
+                    <div id="certValidationResult" class="form-hint" role="status" aria-live="polite" style="display:none"></div>
+                </div>
+
                 <!-- v5.10: Група/Банкет -->
                 <div id="bookingGroupNameSection" class="form-section">
                     <label>Назва заявки / група (опційно)</label>

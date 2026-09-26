@@ -9,6 +9,12 @@ const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
 const { isQaLeaseCandidate } = require('../services/qaCreatorLease');
 const { createTrustedQaRun, cleanupTrustedQaRun } = require('../services/trustedQaRuns');
 
+// Existing certificate issue (legacy admin expansion) and direct redemption
+// must both be available to the same isolated QA account.
+const QA_CERTIFICATE_OPERATOR_ROLES = new Set([
+    'admin', 'manager', 'senior_manager', 'vice_director', 'director', 'creator'
+]);
+
 function argument(name) {
     const index = process.argv.indexOf(name);
     return index < 0 ? '' : String(process.argv[index + 1] || '').trim();
@@ -47,7 +53,7 @@ async function accountPreflight(client, plan, { lock = false } = {}) {
     const account = result.rows?.[0];
     if (!account || account.is_active !== true || account.has_staff_profile
         || !isQaLeaseCandidate(account)
-        || !['admin', 'user', 'animator'].includes(account.role)) {
+        || !QA_CERTIFICATE_OPERATOR_ROLES.has(account.role)) {
         throw new Error('Exact active isolated QA certificate issuer is unavailable');
     }
     const otherRuns = await client.query(

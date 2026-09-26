@@ -236,6 +236,18 @@ test('Park Today recovery through the actual Express HR router', async t => {
             }
         });
 
+        await t.test('adding staff card view to Today recovery still cannot submit attendance', async () => {
+            state.actor = { allow: ['hr.today.view', 'hr.staff.view'], deny: ['hr.payroll.view'] };
+            const today = await request();
+            assert.equal(today.status, 200, today.text);
+            assert.deepEqual(today.body.todayAccess, { readOnly: true, businessContext: 'event_genix' });
+            const count = calls.length;
+            for (const path of ['/api/hr/clock-in', '/api/hr/clock-out', '/api/hr/mark-absent']) {
+                assert.equal((await request(path, { method: 'POST' })).status, 403, path);
+                assert.equal(calls.length, count, `${path} cannot reach attendance SQL`);
+            }
+        });
+
         await t.test('empty Today data keeps a successful zero summary', async () => {
             state.actor = {};
             state.empty = true;

@@ -23,8 +23,6 @@ test('actual app booking and certificate redemption share one PostgreSQL transac
     try {
         await admin.query(`CREATE DATABASE "${database}"`);
         created = true;
-        const databaseUrl = new URL(fixture.url);
-        databaseUrl.pathname = `/${database}`;
         pool = new Pool({ ...fixture.connection, database, max: 4 });
         const port = await new Promise((resolve, reject) => {
             const socket = net.createServer();
@@ -39,7 +37,9 @@ test('actual app booking and certificate redemption share one PostgreSQL transac
         const env = {
             PATH: process.env.PATH, HOME: process.env.HOME, NODE_PATH: process.env.NODE_PATH,
             LANG: process.env.LANG || 'C.UTF-8', NODE_ENV: 'test', PORT: String(port),
-            DATABASE_URL: databaseUrl.toString(),
+            PGHOST: fixture.connection.host, PGPORT: String(fixture.connection.port),
+            PGUSER: fixture.connection.user, PGPASSWORD: fixture.connection.password,
+            PGDATABASE: database, PGSSLMODE: 'disable',
             JWT_SECRET: crypto.randomBytes(64).toString('hex'),
             BOOTSTRAP_CREATOR_USERNAME: username, BOOTSTRAP_CREATOR_PASSWORD: password,
             BOOTSTRAP_CREATOR_NAME: 'Certificate Test Creator',

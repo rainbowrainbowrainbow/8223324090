@@ -3864,10 +3864,13 @@ async function handleCertificateSubmit(event) {
     }
 
     try {
+        const typePreset = document.getElementById('certTypePreset')?.value || 'на одноразовий вхід';
         const data = {
             displayMode,
             displayValue,
-            typeText: document.getElementById('certTypeText')?.value.trim() || 'на одноразовий вхід',
+            typeText: document.getElementById('certTypeText')?.value.trim() || (typePreset === 'custom' ? 'Інший тип' : typePreset),
+            typeCode: typePreset === 'на одноразовий вхід' ? 'one_time_admission'
+                : typePreset === 'абонемент' ? 'subscription' : 'verification_only',
             validUntil: document.getElementById('certValidUntil')?.value || undefined,
             notes: document.getElementById('certNotes')?.value.trim() || undefined,
             season: document.getElementById('certSeason')?.value || getCertCurrentSeason()

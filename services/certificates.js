@@ -6,6 +6,24 @@
 
 const { toPostgresDateOnly } = require('./postgresDateOnly');
 const VALID_SEASONS = ['winter', 'spring', 'summer', 'autumn'];
+const CERTIFICATE_TYPE_CODES = Object.freeze({
+    ONE_TIME_ADMISSION: 'one_time_admission',
+    SUBSCRIPTION: 'subscription',
+    VERIFICATION_ONLY: 'verification_only'
+});
+const ONE_TIME_TYPE_TEXT = 'на одноразовий вхід';
+const SUBSCRIPTION_TYPE_TEXT = 'абонемент';
+
+function normalizedCertificateTypeText(value) {
+    return String(value || '').trim().toLocaleLowerCase('uk-UA');
+}
+
+function certificateTypeCodeFromLegacyText(value) {
+    const normalized = normalizedCertificateTypeText(value);
+    if (normalized === ONE_TIME_TYPE_TEXT) return CERTIFICATE_TYPE_CODES.ONE_TIME_ADMISSION;
+    if (normalized === SUBSCRIPTION_TYPE_TEXT) return CERTIFICATE_TYPE_CODES.SUBSCRIPTION;
+    return CERTIFICATE_TYPE_CODES.VERIFICATION_ONLY;
+}
 
 function getCurrentSeason() {
     const m = new Date().getMonth(); // 0-11
@@ -22,6 +40,7 @@ function mapCertificateRow(row) {
         displayMode: row.display_mode,
         displayValue: row.display_value,
         typeText: row.type_text,
+        typeCode: row.type_code || certificateTypeCodeFromLegacyText(row.type_text),
         issuedAt: row.issued_at,
         validUntil: toPostgresDateOnly(row.valid_until),
         issuedByUserId: row.issued_by_user_id,
@@ -106,6 +125,18 @@ function validateCertificateInput(body, options = {}) {
     if (source.typeText && source.typeText.length > 200) {
         errors.push('typeText max 200 chars');
     }
+    if (source.typeCode != null && source.typeCode !== '') {
+        if (!Object.values(CERTIFICATE_TYPE_CODES).includes(source.typeCode)) {
+            errors.push('typeCode must be a known certificate type');
+        } else {
+            const typeText = source.typeText || (source.typeCode === CERTIFICATE_TYPE_CODES.SUBSCRIPTION
+                ? SUBSCRIPTION_TYPE_TEXT : ONE_TIME_TYPE_TEXT);
+            const inferred = certificateTypeCodeFromLegacyText(typeText);
+            if (source.typeCode !== CERTIFICATE_TYPE_CODES.VERIFICATION_ONLY && source.typeCode !== inferred) {
+                errors.push('typeCode does not match the initial certificate type');
+            }
+        }
+    }
     if (source.validUntil && !/^\d{4}-\d{2}-\d{2}$/.test(source.validUntil)) {
         errors.push('validUntil must be YYYY-MM-DD');
     }
@@ -117,6 +148,10 @@ module.exports = {
     calculateValidUntil,
     buildCertificateCheckUrl,
     getCertificateEffectiveStatus,
+    CERTIFICATE_TYPE_CODES,
+    ONE_TIME_TYPE_TEXT,
+    SUBSCRIPTION_TYPE_TEXT,
+    certificateTypeCodeFromLegacyText,
     normalizeCertificateIdentity,
     certificateIdentityKey,
     certificateIdentityRequiredMessage,

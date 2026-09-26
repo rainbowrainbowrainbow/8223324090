@@ -121,6 +121,9 @@ Do not fragment one production release into repeated approval questions.
 - Migration governance: `npm run check:migrations`.
 - Timeline/booking protected surface: `npm run check:timeline-protected-surface`.
 - Focused test: `node --test tests/<file>.test.js`.
+- Certificate CI gate: `npm run test:integration:certificates:ci`,
+  `npm run test:unit:certificates-legacy`, and
+  `npm run test:browser:certificates`; see `docs/CERTIFICATE_CI_GATE.md`.
 - If the host runtime is wrong, use:
   `npx -y -p node@22 -p npm@10 -c "<command>"`.
 

@@ -43,7 +43,9 @@
     };
 
     const CHECK_STATE_META = {
-        valid: { title: 'Сертифікат дійсний', message: 'Сертифікат активний і може бути використаний.', tone: 'active' },
+        redeemable: { title: 'Доступне одноразове погашення', badge: 'Можна погасити', message: 'Цей сертифікат можна погасити після підтвердження. Повторно використати код буде неможливо.', tone: 'active' },
+        verification_only: { title: 'Сертифікат активний', badge: 'Лише перевірка', message: 'Цей тип доступний лише для перевірки. Погашення тут не передбачено.', tone: 'active' },
+        redemption_unavailable: { title: 'Погашення недоступне', badge: 'Без права погашення', message: 'Для вашого облікового запису погашення зараз недоступне. Дані сертифіката можна перевірити.', tone: 'blocked' },
         used: { title: 'Сертифікат уже використано', message: 'Повторне використання неможливе.', tone: 'used' },
         expired: { title: 'Строк дії завершився', message: 'Сертифікат більше не дійсний.', tone: 'expired' },
         revoked: { title: 'Сертифікат анульовано', message: 'Сертифікат не можна використати.', tone: 'revoked' },
@@ -241,11 +243,12 @@
 
     function certificateCheckState(cert) {
         if (!cert) return 'missing';
-        if (cert.effectiveStatus) return cert.effectiveStatus === 'active' ? 'valid' : (CHECK_STATE_META[cert.effectiveStatus] ? cert.effectiveStatus : 'error');
+        if (cert.effectiveStatus && cert.effectiveStatus !== 'active') return CHECK_STATE_META[cert.effectiveStatus] ? cert.effectiveStatus : 'error';
         if (cert.status && cert.status !== 'active') return CHECK_STATE_META[cert.status] ? cert.status : 'error';
         const validUntil = String(cert.validUntil || '').slice(0, 10);
         if (validUntil && validUntil < getKyivDateKey()) return 'expired';
-        return 'valid';
+        if (cert.canRedeem === true && (!cert.redemptionReason || cert.redemptionReason === 'available')) return 'redeemable';
+        return cert.redemptionReason === 'verification_only' ? 'verification_only' : 'redemption_unavailable';
     }
 
     function readCertificateCheckCode() {
@@ -277,9 +280,9 @@
                 <dt>Тип</dt><dd>${esc(cert.typeText || '—')}</dd>
                 <dt>Дійсний до</dt><dd>${esc(formatDate(cert.validUntil))}</dd>
             </dl>` : '';
-        const redeem = stateName === 'valid' && cert?.canRedeem === true
+        const redeem = stateName === 'redeemable' && cert?.canRedeem === true
             ? '<button type="button" class="btn-page-primary" data-cert-redeem>Погасити сертифікат</button>' : '';
-        result.innerHTML = `<div><span class="cert-page-badge cert-page-badge-${esc(meta.tone)}">${esc(meta.title)}</span><h3>${esc(meta.title)}</h3><p>${esc(meta.message)}</p></div>${details}${redeem}`;
+        result.innerHTML = `<div><span class="cert-page-badge cert-page-badge-${esc(meta.tone)}">${esc(meta.badge || meta.title)}</span><h3>${esc(meta.title)}</h3><p>${esc(meta.message)}</p></div>${details}${redeem}`;
     }
 
     function invalidateCertificateCheck() {
@@ -522,6 +525,8 @@
             typeText: preset === 'custom'
                 ? $('certPageTypeText')?.value.trim()
                 : preset,
+            typeCode: preset === BATCH_CERTIFICATE_TYPE_TEXT ? 'one_time_admission'
+                : preset === 'абонемент' ? 'subscription' : 'verification_only',
             validUntil: $('certPageValidUntil')?.value || undefined,
             notes: $('certPageNotes')?.value.trim() || undefined,
             season: $('certPageSeason')?.value || currentSeason()
@@ -748,6 +753,9 @@
         const actions = $('certificatePageDetailActions');
         const modeLabel = cert.displayMode === 'fio' ? 'ПІБ' : 'Номер';
         const source = issueSourceMeta(cert);
+        const validUntil = String(cert.validUntil || '').slice(0, 10);
+        const effectiveStatus = cert.status === 'active' && validUntil && validUntil < getKyivDateKey()
+            ? 'expired' : cert.status;
         state.detailCert = cert;
         content.innerHTML = `
             <div class="cert-detail-shell">
@@ -758,7 +766,7 @@
                             <span class="cert-result-kicker">Сертифікат</span>
                             <h4>${esc(cert.certCode)}</h4>
                         </div>
-                        ${statusBadge(cert.status)}
+                        ${statusBadge(effectiveStatus)}
                     </div>
                     <div class="cert-detail-grid">
                         <div class="cert-detail-row"><span class="cert-detail-label">Джерело:</span><span class="cert-detail-val"><span class="cert-source-chip cert-source-${esc(source.tone)}">${esc(source.label)}</span></span></div>
@@ -778,7 +786,7 @@
         const pngLabel = isCertificateTouchExportDevice() ? 'Відкрити PNG' : 'Скачати PNG';
         html += `<button type="button" class="btn-page-secondary" data-cert-download="${esc(cert.id)}">${pngLabel}</button>`;
         if (cert.status === 'active') {
-            html += `<a class="btn-page-primary" href="/certificates/check?code=${encodeURIComponent(cert.certCode)}">Перевірити й погасити</a>`;
+            html += `<a class="btn-page-primary" href="/certificates/check?code=${encodeURIComponent(cert.certCode)}">Перевірити сертифікат</a>`;
             html += `<button type="button" class="btn-page-danger" data-cert-status="${esc(cert.id)}" data-next-status="revoked">Анульувати</button>`;
             html += `<button type="button" class="btn-page-secondary" data-cert-status="${esc(cert.id)}" data-next-status="blocked">Заблокувати</button>`;
         }

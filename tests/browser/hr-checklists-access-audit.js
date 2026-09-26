@@ -126,19 +126,16 @@ module.exports = async function auditChecklistAccess({ api, browser, base, db, e
                     await page.locator('#professionWorkspaceClose').click();
                     if (definition.id === 'security') {
                         const before = await snapshot();
-                        await page.evaluate(async id => { await loadTeam(); openStaffTrainingReadiness(id); }, staffId);
-                        const completion = page.locator('#staffTrainingReadinessOverlay .hr-training-check-item').filter({ hasText: item.title }).first();
-                        await completion.waitFor();
-                        const enabled = await completion.isEnabled();
-                        row.themes[theme].completionEnabled = enabled;
-                        if (enabled) {
-                            const responsePromise = page.waitForResponse(response => response.request().method() === 'PUT' && new URL(response.url()).pathname === `/api/hr/staff/${staffId}/profession-checklist`);
-                            await completion.click();
-                            const response = await responsePromise;
-                            assert.equal(response.status(), 403, 'readonly completion is rejected by the real server');
-                            evidence.findings.push({ id: 'CHK-Q-READONLY-COMPLETION', theme, role: 'security', expected: 'disabled completion controls and no attempted write', actual: 'enabled completion button attempts PUT; server returns 403', source: 'js/hr-page.js:7099,7175' });
-                            row.themes[theme].completionRejectedStatus = response.status();
-                        }
+                        const responsePromise = page.waitForResponse(response => response.request().method() === 'GET'
+                            && new URL(response.url()).pathname === '/api/hr/staff');
+                        await page.evaluate(() => loadTeam());
+                        const response = await responsePromise;
+                        assert.equal(response.status(), 403, 'legacy readonly account cannot load Park staff');
+                        assert.equal((await response.json()).code, 'staff_not_migrated');
+                        const team = await page.evaluate(() => ({ status: teamLoadState.status, count: teamStaff.length }));
+                        assert.deepEqual(team, { status: 'restricted', count: 0 });
+                        assert.equal(await page.locator('#staffTrainingReadinessOverlay').count(), 0);
+                        row.themes[theme].teamRestricted = 'PASS';
                         assert.deepEqual(await snapshot(), before, 'readonly completion cannot change stored progress');
                     }
                 }

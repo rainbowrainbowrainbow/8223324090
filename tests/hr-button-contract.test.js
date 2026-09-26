@@ -186,7 +186,8 @@ test('HR static and rendered button tags declare an explicit type', () => {
         ...buttonTypeOffenders('js/hr-page.js', HR_JS)
     ];
     assert.deepEqual(offenders, []);
-    assert.equal(/createElement\(['"]button['"]\)/.test(HR_JS), false, 'new dynamic button elements must set .type = "button"');
+    const withoutTypedButtons = HR_JS.replace(/const (\w+) = document\.createElement\(['"]button['"]\);\s*\1\.type = ['"]button['"];/g, '');
+    assert.equal(/createElement\(['"]button['"]\)/.test(withoutTypedButtons), false, 'new dynamic button elements must set .type = "button"');
 });
 
 test('HR print modal uses page button components without leaking its open-state class', () => {
@@ -1873,7 +1874,7 @@ test('HR staff documents are reachable from the compact team card overflow menu'
         'function openStaffDocuments',
         'window.openStaffDocuments = openStaffDocuments',
         "await openStaffEdit(Number(staffId), { focus: 'documents' })",
-        "if (focusTarget === 'documents') focusStaffDocumentsPanel()",
+        "if (focusTarget === 'documents' && openSeq === staffEditOpenSeq) focusStaffDocumentsPanel()",
         "document.getElementById('editDocumentFile')?.focus?.({ preventScroll: true })"
     ]) {
         assert.ok(HR_JS.includes(token), `missing HR document paperclip JS token ${token}`);

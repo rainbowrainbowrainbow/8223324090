@@ -554,6 +554,10 @@ const payrollProfilesState = {
     staff: [],
     selectedProfileId: null,
     loading: false,
+    loadStatus: 'idle',
+    loadError: '',
+    requestSeq: 0,
+    context: null,
     query: '',
     profession: 'all',
     kind: 'all',
@@ -725,7 +729,11 @@ const STAFF_PROFILE_SCOPE_SELECTORS = {
 };
 let staffProfileLoadedTabs = new Set();
 let staffProfileTabLoadPromises = new Map();
+let staffProfileTabLoadSeq = new Map();
 let staffProfileScopeBaselines = new Map();
+let staffProfileContextKey = '';
+let staffEditOpenAbortController = null;
+let staffProfileRequestTimeoutMs = 15000;
 let staffDocumentListView = 'active';
 let staffResourceListView = 'active';
 
@@ -1524,14 +1532,19 @@ async function refreshStaffOnboardingDialog(staffId) {
         root.setAttribute('aria-busy', 'true');
         root.innerHTML = '<div class="hr-onboarding-scope-empty">Завантаження процесів онбордингу...</div>';
     }
-    const [processesResponse, assignmentsResponse] = await Promise.all([
+    const [processesResult, assignmentsResult] = await Promise.allSettled([
         hrFetch(`/staff/${staffId}/onboarding-processes`),
         hrFetch(`/staff/${staffId}/role-assignments`)
     ]);
+    const processesResponse = processesResult.status === 'fulfilled' ? processesResult.value : { success: false, error: processesResult.reason?.message };
+    const assignmentsResponse = assignmentsResult.status === 'fulfilled' ? assignmentsResult.value : { success: false, error: assignmentsResult.reason?.message };
     if (!processesResponse?.success || !assignmentsResponse?.success) {
         if (root) {
             root.setAttribute('aria-busy', 'false');
-            root.innerHTML = `<div class="hr-onboarding-scope-empty is-error" role="alert">${escapeHtml(processesResponse?.error || assignmentsResponse?.error || 'Не вдалося завантажити онбординг.')}<button type="button" class="btn-secondary" onclick="refreshStaffOnboardingDialog(${Number(staffId)})">Повторити</button></div>`;
+            const denied = processesResponse?.status === 403 || assignmentsResponse?.status === 403;
+            const message = denied ? 'Онбординг співробітника недоступний для цього бізнесу або вашої ролі.'
+                : processesResponse?.error || assignmentsResponse?.error || 'Не вдалося завантажити онбординг.';
+            root.innerHTML = `<div class="hr-onboarding-scope-empty is-error" role="alert">${escapeHtml(message)}<button type="button" class="btn-secondary" onclick="refreshStaffOnboardingDialog(${Number(staffId)})">Повторити</button></div>`;
         }
         return;
     }
@@ -1547,7 +1560,13 @@ async function refreshStaffOnboardingDialog(staffId) {
 async function ensureOnboardingResponsibleCandidates(force = false) {
     if (Array.isArray(onboardingResponsibleCandidates) && !force) return onboardingResponsibleCandidates;
     const data = await hrFetch('/onboarding/responsible-candidates');
-    onboardingResponsibleCandidates = Array.isArray(data?.data) ? data.data : [];
+    if (!data?.success || !Array.isArray(data.data)) {
+        onboardingResponsibleCandidates = null;
+        throw new Error(data?.status === 403
+            ? 'Список відповідальних недоступний для цього бізнесу або вашої ролі.'
+            : data?.error || 'Не вдалося завантажити список відповідальних. Повторіть спробу.');
+    }
+    onboardingResponsibleCandidates = data.data;
     return onboardingResponsibleCandidates;
 }
 
@@ -1594,7 +1613,7 @@ window.openStaffOnboardingAssignment = async function(staffId) {
     } catch (error) {
         console.error('Onboarding dialog error', error);
         const root = document.getElementById('staffOnboardingScopeBody');
-        if (root) root.innerHTML = `<div class="hr-onboarding-scope-empty is-error" role="alert">${escapeHtml(error.message || 'Не вдалося завантажити онбординг.')}</div>`;
+        if (root) root.innerHTML = `<div class="hr-onboarding-scope-empty is-error" role="alert">${escapeHtml(error.message || 'Не вдалося завантажити онбординг.')}<button type="button" class="btn-secondary" onclick="openStaffOnboardingAssignment(${id})">Повторити</button></div>`;
     }
 };
 
@@ -3052,11 +3071,14 @@ function setHrNavTeamMode(target) {
 }
 
 function updatePeopleNavCounts(grouped = []) {
-    const counts = new Map(grouped.map(bucket => [bucket.id, Number(bucket.totalCount ?? bucket.staff?.length ?? 0)]));
+    const counts = new Map(grouped.map(bucket => [bucket.id,
+        Number.isFinite(bucket.totalCount) ? bucket.totalCount
+            : Array.isArray(bucket.staff) ? bucket.staff.length : null]));
     document.querySelectorAll('[data-nav-count]').forEach(badge => {
-        const value = counts.has(badge.dataset.navCount) ? counts.get(badge.dataset.navCount) : null;
-        badge.textContent = value === null ? '0' : String(value);
-        badge.classList.toggle('hidden', value === null);
+        const knownBucket = counts.has(badge.dataset.navCount);
+        const value = knownBucket ? counts.get(badge.dataset.navCount) : null;
+        badge.textContent = value === null ? '—' : String(value);
+        badge.classList.toggle('hidden', !knownBucket);
     });
 }
 
@@ -4892,6 +4914,7 @@ async function loadProfessionChecklists(options = {}) {
     clearTimeout(professionChecklistDashboardSearchTimer);
     professionChecklistDashboardSearchTimer = null;
     const requestSeq = ++professionChecklistDashboardRequestSeq;
+    const context = salaryAccessContext();
     const feed = ['assignments', 'archived', 'orphaned'].includes(options.feed) ? options.feed : null;
     let offset = feed ? Math.max(0, Number(options.offset) || 0) : 0;
     const previousData = professionChecklistDashboardState.data;
@@ -4902,14 +4925,14 @@ async function loadProfessionChecklists(options = {}) {
         silent: true
     });
     renderProfessionChecklistDashboardFilterOptions();
-    if (requestSeq !== professionChecklistDashboardRequestSeq) return;
+    if (requestSeq !== professionChecklistDashboardRequestSeq || context !== salaryAccessContext()) return;
     professionChecklistDashboardState = { loadState: 'loading', data: professionChecklistDashboardState.data, error: '' };
     renderProfessionChecklists();
     let response;
     for (let recovery = 0; recovery <= 2; recovery += 1) {
         const query = professionChecklistDashboardQuery(offset);
         response = await hrFetch(`/checklists/dashboard${query ? `?${query}` : ''}`).catch(() => null);
-        if (requestSeq !== professionChecklistDashboardRequestSeq) return;
+        if (requestSeq !== professionChecklistDashboardRequestSeq || context !== salaryAccessContext()) return;
         const paging = response?.data?.pagination?.[feed];
         const total = Number(paging?.total);
         const limit = Number(paging?.limit);
@@ -4920,11 +4943,11 @@ async function loadProfessionChecklists(options = {}) {
         // the last page, then to the first if the list continues shrinking.
         offset = recovery === 0 && total > 0 ? Math.floor((total - 1) / limit) * limit : 0;
     }
-    if (requestSeq !== professionChecklistDashboardRequestSeq) return;
+    if (requestSeq !== professionChecklistDashboardRequestSeq || context !== salaryAccessContext()) return;
     if (!response?.success) {
         professionChecklistDashboardState = {
             loadState: 'error',
-            data: previousData,
+            data: response?.status === 403 ? null : previousData,
             retry: { feed, offset },
             error: response?.error || 'Не вдалося завантажити dashboard чеклістів'
         };
@@ -4984,6 +5007,7 @@ function renderProfessionChecklists() {
         if (stateRoot) {
             stateRoot.textContent = 'Завантаження dashboard чеклістів…';
             stateRoot.dataset.state = 'loading';
+            stateRoot.setAttribute('role', 'status');
         }
         root.innerHTML = '<div class="hr-checklist-dashboard-skeleton" aria-hidden="true"></div><div class="hr-checklist-dashboard-skeleton" aria-hidden="true"></div>';
         return;
@@ -4992,6 +5016,7 @@ function renderProfessionChecklists() {
         if (stateRoot) {
             stateRoot.textContent = professionChecklistDashboardState.error;
             stateRoot.dataset.state = 'error';
+            stateRoot.setAttribute('role', 'alert');
         }
         root.innerHTML = '<div class="hr-account-empty">Не вдалося завантажити чеклісти. <button type="button" id="professionChecklistDashboardRetry" class="btn-secondary">Повторити</button></div>';
         document.getElementById('professionChecklistDashboardRetry')?.addEventListener('click', () => loadProfessionChecklists({ ...professionChecklistDashboardState.retry, preserveCatalog: true }));
@@ -5003,6 +5028,7 @@ function renderProfessionChecklists() {
     if (stateRoot) {
         stateRoot.textContent = '';
         stateRoot.dataset.state = '';
+        stateRoot.setAttribute('role', 'status');
     }
     if (summaryRoot) {
         summaryRoot.innerHTML = ['without_template', 'not_started', 'in_progress', 'completed', 'archived', 'orphaned']
@@ -5032,6 +5058,17 @@ function renderProfessionChecklists() {
     root.innerHTML = rows.length
         ? rows.join('')
         : '<div class="hr-account-empty">За вибраними фільтрами записів немає.</div>';
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
+    window.addEventListener(eventName, () => {
+        if (professionChecklistDashboardState.loadState === 'idle') return;
+        professionChecklistDashboardRequestSeq += 1;
+        professionChecklistDashboardState = {
+            loadState: 'error', data: null, error: 'Бізнес або доступ змінився. Оновіть чеклісти.'
+        };
+        renderProfessionChecklists();
+    });
 }
 
 function setProfessionWorkspaceBanner(message = '', state = '') {
@@ -5976,6 +6013,11 @@ async function openProfessionEditor(professionId = null) {
 window.openProfessionWorkspace = openProfessionWorkspace;
 
 let teamStaff = [];
+let teamLoadRequestSeq = 0;
+let teamLoadState = { status: 'idle', context: null, message: '' };
+let teamRetryRestoreFocus = false;
+let teamLoadAbortController = null;
+let teamLoadTimeoutMs = 15000;
 let staffDocumentMetaById = new Map();
 let staffDocumentPreviewUrl = '';
 let staffDocumentPreviewRestoreFocus = null;
@@ -6008,6 +6050,9 @@ let accountDetailMobilePortal = null;
 let accountConflictRequestSeq = 0;
 let accountOnboardingOptions = null;
 let accountOnboardingPayrollProfiles = null;
+let accountOnboardingPayrollProfilesError = '';
+let onboardingStartRequestSeq = 0;
+let onboardingListRequestSeq = 0;
 let accountOnboardingRequestSeq = 0;
 let accountOnboardingState = {
     open: false,
@@ -6638,25 +6683,109 @@ function applyAccountDeepLinkFilters() {
     }, { render: false });
 }
 
+function teamAccessContext() {
+    const user = getHrCurrentUser();
+    const business = typeof getLegacyBusinessSurfaceContextKey === 'function'
+        ? getLegacyBusinessSurfaceContextKey('staff')
+        : JSON.stringify([user?.id || user?.username || null, user?.activeBusinessContext,
+            typeof getCrmBusinessScope === 'function' ? getCrmBusinessScope(user) : null]);
+    let sessionGeneration = '';
+    try { sessionGeneration = localStorage.getItem('pzp_auth_session_generation') || ''; } catch {}
+    return JSON.stringify([business, sessionGeneration]);
+}
+
+function isCurrentTeamLoad(request, context) {
+    if (request !== teamLoadRequestSeq) return false;
+    if (context !== teamAccessContext()) {
+        invalidateTeamContext();
+        return false;
+    }
+    return true;
+}
+
+function invalidateTeamContext({ force = false, reload = true } = {}) {
+    const context = teamAccessContext();
+    if (staffProfileContextKey && (force || staffProfileContextKey !== context)) {
+        void closeHrEditableModal('staffEditModal', true);
+        staffProfileContextKey = '';
+    }
+    if (!force && teamLoadState.context === context) return;
+    teamLoadRequestSeq++;
+    teamLoadAbortController?.abort();
+    teamStaff = [];
+    teamRetryRestoreFocus = false;
+    teamLoadState = { status: 'idle', context, message: 'Завантаження команди...' };
+    if (!reload) {
+        setTeamLoadFailure('restricted', 'Сеанс змінено. Команда недоступна.', context);
+        return;
+    }
+    if (!getHrCurrentUser() || !canViewHrTab('team')) {
+        setTeamLoadFailure('restricted', 'Команда недоступна для поточного доступу.', context);
+        return;
+    }
+    renderPeopleBucketState(teamLoadState.message, 'loading');
+    if (reload && document.getElementById('tab-team')?.classList.contains('active')) {
+        void loadTeam();
+    }
+}
+
+function setTeamLoadFailure(status, message, context) {
+    teamStaff = [];
+    teamLoadState = { status, context, message };
+    renderPeopleBucketState(message, status);
+    if (teamRetryRestoreFocus) document.querySelector('#teamGrid .hr-people-retry')?.focus({ preventScroll: true });
+    teamRetryRestoreFocus = false;
+}
+
 async function loadTeam() {
-    await ensureProfessionsLoaded({ silent: true });
-    await ensureCompanyStructureNodesLoaded({ silent: true });
+    const request = ++teamLoadRequestSeq;
+    teamLoadAbortController?.abort();
+    const controller = new AbortController();
+    teamLoadAbortController = controller;
+    const timeout = setTimeout(() => controller.abort(), teamLoadTimeoutMs);
+    const context = teamAccessContext();
     const grid = document.getElementById('teamGrid');
-    if (grid) renderPeopleBucketState('Завантаження команди...', 'loading');
-    const data = await hrFetch('/staff');
-    if (!data) {
-        if (grid) renderPeopleBucketState('Помилка завантаження. Оновіть сторінку.', 'error');
-        return;
+    teamRetryRestoreFocus = grid?.querySelector('.hr-people-retry') === document.activeElement;
+    teamStaff = [];
+    teamLoadState = { status: 'loading', context, message: 'Завантаження команди...' };
+    renderPeopleBucketState(teamLoadState.message, 'loading');
+    const catalogs = Promise.allSettled([
+        ensureProfessionsLoaded({ silent: true }),
+        ensureCompanyStructureNodesLoaded({ silent: true })
+    ]);
+    void catalogs.then(() => {
+        if (isCurrentTeamLoad(request, context) && ['success', 'empty'].includes(teamLoadState.status)) filterAndRenderTeam();
+    });
+    try {
+        const aborted = new Promise((_, reject) => controller.signal.addEventListener('abort',
+            () => reject(new Error('Team request cancelled')), { once: true }));
+        const data = await Promise.race([hrFetch('/staff', { signal: controller.signal }), aborted]);
+        if (!isCurrentTeamLoad(request, context)) return;
+        if (!data?.success || !Array.isArray(data.data)) {
+            const restricted = data?.status === 403;
+            setTeamLoadFailure(restricted ? 'restricted' : 'error', restricted
+                ? (data.error || 'Команда недоступна для вибраного бізнесу або поточного доступу.')
+                : (data?.error || 'Не вдалося завантажити команду. Повторіть спробу.'), context);
+            return;
+        }
+        teamStaff = data.data;
+        teamLoadState = { status: teamStaff.length ? 'success' : 'empty', context, message: '' };
+        filterAndRenderTeam();
+        if (teamRetryRestoreFocus) document.getElementById('teamSearch')?.focus({ preventScroll: true });
+        teamRetryRestoreFocus = false;
+        const searchEl = document.getElementById('teamSearch');
+        if (searchEl) searchEl.oninput = filterAndRenderTeam;
+    } catch {
+        if (isCurrentTeamLoad(request, context)) {
+            setTeamLoadFailure('error', 'Не вдалося завантажити команду. Перевірте з’єднання та повторіть спробу.', context);
+        }
+    } finally {
+        clearTimeout(timeout);
+        if (teamLoadAbortController === controller) teamLoadAbortController = null;
+        if (isCurrentTeamLoad(request, context) && teamLoadState.status === 'loading') {
+            setTeamLoadFailure('error', 'Не вдалося завантажити команду. Повторіть спробу.', context);
+        }
     }
-    if (!data.success) {
-        if (grid) renderPeopleBucketState(data.error || 'Помилка сервера', 'error');
-        return;
-    }
-    teamStaff = data.data || [];
-    filterAndRenderTeam();
-    // Attach filter listeners (idempotent)
-    const searchEl = document.getElementById('teamSearch');
-    if (searchEl) searchEl.oninput = filterAndRenderTeam;
 }
 
 function clearTeamSearchOnBucketChange(nextBucket) {
@@ -6667,6 +6796,15 @@ function clearTeamSearchOnBucketChange(nextBucket) {
 }
 
 function filterAndRenderTeam() {
+    if (teamLoadState.context && teamLoadState.context !== teamAccessContext()) {
+        invalidateTeamContext();
+        return;
+    }
+    if (!['success', 'empty'].includes(teamLoadState.status)) {
+        renderPeopleBucketState(teamLoadState.message || 'Завантаження команди...',
+            teamLoadState.status === 'idle' ? 'loading' : teamLoadState.status);
+        return;
+    }
     const buckets = visiblePeopleBuckets();
     const grouped = buckets.map(bucket => ({
         ...bucket,
@@ -6712,6 +6850,14 @@ function filterAndRenderTeam() {
 function updateTeamFilterInfo(context = {}) {
     const info = document.getElementById('teamFilterInfo');
     if (!info) return;
+    if (context.mode === 'loading') {
+        info.textContent = 'Завантаження…';
+        return;
+    }
+    if (context.mode === 'error' || context.mode === 'restricted') {
+        info.textContent = context.mode === 'restricted' ? 'Доступ обмежено' : 'Дані недоступні';
+        return;
+    }
     if (context.mode === 'empty') {
         info.textContent = 'Список порожній';
         return;
@@ -6731,6 +6877,7 @@ function renderTeamBucket(bucketId, staff) {
     grid.className = 'hr-people-results';
     grid.dataset.peopleMode = 'bucket';
     grid.dataset.activeBucket = bucketId || '';
+    grid.setAttribute('aria-busy', 'false');
     grid.innerHTML = staff.length
         ? `<div class="hr-people-results-grid">${renderTeamCards(staff)}</div>`
         : `<div class="hr-people-empty">Список "${escapeHtml(peopleBucketTitle(bucketId))}" порожній</div>`;
@@ -6744,6 +6891,7 @@ function renderTeamSearchResults(staff) {
     grid.className = 'hr-people-results hr-people-results--search';
     grid.dataset.peopleMode = 'search';
     grid.dataset.activeBucket = activePeopleBucket || '';
+    grid.setAttribute('aria-busy', 'false');
     grid.innerHTML = staff.length
         ? `<div class="hr-people-results-grid">${renderTeamCards(staff, { showBucketBadge: true })}</div>`
         : '<div class="hr-people-empty">Нічого не знайдено в цій категорії. Змініть запит.</div>';
@@ -6842,23 +6990,29 @@ function renderPeopleBucketState(message, state = 'empty') {
     if (!grid) return;
     grid.className = 'hr-people-results';
     grid.dataset.peopleMode = state;
+    grid.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
     const buckets = visiblePeopleBuckets();
     const grouped = buckets.map(bucket => ({
         ...bucket,
-        totalCount: teamStaff.filter(item => bucketForStaff(item) === bucket.id).length
+        totalCount: state === 'empty' ? 0 : null
     }));
     updatePeopleNavCounts(grouped);
+    updateTeamFilterInfo({ mode: state });
+    const retry = state === 'error'
+        ? '<button type="button" class="hr-people-retry" data-team-retry>Повторити</button>'
+        : '';
+    const role = state === 'error' || state === 'restricted' ? 'alert' : 'status';
     if (!buckets.length) {
-        grid.innerHTML = '<div class="hr-people-empty">Немає доступних списків команди для цієї ролі</div>';
+        const emptyMessage = state === 'empty' ? 'Немає доступних списків команди для цієї ролі' : message;
+        grid.innerHTML = `<div class="hr-people-empty hr-people-empty--${escapeHtml(state)}" role="${role}">${escapeHtml(emptyMessage)}${retry}</div>`;
+        grid.querySelector('[data-team-retry]')?.addEventListener('click', () => void loadTeam());
         syncHrNavActive('team', null);
         return;
     }
     if (!buckets.some(bucket => bucket.id === activePeopleBucket)) activePeopleBucket = firstVisiblePeopleBucketId();
     if (!activePeopleBucket) activePeopleBucket = firstVisiblePeopleBucketId();
-    const retry = state === 'error'
-        ? '<button type="button" class="hr-people-retry" onclick="loadTeam()">Повторити</button>'
-        : '';
-    grid.innerHTML = `<div class="hr-people-empty hr-people-empty--${escapeHtml(state)}">${escapeHtml(message)}${retry}</div>`;
+    grid.innerHTML = `<div class="hr-people-empty hr-people-empty--${escapeHtml(state)}" role="${role}">${escapeHtml(message)}${retry}</div>`;
+    grid.querySelector('[data-team-retry]')?.addEventListener('click', () => void loadTeam());
     syncHrNavActive('team', activePeopleBucket);
 }
 
@@ -6871,6 +7025,13 @@ window.setPeopleBucket = function(bucketId) {
     history.replaceState(null, '', hashTarget === 'team' ? window.location.pathname + '#team' : `${window.location.pathname}#${hashTarget}`);
     filterAndRenderTeam();
 };
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged']) {
+    window.addEventListener(eventName, () => invalidateTeamContext());
+}
+for (const eventName of ['roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
+    window.addEventListener(eventName, () => invalidateTeamContext({ force: true, reload: eventName !== 'crm:auth-cleared' }));
+}
 
 function renderTeamCardStatusChips(staff = {}, bucketBadge = '') {
     const chips = [];
@@ -8349,8 +8510,24 @@ async function loadAccountOnboardingOptions(force = false, expectedRequestSeq = 
 
 async function ensureAccountOnboardingPayrollProfiles(force = false) {
     if (accountOnboardingPayrollProfiles && !force) return accountOnboardingPayrollProfiles;
-    const response = await hrFetch('/payroll-profiles?include_archived=true').catch(() => null);
-    accountOnboardingPayrollProfiles = response?.success && Array.isArray(response.data) ? response.data : [];
+    const requestSeq = accountOnboardingRequestSeq;
+    accountOnboardingPayrollProfiles = null;
+    accountOnboardingPayrollProfilesError = '';
+    updateAccountOnboardingPayrollProfileHint();
+    let response;
+    try {
+        response = await hrFetch('/payroll-profiles?include_archived=true');
+    } catch (error) {
+        response = { success: false, error: error?.message || 'Мережевий збій' };
+    }
+    if (requestSeq !== accountOnboardingRequestSeq) return null;
+    if (response?.success && Array.isArray(response.data)) {
+        accountOnboardingPayrollProfiles = response.data;
+    } else {
+        accountOnboardingPayrollProfilesError = response?.status === 403
+            ? 'Зарплатні профілі недоступні для цього бізнесу або вашої ролі.'
+            : `Не вдалося перевірити зарплатні профілі: ${response?.error || 'некоректна відповідь'}.`;
+    }
     updateAccountOnboardingPayrollProfileHint();
     return accountOnboardingPayrollProfiles;
 }
@@ -8372,6 +8549,17 @@ function updateAccountOnboardingPayrollProfileHint() {
     if (!key) {
         root.textContent = 'Оберіть професію, щоб побачити default зарплатний профіль.';
         root.dataset.state = 'empty';
+        return;
+    }
+    if (accountOnboardingPayrollProfilesError) {
+        root.textContent = `${accountOnboardingPayrollProfilesError} Не можна визначити default профіль. `;
+        root.dataset.state = 'error';
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'btn-secondary';
+        retry.textContent = 'Повторити перевірку';
+        retry.addEventListener('click', () => void ensureAccountOnboardingPayrollProfiles(true));
+        root.appendChild(retry);
         return;
     }
     if (!accountOnboardingPayrollProfiles) {
@@ -8855,6 +9043,7 @@ async function submitAccountOnboarding() {
     accountCenterLastUpdatedId = response.receipt?.account?.id || response.user?.id || null;
     accountOnboardingOptions = null;
     accountOnboardingPayrollProfiles = null;
+    accountOnboardingPayrollProfilesError = '';
     void Promise.allSettled([loadAccountStaffOptions(true), loadTeam(), loadAccountCenter({ resetFilters: true })]);
 }
 
@@ -9005,6 +9194,8 @@ async function openAccountOnboardingWizard(button, context = {}) {
     const overlay = accountOnboardingEl('accountOnboardingOverlay');
     if (!overlay) return false;
     const requestSeq = ++accountOnboardingRequestSeq;
+    accountOnboardingPayrollProfiles = null;
+    accountOnboardingPayrollProfilesError = '';
     accountOnboardingState = { open: true, step: 1, requestSeq, returnFocus: button || document.activeElement, context, submitting: false, receipt: null, credential: null, payload: null };
     bindAccountOnboardingControls();
     overlay.classList.remove('hidden');
@@ -9601,8 +9792,8 @@ async function loadStaffShiftPreferences(staffId, options = {}) {
     }
     const seq = ++staffShiftPreferencesLoadSeq;
     root.innerHTML = '<div class="hr-shift-preferences-empty">Типові зміни завантажуються...</div>';
-    const data = await crmApiFetch(`/api/staff/${encodeURIComponent(numericStaffId)}/shift-preferences`);
-    if (seq !== staffShiftPreferencesLoadSeq || Number(activeEditStaffId()) !== numericStaffId) return data;
+    const data = await crmApiFetch(`/api/staff/${encodeURIComponent(numericStaffId)}/shift-preferences`).catch(error => ({ success: false, error: error?.message }));
+    if (seq !== staffShiftPreferencesLoadSeq || !isActiveStaffEditLoad(numericStaffId)) return { success: false, stale: true };
     if (!data?.success) {
         root.innerHTML = '<div class="hr-shift-preferences-empty">Не вдалося завантажити типові зміни.</div>';
         return data;
@@ -9815,6 +10006,26 @@ function populateStaffProfessionControls(staff = {}) {
     renderStaffProfessionRatesEditor(staff);
 }
 
+function populateStaffProfessionControlsPending(staff = {}) {
+    const primary = normalizeProfessionKey(staff.role_type);
+    const primarySelect = document.getElementById('editRoleType');
+    if (primarySelect) primarySelect.innerHTML = primary
+        ? `<option value="${escapeHtml(primary)}">${escapeHtml(primary)}</option>`
+        : '<option value="">Професія не задана</option>';
+    const secondary = document.getElementById('editSecondaryProfessions');
+    if (secondary) secondary.innerHTML = staffSecondaryProfessions(staff)
+        .map(key => `<option value="${escapeHtml(key)}" selected>${escapeHtml(key)}</option>`).join('');
+    const picker = document.getElementById('editSecondaryProfessionPicker');
+    if (picker) picker.replaceChildren();
+    const search = document.getElementById('editSecondaryProfessionSearch');
+    if (search) search.value = '';
+    const structure = document.getElementById('editCompanyStructureNode');
+    const nodeId = String(staff.company_structure_node_id || staff.companyStructureNodeId || '');
+    if (structure) structure.innerHTML = `<option value="">Не призначено</option>${nodeId ? `<option value="${escapeHtml(nodeId)}" selected>${escapeHtml(nodeId)}</option>` : ''}`;
+    const rates = document.getElementById('editProfessionRates');
+    if (rates) rates.textContent = 'Ставки професій з’являться після завантаження довідників.';
+}
+
 const STAFF_HISTORY_ACTION_LABELS = {
     staff_update: 'Оновлення профілю',
     pool_status_update: 'Переміщення між списками',
@@ -9980,7 +10191,7 @@ async function loadStaffProfileHistory(staffId) {
     const seq = ++staffProfileHistoryLoadSeq;
     root.innerHTML = 'Історія завантажується...';
     const data = await hrFetch(`/staff/${numericStaffId}/history?limit=30`).catch(() => null);
-    if (seq !== staffProfileHistoryLoadSeq || Number(activeEditStaffId()) !== numericStaffId) return data;
+    if (seq !== staffProfileHistoryLoadSeq || !isActiveStaffEditLoad(numericStaffId)) return { success: false, stale: true };
     if (!data?.success) {
         root.innerHTML = '<div class="hr-staff-history-empty">Не вдалося завантажити історію.</div>';
         return data;
@@ -9995,7 +10206,10 @@ function activeEditStaffId() {
 
 function isActiveStaffEditLoad(staffId) {
     const numericStaffId = Number(staffId);
-    return Number.isFinite(numericStaffId) && Number(activeEditStaffId()) === numericStaffId;
+    return Number.isFinite(numericStaffId)
+        && Number(activeEditStaffId()) === numericStaffId
+        && staffProfileContextKey === teamAccessContext()
+        && document.getElementById('staffEditModal')?.style.display !== 'none';
 }
 
 function mergeFreshStaffProfile(staff = {}) {
@@ -11174,7 +11388,7 @@ async function loadStaffLifecycleChecklist(staffId, options = {}) {
     const seq = ++staffLifecycleLoadSeq;
     root.innerHTML = 'Чекліст життєвого циклу завантажується...';
     const data = await hrFetch(`/staff/${id}/lifecycle-checklist`).catch(() => null);
-    if (seq !== staffLifecycleLoadSeq || !isActiveStaffEditLoad(id)) return data || { success: false, stale: true };
+    if (seq !== staffLifecycleLoadSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
     root.innerHTML = data?.success
         ? renderStaffLifecycleChecklist(data.data || {})
         : renderStaffFoundationEmpty(data?.error || 'Не вдалося завантажити чекліст життєвого циклу.');
@@ -11242,13 +11456,18 @@ async function loadStaffRoleAssignments(staffId) {
     const seq = ++staffRoleAssignmentsLoadSeq;
     root.innerHTML = 'Ролі завантажуються...';
     const data = await hrFetch(`/staff/${staffId}/role-assignments`).catch(() => null);
-    if (seq !== staffRoleAssignmentsLoadSeq || !isActiveStaffEditLoad(staffId)) return data;
+    if (seq !== staffRoleAssignmentsLoadSeq || !isActiveStaffEditLoad(staffId)) return { success: false, stale: true };
     root.innerHTML = data?.success
         ? renderStaffRoleAssignments(data.data || [])
         : renderStaffFoundationEmpty(data?.error || 'Не вдалося завантажити ролі.');
+    return data || { success: false };
 }
 
 async function saveStaffRoleAssignments(button = null) {
+    if (document.getElementById('staffEditModal')?.dataset.catalogState !== 'ready') {
+        showNotification('Довідники для збереження ролей ще недоступні.', 'error');
+        return { success: false, error: 'staff_catalog_unavailable' };
+    }
     return runStaffProfileAction(button || 'editRoleAssignmentsSave', {
         loadingLabel: 'Збереження…',
         successLabel: 'Збережено',
@@ -11311,12 +11530,18 @@ async function loadStaffPayrollScheme(staffId) {
     const seq = ++staffPayrollSchemeLoadSeq;
     summary.textContent = 'Зарплатна схема завантажується...';
     const data = await hrFetch(`/staff/${staffId}/payroll-scheme`).catch(() => null);
-    if (seq !== staffPayrollSchemeLoadSeq || !isActiveStaffEditLoad(staffId)) return data;
+    if (seq !== staffPayrollSchemeLoadSeq || !isActiveStaffEditLoad(staffId)) return { success: false, stale: true };
     if (!data?.success) {
         summary.textContent = data?.error || 'Не вдалося завантажити зарплатну схему.';
-        return;
+        return data || { success: false };
+    }
+    if (staffProfileDirtyScopes().includes('payroll')) {
+        summary.textContent = 'Зарплатну схему змінено під час завантаження. Збережіть або скасуйте зміни перед оновленням.';
+        return { success: false, error: 'payroll_draft_changed' };
     }
     setPayrollSchemeForm(data.data || {});
+    markStaffProfileScopesClean(['payroll']);
+    return data;
 }
 
 function currentStaffPayrollProfessionKeys() {
@@ -11687,7 +11912,7 @@ async function loadStaffPayrollProfiles(staffId, options = {}) {
         const error = profilesResponse?.error || assignmentsResponse?.error || 'Не вдалося завантажити зарплатні профілі.';
         staffPayrollProfileState = { staffId: Number(staffId), profiles: [], assignments: [], history: null, preview: null, error };
         root.innerHTML = renderStaffFoundationEmpty(error);
-        return { success: false, error };
+        return { success: false, error, status: profilesResponse?.status || assignmentsResponse?.status };
     }
     staffPayrollProfileState = {
         ...staffPayrollProfileState,
@@ -12285,12 +12510,14 @@ async function loadStaffResourceOptions(kind = document.getElementById('editReso
         return { success: true, data: [] };
     }
     const seq = ++staffResourceOptionsLoadSeq;
+    const staffId = Number(activeEditStaffId());
+    const openSeq = staffEditOpenSeq;
     sourceSelect.innerHTML = '<option value="">Завантаження...</option>';
     sourceSelect.disabled = true;
     if (hint) hint.textContent = kind === 'costume' ? 'Підтягується з розділу Склад → Костюми.' : 'Підтягується з активних складських позицій.';
     setStaffResourceOptionsState('loading', 'Завантажуємо доступні позиції…');
     const data = await hrFetch(`/resource-options?kind=${encodeURIComponent(kind)}&limit=80`).catch(() => null);
-    if (seq !== staffResourceOptionsLoadSeq) return { success: false, stale: true };
+    if (seq !== staffResourceOptionsLoadSeq || openSeq !== staffEditOpenSeq || !isActiveStaffEditLoad(staffId)) return { success: false, stale: true };
     if (!data?.success) {
         sourceSelect.innerHTML = '<option value="">Не вдалося завантажити</option>';
         sourceSelect.disabled = true;
@@ -13188,6 +13415,7 @@ function prepareStaffProfileDrawerLayout() {
 function resetStaffProfileLazyState(staffId) {
     staffProfileLoadedTabs = new Set();
     staffProfileTabLoadPromises = new Map();
+    staffProfileTabLoadSeq = new Map();
     staffProfileScopeBaselines = new Map();
     staffWorkspaceSectionLoadSeq = new Map();
     closeStaffDocumentPreview({ restoreFocus: false });
@@ -13216,7 +13444,77 @@ function setStaffProfileTabLoading(tabId, loading) {
         button.setAttribute('aria-busy', loading ? 'true' : 'false');
     }
     if (panel) panel.setAttribute('aria-busy', loading ? 'true' : 'false');
-    announceStaffProfileStatus(loading ? `Завантажуємо: ${label}` : `Розділ готовий: ${label}`);
+    if (loading) announceStaffProfileStatus(`Завантажуємо: ${label}`);
+}
+
+function setStaffProfileTabResult(tabId, state, message = '') {
+    const tab = normalizeStaffProfileTab(tabId);
+    const panel = document.querySelector(`[data-staff-profile-panel="${tab}"]`);
+    if (!panel) return;
+    let status = panel.querySelector(':scope > .hr-staff-profile-section-state');
+    if (!status) {
+        status = document.createElement('div');
+        status.className = 'hr-staff-profile-section-state';
+        panel.prepend(status);
+    }
+    panel.dataset.loadState = state;
+    status.hidden = state === 'ready';
+    if (status.hidden) {
+        status.replaceChildren();
+        announceStaffProfileStatus(`Розділ готовий: ${STAFF_PROFILE_TABS.find(item => item.id === tab)?.label || tab}`);
+        return;
+    }
+    status.setAttribute('role', state === 'error' || state === 'partial' ? 'alert' : 'status');
+    const labels = {
+        loading: `Завантажуємо: ${STAFF_PROFILE_TABS.find(item => item.id === tab)?.label || tab}`,
+        restricted: 'Цей розділ недоступний для поточного доступу.',
+        partial: 'Частину даних не вдалося завантажити.',
+        error: 'Не вдалося завантажити розділ.'
+    };
+    const description = document.createElement('span');
+    description.textContent = message || labels[state] || labels.error;
+    status.replaceChildren(description);
+    if (state === 'error' || state === 'partial') {
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'btn-secondary';
+        retry.textContent = 'Повторити';
+        retry.addEventListener('click', async () => {
+            const restoreFocus = document.activeElement === retry;
+            await activateStaffProfileTab(tab, { force: true });
+            if (restoreFocus && panel.isConnected) {
+                (panel.querySelector(':scope > .hr-staff-profile-section-state button')
+                    || document.querySelector(`[data-staff-profile-tab="${tab}"]`))?.focus({ preventScroll: true });
+            }
+        });
+        status.appendChild(retry);
+    }
+    announceStaffProfileStatus(description.textContent);
+}
+
+function staffProfileLoadOutcome(results) {
+    const responses = results.flatMap(result => {
+        if (result?.status === 'rejected') return [{ success: false, error: result.reason?.message }];
+        const value = result?.status === 'fulfilled' ? result.value : result;
+        if (value?.stale) return [{ success: false, stale: true }];
+        if (value?.docs || value?.medical || value?.resources) {
+            return [value.docs, value.medical, value.resources].filter(Boolean);
+        }
+        if (value?.offboarding || value?.readiness || value?.lifecycle) {
+            return [value.offboarding, value.readiness, value.lifecycle].filter(Boolean);
+        }
+        return [value || { success: false, error: 'empty_response' }];
+    });
+    if (responses.some(item => item?.stale)) return { success: false, stale: true };
+    const failed = responses.filter(item => !item?.success);
+    if (!failed.length) return { success: true, state: 'ready' };
+    const restricted = failed.every(item => item?.status === 403 || item?.error === 'restricted' || item?.error === 'forbidden');
+    const successful = responses.some(item => item?.success);
+    return {
+        success: false,
+        state: restricted && !successful ? 'restricted' : successful ? 'partial' : 'error',
+        error: failed[0]?.error || ''
+    };
 }
 
 async function loadStaffDocumentsAndResources(staffId, options = {}) {
@@ -13237,6 +13535,7 @@ async function loadStaffDocumentsAndResources(staffId, options = {}) {
         return { success: false, error: 'restricted' };
     }
 
+    const openSeq = staffEditOpenSeq;
     const requestTokens = new Map();
     requested.forEach(section => {
         const token = Number(staffWorkspaceSectionLoadSeq.get(section) || 0) + 1;
@@ -13247,12 +13546,12 @@ async function loadStaffDocumentsAndResources(staffId, options = {}) {
     });
 
     const requestBySection = {
-        documents: () => hrFetch(`/staff/${id}/documents${currentStaffWorkspaceView('documents') === 'archive' ? '?include_archived=true' : ''}`).catch(() => null),
-        medical: () => hrFetch(`/staff/${id}/medical-book`).catch(() => null),
-        resources: () => hrFetch(`/staff/${id}/resources?view=${currentStaffWorkspaceView('resources')}`).catch(() => null)
+        documents: () => hrFetch(`/staff/${id}/documents${currentStaffWorkspaceView('documents') === 'archive' ? '?include_archived=true' : ''}`).catch(error => ({ success: false, error: error?.message })),
+        medical: () => hrFetch(`/staff/${id}/medical-book`).catch(error => ({ success: false, error: error?.message })),
+        resources: () => hrFetch(`/staff/${id}/resources?view=${currentStaffWorkspaceView('resources')}`).catch(error => ({ success: false, error: error?.message }))
     };
     const responses = await Promise.all(requested.map(async section => [section, await requestBySection[section]()]));
-    if (!isActiveStaffEditLoad(id)) return { success: false, stale: true };
+    if (openSeq !== staffEditOpenSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
 
     const result = Object.fromEntries(responses);
     requested.forEach(section => {
@@ -13317,9 +13616,9 @@ async function loadStaffOffboardingSurface(staffId) {
     }
     updateStaffOffboardingActionState();
     const [offboarding, readiness, lifecycle] = await Promise.all([
-        hrFetch(`/staff/${id}/offboarding`).catch(() => null),
-        hrFetch(`/staff/${id}/offboarding-readiness`).catch(() => null),
-        hrFetch(`/staff/${id}/lifecycle-checklist`).catch(() => null)
+        hrFetch(`/staff/${id}/offboarding`).catch(error => ({ success: false, error: error?.message })),
+        hrFetch(`/staff/${id}/offboarding-readiness`).catch(error => ({ success: false, error: error?.message })),
+        hrFetch(`/staff/${id}/lifecycle-checklist`).catch(error => ({ success: false, error: error?.message }))
     ]);
     if (seq !== staffOffboardingLoadSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
     staffOffboardingReadiness = readiness?.success ? (readiness.data || null) : null;
@@ -13339,43 +13638,62 @@ async function loadStaffProfileTabData(tabId, options = {}) {
     const tab = normalizeStaffProfileTab(tabId);
     const staffId = Number(activeEditStaffId());
     if (!Number.isFinite(staffId) || staffId <= 0) return null;
+    const openSeq = staffEditOpenSeq;
+    const context = staffProfileContextKey;
     const key = `${staffId}:${tab}`;
     if (!options.force && staffProfileLoadedTabs.has(key)) return { success: true, cached: true };
     if (!options.force && staffProfileTabLoadPromises.has(key)) return staffProfileTabLoadPromises.get(key);
-    const scopes = STAFF_PROFILE_TAB_SCOPES[tab] || [];
-    const dirtyBefore = staffProfileDirtyScopes().filter(scope => scopes.includes(scope));
+    const requestSeq = Number(staffProfileTabLoadSeq.get(key) || 0) + 1;
+    staffProfileTabLoadSeq.set(key, requestSeq);
     const promise = (async () => {
         setStaffProfileTabLoading(tab, true);
+        setStaffProfileTabResult(tab, 'loading');
+        let timeoutId;
         try {
+            let requests = [];
             if (tab === 'work') {
-                await Promise.allSettled([
+                requests = [
                     loadStaffRoleAssignments(staffId),
                     loadStaffShiftPreferences(staffId, { force: Boolean(options.force) })
-                ]);
+                ];
             } else if (tab === 'training') {
-                await loadStaffLifecycleChecklist(staffId, { force: Boolean(options.force) });
+                requests = [loadStaffLifecycleChecklist(staffId, { force: Boolean(options.force) })];
             } else if (tab === 'payroll') {
-                await Promise.allSettled([
+                requests = [
+                    loadStaffPayrollScheme(staffId),
                     loadStaffPayrollProfiles(staffId, { force: Boolean(options.force) }),
                     loadStaffPayrollProfilePreview(staffId, { force: Boolean(options.force) })
-                ]);
+                ];
             } else if (tab === 'resources') {
-                await Promise.allSettled([
+                requests = [
                     loadStaffDocumentsAndResources(staffId),
                     loadStaffResourceOptions(document.getElementById('editResourceKind')?.value || 'custom')
-                ]);
+                ];
             } else if (tab === 'offboarding') {
-                await loadStaffOffboardingSurface(staffId);
+                requests = [loadStaffOffboardingSurface(staffId)];
             } else if (tab === 'history') {
-                await loadStaffProfileHistory(staffId);
+                requests = [loadStaffProfileHistory(staffId)];
             }
-            if (!isActiveStaffEditLoad(staffId)) return { success: false, stale: true };
-            staffProfileLoadedTabs.add(key);
-            if (!dirtyBefore.length) markStaffProfileScopesClean(scopes);
-            return { success: true };
+            const settled = await Promise.race([
+                Promise.allSettled(requests),
+                new Promise(resolve => { timeoutId = setTimeout(() => resolve(null), staffProfileRequestTimeoutMs); })
+            ]);
+            if (openSeq !== staffEditOpenSeq || context !== teamAccessContext() || requestSeq !== staffProfileTabLoadSeq.get(key) || !isActiveStaffEditLoad(staffId)) {
+                return { success: false, stale: true };
+            }
+            const outcome = settled === null
+                ? { success: false, state: 'error', error: 'Час очікування вичерпано. Повторіть запит.' }
+                : staffProfileLoadOutcome(settled);
+            if (!outcome.stale) {
+                if (outcome.success) staffProfileLoadedTabs.add(key);
+                else staffProfileLoadedTabs.delete(key);
+                setStaffProfileTabResult(tab, outcome.state, outcome.state === 'restricted' ? '' : outcome.error);
+            }
+            return outcome;
         } finally {
-            setStaffProfileTabLoading(tab, false);
-            staffProfileTabLoadPromises.delete(key);
+            clearTimeout(timeoutId);
+            if (openSeq === staffEditOpenSeq && context === teamAccessContext() && requestSeq === staffProfileTabLoadSeq.get(key)) setStaffProfileTabLoading(tab, false);
+            if (staffProfileTabLoadPromises.get(key) === promise) staffProfileTabLoadPromises.delete(key);
         }
     })();
     staffProfileTabLoadPromises.set(key, promise);
@@ -13411,41 +13729,137 @@ async function hydrateStaffEditProfile(staffId, openSeq, initialTab = STAFF_PROF
     const numericStaffId = Number(staffId);
     const modal = document.getElementById('staffEditModal');
     if (!Number.isFinite(numericStaffId) || numericStaffId <= 0 || !modal) return;
-    markStaffProfileScopesClean(Object.keys(STAFF_PROFILE_SCOPE_LABELS));
-    await activateStaffProfileTab(initialTab);
+    await activateStaffProfileTab(initialTab).catch(() => ({ success: false }));
     if (openSeq !== staffEditOpenSeq || !isActiveStaffEditLoad(numericStaffId) || modal.style.display === 'none') return;
     setStaffProfileHydrationState(modal, false);
-    if (modal.dataset.staffProfileHydrationDirty !== 'true' && window.UnsafeDismissGuard) {
-        markStaffProfileScopesClean(Object.keys(STAFF_PROFILE_SCOPE_LABELS));
+    updateStaffProfileDirtyIndicators();
+}
+
+function setStaffProfileCardState(modal, state, message = '', retryStaffId = null) {
+    if (!modal) return;
+    modal.dataset.cardState = state;
+    const root = modal.querySelector('#staffProfileCardState');
+    if (!root) return;
+    root.hidden = state === 'ready';
+    root.setAttribute('role', state === 'error' ? 'alert' : 'status');
+    root.replaceChildren();
+    if (root.hidden) return;
+    const description = document.createElement('span');
+    description.textContent = message || (state === 'loading' ? 'Завантажуємо картку працівника…' : 'Не вдалося завантажити картку працівника.');
+    root.appendChild(description);
+    if (state === 'error' && retryStaffId) {
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'btn-secondary';
+        retry.textContent = 'Повторити';
+        retry.addEventListener('click', () => { void openStaffEdit(retryStaffId, { trigger: retry }); });
+        root.appendChild(retry);
     }
+}
+
+function setStaffProfileCatalogState(modal, state, message = '') {
+    if (!modal) return;
+    modal.dataset.catalogState = state;
+    const blocked = state !== 'ready';
+    ['editRoleType', 'editSecondaryProfessions', 'editSecondaryProfessionSearch', 'editCompanyStructureNode', 'editRoleAssignmentsSave']
+        .forEach(id => { const field = modal.querySelector(`#${id}`); if (field) field.disabled = blocked; });
+    const saveWork = modal.querySelector('#editSaveWork');
+    if (saveWork) saveWork.disabled = state === 'loading' || state === 'error';
+    let status = modal.querySelector('#staffProfileCatalogState');
+    if (!status) {
+        status = document.createElement('div');
+        status.id = 'staffProfileCatalogState';
+        status.className = 'hr-staff-profile-section-state';
+        modal.querySelector('[data-staff-profile-panel="work"]')?.prepend(status);
+    }
+    status.hidden = !blocked;
+    if (status.hidden) { status.replaceChildren(); return; }
+    status.setAttribute('role', state === 'error' ? 'alert' : 'status');
+    status.replaceChildren();
+    const description = document.createElement('span');
+    description.textContent = message || 'Завантажуємо довідники для редагування робочих даних…';
+    status.appendChild(description);
+    if (state === 'error') {
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'btn-secondary';
+        retry.textContent = 'Повторити';
+        retry.addEventListener('click', () => { void loadStaffProfileCatalogs(Number(activeEditStaffId()), staffEditOpenSeq); });
+        status.appendChild(retry);
+    }
+}
+
+async function loadStaffProfileCatalogs(staffId, openSeq) {
+    const modal = document.getElementById('staffEditModal');
+    setStaffProfileCatalogState(modal, 'loading');
+    let timeoutId;
+    const settled = await Promise.race([
+        Promise.allSettled([
+            ensureProfessionsLoaded({ silent: true, force: true }),
+            ensureCompanyStructureNodesLoaded({ silent: true, force: true, hydrateFields: false })
+        ]),
+        new Promise(resolve => { timeoutId = setTimeout(() => resolve(null), staffProfileRequestTimeoutMs); })
+    ]);
+    clearTimeout(timeoutId);
+    if (openSeq !== staffEditOpenSeq || !isActiveStaffEditLoad(staffId)) return;
+    if (!settled || professionCatalogLoadState !== 'ready' || companyStructureLoadState !== 'ready') {
+        setStaffProfileCatalogState(modal, 'error', 'Довідники професій або структури недоступні. Редагування робочих даних призупинено.');
+        return;
+    }
+    const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
+    if (staff && !staffProfileDirtyScopes().some(scope => scope === 'work' || scope === 'rates')) {
+        setStaffProfileCatalogState(modal, 'ready');
+        populateStaffProfessionControls(staff);
+        markStaffProfileScopesClean(['work', 'rates']);
+        return;
+    }
+    setStaffProfileCatalogState(modal, 'deferred', 'Довідники завантажено. Збережіть незбережені правки й відкрийте картку знову, щоб оновити вибір професій та структури.');
 }
 
 async function openStaffEdit(staffId, options = {}) {
     const numericStaffId = Number(staffId);
     if (!Number.isFinite(numericStaffId) || numericStaffId <= 0) return;
+    const modal = document.getElementById('staffEditModal');
+    if (!modal) return;
+    if (modal.style.display !== 'none' && !(await closeHrEditableModal('staffEditModal'))) return;
     const openSeq = ++staffEditOpenSeq;
     const triggerEl = options?.trigger || document.activeElement || null;
     const focusTarget = typeof options === 'string' ? options : options?.focus;
     const initialTab = staffProfileTabForFocusTarget(focusTarget);
-    const [profileData] = await Promise.all([
-        hrFetch(`/staff/${numericStaffId}`).catch(() => null),
-        ensureProfessionsLoaded({ silent: true }),
-        ensureCompanyStructureNodesLoaded({ silent: true })
-    ]);
-    if (openSeq !== staffEditOpenSeq) return;
+    const context = teamAccessContext();
+    staffProfileContextKey = context;
+    staffEditOpenAbortController?.abort();
+    const controller = new AbortController();
+    staffEditOpenAbortController = controller;
+    prepareStaffProfileDrawerLayout();
+    resetStaffProfileLazyState(null);
+    document.getElementById('editStaffId').value = '';
+    syncStaffProfileHeaderName('Завантаження…', {});
+    setStaffProfileCardState(modal, 'loading');
+    setStaffProfileHydrationState(modal, true);
+    showHrEditableModal('staffEditModal', {
+        trigger: triggerEl,
+        initialFocus: '#editCloseTop',
+        restoreFocus: () => staffEditRestoreFocusTarget(numericStaffId, triggerEl)
+    });
+    const timeout = setTimeout(() => controller.abort(), staffProfileRequestTimeoutMs);
+    const profileData = await hrFetch(`/staff/${numericStaffId}`, { signal: controller.signal })
+        .catch(error => ({ success: false, error: error?.name === 'AbortError' ? 'Час очікування вичерпано.' : error?.message }));
+    clearTimeout(timeout);
+    if (openSeq !== staffEditOpenSeq || context !== teamAccessContext() || modal.style.display === 'none') return;
     if (!profileData?.success) {
-        showNotification(profileData?.error || 'Не вдалося завантажити профіль працівника', 'error');
-        return;
+        setStaffProfileHydrationState(modal, false);
+        setStaffProfileCardState(modal, 'error', profileData?.error || 'Не вдалося завантажити профіль працівника.', numericStaffId);
+        return profileData || { success: false };
     }
     const s = mergeFreshStaffProfile(profileData.data || { id: numericStaffId });
 
-    prepareStaffProfileDrawerLayout();
     resetStaffProfileLazyState(numericStaffId);
     document.getElementById('editStaffId').value = numericStaffId;
     const editStaffName = document.getElementById('editStaffName');
     if (editStaffName) editStaffName.value = s.name || '';
     syncStaffProfileHeaderName(s.name || '', s);
-    populateStaffProfessionControls(s);
+    populateStaffProfessionControlsPending(s);
     document.getElementById('editPhone').value = s.phone || '';
     const editPhotoUrl = document.getElementById('editPhotoUrl');
     if (editPhotoUrl) editPhotoUrl.value = s.photo_url || '';
@@ -13512,16 +13926,14 @@ async function openStaffEdit(staffId, options = {}) {
     staffOffboardingLifecycle = null;
     updateStaffOffboardingActionState();
 
-    const modal = document.getElementById('staffEditModal');
-    setStaffProfileHydrationState(modal, true);
-    showHrEditableModal('staffEditModal', {
-        trigger: triggerEl,
-        initialFocus: '[data-staff-profile-tab][aria-selected="true"], #editStaffName',
-        restoreFocus: () => staffEditRestoreFocusTarget(numericStaffId, triggerEl)
-    });
+    setStaffProfileCatalogState(modal, 'loading');
+    markStaffProfileScopesClean(Object.keys(STAFF_PROFILE_SCOPE_LABELS));
+    setStaffProfileCardState(modal, 'ready');
+    void loadStaffProfileCatalogs(numericStaffId, openSeq);
     hydrateStaffEditProfile(numericStaffId, openSeq, initialTab).then(() => {
-        if (focusTarget === 'documents') focusStaffDocumentsPanel();
+        if (focusTarget === 'documents' && openSeq === staffEditOpenSeq) focusStaffDocumentsPanel();
     });
+    return profileData;
 }
 
 function buildStaffMainPayload() {
@@ -13610,6 +14022,10 @@ async function updateStaffProfileFields(staffId, body) {
 async function saveStaffEdit(options = {}) {
     const staffId = activeEditStaffId();
     const scope = (typeof options === 'string' ? options : options?.scope) === 'work' ? 'work' : 'main';
+    if (scope === 'work' && !['ready', 'deferred'].includes(document.getElementById('staffEditModal')?.dataset.catalogState)) {
+        showNotification('Довідники для редагування робочих даних ще недоступні.', 'error');
+        return { success: false, error: 'staff_catalog_unavailable' };
+    }
     const button = typeof options === 'object' ? options?.button : null;
     const fullPayload = scope === 'work' ? buildStaffWorkPayload() : buildStaffMainPayload();
     const { body, submittedFields } = buildChangedStaffPayload(
@@ -13675,6 +14091,10 @@ async function saveStaffEdit(options = {}) {
 }
 
 async function saveStaffRates(staffId) {
+    if (document.getElementById('staffEditModal')?.dataset.catalogState !== 'ready') {
+        showNotification('Довідники для збереження ставок ще недоступні.', 'error');
+        return { success: false, error: 'staff_catalog_unavailable' };
+    }
     if (staffProfileDirtyScopes().includes('work')) {
         showNotification('Спершу збережіть робочі дані: ставки залежать від вибраних професій.', 'error');
         return { success: false, error: 'work_scope_dirty' };
@@ -16664,6 +17084,9 @@ async function closeHrEditableModal(id, force = false, message = 'Є незбе�
     const closeNow = () => {
         if (id === 'staffEditModal') {
             staffEditOpenSeq += 1;
+            staffEditOpenAbortController?.abort();
+            staffEditOpenAbortController = null;
+            staffProfileContextKey = '';
             setStaffProfileHydrationState(modal, false);
         }
         const hide = target => {
@@ -18369,9 +18792,9 @@ function syncPayrollProfileFilterControls(visibleRows = null) {
     if (usage && usage.value !== state.usage) usage.value = state.usage;
     if (readiness && readiness.value !== state.readiness) readiness.value = state.readiness;
     if (info) {
-        info.textContent = hasFilters
+        info.textContent = state.loadStatus === 'ready' ? (hasFilters
             ? `Знайдено ${rows.length} із ${state.profiles.length}`
-            : `${state.profiles.length} профілів`;
+            : `${state.profiles.length} профілів`) : '— профілів';
     }
     if (reset) reset.hidden = !hasFilters;
 }
@@ -18406,6 +18829,10 @@ function payrollProfileVersionDayChips(version = null) {
 function renderPayrollProfilesSummary(rows = []) {
     const root = document.getElementById('payrollProfilesSummary');
     if (!root) return;
+    if (payrollProfilesState.loadStatus !== 'ready') {
+        root.innerHTML = '<div class="hr-payroll-profile-empty-state">Кількість профілів і працівників невідома.</div>';
+        return;
+    }
     const all = payrollProfilesState.profiles;
     const shared = all.filter(profile => (profile.profileKind || profile.profile_kind) === 'shared').length;
     const personal = all.filter(profile => (profile.profileKind || profile.profile_kind) === 'personal').length;
@@ -18473,6 +18900,15 @@ function renderPayrollProfilesList(rows = []) {
     if (!root) return;
     if (payrollProfilesState.loading) {
         root.innerHTML = '<div class="hr-payroll-profile-empty-state">Завантажуємо зарплатні профілі...</div>';
+        return;
+    }
+    if (payrollProfilesState.loadStatus === 'idle') {
+        root.innerHTML = '<div class="hr-payroll-profile-empty-state">Зарплатні профілі ще не завантажені.</div>';
+        return;
+    }
+    if (payrollProfilesState.loadStatus === 'error' || payrollProfilesState.loadStatus === 'restricted') {
+        root.innerHTML = `<div class="hr-payroll-profile-empty-state" role="alert">${escapeHtml(payrollProfilesState.loadError)} <button type="button" data-payroll-profiles-retry>Повторити</button></div>`;
+        root.querySelector('[data-payroll-profiles-retry]')?.addEventListener('click', () => void loadPayrollProfilesCatalog());
         return;
     }
     if (!rows.length) {
@@ -18612,6 +19048,10 @@ function renderPayrollProfileComparison(profile = {}) {
 function renderPayrollProfileInspector() {
     const root = document.getElementById('payrollProfileInspector');
     if (!root) return;
+    if (payrollProfilesState.loadStatus !== 'ready') {
+        root.innerHTML = '<div class="hr-payroll-profile-empty-state">Картка профілю доступна після успішного завантаження каталогу й співробітників.</div>';
+        return;
+    }
     const profile = payrollProfileById(payrollProfilesState.selectedProfileId);
     if (!profile) {
         root.innerHTML = '<div class="hr-payroll-profile-empty-state">Виберіть профіль у каталозі, щоб редагувати ставку, створити клон або порівняти умови.</div>';
@@ -18643,6 +19083,17 @@ function renderPayrollProfileInspector() {
 }
 
 function renderPayrollProfilesCatalog() {
+    for (const id of ['btnNewPayrollProfile', 'btnPayrollProfileDiagnostics', 'btnPayrollProfileForecast', 'btnPayrollProfileBulk']) {
+        const button = document.getElementById(id);
+        if (!button) continue;
+        if (payrollProfilesState.loadStatus !== 'ready' && !button.disabled) {
+            button.disabled = true;
+            button.dataset.payrollUnavailableDisabled = 'true';
+        } else if (payrollProfilesState.loadStatus === 'ready' && button.dataset.payrollUnavailableDisabled === 'true') {
+            button.disabled = false;
+            delete button.dataset.payrollUnavailableDisabled;
+        }
+    }
     renderPayrollProfileFilterOptions();
     const rows = payrollProfileFilteredRows();
     if (payrollProfilesState.selectedProfileId && !payrollProfileById(payrollProfilesState.selectedProfileId)) {
@@ -18663,24 +19114,57 @@ function renderPayrollProfilesCatalog() {
 }
 
 async function loadPayrollProfilesCatalog(options = {}) {
+    const requestSeq = ++payrollProfilesState.requestSeq;
+    const context = salaryAccessContext();
+    payrollProfilesState.context = context;
     payrollProfilesState.loading = true;
+    payrollProfilesState.loadStatus = 'loading';
+    payrollProfilesState.loadError = '';
+    payrollProfilesState.profiles = [];
+    payrollProfilesState.staff = [];
+    payrollProfilesState.selectedProfileId = null;
+    payrollProfilesState.compare = null;
     renderPayrollProfilesCatalog();
-    const [profilesResponse, staffResponse] = await Promise.all([
+    const [profilesResult, staffResult] = await Promise.allSettled([
         hrFetch('/payroll-profiles?include_archived=true'),
         hrFetch('/staff?active=true'),
         ensureProfessionsLoaded({ silent: true })
     ]);
+    if (requestSeq !== payrollProfilesState.requestSeq || context !== salaryAccessContext()) return;
+    const profilesResponse = profilesResult.status === 'fulfilled' ? profilesResult.value : { success: false, error: profilesResult.reason?.message };
+    const staffResponse = staffResult.status === 'fulfilled' ? staffResult.value : { success: false, error: staffResult.reason?.message };
     payrollProfilesState.loading = false;
-    if (!profilesResponse?.success) {
-        showNotification(profilesResponse?.error || 'Не вдалося завантажити зарплатні профілі', 'error');
-        payrollProfilesState.profiles = [];
+    if (!profilesResponse?.success || !Array.isArray(profilesResponse.data) || !staffResponse?.success || !Array.isArray(staffResponse.data)) {
+        const failed = !profilesResponse?.success || !Array.isArray(profilesResponse.data) ? profilesResponse : staffResponse;
+        const resource = failed === profilesResponse ? 'зарплатні профілі' : 'список співробітників для профілів';
+        payrollProfilesState.loadStatus = failed?.status === 403 ? 'restricted' : 'error';
+        payrollProfilesState.loadError = failed?.status === 403
+            ? `${resource} недоступні для цього бізнесу або вашої ролі.`
+            : `Не вдалося завантажити ${resource}: ${failed?.error || 'некоректна відповідь'}.`;
+        showNotification(payrollProfilesState.loadError, 'error');
         renderPayrollProfilesCatalog();
         return;
     }
-    payrollProfilesState.profiles = Array.isArray(profilesResponse.data) ? profilesResponse.data : [];
-    payrollProfilesState.staff = Array.isArray(staffResponse?.data) ? staffResponse.data : [];
+    payrollProfilesState.loadStatus = 'ready';
+    payrollProfilesState.profiles = profilesResponse.data;
+    payrollProfilesState.staff = staffResponse.data;
     if (options.selectId) payrollProfilesState.selectedProfileId = Number(options.selectId);
     renderPayrollProfilesCatalog();
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
+    window.addEventListener(eventName, () => {
+        if (payrollProfilesState.loadStatus === 'idle') return;
+        payrollProfilesState.requestSeq += 1;
+        payrollProfilesState.loading = false;
+        payrollProfilesState.loadStatus = 'error';
+        payrollProfilesState.loadError = 'Бізнес або доступ змінився. Оновіть зарплатні профілі.';
+        payrollProfilesState.profiles = [];
+        payrollProfilesState.staff = [];
+        payrollProfilesState.selectedProfileId = null;
+        payrollProfilesState.compare = null;
+        renderPayrollProfilesCatalog();
+    });
 }
 
 function payrollProfileDraftFromForm(form) {
@@ -20417,20 +20901,41 @@ function renderKpi({ rows = [], sources = {} }) {
 // ==========================================
 
 async function loadOnboarding() {
+    const requestSeq = ++onboardingListRequestSeq;
+    const context = salaryAccessContext();
     const el = document.getElementById('onboardingList');
     if (el) {
         el.setAttribute('aria-busy', 'true');
         el.innerHTML = '<div class="hr-onboarding-empty">Завантаження процесів онбордингу...</div>';
     }
-    const data = await hrFetch('/onboarding');
-    if (!data?.success) {
+    let data;
+    try {
+        data = await hrFetch('/onboarding');
+    } catch (error) {
+        data = { success: false, error: error?.message || 'Мережевий збій' };
+    }
+    if (requestSeq !== onboardingListRequestSeq || context !== salaryAccessContext()) return;
+    if (!data?.success || !Array.isArray(data.data)) {
         if (el) {
             el.setAttribute('aria-busy', 'false');
-            el.innerHTML = `<div class="hr-onboarding-empty is-error" role="alert">${escapeHtml(data?.error || 'Не вдалося завантажити онбординг.')}<button type="button" class="btn-secondary" onclick="loadOnboarding()">Повторити</button></div>`;
+            const message = data?.status === 403
+                ? 'Онбординг недоступний для цього бізнесу або вашої ролі.'
+                : data?.error || 'Не вдалося завантажити онбординг.';
+            el.innerHTML = `<div class="hr-onboarding-empty is-error" role="alert">${escapeHtml(message)}<button type="button" class="btn-secondary" onclick="loadOnboarding()">Повторити</button></div>`;
         }
         return;
     }
     renderOnboarding(data.data);
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
+    window.addEventListener(eventName, () => {
+        onboardingListRequestSeq += 1;
+        const el = document.getElementById('onboardingList');
+        if (!el) return;
+        el.setAttribute('aria-busy', 'false');
+        el.innerHTML = '<div class="hr-onboarding-empty is-error" role="alert">Бізнес або доступ змінився. Оновіть процеси онбордингу.<button type="button" class="btn-secondary" onclick="loadOnboarding()">Повторити</button></div>';
+    });
 }
 
 function renderOnboardingProcessCard(process = {}) {
@@ -20517,24 +21022,50 @@ window.toggleProfessionOnboardingItem = async function(staffId, professionKey, c
 };
 
 window.showStartOnboarding = async function() {
-    const [staff, templates, candidates] = await Promise.all([
+    const requestSeq = ++onboardingStartRequestSeq;
+    const context = salaryAccessContext();
+    const state = document.getElementById('onboardingStartState');
+    if (state) { state.hidden = false; state.textContent = 'Перевіряємо дані для запуску онбордингу…'; state.dataset.state = 'loading'; state.setAttribute('role', 'status'); }
+    const [staffResult, templatesResult, candidatesResult] = await Promise.allSettled([
         hrFetch('/staff?active=true'),
         hrFetch('/onboarding/templates'),
         hrFetch('/onboarding/responsible-candidates')
     ]);
-    if (!staff?.success || !templates?.success) return;
-    onboardingResponsibleCandidates = Array.isArray(candidates?.data) ? candidates.data : [];
-    const staffRows = staff.data || [];
+    if (requestSeq !== onboardingStartRequestSeq || context !== salaryAccessContext()) return;
+    const entries = [staffResult, templatesResult, candidatesResult];
+    const names = ['список співробітників', 'шаблони онбордингу', 'відповідальних'];
+    const failedIndex = entries.findIndex(entry => entry.status !== 'fulfilled' || !entry.value?.success || !Array.isArray(entry.value.data));
+    if (failedIndex !== -1) {
+        const failed = entries[failedIndex].status === 'fulfilled' ? entries[failedIndex].value : { error: entries[failedIndex].reason?.message };
+        const message = failed?.status === 403
+            ? `Немає доступу до ${names[failedIndex]} для цього бізнесу або вашої ролі.`
+            : `Не вдалося завантажити ${names[failedIndex]}: ${failed?.error || 'некоректна відповідь'}. Натисніть «Запустити окремий процес» ще раз.`;
+        if (state) { state.textContent = message; state.dataset.state = 'error'; state.setAttribute('role', 'alert'); }
+        showNotification(message, 'error');
+        return;
+    }
+    const [staff, templates, candidates] = entries.map(entry => entry.value);
+    onboardingResponsibleCandidates = candidates.data;
+    const staffRows = staff.data;
+    if (!staffRows.length || !onboardingResponsibleCandidates.length) {
+        const message = !staffRows.length ? 'Немає доступних співробітників для запуску онбордингу.' : 'Немає активних відповідальних для запуску онбордингу.';
+        if (state) { state.textContent = message; state.dataset.state = 'empty'; }
+        showNotification(message, 'warning');
+        return;
+    }
+    if (state) { state.hidden = true; state.textContent = ''; state.dataset.state = 'ready'; }
     const staffOptions = staffRows.map(s => ({ value: String(s.id), label: `${s.name}` }));
     const templateOptions = templates.data.map(t => ({ value: String(t.id), label: `${t.name}` }));
     const responsibleOptions = responsibleCandidateOptions(onboardingResponsibleCandidates[0]?.id);
     if (!responsibleOptions.length) {
-        showNotification('Немає активних користувачів для призначення відповідального', 'warning');
+        const message = 'Немає активних користувачів для призначення відповідального';
+        if (state) { state.hidden = false; state.textContent = message; state.dataset.state = 'empty'; }
+        showNotification(message, 'warning');
         return;
     }
     const result = await formModal('Запустити окремий процес онбордингу', [
         { key: 'scope', label: 'Тип процесу', type: 'select', options: [
-            { value: 'general', label: 'Загальний корпоративний онбординг' },
+            ...(templateOptions.length ? [{ value: 'general', label: 'Загальний корпоративний онбординг' }] : []),
             { value: 'profession', label: 'Онбординг конкретної професії' }
         ], required: true },
         { key: 'staffId', label: 'Співробітник', type: 'select', options: staffOptions, required: true },
@@ -20561,15 +21092,45 @@ window.showStartOnboarding = async function() {
             : null
     });
     if (!result) return;
+    if (requestSeq !== onboardingStartRequestSeq || context !== salaryAccessContext()) {
+        if (state) { state.hidden = false; state.textContent = 'Бізнес або доступ змінився. Запустіть онбординг знову.'; state.dataset.state = 'error'; state.setAttribute('role', 'alert'); }
+        return;
+    }
     const payload = {
         staff_id: parseInt(result.staffId),
         responsible_user_id: parseInt(result.responsibleUserId)
     };
     if (result.scope === 'profession') payload.profession_key = normalizeProfessionKey(result.professionKey);
     else payload.template_id = parseInt(result.templateId);
-    const data = await hrFetch('/onboarding/start', 'POST', payload);
-    if (data?.success) { showNotification('Онбординг запущено', 'success'); loadOnboarding(); }
+    let data;
+    try {
+        data = await hrFetch('/onboarding/start', 'POST', payload);
+    } catch (error) {
+        data = { success: false, error: error?.message || 'Мережевий збій' };
+    }
+    if (data?.success) {
+        showNotification('Онбординг запущено', 'success');
+        void loadOnboarding();
+    } else {
+        const message = data?.status === 403
+            ? 'Немає доступу до запуску онбордингу для цього бізнесу або вашої ролі.'
+            : `${data?.error || 'Не вдалося запустити онбординг.'} Перевірте список процесів перед повторною спробою.`;
+        if (state) { state.hidden = false; state.textContent = message; state.dataset.state = 'error'; state.setAttribute('role', 'alert'); }
+        showNotification(message, 'error');
+    }
 };
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
+    window.addEventListener(eventName, () => {
+        onboardingStartRequestSeq += 1;
+        const state = document.getElementById('onboardingStartState');
+        if (state && !state.hidden) {
+            state.textContent = 'Бізнес або доступ змінився. Запустіть онбординг знову.';
+            state.dataset.state = 'error';
+            state.setAttribute('role', 'alert');
+        }
+    });
+}
 
 async function refreshSalaryReconciliation() {
     if (!hrCanUsePayrollAction('view_payroll')) {

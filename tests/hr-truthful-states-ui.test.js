@@ -208,3 +208,224 @@ test('HR reports failure uses unavailable state, clears stale rows and blocks cu
         dom.window.close();
     }
 });
+
+test('payroll profiles do not turn denied staff into zero people and retry restores the catalog', async () => {
+    let staffDenied = true;
+    const { dom, win } = harness(elementOuterHtml('tab-profiles'), {
+        fetch: async url => {
+            if (url.includes('/professions')) return response(200, { success: true, data: [] });
+            if (url.includes('/payroll-profiles')) return response(200, { success: true, data: [{ id: 7, title: 'QA Profile', status: 'draft', professionKey: 'animator' }] });
+            if (url.includes('/staff?')) return staffDenied
+                ? response(403, { success: false, code: 'staff_not_migrated' })
+                : response(200, { success: true, data: [{ id: 4, name: 'QA Staff' }] });
+            return response(500, { success: false, error: 'Unexpected fetch' });
+        }
+    });
+    try {
+        await win.loadPayrollProfilesCatalog();
+        const d = win.document;
+        assert.equal(d.getElementById('payrollProfilesFilterInfo').textContent, '— профілів');
+        assert.match(d.querySelector('#payrollProfilesList [role="alert"]').textContent, /список співробітників/);
+        assert.doesNotMatch(d.getElementById('payrollProfilesList').textContent, /QA Profile/);
+        assert.equal(d.getElementById('btnNewPayrollProfile').disabled, true);
+        staffDenied = false;
+        d.querySelector('[data-payroll-profiles-retry]').click();
+        for (let i = 0; i < 30 && !d.getElementById('payrollProfilesList').textContent.includes('QA Profile'); i++) await new Promise(resolve => setTimeout(resolve, 5));
+        assert.match(d.getElementById('payrollProfilesList').textContent, /QA Profile/);
+        assert.equal(d.getElementById('btnNewPayrollProfile').disabled, false);
+    } finally { dom.window.close(); }
+});
+
+test('late payroll profile response cannot restore another business catalog', async () => {
+    let resolveStaff;
+    const pending = new Promise(resolve => { resolveStaff = resolve; });
+    const { dom, win } = harness(elementOuterHtml('tab-profiles'), {
+        fetch: async url => url.includes('/professions') ? response(200, { success: true, data: [] })
+            : url.includes('/payroll-profiles') ? response(200, { success: true, data: [{ id: 7, title: 'Old Business' }] })
+                : pending
+    });
+    try {
+        const request = win.loadPayrollProfilesCatalog();
+        win.dispatchEvent(new win.Event('crmBusinessContextChanged'));
+        resolveStaff(response(200, { success: true, data: [{ id: 4, name: 'Old Staff' }] }));
+        await request;
+        assert.match(win.document.getElementById('payrollProfilesList').textContent, /Бізнес або доступ змінився/);
+        assert.doesNotMatch(win.document.getElementById('payrollProfilesList').textContent, /Old Business|Old Staff/);
+    } finally { dom.window.close(); }
+});
+
+test('checklist dashboard keeps a context-change error instead of a late staff feed', async () => {
+    let resolveDashboard;
+    const pending = new Promise(resolve => { resolveDashboard = resolve; });
+    const { dom, win } = harness(elementOuterHtml('tab-checklists'), {
+        fetch: async url => url.includes('/professions') ? response(200, { success: true, data: [] }) : pending
+    });
+    try {
+        const request = win.loadProfessionChecklists();
+        for (let i = 0; i < 20 && win.document.getElementById('professionChecklistDashboardState').dataset.state !== 'loading'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+        win.dispatchEvent(new win.Event('crmBusinessContextChanged'));
+        resolveDashboard(response(200, { success: true, data: { assignments: [{ staffName: 'Old Staff' }] } }));
+        await request;
+        assert.match(win.document.getElementById('professionChecklistDashboardState').textContent, /Бізнес або доступ змінився/);
+        assert.doesNotMatch(win.document.getElementById('professionChecklistList').textContent, /Old Staff/);
+    } finally { dom.window.close(); }
+});
+
+test('checklist 403 clears rendered people and survives another render', async () => {
+    let denied = false;
+    const { dom, win } = harness(elementOuterHtml('tab-checklists'), {
+        fetch: async url => url.includes('/professions') ? response(200, { success: true, data: [] })
+            : denied ? response(403, { success: false, code: 'staff_not_migrated' })
+                : response(200, { success: true, data: { assignments: [{ staffId: 4, staffName: 'QA Staff', professionKey: 'animator' }] } })
+    });
+    try {
+        await win.loadProfessionChecklists();
+        assert.match(win.document.getElementById('professionChecklistList').textContent, /QA Staff/);
+        denied = true;
+        await win.loadProfessionChecklists();
+        win.renderProfessionChecklists();
+        assert.equal(win.document.getElementById('professionChecklistDashboardState').getAttribute('role'), 'alert');
+        assert.doesNotMatch(win.document.getElementById('professionChecklistList').textContent, /QA Staff/);
+        assert.ok(win.document.getElementById('professionChecklistDashboardRetry'));
+    } finally { dom.window.close(); }
+});
+
+test('onboarding start explains denied dependency and retries without submitting writes', async () => {
+    let denied = true;
+    let modalCount = 0;
+    const { dom, win } = harness(elementOuterHtml('tab-onboarding'), {
+        fetch: async url => {
+            if (url.includes('/staff?')) return response(200, { success: true, data: [{ id: 4, name: 'QA Staff' }] });
+            if (url.includes('/onboarding/templates')) return response(200, { success: true, data: [{ id: 3, name: 'QA Template' }] });
+            if (url.includes('/onboarding/responsible-candidates')) return denied
+                ? response(403, { success: false, code: 'staff_not_migrated' })
+                : response(200, { success: true, data: [{ id: 2, name: 'QA Manager' }] });
+            throw new Error(`Unexpected request ${url}`);
+        }
+    });
+    win.formModal = async () => { modalCount += 1; return null; };
+    try {
+        await win.showStartOnboarding();
+        assert.match(win.document.getElementById('onboardingStartState').textContent, /Немає доступу до відповідальних/);
+        assert.equal(modalCount, 0);
+        denied = false;
+        await win.showStartOnboarding();
+        assert.equal(modalCount, 1);
+        assert.equal(win.document.getElementById('onboardingStartState').hidden, true);
+    } finally { dom.window.close(); }
+});
+
+test('onboarding start does not report success after a synthetic POST 403', async () => {
+    let posts = 0;
+    const { dom, win } = harness(elementOuterHtml('tab-onboarding'), {
+        fetch: async (url, request) => {
+            if (request?.method === 'POST') {
+                posts += 1;
+                return response(403, { success: true, code: 'staff_not_migrated' });
+            }
+            if (url.includes('/staff?')) return response(200, { success: true, data: [{ id: 4, name: 'QA Staff' }] });
+            if (url.includes('/onboarding/templates')) return response(200, { success: true, data: [{ id: 3, name: 'QA Template' }] });
+            return response(200, { success: true, data: [{ id: 2, name: 'QA Manager' }] });
+        }
+    });
+    win.formModal = async () => ({ scope: 'general', staffId: '4', templateId: '3', responsibleUserId: '2' });
+    try {
+        await win.showStartOnboarding();
+        assert.equal(posts, 1);
+        assert.match(win.document.getElementById('onboardingStartState').textContent, /Немає доступу до запуску/);
+        assert.doesNotMatch(win.__lastNotification, /запущено/);
+    } finally { dom.window.close(); }
+});
+
+test('onboarding list distinguishes forbidden, offline and successful empty results', async () => {
+    let mode = 'forbidden';
+    const { dom, win } = harness(elementOuterHtml('tab-onboarding'), {
+        fetch: async () => {
+            if (mode === 'offline') throw new Error('Synthetic offline');
+            return mode === 'forbidden'
+                ? response(403, { success: false, code: 'staff_not_migrated' })
+                : response(200, { success: true, data: [] });
+        }
+    });
+    try {
+        await win.loadOnboarding();
+        assert.match(win.document.getElementById('onboardingList').textContent, /недоступний/);
+        assert.ok(win.document.querySelector('#onboardingList button'));
+        mode = 'offline';
+        await win.loadOnboarding();
+        assert.match(win.document.getElementById('onboardingList').textContent, /Synthetic offline/);
+        mode = 'empty';
+        await win.loadOnboarding();
+        assert.match(win.document.getElementById('onboardingList').textContent, /Процесів онбордингу поки немає/);
+        assert.equal(win.document.querySelector('#onboardingList [role="alert"]'), null);
+    } finally { dom.window.close(); }
+});
+
+test('staff onboarding dialog shows a retryable dependency error', async () => {
+    const { dom, win } = harness('<div id="staffOnboardingScopeBody"></div>', {
+        fetch: async url => url.includes('/onboarding-processes')
+            ? response(403, { success: false, code: 'staff_not_migrated' })
+            : response(200, { success: true, data: [] })
+    });
+    try {
+        await win.refreshStaffOnboardingDialog(4);
+        const root = win.document.getElementById('staffOnboardingScopeBody');
+        assert.match(root.querySelector('[role="alert"]').textContent, /недоступний/);
+        assert.ok(root.querySelector('button'));
+        assert.equal(root.getAttribute('aria-busy'), 'false');
+    } finally { dom.window.close(); }
+});
+
+test('onboarding start discards a dependency response after business context changes', async () => {
+    let resolveStaff;
+    const pending = new Promise(resolve => { resolveStaff = resolve; });
+    const { dom, win } = harness(elementOuterHtml('tab-onboarding'), {
+        fetch: async url => url.includes('/staff?') ? pending : response(200, { success: true, data: [{ id: 2, name: 'Fixture' }] })
+    });
+    let modalCount = 0;
+    win.formModal = async () => { modalCount += 1; return null; };
+    try {
+        const request = win.showStartOnboarding();
+        win.dispatchEvent(new win.Event('crmBusinessContextChanged'));
+        resolveStaff(response(200, { success: true, data: [{ id: 4, name: 'Old Staff' }] }));
+        await request;
+        assert.equal(modalCount, 0);
+        assert.match(win.document.getElementById('onboardingStartState').textContent, /Бізнес або доступ змінився/);
+    } finally { dom.window.close(); }
+});
+
+test('late onboarding list cannot show people from the previous business', async () => {
+    let resolveList;
+    const pending = new Promise(resolve => { resolveList = resolve; });
+    const { dom, win } = harness(elementOuterHtml('tab-onboarding'), { fetch: async () => pending });
+    try {
+        const request = win.loadOnboarding();
+        win.dispatchEvent(new win.Event('crmBusinessContextChanged'));
+        resolveList(response(200, { success: true, data: [{ staff_id: 4, staff_name: 'Old Staff' }] }));
+        await request;
+        assert.match(win.document.getElementById('onboardingList').textContent, /Бізнес або доступ змінився/);
+        assert.doesNotMatch(win.document.getElementById('onboardingList').textContent, /Old Staff/);
+    } finally { dom.window.close(); }
+});
+
+test('account onboarding payroll hint distinguishes denial from missing default profile', async () => {
+    const markup = '<select id="accountOnboardingConditionProfession"><option value="animator" selected>Animator</option></select><div id="accountOnboardingPayrollProfileHint"></div>';
+    let denied = true;
+    const { dom, win } = harness(markup, {
+        fetch: async () => denied
+            ? response(403, { success: false, code: 'HR_CAPABILITY_REQUIRED' })
+            : response(200, { success: true, data: [] })
+    });
+    try {
+        await win.ensureAccountOnboardingPayrollProfiles(true);
+        const hint = win.document.getElementById('accountOnboardingPayrollProfileHint');
+        assert.equal(hint.dataset.state, 'error');
+        assert.match(hint.textContent, /недоступні/);
+        assert.doesNotMatch(hint.textContent, /ще немає/);
+        denied = false;
+        hint.querySelector('button').click();
+        for (let i = 0; i < 20 && hint.dataset.state !== 'warning'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(hint.dataset.state, 'warning');
+        assert.match(hint.textContent, /ще немає/);
+    } finally { dom.window.close(); }
+});

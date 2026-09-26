@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { describe, it, before, after } = require('node:test');
 const { Pool } = require('pg');
-const { getToken, request, testDate } = require('../helpers');
+const { BASE_URL, getToken, request, testDate } = require('../helpers');
 const {
     PAGE_PERMISSIONS,
     ACTION_PERMISSIONS,
@@ -40,6 +40,9 @@ function requireDisposableTarget() {
 }
 
 async function login(username, password) {
+    // Account access PATCH records a high-precision revocation timestamp,
+    // while JWT sessionIssuedAt is millisecond-precision.
+    await new Promise(resolve => setTimeout(resolve, 20));
     const response = await request('POST', '/api/auth/login', { username, password });
     assert.equal(response.status, 200, `login failed for ${username}: ${JSON.stringify(response.data)}`);
     assert.ok(response.data?.token, `token missing for ${username}`);
@@ -86,10 +89,11 @@ describe('disposable token-backed permission capability contract', { skip: !enab
                 role: 'admin',
                 extraRoles: ['accountant'],
                 actionAllowlist: ['hr.today.view', 'hr.schedule.view'],
-                actionDenylist: ['hr.schedule.manage', 'hr.reports.view', 'hr.reports.export']
+                actionDenylist: ['hr.schedule.manage', 'hr.reports.view', 'hr.reports.export', 'hr.staff.view']
             },
             { key: 'manager', role: 'manager', actionAllowlist: [], actionDenylist: [] },
             { key: 'hr', role: 'hr', actionAllowlist: [], actionDenylist: [] },
+            { key: 'staffReader', role: 'hr', actionAllowlist: [], actionDenylist: ['hr.payroll.view'] },
             { key: 'matrix', role: 'waiter', actionAllowlist: [], actionDenylist: [] }
         ];
 
@@ -389,5 +393,98 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         assert.equal(afterRelogin.capabilities['action:hr.schedule.view'].allowed, true);
         assert.equal(afterRelogin.capabilities['action:hr.reports.view'].allowed, false);
         assert.equal(afterRelogin.capabilities['action:hr.reports.export'].allowed, false);
+    });
+
+    it('reads a disposable Park staff row through the actual app without widening payroll or other HR routes', async () => {
+        const reader = accounts.staffReader;
+        const readerAccess = await permissions(reader.token);
+        assert.equal(readerAccess.capabilities['action:hr.staff.view']?.allowed, true);
+        assert.equal(readerAccess.capabilities['action:hr.payroll.view']?.allowed, false);
+
+        const organization = await schemaPool.query(
+            `INSERT INTO organizations (slug, name, status)
+             VALUES ('permission-park-staff-fixture', 'Disposable Park staff fixture', 'active')
+             ON CONFLICT (slug) DO UPDATE SET status = 'active' RETURNING id`
+        );
+        const organizationId = Number(organization.rows[0].id);
+        const business = await schemaPool.query(
+            `INSERT INTO businesses (organization_id, context_key, label, short_label, access_mode, modules, status)
+             VALUES ($1, 'event_genix', 'Fixture Park', 'Park', 'membership', '[]'::jsonb, 'active')
+             ON CONFLICT (context_key) DO UPDATE SET organization_id = EXCLUDED.organization_id,
+                 access_mode = 'membership', status = 'active'
+             RETURNING id`,
+            [organizationId]
+        );
+        const businessId = Number(business.rows[0].id);
+        for (const account of [reader, accounts.admin]) {
+            await schemaPool.query(
+                `INSERT INTO organization_memberships (organization_id, user_id, role, is_active)
+                 VALUES ($1, $2, 'member', true)
+                 ON CONFLICT (organization_id, user_id) DO UPDATE SET is_active = true`,
+                [organizationId, account.id]
+            );
+            await schemaPool.query(
+                `INSERT INTO business_memberships (business_id, organization_id, user_id, role, action_denylist, is_default, is_active)
+                 VALUES ($1, $2, $3, $4, $5::text[], true, true)
+                 ON CONFLICT (business_id, user_id) DO UPDATE SET role = EXCLUDED.role,
+                     action_denylist = EXCLUDED.action_denylist, is_default = true, is_active = true`,
+                [businessId, organizationId, account.id, account.role, account.actionDenylist]
+            );
+        }
+        reader.token = await login(reader.username, reader.password);
+        accounts.admin.token = await login(accounts.admin.username, accounts.admin.password);
+        const currentReaderAccess = await permissions(reader.token);
+        assert.equal(currentReaderAccess.capabilities['action:hr.staff.view']?.allowed, true);
+        assert.equal(currentReaderAccess.capabilities['action:hr.payroll.view']?.allowed, false);
+
+        const fixture = await schemaPool.query(
+            `INSERT INTO staff (name, department, position, role_type, phone, hourly_rate, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING id`,
+            [`Disposable Park Reader ${process.pid}_${Date.now()}`, 'QA', 'QA fixture',
+                'animator', '+380000000001', 12345]
+        );
+        const staffId = Number(fixture.rows[0].id);
+        try {
+            const list = await request('GET', '/api/hr/staff', null, reader.token);
+            assert.equal(list.status, 200, JSON.stringify(list.data));
+            const row = list.data?.data?.find(item => Number(item.id) === staffId);
+            assert.ok(row, 'new Park staff row appears in the HR list');
+            assert.equal(row.hourly_rate, undefined);
+            assert.equal(row.address, undefined);
+            assert.equal(row.emergency_contact, undefined);
+
+            const detail = await request('GET', `/api/hr/staff/${staffId}`, null, reader.token);
+            assert.equal(detail.status, 200, JSON.stringify(detail.data));
+            assert.equal(detail.data?.data?.name, row.name);
+            assert.equal(detail.data?.data?.hourly_rate, undefined);
+            assert.equal(detail.data?.data?.profession_rates, undefined);
+            assert.equal((await request('GET', '/api/hr/staff/999999999', null, reader.token)).status, 404);
+
+            for (const path of ['/api/hr/company-structure', `/api/hr/staff/${staffId}/documents`]) {
+                assert.equal((await request('GET', path, null, reader.token)).status, 403, path);
+            }
+            assert.equal((await request('GET', '/api/hr/staff', null, accounts.admin.token)).status, 403);
+            assert.equal((await request('GET', `/api/hr/staff/${staffId}`, null, accounts.admin.token)).status, 403);
+            assert.equal((await request('GET', '/api/hr/staff?businessScope=all', null, reader.token)).status, 403);
+            assert.equal((await request('GET', '/api/hr/staff?businessScope=multi&businessContexts=event_genix,dar', null, reader.token)).status, 403);
+
+            const foreign = await fetch(`${BASE_URL}/api/hr/staff/${staffId}`, {
+                headers: { Authorization: `Bearer ${reader.token}`, 'X-Business-Context': 'dar' }
+            });
+            assert.equal(foreign.status, 403, 'a Park member cannot select another business for HR detail');
+
+            await schemaPool.query(
+                'UPDATE business_memberships SET is_active = false WHERE business_id = $1 AND user_id = $2',
+                [businessId, reader.id]
+            );
+            assert.equal((await request('GET', `/api/hr/staff/${staffId}`, null, reader.token)).status, 403,
+                'revoked membership is rejected by the next real request');
+        } finally {
+            await schemaPool.query(
+                'UPDATE business_memberships SET is_active = true WHERE business_id = $1 AND user_id = $2',
+                [businessId, reader.id]
+            );
+            await schemaPool.query('DELETE FROM staff WHERE id = $1', [staffId]);
+        }
     });
 });

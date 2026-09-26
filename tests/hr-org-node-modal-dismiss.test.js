@@ -27,6 +27,12 @@ async function settle() {
     await new Promise(resolve => setTimeout(resolve, 0));
 }
 
+function deferred() {
+    let resolve;
+    const promise = new Promise(done => { resolve = done; });
+    return { promise, resolve };
+}
+
 function createHarness() {
     const dom = new JSDOM('<!doctype html><html><body></body></html>', {
         url: 'http://localhost/hr',
@@ -289,6 +295,12 @@ function createStaffProfileHarness() {
         vm.runInContext(`${hrCode}
             window.__hrStaffProfileTest = (() => {
                 const historyDefers = new Map();
+                const requestOverrides = new Map();
+                const requestCalls = [];
+                let catalogFailure = false;
+                let catalogPromise = null;
+                let businessKey = 'park';
+                getLegacyBusinessSurfaceContextKey = () => businessKey;
                 const staffProfiles = new Map([
                     [1, { id: 1, name: 'Cached One', role_type: 'animator', secondary_professions: [], phone: 'old-1', hourly_rate: 100, rate_unit: 'hour', skills: [] }],
                     [2, { id: 2, name: 'Cached Two', role_type: 'instructor', secondary_professions: [], phone: 'old-2', hourly_rate: 120, rate_unit: 'hour', skills: [] }],
@@ -305,6 +317,7 @@ function createStaffProfileHarness() {
                         '<input type="hidden" id="editStaffId">',
                         '<button type="button" id="editCloseTop" class="hr-staff-profile-close" aria-label="Close staff profile"><span aria-hidden="true">✕</span></button>',
                         '<strong id="editStaffHeaderName"></strong>',
+                        '<div id="staffProfileCardState" hidden></div>',
                         '<input id="editStaffName">',
                         '<input id="editPhone">',
                         '<input id="editPhotoUrl">',
@@ -332,7 +345,11 @@ function createStaffProfileHarness() {
                         '<select id="editPayrollSchemeType"><option value="hourly">hourly</option><option value="per_shift">per_shift</option><option value="monthly_fixed">monthly_fixed</option><option value="hybrid">hybrid</option></select><input id="editPayrollSchemeAmount"><input id="editPayrollSchemeTitle"><input id="editPayrollSchemeEffectiveFrom"><input id="editPayrollSchemeEffectiveTo"><span id="editPayrollSchemeSummary"></span><span id="editPayrollSchemeAmountLabel"></span><div id="editPayrollHybridConfig"></div>',
                         '<input id="editOffboardingDate"><select id="editOffboardingPoolStatus"><option value="reserve">reserve</option></select><select id="editOffboardingAccountAction"><option value="review">review</option></select><textarea id="editOffboardingReason"></textarea><textarea id="editOffboardingNotes"></textarea>',
                         '<div id="editStaffHistory"></div><div id="editStaffLifecycleChecklist"></div><div id="editStaffDocuments"></div><div id="editMedicalBookList"></div><div id="editStaffResources"></div><div id="editStaffOffboarding"></div><div id="editOffboardingReadiness"></div><div id="editStaffRoleAssignments"></div><div id="editStaffShiftPreferences"></div>',
-                        '<button type="button" id="editHistoryRefresh"></button><button type="button" id="editSave"></button>',
+                        '<div id="editStaffPayrollProfiles"></div><div id="editStaffPayrollProfilePreview"></div><input id="editPayrollProfilePreviewMonth">',
+                        '<div class="hr-staff-profile-body">',
+                        ...['main', 'work', 'training', 'payroll', 'resources', 'offboarding', 'history'].map(tab => '<section data-staff-profile-panel="' + tab + '"></section>'),
+                        '</div>',
+                        '<button type="button" id="editHistoryRefresh"></button><button type="button" id="editSaveWork"></button><button type="button" id="editSave"></button>',
                         '</div></div>'
                     ].join('');
                     initModals();
@@ -352,9 +369,22 @@ function createStaffProfileHarness() {
                     { key: 'instructor', value: 'instructor', label: 'Instructor', title: 'Instructor' }
                 ];
                 companyStructureNodes = [];
-                ensureProfessionsLoaded = async () => hrProfessions;
-                ensureCompanyStructureNodesLoaded = async () => companyStructureNodes;
+                ensureProfessionsLoaded = async () => {
+                    if (catalogPromise) await catalogPromise;
+                    professionCatalogLoadState = catalogFailure ? 'error' : 'ready';
+                    return catalogFailure ? [] : hrProfessions;
+                };
+                ensureCompanyStructureNodesLoaded = async () => {
+                    if (catalogPromise) await catalogPromise;
+                    companyStructureLoadState = catalogFailure ? 'error' : 'ready';
+                    return catalogFailure ? [] : companyStructureNodes;
+                };
                 hrFetch = async path => {
+                    requestCalls.push(path);
+                    if (requestOverrides.has(path)) return requestOverrides.get(path)(path);
+                    for (const [prefix, handler] of requestOverrides) {
+                        if (prefix.endsWith('*') && path.startsWith(prefix.slice(0, -1))) return handler(path);
+                    }
                     const profileMatch = path.match(/^\\/staff\\/(\\d+)$/);
                     if (profileMatch) {
                         const id = Number(profileMatch[1]);
@@ -386,6 +416,13 @@ function createStaffProfileHarness() {
                     history: staffId => historyDefers.get(Number(staffId)),
                     activeId: activeEditStaffId,
                     staff: () => teamStaff,
+                    setRequest(path, handler) { requestOverrides.set(path, handler); },
+                    clearRequest(path) { requestOverrides.delete(path); },
+                    requests: () => [...requestCalls],
+                    setCatalogFailure(value) { catalogFailure = Boolean(value); },
+                    setCatalogPromise(value) { catalogPromise = value; },
+                    setLoadTimeout(value) { staffProfileRequestTimeoutMs = value; },
+                    setBusiness(value) { businessKey = value; window.dispatchEvent(new Event('crmBusinessContextChanged')); },
                     setProfile(id, profile = {}) {
                         const numericId = Number(id);
                         staffProfiles.set(numericId, { id: numericId, ...profile });
@@ -489,6 +526,7 @@ function createTeamBucketHarness() {
                     { id: 4, name: 'Blacklist Delta', role_type: 'animator', secondary_professions: [], phone: '444', is_active: true, hr_pool_status: 'blacklisted', photo_url: '', has_face_descriptor: true, has_account: false, company_structure_node_id: null, training_readiness: { total: 2, completed: 1, percent: 50 } },
                     { id: 5, name: 'Intern Epsilon', role_type: 'intern', secondary_professions: [], phone: '555', is_active: true, hr_pool_status: 'core', photo_url: '/uploads/intern.jpg', has_face_descriptor: true, has_account: true, company_structure_node_id: 'interns', training_readiness: { total: 1, completed: 0, percent: 0 } }
                 ];
+                teamLoadState = { status: 'success', context: teamAccessContext(), message: '' };
                 loadTeam = async () => filterAndRenderTeam();
 
                 return {
@@ -733,6 +771,7 @@ test('HR staff profile structure dropdown keeps current approved node and full a
     });
 
     await api.open(3);
+    await settle();
 
     const select = window.document.getElementById('editCompanyStructureNode');
     const options = api.structureOptions();
@@ -797,6 +836,194 @@ test('HR staff profile ignores stale history responses after rapid profile switc
     assert.equal(api.activeId(), '2');
     assert.equal(historyText.includes('second-actor'), true);
     assert.equal(historyText.includes('first-actor'), false);
+});
+
+test('HR card opens with loading, keeps detail independent of failed catalogs, and retries a failed detail', async () => {
+    const { window, api } = createStaffProfileHarness();
+    const pending = deferred();
+    api.setRequest('/staff/1', () => pending.promise);
+    const opening = api.open(1);
+    assert.equal(api.modal().style.display, 'flex');
+    assert.equal(api.modal().dataset.cardState, 'loading');
+    assert.equal(window.document.getElementById('editStaffId').value, '');
+
+    pending.resolve({ success: false, status: 500, error: 'Temporary detail failure' });
+    await opening;
+    assert.equal(api.modal().dataset.cardState, 'error');
+    assert.match(window.document.getElementById('staffProfileCardState').textContent, /Temporary detail failure/);
+
+    api.setCatalogFailure(true);
+    api.clearRequest('/staff/1');
+    click(window, window.document.querySelector('#staffProfileCardState button'));
+    await settle();
+    await settle();
+    assert.equal(api.modal().dataset.cardState, 'ready');
+    assert.equal(window.document.getElementById('editStaffName').value, 'Fresh 1');
+    assert.equal(window.document.getElementById('editSaveWork').disabled, true);
+    assert.equal(window.document.getElementById('editSave').disabled, false);
+    api.setCatalogFailure(false);
+    click(window, window.document.querySelector('#staffProfileCatalogState button'));
+    await settle();
+    assert.equal(window.document.getElementById('editSaveWork').disabled, false);
+});
+
+test('HR catalog completion defers dependent controls while preserving an unsaved work edit', async () => {
+    const { window, api } = createStaffProfileHarness();
+    const catalogs = deferred();
+    api.setCatalogPromise(catalogs.promise);
+    await api.open(1);
+    const address = window.document.getElementById('editAddress');
+    address.value = 'Draft address';
+    address.dispatchEvent(new window.Event('input', { bubbles: true }));
+    catalogs.resolve();
+    await settle();
+    assert.equal(address.value, 'Draft address');
+    assert.equal(api.modal().dataset.catalogState, 'deferred');
+    assert.equal(window.document.getElementById('editRoleType').disabled, true);
+    assert.equal(window.document.getElementById('editSaveWork').disabled, false);
+    assert.match(window.document.getElementById('staffProfileCatalogState').textContent, /незбережені правки/);
+    await api.close('staffEditModal');
+    assert.equal(api.modal().style.display, 'flex');
+    assert.equal(api.confirmCalls().length, 1);
+});
+
+test('HR failed history tab is retryable, never cached as ready, and does not reset dirty main fields', async () => {
+    const { window, api } = createStaffProfileHarness();
+    await api.open(1);
+    await settle();
+    const name = window.document.getElementById('editStaffName');
+    name.value = 'Unsaved name';
+    name.dispatchEvent(new window.Event('input', { bubbles: true }));
+    let attempts = 0;
+    api.setRequest('/staff/1/history?limit=30', () => ++attempts === 1
+        ? { success: false, status: 500, error: 'History unavailable' }
+        : { success: true, data: [] });
+    const failed = await api.activate('history');
+    assert.equal(failed.success, false);
+    assert.equal(window.document.querySelector('[data-staff-profile-panel="history"]').dataset.loadState, 'error');
+    assert.equal(name.value, 'Unsaved name');
+    click(window, window.document.querySelector('[data-staff-profile-panel="history"] .hr-staff-profile-section-state button'));
+    await settle();
+    assert.equal(attempts, 2);
+    assert.equal(window.document.querySelector('[data-staff-profile-panel="history"]').dataset.loadState, 'ready');
+    await api.activate('history');
+    assert.equal(attempts, 2, 'only successful load may be cached');
+    assert.equal(name.value, 'Unsaved name');
+});
+
+test('HR stalled optional tab times out visibly and can be retried', async () => {
+    const { window, api } = createStaffProfileHarness();
+    await api.open(1);
+    await settle();
+    api.setLoadTimeout(10);
+    const stalled = deferred();
+    api.setRequest('/staff/1/history?limit=30', () => stalled.promise);
+    const timedOut = await api.activate('history');
+    assert.equal(timedOut.state, 'error');
+    assert.match(window.document.querySelector('[data-staff-profile-panel="history"]').textContent, /Час очікування/);
+    api.setRequest('/staff/1/history?limit=30', () => ({ success: true, data: [] }));
+    click(window, window.document.querySelector('[data-staff-profile-panel="history"] .hr-staff-profile-section-state button'));
+    await settle();
+    assert.equal(window.document.querySelector('[data-staff-profile-panel="history"]').dataset.loadState, 'ready');
+    stalled.resolve({ success: false, status: 500, error: 'Late timeout' });
+    await settle();
+    assert.equal(window.document.querySelector('[data-staff-profile-panel="history"]').dataset.loadState, 'ready');
+});
+
+test('HR child tabs expose restricted and partial results without treating them as loaded', async () => {
+    const { window, api } = createStaffProfileHarness();
+    await api.open(1);
+    await settle();
+    api.setRequest('/staff/1/lifecycle-checklist', () => ({ success: false, status: 403, error: 'Forbidden' }));
+    const training = await api.activate('training');
+    assert.equal(training.state, 'restricted');
+    assert.equal(window.document.querySelector('[data-staff-profile-panel="training"]').dataset.loadState, 'restricted');
+    api.setRequest('/staff/1/role-assignments', () => ({ success: false, status: 500, error: 'Role service failed' }));
+    const work = await api.activate('work');
+    assert.equal(work.state, 'partial');
+    assert.equal(window.document.querySelector('[data-staff-profile-panel="work"]').dataset.loadState, 'partial');
+    await api.activate('work');
+    assert.equal(api.requests().filter(path => path === '/staff/1/role-assignments').length, 2);
+    api.setRequest('/staff/1/documents', () => ({ success: false, status: 403, error: 'Forbidden' }));
+    const resources = await api.activate('resources');
+    assert.equal(resources.state, 'partial');
+    api.setRequest('/staff/1/offboarding', () => ({ success: false, status: 403, error: 'Forbidden' }));
+    api.setRequest('/staff/1/offboarding-readiness', () => ({ success: false, status: 403, error: 'Forbidden' }));
+    const offboarding = await api.activate('offboarding');
+    assert.equal(offboarding.state, 'restricted');
+    assert.equal(window.document.querySelector('[data-staff-profile-panel="offboarding"]').dataset.loadState, 'restricted');
+});
+
+test('HR payroll restriction is explicit and does not cache the tab as ready', async () => {
+    const { window, api } = createStaffProfileHarness();
+    await api.open(1);
+    await settle();
+    const forbidden = () => ({ success: false, status: 403, error: 'Forbidden' });
+    api.setRequest('/staff/1/payroll-scheme', forbidden);
+    api.setRequest('/payroll-profiles?include_archived=true', forbidden);
+    api.setRequest('/staff/1/payroll-profile-assignments?include_past=true', forbidden);
+    api.setRequest('/salary?*', forbidden);
+    const first = await api.activate('payroll');
+    assert.equal(first.state, 'restricted');
+    assert.equal(window.document.querySelector('[data-staff-profile-panel="payroll"]').dataset.loadState, 'restricted');
+    await api.activate('payroll');
+    assert.equal(api.requests().filter(path => path === '/staff/1/payroll-scheme').length, 2);
+});
+
+test('HR rapid card switch and closing during detail fetch ignore late responses', async () => {
+    const { window, api } = createStaffProfileHarness();
+    const first = deferred();
+    api.setRequest('/staff/1', () => first.promise);
+    const openingFirst = api.open(1);
+    await api.open(2);
+    first.resolve({ success: true, data: { id: 1, name: 'Late first' } });
+    await openingFirst;
+    assert.equal(window.document.getElementById('editStaffName').value, 'Fresh 2');
+    assert.equal(api.activeId(), '2');
+
+    const closed = deferred();
+    api.setRequest('/staff/1', () => closed.promise);
+    const openingClosed = api.open(1);
+    await settle();
+    await api.close('staffEditModal');
+    closed.resolve({ success: true, data: { id: 1, name: 'Late closed' } });
+    await openingClosed;
+    assert.equal(api.modal().style.display, 'none');
+    assert.notEqual(window.document.getElementById('editStaffName').value, 'Late closed');
+});
+
+test('HR failed work hydration retains unsaved work fields and dismissal guard', async () => {
+    const { window, api } = createStaffProfileHarness();
+    await api.open(1);
+    await settle();
+    const roles = deferred();
+    api.setRequest('/staff/1/role-assignments', () => roles.promise);
+    const loading = api.activate('work');
+    const address = window.document.getElementById('editAddress');
+    address.value = 'Unsaved address';
+    address.dispatchEvent(new window.Event('input', { bubbles: true }));
+    roles.resolve({ success: false, status: 500, error: 'Failed' });
+    await loading;
+    assert.equal(address.value, 'Unsaved address');
+    await api.close('staffEditModal');
+    assert.equal(api.modal().style.display, 'flex');
+    assert.equal(api.confirmCalls().length, 1);
+});
+
+test('HR late detail from another business cannot paint or reopen the current card', async () => {
+    const { window, api } = createStaffProfileHarness();
+    const late = deferred();
+    api.setRequest('/staff/1', () => late.promise);
+    const oldOpen = api.open(1);
+    assert.equal(api.modal().dataset.cardState, 'loading');
+    api.setBusiness('other-business');
+    assert.equal(api.modal().style.display, 'none');
+    late.resolve({ success: true, data: { id: 1, name: 'Wrong business' } });
+    await oldOpen;
+    assert.notEqual(window.document.getElementById('editStaffName').value, 'Wrong business');
+    api.clearRequest('/staff/1');
+    await api.open(2);
+    assert.equal(window.document.getElementById('editStaffName').value, 'Fresh 2');
 });
 
 test('HR org/profession editor closes through explicit cancel when clean', async () => {

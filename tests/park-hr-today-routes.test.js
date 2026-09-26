@@ -226,7 +226,7 @@ test('Park Today recovery through the actual Express HR router', async t => {
                 ['HEAD', '/api/hr/today'], ['POST', '/api/hr/today'], ['POST', '/api/hr/clock-in'],
                 ['POST', '/api/hr/clock-out'], ['POST', '/api/hr/mark-absent'],
                 ['PUT', '/api/hr/records/9401'], ['DELETE', '/api/hr/records/9401'],
-                ['GET', '/api/hr/staff'], ['GET', '/api/hr/shifts'], ['GET', '/api/hr/salary'],
+                ['GET', '/api/hr/shifts'], ['GET', '/api/hr/salary'],
                 ['GET', '/api/hr/report/daily']
             ]) {
                 const count = calls.length;

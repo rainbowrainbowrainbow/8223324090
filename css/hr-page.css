@@ -6973,6 +6973,22 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     white-space: nowrap;
     border: 0;
 }
+.hr-staff-profile-card-state,
+.hr-staff-profile-section-state {
+    padding: 12px 14px;
+    border: 1px solid var(--border-color, #475569);
+    border-radius: 10px;
+    background: var(--card-bg, rgba(30, 41, 59, 0.5));
+    color: var(--text-secondary, #cbd5e1);
+}
+.hr-staff-profile-card-state[hidden],
+.hr-staff-profile-section-state[hidden] {
+    display: none;
+}
+.hr-staff-profile-card-state button,
+.hr-staff-profile-section-state button {
+    margin-left: 12px;
+}
 .hr-staff-profile-body {
     flex: 1 1 auto;
     min-height: 0;
@@ -6982,6 +6998,10 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     padding: 18px 22px calc(24px + env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     overscroll-behavior: contain;
+}
+#staffEditModal[data-card-state="loading"] :is(.hr-staff-profile-tabs, .hr-staff-profile-body),
+#staffEditModal[data-card-state="error"] :is(.hr-staff-profile-tabs, .hr-staff-profile-body) {
+    display: none;
 }
 .hr-staff-profile-panel {
     display: grid;
@@ -9492,6 +9512,7 @@ body.dark-mode .ai-task-form input { background: #1E1E38; border-color: #3D3D5C;
 .hr-onboarding-process-check.is-done span { color: var(--gray-400); text-decoration: line-through; }
 .hr-onboarding-empty, .hr-onboarding-process-empty { display: grid; gap: 10px; place-items: center; padding: 28px 16px; border: 1px dashed var(--gray-200); border-radius: var(--radius); color: var(--gray-500); text-align: center; font-weight: 800; }
 .hr-onboarding-empty.is-error { color: var(--danger); }
+#onboardingStartState[data-state="error"] { color: var(--danger); }
 
 body.dark-mode .hr-onboarding-staff-group,
 body.dark-mode .hr-onboarding-process-card { border-color: rgba(148, 163, 184, 0.16); background: var(--surface, #1e1e38); }

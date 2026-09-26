@@ -741,6 +741,7 @@
                     </div>
                     <button type="button" id="btnStartOnboarding" class="btn-add">+ Запустити окремий процес</button>
                 </div>
+                <div id="onboardingStartState" class="hr-onboarding-empty" role="status" aria-live="polite" hidden></div>
                 <div id="onboardingList" aria-live="polite" aria-busy="true"></div>
             </div>
 
@@ -1073,6 +1074,7 @@
                 <button type="button" id="staffProfileTabHistory" role="tab" data-staff-profile-tab="history" aria-controls="staffProfilePanelHistory" aria-selected="false" tabindex="-1">Історія</button>
             </nav>
             <div id="staffProfileLiveStatus" class="hr-staff-profile-live-status" role="status" aria-live="polite" aria-atomic="true"></div>
+            <div id="staffProfileCardState" class="hr-staff-profile-card-state" role="status" aria-live="polite" hidden></div>
             <div class="hr-staff-profile-body" data-active-profile-tab="main">
             <section id="staffProfilePanelMain" class="hr-staff-profile-panel hr-staff-profile-hero" data-staff-profile-panel="main" role="tabpanel" aria-labelledby="staffProfileTabMain">
                 <span class="hr-staff-profile-section">Команда</span>

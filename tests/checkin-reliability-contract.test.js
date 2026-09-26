@@ -31,7 +31,7 @@ test('Check-in exits model loading before camera or attendance work on CDN failu
     assert.match(models, /faceapi\.nets\./, 'face-api model nets are loaded inside the boundary');
     assert.doesNotMatch(models, /getUserMedia|\/api\/staff\/(?:checkin|checkout)|face-descriptor/, 'model loader cannot start camera or mutate attendance');
 
-    const initializationBeforeCamera = section(checkin, 'async function initializeCheckin()', 'var cameraReady = await startCamera()');
+    const initializationBeforeCamera = section(checkin, 'async function initializeCheckin()', 'try {\n                    await loadDescriptors();');
     assert.match(initializationBeforeCamera, /await loadModels\(\);/, 'models initialize before camera');
     assert.match(initializationBeforeCamera, /showInitializationError\(err, 'model'\);/, 'model failure has an explicit error state');
     assert.match(initializationBeforeCamera, /return;/, 'model failure stops initialization');

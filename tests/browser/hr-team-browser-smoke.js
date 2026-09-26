@@ -78,6 +78,8 @@ const HARNESS_CODE = String.raw`
     const pendingLazyTabs = new Map();
     const pendingStaffUpdates = [];
     const requestCounts = new Map();
+    let teamFeedQueue = [];
+    let resolvePendingTeamFeed = null;
     const staffUpdates = [];
     const workspaceOperations = [];
     const downloads = [];
@@ -269,12 +271,24 @@ const HARNESS_CODE = String.raw`
         { id: 'tech', title: 'Технічний відділ' },
         { id: 'interns', title: 'Стажери' }
     ];
-    ensureProfessionsLoaded = async () => hrProfessions;
-    ensureCompanyStructureNodesLoaded = async () => companyStructureNodes;
+    ensureProfessionsLoaded = async () => {
+        professionCatalogLoadState = 'ready';
+        return hrProfessions;
+    };
+    ensureCompanyStructureNodesLoaded = async () => {
+        companyStructureLoadState = 'ready';
+        return companyStructureNodes;
+    };
     crmApiFetch = async () => ({ success: true, data: [] });
     hrFetch = async (path, options = {}) => {
         const requestPath = String(path);
         requestCounts.set(requestPath, Number(requestCounts.get(requestPath) || 0) + 1);
+        if (requestPath === '/staff') {
+            const next = teamFeedQueue.shift();
+            if (next?.defer) return new Promise(resolve => { resolvePendingTeamFeed = resolve; });
+            if (next?.offline) throw new Error('Synthetic offline');
+            return next || { success: true, data: Array.from(staffProfiles.values()) };
+        }
         const profileMatch = String(path).match(/^\/staff\/(\d+)$/);
         if (profileMatch) {
             const id = Number(profileMatch[1]);
@@ -520,6 +534,7 @@ const HARNESS_CODE = String.raw`
     };
 
     const productionConfirmModal = confirmModal;
+    const productionLoadTeam = loadTeam;
     loadTeam = async () => filterAndRenderTeam();
 
     window.__hrTeamBrowserSmoke = {
@@ -528,6 +543,9 @@ const HARNESS_CODE = String.raw`
             window.__notifications.length = 0;
             showNotification = (message, type = 'info') => window.__notifications.push({ message, type });
             requestCounts.clear();
+            teamFeedQueue = [];
+            resolvePendingTeamFeed = null;
+            loadTeam = async () => filterAndRenderTeam();
             pendingHistory.clear();
             holdHistoryLoads = false;
             pendingLazyTabs.clear();
@@ -539,6 +557,7 @@ const HARNESS_CODE = String.raw`
             resetWorkspace();
             document.body.classList.toggle('dark-mode', Boolean(dark));
             teamStaff = Array.from(staffProfiles.values()).map(item => ({ is_active: true, hr_pool_status: 'core', ...item }));
+            teamLoadState = { status: 'success', context: teamAccessContext(), message: '' };
             activePeopleBucket = 'workers';
             pendingPeopleBucket = null;
             filterAndRenderTeam();
@@ -546,6 +565,17 @@ const HARNESS_CODE = String.raw`
             if (search) search.oninput = filterAndRenderTeam;
         },
         render: filterAndRenderTeam,
+        useRealTeamLoader() { loadTeam = productionLoadTeam; },
+        setTeamFeed(responses) { teamFeedQueue = responses.slice(); },
+        resolveTeamFeed(response) {
+            const resolve = resolvePendingTeamFeed;
+            resolvePendingTeamFeed = null;
+            if (resolve) resolve(response);
+        },
+        setBusinessContext(context) {
+            AppState.currentUser = { ...AppState.currentUser, activeBusinessContext: context };
+            window.dispatchEvent(new Event('crmBusinessContextChanged'));
+        },
         setBucket: bucket => window.setPeopleBucket(bucket),
         activateBucket: bucket => activateHrTab('team', { bucket, updateHash: true }),
         async navigateHash(bucket) {
@@ -1614,6 +1644,7 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
 }
 
 async function assertOffboardingDangerFlow(page) {
+    await page.evaluate(() => closeHrEditableModal('staffEditModal', true));
     await openProfile(page, 1);
     await page.locator('#staffProfileTabOffboarding').click();
     await page.waitForFunction(() => document.querySelectorAll('#editOffboardingReadiness .hr-offboarding-readiness-grid > div').length === 5);
@@ -1734,31 +1765,81 @@ async function assertMobileAndTheme(page) {
     assert.equal(await page.evaluate(() => document.body.classList.contains('dark-mode')), false, 'light mode class is inactive');
 }
 
+async function assertRealTeamLoaderStates(page) {
+    await installHarness(page);
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.useRealTeamLoader());
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setTeamFeed([{ success: false, status: 403, error: 'Park restricted' }]));
+    await page.evaluate(() => loadTeam());
+    assert.equal(await page.locator('#teamGrid').getAttribute('data-people-mode'), 'restricted');
+    assert.equal(await page.locator('[data-nav-count="workers"]').textContent(), '—');
+    assert.deepEqual(await cardNames(page), []);
+    await page.locator('#teamSearch').fill('QA');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setBucket('reserve'));
+    assert.equal(await page.locator('#teamGrid').getAttribute('data-people-mode'), 'restricted');
+    assert.equal(await page.locator('#teamGrid .hr-people-retry').count(), 0);
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setTeamFeed([{ success: false, status: 500, error: 'Server failed' }, { success: true, data: [] }]));
+    await page.evaluate(() => loadTeam());
+    assert.equal(await page.locator('#teamGrid').getAttribute('data-people-mode'), 'error');
+    const beforeRetry = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff'));
+    await page.locator('#teamGrid .hr-people-retry').click();
+    await page.waitForFunction(() => document.querySelector('[data-nav-count="workers"]')?.textContent === '0');
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/staff')), beforeRetry + 1);
+    assert.equal(await page.locator('#teamGrid').getAttribute('data-people-mode'), 'bucket');
+    assert.equal(await page.locator('[data-nav-count="workers"]').textContent(), '0');
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setTeamFeed([{ offline: true }]));
+    await page.evaluate(() => loadTeam());
+    assert.equal(await page.locator('#teamGrid').getAttribute('data-people-mode'), 'error');
+    assert.equal(await page.locator('#teamGrid').getAttribute('aria-busy'), 'false');
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setTeamFeed([{ defer: true }, { success: false, status: 403, error: 'Dar restricted' }]));
+    await page.evaluate(() => { void loadTeam(); });
+    await page.waitForFunction(() => document.getElementById('teamGrid')?.dataset.peopleMode === 'loading');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setBusinessContext('dar'));
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveTeamFeed({ success: true, data: [{ id: 1, name: 'Old Park Worker' }] }));
+    await page.waitForFunction(() => document.getElementById('teamGrid')?.dataset.peopleMode === 'restricted');
+    assert.deepEqual(await cardNames(page), []);
+    assert.doesNotMatch(await page.locator('#teamGrid').textContent(), /Old Park Worker/);
+    assert.equal(await page.locator('[data-nav-count="workers"]').textContent(), '—');
+}
+
 async function run() {
     const playwright = requirePlaywright();
     const browser = await playwright.chromium.launch({ headless: HEADLESS });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const loaderPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     page.setDefaultTimeout(15000);
+    loaderPage.setDefaultTimeout(15000);
+    const step = async (name, runStep) => {
+        if (process.env.HR_TEAM_DEBUG === '1') console.log(`HR Team step: ${name}`);
+        await runStep(page);
+    };
     try {
+        await assertRealTeamLoaderStates(loaderPage);
+        console.log('HR Team real loader states passed');
+        await loaderPage.close();
         await installHarness(page, { dark: false });
-        await assertCardLayoutAndOverflow(page);
-        await assertTeamNavigation(page);
-        await assertExactProfileTabPanels(page);
-        await assertProfileCleanDirtyAndFocus(page);
-        await assertScopedSavesAndActionStates(page);
-        await assertRapidProfileSwitching(page);
-        await assertHistoryRaceAndLazyTabs(page);
-        await assertIndependentLazyTabRaces(page);
-        await assertResourcesWorkspaceStatesAndActions(page);
-        await assertOffboardingDangerFlow(page);
-        await assertFocusTrap(page);
-        await assertMobileAndTheme(page);
+        await step('layout', assertCardLayoutAndOverflow);
+        await step('navigation', assertTeamNavigation);
+        await step('tab panels', assertExactProfileTabPanels);
+        await step('dirty and focus', assertProfileCleanDirtyAndFocus);
+        await step('scoped saves', assertScopedSavesAndActionStates);
+        await step('rapid switching', assertRapidProfileSwitching);
+        await step('history', assertHistoryRaceAndLazyTabs);
+        await step('lazy tab races', assertIndependentLazyTabRaces);
+        await step('resources', assertResourcesWorkspaceStatesAndActions);
+        await step('offboarding', assertOffboardingDangerFlow);
+        await step('focus trap', assertFocusTrap);
+        await step('mobile and theme', assertMobileAndTheme);
         console.log('HR Team browser smoke passed');
     } catch (err) {
         fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-        await page.screenshot({ path: path.join(OUTPUT_DIR, 'failure.png'), fullPage: true }).catch(() => {});
+        const diagnosticPage = loaderPage.isClosed() ? page : loaderPage;
+        await diagnosticPage.screenshot({ path: path.join(OUTPUT_DIR, 'failure.png'), fullPage: true }).catch(() => {});
         throw err;
     } finally {
+        await loaderPage.close().catch(() => {});
         await browser.close().catch(() => {});
     }
 }

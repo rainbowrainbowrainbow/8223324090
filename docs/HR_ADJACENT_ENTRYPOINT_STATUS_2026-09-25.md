@@ -1,0 +1,17 @@
+# EG-HR-05: суміжні HR та Check-in переходи
+
+Це матриця коду й синтетичних UI-регресій у worktree 2026-09-25, а не підтвердження стану після релізу. Production-спостереження 2026-09-24 наведені в `HR_STAFF_CARD_ROOT_CAUSE_AND_TASKS_2026-09-24.md` основної копії; їх треба перевірити повторно після релізу. `staff_not_migrated` означає бізнес-ізоляцію legacy staff, а `HR_CAPABILITY_REQUIRED` — відсутню capability. Ці причини не взаємозамінні.
+
+| Перехід | Читання / межа | Стан UI у цьому worktree | Наступний власник / дія |
+| --- | --- | --- | --- |
+| Команда, резерв, чорний список | `GET /api/hr/staff` (EG-HR-02); окремий `GET /api/hr/pool` лишається за legacy staff guard | EG-HR-03 відрізняє ready/empty/error/restricted, очищає старих людей і лічильники | Backend HR/business-scope: окремо визначити контракт `/pool`, якщо потрібен його прямий екран; не розширювати `/staff/*` |
+| Структура | `GET /api/hr/company-structure`, окрема залежність | Наявний error/retry, 403 не створює порожню структуру | Backend HR/business-scope: окреме рішення для Park read після аудиту належності даних |
+| Чеклісти | `GET /api/hr/checklists/dashboard` і detail професії | Наявний error/retry; EG-HR-05 відкидає пізню відповідь іншого бізнесу | Backend HR/business-scope: окремі read-проєкції та тести ізоляції перед відкриттям |
+| Професії | `GET /api/hr/professions` може повертати partial read-only; workspace має власні API | Існуючий partial показує невідомі лічильники як «—» і блокує недоступні дії | Backend HR: повний workspace лише за окремим контрактом і аудитом |
+| Онбординг | `GET /api/hr/onboarding`, templates, responsible-candidates, staff detail | EG-HR-05 показує 403/offline/помилку форми, retry; не відкриває форму без залежностей і відкидає пізні списки | Backend HR/account: окремо вирішити бізнес-ізоляцію й `hr.staff.manage` для повного lifecycle |
+| Account onboarding | `GET /api/users/onboarding/options` має окремий контракт; payroll hint читає `/api/hr/payroll-profiles` | Помилка payroll hint більше не означає «немає default профілю» | Backend account/payroll: узгодити доступ до payroll-каталогу без розширення account permissions |
+| HR reports і salary | `GET /api/hr/report/monthly`, `/salary`, export; salary вимагає `hr.payroll.view` | Наявні error/retry й блокування export; EG-HR-05 зберігає регресію | Backend reporting/payroll: окремий Park контракт, без відкриття виплат у EG-HR-05 |
+| Payroll profiles | `GET /api/hr/payroll-profiles` вимагає `hr.payroll.view` плюс legacy staff доступ; staff picker читає `/api/hr/staff` | EG-HR-05 не перетворює 403 staff на 0 людей, блокує залежні дії й дає retry | Backend payroll: окремо вирішити обидві межі; не змінювати capability лише для UI |
+| Check-in | `GET /api/staff/face-descriptors`, `/checkins`, `/staff`; POST attendance/biometrics мають власні права | EG-HR-05 перевіряє HTTP status і форму payload, розрізняє модель/камеру/descriptors/журнал, не запускає розпізнавання при збої залежностей | Backend staff/security: окремий проєкт бізнес-ізоляції біометрії й attendance, без записів у цій задачі |
+
+`/api/auth/profile`, `/api/employees`, Art і сертифікати не визнані зламаними на підставі цих HR-помилок. EG-HR-05 не змінює серверні allowlist, payroll/account permissions, схему, записи чи розгортання. Після релізу потрібна безпечна read-only перевірка тестовим акаунтом; перехоплювати GET для сценаріїв 403/offline і не викликати POST attendance, біометрії, payroll або account lifecycle.

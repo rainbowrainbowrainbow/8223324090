@@ -100,7 +100,7 @@
     "test:unit:lead-integrity": "node scripts/run-unit-tests.js tests/lead-reference-integrity.test.js tests/lead-related-records-callers.test.js",
     "test:unit:d05-domain-ownership": "node scripts/run-unit-tests.js tests/d05-income-notification.test.js tests/d05-chat-ai-containment.test.js tests/d05-intake-unavailable-ui.test.js tests/d05-intake-service-containment.test.js",
     "test:sys-mb": "npm run test:unit:legacy-containment && npm run test:unit:business-cabinets && npm run test:unit:lead-integrity && npm run test:unit:d05-domain-ownership && npm run test:staff-schedule-recovery && npm run test:lead-conversation-links",
-    "test:staff-schedule-recovery": "node scripts/run-unit-tests.js tests/park-staff-schedule-access.test.js tests/park-staff-schedule-projection.test.js tests/park-staff-schedule-routes.test.js tests/staff-schedule-business-context.test.js tests/park-hr-today-routes.test.js tests/hr-today-recovery-ui.test.js",
+    "test:staff-schedule-recovery": "node scripts/run-unit-tests.js tests/park-staff-schedule-access.test.js tests/park-staff-schedule-projection.test.js tests/park-staff-schedule-routes.test.js tests/staff-schedule-business-context.test.js tests/park-hr-today-routes.test.js tests/park-hr-staff-card-routes.test.js tests/hr-team-load-state.test.js tests/hr-today-recovery-ui.test.js",
     "audit:multibusiness-ownership": "node scripts/audit-multibusiness-ownership.js",
     "test:leads-tasks-pagination-behavior": "node --test tests/leads-tasks-pagination-behavior.test.js",
     "test:staff-schedule": "node --test tests/staff-schedule-history-static.test.js tests/staff-schedule-audit-static.test.js tests/staff-schedule-workbook.test.js",

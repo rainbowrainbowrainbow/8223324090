@@ -145,6 +145,9 @@
             font-size: 16px;
             margin: 10px 0;
         }
+        #registerStaffState[role="alert"] { color: #FCA5A5; }
+        html[data-theme="light"] #registerStaffState[role="alert"] { color: #B91C1C; }
+        #registerStaffState .btn { margin-left: 8px; padding: 6px 12px; }
 
         html[data-theme="light"] {
             --checkin-bg: #F7FAFC;
@@ -230,6 +233,7 @@
 
     <div id="registerPanel" class="register-panel">
         <h3>Реєстрація обличчя співробітника</h3>
+        <div id="registerStaffState" role="status" aria-live="polite"></div>
         <select id="staffSelect"><option value="">Оберіть співробітника...</option></select>
         <button type="button" class="btn btn-primary" onclick="registerFace()">📸 Зафіксувати обличчя</button>
         <button type="button" class="btn btn-secondary" onclick="hideRegister()">Скасувати</button>
@@ -254,6 +258,8 @@
         let lastRecognizedId = null;
         let lastRecognizedTime = 0;
         let initializationInFlight = false;
+        let recognitionEnabled = false;
+        let recognitionGeneration = 0;
         const MODEL_LOAD_TIMEOUT_MS = 30000;
 
         function headers() {
@@ -288,6 +294,7 @@
             var el = document.getElementById('statusMsg');
             el.textContent = msg;
             el.className = 'status ' + (cls || '');
+            el.setAttribute('role', cls === 'error' ? 'alert' : 'status');
             setRetryVisible(Boolean(options && options.retry));
         }
 
@@ -315,14 +322,35 @@
         }
 
         function showInitializationError(err, phase) {
+            recognitionEnabled = false;
+            recognitionGeneration += 1;
             console.error('[Checkin] Initialization failed', err);
             var isModelTimeout = String(err && err.message || '').includes('Час завантаження моделі');
+            var dependency = phase === 'descriptors' ? 'дані облич' : 'журнал відміток';
             var message = phase === 'model'
                 ? (isModelTimeout
                     ? 'Модель розпізнавання не завантажилася вчасно. Перевірте інтернет і спробуйте ще раз.'
                     : 'Не вдалося завантажити модель розпізнавання. Перевірте інтернет і спробуйте ще раз.')
+                : phase === 'descriptors' || phase === 'log'
+                    ? (err && err.status === 403
+                        ? (err.code === 'staff_not_migrated'
+                            ? 'Check-in недоступний для цього бізнесу: staff-дані ще не перенесені.'
+                            : `Немає доступу до ${dependency} Check-in. Зверніться до адміністратора.`)
+                        : `Не вдалося завантажити ${dependency} Check-in. Перевірте мережу та повторіть спробу.`)
                 : 'Не вдалося підготувати Check-in. Спробуйте ще раз.';
             setStatus(message, 'error', { retry: true });
+        }
+
+        async function readArrayResponse(resp, label) {
+            var data = await resp.json();
+            if (!resp.ok) {
+                var error = new Error(data && data.error || `HTTP ${resp.status}`);
+                error.status = resp.status;
+                error.code = data && data.code;
+                throw error;
+            }
+            if (!Array.isArray(data)) throw new Error(`Некоректна відповідь ${label}`);
+            return data;
         }
 
         // Camera
@@ -360,28 +388,27 @@
 
         // Load known face descriptors from server
         async function loadDescriptors() {
-            try {
-                var resp = await fetch(API_BASE + '/staff/face-descriptors', { headers: headers() });
-                var data = await resp.json();
-                knownDescriptors = data.map(function(d) {
-                    return {
-                        staffId: d.staffId,
-                        name: d.name,
-                        descriptor: new Float32Array(d.descriptor)
-                    };
-                });
-            } catch (err) {
-                console.error('[Checkin] Failed to load descriptors', err);
+            var resp = await fetch(API_BASE + '/staff/face-descriptors', { headers: headers() });
+            var data = await readArrayResponse(resp, 'даних облич');
+            if (!data.every(d => d && Number.isSafeInteger(Number(d.staffId)) && Number(d.staffId) > 0
+                && typeof d.name === 'string' && d.name.trim()
+                && Array.isArray(d.descriptor) && d.descriptor.length === 128
+                && d.descriptor.every(value => typeof value === 'number' && Number.isFinite(value)))) {
+                throw new Error('Некоректні дані облич');
             }
+            knownDescriptors = data.map(function(d) {
+                return { staffId: d.staffId, name: d.name, descriptor: new Float32Array(d.descriptor) };
+            });
         }
 
         // Recognition loop
-        async function detectLoop() {
+        async function detectLoop(generation) {
+            if (!recognitionEnabled || generation !== recognitionGeneration) return;
             var video = document.getElementById('video');
             var canvas = document.getElementById('overlay');
 
             if (video.readyState < 2) {
-                requestAnimationFrame(detectLoop);
+                requestAnimationFrame(function() { detectLoop(generation); });
                 return;
             }
 
@@ -389,7 +416,7 @@
             canvas.height = video.videoHeight;
 
             if (isProcessing) {
-                requestAnimationFrame(detectLoop);
+                requestAnimationFrame(function() { detectLoop(generation); });
                 return;
             }
 
@@ -399,6 +426,10 @@
                     .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
                     .withFaceLandmarks(true)
                     .withFaceDescriptors();
+                if (!recognitionEnabled || generation !== recognitionGeneration) {
+                    isProcessing = false;
+                    return;
+                }
 
                 var ctx = canvas.getContext('2d');
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -438,7 +469,7 @@
                             if (bestMatch.staffId !== lastRecognizedId || now - lastRecognizedTime > 30000) {
                                 lastRecognizedId = bestMatch.staffId;
                                 lastRecognizedTime = now;
-                                performCheckin(bestMatch.staffId, bestMatch.name);
+                                performCheckin(bestMatch.staffId, bestMatch.name, generation);
                             }
                         } else {
                             ctx.fillStyle = '#F87171';
@@ -456,11 +487,15 @@
             }
             isProcessing = false;
 
-            setTimeout(function() { requestAnimationFrame(detectLoop); }, 200);
+            setTimeout(function() {
+                if (recognitionEnabled && generation === recognitionGeneration) {
+                    requestAnimationFrame(function() { detectLoop(generation); });
+                }
+            }, 200);
         }
 
         // Perform check-in/out
-        async function performCheckin(staffId, name) {
+        async function performCheckin(staffId, name, generation) {
             try {
                 var endpoint = mode === 'checkin' ? '/staff/checkin' : '/staff/checkout';
                 var resp = await fetch(API_BASE + endpoint, {
@@ -469,7 +504,8 @@
                     body: JSON.stringify({ staffId: staffId, method: 'face' })
                 });
                 var data = await resp.json();
-                if (data.success) {
+                if (generation !== recognitionGeneration) return;
+                if (resp.ok && data && data.success === true) {
                     var timeStr = new Date().toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
                     var area = document.getElementById('resultArea');
                     var badgeClass = mode === 'checkin' ? 'checkin' : 'checkout';
@@ -479,11 +515,23 @@
                         + '<div class="badge ' + badgeClass + '">' + label + '</div>';
                     area.style.display = 'block';
                     setStatus('Розпізнано: ' + name, 'recognized');
-                    loadLog();
-                    setTimeout(function() { area.style.display = 'none'; }, 5000);
+                    loadLog().catch(function(err) {
+                        if (generation === recognitionGeneration) showInitializationError(err, 'log');
+                    });
+                    setTimeout(function() { if (generation === recognitionGeneration) area.style.display = 'none'; }, 5000);
+                } else {
+                    recognitionEnabled = false;
+                    recognitionGeneration += 1;
+                    setStatus(resp.status === 403
+                        ? 'Немає доступу до відмітки Check-in для цього бізнесу або вашої ролі.'
+                        : 'Не вдалося записати відмітку. Перевірте журнал перед повторною спробою.', 'error', { retry: true });
                 }
             } catch (err) {
+                if (generation !== recognitionGeneration) return;
                 console.error('Checkin error', err);
+                recognitionEnabled = false;
+                recognitionGeneration += 1;
+                setStatus('Не вдалося підтвердити відмітку. Перевірте журнал перед повторною спробою.', 'error', { retry: true });
             }
         }
 
@@ -491,12 +539,23 @@
         window.showRegister = async function() {
             document.getElementById('registerPanel').style.display = 'block';
             // Load staff list
+            var select = document.getElementById('staffSelect');
+            var state = document.getElementById('registerStaffState');
+            select.disabled = true;
+            select.innerHTML = '<option value="">Завантаження співробітників...</option>';
+            state.textContent = 'Завантаження співробітників...';
+            state.setAttribute('role', 'status');
             try {
                 var resp = await fetch(API_BASE + '/staff', { headers: headers() });
                 var staff = await resp.json();
-                var select = document.getElementById('staffSelect');
+                if (!resp.ok) {
+                    var error = new Error(staff && staff.error || `HTTP ${resp.status}`);
+                    error.status = resp.status;
+                    throw error;
+                }
+                var arr = Array.isArray(staff) ? staff : staff && staff.staff;
+                if (!Array.isArray(arr)) throw new Error('Некоректна відповідь списку співробітників');
                 select.innerHTML = '<option value="">Оберіть співробітника...</option>';
-                var arr = Array.isArray(staff) ? staff : (staff.staff || []);
                 arr.forEach(function(s) {
                     if (s.is_active !== false) {
                         var opt = document.createElement('option');
@@ -505,8 +564,14 @@
                         select.appendChild(opt);
                     }
                 });
+                select.disabled = false;
+                state.textContent = select.options.length > 1 ? '' : 'Активних співробітників немає.';
             } catch (err) {
                 console.error('Load staff error', err);
+                select.innerHTML = '<option value="">Співробітники недоступні</option>';
+                state.setAttribute('role', 'alert');
+                state.textContent = err.status === 403 ? 'Немає доступу до списку співробітників.' : 'Не вдалося завантажити співробітників. Повторіть спробу.';
+                state.innerHTML += ' <button type="button" class="btn btn-secondary" onclick="showRegister()">Повторити</button>';
             }
         };
 
@@ -540,12 +605,18 @@
                     body: JSON.stringify({ descriptor: descriptor })
                 });
                 var data = await resp.json();
-                if (data.success) {
+                if (resp.ok && data && data.success === true) {
                     setStatus('Обличчя зареєстровано!', 'recognized');
                     hideRegister();
-                    await loadDescriptors();
+                    try {
+                        await loadDescriptors();
+                    } catch (err) {
+                        showInitializationError(err, 'descriptors');
+                    }
                 } else {
-                    setStatus('Помилка реєстрації: ' + (data.error || ''), 'error');
+                    setStatus(resp.status === 403
+                        ? 'Немає доступу до реєстрації облич для цього бізнесу або вашої ролі.'
+                        : 'Помилка реєстрації: ' + (data && data.error || 'повторіть спробу'), 'error');
                 }
             } catch (err) {
                 setStatus('Помилка: ' + err.message, 'error');
@@ -554,10 +625,12 @@
 
         // Load today's log
         async function loadLog() {
+            var el = document.getElementById('logEntries');
+            el.textContent = 'Завантаження журналу...';
+            el.setAttribute('role', 'status');
             try {
                 var resp = await fetch(API_BASE + '/staff/checkins', { headers: headers() });
-                var checkins = await resp.json();
-                var el = document.getElementById('logEntries');
+                var checkins = await readArrayResponse(resp, 'журналу');
                 if (!checkins.length) {
                     el.innerHTML = '<div style="color:#6B7280;padding:10px;">Ще ніхто не відмітився</div>';
                     return;
@@ -571,7 +644,9 @@
                         + '</div>';
                 }).join('');
             } catch (err) {
-                console.error('Load log error', err);
+                el.setAttribute('role', 'alert');
+                el.textContent = err.status === 403 ? 'Журнал недоступний для цього бізнесу або вашої ролі.' : 'Не вдалося завантажити журнал.';
+                throw err;
             }
         }
 
@@ -622,6 +697,8 @@
         async function initializeCheckin() {
             if (initializationInFlight) return;
             initializationInFlight = true;
+            recognitionEnabled = false;
+            const generation = ++recognitionGeneration;
             setRetryVisible(false);
             try {
                 if (!(await requireAuthorizedSession())) return;
@@ -633,13 +710,24 @@
                     showInitializationError(err, 'model');
                     return;
                 }
+                try {
+                    await loadDescriptors();
+                } catch (err) {
+                    showInitializationError(err, 'descriptors');
+                    return;
+                }
+                try {
+                    await loadLog();
+                } catch (err) {
+                    showInitializationError(err, 'log');
+                    return;
+                }
                 var cameraReady = await startCamera();
                 if (!cameraReady) return;
-                await loadDescriptors();
-                await loadLog();
 
-                setStatus('Готово! Поверніться до камери', 'ready');
-                detectLoop();
+                setStatus(knownDescriptors.length ? 'Готово! Поверніться до камери' : 'Немає зареєстрованих облич для розпізнавання.', 'ready');
+                recognitionEnabled = true;
+                detectLoop(generation);
             } catch (err) {
                 showInitializationError(err, 'init');
             } finally {

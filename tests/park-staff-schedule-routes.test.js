@@ -290,7 +290,7 @@ test('Park schedule ownership through the actual Express staff and HR routers', 
                 ['POST', '/api/staff'], ['DELETE', '/api/staff/9701'],
                 ['GET', '/api/staff/face-descriptors'], ['GET', '/api/staff/payroll'],
                 ['GET', '/api/staff/schedule/check/2026-09-14'],
-                ['GET', '/api/hr/staff'], ['GET', '/api/hr/salary'], ['GET', '/api/hr/shifts'],
+                ['GET', '/api/hr/salary'], ['GET', '/api/hr/shifts'],
                 ['POST', '/api/hr/professions'], ['POST', '/api/hr/shifts'],
                 ['HEAD', `/api/staff/schedule?${RANGE}`]
             ];

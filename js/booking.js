@@ -9382,28 +9382,78 @@ async function showFreeRooms() {
     }
 }
 
+var bookingCertificateValidationRequestId = 0;
+
+function bookingCertificateValidationContext() {
+    return String(window.TimelineBusinessContext?.state?.()?.activeBusinessContext
+        || window.TimelineBusinessContext?.current?.()?.apiValue
+        || 'event_genix').trim().toLowerCase();
+}
+
+function invalidateBookingCertificateValidation() {
+    bookingCertificateValidationRequestId++;
+    var resultEl = document.getElementById('certValidationResult');
+    if (!resultEl) return;
+    resultEl.style.display = 'none';
+    resultEl.textContent = '';
+    resultEl.style.color = '';
+}
+
+document.addEventListener('input', event => {
+    if (event.target?.id === 'certCodeInput') invalidateBookingCertificateValidation();
+});
+window.addEventListener('timeline:business-context-changed', invalidateBookingCertificateValidation);
+
 // v33.8.0: Validate certificate code
 async function validateCertificate() {
     var code = document.getElementById('certCodeInput')?.value?.trim();
-    if (!code) return;
     var resultEl = document.getElementById('certValidationResult');
     if (!resultEl) return;
+    if (!code) {
+        invalidateBookingCertificateValidation();
+        return;
+    }
+    var requestId = ++bookingCertificateValidationRequestId;
+    var businessContext = bookingCertificateValidationContext();
     resultEl.style.display = 'block';
     resultEl.textContent = '⏳ Перевіряю...';
     resultEl.style.color = '';
     try {
+        var headers = typeof getAuthHeaders === 'function' ? getAuthHeaders(false) : {};
+        if (!headers.Authorization && !headers.authorization) {
+            headers.Authorization = 'Bearer ' + localStorage.getItem('pzp_token');
+        }
+        headers['X-Business-Context'] = businessContext;
         var resp = await fetch('/api/certificates/validate/' + encodeURIComponent(code), {
-            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+            headers
         });
         var data = await resp.json();
-        if (data.valid) {
+        if (requestId !== bookingCertificateValidationRequestId
+            || document.getElementById('certCodeInput')?.value?.trim() !== code
+            || bookingCertificateValidationContext() !== businessContext
+            || document.getElementById('certValidationResult') !== resultEl) return;
+        if (data.canRedeem === true) {
             resultEl.innerHTML = '✅ Сертифікат дійсний: <b>' + escapeHtml(data.certificate.display_value) + '</b> (' + escapeHtml(data.certificate.type_text || '') + ')';
             resultEl.style.color = 'var(--success, green)';
         } else {
-            resultEl.textContent = '❌ ' + (data.reason === 'expired' ? 'Прострочений' : data.reason === 'used' ? 'Вже використаний' : data.error || 'Недійсний');
-            resultEl.style.color = '#ef4444';
+            var reason = data.reason || data.redemptionReason;
+            var messages = {
+                expired: 'Строк дії сертифіката минув.',
+                used: 'Сертифікат уже використаний.',
+                blocked: 'Сертифікат заблокований.',
+                revoked: 'Сертифікат анульований.',
+                verification_only: 'Сертифікат активний, але цей тип доступний лише для перевірки й не може бути використаний у бронюванні.',
+                redemption_unavailable: 'Сертифікат активний, але в поточному бізнес-контексті його не можна погасити.'
+            };
+            resultEl.textContent = '❌ ' + (messages[reason]
+                || (data.valid ? 'Сертифікат активний, але сервер не підтвердив можливість використати його в бронюванні.' : data.error || 'Сертифікат недійсний.'));
+            resultEl.style.color = data.valid ? 'var(--text-secondary, #6b7280)' : '#ef4444';
         }
     } catch (e) {
+        if (requestId !== bookingCertificateValidationRequestId
+            || document.getElementById('certCodeInput')?.value?.trim() !== code
+            || bookingCertificateValidationContext() !== businessContext
+            || document.getElementById('certValidationResult') !== resultEl) return;
         resultEl.textContent = '❌ Помилка перевірки';
         resultEl.style.color = '#ef4444';
     }

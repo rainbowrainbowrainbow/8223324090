@@ -6,7 +6,21 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
-const { chromium } = require('playwright');
+function requirePlaywright() {
+    try {
+        return require('playwright');
+    } catch (error) {
+        const pathEntries = String(process.env.PATH || '').split(path.delimiter).filter(Boolean);
+        for (const entry of pathEntries) {
+            const normalized = entry.replace(/[\\/]+$/, '');
+            if (!/node_modules[\\/]?\.bin$/i.test(normalized)) continue;
+            const packageDir = path.join(path.dirname(normalized), 'playwright');
+            if (fs.existsSync(packageDir)) return require(packageDir);
+        }
+        throw error;
+    }
+}
+const { chromium } = requirePlaywright();
 const ROOT = path.resolve(__dirname, '../..');
 const OUTPUT = path.join(ROOT, 'output/playwright/certificate-check');
 const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');

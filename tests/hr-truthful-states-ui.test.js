@@ -271,6 +271,31 @@ test('checklist dashboard keeps a context-change error instead of a late staff f
     } finally { dom.window.close(); }
 });
 
+test('checklist dashboard loads after business profile settles during catalog hydration', async () => {
+    let resolveCatalog;
+    const catalog = new Promise(resolve => { resolveCatalog = resolve; });
+    let dashboardRequests = 0;
+    const { dom, win } = harness(elementOuterHtml('tab-checklists'), {
+        fetch: async url => {
+            if (url.includes('/professions')) return catalog;
+            dashboardRequests += 1;
+            return response(200, { success: true, data: {
+                assignments: [{ staffId: 4, staffName: 'QA Staff', professionKey: 'animator' }]
+            } });
+        }
+    });
+    try {
+        let context = 'profile-pending';
+        win.getLegacyBusinessSurfaceContextKey = () => context;
+        const request = win.loadProfessionChecklists();
+        context = 'park-profile-ready';
+        resolveCatalog(response(200, { success: true, data: [] }));
+        await request;
+        assert.equal(dashboardRequests, 1);
+        assert.match(win.document.getElementById('professionChecklistList').textContent, /QA Staff/);
+    } finally { dom.window.close(); }
+});
+
 test('checklist 403 clears rendered people and survives another render', async () => {
     let denied = false;
     const { dom, win } = harness(elementOuterHtml('tab-checklists'), {

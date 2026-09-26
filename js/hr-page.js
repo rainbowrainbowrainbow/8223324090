@@ -4914,7 +4914,6 @@ async function loadProfessionChecklists(options = {}) {
     clearTimeout(professionChecklistDashboardSearchTimer);
     professionChecklistDashboardSearchTimer = null;
     const requestSeq = ++professionChecklistDashboardRequestSeq;
-    const context = salaryAccessContext();
     const feed = ['assignments', 'archived', 'orphaned'].includes(options.feed) ? options.feed : null;
     let offset = feed ? Math.max(0, Number(options.offset) || 0) : 0;
     const previousData = professionChecklistDashboardState.data;
@@ -4924,8 +4923,11 @@ async function loadProfessionChecklists(options = {}) {
         force: options.preserveCatalog !== true,
         silent: true
     });
+    if (requestSeq !== professionChecklistDashboardRequestSeq) return;
     renderProfessionChecklistDashboardFilterOptions();
-    if (requestSeq !== professionChecklistDashboardRequestSeq || context !== salaryAccessContext()) return;
+    // Account/business profile hydration may finish while the catalog loads.
+    // Bind the dashboard request to the context that actually issues it.
+    const context = salaryAccessContext();
     professionChecklistDashboardState = { loadState: 'loading', data: professionChecklistDashboardState.data, error: '' };
     renderProfessionChecklists();
     let response;

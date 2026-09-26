@@ -141,6 +141,20 @@ test('certificate redemption precheck requires the same Park business context as
     });
 });
 
+test('booking form exposes the certificate precheck controls used by its handler', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const start = html.indexOf('<form id="bookingForm"');
+    const end = html.indexOf('</form>', start);
+    assert.ok(start >= 0 && end > start, 'booking form must exist');
+    const form = html.slice(start, end);
+    for (const id of ['bookingCertificateSection', 'certCodeInput', 'certValidateButton', 'certValidationResult']) {
+        assert.match(form, new RegExp(`id="${id}"`), `${id} must be part of the real booking form`);
+    }
+    assert.match(form, /<button type="button" id="certValidateButton"/);
+    const bookingCode = fs.readFileSync(path.join(__dirname, '..', 'js', 'booking.js'), 'utf8');
+    assert.match(bookingCode, /event\.target\?\.id === 'certValidateButton'\) validateCertificate\(\)/);
+});
+
 test('booking certificate validation fails closed and ignores stale code or business context responses', async () => {
     const bookingCode = fs.readFileSync(path.join(__dirname, '..', 'js', 'booking.js'), 'utf8');
     const start = bookingCode.indexOf('var bookingCertificateValidationRequestId = 0;');
@@ -149,6 +163,7 @@ test('booking certificate validation fails closed and ignores stale code or busi
     const validationCode = bookingCode.slice(start, end);
     const input = { id: 'certCodeInput', value: 'CERT-ONE' };
     const result = { style: {}, textContent: '', innerHTML: '' };
+    const section = { hidden: false, classList: { toggle() {} } };
     const documentListeners = {};
     const windowListeners = {};
     let activeContext = 'event_genix';
@@ -160,7 +175,9 @@ test('booking certificate validation fails closed and ignores stale code or busi
     }) });
     const sandbox = {
         document: {
-            getElementById: id => id === 'certCodeInput' ? input : id === 'certValidationResult' ? result : null,
+            getElementById: id => id === 'certCodeInput' ? input
+                : id === 'certValidationResult' ? result
+                    : id === 'bookingCertificateSection' ? section : null,
             addEventListener: (name, handler) => { documentListeners[name] = handler; }
         },
         window: {
@@ -192,6 +209,15 @@ test('booking certificate validation fails closed and ignores stale code or busi
     assert.match(result.textContent, /доступний лише для перевірки/);
     assert.notEqual(result.style.color, 'var(--success, green)');
 
+    fetchImpl = async () => ({ json: async () => ({
+        valid: true,
+        canRedeem: false,
+        redemptionReason: 'qa_booking_unavailable'
+    }) });
+    await validate();
+    assert.match(result.textContent, /Тестовий сертифікат не можна використати в бронюванні/);
+    assert.notEqual(result.style.color, 'var(--success, green)');
+
     fetchImpl = async () => ({ status: 403, json: async () => ({ error: 'business surface unavailable' }) });
     await validate();
     assert.match(result.textContent, /недоступна в поточному бізнес-контексті/);
@@ -217,6 +243,8 @@ test('booking certificate validation fails closed and ignores stale code or busi
     const staleContextRequest = validate();
     activeContext = 'dar';
     windowListeners['timeline:business-context-changed']();
+    assert.equal(section.hidden, true);
+    assert.equal(input.value, '');
     resolveStaleContextResponse({ json: async () => ({
         valid: true, canRedeem: true, redemptionReason: 'available',
         certificate: { display_value: 'Old', type_text: 'Одноразовий вхід' }

@@ -5,9 +5,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { Pool } = require('pg');
 const { assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
-const { ensureDisposableParkMembership } = require('../helpers/disposable-park-membership');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const TARGET_URL = String(process.env.TEST_URL || '').trim();
@@ -76,15 +74,6 @@ async function login(base, username, password) {
     };
 }
 
-async function provisionDisposableParkMembership(userId, role) {
-    const pool = new Pool(process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : {});
-    try {
-        await ensureDisposableParkMembership(pool, userId, role);
-    } finally {
-        await pool.end();
-    }
-}
-
 async function createHrSession(base) {
     const bootstrap = await login(base, process.env.TEST_USER, process.env.TEST_PASS);
     const createLinkedAccount = async ({ role, label }) => {
@@ -118,7 +107,6 @@ async function createHrSession(base) {
 
     const hrAccount = await createLinkedAccount({ role: 'hr', label: 'HR Fullstack' });
     const ownerAccount = await createLinkedAccount({ role: 'manager', label: 'Onboarding Owner' });
-    await provisionDisposableParkMembership(hrAccount.userId, 'hr');
     const session = await login(base, hrAccount.username, hrAccount.password);
     assert.equal(session.user?.role, 'hr');
     return { ...session, userId: hrAccount.userId, responsibleUserId: ownerAccount.userId };

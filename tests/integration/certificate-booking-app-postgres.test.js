@@ -84,8 +84,8 @@ test('actual app booking and certificate redemption share one PostgreSQL transac
             VALUES ('event_genix', 'certificate-fixture-room', 'room', 'Certificate Fixture Room', true)`);
         async function certificate() {
             const code = 'CERT-' + crypto.randomBytes(6).toString('hex').toUpperCase();
-            return (await pool.query(`INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, status)
-                VALUES ($1, 'fio', $2, 'на одноразовий вхід', '2099-12-31', 'active') RETURNING id, cert_code`,
+            return (await pool.query(`INSERT INTO certificates (cert_code, display_mode, display_value, type_text, type_code, valid_until, status)
+                VALUES ($1, 'fio', $2, 'на одноразовий вхід', 'one_time_admission', '2099-12-31', 'active') RETURNING id, cert_code`,
             [code, 'Synthetic Recipient ' + code])).rows[0];
         }
         async function request(method, route, body) {

@@ -4,13 +4,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { PAGE_PERMISSION_BY_KEY } = require('../config/permissionRegistry');
 const { resolveCapability } = require('../services/accountAccessPolicy');
+const { getCertificateRedemptionAvailability } = require('../services/certificateRedemption');
 const {
     mapCertificateRow,
     normalizeCertificateIdentity,
     certificateIdentityKey,
     validateCertificateInput,
     buildCertificateCheckUrl,
-    getCertificateEffectiveStatus
+    getCertificateEffectiveStatus,
+    certificateTypeCodeFromLegacyText
 } = require('../services/certificates');
 
 test('certificate row mapping exposes durable issue source metadata', () => {
@@ -31,6 +33,7 @@ test('certificate row mapping exposes durable issue source metadata', () => {
     });
 
     assert.equal(mapped.issueSource, 'batch');
+    assert.equal(mapped.typeCode, 'one_time_admission');
     assert.equal(mapped.batchGroupId, 'cert_batch_example');
     assert.equal(mapped.issuedByName, 'Оператор');
     assert.equal(mapped.issuedAt, '2099-01-01T10:30:00.000Z');
@@ -84,6 +87,29 @@ test('certificate remains valid through its Kyiv expiry date', () => {
     assert.equal(getCertificateEffectiveStatus(cert, new Date('2026-09-23T20:59:59Z')), 'active');
     assert.equal(getCertificateEffectiveStatus(cert, new Date('2026-09-23T21:00:00Z')), 'expired');
     assert.equal(getCertificateEffectiveStatus({ ...cert, status: 'used' }, new Date('2026-09-23T21:00:00Z')), 'used');
+});
+
+test('stable certificate type codes preserve legacy safety and reject mismatched issuance', () => {
+    assert.equal(certificateTypeCodeFromLegacyText('  НА ОДНОРАЗОВИЙ ВХІД  '), 'one_time_admission');
+    assert.equal(certificateTypeCodeFromLegacyText('Абонемент'), 'subscription');
+    assert.equal(certificateTypeCodeFromLegacyText('Абонемент на 10 входів'), 'verification_only');
+    assert.equal(certificateTypeCodeFromLegacyText('VIP доступ'), 'verification_only');
+    assert.equal(mapCertificateRow({ type_text: 'VIP назва', type_code: 'one_time_admission' }).typeCode, 'one_time_admission');
+    assert.ok(validateCertificateInput({ typeText: 'Абонемент', typeCode: 'one_time_admission' })
+        .some(error => error.includes('typeCode')));
+    assert.ok(validateCertificateInput({ typeText: 'VIP доступ', typeCode: 'subscription' })
+        .some(error => error.includes('typeCode')));
+    assert.deepEqual(validateCertificateInput({ typeText: 'VIP доступ', typeCode: 'verification_only' }), []);
+});
+
+test('certificate lookup exposes stable action reasons without permission details', () => {
+    const req = { user: { role: 'security' }, headers: { 'x-business-context': 'event_genix' }, query: {}, body: {} };
+    const active = { status: 'active', valid_until: '2099-12-31', type_text: 'на одноразовий вхід', type_code: 'one_time_admission' };
+    assert.deepEqual(getCertificateRedemptionAvailability(req, active), {
+        effectiveStatus: 'active', canRedeem: false, reason: 'redemption_unavailable'
+    });
+    assert.equal(getCertificateRedemptionAvailability(req, { ...active, type_text: 'Абонемент', type_code: 'subscription' }).reason, 'verification_only');
+    assert.equal(getCertificateRedemptionAvailability(req, { ...active, status: 'used' }).reason, 'used');
 });
 
 test('certificate date handling preserves PostgreSQL dates across winter and DST boundaries', () => {

@@ -47,6 +47,14 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
             CREATE TABLE history (id SERIAL PRIMARY KEY, business_context TEXT NOT NULL, action TEXT NOT NULL, username TEXT NOT NULL, data JSONB NOT NULL);
             CREATE TABLE certificate_booking_probe (id TEXT PRIMARY KEY, certificate_id INT NOT NULL REFERENCES certificates(id));
         `);
+        const legacyRows = (await pool.query(`INSERT INTO certificates (cert_code, type_text, status, valid_until)
+            VALUES ('FIXTURE-LEGACY-ONE-TIME', '  НА ОДНОРАЗОВИЙ ВХІД  ', 'active', '2099-12-31'),
+                   ('FIXTURE-LEGACY-SUBSCRIPTION', 'Абонемент', 'used', '2099-12-31'),
+                   ('FIXTURE-LEGACY-UNKNOWN', 'Абонемент на 10 входів', 'active', '2099-12-31')
+            RETURNING id, cert_code, type_text, status, valid_until::text AS valid_until`)).rows;
+        const typeMigration = fs.readFileSync(path.join(__dirname, '../../db/migrations/370_certificate_stable_type_code.sql'), 'utf8');
+        await pool.query(typeMigration);
+        await pool.query(typeMigration);
         await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/357_organizations_business_memberships.sql'), 'utf8'));
         await pool.query(`INSERT INTO organizations (id, slug, name) VALUES (1, 'certificate-fixture', 'Certificate Fixture');
             INSERT INTO businesses (id, organization_id, context_key, label, short_label, access_mode) VALUES
@@ -72,10 +80,11 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
             const actor = applyMembershipAccess(user, await loadMembershipAccess(pool, user, 'event_genix'));
             return { user, token, req: { user: actor, headers: { 'x-business-context': 'event_genix' }, query: {}, body: {} } };
         }
-        async function certificate({ status = 'active', days = 0, type = 'на одноразовий вхід' } = {}) {
-            return (await pool.query(`INSERT INTO certificates (cert_code, type_text, status, valid_until)
-                VALUES ($1, $2, $3, (clock_timestamp() AT TIME ZONE 'Europe/Kyiv')::date + $4::int) RETURNING *`,
-            ['CERT-' + crypto.randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase(), type, status, days])).rows[0];
+        async function certificate({ status = 'active', days = 0, type = 'на одноразовий вхід', typeCode } = {}) {
+            const code = typeCode || (type === 'на одноразовий вхід' ? 'one_time_admission' : 'verification_only');
+            return (await pool.query(`INSERT INTO certificates (cert_code, type_text, type_code, status, valid_until)
+                VALUES ($1, $2, $3, $4, (clock_timestamp() AT TIME ZONE 'Europe/Kyiv')::date + $5::int) RETURNING *`,
+            ['CERT-' + crypto.randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase(), type, code, status, days])).rows[0];
         }
         async function request(actor, endpoint, method = 'POST', body = {}, context = 'event_genix') {
             const response = await fetch(base + endpoint, { method,
@@ -99,12 +108,42 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
             finally { client.release(); }
         }
 
+        await t.test('legacy type migration preserves labels and state across repeated execution', async () => {
+            const mapped = (await pool.query(`SELECT id, type_text, type_code, status, valid_until::text AS valid_until
+                FROM certificates WHERE id = ANY($1::int[]) ORDER BY id`, [legacyRows.map(row => row.id)])).rows;
+            assert.deepEqual(mapped.map(row => row.type_code), ['one_time_admission', 'subscription', 'verification_only']);
+            assert.deepEqual(mapped.map(({ type_code, ...row }) => row), legacyRows.map(({ cert_code, ...row }) => row));
+            await pool.query("UPDATE certificates SET type_text = 'Оновлена назва входу' WHERE id = $1", [legacyRows[0].id]);
+            await pool.query("UPDATE certificates SET type_text = 'на одноразовий вхід' WHERE id = $1", [legacyRows[2].id]);
+            await pool.query(typeMigration);
+            const afterRepeat = (await pool.query('SELECT type_code FROM certificates WHERE id = ANY($1::int[]) ORDER BY id',
+                [legacyRows.map(row => row.id)])).rows;
+            assert.deepEqual(afterRepeat.map(row => row.type_code), ['one_time_admission', 'subscription', 'verification_only']);
+            const rollback = (await pool.query(`SELECT
+                COUNT(*) FILTER (WHERE type_code <> 'one_time_admission'
+                    AND LOWER(BTRIM(type_text)) = 'на одноразовий вхід')::int AS unsafe_grants,
+                COUNT(*) FILTER (WHERE type_code = 'one_time_admission'
+                    AND LOWER(BTRIM(type_text)) <> 'на одноразовий вхід')::int AS safe_denials
+                FROM certificates`)).rows[0];
+            assert.deepEqual(rollback, { unsafe_grants: 1, safe_denials: 1 });
+        });
+        await t.test('display label edits cannot grant or remove redemption', async () => {
+            const actor = await account();
+            const oneTime = legacyRows[0];
+            const unknown = legacyRows[2];
+            assert.equal((await request(actor, '/code/' + oneTime.cert_code, 'GET')).body.canRedeem, true);
+            assert.equal((await request(actor, '/code/' + unknown.cert_code, 'GET')).body.canRedeem, false);
+            assert.equal((await request(actor, `/${unknown.id}/redeem`)).status, 409);
+            assert.equal((await request(actor, `/${oneTime.id}/redeem`)).status, 200);
+        });
+
         await t.test('two simultaneous HTTP requests produce one success, one conflict and one audit', async () => {
             const actor = await account();
             const cert = await certificate();
             const lookup = await request(actor, '/code/' + cert.cert_code, 'GET');
             assert.equal(lookup.status, 200);
             assert.equal(lookup.body.canRedeem, true);
+            assert.equal(lookup.body.redemptionReason, 'available');
             assert.equal((await persisted(cert)).audits, 0);
             const outcomes = await Promise.all([request(actor, `/${cert.id}/redeem`), request(actor, `/${cert.id}/redeem`)]);
             assert.deepEqual(outcomes.map(item => item.status).sort(), [200, 409]);
@@ -125,7 +164,9 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
                 const actor = await account(role);
                 const cert = await certificate();
                 const allowed = !['security', 'animator'].includes(role);
-                assert.equal((await request(actor, '/code/' + cert.cert_code, 'GET')).body.canRedeem, allowed, role);
+                const lookup = await request(actor, '/code/' + cert.cert_code, 'GET');
+                assert.equal(lookup.body.canRedeem, allowed, role);
+                assert.equal(lookup.body.redemptionReason, allowed ? 'available' : 'redemption_unavailable', role);
                 const result = await request(actor, `/${cert.id}/redeem`);
                 assert.equal(result.status, allowed ? 200 : 403, `${role}: ${JSON.stringify(result.body)}`);
                 assert.equal((await persisted(cert)).audits, allowed ? 1 : 0);
@@ -144,8 +185,19 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
         });
         await t.test('expired, blocked, revoked, used and subscription certificates cannot be redeemed', async () => {
             const actor = await account();
-            for (const options of [{ days: -1 }, { status: 'blocked' }, { status: 'revoked' }, { status: 'used' }, { status: 'expired' }, { type: 'Абонемент на 10 входів' }]) {
+            for (const [options, reason] of [
+                [{ days: -1 }, 'expired'],
+                [{ status: 'blocked' }, 'blocked'],
+                [{ status: 'revoked' }, 'revoked'],
+                [{ status: 'used' }, 'used'],
+                [{ status: 'expired' }, 'expired'],
+                [{ type: 'Абонемент на 10 входів' }, 'verification_only']
+            ]) {
                 const cert = await certificate(options);
+                const lookup = await request(actor, '/code/' + cert.cert_code, 'GET');
+                assert.equal(lookup.status, 200);
+                assert.equal(lookup.body.canRedeem, false);
+                assert.equal(lookup.body.redemptionReason, reason);
                 assert.equal((await request(actor, `/${cert.id}/redeem`)).status, 409);
                 assert.equal((await persisted(cert)).audits, 0);
             }

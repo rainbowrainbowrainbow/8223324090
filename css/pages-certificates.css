@@ -115,11 +115,13 @@
 }
 
 .cert-check-card input:focus-visible { outline: 3px solid rgba(20, 184, 166, 0.28); outline-offset: 2px; }
-.cert-check-result[data-cert-check-state="valid"] { border-color: rgba(16, 185, 129, 0.52); }
+.cert-check-result[data-cert-check-state="redeemable"],
+.cert-check-result[data-cert-check-state="verification_only"] { border-color: rgba(16, 185, 129, 0.52); }
 .cert-check-result[data-cert-check-state="used"],
 .cert-check-result[data-cert-check-state="expired"] { border-color: rgba(245, 158, 11, 0.52); }
 .cert-check-result[data-cert-check-state="revoked"],
 .cert-check-result[data-cert-check-state="blocked"],
+.cert-check-result[data-cert-check-state="redemption_unavailable"],
 .cert-check-result[data-cert-check-state="denied"],
 .cert-check-result[data-cert-check-state="missing"],
 .cert-check-result[data-cert-check-state="error"] { border-color: rgba(239, 68, 68, 0.5); }

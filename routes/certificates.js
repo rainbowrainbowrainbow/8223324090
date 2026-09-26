@@ -15,6 +15,10 @@ const {
     validateCertificateInput,
     buildCertificateCheckUrl,
     getCertificateEffectiveStatus,
+    CERTIFICATE_TYPE_CODES,
+    ONE_TIME_TYPE_TEXT,
+    SUBSCRIPTION_TYPE_TEXT,
+    certificateTypeCodeFromLegacyText,
     getCurrentSeason,
     VALID_STATUSES,
     VALID_SEASONS
@@ -23,12 +27,12 @@ const { sendTelegramMessage, sendTelegramPhoto, getConfiguredChatId } = require(
 const { formatCertificateNotification, formatBatchCertificateNotification } = require('../services/templates');
 const { publish: publishEvent } = require('../services/eventBus');
 const { insertHistory } = require('../services/historyLog');
-const { redeemCertificateInTransaction, canRedeemCertificate } = require('../services/certificateRedemption');
+const { redeemCertificateInTransaction, getCertificateRedemptionAvailability } = require('../services/certificateRedemption');
 const { createLogger } = require('../utils/logger');
 const QRCode = require('qrcode');
 
 const log = createLogger('Certificates');
-const BATCH_CERTIFICATE_TYPE_TEXT = 'на одноразовий вхід';
+const BATCH_CERTIFICATE_TYPE_TEXT = ONE_TIME_TYPE_TEXT;
 const DUPLICATE_RECIPIENT_CODE = 'CERTIFICATE_RECIPIENT_NOT_UNIQUE';
 const CERTIFICATE_ISSUER_ROLES = ['admin', 'user', 'animator'];
 
@@ -163,7 +167,8 @@ router.get('/code/:code', requireCertificateCheckAccess, async (req, res) => {
             return res.status(404).json({ error: 'Certificate not found' });
         }
         const cert = result.rows[0];
-        res.json({ ...mapCertificateRow(cert), effectiveStatus: getCertificateEffectiveStatus(cert), canRedeem: canRedeemCertificate(req, cert) });
+        const redemption = getCertificateRedemptionAvailability(req, cert);
+        res.json({ ...mapCertificateRow(cert), effectiveStatus: redemption.effectiveStatus, canRedeem: redemption.canRedeem, redemptionReason: redemption.reason });
     } catch (err) {
         log.error('Get by code error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -211,15 +216,18 @@ router.get('/:id', async (req, res) => {
 router.post('/', requireRole(...CERTIFICATE_ISSUER_ROLES), async (req, res) => {
     const client = await pool.connect();
     try {
-        const errors = validateCertificateInput(req.body, { requireIdentity: true });
+        const { displayMode, displayValue, typeText, typeCode, validUntil, notes, season } = req.body;
+        const finalTypeText = typeText || (typeCode === CERTIFICATE_TYPE_CODES.SUBSCRIPTION
+            ? SUBSCRIPTION_TYPE_TEXT : typeCode === CERTIFICATE_TYPE_CODES.VERIFICATION_ONLY
+                ? 'Інший тип' : BATCH_CERTIFICATE_TYPE_TEXT);
+        const errors = validateCertificateInput({ ...req.body, typeText: finalTypeText }, { requireIdentity: true });
         if (errors.length > 0) {
             return res.status(400).json({ error: errors.join(', ') });
         }
 
-        const { displayMode, displayValue, typeText, validUntil, notes, season } = req.body;
         const finalDisplayMode = displayMode || 'fio';
         const finalDisplayValue = normalizeCertificateIdentity(displayValue);
-        const finalTypeText = typeText || BATCH_CERTIFICATE_TYPE_TEXT;
+        const finalTypeCode = typeCode || certificateTypeCodeFromLegacyText(finalTypeText);
 
         // Validate season
         const finalSeason = VALID_SEASONS.includes(season) ? season : getCurrentSeason();
@@ -241,14 +249,15 @@ router.post('/', requireRole(...CERTIFICATE_ISSUER_ROLES), async (req, res) => {
         const finalValidUntil = validUntil || calculateValidUntil(new Date(), defaultDays);
 
         const result = await client.query(
-            `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, season, status, issue_source, batch_group_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', 'single', NULL)
+            `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, type_code, valid_until, issued_by_user_id, issued_by_name, notes, season, status, issue_source, batch_group_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', 'single', NULL)
              RETURNING *`,
             [
                 certCode,
                 finalDisplayMode,
                 finalDisplayValue,
                 finalTypeText,
+                finalTypeCode,
                 finalValidUntil,
                 req.user.id || null,
                 req.user.name || req.user.username,
@@ -264,7 +273,8 @@ router.post('/', requireRole(...CERTIFICATE_ISSUER_ROLES), async (req, res) => {
                 certCode,
                 displayMode: finalDisplayMode,
                 displayValue: finalDisplayValue,
-                typeText: finalTypeText
+                typeText: finalTypeText,
+                typeCode: finalTypeCode
             }
         });
 
@@ -330,12 +340,13 @@ router.post('/batch', requireRole(...CERTIFICATE_ISSUER_ROLES), async (req, res)
         for (let i = 0; i < quantity; i++) {
             const certCode = await generateCertCode(client);
             const result = await client.query(
-                `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, season, status, issue_source, batch_group_id)
-                 VALUES ($1, 'fio', '', $2, $3, $4, $5, $6, $7, 'active', 'batch', $8)
+                `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, type_code, valid_until, issued_by_user_id, issued_by_name, notes, season, status, issue_source, batch_group_id)
+                 VALUES ($1, 'fio', '', $2, $3, $4, $5, $6, $7, $8, 'active', 'batch', $9)
                  RETURNING *`,
                 [
                     certCode,
                     typeText,
+                    CERTIFICATE_TYPE_CODES.ONE_TIME_ADMISSION,
                     finalValidUntil,
                     req.user.id || null,
                     req.user.name || req.user.username,
@@ -353,6 +364,7 @@ router.post('/batch', requireRole(...CERTIFICATE_ISSUER_ROLES), async (req, res)
             data: {
                 quantity,
                 typeText,
+                typeCode: CERTIFICATE_TYPE_CODES.ONE_TIME_ADMISSION,
                 batchGroupId,
                 eventName: eventName || undefined,
                 codes: created.map(c => c.certCode)

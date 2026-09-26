@@ -36,9 +36,9 @@ function createDatabaseFixture() {
                 result = [{ value: '45' }];
             } else if (query.startsWith('INSERT INTO certificates ')) {
                 assert.equal(transaction, true, 'certificate persistence belongs to its transaction');
-                const [cert_code, display_mode, display_value, type_text, valid_until,
+                const [cert_code, display_mode, display_value, type_text, type_code, valid_until,
                     issued_by_user_id, issued_by_name, notes, season] = params;
-                const row = { id: 9800 + rows.length, cert_code, display_mode, display_value, type_text,
+                const row = { id: 9800 + rows.length, cert_code, display_mode, display_value, type_text, type_code,
                     valid_until, issued_by_user_id, issued_by_name, notes, season, status: 'active',
                     issue_source: 'single', batch_group_id: null, issued_at: '2099-09-14T10:00:00.000Z' };
                 rows.push(row);
@@ -176,6 +176,7 @@ test('Park certificate and Art recovery through actual Express routers', async t
                 assert.equal(result.body.displayValue, `Synthetic ${role} Recipient`);
                 assert.equal(result.body.issuedByUserId, ACTOR_ID);
                 assert.equal(result.body.issueSource, 'single');
+                assert.equal(result.body.typeCode, 'verification_only');
                 assert.equal(result.body.validUntil, '2099-10-29');
                 assert.equal(result.body.status, 'active');
                 assert.equal(fixture.transaction, false);
@@ -189,6 +190,33 @@ test('Park certificate and Art recovery through actual Express routers', async t
             }
             assert.equal(fixture.calls.filter(call => call.sql.startsWith('INSERT INTO history ')).length, 2);
             assert.equal(fixture.calls.filter(call => call.sql === 'COMMIT').length, 2);
+        });
+
+        await t.test('single issuance stores stable codes for new and legacy callers', async () => {
+            state.actor = { role: 'admin' };
+            for (const [typeText, typeCode, expected] of [
+                ['на одноразовий вхід', 'one_time_admission', 'one_time_admission'],
+                ['абонемент', 'subscription', 'subscription'],
+                ['VIP назва', 'verification_only', 'verification_only'],
+                ['на одноразовий вхід', undefined, 'one_time_admission'],
+                ['Невідомий старий тип', undefined, 'verification_only']
+            ]) {
+                const body = { ...CERTIFICATE_INPUT, displayValue: `Synthetic type ${fixture.rows.length + 1}`, typeText };
+                if (typeCode) body.typeCode = typeCode;
+                const issued = await request('/api/certificates', { method: 'POST', body });
+                assert.equal(issued.status, 201, issued.text);
+                assert.equal(issued.body.typeCode, expected);
+                const read = await request(`/api/certificates/${issued.body.id}`);
+                assert.equal(read.status, 200, read.text);
+                assert.equal(read.body.typeCode, expected);
+            }
+            const rowsBefore = fixture.rows.length;
+            const mismatch = await request('/api/certificates', { method: 'POST', body: {
+                ...CERTIFICATE_INPUT, displayValue: 'Synthetic mismatched type',
+                typeText: 'Абонемент', typeCode: 'one_time_admission'
+            } });
+            assert.equal(mismatch.status, 400, mismatch.text);
+            assert.equal(fixture.rows.length, rowsBefore);
         });
 
         await t.test('Art overview and templates return the real handler payload for both affected roles', async () => {

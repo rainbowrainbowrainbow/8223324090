@@ -5,7 +5,7 @@ const { applyMembershipAccess, loadMembershipAccess } = require('./businessMembe
 const { hasCurrentParkMembership } = require('./parkLegacyModuleAccess');
 const { resolveCapability } = require('./accountAccessPolicy');
 const { insertHistory } = require('./historyLog');
-const { mapCertificateRow, getCertificateEffectiveStatus } = require('./certificates');
+const { mapCertificateRow, getCertificateEffectiveStatus, CERTIFICATE_TYPE_CODES } = require('./certificates');
 
 const REDEMPTION_ROLES = new Set(['reception', 'admin', 'manager', 'senior_manager', 'vice_director', 'director', 'creator']);
 
@@ -13,14 +13,22 @@ function redemptionError(statusCode, code, message) {
     return Object.assign(new Error(message), { statusCode, code, publicMessage: message });
 }
 
-function canRedeemCertificate(req, cert) {
+function getCertificateRedemptionAvailability(req, cert) {
+    const effectiveStatus = getCertificateEffectiveStatus(cert);
+    if (effectiveStatus !== 'active') return { effectiveStatus, canRedeem: false, reason: effectiveStatus };
+    if (cert.type_code !== CERTIFICATE_TYPE_CODES.ONE_TIME_ADMISSION) {
+        return { effectiveStatus, canRedeem: false, reason: 'verification_only' };
+    }
     const scope = resolveBusinessScope(req);
-    return !scope.invalid && scope.mode === BUSINESS_SCOPE_SINGLE && scope.canWrite !== false
+    const allowed = !scope.invalid && scope.mode === BUSINESS_SCOPE_SINGLE && scope.canWrite !== false
         && hasCurrentParkMembership(req.user, scope.activeContext)
         && REDEMPTION_ROLES.has(req.user.role)
-        && resolveCapability(req.user, '/certificates/check', { type: 'page' }).allowed
-        && getCertificateEffectiveStatus(cert) === 'active'
-        && String(cert.type_text || '').trim().toLocaleLowerCase('uk-UA') === 'на одноразовий вхід';
+        && resolveCapability(req.user, '/certificates/check', { type: 'page' }).allowed;
+    return { effectiveStatus, canRedeem: allowed, reason: allowed ? 'available' : 'redemption_unavailable' };
+}
+
+function canRedeemCertificate(req, cert) {
+    return getCertificateRedemptionAvailability(req, cert).canRedeem;
 }
 
 // The caller owns BEGIN/COMMIT/ROLLBACK so booking creation and redemption are atomic.
@@ -63,8 +71,8 @@ async function redeemCertificateInTransaction(client, req, { id, code, bookingId
     if (cert.status !== 'active') {
         throw redemptionError(409, `certificate_${cert.status}`, 'Сертифікат уже використаний або недійсний.');
     }
-    // Legacy certificates have free-text types. Only the canonical one-time admission is redeemable.
-    if (String(cert.type_text || '').trim().toLocaleLowerCase('uk-UA') !== 'на одноразовий вхід') {
+    // Eligibility is fixed at issue/migration time; editing the display label cannot change it.
+    if (cert.type_code !== CERTIFICATE_TYPE_CODES.ONE_TIME_ADMISSION) {
         throw redemptionError(409, 'certificate_verification_only', 'Цей тип доступний лише для перевірки.');
     }
     const updated = await client.query(
@@ -94,4 +102,4 @@ async function redeemCertificateInTransaction(client, req, { id, code, bookingId
     return mapCertificateRow(updated.rows[0]);
 }
 
-module.exports = { redeemCertificateInTransaction, canRedeemCertificate };
+module.exports = { redeemCertificateInTransaction, canRedeemCertificate, getCertificateRedemptionAvailability };

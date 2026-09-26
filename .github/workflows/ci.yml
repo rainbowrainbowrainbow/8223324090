@@ -255,6 +255,66 @@ jobs:
           name: wallet-ledger-postgres
           path: output/wallet-ledger
 
+  certificate-regression:
+    name: Certificate redemption regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eventgenix_certificate_ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eventgenix_certificate_ci_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js from repo baseline
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Align npm baseline
+        run: npm install -g npm@10.9.8
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run certificate PostgreSQL redemption and app booking regressions
+        env:
+          CERTIFICATE_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_certificate_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:integration:certificates:ci
+
+      - name: Install Chromium
+        run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium"
+
+      - name: Run legacy Telegram certificate regression
+        run: npm run test:unit:certificates-legacy
+
+      - name: Run certificate check browser smoke
+        run: npm run test:browser:certificates
+
+      - name: Upload certificate browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: certificate-regression-${{ github.sha }}
+          path: output/playwright/certificate-check
+          if-no-files-found: warn
+          retention-days: 14
+
   hr-payroll-postgres:
     name: HR and payroll PostgreSQL integration
     runs-on: ubuntu-latest

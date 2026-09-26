@@ -10,28 +10,15 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 
 // No production connection fallback. Each run owns and removes a new database.
-const fixtureUrl = process.env.CERTIFICATE_TEST_DATABASE_URL;
-const localSocket = process.env.CERTIFICATE_LOCAL_POSTGRES_TEST === '1';
+const fixture = require('../helpers/certificate-test-database').getCertificateTestDatabase();
 test('certificate redemption against real PostgreSQL and authenticated HTTP routes', {
-    skip: !fixtureUrl && !localSocket, timeout: 90000
+    skip: !fixture, timeout: 90000
 }, async t => {
     assert.notEqual(process.env.NODE_ENV, 'production');
     assert.ok(!process.env.RAILWAY_PROJECT_ID && !process.env.RAILWAY_ENVIRONMENT);
-    let connection;
-    if (localSocket) {
-        assert.equal(process.platform, 'linux');
-        connection = { host: '/var/run/postgresql', user: 'postgres', database: 'postgres', connectionTimeoutMillis: 5000 };
-    } else {
-        const url = new URL(fixtureUrl);
-        assert.ok(['postgres:', 'postgresql:'].includes(url.protocol));
-        assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname));
-        assert.match(url.pathname, /(?:^|[_-])(test|testing|ci|disposable)(?:[_-]|$)/i);
-        assert.doesNotMatch(url.pathname, /(?:^|[_-])(prod|production|live)(?:[_-]|$)/i);
-        assert.notEqual(fixtureUrl, process.env.DATABASE_URL);
-        connection = { host: url.hostname.replace(/^\[|\]$/g, ''), port: Number(url.port || 5432),
-            user: decodeURIComponent(url.username), password: decodeURIComponent(url.password),
-            database: decodeURIComponent(url.pathname.slice(1)), ssl: false, connectionTimeoutMillis: 5000 };
-    }
+    assert.equal(process.env.REQUIRE_CERTIFICATE_POSTGRES_TESTS, '1');
+    const connection = fixture.connection;
+    connection.database = decodeURIComponent(fixture.url.pathname.slice(1));
     const database = 'eventgenix_certificate_test_' + crypto.randomUUID().replaceAll('-', '');
     assert.match(database, /^eventgenix_certificate_test_[a-f0-9]{32}$/);
     const admin = new Pool({ ...connection, max: 1 });

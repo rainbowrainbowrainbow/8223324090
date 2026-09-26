@@ -6,24 +6,26 @@ const crypto = require('node:crypto');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
 const { Pool } = require('pg');
+const fixture = require('../helpers/certificate-test-database').getCertificateTestDatabase();
 
 test('actual app booking and certificate redemption share one PostgreSQL transaction', {
-    skip: process.env.CERTIFICATE_APP_LOCAL_POSTGRES_TEST !== '1',
+    skip: !fixture,
     timeout: 240000
 }, async () => {
-    assert.equal(process.platform, 'linux');
     assert.notEqual(process.env.NODE_ENV, 'production');
-    assert.ok(!process.env.DATABASE_URL && !process.env.RAILWAY_ENVIRONMENT && !process.env.RAILWAY_PROJECT_ID);
-    assert.equal(require('node:os').userInfo().username, 'postgres', 'run as the local postgres OS user');
+    assert.equal(process.env.REQUIRE_CERTIFICATE_POSTGRES_TESTS, '1');
+    assert.ok(!process.env.RAILWAY_ENVIRONMENT && !process.env.RAILWAY_PROJECT_ID && !process.env.RAILWAY_SERVICE_ID);
     const database = 'eventgenix_certificate_app_test_' + crypto.randomUUID().replaceAll('-', '');
     assert.match(database, /^eventgenix_certificate_app_test_[a-f0-9]{32}$/);
-    const admin = new Pool({ host: '/var/run/postgresql', user: 'postgres', database: 'postgres', max: 1 });
+    const admin = new Pool({ ...fixture.connection, database: decodeURIComponent(fixture.url.pathname.slice(1)), max: 1 });
     let pool, child, created = false;
     let childOutput = '';
     try {
         await admin.query(`CREATE DATABASE "${database}"`);
         created = true;
-        pool = new Pool({ host: '/var/run/postgresql', user: 'postgres', database, max: 4 });
+        const databaseUrl = new URL(fixture.url);
+        databaseUrl.pathname = `/${database}`;
+        pool = new Pool({ ...fixture.connection, database, max: 4 });
         const port = await new Promise((resolve, reject) => {
             const socket = net.createServer();
             socket.once('error', reject);
@@ -37,7 +39,7 @@ test('actual app booking and certificate redemption share one PostgreSQL transac
         const env = {
             PATH: process.env.PATH, HOME: process.env.HOME, NODE_PATH: process.env.NODE_PATH,
             LANG: process.env.LANG || 'C.UTF-8', NODE_ENV: 'test', PORT: String(port),
-            PGHOST: '/var/run/postgresql', PGUSER: 'postgres', PGDATABASE: database,
+            DATABASE_URL: databaseUrl.toString(),
             JWT_SECRET: crypto.randomBytes(64).toString('hex'),
             BOOTSTRAP_CREATOR_USERNAME: username, BOOTSTRAP_CREATOR_PASSWORD: password,
             BOOTSTRAP_CREATOR_NAME: 'Certificate Test Creator',
@@ -105,12 +107,18 @@ test('actual app booking and certificate redemption share one PostgreSQL transac
         const cert = await certificate();
         const createdBooking = await request('POST', '/api/bookings', booking(cert));
         assert.equal(createdBooking.status, 200, JSON.stringify(createdBooking.body));
+        assert.ok(createdBooking.body.booking?.id, 'the actual app must return the committed booking ID');
         assert.equal((await state(cert)).status, 'used');
         assert.equal((await state(cert)).audits, 1);
         assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM bookings WHERE certificate_id=$1', [cert.id])).rows[0].n, 1);
         const reused = await request('POST', '/api/bookings', booking(cert));
         assert.equal(reused.status, 409, JSON.stringify(reused.body));
         assert.equal((await state(cert)).audits, 1);
+        const cancelled = await request('DELETE', `/api/bookings/${encodeURIComponent(createdBooking.body.booking.id)}`);
+        assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
+        assert.equal((await pool.query('SELECT status FROM bookings WHERE id=$1', [createdBooking.body.booking.id])).rows[0].status, 'cancelled');
+        assert.equal((await state(cert)).status, 'used', 'cancelling a booking must not reactivate its certificate');
+        assert.equal((await state(cert)).audits, 1, 'cancelling must not create a second redemption audit');
 
         const failedCert = await certificate();
         await pool.query("ALTER TABLE bookings ADD CONSTRAINT fixture_reject_certificate_booking CHECK (label <> 'Fixture blocked after redemption') NOT VALID");

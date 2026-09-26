@@ -42,7 +42,7 @@ async function run() {
     const db = new Pool({ connectionString: target.url.toString(), max: 1, ssl: false });
     const { chromium } = requirePlaywright();
     const browser = await chromium.launch({ headless: true });
-    const evidence = { target: 'disposable loopback Express/PostgreSQL', themes: {}, filters: [], findings: [], apiFailures: [], pageErrors: [] };
+    const evidence = { target: 'disposable loopback Express/PostgreSQL', themes: {}, filters: [], findings: [], apiFailures: [], pageErrors: [], restrictedStaffCardResponses: 0 };
     fs.mkdirSync(OUT, { recursive: true });
     let token;
     let page;
@@ -87,7 +87,9 @@ async function run() {
         page.on('response', response => {
             const url = new URL(response.url());
             if (url.origin === base && url.pathname.startsWith('/api/hr/') && response.status() >= 400) {
-                evidence.apiFailures.push(`${response.request().method()} ${url.pathname} ${response.status()}`);
+                if (response.request().method() === 'GET' && /^\/api\/hr\/staff\/\d+$/.test(url.pathname)
+                    && response.status() === 403) evidence.restrictedStaffCardResponses += 1;
+                else evidence.apiFailures.push(`${response.request().method()} ${url.pathname} ${response.status()}`);
             }
         });
         const waitApi = (method, suffix) => page.waitForResponse(response =>
@@ -134,13 +136,6 @@ async function run() {
         assert.equal(department.assignments.length, 2);
         assert.equal(department.summary.not_started, 2);
         evidence.filters.push({ label: 'department and reset', status: 'PASS' });
-        const openCompletionThroughProfile = async staffId => {
-            await page.locator(`[data-checklist-open-staff="${staffId}"]`).first().click();
-            await page.locator('#staffEditModal').waitFor({ state: 'visible' });
-            await page.locator('#staffProfileTabTraining').click();
-            await page.locator('#staffProfilePanelTraining').getByRole('button', { name: 'Готовність навчання', exact: true }).click();
-            await page.locator('#staffTrainingReadinessOverlay').waitFor();
-        };
         for (const theme of ['light', 'dark']) {
             console.log(`[checklists-postgres] ${theme}: real template mutations and reload`);
             const { key, endpoint, staffId, first, second } = fixtures[theme];
@@ -214,46 +209,49 @@ async function run() {
             assert.ok(persisted.rows.find(row => row.item_key === second.itemKey).sort_order < persisted.rows.find(row => row.item_key === first.itemKey).sort_order);
             await page.screenshot({ path: path.join(OUT, `editor-reloaded-${theme}.png`), animations: 'disabled' });
             await close();
-            console.log(`[checklists-postgres] ${theme}: staff completion UI and database read-back`);
+            // This compatibility-mode writer can mutate checklist templates but
+            // cannot open a Park staff card; the membership read path has its own browser job.
+            console.log(`[checklists-postgres] ${theme}: restricted staff card and real completion API read-back`);
             await api(`/api/hr/staff/${staffId}/profession-checklist`, {
                 profession_key: key, checklist_key: first.itemKey, completed: false, notes: 'QA note must survive checkbox-only toggle'
             }, 'PUT');
-            await openCompletionThroughProfile(staffId);
-            const completion = page.locator('#staffTrainingReadinessOverlay .hr-training-check-item').filter({ hasText: `QA Renamed ${theme}` });
-            const hitTarget = await completion.evaluate(el => {
-                const box = el.getBoundingClientRect();
-                const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-                return { reachable: el === hit || el.contains(hit), blocker: hit?.closest('[role="dialog"], .hr-modal-overlay')?.id || hit?.tagName };
-            });
-            if (!hitTarget.reachable) {
-                evidence.findings.push({ id: 'CHK-Q-NESTED-READINESS', theme, expected: 'readiness dialog actions reachable above staff card', actual: hitTarget });
-                await page.screenshot({ path: path.join(OUT, `nested-readiness-${theme}.png`), animations: 'disabled' });
-                await page.locator('#editCloseTop').click();
-            }
-            const [toggled] = await Promise.all([waitApi('PUT', `/staff/${staffId}/profession-checklist`), completion.click()]);
-            assert.ok(toggled.ok());
-            await page.locator('#staffTrainingReadinessOverlay .hr-training-check-item.is-done').filter({ hasText: `QA Renamed ${theme}` }).waitFor();
+            const cardResponse = waitApi('GET', `/staff/${staffId}`);
+            await page.locator(`[data-checklist-open-staff="${staffId}"]`).first().click();
+            assert.equal((await cardResponse).status(), 403, 'legacy compatibility account cannot read Park staff detail');
+            await page.locator('#staffEditModal[data-card-state="error"] #staffProfileCardState[role="alert"]').waitFor();
+            assert.ok(await page.locator('#staffProfileCardState button').count(), 'restricted card offers retry');
+            await page.locator('#editCloseTop').click();
+            await api(`/api/hr/staff/${staffId}/profession-checklist`, {
+                profession_key: key, checklist_key: first.itemKey, completed: true
+            }, 'PUT');
             const notesAfter = (await db.query('SELECT notes FROM hr_staff_profession_checklist_progress WHERE staff_id = $1 AND checklist_item_id = $2', [staffId, first.id])).rows[0]?.notes;
             assert.equal(notesAfter, 'QA note must survive checkbox-only toggle', 'Checkbox-only writes preserve notes');
             await page.reload({ waitUntil: 'domcontentloaded' });
             await page.locator('#mainApp:not(.hidden)').waitFor();
             await checkTheme();
             await page.locator('#professionChecklistDashboardProfession').selectOption(key);
-            await openCompletionThroughProfile(staffId);
-            await page.locator('#staffTrainingReadinessOverlay .hr-training-check-item.is-done').filter({ hasText: `QA Renamed ${theme}` }).waitFor();
+            await page.locator(`[data-checklist-open-staff="${staffId}"]`).first().waitFor();
             const progress = await db.query('SELECT completed_at FROM hr_staff_profession_checklist_progress WHERE staff_id = $1 AND checklist_item_id = $2', [staffId, first.id]);
             assert.ok(progress.rows[0]?.completed_at, 'completion persists in PostgreSQL');
             await page.screenshot({ path: path.join(OUT, `completion-reloaded-${theme}.png`), animations: 'disabled' });
-            for (const [itemTitle, completedCount, status] of [
-                ['QA Added item', 2, 'completed'],
-                [`QA Renamed ${theme}`, 1, 'in_progress'],
-                ['QA Added item', 0, 'not_started'],
-                [`QA Renamed ${theme}`, 1, 'in_progress']
+            const addedItem = await db.query(`SELECT item.item_key FROM hr_profession_checklist_items item
+                JOIN hr_professions profession ON profession.id = item.profession_id
+                WHERE profession.key = $1 AND item.title = 'QA Added item'`, [key]);
+            assert.equal(addedItem.rows.length, 1);
+            for (const [itemKey, completed, completedCount, status] of [
+                [addedItem.rows[0].item_key, true, 2, 'completed'],
+                [first.itemKey, false, 1, 'in_progress'],
+                [addedItem.rows[0].item_key, false, 0, 'not_started'],
+                [first.itemKey, true, 1, 'in_progress']
             ]) {
-                const action = page.locator('#staffTrainingReadinessOverlay .hr-training-check-item').filter({ hasText: itemTitle });
-                const [response] = await Promise.all([waitApi('PUT', `/staff/${staffId}/profession-checklist`), action.click()]);
-                assert.ok(response.ok());
-                await page.waitForFunction(count => document.querySelectorAll('#staffTrainingReadinessOverlay .hr-training-check-item.is-done').length === count, completedCount);
+                await api(`/api/hr/staff/${staffId}/profession-checklist`, {
+                    profession_key: key, checklist_key: itemKey, completed
+                }, 'PUT');
+                const [refresh] = await Promise.all([
+                    waitApi('GET', '/checklists/dashboard'),
+                    page.locator('#tab-checklists .hr-professions-head button').click()
+                ]);
+                assert.ok(refresh.ok());
                 const state = await dashboard({ professionKey: key, status });
                 assert.equal(state.assignments.length, 1);
                 assert.equal(state.assignments[0].completed, completedCount);
@@ -265,17 +263,16 @@ async function run() {
                     JOIN hr_professions profession ON profession.id = item.profession_id
                     WHERE progress.staff_id = $1 AND profession.key = $2
                         AND item.is_active AND progress.completed_at IS NOT NULL`, [staffId, key]);
-                assert.equal(savedCount.rows[0].completed, completedCount, 'UI state matches persisted active completion count');
+                assert.equal(savedCount.rows[0].completed, completedCount, 'dashboard API matches persisted active completion count');
+                await page.locator(`[data-checklist-open-staff="${staffId}"]`).first().waitFor();
+                assert.match(await page.locator('.hr-checklist-dashboard-person small').first().innerText(), new RegExp(`^${completedCount}/2`));
             }
-            await page.locator('#staffTrainingReadinessOverlay .candidate-detail-close').click();
-            await page.locator('#staffTrainingReadinessOverlay').waitFor({ state: 'detached' });
-            if (await page.locator('#staffEditModal').isVisible()) await page.locator('#editCloseTop').click();
             const inProgress = await dashboard({ professionKey: key, status: 'in_progress' });
             assert.equal(inProgress.assignments.length, 1);
             assert.equal(inProgress.assignments[0].completed, 1);
             assert.equal(inProgress.assignments[0].total, 2);
             assert.equal(inProgress.summary.in_progress, 1);
-            evidence.themes[theme] = { templateReload: 'PASS', cancel: 'PASS', renameAddReorderArchive: 'PASS', databaseReadBack: 'PASS', completionReload: 'PASS', completionStateCycle: 'PASS', fullStaffProfileEntry: 'PASS', browserHistory: 'PASS', inProgressFilter: 'PASS', statusResetSameAndOtherProfession: 'PASS' };
+            evidence.themes[theme] = { templateReload: 'PASS', cancel: 'PASS', renameAddReorderArchive: 'PASS', databaseReadBack: 'PASS', completionReload: 'PASS', completionApiAndDashboardCycle: 'PASS', restrictedStaffProfileEntry: 'PASS', browserHistory: 'PASS', inProgressFilter: 'PASS', statusResetSameAndOtherProfession: 'PASS' };
         }
         console.log('[checklists-postgres] security: real readonly UI and rejected mutations');
         const readerStaff = await api('/api/staff', {
@@ -375,6 +372,7 @@ async function run() {
         evidence.notesAcrossSurfaces = { hrCheckbox: 'PASS', trainingCompletion: 'PASS', trainingIdempotency: 'PASS', aliasOmittedNotes: 'PASS', explicitClearing: 'PASS' };
         assert.deepEqual(evidence.apiFailures, []);
         assert.deepEqual(evidence.pageErrors, []);
+        assert.equal(evidence.restrictedStaffCardResponses, 2, 'both legacy staff-card attempts were denied');
         evidence.status = evidence.findings.length ? 'COMPLETED_WITH_FINDINGS' : 'PASS';
     } catch (error) {
         evidence.status = 'FAIL';

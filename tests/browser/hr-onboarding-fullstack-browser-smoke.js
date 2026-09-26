@@ -232,23 +232,31 @@ async function advanceApplicationToOffer(page, application, candidateName, vacan
         .waitFor({ state: 'visible' });
 }
 
-async function hireThroughUi(page, application, candidateName, options) {
-    const card = page.locator('#candidatesKanban .kanban-card').filter({ hasText: candidateName });
-    await card.getByRole('button', { name: 'Найняти' }).click();
-    const values = {
-        hireMode: options.mode,
-        startOnboarding: 'yes',
-        responsibleUserId: options.responsibleUserId
+async function hireThroughApi(base, token, application, options) {
+    // Compatibility-mode writes remain real; the browser separately asserts that
+    // its Park staff picker is restricted until this account has Park membership.
+    const body = {
+        hire_mode: options.mode,
+        start_profession_onboarding: true,
+        responsible_user_id: options.responsibleUserId
     };
-    if (options.mode === 'existing_staff') values.existingStaffId = options.existingStaffId;
+    if (options.mode === 'existing_staff') body.existing_staff_id = options.existingStaffId;
     else {
-        values.department = 'animators';
-        values.salary = '180';
+        body.department = 'animators';
+        body.salary = 180;
     }
-    const modal = await fillFormModal(page, values);
-    const hireResponsePromise = waitForApi(page, 'POST', `/api/hr/applications/${application.id}/hire`);
-    await modal.locator('.confirm-ok').click();
-    return responseJson(await hireResponsePromise, `hire application ${application.id}`);
+    return api(base, `/api/hr/applications/${application.id}/hire`, { method: 'POST', token, body });
+}
+
+async function assertRestrictedHirePicker(page, candidateName) {
+    const button = page.locator('#candidatesKanban .kanban-card')
+        .filter({ hasText: candidateName }).getByRole('button', { name: 'Найняти' });
+    const responsePromise = waitForApi(page, 'GET', '/api/hr/staff');
+    await button.click();
+    const response = await responsePromise;
+    assert.equal(response.status(), 403, 'legacy account cannot read the protected Park HR list');
+    await page.waitForFunction(() => !document.querySelector('.kanban-card button[aria-busy="true"]'));
+    assert.equal(await page.locator('.form-modal-overlay:visible').count(), 0, 'restricted hire picker does not offer a submit form');
 }
 
 function findProcess(processes, staffId, professionKey) {
@@ -303,7 +311,8 @@ async function run() {
         apiFailures: [],
         requestFailures: [],
         consoleErrors: [],
-        pageErrors: []
+        pageErrors: [],
+        restrictedTrainingStartErrors: 0
     };
     page.on('response', response => {
         const url = new URL(response.url());
@@ -311,7 +320,7 @@ async function run() {
         const item = `${response.request().method()} ${url.pathname}${url.search} ${response.status()}`;
         diagnostics.apiTrace.push(item);
         const expectedAccessBoundary = response.request().method() === 'GET'
-            && url.pathname === '/api/dashboard/widgets/currency'
+            && ['/api/dashboard/widgets/currency', '/api/hr/staff'].includes(url.pathname)
             && response.status() === 403;
         if (response.status() >= 400 && !expectedAccessBoundary) diagnostics.apiFailures.push(item);
     });
@@ -337,6 +346,11 @@ async function run() {
         // The shared shell requests a creator-only currency widget. Its exact 403 is
         // asserted as an expected HR access boundary above; every other 4xx/5xx still fails.
         if (/^Failed to load resource: the server responded with a status of 403 \(Forbidden\)$/.test(messageText)) return;
+        if (diagnostics.activeStep === 'Training start picker keeps restricted Park staff read visible'
+            && /^Start onboarding error Error: /.test(messageText)) {
+            diagnostics.restrictedTrainingStartErrors += 1;
+            return;
+        }
         diagnostics.consoleErrors.push(messageText);
     });
     page.on('pageerror', error => diagnostics.pageErrors.push(error.message));
@@ -375,10 +389,10 @@ async function run() {
             primaryCandidateName,
             animatorVacancy.id
         ));
-        const firstHire = await step('hire new employee and start animator onboarding through UI', () => hireThroughUi(
-            page,
+        await step('hire picker explains restricted Park staff read', () => assertRestrictedHirePicker(page, primaryCandidateName));
+        const firstHire = await step('hire new employee and start animator onboarding through real API', () => hireThroughApi(
+            base, hrSession.token,
             animatorApplication,
-            primaryCandidateName,
             { mode: 'new_staff', responsibleUserId: hrSession.responsibleUserId }
         ));
         staffId = Number(firstHire.staff_id);
@@ -387,6 +401,7 @@ async function run() {
         assert.equal(firstHire.vacancy_status, 'open');
         assert.equal(Number(firstHire.hired_count), 1);
         assert.equal(Number(firstHire.target_hires), 2);
+        await reloadVacanciesWithStatus(page, 'open');
         await page.locator('#vacanciesList .hr-vacancy-card')
             .filter({ hasText: animatorVacancyTitle })
             .getByText('Найнято 1 із 2')
@@ -407,10 +422,9 @@ async function run() {
             secondaryCandidateName,
             baristaVacancy.id
         ));
-        const secondHire = await step('add barista to existing employee and start profession onboarding through UI', () => hireThroughUi(
-            page,
+        const secondHire = await step('add barista to existing employee and start profession onboarding through real API', () => hireThroughApi(
+            base, hrSession.token,
             baristaApplication,
-            secondaryCandidateName,
             { mode: 'existing_staff', existingStaffId: staffId, responsibleUserId: hrSession.responsibleUserId }
         ));
         assert.equal(Number(secondHire.staff_id), staffId);
@@ -456,19 +470,24 @@ async function run() {
             await group.getByText('Бариста', { exact: true }).waitFor();
         });
 
-        await step('start corporate onboarding through Training UI', async () => {
+        await step('Training start picker keeps restricted Park staff read visible', async () => {
+            const responsePromise = waitForApi(page, 'GET', '/api/hr/staff');
             await page.locator('#trainingStartOnboarding').click();
-            const modal = await fillFormModal(page, {
-                scope: 'general',
-                staffId,
-                templateId: template.id,
-                responsibleUserId: hrSession.responsibleUserId
+            assert.equal((await responsePromise).status(), 403);
+            await page.waitForFunction(() => document.getElementById('trainingStartOnboarding')?.getAttribute('aria-busy') === 'false');
+            assert.equal(await page.locator('.form-modal-overlay:visible').count(), 0);
+        });
+
+        await step('start corporate onboarding through real API and verify Training UI', async () => {
+            const body = await api(base, '/api/hr/onboarding/start', {
+                method: 'POST', token: hrSession.token,
+                body: { staff_id: staffId, template_id: template.id, responsible_user_id: hrSession.responsibleUserId }
             });
-            const responsePromise = waitForApi(page, 'POST', '/api/hr/onboarding/start');
-            await modal.locator('.confirm-ok').click();
-            const body = await responseJson(await responsePromise, 'start corporate onboarding');
             assert.equal(Number(body?.data?.staff_id), staffId);
             assert.equal(body?.data?.profession_key, null);
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await waitForAppShell(page, { requireCrmApiFetch: false });
+            await page.locator('[data-tab="onboarding"]').click();
             const group = page.locator('.training-onboarding-staff-group').filter({ hasText: primaryCandidateName });
             await group.getByText('Загальний корпоративний онбординг', { exact: true }).waitFor();
             assert.equal(await group.locator('.training-onboarding-card').count(), 3);
@@ -552,6 +571,7 @@ async function run() {
 
         assert.deepEqual(diagnostics.pageErrors, [], 'no pageerror events');
         assert.deepEqual(diagnostics.consoleErrors, [], 'no browser console errors');
+        assert.equal(diagnostics.restrictedTrainingStartErrors, 1, 'Training reports its expected restricted dependency once');
         assert.deepEqual(diagnostics.apiFailures, [], 'no unexpected API statuses');
         assert.deepEqual(diagnostics.requestFailures, [], 'no failed local/API requests');
         process.stdout.write('HR onboarding full-stack browser smoke passed\n');

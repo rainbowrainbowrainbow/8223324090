@@ -15,6 +15,7 @@ const {
     warningText
 } = require('../scripts/production-block-policy');
 const {
+    applyReleaseNotes,
     executeAction,
     findUnexpiredQaBlocker,
     parseOptions,
@@ -245,6 +246,33 @@ test('SYS-MB protected workflow does not permit unrelated Red production paths',
     }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
 });
 
+test('certificate QA protected workflow keeps exactly the approved Red pair and migration', () => {
+    const changedPaths = [
+        'routes/auth.js', 'routes/finance.js', 'services/certificateQa.js',
+        'scripts/trusted-qa-certificate-run.js',
+        'db/migrations/371_trusted_qa_certificate_lookup.sql'
+    ];
+    const migrations = [{
+        file: 'db/migrations/371_trusted_qa_certificate_lookup.sql',
+        sql: '-- MIGRATION_KIND: schema\n-- SAFETY: additive and repeatable\n-- ROLLBACK: retain history\nCREATE INDEX IF NOT EXISTS qa_lookup ON trusted_qa_run_entities (entity_id);'
+    }];
+    const options = { protectedWorkflow: 'certificate-qa-isolation', qaScope: {
+        enabled: true, kind: 'certificate', runId: 'certclose03_20260926_preflight',
+        testAccountId: 48, businessContext: 'event_genix', ttlMinutes: 30, fixtureLimit: 1
+    } };
+    const value = manifest(options, { changedPaths, migrations });
+    assert.equal(value.allowedProtectedWorkflow.kind, 'certificate-qa-isolation');
+    assert.deepEqual(value.allowedProtectedWorkflow.protectedChangedPaths, ['routes/auth.js', 'routes/finance.js']);
+    assert.doesNotThrow(() => validateManifest(value));
+    assert.match(warningText(value), /1 запис, run certclose03_20260926_preflight, account 48, TTL 30 хв/);
+    assert.throws(() => manifest(options, { changedPaths: [...changedPaths, 'routes/payments.js'], migrations }),
+        error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    assert.throws(() => manifest(options, { changedPaths: changedPaths.filter(file => !file.includes('/371_')), migrations: [] }),
+        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    assert.throws(() => manifest({ ...options, qaScope: { ...options.qaScope, fixtureLimit: 2 } },
+        { changedPaths, migrations }), error => error.code === 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+});
+
 test('protected workflow parsing is explicit and disabled by default', () => {
     assert.equal(parseOptions(['prepare', '--protected-workflow', 'sys-mb-auth-cutover']).protectedWorkflow, 'sys-mb-auth-cutover');
     assert.equal(parseOptions(['prepare']).protectedWorkflow, 'none');
@@ -421,6 +449,46 @@ test('canary QA scope is fail-closed at exactly one fixture', () => {
     assert.throws(() => manifest({
         qaScope: { enabled: true, kind: 'canary', date: '2026-09-03', ttlMinutes: 15, animators: '1', fixtureLimit: 2 }
     }), error => error.code === 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+});
+
+test('signed Ukrainian release notes replace both generated release artifacts before commit', t => {
+    const value = manifest({ releaseNotes: [{ title: 'Перевірка', text: 'Показано доступність погашення.' }] });
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'eventgenix-release-notes-test-'));
+    const files = ['package.json', 'CHANGELOG.md', 'index.html'];
+    t.after(() => {
+        files.forEach(file => fs.unlinkSync(path.join(directory, file)));
+        fs.rmdirSync(directory);
+    });
+    fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({
+        version: '0.82.18', eventGenix: { releaseLabel: value.releaseLabel }
+    }));
+    fs.writeFileSync(path.join(directory, 'CHANGELOG.md'),
+        `## v0.82.18 - ${value.releaseLabel}\n- **${value.releaseLabel}** - release marker, cache tags and visible version metadata were prepared automatically.`);
+    fs.writeFileSync(path.join(directory, 'index.html'),
+        `<h4>v0.82.18 — ${value.releaseLabel}</h4><li><b>${value.releaseLabel}</b> — release marker, cache tags and visible version metadata were prepared automatically.</li>`);
+    applyReleaseNotes(value, directory);
+    assert.match(fs.readFileSync(path.join(directory, 'CHANGELOG.md'), 'utf8'),
+        /\*\*Перевірка\*\* — Показано доступність погашення/);
+    assert.match(fs.readFileSync(path.join(directory, 'index.html'), 'utf8'),
+        /<b>Перевірка<\/b> — Показано доступність погашення/);
+    assert.throws(() => manifest({ releaseNotes: [{ title: '<unsafe>', text: 'text' }] }),
+        error => error.code === 'PRODUCTION_BLOCK_RELEASE_NOTES_INVALID');
+});
+
+test('certificate QA remains pending for manual browser verification after exact live SHA proof', async () => {
+    const value = manifest({ qaScope: { enabled: true, kind: 'certificate',
+        runId: 'certclose03_20260926_preflight', testAccountId: 48,
+        businessContext: 'event_genix', ttlMinutes: 30, fixtureLimit: 1 } });
+    let called = false;
+    const result = await resumeAuthorizedQa(value, RELEASE_SHA, {
+        async liveVersion() { return { commitSha: RELEASE_SHA, sourceBranch: value.allowedBranch }; },
+        async qaStatus() { called = true; },
+        async qaRun() { called = true; }
+    });
+    assert.equal(result.status, 'pending_manual');
+    assert.equal(result.runId, 'certclose03_20260926_preflight');
+    assert.equal(called, false);
+    assert.equal(releaseCommandPlan(value).some(command => command.includes('qa:timeline:controller')), false);
 });
 
 test('PowerShell-safe base64url QA scope preserves the same strict validation', () => {

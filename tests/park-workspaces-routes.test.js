@@ -48,18 +48,20 @@ function createDatabaseFixture() {
                 assert.equal(params[0], 'event_genix');
                 assert.equal(params[1], 'certificate_create');
                 assert.equal(JSON.parse(params[3]).business_context, 'event_genix');
-            } else if (query === 'SELECT COUNT(*) FROM certificates') {
+            } else if (query.startsWith('SELECT COUNT(*) FROM certificates WHERE')) {
                 result = [{ count: String(rows.length) }];
             } else if (query.startsWith('SELECT status, COUNT(*)::int AS count FROM certificates')) {
                 result = rows.length ? [{ status: 'active', count: rows.length }] : [];
             } else if (query.startsWith('SELECT issue_source, COUNT(*)::int AS count FROM certificates')) {
                 result = rows.length ? [{ issue_source: 'single', count: rows.length }] : [];
-            } else if (query.startsWith('SELECT * FROM certificates ORDER BY')) {
+            } else if (query.startsWith('SELECT * FROM certificates WHERE') && query.includes('ORDER BY created_at')) {
                 result = rows;
             } else if (query === 'SELECT * FROM certificates WHERE id = $1' || query === 'SELECT * FROM certificates WHERE id = $1 FOR UPDATE') {
                 result = rows.filter(row => Number(row.id) === Number(params[0]));
             } else if (query === 'SELECT * FROM certificates WHERE cert_code = $1') {
                 result = rows.filter(row => row.cert_code === params[0]);
+            } else if (query.startsWith('SELECT 1 FROM trusted_qa_run_entities WHERE entity_type')) {
+                result = [];
             } else if (query === 'SELECT status, COUNT(*) AS count FROM content_items GROUP BY status') {
                 result = [{ status: 'draft', count: '2' }, { status: 'approved', count: '1' }];
             } else if (query === 'SELECT COUNT(*) FROM content_templates WHERE is_active = true') {

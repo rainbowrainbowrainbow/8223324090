@@ -41,6 +41,7 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
             CREATE TABLE employee_profiles (user_id INT, staff_id INT, is_active BOOLEAN DEFAULT true, last_activity_at TIMESTAMPTZ);
             CREATE TABLE certificates (
                 id SERIAL PRIMARY KEY, cert_code TEXT UNIQUE NOT NULL, type_text TEXT NOT NULL,
+                display_mode TEXT, display_value TEXT,
                 status TEXT NOT NULL DEFAULT 'active', valid_until DATE NOT NULL,
                 used_at TIMESTAMP, updated_at TIMESTAMP, invalidated_at TIMESTAMP, invalid_reason TEXT
             );
@@ -55,6 +56,17 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
         const typeMigration = fs.readFileSync(path.join(__dirname, '../../db/migrations/370_certificate_stable_type_code.sql'), 'utf8');
         await pool.query(typeMigration);
         await pool.query(typeMigration);
+        for (const migration of [333, 334, 335, 371]) {
+            const name = {
+                333: '333_trusted_qa_runs.sql',
+                334: '334_trusted_qa_lifecycle_hardening.sql',
+                335: '335_trusted_qa_execution_window.sql',
+                371: '371_trusted_qa_certificate_lookup.sql'
+            }[migration];
+            const sql = fs.readFileSync(path.join(__dirname, '../../db/migrations', name), 'utf8');
+            await pool.query(sql);
+            if (migration === 371) await pool.query(sql);
+        }
         await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/357_organizations_business_memberships.sql'), 'utf8'));
         await pool.query(`INSERT INTO organizations (id, slug, name) VALUES (1, 'certificate-fixture', 'Certificate Fixture');
             INSERT INTO businesses (id, organization_id, context_key, label, short_label, access_mode) VALUES
@@ -133,6 +145,16 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
             const unknown = legacyRows[2];
             assert.equal((await request(actor, '/code/' + oneTime.cert_code, 'GET')).body.canRedeem, true);
             assert.equal((await request(actor, '/code/' + unknown.cert_code, 'GET')).body.canRedeem, false);
+            const oneTimeValidation = await request(actor, '/validate/' + oneTime.cert_code, 'GET');
+            assert.equal(oneTimeValidation.body.valid, true);
+            assert.equal(oneTimeValidation.body.canRedeem, true);
+            assert.equal(oneTimeValidation.body.redemptionReason, 'available');
+            const unknownValidation = await request(actor, '/validate/' + unknown.cert_code, 'GET');
+            assert.equal(unknownValidation.body.valid, true);
+            assert.equal(unknownValidation.body.canRedeem, false);
+            assert.equal(unknownValidation.body.redemptionReason, 'verification_only');
+            assert.equal((await persisted(oneTime)).status, 'active');
+            assert.equal((await persisted(oneTime)).audits, 0);
             assert.equal((await request(actor, `/${unknown.id}/redeem`)).status, 409);
             assert.equal((await request(actor, `/${oneTime.id}/redeem`)).status, 200);
         });
@@ -167,6 +189,10 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
                 const lookup = await request(actor, '/code/' + cert.cert_code, 'GET');
                 assert.equal(lookup.body.canRedeem, allowed, role);
                 assert.equal(lookup.body.redemptionReason, allowed ? 'available' : 'redemption_unavailable', role);
+                const validation = await request(actor, '/validate/' + cert.cert_code, 'GET');
+                assert.equal(validation.body.valid, true, role);
+                assert.equal(validation.body.canRedeem, allowed, role);
+                assert.equal(validation.body.redemptionReason, allowed ? 'available' : 'redemption_unavailable', role);
                 const result = await request(actor, `/${cert.id}/redeem`);
                 assert.equal(result.status, allowed ? 200 : 403, `${role}: ${JSON.stringify(result.body)}`);
                 assert.equal((await persisted(cert)).audits, allowed ? 1 : 0);
@@ -175,7 +201,11 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
         await t.test('revoked membership, current role, other business and aggregate scope deny writes', async () => {
             const actor = await account();
             const cert = await certificate();
-            for (const context of ['dar', 'all']) assert.equal((await request(actor, `/${cert.id}/redeem`, 'POST', {}, context)).status, 403);
+            for (const context of ['dar', 'all']) {
+                const validation = await request(actor, '/validate/' + cert.cert_code, 'GET', {}, context);
+                assert.equal(validation.status, 403, context);
+                assert.equal((await request(actor, `/${cert.id}/redeem`, 'POST', {}, context)).status, 403);
+            }
             await pool.query("UPDATE business_memberships SET role = 'security' WHERE user_id = $1 AND business_id = 1", [actor.user.id]);
             await assert.rejects(transact(actor, cert), err => err.code === 'certificate_redemption_denied');
             await pool.query('UPDATE business_memberships SET is_active = false WHERE user_id = $1 AND business_id = 1', [actor.user.id]);
@@ -198,6 +228,12 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
                 assert.equal(lookup.status, 200);
                 assert.equal(lookup.body.canRedeem, false);
                 assert.equal(lookup.body.redemptionReason, reason);
+                const validation = await request(actor, '/validate/' + cert.cert_code, 'GET');
+                assert.equal(validation.body.canRedeem, false);
+                assert.equal(validation.body.redemptionReason, reason);
+                assert.equal(validation.body.valid, reason === 'verification_only');
+                assert.equal((await persisted(cert)).status, cert.status);
+                assert.equal((await persisted(cert)).audits, 0);
                 assert.equal((await request(actor, `/${cert.id}/redeem`)).status, 409);
                 assert.equal((await persisted(cert)).audits, 0);
             }

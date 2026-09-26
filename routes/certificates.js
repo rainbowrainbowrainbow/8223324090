@@ -28,6 +28,7 @@ const { formatCertificateNotification, formatBatchCertificateNotification } = re
 const { publish: publishEvent } = require('../services/eventBus');
 const { insertHistory } = require('../services/historyLog');
 const { redeemCertificateInTransaction, getCertificateRedemptionAvailability } = require('../services/certificateRedemption');
+const { BUSINESS_CERTIFICATE_FILTER, prepareTrustedQaCertificate, registerTrustedQaCertificate } = require('../services/certificateQa');
 const { createLogger } = require('../utils/logger');
 const QRCode = require('qrcode');
 
@@ -74,7 +75,7 @@ router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) ret
 router.get('/', async (req, res) => {
     try {
         const { status, search, limit, offset } = req.query;
-        const conditions = [];
+        const conditions = [BUSINESS_CERTIFICATE_FILTER];
         const params = [];
         let idx = 1;
 
@@ -88,7 +89,7 @@ router.get('/', async (req, res) => {
             idx++;
         }
 
-        const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        const where = `WHERE ${conditions.join(' AND ')}`;
         const lim = Math.min(parseInt(limit) || 100, 500);
         const off = parseInt(offset) || 0;
 
@@ -180,17 +181,30 @@ router.get('/validate/', (req, res) => res.json({ valid: false, error: 'Код �
 router.get('/validate/:code', async (req, res) => {
     try {
         const r = await pool.query(
-            `SELECT id, cert_code, display_value, type_text, valid_until, status
+            `SELECT id, cert_code, display_value, type_text, type_code, valid_until, status,
+                    EXISTS (SELECT 1 FROM trusted_qa_run_entities qa WHERE qa.entity_type = 'certificate' AND qa.entity_id = certificates.id::text) AS is_qa_certificate
              FROM certificates WHERE cert_code = $1`,
             [req.params.code.toUpperCase()]
         );
         if (!r.rowCount) return res.json({ valid: false, error: 'Сертифікат не знайдено' });
         const c = r.rows[0];
-        const effectiveStatus = getCertificateEffectiveStatus(c);
+        const eligibility = getCertificateRedemptionAvailability(req, c);
+        const certificate = {
+            id: c.id,
+            cert_code: c.cert_code,
+            display_value: c.display_value,
+            type_text: c.type_text,
+            valid_until: c.valid_until,
+            status: c.status
+        };
         res.json({
-            valid: effectiveStatus === 'active',
-            certificate: c,
-            reason: effectiveStatus === 'active' ? null : effectiveStatus
+            // Keep `valid` as the legacy active-status flag. Booking UI must use
+            // canRedeem, which shares the redemption eligibility policy.
+            valid: eligibility.effectiveStatus === 'active',
+            certificate,
+            reason: eligibility.effectiveStatus === 'active' ? null : eligibility.effectiveStatus,
+            canRedeem: eligibility.canRedeem && !c.is_qa_certificate,
+            redemptionReason: c.is_qa_certificate ? 'qa_booking_unavailable' : eligibility.reason
         });
     } catch (err) {
         log.error('Certificate validate error', err);
@@ -233,6 +247,7 @@ router.post('/', requireRole(...CERTIFICATE_ISSUER_ROLES), async (req, res) => {
         const finalSeason = VALID_SEASONS.includes(season) ? season : getCurrentSeason();
 
         await client.query('BEGIN');
+        const qaContext = await prepareTrustedQaCertificate(client, req, finalDisplayValue);
         await assertUniqueCertificateIdentity(client, finalDisplayValue);
 
         const certCode = await generateCertCode(client);
@@ -265,6 +280,7 @@ router.post('/', requireRole(...CERTIFICATE_ISSUER_ROLES), async (req, res) => {
                 finalSeason
             ]
         );
+        await registerTrustedQaCertificate(client, qaContext, result.rows[0].id);
 
         await insertHistory(client, {
             action: 'certificate_create',
@@ -286,7 +302,7 @@ router.post('/', requireRole(...CERTIFICATE_ISSUER_ROLES), async (req, res) => {
         // Telegram alert is now sent from frontend via POST /:id/send-image (with certificate image)
 
         // v19.1: Publish to event queue (triggers auto-print, logging rules)
-        publishEvent('certificate.created', {
+        if (!qaContext) publishEvent('certificate.created', {
             cert_id: cert.id, cert_code: certCode,
             display_mode: finalDisplayMode,
             display_value: finalDisplayValue,
@@ -444,6 +460,14 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
         }
 
         const cert = existing.rows[0];
+        const qaRecord = await client.query(
+            `SELECT 1 FROM trusted_qa_run_entities WHERE entity_type = 'certificate' AND entity_id = $1 LIMIT 1`,
+            [String(cert.id)]
+        );
+        if (qaRecord.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ code: 'certificate_qa_side_effect_denied', error: 'QA-сертифікат змінюється лише через контрольований QA-run.' });
+        }
 
         if (cert.status === 'used') {
             await client.query('ROLLBACK');
@@ -547,6 +571,11 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         }
 
         const cert = existing.rows[0];
+        const qaRecord = await client.query(
+            `SELECT 1 FROM trusted_qa_run_entities WHERE entity_type = 'certificate' AND entity_id = $1 LIMIT 1`,
+            [String(cert.id)]
+        );
+        if (qaRecord.rowCount) return res.status(409).json({ code: 'certificate_qa_side_effect_denied', error: 'QA-сертифікат змінюється лише через контрольований QA-run.' });
         const nextDisplayValue = hasDisplayValue
             ? normalizeCertificateIdentity(displayValue)
             : normalizeCertificateIdentity(cert.display_value);
@@ -612,6 +641,14 @@ router.delete('/:id', requireRole('admin', 'user'), async (req, res) => {
         }
 
         await client.query('BEGIN');
+        const qaRecord = await client.query(
+            `SELECT 1 FROM trusted_qa_run_entities WHERE entity_type = 'certificate' AND entity_id = $1 LIMIT 1`,
+            [String(existing.rows[0].id)]
+        );
+        if (qaRecord.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ code: 'certificate_qa_side_effect_denied', error: 'QA-сертифікат не можна видалити.' });
+        }
 
         await insertHistory(client, {
             action: 'certificate_delete',
@@ -649,6 +686,13 @@ router.post('/:id/send-image', requireRole('admin', 'user'), async (req, res) =>
         }
 
         const cert = existing.rows[0];
+        const qaRecord = await pool.query(
+            `SELECT 1 FROM trusted_qa_run_entities WHERE entity_type = 'certificate' AND entity_id = $1 LIMIT 1`,
+            [String(cert.id)]
+        );
+        if (qaRecord.rowCount) {
+            return res.status(409).json({ code: 'certificate_qa_side_effect_denied', error: 'Надсилання QA-сертифіката вимкнено.' });
+        }
         const photoBuffer = Buffer.from(imageBase64, 'base64');
 
         // Build caption

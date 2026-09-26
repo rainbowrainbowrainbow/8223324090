@@ -20,7 +20,8 @@ function getCertificateRedemptionAvailability(req, cert) {
         return { effectiveStatus, canRedeem: false, reason: 'verification_only' };
     }
     const scope = resolveBusinessScope(req);
-    const allowed = !scope.invalid && scope.mode === BUSINESS_SCOPE_SINGLE && scope.canWrite !== false
+    const allowed = !scope.invalid && scope.mode === BUSINESS_SCOPE_SINGLE
+        && scope.activeContext === DEFAULT_BUSINESS_CONTEXT && scope.canWrite !== false
         && hasCurrentParkMembership(req.user, scope.activeContext)
         && REDEMPTION_ROLES.has(req.user.role)
         && resolveCapability(req.user, '/certificates/check', { type: 'page' }).allowed;
@@ -68,6 +69,13 @@ async function redeemCertificateInTransaction(client, req, { id, code, bookingId
     const found = await client.query(`SELECT *, valid_until::text AS valid_until FROM certificates WHERE ${selector} FOR UPDATE`, [value]);
     const cert = found.rows[0];
     if (!cert) throw redemptionError(404, 'certificate_not_found', 'Сертифікат не знайдено.');
+    if (bookingId) {
+        const qaRecord = await client.query(
+            `SELECT 1 FROM trusted_qa_run_entities WHERE entity_type = 'certificate' AND entity_id = $1 LIMIT 1`,
+            [String(cert.id)]
+        );
+        if (qaRecord.rowCount) throw redemptionError(409, 'certificate_qa_booking_denied', 'QA-сертифікат не можна використати в бронюванні.');
+    }
     if (cert.status !== 'active') {
         throw redemptionError(409, `certificate_${cert.status}`, 'Сертифікат уже використаний або недійсний.');
     }

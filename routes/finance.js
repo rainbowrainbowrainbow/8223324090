@@ -172,6 +172,19 @@ async function withFinanceTransaction(work) {
 }
 
 async function validateFinanceRelatedReferences(references, businessContext, user, queryable) {
+    if (references.certificateId) {
+        const qaCertificate = await queryable.query(
+            `SELECT 1 FROM trusted_qa_run_entities
+              WHERE entity_type = 'certificate' AND entity_id = $1 LIMIT 1`,
+            [String(references.certificateId)]
+        );
+        if (qaCertificate.rowCount) {
+            const error = new Error('QA certificates cannot be linked to finance transactions');
+            error.status = 409;
+            error.code = 'finance_qa_certificate_denied';
+            throw error;
+        }
+    }
     if (user?.businessMembershipAccess?.membershipEnabled && (references.staffId || references.certificateId)) {
         const error = new Error('Staff and certificate references have no business ownership; this finance link is not migrated');
         error.status = 403;

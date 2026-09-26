@@ -7,7 +7,7 @@ const test = require('node:test');
 
 const ROOT = path.resolve(__dirname, '..');
 const security = fs.readFileSync(path.join(ROOT, 'middleware/security.js'), 'utf8');
-const checkin = fs.readFileSync(path.join(ROOT, 'checkin.html'), 'utf8');
+const checkin = fs.readFileSync(path.join(ROOT, 'checkin.html'), 'utf8').replace(/\r\n/g, '\n');
 
 function section(source, start, end) {
     const from = source.indexOf(start);

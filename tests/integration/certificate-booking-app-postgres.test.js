@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
 const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
 const fixture = require('../helpers/certificate-test-database').getCertificateTestDatabase();
 
 test('actual app booking and certificate redemption share one PostgreSQL transaction', {
@@ -126,6 +127,109 @@ test('actual app booking and certificate redemption share one PostgreSQL transac
         assert.equal(failedBooking.status, 500, JSON.stringify(failedBooking.body));
         assert.equal((await state(failedCert)).status, 'active');
         assert.equal((await state(failedCert)).audits, 0);
+
+        // A trusted run is the only way to suppress certificate side effects.
+        // The test uses the actual app and the same disposable PostgreSQL database.
+        const qaUsername = 'qa_certificate_' + crypto.randomBytes(4).toString('hex');
+        const qaPassword = crypto.randomBytes(24).toString('base64url');
+        const qaAccount = (await pool.query(
+            `INSERT INTO users (username, name, role, password_hash, is_active)
+             VALUES ($1, 'QA Certificate Fixture', 'admin', $2, true) RETURNING id`,
+            [qaUsername, await bcrypt.hash(qaPassword, 10)]
+        )).rows[0];
+        await pool.query(`INSERT INTO organization_memberships (organization_id, user_id, role)
+            VALUES ($1, $2, 'member')`, [organizationId, qaAccount.id]);
+        await pool.query(`INSERT INTO business_memberships (business_id, organization_id, user_id, role, is_default)
+            VALUES ($1, $2, $3, 'admin', true)`, [businessId, organizationId, qaAccount.id]);
+        const qaLogin = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: qaUsername, password: qaPassword }) });
+        assert.equal(qaLogin.status, 200);
+        const qaLoginBody = await qaLogin.json();
+        const qaAccessToken = qaLoginBody.accessToken || qaLoginBody.token;
+        assert.ok(qaAccessToken);
+        const { createTrustedQaRun, cleanupTrustedQaRun } = require('../../services/trustedQaRuns');
+        const runId = 'qa-certificate-' + crypto.randomBytes(6).toString('hex');
+        const marker = `${runId}:certificate:disposable`;
+        const qaRun = await createTrustedQaRun(pool, {
+            runId, source: 'trusted_qa', businessContext: 'event_genix',
+            operatorUserId: qaAccount.id, requiredOperatorUserId: qaAccount.id,
+            requiredUserId: qaAccount.id, testCustomerMarker: marker,
+            allowedEndpoints: ['POST /api/certificates'], maxEntityCount: 1, ttlMinutes: 30
+        });
+        const qaBody = { displayMode: 'fio', displayValue: marker, typeText: 'на одноразовий вхід',
+            typeCode: 'one_time_admission', validUntil: '2099-12-31' };
+        async function qaRequest(method, route, body, options = {}) {
+            const response = await fetch(base + route, { method, headers: {
+                Authorization: 'Bearer ' + (options.accessToken || qaAccessToken),
+                'Content-Type': 'application/json',
+                'x-business-context': options.businessContext || 'event_genix',
+                ...(options.qaToken ? { 'X-Disposable-QA-Token': options.qaToken, 'X-QA-Run-Request-Id': options.requestId || crypto.randomUUID() } : {})
+            }, ...(body ? { body: JSON.stringify(body) } : {}) });
+            return { status: response.status, body: await response.json().catch(() => ({})) };
+        }
+        assert.notEqual((await qaRequest('POST', '/api/certificates', { ...qaBody, disposableQa: true })).status, 201);
+        assert.notEqual((await qaRequest('POST', '/api/certificates', qaBody, { qaToken: 'forged' })).status, 201);
+        assert.notEqual((await qaRequest('POST', '/api/certificates', qaBody, { qaToken: qaRun.token, accessToken: token })).status, 201);
+        assert.notEqual((await qaRequest('POST', '/api/certificates', qaBody, { qaToken: qaRun.token, businessContext: 'dar' })).status, 201);
+        const expiredRunId = 'qa-expired-' + crypto.randomBytes(6).toString('hex');
+        const expiredRun = await createTrustedQaRun(pool, {
+            runId: expiredRunId, source: 'trusted_qa', businessContext: 'event_genix',
+            operatorUserId: qaAccount.id, requiredOperatorUserId: qaAccount.id,
+            requiredUserId: qaAccount.id, testCustomerMarker: `${expiredRunId}:certificate:disposable`,
+            allowedEndpoints: ['POST /api/certificates'], maxEntityCount: 1, ttlMinutes: 1
+        });
+        await pool.query("UPDATE trusted_qa_runs SET expires_at=NOW()-INTERVAL '1 second' WHERE id=$1", [expiredRun.run.id]);
+        assert.notEqual((await qaRequest('POST', '/api/certificates',
+            { ...qaBody, displayValue: `${expiredRunId}:certificate:disposable` },
+            { qaToken: expiredRun.token })).status, 201);
+        const issued = await qaRequest('POST', '/api/certificates', qaBody, { qaToken: qaRun.token, requestId: 'qa-issue-1' });
+        assert.equal(issued.status, 201, JSON.stringify(issued.body));
+        const qaCertificate = issued.body;
+        assert.ok(qaCertificate.id);
+        assert.equal((await pool.query(`SELECT COUNT(*)::int AS n FROM trusted_qa_run_entities
+            WHERE run_id=$1 AND entity_type='certificate' AND entity_id=$2`, [qaRun.run.id, String(qaCertificate.id)])).rows[0].n, 1);
+        assert.notEqual((await qaRequest('POST', '/api/certificates', qaBody,
+            { qaToken: qaRun.token, requestId: 'qa-issue-2' })).status, 201);
+        await assert.rejects(
+            require('../../services/trustedQaRuns').registerQaEntity(pool, { trusted: true, run: qaRun.run }, 'certificate', '999999'),
+            { code: 'QA_RUN_ENTITY_LIMIT_EXCEEDED' }
+        );
+        const list = await qaRequest('GET', '/api/certificates');
+        assert.equal(list.status, 200);
+        assert.ok(!list.body.items.some(item => item.id === qaCertificate.id));
+        assert.ok(list.body.items.some(item => item.id === failedCert.id), 'ordinary certificates remain visible');
+        const validation = await qaRequest('GET', '/api/certificates/validate/' + qaCertificate.certCode);
+        assert.equal(validation.body.canRedeem, false);
+        assert.equal(validation.body.redemptionReason, 'qa_booking_unavailable');
+        assert.equal((await qaRequest('GET', '/api/certificates/code/' + qaCertificate.certCode)).status, 200);
+        assert.equal((await qaRequest('POST', `/api/certificates/${qaCertificate.id}/send-image`, { imageBase64: 'YQ==' })).status, 409);
+        assert.equal((await qaRequest('POST', '/api/print/jobs', { certificate_id: qaCertificate.id, data: {} })).status, 409);
+        assert.equal((await qaRequest('POST', '/api/bookings', { ...booking({ cert_code: qaCertificate.certCode }), time: '17:00' })).status, 409);
+        const redeemed = await qaRequest('POST', `/api/certificates/${qaCertificate.id}/redeem`, {});
+        assert.equal(redeemed.status, 200, JSON.stringify(redeemed.body));
+        assert.equal((await qaRequest('POST', `/api/certificates/${qaCertificate.id}/redeem`, {})).status, 409);
+        assert.equal((await pool.query(`SELECT COUNT(*)::int AS n FROM event_queue
+            WHERE event_type='certificate.created' AND payload->>'cert_id'=$1`, [String(qaCertificate.id)])).rows[0].n, 0);
+        assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM finance_transactions WHERE certificate_id=$1', [qaCertificate.id])).rows[0].n, 0);
+        assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM print_jobs WHERE certificate_id=$1', [qaCertificate.id])).rows[0].n, 0);
+        assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM notification_outbox WHERE trusted_qa_run_public_id=$1', [runId])).rows[0].n, 0);
+        const cleanup = await cleanupTrustedQaRun(pool, qaRun.run.id);
+        assert.equal(cleanup.state, 'cleaned');
+        assert.equal((await state({ id: qaCertificate.id })).status, 'used');
+        const unusedRunId = 'qa-unused-' + crypto.randomBytes(6).toString('hex');
+        const unusedMarker = `${unusedRunId}:certificate:disposable`;
+        const unusedRun = await createTrustedQaRun(pool, {
+            runId: unusedRunId, source: 'trusted_qa', businessContext: 'event_genix',
+            operatorUserId: qaAccount.id, requiredOperatorUserId: qaAccount.id,
+            requiredUserId: qaAccount.id, testCustomerMarker: unusedMarker,
+            allowedEndpoints: ['POST /api/certificates'], maxEntityCount: 1, ttlMinutes: 30
+        });
+        const unusedIssue = await qaRequest('POST', '/api/certificates', { ...qaBody, displayValue: unusedMarker },
+            { qaToken: unusedRun.token, requestId: 'qa-unused-issue' });
+        assert.equal(unusedIssue.status, 201, JSON.stringify(unusedIssue.body));
+        assert.equal((await cleanupTrustedQaRun(pool, unusedRun.run.id)).state, 'cleaned');
+        assert.equal((await state({ id: unusedIssue.body.id })).status, 'revoked');
+        assert.equal((await qaRequest('POST', `/api/certificates/${unusedIssue.body.id}/redeem`, {})).status, 409);
     } finally {
         if (child && child.exitCode === null) {
             child.kill('SIGTERM');

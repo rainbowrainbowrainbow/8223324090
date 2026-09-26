@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const { PAGE_PERMISSION_BY_KEY } = require('../config/permissionRegistry');
 const { resolveCapability } = require('../services/accountAccessPolicy');
 const { getCertificateRedemptionAvailability } = require('../services/certificateRedemption');
@@ -110,6 +111,119 @@ test('certificate lookup exposes stable action reasons without permission detail
     });
     assert.equal(getCertificateRedemptionAvailability(req, { ...active, type_text: 'Абонемент', type_code: 'subscription' }).reason, 'verification_only');
     assert.equal(getCertificateRedemptionAvailability(req, { ...active, status: 'used' }).reason, 'used');
+});
+
+test('certificate redemption precheck requires the same Park business context as the write path', () => {
+    const parkMember = { businessContext: 'event_genix', accessMode: 'membership', businessId: 1, organizationId: 1, active: true, role: 'reception' };
+    const darMember = { businessContext: 'dar', accessMode: 'membership', businessId: 2, organizationId: 1, active: true, role: 'reception' };
+    const user = {
+        role: 'reception',
+        businessMembershipAccess: {
+            membershipEnabled: true,
+            configured: true,
+            invalid: false,
+            businessContexts: ['event_genix', 'dar'],
+            defaultBusinessContext: 'event_genix',
+            registry: [parkMember, darMember],
+            memberships: [parkMember, darMember],
+            activeMembership: parkMember
+        },
+        activeBusinessMembership: parkMember
+    };
+    const actor = { user, headers: { 'x-business-context': 'event_genix' }, query: {}, body: {} };
+    const cert = { status: 'active', valid_until: '2099-12-31', type_code: 'one_time_admission' };
+    assert.equal(getCertificateRedemptionAvailability(actor, cert).canRedeem, true);
+    assert.deepEqual(getCertificateRedemptionAvailability({ ...actor, headers: { 'x-business-context': 'dar' } }, cert), {
+        effectiveStatus: 'active', canRedeem: false, reason: 'redemption_unavailable'
+    });
+    assert.deepEqual(getCertificateRedemptionAvailability({ ...actor, headers: { 'x-business-scope': 'all' } }, cert), {
+        effectiveStatus: 'active', canRedeem: false, reason: 'redemption_unavailable'
+    });
+});
+
+test('booking certificate validation fails closed and ignores stale code or business context responses', async () => {
+    const bookingCode = fs.readFileSync(path.join(__dirname, '..', 'js', 'booking.js'), 'utf8');
+    const start = bookingCode.indexOf('var bookingCertificateValidationRequestId = 0;');
+    const end = bookingCode.indexOf('// v33.7.0: Open booking chat channel', start);
+    assert.ok(start >= 0 && end > start, 'expected to find the booking certificate validation block');
+    const validationCode = bookingCode.slice(start, end);
+    const input = { id: 'certCodeInput', value: 'CERT-ONE' };
+    const result = { style: {}, textContent: '', innerHTML: '' };
+    const documentListeners = {};
+    const windowListeners = {};
+    let activeContext = 'event_genix';
+    let fetchImpl = async () => ({ json: async () => ({
+        valid: true,
+        canRedeem: true,
+        redemptionReason: 'available',
+        certificate: { display_value: 'QA', type_text: 'Одноразовий вхід' }
+    }) });
+    const sandbox = {
+        document: {
+            getElementById: id => id === 'certCodeInput' ? input : id === 'certValidationResult' ? result : null,
+            addEventListener: (name, handler) => { documentListeners[name] = handler; }
+        },
+        window: {
+            TimelineBusinessContext: {
+                state: () => ({ activeBusinessContext: activeContext }),
+                current: () => ({ apiValue: activeContext })
+            },
+            addEventListener: (name, handler) => { windowListeners[name] = handler; }
+        },
+        getAuthHeaders: () => ({ Authorization: 'Bearer fixture' }),
+        fetch: (...args) => fetchImpl(...args),
+        escapeHtml: value => String(value),
+        localStorage: { getItem: () => 'fixture' }
+    };
+    vm.runInNewContext(validationCode, sandbox);
+    const validate = vm.runInNewContext('validateCertificate', sandbox);
+
+    await validate();
+    assert.match(result.innerHTML, /Сертифікат дійсний/);
+    assert.equal(result.style.color, 'var(--success, green)');
+
+    fetchImpl = async () => ({ json: async () => ({
+        valid: true,
+        canRedeem: false,
+        redemptionReason: 'verification_only',
+        certificate: { display_value: 'QA', type_text: 'Абонемент' }
+    }) });
+    await validate();
+    assert.match(result.textContent, /доступний лише для перевірки/);
+    assert.notEqual(result.style.color, 'var(--success, green)');
+
+    fetchImpl = async () => ({ status: 403, json: async () => ({ error: 'business surface unavailable' }) });
+    await validate();
+    assert.match(result.textContent, /недоступна в поточному бізнес-контексті/);
+    assert.notEqual(result.style.color, 'var(--success, green)');
+
+    let resolveStaleResponse;
+    fetchImpl = () => new Promise(resolve => { resolveStaleResponse = resolve; });
+    input.value = 'CERT-STALE';
+    const staleCodeRequest = validate();
+    input.value = 'CERT-NEW';
+    documentListeners.input({ target: input });
+    resolveStaleResponse({ json: async () => ({
+        valid: true, canRedeem: true, redemptionReason: 'available',
+        certificate: { display_value: 'Old', type_text: 'Одноразовий вхід' }
+    }) });
+    await staleCodeRequest;
+    assert.equal(result.style.display, 'none');
+    assert.equal(result.textContent, '');
+
+    let resolveStaleContextResponse;
+    fetchImpl = () => new Promise(resolve => { resolveStaleContextResponse = resolve; });
+    input.value = 'CERT-CONTEXT';
+    const staleContextRequest = validate();
+    activeContext = 'dar';
+    windowListeners['timeline:business-context-changed']();
+    resolveStaleContextResponse({ json: async () => ({
+        valid: true, canRedeem: true, redemptionReason: 'available',
+        certificate: { display_value: 'Old', type_text: 'Одноразовий вхід' }
+    }) });
+    await staleContextRequest;
+    assert.equal(result.style.display, 'none');
+    assert.equal(result.textContent, '');
 });
 
 test('certificate date handling preserves PostgreSQL dates across winter and DST boundaries', () => {

@@ -20,7 +20,8 @@ function getCertificateRedemptionAvailability(req, cert) {
         return { effectiveStatus, canRedeem: false, reason: 'verification_only' };
     }
     const scope = resolveBusinessScope(req);
-    const allowed = !scope.invalid && scope.mode === BUSINESS_SCOPE_SINGLE && scope.canWrite !== false
+    const allowed = !scope.invalid && scope.mode === BUSINESS_SCOPE_SINGLE
+        && scope.activeContext === DEFAULT_BUSINESS_CONTEXT && scope.canWrite !== false
         && hasCurrentParkMembership(req.user, scope.activeContext)
         && REDEMPTION_ROLES.has(req.user.role)
         && resolveCapability(req.user, '/certificates/check', { type: 'page' }).allowed;

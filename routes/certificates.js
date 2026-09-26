@@ -180,17 +180,29 @@ router.get('/validate/', (req, res) => res.json({ valid: false, error: 'Код �
 router.get('/validate/:code', async (req, res) => {
     try {
         const r = await pool.query(
-            `SELECT id, cert_code, display_value, type_text, valid_until, status
+            `SELECT id, cert_code, display_value, type_text, type_code, valid_until, status
              FROM certificates WHERE cert_code = $1`,
             [req.params.code.toUpperCase()]
         );
         if (!r.rowCount) return res.json({ valid: false, error: 'Сертифікат не знайдено' });
         const c = r.rows[0];
-        const effectiveStatus = getCertificateEffectiveStatus(c);
+        const eligibility = getCertificateRedemptionAvailability(req, c);
+        const certificate = {
+            id: c.id,
+            cert_code: c.cert_code,
+            display_value: c.display_value,
+            type_text: c.type_text,
+            valid_until: c.valid_until,
+            status: c.status
+        };
         res.json({
-            valid: effectiveStatus === 'active',
-            certificate: c,
-            reason: effectiveStatus === 'active' ? null : effectiveStatus
+            // Keep `valid` as the legacy active-status flag. Booking UI must use
+            // canRedeem, which shares the redemption eligibility policy.
+            valid: eligibility.effectiveStatus === 'active',
+            certificate,
+            reason: eligibility.effectiveStatus === 'active' ? null : eligibility.effectiveStatus,
+            canRedeem: eligibility.canRedeem,
+            redemptionReason: eligibility.reason
         });
     } catch (err) {
         log.error('Certificate validate error', err);

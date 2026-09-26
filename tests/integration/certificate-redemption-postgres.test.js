@@ -41,6 +41,7 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
             CREATE TABLE employee_profiles (user_id INT, staff_id INT, is_active BOOLEAN DEFAULT true, last_activity_at TIMESTAMPTZ);
             CREATE TABLE certificates (
                 id SERIAL PRIMARY KEY, cert_code TEXT UNIQUE NOT NULL, type_text TEXT NOT NULL,
+                display_mode TEXT, display_value TEXT,
                 status TEXT NOT NULL DEFAULT 'active', valid_until DATE NOT NULL,
                 used_at TIMESTAMP, updated_at TIMESTAMP, invalidated_at TIMESTAMP, invalid_reason TEXT
             );

@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
 const { assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
+const { ensureDisposableParkMembership } = require('../helpers/disposable-park-membership');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const TARGET_URL = String(process.env.TEST_URL || '').trim();
@@ -76,39 +77,9 @@ async function login(base, username, password) {
 }
 
 async function provisionDisposableParkMembership(userId, role) {
-    assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
-    assert.ok(process.env.DATABASE_URL, 'disposable DATABASE_URL is required');
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const pool = new Pool(process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : {});
     try {
-        const organization = await pool.query(
-            `INSERT INTO organizations (slug, name, status)
-             VALUES ('hr-fullstack-park-fixture', 'Disposable Park HR browser fixture', 'active')
-             ON CONFLICT (slug) DO UPDATE SET status = 'active' RETURNING id`
-        );
-        const business = await pool.query(
-            `INSERT INTO businesses (organization_id, context_key, label, short_label, access_mode, modules, status)
-             VALUES ($1, 'event_genix', 'Fixture Park', 'Park', 'membership', '[]'::jsonb, 'active')
-             ON CONFLICT (context_key) DO UPDATE SET organization_id = EXCLUDED.organization_id,
-                access_mode = 'membership', status = 'active'
-             RETURNING id, organization_id`,
-            [organization.rows[0].id]
-        );
-        const { id: businessId, organization_id: organizationId } = business.rows[0];
-        await pool.query(
-            `INSERT INTO organization_memberships (organization_id, user_id, role, is_active)
-             VALUES ($1, $2, 'member', true)
-             ON CONFLICT (organization_id, user_id) DO UPDATE SET is_active = true`,
-            [organizationId, userId]
-        );
-        await pool.query(
-            `INSERT INTO business_memberships
-                (business_id, organization_id, user_id, role, action_denylist, is_default, is_active)
-             VALUES ($1, $2, $3, $4, ARRAY[]::text[], true, true)
-             ON CONFLICT (business_id, user_id) DO UPDATE SET
-                organization_id = EXCLUDED.organization_id,
-                role = EXCLUDED.role, is_default = true, is_active = true`,
-            [businessId, organizationId, userId, role]
-        );
+        await ensureDisposableParkMembership(pool, userId, role);
     } finally {
         await pool.end();
     }

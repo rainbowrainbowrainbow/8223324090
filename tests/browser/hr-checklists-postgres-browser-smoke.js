@@ -9,6 +9,7 @@ const crypto = require('node:crypto');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl, assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
 const { acquireIsolatedDatabaseLock, runSuite } = require('../../scripts/run-isolated-postgres-tests');
+const { ensureDisposableParkMembership } = require('../helpers/disposable-park-membership');
 const OUT = path.resolve(__dirname, '../../output/playwright/hr-checklists/postgres');
 
 function requirePlaywright() {
@@ -61,6 +62,7 @@ async function run() {
         const session = await api('/api/auth/login', { username: process.env.TEST_USER, password: process.env.TEST_PASS });
         token = session.accessToken || session.token;
         assert.ok(token);
+        await ensureDisposableParkMembership(db, session.user?.id, session.user?.role);
         const fixtures = {};
         for (const theme of ['light', 'dark']) {
             const key = `chk_qa_${theme}`;

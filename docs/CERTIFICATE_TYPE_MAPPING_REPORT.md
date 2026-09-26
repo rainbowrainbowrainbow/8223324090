@@ -93,3 +93,8 @@ business-visible certificates total 928. Other changes in the count since the
 10:36 audit are not attributed to this QA run. Both rollback counts remained
 zero: unsafeGrants=0 and safeDenials=0. No codes, recipient values, or raw
 unknown labels were selected or included in this report.
+
+Follow-up release v0.82.19 at `b0b466743e929d48681f741e8df571ee23d21b28`
+added booking-form precheck controls and regression coverage. It included no type
+remapping, data migration, or new QA certificate; the prior aggregate audit
+remains the last type-mapping measurement.

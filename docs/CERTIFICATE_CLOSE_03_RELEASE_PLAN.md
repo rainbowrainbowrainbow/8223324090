@@ -1,6 +1,6 @@
 # CERT-CLOSE-03 — release and live QA evidence
 
-Production impact: yes. Verified on 2026-09-26. The release was delivered; the booking form gap below remains open.
+Production impact: yes. Verified on 2026-09-26. The v0.82.18 release and v0.82.19 booking precheck follow-up are delivered.
 
 ## Release identity and gates
 
@@ -9,6 +9,13 @@ Production impact: yes. Verified on 2026-09-26. The release was delivered; the b
 - Local Node 22.23.1/npm 10.9.8: full npm test passed after normalizing a Windows CRLF fixture in tests/checkin-reliability-contract.test.js. The candidate branch CI [run 36238153545](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36238153545) failed only in the certificate browser smoke: confirmation dialog did not detach within 30 seconds. The same tests on the exact release SHA passed in all 8 jobs: [run 36238494774](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36238494774). This intermittent browser test needs investigation; it did not block the required exact-SHA gate.
 - The canonical controller committed the patch version and Ukrainian release notes, pushed the exact SHA, waited for green CI, and invoked release:railway-up. Railway project fortunate-appreciation, production service 8223324090, deployment acbeec32-5468-4fb9-b5a4-573857f3a58e: SUCCESS.
 - Live /api/version and version smoke confirmed v0.82.18, exact SHA, source branch codex/eventgenix-production, and archive manifest metadata. Timeline release proof passed. Migration 371_trusted_qa_certificate_lookup and its partial index were confirmed in production through a read-only transaction.
+
+## Booking precheck follow-up release
+
+- The v0.82.18 live QA found that `index.html` lacked the certificate input, result, and Validate button although `js/booking.js` had a handler. The narrow fix added those controls, Park-only visibility and stale-result invalidation, an explicit QA refusal message, a form regression, and a focus wait in the browser smoke. It did not change schema, roles, permissions, or protected booking identity/detail contracts.
+- Authorized production block `EG-20260926T115455Z-f4272c77`, candidate `f4272c774fe2366bfcdfaaa2e3f2bef207e49ce2`. The canonical controller ran the full local gate, committed the patch version and Ukrainian release notes, pushed the production branch, and waited for [exact-SHA CI run 36241568971](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36241568971): 8/8 jobs successful, including certificate regression.
+- Release v0.82.19 SHA `b0b466743e929d48681f741e8df571ee23d21b28`, source branch `codex/eventgenix-production`. Manual Railway deployment `b9e00eee-9f54-4f0e-930f-fa6dc1b3c42b` is `SUCCESS`. Version smoke confirmed v0.82.19, exact SHA, branch, and manifest metadata; timeline release proof passed. No migration was included.
+- Separate test-account browser QA opened the Park booking panel without saving. The certificate field, button, and result were visible. A read-only precheck of the previously used isolated QA certificate (internal ID 921) displayed `Сертифікат уже використаний.` and no green availability. At 390×844, document width was 390 px; Tab moved from the input to `certValidateButton`. No new QA certificate or booking was created. The browser was closed and its temporary code file removed.
 
 ## Isolated certificate QA
 
@@ -24,9 +31,8 @@ Production impact: yes. Verified on 2026-09-26. The release was delivered; the b
 - Aggregate-only production audit after QA at 11:41 UTC found 929 physical certificates: 495 exact one-time labels, 3 exact subscriptions, 431 other unmapped. The trusted QA manifest accounts for one physical certificate; business-visible count was 928. The increase in other physical records since the 10:36 UTC baseline is not attributed to this QA run. Rollback audit remained unsafeGrants=0 and safeDenials=0.
 - Migration 371 is an additive partial lookup index. Preserve the trusted QA manifest and business-read filters during any rollback, so the historical QA record cannot re-enter business counts. Stop new QA issuance and inventory/finish active runs before promoting an older binary. Do not reactivate the used code.
 
-## Open findings
+## Remaining limits
 
-- The current booking form in index.html has no certCodeInput or certValidationResult element and no Validate button. The certificate handler in js/booking.js therefore cannot be exercised from that form. The published release note says the form shows precheck availability; that claim is inaccurate for the current UI. The server validate response and transaction guard behaved correctly, but the live form scenario is unverified. A focused form wiring fix, regression test, exact-SHA CI, and new release are required.
-- Candidate branch CI showed one intermittent confirmation-dialog timeout while the exact release SHA was green. Stabilize that browser smoke so the certificate gate remains dependable.
+- The v0.82.18 form gap was closed by v0.82.19 and verified live with a used QA certificate. The earlier browser confirmation timeout was addressed by waiting for dialog focus; candidate and exact release CI are green. This live follow-up did not create an ordinary production booking or another QA certificate. Other role and redemption states remain covered by the isolated regression gate.
 
-The deployed SHA above is distinct from any subsequent documentation-only commit.
+The deployed app SHA `b0b466743e929d48681f741e8df571ee23d21b28` is distinct from the subsequent documentation-only commit.

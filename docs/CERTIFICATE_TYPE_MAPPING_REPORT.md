@@ -63,3 +63,11 @@ labels, reapplied the migration, and confirmed the codes were unchanged. It
 also verified the conservative column default for an old-client insert. The
 PostgreSQL integration test covers both eligibility directions after label
 edits and verifies that the rollback counts detect both outcomes.
+
+## Production release evidence (2026-09-26)
+
+Release `0.82.16` at `ab9b3f46d1ff4bd5fa47aec2b7c3c56d7757d641`
+applied migration 370. A post-release aggregate-only read-only audit at
+08:52 UTC found the same 918 records and category counts listed above.
+`priorVersionRollback.unsafeGrants` and `.safeDenials` were both zero.
+No certificate QA records were created during this release check.

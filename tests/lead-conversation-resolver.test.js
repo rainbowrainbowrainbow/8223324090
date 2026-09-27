@@ -78,8 +78,9 @@ test('lead conversation context exposes confirmed links separately from suggesti
 });
 
 test('lead conversation context safely reads a confirmed legacy Omni link until backfill completes', async () => {
+  let suggestionQuery = null;
   const db = {
-    async query(sql) {
+    async query(sql, params) {
       if (/FROM leads/i.test(sql)) {
         return { rows: [{
           id: 137, business_context: 'event_genix', client_name: 'НВ', phone: '+380661111111',
@@ -89,10 +90,17 @@ test('lead conversation context safely reads a confirmed legacy Omni link until 
       if (/WHERE c\.id = \$1/i.test(sql)) {
         return { rows: [{
           id: 10, business_context: 'event_genix', channel: 'instagram', conversation_status: 'open',
-          customer_name: 'НВ', meta: { leadIds: [137] },
+          customer_name: 'Instagram profile', last_message_at: '2026-09-20T10:00:00.000Z',
+          customer_phone: '+380999999999', meta: { leadIds: [137] },
         }] };
       }
-      if (/FROM conversations/i.test(sql)) return { rows: [] };
+      if (/FROM conversations/i.test(sql)) {
+        suggestionQuery = { sql, params };
+        return { rows: [{
+          id: 27, channel: 'telegram', customer_name: 'НВ', customer_phone: '+380661111111',
+          status: 'open', customer_linked: false,
+        }] };
+      }
       throw new Error(`Unexpected query: ${sql}`);
     },
   };
@@ -103,8 +111,21 @@ test('lead conversation context safely reads a confirmed legacy Omni link until 
   });
 
   assert.deepEqual(context.confirmedLinks.map(item => ({
-    id: item.id, channel: item.channel, isOrigin: item.isOrigin, isPrimary: item.isPrimary, source: item.source,
-  })), [{ id: 10, channel: 'instagram', isOrigin: true, isPrimary: true, source: 'omni_legacy_compatibility' }]);
+    id: item.id, channel: item.channel, status: item.status, customerName: item.customerName,
+    lastMessageAt: item.lastMessageAt, isOrigin: item.isOrigin, isPrimary: item.isPrimary, source: item.source,
+  })), [{
+    id: 10,
+    channel: 'instagram',
+    status: 'open',
+    customerName: 'Instagram profile',
+    lastMessageAt: '2026-09-20T10:00:00.000Z',
+    isOrigin: true,
+    isPrimary: true,
+    source: 'omni_legacy_compatibility',
+  }]);
+  assert.deepEqual(context.suggestions.map(item => item.id), [27]);
+  assert.match(suggestionQuery.sql, /NOT \(c\.id = ANY\(\$6::bigint\[\]\)\)/);
+  assert.deepEqual(suggestionQuery.params[5], [10]);
   assert.deepEqual(context.resolution, { action: 'open', reason: 'primary', conversationId: 10 });
 });
 

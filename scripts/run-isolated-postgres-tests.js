@@ -64,6 +64,12 @@ const MODES = {
     'my-day-browser': [
         'tests/browser/my-day-actual-app-browser-smoke.js'
     ],
+    'omni-links': [
+        'tests/integration/lead-conversation-links-postgres.test.js'
+    ],
+    'omni-links-browser': [
+        'tests/browser/omni-lead-links-actual-app-browser-smoke.js'
+    ],
     'redirect-auth': [
         'tests/browser/redirect-auth-postgres-browser-smoke.js'
     ],
@@ -109,7 +115,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
@@ -376,7 +382,7 @@ function buildServerEnvironment(testDb, port, credentials) {
 
     if (testDb.isLocal) {
         env.DATABASE_URL = '';
-        env.PGHOST = testDb.hostname;
+        env.PGHOST = testDb.url.searchParams.get('host') || testDb.hostname;
         env.PGPORT = testDb.url.port || '5432';
         env.PGDATABASE = testDb.databaseName;
         env.PGUSER = decodeURIComponent(testDb.url.username || '');
@@ -492,6 +498,7 @@ function runsAgainstDatabaseOnly(testFile) {
     return testFile.includes('checkbox-park-cashier-smoke.integration')
         || testFile.includes('checkbox-park-config.integration')
         || testFile.includes('checkbox-x-report-lifecycle.integration')
+        || testFile.includes('lead-conversation-links-postgres.test')
         || testFile.includes('legacy-upload-backfill.integration');
 }
 
@@ -626,6 +633,13 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_CATALOG_SALE_LOCAL_QA_INTEGRATION: catalogSaleLocalQa ? 'true' : 'false',
         RUN_MY_DAY_POSTGRES_INTEGRATION: testFile.includes('my-day-postgres.integration') ? 'true' : 'false',
         RUN_MY_DAY_ACTUAL_APP_BROWSER_SMOKE: testFile.includes('my-day-actual-app-browser-smoke') ? 'true' : 'false',
+        RUN_OMNI_LEAD_LINKS_BROWSER: testFile.includes('omni-lead-links-actual-app-browser-smoke') ? 'true' : 'false',
+        OMNI_LINKS_BROWSER_DATABASE_URL: testFile.includes('omni-lead-links-actual-app-browser-smoke')
+            ? testDb.url.toString()
+            : '',
+        LEAD_CONVERSATION_LINKS_TEST_DATABASE_URL: testFile.includes('lead-conversation-links-postgres.test')
+            ? testDb.url.toString()
+            : '',
         RUN_REDIRECT_AUTH_POSTGRES_BROWSER: testFile.includes('redirect-auth-postgres-browser-smoke') ? 'true' : 'false',
         RUN_REDIRECT_OLD_TAB_UPGRADE_BROWSER: testFile.includes('redirect-old-tab-upgrade-browser-smoke') ? 'true' : 'false',
         RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION: testFile.includes('checkbox-park-cashier-smoke') ? 'true' : 'false',

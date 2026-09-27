@@ -27,7 +27,10 @@ const { notifyNewLead } = require('../services/leadNotifier');
 const { authenticateToken, canUseAction, requireRole, requireMinRole } = require('../middleware/auth');
 const { resolveCapability } = require('../services/accountAccessPolicy');
 const { resolveLeadConversationContext } = require('../services/leadConversationResolver');
-const { linkLeadConversation, setLeadPrimaryConversation } = require('../services/leadConversationLinks');
+const {
+    linkManualConversationPreservingLegacyOrigin,
+    setLeadPrimaryConversation,
+} = require('../services/leadConversationLinks');
 const { redactRevenueFieldKeys } = require('../services/revenueAccessPolicy');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { buildTaskVisibilityScope } = require('../services/taskPolicy');
@@ -3811,7 +3814,7 @@ router.post('/:id/conversation-links', async (req, res) => {
         if (!Number.isInteger(leadId) || leadId <= 0 || !Number.isInteger(conversationId) || conversationId <= 0) {
             return res.status(400).json({ success: false, error: 'Некоректний ID ліда або діалогу' });
         }
-        const link = await linkLeadConversation({
+        const link = await linkManualConversationPreservingLegacyOrigin({
             businessContext,
             leadId,
             conversationId,

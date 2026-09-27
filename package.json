@@ -161,6 +161,8 @@
     "audit:omni-lead-conversation-links": "node scripts/backfill-lead-conversation-links.js",
     "test:integration:omni": "node --test tests/integration/omni-inbox-postgres.test.js",
     "test:integration:omni-links": "node --test tests/integration/lead-conversation-links-postgres.test.js",
+    "test:integration:omni-links:isolated": "node scripts/run-isolated-postgres-tests.js omni-links",
+    "test:browser:omni-links:isolated": "npm exec --yes --package=playwright -c \"node scripts/run-isolated-postgres-tests.js omni-links-browser\"",
     "test:integration:attendance-lock:isolated": "node scripts/run-isolated-postgres-tests.js attendance",
     "test:integration:attendance-datafix:isolated": "node scripts/run-isolated-postgres-tests.js attendance-datafix",
     "test:integration:room-lock": "node --test tests/integration/room-lock-concurrency.integration.test.js",

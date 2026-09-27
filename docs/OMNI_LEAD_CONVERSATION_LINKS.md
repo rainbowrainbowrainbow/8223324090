@@ -33,6 +33,11 @@ Use `services/leadConversationLinks.js`:
 - `linkLeadConversation(input, { client })` creates or reuses a confirmed link.
   Pass `isOrigin: true` and `isPrimary: true` only when a lead is created from
   that conversation. Without `client`, the service owns its transaction.
+- `linkManualConversationPreservingLegacyOrigin(input, { client })` is the
+  workspace operation for a manager-confirmed link. On the first canonical
+  transition it persists a verified legacy conversation as origin and current
+  primary in the same transaction, then adds the selected conversation without
+  changing primary. A manager must still use the explicit primary action.
 - `setLeadPrimaryConversation(input, { client })` changes only `is_primary` on an
   existing confirmed link.
 - `listLeadConversationLinks` and `listConversationLeadLinks` read confirmed links
@@ -47,7 +52,8 @@ same transaction and are idempotent for repeated link requests.
 `services/leadConversationResolver.js` is the only selection policy for a lead
 workspace. Its response has `confirmedLinks`, `suggestions`, and `resolution`.
 Suggestions can be based on a customer relationship, phone, or name, but they are
-never opened automatically and are excluded when that pair is already confirmed.
+never opened automatically and are excluded when that pair is already confirmed,
+including a temporary confirmed legacy pair.
 
 `resolution` is deterministic:
 
@@ -106,12 +112,35 @@ the saved source channel. Conflicts, missing conversations, and one-source
 matches are ignored. This compatibility read never writes a link; phone, name,
 and customer matches never create or choose a link.
 
+The resolver, backfill planner, and manual-transition writer share
+`services/legacyLeadConversationLink.js` as the evidence policy. When a manager
+links another conversation for an eligible legacy lead, the service atomically
+persists that verified legacy pair as `is_origin`. It remains `is_primary` until
+the manager explicitly selects another confirmed conversation. Existing
+canonical origin and primary flags always take precedence over legacy evidence.
+
 `npm run audit:omni-lead-conversation-links` is a dry-run by default. It requires
 `OMNI_LINK_BACKFILL_READONLY_DATABASE_URL`, reports `ready`, `alreadyLinked`,
 `skipped`, and `conflicts`, and only accepts exact stored conversation IDs from
-the fields above. `--apply` is deliberately separate, requires a dedicated
-write URL plus an explicit confirmation token, and must be run only under the
-production autonomy policy after review of the dry-run output.
+the fields above. Lead scanning uses keyset batches and `coverage.complete`
+states whether the complete requested business scope was checked. An explicit
+`--max-leads` cap produces an incomplete report and cannot be applied.
+
+`--apply` is deliberately separate. It requires a dedicated write URL, an
+explicit business context, an operator-reviewed dry-run JSON file, an exact
+maximum candidate count, and the confirmation token. The approved candidate
+fingerprint prevents accidental list drift. Each approved pair is revalidated
+under the same per-lead advisory lock used by manager operations. Current links,
+the lead evidence fields, and relevant conversation metadata are read again in
+the write transaction. Existing canonical rows are reported without updates;
+new manager choices, changed evidence, conflicts, and cross-business rows are
+skipped. Apply never discovers or inserts candidates outside the reviewed file.
+Its result separates `added`, `alreadyExisted`, `skipped`, and `conflicts` and
+records whether every approved candidate was classified.
+
+Every JSON report includes `reportVersion`, the tool name, and the current
+package version so an operator can bind the reviewed inventory to the released
+implementation.
 
 ## Verification
 
@@ -119,10 +148,19 @@ production autonomy policy after review of the dry-run output.
 npm run check:migrations
 npm run test:lead-conversation-links
 $env:OMNI_LINK_BACKFILL_READONLY_DATABASE_URL = 'postgres://…/eventgenix_readonly'
-npm run audit:omni-lead-conversation-links -- --business-context=event_genix
+node scripts/backfill-lead-conversation-links.js --business-context=event_genix --batch-size=500 | Set-Content -Encoding utf8 omni-links-plan.json
 $env:LEAD_CONVERSATION_LINKS_TEST_DATABASE_URL = 'postgres://…/lead_conversation_links_fixture_test'
 npm run test:integration:omni-links
 ```
 
 The PostgreSQL test accepts only a disposable loopback database URL and creates a
-unique temporary database. It never reads `DATABASE_URL`.
+unique temporary database. A local PostgreSQL Unix socket is also accepted by the
+test. It never reads `DATABASE_URL`.
+
+The production apply shape is documented for the delivery task; do not run it
+without that task's explicit production authorization:
+
+```powershell
+$env:OMNI_LINK_BACKFILL_DATABASE_URL = 'postgres://…/eventgenix_operator'
+npm run audit:omni-lead-conversation-links -- --apply --business-context=event_genix --approved-plan=omni-links-plan.json --max-apply=100 --confirm=APPLY_OMNI_LEAD_CONVERSATION_LINKS
+```

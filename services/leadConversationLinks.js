@@ -2,6 +2,10 @@
 
 const { pool } = require('../db');
 const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext } = require('./businessContext');
+const {
+    legacyConversationIdsFromLead,
+    evaluateLegacyLeadConversation,
+} = require('./legacyLeadConversationLink');
 
 const MAX_SOURCE_LENGTH = 80;
 
@@ -177,6 +181,33 @@ function normalizeLinkInput(input = {}) {
     };
 }
 
+async function findConfirmedLegacyOrigin(client, { businessContext, leadId }) {
+    const leadResult = await client.query(
+        `SELECT id, business_context, source_channel, external_id, raw_payload
+           FROM leads
+          WHERE id = $1
+            AND business_context = $2
+          FOR KEY SHARE`,
+        [leadId, businessContext]
+    );
+    const lead = leadResult.rows[0];
+    if (!lead) return null;
+    const conversationIds = legacyConversationIdsFromLead(lead);
+    if (conversationIds.length !== 1) return null;
+    const conversationResult = await client.query(
+        `SELECT id, business_context, channel, meta
+           FROM conversations
+          WHERE id = ANY($1::bigint[])`,
+        [conversationIds]
+    );
+    const evaluation = evaluateLegacyLeadConversation({
+        lead,
+        conversations: conversationResult.rows,
+        businessContext,
+    });
+    return evaluation.status === 'confirmed' ? evaluation : null;
+}
+
 /**
  * Create or reuse a confirmed lead-to-conversation link.
  *
@@ -215,6 +246,45 @@ async function linkLeadConversation(input = {}, options = {}) {
             row = await markSingleLinkFlag(client, { ...link, column: 'is_primary' });
         }
         return mapLink(row);
+    });
+}
+
+/**
+ * Confirm a manager-selected conversation without losing a verified legacy
+ * origin. The first canonical transition keeps the former compatibility target
+ * as origin/current primary; choosing the new primary remains an explicit step.
+ */
+async function linkManualConversationPreservingLegacyOrigin(input = {}, options = {}) {
+    const link = normalizeLinkInput({ ...input, isOrigin: false, is_origin: false, isPrimary: false, is_primary: false });
+    const resolveLegacyOrigin = options.resolveLegacyOrigin || findConfirmedLegacyOrigin;
+    const linkWriter = options.linkWriter || linkLeadConversation;
+    return inTransaction(options, async client => {
+        await lockLeadConversationLinks(client, link.businessContext, link.leadId);
+        const existingResult = await client.query(
+            `SELECT conversation_id, is_origin, is_primary
+               FROM lead_conversation_links
+              WHERE business_context = $1
+                AND lead_id = $2
+              FOR UPDATE`,
+            [link.businessContext, link.leadId]
+        );
+        const existingLinks = existingResult.rows;
+        if (!existingLinks.some(item => item.is_origin === true)) {
+            const legacyOrigin = await resolveLegacyOrigin(client, link);
+            if (legacyOrigin) {
+                await linkWriter({
+                    businessContext: link.businessContext,
+                    leadId: link.leadId,
+                    conversationId: legacyOrigin.conversationId,
+                    source: 'omni_legacy_transition',
+                    metadata: { evidence: legacyOrigin.evidence },
+                    createdBy: link.createdBy,
+                    isOrigin: true,
+                    isPrimary: !existingLinks.some(item => item.is_primary === true),
+                }, { client });
+            }
+        }
+        return linkWriter(link, { client });
     });
 }
 
@@ -282,7 +352,9 @@ async function listConversationLeadLinks(input = {}, options = {}) {
 }
 
 module.exports = {
+    lockLeadConversationLinks,
     linkLeadConversation,
+    linkManualConversationPreservingLegacyOrigin,
     setLeadPrimaryConversation,
     listLeadConversationLinks,
     listConversationLeadLinks,

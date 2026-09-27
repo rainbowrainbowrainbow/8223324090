@@ -4,10 +4,9 @@ const { pool } = require('../db');
 const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext } = require('./businessContext');
 const { listLeadConversationLinks } = require('./leadConversationLinks');
 const {
-  conversationIdFromExternalId,
-  conversationIdsFromRawPayload,
-  leadIdsFromConversationMeta,
-} = require('./leadConversationLinkBackfill');
+  legacyConversationIdsFromLead,
+  evaluateLegacyLeadConversation,
+} = require('./legacyLeadConversationLink');
 const { deriveReplySlaState, isActiveWaitingReply } = require('./replySla');
 const { getOmniAccountStatus } = require('./omni-accounts');
 
@@ -121,31 +120,9 @@ async function findLeadForConversationContext(db, leadId, businessContext) {
   return result.rows[0] || null;
 }
 
-function parseJsonObject(value) {
-  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (_) {
-    return {};
-  }
-}
-
-function legacyConversationCandidate(lead) {
-  const externalConversationId = conversationIdFromExternalId(lead.external_id);
-  const rawConversationIds = conversationIdsFromRawPayload(parseJsonObject(lead.raw_payload));
-  if (externalConversationId && rawConversationIds.some(id => id !== externalConversationId)) return null;
-  const candidateIds = Array.from(new Set([
-    externalConversationId,
-    ...rawConversationIds,
-  ].filter(Boolean)));
-  return candidateIds.length === 1 ? candidateIds[0] : null;
-}
-
 async function findLegacyConfirmedLink(db, lead, businessContext) {
-  const conversationId = legacyConversationCandidate(lead);
-  if (!conversationId) return null;
+  const conversationIds = legacyConversationIdsFromLead(lead);
+  if (conversationIds.length !== 1) return null;
 
   const result = await db.query(
     `SELECT c.id, c.business_context, c.channel, c.status AS conversation_status,
@@ -155,33 +132,43 @@ async function findLegacyConfirmedLink(db, lead, businessContext) {
             c.reply_owner, c.reply_owner_user_id, c.reply_sla_at, c.meta
        FROM conversations c
       WHERE c.id = $1
-        AND COALESCE(c.business_context, $2) = $2
       LIMIT 1`,
-    [conversationId, businessContext]
+    [conversationIds[0]]
   );
   const conversation = result.rows[0];
-  if (!conversation) return null;
-  if (lead.source_channel && conversation.channel && lead.source_channel !== conversation.channel) return null;
-
-  const evidence = [];
-  if (conversationIdFromExternalId(lead.external_id) === conversationId) evidence.push('lead.external_id');
-  if (conversationIdsFromRawPayload(parseJsonObject(lead.raw_payload)).includes(conversationId)) evidence.push('lead.raw_payload');
-  const metaLeadIds = leadIdsFromConversationMeta(parseJsonObject(conversation.meta));
-  if (metaLeadIds.length && !metaLeadIds.includes(lead.id)) return null;
-  if (metaLeadIds.includes(lead.id)) evidence.push('conversation.meta');
-  if (evidence.length < 2) return null;
+  const evaluation = evaluateLegacyLeadConversation({
+    lead,
+    conversations: conversation ? [conversation] : [],
+    businessContext,
+  });
+  if (evaluation.status !== 'confirmed') return null;
 
   return {
-    ...conversation,
-    conversationId,
+    conversationId: evaluation.conversationId,
+    channel: conversation.channel || null,
+    conversationStatus: conversation.conversation_status || null,
+    lastMessageAt: conversation.last_message_at || null,
+    customerName: conversation.customer_name || null,
+    customerPhone: conversation.customer_phone || null,
+    customerId: conversation.customer_id || null,
+    assignedTo: conversation.assigned_to || null,
+    unreadCount: conversation.unread_count || 0,
+    lastInboundAt: conversation.last_inbound_at || null,
+    lastOutboundAt: conversation.last_outbound_at || null,
+    replyExpected: conversation.reply_expected === true,
+    awaitingReplySince: conversation.awaiting_reply_since || null,
+    replyExpectedMessageId: conversation.reply_expected_message_id || null,
+    replyOwner: conversation.reply_owner || null,
+    replyOwnerUserId: conversation.reply_owner_user_id || null,
+    replySlaAt: conversation.reply_sla_at || null,
     isOrigin: true,
     isPrimary: true,
     source: 'omni_legacy_compatibility',
-    metadata: { evidence: evidence.sort() },
+    metadata: { evidence: evaluation.evidence },
   };
 }
 
-async function listConversationSuggestions(db, lead, businessContext, limit) {
+async function listConversationSuggestions(db, lead, businessContext, limit, excludedConversationIds = []) {
   const phoneDigits = normalizeDigits(lead.phone);
   const namePattern = lead.client_name ? `%${String(lead.client_name).trim()}%` : '';
   const result = await db.query(
@@ -202,6 +189,7 @@ async function listConversationSuggestions(db, lead, businessContext, limit) {
              AND confirmed.lead_id = $1
              AND confirmed.conversation_id = c.id
         )
+        AND NOT (c.id = ANY($6::bigint[]))
         AND (
           EXISTS (
             SELECT 1
@@ -215,7 +203,7 @@ async function listConversationSuggestions(db, lead, businessContext, limit) {
         )
       ORDER BY c.last_message_at DESC NULLS LAST, c.updated_at DESC, c.id DESC
       LIMIT $5`,
-    [lead.id, phoneDigits, namePattern, businessContext, limit]
+    [lead.id, phoneDigits, namePattern, businessContext, limit, excludedConversationIds]
   );
   return result.rows.map(row => mapSuggestion(row, lead));
 }
@@ -250,7 +238,10 @@ async function resolveLeadConversationContext(input = {}, options = {}) {
   const confirmedLinks = legacyLink
     ? [mapConfirmedLink(legacyLink, { available: omniAvailable, businessContext })]
     : canonicalLinks;
-  const suggestions = omniAvailable ? await listConversationSuggestions(db, lead, businessContext, limit) : [];
+  const excludedConversationIds = confirmedLinks.map(link => link.id).filter(Boolean);
+  const suggestions = omniAvailable
+    ? await listConversationSuggestions(db, lead, businessContext, limit, excludedConversationIds)
+    : [];
   return {
     leadId,
     businessContext,

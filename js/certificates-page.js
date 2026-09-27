@@ -43,10 +43,11 @@
     };
 
     const CHECK_STATE_META = {
-        redeemable: { title: 'Доступне одноразове погашення', badge: 'Можна погасити', message: 'Цей сертифікат можна погасити після підтвердження. Повторно використати код буде неможливо.', tone: 'active' },
-        verification_only: { title: 'Сертифікат активний', badge: 'Лише перевірка', message: 'Цей тип доступний лише для перевірки. Погашення тут не передбачено.', tone: 'active' },
-        redemption_unavailable: { title: 'Погашення недоступне', badge: 'Без права погашення', message: 'Для вашого облікового запису погашення зараз недоступне. Дані сертифіката можна перевірити.', tone: 'blocked' },
-        used: { title: 'Сертифікат уже використано', message: 'Повторне використання неможливе.', tone: 'used' },
+        redeemable: { title: 'Можна активувати вхід', badge: 'Готовий до входу', message: 'Після підтвердження сертифікат одразу стане використаним. Повторний вхід за цим кодом буде неможливий.', tone: 'active' },
+        verification_only: { title: 'Сертифікат активний', badge: 'Лише перевірка', message: 'Цей тип можна перевірити, але одноразовий вхід за ним тут недоступний.', tone: 'active' },
+        redemption_unavailable: { title: 'Активація входу недоступна', badge: 'Немає права на дію', message: 'Ваш обліковий запис може перевірити сертифікат, але не активувати вхід за ним.', tone: 'blocked' },
+        just_activated: { title: 'Вхід активовано', badge: 'Щойно виконано', message: 'Сертифікат щойно використано для одноразового входу. Повторний вхід за цим кодом неможливий.', tone: 'active' },
+        used: { title: 'Сертифікат уже використано', badge: 'Використаний раніше', message: 'Повторний вхід за цим кодом неможливий.', tone: 'used' },
         expired: { title: 'Строк дії завершився', message: 'Сертифікат більше не дійсний.', tone: 'expired' },
         revoked: { title: 'Сертифікат анульовано', message: 'Сертифікат не можна використати.', tone: 'revoked' },
         blocked: { title: 'Сертифікат заблоковано', message: 'Сертифікат не можна використати.', tone: 'blocked' },
@@ -205,7 +206,7 @@
             list: ['Сертифікати', 'Реєстр, фільтри, статуси і швидкий перехід до видачі сертифіката або абонемента.'],
             new: [SINGLE_ISSUE_LABEL, "Окрема робоча сторінка для створення одного сертифіката або абонемента з обов'язковим отримувачем."],
             batch: ['Пакет сертифікатів на одноразовий вхід', 'Пакетна генерація одноразових кодів без вибору іншого типу.'],
-            check: ['Перевірка сертифіката', 'Відскануйте QR-код або введіть код після входу працівника в CRM.']
+            check: ['Перевірка сертифіката', 'Перевірте право на вхід і підтвердьте використання одноразового сертифіката.']
         };
         $('certificatePageTitle').textContent = titles[mode][0];
         $('certificatePageSubtitle').textContent = titles[mode][1];
@@ -265,6 +266,16 @@
         window.history?.replaceState?.(null, '', `${url.pathname}${url.search}`);
     }
 
+    function formatCertificateUseTime(value) {
+        if (!value) return '';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        return new Intl.DateTimeFormat('uk-UA', {
+            timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        }).format(date);
+    }
+
     function renderCertificateCheck(stateName, cert = null) {
         state.checkCert = cert;
         const result = $('certificateCheckResult');
@@ -274,15 +285,20 @@
         if (!result) return;
         result.classList.remove('hidden');
         result.dataset.certCheckState = stateName;
+        const useTime = (stateName === 'just_activated' || stateName === 'used')
+            ? formatCertificateUseTime(cert?.usedAt) : '';
         const details = cert ? `
             <dl class="cert-check-result-meta">
                 <dt>Код</dt><dd>${esc(cert.certCode || '')}</dd>
                 <dt>Тип</dt><dd>${esc(cert.typeText || '—')}</dd>
                 <dt>Дійсний до</dt><dd>${esc(formatDate(cert.validUntil))}</dd>
+                ${useTime ? `<dt>Використано</dt><dd>${esc(useTime)} · Київ</dd>` : ''}
             </dl>` : '';
         const redeem = stateName === 'redeemable' && cert?.canRedeem === true
-            ? '<button type="button" class="btn-page-primary" data-cert-redeem>Погасити сертифікат</button>' : '';
-        result.innerHTML = `<div><span class="cert-page-badge cert-page-badge-${esc(meta.tone)}">${esc(meta.badge || meta.title)}</span><h3>${esc(meta.title)}</h3><p>${esc(meta.message)}</p></div>${details}${redeem}`;
+            ? '<button type="button" class="btn-page-primary" data-cert-redeem>Активувати вхід</button>' : '';
+        const icon = stateName === 'just_activated'
+            ? '<span class="cert-check-success-icon" aria-hidden="true">✓</span>' : '';
+        result.innerHTML = `<div class="cert-check-result-summary">${icon}<div><span class="cert-page-badge cert-page-badge-${esc(meta.tone)}">${esc(meta.badge || meta.title)}</span><h3>${esc(meta.title)}</h3><p>${esc(meta.message)}</p></div></div>${details}${redeem}`;
     }
 
     function invalidateCertificateCheck() {
@@ -300,14 +316,14 @@
         const button = $('certificateCheckResult')?.querySelector('[data-cert-redeem]');
         if (button) button.disabled = true;
         try {
-            const confirmed = await confirmCertificateAction(`Погасити сертифікат ${cert.certCode}? Повторно використати цей код буде неможливо.`, 'Погасити');
+            const confirmed = await confirmCertificateAction(`Активувати вхід за сертифікатом ${cert.certCode}? Після підтвердження він одразу стане використаним. Повторний вхід за цим кодом буде неможливий.`, 'Активувати вхід');
             if (!confirmed || version !== state.checkVersion || !syncCertificateAvailability()) return;
-            if ($('certificateCheckStatus')) $('certificateCheckStatus').textContent = 'Погашаємо сертифікат…';
+            if ($('certificateCheckStatus')) $('certificateCheckStatus').textContent = 'Активуємо вхід…';
             const result = await apiRedeemCertificate(cert.id);
             if (version !== state.checkVersion) return;
-            if (result?.success) renderCertificateCheck('used', result.certificate);
+            if (result?.success) renderCertificateCheck('just_activated', result.certificate);
             else {
-                notify(result?.error || 'Не вдалося підтвердити погашення. Перевірте статус сертифіката.', 'error');
+                notify(result?.error || 'Не вдалося активувати вхід. Перевірте статус сертифіката.', 'error');
                 await loadCertificateCheck(cert.certCode);
             }
         } catch {

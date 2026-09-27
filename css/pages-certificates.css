@@ -32,7 +32,6 @@
     font-weight: 700;
 }
 
-.cert-page-actions,
 .cert-form-actions,
 .cert-result-actions,
 .cert-page-toolbar-actions {
@@ -43,22 +42,61 @@
 }
 
 .cert-page-actions .cert-page-action-link {
-    border-color: rgba(148, 163, 184, 0.32);
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 12px;
     min-width: 0;
-    line-height: 1.15;
-    text-align: center;
+    min-height: 76px;
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--gray-800);
+    text-decoration: none;
+}
+
+.cert-page-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 18px;
+    background: rgba(241, 245, 249, 0.72);
+}
+
+.cert-page-actions .cert-page-action-link[hidden] { display: none; }
+
+.cert-nav-icon {
+    display: grid;
+    flex: 0 0 36px;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(20, 184, 166, 0.12);
+    color: #0f766e;
+    font-size: 23px;
+    font-weight: 900;
+}
+
+.cert-nav-copy { display: grid; min-width: 0; gap: 2px; }
+.cert-nav-copy strong { font-size: 14px; line-height: 1.2; }
+.cert-nav-copy small { color: var(--gray-600); font-size: 11px; font-weight: 700; line-height: 1.2; }
+
+.cert-page-actions .cert-page-action-link:hover {
+    border-color: rgba(20, 184, 166, 0.48);
 }
 
 .cert-page-actions .cert-page-action-link.is-active,
 .cert-page-actions .cert-page-action-link[aria-current="page"] {
     border-color: rgba(16, 185, 129, 0.68);
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.96), rgba(20, 184, 166, 0.9));
-    color: #ffffff;
-    box-shadow: 0 12px 28px rgba(16, 185, 129, 0.24);
+    background: rgba(16, 185, 129, 0.13);
+    color: #065f46;
+    box-shadow: inset 0 -3px #10b981;
 }
+
+.cert-page-actions .cert-page-action-link.is-active .cert-nav-icon { background: #059669; color: #fff; }
 
 .cert-page-actions .cert-page-action-link:focus-visible {
     outline: 3px solid rgba(20, 184, 166, 0.42);
@@ -153,7 +191,6 @@
 .cert-check-result-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; margin: 0; padding-top: 16px; border-top: 1px solid rgba(148, 163, 184, 0.24); }
 .cert-check-result-meta dt { color: var(--gray-500); font-weight: 800; }
 .cert-check-result-meta dd { margin: 0; color: var(--gray-800); font-weight: 800; overflow-wrap: anywhere; }
-body[data-cert-mode="check"] .cert-page-actions { display: none; }
 
 body.dark-mode .cert-check-card,
 body.dark-mode .cert-check-result { background: rgba(30, 30, 56, 0.84); border-color: rgba(255, 255, 255, 0.12); }
@@ -805,9 +842,15 @@ body.dark-mode .cert-page-stats span {
 body.dark-mode .cert-page-actions .cert-page-action-link.is-active,
 body.dark-mode .cert-page-actions .cert-page-action-link[aria-current="page"] {
     border-color: rgba(45, 212, 191, 0.72);
-    background: linear-gradient(135deg, rgba(13, 148, 136, 0.96), rgba(16, 185, 129, 0.88));
+    background: rgba(13, 148, 136, 0.2);
     color: #f8fafc;
 }
+
+body.dark-mode .cert-page-actions { background: rgba(15, 23, 42, 0.72); }
+body.dark-mode .cert-page-actions .cert-page-action-link { background: rgba(30, 41, 59, 0.72); color: #f8fafc; }
+body.dark-mode .cert-page-actions .cert-page-action-link.is-active { background: rgba(13, 148, 136, 0.2); }
+body.dark-mode .cert-nav-copy small { color: #cbd5e1; }
+body.dark-mode .cert-nav-icon { color: #5eead4; }
 
 body.dark-mode .cert-form-card .form-error {
     color: #fca5a5;
@@ -876,12 +919,10 @@ body.dark-mode .cert-fixed-type-field strong {
         grid-template-columns: 1fr;
     }
 
-    .cert-page-actions,
     .cert-form-actions {
         width: 100%;
     }
 
-    .cert-page-actions > *,
     .cert-form-actions > * {
         flex: 1 1 180px;
     }
@@ -892,6 +933,11 @@ body.dark-mode .cert-fixed-type-field strong {
 }
 
 @media (max-width: 560px) {
+    .cert-page-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 6px; }
+    .cert-page-actions .cert-page-action-link { min-height: 60px; gap: 7px; padding: 8px; }
+    .cert-nav-icon { flex-basis: 28px; width: 28px; height: 28px; font-size: 18px; }
+    .cert-nav-copy strong { font-size: 12px; }
+    .cert-nav-copy small { font-size: 10px; }
     .certificates-shell {
         gap: 12px;
     }

@@ -127,11 +127,12 @@ const { buildStaffScheduleWorkbookBuffer } = require('../services/staffScheduleW
 
 const { requireAction, requireRole, authenticateToken, ROLE_LEVEL, canUseAction } = require('../middleware/auth');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { checkinJournalDate } = require('../services/parkStaffCheckinJournalRead');
 const log = createLogger('Staff');
 
 // v39.8: Security — require authentication for all staff endpoints
 router.use(authenticateToken);
-router.use(requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'staff' }));
+router.use(requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'staff', parkCheckinJournalRead: true }));
 
 const ACCOUNT_MANAGER_PRIMARY_ROLES = new Set(['creator', 'director']);
 const STAFF_COPY_WEEK_RAW_DEPARTMENT_ALLOWLIST = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);
@@ -2481,19 +2482,26 @@ router.post('/checkout', async (req, res) => {
 // GET /api/staff/checkins — today's check-ins
 router.get('/checkins', async (req, res) => {
     try {
-        const date = req.query.date || getKyivDateStr();
+        const date = checkinJournalDate(req.query.date,
+            req.query.date === undefined ? getKyivDateStr() : undefined);
+        if (!date) return res.status(400).json({ success: false, error: 'Некоректна дата журналу' });
         const result = await pool.query(`
-            SELECT sc.*, s.name AS staff_name
+            SELECT sc.date::text AS date,
+                sc.check_in AS check_in_time,
+                sc.check_out AS check_out_time,
+                CASE WHEN sc.check_out IS NOT NULL THEN 'checked_out'
+                    WHEN sc.check_in IS NOT NULL THEN 'checked_in'
+                    ELSE 'pending' END AS status,
+                COALESCE(NULLIF(s.display_name, ''), s.name) AS staff_name
             FROM staff_checkins sc
             JOIN staff s ON s.id = sc.staff_id
-            WHERE sc.date = $1
-            ORDER BY sc.check_in
+            WHERE sc.date = $1::date
+            ORDER BY sc.check_in NULLS LAST, staff_name
         `, [date]);
-        res.json(result.rows);
+        res.json({ success: true, date, data: result.rows });
     } catch (err) {
-        if (err.message.includes('does not exist')) return res.json([]);
         log.error('GET /checkins error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 

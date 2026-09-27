@@ -35,7 +35,8 @@ test('Check-in exits model loading before camera or attendance work on CDN failu
     assert.match(initializationBeforeCamera, /await loadModels\(\);/, 'models initialize before camera');
     assert.match(initializationBeforeCamera, /showInitializationError\(err, 'model'\);/, 'model failure has an explicit error state');
     assert.match(initializationBeforeCamera, /return;/, 'model failure stops initialization');
-    assert.doesNotMatch(initializationBeforeCamera, /loadDescriptors\(|loadLog\(|detectLoop\(|performCheckin\(/, 'model failure cannot reach recognition or attendance mutation');
+    assert.match(initializationBeforeCamera, /await loadLog\(\);/, 'journal remains readable before model dependency');
+    assert.doesNotMatch(initializationBeforeCamera, /loadDescriptors\(|detectLoop\(|performCheckin\(/, 'model failure cannot reach recognition or attendance mutation');
     assert.match(checkin, /id="retryCheckinInitBtn"/, 'a retry control is rendered');
     assert.match(checkin, /window\.retryCheckinInitialization = initializeCheckin;/, 'retry reuses the guarded initializer');
 });

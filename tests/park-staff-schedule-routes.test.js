@@ -32,6 +32,7 @@ const segment = {
 function createPoolFixture() {
     const calls = [];
     const sideEffects = [];
+    const scenario = { failCheckins: false };
     const pool = {
         async connect() { sideEffects.push('connect'); throw new Error('Unexpected write connection'); },
         async query(sql, params = []) {
@@ -77,6 +78,12 @@ function createPoolFixture() {
                     corrected_by: PRIVATE, correction_reason: PRIVATE, notes: PRIVATE,
                     compensation_snapshot: { privateField: PRIVATE, hourlyRate: 99999 }
                 }];
+            } else if (normalized.includes('FROM staff_checkins sc JOIN staff s')) {
+                if (scenario.failCheckins) throw new Error('Synthetic journal failure');
+                assert.doesNotMatch(normalized, /sc\.\*|descriptor|payroll|hourly_rate/i);
+                rows = [{ date: '2026-09-27', check_in_time: '2026-09-27T06:12:00.000Z', check_out_time: null,
+                    status: 'checked_in', staff_name: 'Synthetic Park Worker', staff_id: STAFF_ID,
+                    method: PRIVATE, descriptor: PRIVATE, hourly_rate: 99999 }];
             } else if (normalized.includes('FROM hr_audit_log')) {
                 assert.deepEqual(params, [STAFF_ID, '2026-09-14', 50]);
                 rows = [{
@@ -104,7 +111,7 @@ function createPoolFixture() {
             return { rows: structuredClone(rows), rowCount: rows.length };
         }
     };
-    return { pool, calls, sideEffects };
+    return { pool, calls, sideEffects, scenario };
 }
 
 async function withActualRouters(run) {
@@ -125,7 +132,7 @@ async function withActualRouters(run) {
         // These modules are outside the read path. Loading or calling providers,
         // account writes, payroll writes or upload handlers is not part of this fixture.
         const unusedServices = [
-            'telegram', 'websocket', 'booking', 'accountSecurity', 'payroll', 'payrollSettlement',
+            'telegram', 'websocket', 'accountSecurity', 'payroll', 'payrollSettlement',
             'staffLifecycle', 'accountLinking', 'accountOnboarding', 'staffScheduleWorkbook',
             'costumeInventory', 'taskExecution', 'taskPerformancePolicy', 'hrOnboarding',
             'professionChecklists', 'hrVacancyPlatformFormatter', 'hrPayrollPeriod',
@@ -143,6 +150,7 @@ async function withActualRouters(run) {
                 }
             }));
         }
+        installMock('../services/booking', { getKyivDateStr: () => '2026-09-27' });
         const { applyMembershipAccess, buildMembershipAccess } = require('../services/businessMembership');
         const actualAuth = require('../middleware/auth');
         const authenticateFixture = (req, res, next) => {
@@ -151,15 +159,23 @@ async function withActualRouters(run) {
             const principal = { id: 9101, username: 'synthetic_schedule_reader', role: state.actor.role || 'director',
                 business_contexts: ['event_genix', 'dar', 'crm', 'maysternya_doli'], default_business_context: 'event_genix' };
             const registry = ['event_genix', 'dar', 'crm', 'maysternya_doli'].map((key, index) => ({
-                business_id: index + 1, organization_id: 1, context_key: key, access_mode: 'membership',
+                business_id: index + 1,
+                organization_id: state.actor.otherOrganization && key === 'event_genix' ? 2 : 1,
+                context_key: key,
+                access_mode: state.actor.compatibility && key === 'event_genix' ? 'compatibility' : 'membership',
                 business_status: state.actor.inactive && key === 'event_genix' ? 'inactive' : 'active',
-                organization_status: 'active'
+                organization_status: state.actor.inactiveOrganization && key === 'event_genix' ? 'inactive' : 'active'
             }));
-            const memberships = registry.filter(row => !(state.actor.revoked && row.context_key === 'event_genix'))
-                .map(row => ({ ...row, role: principal.role, organization_role: 'member',
+            const memberships = registry.filter(row => !(state.actor.revoked && row.context_key === 'event_genix')
+                && !(state.actor.compatibility && row.context_key === 'event_genix'))
+                .map(row => ({ ...row, organization_id: state.actor.otherOrganization && row.context_key === 'event_genix'
+                    ? 1 : row.organization_id, role: principal.role, organization_role: 'member',
                     business_modules: [], is_default: row.context_key === 'event_genix',
                     action_allowlist: state.actor.allow || [], action_denylist: state.actor.deny || [] }));
             req.user = applyMembershipAccess(principal, buildMembershipAccess(principal, memberships, context, registry));
+            if (state.actor.staleActiveBusinessId && req.user.activeBusinessMembership) {
+                req.user.activeBusinessMembership = { ...req.user.activeBusinessMembership, businessId: 999 };
+            }
             return next();
         };
         installMock('../middleware/auth', { ...actualAuth, authenticateToken: authenticateFixture });
@@ -315,6 +331,70 @@ test('Park schedule ownership through the actual Express staff and HR routers', 
                 assert.equal(result.body.success, false, path);
                 assert.equal(result.body.scheduleAccess, undefined, 'errors must not become successful read-only payloads');
                 assert.equal(calls.length, count, path);
+            }
+        });
+    });
+});
+
+test('Park Check-in journal is an exact, non-biometric GET on the real Express staff router', async t => {
+    await withActualRouters(async ({ state, scenario, request, calls }) => {
+        await t.test('Park today viewer receives only date, time, status and safe display name', async () => {
+            state.actor = { deny: ['hr.schedule.view', 'hr.staff.view', 'hr.payroll.view'] };
+            const result = await request('/api/staff/checkins');
+            assert.equal(result.status, 200, result.text);
+            assert.deepEqual(result.body, { success: true, date: '2026-09-27', data: [{
+                date: '2026-09-27', check_in_time: '2026-09-27T06:12:00.000Z', check_out_time: null,
+                status: 'checked_in', staff_name: 'Synthetic Park Worker'
+            }] });
+            assert.equal(result.text.includes(PRIVATE), false);
+            assert.doesNotMatch(result.text, /staff_id|descriptor|hourly_rate|method|payroll/i);
+            assert.equal(calls.at(-1).params[0], '2026-09-27');
+            assert.equal((await request('/api/staff/face-descriptors')).status, 403);
+        });
+
+        await t.test('missing capability, foreign context, mismatched organization and revoked membership deny before SQL', async () => {
+            for (const [actor, context] of [
+                [{ deny: ['hr.today.view'] }, 'event_genix'],
+                [{ role: 'security', allow: ['hr.schedule.view'], deny: ['hr.today.view'] }, 'event_genix'],
+                [{}, 'dar'], [{}, 'crm'], [{ otherOrganization: true }, 'event_genix'],
+                [{ revoked: true }, 'event_genix'], [{ compatibility: true }, 'event_genix'],
+                [{ staleActiveBusinessId: true }, 'event_genix'],
+                [{ inactive: true }, 'event_genix'], [{ inactiveOrganization: true }, 'event_genix']
+            ]) {
+                state.actor = actor;
+                const count = calls.length;
+                const result = await request('/api/staff/checkins', { context });
+                assert.equal(result.status, 403, `${JSON.stringify(actor)} ${context}: ${result.text}`);
+                assert.equal(calls.length, count);
+            }
+        });
+
+        await t.test('aggregate selectors, invalid date, server errors and non-GET paths stay closed', async () => {
+            state.actor = {};
+            for (const suffix of ['businessScope=all', 'businessScope=multi&businessContexts=event_genix,dar',
+                'business_context=dar']) {
+                const count = calls.length;
+                assert.equal((await request(`/api/staff/checkins?${suffix}`)).status, 403, suffix);
+                assert.equal(calls.length, count);
+            }
+            for (const date of ['2026-02-30', 'not-a-date']) {
+                const count = calls.length;
+                assert.equal((await request(`/api/staff/checkins?date=${date}`)).status, 400);
+                assert.equal(calls.length, count);
+            }
+            scenario.failCheckins = true;
+            const failure = await request('/api/staff/checkins?date=2026-09-27');
+            assert.equal(failure.status, 500);
+            assert.equal(failure.body.success, false);
+            scenario.failCheckins = false;
+            for (const [method, path] of [
+                ['HEAD', '/api/staff/checkins'], ['POST', '/api/staff/checkins'],
+                ['POST', '/api/staff/checkin'], ['POST', '/api/staff/checkout'],
+                ['GET', '/api/staff/face-descriptors'], ['POST', '/api/staff/9701/face-descriptor']
+            ]) {
+                const count = calls.length;
+                assert.equal((await request(path, { method })).status, 403, `${method} ${path}`);
+                assert.equal(calls.length, count);
             }
         });
     });

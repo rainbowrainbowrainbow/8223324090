@@ -334,7 +334,9 @@
                 : phase === 'descriptors' || phase === 'log'
                     ? (err && err.status === 403
                         ? (err.code === 'staff_not_migrated'
-                            ? 'Check-in недоступний для цього бізнесу: staff-дані ще не перенесені.'
+                            ? (phase === 'descriptors'
+                                ? 'Розпізнавання облич недоступне для цього бізнесу: staff-дані ще не перенесені.'
+                                : 'Журнал Check-in недоступний для цього бізнесу: staff-дані ще не перенесені.')
                             : `Немає доступу до ${dependency} Check-in. Зверніться до адміністратора.`)
                         : `Не вдалося завантажити ${dependency} Check-in. Перевірте мережу та повторіть спробу.`)
                 : 'Не вдалося підготувати Check-in. Спробуйте ще раз.';
@@ -349,8 +351,9 @@
                 error.code = data && data.code;
                 throw error;
             }
-            if (!Array.isArray(data)) throw new Error(`Некоректна відповідь ${label}`);
-            return data;
+            var rows = Array.isArray(data) ? data : data && data.success === true ? data.data : null;
+            if (!Array.isArray(rows)) throw new Error(`Некоректна відповідь ${label}`);
+            return rows;
         }
 
         // Camera
@@ -547,14 +550,11 @@
             state.setAttribute('role', 'status');
             try {
                 var resp = await fetch(API_BASE + '/staff', { headers: headers() });
-                var staff = await resp.json();
-                if (!resp.ok) {
-                    var error = new Error(staff && staff.error || `HTTP ${resp.status}`);
-                    error.status = resp.status;
-                    throw error;
+                var arr = await readArrayResponse(resp, 'списку співробітників');
+                if (!arr.every(function(s) { return s && Number.isSafeInteger(Number(s.id)) && Number(s.id) > 0
+                    && typeof s.name === 'string' && s.name.trim(); })) {
+                    throw new Error('Некоректні дані співробітників');
                 }
-                var arr = Array.isArray(staff) ? staff : staff && staff.staff;
-                if (!Array.isArray(arr)) throw new Error('Некоректна відповідь списку співробітників');
                 select.innerHTML = '<option value="">Оберіть співробітника...</option>';
                 arr.forEach(function(s) {
                     if (s.is_active !== false) {
@@ -631,21 +631,49 @@
             try {
                 var resp = await fetch(API_BASE + '/staff/checkins', { headers: headers() });
                 var checkins = await readArrayResponse(resp, 'журналу');
+                if (!checkins.every(function(c) { return c && typeof c.staff_name === 'string' && c.staff_name.trim()
+                    && /^\d{4}-\d{2}-\d{2}$/.test(c.date)
+                    && ['checked_in', 'checked_out', 'pending'].includes(c.status)
+                    && [c.check_in_time, c.check_out_time].every(function(value) {
+                        return value === null || (typeof value === 'string'
+                            && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value)
+                            && Number.isFinite(Date.parse(value)));
+                    }); })) throw new Error('Некоректні дані журналу');
                 if (!checkins.length) {
                     el.innerHTML = '<div style="color:#6B7280;padding:10px;">Ще ніхто не відмітився</div>';
                     return;
                 }
-                el.innerHTML = checkins.map(function(c) {
-                    var inTime = c.check_in ? new Date(c.check_in).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }) : '—';
-                    var outTime = c.check_out ? new Date(c.check_out).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }) : '';
-                    return '<div class="log-entry">'
-                        + '<div class="le-name">' + (c.staff_name || 'Staff #' + c.staff_id) + '</div>'
-                        + '<div class="le-time">🟢 ' + inTime + (outTime ? ' → 🔴 ' + outTime : '') + '</div>'
-                        + '</div>';
-                }).join('');
+                el.replaceChildren();
+                checkins.forEach(function(c) {
+                    var entry = document.createElement('div');
+                    entry.className = 'log-entry';
+                    var name = document.createElement('div');
+                    name.className = 'le-name';
+                    name.textContent = c.staff_name;
+                    var time = document.createElement('div');
+                    time.className = 'le-time';
+                    var displayTime = function(value) { return value
+                        ? new Date(value).toLocaleTimeString('uk-UA', {
+                            hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv'
+                        }) : '—'; };
+                    time.textContent = '🟢 ' + displayTime(c.check_in_time)
+                        + (c.check_out_time ? ' → 🔴 ' + displayTime(c.check_out_time) : '');
+                    entry.append(name, time);
+                    el.appendChild(entry);
+                });
             } catch (err) {
                 el.setAttribute('role', 'alert');
                 el.textContent = err.status === 403 ? 'Журнал недоступний для цього бізнесу або вашої ролі.' : 'Не вдалося завантажити журнал.';
+                var retry = document.createElement('button');
+                retry.type = 'button';
+                retry.className = 'btn btn-secondary';
+                retry.textContent = 'Повторити журнал';
+                retry.addEventListener('click', function() {
+                    loadLog().then(function() {
+                        setStatus('Журнал оновлено. Розпізнавання зупинено; для його повторної спроби скористайтеся кнопкою вище.', '', { retry: true });
+                    }).catch(function(nextError) { showInitializationError(nextError, 'log'); });
+                });
+                el.appendChild(retry);
                 throw err;
             }
         }
@@ -703,6 +731,13 @@
             try {
                 if (!(await requireAuthorizedSession())) return;
 
+                setStatus('Завантаження журналу...', 'loading');
+                try {
+                    await loadLog();
+                } catch (err) {
+                    showInitializationError(err, 'log');
+                    return;
+                }
                 setStatus('Завантаження моделі розпізнавання...', 'loading');
                 try {
                     await loadModels();
@@ -714,12 +749,6 @@
                     await loadDescriptors();
                 } catch (err) {
                     showInitializationError(err, 'descriptors');
-                    return;
-                }
-                try {
-                    await loadLog();
-                } catch (err) {
-                    showInitializationError(err, 'log');
                     return;
                 }
                 var cameraReady = await startCamera();

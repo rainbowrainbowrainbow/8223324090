@@ -19,6 +19,13 @@ const PERSON = {
     termination_recorded_by: null, has_account: true, has_face_descriptor: true,
     account_user_id: 9001, account_username: PRIVATE, unrelated_secret: PRIVATE
 };
+const STRUCTURE = {
+    structure: PRIVATE, instructions: PRIVATE, updatedBy: PRIVATE, updatedAt: '2026-09-01T00:00:00Z',
+    nodes: [{ id: 'park-root', title: 'Park root', description: PRIVATE, meta: PRIVATE,
+        parentId: null, lane: 'leadership', tone: 'blue', stack: null, order: 1,
+        x: 20, y: 30, displayGroup: 'admin', archived: false, collapsed: false,
+        payroll: PRIVATE }]
+};
 
 async function withActualHrRouter(run) {
     const savedCache = new Map(Object.entries(require.cache));
@@ -42,7 +49,8 @@ async function withActualHrRouter(run) {
                 rows = [{ staff_id: STAFF_ID, profession_key: 'animator', hourly_rate: 12345,
                     payroll_scheme_id: PRIVATE }];
             } else if (normalized.includes("FROM settings WHERE key = 'hr_company_structure'")) {
-                rows = [{ value: { nodes: [] } }];
+                if (state.actor.failStructure) throw new Error('Synthetic structure query failure');
+                rows = [{ value: STRUCTURE }];
             } else if (normalized.startsWith('SELECT key, structure_node_id FROM hr_professions')) {
                 rows = [];
             }
@@ -149,7 +157,7 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
             assert.equal(list.body.data[0].emergency_contact, undefined);
             assert.equal(list.body.data[0].account_user_id, undefined);
             assert.equal(list.text.includes(PRIVATE), false);
-            assert.equal((await request('/api/hr/company-structure')).status, 403);
+            assert.equal((await request('/api/hr/company-structure')).status, 200);
             const detail = await request(`/api/hr/staff/${STAFF_ID}`);
             assert.equal(detail.status, 200, detail.text);
             assert.equal(detail.body.data.name, PERSON.name);
@@ -223,7 +231,7 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
             }
         });
 
-        await t.test('no child route, write method, company structure or HEAD inherits the card exception', async () => {
+        await t.test('no child route, write method or HEAD inherits the card exception', async () => {
             state.actor = {};
             for (const [method, path] of [
                 ['GET', `/api/hr/staff/${STAFF_ID}/documents`],
@@ -233,7 +241,7 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
                 ['GET', `/api/hr/staff/${STAFF_ID}/lifecycle-checklist`],
                 ['GET', `/api/hr/staff/${STAFF_ID}/offboarding`],
                 ['GET', `/api/hr/staff/${STAFF_ID}/history`],
-                ['GET', '/api/hr/company-structure'], ['POST', '/api/hr/staff'],
+                ['POST', '/api/hr/staff'],
                 ['PUT', `/api/hr/staff/${STAFF_ID}`], ['HEAD', '/api/hr/staff'],
                 ['HEAD', `/api/hr/staff/${STAFF_ID}`]
             ]) {
@@ -242,6 +250,65 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
                 assert.equal(response.status, 403, `${method} ${path}`);
                 assert.equal(calls.length, count, `${method} ${path}`);
             }
+        });
+
+        await t.test('company structure is an exact Park GET with a minimal read-only projection', async () => {
+            state.actor = { deny: ['hr.schedule.view', 'hr.payroll.view', 'hr.staff.manage'] };
+            const response = await request('/api/hr/company-structure');
+            assert.equal(response.status, 200, response.text);
+            assert.deepEqual(response.body.data, { nodes: [{
+                id: 'park-root', title: 'Park root', parentId: null, lane: 'leadership',
+                tone: 'blue', stack: null, order: 1, x: 20, y: 30,
+                displayGroup: 'admin', archived: false, collapsed: false
+            }] });
+            assert.equal(response.body.hasSavedStructure, true);
+            assert.deepEqual(response.body.structureAccess, { readOnly: true, businessContext: 'event_genix' });
+            assert.equal(response.body.displayGroups.every(group =>
+                Object.keys(group).every(key => ['key', 'label', 'order'].includes(key))), true);
+            assert.equal(response.text.includes(PRIVATE), false);
+            assert.equal(response.body.data.structure, undefined);
+            assert.equal(response.body.data.instructions, undefined);
+            assert.equal(response.body.data.updatedBy, undefined);
+        });
+
+        await t.test('company structure rejects missing view, foreign context, bad membership and aggregate scope before SQL', async () => {
+            for (const [actor, context, suffix] of [
+                [{ deny: ['hr.staff.view'], allow: ['hr.schedule.view'] }, 'event_genix', ''],
+                [{ deny: ['hr.staff.view'], allow: ['hr.payroll.view'] }, 'event_genix', ''],
+                [{}, 'dar', ''], [{ otherOrganization: true }, 'event_genix', ''],
+                [{ revoked: true }, 'event_genix', ''], [{ compatibility: true }, 'event_genix', ''],
+                [{ staleActiveBusinessId: true }, 'event_genix', ''],
+                [{ inactive: true }, 'event_genix', ''],
+                [{ inactiveOrganization: true }, 'event_genix', ''],
+                [{}, 'event_genix', '?businessScope=all'],
+                [{}, 'event_genix', '?businessScope=multi&businessContexts=event_genix,dar'],
+                [{}, 'event_genix', '?business_context=dar']
+            ]) {
+                state.actor = actor;
+                const count = calls.length;
+                const response = await request('/api/hr/company-structure' + suffix, { context });
+                assert.equal(response.status, 403, response.text);
+                assert.equal(calls.length, count, 'denied structure must not query settings');
+            }
+        });
+
+        await t.test('company structure failure is 500; other methods and HR reads remain closed', async () => {
+            state.actor = { failStructure: true };
+            assert.equal((await request('/api/hr/company-structure')).status, 500);
+            state.actor = {};
+            for (const [method, path] of [
+                ['HEAD', '/api/hr/company-structure'], ['PUT', '/api/hr/company-structure'],
+                ['GET', '/api/hr/company-structure/'], ['GET', '/api/hr/company-structure/extra'],
+                ['GET', '/api/hr/pool?status=reserve'],
+                ['GET', '/api/hr/checklists/dashboard']
+            ]) {
+                const count = calls.length;
+                const response = await request(path, { method });
+                assert.equal(response.status, 403, method + ' ' + path);
+                assert.equal(calls.length, count);
+            }
+            assert.equal((await request(`/api/hr/staff/${STAFF_ID}`)).status, 200,
+                'base card must not depend on the structure query');
         });
 
         await t.test('unauthenticated requests stop before any query', async () => {

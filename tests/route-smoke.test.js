@@ -7230,14 +7230,7 @@ describe('route-level API safety smoke', () => {
 
     it('persists HR company structure as editable org chart nodes', async () => {
         const loaded = await request('GET', '/api/hr/company-structure', undefined, withAuth());
-        assert.equal(loaded.status, 200, JSON.stringify(loaded.data));
-        assert.equal(loaded.data.success, true);
-        assert.equal(loaded.data.data.schemaVersion, 1);
-        assert.equal(loaded.data.data.nodes[0].id, 'director');
-        assert.equal(loaded.data.data.nodes[0].tone, 'gold');
-        assert.equal(loaded.data.data.nodes[0].displayGroup, 'admin');
-        assert.equal(loaded.data.hasSavedStructure, true);
-        assert.deepEqual(loaded.data.displayGroups.map(group => group.key), ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning']);
+        assert.equal(loaded.status, 403, 'legacy creator token without current Park membership cannot read structure');
 
         const insertsBeforeConflict = queries.filter(q => /INSERT INTO settings \(key, value\)/i.test(q.text)).length;
         const conflict = await request('PUT', '/api/hr/company-structure', {
@@ -7268,7 +7261,7 @@ describe('route-level API safety smoke', () => {
 
         const saved = await request('PUT', '/api/hr/company-structure', {
             schemaVersion: 1,
-            baseUpdatedAt: loaded.data.data.updatedAt,
+            baseUpdatedAt: '2099-05-02T12:00:00Z',
             structure: 'оновлені нотатки',
             instructions: 'нова інструкція',
             nodes: [

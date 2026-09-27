@@ -54,6 +54,8 @@ function createHarness() {
         removeListener() {}
     });
     window.canAccess = action => action === 'hr.staff.manage' && window.__canManageStructure;
+    window.__hrStructureContext = 'event_genix';
+    window.getLegacyBusinessSurfaceContextKey = () => window.__hrStructureContext;
 
     const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
     const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
@@ -81,6 +83,10 @@ function createHarness() {
                     setCompanyOrgInspectorOpen(document.getElementById('hrOrgInspector')?.classList.contains('is-mobile-open'));
                 },
                 setFetch(handler) { hrFetch = handler; },
+                setContext(context) {
+                    window.__hrStructureContext = context;
+                    window.dispatchEvent(new window.Event('crmBusinessContextChanged'));
+                },
                 load(options = {}) { return loadCompanyStructure(options); },
                 save(options = {}) { return saveCompanyStructure(options); },
                 applyTemplate() { return applyDefaultCompanyStructureTemplate(); },
@@ -127,6 +133,7 @@ function createHarness() {
                     return {
                         loaded: companyStructureLoaded,
                         loadState: companyStructureLoadState,
+                        serverReadOnly: companyStructureServerReadOnly,
                         saveState: companyStructureSaveState,
                         hasSavedData: companyStructureHasSavedData,
                         updatedAt: companyStructureUpdatedAt,
@@ -202,6 +209,7 @@ function createHarness() {
                     companyStructureSavedRevision = 0;
                     companyStructureUpdatedAt = companyStructureNodes.length ? '2099-05-31T12:00:00Z' : null;
                     companyStructurePermissionDenied = false;
+                    companyStructureServerReadOnly = false;
                     resetCompanyOrgHistory();
                     resetCompanyOrgViewState();
                     bindCompanyStructureEditorControls();
@@ -1588,6 +1596,102 @@ test('HR org read-only capability removes mutation controls but keeps the struct
     assert.equal(window.document.getElementById('hrOrgEditSelectedBtn').classList.contains('hidden'), true);
     assert.equal(window.document.getElementById('companyStructureNotes').readOnly, true);
     assert.equal(window.document.getElementById('companyInstructionsText').readOnly, true);
+});
+
+test('Park structure response forces read-only UI even when the role can manage HR', async () => {
+    const { window, api } = createHarness();
+    api.setFetch(async () => ({
+        success: true,
+        data: { nodes: [{ id: 'park-node', title: 'Park node', lane: 'leadership' }] },
+        hasSavedStructure: true,
+        displayGroups: [{ key: 'admin', label: 'Administration', order: 1 }],
+        structureAccess: { readOnly: true, businessContext: 'event_genix' }
+    }));
+    await api.load({ force: true });
+
+    assert.equal(api.state().loadState, 'ready');
+    assert.equal(api.state().serverReadOnly, true);
+    assert.equal(api.nodes()[0].title, 'Park node');
+    assert.equal(window.document.getElementById('btnSaveCompanyStructure').classList.contains('hidden'), true);
+    assert.equal(window.document.getElementById('hrOrgEditSelectedBtn').classList.contains('hidden'), true);
+    assert.equal(window.document.getElementById('companyStructureNotes').readOnly, true);
+    assert.equal(window.document.getElementById('companyInstructionsText').readOnly, true);
+});
+
+test('HR structure 403 clears stale data and retry really reloads it', async () => {
+    const { window, api } = createHarness();
+    api.setFetch(async () => ({
+        success: true,
+        data: { nodes: [{ id: 'stale', title: 'Stale person' }], structure: 'Stale note', instructions: 'Stale instructions' },
+        hasSavedStructure: true, structureAccess: { readOnly: true }
+    }));
+    await api.load({ force: true });
+    assert.equal(api.nodes()[0].title, 'Stale person');
+    api.setFetch(async () => ({ success: false, status: 403, error: 'Restricted structure' }));
+    await api.load({ force: true });
+
+    assert.equal(api.state().loadState, 'restricted');
+    assert.equal(api.nodes().length, 0);
+    assert.equal(window.document.getElementById('companyStructureStatus').dataset.state, 'restricted');
+    assert.equal(window.document.getElementById('btnRetryCompanyStructure').classList.contains('hidden'), false);
+    assert.equal(window.document.getElementById('companyStructureNotes').value, '');
+    assert.equal(window.document.getElementById('companyInstructionsText').value, '');
+    assert.equal(window.document.getElementById('companyStructureText').value, '');
+
+    let requests = 0;
+    api.setFetch(async requestPath => {
+        if (requestPath === '/company-structure') requests += 1;
+        return { success: true, data: { nodes: [{ id: 'restored', title: 'Restored' }] },
+            hasSavedStructure: true, structureAccess: { readOnly: true } };
+    });
+    click(window, window.document.getElementById('btnRetryCompanyStructure'));
+    for (let attempt = 0; attempt < 10 && api.state().loadState !== 'ready'; attempt += 1) await settle();
+    assert.equal(requests, 1);
+    assert.equal(api.state().loadState, 'ready');
+    assert.equal(api.nodes()[0].title, 'Restored');
+});
+
+test('HR structure keeps 500 and offline failures retryable without showing cached nodes', async () => {
+    for (const failedFetch of [
+        async () => ({ success: false, status: 500, error: 'Temporary structure error' }),
+        async () => { throw new Error('Offline'); }
+    ]) {
+        const { window, api } = createHarness();
+        api.setNodes([{ id: 'cached', title: 'Cached node' }]);
+        api.setFetch(failedFetch);
+        await api.load({ force: true });
+        assert.equal(api.state().loadState, 'error');
+        assert.equal(api.nodes().length, 0);
+        assert.equal(window.document.getElementById('btnRetryCompanyStructure').classList.contains('hidden'), false);
+        api.setFetch(async () => ({ success: true, data: { nodes: [{ id: 'fresh', title: 'Fresh node' }] },
+            hasSavedStructure: true, structureAccess: { readOnly: true } }));
+        click(window, window.document.getElementById('btnRetryCompanyStructure'));
+        for (let attempt = 0; attempt < 10 && api.state().loadState !== 'ready'; attempt += 1) await settle();
+        assert.equal(api.state().loadState, 'ready');
+        assert.equal(api.nodes()[0].title, 'Fresh node');
+    }
+});
+
+test('late structure response from another business cannot repaint Park', async () => {
+    const { api } = createHarness();
+    const dar = deferred();
+    api.setFetch(() => dar.promise);
+    api.setContext('dar');
+    const pendingDar = api.load({ force: true });
+    api.setContext('event_genix');
+    dar.resolve({ success: true, data: { nodes: [{ id: 'dar-node', title: 'Dar node' }] },
+        hasSavedStructure: true });
+    await pendingDar;
+
+    assert.equal(api.nodes().length, 0);
+    assert.notEqual(api.state().loadState, 'ready');
+    api.setFetch(async () => ({
+        success: true, data: { nodes: [{ id: 'park-node', title: 'Park node' }] },
+        hasSavedStructure: true, structureAccess: { readOnly: true }
+    }));
+    await api.load({ force: true });
+    assert.equal(api.nodes()[0].title, 'Park node');
+    assert.equal(api.state().serverReadOnly, true);
 });
 
 test('HR org canvas drag keeps the moved node in the draft', async () => {

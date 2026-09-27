@@ -416,7 +416,8 @@ function shapeHrStaffList(rows, capability, user) {
 }
 router.use(requireHrCapabilityContract);
 router.use(requireLegacyBusinessSurface('staff', {
-    parkScheduleRouter: 'hr', parkHrStaffCardRead: true, parkHrMonthlyReportRead: true, parkHrOnboardingRead: true
+    parkScheduleRouter: 'hr', parkHrStaffCardRead: true, parkHrMonthlyReportRead: true,
+    parkHrOnboardingRead: true, parkHrCompanyStructureRead: true
 }));
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });

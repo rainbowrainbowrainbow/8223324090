@@ -14232,6 +14232,9 @@ let companyStructureDraftRevision = 0;
 let companyStructureSavedRevision = 0;
 let companyStructureSavePromise = null;
 let companyStructurePermissionDenied = false;
+let companyStructureServerReadOnly = false;
+let companyStructureLoadRequestSeq = 0;
+let companyStructureContext = '';
 let selectedCompanyStructureNodeId = 'director';
 let companyOrgLinkingNodeId = null;
 let companyOrgLinkingEndpoint = null;
@@ -14256,7 +14259,7 @@ const COMPANY_ORG_HISTORY_LIMIT = 50;
 const COMPANY_ORG_ARCHIVE_FILTERS = new Set(['active', 'archived', 'all']);
 
 function canEditCompanyStructure() {
-    if (companyStructurePermissionDenied) return false;
+    if (companyStructurePermissionDenied || companyStructureServerReadOnly) return false;
     return typeof canAccess === 'function' && canAccess('hr.staff.manage') === true;
 }
 
@@ -14348,9 +14351,9 @@ function renderCompanyStructureEditorState() {
     if (companyStructureLoadState === 'loading' || companyStructureLoadState === 'idle') {
         statusText = 'Завантаження структури...';
         statusState = 'loading';
-    } else if (companyStructureLoadState === 'error') {
+    } else if (companyStructureLoadState === 'error' || companyStructureLoadState === 'restricted') {
         statusText = companyStructureLoadError || 'Не вдалося завантажити структуру';
-        statusState = 'error';
+        statusState = companyStructureLoadState;
     } else if (companyStructureLoadState === 'empty') {
         statusText = 'Збереженої структури ще немає';
         statusState = 'clean';
@@ -14376,7 +14379,7 @@ function renderCompanyStructureEditorState() {
 
     [retryButton, templateButton, reloadButton, copyButton].forEach(button => button?.classList.add('hidden'));
     let recoveryText = '';
-    if (companyStructureLoadState === 'error') {
+    if (companyStructureLoadState === 'error' || companyStructureLoadState === 'restricted') {
         recoveryText = companyStructureLoadError || 'Структура не завантажилась. Дані не змінено.';
         retryButton?.classList.remove('hidden');
     } else if (companyStructureLoadState === 'empty' && !companyStructureHasSavedData) {
@@ -15180,10 +15183,12 @@ function renderCompanyOrgChart() {
         renderCompanyStructureEditorState();
         return;
     }
-    if (companyStructureLoadState === 'error') {
+    if (companyStructureLoadState === 'error' || companyStructureLoadState === 'restricted') {
         stage.style.width = '';
         stage.style.minHeight = '';
-        stage.innerHTML = '<div class="hr-org-loading"><strong>Структуру не завантажено</strong>Локальні або базові дані не підставлялись. Натисніть «Повторити завантаження».</div>';
+        stage.innerHTML = companyStructureLoadState === 'restricted'
+            ? '<div class="hr-org-loading"><strong>Структура недоступна в цьому бізнесі</strong>Дані не підставлялись. Перевірте доступ або оберіть інший бізнес.</div>'
+            : '<div class="hr-org-loading"><strong>Структуру не завантажено</strong>Локальні або базові дані не підставлялись. Натисніть «Повторити завантаження».</div>';
         updateCompanyOrgDetail(null);
         renderCompanyStructureEditorState();
         return;
@@ -15384,7 +15389,7 @@ function renderCompanyOrgTree() {
         root.innerHTML = '<div class="hr-org-loading">Завантаження дерева…</div>';
         return;
     }
-    if (companyStructureLoadState === 'error') {
+    if (companyStructureLoadState === 'error' || companyStructureLoadState === 'restricted') {
         root.innerHTML = '<div class="hr-org-loading">Дерево недоступне, доки структуру не завантажено.</div>';
         return;
     }
@@ -16450,6 +16455,7 @@ function companyStructureResponseHasSavedData(data, structure = {}) {
 }
 
 function applyLoadedCompanyStructure(data, options = {}) {
+    companyStructureServerReadOnly = data?.structureAccess?.readOnly === true;
     setStaffDisplayGroupsContract(data.displayGroups || data.display_groups || staffDisplayGroupsContract);
     const structure = data.data || data.structure || {};
     const notesText = document.getElementById('companyStructureNotes');
@@ -16556,21 +16562,72 @@ function initCompanyOrgChart() {
     companyOrgSavedDraftSignature = '';
     companyStructureNodes = [];
     companyStructureLoaded = false;
+    companyStructureLoadRequestSeq += 1;
+    companyStructureContext = teamAccessContext();
+    companyStructureServerReadOnly = false;
     companyStructureLoadState = 'loading';
     companyStructureSaveState = 'clean';
     renderCompanyOrgWorkspace();
 }
 
+function clearCompanyStructureReadData() {
+    companyStructureNodes = [];
+    companyStructureLoaded = false;
+    companyStructureHasSavedData = false;
+    companyStructureServerReadOnly = true;
+    companyStructureUpdatedAt = null;
+    companyStructureUpdatedBy = null;
+    companyStructureConflictCurrent = null;
+    companyStructureDraftRevision = 0;
+    companyStructureSavedRevision = 0;
+    selectedCompanyStructureNodeId = null;
+    const notes = document.getElementById('companyStructureNotes');
+    const instructions = document.getElementById('companyInstructionsText');
+    const structureText = document.getElementById('companyStructureText');
+    if (notes) notes.value = '';
+    if (instructions) instructions.value = '';
+    if (structureText) structureText.value = '';
+}
+
+function invalidateCompanyStructureContext() {
+    companyStructureLoadRequestSeq += 1;
+    companyStructureContext = teamAccessContext();
+    clearCompanyStructureReadData();
+    companyStructureLoadState = 'error';
+    companyStructureLoadError = 'Бізнес або доступ змінився. Повторіть завантаження структури.';
+    companyOrgSavedDraftSignature = '';
+    resetCompanyOrgHistory();
+    if (document.getElementById('tab-structure')?.classList.contains('active')) renderCompanyOrgWorkspace();
+}
+
+function isCurrentCompanyStructureLoad(request, context) {
+    if (request !== companyStructureLoadRequestSeq) return false;
+    if (context !== teamAccessContext()) {
+        invalidateCompanyStructureContext();
+        return false;
+    }
+    return true;
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged',
+    'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
+    window.addEventListener(eventName, invalidateCompanyStructureContext);
+}
+
 async function ensureCompanyStructureNodesLoaded(options = {}) {
+    const context = teamAccessContext();
+    if (companyStructureContext && companyStructureContext !== context) invalidateCompanyStructureContext();
     if (companyStructureLoaded && !options.force) return companyStructureNodes;
+    const request = ++companyStructureLoadRequestSeq;
+    companyStructureContext = context;
     companyStructureLoadState = 'loading';
     companyStructureLoadError = '';
     if (!options.silent) renderCompanyOrgWorkspace();
     const data = await hrFetch('/company-structure', { allowForbiddenResponse: true }).catch(() => null);
+    if (!isCurrentCompanyStructureLoad(request, context)) return [];
     if (!data?.success) {
-        companyStructureLoaded = false;
-        companyStructureNodes = [];
-        companyStructureLoadState = 'error';
+        clearCompanyStructureReadData();
+        companyStructureLoadState = data?.status === 403 ? 'restricted' : 'error';
         companyStructureLoadError = data?.error || 'Не вдалося завантажити структуру';
         if (!options.silent) {
             showNotification(companyStructureLoadError, 'error');
@@ -16585,24 +16642,29 @@ async function ensureCompanyStructureNodesLoaded(options = {}) {
 }
 
 async function loadCompanyStructure(options = {}) {
+    const context = teamAccessContext();
+    if (companyStructureContext && companyStructureContext !== context) invalidateCompanyStructureContext();
     if (companyStructureLoaded && companyStructureHasUnsavedChanges() && !options.force) {
         renderCompanyOrgWorkspace();
         selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
         return companyStructureNodes;
     }
+    const request = ++companyStructureLoadRequestSeq;
+    companyStructureContext = context;
     companyStructureLoadState = 'loading';
     companyStructureLoadError = '';
     renderCompanyOrgWorkspace();
     const data = await hrFetch('/company-structure', { allowForbiddenResponse: true }).catch(() => null);
+    if (!isCurrentCompanyStructureLoad(request, context)) return [];
     if (!data?.success) {
-        companyStructureLoaded = false;
-        companyStructureNodes = [];
-        companyStructureLoadState = 'error';
+        clearCompanyStructureReadData();
+        companyStructureLoadState = data?.status === 403 ? 'restricted' : 'error';
         companyStructureLoadError = data?.error || 'Не вдалося завантажити структуру';
         renderCompanyOrgWorkspace();
         return companyStructureNodes;
     }
     await ensureProfessionsLoaded({ force: true, silent: true });
+    if (!isCurrentCompanyStructureLoad(request, context)) return [];
     const nodes = applyLoadedCompanyStructure(data);
     renderCompanyOrgWorkspace();
     updateCompanyOrgDetail(companyStructureNodeById(selectedCompanyStructureNodeId));

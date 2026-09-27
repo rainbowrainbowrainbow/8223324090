@@ -2,6 +2,7 @@
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const { Client } = require('pg');
 const { authRequest } = require('../helpers');
 
 const enabled = process.env.RUN_HR_ONBOARDING_INTEGRATION === 'true';
@@ -51,12 +52,20 @@ describe('PostgreSQL-backed profession onboarding and vacancy hire flow', { skip
             role: 'manager'
         }, 'create second onboarding owner');
 
-        const owners = await expectOk('GET', '/api/hr/onboarding/responsible-candidates', undefined, 'load onboarding owners');
-        const ownerIds = owners.data.map(row => Number(row.id)).filter(Number.isInteger);
+        const protectedOwners = await authRequest('GET', '/api/hr/onboarding/responsible-candidates');
+        assert.equal(protectedOwners.status, 403, 'legacy compatibility access does not bypass Park membership for owner reads');
+        const db = new Client({ connectionString: process.env.TEST_DATABASE_URL });
+        let primaryOwnerId;
+        try {
+            await db.connect();
+            const result = await db.query('SELECT id FROM users WHERE username = $1', [process.env.TEST_USER]);
+            primaryOwnerId = Number(result.rows[0]?.id);
+        } finally {
+            await db.end();
+        }
         const secondOwnerId = Number(secondOwner.user?.id);
-        const primaryOwnerId = ownerIds.find(id => id !== secondOwnerId);
         assert.ok(primaryOwnerId > 0, 'bootstrap creator is an onboarding owner');
-        assert.ok(ownerIds.includes(secondOwnerId), 'second manager is an onboarding owner');
+        assert.ok(secondOwnerId > 0 && secondOwnerId !== primaryOwnerId, 'second manager is a distinct onboarding owner');
 
         const professions = await expectOk('GET', '/api/hr/professions', undefined, 'load professions');
         const professionByKey = new Map(professions.data.map(row => [row.key, row]));

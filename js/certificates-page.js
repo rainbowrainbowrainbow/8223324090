@@ -603,11 +603,13 @@
     }
 
     function revealResult(box, heading) {
-        requestAnimationFrame(() => {
+        const show = () => {
             if (!box.isConnected || box.classList.contains('hidden')) return;
             heading?.focus({ preventScroll: true });
             box.scrollIntoView?.({ block: 'start' });
-        });
+        };
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(show);
+        else show();
     }
 
     async function handleBatchSubmit(event) {

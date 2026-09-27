@@ -1823,6 +1823,30 @@ async function assertRealTeamLoaderStates(page) {
     assert.deepEqual(await cardNames(page), []);
     assert.doesNotMatch(await page.locator('#teamGrid').textContent(), /Old Park Worker/);
     assert.equal(await page.locator('[data-nav-count="workers"]').textContent(), '—');
+    assert.equal(await page.locator('#teamGrid').getAttribute('aria-busy'), 'false');
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setBucket('workers'));
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setTeamFeed([
+        { defer: true },
+        { success: true, data: [{ id: 1, name: 'QA Codex Schedule Replacement', role_type: 'animator', is_active: true }] }
+    ]));
+    await page.evaluate(() => { void loadTeam(); });
+    await page.waitForFunction(() => document.getElementById('teamGrid')?.dataset.peopleMode === 'loading');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setBusinessContext('event_genix'));
+    await page.waitForFunction(() => document.getElementById('teamGrid')?.dataset.peopleMode === 'bucket');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveTeamFeed({
+        success: true,
+        data: [{ id: 99, name: 'Old Dar Worker', role_type: 'animator', is_active: true }]
+    }));
+    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
+    assert.deepEqual(await cardNames(page), ['QA Codex Schedule Replacement'], 'late Dar response cannot repaint Park');
+    assert.equal(await page.locator('[data-nav-count="workers"]').textContent(), '1');
+    assert.equal(await page.locator('#teamGrid .hr-team-card[data-staff-id="99"]').count(), 0);
+    assert.equal(await page.locator('#teamGrid').getAttribute('aria-busy'), 'false');
+    await page.locator('#teamGrid .hr-team-open').click();
+    await page.waitForFunction(() => document.getElementById('staffEditModal')?.dataset.cardState === 'ready');
+    assert.equal(await page.locator('#editStaffId').inputValue(), '1', 'Park detail opens after the stale Dar response');
+    await page.locator('#editCloseTop').click();
 }
 
 async function assertTodayRecoveryProfileAction(page) {

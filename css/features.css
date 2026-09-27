@@ -2029,6 +2029,23 @@ body.dark-mode .batch-qty-option:has(input:focus-visible) {
     overflow: hidden;
 }
 
+.cert-preview-static-card .cert-preview-retry {
+    align-self: flex-start;
+    margin: 12px 0 0;
+    padding: 10px 14px;
+    border: 1px solid #19468b;
+    border-radius: 10px;
+    background: #fff;
+    color: #19468b;
+    font: inherit;
+    cursor: pointer;
+}
+
+.cert-preview-static-card .cert-preview-retry:focus-visible {
+    outline: 3px solid #19468b;
+    outline-offset: 3px;
+}
+
 .cert-preview-static-panel {
     width: min(100%, 380px);
     padding: 28px;

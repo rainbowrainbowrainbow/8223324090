@@ -12,6 +12,7 @@
         autumn: '/images/certificate/Autumn_sert.png'
     };
     const bgCache = {};
+    const previewRequests = new WeakMap();
 
     function isTouchDevice() {
         const ua = navigator.userAgent || '';
@@ -23,7 +24,7 @@
     }
 
     function getDimensions() {
-        if (isTouchDevice()) return { W: 800, H: 533 };
+        // Keep one layout for preview and PNG on every device. CSS scales its display.
         return { W: 1200, H: 800 };
     }
 
@@ -97,9 +98,9 @@
         const certCode = cert.certCode || cert.cert_code || '';
         const validUntil = cert.validUntil || cert.valid_until || '';
         const background = staticPreviewBackground(cert.season || 'winter');
-        const note = options.reason === 'touch'
-            ? 'iPhone-safe перегляд без важкого canvas.'
-            : 'Canvas-превʼю недоступне, показано безпечну HTML-версію.';
+        const note = options.reason === 'qr'
+            ? 'Не вдалося завантажити QR. Зображення сертифіката ще не готове.'
+            : 'Не вдалося створити зображення сертифіката. Дані доступні нижче.';
 
         node.innerHTML = `
             <article class="cert-preview-static-card" style="--cert-preview-bg: url('${escapeHtml(background)}')">
@@ -114,6 +115,40 @@
                 <div class="cert-preview-static-note">${escapeHtml(note)}</div>
             </article>`;
         return node.firstElementChild;
+    }
+
+    function wrapText(ctx, text, maxWidth) {
+        const lines = [];
+        let line = '';
+        for (const word of String(text).trim().split(/\s+/)) {
+            const candidate = line ? `${line} ${word}` : word;
+            if (ctx.measureText(candidate).width <= maxWidth) {
+                line = candidate;
+                continue;
+            }
+            if (line) lines.push(line);
+            line = '';
+            for (const char of word) {
+                if (line && ctx.measureText(line + char).width > maxWidth) {
+                    lines.push(line);
+                    line = '';
+                }
+                line += char;
+            }
+        }
+        if (line) lines.push(line);
+        return lines;
+    }
+
+    function drawWrappedText(ctx, text, centerX, baseline, maxWidth, weight, maxFont, minFont, maxLines, lineHeight) {
+        for (let size = maxFont; size >= minFont; size -= 2) {
+            ctx.font = `${weight} ${size}px Nunito, Inter, sans-serif`;
+            const lines = wrapText(ctx, text, maxWidth);
+            if (lines.length > maxLines) continue;
+            lines.forEach((line, index) => ctx.fillText(line, centerX, baseline + index * lineHeight));
+            return lines.length;
+        }
+        throw new Error('certificate_text_too_long');
     }
 
     function drawContent(ctx, cert, W, H) {
@@ -187,23 +222,17 @@
 
         const nameText = cert.displayValue || '';
         if (nameText) {
-            let nameFontSize = 34;
             ctx.fillStyle = '#0D2E5C';
-            while (nameFontSize >= 20) {
-                ctx.font = `900 ${nameFontSize}px Nunito, Inter, sans-serif`;
-                if (ctx.measureText(nameText).width <= maxTextW) break;
-                nameFontSize -= 2;
-            }
-            ctx.fillText(nameText, centerX, y);
-            y += 40;
+            const nameLines = drawWrappedText(ctx, nameText, centerX, y, maxTextW, 900, 34, 18, 3, 34);
+            y += 40 + (nameLines - 1) * 34;
         } else {
             y += 8;
         }
 
         ctx.fillStyle = '#2E5090';
-        ctx.font = '700 16px Nunito, Inter, sans-serif';
-        ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), centerX, y);
-        y += 34;
+        const typeLines = drawWrappedText(ctx, (cert.typeText || 'на одноразовий вхід').toUpperCase(), centerX, y,
+            maxTextW, 700, 16, 14, 2, 22);
+        y += 34 + (typeLines - 1) * 22;
 
         const infoH = 60;
         ctx.save();
@@ -232,13 +261,15 @@
     async function drawQr(ctx, cert, layout, options = {}) {
         const apiBase = options.apiBase || window.API_BASE || '';
         const getHeaders = options.getAuthHeaders || window.getAuthHeaders || (() => ({}));
+        if (!cert.certCode) throw new Error('certificate_qr_unavailable');
         try {
-            const qrResp = await fetch(`${apiBase}/certificates/qr/${encodeURIComponent(cert.certCode)}`, {
+            const request = window.apiFetchWithAuthRetry || fetch;
+            const qrResp = await request(`${apiBase}/certificates/qr/${encodeURIComponent(cert.certCode)}`, {
                 headers: getHeaders(false)
             });
-            if (!qrResp.ok) return;
+            if (!qrResp || !qrResp.ok) throw new Error('certificate_qr_unavailable');
             const qrData = await qrResp.json();
-            if (!qrData.dataUrl) return;
+            if (!qrData.dataUrl) throw new Error('certificate_qr_unavailable');
             const qrImg = await new Promise((resolve, reject) => {
                 const img = new Image();
                 img.onload = () => resolve(img);
@@ -250,6 +281,8 @@
             const qrX = layout.centerX - qrSize / 2;
             const qrY = layout.y + 10;
             const qrR = 16;
+            const qrPadding = 12;
+            if (qrY + qrSize + 22 >= 744) throw new Error('certificate_layout_overflow');
 
             ctx.save();
             ctx.shadowColor = 'rgba(0,0,0,0.1)';
@@ -260,19 +293,16 @@
             ctx.fill();
             ctx.restore();
 
-            ctx.save();
-            roundRect(ctx, qrX, qrY, qrSize, qrSize, qrR);
-            ctx.clip();
-            ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
-            ctx.restore();
+            ctx.drawImage(qrImg, qrX + qrPadding, qrY + qrPadding,
+                qrSize - 2 * qrPadding, qrSize - 2 * qrPadding);
 
             ctx.fillStyle = '#5A7FAA';
             ctx.font = '600 11px Nunito, Inter, sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText('Сканувати для перевірки', layout.centerX, qrY + qrSize + 18);
             ctx.textAlign = 'left';
-        } catch (_) {
-            // QR is useful, but preview remains valid without it.
+        } catch (error) {
+            throw new Error('certificate_qr_unavailable', { cause: error });
         }
     }
 
@@ -303,20 +333,28 @@
     async function renderInto(container, cert, options = {}) {
         const node = typeof container === 'string' ? document.getElementById(container) : container;
         if (!node) return null;
-        const skipPreview = options.skipPreview === true || (options.skipTouchPreview !== false && isTouchDevice());
-        if (skipPreview) {
-            return renderStaticPreview(node, cert, { reason: 'touch' });
-        }
+        const requestId = (previewRequests.get(node) || 0) + 1;
+        previewRequests.set(node, requestId);
+        if (options.skipPreview === true) return renderStaticPreview(node, cert, { reason: 'error' });
         node.innerHTML = '<div class="cert-preview-fallback">Готуємо превʼю сертифіката...</div>';
         try {
             const canvas = await generateCertificateCanvas(cert, options);
-            canvas.className = 'cert-preview-canvas';
+            if (previewRequests.get(node) !== requestId) return null;
+            canvas.className = options.canvasClassName || 'cert-preview-canvas';
             node.innerHTML = '';
             node.appendChild(canvas);
             return canvas;
         } catch (error) {
-            console.warn('Certificate preview generation failed:', error);
-            return renderStaticPreview(node, cert, { reason: 'error' });
+            if (previewRequests.get(node) !== requestId) return null;
+            const isQrError = error.message === 'certificate_qr_unavailable';
+            const fallback = renderStaticPreview(node, cert, { reason: isQrError ? 'qr' : 'error' });
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'cert-preview-retry';
+            retry.textContent = 'Повторити створення зображення';
+            retry.addEventListener('click', () => renderInto(node, cert, options));
+            (fallback.querySelector('.cert-preview-static-panel') || fallback).appendChild(retry);
+            return fallback;
         }
     }
 

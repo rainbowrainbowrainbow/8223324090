@@ -513,6 +513,23 @@ body.dark-mode .cert-check-result[data-cert-check-state="used"] .cert-page-badge
     text-align: center;
 }
 
+.cert-preview-retry {
+    justify-self: start;
+    margin-top: 12px;
+    padding: 10px 14px;
+    border: 1px solid currentColor;
+    border-radius: 10px;
+    background: #fff;
+    color: #19468b;
+    font: inherit;
+    cursor: pointer;
+}
+
+.cert-preview-retry:focus-visible {
+    outline: 3px solid #19468b;
+    outline-offset: 3px;
+}
+
 .cert-preview-static-card {
     position: relative;
     display: grid;

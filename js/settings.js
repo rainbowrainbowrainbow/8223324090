@@ -3887,14 +3887,11 @@ async function handleCertificateSubmit(event) {
         closeCertificateModalById('certificateModal');
         loadCertificates();
 
-        if (isCertificateTouchDevice()) {
-            showNotification(`Сертифікат або абонемент ${result.certificate.certCode} видано. Деталі відкриваються з реєстру.`, 'success');
-        } else {
-            showNotification(`Сертифікат або абонемент ${result.certificate.certCode} видано!`, 'success');
-            // Одразу показати деталі нового сертифіката тільки там, де превʼю стабільне.
-            showCertDetail(result.certificate.id);
+        showNotification(`Сертифікат або абонемент ${result.certificate.certCode} видано!`, 'success');
+        showCertDetail(result.certificate.id);
 
-            // Fire-and-forget: generate image and send to Telegram on desktop only.
+        // Preserve the existing desktop delivery path; no background send on mobile.
+        if (!isCertificateTouchDevice()) {
             try { sendCertImageToTelegram(result.certificate); } catch(e) { console.warn('cert img:', e); }
         }
     } catch (err) {
@@ -3935,11 +3932,9 @@ async function showCertDetail(id, options = {}) {
     const preview = document.getElementById('certImagePreview');
     content.innerHTML = '<p class="empty-state">Завантаження...</p>';
     actions.innerHTML = '';
-    const skipPreview = options.skipPreview === true || isCertificateTouchDevice();
+    const skipPreview = options.skipPreview === true;
     if (preview) {
-        preview.innerHTML = skipPreview
-            ? '<div class="cert-preview-fallback">Превʼю на iPhone вимкнене, щоб не ламати видачу. Зображення можна відкрити кнопкою “Скачати”.</div>'
-            : '<div class="cert-preview-fallback">Готуємо превʼю сертифіката...</div>';
+        preview.innerHTML = '<div class="cert-preview-fallback">Готуємо превʼю сертифіката...</div>';
     }
     modal.classList.remove('hidden');
 
@@ -3948,20 +3943,12 @@ async function showCertDetail(id, options = {}) {
         if (!response.ok) throw new Error('Not found');
         const cert = await response.json();
 
-        // Generate certificate image preview. On iOS Safari this can fail under memory pressure,
-        // so the preview is optional and never blocks the details modal.
-        if (preview && skipPreview) {
-            renderCertificateStaticPreview(preview, cert, { reason: 'touch' });
+        if (preview && !skipPreview) {
+            window.CertificatePreview.renderInto(preview, cert, {
+                apiBase: API_BASE, getAuthHeaders, canvasClassName: 'cert-detail-preview-canvas'
+            });
         } else if (preview) {
-            try {
-                const canvas = await generateCertificateCanvas(cert);
-                preview.innerHTML = '';
-                canvas.className = 'cert-detail-preview-canvas';
-                preview.appendChild(canvas);
-            } catch (previewErr) {
-                console.warn('Certificate preview generation failed:', previewErr);
-                renderCertificateStaticPreview(preview, cert, { reason: 'error' });
-            }
+            window.CertificatePreview.renderStaticPreview(preview, cert, { reason: 'error' });
         }
 
         const issuedDate = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('uk-UA') : '—';
@@ -4070,14 +4057,6 @@ function copyCertText(text) {
 // Certificate Image Generator
 // ==========================================
 
-// Seasonal certificate backgrounds
-const CERT_SEASON_BG = {
-    winter: 'images/certificate/cert-bg-full.png',
-    spring: 'images/certificate/Spring_sert.png',
-    summer: 'images/certificate/summer_sert.png',
-    autumn: 'images/certificate/Autumn_sert.png'
-};
-const _certBgCache = {};
 const CERT_MODAL_IDS = ['certificateModal', 'certDetailModal', 'batchCertModal'];
 
 function isCertificateTouchDevice() {
@@ -4087,70 +4066,6 @@ function isCertificateTouchDevice() {
         ? window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(max-width: 430px)').matches
         : false;
     return isMobileUa || isCoarseNarrow;
-}
-
-function certificateStaticEscape(value) {
-    if (typeof escapeHtml === 'function') return escapeHtml(String(value ?? ''));
-    return String(value ?? '').replace(/[&<>"']/g, ch => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-    }[ch]));
-}
-
-function certificateStaticDate(value) {
-    if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '—';
-    return date.toLocaleDateString('uk-UA');
-}
-
-function certificateStaticStatusLabel(status) {
-    return ({
-        active: 'Активний',
-        used: 'Використаний',
-        revoked: 'Анульований',
-        blocked: 'Заблокований',
-        expired: 'Прострочений'
-    })[status] || status || '—';
-}
-
-function renderCertificateStaticPreview(preview, cert, options = {}) {
-    if (!preview || !cert) return;
-    const season = cert.season || getCertCurrentSeason();
-    const bg = CERT_SEASON_BG[season] || CERT_SEASON_BG.winter;
-    const displayValue = typeof certificateDisplayValueLabel === 'function'
-        ? certificateDisplayValueLabel(cert)
-        : (cert.displayValue || cert.display_value || cert.recipientName || cert.certCode || '');
-    const note = options.reason === 'error'
-        ? 'Canvas preview не відкрився на цьому пристрої, але дані сертифіката доступні.'
-        : 'Статичний preview для iPhone: дані видно без важкої canvas-генерації.';
-    preview.innerHTML = `
-        <div class="cert-preview-static-card">
-            <div class="cert-preview-static-panel">
-                <div class="cert-preview-static-kicker">Сертифікат / абонемент</div>
-                <div class="cert-preview-static-name">${certificateStaticEscape(displayValue || '—')}</div>
-                <div class="cert-preview-static-type">${certificateStaticEscape(cert.typeText || cert.type_text || '')}</div>
-                <div class="cert-preview-static-meta">
-                    <span>${certificateStaticEscape(cert.certCode || cert.cert_code || '')}</span>
-                    <span>до ${certificateStaticEscape(certificateStaticDate(cert.validUntil || cert.valid_until))}</span>
-                    <span>${certificateStaticEscape(certificateStaticStatusLabel(cert.status))}</span>
-                </div>
-                <p class="cert-preview-static-note">${certificateStaticEscape(note)}</p>
-            </div>
-        </div>
-    `;
-    const card = preview.querySelector('.cert-preview-static-card');
-    if (card) {
-        card.style.backgroundImage = `linear-gradient(135deg, rgba(15,23,42,.76), rgba(20,184,166,.24)), url("${bg}")`;
-    }
-}
-
-function getCertCanvasDimensions() {
-    if (isCertificateTouchDevice()) return { W: 800, H: 533 };
-    return { W: 1200, H: 800 };
 }
 
 function closeCertificateModalById(modalId) {
@@ -4200,242 +4115,8 @@ function getCertCurrentSeason() {
     return 'winter';
 }
 
-function loadCertBg(season) {
-    const key = season || 'winter';
-    if (_certBgCache[key]) return Promise.resolve(_certBgCache[key]);
-    const src = CERT_SEASON_BG[key] || CERT_SEASON_BG.winter;
-    return new Promise((resolve) => {
-        const img = new Image();
-        if (/^https?:\/\//i.test(src)) img.crossOrigin = 'anonymous';
-        img.onload = () => { _certBgCache[key] = img; resolve(img); };
-        img.onerror = () => resolve(null);
-        img.src = src + '?v=8.7';
-    });
-}
-
-// Helper: draw rounded rectangle path
-function certRoundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-}
-
 async function generateCertificateCanvas(cert) {
-    // v20.2.0: Reduce canvas size on iOS/mobile to prevent getContext null on iPhone 11
-    const { W, H } = getCertCanvasDimensions();
-    const canvas = document.createElement('canvas');
-    canvas.width = W;
-    canvas.height = H;
-    const ctx = canvas.getContext('2d');
-    // v20.2.0: Guard against null context (iOS memory pressure)
-    if (!ctx) {
-        console.warn('Canvas 2d context unavailable, skipping certificate render');
-        throw new Error('certificate_canvas_context_unavailable');
-    }
-
-    // === DRAW BACKGROUND (seasonal, full image, no crop) ===
-    const bgImg = await loadCertBg(cert.season || 'winter');
-    if (bgImg) {
-        ctx.drawImage(bgImg, 0, 0, W, H);
-    } else {
-        const grad = ctx.createLinearGradient(0, 0, 0, H);
-        grad.addColorStop(0, '#8BBDE0');
-        grad.addColorStop(1, '#6AA1CF');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, W, H);
-    }
-
-    // === DRAW CONTENT CARD + TEXT ===
-    const layout = drawCertDynamicContent(ctx, cert, W, H);
-
-    // === DRAW QR CODE ===
-    await drawCertQRCode(ctx, cert, W, H, layout);
-
-    return canvas;
-}
-
-function drawCertDynamicContent(ctx, cert, W, H) {
-    // === FLOATING CARD on left side ===
-    const cardX = 32, cardY = 36, cardW = 460, cardH = H - 72, cardR = 24;
-    const centerX = cardX + cardW / 2;
-    const leftPad = cardX + 40;
-    const maxTextW = cardW - 80;
-
-    // Card background with shadow
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.18)';
-    ctx.shadowBlur = 28;
-    ctx.shadowOffsetY = 8;
-    ctx.fillStyle = 'rgba(255,255,255,0.93)';
-    certRoundRect(ctx, cardX, cardY, cardW, cardH, cardR);
-    ctx.fill();
-    ctx.restore();
-
-    // Subtle inner border
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.lineWidth = 1;
-    certRoundRect(ctx, cardX + 1, cardY + 1, cardW - 2, cardH - 2, cardR - 1);
-    ctx.stroke();
-    ctx.restore();
-
-    // Gold accent line at top of card
-    ctx.save();
-    const accentGrad = ctx.createLinearGradient(cardX + 80, 0, cardX + cardW - 80, 0);
-    accentGrad.addColorStop(0, 'rgba(255,179,71,0)');
-    accentGrad.addColorStop(0.2, '#FFB347');
-    accentGrad.addColorStop(0.5, '#FF8C00');
-    accentGrad.addColorStop(0.8, '#FFB347');
-    accentGrad.addColorStop(1, 'rgba(255,179,71,0)');
-    ctx.strokeStyle = accentGrad;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(cardX + 70, cardY + 1);
-    ctx.lineTo(cardX + cardW - 70, cardY + 1);
-    ctx.stroke();
-    ctx.restore();
-
-    let y = cardY + 60;
-
-    // Park name
-    ctx.fillStyle = '#5A9ECF';
-    ctx.font = '700 14px Nunito, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Парк Закревського Періоду', centerX, y);
-    y += 52;
-
-    // СЕРТИФІКАТ title
-    ctx.fillStyle = '#19468B';
-    ctx.font = '900 46px Nunito, sans-serif';
-    ctx.fillText('СЕРТИФІКАТ', centerX, y);
-    y += 22;
-
-    // Gold decorative line under title
-    ctx.save();
-    const lineGrad = ctx.createLinearGradient(centerX - 90, 0, centerX + 90, 0);
-    lineGrad.addColorStop(0, 'rgba(255,140,0,0)');
-    lineGrad.addColorStop(0.15, '#FFB347');
-    lineGrad.addColorStop(0.5, '#FF8C00');
-    lineGrad.addColorStop(0.85, '#FFB347');
-    lineGrad.addColorStop(1, 'rgba(255,140,0,0)');
-    ctx.strokeStyle = lineGrad;
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(centerX - 90, y);
-    ctx.lineTo(centerX + 90, y);
-    ctx.stroke();
-    ctx.restore();
-    y += 46;
-
-    // Name
-    const nameText = cert.displayValue || '';
-    if (nameText) {
-        let nameFontSize = 34;
-        ctx.fillStyle = '#0D2E5C';
-        while (nameFontSize >= 20) {
-            ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
-            if (ctx.measureText(nameText).width <= maxTextW) break;
-            nameFontSize -= 2;
-        }
-        ctx.fillText(nameText, centerX, y);
-        y += 40;
-    }
-
-    // Certificate type
-    ctx.fillStyle = '#2E5090';
-    ctx.font = '700 16px Nunito, sans-serif';
-    ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), centerX, y);
-    y += 34;
-
-    // Info block with subtle bg
-    const infoH = 60;
-    ctx.save();
-    ctx.fillStyle = 'rgba(25,70,139,0.05)';
-    certRoundRect(ctx, leftPad - 8, y - 4, maxTextW + 16, infoH, 12);
-    ctx.fill();
-    ctx.restore();
-
-    // Cert code
-    ctx.fillStyle = '#2E5090';
-    ctx.font = '700 15px Nunito, sans-serif';
-    ctx.fillText(cert.certCode || '', centerX, y + 22);
-
-    // Valid date
-    const validDate = cert.validUntil
-        ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
-        : '—';
-    ctx.fillStyle = '#6A8FBF';
-    ctx.font = '600 12px Nunito, sans-serif';
-    ctx.fillText(`Дійсний до ${validDate}  •  Будні та вихідні`, centerX, y + 44);
-    y += infoH + 20;
-
-    // Phone at bottom of card
-    ctx.fillStyle = '#6A8FBF';
-    ctx.font = '600 13px Nunito, sans-serif';
-    ctx.fillText('+38 (0800) 75-35-53', centerX, cardY + cardH - 24);
-
-    ctx.textAlign = 'left';
-
-    return { y, centerX };
-}
-
-async function drawCertQRCode(ctx, cert, W, H, layout) {
-    const { y: startY, centerX } = layout;
-
-    try {
-        const qrResp = await fetch(`${API_BASE}/certificates/qr/${encodeURIComponent(cert.certCode)}`, { headers: getAuthHeaders(false) });
-        if (qrResp.ok) {
-            const qrData = await qrResp.json();
-            if (qrData.dataUrl) {
-                const qrImg = await new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.onload = () => resolve(img);
-                    img.onerror = reject;
-                    img.src = qrData.dataUrl;
-                });
-
-                const qrSize = 200;
-                const qrX = centerX - qrSize / 2;
-                const qrY = startY + 10;
-                const qrR = 16;
-
-                // White rounded bg with shadow
-                ctx.save();
-                ctx.shadowColor = 'rgba(0,0,0,0.1)';
-                ctx.shadowBlur = 14;
-                ctx.shadowOffsetY = 4;
-                ctx.fillStyle = '#fff';
-                certRoundRect(ctx, qrX, qrY, qrSize, qrSize, qrR);
-                ctx.fill();
-                ctx.restore();
-
-                // QR image clipped to rounded rect
-                ctx.save();
-                certRoundRect(ctx, qrX, qrY, qrSize, qrSize, qrR);
-                ctx.clip();
-                ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
-                ctx.restore();
-
-                // Label under QR
-                ctx.fillStyle = '#5A7FAA';
-                ctx.font = '600 11px Nunito, sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('Сканувати для перевірки', centerX, qrY + qrSize + 18);
-                ctx.textAlign = 'left';
-            }
-        }
-    } catch (e) {
-        // QR failed — continue without it
-    }
+    return window.CertificatePreview.generateCertificateCanvas(cert, { apiBase: API_BASE, getAuthHeaders });
 }
 
 async function downloadCertificateImage(certId) {

@@ -118,6 +118,10 @@ async function main() {
             await page.locator('#certCreateResult [data-cert-open]').click();
             const detail = page.locator('#certificatePageDetailModal:not(.hidden)');
             await detail.waitFor();
+            if (device.name === 'desktop') {
+                const detailWidth = await detail.locator('.cert-detail-modal-content').evaluate(node => node.getBoundingClientRect().width);
+                assert.ok(detailWidth >= 676, `desktop detail has room for the certificate and summary: ${detailWidth}px`);
+            }
             const exportButton = detail.getByRole('button', { name: 'Відкрити зображення' });
             await exportButton.click();
             const dialog = page.locator('.cert-image-export-dialog');

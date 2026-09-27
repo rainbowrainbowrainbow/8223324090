@@ -5,7 +5,7 @@
     <script>
     (function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();
     </script>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Event Genix | Сертифікати</title>
     <meta name="description" content="Event Genix — сертифікати">
     <link rel="icon" type="image/png" href="/images/favicon-32.png" sizes="32x32">
@@ -68,7 +68,7 @@
                 <div>
                     <div class="page-kicker">Сертифікати</div>
                     <h1 id="certificatePageTitle">Сертифікати</h1>
-                    <p id="certificatePageSubtitle">Реєстр, видача і пакетна генерація сертифікатів без вкладених панелей.</p>
+                    <p id="certificatePageSubtitle">Переглядайте, перевіряйте та видавайте сертифікати.</p>
                 </div>
             </section>
 
@@ -186,8 +186,8 @@
                     </form>
                     <aside id="certCreateResult" class="cert-result-card" aria-live="polite">
                         <span class="cert-result-kicker">Після видачі</span>
-                        <h3>Сертифікат з'явиться в реєстрі</h3>
-                        <p>Форма працює через той самий API, що й старий panel-flow, але без вкладеної модалки.</p>
+                        <h3>Сертифікат з'явиться тут</h3>
+                        <p>Після видачі ви зможете переглянути його та відкрити зображення.</p>
                     </aside>
                 </div>
             </section>
@@ -213,7 +213,7 @@
                             <label class="form-field">
                                 <span>Назва події (опціонально)</span>
                                 <input type="text" id="certPageBatchEventName" maxlength="200" placeholder="напр. Вітання іменинників">
-                                <small class="form-hint">Збережеться у примітці пакета, тип не змінює.</small>
+                                <small class="form-hint">Назва допоможе відрізнити цей пакет.</small>
                             </label>
                             <div class="form-field">
                                 <span>Дійсний до</span>
@@ -230,6 +230,7 @@
                     </form>
                     <aside id="certBatchResult" class="cert-result-card hidden" aria-live="polite">
                         <span class="cert-result-kicker">Згенеровані коди</span>
+                        <h3 id="certBatchResultTitle" tabindex="-1">Пакет готовий</h3>
                         <div id="certBatchCodes" class="cert-batch-codes"></div>
                         <button type="button" class="btn-page-secondary" id="certBatchCopyBtn">Копіювати всі коди</button>
                     </aside>

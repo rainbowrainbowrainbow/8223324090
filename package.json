@@ -146,7 +146,7 @@
     "test:browser:hr-checklists:isolated": "npm exec --yes --package=playwright -c \"node tests/browser/hr-checklists-postgres-browser-smoke.js --isolated\"",
     "test:browser:hr-onboarding": "npm exec --yes --package=playwright -c \"node tests/browser/hr-onboarding-flow-browser-smoke.js\"",
     "test:browser:invite": "npx --yes --package playwright node tests/browser/invite-browser-smoke.js",
-    "test:browser:certificates": "npm exec --yes --package=playwright -c \"node tests/browser/certificates-check-browser-smoke.js && node tests/browser/certificates-image-browser-smoke.js && node tests/browser/certificates-export-browser-smoke.js\"",
+    "test:browser:certificates": "npm exec --yes --package=playwright -c \"node tests/browser/certificates-check-browser-smoke.js && node tests/browser/certificates-image-browser-smoke.js && node tests/browser/certificates-export-browser-smoke.js && node tests/browser/certificates-layout-browser-smoke.js\"",
     "test:browser:certificates-booking-app": "npm exec --yes --package=playwright -c \"node tests/browser/certificate-booking-precheck-app-smoke.js\"",
     "test:browser:service-worker": "npx --yes --package playwright node tests/browser/service-worker-browser-smoke.js",
     "test:browser:sidebar-timeline": "npx --yes --package playwright node tests/browser/sidebar-timeline-launcher-ci-smoke.js && npx --yes --package playwright node tests/browser/sidebar-timeline-launcher-runtime-ci-smoke.js && npx --yes --package playwright node tests/browser/sidebar-certificate-profile-smoke.js",

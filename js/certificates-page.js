@@ -27,6 +27,7 @@
         stats: null,
         detailId: null,
         detailCert: null,
+        detailReturnFocus: null,
         singleSubmitting: false,
         batchSubmitting: false,
         checkVersion: 0,
@@ -101,7 +102,7 @@
             state.stats = null;
             if ($('certPageStats')) $('certPageStats').textContent = '';
             if ($('certPageList')) $('certPageList').textContent = '';
-            $('certificatePageDetailModal')?.classList.add('hidden');
+            closeDetail();
             $('certCreateResult')?.classList.add('hidden');
             $('certBatchResult')?.classList.add('hidden');
         }
@@ -209,9 +210,9 @@
     function setMode(mode) {
         state.mode = mode;
         const titles = {
-            list: ['Сертифікати', 'Реєстр, фільтри, статуси і швидкий перехід до видачі сертифіката або абонемента.'],
-            new: [SINGLE_ISSUE_LABEL, "Окрема робоча сторінка для створення одного сертифіката або абонемента з обов'язковим отримувачем."],
-            batch: ['Пакет сертифікатів на одноразовий вхід', 'Пакетна генерація одноразових кодів без вибору іншого типу.'],
+            list: ['Сертифікати', 'Переглядайте сертифікати, їхні статуси та деталі.'],
+            new: [SINGLE_ISSUE_LABEL, 'Вкажіть отримувача й тип, щоб видати сертифікат або абонемент.'],
+            batch: ['Пакет сертифікатів на одноразовий вхід', 'Видайте кілька кодів на одноразовий вхід за раз.'],
             check: ['Перевірка сертифіката', 'Перевірте право на вхід і підтвердьте використання одноразового сертифіката.']
         };
         $('certificatePageTitle').textContent = titles[mode][0];
@@ -584,7 +585,7 @@
         box.classList.remove('hidden');
         box.innerHTML = `
             <span class="cert-result-kicker">Видано</span>
-            <h3>${esc(cert.certCode)}</h3>
+            <h3 tabindex="-1">${esc(cert.certCode)}</h3>
             <p>${esc(displayValueForCert(cert))} · ${esc(cert.typeText || '')}</p>
             <div class="cert-result-meta">
                 <span class="cert-source-chip cert-source-${esc(source.tone)}">${esc(source.label)}</span>
@@ -593,10 +594,20 @@
             </div>
             <div id="certCreatePreview" class="cert-standalone-preview cert-standalone-preview-result"></div>
             <div class="cert-result-actions">
-                <button type="button" class="btn-page-secondary" data-cert-open="${esc(cert.id)}">Переглянути</button>
-                <a class="btn-page-primary" href="/certificates">До реєстру</a>
+                <button type="button" class="btn-page-primary" data-cert-download="${esc(cert.id)}">Відкрити зображення</button>
+                <button type="button" class="btn-page-secondary" data-cert-open="${esc(cert.id)}">Переглянути деталі</button>
+                <a class="btn-page-secondary" href="/certificates">До реєстру</a>
             </div>`;
         renderCertificatePreview('certCreatePreview', cert);
+        revealResult(box, box.querySelector('h3'));
+    }
+
+    function revealResult(box, heading) {
+        requestAnimationFrame(() => {
+            if (!box.isConnected || box.classList.contains('hidden')) return;
+            heading?.focus({ preventScroll: true });
+            box.scrollIntoView?.({ block: 'start' });
+        });
     }
 
     async function handleBatchSubmit(event) {
@@ -656,6 +667,7 @@
                 <strong>${esc(cert.certCode)}</strong>
                 <small>${esc(cert.typeText || '')}</small>
             </div>`).join('');
+        revealResult(box, $('certBatchResultTitle'));
     }
 
     function copyBatchCodes() {
@@ -685,14 +697,17 @@
         }
     }
 
-    async function openDetail(id) {
+    async function openDetail(id, trigger) {
         if (!id) return;
+        const context = getLegacyBusinessSurfaceContextKey('certificates');
         state.detailId = id;
         const modal = $('certificatePageDetailModal');
         const content = $('certificatePageDetailContent');
         const actions = $('certificatePageDetailActions');
         if (!modal || !content || !actions) return;
+        if (modal.classList.contains('hidden')) state.detailReturnFocus = trigger || document.activeElement;
         modal.classList.remove('hidden');
+        $('certificatePageDetailClose')?.focus();
         content.innerHTML = '<div class="empty-state">Завантаження...</div>';
         actions.innerHTML = '';
 
@@ -703,8 +718,10 @@
             if (!response) throw new Error('auth_session_unavailable');
             if (!response.ok) throw new Error('not_found');
             const cert = await response.json();
+            if (state.detailId !== id || context !== getLegacyBusinessSurfaceContextKey('certificates')) return;
             renderDetail(cert);
         } catch {
+            if (state.detailId !== id || context !== getLegacyBusinessSurfaceContextKey('certificates')) return;
             content.innerHTML = '<div class="empty-state">Не вдалося завантажити сертифікат</div>';
         }
     }
@@ -719,7 +736,7 @@
         }
         const container = $(containerId);
         if (container) {
-            container.innerHTML = '<div class="cert-preview-fallback">Візуальне превʼю недоступне. Дані сертифіката нижче.</div>';
+            container.innerHTML = '<div class="cert-preview-fallback">Не вдалося показати зображення. Оновіть сторінку й повторіть спробу.</div>';
         }
     }
 
@@ -734,7 +751,10 @@
         state.detailCert = cert;
         content.innerHTML = `
             <div class="cert-detail-shell">
-                <div id="certificatePagePreview" class="cert-standalone-preview"></div>
+                <div class="cert-detail-image">
+                    <div id="certificatePagePreview" class="cert-standalone-preview"></div>
+                    <button type="button" class="btn-page-secondary" data-cert-download="${esc(cert.id)}">Відкрити зображення</button>
+                </div>
                 <div class="cert-detail-summary-card">
                     <div class="cert-detail-summary-head">
                         <div>
@@ -750,7 +770,7 @@
                         <div class="cert-detail-row"><span class="cert-detail-label">Видано:</span><span class="cert-detail-val">${formatDateTime(cert.issuedAt)}</span></div>
                         <div class="cert-detail-row"><span class="cert-detail-label">Дійсний до:</span><span class="cert-detail-val">${formatDate(cert.validUntil)}</span></div>
                         <div class="cert-detail-row"><span class="cert-detail-label">Видав:</span><span class="cert-detail-val">${esc(issuerLabel(cert))}</span></div>
-                        ${cert.batchGroupId ? `<div class="cert-detail-row"><span class="cert-detail-label">Batch ID:</span><span class="cert-detail-val"><code>${esc(cert.batchGroupId)}</code></span></div>` : ''}
+                        ${cert.batchGroupId ? `<div class="cert-detail-row"><span class="cert-detail-label">Пакет:</span><span class="cert-detail-val"><code>${esc(cert.batchGroupId)}</code></span></div>` : ''}
                         ${cert.notes ? `<div class="cert-detail-row"><span class="cert-detail-label">Примітка:</span><span class="cert-detail-val">${esc(cert.notes)}</span></div>` : ''}
                     </div>
                 </div>
@@ -758,7 +778,6 @@
         renderCertificatePreview('certificatePagePreview', cert);
 
         let html = `<button type="button" class="btn-page-secondary" data-cert-copy="${esc(cert.certCode)}">Копіювати код</button>`;
-        html += `<button type="button" class="btn-page-secondary" data-cert-download="${esc(cert.id)}">Відкрити зображення</button>`;
         if (cert.status === 'active') {
             html += `<a class="btn-page-primary" href="/certificates/check?code=${encodeURIComponent(cert.certCode)}">Перевірити сертифікат</a>`;
             html += `<button type="button" class="btn-page-danger" data-cert-status="${esc(cert.id)}" data-next-status="revoked">Анульувати</button>`;
@@ -775,6 +794,8 @@
         $('certificatePageDetailModal')?.classList.add('hidden');
         state.detailId = null;
         state.detailCert = null;
+        if (state.detailReturnFocus?.isConnected) state.detailReturnFocus.focus();
+        state.detailReturnFocus = null;
     }
 
     function downloadCertificateFromPage(id, trigger) {
@@ -870,11 +891,31 @@
         $('certificatePageDetailModal')?.addEventListener('click', (event) => {
             if (event.target === $('certificatePageDetailModal')) closeDetail();
         });
+        $('certificatePageDetailModal')?.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeDetail();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const focusable = [...event.currentTarget.querySelectorAll('button:not([disabled]), a[href]')]
+                .filter(element => element.getClientRects().length);
+            if (!focusable.length) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
         document.addEventListener('click', (event) => {
             const openBtn = event.target.closest('[data-cert-open]');
             if (openBtn) {
                 event.preventDefault();
-                openDetail(openBtn.dataset.certOpen);
+                openDetail(openBtn.dataset.certOpen, openBtn);
                 return;
             }
             const statusBtn = event.target.closest('[data-cert-status]');
@@ -962,7 +1003,7 @@
             renderStandaloneFatalError({
                 containerId: 'main-content',
                 title: 'Не вдалося відкрити сертифікати',
-                message: 'Standalone сторінка сертифікатів пройшла auth, але впала під час ініціалізації.',
+                message: 'Оновіть сторінку та спробуйте ще раз.',
                 moduleName: 'certificates',
                 error
             });
@@ -970,7 +1011,7 @@
         }
         const main = $('main-content') || $('mainApp');
         if (main) {
-            main.innerHTML = `<div class="page-fatal-error" role="alert"><h3>Не вдалося відкрити сертифікати</h3><pre>${esc(error?.message || error || 'Unknown error')}</pre></div>`;
+            main.innerHTML = '<div class="page-fatal-error" role="alert"><h3>Не вдалося відкрити сертифікати</h3><p>Оновіть сторінку та спробуйте ще раз.</p></div>';
         }
     }
 

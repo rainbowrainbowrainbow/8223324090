@@ -482,7 +482,10 @@ body.dark-mode .cert-check-result[data-cert-check-state="used"] .cert-page-badge
     top: 92px;
     display: grid;
     gap: 10px;
+    scroll-margin-top: 84px;
 }
+
+.cert-result-actions > * { flex: 1 1 160px; }
 
 .cert-standalone-preview {
     min-height: 180px;
@@ -760,8 +763,11 @@ body.dark-mode .cert-check-result[data-cert-check-state="used"] .cert-page-badge
     justify-content: flex-end;
 }
 
-.cert-detail-modal-content {
-    width: min(1040px, calc(100vw - 28px));
+#certificatePageDetailModal .cert-detail-modal-content {
+    width: 100%;
+    max-width: 1040px;
+    max-height: calc(100dvh - 24px);
+    overflow-x: hidden;
 }
 
 .cert-detail-shell {
@@ -770,6 +776,18 @@ body.dark-mode .cert-check-result[data-cert-check-state="used"] .cert-page-badge
     gap: 16px;
     align-items: start;
 }
+
+.cert-detail-shell > * { min-width: 0; }
+
+.cert-detail-image {
+    display: grid;
+    gap: 10px;
+}
+
+.cert-detail-image .btn-page-secondary { justify-self: start; }
+
+#certificatePageDetailModal .cert-detail-row,
+#certificatePageDetailModal .cert-detail-val { min-width: 0; }
 
 .cert-detail-summary-card {
     display: grid;
@@ -780,8 +798,22 @@ body.dark-mode .cert-check-result[data-cert-check-state="used"] .cert-page-badge
     background: rgba(248, 250, 252, 0.82);
 }
 
+.cert-detail-grid { display: grid; gap: 8px; }
+
+#certificatePageDetailModal .cert-detail-row {
+    display: grid;
+    grid-template-columns: minmax(88px, 0.4fr) minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+}
+
+.cert-detail-label { color: var(--gray-600); font-size: 12px; font-weight: 800; }
+.cert-detail-val { color: var(--gray-800); font-size: 13px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; }
+.cert-detail-val code { overflow-wrap: anywhere; }
+
 .cert-detail-summary-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
     gap: 14px;
@@ -903,6 +935,9 @@ body.dark-mode .cert-detail-summary-head h4 {
     color: #f8fafc;
 }
 
+body.dark-mode .cert-detail-label { color: #cbd5e1; }
+body.dark-mode .cert-detail-val { color: #f8fafc; }
+
 body.dark-mode .cert-page-badge-active,
 body.dark-mode .cert-batch-code-row strong,
 body.dark-mode .cert-page-code,
@@ -978,4 +1013,7 @@ body.dark-mode .cert-fixed-type-field strong {
     .cert-batch-code-row small {
         grid-column: 2;
     }
+
+    .cert-result-actions > *,
+    .cert-detail-image .btn-page-secondary { width: 100%; }
 }

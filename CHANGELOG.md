@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.22 - Організації: створення власником
+
+### Release / Versioning / (27.09.2026) [codex]
+- **Організації: створення власником** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
+
+---
+
 ## v0.82.21 - Сертифікати: коректне прострочення
 
 ### Release / Versioning / (27.09.2026) [codex]
@@ -70,21 +77,21 @@
 ## v0.82.14 - Staff Account Secure Handoff Readiness Auth Gate
 
 ### Release / Versioning / (24.09.2026) [codex]
-- **Staff Account Secure Handoff Readiness Auth Gate** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Staff Account Secure Handoff Readiness Auth Gate** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.82.13 - Staff Account Secure Handoff Owner DM Readiness
 
 ### Release / Versioning / (24.09.2026) [codex]
-- **Staff Account Secure Handoff Owner DM Readiness** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Staff Account Secure Handoff Owner DM Readiness** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.82.12 - Staff Account Handoff Fail-Closed
 
 ### Release / Versioning / (24.09.2026) [codex]
-- **Staff Account Handoff Fail-Closed** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Staff Account Handoff Fail-Closed** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -102,21 +109,21 @@
 ## v0.82.10 - SYS-MB: каталог і timeline після cutover
 
 ### Release / Versioning / (22.09.2026) [codex]
-- **SYS-MB: каталог і timeline після cutover** - release marker, cache tags and visible version metadata were prepared automatically.
+- **SYS-MB: каталог і timeline після cutover** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.82.9 - SYS-MB: Майстерня, каталоги та telemetry
 
 ### Release / Versioning / (22.09.2026) [codex]
-- **SYS-MB: Майстерня, каталоги та telemetry** - release marker, cache tags and visible version metadata were prepared automatically.
+- **SYS-MB: Майстерня, каталоги та telemetry** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.82.8 - SYS-MB: Майстерня, каталоги та telemetry
 
 ### Release / Versioning / (22.09.2026) [codex]
-- **SYS-MB: Майстерня, каталоги та telemetry** - release marker, cache tags and visible version metadata were prepared automatically.
+- **SYS-MB: Майстерня, каталоги та telemetry** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -192,49 +199,49 @@
 ## v0.81.209 - Omni: доступні режими на короткому екрані
 
 ### Release / Versioning / (21.09.2026) [codex]
-- **Omni: доступні режими на короткому екрані** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Omni: доступні режими на короткому екрані** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.208 - Omni: доступні режими на короткому екрані
 
 ### Release / Versioning / (21.09.2026) [codex]
-- **Omni: доступні режими на короткому екрані** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Omni: доступні режими на короткому екрані** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.207 - Omni: доступні режими на короткому екрані
 
 ### Release / Versioning / (21.09.2026) [codex]
-- **Omni: доступні режими на короткому екрані** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Omni: доступні режими на короткому екрані** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.206 - Телефонія: Binotel workspace
 
 ### Release / Versioning / (21.09.2026) [codex]
-- **Телефонія: Binotel workspace** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Телефонія: Binotel workspace** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.205 - Телефонія: Binotel workspace
 
 ### Release / Versioning / (21.09.2026) [codex]
-- **Телефонія: Binotel workspace** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Телефонія: Binotel workspace** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.204 - Телефонія: Binotel workspace
 
 ### Release / Versioning / (21.09.2026) [codex]
-- **Телефонія: Binotel workspace** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Телефонія: Binotel workspace** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.203 - Omni: контрастні підкладки Instagram і WhatsApp
 
 ### Release / Versioning / (20.09.2026) [codex]
-- **Omni: контрастні підкладки Instagram і WhatsApp** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Omni: контрастні підкладки Instagram і WhatsApp** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -338,21 +345,21 @@
 ## v0.81.191 - Omni: чистий компактний верх
 
 ### Release / Versioning / (17.09.2026) [codex]
-- **Omni: чистий компактний верх** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Omni: чистий компактний верх** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.190 - Omni: мобільний список чатів
 
 ### Release / Versioning / (17.09.2026) [codex]
-- **Omni: мобільний список чатів** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Omni: мобільний список чатів** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.189 - Omni: фінальна адаптивна робоча область
 
 ### Release / Versioning / (17.09.2026) [codex]
-- **Omni: фінальна адаптивна робоча область** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Omni: фінальна адаптивна робоча область** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -491,21 +498,21 @@
 ## v0.81.173 - Dashboard: фокус без зайвої дії
 
 ### Release / Versioning / (14.09.2026) [codex]
-- **Dashboard: фокус без зайвої дії** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Dashboard: фокус без зайвої дії** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.172 - Dashboard: чистіша робоча композиція
 
 ### Release / Versioning / (14.09.2026) [codex]
-- **Dashboard: чистіша робоча композиція** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Dashboard: чистіша робоча композиція** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.171 - Dashboard: чистіший перший екран
 
 ### Release / Versioning / (14.09.2026) [codex]
-- **Dashboard: чистіший перший екран** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Dashboard: чистіший перший екран** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -557,28 +564,28 @@
 ## v0.81.165 - SYS-MB: перехід CRM
 
 ### Release / Versioning / (13.09.2026) [codex]
-- **SYS-MB: перехід CRM** - release marker, cache tags and visible version metadata were prepared automatically.
+- **SYS-MB: перехід CRM** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.164 - Dashboard без 500 у ризиках
 
 ### Release / Versioning / (13.09.2026) [codex]
-- **Dashboard без 500 у ризиках** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Dashboard без 500 у ризиках** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.163 - Dashboard стабільні ризик-сигнали
 
 ### Release / Versioning / (13.09.2026) [codex]
-- **Dashboard стабільні ризик-сигнали** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Dashboard стабільні ризик-сигнали** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.162 - Презентаційний Dashboard з орієнтиром дня
 
 ### Release / Versioning / (13.09.2026) [codex]
-- **Презентаційний Dashboard з орієнтиром дня** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Презентаційний Dashboard з орієнтиром дня** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -608,7 +615,7 @@
 ## v0.81.158 - Спільний тестовий термінал
 
 ### Release / Versioning / (13.09.2026) [codex]
-- **Спільний тестовий термінал** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Спільний тестовий термінал** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -645,28 +652,28 @@
 ## v0.81.153 - Рішення щодо legacy-матеріалів Design Board
 
 ### Release / Versioning / (13.09.2026) [codex]
-- **Рішення щодо legacy-матеріалів Design Board** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Рішення щодо legacy-матеріалів Design Board** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.152 - Пояснення PIN тестової каси
 
 ### Release / Versioning / (13.09.2026) [codex]
-- **Пояснення PIN тестової каси** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Пояснення PIN тестової каси** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.151 - PIN тестової каси біля маршруту
 
 ### Release / Versioning / (13.09.2026) [codex]
-- **Test cashier PIN route controls** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Test cashier PIN route controls** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.150 - Design Board UI context polish
 
 ### Release / Versioning / (13.09.2026) [codex]
-- **Design Board UI context polish** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Design Board UI context polish** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -682,7 +689,7 @@
 ## v0.81.148 - Design Board isolation release
 
 ### Release / Versioning / (13.09.2026) [codex]
-- **Design Board isolation release** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Design Board isolation release** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -717,7 +724,7 @@
 ## v0.81.144 - Каса: вузький тестовий X/Z gate
 
 ### Release / Versioning / (12.09.2026) [codex]
-- **Каса: вузький тестовий X/Z gate** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Каса: вузький тестовий X/Z gate** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -734,7 +741,7 @@
 ## v0.81.142 - Каса: захищене відновлення close proof
 
 ### Release / Versioning / (12.09.2026) [codex]
-- **Cashier guarded close-proof recovery** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Cashier guarded close-proof recovery** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -749,7 +756,7 @@
 ## v0.81.140 - Dashboard: захист від конфліктів вкладок
 
 ### Release / Versioning / (12.09.2026) [codex]
-- **Dashboard: захист від конфліктів вкладок** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Dashboard: захист від конфліктів вкладок** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -814,14 +821,14 @@
 ## v0.81.133 - Omni: закриття post-release хвостів TD7
 
 ### Release / Versioning / (12.09.2026) [codex]
-- **Omni: TD7 post-release cleanup** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Omni: TD7 post-release cleanup** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.132 - Omni: докази релізу техборгу
 
 ### Release / Versioning / (12.09.2026) [codex]
-- **Omni: докази релізу техборгу** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Omni: докази релізу техборгу** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -856,35 +863,35 @@
 ## v0.81.128 - Мультибізнес foundation
 
 ### Release / Versioning / (12.09.2026) [codex]
-- **Мультибізнес foundation** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Мультибізнес foundation** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.127 - Мультибізнес foundation
 
 ### Release / Versioning / (12.09.2026) [codex]
-- **Мультибізнес foundation** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Мультибізнес foundation** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.126 - Мультибізнес foundation
 
 ### Release / Versioning / (12.09.2026) [codex]
-- **Мультибізнес foundation** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Мультибізнес foundation** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.125 - Мультибізнес foundation
 
 ### Release / Versioning / (12.09.2026) [codex]
-- **Мультибізнес foundation** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Мультибізнес foundation** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.124 - PARK/DAR каса та знижки
 
 ### Release / Versioning / (12.09.2026) [codex]
-- **PARK/DAR каса та знижки** - release marker, cache tags and visible version metadata were prepared automatically.
+- **PARK/DAR каса та знижки** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -944,7 +951,7 @@
 ## v0.81.118 - Випускні: ізоляція бізнесів
 
 ### Release / Versioning / (11.09.2026) [codex]
-- **Випускні: ізоляція бізнесів** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Випускні: ізоляція бізнесів** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -1060,7 +1067,7 @@
 ## v0.81.105 - Продукти: точні підсумки та навігація
 
 ### Release / Versioning / (11.09.2026) [codex]
-- **Продукти: точні підсумки та навігація** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Продукти: точні підсумки та навігація** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -1086,7 +1093,7 @@
 ## v0.81.102 - Продукти · Каталоги · Конструктор випускного
 
 ### Release / Versioning / (11.09.2026) [codex]
-- **Продукти · Каталоги · Конструктор випускного** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Продукти · Каталоги · Конструктор випускного** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -1266,7 +1273,7 @@
 ## v0.81.83 - PARK/DAR Cashier Smoke After Redirect
 
 ### Release / Versioning / (09.09.2026) [codex]
-- **PARK/DAR Cashier Smoke After Redirect** - release marker, cache tags and visible version metadata were prepared automatically.
+- **PARK/DAR Cashier Smoke After Redirect** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -1283,14 +1290,14 @@
 ## v0.81.81 - PARK/DAR Cashier Payment Guard
 
 ### Release / Versioning / (07.09.2026) [codex]
-- **PARK/DAR Cashier Payment Guard** - release marker, cache tags and visible version metadata were prepared automatically.
+- **PARK/DAR Cashier Payment Guard** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.80 - PARK/DAR Reusable Test Day
 
 ### Release / Versioning / (06.09.2026) [codex]
-- **PARK/DAR Reusable Test Day** - release marker, cache tags and visible version metadata were prepared automatically.
+- **PARK/DAR Reusable Test Day** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 - **Delivery chain** - this candidate release marker is prepared on top of the separate HOLD startup guard release marker.
 
 ---
@@ -1357,7 +1364,7 @@
 ## v0.81.72 - PARK/DAR Read-Only Attestation Bootstrap
 
 ### Release / Versioning / (04.09.2026) [codex]
-- **PARK/DAR Read-Only Attestation Bootstrap** - release marker, cache tags and visible version metadata were prepared automatically.
+- **PARK/DAR Read-Only Attestation Bootstrap** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -1384,7 +1391,7 @@
 ## v0.81.69 - Checkbox Hardening Release
 
 ### Release / Versioning / (03.09.2026) [codex]
-- **Checkbox Hardening Release** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Checkbox Hardening Release** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -1412,105 +1419,105 @@
 ## v0.81.66 - Timeline Narrow Identity Fix
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Timeline Narrow Identity Fix** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Timeline Narrow Identity Fix** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.65 - Timeline Narrow Identity Fix
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Timeline Narrow Identity Fix** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Timeline Narrow Identity Fix** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.64 - Timeline Presentation System v2 + Autonomy Hardening
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Timeline Presentation System v2 + Autonomy Hardening** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Timeline Presentation System v2 + Autonomy Hardening** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.63 - Timeline Presentation System v2 + Autonomy Hardening
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Timeline Presentation System v2 + Autonomy Hardening** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Timeline Presentation System v2 + Autonomy Hardening** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.62 - Timeline Presentation System v2 + Autonomy Hardening
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Timeline Presentation System v2 + Autonomy Hardening** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Timeline Presentation System v2 + Autonomy Hardening** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.61 - Timeline Presentation System v2
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Timeline Presentation System v2** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Timeline Presentation System v2** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.60 - Timeline Presentation System v2
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Timeline Presentation System v2** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Timeline Presentation System v2** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.59 - Autonomy Hardening Windows Controller
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Autonomy Hardening Windows Controller** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Autonomy Hardening Windows Controller** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.58 - Autonomy Hardening Windows Controller
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Autonomy Hardening Windows Controller** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Autonomy Hardening Windows Controller** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.57 - Autonomy Hardening
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Autonomy Hardening** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Autonomy Hardening** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.56 - Autonomy Hardening QA Preflight
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Autonomy Hardening QA Preflight** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Autonomy Hardening QA Preflight** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.55 - Autonomy Hardening QA Preflight
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Autonomy Hardening QA Preflight** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Autonomy Hardening QA Preflight** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.54 - Autonomy Hardening QA Preflight
 
 ### Release / Versioning / (02.09.2026) [codex]
-- **Autonomy Hardening QA Preflight** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Autonomy Hardening QA Preflight** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.53 - Autonomy Hardening
 
 ### Release / Versioning / (01.09.2026) [codex]
-- **Autonomy Hardening** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Autonomy Hardening** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.52 - Autonomy Hardening
 
 ### Release / Versioning / (01.09.2026) [codex]
-- **Autonomy Hardening** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Autonomy Hardening** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -1738,7 +1745,7 @@
 ## v0.81.25 - Scheduler Direct Behavior Closure
 
 ### Release / Versioning / (26.08.2026) [codex]
-- **Scheduler Direct Behavior Closure** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Scheduler Direct Behavior Closure** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -1774,7 +1781,7 @@
 ## v0.81.21 - Park Logo Asset
 
 ### Release / Versioning / (26.08.2026) [codex]
-- **Park Logo Asset** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Park Logo Asset** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -1930,21 +1937,21 @@
 ## v0.81.5 - AI draft deprecation wrapper
 
 ### Release / Versioning / (20.08.2026) [codex]
-- **AI draft deprecation wrapper** - release marker, cache tags and visible version metadata were prepared automatically.
+- **AI draft deprecation wrapper** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.4 - AI task draft normalization + telemetry
 
 ### Release / Versioning / (20.08.2026) [codex]
-- **AI task draft normalization + telemetry** - release marker, cache tags and visible version metadata were prepared automatically.
+- **AI task draft normalization + telemetry** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.81.3 - AI task draft quality + impacts
 
 ### Release / Versioning / (20.08.2026) [codex]
-- **AI task draft quality + impacts** - release marker, cache tags and visible version metadata were prepared automatically.
+- **AI task draft quality + impacts** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -2343,7 +2350,7 @@
 ## v0.80.125 - My Day AI Composer Integration
 
 ### Release / Versioning / (12.08.2026) [codex]
-- **My Day AI Composer Integration** - release marker, cache tags and visible version metadata were prepared automatically.
+- **My Day AI Composer Integration** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -2368,7 +2375,7 @@
 ## v0.80.122 - Checkbox Test Readiness
 
 ### Release / Versioning / (11.08.2026) [codex]
-- **Checkbox Test Readiness** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Checkbox Test Readiness** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -2385,7 +2392,7 @@
 ## v0.80.120 - Checkbox Shift Recovery
 
 ### Release / Versioning / (11.08.2026) [codex]
-- **Checkbox Shift Recovery** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Checkbox Shift Recovery** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -2474,14 +2481,14 @@
 ## v0.80.109 - Checkbox Fiscal Hardening
 
 ### Release / Versioning / (10.08.2026) [codex]
-- **Checkbox Fiscal Hardening** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Checkbox Fiscal Hardening** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.80.108 - Checkbox Fiscal Hardening
 
 ### Release / Versioning / (09.08.2026) [codex]
-- **Checkbox Fiscal Hardening** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Checkbox Fiscal Hardening** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -2673,7 +2680,7 @@
 ## v0.80.88 - Checkbox thin MVP integration
 
 ### Release / Versioning / (08.08.2026) [codex]
-- **Checkbox thin MVP integration** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Checkbox thin MVP integration** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -2708,14 +2715,14 @@
 ## v0.80.84 - Каса парку: доступ для арт-директора
 
 ### Release / Versioning / (04.08.2026) [codex]
-- **Каса парку: доступ для арт-директора** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Каса парку: доступ для арт-директора** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.80.83 - Checkbox: пілот каси парку
 
 ### Release / Versioning / (04.08.2026) [codex]
-- **Checkbox: пілот каси парку** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Checkbox: пілот каси парку** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -2794,14 +2801,14 @@
 ## v0.80.75 - Мій день: київські межі часу
 
 ### Release / Versioning / (03.08.2026) [codex]
-- **Мій день: київські межі часу** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Мій день: київські межі часу** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.80.74 - Мій день: облік часу у внеску
 
 ### Release / Versioning / (03.08.2026) [codex]
-- **Мій день: облік часу у внеску** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Мій день: облік часу у внеску** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -2834,28 +2841,28 @@
 ## v0.80.70 - Доступи: payroll та HR export
 
 ### Release / Versioning / (02.08.2026) [codex]
-- **Доступи: payroll та HR export** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Доступи: payroll та HR export** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.80.69 - Доступи: підписка та пакети
 
 ### Release / Versioning / (02.08.2026) [codex]
-- **Доступи: підписка та пакети** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Доступи: підписка та пакети** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.80.68 - Доступи: фінанси банкетів
 
 ### Release / Versioning / (02.08.2026) [codex]
-- **Доступи: фінанси банкетів** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Доступи: фінанси банкетів** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.80.67 - Доступи: фінанси, налаштування та експорт
 
 ### Release / Versioning / (02.08.2026) [codex]
-- **Доступи: фінанси, налаштування та експорт** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Доступи: фінанси, налаштування та експорт** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -2908,7 +2915,7 @@
 ## v0.80.61 - Безпечний QA lease та read-only wallet
 
 ### Release / Versioning / (01.08.2026) [codex]
-- **Безпечний QA lease та read-only wallet** — release marker, cache tags and visible version metadata were prepared automatically.
+- **Безпечний QA lease та read-only wallet** — Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 - **Автоматичне протухання QA creator** — тимчасове підвищення більше не змінює базову роль акаунта: після expiry, revoke або перезапуску доступ повертається до збереженої ролі.
 - **Read-only live QA без wallet мутації** — спеціальний browser context не запускає автоматичний `daily-login` POST; будь-які інші browser mutations як і раніше блокуються до відправлення.
 
@@ -2917,7 +2924,7 @@
 ## v0.80.60 - Безпечний authenticated production QA
 
 ### Release / Versioning / (01.08.2026) [codex]
-- **Безпечний authenticated production QA** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Безпечний authenticated production QA** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 - **Постійний manual release gate** — додано `npm run qa:live:authenticated` для авторизованої перевірки `/`, HR, Staff, Training, Finance і Check-in у production без CI credentials.
 - **Безпека QA-сесії** — браузер пропускає лише read-only запити та auth login/refresh; будь-яку іншу мутацію блокує до відправки. Тимчасова роль `creator` повертається у `finally` і перевіряється новою сесією.
 - **Check-in без камери** — runner симулює `NotAllowedError`, перевіряє вихід із model loading і не створює attendance/face descriptor. CSP error є fatal для QA.
@@ -2958,7 +2965,7 @@
 ## v0.80.55 - My Day: чернетка та безпечна передача задач
 
 ### Release / Versioning / (01.08.2026) [codex]
-- **My Day: чернетка та безпечна передача задач** - release marker, cache tags and visible version metadata were prepared automatically.
+- **My Day: чернетка та безпечна передача задач** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 - **Чернетка нової задачі не стирається при виборі дати** — перемикання «Сьогодні», «Завтра», інших швидких дат і власної дати більше не перерендерює форму; `Без дати` створює справді незаплановану задачу.
 - **Захист від застарілих відповідей** — старий запит проєкції «Мій день» не може перезаписати новіший вибір власної дати.
 - **Передача приватної задачі стала явною** — перед перепризначенням, після якого користувач втратить доступ, CRM просить підтвердження і не розширює видимість автоматично.
@@ -3055,7 +3062,7 @@
 ## v0.80.44 - Hermes bot-native staff onboarding
 
 ### Release / Versioning / (31.07.2026) [codex]
-- **'Hermes bot-native staff onboarding'** - release marker, cache tags and visible version metadata were prepared automatically.
+- **'Hermes bot-native staff onboarding'** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3070,7 +3077,7 @@
 ## v0.80.42 - Центр задач: основа та drawer
 
 ### Release / Versioning / (31.07.2026) [codex]
-- **Центр задач: основа та drawer** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Центр задач: основа та drawer** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3260,7 +3267,7 @@
 ## v0.80.20 - Лід → бронювання: діти клієнта
 
 ### Release / Versioning / (28.07.2026) [codex]
-- **Лід → бронювання: діти клієнта** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Лід → бронювання: діти клієнта** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3285,7 +3292,7 @@
 ## v0.80.17 - Графік-прихід-уход
 
 ### Release / Versioning / (28.07.2026) [codex]
-- **Графік-прихід-уход** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Графік-прихід-уход** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3299,14 +3306,14 @@
 ## v0.80.15 - Smoke: безпечний вибір кімнати
 
 ### Release / Versioning / (28.07.2026) [codex]
-- **Smoke: безпечний вибір кімнати** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Smoke: безпечний вибір кімнати** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.80.14 - Безпечне soft-очищення production smoke
 
 ### Release / Versioning / (28.07.2026) [codex]
-- **Безпечне soft-очищення production smoke** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Безпечне soft-очищення production smoke** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3384,14 +3391,14 @@
 ## v0.80.6 - Обране: компактний таймлайн
 
 ### Release / Versioning / (25.07.2026) [codex]
-- **Обране: компактний таймлайн** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Обране: компактний таймлайн** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.80.5 - Обране: компактний таймлайн
 
 ### Release / Versioning / (24.07.2026) [codex]
-- **Обране: компактний таймлайн** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Обране: компактний таймлайн** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3439,14 +3446,14 @@
 ## v0.79.151 - QA: коректна кімната у smoke
 
 ### Release / Versioning / (24.07.2026) [codex]
-- **QA: коректна кімната у smoke** - release marker, cache tags and visible version metadata were prepared automatically.
+- **QA: коректна кімната у smoke** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.150 - QA: безпечне прибирання smoke
 
 ### Release / Versioning / (24.07.2026) [codex]
-- **QA: безпечне прибирання smoke** - release marker, cache tags and visible version metadata were prepared automatically.
+- **QA: безпечне прибирання smoke** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3462,21 +3469,21 @@
 ## v0.79.148 - Таймлайн у боковому меню: лічильники режимів
 
 ### Release / Versioning / (24.07.2026) [codex]
-- **Таймлайн у боковому меню: лічильники режимів** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Таймлайн у боковому меню: лічильники режимів** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.147 - Банкет: нульові квитки
 
 ### Release / Versioning / (24.07.2026) [codex]
-- **Банкет: нульові квитки** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Банкет: нульові квитки** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.146 - Банкет: квитки і завдаток
 
 ### Release / Versioning / (24.07.2026) [codex]
-- **Банкет: квитки і завдаток** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Банкет: квитки і завдаток** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3596,14 +3603,14 @@
 ## v0.79.130 - Банкет: квитки і меню
 
 ### Release / Versioning / (22.07.2026) [codex]
-- **Банкет: квитки і меню** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Банкет: квитки і меню** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.129 - Банкет: контраст квитків
 
 ### Release / Versioning / (22.07.2026) [codex]
-- **Банкет: контраст квитків** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Банкет: контраст квитків** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3670,28 +3677,28 @@
 ## v0.79.121 - HR картка: вузол структури
 
 ### Release / Versioning / (21.07.2026) [codex]
-- **HR staff node dropdown** - release marker, cache tags and visible version metadata were prepared automatically.
+- **HR staff node dropdown** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.120 - HR друк: кондитерський цех і піцейола
 
 ### Release / Versioning / (20.07.2026) [codex]
-- **HR друк: кондитерський цех і піцейола** - release marker, cache tags and visible version metadata were prepared automatically.
+- **HR друк: кондитерський цех і піцейола** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.119 - 'HR друк: кондитерський цех і піцейола'
 
 ### Release / Versioning / (20.07.2026) [codex]
-- **'HR друк: кондитерський цех і піцейола'** - release marker, cache tags and visible version metadata were prepared automatically.
+- **'HR друк: кондитерський цех і піцейола'** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.118 - ЗП KPI підпис відділу
 
 ### Release / Versioning / (20.07.2026) [codex]
-- **ЗП KPI підпис відділу** - release marker, cache tags and visible version metadata were prepared automatically.
+- **ЗП KPI підпис відділу** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3708,14 +3715,14 @@
 ## v0.79.116 - HR графік: повний список аніматорів
 
 ### Release / Versioning / (20.07.2026) [codex]
-- **HR графік: повний список аніматорів** - release marker, cache tags and visible version metadata were prepared automatically.
+- **HR графік: повний список аніматорів** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.115 - ЗП KPI актуальний список
 
 ### Release / Versioning / (20.07.2026) [codex]
-- **ЗП KPI актуальний список** - release marker, cache tags and visible version metadata were prepared automatically.
+- **ЗП KPI актуальний список** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3749,14 +3756,14 @@
 ## v0.79.111 - Staff node dropdown approved order
 
 ### Release / Versioning / (20.07.2026) [codex]
-- **Staff node dropdown approved order** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Staff node dropdown approved order** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.110 - Staff node dropdown approved order
 
 ### Release / Versioning / (19.07.2026) [codex]
-- **Staff node dropdown fix** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Staff node dropdown fix** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3827,14 +3834,14 @@
 ## v0.79.102 - Timeline summary runtime fix
 
 ### Release / Versioning / (19.07.2026) [codex]
-- **Timeline summary runtime fix** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Timeline summary runtime fix** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.101 - Timeline launcher visual guard
 
 ### Release / Versioning / (19.07.2026) [codex]
-- **Timeline launcher visual guard** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Timeline launcher visual guard** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3887,7 +3894,7 @@
 ## v0.79.95 - HR leadership node dropdown
 
 ### Release / Versioning / (19.07.2026) [codex]
-- **HR leadership node dropdown** - release marker, cache tags and visible version metadata were prepared automatically.
+- **HR leadership node dropdown** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3904,28 +3911,28 @@
 ## v0.79.93 - HR professions active node dropdown
 
 ### Release / Versioning / (19.07.2026) [codex]
-- **HR professions active node dropdown** - release marker, cache tags and visible version metadata were prepared automatically.
+- **HR professions active node dropdown** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.92 - HR structure profession contrast hotfix
 
 ### Release / Versioning / (19.07.2026) [codex]
-- **HR structure profession contrast hotfix** - release marker, cache tags and visible version metadata were prepared automatically.
+- **HR structure profession contrast hotfix** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.91 - HR structure tree profession rows
 
 ### Release / Versioning / (19.07.2026) [codex]
-- **HR structure tree profession rows** - release marker, cache tags and visible version metadata were prepared automatically.
+- **HR structure tree profession rows** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
 ## v0.79.90 - HR structure profession refresh
 
 ### Release / Versioning / (19.07.2026) [codex]
-- **HR structure profession refresh** - release marker, cache tags and visible version metadata were prepared automatically.
+- **HR structure profession refresh** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 
@@ -3950,7 +3957,7 @@
 ## v0.79.87 - Timeline Smoke Durability
 
 ### Release / Versioning / (19.07.2026) [codex]
-- **Timeline Smoke Durability** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Timeline Smoke Durability** - Власник організації може створити ще одну організацію з власним кабінетом. Нова організація не отримує доступу до наявних бізнесів або даних автоматично.
 
 ---
 

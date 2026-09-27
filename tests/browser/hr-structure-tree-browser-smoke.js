@@ -362,25 +362,86 @@ async function assertDirectStructureLoadAndContextRaces(page) {
     assert.equal(await page.evaluate(() => window.__structureRequests.length), 2,
         'bootstrap lifecycle events coalesce into one fresh GET');
 
+    await page.evaluate(() => { void loadCompanyStructure({ force: true }); });
+    await page.waitForFunction(() => window.__structureRequests.length === 3);
     await page.evaluate(() => {
         window.__structureBusiness = 'dar';
         window.dispatchEvent(new CustomEvent('crmBusinessContextChanged'));
     });
     assert.equal(await page.evaluate(() => companyStructureNodes.length), 0,
-        'switching business immediately clears Park nodes');
-    await page.waitForFunction(() => window.__structureRequests.length === 3);
+        'switching to Dar immediately clears Park nodes');
+    await page.waitForFunction(() => window.__structureRequests.length === 4);
+    assert.equal(await page.evaluate(() => window.__structureBusiness), 'dar');
+    await respond(2, 'late-park');
+    await page.waitForTimeout(50);
+    assert.equal(await page.evaluate(() => companyStructureLoadState), 'loading',
+        'late Park success cannot settle the pending Dar request');
+    assert.equal(await page.evaluate(() => companyStructureNodes.length), 0,
+        'late Park response cannot paint nodes in Dar');
+    await page.evaluate(() => window.__structureRequests[3].resolve({
+        success: false, status: 403, error: 'Dar structure is restricted'
+    }));
+    await page.waitForFunction(() => companyStructureLoadState === 'restricted');
+    assert.equal(await page.locator('#companyStructureStatus').getAttribute('data-state'), 'restricted',
+        'Dar 403 settles as restricted instead of endless loading');
+    assert.equal(await page.evaluate(() => companyStructureNodes.length), 0);
+
     await page.evaluate(() => {
         window.__structureBusiness = 'park';
         window.dispatchEvent(new CustomEvent('crmBusinessContextChanged'));
     });
-    await page.waitForFunction(() => window.__structureRequests.length === 4);
-    await respond(3, 'return-park');
+    await page.waitForFunction(() => window.__structureRequests.length === 5);
+    await respond(4, 'return-park');
     await page.waitForFunction(() => companyStructureLoadState === 'ready'
         && companyStructureNodes[0]?.id === 'return-park');
-    await respond(2, 'late-dar');
+    assert.equal(await page.locator('#btnRetryCompanyStructure').isVisible(), false,
+        'Park returns from Dar 403 without manual Retry');
+
+    await page.evaluate(() => {
+        window.__structureBusiness = 'dar';
+        window.dispatchEvent(new CustomEvent('crmBusinessContextChanged'));
+    });
+    await page.waitForFunction(() => window.__structureRequests.length === 6);
+    await page.evaluate(() => {
+        window.__structureBusiness = 'park';
+        window.dispatchEvent(new CustomEvent('crmBusinessContextChanged'));
+    });
+    await page.waitForFunction(() => window.__structureRequests.length === 7);
+    await respond(6, 'current-park');
+    await page.waitForFunction(() => companyStructureLoadState === 'ready'
+        && companyStructureNodes[0]?.id === 'current-park');
+    assert.equal(await page.evaluate(() => window.__structureBusiness), 'park');
+    await respond(5, 'late-dar');
     await page.waitForTimeout(50);
-    assert.equal(await page.evaluate(() => companyStructureNodes[0]?.id), 'return-park',
-        'late Dar response cannot repaint Park');
+    assert.equal(await page.evaluate(() => companyStructureLoadState), 'ready',
+        'late Dar success cannot leave Park loading');
+    assert.equal(await page.evaluate(() => companyStructureNodes[0]?.id), 'current-park',
+        'late Dar success cannot repaint Park');
+    assert.equal(await page.locator('#btnRetryCompanyStructure').isVisible(), false,
+        'late Dar success cannot require manual Retry in Park');
+
+    await page.evaluate(() => {
+        window.__structureBusiness = 'dar';
+        window.dispatchEvent(new CustomEvent('crmBusinessContextChanged'));
+    });
+    await page.waitForFunction(() => window.__structureRequests.length === 8);
+    await page.evaluate(() => {
+        window.__structureBusiness = 'park';
+        window.dispatchEvent(new CustomEvent('crmBusinessContextChanged'));
+    });
+    await page.waitForFunction(() => window.__structureRequests.length === 9);
+    await respond(8, 'park-after-late-denial');
+    await page.waitForFunction(() => companyStructureLoadState === 'ready'
+        && companyStructureNodes[0]?.id === 'park-after-late-denial');
+    await page.evaluate(() => window.__structureRequests[7].resolve({
+        success: false, status: 403, error: 'Late Dar denial'
+    }));
+    await page.waitForTimeout(50);
+    assert.equal(await page.evaluate(() => companyStructureLoadState), 'ready',
+        'late Dar 403 cannot replace the current Park state');
+    assert.equal(await page.evaluate(() => companyStructureNodes[0]?.id), 'park-after-late-denial');
+    assert.equal(await page.locator('#btnRetryCompanyStructure').isVisible(), false,
+        'late Dar 403 cannot add a Retry requirement in Park');
 
     for (const failure of [
         { status: 403, expected: 'restricted' },

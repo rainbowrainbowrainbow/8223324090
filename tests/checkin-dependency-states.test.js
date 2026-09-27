@@ -78,11 +78,14 @@ test('journal 403 and malformed descriptor payload cannot become empty log or re
 test('network descriptor failure and server journal failure remain retryable errors', async () => {
     for (const phase of ['descriptors', 'log']) {
         const { dom, win, calls } = await harness(url => {
+            if (url.endsWith('/checkins')) return phase === 'log'
+                ? response(500, { error: 'Synthetic server error' })
+                : response(200, { success: true, data: [] });
             if (url.endsWith('/face-descriptors')) {
                 if (phase === 'descriptors') throw new Error('Synthetic offline');
                 return response(200, []);
             }
-            return response(500, { error: 'Synthetic server error' });
+            throw new Error('Unexpected request');
         });
         try {
             assert.match(win.document.getElementById('statusMsg').textContent, phase === 'descriptors' ? /дані облич/ : /журнал відміток/);
@@ -106,7 +109,8 @@ test('camera denial stays distinct from dependency errors', async () => {
 test('registration roster denial is visible and retry restores the selector', async () => {
     let denied = true;
     const { dom, win } = await harness(url => url.endsWith('/staff')
-        ? denied ? response(403, { code: 'staff_not_migrated' }) : response(200, [{ id: 4, name: 'QA Staff', is_active: true }])
+        ? denied ? response(403, { code: 'staff_not_migrated' })
+            : response(200, { success: true, data: [{ id: 4, name: 'QA Staff', is_active: true }] })
         : response(200, []));
     try {
         await win.showRegister();
@@ -121,7 +125,7 @@ test('registration roster denial is visible and retry restores the selector', as
 
 test('registration HTTP 403 never reports success even with a misleading payload', async () => {
     const { dom, win, calls } = await harness(url => url.endsWith('/staff')
-        ? response(200, [{ id: 4, name: 'QA Staff', is_active: true }])
+        ? response(200, { success: true, data: [{ id: 4, name: 'QA Staff', is_active: true }] })
         : url.endsWith('/face-descriptor') ? response(403, { success: true, code: 'staff_not_migrated' })
             : response(200, []));
     try {
@@ -134,4 +138,57 @@ test('registration HTTP 403 never reports success even with a misleading payload
         assert.equal(win.document.getElementById('registerPanel').style.display, 'block');
         assert.equal(calls.filter(call => call.endsWith('/face-descriptor')).length, 1);
     } finally { dom.window.close(); }
+});
+
+test('picker rejects unsuccessful or malformed 200 payloads and retries a valid staff envelope', async () => {
+    let mode = 'unsuccessful';
+    const { dom, win, calls } = await harness(url => url.endsWith('/staff')
+        ? response(200, mode === 'unsuccessful' ? { success: false, data: [{ id: 4, name: 'QA Staff' }] }
+            : mode === 'malformed' ? { success: true, data: [null] }
+                : { success: true, data: [{ id: 4, name: 'QA Staff', is_active: true }] })
+        : response(200, []));
+    try {
+        for (const invalid of ['unsuccessful', 'malformed']) {
+            mode = invalid;
+            await win.showRegister();
+            assert.equal(win.document.getElementById('staffSelect').disabled, true);
+            assert.match(win.document.getElementById('registerStaffState').textContent, /Не вдалося завантажити/);
+        }
+        mode = 'success';
+        await win.showRegister();
+        assert.equal(win.document.getElementById('staffSelect').disabled, false);
+        assert.match(win.document.getElementById('staffSelect').textContent, /QA Staff/);
+        assert.equal(calls.some(call => /\/staff\/(?:checkin|checkout)$/.test(call)), false);
+    } finally { dom.window.close(); }
+});
+
+test('journal is readable before the biometric gate, while malformed and offline reads retain their own retry', async () => {
+    for (const failure of ['malformed', 'offline']) {
+        let mode = failure;
+        const { dom, win, calls } = await harness(url => {
+            if (url.endsWith('/checkins')) {
+                if (mode === 'offline') throw new Error('Synthetic offline');
+                if (mode === 'malformed') return response(200, { success: true, data: { wrong: true } });
+                return response(200, { success: true, data: [{ date: '2026-09-27',
+                    check_in_time: '2026-09-27T06:12:00.000Z', check_out_time: null, status: 'checked_in',
+                    staff_name: '<script>synthetic</script>' }] });
+            }
+            return response(403, { success: false, code: 'staff_not_migrated' });
+        });
+        try {
+            assert.equal(win.document.getElementById('logEntries').getAttribute('role'), 'alert');
+            assert.ok(win.document.querySelector('#logEntries button'));
+            assert.equal(calls.some(call => call.endsWith('/face-descriptors')), false);
+            mode = 'success';
+            win.document.querySelector('#logEntries button').click();
+            for (let i = 0; i < 30 && !win.document.querySelector('#logEntries .le-name'); i++) {
+                await new Promise(resolve => setTimeout(resolve, 5));
+            }
+            assert.equal(win.document.querySelector('#logEntries .le-name').textContent, '<script>synthetic</script>');
+            assert.equal(win.document.querySelector('#logEntries script'), null);
+            assert.match(win.document.getElementById('statusMsg').textContent, /Журнал оновлено/);
+            assert.equal(calls.some(call => call.endsWith('/face-descriptors') || call === 'camera'
+                || /\/staff\/(?:checkin|checkout)$/.test(call)), false);
+        } finally { dom.window.close(); }
+    }
 });

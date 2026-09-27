@@ -3304,6 +3304,7 @@ const Sidebar = (() => {
         const keyLabel = _cleanSidebarBusinessLabel(ctx.key);
         const maxFullLength = options.compact ? 8 : 12;
         if (fullLabel && fullLabel.length <= maxFullLength) return fullLabel;
+        if (shortLabel && shortLabel.length <= 12) return shortLabel;
         if (firstWord && firstWord.length >= 3 && firstWord.length <= 12) return firstWord;
         return shortLabel || firstWord || fullLabel || keyLabel;
     }
@@ -3396,7 +3397,7 @@ const Sidebar = (() => {
                 <span>Режим огляду</span>
                 <strong>Один бізнес</strong>
             </span>
-            <span class="sidebar-business-unavailable">Кілька бізнесів доступні на сторінках огляду: Дашборд, Продукти, Ліди, Клієнти та Звіти.</span>
+            <span class="sidebar-business-unavailable">Кілька бізнесів: Дашборд, Продукти, Ліди, Клієнти, Звіти.</span>
         `;
         host.innerHTML = `
             <span class="sidebar-business-control-row">

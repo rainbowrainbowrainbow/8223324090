@@ -60,7 +60,7 @@
         function render() {
             const org = organization();
             container.innerHTML = '<div class="profile-panel-head"><div><span class="profile-kicker">Організація</span><h2>Кабінети та модулі</h2></div></div>'
-                + '<p>Назва й модулі належать бізнесу. Роль працівника налаштовується окремо в розділі «Команда та доступи».</p>'
+                + '<p>Тут показані всі кабінети вибраної організації, незалежно від поточного бізнесу в меню ліворуч. Назву й модулі змінюють у кабінеті, роль працівника — у розділі «Команда та доступи».</p>'
                 + `<div class="profile-avatar-action-row"><button type="button" data-cabinet-action="load" ${busy ? 'disabled' : ''}>${data ? 'Оновити кабінети' : 'Відкрити кабінети'}</button></div>`
                 + `<p role="status" aria-live="polite" tabindex="-1" data-cabinet-status>${escape(message)}</p>`
                 + (data ? `<label class="business-cabinet-field">Організація<select data-cabinet-organization ${busy ? 'disabled' : ''}>${data.organizations.map(item => `<option value="${escape(item.id)}" ${String(item.id) === organizationId ? 'selected' : ''}>${escape(item.name)}</option>`).join('')}</select></label>` : '')

@@ -29,7 +29,13 @@ const certificateApi = api.slice(api.indexOf('function certificateApiFailure('),
 const prelude = `
 const API_BASE = '/api';
 window.fixtureAvailable = true;
-window.apiVerifyToken = async () => ({id: 1, username: 'synthetic-reception', role: 'reception'});
+window.apiVerifyToken = async () => localStorage.getItem('fixture.auth') === 'expired'
+    ? null : ({id: 1, username: 'synthetic-reception', role: 'reception'});
+window.clearAuthStorage = () => localStorage.removeItem('fixture.auth');
+window.rememberAuthReturnRoute = reason => {
+    localStorage.setItem('fixture.auth-return-route', location.pathname);
+    localStorage.setItem('fixture.auth-return-reason', reason);
+};
 window.hydrateBusinessOperatingProfile = async () => {};
 window.hydrateActionPermissions = async () => ({});
 window.canAccessPage = page => !new URLSearchParams(location.search).has('checkOnly') || page === '/certificates/check';
@@ -51,8 +57,16 @@ async function main() {
     const app = express();
     let posts = 0;
     let consumed = false;
+    let redemptionFailureAfterCommit = false;
+    let lookupUnavailable = false;
     const issued = [];
     app.use(express.json());
+    app.get('/', (_req, res) => res.type('html').send(`<!doctype html><html><body>
+        <main><h1>Тестовий вхід</h1><button id="fixtureLogin" type="button">Увійти</button></main>
+        <script>document.getElementById('fixtureLogin').addEventListener('click', () => {
+            localStorage.setItem('fixture.auth', 'valid');
+            location.href = localStorage.getItem('fixture.auth-return-route') || '/';
+        });</script></body></html>`));
     app.get('/certificates/check', (_req, res) => res.type('html').send(html));
     app.get('/certificates/new', (_req, res) => res.type('html').send(html));
     app.get('/certificates', (_req, res) => res.type('html').send(html));
@@ -60,6 +74,7 @@ async function main() {
     app.get('/fixture-bootstrap.js', (_req, res) => res.type('js').send(prelude + certificateApi));
     app.get('/api/certificates/code/:code', async (req, res) => {
         if (req.params.code === 'SLOW') await new Promise(resolve => setTimeout(resolve, 350));
+        if (lookupUnavailable && req.params.code === 'NETWORK-FAIL') return res.status(503).json({ error: 'Temporarily unavailable' });
         if (req.params.code === 'MISSING') return res.status(404).json({ error: 'Certificate not found' });
         const status = ({ USED: 'used', BLOCKED: 'blocked', REVOKED: 'revoked' })[req.params.code]
             || (consumed ? 'used' : 'active');
@@ -89,6 +104,10 @@ async function main() {
         posts++;
         await new Promise(resolve => setTimeout(resolve, 250));
         consumed = true;
+        if (redemptionFailureAfterCommit) {
+            redemptionFailureAfterCommit = false;
+            return res.status(503).json({ error: 'Response interrupted after commit' });
+        }
         res.json({ success: true, certificate: { id: 1, certCode: 'CERT-FIXTURE', typeText: 'на одноразовий вхід', validUntil: '2099-12-31', status: 'used', usedAt: '2026-09-27T10:00:00Z' } });
     });
     for (const dir of ['css', 'js', 'images']) app.use('/' + dir, express.static(path.join(ROOT, dir)));
@@ -116,6 +135,18 @@ async function main() {
                 throw error;
             }
         };
+
+        await page.goto(base + '/certificates/check');
+        await page.evaluate(() => localStorage.setItem('fixture.auth', 'expired'));
+        await page.goto(base + '/certificates/check?code=LOGIN-FIXTURE');
+        await page.getByRole('heading', { name: 'Тестовий вхід' }).waitFor();
+        assert.equal(await page.evaluate(() => sessionStorage.getItem('eventgenix_certificate_check_code_v1')), 'LOGIN-FIXTURE', 'QR code survives the login redirect in this tab');
+        assert.equal(await page.evaluate(() => localStorage.getItem('fixture.auth-return-route')), '/certificates/check');
+        await page.getByRole('button', { name: 'Увійти' }).click();
+        await page.locator('[data-cert-check-state="redeemable"]').waitFor();
+        assert.equal(await page.locator('#certificateCheckCode').inputValue(), 'LOGIN-FIXTURE', 'login returns to the certificate and restores the scanned code');
+        await page.evaluate(() => localStorage.removeItem('fixture.auth-return-route'));
+
         await open('CERT-FIXTURE');
         assert.equal(await page.locator('.cert-page-actions a:visible').count(), 4, 'all four certificate routes are visible to an allowed user');
         assert.equal(await page.locator('.cert-page-actions [aria-current="page"]').getAttribute('href'), '/certificates/check');
@@ -176,6 +207,11 @@ async function main() {
         await page.screenshot({ path: path.join(OUTPUT, 'mobile-dark-used.png'), fullPage: true });
 
         consumed = false;
+        lookupUnavailable = true;
+        await open('NETWORK-FAIL');
+        await page.locator('[data-cert-check-state="error"]').waitFor();
+        assert.equal(await page.locator('[data-cert-redeem]').count(), 0, 'a failed lookup cannot expose an activation action');
+        lookupUnavailable = false;
         for (const [code, expectedState, explanation] of [
             ['VERIFY', 'verification_only', 'одноразовий вхід за ним тут недоступний.'],
             ['DENIED', 'redemption_unavailable', 'але не активувати вхід за ним.'],
@@ -248,8 +284,27 @@ async function main() {
         assert.equal(await page.locator('.cert-page-actions a:visible').getAttribute('href'), '/certificates/check');
         assert.equal(await page.locator('#certificateCheckCode').inputValue(), 'VERIFY');
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'check-only mobile page must not overflow');
+
+        consumed = false;
+        redemptionFailureAfterCommit = true;
+        await open('CERT-FIXTURE');
+        const postsBeforeRapidTaps = posts;
+        const activate = page.getByRole('button', { name: 'Активувати вхід', exact: true });
+        await Promise.all([
+            activate.evaluate(element => element.dispatchEvent(new MouseEvent('click', { bubbles: true }))),
+            activate.evaluate(element => element.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+        ]);
+        await page.getByRole('dialog').waitFor();
+        const confirmRedeem = page.getByRole('dialog').getByRole('button', { name: 'Активувати вхід', exact: true });
+        await confirmRedeem.evaluate(element => {
+            element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        await page.locator('[data-cert-check-state="used"]').waitFor();
+        assert.equal(posts, postsBeforeRapidTaps + 1, 'rapid repeated taps produce at most one redemption request per confirmation');
+        assert.equal(await page.locator('[data-cert-redeem]').count(), 0, 'an ambiguous network failure reloads the committed used state');
         assert.deepEqual(errors, []);
-        console.log('Certificate browser smoke passed: all states, keyboard confirmation/cancel, scope switch, stale lookup, mobile layout and stable issuance types.');
+        console.log('Certificate browser smoke passed: QR login return, all states, keyboard confirmation/cancel, duplicate taps, ambiguous network failure, scope switch, stale lookup, mobile layout and stable issuance types.');
     } finally {
         if (browser) await browser.close();
         await new Promise(resolve => server.close(resolve));

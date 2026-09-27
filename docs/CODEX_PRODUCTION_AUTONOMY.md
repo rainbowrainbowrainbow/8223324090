@@ -296,6 +296,17 @@ read-only transaction. After deploy the block records `pending_manual`; use
 the certificate operator procedure only after exact live SHA and QA isolation
 proof. It never invokes timeline QA for a certificate scope.
 
+The `certificate-ci-gate` protected workflow is reserved for the certificate
+expiry and booking precheck release. It permits exactly one Red path,
+`.github/workflows/ci.yml`, and only the listed release files in
+`scripts/production-block-policy.js`. It permits no migration or production QA
+fixture and does not change the Red classification of CI workflows. Review the
+CI diff for certificate-only jobs before preparing the block. The expiry
+scheduler can change real certificate statuses after deployment; obtain a fresh
+read-only count and the owner's separate bounded Red approval before execution.
+The controller itself does not run a direct data-fix. If the count exceeds the
+approved cap, stop; do not split the release into unapproved batches.
+
 Production GitHub auto-deploy is disabled. Deploy manually only after exact-SHA CI
 is green.
 

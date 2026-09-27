@@ -66,7 +66,8 @@ async function main() {
                 : req.params.code === 'DENIED' ? 'redemption_unavailable' : 'available';
         res.json({ id: 1, certCode: req.params.code, typeText: req.params.code === 'VERIFY' ? 'Абонемент' : 'на одноразовий вхід',
             validUntil: req.params.code === 'EXPIRED' ? '2020-01-01' : '2099-12-31',
-            status, effectiveStatus, canRedeem: redemptionReason === 'available', redemptionReason });
+            status, effectiveStatus, usedAt: status === 'used' ? '2026-09-27T10:00:00Z' : null,
+            canRedeem: redemptionReason === 'available', redemptionReason });
     });
     app.get('/api/certificates/:id', (req, res) => res.json({
         id: Number(req.params.id), certCode: `DETAIL-${req.params.id}`,
@@ -85,7 +86,7 @@ async function main() {
         posts++;
         await new Promise(resolve => setTimeout(resolve, 250));
         consumed = true;
-        res.json({ success: true, certificate: { id: 1, certCode: 'CERT-FIXTURE', typeText: 'на одноразовий вхід', validUntil: '2099-12-31', status: 'used' } });
+        res.json({ success: true, certificate: { id: 1, certCode: 'CERT-FIXTURE', typeText: 'на одноразовий вхід', validUntil: '2099-12-31', status: 'used', usedAt: '2026-09-27T10:00:00Z' } });
     });
     for (const dir of ['css', 'js', 'images']) app.use('/' + dir, express.static(path.join(ROOT, dir)));
     const server = await new Promise(resolve => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); });
@@ -115,7 +116,7 @@ async function main() {
         await open('CERT-FIXTURE');
         assert.equal(posts, 0, 'a scan cannot redeem');
         await page.locator('[data-cert-check-state="redeemable"]').waitFor();
-        await page.getByText('Цей сертифікат можна погасити після підтвердження.', { exact: false }).waitFor();
+        await page.getByText('Після підтвердження сертифікат одразу стане використаним.', { exact: false }).waitFor();
         await page.locator('#certificateCheckCode').focus();
         await page.keyboard.press('Tab');
         assert.equal(await page.locator('#certificateCheckSubmit').evaluate(element => element === document.activeElement), true);
@@ -129,20 +130,50 @@ async function main() {
         await page.getByRole('dialog').waitFor({ state: 'detached' });
         fs.mkdirSync(OUTPUT, { recursive: true });
         await page.screenshot({ path: path.join(OUTPUT, 'mobile-active.png'), fullPage: true });
-        await page.getByRole('button', { name: 'Погасити сертифікат', exact: true }).click();
-        await page.getByRole('button', { name: 'Погасити', exact: true }).click();
+        await page.getByRole('button', { name: 'Активувати вхід', exact: true }).click();
+        await page.getByRole('dialog').getByText('Після підтвердження він одразу стане використаним.', { exact: false }).waitFor();
+        await page.getByRole('dialog').getByRole('button', { name: 'Активувати вхід', exact: true }).click();
         assert.equal(await page.locator('[data-cert-redeem]').isDisabled(), true);
-        await page.locator('[data-cert-check-state="used"]').waitFor();
+        await page.locator('[data-cert-check-state="just_activated"]').waitFor();
+        await page.getByRole('heading', { name: 'Вхід активовано' }).waitFor();
+        await page.getByText('Щойно виконано').waitFor();
+        await page.getByText('Використано', { exact: true }).waitFor();
         assert.equal(posts, 1);
         assert.equal(await page.locator('[data-cert-redeem]').count(), 0);
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'mobile page must not overflow horizontally');
-        await page.screenshot({ path: path.join(OUTPUT, 'mobile-used.png'), fullPage: true });
+        await page.screenshot({ path: path.join(OUTPUT, 'mobile-just-activated.png'), fullPage: true });
+        await page.evaluate(() => {
+            document.documentElement.dataset.theme = 'dark';
+            document.documentElement.style.colorScheme = 'dark';
+            document.body.classList.add('dark-mode');
+        });
+        await page.screenshot({ path: path.join(OUTPUT, 'mobile-dark-just-activated.png'), fullPage: true });
+        await page.evaluate(() => {
+            document.documentElement.dataset.theme = 'light';
+            document.documentElement.style.colorScheme = 'light';
+            document.body.classList.remove('dark-mode');
+        });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'desktop page must not overflow horizontally');
+        await page.screenshot({ path: path.join(OUTPUT, 'desktop-just-activated.png'), fullPage: true });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.reload();
+        await page.locator('[data-cert-check-state="used"]').waitFor();
+        await page.getByText('Використаний раніше').waitFor();
+        assert.equal(await page.locator('[data-cert-redeem]').count(), 0);
+        await page.evaluate(() => {
+            document.documentElement.dataset.theme = 'dark';
+            document.documentElement.style.colorScheme = 'dark';
+            document.body.classList.add('dark-mode');
+        });
+        await page.waitForTimeout(500);
+        await page.screenshot({ path: path.join(OUTPUT, 'mobile-dark-used.png'), fullPage: true });
 
         consumed = false;
         for (const [code, expectedState, explanation] of [
-            ['VERIFY', 'verification_only', 'Цей тип доступний лише для перевірки.'],
-            ['DENIED', 'redemption_unavailable', 'Для вашого облікового запису погашення зараз недоступне.'],
-            ['USED', 'used', 'Повторне використання неможливе.'],
+            ['VERIFY', 'verification_only', 'одноразовий вхід за ним тут недоступний.'],
+            ['DENIED', 'redemption_unavailable', 'але не активувати вхід за ним.'],
+            ['USED', 'used', 'Повторний вхід за цим кодом неможливий.'],
             ['EXPIRED', 'expired', 'Сертифікат більше не дійсний.'],
             ['BLOCKED', 'blocked', 'Сертифікат не можна використати.'],
             ['REVOKED', 'revoked', 'Сертифікат не можна використати.'],
@@ -164,9 +195,9 @@ async function main() {
         await page.locator('#certificatePageDetailContent .cert-page-badge').getByText('Прострочений').waitFor();
         await page.locator('#certificatePageDetailClose').click();
         await open('CERT-FIXTURE');
-        await page.getByRole('button', { name: 'Погасити сертифікат', exact: true }).click();
+        await page.getByRole('button', { name: 'Активувати вхід', exact: true }).click();
         await page.evaluate(() => { window.fixtureAvailable = false; window.dispatchEvent(new Event('crmBusinessContextChanged')); });
-        await page.getByRole('button', { name: 'Погасити', exact: true }).click();
+        await page.getByRole('dialog').getByRole('button', { name: 'Активувати вхід', exact: true }).click();
         await page.getByRole('dialog').waitFor({ state: 'detached' });
         assert.equal(posts, 1, 'scope switch during confirmation cannot redeem');
         assert.ok(await page.locator('#certificateCheckResult').evaluate(element => element.classList.contains('hidden')));

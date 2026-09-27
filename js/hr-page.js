@@ -16850,7 +16850,7 @@ function updateReportHeaderMetrics(metrics = {}) {
     setReportHeaderMetricText('reportHeroTasksMeta', formatReportOverdueTasks(totalTasksOverdue));
 }
 
-function renderReportsUnavailable(message = 'Звіт недоступний для цього періоду') {
+function renderReportsUnavailable(message = 'Звіт недоступний для цього періоду', { retry = false } = {}) {
     setReportHeaderMetricText('reportHeroAttendance', '—');
     setReportHeaderMetricText('reportHeroAttendanceMeta', message);
     setReportHeaderMetricText('reportHeroLate', '—');
@@ -16863,10 +16863,11 @@ function renderReportsUnavailable(message = 'Звіт недоступний д�
     const head = document.getElementById('reportHead');
     const body = document.getElementById('reportBody');
     if (summary) {
-        summary.innerHTML = `<div class="hr-report-stat hr-report-stat--overdue"><div class="stat-value">!</div><div class="stat-label">${escapeHtml(message)}</div></div>`;
+        summary.innerHTML = `<div class="hr-report-stat hr-report-stat--overdue" role="${retry ? 'alert' : 'status'}"><div class="stat-value">!</div><div class="stat-label">${escapeHtml(message)}</div>${retry ? '<button type="button" class="btn-page-secondary" data-report-retry>Повторити</button>' : ''}</div>`;
+        summary.querySelector('[data-report-retry]')?.addEventListener('click', () => void loadReports());
     }
     if (head) head.innerHTML = '';
-    if (body) body.innerHTML = `<tr><td colspan="12">${escapeHtml(message)}</td></tr>`;
+    if (body) body.innerHTML = `<tr><td colspan="11">${escapeHtml(message)}</td></tr>`;
 }
 
 async function loadReports() {
@@ -16887,24 +16888,37 @@ async function loadReports() {
 
     const month = sel.value;
     const requestSeq = ++reportRequestSeq;
+    const context = teamAccessContext();
     reportState = { loadState: 'loading', month, error: '', exportReady: false };
     setReportExportAvailability(false);
     renderReportsUnavailable('Завантаження звіту…');
     const data = await hrFetch(`/report/monthly?month=${month}`).catch(() => null);
-    if (requestSeq !== reportRequestSeq) return;
-    if (!data || !data.success) {
+    if (requestSeq !== reportRequestSeq || context !== teamAccessContext()) return;
+    if (!data || !data.success || !Array.isArray(data.data)) {
         const message = data?.error || 'Не вдалося завантажити HR-звіт';
-        reportState = { loadState: 'error', month, error: message, exportReady: false };
-        renderReportsUnavailable(message);
+        reportState = { loadState: data?.status === 403 ? 'restricted' : 'error', month, error: message, exportReady: false };
+        renderReportsUnavailable(message, { retry: true });
         setReportExportAvailability(false);
         await loadRoleAssignmentsReport(requestSeq);
         return;
     }
 
-    reportState = { loadState: 'ready', month, error: '', exportReady: true };
+    const exportReady = data.reportAccess?.exportAllowed !== false && Array.isArray(data.data) && data.data.length > 0;
+    reportState = { loadState: data.data.length ? 'ready' : 'empty', month, error: '', exportReady };
     renderReports(data);
-    setReportExportAvailability(true);
+    setReportExportAvailability(exportReady);
     await loadRoleAssignmentsReport(requestSeq);
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged',
+    'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
+    window.addEventListener(eventName, () => {
+        if (reportState.loadState === 'idle') return;
+        reportRequestSeq++;
+        reportState = { loadState: 'error', month: '', error: 'Бізнес або доступ змінився. Повторіть запит.', exportReady: false };
+        setReportExportAvailability(false);
+        renderReportsUnavailable(reportState.error, { retry: true });
+    });
 }
 
 function renderReports(data) {
@@ -16939,9 +16953,9 @@ function renderReports(data) {
     document.getElementById('reportHead').innerHTML = `<tr>
         <th>ПІБ</th><th>Зміни</th><th>Відпрац.</th><th>Запізн.</th>
         <th>Ранні виходи</th><th>Overtime</th><th>Сер. запізн.</th><th>План</th>
-        <th>Годин</th><th>Сума</th><th>Задачі</th><th>KPI</th></tr>`;
+        <th>Годин</th><th>Задачі</th><th>KPI</th></tr>`;
 
-    document.getElementById('reportBody').innerHTML = rows.map(r => `<tr>
+    document.getElementById('reportBody').innerHTML = rows.length ? rows.map(r => `<tr>
         <td>${escapeHtml(r.staff_name)}</td>
         <td class="num">${r.days_scheduled}</td>
         <td class="num">${r.days_worked}</td>
@@ -16951,10 +16965,9 @@ function renderReports(data) {
         <td class="num">${r.avg_late_minutes > 0 ? r.avg_late_minutes + 'хв' : '—'}</td>
         <td>${escapeHtml(formatReportPlanWarnings(r))}</td>
         <td class="num">${r.total_worked_hours}г</td>
-        <td class="num">${fmtMoney(r.estimated_salary)}</td>
         <td class="num">${r.task_kpi?.tasks_done || 0}/${r.task_kpi?.tasks_assigned || 0}${r.task_kpi?.tasks_overdue ? ` · ${r.task_kpi.tasks_overdue} простр.` : ''}</td>
         <td class="num">${r.task_completion_rate || 0}%</td>
-    </tr>`).join('');
+    </tr>`).join('') : '<tr><td colspan="11">За цей період немає даних.</td></tr>';
 }
 
 function roleReportPillClass(value = '') {

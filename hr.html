@@ -528,23 +528,23 @@
                         <div class="hr-reports-hero-metrics" aria-label="Ключові показники звіту" aria-live="polite">
                             <div class="hr-reports-metric-chip hr-reports-metric-chip--presence">
                                 <span class="hr-reports-metric-label">Присутність</span>
-                                <strong id="reportHeroAttendance">0%</strong>
-                                <small id="reportHeroAttendanceMeta">немає змін</small>
+                                <strong id="reportHeroAttendance">—</strong>
+                                <small id="reportHeroAttendanceMeta">Завантаження звіту…</small>
                             </div>
                             <div class="hr-reports-metric-chip hr-reports-metric-chip--late">
                                 <span class="hr-reports-metric-label">Запізнення</span>
-                                <strong id="reportHeroLate">0</strong>
-                                <small id="reportHeroLateMeta">без запізнень</small>
+                                <strong id="reportHeroLate">—</strong>
+                                <small id="reportHeroLateMeta">дані ще не отримано</small>
                             </div>
                             <div class="hr-reports-metric-chip hr-reports-metric-chip--absent">
                                 <span class="hr-reports-metric-label">Відсутні</span>
-                                <strong id="reportHeroAbsent">0</strong>
-                                <small id="reportHeroAbsentMeta">без відсутніх</small>
+                                <strong id="reportHeroAbsent">—</strong>
+                                <small id="reportHeroAbsentMeta">дані ще не отримано</small>
                             </div>
                             <div class="hr-reports-metric-chip hr-reports-metric-chip--tasks">
                                 <span class="hr-reports-metric-label">Задачі</span>
-                                <strong id="reportHeroTasks">0/0</strong>
-                                <small id="reportHeroTasksMeta">без прострочених</small>
+                                <strong id="reportHeroTasks">—</strong>
+                                <small id="reportHeroTasksMeta">дані ще не отримано</small>
                             </div>
                         </div>
                     </div>
@@ -556,7 +556,7 @@
                     </label>
                     <button type="button" id="reportExport" class="btn-export btn-page-toolbar">Експорт CSV</button>
                 </div>
-                <div id="reportSummary" class="hr-report-summary"></div>
+                <div id="reportSummary" class="hr-report-summary" aria-live="polite"></div>
                 <div class="hr-report-table-wrap">
                     <table class="hr-report-table">
                         <thead id="reportHead"></thead>

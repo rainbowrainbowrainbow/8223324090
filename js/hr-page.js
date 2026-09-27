@@ -14235,6 +14235,7 @@ let companyStructurePermissionDenied = false;
 let companyStructureServerReadOnly = false;
 let companyStructureLoadRequestSeq = 0;
 let companyStructureContext = '';
+let companyStructureReloadTimer = null;
 let selectedCompanyStructureNodeId = 'director';
 let companyOrgLinkingNodeId = null;
 let companyOrgLinkingEndpoint = null;
@@ -16548,6 +16549,8 @@ function bindCompanyStructureEditorControls() {
 }
 
 function initCompanyOrgChart() {
+    if (companyStructureReloadTimer) clearTimeout(companyStructureReloadTimer);
+    companyStructureReloadTimer = null;
     bindCompanyStructureEditorControls();
     const autoButton = document.getElementById('hrOrgAutoLayoutBtn');
     if (autoButton) autoButton.onclick = autoArrangeCompanyOrgChart;
@@ -16589,30 +16592,54 @@ function clearCompanyStructureReadData() {
     if (structureText) structureText.value = '';
 }
 
-function invalidateCompanyStructureContext() {
+function invalidateCompanyStructureContext({ force = false, reload = false, pending = false } = {}) {
+    const context = teamAccessContext();
+    if (!force && companyStructureContext === context) return;
+    if (companyStructureReloadTimer) clearTimeout(companyStructureReloadTimer);
+    companyStructureReloadTimer = null;
     companyStructureLoadRequestSeq += 1;
-    companyStructureContext = teamAccessContext();
+    companyStructureContext = context;
     clearCompanyStructureReadData();
-    companyStructureLoadState = 'error';
-    companyStructureLoadError = 'Бізнес або доступ змінився. Повторіть завантаження структури.';
+    companyStructureLoadState = reload || pending ? 'loading' : 'error';
+    companyStructureLoadError = reload || pending ? '' : 'Бізнес або доступ змінився. Повторіть завантаження структури.';
     companyOrgSavedDraftSignature = '';
     resetCompanyOrgHistory();
-    if (document.getElementById('tab-structure')?.classList.contains('active')) renderCompanyOrgWorkspace();
+    const active = document.getElementById('tab-structure')?.classList.contains('active');
+    if (active) renderCompanyOrgWorkspace();
+    if (!reload || !active) return;
+    companyStructureReloadTimer = setTimeout(() => {
+        companyStructureReloadTimer = null;
+        if (companyStructureContext !== context || !document.getElementById('tab-structure')?.classList.contains('active')) return;
+        if (!getHrCurrentUser() || !canViewHrTab('structure')) {
+            companyStructureLoadState = 'restricted';
+            companyStructureLoadError = 'Структура недоступна для поточного доступу.';
+            renderCompanyOrgWorkspace();
+            return;
+        }
+        void loadCompanyStructure({ force: true });
+    }, 0);
 }
 
 function isCurrentCompanyStructureLoad(request, context) {
     if (request !== companyStructureLoadRequestSeq) return false;
     if (context !== teamAccessContext()) {
-        invalidateCompanyStructureContext();
+        invalidateCompanyStructureContext({ reload: true });
         return false;
     }
     return true;
 }
 
-for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged',
-    'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
-    window.addEventListener(eventName, invalidateCompanyStructureContext);
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'roleSwitched', 'crm:auth-cleared']) {
+    window.addEventListener(eventName, () => invalidateCompanyStructureContext({
+        force: eventName === 'roleSwitched' || eventName === 'crm:auth-cleared',
+        reload: eventName !== 'crm:auth-cleared'
+    }));
 }
+window.addEventListener('permissions:lifecycle', event => invalidateCompanyStructureContext({
+    force: true,
+    reload: event.detail?.status === 'ready',
+    pending: event.detail?.status === 'loading'
+}));
 
 async function ensureCompanyStructureNodesLoaded(options = {}) {
     const context = teamAccessContext();
@@ -16642,6 +16669,8 @@ async function ensureCompanyStructureNodesLoaded(options = {}) {
 }
 
 async function loadCompanyStructure(options = {}) {
+    if (companyStructureReloadTimer) clearTimeout(companyStructureReloadTimer);
+    companyStructureReloadTimer = null;
     const context = teamAccessContext();
     if (companyStructureContext && companyStructureContext !== context) invalidateCompanyStructureContext();
     if (companyStructureLoaded && companyStructureHasUnsavedChanges() && !options.force) {

@@ -1930,4 +1930,6 @@ async function run() {
     }
 }
 
-run().catch(err => fail(err?.stack || err?.message || String(err)));
+run()
+    .then(() => require('./hr-structure-tree-browser-smoke').run())
+    .catch(err => fail(err?.stack || err?.message || String(err)));

@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { unexpectedStructureConsoleErrors } = require('./live-hr-structure-smoke');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const HEADLESS = process.env.HR_STRUCTURE_BROWSER_SMOKE_HEADLESS !== 'false';
@@ -312,7 +313,133 @@ async function assertTreeControlsAndA11y(page) {
     await assert.equal(await page.evaluate(() => document.activeElement?.dataset?.orgTreeSelect), 'archived-parent');
 }
 
+async function assertDirectStructureLoadAndContextRaces(page) {
+    await page.evaluate(() => {
+        window.__structureBusiness = 'park';
+        window.__structureAccess = 'bootstrap';
+        window.__permissionStatus = 'ready';
+        window.__structureRequests = [];
+        window.getLegacyBusinessSurfaceContextKey = surface =>
+            JSON.stringify([surface, window.__structureBusiness, window.__structureAccess]);
+        window.getPermissionLifecycle = () => ({ status: window.__permissionStatus });
+        window.canAccess = capability => capability === 'hr.staff.view';
+        ensureProfessionsLoaded = async () => [];
+        hrFetch = path => path === '/company-structure'
+            ? new Promise((resolve, reject) => window.__structureRequests.push({ resolve, reject }))
+            : Promise.resolve({ success: true, data: [] });
+        initCompanyOrgChart();
+        void loadCompanyStructure();
+    });
+    const respond = (index, id) => page.evaluate(({ index, id }) => {
+        window.__structureRequests[index].resolve({
+            success: true,
+            hasSavedStructure: true,
+            structureAccess: { readOnly: true },
+            data: { nodes: [{ id, title: id, parentId: null, order: 1, x: 80, y: 40 }] }
+        });
+    }, { index, id });
+
+    await page.waitForFunction(() => window.__structureRequests.length === 1);
+    await respond(0, 'initial-park');
+    await page.waitForFunction(() => companyStructureLoadState === 'ready');
+    await page.evaluate(() => {
+        window.__structureAccess = 'loading';
+        window.__permissionStatus = 'loading';
+        window.dispatchEvent(new CustomEvent('permissions:lifecycle', { detail: { status: 'loading' } }));
+        window.__structureAccess = 'ready';
+        window.__permissionStatus = 'ready';
+        window.dispatchEvent(new CustomEvent('permissions:lifecycle', { detail: { status: 'ready' } }));
+        window.__structureAccess = 'park-profile';
+        window.dispatchEvent(new CustomEvent('crmBusinessProfileChanged'));
+    });
+    await page.waitForFunction(() => window.__structureRequests.length === 2);
+    await respond(1, 'current-park');
+    await page.waitForFunction(() => companyStructureLoadState === 'ready'
+        && companyStructureNodes[0]?.id === 'current-park');
+    assert.equal(await page.locator('#btnRetryCompanyStructure').isVisible(), false,
+        'direct entry settles without manual Retry after permission/profile hydration');
+    await page.waitForTimeout(50);
+    assert.equal(await page.evaluate(() => window.__structureRequests.length), 2,
+        'bootstrap lifecycle events coalesce into one fresh GET');
+
+    await page.evaluate(() => {
+        window.__structureBusiness = 'dar';
+        window.dispatchEvent(new CustomEvent('crmBusinessContextChanged'));
+    });
+    assert.equal(await page.evaluate(() => companyStructureNodes.length), 0,
+        'switching business immediately clears Park nodes');
+    await page.waitForFunction(() => window.__structureRequests.length === 3);
+    await page.evaluate(() => {
+        window.__structureBusiness = 'park';
+        window.dispatchEvent(new CustomEvent('crmBusinessContextChanged'));
+    });
+    await page.waitForFunction(() => window.__structureRequests.length === 4);
+    await respond(3, 'return-park');
+    await page.waitForFunction(() => companyStructureLoadState === 'ready'
+        && companyStructureNodes[0]?.id === 'return-park');
+    await respond(2, 'late-dar');
+    await page.waitForTimeout(50);
+    assert.equal(await page.evaluate(() => companyStructureNodes[0]?.id), 'return-park',
+        'late Dar response cannot repaint Park');
+
+    for (const failure of [
+        { status: 403, expected: 'restricted' },
+        { status: 500, expected: 'error' },
+        { offline: true, expected: 'error' }
+    ]) {
+        await page.evaluate(() => { void loadCompanyStructure({ force: true }); });
+        const failureIndex = await page.evaluate(() => window.__structureRequests.length - 1);
+        await page.evaluate(({ index, failure }) => {
+            if (failure.offline) window.__structureRequests[index].reject(new Error('offline'));
+            else window.__structureRequests[index].resolve({ success: false, status: failure.status, error: 'Unavailable' });
+        }, { index: failureIndex, failure });
+        await page.waitForFunction(expected => companyStructureLoadState === expected, failure.expected);
+        assert.equal(await page.evaluate(() => companyStructureNodes.length), 0,
+            'failed GET does not retain old business nodes');
+        await page.locator('#btnRetryCompanyStructure').click();
+        await page.waitForFunction(length => window.__structureRequests.length === length, failureIndex + 2);
+        await respond(failureIndex + 1, 'retry-park');
+        await page.waitForFunction(() => companyStructureLoadState === 'ready'
+            && companyStructureNodes[0]?.id === 'retry-park');
+    }
+
+    const requestCount = await page.evaluate(() => window.__structureRequests.length);
+    await page.evaluate(() => {
+        window.canAccess = () => false;
+        window.dispatchEvent(new CustomEvent('permissions:lifecycle', { detail: { status: 'ready' } }));
+    });
+    await page.waitForFunction(() => companyStructureLoadState === 'restricted');
+    assert.equal(await page.evaluate(() => companyStructureNodes.length), 0,
+        'revoked capability immediately clears structure nodes');
+    assert.equal(await page.evaluate(() => window.__structureRequests.length), requestCount,
+        'revoked capability does not start a protected GET');
+    await page.evaluate(() => {
+        window.canAccess = capability => capability === 'hr.staff.view';
+        window.dispatchEvent(new CustomEvent('permissions:lifecycle', { detail: { status: 'ready' } }));
+    });
+    await page.waitForFunction(length => window.__structureRequests.length === length, requestCount + 1);
+    await respond(requestCount, 'restored-park');
+    await page.waitForFunction(() => companyStructureLoadState === 'ready'
+        && companyStructureNodes[0]?.id === 'restored-park');
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('crm:auth-cleared')));
+    assert.equal(await page.evaluate(() => companyStructureNodes.length), 0,
+        'cleared authentication removes the final structure without a reload');
+}
+
+function assertLiveSmokeConsoleBoundary() {
+    const denied = { text: 'Failed to load resource: the server responded with a status of 403', pathname: '' };
+    assert.deepEqual(unexpectedStructureConsoleErrors([denied], ['/api/chat/unread']), [],
+        'isolated chat unread 403 does not fail the structure smoke');
+    assert.equal(unexpectedStructureConsoleErrors([denied], ['/api/chat/unread', '/api/hr/company-structure']).length, 1,
+        'structure 403 cannot be classified as an unrelated chat denial');
+    assert.equal(unexpectedStructureConsoleErrors([{ ...denied, pathname: '/api/hr/company-structure' }], ['/api/chat/unread']).length, 1,
+        'a structure request remains visible even when chat also returned 403');
+    assert.equal(unexpectedStructureConsoleErrors([{ text: 'Structure render failed', pathname: '/js/hr-page.js' }], ['/api/chat/unread']).length, 1,
+        'non-resource console errors remain failures');
+}
+
 async function run() {
+    assertLiveSmokeConsoleBoundary();
     const { chromium } = requirePlaywright();
     const browser = await chromium.launch({ headless: HEADLESS });
     const page = await browser.newPage();
@@ -330,10 +457,20 @@ async function run() {
                 assert.ok(item.ratio >= 4.5, `${theme} contrast for ${item.selector} is ${item.ratio.toFixed(2)}`);
             });
         }
+        const lifecyclePage = await browser.newPage();
+        try {
+            lifecyclePage.setDefaultTimeout(10000);
+            await installHarness(lifecyclePage, 1280, 'light');
+            await assertDirectStructureLoadAndContextRaces(lifecyclePage);
+        } finally {
+            await lifecyclePage.close();
+        }
         console.log('HR Structure tree browser smoke passed');
     } finally {
         await browser.close();
     }
 }
 
-run().catch(error => fail(error.stack || error.message));
+if (require.main === module) run().catch(error => fail(error.stack || error.message));
+
+module.exports = { run };

@@ -216,6 +216,21 @@ function isForbiddenHrStructureMutation(method, pathname) {
     return pathname === '/api/hr/company-structure';
 }
 
+function responsePathname(url) {
+    try { return new URL(url, 'https://local.invalid').pathname; } catch { return ''; }
+}
+
+function unexpectedStructureConsoleErrors(errors, deniedPaths) {
+    const onlyChatUnreadDenied = deniedPaths.length > 0
+        && deniedPaths.every(pathname => pathname === '/api/chat/unread');
+    return errors.filter(({ text, pathname }) => {
+        const resourceDenied = /403/.test(text) && /failed to load resource|server responded/i.test(text);
+        const chatUnreadSource = pathname === '/api/chat/unread'
+            || (onlyChatUnreadDenied && (!pathname || !pathname.startsWith('/api/')));
+        return !(resourceDenied && chatUnreadSource);
+    });
+}
+
 async function openAuthenticatedContext(browser, session) {
     const context = await browser.newContext({
         viewport: { width: 1280, height: 900 },
@@ -224,6 +239,7 @@ async function openAuthenticatedContext(browser, session) {
     const blockedMutations = [];
     const consoleErrors = [];
     const networkErrors = [];
+    const deniedPaths = [];
 
     await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user, businessContext }) => {
         localStorage.setItem('pzp_token', token);
@@ -263,20 +279,17 @@ async function openAuthenticatedContext(browser, session) {
         if (msg.type() !== 'error') return;
         const text = msg.text();
         if (/favicon|ResizeObserver loop/i.test(text)) return;
-        consoleErrors.push(text.slice(0, 240));
+        consoleErrors.push({ text: text.slice(0, 240), pathname: responsePathname(msg.location()?.url) });
     });
     page.on('response', response => {
-        if (response.status() < 500) return;
-        let pathname = '';
-        try {
-            pathname = new URL(response.url()).pathname;
-        } catch {
-            pathname = response.url();
+        const pathname = responsePathname(response.url());
+        if (response.status() === 403) deniedPaths.push(pathname);
+        if (response.status() >= 500 || (pathname === '/api/hr/company-structure' && response.status() >= 400)) {
+            networkErrors.push(`${response.status()} ${response.request().method().toUpperCase()} ${pathname}`);
         }
-        networkErrors.push(`${response.status()} ${response.request().method().toUpperCase()} ${pathname}`);
     });
 
-    return { context, page, blockedMutations, consoleErrors, networkErrors };
+    return { context, page, blockedMutations, consoleErrors, networkErrors, deniedPaths };
 }
 
 async function openStructureTree(page, base) {
@@ -533,8 +546,9 @@ async function run() {
         const geometries = await assertGeometryAcrossBreakpoints(live.page);
 
         assert.deepEqual(live.blockedMutations, [], 'no HR structure mutation requests were attempted');
-        assert.deepEqual(live.networkErrors, [], 'no 5xx network errors during smoke');
-        assert.deepEqual(live.consoleErrors, [], 'no console errors during smoke');
+        assert.deepEqual(live.networkErrors, [], 'no structure HTTP errors or 5xx network errors during smoke');
+        assert.deepEqual(unexpectedStructureConsoleErrors(live.consoleErrors, live.deniedPaths), [],
+            'no unexpected console errors during structure smoke');
 
         const summary = await live.page.evaluate(() => ({
             treeItems: document.querySelectorAll('#companyOrgTree [data-org-tree-select]').length,
@@ -557,4 +571,6 @@ async function run() {
     }
 }
 
-run().catch(error => fail(error.stack || error.message));
+if (require.main === module) run().catch(error => fail(error.stack || error.message));
+
+module.exports = { unexpectedStructureConsoleErrors };

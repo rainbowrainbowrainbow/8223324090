@@ -460,13 +460,19 @@ describe('disposable token-backed permission capability contract', { skip: !enab
             assert.equal(detail.data?.data?.profession_rates, undefined);
             assert.equal((await request('GET', '/api/hr/staff/999999999', null, reader.token)).status, 404);
 
-            for (const path of ['/api/hr/company-structure', `/api/hr/staff/${staffId}/documents`]) {
-                assert.equal((await request('GET', path, null, reader.token)).status, 403, path);
-            }
+            const structure = await request('GET', '/api/hr/company-structure', null, reader.token);
+            assert.equal(structure.status, 200, JSON.stringify(structure.data));
+            assert.deepEqual(Object.keys(structure.data?.data || {}), ['nodes']);
+            assert.equal(structure.data?.structureAccess?.readOnly, true);
+            assert.equal(structure.data?.data?.instructions, undefined);
+            assert.equal(structure.data?.data?.updatedBy, undefined);
+            assert.equal((await request('GET', `/api/hr/staff/${staffId}/documents`, null, reader.token)).status, 403);
             assert.equal((await request('GET', '/api/hr/staff', null, accounts.admin.token)).status, 403);
             assert.equal((await request('GET', `/api/hr/staff/${staffId}`, null, accounts.admin.token)).status, 403);
+            assert.equal((await request('GET', '/api/hr/company-structure', null, accounts.admin.token)).status, 403);
             assert.equal((await request('GET', '/api/hr/staff?businessScope=all', null, reader.token)).status, 403);
             assert.equal((await request('GET', '/api/hr/staff?businessScope=multi&businessContexts=event_genix,dar', null, reader.token)).status, 403);
+            assert.equal((await request('GET', '/api/hr/company-structure?businessScope=all', null, reader.token)).status, 403);
 
             const foreign = await fetch(`${BASE_URL}/api/hr/staff/${staffId}`, {
                 headers: { Authorization: `Bearer ${reader.token}`, 'X-Business-Context': 'dar' }
@@ -479,6 +485,8 @@ describe('disposable token-backed permission capability contract', { skip: !enab
             );
             assert.equal((await request('GET', `/api/hr/staff/${staffId}`, null, reader.token)).status, 403,
                 'revoked membership is rejected by the next real request');
+            assert.equal((await request('GET', '/api/hr/company-structure', null, reader.token)).status, 403,
+                'revoked membership cannot read company structure');
         } finally {
             await schemaPool.query(
                 'UPDATE business_memberships SET is_active = true WHERE business_id = $1 AND user_id = $2',

@@ -109,7 +109,12 @@ async function installApi(page, state) {
             state.vacancies[0] = { ...state.vacancies[0], hired_count: 2, status: 'filled' };
             return json(route, { success: true, staff_id: 1, profession_key: 'cook', vacancy_status: 'filled', vacancy_action: 'auto_filled_by_headcount', hired_count: 2, target_hires: 2, message: 'Професію додано' });
         }
-        if (pathname === '/api/hr/onboarding' && method === 'GET') return json(route, { success: true, data: state.processes });
+        if (pathname === '/api/hr/onboarding' && method === 'GET') {
+            return json(route, state.parkReadOnly
+                ? { success: true, data: state.processes.filter(row => !row.profession_key),
+                    onboardingAccess: { readOnly: true, partial: true, scope: 'general' } }
+                : { success: true, data: state.processes });
+        }
         if (pathname === '/api/hr/staff/1/profession-checklist' && method === 'PUT') {
             state.checklistPayloads.push(body);
             const process = state.processes.find(row => row.profession_key === body.profession_key);
@@ -255,6 +260,21 @@ async function run() {
         assert.match(scheduleText, /Кухар|cook/i);
         assert.match(scheduleText, /Бариста|barista/i);
 
+        state.parkReadOnly = true;
+        const requestCount = state.requests.length;
+        await page.goto(`${baseUrl}/hr.html#team`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => document.body.classList.contains('shell-ready'));
+        await page.locator('#teamGrid').getByText('Browser QA Worker').first().waitFor();
+        await page.evaluate(async () => {
+            document.getElementById('tab-onboarding').style.display = 'block';
+            await window.loadOnboarding();
+        });
+        await page.locator('#onboardingList .hr-onboarding-process-card').first().waitFor({ state: 'attached' });
+        assert.match(await page.locator('#onboardingList').textContent(), /загальний онбординг Парку/i);
+        assert.equal(await page.locator('#onboardingList input[type="checkbox"]').count(), 0);
+        assert.equal(await page.locator('#btnStartOnboarding').evaluate(button => getComputedStyle(button).display), 'none');
+        assert.equal(state.requests.slice(requestCount).some(entry => entry.startsWith('POST /api/hr/onboarding')), false);
+
         console.log('HR onboarding cross-surface browser smoke passed');
     } catch (error) {
         const diagnostics = await page.evaluate(() => ({
@@ -262,6 +282,8 @@ async function run() {
             hash: location.hash,
             bodyClass: document.body.className,
             vacanciesText: document.querySelector('#vacanciesList')?.textContent || '',
+            onboardingText: document.querySelector('#onboardingList')?.textContent?.slice(0, 700) || '',
+            onboardingBusy: document.querySelector('#onboardingList')?.getAttribute('aria-busy') || '',
             scheduleText: document.querySelector('#staffScheduleShell')?.textContent?.slice(0, 3000) || '',
             mainText: document.querySelector('main')?.textContent?.slice(0, 1000) || ''
         })).catch(() => ({}));

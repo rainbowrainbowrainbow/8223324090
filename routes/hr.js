@@ -416,7 +416,7 @@ function shapeHrStaffList(rows, capability, user) {
 }
 router.use(requireHrCapabilityContract);
 router.use(requireLegacyBusinessSurface('staff', {
-    parkScheduleRouter: 'hr', parkHrStaffCardRead: true, parkHrMonthlyReportRead: true
+    parkScheduleRouter: 'hr', parkHrStaffCardRead: true, parkHrMonthlyReportRead: true, parkHrOnboardingRead: true
 }));
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
@@ -7480,7 +7480,8 @@ router.post('/auto-assign', requireHrManage, async (req, res) => {
 // GET /api/hr/onboarding/responsible-candidates - task-owner candidates for mentors/instructors
 router.get('/onboarding/responsible-candidates', requireHrManage, async (req, res) => {
     try {
-        const users = await listTaskOwnerCandidates({ actor: req.user });
+        const users = await listTaskOwnerCandidates({ actor: req.user,
+            businessContext: req.parkHrOnboardingRead ? DEFAULT_BUSINESS_CONTEXT : undefined });
         res.json({
             success: true,
             data: users,
@@ -7498,7 +7499,14 @@ router.get('/onboarding/responsible-candidates', requireHrManage, async (req, re
 // GET /api/hr/onboarding/templates
 router.get('/onboarding/templates', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM onboarding_templates ORDER BY name');
+        const result = req.parkHrOnboardingRead
+            ? await pool.query(`SELECT ot.id, ot.name, ot.department
+                FROM onboarding_templates ot
+                WHERE EXISTS (SELECT 1 FROM onboarding_progress op
+                    JOIN staff s ON s.id = op.staff_id
+                    WHERE op.template_id = ot.id AND op.profession_key IS NULL)
+                ORDER BY ot.name`)
+            : await pool.query('SELECT * FROM onboarding_templates ORDER BY name');
         res.json({ success: true, data: result.rows });
     } catch (err) {
         log.error('GET /hr/onboarding/templates error', err);
@@ -7617,6 +7625,57 @@ router.get('/onboarding', async (req, res) => {
     try {
         const { staff_id, status, scope } = req.query;
         const professionKey = normalizeProfessionKey(req.query.profession_key ?? req.query.professionKey);
+        if (req.parkHrOnboardingRead) {
+            if (req.query.profession_key !== undefined || req.query.professionKey !== undefined
+                || scope === 'profession') {
+                return res.status(403).json({ success: false, code: 'staff_not_migrated',
+                    error: 'Професійний онбординг ще не розмежований за бізнесами.' });
+            }
+            if ((scope && scope !== 'general') || (staff_id && !parsePositiveSafeInteger(staff_id))
+                || (status && !['in_progress', 'completed', 'blocked', 'ready'].includes(String(status)))) {
+                return res.status(400).json({ success: false, error: 'Некоректний фільтр онбордингу' });
+            }
+            const activeMembership = req.user.activeBusinessMembership;
+            const params = [ONBOARDING_TASK_SOURCE_TYPE, activeMembership.businessId,
+                activeMembership.organizationId];
+            const conditions = ['op.profession_key IS NULL'];
+            if (staff_id) { params.push(Number(staff_id)); conditions.push(`op.staff_id = $${params.length}`); }
+            if (status) { params.push(String(status)); conditions.push(`op.status = $${params.length}`); }
+            const result = await pool.query(`SELECT op.id, op.staff_id, op.template_id, op.items,
+                    op.completed_items, op.total_items, op.status, op.training_status,
+                    op.started_at, op.completed_at, s.name AS staff_name, s.department,
+                    ot.name AS template_name,
+                    CASE WHEN u.id IS NOT NULL THEN op.responsible_user_id ELSE NULL END AS responsible_user_id,
+                    u.name AS responsible_name,
+                    (op.responsible_user_id IS NOT NULL AND u.id IS NULL) AS responsible_restricted,
+                    COUNT(t.id)::int AS generated_task_count,
+                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN
+                        ('done','completed','archived','cancelled'))::int AS active_task_count,
+                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN
+                        ('done','completed'))::int AS completed_task_count
+                FROM onboarding_progress op
+                JOIN staff s ON s.id = op.staff_id
+                LEFT JOIN onboarding_templates ot ON ot.id = op.template_id
+                LEFT JOIN users u ON u.id = op.responsible_user_id AND u.is_active IS TRUE
+                    AND EXISTS (SELECT 1 FROM business_memberships bm
+                        JOIN businesses b ON b.id = bm.business_id
+                            AND b.organization_id = bm.organization_id
+                            AND b.context_key = 'event_genix' AND b.status = 'active'
+                            AND b.access_mode = 'membership'
+                        JOIN organizations o ON o.id = b.organization_id AND o.status = 'active'
+                        JOIN organization_memberships om ON om.organization_id = o.id
+                            AND om.user_id = bm.user_id AND om.is_active IS TRUE
+                        WHERE bm.user_id = u.id AND bm.business_id = $2
+                            AND bm.organization_id = $3 AND bm.is_active IS TRUE)
+                LEFT JOIN tasks t ON t.source_type = $1
+                    AND t.source_id LIKE op.id::text || ':%' AND t.business_context = 'event_genix'
+                WHERE ${conditions.join(' AND ')}
+                GROUP BY op.id, s.name, s.department, ot.name, u.id, u.name
+                ORDER BY op.started_at DESC`, params);
+            return res.json({ success: true, data: result.rows.map(row => ({
+                ...onboardingProgressMeta(row), responsible_restricted: row.responsible_restricted
+            })) });
+        }
         let sql = `SELECT op.*, s.name AS staff_name, s.department, ot.name AS template_name,
                           u.name AS responsible_name, u.username AS responsible_username, u.role AS responsible_role,
                           COUNT(t.id)::int AS generated_task_count,

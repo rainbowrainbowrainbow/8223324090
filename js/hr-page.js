@@ -1558,15 +1558,26 @@ async function refreshStaffOnboardingDialog(staffId) {
 }
 
 async function ensureOnboardingResponsibleCandidates(force = false) {
-    if (Array.isArray(onboardingResponsibleCandidates) && !force) return onboardingResponsibleCandidates;
+    const context = salaryAccessContext();
+    if (Array.isArray(onboardingResponsibleCandidates) && onboardingCandidatesContext === context && !force) {
+        return onboardingResponsibleCandidates;
+    }
+    const requestSeq = ++onboardingCandidatesRequestSeq;
+    onboardingResponsibleCandidates = null;
+    onboardingCandidatesContext = null;
     const data = await hrFetch('/onboarding/responsible-candidates');
+    if (requestSeq !== onboardingCandidatesRequestSeq || context !== salaryAccessContext()) {
+        throw new Error('Бізнес або доступ змінився. Оновіть список відповідальних.');
+    }
     if (!data?.success || !Array.isArray(data.data)) {
         onboardingResponsibleCandidates = null;
+        onboardingCandidatesContext = null;
         throw new Error(data?.status === 403
             ? 'Список відповідальних недоступний для цього бізнесу або вашої ролі.'
             : data?.error || 'Не вдалося завантажити список відповідальних. Повторіть спробу.');
     }
     onboardingResponsibleCandidates = data.data;
+    onboardingCandidatesContext = context;
     return onboardingResponsibleCandidates;
 }
 
@@ -6040,6 +6051,8 @@ let staffMedicalBookRows = [];
 let staffResourceById = new Map();
 let staffResourceDetailRestoreFocus = null;
 let onboardingResponsibleCandidates = null;
+let onboardingCandidatesContext = null;
+let onboardingCandidatesRequestSeq = 0;
 let accountUsers = [];
 let accountRoleHierarchy = [];
 let accountBusinessContexts = [];
@@ -6067,6 +6080,7 @@ let accountOnboardingPayrollProfiles = null;
 let accountOnboardingPayrollProfilesError = '';
 let onboardingStartRequestSeq = 0;
 let onboardingListRequestSeq = 0;
+let onboardingListReadOnly = true;
 let accountOnboardingRequestSeq = 0;
 let accountOnboardingState = {
     open: false,
@@ -20931,6 +20945,9 @@ async function loadOnboarding() {
     const requestSeq = ++onboardingListRequestSeq;
     const context = salaryAccessContext();
     const el = document.getElementById('onboardingList');
+    const startButton = document.getElementById('btnStartOnboarding');
+    onboardingListReadOnly = true;
+    if (startButton) startButton.hidden = true;
     if (el) {
         el.setAttribute('aria-busy', 'true');
         el.innerHTML = '<div class="hr-onboarding-empty">Завантаження процесів онбордингу...</div>';
@@ -20952,12 +20969,17 @@ async function loadOnboarding() {
         }
         return;
     }
-    renderOnboarding(data.data);
+    onboardingListReadOnly = data.onboardingAccess?.readOnly === true;
+    if (startButton) startButton.hidden = !canManage || onboardingListReadOnly;
+    renderOnboarding(data.data, data.onboardingAccess);
 }
 
 for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
     window.addEventListener(eventName, () => {
         onboardingListRequestSeq += 1;
+        onboardingListReadOnly = true;
+        const startButton = document.getElementById('btnStartOnboarding');
+        if (startButton) startButton.hidden = true;
         const el = document.getElementById('onboardingList');
         if (!el) return;
         el.setAttribute('aria-busy', 'false');
@@ -20973,7 +20995,9 @@ function renderOnboardingProcessCard(process = {}) {
     const completed = Number(process.completed_items || items.filter(item => item?.done).length || 0);
     const percent = total ? Math.round((completed / total) * 100) : 0;
     const status = onboardingStatusLabel(process.training_status || process.status);
-    const responsible = process.responsible_name || process.responsible_username || 'відповідального не призначено';
+    const responsible = process.responsible_restricted
+        ? 'дані відповідального недоступні'
+        : process.responsible_name || process.responsible_username || 'відповідального не призначено';
     const tasks = process.task_summary || {};
     const title = isGeneral ? 'Загальний корпоративний онбординг' : (process.profession_title || professionTitle(professionKey));
     const scopeLabel = isGeneral ? 'Корпоративний setup' : (process.is_primary ? 'Основна професія' : 'Додаткова професія');
@@ -20997,18 +21021,24 @@ function renderOnboardingProcessCard(process = {}) {
                 const handler = isGeneral
                     ? `toggleOnboardingItem(${Number(process.id)}, ${itemId}, this.checked, this)`
                     : `toggleProfessionOnboardingItem(${Number(process.staff_id)}, '${escapeJsString(professionKey)}', '${escapeJsString(item.checklist_key || item.key)}', '${escapeJsString(item.title || 'Пункт чекліста')}', this.checked, this)`;
+                if (!canManage || onboardingListReadOnly) {
+                    return `<div class="hr-onboarding-process-check ${done ? 'is-done' : ''}"><span aria-hidden="true">${done ? '✓' : '○'}</span><span>${escapeHtml(item.title || 'Пункт чекліста')}</span></div>`;
+                }
                 return `<label class="hr-onboarding-process-check ${done ? 'is-done' : ''}"><input type="checkbox" ${done ? 'checked' : ''} onchange="${handler}"><span>${escapeHtml(item.title || 'Пункт чекліста')}</span></label>`;
             }).join('') : '<div class="hr-onboarding-process-empty">Чекліст ще не налаштовано.</div>'}
         </div>
     </article>`;
 }
 
-function renderOnboarding(list) {
+function renderOnboarding(list, access = null) {
     const el = document.getElementById('onboardingList');
     if (!el) return;
     el.setAttribute('aria-busy', 'false');
+    const partialNote = access?.partial
+        ? '<div class="hr-onboarding-empty" role="note">Доступний загальний онбординг Парку. Професійні процеси поки обмежені.</div>'
+        : '';
     if (!Array.isArray(list) || !list.length) {
-        el.innerHTML = '<div class="hr-onboarding-empty">Процесів онбордингу поки немає. Загальний setup і професійні допуски запускаються окремо.</div>';
+        el.innerHTML = partialNote + '<div class="hr-onboarding-empty">Доступних процесів онбордингу поки немає.</div>';
         return;
     }
     const groups = new Map();
@@ -21017,13 +21047,17 @@ function renderOnboarding(list) {
         if (!groups.has(key)) groups.set(key, { name: process.staff_name || 'Працівник', processes: [] });
         groups.get(key).processes.push(process);
     });
-    el.innerHTML = Array.from(groups.values()).map(group => `<section class="hr-onboarding-staff-group">
+    el.innerHTML = partialNote + Array.from(groups.values()).map(group => `<section class="hr-onboarding-staff-group">
         <div class="hr-onboarding-staff-head"><h3>${escapeHtml(group.name)}</h3><span>${group.processes.length} окремих процесів</span></div>
         <div class="hr-onboarding-process-grid">${group.processes.map(renderOnboardingProcessCard).join('')}</div>
     </section>`).join('');
 }
 
 window.toggleOnboardingItem = async function(progressId, itemId, done, input = null) {
+    if (onboardingListReadOnly || !canManage) {
+        if (input) input.checked = !done;
+        return;
+    }
     if (input) input.disabled = true;
     const data = await hrFetch(`/onboarding/${progressId}/check`, 'PUT', { item_id: itemId, done });
     if (data?.success) await loadOnboarding();
@@ -21035,6 +21069,10 @@ window.toggleOnboardingItem = async function(progressId, itemId, done, input = n
 };
 
 window.toggleProfessionOnboardingItem = async function(staffId, professionKey, checklistKey, title, completed, input = null) {
+    if (onboardingListReadOnly || !canManage) {
+        if (input) input.checked = !completed;
+        return;
+    }
     if (input) input.disabled = true;
     const data = await hrFetch(`/staff/${staffId}/profession-checklist`, {
         method: 'PUT',
@@ -21049,6 +21087,10 @@ window.toggleProfessionOnboardingItem = async function(staffId, professionKey, c
 };
 
 window.showStartOnboarding = async function() {
+    if (onboardingListReadOnly || !canManage) {
+        showNotification('У цьому бізнесі запуск онбордингу недоступний.', 'error');
+        return;
+    }
     const requestSeq = ++onboardingStartRequestSeq;
     const context = salaryAccessContext();
     const state = document.getElementById('onboardingStartState');
@@ -21150,6 +21192,9 @@ window.showStartOnboarding = async function() {
 for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
     window.addEventListener(eventName, () => {
         onboardingStartRequestSeq += 1;
+        onboardingCandidatesRequestSeq += 1;
+        onboardingResponsibleCandidates = null;
+        onboardingCandidatesContext = null;
         const state = document.getElementById('onboardingStartState');
         if (state && !state.hidden) {
             state.textContent = 'Бізнес або доступ змінився. Запустіть онбординг знову.';

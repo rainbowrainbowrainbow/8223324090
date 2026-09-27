@@ -493,37 +493,61 @@ describe('scheduler notification jobs hardening', () => {
     });
 
     describe('checkCertificateExpiry', () => {
-        it('does not update certificates when expiry time is not due', async () => {
+        it('expires at the first daily tick, including before the old 00:10 window', async () => {
             resetState({ time: '00:09' });
+            onQuery('certificate expiry update', queryIncludes("UPDATE certificates SET status = 'expired'"), () => rows([], 0));
             const scheduler = loadScheduler();
 
             await scheduler.checkCertificateExpiry();
 
-            assert.equal(state.queries.length, 0);
+            assert.equal(state.queries.length, 1);
+            assert.deepEqual(state.queries[0].params, [state.date]);
         });
 
-        it('expires eligible certificates without Telegram side effects', async () => {
-            resetState({ time: '00:10' });
-            onQuery('certificate expiry update', queryIncludes("UPDATE certificates SET status = 'expired'"), () => rows([
-                { cert_code: 'CERT-1', display_value: 'Safety' }
-            ], 1));
+        it('catches up after 00:10, avoids repeat writes, and runs on the next Kyiv date', async () => {
+            resetState({ time: '09:00' });
+            onQuery('certificate expiry update', queryIncludes("UPDATE certificates SET status = 'expired'"), () => rows([], 1));
             const scheduler = loadScheduler();
 
             await scheduler.checkCertificateExpiry();
-
+            state.time = '09:01';
+            await scheduler.checkCertificateExpiry();
+            assert.equal(state.queries.length, 1);
+            state.date = '2026-06-30';
+            onQuery('next date expiry update', queryIncludes("UPDATE certificates SET status = 'expired'"), () => rows([], 0));
+            await scheduler.checkCertificateExpiry();
+            assert.equal(state.queries.length, 2);
+            assert.deepEqual(state.queries[1].params, ['2026-06-30']);
             assert.equal(state.sends.length, 0);
+            assert.equal(state.publishedEvents.length, 0);
             assert.equal(state.logs.some(entry => entry.level === 'info' && String(entry.args[0]).includes('Certificates auto-expired: 1')), true);
+            assert.equal(state.logs.some(entry => entry.args.some(value => String(value).includes('CERT-'))), false);
         });
 
-        it('contains certificate expiry DB failures', async () => {
-            resetState({ time: '00:10' });
+        it('rechecks idempotently after a process restart on the same date', async () => {
+            resetState({ time: '16:00' });
+            onQuery('initial expiry update', queryIncludes("UPDATE certificates SET status = 'expired'"), () => rows([], 1));
+            await loadScheduler().checkCertificateExpiry();
+            onQuery('restart expiry update', queryIncludes("UPDATE certificates SET status = 'expired'"), () => rows([], 0));
+
+            await loadScheduler().checkCertificateExpiry();
+
+            assert.equal(state.queries.length, 2);
+            assert.deepEqual(state.queries.map(query => query.params), [[state.date], [state.date]]);
+        });
+
+        it('reports certificate expiry DB failures and retries instead of marking the day complete', async () => {
+            resetState({ time: '09:00' });
             onQuery('certificate expiry failure', queryIncludes("UPDATE certificates SET status = 'expired'"), () => {
                 throw new Error('planned certificate expiry failure');
             });
             const scheduler = loadScheduler();
 
+            await assert.rejects(scheduler.checkCertificateExpiry(), /planned certificate expiry failure/);
+            onQuery('certificate expiry retry', queryIncludes("UPDATE certificates SET status = 'expired'"), () => rows([], 0));
             await scheduler.checkCertificateExpiry();
 
+            assert.equal(state.queries.length, 2);
             assert.equal(state.logs.some(entry => entry.level === 'error' && entry.args[0] === 'CertExpiry error'), true);
         });
     });

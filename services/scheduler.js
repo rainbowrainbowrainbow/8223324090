@@ -807,30 +807,23 @@ async function checkRecurringBookings() {
 // v8.4: Auto-expire certificates past valid_until
 let certExpireCheckedToday = '';
 async function checkCertificateExpiry() {
+    const todayStr = getKyivDateStr();
+    if (certExpireCheckedToday === todayStr) return;
+
     try {
-        const todayStr = getKyivDateStr();
-        if (certExpireCheckedToday === todayStr) return;
-
-        const nowTime = getKyivTimeStr();
-        // Run at 00:10 Kyiv time
-        if (nowTime !== '00:10') return;
-
-        certExpireCheckedToday = todayStr;
-
         const result = await pool.query(
             `UPDATE certificates SET status = 'expired', updated_at = NOW()
-             WHERE status = 'active' AND valid_until < $1
-             RETURNING cert_code, display_value`,
+             WHERE status = 'active' AND valid_until < $1`,
             [todayStr]
         );
+        certExpireCheckedToday = todayStr;
 
         if (result.rowCount > 0) {
-            log.info(`Certificates auto-expired: ${result.rowCount} (${result.rows.map(r => r.cert_code).join(', ')})`);
+            log.info(`Certificates auto-expired: ${result.rowCount}`);
         }
     } catch (err) {
-        if (!err.message.includes('does not exist')) {
-            log.error('CertExpiry error', err);
-        }
+        log.error('CertExpiry error', err);
+        throw err;
     }
 }
 

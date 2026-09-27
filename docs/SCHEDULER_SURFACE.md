@@ -35,7 +35,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkRecurringTasks` | `checkRecurringTasks` | `services/scheduler.js` | tasks | `60000` | `daily` |
 | `checkRecurringAfisha` | `checkRecurringAfisha` | `services/scheduler.js` | afisha | `60000` | `daily` |
 | `checkScheduledDeletions` | `checkScheduledDeletions` | `services/scheduler.js` | telegram | `60000` | `daily` |
-| `checkCertificateExpiry` | `checkCertificateExpiry` | `services/scheduler.js` | certificates | `60000` | `daily` |
+| `checkCertificateExpiry` | `checkCertificateExpiry` | `services/scheduler.js` | certificates | `60000` | `hourly` |
 | `checkTaskReminders` | `checkTaskReminders` | `services/scheduler.js` | tasks | `60000` | `5min` |
 | `checkReplyAutoEscalations` | `checkReplyAutoEscalations` | `services/scheduler.js` | tasks | `60000` | `hourly` |
 | `checkWorkDayTriggers` | `checkWorkDayTriggers` | `services/scheduler.js` | staff | `60000` | `daily` |

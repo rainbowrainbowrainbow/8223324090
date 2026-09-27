@@ -303,8 +303,18 @@ jobs:
       - name: Run legacy Telegram certificate regression
         run: npm run test:unit:certificates-legacy
 
+      - name: Run certificate expiry scheduler regression
+        run: node --test tests/scheduler-notification-jobs-hardening.test.js tests/scheduler-guard-contract.test.js
+
       - name: Run certificate check browser smoke
         run: npm run test:browser:certificates
+
+      - name: Run actual-app certificate booking precheck browser smoke
+        env:
+          CERTIFICATE_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_certificate_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+          REQUIRE_CERTIFICATE_POSTGRES_TESTS: "1"
+        run: npm run test:browser:certificates-booking-app
 
       - name: Upload certificate browser evidence
         if: always()

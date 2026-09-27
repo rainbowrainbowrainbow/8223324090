@@ -284,6 +284,25 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
                 assert.equal((await persisted(cert)).audits, 1);
             } finally { await client.query('ROLLBACK'); client.release(); if (pending) await pending; }
         });
+        await t.test('expiry runner updates only active past-date certificates without history or repeat writes', async () => {
+            const pastActive = await certificate({ days: -1 });
+            const todayActive = await certificate({ days: 0 });
+            const futureActive = await certificate({ days: 1 });
+            const used = await certificate({ status: 'used', days: -1 });
+            const blocked = await certificate({ status: 'blocked', days: -1 });
+            const revoked = await certificate({ status: 'revoked', days: -1 });
+            const historyBefore = (await pool.query('SELECT COUNT(*)::int AS count FROM history')).rows[0].count;
+            const { checkCertificateExpiry } = require('../../services/scheduler');
+
+            await checkCertificateExpiry();
+            const rows = (await pool.query('SELECT id, status FROM certificates WHERE id = ANY($1::int[]) ORDER BY id',
+                [[pastActive, todayActive, futureActive, used, blocked, revoked].map(cert => cert.id)])).rows;
+            assert.deepEqual(rows.map(row => row.status), ['expired', 'active', 'active', 'used', 'blocked', 'revoked']);
+            const updatedAt = (await pool.query('SELECT updated_at FROM certificates WHERE id = $1', [pastActive.id])).rows[0].updated_at;
+            await checkCertificateExpiry();
+            assert.equal((await pool.query('SELECT updated_at FROM certificates WHERE id = $1', [pastActive.id])).rows[0].updated_at.getTime(), updatedAt.getTime());
+            assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM history')).rows[0].count, historyBefore);
+        });
     } finally {
         if (server) await new Promise(resolve => server.close(resolve));
         if (auth?.authenticateToken._activityCleanup) clearInterval(auth.authenticateToken._activityCleanup);

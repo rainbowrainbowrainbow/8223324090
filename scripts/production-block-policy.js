@@ -18,10 +18,30 @@ const BLOCK_ID_PATTERN = /^EG-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$/;
 const SENSITIVE_KEY = /(secret|token|password|database.?url|authorization|cookie)/i;
 const PROTECTED_WORKFLOWS = Object.freeze({
     SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover',
-    CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation'
+    CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
+    CERTIFICATE_CI_GATE: 'certificate-ci-gate'
 });
 const CERTIFICATE_QA_RED_PATHS = Object.freeze(['routes/auth.js', 'routes/finance.js']);
 const CERTIFICATE_QA_MIGRATION = 'db/migrations/371_trusted_qa_certificate_lookup.sql';
+const CERTIFICATE_CI_RED_PATHS = Object.freeze(['.github/workflows/ci.yml']);
+const CERTIFICATE_CI_CHANGED_PATHS = Object.freeze([
+    '.github/workflows/ci.yml',
+    'config/schedulerSurface.js',
+    'docs/CERTIFICATE_CI_GATE.md',
+    'docs/CERTIFICATE_POST_02_READ_ONLY_AUDIT_2026-09-26.md',
+    'docs/CERT_POST_FIX_01_RELEASE_NOTES.json',
+    'docs/CODEX_PRODUCTION_AUTONOMY.md',
+    'docs/SCHEDULER_SURFACE.md',
+    'package.json',
+    'scripts/production-block-policy.js',
+    'server.js',
+    'services/scheduler.js',
+    'tests/browser/certificate-booking-precheck-app-smoke.js',
+    'tests/integration/certificate-redemption-postgres.test.js',
+    'tests/production-block-controller.test.js',
+    'tests/scheduler-guard-contract.test.js',
+    'tests/scheduler-notification-jobs-hardening.test.js'
+]);
 const SYS_MB_PROTECTED_PATH_PATTERNS = Object.freeze([
     /^config\/permissionRegistry\.js$/,
     /^middleware\/auth\.js$/,
@@ -162,6 +182,19 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE) {
+        const changed = normalizePathList(changedPaths);
+        fail(JSON.stringify(redPaths) === JSON.stringify(CERTIFICATE_CI_RED_PATHS),
+            'Certificate CI workflow permits only its approved Red path',
+            'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
+        fail(changed.every(file => CERTIFICATE_CI_CHANGED_PATHS.includes(file))
+            && !changed.some(file => file.startsWith('db/migrations/'))
+            && changed.includes('services/scheduler.js')
+            && changed.includes('tests/browser/certificate-booking-precheck-app-smoke.js'),
+        'Certificate CI workflow is limited to the expiry and booking precheck release',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: [...CERTIFICATE_CI_RED_PATHS] };
+    }
     if (workflow === PROTECTED_WORKFLOWS.CERTIFICATE_QA_ISOLATION) {
         const changed = normalizePathList(changedPaths);
         fail(JSON.stringify(redPaths) === JSON.stringify(CERTIFICATE_QA_RED_PATHS),
@@ -267,6 +300,12 @@ function buildManifest(facts, options = {}) {
     const changed = normalizePathList(facts.changedPaths || []);
     const redPaths = redChangedPaths(changed);
     const protectedWorkflow = validateProtectedWorkflow(options.protectedWorkflow || 'none', changed, redPaths);
+    const qaScope = validateQaScope(options.qaScope || { enabled: false });
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE) {
+        fail(qaScope.enabled === false && migrations.length === 0,
+            'Certificate CI release cannot include migrations or QA records',
+            'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
     const redMigrations = migrations.filter(item => item.red);
     fail(facts.descendsFromLive === true, 'Candidate HEAD is not a descendant of live SHA', 'PRODUCTION_BLOCK_NOT_DESCENDANT');
     fail(redMigrations.length === 0, 'Candidate includes a Red migration', 'PRODUCTION_BLOCK_RED_MIGRATION', {
@@ -286,7 +325,7 @@ function buildManifest(facts, options = {}) {
         liveUrl: TARGET.liveUrl,
         allowedMigrationFiles: migrations.map(item => item.file).sort(),
         migrationClassifications: migrations.sort((left, right) => left.file.localeCompare(right.file)),
-        allowedQaScope: validateQaScope(options.qaScope || { enabled: false }),
+        allowedQaScope: qaScope,
         allowedProtectedWorkflow: protectedWorkflow,
         releaseLabel: String(options.releaseLabel || 'Autonomy Hardening').trim().slice(0, 120),
         releaseNotes: validateReleaseNotes(options.releaseNotes || []),
@@ -341,7 +380,7 @@ function validateManifest(manifest, options = {}) {
         && manifest.secretsMutationAllowed === false
         && manifest.protectedContractMutationAllowed === false,
     'Production block attempts to permit a Red action', 'PRODUCTION_BLOCK_RED_PERMISSION');
-    validateQaScope(manifest.allowedQaScope);
+    const qaScope = validateQaScope(manifest.allowedQaScope);
     validateReleaseNotes(manifest.releaseNotes);
     const changed = normalizePathList(manifest.changedPaths || []);
     const protectedWorkflow = manifest.allowedProtectedWorkflow || { enabled: false, kind: null, protectedChangedPaths: [] };
@@ -352,6 +391,12 @@ function validateManifest(manifest, options = {}) {
     );
     fail(JSON.stringify(validatedProtectedWorkflow) === JSON.stringify(protectedWorkflow),
         'Protected workflow envelope differs from candidate paths', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE) {
+        fail(qaScope.enabled === false && manifest.allowedMigrationFiles.length === 0
+            && manifest.migrationClassifications.length === 0,
+            'Certificate CI release cannot include migrations or QA records',
+            'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
     return manifest;
 }
 
@@ -383,8 +428,11 @@ function warningText(manifest) {
         `5. Disposable QA: ${qa}.`,
         `6. Protected workflow: ${protectedWorkflow}.`,
         `7. Release notes: ${manifest.releaseNotes.length} підписаних пунктів.`,
+        ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE
+            ? ['8. Окремий Red-ефект після deploy: scheduler може перевести лише active із valid_until < поточної київської дати в expired (до 1000 записів); потрібні свіжий read-only підрахунок і прямий дозвіл власника.']
+            : []),
         '',
-        'Межі: тільки зафіксовані branch/service/migrations/QA scope/protected workflow; real data, settings і secrets заборонені.',
+        'Межі: тільки зафіксовані branch/service/migrations/QA scope/protected workflow; прямі зміни реальних даних через controller, налаштувань і секретів заборонені.',
         `Відкат: production SHA ${manifest.baseLiveSha}; migration mapping у block manifest; exact QA cleanup.`,
         `Потрібний дозвіл: «Дозволяю блок ${manifest.blockId}» або exact controller confirmation ${confirmationValue(manifest)}.`
     ].join('\n');

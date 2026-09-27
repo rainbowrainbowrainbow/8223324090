@@ -273,8 +273,61 @@ test('certificate QA protected workflow keeps exactly the approved Red pair and 
         { changedPaths, migrations }), error => error.code === 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
 });
 
+test('certificate CI protected workflow signs only the expiry and booking precheck release', () => {
+    const changedPaths = [
+        '.github/workflows/ci.yml',
+        'services/scheduler.js',
+        'tests/browser/certificate-booking-precheck-app-smoke.js',
+        'scripts/production-block-policy.js',
+        'tests/production-block-controller.test.js'
+    ];
+    const options = { protectedWorkflow: 'certificate-ci-gate' };
+    const value = manifest(options, { changedPaths });
+    assert.deepEqual(value.allowedProtectedWorkflow, {
+        enabled: true,
+        kind: 'certificate-ci-gate',
+        protectedChangedPaths: ['.github/workflows/ci.yml']
+    });
+    assert.equal(value.realDataMutationAllowed, false);
+    assert.deepEqual(value.allowedMigrationFiles, []);
+    assert.deepEqual(value.allowedQaScope, { enabled: false });
+    assert.doesNotThrow(() => validateManifest(value));
+    assert.match(warningText(value), /active із valid_until < поточної київської дати.*до 1000 записів/);
+
+    assert.throws(() => manifest({}, { changedPaths }),
+        error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    for (const redPath of [
+        '.github/workflows/deploy.yml',
+        'middleware/auth.js',
+        'routes/finance.js',
+        'routes/payments.js',
+        'railway.json',
+        '.env.production'
+    ]) {
+        assert.throws(() => manifest(options, { changedPaths: [...changedPaths, redPath] }),
+            error => error.code === 'PRODUCTION_BLOCK_RED_PATHS', redPath);
+    }
+    assert.throws(() => manifest(options, { changedPaths: [...changedPaths, 'routes/certificates.js'] }),
+        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    assert.throws(() => manifest(options, {
+        changedPaths: changedPaths.filter(file => file !== 'services/scheduler.js')
+    }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    assert.throws(() => manifest(options, {
+        changedPaths: [...changedPaths, 'db/migrations/999_certificate_expiry.sql'],
+        migrations: [{
+            file: 'db/migrations/999_certificate_expiry.sql',
+            sql: '-- MIGRATION_KIND: schema\n-- SAFETY: additive\n-- ROLLBACK: leave unused\nCREATE INDEX IF NOT EXISTS cert_expiry ON certificates (valid_until);'
+        }]
+    }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    assert.throws(() => manifest({ ...options, qaScope: {
+        enabled: true, kind: 'canary', date: '2026-09-27', ttlMinutes: 15,
+        animators: '1', fixtureLimit: 1
+    } }, { changedPaths }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+});
+
 test('protected workflow parsing is explicit and disabled by default', () => {
     assert.equal(parseOptions(['prepare', '--protected-workflow', 'sys-mb-auth-cutover']).protectedWorkflow, 'sys-mb-auth-cutover');
+    assert.equal(parseOptions(['prepare', '--protected-workflow', 'certificate-ci-gate']).protectedWorkflow, 'certificate-ci-gate');
     assert.equal(parseOptions(['prepare']).protectedWorkflow, 'none');
     assert.throws(() => manifest({}, { changedPaths: ['middleware/auth.js'] }),
         error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');

@@ -71,3 +71,28 @@
 Read-only аудит о `09:48:22 UTC` у транзакції з `transaction_read_only=on` показав 929 записів: raw/effective `active=181`, `expired=745`, `used=3`; `active_past_due=0`. Бізнес-фільтр виключає QA 921: `active=181`, `expired=745`, `used=2`. Типи залишилися `one_time_admission=495`, `subscription=3`, `verification_only=431`; rollback-індикатори `unsafeGrants=0`, `safeDenials=0`. QA-run `cleaned`, сертифікат 921 `used`, рівно один запис погашення. Нових сертифікатів або бронювань для цієї перевірки не створювали.
 
 Це перевірка виправлення статусів, а не аудит після першого реального погашення. Останній лишається відкритим за умовами CERT-POST-CLOSE-02.
+
+## CERT-POST-CLOSE-02 — аудит після першого реального використання, 2026-09-27
+
+Live `/api/version` підтвердив `v0.82.21`, deployed SHA `acbd1f62ed51ce16b6b0469023f4225c8bef6d7a`, source branch `codex/eventgenix-production` і повний manifest metadata. Railway service `8223324090` показав deployment `2815180a-a99f-4ccd-bcb3-dd70179604e0` зі статусом `SUCCESS`. [CI точного release SHA](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36310004791) — 8/8 успішних jobs. Документація після релізу живе окремим комітом від deployed SHA.
+
+О `10:41–10:42 UTC` production SQL виконано тільки в `BEGIN READ ONLY`; `transaction_read_only=on`, `statement_timeout=5s`. Після часу підтвердження нового релізу (`09:48:22 UTC`) є **1 реальне погашення**, виключаючи trusted QA manifest. Для нього є рівно **1** запис `certificate_used` в історії, без повторного запису. Сертифікатів або бронювань під час аудиту не створювали.
+
+| Показник | Після релізу | Попередній аудит одразу після релізу |
+|---|---:|---:|
+| Фізичних сертифікатів | 929 | 929 |
+| Raw/effective `active` | 180 | 181 |
+| Raw/effective `expired` | 745 | 745 |
+| Raw/effective `used` | 4 | 3 |
+| Прострочені, збережені як `active` | 0 | 0 |
+| Бізнес-видимі `used` | 3 | 2 |
+
+Стабільні типи не змінилися: `one_time_admission=495`, `subscription=3`, `verification_only=431`. Невідомі 431 лишаються лише для перевірки. Rollback-індикатори `unsafeGrants=0`, `safeDenials=0`. Scheduler `checkCertificateExpiry` має `result=success`, `is_paused=false`, `consecutive_failures=0`.
+
+QA-run `certclose03_20260926_release` лишається `cleaned`: час завершення встановлено, один entity у manifest позначений `cleaned`. Сертифікат ID 921 лишається `used`, `used_at` встановлено, рівно один запис `certificate_used`; бізнес-фільтр його виключає. Різниця між чотирма фізичними та трьома бізнес-видимими `used` саме один QA-запис.
+
+Після нового релізу повторних погашень або used-записів без єдиного запису історії не знайдено. Водночас **2 раніше використані сертифікати**, датовані до цього релізу, не мають відповідного `certificate_used` в історії. Це історична прогалина, не наслідок нового погашення; її слід розбирати окремою вузькою read-only карткою перед будь-яким виправленням даних.
+
+У `routes/certificates.js` для booking validate немає знеособлених лічильників відмов precheck; доступна лише загальна помилка HTTP 500. Частоту відмов або помилок precheck з production визначити неможливо. UI після успішного погашення також показує той самий стан, що й при повторному відкритті давно використаного коду; це окремий UX follow-up, який не змінює результат цього read-only аудиту.
+
+**Висновок:** перше реальне одноразове погашення на `v0.82.21` підтверджене статусом та одним записом історії. Expiry fix, стабільні типи й QA-ізоляція залишилися узгодженими. Відкриті пункти: дві історичні прогалини в історії використаних записів, відсутність precheck-телеметрії та пояснення результату дії в UI. Production deployment лишається на `acbd1f62ed51ce16b6b0469023f4225c8bef6d7a`; documentation-only SHA наведено в delivery-підсумку після push.

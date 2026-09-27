@@ -50,3 +50,11 @@ The deployed app SHA `b0b466743e929d48681f741e8df571ee23d21b28` is distinct from
 - Open follow-up: this release used read-only live QA. The first real redemption after `v0.82.21` has not been audited here. Run CERT-POST-CLOSE-02 after the first real use, or no earlier than 2026-10-03 if none occurs. The production frequency of precheck denials remains unavailable without dedicated anonymized telemetry.
 
 This section was added after deployment in a documentation-only commit. The deployed application SHA above is the production identity; the later documentation commit is not deployed.
+
+## CERT-POST-CLOSE-02 — first real redemption audit (2026-09-27)
+
+- Live `v0.82.21` still reports deployed SHA `acbd1f62ed51ce16b6b0469023f4225c8bef6d7a` and branch `codex/eventgenix-production`. Railway deployment `2815180a-a99f-4ccd-bcb3-dd70179604e0` remains `SUCCESS`; [exact-SHA CI](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36310004791) passed 8/8 jobs.
+- A `BEGIN READ ONLY` production audit at 10:41–10:42 UTC confirmed one real post-release redemption and exactly one matching history row, with no repeat. Raw/effective counts are `active=180`, `expired=745`, `used=4`; business-visible `used=3` excludes QA certificate 921. Total remains 929; `active_past_due=0`.
+- Type counts remain `one_time_admission=495`, `subscription=3`, `verification_only=431`; rollback indicators are `unsafeGrants=0`, `safeDenials=0`. QA run remains cleaned; certificate 921 remains used with one history row and excluded from business counts.
+- Open issues: two pre-release used certificates lack a matching redemption history entry; anonymized booking precheck denial telemetry is absent; the immediate post-redemption UI does not distinguish a new success from an already-used certificate. These require separate focused follow-ups; this audit made no production changes.
+- This report update is documentation-only. The deployed application SHA is `acbd1f62ed51ce16b6b0469023f4225c8bef6d7a`; the documentation commit SHA is recorded in the delivery summary after push and is not deployed.

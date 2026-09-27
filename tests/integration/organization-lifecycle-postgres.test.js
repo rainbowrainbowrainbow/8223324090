@@ -150,6 +150,78 @@ test('organization lifecycle HTTP transactions on an owned local PostgreSQL data
             return (await pool.query('SELECT count(*)::int AS n FROM account_security_events')).rows[0].n;
         }
 
+        await t.test('an active owner creates a second organization without inheriting business access', async () => {
+            const { owner, admin, worker, foreign } = await reset();
+            const previousDefault = (await pool.query('SELECT default_business_context FROM users WHERE id = $1', [owner.id])).rows[0].default_business_context;
+            const created = await request(owner, 'POST', '/api/organizations', {
+                sourceOrganizationId: 1, name: 'Fixture new organization', slug: 'fixture-new-organization'
+            });
+            assert.equal(created.status, 201, JSON.stringify(created.body));
+            const id = created.body.organization.id;
+            assert.equal(created.body.organization.role, 'owner');
+            assert.deepEqual(created.body.organization.businesses, []);
+            const membership = (await pool.query('SELECT role, is_active FROM organization_memberships WHERE organization_id = $1 AND user_id = $2', [id, owner.id])).rows[0];
+            assert.deepEqual(membership, { role: 'owner', is_active: true });
+            assert.equal((await pool.query('SELECT count(*)::int AS n FROM businesses WHERE organization_id = $1', [id])).rows[0].n, 0);
+            assert.equal((await pool.query('SELECT count(*)::int AS n FROM business_memberships WHERE organization_id = $1', [id])).rows[0].n, 0);
+            assert.equal((await pool.query('SELECT default_business_context FROM users WHERE id = $1', [owner.id])).rows[0].default_business_context, previousDefault);
+            const profile = await request(owner, 'GET', '/api/auth/business-profile');
+            assert.equal(profile.status, 200, JSON.stringify(profile.body));
+            assert.ok(profile.body.businessProfile.organizations.some(item => Number(item.id) === Number(id) && item.role === 'owner'));
+            const management = await request(owner, 'GET', '/api/organizations/management');
+            assert.equal(management.status, 200);
+            assert.ok(management.body.organizations.some(item => Number(item.id) === Number(id) && item.canCreateOrganization));
+            for (const actor of [admin, worker, foreign]) {
+                const denied = await request(actor, 'POST', '/api/organizations', {
+                    sourceOrganizationId: 1, name: 'Foreign attempt', slug: 'foreign-attempt'
+                });
+                assert.equal(denied.status, 403, JSON.stringify(denied.body));
+            }
+            assert.equal(await eventCount(), 1);
+        });
+
+        await t.test('creator identity alone cannot create an organization and revoked owner loses access on the same JWT', async () => {
+            const { owner } = await reset();
+            const creator = await account('creator');
+            const payload = { sourceOrganizationId: 1, name: 'Fixture guarded', slug: 'fixture-guarded' };
+            assert.equal((await request(creator, 'POST', '/api/organizations', payload)).status, 403);
+            await pool.query('UPDATE organization_memberships SET is_active = false WHERE organization_id = 1 AND user_id = $1', [owner.id]);
+            assert.equal((await request(owner, 'POST', '/api/organizations', payload)).status, 403);
+            assert.equal((await pool.query('SELECT count(*)::int AS n FROM organizations')).rows[0].n, 2);
+            assert.equal(await eventCount(), 0);
+        });
+
+        await t.test('organization creation rejects invalid input and rolls back on duplicate slug or audit failure', async () => {
+            const { owner } = await reset();
+            const before = await accessSnapshot();
+            for (const payload of [
+                { sourceOrganizationId: 1, name: 'Invalid', slug: 'Bad Slug' },
+                { sourceOrganizationId: 1, name: 'Invalid', slug: 'valid-slug', role: 'creator' },
+                { sourceOrganizationId: 1, name: 'Duplicate', slug: 'fixture-a' }
+            ]) {
+                const response = await request(owner, 'POST', '/api/organizations', payload);
+                assert.equal(response.status, payload.slug === 'fixture-a' ? 409 : 400, JSON.stringify(response.body));
+                assert.deepEqual(await accessSnapshot(), before);
+            }
+            await auditFailure();
+            const failed = await request(owner, 'POST', '/api/organizations', {
+                sourceOrganizationId: 1, name: 'Audit failure', slug: 'audit-failure'
+            });
+            assert.equal(failed.status, 500, JSON.stringify(failed.body));
+            assert.deepEqual(await accessSnapshot(), before);
+            assert.equal(await eventCount(), 0);
+        });
+
+        await t.test('concurrent requests for one slug create one owned organization', async () => {
+            const { owner } = await reset();
+            const payload = { sourceOrganizationId: 1, name: 'Concurrent organization', slug: 'concurrent-organization' };
+            const responses = await Promise.all([request(owner, 'POST', '/api/organizations', payload), request(owner, 'POST', '/api/organizations', payload)]);
+            assert.deepEqual(responses.map(item => item.status).sort(), [201, 409]);
+            assert.equal((await pool.query("SELECT count(*)::int AS n FROM organizations WHERE slug = 'concurrent-organization'")).rows[0].n, 1);
+            assert.equal((await pool.query("SELECT count(*)::int AS n FROM organization_memberships om JOIN organizations o ON o.id = om.organization_id WHERE o.slug = 'concurrent-organization' AND om.role = 'owner'")).rows[0].n, 1);
+            assert.equal(await eventCount(), 1);
+        });
+
         await t.test('partial membership updates preserve omitted arrays, default and organization ownership', async () => {
             const { owner, worker } = await reset();
             await pool.query(`UPDATE business_memberships SET extra_roles = '{instructor}', page_allowlist = '{/programs}',

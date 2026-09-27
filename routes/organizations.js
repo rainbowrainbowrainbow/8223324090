@@ -149,6 +149,13 @@ router.post('/bootstrap', requireAction('manage_accounts'), async (req, res) => 
     } finally { client.release(); }
 });
 
+router.post('/', async (req, res) => {
+    try {
+        const organization = await lifecycle.createOrganization(pool, req.user, req.body || {}, req);
+        res.status(201).json({ success: true, organization });
+    } catch (error) { lifecycleError(res, error, 'organization_create_failed'); }
+});
+
 // This creates review-bound journal evidence only. It intentionally does not
 // create a reserved business, membership, owner, default, or data mapping.
 router.post('/cutovers/prepare', requireAction('manage_accounts'), async (req, res) => {

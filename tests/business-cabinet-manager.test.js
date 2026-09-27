@@ -48,6 +48,43 @@ test('management requests remove aggregate/context headers and preserve exact mu
     assert.deepEqual(JSON.parse(request.options.body), { contextKey: 'custom_business', modules: [] });
 });
 
+test('organization creation request stays account scoped and carries only owner-selected source', async () => {
+    const f = fixture({ ok: true, status: 201, json: async () => ({ success: true, organization: { id: 8 } }) });
+    await f.manager.request('/api/organizations', 'POST', { sourceOrganizationId: 7, name: 'Second organization', slug: 'second-organization' });
+    assert.equal(f.requests[0].options.authBusinessScope, false);
+    assert.deepEqual(JSON.parse(f.requests[0].options.body), { sourceOrganizationId: 7, name: 'Second organization', slug: 'second-organization' });
+    assert.equal(f.requests[0].options.headers['X-Business-Context'], undefined);
+});
+
+test('owner sees a second-organization form while admin only sees existing cabinet controls', async () => {
+    for (const role of ['owner', 'admin']) {
+        const handlers = {};
+        const context = {
+            AppState: { currentUser: { id: 41, businessProfile: { organizations: [{ role }] } } },
+            document: { activeElement: null },
+            addEventListener() {}, removeEventListener() {},
+            getAuthHeaders: () => ({ Authorization: 'synthetic-session' }),
+            async apiFetchWithAuthRetry() { return { ok: true, json: async () => ({ success: true,
+                organizations: [{ id: 7, name: 'Existing organization', canCreateOrganization: role === 'owner', canCreateBusiness: role === 'owner', businesses: [] }],
+                moduleRegistry: [] }) }; }
+        };
+        context.window = context;
+        vm.createContext(context);
+        vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/business-cabinet-manager.js'), 'utf8'), context);
+        const container = { isConnected: true, hidden: false, innerHTML: '', replaceChildren() {}, setAttribute() {},
+            addEventListener(name, fn) { handlers[name] = fn; }, removeEventListener() {},
+            querySelector() { return { focus() {} }; }, querySelectorAll() { return []; }, contains() { return true; } };
+        context.BusinessCabinetManager.mount(container, context.AppState.currentUser);
+        await handlers.click({ target: { closest() { return { dataset: { cabinetAction: 'load' } }; } } });
+        assert.equal(container.innerHTML.includes('data-cabinet-action="create-organization"'), role === 'owner');
+        if (role === 'owner') {
+            await handlers.click({ target: { closest() { return { dataset: { cabinetAction: 'create-organization' } }; } } });
+            assert.match(container.innerHTML, /data-organization-form/);
+            assert.match(container.innerHTML, /Бізнес і доступ до його даних налаштовуються окремо/);
+        }
+    }
+});
+
 test('denial gives safe localized retry message without raw backend details', async () => {
     const f = fixture({ ok: false, status: 403, json: async () => ({ success: false, code: 'organization_management_denied', error: 'private diagnostic' }) });
     await assert.rejects(() => f.manager.request('/api/organizations/management'), error => {

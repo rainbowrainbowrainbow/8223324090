@@ -180,7 +180,7 @@ function isAccountContextRequest(req) {
     // Organization lifecycle routes authorize the current organization manager
     // themselves, including recovery after its last business was deactivated.
     return (method === 'GET' && /^\/organizations\/members\/\d+\/access-profile$/.test(path))
-        || (method === 'POST' && (path === '/organizations/bootstrap' || /^\/organizations\/\d+\/businesses$/.test(path)))
+        || (method === 'POST' && (path === '/organizations' || path === '/organizations/bootstrap' || /^\/organizations\/\d+\/businesses$/.test(path)))
         || (method === 'PATCH' && /^\/organizations\/businesses\/\d+(?:\/configuration)?$/.test(path))
         || (method === 'POST' && /^\/organizations\/businesses\/\d+\/initialize-resources$/.test(path))
         || (method === 'PUT' && /^\/organizations\/\d+\/members\/\d+$/.test(path))

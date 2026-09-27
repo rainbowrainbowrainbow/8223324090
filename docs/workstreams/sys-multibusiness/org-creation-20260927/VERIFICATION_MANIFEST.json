@@ -1,0 +1,50 @@
+{
+  "workstream": "SYS-MB-ORG-CREATION",
+  "status": "PREPARED_NOT_PUSHED_NOT_DEPLOYED",
+  "sourceWorktree": "C:\\Users\\Plotva\\.codex\\worktrees\\sys-mb-org-release-refresh-20260927\\EventGenix",
+  "sourceBranch": "codex/sys-mb-org-release-refresh-20260927",
+  "productionBranch": "codex/eventgenix-production",
+  "productionBaseSha": "3df8ddaad24baba86fe10bbc52afde46abd2a93e",
+  "previousLiveSha": "acbd1f62ed51ce16b6b0469023f4225c8bef6d7a",
+  "functionalCommitSha": "8037f816f21a485ec5fc3c6b62532d0773cc70f8",
+  "versionCommitSha": "d05684cedb0249b6ad3af62be3238b094c43ca64",
+  "candidateVersion": "0.82.22",
+  "candidateReleaseLabel": "Організації: створення власником",
+  "candidateShaRule": "final HEAD after manifest documentation commit; name exact SHA in fresh authorization",
+  "migrationsAdded": [],
+  "tests": {
+    "runtime": "PASS_NODE_22.23.1_NPM_10.9.8",
+    "businessCabinetUnit": "PASS_90_OF_90",
+    "fullNpmTest": "PASS_EXIT_0",
+    "versionCheck": "PASS",
+    "organizationLifecyclePostgres": "SKIPPED_NO_OWNED_DISPOSABLE_POSTGRESQL",
+    "readOnlyLiveOwnerPreflight": "PASS_PRIVATE_RECEIPT_SHA256_5766d3ac77598a15ee3b340f9c99c821349d508618145872c6563ce16b9dabf4",
+    "exactShaCi": "NOT_RUN",
+    "railwayDeploy": "NOT_RUN",
+    "liveWriteQa": "NOT_RUN"
+  },
+  "fileSha256": {
+    "services/organizationLifecycle.js": "de5e32d5711cdd026aafe6396f330d39c99b15a8b8326f49554f84e47f68ee8c",
+    "routes/organizations.js": "5fdf152c058d0b1094f2925740ad29e26e22791d21d7d8f2430728c94f03d6e9",
+    "middleware/auth.js": "b75a1af7f8c1b633cc213e851d78080aa85cae4656f4dc8762756a28934ef301",
+    "js/business-cabinet-manager.js": "42cc76707d191412cf0dffae9b2c5e25a1554e0fbe5eafdd1e5751f61d708473",
+    "tests/organization-create.test.js": "08a8fae7dbc83740326fc37d87c298453bc0e91e0f2bc4428184f28e0810d767",
+    "tests/integration/organization-lifecycle-postgres.test.js": "ef1561ef48efc0d8709d1e1f9c2b47d9675f05ee7bae7b8d209c6201be5c8771",
+    "package.json": "eec68c975e4925999592d6f3838878f4c57e5ef2adac375efb09e9964f02c2e7",
+    "package-lock.json": "ed87bff6bb55eef4fd03fbff986bfa1fdbcb6ffe23510f20066cedbaadf244a0",
+    "CHANGELOG.md": "880f3f09cac2b30af6809308df1a2e645675515ca49a1e16b983b81ef1b6e54f",
+    "index.html": "cbad4682c1c8128d22bd7ee7de19a5ac991d72438185bb5c9d85478dda412b22"
+  },
+  "target": {
+    "railwayProject": "fortunate-appreciation",
+    "railwayEnvironment": "production",
+    "railwayService": "8223324090",
+    "liveDomain": "8223324090-production.up.railway.app"
+  },
+  "production": {
+    "qaFixtureCreated": false,
+    "observationStartUtc": null,
+    "passMeasured": false,
+    "globalModelComplete": false
+  }
+}

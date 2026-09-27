@@ -14,7 +14,7 @@
         if (!response.ok || payload.success === false) {
             const error = new Error(response.status === 403 ? 'Керування кабінетами більше недоступне. Оновіть доступ.'
                 : response.status === 409 ? 'Цю зміну не можна застосувати: запис уже існує або порушується правило власників.'
-                    : response.status === 400 ? 'Перевірте назву, ключ бізнесу та дозволені модулі.' : 'Не вдалося виконати дію. Спробуйте ще раз.');
+                    : response.status === 400 ? 'Перевірте назву, код організації, ключ бізнесу та дозволені модулі.' : 'Не вдалося виконати дію. Спробуйте ще раз.');
             error.status = response.status;
             error.code = payload.code;
             throw error;
@@ -44,6 +44,7 @@
         let data = null;
         let organizationId = '';
         let draft = null;
+        let organizationDraft = null;
         let dirty = false;
         let busy = false;
         let sequence = 0;
@@ -64,13 +65,14 @@
                 + `<p role="status" aria-live="polite" tabindex="-1" data-cabinet-status>${escape(message)}</p>`
                 + (data ? `<label class="business-cabinet-field">Організація<select data-cabinet-organization ${busy ? 'disabled' : ''}>${data.organizations.map(item => `<option value="${escape(item.id)}" ${String(item.id) === organizationId ? 'selected' : ''}>${escape(item.name)}</option>`).join('')}</select></label>` : '')
                 + (org ? `<p>${org.canEditBusinesses ? 'Ви можете створювати й налаштовувати кабінети цієї організації.' : 'Налаштування кабінетів змінює власник. Доступи працівників доступні нижче.'}</p>`
-                    + `<div class="profile-avatar-action-row">${org.canCreateBusiness ? `<button type="button" data-cabinet-action="create" ${busy ? 'disabled' : ''}>Створити бізнес</button>` : ''}</div>`
+                    + `<div class="profile-avatar-action-row">${org.canCreateOrganization ? `<button type="button" data-cabinet-action="create-organization" ${busy ? 'disabled' : ''}>Створити організацію</button>` : ''}${org.canCreateBusiness ? `<button type="button" data-cabinet-action="create" ${busy ? 'disabled' : ''}>Створити бізнес</button>` : ''}</div>`
                     + `<div class="business-cabinet-list">${(org.businesses || []).map(item => `<article class="profile-avatar-section"><h3>${escape(item.label)}</h3><p>${escape(item.shortLabel || item.label)} · ${item.status === 'active' ? 'Активний' : 'Неактивний'}</p><p><small>Ключ: ${escape(item.contextKey)}</small></p><p>${(item.moduleCatalog || []).filter(module => module.enabled && module.canEnable).map(module => escape(module.label || module.key)).join(', ') || 'Немає увімкнених підтримуваних модулів.'}</p><div class="profile-avatar-action-row">${org.canEditBusinesses ? `<button type="button" data-cabinet-action="edit" data-business-id="${escape(item.id)}" ${busy ? 'disabled' : ''}>Налаштувати</button><button type="button" data-cabinet-action="status" data-business-id="${escape(item.id)}" ${busy ? 'disabled' : ''}>${item.status === 'active' ? 'Деактивувати' : 'Активувати'}</button>` : ''}${org.canEditBusinesses && item.canInitializeResources ? `<button type="button" data-cabinet-action="initialize" data-business-id="${escape(item.id)}" ${busy ? 'disabled' : ''}>Ініціалізувати ресурси</button>` : ''}</div></article>`).join('') || '<p>У цій організації ще немає бізнесів.</p>'}</div>` : '')
+                + (organizationDraft ? `<form data-organization-form class="profile-avatar-section"><h3>Нова організація</h3><p>Ви станете її власником. Бізнес і доступ до його даних налаштовуються окремо.</p><label class="business-cabinet-field">Назва<input name="name" maxlength="160" required value="${escape(organizationDraft.name)}"></label><label class="business-cabinet-field">Постійний код організації<input name="slug" pattern="[a-z][a-z0-9-]{1,78}[a-z0-9]" minlength="3" maxlength="80" required value="${escape(organizationDraft.slug)}" aria-describedby="business-organization-code-hint"></label><p id="business-organization-code-hint">Від 3 до 80 малих латинських літер, цифр і дефісів. Перший символ — літера, останній — літера або цифра. Після створення код не змінюється.</p><div class="profile-avatar-action-row"><button type="submit" class="profile-settings-primary" ${busy ? 'disabled' : ''}>Створити організацію</button><button type="button" data-cabinet-action="cancel-organization" ${busy ? 'disabled' : ''}>Скасувати</button></div></form>` : '')
                 + (draft ? `<form data-cabinet-form class="profile-avatar-section"><h3>${draft.id ? 'Налаштування бізнесу' : 'Новий бізнес'}</h3><label class="business-cabinet-field">Назва<input name="label" maxlength="160" required value="${escape(draft.label)}"></label><label class="business-cabinet-field">Коротка назва<input name="shortLabel" maxlength="80" required value="${escape(draft.shortLabel)}"></label>${draft.id ? `<p>Ключ: ${escape(draft.contextKey)}. Його не можна змінити.</p>` : `<label class="business-cabinet-field">Стабільний ключ<input name="contextKey" pattern="[a-z][a-z0-9_]{2,63}" minlength="3" maxlength="64" required value="${escape(draft.contextKey)}" aria-describedby="business-cabinet-key-hint"></label><p id="business-cabinet-key-hint">Від 3 до 64 латинських малих літер, цифр або _. Перший символ — літера. Після створення ключ не змінюється.</p>`}<fieldset ${busy ? 'disabled' : ''}><legend>Модулі бізнесу</legend><p>Позначте потрібні модулі. Порожній вибір означає, що робочі модулі вимкнені. Права працівника не розширюються автоматично.</p>${moduleOptions(draft.moduleCatalog, draft.modules)}</fieldset><div class="profile-avatar-action-row"><button type="submit" class="profile-settings-primary" ${busy ? 'disabled' : ''}>Зберегти бізнес</button><button type="button" data-cabinet-action="cancel" ${busy ? 'disabled' : ''}>Скасувати</button></div></form>` : '');
             if (busy) container.querySelectorAll('input, select, button').forEach(element => { element.disabled = true; });
         }
 
-        async function load(statusMessage = '') {
+        async function load(statusMessage = '', selectedOrganizationId = null) {
             const ticket = ++sequence;
             busy = true;
             message = 'Завантаження кабінетів…';
@@ -79,14 +81,17 @@
                 const payload = await request('/api/organizations/management');
                 if (!current(ticket)) return;
                 data = payload;
+                if (selectedOrganizationId) organizationId = String(selectedOrganizationId);
                 if (!organization()) organizationId = String(data.organizations[0]?.id || '');
                 draft = null;
+                organizationDraft = null;
                 dirty = false;
                 message = statusMessage || (data.organizations.length ? '' : 'Немає організацій, якими ви можете керувати.');
             } catch (error) {
                 if (!current(ticket)) return;
                 data = null;
                 draft = null;
+                organizationDraft = null;
                 dirty = false;
                 message = error.message;
             } finally {
@@ -107,17 +112,19 @@
                 const result = await request(path, method, body);
                 if (!current(ticket)) return;
                 const initialization = result.initialization;
-                const text = initialization ? initialization.created > 0 ? 'Ресурси ініціалізовано.' : 'Нові ресурси не створені: наявні збережено, а для цього бізнесу може не бути стандартного набору.'
-                    : 'Зміни збережено. Для роботи в новому бізнесі призначте собі окрему бізнес-роль у «Команда та доступи».';
+                const text = result.organization ? 'Організацію створено. Тепер створіть бізнес і призначте собі окрему бізнес-роль.'
+                    : initialization ? initialization.created > 0 ? 'Ресурси ініціалізовано.' : 'Нові ресурси не створені: наявні збережено, а для цього бізнесу може не бути стандартного набору.'
+                        : 'Зміни збережено. Для роботи в новому бізнесі призначте собі окрему бізнес-роль у «Команда та доступи».';
                 dirty = false;
                 draft = null;
-                await load(text);
+                organizationDraft = null;
                 if (connected() && typeof global.hydrateBusinessOperatingProfile === 'function') {
                     await global.hydrateBusinessOperatingProfile(global.AppState.currentUser);
                 }
+                if (connected()) await load(text, result.organization?.id);
             } catch (error) {
                 if (!current(ticket)) return;
-                if (error.status === 403) { data = null; draft = null; dirty = false; }
+                if (error.status === 403) { data = null; draft = null; organizationDraft = null; dirty = false; }
                 message = error.message;
                 busy = false;
                 render();
@@ -134,11 +141,19 @@
             const entry = business(button.dataset.businessId);
             if (action === 'load') return load();
             if (action === 'cancel') { draft = null; dirty = false; render(); focus('[data-cabinet-action="create"]'); }
+            if (action === 'cancel-organization') { organizationDraft = null; dirty = false; render(); focus('[data-cabinet-action="create-organization"]'); }
+            if (action === 'create-organization' && org?.canCreateOrganization) {
+                draft = null;
+                organizationDraft = { name: '', slug: '', sourceOrganizationId: org.id };
+                dirty = false; render(); focus('[data-organization-form] [name="name"]');
+            }
             if (action === 'create' && org?.canCreateBusiness) {
+                organizationDraft = null;
                 draft = { id: null, label: '', shortLabel: '', contextKey: '', modules: [], moduleCatalog: data.moduleRegistry || [] };
                 dirty = false; render(); focus('[name="label"]');
             }
             if (action === 'edit' && org?.canEditBusinesses && entry) {
+                organizationDraft = null;
                 draft = { ...entry, modules: [...(entry.modules || [])], moduleCatalog: entry.moduleCatalog || [], modulesChanged: false };
                 dirty = false; render(); focus('[name="label"]');
             }
@@ -150,6 +165,13 @@
         }
 
         function input(event) {
+            if (organizationDraft && !busy && event.target.closest('[data-organization-form]')) {
+                const form = container.querySelector('[data-organization-form]');
+                organizationDraft.name = form.elements.name.value;
+                organizationDraft.slug = form.elements.slug.value;
+                dirty = true;
+                return;
+            }
             if (!draft || busy || !event.target.closest('[data-cabinet-form]')) return;
             const form = container.querySelector('[data-cabinet-form]');
             draft.label = form.elements.label.value;
@@ -168,10 +190,16 @@
             if (!event.target.matches('[data-cabinet-organization]') || busy) return;
             if (!allowDiscard()) { event.target.value = organizationId; return; }
             organizationId = event.target.value;
-            draft = null; dirty = false; message = ''; render(); focus('[data-cabinet-organization]');
+            draft = null; organizationDraft = null; dirty = false; message = ''; render(); focus('[data-cabinet-organization]');
         }
 
         async function submit(event) {
+            if (event.target.matches('[data-organization-form]')) {
+                event.preventDefault();
+                if (!organizationDraft || busy || !connected() || !organization()?.canCreateOrganization || !event.target.reportValidity()) return;
+                return mutate('/api/organizations', 'POST', { ...organizationDraft,
+                    name: organizationDraft.name.trim(), slug: organizationDraft.slug.trim() });
+            }
             if (!event.target.matches('[data-cabinet-form]')) return;
             event.preventDefault();
             if (!draft || busy || !connected() || !organization()?.canEditBusinesses || !event.target.reportValidity()) return;
@@ -187,7 +215,7 @@
             if (!container.isConnected) { cleanup(); return; }
             const restoreFocus = container.contains(global.document.activeElement);
             sequence += 1;
-            data = null; draft = null; dirty = false; busy = false;
+            data = null; draft = null; organizationDraft = null; dirty = false; busy = false;
             message = 'Доступ або бізнес змінився. Оновіть кабінети перед наступною дією.';
             container.hidden = Number(global.AppState?.currentUser?.id) !== identity || !canManage(global.AppState?.currentUser);
             render();

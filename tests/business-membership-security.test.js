@@ -190,7 +190,7 @@ test('account endpoint exceptions do not admit operational profiles, permissions
         { method: 'GET', path: '/api/auth/security/other' },
         { method: 'POST', path: '/api/auth/security' },
         { method: 'GET', path: '/api/auth/security/revoke-sessions' },
-        { method: 'POST', path: '/api/organizations' },
+        { method: 'PUT', path: '/api/organizations' },
         { method: 'GET', path: '/security', originalUrl: '/api/auth/profile' }
     ]) {
         const result = await f.request(options);
@@ -203,6 +203,7 @@ test('account endpoint exceptions do not admit operational profiles, permissions
 test('accounts without an operational membership can reach exact organization lifecycle guards with cleared business permissions', async t => {
     const f = fixture(t, { memberships: [] });
     for (const options of [
+        { method: 'POST', path: '/api/organizations' },
         { method: 'POST', path: '/api/organizations/bootstrap' },
         { method: 'POST', path: '/api/organizations/7/businesses' },
         { method: 'PATCH', path: '/api/organizations/businesses/11' },

@@ -1,0 +1,24 @@
+# SYS-MB — production readiness checkpoint, 2026-09-22 21:05 UTC
+
+Status: `FUNCTIONAL_RELEASE_LIVE / FINAL_MODEL_HOLD`. This is a read-only checkpoint, not authorization for an auth, data or release mutation.
+
+## Exact live source
+
+- `https://8223324090-production.up.railway.app/api/version`: `ac6efaeb85b238f3eeb1cac7c9e0e8c5d024fe79`, `codex/eventgenix-production`, `v0.82.11 — Tasker + My Day UX`.
+- Remote `refs/heads/codex/eventgenix-production` is the same SHA. Local worktree HEAD is the same SHA; its pending diff is SYS-MB documentation and the catalog repair controller under docs, with no new product runtime change to deploy.
+- Railway read-only status: project `fortunate-appreciation`, environment `production`, application service `8223324090` (internal service UUID `3fb62d4c-2dc2-4701-8e2b-09ce16e188ee`). One active application deployment. No Railway setting was changed.
+- Catalog asset repair, MD/CRM cutovers, and the bounded live role QA are already applied on the site. [ROLE_QA_REPORT.md](ROLE_QA_REPORT.md) proves the latter; it must not be replayed.
+
+## Current release gates
+
+1. **Multi-organization creation is not product-complete.** Live creator management returns one organization and four active businesses. `routes/organizations.js` exposes only `POST /api/organizations/bootstrap`, which rejects any call after the first organization exists. There is no authenticated lifecycle endpoint for an owner to create a second organization. `tests/acceptance/run-sys-mb-local.cjs` creates the second organization by direct fixture SQL, so its two-organization PASS does not certify a production owner workflow. A live second-organization QA fixture cannot be created through the current API. Do not use production SQL to manufacture a PASS.
+2. **Role/browser scope is incomplete.** The existing smoke account passed sequential Maysternya/CRM manager/admin/animator and same-JWT revoke, but independent simultaneous worker sessions and two-organization browser isolation remain unproven. The broad read-only browser diagnostic includes expected CRM booking/Hermes containment 403s and navigation aborts; cross-tab route convergence was inconclusive. No new code regression was proved, and no unrelated shared-sidebar patch was made.
+3. **Measured compatibility observation has not started.** `startUtc=null`. The 2026-09-22 20:07 UTC dedicated read-only collector reported ten unobserved required context/family pairs, one UTC day including synthetic QA, no allowed service-domain event established for MD/CRM, reconciled runtime and zero known gaps. These counts are not five days of real operations.
+4. **Enabled-cycle inventory is not closed.** A read-only transaction at 2026-09-22 21:04 UTC found zero active recurring booking templates, zero active recurring announcements, no eligible pending/failed event queue row, and an unpaused successful `checkMonthlyPointsReset` scheduler. The code schedules that task on the first day of each month and `resetMonthlyPoints()` logs a monthly task action. Its applicability to SYS-MB operational authority and the exact longest enabled relevant cycle need a documented decision. If included, a conservative calendar-month upper bound is 31 days plus the gate's 24-hour margin; do not declare the window 14 days or start it from an earlier deploy.
+5. **Final removal is prohibited now.** `PASS_MEASURED=false`; required entry-family coverage, real traffic, two-organization QA and the enabled-cycle bound are absent. The narrow telemetry SELECT grant remains active for read-only monitoring and needs exact revoke after the gate or abandonment. Legacy operational authorization and deprecated columns must stay unchanged.
+
+## Narrow next production package
+
+The next functional candidate would add a guarded owner workflow to create a second organization and its first custom business with explicit owner and business membership, using the existing schema. Before coding or release, fix the exact role/default policy and API/UI/rollback predicates. Likely protected files: `routes/organizations.js`, `services/organizationLifecycle.js`, existing business-cabinet management UI, and focused unit/PostgreSQL/browser tests. It must not auto-assign historical records, creator business role, Park default or another owner's membership. A new second-organization live QA fixture needs its own registered lifecycle and exact cleanup. This is Red auth/permission scope under `AGENTS.md`; the general request to “do production” is not an exact approval for it.
+
+Prepare a reviewable candidate and one exact auth/release/QA envelope after the protected local change is approved. Until then, the live site remains on the working functional release and the existing read-only monitor continues. A documentation-only version bump or Railway upload would not satisfy any gate and should not be used as delivery evidence.

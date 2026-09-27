@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const QRCode = require('qrcode');
+const { installQrDecoder, decodeQrFromPng } = require('./certificate-qr-decoder');
 
 function requirePlaywright() {
     try { return require('playwright'); } catch (error) {
@@ -107,6 +108,7 @@ async function main() {
                 window.setTimeout = (callback, delay, ...args) => timeout(callback, delay === 60000 ? 30 : delay, ...args);
             });
             await page.goto(`${base}/certificates/new`);
+            await installQrDecoder(page);
             await page.locator('#certificatesNewView:not(.hidden)').waitFor();
             await page.locator('#certPageDisplayValue').fill(`Тестовий отримувач ${device.name}`);
             await Promise.all([
@@ -144,8 +146,15 @@ async function main() {
                 page.waitForEvent('download'), dialog.getByRole('button', { name: 'Зберегти зображення' }).click()
             ]);
             assert.equal(download.suggestedFilename(), `SYNTHETIC-IMAGE-${issuedBeforeExport}.png`);
-            assert.deepEqual([...fs.readFileSync(await download.path()).subarray(0, 8)],
+            const downloadedPng = fs.readFileSync(await download.path());
+            assert.deepEqual([...downloadedPng.subarray(0, 8)],
                 [137, 80, 78, 71, 13, 10, 26, 10], `${device.name}: downloaded file is a PNG`);
+            const decoded = await decodeQrFromPng(page, `data:image/png;base64,${downloadedPng.toString('base64')}`);
+            assert.deepEqual([decoded.width, decoded.height], [1200, 800],
+                `${device.name}: downloaded PNG has the canonical size`);
+            assert.equal(decoded.url,
+                `https://example.test/certificates/check?code=SYNTHETIC-IMAGE-${issuedBeforeExport}`,
+                `${device.name}: downloaded PNG QR opens the exact certificate deep link`);
             assert.doesNotMatch(await dialog.locator('.cert-image-export-status').textContent(), /збережено|завантажено/i);
             await dialog.getByRole('button', { name: 'Повернутися до сертифіката' }).click();
             await dialog.waitFor({ state: 'detached' });

@@ -23,6 +23,11 @@ on every push and pull request with an ephemeral PostgreSQL 16 service.
 - Browser flow on synthetic local HTTP: scan/lookup, cancel confirmation,
   confirmed redemption, pending-submit protection, verify-only state,
   business-scope changes, stale responses, and mobile layout.
+- Certificate image/browser flow: the real preview renderer and issuance/export
+  UI create a 1200×800 PNG. The gate decodes the QR from that PNG (including the
+  downloaded file) and requires the exact certificate check deep link. It covers
+  desktop/mobile layouts, four seasonal backgrounds, long text, QR failure and
+  retry. A missing QR decoder or skipped browser command fails the job.
 - Legacy Telegram certificate link: reports status and opens CRM without a
   redemption callback or recipient details.
 

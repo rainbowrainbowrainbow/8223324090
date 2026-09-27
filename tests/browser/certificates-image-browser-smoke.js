@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const QRCode = require('qrcode');
+const { installQrDecoder, decodeQrFromPng } = require('./certificate-qr-decoder');
 
 function requirePlaywright() {
     try { return require('playwright'); } catch (error) {
@@ -60,6 +61,7 @@ async function main() {
             const page = await context.newPage();
             await page.route('**/*', route => route.request().url().startsWith(base) ? route.continue() : route.abort());
             await page.goto(`${base}/fixture`);
+            await installQrDecoder(page);
             for (const season of ['winter', 'spring', 'summer', 'autumn']) {
                 const result = await page.evaluate(async cert => {
                     window.qrRects = [];
@@ -89,7 +91,8 @@ async function main() {
                         return { width: preview.width, height: preview.height,
                             displayedWidth: preview.getBoundingClientRect().width,
                             qrRects: window.qrRects, dark, border: [...border], textRuns: window.textRuns,
-                            samePng: preview.toDataURL('image/png') === generated.toDataURL('image/png') };
+                            samePng: preview.toDataURL('image/png') === generated.toDataURL('image/png'),
+                            exportedPng: generated.toDataURL('image/png') };
                     } finally {
                         CanvasRenderingContext2D.prototype.drawImage = original;
                         CanvasRenderingContext2D.prototype.fillText = originalText;
@@ -98,6 +101,12 @@ async function main() {
                 assert.deepEqual([result.width, result.height], [1200, 800], `${device.name}/${season}: canonical PNG size`);
                 assert(result.displayedWidth <= device.width, `${device.name}/${season}: preview fits the viewport`);
                 assert(result.samePng, `${device.name}/${season}: preview and export PNG match`);
+                const decoded = await decodeQrFromPng(page, result.exportedPng);
+                assert.deepEqual([decoded.width, decoded.height], [1200, 800],
+                    `${device.name}/${season}: decoded PNG has the canonical size`);
+                assert.equal(decoded.url,
+                    'https://example.test/certificates/check?code=SYNTHETIC-IMAGE-01',
+                    `${device.name}/${season}: final PNG QR opens the exact certificate deep link`);
                 assert(result.dark > 1000, `${device.name}/${season}: QR has visible dark modules`);
                 assert(result.border.slice(0, 3).every(channel => channel >= 245), `${device.name}/${season}: QR has a white quiet zone`);
                 assert(result.textRuns.filter(run => run.color === '#0d2e5c').length >= 4,

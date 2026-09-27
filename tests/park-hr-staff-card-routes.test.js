@@ -19,6 +19,11 @@ const PERSON = {
     termination_recorded_by: null, has_account: true, has_face_descriptor: true,
     account_user_id: 9001, account_username: PRIVATE, unrelated_secret: PRIVATE
 };
+const POOL_PEOPLE = ['reserve', 'blacklisted'].map((status, index) => ({
+    id: STAFF_ID + index + 1, name: `Synthetic ${status} worker`, department: 'animators',
+    position: 'Animator', is_active: false, hr_pool_status: status, phone: PRIVATE,
+    notes: PRIVATE, blacklist_reason: PRIVATE, hourly_rate: 12345
+}));
 
 async function withActualHrRouter(run) {
     const savedCache = new Map(Object.entries(require.cache));
@@ -32,7 +37,10 @@ async function withActualHrRouter(run) {
             calls.push({ sql: normalized, params });
             assert.match(normalized, /^(SELECT|WITH)\b/i, 'staff card recovery may only read');
             let rows = [];
-            if (normalized.startsWith('SELECT id, name, department, position, phone, emergency_contact')) {
+            if (normalized.startsWith('SELECT id, name, department, position, is_active, hr_pool_status')) {
+                if (state.failPool) throw new Error('Synthetic pool query failure');
+                rows = POOL_PEOPLE.filter(person => person.hr_pool_status === params[0]);
+            } else if (normalized.startsWith('SELECT id, name, department, position, phone, emergency_contact')) {
                 if (normalized.includes('FROM staff WHERE id = $1')) {
                     rows = Number(params[0]) === STAFF_ID ? [PERSON] : [];
                 } else if (normalized.includes('FROM staff')) {
@@ -177,6 +185,60 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
             const response = await request('/api/hr/staff/999999');
             assert.equal(response.status, 404);
             assert.equal(response.body.success, false);
+        });
+
+        await t.test('direct pool GET is Park-only and projects both permitted statuses', async () => {
+            state.actor = { deny: ['hr.schedule.view', 'hr.payroll.view'] };
+            for (const status of ['reserve', 'blacklisted']) {
+                const response = await request(`/api/hr/pool?status=${status}`);
+                assert.equal(response.status, 200, response.text);
+                assert.equal(response.body.status, status);
+                assert.deepEqual(response.body.data, POOL_PEOPLE.filter(person => person.hr_pool_status === status)
+                    .map(({ id, name, department, position, is_active, hr_pool_status }) =>
+                        ({ id, name, department, position, is_active, hr_pool_status })));
+                assert.equal(response.text.includes(PRIVATE), false);
+                assert.equal(response.text.includes('hourly_rate'), false);
+            }
+            assert.equal((await request('/api/hr/company-structure')).status, 403);
+            assert.equal((await request(`/api/hr/staff/${STAFF_ID}`)).status, 200);
+        });
+
+        await t.test('pool denies missing capability, foreign context or organization, revoked and aggregate scope before SQL', async () => {
+            for (const [actor, context, suffix] of [
+                [{ deny: ['hr.staff.view'] }, 'event_genix', ''],
+                [{ role: 'security', allow: ['hr.schedule.view'], deny: ['hr.staff.view'] }, 'event_genix', ''],
+                [{}, 'dar', ''], [{}, 'crm', ''],
+                [{ otherOrganization: true }, 'event_genix', ''],
+                [{ revoked: true }, 'event_genix', ''],
+                [{ compatibility: true }, 'event_genix', ''],
+                [{ inactive: true }, 'event_genix', ''],
+                [{ inactiveOrganization: true }, 'event_genix', ''],
+                [{ staleActiveBusinessId: true }, 'event_genix', ''],
+                [{}, 'event_genix', '&businessScope=all'],
+                [{}, 'event_genix', '&businessScope=multi&businessContexts=event_genix,dar']
+            ]) {
+                state.actor = actor;
+                const count = calls.length;
+                assert.equal((await request(`/api/hr/pool?status=reserve${suffix}`, { context })).status, 403);
+                assert.equal(calls.length, count);
+            }
+        });
+
+        await t.test('pool rejects missing or malformed status, reports query failure, and does not open writes', async () => {
+            state.actor = {};
+            for (const suffix of ['', '?status=core', '?status=reserve&status=blacklisted']) {
+                const count = calls.length;
+                assert.equal((await request(`/api/hr/pool${suffix}`)).status, 400);
+                assert.equal(calls.length, count);
+            }
+            state.failPool = true;
+            assert.equal((await request('/api/hr/pool?status=reserve')).status, 500);
+            state.failPool = false;
+            assert.equal((await request('/api/hr/pool?status=reserve')).status, 200);
+            const count = calls.length;
+            assert.equal((await request('/api/hr/pool?status=reserve', { method: 'HEAD' })).status, 403);
+            assert.equal((await request(`/api/hr/staff/${STAFF_ID}/pool-status`, { method: 'PUT' })).status, 403);
+            assert.equal(calls.length, count);
         });
 
         await t.test('missing staff capability, including schedule-only and payroll-only, cannot query staff', async () => {

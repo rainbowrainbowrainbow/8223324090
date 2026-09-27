@@ -1227,7 +1227,8 @@ body.dark-mode .hr-foundation-card textarea {
 .hr-org-save-status[data-state="saving"] { color: #0369A1; }
 .hr-org-save-status[data-state="saved"] { color: #047857; }
 .hr-org-save-status[data-state="conflict"],
-.hr-org-save-status[data-state="error"] { color: #B91C1C; }
+.hr-org-save-status[data-state="error"],
+.hr-org-save-status[data-state="restricted"] { color: #B91C1C; }
 .hr-org-recovery {
     display: flex;
     align-items: center;

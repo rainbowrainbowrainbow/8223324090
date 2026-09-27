@@ -414,7 +414,7 @@ function shapeHrStaffList(rows, capability, user) {
     return shapeHrPayrollFields(rows, user);
 }
 router.use(requireHrCapabilityContract);
-router.use(requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'hr', parkHrStaffCardRead: true }));
+router.use(requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'hr', parkHrStaffCardRead: true, parkHrPoolRead: true }));
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 
@@ -5102,10 +5102,12 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
 // GET /api/hr/pool — reserve/blacklist operational lists
 router.get('/pool', async (req, res) => {
     try {
-        const status = req.query.status === 'blacklisted' ? 'blacklisted' : 'reserve';
+        const status = req.query.status;
+        if (typeof status !== 'string' || !['reserve', 'blacklisted'].includes(status)) {
+            return res.status(400).json({ success: false, code: 'INVALID_POOL_STATUS', error: 'Невалідний статус пулу' });
+        }
         const result = await pool.query(
-            `SELECT id, name, department, position, phone, role_type, contract_type,
-                    is_active, hr_pool_status, blacklist_reason, blacklisted_at, notes
+            `SELECT id, name, department, position, is_active, hr_pool_status
              FROM staff
              WHERE hr_pool_status = $1
              ORDER BY is_active DESC, name`,

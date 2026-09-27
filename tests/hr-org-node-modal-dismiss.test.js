@@ -1474,6 +1474,32 @@ test('HR org initial load failure keeps defaults out of the editable canvas', as
     assert.equal(window.document.getElementById('btnRetryCompanyStructure').classList.contains('hidden'), false);
 });
 
+test('HR org 403 clears stale structure and retry makes a fresh GET', async () => {
+    const { window, api } = createHarness();
+    api.renderCanvas();
+    let reads = 0;
+    api.setFetch(async path => {
+        if (path !== '/company-structure') return { success: true, data: [] };
+        reads += 1;
+        return reads === 1
+            ? { success: false, status: 403, code: 'staff_not_migrated', error: 'Structure restricted' }
+            : { success: true, data: { nodes: [], structure: '', instructions: '' }, hasSavedStructure: false, displayGroups: [] };
+    });
+
+    await api.load({ force: true });
+    assert.equal(api.state().loadState, 'restricted');
+    assert.equal(api.state().hasSavedData, false);
+    assert.equal(api.nodes().length, 0);
+    assert.equal(window.document.querySelector('[data-org-node-id]'), null);
+    assert.equal(window.document.getElementById('companyStructureStatus').dataset.state, 'restricted');
+    assert.equal(window.document.getElementById('btnRetryCompanyStructure').classList.contains('hidden'), false);
+
+    click(window, window.document.getElementById('btnRetryCompanyStructure'));
+    await settle();
+    assert.equal(reads, 2);
+    assert.equal(api.state().loadState, 'empty');
+});
+
 test('HR profession workspace normalizes deep-link and tab state canonically', () => {
     const { window } = createHarness();
     const api = window.__hrProfessionWorkspaceTest;

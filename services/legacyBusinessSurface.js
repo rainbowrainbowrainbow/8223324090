@@ -6,6 +6,7 @@ const { recordCompatibilityTelemetrySafe } = require('./businessCutover');
 const { canUseParkStaffSchedule, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
 const { projectParkStaffSchedulePayload } = require('./parkStaffScheduleProjection');
 const { isParkHrStaffCardRoute, canReadParkHrStaffCard, projectParkHrStaffCardPayload } = require('./parkHrStaffCardRead');
+const { isParkHrPoolRoute, canReadParkHrPool, projectParkHrPoolPayload } = require('./parkHrPoolRead');
 const { canUseParkLegacySurface } = require('./parkLegacyModuleAccess');
 const { resolveCapability } = require('./accountAccessPolicy');
 
@@ -78,7 +79,7 @@ function legacyBusinessSurfaceAccess(req, surface = 'catalogs') {
     return available();
 }
 
-function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, parkHrStaffCardRead = false } = {}) {
+function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, parkHrStaffCardRead = false, parkHrPoolRead = false } = {}) {
     unavailable(surface); // Reject a programming error when mounting, not during a request.
     if (parkScheduleRouter && (surface !== 'staff' || !['staff', 'hr'].includes(parkScheduleRouter))) {
         throw new TypeError('Park schedule recovery must be mounted on a staff or HR surface');
@@ -86,10 +87,17 @@ function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, park
     if (parkHrStaffCardRead && (surface !== 'staff' || parkScheduleRouter !== 'hr')) {
         throw new TypeError('Park HR staff card recovery must be mounted on the HR staff surface');
     }
+    if (parkHrPoolRead && (surface !== 'staff' || parkScheduleRouter !== 'hr')) {
+        throw new TypeError('Park HR pool recovery must be mounted on the HR staff surface');
+    }
     return (req, res, next) => {
         const access = legacyBusinessSurfaceAccess(req, surface);
         if (access.available) {
             if (parkHrStaffCardRead && isParkHrStaffCardRoute(req) && !canReadParkHrStaffCard(req)) {
+                const denied = unavailable(surface);
+                return res.status(denied.status).json({ success: false, code: denied.code, error: denied.message });
+            }
+            if (parkHrPoolRead && isParkHrPoolRoute(req) && !canReadParkHrPool(req)) {
                 const denied = unavailable(surface);
                 return res.status(denied.status).json({ success: false, code: denied.code, error: denied.message });
             }
@@ -119,6 +127,11 @@ function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, park
             res.json = payload => sendJson(projectParkHrStaffCardPayload(routePath, payload, {
                 includePayroll: resolveCapability(req.user, 'hr.payroll.view', { type: 'action' }).allowed
             }));
+            return next();
+        }
+        if (access.code === 'staff_not_migrated' && parkHrPoolRead && canReadParkHrPool(req)) {
+            const sendJson = res.json.bind(res);
+            res.json = payload => sendJson(projectParkHrPoolPayload(payload));
             return next();
         }
         return res.status(access.status).json({ success: false, code: access.code, error: access.message });

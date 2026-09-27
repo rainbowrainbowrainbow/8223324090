@@ -14334,9 +14334,9 @@ function renderCompanyStructureEditorState() {
     if (companyStructureLoadState === 'loading' || companyStructureLoadState === 'idle') {
         statusText = 'Завантаження структури...';
         statusState = 'loading';
-    } else if (companyStructureLoadState === 'error') {
+    } else if (companyStructureLoadState === 'error' || companyStructureLoadState === 'restricted') {
         statusText = companyStructureLoadError || 'Не вдалося завантажити структуру';
-        statusState = 'error';
+        statusState = companyStructureLoadState;
     } else if (companyStructureLoadState === 'empty') {
         statusText = 'Збереженої структури ще немає';
         statusState = 'clean';
@@ -14362,7 +14362,7 @@ function renderCompanyStructureEditorState() {
 
     [retryButton, templateButton, reloadButton, copyButton].forEach(button => button?.classList.add('hidden'));
     let recoveryText = '';
-    if (companyStructureLoadState === 'error') {
+    if (companyStructureLoadState === 'error' || companyStructureLoadState === 'restricted') {
         recoveryText = companyStructureLoadError || 'Структура не завантажилась. Дані не змінено.';
         retryButton?.classList.remove('hidden');
     } else if (companyStructureLoadState === 'empty' && !companyStructureHasSavedData) {
@@ -15166,10 +15166,12 @@ function renderCompanyOrgChart() {
         renderCompanyStructureEditorState();
         return;
     }
-    if (companyStructureLoadState === 'error') {
+    if (companyStructureLoadState === 'error' || companyStructureLoadState === 'restricted') {
         stage.style.width = '';
         stage.style.minHeight = '';
-        stage.innerHTML = '<div class="hr-org-loading"><strong>Структуру не завантажено</strong>Локальні або базові дані не підставлялись. Натисніть «Повторити завантаження».</div>';
+        stage.innerHTML = companyStructureLoadState === 'restricted'
+            ? '<div class="hr-org-loading"><strong>Структура недоступна в цьому бізнесі</strong>Дані не підставлялись. Перевірте доступ або оберіть інший бізнес.</div>'
+            : '<div class="hr-org-loading"><strong>Структуру не завантажено</strong>Локальні або базові дані не підставлялись. Натисніть «Повторити завантаження».</div>';
         updateCompanyOrgDetail(null);
         renderCompanyStructureEditorState();
         return;
@@ -15370,7 +15372,7 @@ function renderCompanyOrgTree() {
         root.innerHTML = '<div class="hr-org-loading">Завантаження дерева…</div>';
         return;
     }
-    if (companyStructureLoadState === 'error') {
+    if (companyStructureLoadState === 'error' || companyStructureLoadState === 'restricted') {
         root.innerHTML = '<div class="hr-org-loading">Дерево недоступне, доки структуру не завантажено.</div>';
         return;
     }
@@ -16556,7 +16558,8 @@ async function ensureCompanyStructureNodesLoaded(options = {}) {
     if (!data?.success) {
         companyStructureLoaded = false;
         companyStructureNodes = [];
-        companyStructureLoadState = 'error';
+        companyStructureLoadState = data?.status === 403 ? 'restricted' : 'error';
+        companyStructureHasSavedData = false;
         companyStructureLoadError = data?.error || 'Не вдалося завантажити структуру';
         if (!options.silent) {
             showNotification(companyStructureLoadError, 'error');
@@ -16583,7 +16586,8 @@ async function loadCompanyStructure(options = {}) {
     if (!data?.success) {
         companyStructureLoaded = false;
         companyStructureNodes = [];
-        companyStructureLoadState = 'error';
+        companyStructureLoadState = data?.status === 403 ? 'restricted' : 'error';
+        companyStructureHasSavedData = false;
         companyStructureLoadError = data?.error || 'Не вдалося завантажити структуру';
         renderCompanyOrgWorkspace();
         return companyStructureNodes;

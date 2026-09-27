@@ -29,6 +29,7 @@ const {
     resolveBusinessScope
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { parkMonthlyPeriod, loadParkHrMonthlyReport } = require('../services/parkHrMonthlyReportRead');
 const {
     lockAttendanceWriteMaintenance,
     lockAttendanceWriteTarget,
@@ -414,7 +415,9 @@ function shapeHrStaffList(rows, capability, user) {
     return shapeHrPayrollFields(rows, user);
 }
 router.use(requireHrCapabilityContract);
-router.use(requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'hr', parkHrStaffCardRead: true }));
+router.use(requireLegacyBusinessSurface('staff', {
+    parkScheduleRouter: 'hr', parkHrStaffCardRead: true, parkHrMonthlyReportRead: true
+}));
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 
@@ -6843,6 +6846,12 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
 // GET /api/hr/report/monthly
 router.get('/report/monthly', async (req, res) => {
     try {
+        if (req.parkHrMonthlyReportRead) {
+            const period = parkMonthlyPeriod(req.query, nowKyiv());
+            if (!period) return res.status(400).json({ success: false, error: 'Некоректний місяць звіту' });
+            const data = await loadParkHrMonthlyReport(pool, period);
+            return res.json({ success: true, data, ...period });
+        }
         const { month, from, to } = req.query;
         let dateFrom, dateTo;
 

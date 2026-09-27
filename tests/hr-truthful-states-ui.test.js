@@ -193,6 +193,8 @@ test('HR reports failure uses unavailable state, clears stale rows and blocks cu
         await win.loadReports();
         assert.equal(win.document.getElementById('reportHeroAttendance').textContent, '50%');
         assert.match(win.document.getElementById('reportBody').textContent, /QA Staff/);
+        assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /1000/);
+        assert.doesNotMatch(win.document.getElementById('reportHead').textContent, /Сума/);
         assert.equal(win.document.getElementById('reportExport').disabled, false);
 
         monthlyStatus = 403;
@@ -201,12 +203,76 @@ test('HR reports failure uses unavailable state, clears stale rows and blocks cu
         assert.match(win.document.getElementById('reportHeroAttendanceMeta').textContent, /HR unavailable/);
         assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /QA Staff/);
         assert.equal(win.document.getElementById('reportExport').disabled, true);
+        assert.equal(win.__hrTruthfulState().reportState.loadState, 'restricted');
+        assert.ok(win.document.querySelector('[data-report-retry]'));
         await win.exportCSV();
         assert.match(win.__lastNotification, /Експорт доступний після успішного завантаження/);
         assert.equal(calls.filter(url => String(url).includes('/api/hr/report/export')).length, 0);
     } finally {
         dom.window.close();
     }
+});
+
+test('Park monthly report disables export and retries 500/offline without showing zero metrics', async () => {
+    let mode = 'success';
+    let monthlyCalls = 0;
+    const { dom, win } = harness(elementOuterHtml('tab-reports'), {
+        fetch: async url => {
+            if (!String(url).includes('/api/hr/report/monthly')) {
+                return response(403, { success: false, error: 'Roles unavailable' });
+            }
+            monthlyCalls++;
+            if (mode === 'offline') throw new Error('Synthetic offline');
+            if (mode === 'server') return response(500, { success: false, error: 'Synthetic server error' });
+            return response(200, { success: true, data: [{ staff_name: 'Park QA', days_scheduled: 1,
+                days_worked: 1, total_worked_hours: 8, task_kpi: { tasks_assigned: 0, tasks_done: 0 } }],
+            reportAccess: { exportAllowed: false } });
+        }
+    });
+    try {
+        await win.loadReports();
+        assert.match(win.document.getElementById('reportBody').textContent, /Park QA/);
+        assert.equal(win.document.getElementById('reportExport').disabled, true);
+        mode = 'server';
+        await win.loadReports();
+        assert.equal(win.__hrTruthfulState().reportState.loadState, 'error');
+        assert.equal(win.document.getElementById('reportHeroAttendance').textContent, '—');
+        assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /Park QA|0%/);
+        mode = 'offline';
+        win.document.querySelector('[data-report-retry]').click();
+        for (let i = 0; i < 30 && win.__hrTruthfulState().reportState.loadState === 'loading'; i++) {
+            await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        assert.equal(win.__hrTruthfulState().reportState.loadState, 'error');
+        assert.ok(win.document.querySelector('[data-report-retry]'));
+        mode = 'success';
+        win.document.querySelector('[data-report-retry]').click();
+        for (let i = 0; i < 30 && win.__hrTruthfulState().reportState.loadState !== 'ready'; i++) {
+            await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        assert.equal(win.__hrTruthfulState().reportState.loadState, 'ready');
+        assert.match(win.document.getElementById('reportBody').textContent, /Park QA/);
+        assert.equal(monthlyCalls, 4);
+    } finally { dom.window.close(); }
+});
+
+test('late Park report response cannot restore people after business context changes', async () => {
+    let finish;
+    const pending = new Promise(resolve => { finish = resolve; });
+    const { dom, win } = harness(elementOuterHtml('tab-reports'), {
+        fetch: async url => String(url).includes('/api/hr/report/monthly') ? pending
+            : response(403, { success: false, error: 'Roles unavailable' })
+    });
+    try {
+        const load = win.loadReports();
+        win.dispatchEvent(new win.Event('crmBusinessContextChanged'));
+        finish(response(200, { success: true, data: [{ staff_name: 'Stale Park Person', days_scheduled: 1,
+            days_worked: 1 }], reportAccess: { exportAllowed: false } }));
+        await load;
+        assert.equal(win.__hrTruthfulState().reportState.loadState, 'error');
+        assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /Stale Park Person/);
+        assert.equal(win.document.getElementById('reportExport').disabled, true);
+    } finally { dom.window.close(); }
 });
 
 test('payroll profiles do not turn denied staff into zero people and retry restores the catalog', async () => {

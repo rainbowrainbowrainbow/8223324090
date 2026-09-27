@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.29",
+  "version": "0.82.30",
   "eventGenix": {
-    "releaseLabel": "HR Парку: стабільне відкриття структури"
+    "releaseLabel": "Omni: безпечні зв’язки лідів"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

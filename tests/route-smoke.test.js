@@ -20,6 +20,7 @@ let missingSchemaMigrations;
 let missingSchemaColumns;
 let routeSmokeAutoBanquetSummaryGroup = false;
 let routeSmokeCancelledBookingIds = new Set();
+let routeSmokeOnboardingHandlerMode = false;
 
 const originalEnv = {
     JWT_SECRET: process.env.JWT_SECRET,
@@ -4106,6 +4107,22 @@ describe('route-level API safety smoke', () => {
             query: fakePool.query.bind(fakePool),
             generateBookingNumber: fakePool.generateBookingNumber
         });
+        // Keep legacy onboarding handler assertions isolated from the newer Park
+        // membership guard. The real guard is tested by park-hr-onboarding-routes.
+        const legacySurface = require('../services/legacyBusinessSurface');
+        installMock('../services/legacyBusinessSurface', {
+            ...legacySurface,
+            requireLegacyBusinessSurface(surface, options) {
+                const guard = legacySurface.requireLegacyBusinessSurface(surface, options);
+                if (surface !== 'staff' || options?.parkHrOnboardingRead !== true) return guard;
+                return (req, res, next) => {
+                    if (routeSmokeOnboardingHandlerMode
+                        && (req.path.startsWith('/onboarding')
+                            || /^\/staff\/\d+\/onboarding-(?:assignment|processes)$/.test(req.path))) return next();
+                    return guard(req, res, next);
+                };
+            }
+        });
         installMock('../services/leadNotifier', {
             notifyNewLead: async lead => { notifiedLeads.push(lead); }
         });
@@ -4167,6 +4184,7 @@ describe('route-level API safety smoke', () => {
 
     beforeEach(() => {
         queries.length = 0;
+        routeSmokeOnboardingHandlerMode = false;
         notifiedLeads.length = 0;
         missingSchemaMigrations.clear();
         missingSchemaColumns.clear();
@@ -5717,6 +5735,9 @@ describe('route-level API safety smoke', () => {
     });
 
     it('assigns HR onboarding responsible owners and syncs canonical tasks without duplicates', async () => {
+        const guarded = await request('GET', '/api/hr/onboarding', undefined, withAuth());
+        assert.equal(guarded.status, 403);
+        routeSmokeOnboardingHandlerMode = true;
         const owners = await request('GET', '/api/hr/onboarding/responsible-candidates', undefined, withAuth());
         assert.equal(owners.status, 200, JSON.stringify(owners.data));
         assert.equal(owners.data.success, true);
@@ -5783,6 +5804,7 @@ describe('route-level API safety smoke', () => {
     });
 
     it('keeps general and profession-scoped onboarding independent and profession checklist canonical', async () => {
+        routeSmokeOnboardingHandlerMode = true;
         queries.length = 0;
         const animator = await request('POST', '/api/hr/onboarding/start', {
             staff_id: 45,

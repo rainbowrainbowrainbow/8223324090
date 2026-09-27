@@ -38,6 +38,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/base.css` | shared-ui | `shared` | active | Global variables, reset, typography, and shared primitives. |
 | `css/booking-summary.css` | bookings | `page-scoped` | active | Printable banquet summary preview and browser print/PDF styles. |
 | `css/catalog.css` | catalogs | `feature-shared` | active | Catalog viewer and print/public catalog styles used by designs and catalog routes. |
+| `css/certificate-image-export.css` | certificates | `feature-shared` | active | Shared in-page certificate PNG preview and save/share controls for standalone and legacy CRM flows. |
 | `css/chat.css` | chat | `page-scoped` | active | Aggregate entrypoint for Team messenger styles. |
 | `css/chat-core.css` | chat | `page-scoped-large` | active-large | Core Team messenger layout, sidebar, messages, panels, modals, and input styles imported by `chat.css`. |
 | `css/chat-effects.css` | chat | `page-scoped-large` | active-large | Chat emoji, reaction, voice, pinned, avatar, and dino effect styles imported by `chat.css`. |

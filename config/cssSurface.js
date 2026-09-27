@@ -136,6 +136,13 @@ const CSS_SURFACE = [
         reason: 'Catalog viewer and print/public catalog styles used by designs and catalog routes.'
     },
     {
+        file: 'css/certificate-image-export.css',
+        owner: 'certificates',
+        category: 'feature-shared',
+        status: 'active',
+        reason: 'Shared in-page certificate PNG preview and save/share controls for standalone and legacy CRM flows.'
+    },
+    {
         file: 'css/chat.css',
         owner: 'chat',
         category: 'page-scoped',

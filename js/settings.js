@@ -3974,7 +3974,7 @@ async function showCertDetail(id, options = {}) {
 
         // Download + copy — available to everyone; action buttons — admin and user roles
         const copyText = `Сертифікат: ${cert.certCode}\n${modeLabel}: ${certificateDisplayValueLabel(cert)}\nТип: ${cert.typeText || ''}\nДійсний до: ${validDate}`;
-        let btns = `<button class="btn-download-cert btn-sm" onclick="downloadCertificateImage(${cert.id})">🖼️ Скачати</button>`;
+        let btns = `<button class="btn-download-cert btn-sm" onclick="downloadCertificateImage(${cert.id}, this)">🖼️ Зображення</button>`;
         window._certCopyText = copyText;
         btns += `<button class="btn-copy-all btn-sm" onclick="copyCertText(window._certCopyText)">📋 Скопіювати інфо</button>`;
         const canManageCerts = AppState.currentUser && AppState.currentUser.role !== 'viewer';
@@ -4119,46 +4119,21 @@ async function generateCertificateCanvas(cert) {
     return window.CertificatePreview.generateCertificateCanvas(cert, { apiBase: API_BASE, getAuthHeaders });
 }
 
-async function downloadCertificateImage(certId) {
-    const btn = document.querySelector(`[onclick*="downloadCertificateImage(${certId})"]`);
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Генерація...'; }
-    let mobilePreviewWindow = null;
-    if (isCertificateTouchDevice()) {
-        try {
-            mobilePreviewWindow = typeof openTouchDownloadWindow === 'function'
-                ? openTouchDownloadWindow('Сертифікат')
-                : window.open('', '_blank');
-            if (mobilePreviewWindow && !mobilePreviewWindow.closed) mobilePreviewWindow.opener = null;
-        } catch (_) {
-            mobilePreviewWindow = null;
-        }
+function downloadCertificateImage(certId, trigger) {
+    if (!window.CertificateImageExport?.open) {
+        showNotification('Перегляд зображення недоступний. Оновіть сторінку.', 'error');
+        return;
     }
-
-    try {
-        const response = await fetch(`${API_BASE}/certificates/${certId}`, { headers: getAuthHeaders(false) });
-        if (!response.ok) throw new Error('Not found');
-        const cert = await response.json();
-
-        const canvas = await generateCertificateCanvas(cert);
-        const dataUrl = canvas.toDataURL('image/png');
-        if (mobilePreviewWindow && !mobilePreviewWindow.closed) {
-            const title = escapeHtml(cert.certCode || 'Сертифікат');
-            mobilePreviewWindow.document.open();
-            mobilePreviewWindow.document.write(`<!doctype html><html lang="uk"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{margin:0;padding:16px;background:#07111f;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}img{display:block;width:100%;height:auto;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.35)}p{font-size:15px;line-height:1.45;color:#cbd5e1}</style></head><body><img src="${dataUrl}" alt="${title}"><p>На iPhone затисніть зображення, щоб зберегти або поділитися ним.</p></body></html>`);
-            mobilePreviewWindow.document.close();
-            showNotification('Сертифікат відкрито в окремому вікні для збереження', 'success');
-        } else {
-            const link = document.createElement('a');
-            link.download = `${cert.certCode}.png`;
-            link.href = dataUrl;
-            link.click();
-            showNotification('Сертифікат завантажено!', 'success');
+    window.CertificateImageExport.open({
+        trigger, apiBase: API_BASE, getAuthHeaders,
+        loadCertificate: async () => {
+            const request = window.apiFetchWithAuthRetry || fetch;
+            const response = await request(`${API_BASE}/certificates/${encodeURIComponent(certId)}`, {
+                headers: getAuthHeaders(false)
+            });
+            if (!response || response.status === 401) throw new Error('auth_session_unavailable');
+            if (!response.ok) throw new Error('certificate_load_failed');
+            return response.json();
         }
-    } catch (err) {
-        if (mobilePreviewWindow && !mobilePreviewWindow.closed) mobilePreviewWindow.close();
-        console.error('Certificate image generation failed:', err);
-        showNotification('Помилка генерації сертифіката', 'error');
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '🖼️ Скачати'; }
-    }
+    });
 }

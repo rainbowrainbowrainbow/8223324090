@@ -69,12 +69,26 @@
                     <h1 id="certificatePageTitle">Сертифікати</h1>
                     <p id="certificatePageSubtitle">Реєстр, видача і пакетна генерація сертифікатів без вкладених панелей.</p>
                 </div>
-                <div class="cert-page-actions" aria-label="Навігація сертифікатів">
-                    <a class="btn-page-secondary cert-page-action-link" data-cert-mode="list" href="/certificates">Реєстр</a>
-                    <a class="btn-page-secondary cert-page-action-link" data-cert-mode="new" href="/certificates/new">Видати сертифікат або абонемент</a>
-                    <a class="btn-page-secondary cert-page-action-link" data-cert-mode="batch" href="/certificates/batch">Пакет сертифікатів на одноразовий вхід</a>
-                </div>
             </section>
+
+            <nav class="cert-page-actions" aria-label="Розділи сертифікатів">
+                <a class="cert-page-action-link" data-cert-mode="list" href="/certificates">
+                    <span class="cert-nav-icon" aria-hidden="true">▤</span>
+                    <span class="cert-nav-copy"><strong>Реєстр</strong><small>Усі сертифікати та статуси</small></span>
+                </a>
+                <a class="cert-page-action-link" data-cert-mode="check" href="/certificates/check">
+                    <span class="cert-nav-icon" aria-hidden="true">⌗</span>
+                    <span class="cert-nav-copy"><strong>Перевірка / вхід</strong><small>Перевірити код або QR</small></span>
+                </a>
+                <a class="cert-page-action-link" data-cert-mode="new" href="/certificates/new">
+                    <span class="cert-nav-icon" aria-hidden="true">＋</span>
+                    <span class="cert-nav-copy"><strong>Видати</strong><small>Один сертифікат або абонемент</small></span>
+                </a>
+                <a class="cert-page-action-link" data-cert-mode="batch" href="/certificates/batch">
+                    <span class="cert-nav-icon" aria-hidden="true">▦</span>
+                    <span class="cert-nav-copy"><strong>Пакетна видача</strong><small>Коди на одноразовий вхід</small></span>
+                </a>
+            </nav>
 
             <section id="certificatesCheckView" class="cert-page-view cert-check-view hidden" aria-labelledby="certificateCheckHeading">
                 <form id="certificateCheckForm" class="cert-check-card" novalidate>

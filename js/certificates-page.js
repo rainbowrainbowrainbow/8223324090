@@ -200,6 +200,12 @@
         });
     }
 
+    function syncCertificateNavigationAccess() {
+        document.querySelectorAll('.cert-page-actions [data-cert-mode]').forEach((link) => {
+            link.hidden = typeof canAccessPage !== 'function' || !canAccessPage(link.getAttribute('href'));
+        });
+    }
+
     function setMode(mode) {
         state.mode = mode;
         const titles = {
@@ -1076,6 +1082,7 @@
         window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
             if (event.detail?.surface === 'certificates') syncCertificateAvailability();
         });
+        syncCertificateNavigationAccess();
         setMode(detectMode());
         if (window.Sidebar && typeof window.Sidebar.markShellReady === 'function') {
             window.Sidebar.markShellReady();

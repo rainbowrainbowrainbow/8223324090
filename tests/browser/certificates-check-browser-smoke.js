@@ -32,6 +32,7 @@ window.fixtureAvailable = true;
 window.apiVerifyToken = async () => ({id: 1, username: 'synthetic-reception', role: 'reception'});
 window.hydrateBusinessOperatingProfile = async () => {};
 window.hydrateActionPermissions = async () => ({});
+window.canAccessPage = page => !new URLSearchParams(location.search).has('checkOnly') || page === '/certificates/check';
 window.getLegacyBusinessSurfaceAvailability = () => ({available: window.fixtureAvailable});
 window.getLegacyBusinessSurfaceContextKey = () => 'event_genix';
 window.noteLegacyBusinessSurfaceUnavailable = () => {};
@@ -54,6 +55,8 @@ async function main() {
     app.use(express.json());
     app.get('/certificates/check', (_req, res) => res.type('html').send(html));
     app.get('/certificates/new', (_req, res) => res.type('html').send(html));
+    app.get('/certificates', (_req, res) => res.type('html').send(html));
+    app.get('/certificates/batch', (_req, res) => res.type('html').send(html));
     app.get('/fixture-bootstrap.js', (_req, res) => res.type('js').send(prelude + certificateApi));
     app.get('/api/certificates/code/:code', async (req, res) => {
         if (req.params.code === 'SLOW') await new Promise(resolve => setTimeout(resolve, 350));
@@ -114,6 +117,9 @@ async function main() {
             }
         };
         await open('CERT-FIXTURE');
+        assert.equal(await page.locator('.cert-page-actions a:visible').count(), 4, 'all four certificate routes are visible to an allowed user');
+        assert.equal(await page.locator('.cert-page-actions [aria-current="page"]').getAttribute('href'), '/certificates/check');
+        assert.equal(await page.locator('#certificateCheckCode').inputValue(), 'CERT-FIXTURE', 'QR query code is retained');
         assert.equal(posts, 0, 'a scan cannot redeem');
         await page.locator('[data-cert-check-state="redeemable"]').waitFor();
         await page.getByText('Після підтвердження сертифікат одразу стане використаним.', { exact: false }).waitFor();
@@ -225,6 +231,23 @@ async function main() {
             assert.equal(issued.at(-1).typeText, label);
             assert.equal(issued.at(-1).typeCode, typeCode);
         }
+        assert.deepEqual(errors, []);
+        for (const [label, path, mode] of [
+            ['Реєстр', '/certificates', 'list'],
+            ['Перевірка / вхід', '/certificates/check', 'check'],
+            ['Видати', '/certificates/new', 'new'],
+            ['Пакетна видача', '/certificates/batch', 'batch']
+        ]) {
+            await page.goto(base + '/certificates/check');
+            await page.locator('.cert-page-actions').getByRole('link', { name: new RegExp(label) }).click();
+            assert.equal(new URL(page.url()).pathname, path);
+            assert.equal(await page.locator('.cert-page-actions [aria-current="page"]').getAttribute('data-cert-mode'), mode);
+        }
+        await page.goto(base + '/certificates/check?checkOnly=1&code=VERIFY');
+        assert.equal(await page.locator('.cert-page-actions a:visible').count(), 1, 'check-only user sees only the permitted route');
+        assert.equal(await page.locator('.cert-page-actions a:visible').getAttribute('href'), '/certificates/check');
+        assert.equal(await page.locator('#certificateCheckCode').inputValue(), 'VERIFY');
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'check-only mobile page must not overflow');
         assert.deepEqual(errors, []);
         console.log('Certificate browser smoke passed: all states, keyboard confirmation/cancel, scope switch, stale lookup, mobile layout and stable issuance types.');
     } finally {

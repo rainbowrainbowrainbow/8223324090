@@ -287,6 +287,7 @@ body[data-page-group="system"] #mainContent { display: flex; min-height: 0; over
     .omni-chat-more-menu button { width: auto; white-space: nowrap; }
 }
 @container conversation (max-width: 759px) {
+    .omni-chat-more { margin-left: auto; }
     #omniFileHint { display: none; }
     .omni-template-fields { grid-template-columns: minmax(0,1fr); }
     .omni-chat-more-menu { max-height: min(320px, calc(100dvh - 160px)); overflow-y: auto; overscroll-behavior: contain; }

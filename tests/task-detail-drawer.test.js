@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
-const { withTaskDrawerContract } = require('../services/taskDetailContract');
+const { withTaskDrawerContract, taskSourceSummary } = require('../services/taskDetailContract');
 
 function loadDrawerContext() {
     const sandbox = {
@@ -77,6 +77,25 @@ test('shared drawer controller preserves open URLs and routes non-task surfaces 
     assert.equal(rendered.id, 22);
     assert.equal(rendered.options.sourceSurface, 'tasks_page');
     assert.equal(ctx.history.entries.at(-1).url, 'https://crm.test/tasks?mode=overview&open=22');
+});
+
+test('task lead source links use the canonical viewer and preserve the task business context', () => {
+    const cases = [
+        { businessContext: 'dar' },
+        { business_context: 'maysternya_doli' },
+        { taskContext: { businessContext: 'dar' } },
+        { businessContext: 'event_genix', taskContext: { businessContext: 'dar' } },
+        {}
+    ];
+    for (const fields of cases) {
+        const summary = taskSourceSummary({ source_type: 'lead', source_id: 913, ...fields });
+        const url = new URL(summary.href, 'https://crm.example');
+        assert.equal(url.pathname, '/sales-funnel');
+        assert.equal(url.searchParams.get('lead'), '913');
+        assert.equal(url.searchParams.has('open'), false);
+        assert.equal(url.searchParams.get('businessContext'), fields.businessContext || fields.business_context || fields.taskContext?.businessContext || 'event_genix');
+    }
+    assert.equal(taskSourceSummary({ source_type: 'lead' }).href, null);
 });
 
 test('task surfaces use the shared controller rather than a second detail renderer', () => {

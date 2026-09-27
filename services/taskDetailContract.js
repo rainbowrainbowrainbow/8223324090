@@ -29,11 +29,11 @@ function sourceIdOf(task = {}) {
     return value === null || value === undefined || value === '' ? null : String(value);
 }
 
-function safeSourceHref(type, id) {
+function safeSourceHref(type, id, businessContext) {
     if (!id) return null;
     const encoded = encodeURIComponent(id);
     if (type === 'booking') return `/?open=${encoded}`;
-    if (type === 'lead') return `/sales-funnel?open=${encoded}`;
+    if (type === 'lead') return `/sales-funnel?lead=${encoded}&businessContext=${encodeURIComponent(businessContext || 'event_genix')}`;
     if (type === 'customer') return `/customers?open=${encoded}`;
     if (type === 'event') return `/afisha?open=${encoded}`;
     return null;
@@ -51,7 +51,7 @@ function taskSourceSummary(task = {}) {
         id,
         module,
         surface,
-        href: safeSourceHref(type, id)
+        href: safeSourceHref(type, id, task.businessContext || task.business_context || task.taskContext?.businessContext)
     };
 }
 

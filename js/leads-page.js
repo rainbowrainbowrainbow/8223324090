@@ -227,10 +227,16 @@ const LEAD_SECONDARY_MODAL_FIELDS = {
 };
 let leadModalLastTouchAt = 0;
 let leadSaveInFlight = false;
+let leadEditorSession = null;
+let leadEditorRequestSeq = 0;
 let workspaceLeadId = null;
 let workspaceRequestSeq = 0;
 let workspaceEventsBound = false;
 let currentWorkspaceData = null;
+const LEAD_WORKSPACE_TABS = ['overview', 'details', 'communications', 'history'];
+let currentWorkspaceTab = 'overview';
+let workspaceReturnFocus = null;
+const leadCustomerCreationPending = new Set();
 let leadCustomerLinkState = {
     leadId: null,
     customers: [],
@@ -514,6 +520,10 @@ function syncLeadPresentationUi() {
 
 function syncLeadModalBusinessFields() {
     const maysternyaMode = isMaysternyaLeadContext();
+    const eventLegend = document.getElementById('leadEditorEventLegend');
+    if (eventLegend) eventLegend.textContent = maysternyaMode ? 'Консультація' : 'Подія та гості';
+    const notesLegend = document.getElementById('leadEditorNotesLegend');
+    if (notesLegend) notesLegend.textContent = maysternyaMode ? 'Запит' : 'Нотатки';
     const celebrantsGroup = document.getElementById('leadCelebrants')?.closest('.form-group');
     if (celebrantsGroup) celebrantsGroup.hidden = maysternyaMode;
     const dateLabel = document.querySelector('label[for="leadEventDate"], #leadEventDate')?.closest('.form-group')?.querySelector('label');
@@ -756,8 +766,8 @@ function syncLeadReadOnlyUi() {
     ['addLeadBtn', 'leadModalSave', 'mailingModalSave'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
-        el.disabled = readOnly;
-        el.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
+        el.disabled = readOnly || (id === 'leadModalSave' && leadSaveInFlight);
+        el.setAttribute('aria-disabled', String(el.disabled));
         if (readOnly) el.title = leadReadOnlyMessage('редагувати ліди');
         else el.removeAttribute('title');
     });
@@ -767,7 +777,7 @@ function syncLeadReadOnlyUi() {
         '.lead-actions .btn-type',
         '.lead-actions .btn-delete',
         '.lead-actions .btn-convert',
-        '.kanban-card-actions button',
+        '.kanban-card-actions button:not([data-lead-view-action])',
         '[data-lead-type-select]',
         '.btn-add-mailing',
         '#lostReasonModal .btn-save',
@@ -939,10 +949,14 @@ async function loadUsers() {
     applyDefaultLeadAssignee();
 }
 
-async function loadLeads() {
+async function loadLeads({ preservePosition = false } = {}) {
     const loadSeq = ++leadLoadSeq;
+    const visibleCount = preservePosition ? Math.max(LEAD_TABLE_PAGE_SIZE, leadsData.length) : LEAD_TABLE_PAGE_SIZE;
+    const scrollPositions = preservePosition ? [...document.querySelectorAll('main, .main-content, .leads-table-wrap, #kanbanView, .kanban-cards')]
+        .map(el => ({ el, stage: el.dataset.stage, top: el.scrollTop, left: el.scrollLeft })) : [];
+    const pageScroll = { x: window.scrollX, y: window.scrollY };
     const tbody = document.getElementById('leadsTableBody');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
+    if (tbody && !preservePosition) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
     syncLeadPresentationUi();
     currentTypeFilter = leadTypeForCurrentQueue();
     leadCustomerSearchMatches = [];
@@ -953,11 +967,11 @@ async function loadLeads() {
         const statsPromise = loadLeadQueueStats();
         let leadsResult;
         if (currentView === 'kanban') {
-            leadsResult = await fetchKanbanLeadPages(params);
+            leadsResult = await fetchKanbanLeadPages(params, { preservePosition });
         } else if (currentView === 'mailing') {
             leadsResult = { leads: [], pagination: { total: 0, hasMore: false } };
         } else {
-            leadsResult = await fetchLeadPage(params, { limit: LEAD_TABLE_PAGE_SIZE, offset: 0 });
+            leadsResult = await fetchLeadWindow(params, visibleCount);
         }
         const stats = await statsPromise;
         if (loadSeq !== leadLoadSeq) return;
@@ -979,9 +993,21 @@ async function loadLeads() {
             renderTable();
         }
         syncWorkspaceHighlight();
+        if (preservePosition) {
+            for (const position of scrollPositions) {
+                const el = position.el.isConnected ? position.el
+                    : [...document.querySelectorAll('.kanban-cards')].find(item => item.dataset.stage === position.stage);
+                if (el) { el.scrollTop = position.top; el.scrollLeft = position.left; }
+            }
+            if (window.scrollX !== pageScroll.x || window.scrollY !== pageScroll.y) window.scrollTo(pageScroll.x, pageScroll.y);
+        }
     } catch (err) {
         if (loadSeq !== leadLoadSeq) return;
         console.error('Load leads error', err);
+        if (preservePosition) {
+            if (typeof showNotification === 'function') showNotification('Лід збережено, але список не оновився. Повторіть завантаження списку.', 'warning');
+            return;
+        }
         const tbody = document.getElementById('leadsTableBody');
         const retryHtml = '<button type="button" class="btn-secondary" data-lead-retry>Повторити</button>';
         if (currentView === 'kanban') {
@@ -1076,12 +1102,26 @@ async function fetchLeadPage(baseParams, { limit = LEAD_TABLE_PAGE_SIZE, offset 
     };
 }
 
-async function fetchKanbanLeadPages(baseParams) {
+async function fetchLeadWindow(baseParams, count, order = '') {
+    let page = await fetchLeadPage(baseParams, { limit: LEAD_TABLE_PAGE_SIZE, offset: 0, order });
+    const records = [...page.leads];
+    while (records.length < count && page.pagination.hasMore) {
+        const offset = Number(page.pagination.nextOffset);
+        if (!Number.isInteger(offset) || offset <= Number(page.pagination.offset || 0)) break;
+        page = await fetchLeadPage(baseParams, { limit: LEAD_TABLE_PAGE_SIZE, offset, order });
+        records.push(...page.leads);
+        if (!page.leads.length) break;
+    }
+    return { leads: records, pagination: page.pagination };
+}
+
+async function fetchKanbanLeadPages(baseParams, { preservePosition = false } = {}) {
     const stages = currentPipelineStage ? [currentPipelineStage] : PIPELINE_STAGES.map(stage => stage.key);
     const pages = await Promise.all(stages.map(async stage => {
         const params = new URLSearchParams(baseParams);
         params.set('pipeline_stage', stage);
-        const page = await fetchLeadPage(params, { limit: LEAD_KANBAN_PAGE_SIZE, offset: 0, order: 'kanban' });
+        const count = preservePosition ? Math.max(LEAD_KANBAN_PAGE_SIZE, leadsData.filter(lead => lead.pipeline_stage === stage).length) : LEAD_KANBAN_PAGE_SIZE;
+        const page = await fetchLeadWindow(params, count, 'kanban');
         return [stage, page];
     }));
     leadKanbanPagination = Object.fromEntries(pages.map(([stage, page]) => [stage, { ...page.pagination, loadingMore: false }]));
@@ -1387,7 +1427,7 @@ async function maybeOpenLeadCreateFromUrl() {
         }
     }
 
-    openAddModal(options);
+    if (!(await openAddModal(options))) return false;
     if (sourceCustomer) {
         prefillLeadModalFromCustomer(sourceCustomer, { includeFallbackNote: false });
     } else if (sourceCustomerLoadFailed && typeof showNotification === 'function') {
@@ -1690,15 +1730,14 @@ function renderTable() {
         const convertBtn = canConvert ? `<button class="btn-convert" onclick="convertLead(${l.id})">${leadConversionActionLabel()}</button>` : '';
 
         return `<tr class="${idleClass}" data-lead-id="${l.id}">
-            <td><strong>${escapeHtml(l.client_name || '—')}</strong>${l.instagram ? '<br><small style="color:var(--gray-400)">@' + escapeHtml(l.instagram) + '</small>' : ''}</td>
+            <td><strong>${escapeHtml(l.client_name || '—')}</strong>${l.instagram ? '<br><small style="color:var(--gray-400)">Instagram</small>' : ''}</td>
             <td>${escapeHtml(l.phone || '—')}</td>
             <td>${escapeHtml(src)}</td>
             <td><span class="lead-type-badge ${isMaysternyaBotLead(l) ? 'type-bot-hooks' : lt.cls}">${maysternyaMode ? escapeHtml(maysternyaKind) : `${lt.emoji} ${lt.label}`}</span></td>
             <td><span class="pipeline-stage">${stage ? stage.emoji + ' ' + stage.label : '—'}</span></td>
             <td>${date}</td>
             <td class="lead-actions">
-                <button class="btn-workspace" onclick="openLeadWorkspace(${l.id})">${maysternyaMode ? 'Заявка' : 'Кейс'}</button>
-                <button class="btn-edit" onclick="editLead(${l.id})">Деталі</button>
+                <button class="btn-workspace" onclick="openLeadWorkspace(${l.id}, { tab: 'overview' })">${maysternyaMode ? 'Відкрити заявку' : 'Відкрити лід'}</button>
                 <button class="btn-type" onclick="showTypeMenu(${l.id}, event)">${maysternyaMode ? 'Запит' : 'Тип'}</button>
                 ${convertBtn}
                 <button class="btn-delete" onclick="deleteLead(${l.id})">✕</button>
@@ -1718,18 +1757,62 @@ function renderTable() {
 // ==========================================
 function getWorkspaceLeadIdFromUrl() {
     const params = new URLSearchParams(window.location.search);
-    const raw = params.get('lead') || params.get('leadId');
-    const id = parseInt(raw, 10);
+    const raw = params.get('lead') || params.get('leadId') || params.get('open');
+    const id = Number(raw);
     return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function normalizeWorkspaceTab(tab) {
+    return LEAD_WORKSPACE_TABS.includes(tab) ? tab : 'overview';
+}
+
+function getWorkspaceTabFromUrl() {
+    return normalizeWorkspaceTab(new URLSearchParams(window.location.search).get('leadTab'));
 }
 
 function setWorkspaceUrl(leadId, replace = false) {
     const url = new URL(window.location.href);
-    if (leadId) url.searchParams.set('lead', leadId);
-    else url.searchParams.delete('lead');
-    const state = leadId ? { leadWorkspace: leadId } : {};
+    url.searchParams.delete('leadId');
+    url.searchParams.delete('open');
+    if (leadId) {
+        url.searchParams.set('lead', leadId);
+        url.searchParams.set('leadTab', currentWorkspaceTab);
+        url.searchParams.set('businessContext', leadBusinessContext());
+    } else {
+        url.searchParams.delete('lead');
+        url.searchParams.delete('leadTab');
+    }
+    const state = { ...window.history.state, leadWorkspace: leadId || null };
+    if (url.href === window.location.href && !replace) return;
     if (replace) window.history.replaceState(state, '', url);
     else window.history.pushState(state, '', url);
+}
+
+function setLeadWorkspaceTab(tab, options = {}) {
+    const changed = currentWorkspaceTab !== normalizeWorkspaceTab(tab);
+    currentWorkspaceTab = normalizeWorkspaceTab(tab);
+    document.querySelectorAll('#leadWorkspaceTabs [data-workspace-tab]').forEach(button => {
+        const selected = button.dataset.workspaceTab === currentWorkspaceTab;
+        button.setAttribute('aria-selected', String(selected));
+        button.tabIndex = selected ? 0 : -1;
+        if (selected && options.focus) {
+            button.focus({ preventScroll: true });
+            button.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+    });
+    LEAD_WORKSPACE_TABS.forEach(key => {
+        const panel = document.getElementById(`leadWorkspacePanel-${key}`);
+        if (panel) panel.hidden = key !== currentWorkspaceTab;
+    });
+    if (changed) {
+        const body = document.getElementById('leadWorkspaceBody');
+        if (body) body.scrollTop = 0;
+    }
+    if (options.pushState !== false && workspaceLeadId) setWorkspaceUrl(workspaceLeadId);
+}
+
+function openLeadDetails(leadId) {
+    return openLeadWorkspace(leadId, { tab: 'details' });
 }
 
 function bindWorkspaceEvents() {
@@ -1738,22 +1821,57 @@ function bindWorkspaceEvents() {
 
     document.getElementById('leadWorkspaceClose')?.addEventListener('click', () => closeLeadWorkspace());
     document.getElementById('leadWorkspaceBackdrop')?.addEventListener('click', () => closeLeadWorkspace());
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape' && workspaceLeadId) closeLeadWorkspace();
+    document.getElementById('leadWorkspaceTabs')?.addEventListener('click', e => {
+        const button = e.target.closest('[data-workspace-tab]');
+        if (button) setLeadWorkspaceTab(button.dataset.workspaceTab);
     });
-    window.addEventListener('popstate', () => {
+    document.getElementById('leadWorkspaceTabs')?.addEventListener('keydown', e => {
+        const button = e.target.closest('[data-workspace-tab]');
+        if (!button || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+        e.preventDefault();
+        const index = LEAD_WORKSPACE_TABS.indexOf(button.dataset.workspaceTab);
+        const next = e.key === 'Home' ? 0 : e.key === 'End' ? LEAD_WORKSPACE_TABS.length - 1
+            : (index + (e.key === 'ArrowRight' ? 1 : -1) + LEAD_WORKSPACE_TABS.length) % LEAD_WORKSPACE_TABS.length;
+        setLeadWorkspaceTab(LEAD_WORKSPACE_TABS[next], { focus: true });
+    });
+    document.addEventListener('keydown', e => {
+        if (!workspaceLeadId || e.defaultPrevented || document.querySelector('.lead-modal-overlay.active, .modal-overlay.active, .confirm-overlay')) return;
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeLeadWorkspace();
+        }
+        if (e.key === 'Tab') {
+            const panel = document.getElementById('leadWorkspace');
+            const controls = [...(panel?.querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex="0"]') || [])]
+                .filter(el => !el.disabled && el.tabIndex >= 0 && !el.closest('[hidden]') && el.getClientRects().length);
+            const first = controls[0];
+            const last = controls[controls.length - 1];
+            if (first && (e.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+                e.preventDefault();
+                (e.shiftKey ? last : first).focus();
+            }
+        }
+    });
+    window.addEventListener('popstate', async () => {
+        const context = new URLSearchParams(window.location.search).get('businessContext');
+        if (context && context !== leadBusinessContext()) {
+            // Reinitialize the existing business-context runtime rather than reuse another business's data.
+            if (await closeActiveLeadEditableSurfaces(false)) window.location.reload();
+            else setWorkspaceUrl(workspaceLeadId, true);
+            return;
+        }
         const leadId = getWorkspaceLeadIdFromUrl();
-        if (leadId) openLeadWorkspace(leadId, { pushState: false });
-        else closeLeadWorkspace({ pushState: false });
+        if (leadId) await openLeadWorkspace(leadId, { tab: getWorkspaceTabFromUrl(), pushState: false });
+        else if (!(await closeLeadWorkspace({ pushState: false }))) setWorkspaceUrl(workspaceLeadId, true);
     });
 }
 
 function openWorkspaceFromUrl() {
     const leadId = getWorkspaceLeadIdFromUrl();
-    if (leadId) openLeadWorkspace(leadId, { pushState: false });
+    if (leadId) openLeadWorkspace(leadId, { tab: getWorkspaceTabFromUrl(), pushState: false });
 }
 
-function showWorkspaceShell() {
+function showWorkspaceShell(focus = true) {
     const panel = document.getElementById('leadWorkspace');
     const backdrop = document.getElementById('leadWorkspaceBackdrop');
     if (!panel || !backdrop) return;
@@ -1761,19 +1879,24 @@ function showWorkspaceShell() {
     backdrop.hidden = false;
     panel.setAttribute('aria-hidden', 'false');
     requestAnimationFrame(() => {
+        if (!workspaceLeadId) return;
         panel.classList.add('active');
         backdrop.classList.add('active');
-        document.getElementById('leadWorkspaceClose')?.focus({ preventScroll: true });
+        if (workspaceLeadId && focus) document.getElementById('leadWorkspaceClose')?.focus({ preventScroll: true });
     });
 }
 
 async function closeLeadWorkspace(options = {}) {
     const { pushState = true, force = false, guard = true } = options;
     if (guard && !force && !(await closeActiveLeadEditableSurfaces(false))) return false;
+    if (force && leadEditorSession) await closeLeadModal(true);
 
     const panel = document.getElementById('leadWorkspace');
     const backdrop = document.getElementById('leadWorkspaceBackdrop');
+    const closedLeadId = workspaceLeadId;
     workspaceLeadId = null;
+    workspaceRequestSeq += 1;
+    currentWorkspaceData = null;
     if (panel) {
         panel.classList.remove('active');
         panel.setAttribute('aria-hidden', 'true');
@@ -1785,37 +1908,61 @@ async function closeLeadWorkspace(options = {}) {
     }
     if (pushState) setWorkspaceUrl(null);
     syncWorkspaceHighlight();
+    const returnTarget = workspaceReturnFocus?.isConnected ? workspaceReturnFocus
+        : document.querySelector(`[data-lead-id="${closedLeadId}"] .btn-workspace, .kanban-card[data-id="${closedLeadId}"] [data-lead-view-action]`)
+            || document.getElementById('leadsSearch');
+    returnTarget?.focus({ preventScroll: true });
+    workspaceReturnFocus = null;
     return true;
 }
 
 async function openLeadWorkspace(leadId, options = {}) {
     const { pushState = true } = options;
-    const id = parseInt(leadId, 10);
+    const id = Number(leadId);
     if (!Number.isInteger(id) || id <= 0) return;
-    if (workspaceLeadId !== id && !(await closeActiveLeadEditableSurfaces(false))) return;
+    if (workspaceLeadId !== id && !(await closeActiveLeadEditableSurfaces(false))) {
+        if (!pushState) setWorkspaceUrl(workspaceLeadId, true);
+        return;
+    }
+    // A tab/history change must not replace the DOM that owns an active draft.
+    const preserveEditor = workspaceLeadId === id && leadEditorSession?.leadId === id;
+    if (preserveEditor && (options.tab !== undefined || leadEditorSession.loading)) {
+        setLeadWorkspaceTab(options.tab ?? currentWorkspaceTab, { pushState });
+        return;
+    }
 
     bindWorkspaceEvents();
+    const wasOpen = !!workspaceLeadId;
+    const sameLead = workspaceLeadId === id;
+    if (!wasOpen) workspaceReturnFocus = document.activeElement;
+    currentWorkspaceTab = normalizeWorkspaceTab(options.tab ?? (sameLead ? currentWorkspaceTab : 'overview'));
     workspaceLeadId = id;
+    if (!preserveEditor) currentWorkspaceData = null;
     workspaceRequestSeq += 1;
     const requestSeq = workspaceRequestSeq;
 
     if (pushState) setWorkspaceUrl(id);
-    showWorkspaceShell();
+    showWorkspaceShell(!wasOpen);
+    setLeadWorkspaceTab(currentWorkspaceTab, { pushState: false });
     syncWorkspaceHighlight();
-    renderWorkspaceLoading(id);
+    if (!preserveEditor) renderWorkspaceLoading(id);
 
     try {
         const res = await apiFetch(`/api/leads/${id}/workspace`);
         if (!res) return;
         const data = await res.json();
-        if (requestSeq !== workspaceRequestSeq) return;
+        if (requestSeq !== workspaceRequestSeq || workspaceLeadId !== id) return;
         if (!res.ok || !data.success) {
+            if (preserveEditor) throw new Error(data.error || 'Не вдалося оновити картку. Чернетку збережено.');
             renderWorkspaceError(data.error || 'Не вдалося завантажити кейс');
             return;
         }
         renderLeadWorkspaceContent(data.workspace);
     } catch (err) {
-        if (requestSeq === workspaceRequestSeq) renderWorkspaceError(err.message || 'Помилка завантаження кейсу');
+        if (requestSeq !== workspaceRequestSeq) return;
+        if (preserveEditor) {
+            if (typeof showNotification === 'function') showNotification(err.message || 'Не вдалося оновити картку. Чернетку збережено.', 'error');
+        } else renderWorkspaceError(err.message || 'Помилка завантаження кейсу');
     }
 }
 
@@ -1830,12 +1977,13 @@ function renderWorkspaceLoading(id) {
     document.getElementById('leadWorkspaceTitle').textContent = `Лід #${id}`;
     document.getElementById('leadWorkspaceSubtitle').textContent = 'Завантаження робочого простору';
     const body = document.getElementById('leadWorkspaceBody');
-    if (body) body.innerHTML = '<div class="workspace-loading">Завантаження кейсу...</div>';
+    if (body) body.innerHTML = '<div class="workspace-loading" role="status">Завантаження картки...</div>';
 }
 
 function renderWorkspaceError(message) {
     const body = document.getElementById('leadWorkspaceBody');
-    if (body) body.innerHTML = `<div class="workspace-error">${escapeHtml(message || 'Помилка завантаження')}</div>`;
+    if (body) body.innerHTML = `<div class="workspace-error" role="alert">${escapeHtml(message || 'Помилка завантаження')}</div>
+        <button type="button" class="workspace-btn" onclick="openLeadWorkspace(${Number(workspaceLeadId)}, { pushState: false })">Спробувати ще раз</button>`;
 }
 
 function workspaceDate(value) {
@@ -2410,10 +2558,10 @@ function leadOmniHref(workspace, conversation) {
     const selected = conversation?.id
         ? confirmedLinks.find(item => String(item.id) === String(conversation.id) && item.confidence === 'confirmed')
         : null;
-    if (selected?.available) return leadCrmContextHref('/omni', { conversation: selected.id }, context);
+    if (selected?.available) return leadCrmContextHref('/omni', { conversation: selected.id, businessContext: context }, context);
     const resolution = workspace?.conversationContext?.resolution;
     if (resolution?.action === 'open' && resolution.conversationId) {
-        return leadCrmContextHref('/omni', { conversation: resolution.conversationId }, context);
+        return leadCrmContextHref('/omni', { conversation: resolution.conversationId, businessContext: context }, context);
     }
     return null;
 }
@@ -2448,8 +2596,8 @@ function leadContactLinks(lead, workspace) {
     const omni = leadOmniHref(workspace, exactConversation);
     return [
         workspaceLink(tel, 'Подзвонити', 'success'),
-        workspaceLink(omni, exactConversation ? leadConversationOpenLabel(exactConversation) : 'Комунікації недоступні', 'primary'),
-        workspaceLink(omni, 'Комунікації')
+        exactConversation ? workspaceLink(omni, leadConversationOpenLabel(exactConversation), 'primary') : '',
+        '<button type="button" class="workspace-btn" onclick="setLeadWorkspaceTab(\'communications\', { focus: true })">Комунікації</button>'
     ].join('');
 }
 
@@ -2544,10 +2692,6 @@ function renderWorkspaceStageControl(lead) {
 
 function renderManagerActionStrip(workspace) {
     const lead = workspace.lead || {};
-    const customer = workspace.customer || null;
-    const phone = lead.phone || customer?.phone || '';
-    const tel = phone ? 'tel:' + phone.replace(/[^+\d]/g, '') : null;
-    const exactConversation = exactLeadConversation(workspace);
     const waitingConversation = waitingReplyConversation(workspace);
     const exactBooking = exactLeadBooking(workspace);
     const exactTask = exactOpenWorkspaceTask(workspace);
@@ -2555,11 +2699,9 @@ function renderManagerActionStrip(workspace) {
     const canConfirmBooking = exactBooking?.status === 'preliminary' && typeof canAccess === 'function' && canAccess('edit_booking');
     const canSeeBookingButNotConfirm = exactBooking?.status === 'preliminary' && !canConfirmBooking;
     const maysternyaMode = isMaysternyaLeadContext();
-    const customerHref = customer?.id ? leadCrmContextHref('/customers', { open: customer.id }, leadContextFromRecord(lead)) : null;
     const taskHref = exactTask ? leadCrmContextHref('/tasks', { open: exactTask.id }, leadContextFromRecord(lead)) : null;
 
     const actions = [
-        { label: 'Подзвонити', href: tel, cls: 'success', disabled: !tel, note: tel ? '' : 'немає телефону' },
         maysternyaMode ? {
             label: exactBooking ? 'Відкрити запис' : 'Створити запис',
             href: exactBooking ? bookingHref : null,
@@ -2569,26 +2711,13 @@ function renderManagerActionStrip(workspace) {
             note: exactBooking ? 'є повʼязаний запис' : 'драфт у Майстерні'
         } : null,
         {
-            label: exactConversation ? leadConversationOpenLabel(exactConversation) : 'Комунікації',
-            href: exactConversation ? leadOmniHref(workspace, exactConversation) : null,
-            cls: 'primary',
-            disabled: !exactConversation,
-            note: exactConversation ? '' : 'немає підтвердженої розмови'
-        },
-        {
-            label: 'Картка клієнта',
-            href: customerHref,
-            disabled: !customer?.id,
-            note: customer?.id ? '' : 'клієнта не привʼязано'
-        },
-        {
             label: maysternyaMode ? 'Запис' : 'Бронювання',
             href: bookingHref,
             disabled: !bookingHref,
-            note: bookingHref ? '' : 'немає exact booking'
+            note: bookingHref ? '' : 'Бронювання ще не пов’язано'
         },
         {
-            label: maysternyaMode ? 'Передзвонити' : 'Callback',
+            label: 'Передзвонити',
             onClick: `createLeadWorkspaceCallbackTask(${lead.id})`,
             cls: 'warning'
         },
@@ -2611,14 +2740,14 @@ function renderManagerActionStrip(workspace) {
             label: 'Відкрити задачу',
             href: taskHref,
             disabled: !exactTask,
-            note: exactTask ? '' : 'немає exact задачі'
+            note: exactTask ? '' : 'Немає активної пов’язаної задачі'
         },
         {
             label: 'Виконати задачу',
             onClick: exactTask ? `completeLeadWorkspaceTask(${lead.id}, ${exactTask.id})` : null,
             cls: 'success',
             disabled: !exactTask,
-            note: exactTask ? '' : 'немає exact задачі'
+            note: exactTask ? '' : 'Немає активної пов’язаної задачі'
         },
         {
             label: 'Підтвердити бронювання',
@@ -2626,8 +2755,8 @@ function renderManagerActionStrip(workspace) {
             cls: 'success',
             disabled: !canConfirmBooking,
             note: exactBooking?.status === 'preliminary'
-                ? (canSeeBookingButNotConfirm ? 'немає права edit_booking' : '')
-                : (exactBooking ? 'не preliminary' : 'немає exact booking')
+                ? (canSeeBookingButNotConfirm ? 'Недостатньо прав для підтвердження' : '')
+                : (exactBooking ? 'Бронювання не потребує підтвердження' : 'Бронювання ще не пов’язано')
         }
     ].filter(Boolean);
 
@@ -2636,7 +2765,7 @@ function renderManagerActionStrip(workspace) {
             <div class="manager-action-strip-head">
                 <div>
                     <h3>Швидкі дії</h3>
-                    <p>Тільки дії з точним контекстом або чесною недоступністю.</p>
+                    <p>Наступні кроки роботи з лідом.</p>
                 </div>
                 ${renderWorkspaceStageControl(lead)}
             </div>
@@ -2711,12 +2840,10 @@ function renderLeadCommunications(workspace) {
     const confirmed = context.confirmedLinks || workspace?.conversations || [];
     const suggestions = context.suggestions || [];
     const resolution = context.resolution || {};
-    const primaryConversation = exactLeadConversation(workspace);
-    const primaryAction = primaryConversation
-        ? workspaceLink(leadOmniHref(workspace, primaryConversation), leadConversationOpenLabel(primaryConversation), 'primary')
-        : (resolution.action === 'unavailable'
-            ? '<span class="workspace-btn primary" aria-disabled="true">Діалог недоступний</span>'
-            : `<button type="button" class="workspace-btn primary" onclick="openLeadConversationLinkDialog(${leadId})">${resolution.action === 'choose' ? 'Обрати діалог' : 'Прив’язати діалог'}</button>`);
+    const resolutionNotice = resolution.action === 'unavailable'
+        ? '<div class="workspace-empty" role="status">Обраний діалог недоступний. Перевірте зв’язки перед вибором іншого.</div>'
+        : resolution.action === 'choose'
+            ? '<div class="workspace-empty">Оберіть підтверджений діалог у списку.</div>' : '';
     const confirmedHtml = confirmed.length
         ? `<div class="workspace-list">${confirmed.map(conversation => renderConfirmedLeadConversation(workspace, conversation)).join('')}</div>`
         : '<div class="workspace-empty">Підтверджених діалогів ще немає. Прив’яжіть потрібний діалог лише після перевірки менеджером.</div>';
@@ -2729,14 +2856,64 @@ function renderLeadCommunications(workspace) {
     return `
         <section class="workspace-section full">
             <h3>Комунікації</h3>
+            ${resolutionNotice}
             ${confirmedHtml}
             ${suggestionsHtml}
             <div class="workspace-actions workspace-conversation-actions" style="justify-content:flex-start;margin-top:12px">
-                ${primaryAction}
                 <button type="button" class="workspace-btn" onclick="openLeadConversationLinkDialog(${leadId})">Прив’язати діалог</button>
             </div>
         </section>
     `;
+}
+
+function workspacePanel(tab, content) {
+    return `<div id="leadWorkspacePanel-${tab}" class="lead-workspace-panel" role="tabpanel"
+        aria-labelledby="leadWorkspaceTab-${tab}" tabindex="0" ${tab === currentWorkspaceTab ? '' : 'hidden'}>${content}</div>`;
+}
+
+function workspaceCompactList(items, renderer, emptyText) {
+    const rows = items || [];
+    return workspaceList(rows.slice(0, 3), renderer, emptyText)
+        + (rows.length > 3 ? `<details class="workspace-list-more"><summary>Показати решту (${rows.length - 3})</summary>${workspaceList(rows.slice(3), renderer, emptyText)}</details>` : '');
+}
+
+function renderWorkspaceLeadData(lead) {
+    const preference = leadEventPreferenceFromLead({ ...lead, children_count: lead.childrenCount ?? lead.children_count });
+    const rawPreference = parseJsonObject(lead.eventPreference || lead.event_preference);
+    const hasGuestSummary = String(lead.notes || '').includes(LEAD_GUEST_NOTE_PREFIX);
+    const hasChildren = [rawPreference.childrenCount, rawPreference.children_count, lead.childrenCount, lead.children_count]
+        .some(value => value !== null && value !== undefined && value !== '') || hasGuestSummary;
+    const hasAdults = [rawPreference.adultsCount, rawPreference.adults_count]
+        .some(value => value !== null && value !== undefined && value !== '') || hasGuestSummary;
+    const maysternyaMode = isMaysternyaLeadContext();
+    const fields = [
+        ['Ім’я', workspaceText(lead.clientName)],
+        ['Телефон', workspaceText(lead.phone)],
+        ['Відповідальний', workspaceText(lead.assignedName)],
+        ['Джерело', workspaceText(leadSourceLabel(lead))],
+        ['Бажана дата', workspaceDate(preference.preferredDate)],
+        [maysternyaMode ? 'Консультація' : 'Програма', workspaceText(lead.programName || lead.sessionType)],
+        ...(maysternyaMode ? [] : [
+            ['Діти', hasChildren ? String(preference.childrenCount) : '—'],
+            ['Дорослі', hasAdults ? String(preference.adultsCount) : '—'],
+            ['Разом гостей', hasChildren && hasAdults ? String(preference.childrenCount + preference.adultsCount) : '—'],
+            ['Іменинники', renderCelebrantsValue(lead)]
+        ]),
+        ['Категорія', workspaceText(QUALITY_CATEGORIES[lead.qualityCategory] || lead.qualityCategory)],
+        ['Причина закриття', workspaceText(lead.lostReason)],
+        ['Створено', workspaceDateTime(lead.createdAt)],
+        ['Оновлено', workspaceDateTime(lead.updatedAt)],
+        ['Останній контакт', workspaceDateTime(lead.lastContactAt)],
+        ['Нотатки ліда', renderWorkspaceNoteText(lead.notes)],
+        ...(lead.message && lead.message !== lead.notes ? [['Повідомлення', renderWorkspaceNoteText(lead.message)]] : [])
+    ];
+    return `<section class="workspace-section full" id="leadWorkspaceDataView">
+        <div class="workspace-section-heading-actions"><h3>Дані ліда</h3>
+            <button type="button" class="workspace-btn" data-lead-write-action="true" onclick="editLead(${lead.id})">${maysternyaMode ? 'Редагувати заявку' : 'Редагувати'}</button>
+        </div>
+        <dl class="workspace-kv">${fields.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl>
+        ${lead.instagram ? `<details><summary>Збережені дані Instagram</summary><p>${workspaceText(lead.instagram)}</p><p>Значення з ліда; ім’я профілю не підтверджено.</p></details>` : ''}
+    </section>`;
 }
 
 function renderLeadWorkspaceContent(workspace) {
@@ -2762,7 +2939,7 @@ function renderLeadWorkspaceContent(workspace) {
         : (lead.clientName || `Лід #${lead.id}`);
     document.getElementById('leadWorkspaceSubtitle').textContent = maysternyaMode
         ? `Майстерня долі · заявка #${lead.id} · запис і follow-up`
-        : `Кейс ліда #${lead.id} · canonical: pipeline_stage`;
+        : `Картка ліда #${lead.id}`;
 
     const customerHref = customer?.id ? leadCrmContextHref('/customers', { open: customer.id }, leadContextFromRecord(lead)) : null;
     const childSourceOrder = leadWorkspaceChildSourceOrder(workspace);
@@ -2771,15 +2948,22 @@ function renderLeadWorkspaceContent(workspace) {
     const noteAndInteractionRows = workspaceInteractionRows(workspace);
     const body = document.getElementById('leadWorkspaceBody');
     if (!body) return;
+    const preserveEditor = leadEditorSession?.leadId === Number(lead.id) && !leadEditorSession.loading;
+    const editor = preserveEditor ? document.getElementById('leadEditorForm') : null;
+    const editorFocus = editor?.contains(document.activeElement) ? document.activeElement : null;
+    const bodyScroll = body.scrollTop;
+    // Refresh communication/customer/task data without destroying form values,
+    // listeners or the original edit baseline.
+    if (editor) parkLeadEditorForm();
     currentWorkspaceData = workspace;
 
-    body.innerHTML = `
+    const heroHtml = `
         <section class="workspace-hero">
             <div class="workspace-hero-main">
                 <div>
                     <h3 class="workspace-name">${workspaceText(lead.clientName, maysternyaMode ? `Заявка #${lead.id}` : `Лід #${lead.id}`)}</h3>
                     <div class="workspace-meta">
-                        ${workspaceText(lead.phone)}${lead.instagram ? ' · @' + workspaceText(lead.instagram).replace(/^@/, '') : ''}
+                        ${workspaceText(lead.phone)}${lead.instagram ? ' · Instagram' : ''}
                     </div>
                     <div class="workspace-badge-row">
                         ${workspaceBadge(stage ? `${stage.emoji} ${stage.label}` : (lead.pipelineStage || 'new'), 'stage')}
@@ -2792,16 +2976,14 @@ function renderLeadWorkspaceContent(workspace) {
                 </div>
                 <div class="workspace-actions">
                     ${leadContactLinks(lead, workspace)}
-                    <button type="button" class="workspace-btn" onclick="editLead(${lead.id})">${maysternyaMode ? 'Редагувати заявку' : 'Редагувати'}</button>
-                    <button type="button" class="workspace-btn" onclick="openLeadCustomerCard(${lead.id})">${maysternyaMode ? 'Картка клієнта' : 'Картка'}</button>
-                    <button type="button" class="workspace-btn" onclick="linkWorkspaceLeadCustomer(${lead.id})">${customer?.id ? 'Змінити клієнта' : 'Привʼязати клієнта'}</button>
                 </div>
             </div>
         </section>
-
-        ${renderManagerActionStrip(workspace)}
-
-        <div class="workspace-grid" data-child-source-order="${escapeHtml(childSourceOrder.join('|'))}" data-notes-merge-policy="${escapeHtml(notesContract.mergePolicy)}">
+    `;
+    const detailsHtml = `
+        <section class="workspace-section" id="leadWorkspaceEditorHost" hidden aria-label="Редагування даних ліда"></section>
+        <div class="workspace-grid workspace-lead-data-grid" data-child-source-order="${escapeHtml(childSourceOrder.join('|'))}" data-notes-merge-policy="${escapeHtml(notesContract.mergePolicy)}">
+            ${renderWorkspaceLeadData(lead)}
             <section class="workspace-section">
                 <h3>Клієнт</h3>
                 ${customer ? `
@@ -2814,30 +2996,36 @@ function renderLeadWorkspaceContent(workspace) {
                         ${customerVisibleNotes ? `<dt>Нотатки клієнта</dt><dd>${renderWorkspaceNoteText(customerVisibleNotes)}</dd>` : ''}
                     </dl>
                     <div class="workspace-actions" style="justify-content:flex-start;margin-top:12px">
-                        ${workspaceLink(customerHref, 'Відкрити клієнта')}
+                        <button type="button" class="workspace-btn" onclick="openLeadCustomerCard(${lead.id})">Відкрити клієнта</button>
+                        <button type="button" class="workspace-btn" data-lead-write-action="true" onclick="linkWorkspaceLeadCustomer(${lead.id})">Змінити клієнта</button>
                     </div>
                 ` : `
-                    <div class="workspace-empty">Клієнта ще не прив'язано. Дані ліда і картки доступні в цьому кейсі.</div>
+                    <div class="workspace-empty">Клієнта ще не прив’язано.</div>
+                    <div class="workspace-actions">
+                        <button type="button" class="workspace-btn" data-lead-write-action="true" onclick="createLeadCustomerCard(${lead.id})">Створити клієнта</button>
+                        <button type="button" class="workspace-btn" data-lead-write-action="true" onclick="linkWorkspaceLeadCustomer(${lead.id})">Прив’язати клієнта</button>
+                    </div>
                 `}
             </section>
 
-            <section class="workspace-section">
-                <h3>${maysternyaMode ? 'Запит' : 'Кейс і дата'}</h3>
-                <dl class="workspace-kv">
-                    <dt>Відповідальний</dt><dd>${workspaceText(lead.assignedName)}</dd>
-                    <dt>Джерело</dt><dd>${workspaceText(leadSourceLabel(lead))}</dd>
-                    <dt>${maysternyaMode ? 'Бажана дата консультації' : 'Бажана дата'}</dt><dd>${workspaceDate(lead.eventDate)}</dd>
-                    <dt>${maysternyaMode ? 'Консультація' : 'Програма'}</dt><dd>${workspaceText(lead.programName || lead.sessionType)}</dd>
-                    ${maysternyaMode ? '' : `<dt>Іменинники</dt><dd>${renderCelebrantsValue(lead)}</dd>`}
-                    <dt>${maysternyaMode ? 'Повідомлення' : 'Нотатки'}</dt><dd>${renderWorkspaceNoteText(maysternyaMode ? (lead.message || lead.notes) : lead.notes)}</dd>
-                </dl>
-            </section>
-
             ${renderLeadInboundSection(lead)}
-
+        </div>
+    `;
+    const overviewHtml = `
+        ${renderManagerActionStrip(workspace)}
+        <section class="workspace-section">
+            <h3>Коротко про лід</h3>
+            <dl class="workspace-kv">
+                <dt>Відповідальний</dt><dd>${workspaceText(lead.assignedName)}</dd>
+                <dt>Бажана дата</dt><dd>${workspaceDate(lead.eventDate)}</dd>
+                <dt>Клієнт</dt><dd>${customer ? workspaceLink(customerHref, customer.name || 'Відкрити клієнта') : 'Ще не прив’язано'}</dd>
+            </dl>
+            <button type="button" class="workspace-btn" onclick="setLeadWorkspaceTab('details', { focus: true })">Усі дані ліда</button>
+        </section>
+        <div class="workspace-grid">
             <section class="workspace-section full">
                 <h3>${maysternyaMode ? 'Записи та сесії' : 'Бронювання та події'}</h3>
-                ${workspaceList(workspace.bookings || [], booking => `
+                ${workspaceCompactList(workspace.bookings || [], booking => `
                     <div class="workspace-row">
                         <div class="workspace-row-top">
                             <div>
@@ -2852,7 +3040,7 @@ function renderLeadWorkspaceContent(workspace) {
 
             <section class="workspace-section">
                 <h3>Наступні дії</h3>
-                ${workspaceList(workspace.tasks || [], task => `
+                ${workspaceCompactList(workspace.tasks || [], task => `
                     <div class="workspace-row">
                         <div class="workspace-row-top">
                             <div>
@@ -2862,17 +3050,34 @@ function renderLeadWorkspaceContent(workspace) {
                             <a class="workspace-row-link" href="${escapeHtml(leadCrmContextHref('/tasks', { open: task.id }, leadContextFromRecord(lead)))}">Задача</a>
                         </div>
                     </div>
-                `, 'Немає прив’язаних задач або next action')}
+                `, 'Немає прив’язаних задач')}
             </section>
-
+        </div>
+    `;
+    const historyHtml = `
             <section class="workspace-section">
                 <h3>Нотатки і взаємодії</h3>
                 ${workspaceList(noteAndInteractionRows, renderWorkspaceInteractionRow, 'Взаємодій і коментарів ще немає')}
             </section>
 
-            ${renderLeadCommunications(workspace)}
-        </div>
     `;
+    body.innerHTML = heroHtml
+        + workspacePanel('overview', overviewHtml)
+        + workspacePanel('details', detailsHtml)
+        + workspacePanel('communications', renderLeadCommunications(workspace))
+        + workspacePanel('history', historyHtml);
+    if (editor) {
+        const host = document.getElementById('leadWorkspaceEditorHost');
+        host.appendChild(editor);
+        host.hidden = false;
+        document.getElementById('leadWorkspaceDataView').hidden = true;
+    }
+    setLeadWorkspaceTab(currentWorkspaceTab, { pushState: false });
+    syncLeadReadOnlyUi();
+    if (editor) {
+        body.scrollTop = bodyScroll;
+        editorFocus?.focus({ preventScroll: true });
+    }
 }
 
 // ==========================================
@@ -3026,7 +3231,7 @@ function renderKanban() {
                     ${phoneTel ? `<a class="kanban-action-btn" href="tel:${escapeHtml(phoneTel)}" title="Зателефонувати">📞</a>
                     <a class="kanban-action-btn" href="https://t.me/${escapeHtml(phoneTel)}" target="_blank" title="Telegram">💬</a>` : ''}
                     ${renderLeadBookingConversionButton(l)}
-                    <button class="kanban-action-btn" type="button" onclick="event.stopPropagation(); editLead(${l.id})" title="Редагувати">✎</button>
+                    <button class="kanban-action-btn" type="button" data-lead-view-action="true" onclick="event.stopPropagation(); openLeadDetails(${l.id})" title="Дані ліда" aria-label="Дані ліда">✎</button>
                 </div>
             </div>`;
         }).join('');
@@ -4046,6 +4251,7 @@ function closeAddMailingModal(force = false) {
 }
 
 async function closeActiveLeadEditableSurfaces(force = false) {
+    if (leadEditorSession && !(await closeLeadModal(force))) return false;
     const surfaces = [
         { id: 'leadModal', close: () => closeLeadModal(force) },
         { id: 'customerCardModal', close: () => closeCustomerCardModal(force) },
@@ -4525,8 +4731,13 @@ function setupEvents() {
     bindLeadModalButton('leadModalSave', saveLead);
     bindCelebrantsEditors();
     const leadEventDate = document.getElementById('leadEventDate');
-    leadEventDate?.addEventListener('input', () => syncLeadEventDetailsVisibility({ clearWhenHidden: true }));
-    leadEventDate?.addEventListener('change', () => syncLeadEventDetailsVisibility({ clearWhenHidden: true }));
+    leadEventDate?.addEventListener('input', () => syncLeadEventDetailsVisibility());
+    leadEventDate?.addEventListener('change', () => syncLeadEventDetailsVisibility());
+    window.addEventListener('beforeunload', event => {
+        if (!leadEditorSession || leadEditorSession.loading || (!leadSaveInFlight && !isModalDirty())) return;
+        event.preventDefault();
+        event.returnValue = '';
+    });
     ['leadChildrenCount', 'leadAdultsCount'].forEach(id => {
         document.getElementById(id)?.addEventListener('input', syncLeadGuestsTotal);
     });
@@ -4652,8 +4863,11 @@ function resetLeadCreateHandoffState() {
     delete modal.dataset.stageLocked;
 }
 
-function openAddModal(options = {}) {
+async function openAddModal(options = {}) {
     if (!guardLeadWrite('створювати ліди')) return;
+    if (leadEditorSession && !(await closeLeadModal())) return false;
+    parkLeadEditorForm();
+    document.querySelectorAll('#leadEditorForm [data-preserved-option]').forEach(option => option.remove());
     const fromBooking = options.origin === LEAD_BOOKING_CREATE_ORIGIN;
     const createStage = fromBooking ? 'deal' : normalizeLeadCreateStage(options.createStage, 'new');
     const sourceCustomerId = positiveLeadQueryId(options.sourceCustomerId);
@@ -4688,8 +4902,12 @@ function openAddModal(options = {}) {
         if (sourceCustomerId) modal.dataset.sourceCustomerId = String(sourceCustomerId);
     }
     modalInitialState = getModalState();
+    leadEditorSession = { leadId: null, businessContext: leadBusinessContext(), initialValues: getLeadEditorValues(), lead: null };
+    syncLeadReadOnlyUi();
     modal?.classList.add('active');
-    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+    rememberLeadEditor();
+    document.getElementById('leadName')?.focus();
+    return true;
 }
 function customerFallbackLeadNote(customer = {}) {
     const parts = [
@@ -4714,40 +4932,123 @@ function prefillLeadModalFromCustomer(customer = {}, options = {}) {
     const modal = document.getElementById('leadModal');
     if (modal && customer.id) modal.dataset.sourceCustomerId = String(customer.id);
     modalInitialState = getModalState();
-    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+    if (leadEditorSession) leadEditorSession.initialValues = getLeadEditorValues();
+    rememberLeadEditor();
     nameEl?.focus();
 }
 
-function openLeadFromCustomerFallback(customerId) {
+async function openLeadFromCustomerFallback(customerId) {
     const customer = leadCustomerFallbackById(customerId);
     if (!customer) {
         if (typeof showNotification === 'function') showNotification('Клієнта з підказки вже не знайдено. Повторіть пошук.', 'error');
         return;
     }
-    openAddModal();
+    if (!(await openAddModal())) return;
     if (!document.getElementById('leadModal')?.classList.contains('active')) return;
     prefillLeadModalFromCustomer(customer);
 }
 
-function editLead(id) {
-    if (!guardLeadWrite('редагувати ліди')) return;
-    const lead = leadsData.find(l => l.id === id);
-    if (!lead) return;
+function parkLeadEditorForm() {
+    const form = document.getElementById('leadEditorForm');
+    const host = document.getElementById('leadCreateEditorHost');
+    if (form && host && form.parentElement !== host) host.appendChild(form);
+}
 
-    document.getElementById('leadModalTitle').textContent = isMaysternyaLeadContext() ? 'Редагування заявки' : 'Редагування ліду';
+function rememberLeadEditor() {
+    const form = document.getElementById('leadEditorForm');
+    if (form && window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(form);
+}
+
+function leadEditorIsCurrent(session) {
+    return leadEditorSession === session && session.businessContext === leadBusinessContext();
+}
+
+function setLeadEditorSelect(id, value, label) {
+    const select = document.getElementById(id);
+    if (!select) return;
+    select.querySelectorAll('[data-preserved-option]').forEach(option => option.remove());
+    const text = String(value ?? '');
+    if (text && ![...select.options].some(option => option.value === text)) {
+        const option = document.createElement('option');
+        option.value = text;
+        option.textContent = label || text;
+        option.dataset.preservedOption = 'true';
+        select.appendChild(option);
+    }
+    select.value = text;
+}
+
+async function editLead(leadId) {
+    if (!guardLeadWrite('редагувати ліди')) return;
+    const id = Number(leadId);
+    if (!Number.isInteger(id) || id <= 0) return;
+    if (leadEditorSession?.leadId === id) {
+        setLeadWorkspaceTab('details');
+        document.getElementById('leadName')?.focus();
+        return;
+    }
+    if (leadEditorSession && !(await closeLeadModal())) return;
+    if (workspaceLeadId !== id || !currentWorkspaceData) await openLeadWorkspace(id, { tab: 'details' });
+    if (workspaceLeadId !== id || !currentWorkspaceData) return;
+    setLeadWorkspaceTab('details');
+    const session = { leadId: id, businessContext: leadBusinessContext(), loading: true };
+    leadEditorSession = session;
+    const seq = ++leadEditorRequestSeq;
+    workspaceRequestSeq += 1;
+    let host = document.getElementById('leadWorkspaceEditorHost');
+    if (!host) { leadEditorSession = null; return; }
+    host.hidden = false;
+    host.innerHTML = '<p role="status">Завантаження даних для редагування…</p>';
+    try {
+        const res = await apiFetch(`/api/leads/${id}/workspace`);
+        if (!res) throw new Error('Не вдалося завантажити дані ліда');
+        const data = await res.json();
+        if (seq !== leadEditorRequestSeq || !leadEditorIsCurrent(session) || workspaceLeadId !== id) return;
+        if (!res.ok || !data.success || Number(data.workspace?.lead?.id) !== id) throw new Error(data.error || 'Не вдалося завантажити дані ліда');
+        renderLeadWorkspaceContent(data.workspace);
+        host = document.getElementById('leadWorkspaceEditorHost');
+        host.hidden = false;
+        const record = data.workspace.lead;
+        const lead = {
+            ...record, client_name: record.clientName, assigned_to: record.assignedTo,
+            event_date: record.eventDate, children_count: record.childrenCount,
+            pipeline_stage: record.pipelineStage, lead_type: record.leadType
+        };
+        session.lead = lead;
+        fillLeadEditor(lead);
+        const form = document.getElementById('leadEditorForm');
+        host.replaceChildren(form);
+        document.getElementById('leadWorkspaceDataView').hidden = true;
+        session.loading = false;
+        session.initialValues = getLeadEditorValues();
+        modalInitialState = getModalState();
+        rememberLeadEditor();
+        document.getElementById('leadName')?.focus({ preventScroll: true });
+        host.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    } catch (err) {
+        if (!leadEditorIsCurrent(session)) return;
+        leadEditorSession = null;
+        host.hidden = true;
+        if (typeof showNotification === 'function') showNotification(err.message || 'Помилка завантаження ліда', 'error');
+    }
+}
+
+function fillLeadEditor(lead) {
+    resetLeadCreateHandoffState();
+    const id = lead.id;
     document.getElementById('leadEditId').value = id;
     document.getElementById('leadName').value = lead.client_name || '';
     document.getElementById('leadPhone').value = lead.phone || '';
     document.getElementById('leadInstagram').value = lead.instagram || '';
-    document.getElementById('leadSource').value = lead.source || '';
+    setLeadEditorSelect('leadSource', lead.source);
     const eventPreference = leadEventPreferenceFromLead(lead);
     document.getElementById('leadEventDate').value = eventPreference.preferredDate || '';
-    document.getElementById('leadChildrenCount').value = isMaysternyaLeadContext() ? '' : (eventPreference.childrenCount || '');
-    document.getElementById('leadAdultsCount').value = isMaysternyaLeadContext() ? '' : (eventPreference.adultsCount || '');
+    document.getElementById('leadChildrenCount').value = isMaysternyaLeadContext() ? '' : eventPreference.childrenCount;
+    document.getElementById('leadAdultsCount').value = isMaysternyaLeadContext() ? '' : eventPreference.adultsCount;
     setCelebrantsEditorValue('leadCelebrants', isMaysternyaLeadContext() ? [] : normalizeLeadCelebrants(lead), { markInitial: true });
     document.getElementById('leadNotes').value = isMaysternyaLeadContext() ? (lead.notes || '') : stripLeadGuestSummary(lead.notes || '');
-    document.getElementById('leadAssignedTo').value = lead.assigned_to || '';
-    syncLeadEventDetailsVisibility();
+    setLeadEditorSelect('leadAssignedTo', lead.assigned_to, lead.assignedName || 'Збережений відповідальний');
+    syncLeadModalBusinessFields();
 
     configureLeadStageControls({
         editing: true,
@@ -4757,19 +5058,18 @@ function editLead(id) {
         origin: ''
     });
 
-    const modal = document.getElementById('leadModal');
-    if (modal) resetLeadCreateHandoffState();
-    modalInitialState = getModalState();
-    modal?.classList.add('active');
-    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+}
+
+function getLeadEditorValues() {
+    const fields = ['leadName', 'leadPhone', 'leadInstagram', 'leadSource', 'leadEventDate', 'leadChildrenCount', 'leadAdultsCount', 'leadCelebrants', 'leadNotes', 'leadAssignedTo', 'leadPipelineStage', 'leadLeadType'];
+    return Object.fromEntries(fields.map(id => {
+        const el = document.getElementById(id);
+        return [id, el ? el.value : ''];
+    }));
 }
 
 function getModalState() {
-    const fields = ['leadName', 'leadPhone', 'leadInstagram', 'leadSource', 'leadEventDate', 'leadChildrenCount', 'leadAdultsCount', 'leadCelebrants', 'leadNotes', 'leadAssignedTo', 'leadPipelineStage', 'leadLeadType'];
-    return fields.map(id => {
-        const el = document.getElementById(id);
-        return el ? el.value : '';
-    }).join('|');
+    return JSON.stringify(getLeadEditorValues());
 }
 
 function isModalDirty() {
@@ -4778,28 +5078,44 @@ function isModalDirty() {
 
 async function closeLeadModal(force = false) {
     const modal = document.getElementById('leadModal');
-    if (window.UnsafeDismissGuard && modal) {
-        return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, () => {
-            modal.classList.remove('active');
-            resetLeadCreateHandoffState();
-            modalInitialState = getModalState();
-        }, {
+    if (!force && leadSaveInFlight) {
+        if (typeof showNotification === 'function') showNotification('Дочекайтеся завершення збереження.', 'info');
+        return false;
+    }
+    const session = leadEditorSession;
+    const form = document.getElementById('leadEditorForm');
+    const closeNow = () => {
+        leadEditorRequestSeq += 1;
+        leadEditorSession = null;
+        setLeadEditorSaving(false);
+        parkLeadEditorForm();
+        modal?.classList.remove('active');
+        resetLeadCreateHandoffState();
+        modalInitialState = getModalState();
+        const host = document.getElementById('leadWorkspaceEditorHost');
+        if (host) { host.hidden = true; host.replaceChildren(); }
+        const view = document.getElementById('leadWorkspaceDataView');
+        if (view) {
+            view.hidden = false;
+            if (session?.leadId) view.querySelector('button')?.focus({ preventScroll: true });
+        }
+    };
+    if (window.UnsafeDismissGuard && form) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(form, closeNow, {
             force,
-            isDirty: isModalDirty,
+            isDirty: () => Boolean(session && !session.loading && isModalDirty()),
             message: 'Є незбережені зміни в ліді. Закрити без збереження?',
             okText: 'Закрити без збереження',
             cancelText: 'Повернутись'
         });
     }
-    syncLeadModalBusinessFields();
-    if (!force && isModalDirty()) {
+    if (!force && session && !session.loading && isModalDirty()) {
         if (typeof confirmModal === 'function') {
-            if (!await confirmModal('Є незбережені дані. Закрити?', { type: 'warning', okText: 'Закрити' })) return;
-        }
+            if (!await confirmModal('Є незбережені дані. Закрити?', { type: 'warning', okText: 'Закрити' })) return false;
+        } else return false;
     }
-    const leadModal = document.getElementById('leadModal');
-    leadModal?.classList.remove('active');
-    resetLeadCreateHandoffState();
+    closeNow();
+    return true;
 }
 
 function leadModalSourceCustomerId() {
@@ -4867,112 +5183,171 @@ function completeLeadCreateHandoff(leadId, customerId = null) {
     }
     return true;
 }
-async function saveLead() {
-    if (!guardLeadWrite('редагувати ліди')) return;
-    const editId = document.getElementById('leadEditId')?.value;
-    const name = document.getElementById('leadName')?.value.trim();
-    if (!name) { if (typeof showNotification === 'function') showNotification("Ім'я обов'язкове", 'error'); return; }
-    if (leadSaveInFlight) return;
+function collectLeadEditorPayload(session = leadEditorSession) {
+    const values = getLeadEditorValues();
+    const editing = Boolean(session?.leadId);
+    const changed = id => !editing || values[id] !== session.initialValues[id];
+    const name = values.leadName.trim();
+    if (!name) throw new Error("Ім'я обов'язкове");
+    if (!isMaysternyaLeadContext()) {
+        for (const id of ['leadChildrenCount', 'leadAdultsCount']) {
+            const value = values[id];
+            if (changed(id) && value !== '' && (!Number.isInteger(Number(value)) || Number(value) < 0 || Number(value) > 200)) {
+                throw new Error('Кількість гостей має бути цілим числом від 0 до 200');
+            }
+        }
+    }
     const leadCelebrants = isMaysternyaLeadContext() ? [] : getCelebrantsPayload('leadCelebrants');
-    const leadCelebrantsDirty = !isMaysternyaLeadContext() && isCelebrantsEditorDirty('leadCelebrants');
-    const eventDate = document.getElementById('leadEventDate')?.value || null;
+    const leadCelebrantsDirty = !isMaysternyaLeadContext() && changed('leadCelebrants');
+    const eventDate = values.leadEventDate || null;
     const guestCounts = isMaysternyaLeadContext() ? { children: 0, adults: 0 } : readLeadGuestCounts();
     const childrenCount = isMaysternyaLeadContext()
         ? null
-        : (guestCounts.children || (leadCelebrants.length ? leadCelebrants.length : null));
-    const rawNotes = stripLeadGuestSummary(document.getElementById('leadNotes')?.value.trim() || '');
-
-    const body = {
-        client_name: name,
-        phone: document.getElementById('leadPhone')?.value.trim() || null,
-        instagram: document.getElementById('leadInstagram')?.value.trim() || null,
-        source: document.getElementById('leadSource')?.value || null,
-        event_date: eventDate,
-        children_count: childrenCount,
-        notes: rawNotes || null,
-        eventPreference: isMaysternyaLeadContext()
-            ? null
-            : (eventDate ? {
-                preferredDate: eventDate,
-                childrenCount: childrenCount || 0,
-                adultsCount: guestCounts.adults,
-                notes: null
-            } : null),
-        assigned_to: parseInt(document.getElementById('leadAssignedTo')?.value) || null
+        : (values.leadChildrenCount !== '' ? guestCounts.children : (leadCelebrants.length || null));
+    const rawNotes = isMaysternyaLeadContext() ? values.leadNotes.trim() : stripLeadGuestSummary(values.leadNotes);
+    const candidates = {
+        leadName: ['client_name', name],
+        leadPhone: ['phone', values.leadPhone.trim() || null],
+        leadInstagram: ['instagram', values.leadInstagram.trim() || null],
+        leadSource: ['source', values.leadSource || null],
+        leadNotes: ['notes', rawNotes || null],
+        leadAssignedTo: ['assigned_to', Number(values.leadAssignedTo) || null]
     };
-    if (!editId || leadCelebrantsDirty) body.celebrants = leadCelebrants;
+    const body = {};
+    for (const [field, [key, value]] of Object.entries(candidates)) {
+        if (changed(field)) body[key] = value;
+    }
+    const guestsChanged = !isMaysternyaLeadContext() && (changed('leadChildrenCount') || changed('leadAdultsCount'));
+    if (changed('leadEventDate') || guestsChanged) {
+        const previousPreference = parseJsonObject(session?.lead?.eventPreference || session?.lead?.event_preference);
+        const preference = leadEventPreferenceFromLead(session?.lead || {});
+        body.event_date = eventDate;
+        // The API also derives children_count from preference. Preserve the legacy
+        // value when only the date/adult count changed, including hidden Maysternya data.
+        body.children_count = editing && !changed('leadChildrenCount')
+            ? session.lead.children_count ?? null : childrenCount;
+        body.eventPreference = eventDate ? {
+            preferredDate: eventDate,
+            childrenCount: isMaysternyaLeadContext() ? preference.childrenCount : childrenCount ?? 0,
+            adultsCount: isMaysternyaLeadContext() ? preference.adultsCount : guestCounts.adults,
+            notes: previousPreference.notes ?? previousPreference.note ?? null
+        } : null;
+    }
+    if ((!editing || leadCelebrantsDirty) && !isMaysternyaLeadContext()) body.celebrants = leadCelebrants;
+    if (editing) {
+        if (changed('leadPipelineStage')) body.pipeline_stage = values.leadPipelineStage;
+        if (changed('leadLeadType')) body.lead_type = values.leadLeadType;
+    }
+    return body;
+}
 
-    if (editId) {
-        const stageEl = document.getElementById('leadPipelineStage');
-        const typeEl = document.getElementById('leadLeadType');
-        if (stageEl) body.pipeline_stage = stageEl.value;
-        if (typeEl) body.lead_type = typeEl.value;
-        const previousLead = leadsData.find(l => Number(l.id) === Number(editId));
-        const previousType = LEAD_TYPE_MAP[previousLead?.lead_type] ? previousLead.lead_type : 'quality';
-        if (body.lead_type && body.lead_type !== previousType && (leadTypeNeedsReason(body.lead_type) || body.lead_type === 'collaboration')) {
-            let patchOptions;
-            try {
-                patchOptions = await leadTypePatchOptions(editId, body.lead_type);
-            } catch (err) {
-                console.error('Prepare lead type workflow error', err);
-                if (typeof showNotification === 'function') showNotification(err.message || 'Не вдалося підготувати зміну типу ліда', 'error');
-                return;
-            }
-            if (!patchOptions) return;
+function setLeadEditorSaving(saving) {
+    const form = document.getElementById('leadEditorForm');
+    if (!form) return;
+    form.setAttribute('aria-busy', String(saving));
+    form.querySelectorAll('input, select, textarea, button').forEach(control => {
+        if (saving) {
+            control.dataset.disabledBeforeSave = String(control.disabled);
+            control.disabled = true;
+        } else if (control.dataset.disabledBeforeSave !== undefined) {
+            control.disabled = control.dataset.disabledBeforeSave === 'true';
+            delete control.dataset.disabledBeforeSave;
+        }
+    });
+    const saveBtn = document.getElementById('leadModalSave');
+    if (saveBtn) {
+        saveBtn.textContent = saving ? 'Збереження...' : 'Зберегти';
+        saveBtn.disabled = saving || isLeadBusinessReadOnly();
+        saveBtn.setAttribute('aria-disabled', String(saveBtn.disabled));
+    }
+}
+
+async function saveLead() {
+    if (!guardLeadWrite('редагувати ліди') || leadSaveInFlight) return;
+    const session = leadEditorSession;
+    if (!session || session.loading || !leadEditorIsCurrent(session)) return;
+    const editId = session.leadId;
+    const sourceCustomerId = editId ? null : leadModalSourceCustomerId();
+    // Includes reason/task prompts, not just the final HTTP request.
+    leadSaveInFlight = true;
+    try {
+        const body = collectLeadEditorPayload(session);
+        setLeadEditorSaving(true);
+        if (editId && body.lead_type && (leadTypeNeedsReason(body.lead_type) || body.lead_type === 'collaboration')) {
+            const patchOptions = await leadTypePatchOptions(editId, body.lead_type);
+            if (!patchOptions || !leadEditorIsCurrent(session)) return;
             if (patchOptions.lostReason !== undefined) body.lost_reason = patchOptions.lostReason;
             if (patchOptions.collaborationTaskPayload) {
-                const committed = await persistLeadType(editId, body.lead_type, { reload: false, ...patchOptions });
-                if (!committed) return;
+                const workflow = await createCollaborationLeadTask(editId, patchOptions.collaborationTaskPayload);
+                if (!leadEditorIsCurrent(session)) return;
+                // The existing workflow commits task + type separately. Remember its
+                // success so retrying a failed contact save does not create another task.
+                session.lead.lead_type = 'collaboration';
+                session.committedWorkflow = true;
+                session.initialValues.leadLeadType = 'collaboration';
+                const stage = workflow.lead?.pipeline_stage || workflow.lead?.pipelineStage || 'contacted';
+                session.lead.pipeline_stage = stage;
+                session.initialValues.leadPipelineStage = stage;
+                document.getElementById('leadPipelineStage').value = stage;
+                modalInitialState = JSON.stringify(session.initialValues);
+                if (currentWorkspaceData?.lead?.id === editId) {
+                    renderLeadWorkspaceContent({
+                        ...currentWorkspaceData,
+                        lead: { ...currentWorkspaceData.lead, leadType: 'collaboration', pipelineStage: stage,
+                            status: workflow.lead?.status || currentWorkspaceData.lead.status },
+                        canonical: { ...currentWorkspaceData.canonical, stage,
+                            aggregateStatus: workflow.lead?.status || currentWorkspaceData.canonical?.aggregateStatus }
+                    });
+                }
                 delete body.lead_type;
                 delete body.pipeline_stage;
             }
+        } else if (!editId) {
+            const stagePayload = await prepareCreateStagePayload(document.getElementById('leadPipelineStage')?.value || 'new');
+            if (!stagePayload || !leadEditorIsCurrent(session)) return;
+            Object.assign(body, stagePayload);
+            if (sourceCustomerId) body.customerId = sourceCustomerId;
         }
-    } else {
-        const stagePayload = await prepareCreateStagePayload(document.getElementById('leadPipelineStage')?.value || 'new');
-        if (!stagePayload) return;
-        Object.assign(body, stagePayload);
-    }
-
-    const saveBtn = document.getElementById('leadModalSave');
-    const sourceCustomerId = editId ? null : leadModalSourceCustomerId();
-    if (!editId && sourceCustomerId) body.customerId = sourceCustomerId;
-    try {
-        leadSaveInFlight = true;
-        if (saveBtn) {
-            saveBtn.disabled = true;
-            saveBtn.textContent = 'Збереження...';
+        if (!leadEditorIsCurrent(session)) return;
+        let data = { success: true };
+        if (!editId || Object.keys(body).length) {
+            const res = await apiFetch(editId ? `/api/leads/${editId}` : '/api/leads', {
+                method: editId ? 'PATCH' : 'POST', body: JSON.stringify(leadPayload(body))
+            });
+            if (!res) throw new Error('Не вдалося зберегти лід. Введені дані залишено у формі.');
+            data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Помилка збереження');
         }
-        let res;
-        if (editId) {
-            res = await apiFetch(`/api/leads/${editId}`, { method: 'PATCH', body: JSON.stringify(leadPayload(body)) });
-        } else {
-            res = await apiFetch('/api/leads', { method: 'POST', body: JSON.stringify(leadPayload(body)) });
-        }
-        const data = await res.json();
-        if (!data.success) { if (typeof showNotification === 'function') showNotification(data.error || 'Помилка', 'error'); return; }
+        if (!leadEditorIsCurrent(session)) return;
         const savedLeadId = editId || data.lead?.id;
         let linkedCustomerResult = null;
         const responseCustomerId = positiveLeadQueryId(data.customer?.id);
         if (!editId && sourceCustomerId && savedLeadId && responseCustomerId !== sourceCustomerId) {
             linkedCustomerResult = await linkSavedLeadToFallbackCustomer(savedLeadId, sourceCustomerId);
         }
+        if (!leadEditorIsCurrent(session)) return;
         if (!editId && savedLeadId) {
             completeLeadCreateHandoff(savedLeadId, linkedCustomerResult?.customerId || responseCustomerId || sourceCustomerId || null);
         }
-        closeLeadModal(true);
-        await loadLeads();
-        if (editId && workspaceLeadId === parseInt(editId, 10)) {
-            openLeadWorkspace(parseInt(editId, 10), { pushState: false });
+        setLeadEditorSaving(false);
+        await closeLeadModal(true);
+        await loadLeads({ preservePosition: true });
+        if (editId && workspaceLeadId === editId && session.businessContext === leadBusinessContext() && !leadEditorSession) {
+            await openLeadWorkspace(editId, { pushState: false });
         }
     } catch (err) {
-        console.error('Save lead error', err);
-        if (typeof showNotification === 'function') showNotification('Помилка збереження', 'error');
+        if (leadEditorIsCurrent(session) && typeof showNotification === 'function') {
+            const message = err.name === 'TypeError'
+                ? 'Не вдалося з’єднатися із сервером. Введені дані залишилися у формі.'
+                : err.message || 'Помилка збереження';
+            showNotification(session.committedWorkflow ? `Співпрацю й задачу вже збережено. Інші зміни залишилися у формі: ${message}` : message, 'error');
+        }
     } finally {
         leadSaveInFlight = false;
-        if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Зберегти';
-        }
+        if (!leadEditorSession || leadEditorIsCurrent(session)) setLeadEditorSaving(false);
+        // A newer draft can open while the saved lead's list refresh is pending.
+        // Reconcile its action availability without resetting its fields.
+        else syncLeadReadOnlyUi();
     }
 }
 
@@ -5059,24 +5434,41 @@ async function ensureLeadCustomerForBooking(leadId, seedLead = null) {
 }
 
 async function openLeadCustomerCard(leadId, seedLead = null) {
+    const requestSeq = workspaceRequestSeq;
     const workspace = await loadLeadWorkspaceForConversion(leadId);
     const lead = workspace?.lead || seedLead || leadsData.find(l => l.id === leadId) || {};
+    if (requestSeq !== workspaceRequestSeq) return false;
     if (workspace?.customer?.id) {
         window.location.href = leadCrmContextHref('/customers', { open: workspace.customer.id }, leadContextFromRecord(lead));
         return true;
     }
+    await openLeadDetails(leadId);
+    if (typeof showNotification === 'function') showNotification('Клієнта ще не прив’язано. Оберіть «Прив’язати клієнта» або «Створити клієнта».', 'info');
+    return false;
+}
+
+async function createLeadCustomerCard(leadId) {
+    const id = Number(leadId);
+    if (!Number.isInteger(id) || id <= 0 || leadCustomerCreationPending.has(id)) return false;
     if (!guardLeadWrite('створити картку клієнта для ліда')) return false;
+    leadCustomerCreationPending.add(id);
+    const requestSeq = workspaceRequestSeq;
     try {
-        const ensured = await ensureLeadCustomerForBooking(leadId, lead);
+        const lead = currentWorkspaceData?.lead?.id === id ? currentWorkspaceData.lead : null;
+        const ensured = await ensureLeadCustomerForBooking(id, lead);
         if (!ensured?.customer?.id) throw new Error('Customer was not returned');
-        window.location.href = leadCrmContextHref('/customers', { open: ensured.customer.id }, leadContextFromRecord(ensured.lead || lead));
+        if (requestSeq === workspaceRequestSeq && workspaceLeadId === id) {
+            await openLeadWorkspace(id, { pushState: false });
+        }
         return true;
     } catch (err) {
-        console.error('Open lead customer card error', err);
+        console.error('Create lead customer card error', err);
         if (typeof showNotification === 'function') {
-            showNotification(err.message || 'Не вдалося відкрити картку клієнта', 'error');
+            showNotification(err.message || 'Не вдалося створити клієнта', 'error');
         }
         return false;
+    } finally {
+        leadCustomerCreationPending.delete(id);
     }
 }
 
@@ -5968,12 +6360,15 @@ function escapeHtml(str) {
 }
 
 window.openLeadWorkspace = openLeadWorkspace;
+window.openLeadDetails = openLeadDetails;
+window.setLeadWorkspaceTab = setLeadWorkspaceTab;
 window.closeLeadWorkspace = closeLeadWorkspace;
 window.createLeadWorkspaceCallbackTask = createLeadWorkspaceCallbackTask;
 window.createLeadWorkspaceFollowUpTask = createLeadWorkspaceFollowUpTask;
 window.completeLeadWorkspaceTask = completeLeadWorkspaceTask;
 window.confirmLeadWorkspaceBooking = confirmLeadWorkspaceBooking;
 window.openLeadCustomerCard = openLeadCustomerCard;
+window.createLeadCustomerCard = createLeadCustomerCard;
 window.openLeadConversationLinkDialog = openLeadConversationLinkDialog;
 window.makeLeadConversationPrimary = makeLeadConversationPrimary;
 window.linkWorkspaceLeadCustomer = linkWorkspaceLeadCustomer;

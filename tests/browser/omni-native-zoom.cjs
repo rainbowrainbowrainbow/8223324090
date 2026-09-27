@@ -63,22 +63,41 @@ exports.launch = async chromium => {
             await more.click();
             await page.locator('#omniChatMore[open]').waitFor();
           }
-          const actionAccess = await page.evaluate(() => {
-            const viewport = { width: innerWidth, height: innerHeight };
-            const ids = ['omniCreateLead', 'omniToggleAI', 'omniCloseConv'];
-            const inspect = id => {
-              const node = document.getElementById(id);
-              const rect = node?.getBoundingClientRect();
-              const visible = Boolean(node?.offsetParent && rect && rect.width > 0 && rect.height > 0);
-              const inside = Boolean(visible && rect.left >= -1 && rect.right <= viewport.width + 1 && rect.top >= -1 && rect.bottom <= viewport.height + 1);
+          let menuBounds = null;
+          if (compactActions) {
+            menuBounds = await page.locator('.omni-chat-more-menu').evaluate(node => {
+              const rect = node.getBoundingClientRect();
+              const chat = node.closest('.omni-chat').getBoundingClientRect();
+              return {
+                inside: rect.left >= Math.max(0, chat.left) - 1 && rect.right <= Math.min(innerWidth, chat.right) + 1
+                  && rect.top >= Math.max(0, chat.top) - 1 && rect.bottom <= Math.min(innerHeight, chat.bottom) + 1,
+                rect: rect.toJSON()
+              };
+            });
+            assert.ok(menuBounds.inside, `native zoom clipped the additional-actions menu: ${JSON.stringify(menuBounds)}`);
+          }
+          const actionAccess = [];
+          for (const id of ['omniCreateLead', 'omniToggleAI', 'omniCloseConv']) {
+            const action = page.locator(`#${id}`);
+            // A short viewport keeps the menu scrollable; each action must remain reachable.
+            await action.scrollIntoViewIfNeeded();
+            const access = await action.evaluate(node => {
+              const rect = node.getBoundingClientRect();
+              const visible = Boolean(node.offsetParent && rect.width > 0 && rect.height > 0);
+              const inside = Boolean(visible && rect.left >= -1 && rect.right <= innerWidth + 1 && rect.top >= -1 && rect.bottom <= innerHeight + 1);
               const hit = visible ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
-              return { id, visible, inside, hit: Boolean(hit && (hit === node || node.contains(hit))), rect: rect?.toJSON() || null };
-            };
-            return ids.map(inspect);
-          });
+              return { id: node.id, visible, inside, hit: Boolean(hit && (hit === node || node.contains(hit))), rect: rect.toJSON() };
+            });
+            actionAccess.push(access);
+            await action.click({ trial: true });
+          }
           assert.ok(actionAccess.every(action => action.visible && action.inside && action.hit),
             `native zoom hid a conversation action: ${JSON.stringify(actionAccess)}`);
+          let menuScreenshot = null;
           if (compactActions) {
+            menuScreenshot = `native-zoom-menu-${width}-${zoom*100}.png`;
+            const menuCapture = await cdp.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+            fs.writeFileSync(path.join(artifacts,menuScreenshot), Buffer.from(menuCapture.data,'base64'));
             await page.keyboard.press('Escape');
             await page.locator('#omniChatMore:not([open])').waitFor();
           }
@@ -87,7 +106,7 @@ exports.launch = async chromium => {
           // pixels. CDP captures the complete physical browser viewport.
           const capture = await cdp.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
           fs.writeFileSync(path.join(artifacts,screenshot), Buffer.from(capture.data,'base64'));
-          results.push({screen:[width,height],zoom:actual,screenshot,actionMode:compactActions?'menu':'direct',summary:summaryAccess,actions:actionAccess,...metrics});
+          results.push({screen:[width,height],zoom:actual,screenshot,menuScreenshot,menuBounds,actionMode:compactActions?'menu':'direct',summary:summaryAccess,actions:actionAccess,...metrics});
         }
       }
       await worker.evaluate(({ id }) => chrome.tabs.setZoom(id, 2), { id: tab.id });

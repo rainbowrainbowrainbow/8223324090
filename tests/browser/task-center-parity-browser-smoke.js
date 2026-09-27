@@ -134,7 +134,7 @@ const TASK = {
     observers: [],
     dependencies: [],
     sourceType: 'lead',
-    sourceId: 'LEAD-QA-42',
+    sourceId: '42',
     drawer: {
         contract: 'task_drawer_v1',
         actions: DRAWER_ACTIONS,
@@ -142,10 +142,10 @@ const TASK = {
         source: {
             type: 'lead',
             label: 'Lead',
-            id: 'LEAD-QA-42',
+            id: '42',
             module: 'sales',
             surface: 'task_center_smoke',
-            href: '/sales-funnel?open=LEAD-QA-42'
+            href: '/sales-funnel?lead=42&businessContext=event_genix'
         },
         completion: { reportRequired: true, reportId: null }
     }

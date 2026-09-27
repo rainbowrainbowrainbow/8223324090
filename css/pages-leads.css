@@ -1272,3 +1272,205 @@ body.dark-mode .workspace-note-source { color: #BFDBFE; }
 
     .workspace-child-facts { grid-template-columns: 1fr; }
 }
+
+/* Lead workspace tabs stay outside the animated page container. */
+.lead-workspace[hidden],
+.lead-workspace-backdrop[hidden] { display: none; }
+.lead-workspace-header { flex-shrink: 0; }
+.lead-workspace-tabs {
+    display: flex;
+    flex-shrink: 0;
+    gap: 4px;
+    padding: 8px 16px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--gray-300);
+    background: var(--white);
+    scrollbar-width: thin;
+}
+.lead-workspace-tab {
+    flex: 1 0 auto;
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--gray-600);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.lead-workspace-tab:hover { background: var(--gray-100); }
+.lead-workspace-tab[aria-selected="true"] {
+    background: #DBEAFE;
+    border-color: #93C5FD;
+    color: #1D4ED8;
+}
+.lead-workspace-tab:focus-visible {
+    outline: 2px solid var(--info);
+    outline-offset: -2px;
+}
+body.dark-mode .lead-workspace-tabs {
+    background: var(--surface);
+    border-color: var(--border);
+}
+body.dark-mode .lead-workspace-tab[aria-selected="true"] {
+    background: rgba(59,130,246,0.18);
+    border-color: rgba(147,197,253,0.45);
+    color: #BFDBFE;
+}
+body.dark-mode .lead-workspace-tab:focus-visible { outline-color: #93C5FD; }
+.lead-workspace-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.lead-workspace-body > * { flex-shrink: 0; }
+.lead-workspace .workspace-hero { overflow: visible; }
+.lead-workspace-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+.lead-workspace-panel[hidden],
+#leadWorkspace [id^="leadWorkspacePanel-"][hidden] { display: none; }
+.workspace-lead-data-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+.workspace-section-heading-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.lead-workspace .workspace-section-heading-actions h3 { margin: 0; }
+
+@media (max-width: 768px) {
+    .lead-workspace-tabs { padding: 6px 12px; }
+    .lead-workspace-tab { padding: 10px 12px; }
+    .workspace-lead-data-grid { grid-template-columns: 1fr; }
+}
+
+/* One editor keeps the same controls in the create dialog and the lead workspace. */
+.lead-editor-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+.lead-editor-section {
+    min-width: 0;
+    margin: 0;
+    padding: 14px;
+    border: 1px solid var(--gray-300);
+    border-radius: 10px;
+    background-color: var(--white);
+}
+.lead-editor-section > legend {
+    max-width: 100%;
+    padding: 0 6px;
+    color: var(--gray-800);
+    font-size: 14px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+.lead-editor-form .form-group { margin-bottom: 12px; min-width: 0; }
+.lead-editor-section > .form-group:last-child,
+.lead-editor-section > .form-row:last-child .form-group { margin-bottom: 0; }
+.lead-editor-form label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+}
+.lead-editor-form input,
+.lead-editor-form select,
+.lead-editor-form textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1.5px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    background-color: var(--white);
+    color: var(--gray-800);
+    font: 16px var(--font-main);
+}
+/* Keep the shared two-part arrow geometry across dialog/workspace theme rules. */
+#leadEditorForm select {
+    padding-right: 44px;
+    appearance: none;
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--gray-500) 50%),
+        linear-gradient(135deg, var(--gray-500) 50%, transparent 50%);
+    background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+}
+.lead-editor-form textarea { min-height: 60px; resize: vertical; }
+.lead-editor-form input:focus,
+.lead-editor-form select:focus,
+.lead-editor-form textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: var(--shadow-focus-primary);
+}
+.lead-editor-form button:focus-visible {
+    outline: 2px solid var(--info);
+    outline-offset: 2px;
+}
+.lead-editor-form [hidden] { display: none; }
+.lead-editor-form .form-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 12px;
+}
+#leadEditorForm .lead-date-row { grid-template-columns: 1fr; }
+.lead-editor-form .lead-celebrant-field label { font-size: 10px; }
+.lead-editor-form .lead-celebrants-add { min-height: 44px; }
+.lead-editor-form .lead-editor-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    display: flex;
+    flex: 0 0 auto;
+    justify-content: flex-end;
+    gap: 10px;
+    margin: 0;
+    padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--gray-300);
+    background-color: var(--white);
+}
+.lead-editor-actions button { min-height: 44px; }
+.lead-editor-actions .btn-save { background: var(--primary-700); color: #FFFFFF; }
+.lead-editor-actions .btn-save:hover { background: var(--primary-700); filter: brightness(.95); }
+.lead-editor-actions button:disabled { opacity: .6; cursor: wait; }
+body.dark-mode .lead-editor-section,
+body.dark-mode .lead-editor-actions { background: var(--surface); border-color: var(--border); }
+body.dark-mode .lead-editor-form input,
+body.dark-mode .lead-editor-form select,
+body.dark-mode .lead-editor-form textarea { background-color: var(--gray-100); border-color: var(--gray-300); }
+body.dark-mode .lead-editor-form button:focus-visible { outline-color: #93C5FD; }
+
+@media (max-width: 768px) {
+    .lead-editor-section { padding: 12px; }
+    .lead-editor-form .form-row { grid-template-columns: 1fr; }
+    .lead-editor-actions button { flex: 1 1 0; min-width: 0; }
+}

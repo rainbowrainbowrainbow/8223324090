@@ -82,6 +82,13 @@ only a compatibility fallback when no canonical lead is linked.
 
 ## Workspace UI contract
 
+The unified card's entry points, tab/URL behavior, field preservation matrix,
+and view-versus-write boundaries are defined in
+[Lead workspace UI contract](LEAD_WORKSPACE_UI_CONTRACT.md). The `Комунікації`
+action opens its in-card communications tab; the channel-specific action opens
+Omni. These actions share the existing resolver contract below and do not create
+another conversation-selection policy.
+
 The lead workspace renders only `confirmedLinks` as linked conversations. Its
 main action uses the resolver result and an explicit `conversation` URL
 parameter, so it is named after the actual channel (`Відкрити Instagram`, for

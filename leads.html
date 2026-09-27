@@ -238,14 +238,6 @@
         }
         .lead-workspace-close:hover,
         .lead-workspace-close:focus-visible { border-color: #2563EB; outline: none; }
-        .lead-workspace-body {
-            min-height: 0;
-            overflow-y: auto;
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
         .workspace-hero,
         .workspace-section {
             background: #FFFFFF;
@@ -891,20 +883,27 @@
             <div id="mailingView" style="display:none;"></div>
         </div>
 
-        <div class="lead-workspace-backdrop" id="leadWorkspaceBackdrop" hidden></div>
-        <aside class="lead-workspace entity-card-shell entity-card-lead-workspace" id="leadWorkspace" data-entity-card-mode="lead" aria-hidden="true" aria-labelledby="leadWorkspaceTitle" tabindex="-1" hidden>
-            <div class="lead-workspace-header">
-                <div class="lead-workspace-title-wrap">
-                    <h2 class="lead-workspace-title" id="leadWorkspaceTitle">Робочий простір ліда</h2>
-                    <div class="lead-workspace-subtitle" id="leadWorkspaceSubtitle">Єдиний контекст кейсу менеджера</div>
-                </div>
-                <button type="button" class="lead-workspace-close" id="leadWorkspaceClose" aria-label="Закрити робочий простір">&times;</button>
-            </div>
-            <div class="lead-workspace-body" id="leadWorkspaceBody">
-                <div class="workspace-loading">Завантаження кейсу...</div>
-            </div>
-        </aside>
     </main>
+
+    <div class="lead-workspace-backdrop" id="leadWorkspaceBackdrop" hidden></div>
+    <aside class="lead-workspace entity-card-shell entity-card-lead-workspace" id="leadWorkspace" data-entity-card-mode="lead" aria-hidden="true" aria-labelledby="leadWorkspaceTitle" tabindex="-1" hidden>
+        <div class="lead-workspace-header">
+            <div class="lead-workspace-title-wrap">
+                <h2 class="lead-workspace-title" id="leadWorkspaceTitle">Робочий простір ліда</h2>
+                <div class="lead-workspace-subtitle" id="leadWorkspaceSubtitle">Єдиний контекст кейсу менеджера</div>
+            </div>
+            <button type="button" class="lead-workspace-close" id="leadWorkspaceClose" aria-label="Закрити робочий простір">&times;</button>
+        </div>
+        <div class="lead-workspace-tabs" id="leadWorkspaceTabs" role="tablist" aria-label="Розділи ліда">
+            <button type="button" class="lead-workspace-tab" id="leadWorkspaceTab-overview" role="tab" data-workspace-tab="overview" aria-controls="leadWorkspacePanel-overview" aria-selected="true" tabindex="0">Огляд</button>
+            <button type="button" class="lead-workspace-tab" id="leadWorkspaceTab-details" role="tab" data-workspace-tab="details" aria-controls="leadWorkspacePanel-details" aria-selected="false" tabindex="-1">Дані ліда</button>
+            <button type="button" class="lead-workspace-tab" id="leadWorkspaceTab-communications" role="tab" data-workspace-tab="communications" aria-controls="leadWorkspacePanel-communications" aria-selected="false" tabindex="-1">Комунікації</button>
+            <button type="button" class="lead-workspace-tab" id="leadWorkspaceTab-history" role="tab" data-workspace-tab="history" aria-controls="leadWorkspacePanel-history" aria-selected="false" tabindex="-1">Історія</button>
+        </div>
+        <div class="lead-workspace-body" id="leadWorkspaceBody">
+            <div class="workspace-loading">Завантаження кейсу...</div>
+        </div>
+    </aside>
 
     <!-- Lead Workflow Info Modal -->
     <div class="lead-modal-overlay" id="leadWorkflowInfoModal" role="dialog" aria-modal="true" aria-labelledby="leadWorkflowInfoTitle">
@@ -995,133 +994,148 @@
         </div>
     </div>
 
-    <!-- Add/Edit Lead Modal -->
-    <div class="lead-modal-overlay" id="leadModal" role="dialog" aria-modal="true">
+    <!-- Create Lead Modal: the shared editor moves into the workspace for existing leads. -->
+    <div class="lead-modal-overlay" id="leadModal" role="dialog" aria-modal="true" aria-labelledby="leadModalTitle">
         <div class="lead-modal">
             <h2 id="leadModalTitle">Новий лід</h2>
-            <input type="hidden" id="leadEditId">
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Ім'я *</label>
-                    <input type="text" id="leadName" placeholder="Ім'я клієнта">
-                </div>
-                <div class="form-group">
-                    <label>Телефон</label>
-                    <input type="tel" id="leadPhone" placeholder="+380..." inputmode="tel">
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Instagram</label>
-                    <input type="text" id="leadInstagram" placeholder="@username">
-                </div>
-                <div class="form-group">
-                    <label>Джерело</label>
-                    <select id="leadSource">
-                        <option value="">— не вказано —</option>
-                        <option value="telegram">🔵 Telegram</option>
-                        <option value="facebook">🔷 Facebook</option>
-                        <option value="instagram">🟣 Instagram</option>
-                        <option value="viber">🟢 Viber</option>
-                        <option value="tiktok">⚫ TikTok</option>
-                        <option value="turbo">🟠 Turbo</option>
-                        <option value="bnderoga">🟡 BnD</option>
-                        <option value="google">🔍 Google</option>
-                        <option value="recommendation">🤝 Рекомендація</option>
-                        <option value="site">🌐 Сайт</option>
-                        <option value="maysternya_site">🌐 Сайт Майстерні</option>
-                        <option value="maysternya_bot">🤖 Бот-хуки Майстерні</option>
-                        <option value="phone">📞 Телефон</option>
-                        <option value="walk-in">🚶 Прийшли</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-row lead-date-row">
-                <div class="form-group">
-                    <label>Бажана дата</label>
-                    <input type="date" id="leadEventDate" aria-controls="leadEventDetails">
-                </div>
-            </div>
-            <div class="lead-event-details" id="leadEventDetails" hidden>
-                <div class="lead-event-details-head">
-                    <span id="leadEventDetailsTitle">Деталі бажаної дати</span>
-                    <span class="lead-event-total" id="leadGuestsTotal">Разом гостей: 0</span>
-                </div>
-                <table class="lead-event-guests-table" aria-labelledby="leadEventDetailsTitle">
-                    <thead>
-                        <tr>
-                            <th scope="col">Категорія</th>
-                            <th scope="col">Кількість</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <th scope="row"><label for="leadChildrenCount">Діти</label></th>
-                            <td><input type="number" id="leadChildrenCount" min="0" max="200" inputmode="numeric" placeholder="0"></td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><label for="leadAdultsCount">Дорослі</label></th>
-                            <td><input type="number" id="leadAdultsCount" min="0" max="200" inputmode="numeric" placeholder="0"></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="form-group">
-                <label>Іменинники / діти</label>
-                <textarea id="leadCelebrants" hidden aria-hidden="true"></textarea>
-                <div class="lead-celebrants-editor" data-celebrants-editor="leadCelebrants">
-                    <div class="lead-celebrants-list" id="leadCelebrantsRows"></div>
-                    <div class="lead-celebrants-footer">
-                        <button type="button" class="lead-celebrants-add" data-celebrants-action="add" data-target="leadCelebrants">+ Дитина</button>
-                        <span class="lead-celebrants-preview" id="leadCelebrantsPreview">0 дітей буде збережено</span>
+            <div id="leadCreateEditorHost">
+                <div class="lead-editor-form" id="leadEditorForm">
+                    <input type="hidden" id="leadEditId">
+                    <fieldset class="lead-editor-section">
+                        <legend>Контакти</legend>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="leadName">Ім'я *</label>
+                                <input type="text" id="leadName" placeholder="Ім'я клієнта">
+                            </div>
+                            <div class="form-group">
+                                <label for="leadPhone">Телефон</label>
+                                <input type="tel" id="leadPhone" placeholder="+380..." inputmode="tel">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="leadInstagram">Instagram</label>
+                                <input type="text" id="leadInstagram" placeholder="@username">
+                            </div>
+                            <div class="form-group">
+                                <label for="leadSource">Джерело</label>
+                                <select id="leadSource">
+                                    <option value="">— не вказано —</option>
+                                    <option value="telegram">🔵 Telegram</option>
+                                    <option value="facebook">🔷 Facebook</option>
+                                    <option value="instagram">🟣 Instagram</option>
+                                    <option value="viber">🟢 Viber</option>
+                                    <option value="tiktok">⚫ TikTok</option>
+                                    <option value="turbo">🟠 Turbo</option>
+                                    <option value="bnderoga">🟡 BnD</option>
+                                    <option value="google">🔍 Google</option>
+                                    <option value="recommendation">🤝 Рекомендація</option>
+                                    <option value="site">🌐 Сайт</option>
+                                    <option value="maysternya_site">🌐 Сайт Майстерні</option>
+                                    <option value="maysternya_bot">🤖 Бот-хуки Майстерні</option>
+                                    <option value="phone">📞 Телефон</option>
+                                    <option value="walk-in">🚶 Прийшли</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+                    <fieldset class="lead-editor-section">
+                        <legend id="leadEditorEventLegend">Подія та гості</legend>
+                        <div class="form-row lead-date-row">
+                            <div class="form-group">
+                                <label for="leadEventDate">Бажана дата</label>
+                                <input type="date" id="leadEventDate" aria-controls="leadEventDetails">
+                            </div>
+                        </div>
+                        <div class="lead-event-details" id="leadEventDetails" hidden>
+                            <div class="lead-event-details-head">
+                                <span id="leadEventDetailsTitle">Деталі бажаної дати</span>
+                                <span class="lead-event-total" id="leadGuestsTotal">Разом гостей: 0</span>
+                            </div>
+                            <table class="lead-event-guests-table" aria-labelledby="leadEventDetailsTitle">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Категорія</th>
+                                        <th scope="col">Кількість</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <th scope="row"><label for="leadChildrenCount">Діти</label></th>
+                                        <td><input type="number" id="leadChildrenCount" min="0" max="200" inputmode="numeric" placeholder="0"></td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row"><label for="leadAdultsCount">Дорослі</label></th>
+                                        <td><input type="number" id="leadAdultsCount" min="0" max="200" inputmode="numeric" placeholder="0"></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="form-group">
+                            <label id="leadCelebrantsLabel">Іменинники / діти</label>
+                            <textarea id="leadCelebrants" hidden aria-hidden="true"></textarea>
+                            <div class="lead-celebrants-editor" data-celebrants-editor="leadCelebrants" role="group" aria-labelledby="leadCelebrantsLabel">
+                                <div class="lead-celebrants-list" id="leadCelebrantsRows"></div>
+                                <div class="lead-celebrants-footer">
+                                    <button type="button" class="lead-celebrants-add" data-celebrants-action="add" data-target="leadCelebrants">+ Дитина</button>
+                                    <span class="lead-celebrants-preview" id="leadCelebrantsPreview">0 дітей буде збережено</span>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                    <fieldset class="lead-editor-section">
+                        <legend>Відповідальний, етап і тип</legend>
+                        <div class="form-group">
+                            <label for="leadAssignedTo">Відповідальний</label>
+                            <select id="leadAssignedTo">
+                                <option value="">— не призначено —</option>
+                            </select>
+                        </div>
+                        <!-- Pipeline stage and lead type use separate containers: create flow may show/lock only stage. -->
+                        <div class="form-row">
+                            <div class="form-group" id="leadStageGroup">
+                                <label for="leadPipelineStage">Етап воронки</label>
+                                <select id="leadPipelineStage" aria-describedby="leadStageHint">
+                                    <option value="new">🔵 Новий лід</option>
+                                    <option value="contacted">📞 Контакт</option>
+                                    <option value="info_sent">📋 Надання інфо</option>
+                                    <option value="deal">🤝 Угода</option>
+                                    <option value="deposit_received">💰 Завдаток</option>
+                                    <option value="waiting">⏳ В очікуванні</option>
+                                    <option value="completed">✅ Проведено</option>
+                                    <option value="closed">💚 Закрито</option>
+                                    <option value="lost">❌ Провалено</option>
+                                </select>
+                                <p class="lead-stage-hint" id="leadStageHint" hidden></p>
+                            </div>
+                            <div class="form-group" id="leadTypeGroup">
+                                <label for="leadLeadType">Тип ліда</label>
+                                <select id="leadLeadType">
+                                    <option value="quality">🟢 Якісний</option>
+                                    <option value="spam">🔴 Спам</option>
+                                    <option value="collaboration">🤝 Співпраця</option>
+                                    <option value="informational">📩 Інформаційний</option>
+                                    <option value="low_quality">⬇️ Неякісний</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+                    <fieldset class="lead-editor-section">
+                        <legend id="leadEditorNotesLegend">Нотатки</legend>
+                        <div class="form-group">
+                            <label for="leadNotes">Нотатки</label>
+                            <textarea id="leadNotes" rows="2" placeholder="Додаткова інформація..."></textarea>
+                        </div>
+                    </fieldset>
+                    <div class="modal-btns lead-editor-actions">
+                        <button type="button" class="btn-cancel" id="leadModalCancel">Скасувати</button>
+                        <button type="button" class="btn-save" id="leadModalSave">Зберегти</button>
                     </div>
                 </div>
             </div>
-            <!-- Pipeline stage and lead type use separate containers: create flow may show/lock only stage. -->
-            <div class="form-row">
-                <div class="form-group" id="leadStageGroup">
-                    <label for="leadPipelineStage">Етап воронки</label>
-                    <select id="leadPipelineStage" aria-describedby="leadStageHint">
-                        <option value="new">🔵 Новий лід</option>
-                        <option value="contacted">📞 Контакт</option>
-                        <option value="info_sent">📋 Надання інфо</option>
-                        <option value="deal">🤝 Угода</option>
-                        <option value="deposit_received">💰 Завдаток</option>
-                        <option value="waiting">⏳ В очікуванні</option>
-                        <option value="completed">✅ Проведено</option>
-                        <option value="closed">💚 Закрито</option>
-                        <option value="lost">❌ Провалено</option>
-                    </select>
-                    <p class="lead-stage-hint" id="leadStageHint" hidden></p>
-                </div>
-                <div class="form-group" id="leadTypeGroup">
-                    <label for="leadLeadType">Тип ліда</label>
-                    <select id="leadLeadType">
-                        <option value="quality">🟢 Якісний</option>
-                        <option value="spam">🔴 Спам</option>
-                        <option value="collaboration">🤝 Співпраця</option>
-                        <option value="informational">📩 Інформаційний</option>
-                        <option value="low_quality">⬇️ Неякісний</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Нотатки</label>
-                <textarea id="leadNotes" rows="2" placeholder="Додаткова інформація..."></textarea>
-            </div>
-            <div class="form-group">
-                <label>Відповідальний</label>
-                <select id="leadAssignedTo">
-                    <option value="">— не призначено —</option>
-                </select>
-            </div>
-            <div class="modal-btns" role="dialog" aria-modal="true">
-                <button type="button" class="btn-cancel" id="leadModalCancel">Скасувати</button>
-                <button type="button" class="btn-save" id="leadModalSave">Зберегти</button>
-            </div>
         </div>
     </div>
-
     <!-- Quality Category Modal -->
     <div class="lead-modal-overlay" id="qualityCategoryModal" role="dialog" aria-modal="true">
         <div class="lead-modal">

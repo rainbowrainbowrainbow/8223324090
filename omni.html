@@ -4348,7 +4348,8 @@
         }
 
         function leadUrl(leadId) {
-            return '/sales-funnel?lead=' + encodeURIComponent(leadId);
+            return '/sales-funnel?lead=' + encodeURIComponent(leadId)
+                + '&businessContext=' + encodeURIComponent(getOmniBusinessContext());
         }
 
         function openLeadUrl(leadId) {

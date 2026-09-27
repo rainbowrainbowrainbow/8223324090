@@ -338,6 +338,8 @@ async function testPrimaryFlow(page, artifacts) {
   assert.equal(await page.evaluate(() => document.activeElement?.dataset.id), '9001', 'conversation row did not regain focus');
   await page.locator('.omni-conv-item[data-id="9001"]').click();
   assert.equal(await page.locator('#omniInput').inputValue(), LONG_DRAFT);
+  // Reopening restores the draft immediately, but history still awaits its request.
+  await page.locator('#omniMessages .omni-msg:last-child').waitFor({ state: 'visible' });
 
   await page.setViewportSize({ width: 1024, height: 600 });
   await waitForLayout(page);

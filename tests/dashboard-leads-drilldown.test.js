@@ -58,14 +58,20 @@ function harness(url) {
   context.leadTypeForCurrentQueue=()=> 'quality';context.leadQueueFromLeadType=()=> 'active';
   context.shouldLoadLeadCustomerFallback=()=>false;context.todayKyiv=()=> '2026-09-14';
   context.loadLeadQueueStats=async()=>({});
-  context.apiFetch=async url=>{calls.push(String(url));return {ok:true,json:async()=>({success:true,leads:[{id:91}],pagination:{total:2,limit:1,offset:0,nextOffset:1,hasMore:true}})};};
+  context.apiFetch=async url=>{
+    calls.push(String(url));
+    const query=new URL(url,'https://crm.test').searchParams;
+    const offset=Number(query.get('offset')||0),limit=Number(query.get('limit')||100),total=101;
+    const leads=Array.from({length:Math.min(limit,total-offset)},(_,index)=>({id:91+offset+index}));
+    return {ok:true,json:async()=>({success:true,leads,pagination:{total,limit,offset,nextOffset:offset+leads.length,hasMore:offset+leads.length<total}})};
+  };
   vm.runInContext(`
     let currentView='table',currentFilter='',currentTypeFilter='',currentDateFilter='',currentPipelineStage='',currentLeadAttentionFilter='',currentLeadLifecycleFilter='',currentLeadQueue='active';
     let leadsData=[],leadStatsData=null,leadLoadSeq=0,leadCustomerSearchMatches=[],leadCustomerSearchQuery='';
     let leadPagination={total:0,hasMore:false},leadKanbanPagination={};
     const DEFAULT_LEAD_QUEUE='active',LEAD_QUEUE_FILTERS={active:{}},LEAD_VIEW_MODES=new Set(['table','kanban']);
     const PIPELINE_STAGES=[{key:'new'},{key:'completed'}],LEAD_TABLE_PAGE_SIZE=100,LEAD_KANBAN_PAGE_SIZE=100;
-    ${slice('async function loadLeads()','async function loadLeadQueueStats()')}
+    ${slice('async function loadLeads(','async function loadLeadQueueStats()')}
     ${slice('function leadListParams()','function normalizeLeadCount(')}
     ${slice('function applyLeadQueryParams()','function getLeadFilterSummary()')}
     ${slice('function resetLeadFilters()','function leadEmptyHtml()')}

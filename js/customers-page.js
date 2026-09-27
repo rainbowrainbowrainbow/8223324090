@@ -1058,7 +1058,7 @@ function customerCrmContextHref(path, params = {}, context = customerBusinessCon
 }
 
 function leadCrmLinkForCustomer(leadId) {
-    return customerCrmContextHref('/sales-funnel', { lead: leadId }, customerBusinessContext());
+    return customerCrmContextHref('/sales-funnel', { lead: leadId, businessContext: customerBusinessContext() }, customerBusinessContext());
 }
 
 const CUSTOMER_PIPELINE_STAGE_MAP = {

@@ -1,0 +1,242 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -53,7 +53,22 @@
+   omni-browser:
+     name: Omni browser regression
+     runs-on: ubuntu-latest
+-    timeout-minutes: 15
++    timeout-minutes: 30
++
++    services:
++      postgres:
++        image: postgres:16
++        env:
++          POSTGRES_USER: postgres
++          POSTGRES_PASSWORD: postgres
++          POSTGRES_DB: eventgenix_omni_links_ci_test
++        ports:
++          - 5432:5432
++        options: >-
++          --health-cmd "pg_isready -U postgres -d eventgenix_omni_links_ci_test"
++          --health-interval 10s
++          --health-timeout 5s
++          --health-retries 10
+
+     steps:
+       - name: Checkout
+@@ -82,12 +97,26 @@
+       - name: Run Omni browser regression
+         run: npm run test:browser:omni
+
++      - name: Run Omni lead links PostgreSQL integration
++        env:
++          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_omni_links_ci_test
++          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
++        run: npm run test:integration:omni-links:isolated
++
++      - name: Run Omni lead workspace actual app browser regression
++        env:
++          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_omni_links_ci_test
++          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
++        run: npm run test:browser:omni-links:isolated
++
+       - name: Upload Omni browser diagnostics
+         if: always()
+         uses: actions/upload-artifact@v7
+         with:
+           name: omni-browser-${{ github.sha }}
+-          path: output/playwright/omni-completion
++          path: |
++            output/playwright/omni-completion
++            output/playwright/omni-lead-links
+           if-no-files-found: warn
+           retention-days: 14
+
+diff --git a/scripts/production-block-policy.js b/scripts/production-block-policy.js
+--- a/scripts/production-block-policy.js
++++ b/scripts/production-block-policy.js
+@@ -19,7 +19,8 @@
+ const PROTECTED_WORKFLOWS = Object.freeze({
+     SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover',
+     CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
+-    CERTIFICATE_CI_GATE: 'certificate-ci-gate'
++    CERTIFICATE_CI_GATE: 'certificate-ci-gate',
++    LEAD_UI_CI_GATE: 'lead-ui-ci-gate'
+ });
+ const CERTIFICATE_QA_RED_PATHS = Object.freeze(['routes/auth.js', 'routes/finance.js']);
+ const CERTIFICATE_QA_MIGRATION = 'db/migrations/371_trusted_qa_certificate_lookup.sql';
+@@ -41,6 +42,41 @@
+     'tests/production-block-controller.test.js',
+     'tests/scheduler-guard-contract.test.js',
+     'tests/scheduler-notification-jobs-hardening.test.js'
++]);
++const LEAD_UI_CI_RED_PATHS = Object.freeze(['.github/workflows/ci.yml']);
++const LEAD_UI_CI_CHANGED_PATHS = Object.freeze([
++    '.github/workflows/ci.yml',
++    'css/omni-workspace.css',
++    'css/pages-leads.css',
++    'docs/CODEX_PRODUCTION_AUTONOMY.md',
++    'docs/LEAD_UI_1_HANDOFF_2026-09-27.md',
++    'docs/LEAD_UI_2_HANDOFF_2026-09-27.md',
++    'docs/LEAD_UI_3_HANDOFF_2026-09-27.md',
++    'docs/LEAD_UI_4_RELEASE_NOTES.json',
++    'docs/LEAD_UI_4_CI_PROPOSAL.patch',
++    'docs/LEAD_WORKSPACE_UI_CONTRACT.md',
++    'docs/OMNI_LEAD_CONVERSATION_LINKS.md',
++    'js/customers-page.js',
++    'js/leads-page.js',
++    'leads.html',
++    'omni.html',
++    'package.json',
++    'scripts/production-block-policy.js',
++    'services/taskDetailContract.js',
++    'tests/browser/lead-communication-selection-fixtures.js',
++    'tests/browser/lead-editor-mode-fixtures.js',
++    'tests/browser/lead-editor-navigation-fixtures.js',
++    'tests/browser/lead-unified-card-live-readonly.js',
++    'tests/browser/omni-layout.checks.cjs',
++    'tests/browser/omni-lead-links-actual-app-browser-smoke.js',
++    'tests/browser/omni-native-zoom.cjs',
++    'tests/browser/omni-workspace-navigation-fixtures.js',
++    'tests/browser/task-center-parity-browser-smoke.js',
++    'tests/dashboard-leads-drilldown.test.js',
++    'tests/lead-workspace-navigation.test.js',
++    'tests/production-block-controller.test.js',
++    'tests/task-detail-drawer.test.js',
++    'tests/ui-check.js'
+ ]);
+ const SYS_MB_PROTECTED_PATH_PATTERNS = Object.freeze([
+     /^config\/permissionRegistry\.js$/,
+@@ -182,6 +218,21 @@
+     }
+     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
+         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
++    if (workflow === PROTECTED_WORKFLOWS.LEAD_UI_CI_GATE) {
++        const changed = normalizePathList(changedPaths);
++        fail(JSON.stringify(redPaths) === JSON.stringify(LEAD_UI_CI_RED_PATHS),
++            'Lead UI CI workflow permits only its approved Red path',
++            'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
++        fail(changed.every(file => LEAD_UI_CI_CHANGED_PATHS.includes(file))
++            && !changed.some(file => file.startsWith('db/migrations/'))
++            && changed.includes('js/leads-page.js')
++            && changed.includes('leads.html')
++            && changed.includes('tests/browser/omni-lead-links-actual-app-browser-smoke.js')
++            && changed.includes('tests/browser/omni-workspace-navigation-fixtures.js'),
++        'Lead UI CI workflow is limited to the unified lead card and Omni regression release',
++        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
++        return { enabled: true, kind: workflow, protectedChangedPaths: [...LEAD_UI_CI_RED_PATHS] };
++    }
+     if (workflow === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE) {
+         const changed = normalizePathList(changedPaths);
+         fail(JSON.stringify(redPaths) === JSON.stringify(CERTIFICATE_CI_RED_PATHS),
+@@ -304,6 +355,11 @@
+     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE) {
+         fail(qaScope.enabled === false && migrations.length === 0,
+             'Certificate CI release cannot include migrations or QA records',
++            'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
++    }
++    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.LEAD_UI_CI_GATE) {
++        fail(qaScope.enabled === false && migrations.length === 0,
++            'Lead UI CI release cannot include migrations or production QA records',
+             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+     }
+     const redMigrations = migrations.filter(item => item.red);
+@@ -397,6 +453,12 @@
+             'Certificate CI release cannot include migrations or QA records',
+             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+     }
++    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.LEAD_UI_CI_GATE) {
++        fail(qaScope.enabled === false && manifest.allowedMigrationFiles.length === 0
++            && manifest.migrationClassifications.length === 0,
++            'Lead UI CI release cannot include migrations or production QA records',
++            'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
++    }
+     return manifest;
+ }
+
+diff --git a/tests/production-block-controller.test.js b/tests/production-block-controller.test.js
+--- a/tests/production-block-controller.test.js
++++ b/tests/production-block-controller.test.js
+@@ -325,6 +325,54 @@
+     } }, { changedPaths }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+ });
+
++test('lead UI CI protected workflow signs only the reviewed unified-card release', () => {
++    const changedPaths = [
++        '.github/workflows/ci.yml', 'js/leads-page.js', 'leads.html',
++        'tests/browser/omni-lead-links-actual-app-browser-smoke.js',
++        'tests/browser/omni-workspace-navigation-fixtures.js',
++        'scripts/production-block-policy.js', 'tests/production-block-controller.test.js'
++    ];
++    const options = { protectedWorkflow: 'lead-ui-ci-gate' };
++    const value = manifest(options, { changedPaths });
++    assert.deepEqual(value.allowedProtectedWorkflow, {
++        enabled: true, kind: 'lead-ui-ci-gate', protectedChangedPaths: ['.github/workflows/ci.yml']
++    });
++    assert.equal(value.realDataMutationAllowed, false);
++    assert.equal(value.settingsMutationAllowed, false);
++    assert.deepEqual(value.allowedMigrationFiles, []);
++    assert.deepEqual(value.allowedQaScope, { enabled: false });
++    assert.doesNotThrow(() => validateManifest(value));
++    assert.equal(parseOptions(['prepare', '--protected-workflow', 'lead-ui-ci-gate']).protectedWorkflow, 'lead-ui-ci-gate');
++    assert.throws(() => manifest({}, { changedPaths }),
++        error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
++    assert.throws(() => manifest({ protectedWorkflow: 'certificate-ci-gate' }, { changedPaths }),
++        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
++    for (const extra of ['.github/workflows/deploy.yml', 'middleware/auth.js', 'routes/finance.js', 'railway.json', '.env.production']) {
++        assert.throws(() => manifest(options, { changedPaths: [...changedPaths, extra] }),
++            error => error.code === 'PRODUCTION_BLOCK_RED_PATHS', extra);
++    }
++    for (const extra of ['routes/leads.js', 'services/omni-hub.js', 'scripts/production-block-controller.js', 'docs/unreviewed-release.md']) {
++        assert.throws(() => manifest(options, { changedPaths: [...changedPaths, extra] }),
++            error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID', extra);
++    }
++    assert.throws(() => manifest(options, {
++        changedPaths: changedPaths.filter(file => file !== 'tests/browser/omni-workspace-navigation-fixtures.js')
++    }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
++    const migration = { file: 'db/migrations/999_unreviewed.sql',
++        sql: '-- MIGRATION_KIND: schema\n-- SAFETY: additive\n-- ROLLBACK: leave unused\nCREATE INDEX IF NOT EXISTS test_idx ON leads (id);' };
++    assert.throws(() => manifest(options, { changedPaths, migrations: [migration] }),
++        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
++    assert.throws(() => manifest({ ...options, qaScope: {
++        enabled: true, kind: 'canary', date: '2026-09-28', ttlMinutes: 15, animators: '1', fixtureLimit: 1
++    } }, { changedPaths }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
++    const mutated = { ...value, allowedQaScope: {
++        enabled: true, kind: 'canary', date: '2026-09-28', ttlMinutes: 15, animators: '1', fixtureLimit: 1
++    } };
++    mutated.manifestHash = manifestHash(mutated);
++    assert.throws(() => validateManifest(mutated),
++        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
++});
++
+ test('protected workflow parsing is explicit and disabled by default', () => {
+     assert.equal(parseOptions(['prepare', '--protected-workflow', 'sys-mb-auth-cutover']).protectedWorkflow, 'sys-mb-auth-cutover');
+     assert.equal(parseOptions(['prepare', '--protected-workflow', 'certificate-ci-gate']).protectedWorkflow, 'certificate-ci-gate');
+diff --git a/docs/CODEX_PRODUCTION_AUTONOMY.md b/docs/CODEX_PRODUCTION_AUTONOMY.md
+--- a/docs/CODEX_PRODUCTION_AUTONOMY.md
++++ b/docs/CODEX_PRODUCTION_AUTONOMY.md
+@@ -307,5 +307,23 @@
+ The controller itself does not run a direct data-fix. If the count exceeds the
+ approved cap, stop; do not split the release into unapproved batches.
+
++The `lead-ui-ci-gate` protected workflow is reserved for the reviewed unified
++lead-card and Omni UI release. It permits exactly `.github/workflows/ci.yml` as
++a Red path, plus only the exact functional/documentation paths enumerated in
++`scripts/production-block-policy.js`. It does not authorize arbitrary workflow
++changes: the separately reviewed CI diff adds disposable PostgreSQL 16 and the
++existing Omni links DB/actual-app browser suites to the existing Omni CI job,
++with bounded timeout and fixture diagnostics. Triggers, GitHub permissions,
++secrets, hosting, and production providers stay unchanged. Separate explicit
++approval covers this exact CI/policy diff before implementation. Existing
++current-task or active bounded release authorization remains applicable while
++its named scope, branch/service, data boundaries, time and attempt limits match;
++adding this gate does not itself require repeating that authorization. The
++certificate exception is not reusable.
++No migrations, production QA records, or production backfill are allowed in this
++workflow. Production verification remains read only; lead/link mutation tests
++run against the isolated database. New files outside the exact allowlist require
++a newly reviewed scope rather than a wildcard or controller bypass.
++
+ Production GitHub auto-deploy is disabled. Deploy manually only after exact-SHA CI
+ is green.

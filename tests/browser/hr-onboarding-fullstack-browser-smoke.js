@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { Client } = require('pg');
 const { assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
 
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -266,6 +267,21 @@ function findProcess(processes, staffId, professionKey) {
     ));
 }
 
+async function readDisposableProcesses(staffId) {
+    const db = new Client({ connectionString: process.env.TEST_DATABASE_URL });
+    try {
+        await db.connect();
+        const result = await db.query(
+            `SELECT id, staff_id, profession_key, responsible_user_id, completed_items, total_items
+             FROM onboarding_progress WHERE staff_id = $1 ORDER BY id`,
+            [staffId]
+        );
+        return result.rows;
+    } finally {
+        await db.end();
+    }
+}
+
 function localDate() {
     const now = new Date();
     return [
@@ -312,7 +328,8 @@ async function run() {
         requestFailures: [],
         consoleErrors: [],
         pageErrors: [],
-        restrictedTrainingStartErrors: 0
+        restrictedTrainingStartErrors: 0,
+        restrictedOnboardingErrors: 0
     };
     page.on('response', response => {
         const url = new URL(response.url());
@@ -320,7 +337,8 @@ async function run() {
         const item = `${response.request().method()} ${url.pathname}${url.search} ${response.status()}`;
         diagnostics.apiTrace.push(item);
         const expectedAccessBoundary = response.request().method() === 'GET'
-            && ['/api/dashboard/widgets/currency', '/api/hr/staff'].includes(url.pathname)
+            && ['/api/dashboard/widgets/currency', '/api/hr/staff', '/api/hr/onboarding',
+                '/api/hr/onboarding/responsible-candidates'].includes(url.pathname)
             && response.status() === 403;
         if (response.status() >= 400 && !expectedAccessBoundary) diagnostics.apiFailures.push(item);
     });
@@ -349,6 +367,11 @@ async function run() {
         if (diagnostics.activeStep === 'Training start picker keeps restricted Park staff read visible'
             && /^Start onboarding error Error: /.test(messageText)) {
             diagnostics.restrictedTrainingStartErrors += 1;
+            return;
+        }
+        if (diagnostics.activeStep.startsWith('Training onboarding reports restricted Park read')
+            && /^Onboarding error Error: /.test(messageText)) {
+            diagnostics.restrictedOnboardingErrors += 1;
             return;
         }
         diagnostics.consoleErrors.push(messageText);
@@ -457,18 +480,18 @@ async function run() {
             return body.data;
         });
 
-        await step('open Training onboarding with two profession processes', async () => {
+        await step('Training onboarding reports restricted Park read for legacy account', async () => {
             await page.goto(`${base}/training.html`, { waitUntil: 'domcontentloaded' });
             await waitForAppShell(page, { requireCrmApiFetch: false });
             const onboardingResponsePromise = waitForApi(page, 'GET', '/api/hr/onboarding');
             await page.locator('[data-tab="onboarding"]').click();
-            await responseJson(await onboardingResponsePromise, 'load onboarding processes');
-            const group = page.locator('.training-onboarding-staff-group').filter({ hasText: primaryCandidateName });
-            await group.waitFor();
-            assert.equal(await group.locator('.training-onboarding-card').count(), 2);
-            await group.getByText('Аніматор', { exact: true }).waitFor();
-            await group.getByText('Бариста', { exact: true }).waitFor();
+            assert.equal((await onboardingResponsePromise).status(), 403);
+            await page.locator('#trainingOnboardingList .training-onboarding-empty.is-error [data-onboarding-retry]').waitFor();
+            assert.equal(await page.locator('.training-onboarding-card').count(), 0);
         });
+        const initialProcesses = await readDisposableProcesses(staffId);
+        assert.deepEqual(initialProcesses.map(row => row.profession_key).sort(), ['animator', 'barista'],
+            'two profession processes are durably independent despite restricted legacy UI');
 
         await step('Training start picker keeps restricted Park staff read visible', async () => {
             const responsePromise = waitForApi(page, 'GET', '/api/hr/staff');
@@ -478,7 +501,7 @@ async function run() {
             assert.equal(await page.locator('.form-modal-overlay:visible').count(), 0);
         });
 
-        await step('start corporate onboarding through real API and verify Training UI', async () => {
+        await step('Training onboarding reports restricted Park read after corporate start', async () => {
             const body = await api(base, '/api/hr/onboarding/start', {
                 method: 'POST', token: hrSession.token,
                 body: { staff_id: staffId, template_id: template.id, responsible_user_id: hrSession.responsibleUserId }
@@ -487,36 +510,34 @@ async function run() {
             assert.equal(body?.data?.profession_key, null);
             await page.reload({ waitUntil: 'domcontentloaded' });
             await waitForAppShell(page, { requireCrmApiFetch: false });
+            const onboardingResponsePromise = waitForApi(page, 'GET', '/api/hr/onboarding');
             await page.locator('[data-tab="onboarding"]').click();
-            const group = page.locator('.training-onboarding-staff-group').filter({ hasText: primaryCandidateName });
-            await group.getByText('Загальний корпоративний онбординг', { exact: true }).waitFor();
-            assert.equal(await group.locator('.training-onboarding-card').count(), 3);
+            assert.equal((await onboardingResponsePromise).status(), 403);
+            await page.locator('#trainingOnboardingList .training-onboarding-empty.is-error [data-onboarding-retry]').waitFor();
         });
 
-        const beforeProcesses = await api(base, `/api/hr/onboarding?staff_id=${staffId}`, { token: hrSession.token });
-        const animatorBefore = findProcess(beforeProcesses.data, staffId, 'animator');
-        const baristaBefore = findProcess(beforeProcesses.data, staffId, 'barista');
-        assert.ok(animatorBefore && baristaBefore, 'both profession processes exist before checklist update');
+        const beforeProcesses = await readDisposableProcesses(staffId);
+        const animatorBefore = findProcess(beforeProcesses, staffId, 'animator');
+        const baristaBefore = findProcess(beforeProcesses, staffId, 'barista');
+        const generalBefore = findProcess(beforeProcesses, staffId, null);
+        assert.ok(animatorBefore && baristaBefore && generalBefore, 'general and both profession processes exist');
 
-        await step('complete one barista checklist item in Training UI', async () => {
-            const group = page.locator('.training-onboarding-staff-group').filter({ hasText: primaryCandidateName });
-            const baristaCard = group.locator('.training-onboarding-card').filter({ hasText: 'Бариста' });
-            const checkbox = baristaCard.locator('[data-onboarding-check]:not(:checked)').first();
-            await checkbox.waitFor({ state: 'visible' });
-            const checklistPromise = waitForApi(page, 'PUT', `/api/hr/staff/${staffId}/profession-checklist`);
-            await checkbox.check();
-            const body = await responseJson(await checklistPromise, 'update barista profession checklist');
-            assert.equal(body?.success, true);
-            await page.waitForFunction(({ staffId }) => {
-                const input = document.querySelector(`input[data-staff-id="${staffId}"][data-profession-key="barista"]`);
-                return input?.checked === true;
-            }, { staffId });
+        await step('complete one barista checklist item through real API', async () => {
+            const professions = await api(base, '/api/hr/professions', { token: hrSession.token });
+            const barista = professions.data.find(row => row.key === 'barista');
+            const item = barista?.checklist?.[0];
+            assert.ok(item, 'barista checklist has a first item');
+            await api(base, `/api/hr/staff/${staffId}/profession-checklist`, {
+                method: 'PUT', token: hrSession.token,
+                body: { profession_key: 'barista', checklist_key: item.key || item.id || 'item_1',
+                    title: typeof item === 'string' ? item : (item.title || item.name), completed: true }
+            });
         });
 
         await step('verify animator readiness did not change', async () => {
-            const afterProcesses = await api(base, `/api/hr/onboarding?staff_id=${staffId}`, { token: hrSession.token });
-            const animatorAfter = findProcess(afterProcesses.data, staffId, 'animator');
-            const baristaAfter = findProcess(afterProcesses.data, staffId, 'barista');
+            const afterProcesses = await readDisposableProcesses(staffId);
+            const animatorAfter = findProcess(afterProcesses, staffId, 'animator');
+            const baristaAfter = findProcess(afterProcesses, staffId, 'barista');
             assert.equal(Number(animatorAfter.completed_items), Number(animatorBefore.completed_items));
             assert.ok(Number(baristaAfter.completed_items) > Number(baristaBefore.completed_items));
             assert.notEqual(Number(animatorAfter.id), Number(baristaAfter.id));
@@ -572,6 +593,7 @@ async function run() {
         assert.deepEqual(diagnostics.pageErrors, [], 'no pageerror events');
         assert.deepEqual(diagnostics.consoleErrors, [], 'no browser console errors');
         assert.equal(diagnostics.restrictedTrainingStartErrors, 1, 'Training reports its expected restricted dependency once');
+        assert.equal(diagnostics.restrictedOnboardingErrors, 2, 'Training reports each restricted onboarding read');
         assert.deepEqual(diagnostics.apiFailures, [], 'no unexpected API statuses');
         assert.deepEqual(diagnostics.requestFailures, [], 'no failed local/API requests');
         process.stdout.write('HR onboarding full-stack browser smoke passed\n');

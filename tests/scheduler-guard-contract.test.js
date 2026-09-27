@@ -265,6 +265,20 @@ describe('schedulerGuard atomic claim contract', () => {
         }
     });
 
+    it('allows an hourly expiry claim after a legacy daily success on the same Kyiv date', async () => {
+        state.rows.set('checkCertificateExpiry', normalizeRow('checkCertificateExpiry', {
+            last_run_date: '2026-06-28', result: 'success'
+        }));
+        const { guardScheduler } = loadGuard();
+        let calls = 0;
+
+        await guardScheduler('checkCertificateExpiry', async () => { calls += 1; }, { dedup: 'hourly' })();
+
+        assert.equal(calls, 1);
+        assert.equal(state.rows.get('checkCertificateExpiry').last_run_date, '2026-06-28T15');
+        assert.equal(state.rows.get('checkCertificateExpiry').result, 'success');
+    });
+
     it('runs null-dedup jobs on every completed call', async () => {
         const { guardScheduler } = loadGuard();
         let calls = 0;

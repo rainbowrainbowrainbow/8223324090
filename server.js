@@ -828,7 +828,7 @@ initializeDatabaseWithSchemaFence().catch(err => {
         schedulerIntervals.push(setInterval(guardScheduler('checkRecurringTasks', checkRecurringTasks, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkRecurringAfisha', checkRecurringAfisha, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkScheduledDeletions', checkScheduledDeletions, { dedup: 'daily' }), 60000));
-        schedulerIntervals.push(setInterval(guardScheduler('checkCertificateExpiry', checkCertificateExpiry, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkCertificateExpiry', checkCertificateExpiry, { dedup: 'hourly' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkTaskReminders', checkTaskReminders, { dedup: '5min' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkReplyAutoEscalations', checkReplyAutoEscalations, { dedup: 'hourly' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkWorkDayTriggers', checkWorkDayTriggers, { dedup: 'daily' }), 60000));

@@ -16,6 +16,9 @@ on every push and pull request with an ephemeral PostgreSQL 16 service.
   expiry and one-certificate limit, no creation event, Telegram image, print,
   booking or finance side effects, business-list exclusion, direct redemption,
   and close-run preservation/revocation.
+- Expiry scheduler: first tick after a Kyiv date change, missed old 00:10 window,
+  restart and retry after DB failure, legacy daily-success recovery, no Telegram
+  side effects, and no certificate codes in logs.
 - Actual Express booking form in a browser against a disposable PostgreSQL child database: available one-time, verification-only subscription/unknown type, used code, stale code/context responses, mobile keyboard access, and no precheck writes or booking submit.
 - Browser flow on synthetic local HTTP: scan/lookup, cancel confirmation,
   confirmed redemption, pending-submit protection, verify-only state,
@@ -43,6 +46,7 @@ $env:CERTIFICATE_TEST_DATABASE_URL = 'postgres://<local-user>:<local-password>@1
 $env:TEST_DATABASE_RESET_CONFIRM = 'RESET_DISPOSABLE_TEST_DATABASE'
 npm run test:integration:certificates:ci
 npm run test:unit:certificates-legacy
+node --test tests/scheduler-notification-jobs-hardening.test.js tests/scheduler-guard-contract.test.js
 npm run test:browser:certificates
 $env:REQUIRE_CERTIFICATE_POSTGRES_TESTS = '1'
 npm run test:browser:certificates-booking-app

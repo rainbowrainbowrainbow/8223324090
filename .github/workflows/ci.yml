@@ -303,6 +303,9 @@ jobs:
       - name: Run legacy Telegram certificate regression
         run: npm run test:unit:certificates-legacy
 
+      - name: Run certificate expiry scheduler regression
+        run: node --test tests/scheduler-notification-jobs-hardening.test.js tests/scheduler-guard-contract.test.js
+
       - name: Run certificate check browser smoke
         run: npm run test:browser:certificates
 

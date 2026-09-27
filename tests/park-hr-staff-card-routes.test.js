@@ -244,6 +244,36 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
             }
         });
 
+        await t.test('unowned checklist and workspace GETs stay closed for Park and other scopes', async () => {
+            const paths = [
+                '/api/hr/checklists/dashboard',
+                '/api/hr/professions/animator/checklist',
+                `/api/hr/professions/animator/staff/${STAFF_ID}/checklist`,
+                '/api/hr/professions/workspace/animator'
+            ];
+            for (const [actor, context] of [
+                [{ deny: ['hr.schedule.view', 'hr.payroll.view'] }, 'event_genix'],
+                [{ deny: ['hr.staff.view'] }, 'event_genix'],
+                [{}, 'dar'], [{ otherOrganization: true }, 'event_genix'],
+                [{ revoked: true }, 'event_genix']
+            ]) {
+                state.actor = actor;
+                for (const path of paths) {
+                    const count = calls.length;
+                    assert.equal((await request(path, { context })).status, 403, path);
+                    assert.equal(calls.length, count, path);
+                }
+            }
+            state.actor = {};
+            for (const path of paths) {
+                for (const suffix of ['businessScope=all', 'businessScope=multi&businessContexts=event_genix,dar']) {
+                    const count = calls.length;
+                    assert.equal((await request(`${path}?${suffix}`)).status, 403, path);
+                    assert.equal(calls.length, count, path);
+                }
+            }
+        });
+
         await t.test('unauthenticated requests stop before any query', async () => {
             state.actor = { unauthenticated: true };
             const count = calls.length;

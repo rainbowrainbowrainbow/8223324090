@@ -62,6 +62,7 @@ async function install(page, dark, { userId = 9901, reload = false, storageBlock
             qa.requests.push({ request, method: options.method || 'GET' });
             if (request === '/professions') return { success: true, data: structuredClone(qa.professions) };
             if (request.startsWith('/checklists/dashboard')) {
+                if (qa.restrictDashboard) return { success: false, status: 403, error: 'QA dashboard restricted' };
                 if (qa.count === undefined) return { success: true, data: { summary: {}, assignments: [], professionsWithoutTemplate: qa.professions.map(p => ({ professionKey: p.key, professionTitle: p.title, department: p.department, status: 'without_template' })), archived: [], orphaned: [] } };
                 const query = new URLSearchParams(request.split('?')[1]);
                 const offset = Number(query.get('offset')) || 0;
@@ -82,6 +83,12 @@ async function install(page, dark, { userId = 9901, reload = false, storageBlock
                 return { success: true, data };
             }
             if (request.startsWith('/professions/workspace/')) {
+                if (qa.restrictWorkspace) return { success: false, status: 403, error: 'QA workspace restricted' };
+                if (qa.failWorkspace) { qa.failWorkspace = false; return { success: false, status: 500, error: 'QA workspace failure' }; }
+                if (qa.holdWorkspace) {
+                    qa.holdWorkspace = false;
+                    await new Promise(resolve => { qa.releaseWorkspace = resolve; });
+                }
                 const key = request.split('/').at(-1);
                 return { success: true, data: { profession: structuredClone(qa.professions.find(p => p.key === key)), people: [], checklistTemplate: qa.template(key), checklistProgress: {} } };
             }
@@ -370,7 +377,56 @@ async function run() {
             await page.evaluate(() => { qa.releaseDashboard(); qa.releaseDashboard = null; });
             await page.waitForFunction(() => professionChecklistDashboardState.loadState === 'ready');
             record(theme, 'stale_dashboard_response_ignored', await page.evaluate(() => professionChecklistDashboardState.data.filters.search === 'latest'), {});
+            await page.evaluate(async () => { qa.restrictDashboard = true; await loadProfessionChecklists({ preserveCatalog: true }); });
+            record(theme, 'dashboard_403_is_restricted_without_old_rows', await page.evaluate(() =>
+                professionChecklistDashboardState.loadState === 'restricted'
+                && professionChecklistDashboardState.data === null
+                && document.querySelector('#professionChecklistDashboardRetry') !== null), {});
+            await page.evaluate(() => { qa.restrictDashboard = false; });
+            await page.locator('#professionChecklistDashboardRetry').click();
+            await page.waitForFunction(() => professionChecklistDashboardState.loadState === 'ready');
+            record(theme, 'dashboard_restricted_retry_issues_fresh_get', await page.evaluate(() =>
+                professionChecklistDashboardState.loadState === 'ready'), {});
+            await page.evaluate(async () => { qa.count = undefined; await loadProfessionChecklists({ preserveCatalog: true }); });
+            record(theme, 'unknown_dashboard_counts_are_dashes', await page.evaluate(() =>
+                [...document.querySelectorAll('.hr-checklist-dashboard-summary-card strong')].every(node => node.textContent === '—')), {});
             await shot(page, `dashboard-pagination-${theme}`);
+            await page.evaluate(async () => {
+                qa.failWorkspace = true;
+                await openProfessionWorkspace({ key: 'qa_a', initialTab: 'checklist', historyMode: 'none', returnContext: { tab: 'checklists' } });
+            });
+            record(theme, 'workspace_500_has_retry', await page.evaluate(() =>
+                professionWorkspaceState.loadState === 'error'
+                && document.querySelector('#professionWorkspaceState button') !== null), {});
+            await page.locator('#professionWorkspaceState button').click();
+            await page.waitForFunction(() => professionWorkspaceState.loadState === 'ready');
+            record(theme, 'workspace_retry_issues_fresh_get', await page.evaluate(() =>
+                professionWorkspaceState.data?.profession?.key === 'qa_a'), {});
+            await close(page);
+            await page.evaluate(async () => {
+                qa.restrictWorkspace = true;
+                await openProfessionWorkspace({ key: 'qa_a', initialTab: 'checklist', historyMode: 'none', returnContext: { tab: 'checklists' } });
+            });
+            record(theme, 'workspace_403_is_restricted_without_old_people', await page.evaluate(() =>
+                professionWorkspaceState.loadState === 'restricted'
+                && professionWorkspaceState.data === null
+                && document.getElementById('professionWorkspaceContent').classList.contains('hidden')), {});
+            await page.evaluate(() => { qa.restrictWorkspace = false; });
+            await page.evaluate(() => {
+                qa.holdWorkspace = true;
+                void openProfessionWorkspace({ key: 'qa_b', initialTab: 'checklist', historyMode: 'none', returnContext: { tab: 'checklists' } });
+            });
+            await page.waitForFunction(() => Boolean(qa.releaseWorkspace));
+            await page.evaluate(() => {
+                window.dispatchEvent(new Event('crmBusinessContextChanged'));
+                qa.releaseWorkspace();
+                qa.releaseWorkspace = null;
+            });
+            await page.waitForFunction(() => professionWorkspaceState.loadState === 'restricted');
+            record(theme, 'late_workspace_response_after_business_change_is_discarded', await page.evaluate(() =>
+                professionWorkspaceState.data === null
+                && professionWorkspaceState.loadState === 'restricted'), {});
+            await close(page);
             await open(page);
             await add.fill('QA reload draft');
             await install(page, dark, { reload: true });

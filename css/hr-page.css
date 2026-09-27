@@ -6755,7 +6755,8 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     font-size: 13px;
 }
 .hr-profession-workspace-state:empty { display: none; }
-.hr-profession-workspace-state[data-state="error"] { color: #B91C1C; }
+.hr-profession-workspace-state[data-state="error"],
+.hr-profession-workspace-state[data-state="restricted"] { color: #B91C1C; }
 .hr-profession-workspace-content { min-height: 0; flex: 1; overflow: auto; }
 .hr-profession-workspace-content.hidden { display: none; }
 .hr-profession-workspace-tabs {
@@ -10396,6 +10397,7 @@ body.dark-mode .hr-checklist-dashboard-row.is-in_progress .hr-checklist-dashboar
 body.dark-mode .hr-checklist-dashboard-row.is-orphaned .hr-checklist-dashboard-status,
 body.dark-mode .hr-checklist-template-actions button.is-danger,
 body.dark-mode #professionChecklistDashboardState[data-state="error"],
+body.dark-mode #professionChecklistDashboardState[data-state="restricted"],
 body.dark-mode .hr-checklist-template-state[data-state="error"] {
     color: color-mix(in srgb, var(--danger) 42%, var(--text-primary));
 }

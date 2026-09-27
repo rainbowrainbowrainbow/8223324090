@@ -63,3 +63,11 @@
 О `08:22:12 UTC` запит у транзакції `BEGIN READ ONLY` підтвердив `transaction_read_only=on`. Live `/api/version` і далі показував `0.82.20`, SHA `18be138847f34a0ba935dd52d6dc6bedea9fdcb3`, branch `codex/eventgenix-production` та повний manifest deployment metadata.
 
 На київську дату `2026-09-27` було 929 записів: `active=926`, з них **745 вже після `valid_until`**, `expired=0`, `used=3`. Для `checkCertificateExpiry` збережено `last_run_date=2026-09-27`, `result=success`, `is_paused=false`. Отже, розбіжність пережила наступний нічний цикл; це не лише затримка в день попереднього аудиту. Production-записів під час перевірки не змінювали.
+
+## Стан після виправлення 2026-09-27
+
+Виправлення доставлено у `v0.82.21`, deployed SHA `acbd1f62ed51ce16b6b0469023f4225c8bef6d7a`; [exact-SHA CI](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36310004791) — 8/8 успішних jobs. Railway deployment `2815180a-a99f-4ccd-bcb3-dd70179604e0` має статус `SUCCESS`. `/api/version` підтвердив той самий SHA, `codex/eventgenix-production` і повний manifest metadata. Деталі дозволу та релізу наведені в [certificate release report](CERTIFICATE_CLOSE_03_RELEASE_PLAN.md).
+
+Read-only аудит о `09:48:22 UTC` у транзакції з `transaction_read_only=on` показав 929 записів: raw/effective `active=181`, `expired=745`, `used=3`; `active_past_due=0`. Бізнес-фільтр виключає QA 921: `active=181`, `expired=745`, `used=2`. Типи залишилися `one_time_admission=495`, `subscription=3`, `verification_only=431`; rollback-індикатори `unsafeGrants=0`, `safeDenials=0`. QA-run `cleaned`, сертифікат 921 `used`, рівно один запис погашення. Нових сертифікатів або бронювань для цієї перевірки не створювали.
+
+Це перевірка виправлення статусів, а не аудит після першого реального погашення. Останній лишається відкритим за умовами CERT-POST-CLOSE-02.

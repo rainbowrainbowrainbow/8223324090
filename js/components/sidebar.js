@@ -509,6 +509,7 @@ const Sidebar = (() => {
     function _isSidebarItemActive(item, currentPath, currentHash) {
         if (!item || item.noActive || item.isHashLink) return false;
         const href = String(item.href || '');
+        if (href === '/certificates' && (currentPath === href || currentPath.startsWith(href + '/'))) return true;
         const itemPathWithSearch = href.split('#')[0];
         const searchIndex = itemPathWithSearch.indexOf('?');
         const itemBase = searchIndex >= 0 ? (itemPathWithSearch.slice(0, searchIndex) || '/') : itemPathWithSearch;
@@ -1597,11 +1598,22 @@ const Sidebar = (() => {
         return item.href || null;
     }
 
+    function _certificateSidebarLanding() {
+        const canOpen = typeof window.canAccessPage === 'function'
+            ? window.canAccessPage
+            : (typeof canAccessPage === 'function' ? canAccessPage : null);
+        if (!canOpen) return null;
+        if (canOpen('/certificates')) return '/certificates';
+        if (canOpen('/certificates/check')) return '/certificates/check';
+        return null;
+    }
+
     function hasAccess(item, role) {
         const user = _getCurrentSidebarUser();
         if (!window.RolePreview?.getPreviewRole?.()
             && _isMaysternyaSidebarContext(user)
             && MAYSTERNYA_ACCESS_OVERRIDES.has(item?.access)) return true;
+        if (item?.href === '/certificates') return Boolean(_certificateSidebarLanding());
         const capability = _sidebarPageCapability(item);
         if (!capability) return false;
         if (typeof window.canAccessPage === 'function') {
@@ -1811,6 +1823,7 @@ const Sidebar = (() => {
     }
 
     function _sidebarNavigationHrefForBusinessItem(item = {}, user = _getCurrentSidebarUser()) {
+        if (item.href === '/certificates') return _certificateSidebarLanding() || '/certificates';
         const timelineCard = _sidebarTimelineCardModel(item, user);
         if (timelineCard) return timelineCard.href;
         return _sidebarHrefForBusinessItem(item, user);
@@ -3266,11 +3279,15 @@ const Sidebar = (() => {
 
     function _hydrateCommandDeckUser() {
         const user = _getCurrentSidebarUser();
-        if (!user) return;
         const avatarEl = document.getElementById('sidebarIdentityAvatar');
         const nameEl = document.getElementById('sidebarIdentityName');
         const roleEl = document.getElementById('sidebarIdentityRole');
         const cardEl = document.getElementById('sidebarIdentityCard');
+        const ready = Boolean(user && cardEl?.isConnected && avatarEl && nameEl);
+        if (!ready) {
+            document.getElementById('sidebarNav')?.classList.remove('has-command-identity');
+            return;
+        }
         const roleKey = _sidebarRoleBadgeKey(user);
         _paintUserAvatar(avatarEl, user);
         if (nameEl) nameEl.textContent = user.name || user.username || 'Event Genix';
@@ -3283,6 +3300,7 @@ const Sidebar = (() => {
         if (cardEl) cardEl.dataset.role = roleKey;
         _syncSidebarBusinessSwitcher(user);
         _bindProfileEntry(cardEl);
+        document.getElementById('sidebarNav')?.classList.add('has-command-identity');
     }
 
     function _cleanSidebarBusinessLabel(value) {

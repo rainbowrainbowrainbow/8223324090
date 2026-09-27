@@ -33,7 +33,7 @@ function renderSidebar(t, role, options = {}) {
         timeline: { mode: context === 'event_genix' ? 'park' : 'simple', roomTimelineEnabled: true }
     } : null;
     const dom = new JSDOM('<!doctype html><div id="sidebarLinks" class="sidebar-links"></div>', {
-        url: 'https://sidebar.test/', runScripts: 'outside-only'
+        url: options.url || 'https://sidebar.test/', runScripts: 'outside-only'
     });
     t.after(() => dom.window.close());
     const window = dom.window;
@@ -48,8 +48,8 @@ function renderSidebar(t, role, options = {}) {
         activeProfile: () => profile,
         profileFor: target => target === context ? profile : null
     };
-    window.canAccessPage = page => resolveCapability(options.previewRole
-        ? { role: options.previewRole, roles: [options.previewRole] } : user, page, { type: 'page' }).allowed;
+    window.canAccessPage = options.canAccessPage || (page => resolveCapability(options.previewRole
+        ? { role: options.previewRole, roles: [options.previewRole] } : user, page, { type: 'page' }).allowed);
     window.requestAnimationFrame = () => 0;
     window.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
     vm.runInContext(SIDEBAR, dom.getInternalVMContext(), { filename: 'js/components/sidebar.js' });
@@ -60,7 +60,7 @@ function renderSidebar(t, role, options = {}) {
         system: links('[data-group-key="system"] a.nav-link'),
         hr: links('[data-group-key="team"] a.nav-link'),
         groups: [...window.document.querySelectorAll('#sidebarLinks [data-group-key]')].map(group => group.dataset.groupKey).sort(),
-        user, profile
+        user, profile, document: window.document
     };
 }
 
@@ -133,4 +133,53 @@ test('missing business selection or unavailable access cannot restore director m
         assert.ok(!rendered.system.includes('/warehouse'));
         assert.ok(!rendered.system.includes('/guardian-ops'));
     }
+});
+
+test('one Product certificate entry stays active on every certificate route', t => {
+    for (const route of ['/certificates', '/certificates/check?code=TEST', '/certificates/new', '/certificates/batch']) {
+        const rendered = renderSidebar(t, 'creator', { url: `https://sidebar.test${route}` });
+        const links = [...rendered.document.querySelectorAll('[data-group-key="product"] a.nav-link')]
+            .filter(link => link.dataset.pageAccess === '/certificates');
+        assert.equal(links.length, 1, `${route}: one certificate entry`);
+        assert.equal(links[0].getAttribute('href'), '/certificates');
+        assert.equal(links[0].getAttribute('aria-current'), 'page', `${route}: active entry`);
+    }
+});
+
+test('certificate entry uses the allowed check route when the registry is denied', t => {
+    const checkOnly = renderSidebar(t, 'creator', {
+        url: 'https://sidebar.test/certificates/check?code=TEST',
+        canAccessPage: page => page === '/certificates/check'
+    });
+    const entry = checkOnly.document.querySelector('[data-group-key="product"] a.nav-link[data-page-access="/certificates"]');
+    assert.equal(entry?.getAttribute('href'), '/certificates/check');
+    assert.equal(entry?.getAttribute('aria-current'), 'page');
+
+    const denied = renderSidebar(t, 'creator', { canAccessPage: () => false });
+    assert.equal(denied.document.querySelector('a.nav-link[data-page-access="/certificates"]'), null);
+});
+
+test('shared profile deck hides the legacy user card only while its identity is ready', t => {
+    const dom = new JSDOM(`<!doctype html><aside id="sidebarNav" class="sidebar-nav">
+        <div id="sidebarUserCard" class="sidebar-user-card"><span id="sidebarUserAvatar"></span><button id="sidebarUserName"></button><span id="sidebarUserRole"></span></div>
+        <div id="sidebarIdentityCard"><span id="sidebarIdentityAvatar"></span><span id="sidebarIdentityName"></span><span id="sidebarIdentityRole"></span></div>
+    </aside>`, { url: 'https://sidebar.test/dashboard', runScripts: 'outside-only' });
+    t.after(() => dom.window.close());
+    dom.window.AppState = { currentUser: { id: 1, name: 'Тест', username: 'test', role: 'creator' } };
+    const context = dom.getInternalVMContext();
+    vm.runInContext(SIDEBAR, context, { filename: 'js/components/sidebar.js' });
+    vm.runInContext('Sidebar.initUserCard()', context);
+    const sidebar = dom.window.document.getElementById('sidebarNav');
+    const identity = dom.window.document.getElementById('sidebarIdentityCard');
+    assert.equal(sidebar.classList.contains('has-command-identity'), true);
+    assert.equal(identity.getAttribute('tabindex'), '0', 'profile remains keyboard reachable');
+    assert.equal(identity.getAttribute('role'), 'link');
+    assert.equal(dom.window.document.getElementById('sidebarIdentityName').textContent, 'Тест');
+
+    identity.remove();
+    vm.runInContext('Sidebar.initUserCard()', context);
+    assert.equal(sidebar.classList.contains('has-command-identity'), false, 'legacy card is the fallback');
+    assert.equal(dom.window.document.getElementById('sidebarUserName').textContent, 'Тест');
+    const css = fs.readFileSync(path.join(__dirname, '../css/sidebar-aurora-cockpit.css'), 'utf8');
+    assert.match(css, /\.sidebar-nav\.has-command-identity:not\(\.collapsed\) \.sidebar-user-card\s*\{\s*display:\s*none;/);
 });

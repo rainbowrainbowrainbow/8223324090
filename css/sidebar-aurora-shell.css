@@ -261,7 +261,7 @@ body.dark-mode .sidebar-nav {
 }
 
 .sidebar-compact-profile {
-  display: none !important;
+  display: none;
 }
 
 .sidebar-pills {

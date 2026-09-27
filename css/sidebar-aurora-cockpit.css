@@ -21,6 +21,15 @@ body.dark-mode .sidebar-nav {
   display: none !important;
 }
 
+/* Keep the static user card as a fallback until the shared profile deck is ready. */
+.sidebar-nav.has-command-identity:not(.collapsed) .sidebar-user-card {
+  display: none;
+}
+
+.sidebar-nav.collapsed .sidebar-compact-profile {
+  display: flex;
+}
+
 .sidebar-command-deck {
   position: relative;
   z-index: 24;

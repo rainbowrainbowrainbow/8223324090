@@ -4765,7 +4765,7 @@ function professionMasterRowHtml(item = {}, initialTab = 'main') {
     const staffText = hasStaffCount && Number.isFinite(staffCount) ? `${staffCount} людей` : '— людей';
     const checklistText = hasChecklistCount && Number.isFinite(checklistCount)
         ? (checklistCount ? `${checklistCount} пунктів` : 'Без чекліста')
-        : 'Чекліст недоступний';
+        : '— пунктів';
     return `
         <${rowTag} class="hr-profession-master-row${active ? '' : ' is-archived'}${workspaceUnsupported ? ' is-read-only' : ''}" ${rowAttributes}>
             <span class="hr-profession-master-title"><strong>${escapeHtml(item.title || item.key)}</strong><small>${escapeHtml(item.key)} · ${source === 'system' ? 'system profession' : 'DB profession'}</small></span>
@@ -4971,7 +4971,7 @@ async function loadProfessionChecklists(options = {}) {
     if (requestSeq !== professionChecklistDashboardRequestSeq || context !== salaryAccessContext()) return;
     if (!response?.success) {
         professionChecklistDashboardState = {
-            loadState: 'error',
+            loadState: response?.status === 403 ? 'restricted' : 'error',
             data: response?.status === 403 ? null : previousData,
             retry: { feed, offset },
             error: response?.error || 'Не вдалося завантажити dashboard чеклістів'
@@ -5037,13 +5037,15 @@ function renderProfessionChecklists() {
         root.innerHTML = '<div class="hr-checklist-dashboard-skeleton" aria-hidden="true"></div><div class="hr-checklist-dashboard-skeleton" aria-hidden="true"></div>';
         return;
     }
-    if (professionChecklistDashboardState.loadState === 'error') {
+    if (professionChecklistDashboardState.loadState === 'error' || professionChecklistDashboardState.loadState === 'restricted') {
         if (stateRoot) {
             stateRoot.textContent = professionChecklistDashboardState.error;
-            stateRoot.dataset.state = 'error';
+            stateRoot.dataset.state = professionChecklistDashboardState.loadState;
             stateRoot.setAttribute('role', 'alert');
         }
-        root.innerHTML = '<div class="hr-account-empty">Не вдалося завантажити чеклісти. <button type="button" id="professionChecklistDashboardRetry" class="btn-secondary">Повторити</button></div>';
+        root.innerHTML = professionChecklistDashboardState.loadState === 'restricted'
+            ? '<div class="hr-account-empty">Чеклісти недоступні в цьому бізнесі. <button type="button" id="professionChecklistDashboardRetry" class="btn-secondary">Повторити</button></div>'
+            : '<div class="hr-account-empty">Не вдалося завантажити чеклісти. <button type="button" id="professionChecklistDashboardRetry" class="btn-secondary">Повторити</button></div>';
         document.getElementById('professionChecklistDashboardRetry')?.addEventListener('click', () => loadProfessionChecklists({ ...professionChecklistDashboardState.retry, preserveCatalog: true }));
         if (summaryRoot) summaryRoot.innerHTML = '';
         return;
@@ -5057,7 +5059,7 @@ function renderProfessionChecklists() {
     }
     if (summaryRoot) {
         summaryRoot.innerHTML = ['without_template', 'not_started', 'in_progress', 'completed', 'archived', 'orphaned']
-            .map(status => `<button type="button" class="hr-checklist-dashboard-summary-card${professionChecklistDashboardFilters.status === status ? ' is-active' : ''}" data-checklist-dashboard-status="${status}"><strong>${Number(summary[status] || 0)}</strong><span>${escapeHtml(professionChecklistStatusLabel(status))}</span></button>`)
+            .map(status => `<button type="button" class="hr-checklist-dashboard-summary-card${professionChecklistDashboardFilters.status === status ? ' is-active' : ''}" data-checklist-dashboard-status="${status}"><strong>${Object.hasOwn(summary, status) && Number.isFinite(Number(summary[status])) ? Number(summary[status]) : '—'}</strong><span>${escapeHtml(professionChecklistStatusLabel(status))}</span></button>`)
             .join('');
     }
     const rows = (data.professionsWithoutTemplate || []).map(item => professionChecklistDashboardRowHtml({ ...item, status: 'without_template' }, 'without_template'));
@@ -5087,12 +5089,21 @@ function renderProfessionChecklists() {
 
 for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
     window.addEventListener(eventName, () => {
-        if (professionChecklistDashboardState.loadState === 'idle') return;
-        professionChecklistDashboardRequestSeq += 1;
-        professionChecklistDashboardState = {
-            loadState: 'error', data: null, error: 'Бізнес або доступ змінився. Оновіть чеклісти.'
-        };
-        renderProfessionChecklists();
+        if (professionChecklistDashboardState.loadState !== 'idle') {
+            professionChecklistDashboardRequestSeq += 1;
+            professionChecklistDashboardState = {
+                loadState: 'restricted', data: null, error: 'Бізнес або доступ змінився. Оновіть чеклісти.'
+            };
+            renderProfessionChecklists();
+        }
+        if (professionWorkspaceState.open) {
+            professionWorkspaceRequestSeq += 1;
+            professionWorkspaceState = {
+                ...professionWorkspaceState, loadState: 'restricted', data: null,
+                error: 'Бізнес або доступ змінився. Відкрийте професію в поточному бізнесі.'
+            };
+            renderProfessionWorkspace();
+        }
     });
 }
 
@@ -5838,10 +5849,21 @@ function renderProfessionWorkspace() {
         setProfessionWorkspaceBanner('Завантаження картки професії…', 'loading');
         return;
     }
-    if (professionWorkspaceState.loadState === 'error') {
+    if (professionWorkspaceState.loadState === 'error' || professionWorkspaceState.loadState === 'restricted') {
         content.classList.add('hidden');
         actions.classList.add('hidden');
-        setProfessionWorkspaceBanner(professionWorkspaceState.error || 'Не вдалося завантажити картку професії', 'error');
+        setProfessionWorkspaceBanner(
+            professionWorkspaceState.error || 'Не вдалося завантажити картку професії',
+            professionWorkspaceState.loadState
+        );
+        if (professionWorkspaceState.loadState === 'error' && professionWorkspaceState.requestIdentity) {
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'btn-secondary';
+            retry.textContent = 'Повторити';
+            retry.addEventListener('click', () => { void loadProfessionWorkspaceRead(professionWorkspaceState.requestIdentity); });
+            document.getElementById('professionWorkspaceState')?.append(' ', retry);
+        }
         return;
     }
     const data = professionWorkspaceState.data || {};
@@ -5890,6 +5912,41 @@ function renderProfessionWorkspace() {
     setProfessionWorkspaceTab(professionWorkspaceState.tab, { updateHistory: false });
 }
 
+async function loadProfessionWorkspaceRead(identity, requestSeq = ++professionWorkspaceRequestSeq) {
+    const context = salaryAccessContext();
+    if (isProfessionWorkspaceUnsupported()) {
+        professionWorkspaceState = { ...professionWorkspaceState, loadState: 'restricted', data: null,
+            error: 'Картка професії недоступна у скороченому read-only каталозі' };
+        renderProfessionWorkspace();
+        return null;
+    }
+    professionWorkspaceState.loadState = 'loading';
+    professionWorkspaceState.data = null;
+    professionWorkspaceState.error = '';
+    renderProfessionWorkspace();
+    const response = await hrFetch(`/professions/workspace/${encodeURIComponent(identity)}`).catch(() => null);
+    if (requestSeq !== professionWorkspaceRequestSeq) return null;
+    if (context !== salaryAccessContext()) {
+        professionWorkspaceState = { ...professionWorkspaceState, loadState: 'restricted', data: null,
+            error: 'Бізнес або доступ змінився. Відкрийте професію в поточному бізнесі.' };
+        renderProfessionWorkspace();
+        return null;
+    }
+    if (!response?.success) {
+        professionWorkspaceState.loadState = response?.status === 403 ? 'restricted' : 'error';
+        professionWorkspaceState.data = null;
+        professionWorkspaceState.error = response?.error || 'Не вдалося завантажити картку професії';
+        renderProfessionWorkspace();
+        return null;
+    }
+    professionWorkspaceState.loadState = 'ready';
+    professionWorkspaceState.data = response.data || null;
+    professionWorkspaceState.isNew = false;
+    document.getElementById('professionWorkspaceChecklistNewTitle').value = professionChecklistDrafts.get(professionWorkspaceState.data?.profession?.key) || '';
+    renderProfessionWorkspace();
+    return professionWorkspaceState.data;
+}
+
 async function openProfessionWorkspace({ id = null, key = null, initialTab = 'main', returnContext = null, historyMode = 'push', defaults = {} } = {}) {
     if (!id && !key && isProfessionCatalogPartial()) {
         showNotification('Створення професій недоступне у скороченому read-only каталозі', 'error');
@@ -5915,6 +5972,7 @@ async function openProfessionWorkspace({ id = null, key = null, initialTab = 'ma
         data: null,
         tab: normalizeProfessionWorkspaceTab(initialTab),
         isNew,
+        requestIdentity: isNew ? null : (id || key),
         returnContext: context,
         error: ''
     };
@@ -5959,21 +6017,7 @@ async function openProfessionWorkspace({ id = null, key = null, initialTab = 'ma
         document.getElementById('professionWorkspaceKey')?.focus();
         return professionWorkspaceState.data;
     }
-    const identity = id || key;
-    const response = await hrFetch(`/professions/workspace/${encodeURIComponent(identity)}`).catch(() => null);
-    if (requestSeq !== professionWorkspaceRequestSeq) return null;
-    if (!response?.success) {
-        professionWorkspaceState.loadState = 'error';
-        professionWorkspaceState.error = response?.error || 'Не вдалося завантажити картку професії';
-        renderProfessionWorkspace();
-        return null;
-    }
-    professionWorkspaceState.loadState = 'ready';
-    professionWorkspaceState.data = response.data || null;
-    professionWorkspaceState.isNew = false;
-    document.getElementById('professionWorkspaceChecklistNewTitle').value = professionChecklistDrafts.get(professionWorkspaceState.data?.profession?.key) || '';
-    renderProfessionWorkspace();
-    return professionWorkspaceState.data;
+    return loadProfessionWorkspaceRead(id || key, requestSeq);
 }
 
 async function saveProfessionWorkspace(options = {}) {

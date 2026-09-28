@@ -48,6 +48,7 @@ const LEAD_UI_CI_CHANGED_PATHS = Object.freeze([
     '.github/workflows/ci.yml',
     'css/omni-workspace.css',
     'css/pages-leads.css',
+    'docs/CERTIFICATE_CLOSE_03_RELEASE_PLAN.md',
     'docs/CODEX_PRODUCTION_AUTONOMY.md',
     'docs/LEAD_UI_1_HANDOFF_2026-09-27.md',
     'docs/LEAD_UI_2_HANDOFF_2026-09-27.md',

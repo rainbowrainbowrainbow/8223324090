@@ -1277,6 +1277,88 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-business-select,
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
 }
 
+.sidebar-business-select-shell {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-business-select-shell .sidebar-business-select {
+  appearance: none;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.sidebar-business-select-shell .sidebar-business-select option {
+  color: var(--sb-enterprise-text);
+  -webkit-text-fill-color: var(--sb-enterprise-text);
+  background: var(--sb-enterprise-bg);
+}
+
+.sidebar-business-select-shell::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--sb-enterprise-text);
+  border-bottom: 2px solid var(--sb-enterprise-text);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+
+.sidebar-business-name-viewport {
+  position: absolute;
+  inset: 0 30px 0 12px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--sb-enterprise-text);
+  font-size: 12.5px;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sidebar-business-name-text {
+  display: inline-block;
+  flex: none;
+  white-space: nowrap;
+}
+
+.sidebar-business-select-shell[data-overflow="true"] .sidebar-business-name-text {
+  animation: sidebarBusinessNameTravel var(--business-name-cycle, 18s) ease-in-out infinite;
+}
+
+@keyframes sidebarBusinessNameTravel {
+  0%, 20%, 100% { transform: translateX(0); }
+  45%, 65% { transform: translateX(var(--business-name-offset, 0px)); }
+  90% { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-business-select-shell[data-overflow="true"] .sidebar-business-name-text {
+    animation: none;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (min-width: 769px) {
+  .sidebar-nav.collapsed .sidebar-business-select-shell {
+    width: 48px;
+  }
+
+  .sidebar-nav.collapsed .sidebar-business-name-viewport,
+  .sidebar-nav.collapsed .sidebar-business-select-shell::after {
+    display: none;
+  }
+}
+
 body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-business-settings-btn,
 body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-business-settings-btn,
 .sidebar-nav:not(.collapsed) .sidebar-business-settings-btn {

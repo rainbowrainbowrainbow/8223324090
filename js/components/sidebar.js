@@ -23,6 +23,7 @@ const Sidebar = (() => {
         businessSwitching: false,
         businessSettingsOpen: false,
         businessSettingsDocumentBound: false,
+        businessNameResizeObserver: null,
         businessProfileHydrationContext: '',
         businessProfileHydrationPromise: null,
         timelineSummaryCache: new Map(),
@@ -3331,6 +3332,8 @@ const Sidebar = (() => {
         const host = document.getElementById('sidebarBusinessContextHost');
         const api = window.CrmBusinessContext;
         if (!host || !api?.options || !api?.current) return;
+        _state.businessNameResizeObserver?.disconnect();
+        _state.businessNameResizeObserver = null;
         _bindSidebarBusinessSettingsDismiss();
         const businessState = api.state?.(user) || null;
         const options = businessState?.availableBusinesses?.length
@@ -3419,9 +3422,12 @@ const Sidebar = (() => {
         `;
         host.innerHTML = `
             <span class="sidebar-business-control-row">
-                <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="${_escAttr(`Поточний бізнес CRM: ${businessFullLabelFor(currentContext)}`)}" title="${_escAttr(businessFullLabelFor(currentContext))}" data-sidebar-business-switcher="true"${_state.businessSwitching ? ' disabled' : ''}>
-                    ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''} title="${_escAttr(businessFullLabelFor(ctx))}" data-full-label="${_escAttr(businessFullLabelFor(ctx))}" data-display-label="${_escAttr(businessLabelFor(ctx))}">${_escAttr(businessLabelFor(ctx))}</option>`).join('')}
-                </select>
+                <span class="sidebar-business-select-shell">
+                    <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="${_escAttr(`Поточний бізнес CRM: ${businessFullLabelFor(currentContext)}`)}" title="${_escAttr(businessFullLabelFor(currentContext))}" data-sidebar-business-switcher="true"${_state.businessSwitching ? ' disabled' : ''}>
+                        ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''} title="${_escAttr(businessFullLabelFor(ctx))}" data-full-label="${_escAttr(businessFullLabelFor(ctx))}" data-display-label="${_escAttr(businessLabelFor(ctx))}">${_escAttr(compactBusinessLabel ? businessLabelFor(ctx) : businessFullLabelFor(ctx))}</option>`).join('')}
+                    </select>
+                    <span class="sidebar-business-name-viewport" aria-hidden="true"><span class="sidebar-business-name-text">${_escAttr(businessFullLabelFor(currentContext))}</span></span>
+                </span>
                 <button type="button" class="sidebar-business-settings-btn${settingsOpen ? ' active' : ''}" data-sidebar-business-settings-toggle aria-expanded="${settingsOpen ? 'true' : 'false'}" aria-controls="sidebarBusinessSettingsPanel" aria-label="Налаштування бізнес-огляду" title="Налаштування бізнес-огляду"${_state.businessSwitching ? ' disabled' : ''}>
                     <span aria-hidden="true">⚙</span>
                 </button>
@@ -3433,6 +3439,22 @@ const Sidebar = (() => {
         if (!select) return;
         select.title = businessFullLabelFor(currentContext);
         select.setAttribute('aria-label', `Поточний бізнес CRM: ${businessFullLabelFor(currentContext)}`);
+        const nameShell = host.querySelector('.sidebar-business-select-shell');
+        const nameViewport = host.querySelector('.sidebar-business-name-viewport');
+        const nameText = host.querySelector('.sidebar-business-name-text');
+        const measureBusinessName = () => {
+            if (!nameShell?.isConnected || !nameViewport || !nameText) return;
+            const travel = Math.max(0, Math.ceil(nameText.scrollWidth - nameViewport.clientWidth));
+            nameShell.dataset.overflow = travel > 2 ? 'true' : 'false';
+            nameShell.style.setProperty('--business-name-offset', `${-travel}px`);
+            nameShell.style.setProperty('--business-name-cycle', `${Math.max(16, Math.min(60, 8 + travel / 8))}s`);
+        };
+        requestAnimationFrame(measureBusinessName);
+        if (typeof ResizeObserver === 'function') {
+            _state.businessNameResizeObserver = new ResizeObserver(measureBusinessName);
+            _state.businessNameResizeObserver.observe(nameShell);
+            _state.businessNameResizeObserver.observe(nameText);
+        }
         const finishSwitch = () => {
             if (window.__crmBusinessNavigationPending) return true;
             const container = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
@@ -3497,6 +3519,11 @@ const Sidebar = (() => {
             }
             const previous = api.current(user);
             if (event.target.value === previous) return;
+            const selectedName = event.target.selectedOptions[0]?.dataset.fullLabel || event.target.selectedOptions[0]?.textContent || '';
+            nameText.textContent = selectedName;
+            select.title = selectedName;
+            select.setAttribute('aria-label', `Поточний бізнес CRM: ${selectedName}`);
+            requestAnimationFrame(measureBusinessName);
             await runBusinessSwitch(async () => {
                 await api.switchTo(event.target.value, { user, updateUrl: true, allowAggregate: true });
             }, previous);

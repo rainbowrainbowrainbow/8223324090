@@ -24,6 +24,7 @@ const Sidebar = (() => {
         businessSettingsOpen: false,
         businessSettingsDocumentBound: false,
         businessNameResizeObserver: null,
+        businessNameMotionCleanup: null,
         businessProfileHydrationContext: '',
         businessProfileHydrationPromise: null,
         timelineSummaryCache: new Map(),
@@ -3334,6 +3335,8 @@ const Sidebar = (() => {
         if (!host || !api?.options || !api?.current) return;
         _state.businessNameResizeObserver?.disconnect();
         _state.businessNameResizeObserver = null;
+        _state.businessNameMotionCleanup?.();
+        _state.businessNameMotionCleanup = null;
         _bindSidebarBusinessSettingsDismiss();
         const businessState = api.state?.(user) || null;
         const options = businessState?.availableBusinesses?.length
@@ -3442,14 +3445,25 @@ const Sidebar = (() => {
         const nameShell = host.querySelector('.sidebar-business-select-shell');
         const nameViewport = host.querySelector('.sidebar-business-name-viewport');
         const nameText = host.querySelector('.sidebar-business-name-text');
+        const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
         const measureBusinessName = () => {
             if (!nameShell?.isConnected || !nameViewport || !nameText) return;
             const travel = Math.max(0, Math.ceil(nameText.scrollWidth - nameViewport.clientWidth));
             nameShell.dataset.overflow = travel > 2 ? 'true' : 'false';
             nameShell.style.setProperty('--business-name-offset', `${-travel}px`);
             nameShell.style.setProperty('--business-name-cycle', `${Math.max(16, Math.min(60, 8 + travel / 8))}s`);
+            const animation = travel > 2 && !motionQuery?.matches
+                ? 'sidebarBusinessNameTravel var(--business-name-cycle, 18s) ease-in-out infinite'
+                : '';
+            if (animation && nameText.style.getPropertyValue('animation') !== animation) {
+                nameText.style.setProperty('animation', animation, 'important');
+            } else if (!animation) {
+                nameText.style.removeProperty('animation');
+            }
         };
         requestAnimationFrame(measureBusinessName);
+        motionQuery?.addEventListener?.('change', measureBusinessName);
+        _state.businessNameMotionCleanup = () => motionQuery?.removeEventListener?.('change', measureBusinessName);
         if (typeof ResizeObserver === 'function') {
             _state.businessNameResizeObserver = new ResizeObserver(measureBusinessName);
             _state.businessNameResizeObserver.observe(nameShell);

@@ -8,9 +8,9 @@ The deployed code previously treated every provider HTTP 429 as a temporary rate
 
 ## Candidate and production state
 
-- Candidate: `codex/menu-image-errors-current` in the isolated worktree `C:\Users\Plotva\.codex\worktrees\menu-image-errors\EventGenix`. It starts at the exact live production SHA below. Functional work and this handoff are separate commits; release/version artifacts are still pending.
-- Read-only live `/api/version` on 2026-09-28: `0.82.36`, SHA `3ad833403eaf05e473947f3ba9a01f0c7e133ae3`, source branch `codex/eventgenix-production`, complete manifest deployment metadata.
-- The scoped change was transferred onto that SHA without conflicts. Recheck live/remote convergence immediately before release; the primary dirty checkout remains untouched.
+- Candidate: `codex/menu-image-errors-after-037` in the isolated worktree `C:\Users\Plotva\.codex\worktrees\menu-image-errors\EventGenix`. It starts at the exact live production SHA below. Functional work and this handoff are separate commits; the release/version commit is still pending.
+- Read-only live `/api/version` on 2026-09-28: `0.82.37`, SHA `fbcb555c4c6323a30f6bfc4c962868df824a9669`, source branch `codex/eventgenix-production`, complete manifest deployment metadata; Railway deployment `70965701-5d8b-4b2c-b8ec-e22adecc813d` reached `SUCCESS`.
+- The first production-block attempt created a local `0.82.37` release commit, but Git rejected its push because another release advanced the remote to `fbcb555c4c6323a30f6bfc4c962868df824a9669`. That attempt did not start CI, deploy, or production generation for this fix. The scoped IMG change was transferred onto the new live SHA without conflicts; the competing release commit was not transferred. The primary dirty checkout remains untouched.
 
 ## Scoped implementation
 
@@ -27,9 +27,9 @@ The deployed code previously treated every provider HTTP 429 as a temporary rate
 - `npm run test:ui`: 1327/1327 static UI checks and 4/4 frontend code-splitting tests passed.
 - `npm run check:syntax`: 1340 JavaScript files passed.
 - `npm run check:css-surface` and `git diff --check`: passed.
-- After transferring onto live SHA `3ad833403eaf05e473947f3ba9a01f0c7e133ae3`, `npm run check:runtime`, the 109 targeted tests, and the full `npm test` baseline passed again on 2026-09-28.
+- After transferring onto live SHA `3ad833403eaf05e473947f3ba9a01f0c7e133ae3`, `npm run check:runtime`, the 109 targeted tests, and the full `npm test` baseline passed on 2026-09-28. The same runtime, targeted tests (109/109), and full `npm test` passed again after transferring onto `fbcb555c4c6323a30f6bfc4c962868df824a9669`.
 - The isolated worktree has no own `node_modules`; tests used the already installed packages from the primary checkout through process-local `NODE_PATH`. No install was performed.
-- CI, release candidate version/cache sync, deployment, and live write QA have **not** run. Functional and handoff commits are local only; no push was made.
+- CI, release candidate version/cache sync, deployment, and live write QA for the IMG fix have **not** run. Functional and handoff commits are local only; no push succeeded.
 
 ## Release and live QA handoff
 

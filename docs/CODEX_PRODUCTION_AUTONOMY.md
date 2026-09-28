@@ -89,6 +89,15 @@ A production block should name:
 Do not request a second approval for normal push, CI wait, deploy, version proof,
 and approved disposable QA inside the same valid envelope.
 
+Before drafting that single warning, check both live and remote production,
+nearby in-flight releases, the current patch marker, and the Railway helper's
+same-version guard. If a deployable candidate needs a version bump, describe it
+as the next free patch unless the owner requires an exact version. State the
+initial SHA, any permitted descendant rule, protected-path exclusions, and the
+condition for live/remote convergence in the original envelope. Do not promise
+continuation through drift that the owner did not approve. If a controller uses
+an exact hash-bound manifest, its confirmation and drift checks remain binding.
+
 ## 3. Fixed Production Identity
 
 Verify these values read-only before every release; do not assume the runbook is

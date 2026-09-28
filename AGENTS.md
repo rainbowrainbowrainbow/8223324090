@@ -98,6 +98,11 @@ Before every Yellow or Red block, show:
 ```
 
 Do not fragment one production release into repeated approval questions.
+Before presenting a Yellow release block, check the current live/remote refs,
+parallel release markers, and the release helper's same-version guard. When the
+owner has not pinned an exact version, propose the next free patch and state any
+allowed descendant rule in that one block. Keep the approved scope and all
+existing drift, expiry, CI, and Red stop conditions intact.
 
 ## Before Editing
 

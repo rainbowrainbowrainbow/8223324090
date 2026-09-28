@@ -27,6 +27,7 @@ The deployed code previously treated every provider HTTP 429 as a temporary rate
 - `npm run test:ui`: 1327/1327 static UI checks and 4/4 frontend code-splitting tests passed.
 - `npm run check:syntax`: 1340 JavaScript files passed.
 - `npm run check:css-surface` and `git diff --check`: passed.
+- After transferring onto live SHA `3ad833403eaf05e473947f3ba9a01f0c7e133ae3`, `npm run check:runtime`, the 109 targeted tests, and the full `npm test` baseline passed again on 2026-09-28.
 - The isolated worktree has no own `node_modules`; tests used the already installed packages from the primary checkout through process-local `NODE_PATH`. No install was performed.
 - CI, release candidate version/cache sync, deployment, and live write QA have **not** run. Functional and handoff commits are local only; no push was made.
 
@@ -34,7 +35,7 @@ The deployed code previously treated every provider HTTP 429 as a temporary rate
 
 1. Recheck the exact live and remote SHA, preserving the primary dirty checkout. Review the scoped diff and add the normal version/cache/changelog release metadata. Run targeted checks again, then the repository's release gates and exact-SHA CI under the applicable authorization envelope.
 2. After an authorized deploy, verify `/api/version` reports the exact intended SHA and `codex/eventgenix-production` before UI QA.
-3. On one approved disposable menu product in the test business context, generate **one** photo. Check loading → ready, a reviewable AI draft, and unchanged current product photo. Click Apply manually and confirm the photo changes only then. Check manual upload still works after an AI error if such an error occurs naturally. Do not generate traffic to force a 429.
+3. The test account has access only to `event_genix`. A read-only scan of 90 menu products found no clearly marked test product. For live write QA, create exactly one uniquely named `QA` menu product in `event_genix` with zero price and `availabilityStatus=hidden`; record its ID. Generate **one** photo. Check loading → ready, a reviewable AI draft, and unchanged current product photo. If ready, click Apply manually and confirm the photo changes only then. Deactivate only that exact QA product after verification. Do not touch an existing menu product or generate traffic to force a 429. A generated upload asset may remain after soft-deactivation and must be reported.
 4. For a naturally occurring generation failure, record only HTTP status, safe provider `error.code`/`type`, request ID, `Retry-After`, public `code`, and whether the UI gives the right next action. A quota/credits result requires the account owner to inspect provider billing/limits; an unknown 429 requires provider-side evidence rather than an assumed cooldown.
 
 The original 429 subtype remains unproven until provider metadata from a future failure or account-side evidence is available. The live candidate is not released.

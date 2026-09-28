@@ -493,7 +493,7 @@ body:not(.dark-mode) .sidebar-rail-flyout-link.active {
 
 .sidebar-business-control-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 6px;
   width: 100%;

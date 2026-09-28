@@ -331,6 +331,7 @@ test('lead UI CI protected workflow signs only the reviewed unified-card release
         'tests/browser/omni-lead-links-actual-app-browser-smoke.js',
         'tests/browser/omni-workspace-navigation-fixtures.js',
         'docs/CERTIFICATE_CLOSE_03_RELEASE_PLAN.md',
+        'tests/browser/checkin-journal-browser-smoke.js',
         'scripts/production-block-policy.js', 'tests/production-block-controller.test.js'
     ];
     const options = { protectedWorkflow: 'lead-ui-ci-gate' };

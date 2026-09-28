@@ -90,7 +90,7 @@ async function run() {
         rosterMode = 'success';
         await page.locator('#registerStaffState button').click();
         await page.waitForFunction(() => !document.getElementById('staffSelect').disabled
-            && Boolean(document.querySelector('#staffSelect option[value="9701"]')));
+            && Boolean(document.querySelector('#staffSelect option[value="9701"]')), undefined, { polling: 50 });
         assert.equal(await page.locator('#staffSelect').isDisabled(), false);
 
         journalMode = 'server';
@@ -101,7 +101,7 @@ async function run() {
         await page.locator('#logEntries button').click();
         await page.locator('#logEntries .le-name').getByText('Synthetic Park Worker').waitFor();
         await page.locator('#statusMsg').getByText(/Журнал оновлено/).waitFor();
-        await page.waitForFunction(() => !document.getElementById('statusActions').hidden);
+        await page.waitForFunction(() => !document.getElementById('statusActions').hidden, undefined, { polling: 50 });
 
         assert.equal(requests.some(item => item.method === 'POST'), false, 'page load and picker must not write');
         fs.mkdirSync(outputDir, { recursive: true });

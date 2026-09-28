@@ -177,10 +177,31 @@ async function rowWithText(page, text) {
     return row;
 }
 
-async function assertWorkspaceLayout(page, label) {
-    const layout = await page.locator('#leadWorkspace').evaluate(async panel => {
+async function waitForVisualSettlement(page, selector) {
+    await page.locator(selector).evaluate(async (element, timeoutMs) => {
         await document.fonts.ready;
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const deadline = performance.now() + timeoutMs;
+        let settledFrames = 0;
+        while (settledFrames < 2) {
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            // Ancestor theme transitions can restart a control's color transition.
+            // Re-read each frame instead of waiting for one stale animation snapshot.
+            const animations = new Set(element.getAnimations({ subtree: true }));
+            for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+                for (const animation of parent.getAnimations()) animations.add(animation);
+            }
+            const pending = [...animations].some(animation =>
+                Number.isFinite(animation.effect?.getComputedTiming().endTime)
+                && animation.playState !== 'finished' && animation.playState !== 'idle');
+            settledFrames = pending ? 0 : settledFrames + 1;
+            if (performance.now() > deadline) throw new Error(`Visual transitions did not settle for ${element.id}`);
+        }
+    }, TIMEOUT_MS);
+}
+
+async function assertWorkspaceLayout(page, label) {
+    await waitForVisualSettlement(page, '#leadWorkspace');
+    const layout = await page.locator('#leadWorkspace').evaluate(panel => {
         const hero = panel.querySelector('.workspace-hero');
         const parseColor = value => {
             const match = String(value).match(/^rgba?\(([^)]+)\)$/);
@@ -283,12 +304,8 @@ async function captureDarkDetails(page, filename, label) {
 }
 
 async function assertEditorAppearance(page, label) {
-    const controls = await page.locator('#leadEditorForm').evaluate(async form => {
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        // Measure the settled theme; shared form controls animate their colors.
-        const transitions = form.getAnimations({ subtree: true }).filter(animation =>
-            Number.isFinite(animation.effect?.getComputedTiming().endTime));
-        await Promise.allSettled(transitions.map(animation => animation.finished));
+    await waitForVisualSettlement(page, '#leadEditorForm');
+    const controls = await page.locator('#leadEditorForm').evaluate(form => {
         const parseColor = value => {
             const match = String(value).match(/^rgba?\(([^)]+)\)$/);
             if (!match) throw new Error(`Unsupported editor color: ${value}`);
@@ -621,6 +638,7 @@ async function checkMobileEditor(page, pool, leadId, name) {
         }
         await page.locator('#leadNotes').fill(`Discard mobile ${height}`);
         await page.locator('#leadModalSave').scrollIntoViewIfNeeded();
+        await waitForVisualSettlement(page, '#leadEditorForm');
         const bounds = await page.evaluate(() => {
             const rect = id => {
                 const r = document.getElementById(id).getBoundingClientRect();

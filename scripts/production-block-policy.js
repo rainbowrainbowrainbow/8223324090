@@ -64,6 +64,7 @@ const LEAD_UI_CI_CHANGED_PATHS = Object.freeze([
     'package.json',
     'scripts/production-block-policy.js',
     'services/taskDetailContract.js',
+    'tests/browser/checkin-journal-browser-smoke.js',
     'tests/browser/lead-communication-selection-fixtures.js',
     'tests/browser/lead-editor-mode-fixtures.js',
     'tests/browser/lead-editor-navigation-fixtures.js',

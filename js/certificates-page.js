@@ -48,7 +48,7 @@
         verification_only: { title: 'Сертифікат активний', badge: 'Лише перевірка', message: 'Цей тип можна перевірити, але одноразовий вхід за ним тут недоступний.', tone: 'active' },
         redemption_unavailable: { title: 'Активація входу недоступна', badge: 'Немає права на дію', message: 'Ваш обліковий запис може перевірити сертифікат, але не активувати вхід за ним.', tone: 'blocked' },
         just_activated: { title: 'Вхід активовано', badge: 'Щойно виконано', message: 'Сертифікат щойно використано для одноразового входу. Повторний вхід за цим кодом неможливий.', tone: 'active' },
-        used: { title: 'Сертифікат уже використано', badge: 'Використаний раніше', message: 'Повторний вхід за цим кодом неможливий.', tone: 'used' },
+        used: { title: 'Сертифікат уже використано', badge: 'ВХІД НЕДОСТУПНИЙ', message: 'Повторний вхід за цим кодом неможливий.', tone: 'used' },
         expired: { title: 'Строк дії завершився', message: 'Сертифікат більше не дійсний.', tone: 'expired' },
         revoked: { title: 'Сертифікат анульовано', message: 'Сертифікат не можна використати.', tone: 'revoked' },
         blocked: { title: 'Сертифікат заблоковано', message: 'Сертифікат не можна використати.', tone: 'blocked' },
@@ -292,20 +292,29 @@
         if (!result) return;
         result.classList.remove('hidden');
         result.dataset.certCheckState = stateName;
+        result.setAttribute('role', stateName === 'used' ? 'alert' : 'status');
+        result.setAttribute('aria-live', stateName === 'used' ? 'assertive' : 'polite');
         const useTime = (stateName === 'just_activated' || stateName === 'used')
             ? formatCertificateUseTime(cert?.usedAt) : '';
+        const usedTimeLine = stateName === 'used'
+            ? `<p class="cert-check-used-time">${useTime ? `Активовано: ${esc(useTime)} (Київ)` : 'Дата активації недоступна'}</p>` : '';
         const details = cert ? `
             <dl class="cert-check-result-meta">
                 <dt>Код</dt><dd>${esc(cert.certCode || '')}</dd>
                 <dt>Тип</dt><dd>${esc(cert.typeText || '—')}</dd>
                 <dt>Дійсний до</dt><dd>${esc(formatDate(cert.validUntil))}</dd>
-                ${useTime ? `<dt>Використано</dt><dd>${esc(useTime)} · Київ</dd>` : ''}
+                ${stateName === 'just_activated' && useTime ? `<dt>Використано</dt><dd>${esc(useTime)} · Київ</dd>` : ''}
             </dl>` : '';
         const redeem = stateName === 'redeemable' && cert?.canRedeem === true
             ? '<button type="button" class="btn-page-primary" data-cert-redeem>Активувати вхід</button>' : '';
         const icon = stateName === 'just_activated'
             ? '<span class="cert-check-success-icon" aria-hidden="true">✓</span>' : '';
-        result.innerHTML = `<div class="cert-check-result-summary">${icon}<div><span class="cert-page-badge cert-page-badge-${esc(meta.tone)}">${esc(meta.badge || meta.title)}</span><h3>${esc(meta.title)}</h3><p>${esc(meta.message)}</p></div></div>${details}${redeem}`;
+        result.innerHTML = `<div class="cert-check-result-summary">${icon}<div><span class="cert-page-badge cert-page-badge-${esc(meta.tone)}">${esc(meta.badge || meta.title)}</span><h3>${esc(meta.title)}</h3>${usedTimeLine}<p>${esc(meta.message)}</p></div></div>${details}${redeem}`;
+        if (stateName === 'used') requestAnimationFrame(() => {
+            if (window.innerWidth <= 560 && result.dataset.certCheckState === 'used' && !result.classList.contains('hidden')) {
+                result.scrollIntoView({ block: 'start' });
+            }
+        });
     }
 
     function invalidateCertificateCheck() {

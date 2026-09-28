@@ -174,12 +174,25 @@
 }
 .cert-check-result[data-cert-check-state="redeemable"],
 .cert-check-result[data-cert-check-state="verification_only"] { border-color: rgba(16, 185, 129, 0.52); }
-.cert-check-result[data-cert-check-state="used"],
+.cert-check-result[data-cert-check-state="used"] {
+    order: -1;
+    scroll-margin-top: 72px;
+    border: 2px solid #dc2626;
+    background: #fff1f2;
+    box-shadow: 0 18px 44px rgba(127, 29, 29, 0.16);
+}
+.cert-check-result[data-cert-check-state="used"] h3 { color: #991b1b; }
+.cert-check-result[data-cert-check-state="used"] p { color: #7f1d1d; }
+.cert-check-result[data-cert-check-state="used"] .cert-check-used-time {
+    margin: 8px 0;
+    font-size: clamp(17px, 3vw, 20px);
+    font-weight: 900;
+}
 .cert-check-result[data-cert-check-state="expired"] { border-color: rgba(245, 158, 11, 0.52); }
 .cert-check-result[data-cert-check-state="used"] .cert-page-badge-used {
-    background: rgba(245, 158, 11, 0.14);
-    border-color: rgba(217, 119, 6, 0.38);
-    color: #92400e;
+    background: #b91c1c;
+    border-color: #b91c1c;
+    color: #fff;
 }
 .cert-check-result[data-cert-check-state="revoked"],
 .cert-check-result[data-cert-check-state="blocked"],
@@ -212,11 +225,16 @@ body.dark-mode .cert-check-result[data-cert-check-state="just_activated"] .cert-
     border-color: rgba(110, 231, 183, 0.58);
     color: #a7f3d0;
 }
-body.dark-mode .cert-check-result[data-cert-check-state="used"] { border-color: rgba(251, 191, 36, 0.58); }
+body.dark-mode .cert-check-result[data-cert-check-state="used"] {
+    background: #451a1a;
+    border-color: #f87171;
+}
+body.dark-mode .cert-check-result[data-cert-check-state="used"] h3,
+body.dark-mode .cert-check-result[data-cert-check-state="used"] p { color: #fff1f2; }
 body.dark-mode .cert-check-result[data-cert-check-state="used"] .cert-page-badge-used {
-    background: rgba(251, 191, 36, 0.16);
-    border-color: rgba(251, 191, 36, 0.52);
-    color: #fde68a;
+    background: #b91c1c;
+    border-color: #f87171;
+    color: #fff;
 }
 
 .cert-page-toolbar {

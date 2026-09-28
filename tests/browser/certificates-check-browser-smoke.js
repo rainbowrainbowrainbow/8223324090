@@ -76,7 +76,7 @@ async function main() {
         if (req.params.code === 'SLOW') await new Promise(resolve => setTimeout(resolve, 350));
         if (lookupUnavailable && req.params.code === 'NETWORK-FAIL') return res.status(503).json({ error: 'Temporarily unavailable' });
         if (req.params.code === 'MISSING') return res.status(404).json({ error: 'Certificate not found' });
-        const status = ({ USED: 'used', BLOCKED: 'blocked', REVOKED: 'revoked' })[req.params.code]
+        const status = ({ USED: 'used', 'USED-NO-TIME': 'used', BLOCKED: 'blocked', REVOKED: 'revoked' })[req.params.code]
             || (consumed ? 'used' : 'active');
         const effectiveStatus = req.params.code === 'EXPIRED' ? 'expired' : status;
         const redemptionReason = effectiveStatus !== 'active' ? effectiveStatus
@@ -84,7 +84,7 @@ async function main() {
                 : req.params.code === 'DENIED' ? 'redemption_unavailable' : 'available';
         res.json({ id: 1, certCode: req.params.code, typeText: req.params.code === 'VERIFY' ? 'Абонемент' : 'на одноразовий вхід',
             validUntil: req.params.code === 'EXPIRED' ? '2020-01-01' : '2099-12-31',
-            status, effectiveStatus, usedAt: status === 'used' ? '2026-09-27T10:00:00Z' : null,
+            status, effectiveStatus, usedAt: status === 'used' && req.params.code !== 'USED-NO-TIME' ? '2026-09-27T10:00:00Z' : null,
             canRedeem: redemptionReason === 'available', redemptionReason });
     });
     app.get('/api/certificates/:id', (req, res) => res.json({
@@ -196,8 +196,22 @@ async function main() {
         await page.setViewportSize({ width: 390, height: 844 });
         await page.reload();
         await page.locator('[data-cert-check-state="used"]').waitFor();
-        await page.getByText('Використаний раніше').waitFor();
+        const usedResult = page.locator('[data-cert-check-state="used"]');
+        assert.equal(await usedResult.getAttribute('role'), 'alert');
+        await usedResult.getByText('ВХІД НЕДОСТУПНИЙ').waitFor();
+        await usedResult.getByText(/Активовано:.*27\.09\.2026.*13:00.*Київ/).waitFor();
+        assert.ok(await page.evaluate(() =>
+            document.querySelector('#certificateCheckResult').getBoundingClientRect().top
+            < document.querySelector('#certificateCheckForm').getBoundingClientRect().top
+        ), 'used warning appears above the check form on mobile');
         assert.equal(await page.locator('[data-cert-redeem]').count(), 0);
+        await page.screenshot({ path: path.join(OUTPUT, 'mobile-used-viewport.png') });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.reload();
+        await page.locator('[data-cert-check-state="used"]').waitFor();
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: path.join(OUTPUT, 'desktop-used.png'), fullPage: true });
+        await page.setViewportSize({ width: 390, height: 844 });
         await page.evaluate(() => {
             document.documentElement.dataset.theme = 'dark';
             document.documentElement.style.colorScheme = 'dark';
@@ -205,6 +219,10 @@ async function main() {
         });
         await page.waitForTimeout(500);
         await page.screenshot({ path: path.join(OUTPUT, 'mobile-dark-used.png'), fullPage: true });
+
+        await open('USED-NO-TIME');
+        await page.locator('[data-cert-check-state="used"]').getByText('Дата активації недоступна').waitFor();
+        assert.equal(await page.locator('[data-cert-redeem]').count(), 0);
 
         consumed = false;
         lookupUnavailable = true;

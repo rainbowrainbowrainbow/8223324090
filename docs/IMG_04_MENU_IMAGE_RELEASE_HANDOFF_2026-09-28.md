@@ -8,9 +8,9 @@ The deployed code previously treated every provider HTTP 429 as a temporary rate
 
 ## Candidate and production state
 
-- Candidate: detached worktree `C:\Users\Plotva\.codex\worktrees\menu-image-errors\EventGenix`, based on `7a61464776e983165fbac7a5cc3062515596858a` (`0.82.35`). Changes remain uncommitted.
+- Candidate: `codex/menu-image-errors-current` in the isolated worktree `C:\Users\Plotva\.codex\worktrees\menu-image-errors\EventGenix`. It starts at the exact live production SHA below. Functional work and this handoff are separate commits; release/version artifacts are still pending.
 - Read-only live `/api/version` on 2026-09-28: `0.82.36`, SHA `3ad833403eaf05e473947f3ba9a01f0c7e133ae3`, source branch `codex/eventgenix-production`, complete manifest deployment metadata.
-- The candidate base is older than the live release. Before any release, transfer the scoped change onto the then-current production branch/SHA, inspect conflicts and unrelated changes, and rerun validation. Do not reset, stash, or merge the dirty primary checkout to do so.
+- The scoped change was transferred onto that SHA without conflicts. Recheck live/remote convergence immediately before release; the primary dirty checkout remains untouched.
 
 ## Scoped implementation
 
@@ -28,11 +28,11 @@ The deployed code previously treated every provider HTTP 429 as a temporary rate
 - `npm run check:syntax`: 1340 JavaScript files passed.
 - `npm run check:css-surface` and `git diff --check`: passed.
 - The isolated worktree has no own `node_modules`; tests used the already installed packages from the primary checkout through process-local `NODE_PATH`. No install was performed.
-- CI, release candidate version/cache sync, deployment, and live write QA have **not** run. No commit or push was made.
+- CI, release candidate version/cache sync, deployment, and live write QA have **not** run. Functional and handoff commits are local only; no push was made.
 
 ## Release and live QA handoff
 
-1. Rebase the *change* safely onto the then-current production source, preserving the primary dirty checkout. Review the exact diff and add the normal version/cache/changelog release metadata. Run targeted checks again, then the repository's release gates and exact-SHA CI under the applicable authorization envelope.
+1. Recheck the exact live and remote SHA, preserving the primary dirty checkout. Review the scoped diff and add the normal version/cache/changelog release metadata. Run targeted checks again, then the repository's release gates and exact-SHA CI under the applicable authorization envelope.
 2. After an authorized deploy, verify `/api/version` reports the exact intended SHA and `codex/eventgenix-production` before UI QA.
 3. On one approved disposable menu product in the test business context, generate **one** photo. Check loading → ready, a reviewable AI draft, and unchanged current product photo. Click Apply manually and confirm the photo changes only then. Check manual upload still works after an AI error if such an error occurs naturally. Do not generate traffic to force a 429.
 4. For a naturally occurring generation failure, record only HTTP status, safe provider `error.code`/`type`, request ID, `Retry-After`, public `code`, and whether the UI gives the right next action. A quota/credits result requires the account owner to inspect provider billing/limits; an unknown 429 requires provider-side evidence rather than an assumed cooldown.

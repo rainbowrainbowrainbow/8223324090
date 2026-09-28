@@ -44,7 +44,7 @@ async function settleLayout(page) {
 
 async function waitForConversation(page, row, finalText, timeoutMs) {
     await page.locator('#omniChatName').filter({ hasText: row.customer_name }).waitFor({ state: 'visible', timeout: timeoutMs });
-    await page.locator('#omniMessages .omni-msg').filter({ hasText: finalText }).waitFor({ state: 'visible', timeout: timeoutMs });
+    await page.locator('#omniMessages').getByText(finalText, { exact: true }).waitFor({ state: 'visible', timeout: timeoutMs });
     await page.waitForFunction(() => !document.getElementById('omniHistoryControls')?.textContent.includes('Завантаження повідомлень'), null, { timeout: timeoutMs });
     await settleLayout(page);
 }

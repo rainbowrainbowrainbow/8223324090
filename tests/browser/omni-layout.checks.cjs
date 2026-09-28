@@ -285,10 +285,12 @@ async function testPrimaryFlow(page, artifacts) {
   'resized long draft is clipped');
 
   await page.setViewportSize({ width: 390, height: 420 });
-  await waitForLayout(page);
+  // Finish the shell width transition before establishing a reading position.
+  await waitForVisualReady(page);
   assert.equal(await page.locator('.omni-workspace-topbar').isVisible(), false,
     'short mobile conversation should reserve the topbar space for history and composer');
   await page.locator('#omniMessages').evaluate(node => { node.scrollTop = Math.max(1, node.scrollHeight / 2); });
+  await waitForLayout(page);
   const shortReadingPosition = await page.locator('#omniMessages').evaluate(node => node.scrollTop);
   assert.ok(shortReadingPosition > 0, 'short mobile history did not move to a reading position');
   await page.locator('#omniChatMore > summary').click();
@@ -314,6 +316,8 @@ async function testPrimaryFlow(page, artifacts) {
   await page.locator('#omniCloseConv').scrollIntoViewIfNeeded();
   assert.ok(await page.locator('#omniCloseConv').isVisible(), 'last short-mobile conversation action is unreachable');
   await page.screenshot({ path: path.join(artifacts, 'layout-short-mobile-more.png'), animations: 'disabled' });
+  assert.ok(Math.abs(await page.locator('#omniMessages').evaluate(node => node.scrollTop) - shortReadingPosition) < 3,
+    'short-mobile reading position changed before the mode switch');
   await mobileChannelsAction.click();
   await page.locator('#omniChannelsWorkspace').waitFor({ state: 'visible' });
   await page.getByRole('tab', { name: 'Стан', exact: true }).click();

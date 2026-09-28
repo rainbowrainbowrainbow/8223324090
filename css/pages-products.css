@@ -345,6 +345,30 @@
     gap: 6px;
 }
 
+.kitchen-menu-image-generation-status {
+    flex: 1 1 100%;
+    margin: 0;
+    color: var(--gray-500, #64748b);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.kitchen-menu-image-generation-status[data-type="loading"] {
+    color: #2563eb;
+}
+
+.kitchen-menu-image-generation-status[data-type="error"] {
+    color: #dc2626;
+}
+
+body.dark-mode .kitchen-menu-image-generation-status[data-type="loading"] {
+    color: #93c5fd;
+}
+
+body.dark-mode .kitchen-menu-image-generation-status[data-type="error"] {
+    color: #fca5a5;
+}
+
 .kitchen-menu-image-actions button {
     flex: 1 1 120px;
 }

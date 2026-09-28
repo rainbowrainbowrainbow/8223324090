@@ -3747,7 +3747,18 @@ async function apiGenerateProductMenuImage(id, payload = {}) {
         if (handleAuthError(response)) return { success: false };
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-            return { success: false, error: body.error || 'API error', code: body.code };
+            return {
+                success: false,
+                error: body?.error || 'API error',
+                code: body?.code || null,
+                status: response.status,
+                retryable: body?.retryable === true,
+                retryAfterSeconds: Number.isInteger(body?.retryAfterSeconds)
+                    && body.retryAfterSeconds >= 0 && body.retryAfterSeconds <= 86400
+                    ? body.retryAfterSeconds : null,
+                requestId: body?.requestId || null,
+                product: body?.product || null
+            };
         }
         return body;
     } catch (err) {

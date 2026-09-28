@@ -357,6 +357,7 @@ let activeKitchenTab = readInitialKitchenTab();
 let activeMenuSection = 'all';
 let currentCategory = readInitialCategory();
 let allProducts = [];
+const menuImageGenerationState = new Map();
 let productsLoadGeneration = 0;
 let productsLoadState = 'ready';
 let productRouteNavigationBound = false;
@@ -1192,6 +1193,82 @@ function getMenuImageStudioDraft(product = {}) {
     return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 }
 
+function menuImageGenerationKey(businessContext, productId) {
+    return JSON.stringify([getProductApiBusinessContext(businessContext), String(productId || '')]);
+}
+
+function menuImageGenerationMessage(state) {
+    if (state?.inFlight) return 'Генеруємо AI-чернетку. Поточне фото не змінюється.';
+    if (!state?.feedback) return '';
+
+    const code = state.feedback.code;
+    if (code === 'menu_image_generation_quota_exceeded') {
+        return 'Квота, кредити або ліміт витрат AI вичерпані. Зверніться до адміністратора. Фото можна завантажити вручну.';
+    }
+    if (code === 'menu_image_generation_unavailable' || code === 'openai_not_configured') {
+        return 'Генерація AI недоступна через доступ або налаштування провайдера. Повідомте адміністратора. Фото можна завантажити вручну.';
+    }
+    const temporarilyUnavailable = code === 'menu_image_generation_temporarily_unavailable';
+    if (code === 'menu_image_generation_rate_limited'
+        || code === 'product_menu_image_generation_rate_limited'
+        || temporarilyUnavailable) {
+        const reason = temporarilyUnavailable
+            ? 'Сервіс генерації тимчасово недоступний.'
+            : 'Генерацію тимчасово обмежено.';
+        if (state.cooldownUntil > Date.now()) {
+            const retryAt = new Date(state.cooldownUntil).toLocaleString('uk-UA', {
+                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+            return `${reason} Повторіть вручну після ${retryAt}.`;
+        }
+        return state.cooldownUntil
+            ? 'Час очікування минув. Можете повторити генерацію вручну.'
+            : `${reason} Спробуйте повторити вручну пізніше.`;
+    }
+    if (code === 'menu_image_upload_failed') {
+        return 'Згенероване фото не вдалося зберегти. Повідомте адміністратора або завантажте фото вручну.';
+    }
+    if (code === 'menu_image_generation_provider_rejected') {
+        return 'Провайдер відхилив генерацію. Причина не підтверджена. Повідомте адміністратора або завантажте фото вручну.';
+    }
+    return 'Не вдалося створити AI-чернетку. Причина невідома. Повідомте адміністратора або завантажте фото вручну.';
+}
+
+function syncKitchenMenuImageGenerationUi(key) {
+    const state = menuImageGenerationState.get(key);
+    document.querySelectorAll('.kitchen-menu-image-studio').forEach(panel => {
+        if (panel.dataset.menuImageKey !== key) return;
+        const inFlight = Boolean(state?.inFlight);
+        const cooldown = Boolean(state?.cooldownUntil > Date.now());
+        const otherActionBusy = !inFlight && panel.getAttribute('aria-busy') === 'true';
+        const button = panel.querySelector('[data-menu-image-action="generate"]');
+        const status = panel.querySelector('[data-menu-image-generation-status]');
+        const badge = panel.querySelector('.kitchen-menu-image-status');
+        if (!otherActionBusy) panel.setAttribute('aria-busy', inFlight ? 'true' : 'false');
+        if (button) {
+            button.disabled = inFlight || cooldown || otherActionBusy;
+            button.textContent = inFlight ? 'Генеруємо чернетку...' : button.dataset.menuImageDefaultLabel;
+        }
+        if (status) {
+            status.textContent = menuImageGenerationMessage(state);
+            status.dataset.type = inFlight ? 'loading' : (state?.feedback ? 'error' : '');
+        }
+        if (badge && (inFlight || state?.feedback)) {
+            badge.textContent = inFlight ? 'Генерується' : 'Помилка';
+            badge.classList.toggle('generating', inFlight);
+            badge.classList.toggle('failed', !inFlight);
+        }
+    });
+}
+
+function clearMenuImageGenerationFeedback(businessContext, productId) {
+    const key = menuImageGenerationKey(businessContext, productId);
+    const state = menuImageGenerationState.get(key);
+    if (!state || state.inFlight) return;
+    if (state.cooldownTimer) clearTimeout(state.cooldownTimer);
+    menuImageGenerationState.delete(key);
+}
+
 function menuImageOptionHtml(options = [], selected = '') {
     return options.map(option => `<option value="${escapeHtml(option.value)}"${option.value === selected ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
 }
@@ -1278,28 +1355,35 @@ function renderKitchenMenuAiActions(product = {}, canManage = false) {
 function renderKitchenMenuImageStudio(product = {}, canManage = false) {
     if (!canManage || getKitchenType(product) !== 'menu') return '';
     const draft = getMenuImageStudioDraft(product);
+    const businessContext = getProductApiBusinessContext(product.businessContext || product.business_context || activeBusinessContext);
+    const generationKey = menuImageGenerationKey(businessContext, product.id);
+    const generationState = menuImageGenerationState.get(generationKey);
+    const generationBusy = Boolean(generationState?.inFlight);
+    const generationCoolingDown = Boolean(generationState?.cooldownUntil > Date.now());
     const size = MENU_IMAGE_SIZE_OPTIONS.some(item => item.value === draft.size) ? draft.size : '1536x1024';
     const style = MENU_IMAGE_STYLE_OPTIONS.some(item => item.value === draft.style) ? draft.style : 'catalog';
     const productId = escapeJsString(product.id);
     const appliedImage = product.iconUrl || product.icon_url || '';
     const currentImage = appliedImage || productMenuImageUrl(product);
-    const status = String(draft.status || (draft.imageUrl ? 'ready' : 'draft')).trim().toLowerCase();
+    const draftStatus = String(draft.status || (draft.imageUrl ? 'ready' : 'draft')).trim().toLowerCase();
+    const status = generationBusy ? 'generating' : (generationState?.feedback ? 'failed' : draftStatus);
     const hasDraft = Boolean(draft.imageUrl || draft.prompt || draft.error || draft.generatedAt || draft.preparedAt);
     const hasDraftImage = Boolean(draft.imageUrl);
     const statusLabel = menuImageDraftStatusLabel(status);
     const statusClass = menuImageDraftStatusClass(status);
     const promptPreview = menuImagePromptPreview(draft.prompt);
-    const canApply = hasDraftImage && ['ready', 'approved'].includes(status);
-    const canReject = hasDraft && !['generating', 'rejected', 'applied'].includes(status);
+    const canApply = hasDraftImage && ['ready', 'approved'].includes(draftStatus);
+    const canReject = hasDraft && !['generating', 'rejected', 'applied'].includes(draftStatus);
     const sourceLabel = appliedImage
         ? 'Поточне фото застосовано в продукті'
         : (currentImage ? 'Поточне фото з fallback-каталогу' : 'Поточне фото ще не задане');
     const appliedMeta = appliedImage ? 'iconUrl' : (currentImage ? 'fallback' : '');
     const draftMeta = hasDraftImage
         ? `${draft.provider || 'openai'} · ${draft.size || size} · ${draft.generatedAt || ''}`
-        : (draft.error ? `Помилка: ${draft.error}` : 'AI draft ще не створено');
+        : (status === 'failed' ? 'AI-чернетку не створено' : 'AI-чернетку ще не створено');
+    const generateLabel = hasDraft ? 'Перегенерувати чернетку' : 'Згенерувати чернетку';
     return `
-        <div class="kitchen-menu-image-studio" data-menu-image-product="${escapeHtml(product.id)}">
+        <div class="kitchen-menu-image-studio" data-menu-image-product="${escapeHtml(product.id)}" data-menu-image-key="${escapeHtml(generationKey)}" aria-busy="${generationBusy ? 'true' : 'false'}">
             <div class="kitchen-menu-image-head">
                 <div>
                     <strong>Фото меню</strong>
@@ -1314,41 +1398,42 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
             <div class="kitchen-menu-image-controls">
                 <label>
                     <span>Розмір</span>
-                    <select data-menu-image-size>${menuImageOptionHtml(MENU_IMAGE_SIZE_OPTIONS, size)}</select>
+                    <select data-menu-image-size${generationBusy ? ' disabled' : ''}>${menuImageOptionHtml(MENU_IMAGE_SIZE_OPTIONS, size)}</select>
                 </label>
                 <label>
                     <span>Стиль</span>
-                    <select data-menu-image-style>${menuImageOptionHtml(MENU_IMAGE_STYLE_OPTIONS, style)}</select>
+                    <select data-menu-image-style${generationBusy ? ' disabled' : ''}>${menuImageOptionHtml(MENU_IMAGE_STYLE_OPTIONS, style)}</select>
                 </label>
                 <div class="kitchen-menu-image-actions">
-                    <button type="button" class="btn-page-secondary kitchen-menu-image-generate-btn" data-menu-image-action="generate" onclick="generateKitchenMenuImage('${productId}', this)">
-                        ${hasDraft ? 'Перегенерувати чернетку' : 'Згенерувати чернетку'}
+                    <button type="button" class="btn-page-secondary kitchen-menu-image-generate-btn" data-menu-image-action="generate" data-menu-image-default-label="${generateLabel}" onclick="generateKitchenMenuImage('${productId}', this)"${generationBusy || generationCoolingDown ? ' disabled' : ''}>
+                        ${generationBusy ? 'Генеруємо чернетку...' : generateLabel}
                     </button>
-                    <button type="button" class="btn-page-primary" data-menu-image-action="apply" onclick="applyKitchenMenuImageDraft('${productId}', this)"${canApply ? '' : ' disabled'}>
+                    <button type="button" class="btn-page-primary" data-menu-image-action="apply" onclick="applyKitchenMenuImageDraft('${productId}', this)"${canApply && !generationBusy ? '' : ' disabled'}>
                         Застосувати
                     </button>
-                    <button type="button" class="btn-page-secondary" data-menu-image-action="reject" onclick="rejectKitchenMenuImageDraft('${productId}', this)"${canReject ? '' : ' disabled'}>
+                    <button type="button" class="btn-page-secondary" data-menu-image-action="reject" onclick="rejectKitchenMenuImageDraft('${productId}', this)"${canReject && !generationBusy ? '' : ' disabled'}>
                         Відхилити
                     </button>
                 </div>
+                <p class="kitchen-menu-image-generation-status" data-menu-image-generation-status data-type="${generationBusy ? 'loading' : (generationState?.feedback ? 'error' : '')}" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(menuImageGenerationMessage(generationState))}</p>
             </div>
             <div class="kitchen-menu-image-manual">
                 <label>
                     <span>Файл</span>
-                    <input type="file" accept="image/png,image/jpeg,image/webp" data-menu-image-file>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" data-menu-image-file${generationBusy ? ' disabled' : ''}>
                 </label>
                 <label>
                     <span>URL фото</span>
-                    <input type="url" inputmode="url" placeholder="https://..." data-menu-image-url>
+                    <input type="url" inputmode="url" placeholder="https://..." data-menu-image-url${generationBusy ? ' disabled' : ''}>
                 </label>
-                <button type="button" class="btn-page-secondary" data-menu-image-action="external-draft" onclick="createKitchenMenuExternalDraft('${productId}', this)">
+                <button type="button" class="btn-page-secondary" data-menu-image-action="external-draft" onclick="createKitchenMenuExternalDraft('${productId}', this)"${generationBusy ? ' disabled' : ''}>
                     Зберегти як draft
                 </button>
                 <p class="kitchen-menu-image-manual-status" data-menu-image-manual-status aria-live="polite"></p>
             </div>
             ${hasDraft ? `
                 <p class="kitchen-menu-image-meta">
-                    ${escapeHtml(draft.error ? `Помилка: ${draft.error}` : (draft.generatedAt ? `Згенеровано: ${draft.generatedAt}` : 'Чернетка підготовлена'))}
+                    ${escapeHtml(draft.error ? 'AI-чернетку не створено' : (draft.generatedAt ? `Згенеровано: ${draft.generatedAt}` : 'Чернетка підготовлена'))}
                 </p>
             ` : ''}
             ${promptPreview ? `
@@ -1383,6 +1468,7 @@ async function openKitchenMenuAiFromCard(productId, initialStep = 'nameDescripti
 
 function setKitchenMenuImageStudioBusy(panel, busy) {
     if (!panel) return;
+    panel.setAttribute('aria-busy', busy ? 'true' : 'false');
     panel.querySelectorAll('button, select, input, textarea').forEach(control => {
         if (busy) {
             control.dataset.menuImageWasDisabled = control.disabled ? '1' : '0';
@@ -1412,6 +1498,8 @@ function readMenuImageFileAsDataUrl(file) {
 
 async function createKitchenMenuExternalDraft(productId, trigger = null) {
     if (!guardProductWrite('зберегти ручний draft фото меню')) return;
+    const businessContext = getProductApiBusinessContext();
+    if (menuImageGenerationState.get(menuImageGenerationKey(businessContext, productId))?.inFlight) return;
     const product = allProducts.find(item => String(item.id || '') === String(productId || ''));
     if (!product || getKitchenType(product) !== 'menu') {
         showNotification('Image studio доступний тільки для меню-позицій', 'error');
@@ -1471,7 +1559,7 @@ async function createKitchenMenuExternalDraft(productId, trigger = null) {
             throw new Error('Menu image external draft API is not available');
         }
         const payload = {
-            businessContext: getProductApiBusinessContext(),
+            businessContext,
             prompt: buildKitchenMenuImagePrompt(product, { size, style }),
             provider: 'manual',
             model: file ? 'browser-file-upload' : 'pasted-image-url',
@@ -1487,6 +1575,7 @@ async function createKitchenMenuExternalDraft(productId, trigger = null) {
 
         const result = await apiCreateProductMenuExternalDraft(productId, payload);
         if (!result?.success) throw new Error(result?.error || 'Не вдалося зберегти manual draft фото меню');
+        clearMenuImageGenerationFeedback(businessContext, productId);
         if (result.product) updateProductInState(result.product);
         showNotification('Manual draft фото меню збережено. Перевірте й застосуйте його вручну', 'success');
         renderProducts();
@@ -1498,12 +1587,27 @@ async function createKitchenMenuExternalDraft(productId, trigger = null) {
         if (trigger?.isConnected) {
             setKitchenMenuImageStudioBusy(panel, false);
             trigger.textContent = originalText;
+            syncKitchenMenuImageGenerationUi(menuImageGenerationKey(businessContext, productId));
         }
     }
 }
 
+function scheduleKitchenMenuImageCooldown(key, state) {
+    if (state.cooldownTimer) clearTimeout(state.cooldownTimer);
+    const delay = state.cooldownUntil - Date.now();
+    if (delay <= 0) return;
+    state.cooldownTimer = setTimeout(() => {
+        state.cooldownTimer = null;
+        if (menuImageGenerationState.get(key) === state) syncKitchenMenuImageGenerationUi(key);
+    }, delay + 10);
+}
+
 async function generateKitchenMenuImage(productId, trigger = null) {
     if (!guardProductWrite('генерувати фото меню')) return;
+    const businessContext = getProductApiBusinessContext();
+    const key = menuImageGenerationKey(businessContext, productId);
+    const state = menuImageGenerationState.get(key) || {};
+    if (state.inFlight || state.cooldownUntil > Date.now()) return;
     const product = allProducts.find(item => String(item.id || '') === String(productId || ''));
     if (!product || getKitchenType(product) !== 'menu') {
         showNotification('Image studio доступний тільки для меню-позицій', 'error');
@@ -1512,36 +1616,56 @@ async function generateKitchenMenuImage(productId, trigger = null) {
     const panel = trigger?.closest?.('.kitchen-menu-image-studio');
     const size = panel?.querySelector?.('[data-menu-image-size]')?.value || '1536x1024';
     const style = panel?.querySelector?.('[data-menu-image-style]')?.value || 'catalog';
-    const originalText = trigger?.textContent || '';
-    if (trigger) {
-        setKitchenMenuImageStudioBusy(panel, true);
-        trigger.textContent = 'Генерується draft...';
-    }
+    if (state.cooldownTimer) clearTimeout(state.cooldownTimer);
+    state.inFlight = true;
+    state.feedback = null;
+    state.cooldownUntil = 0;
+    state.cooldownTimer = null;
+    menuImageGenerationState.set(key, state);
+    if (panel) setKitchenMenuImageStudioBusy(panel, true);
+    syncKitchenMenuImageGenerationUi(key);
+    let notificationType = 'error';
     try {
         if (typeof apiGenerateProductMenuImage !== 'function') {
             throw new Error('Menu image generation API is not available');
         }
         const result = await apiGenerateProductMenuImage(productId, {
-            businessContext: getProductApiBusinessContext(),
+            businessContext,
             size,
             style
         });
-        if (!result?.success) throw new Error(result?.error || 'Не вдалося згенерувати фото меню');
-        if (result.product) updateProductInState(result.product);
-        showNotification('AI draft фото меню готовий до перегляду', 'success');
-        renderProducts();
+        if (result?.product && businessContext === getProductApiBusinessContext()) {
+            updateProductInState(result.product);
+        }
+        if (result?.success) {
+            notificationType = 'success';
+            menuImageGenerationState.delete(key);
+        } else {
+            const seconds = Number.isInteger(result?.retryAfterSeconds)
+                && result.retryAfterSeconds > 0 && result.retryAfterSeconds <= 86400
+                ? result.retryAfterSeconds : 0;
+            state.feedback = { code: result?.code || null };
+            state.cooldownUntil = result?.retryable === true && seconds ? Date.now() + seconds * 1000 : 0;
+        }
     } catch (err) {
-        showNotification(err.message || 'Не вдалося згенерувати фото меню', 'error');
+        state.feedback = { code: null };
+        state.cooldownUntil = 0;
     } finally {
-        if (trigger?.isConnected) {
-            setKitchenMenuImageStudioBusy(panel, false);
-            trigger.textContent = originalText;
+        state.inFlight = false;
+        if (state.feedback && state.cooldownUntil) scheduleKitchenMenuImageCooldown(key, state);
+        if (businessContext === getProductApiBusinessContext()) {
+            renderProducts();
+            showNotification(notificationType === 'success'
+                ? 'AI-чернетка фото меню готова до перегляду. Поточне фото не змінено.'
+                : menuImageGenerationMessage(state), notificationType);
         }
     }
 }
 
 async function applyKitchenMenuImageDraft(productId, trigger = null) {
     if (!guardProductWrite('застосувати фото меню')) return;
+    const businessContext = getProductApiBusinessContext();
+    if (menuImageGenerationState.get(menuImageGenerationKey(businessContext, productId))?.inFlight) return;
     const product = allProducts.find(item => String(item.id || '') === String(productId || ''));
     if (!product || getKitchenType(product) !== 'menu') {
         showNotification('Image studio доступний тільки для меню-позицій', 'error');
@@ -1558,9 +1682,10 @@ async function applyKitchenMenuImageDraft(productId, trigger = null) {
             throw new Error('Menu image apply API is not available');
         }
         const result = await apiApplyProductMenuImage(productId, {
-            businessContext: getProductApiBusinessContext()
+            businessContext
         });
         if (!result?.success) throw new Error(result?.error || 'Не вдалося застосувати фото меню');
+        clearMenuImageGenerationFeedback(businessContext, productId);
         if (result.product) updateProductInState(result.product);
         showNotification('Фото меню застосовано до продукту', 'success');
         renderProducts();
@@ -1570,12 +1695,15 @@ async function applyKitchenMenuImageDraft(productId, trigger = null) {
         if (trigger?.isConnected) {
             setKitchenMenuImageStudioBusy(panel, false);
             trigger.textContent = originalText;
+            syncKitchenMenuImageGenerationUi(menuImageGenerationKey(businessContext, productId));
         }
     }
 }
 
 async function rejectKitchenMenuImageDraft(productId, trigger = null) {
     if (!guardProductWrite('відхилити фото меню')) return;
+    const businessContext = getProductApiBusinessContext();
+    if (menuImageGenerationState.get(menuImageGenerationKey(businessContext, productId))?.inFlight) return;
     const product = allProducts.find(item => String(item.id || '') === String(productId || ''));
     if (!product || getKitchenType(product) !== 'menu') {
         showNotification('Image studio доступний тільки для меню-позицій', 'error');
@@ -1592,9 +1720,10 @@ async function rejectKitchenMenuImageDraft(productId, trigger = null) {
             throw new Error('Menu image reject API is not available');
         }
         const result = await apiRejectProductMenuImage(productId, {
-            businessContext: getProductApiBusinessContext()
+            businessContext
         });
         if (!result?.success) throw new Error(result?.error || 'Не вдалося відхилити фото меню');
+        clearMenuImageGenerationFeedback(businessContext, productId);
         if (result.product) updateProductInState(result.product);
         showNotification('AI draft фото меню відхилено. Поточне фото не змінено', 'success');
         renderProducts();
@@ -1604,6 +1733,7 @@ async function rejectKitchenMenuImageDraft(productId, trigger = null) {
         if (trigger?.isConnected) {
             setKitchenMenuImageStudioBusy(panel, false);
             trigger.textContent = originalText;
+            syncKitchenMenuImageGenerationUi(menuImageGenerationKey(businessContext, productId));
         }
     }
 }

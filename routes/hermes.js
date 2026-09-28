@@ -62,6 +62,8 @@ const { withHermesIdempotency } = require('../services/hermesIdempotency');
 const {
     buildMenuImagePrompt,
     generateAndStoreMenuPhotoDraft,
+    menuImageFailureDiagnostic,
+    menuImagePublicError,
     normalizeMenuImageSize,
     normalizeMenuImageStyle,
     resolveMenuImageOpenAIModel
@@ -1448,36 +1450,6 @@ async function persistHermesMenuPhotoDraft(query, productId, businessContext, us
            AND COALESCE(business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $4`,
         [JSON.stringify(draft), username, productId, businessContext]
     );
-}
-
-function menuPhotoPublicError(err) {
-    const message = String(err?.message || '');
-    if (err?.code === 'openai_not_configured' || /OPENAI_API_KEY is not configured/i.test(message)) {
-        return {
-            status: 503,
-            code: 'openai_not_configured',
-            error: 'OPENAI_API_KEY is not configured'
-        };
-    }
-    if (err?.code === 'menu_image_upload_failed') {
-        return {
-            status: 502,
-            code: 'menu_image_upload_failed',
-            error: 'Generated image could not be saved to CRM uploads'
-        };
-    }
-    if (err?.status === 429 || err?.code === 'openai_rate_limited') {
-        return {
-            status: 429,
-            code: 'menu_image_generation_rate_limited',
-            error: 'Menu image generation is temporarily rate limited'
-        };
-    }
-    return {
-        status: 502,
-        code: 'menu_image_generation_failed',
-        error: 'Menu image generation failed'
-    };
 }
 
 function menuPhotoExternalDraftPublicError(err) {
@@ -3454,7 +3426,8 @@ function createHermesRouter(options = {}) {
                         })
                     };
                 } catch (err) {
-                    const publicError = menuPhotoPublicError(err);
+                    const publicError = menuImagePublicError(err);
+                    log.warn('Hermes menu photo draft generation failed', menuImageFailureDiagnostic(err));
                     const failedStudio = normalizeHermesMenuImageStudio({
                         ...generatingStudio,
                         status: 'failed',
@@ -3478,6 +3451,9 @@ function createHermesRouter(options = {}) {
                             status: 'failed',
                             error: publicError.error,
                             code: publicError.code,
+                            retryable: publicError.retryable,
+                            retryAfterSeconds: publicError.retryAfterSeconds,
+                            requestId: publicError.requestId,
                             product: toHermesMenuPhotoProduct({
                                 ...product,
                                 ai_card_draft: failedDraft

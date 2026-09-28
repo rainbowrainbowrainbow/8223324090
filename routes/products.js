@@ -48,6 +48,8 @@ const {
     normalizeMenuImageStyle,
     buildMenuImagePrompt,
     generateAndStoreMenuPhotoDraft,
+    menuImageFailureDiagnostic,
+    menuImagePublicError,
     resolveMenuImageOpenAIModel
 } = require('../services/menuPhotoGeneration');
 const {
@@ -152,6 +154,11 @@ const productMenuAiRateLimit = createWriteRateLimiter('product-menu-ai-draft', {
     methods: ['POST']
 });
 const productMenuImageRateLimit = createWriteRateLimiter('product-menu-image-generation', {
+    windowMs: 60 * 1000,
+    max: 4,
+    methods: ['POST']
+});
+const productMenuImageReviewRateLimit = createWriteRateLimiter('product-menu-image-review', {
     windowMs: 60 * 1000,
     max: 4,
     methods: ['POST']
@@ -1557,37 +1564,6 @@ function menuImageDraftLockKey(businessContext, productId) {
     return ['products.menu-image-draft', businessContext || DEFAULT_BUSINESS_CONTEXT, productId].join('|');
 }
 
-function menuImagePublicError(err) {
-    const message = String(err?.message || '');
-    const openAiUnavailable = err?.code === 'openai_not_configured' || /OPENAI_API_KEY is not configured/i.test(message);
-    if (openAiUnavailable) {
-        return {
-            status: 503,
-            code: 'openai_not_configured',
-            error: 'OPENAI_API_KEY is not configured'
-        };
-    }
-    if (err?.code === 'menu_image_upload_failed') {
-        return {
-            status: 502,
-            code: 'menu_image_upload_failed',
-            error: 'Generated image could not be saved to CRM uploads'
-        };
-    }
-    if (err?.status === 429 || err?.code === 'openai_rate_limited') {
-        return {
-            status: 429,
-            code: 'menu_image_generation_rate_limited',
-            error: 'Menu image generation is temporarily rate limited'
-        };
-    }
-    return {
-        status: 502,
-        code: 'menu_image_generation_failed',
-        error: 'Menu image generation failed'
-    };
-}
-
 function menuImageExternalDraftPublicError(err) {
     const code = String(err?.code || '');
     const clientErrorCodes = new Set([
@@ -1733,6 +1709,7 @@ async function handleMenuImageDraftRequest(req, res) {
             });
         } catch (err) {
             const publicError = menuImagePublicError(err);
+            log.warn('Menu image draft generation failed', menuImageFailureDiagnostic(err));
             const failedStudio = normalizeMenuImageStudio({
                 ...generatingStudio,
                 status: 'failed',
@@ -1749,11 +1726,17 @@ async function handleMenuImageDraftRequest(req, res) {
             const failedDraft = buildProductMenuImageDraft(product, failedStudio, { currentDraft });
             await persistProductMenuImageDraft(id, businessContext, req.user.username, failedDraft);
             const fresh = await getProductWithPriceRule(pool, id, businessContext).catch(() => null);
+            if (publicError.retryable && publicError.retryAfterSeconds) {
+                res.setHeader('Retry-After', String(publicError.retryAfterSeconds));
+            }
             return res.status(publicError.status).json({
                 success: false,
                 status: 'failed',
                 error: publicError.error,
                 code: publicError.code,
+                retryable: publicError.retryable,
+                retryAfterSeconds: publicError.retryAfterSeconds,
+                requestId: publicError.requestId,
                 draft: failedDraft,
                 product: fresh ? mapProductRow(fresh) : null
             });
@@ -1793,7 +1776,7 @@ router.post('/:id/menu-image/draft', productMenuImageRateLimit, requireRole(...P
 router.post('/:id/menu-image/generate', productMenuImageRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), handleMenuImageDraftRequest);
 
 // POST /api/products/:id/menu-image/external-draft - accept a ready uploaded image as a reviewable draft only
-router.post('/:id/menu-image/external-draft', productMenuImageRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), handleExternalMenuImageDraftRequest);
+router.post('/:id/menu-image/external-draft', productMenuImageReviewRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), handleExternalMenuImageDraftRequest);
 
 // GET /api/products/:id/menu-image/context - safe product facts and image rules for external generation
 router.get('/:id/menu-image/context', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
@@ -1846,7 +1829,7 @@ router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), asy
     }
 });
 
-router.post('/:id/menu-image/apply', productMenuImageRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+router.post('/:id/menu-image/apply', productMenuImageReviewRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
     const { id } = req.params;
     if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
 
@@ -1932,7 +1915,7 @@ router.post('/:id/menu-image/apply', productMenuImageRateLimit, requireRole(...P
     }
 });
 
-router.post('/:id/menu-image/reject', productMenuImageRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+router.post('/:id/menu-image/reject', productMenuImageReviewRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
     const { id } = req.params;
     if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
 

@@ -2609,6 +2609,68 @@ describe('Hermes menu photo routes', () => {
         }
     });
 
+    it('returns distinct safe provider 429 errors without applying a menu photo', async () => {
+        const previousKey = process.env.OPENAI_API_KEY;
+        const previousBase = process.env.OPENAI_API_BASE;
+        const originalFetch = global.fetch;
+        const cases = [
+            { id: 'dish-quota', providerCode: 'insufficient_quota', expectedCode: 'menu_image_generation_quota_exceeded', retryable: false },
+            { id: 'dish-rate', providerCode: 'rate_limit_exceeded', expectedCode: 'menu_image_generation_rate_limited', retryable: true },
+            { id: 'dish-unknown', providerCode: 'unrecognized_429', expectedCode: 'menu_image_generation_provider_rejected', retryable: false }
+        ];
+        const fakePool = createHermesCreateFakePool({
+            products: cases.map(({ id }) => [id, productRow(id, {
+                icon_url: `/uploads/catalog-images/items/current-${id}.png`
+            })])
+        });
+        let providerCode = null;
+        let providerCalls = 0;
+
+        process.env.OPENAI_API_KEY = 'synthetic-test-key';
+        delete process.env.OPENAI_API_BASE;
+        global.fetch = async (url, options) => {
+            if (/\/images\/generations$/.test(String(url))) {
+                providerCalls++;
+                return new Response(JSON.stringify({
+                    error: { code: providerCode, type: 'rate_limit_error', message: 'PRIVATE-UPSTREAM-MESSAGE' }
+                }), {
+                    status: 429,
+                    headers: { 'Retry-After': '17', 'x-request-id': 'req_test_123' }
+                });
+            }
+            return originalFetch(url, options);
+        };
+
+        try {
+            await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+                for (const item of cases) {
+                    providerCode = item.providerCode;
+                    const res = await request(baseUrl, 'POST', `/api/hermes/menu-photos/${item.id}/draft`, {
+                        size: '1536x1024',
+                        style: 'catalog'
+                    }, mutationHeaders(`menu-photo-provider-${item.id}`));
+
+                    assert.equal(res.status, 429, res.text);
+                    assert.equal(res.data.code, item.expectedCode);
+                    assert.equal(res.data.retryable, item.retryable);
+                    assert.equal(res.data.retryAfterSeconds, item.retryable ? 17 : null);
+                    assert.equal(res.data.requestId, 'req_test_123');
+                    assert.equal(res.data.product.currentImageUrl, `/uploads/catalog-images/items/current-${item.id}.png`);
+                    assert.equal(res.data.product.draft.status, 'failed');
+                    assert.equal(fakePool.products.get(item.id).icon_url, `/uploads/catalog-images/items/current-${item.id}.png`);
+                    assert.equal(JSON.stringify(res.data).includes('PRIVATE-UPSTREAM-MESSAGE'), false);
+                }
+            });
+            assert.equal(providerCalls, cases.length);
+        } finally {
+            global.fetch = originalFetch;
+            if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+            else process.env.OPENAI_API_KEY = previousKey;
+            if (previousBase === undefined) delete process.env.OPENAI_API_BASE;
+            else process.env.OPENAI_API_BASE = previousBase;
+        }
+    });
+
     it('creates an external ready draft without applying it when autoApply is explicitly disabled', async () => {
         const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'event-genix-hermes-menu-photo-external-'));
         const fakePool = createHermesCreateFakePool({

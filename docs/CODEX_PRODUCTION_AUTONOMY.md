@@ -307,6 +307,24 @@ read-only count and the owner's separate bounded Red approval before execution.
 The controller itself does not run a direct data-fix. If the count exceeds the
 approved cap, stop; do not split the release into unapproved batches.
 
+The `lead-ui-ci-gate` protected workflow is reserved for the reviewed unified
+lead-card and Omni UI release. It permits exactly `.github/workflows/ci.yml` as
+a Red path, plus only the exact functional/documentation paths enumerated in
+`scripts/production-block-policy.js`. It does not authorize arbitrary workflow
+changes: the separately reviewed CI diff adds disposable PostgreSQL 16 and the
+existing Omni links DB/actual-app browser suites to the existing Omni CI job,
+with bounded timeout and fixture diagnostics. Triggers, GitHub permissions,
+secrets, hosting, and production providers stay unchanged. Separate explicit
+approval covers this exact CI/policy diff before implementation. Existing
+current-task or active bounded release authorization remains applicable while
+its named scope, branch/service, data boundaries, time and attempt limits match;
+adding this gate does not itself require repeating that authorization. The
+certificate exception is not reusable.
+No migrations, production QA records, or production backfill are allowed in this
+workflow. Production verification remains read only; lead/link mutation tests
+run against the isolated database. New files outside the exact allowlist require
+a newly reviewed scope rather than a wildcard or controller bypass.
+
 Production GitHub auto-deploy is disabled. Deploy manually only after exact-SHA CI
 is green.
 

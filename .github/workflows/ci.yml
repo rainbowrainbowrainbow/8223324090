@@ -53,7 +53,22 @@ jobs:
   omni-browser:
     name: Omni browser regression
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eventgenix_omni_links_ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eventgenix_omni_links_ci_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -82,12 +97,26 @@ jobs:
       - name: Run Omni browser regression
         run: npm run test:browser:omni
 
+      - name: Run Omni lead links PostgreSQL integration
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_omni_links_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:integration:omni-links:isolated
+
+      - name: Run Omni lead workspace actual app browser regression
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_omni_links_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:browser:omni-links:isolated
+
       - name: Upload Omni browser diagnostics
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: omni-browser-${{ github.sha }}
-          path: output/playwright/omni-completion
+          path: |
+            output/playwright/omni-completion
+            output/playwright/omni-lead-links
           if-no-files-found: warn
           retention-days: 14
 

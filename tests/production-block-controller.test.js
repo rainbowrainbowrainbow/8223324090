@@ -325,6 +325,54 @@ test('certificate CI protected workflow signs only the expiry and booking preche
     } }, { changedPaths }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
 });
 
+test('lead UI CI protected workflow signs only the reviewed unified-card release', () => {
+    const changedPaths = [
+        '.github/workflows/ci.yml', 'js/leads-page.js', 'leads.html',
+        'tests/browser/omni-lead-links-actual-app-browser-smoke.js',
+        'tests/browser/omni-workspace-navigation-fixtures.js',
+        'scripts/production-block-policy.js', 'tests/production-block-controller.test.js'
+    ];
+    const options = { protectedWorkflow: 'lead-ui-ci-gate' };
+    const value = manifest(options, { changedPaths });
+    assert.deepEqual(value.allowedProtectedWorkflow, {
+        enabled: true, kind: 'lead-ui-ci-gate', protectedChangedPaths: ['.github/workflows/ci.yml']
+    });
+    assert.equal(value.realDataMutationAllowed, false);
+    assert.equal(value.settingsMutationAllowed, false);
+    assert.deepEqual(value.allowedMigrationFiles, []);
+    assert.deepEqual(value.allowedQaScope, { enabled: false });
+    assert.doesNotThrow(() => validateManifest(value));
+    assert.equal(parseOptions(['prepare', '--protected-workflow', 'lead-ui-ci-gate']).protectedWorkflow, 'lead-ui-ci-gate');
+    assert.throws(() => manifest({}, { changedPaths }),
+        error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    assert.throws(() => manifest({ protectedWorkflow: 'certificate-ci-gate' }, { changedPaths }),
+        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    for (const extra of ['.github/workflows/deploy.yml', 'middleware/auth.js', 'routes/finance.js', 'railway.json', '.env.production']) {
+        assert.throws(() => manifest(options, { changedPaths: [...changedPaths, extra] }),
+            error => error.code === 'PRODUCTION_BLOCK_RED_PATHS', extra);
+    }
+    for (const extra of ['routes/leads.js', 'services/omni-hub.js', 'scripts/production-block-controller.js', 'docs/unreviewed-release.md']) {
+        assert.throws(() => manifest(options, { changedPaths: [...changedPaths, extra] }),
+            error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID', extra);
+    }
+    assert.throws(() => manifest(options, {
+        changedPaths: changedPaths.filter(file => file !== 'tests/browser/omni-workspace-navigation-fixtures.js')
+    }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    const migration = { file: 'db/migrations/999_unreviewed.sql',
+        sql: '-- MIGRATION_KIND: schema\n-- SAFETY: additive\n-- ROLLBACK: leave unused\nCREATE INDEX IF NOT EXISTS test_idx ON leads (id);' };
+    assert.throws(() => manifest(options, { changedPaths, migrations: [migration] }),
+        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    assert.throws(() => manifest({ ...options, qaScope: {
+        enabled: true, kind: 'canary', date: '2026-09-28', ttlMinutes: 15, animators: '1', fixtureLimit: 1
+    } }, { changedPaths }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    const mutated = { ...value, allowedQaScope: {
+        enabled: true, kind: 'canary', date: '2026-09-28', ttlMinutes: 15, animators: '1', fixtureLimit: 1
+    } };
+    mutated.manifestHash = manifestHash(mutated);
+    assert.throws(() => validateManifest(mutated),
+        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+});
+
 test('protected workflow parsing is explicit and disabled by default', () => {
     assert.equal(parseOptions(['prepare', '--protected-workflow', 'sys-mb-auth-cutover']).protectedWorkflow, 'sys-mb-auth-cutover');
     assert.equal(parseOptions(['prepare', '--protected-workflow', 'certificate-ci-gate']).protectedWorkflow, 'certificate-ci-gate');

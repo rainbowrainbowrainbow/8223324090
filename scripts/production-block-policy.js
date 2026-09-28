@@ -19,7 +19,8 @@ const SENSITIVE_KEY = /(secret|token|password|database.?url|authorization|cookie
 const PROTECTED_WORKFLOWS = Object.freeze({
     SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover',
     CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
-    CERTIFICATE_CI_GATE: 'certificate-ci-gate'
+    CERTIFICATE_CI_GATE: 'certificate-ci-gate',
+    LEAD_UI_CI_GATE: 'lead-ui-ci-gate'
 });
 const CERTIFICATE_QA_RED_PATHS = Object.freeze(['routes/auth.js', 'routes/finance.js']);
 const CERTIFICATE_QA_MIGRATION = 'db/migrations/371_trusted_qa_certificate_lookup.sql';
@@ -41,6 +42,41 @@ const CERTIFICATE_CI_CHANGED_PATHS = Object.freeze([
     'tests/production-block-controller.test.js',
     'tests/scheduler-guard-contract.test.js',
     'tests/scheduler-notification-jobs-hardening.test.js'
+]);
+const LEAD_UI_CI_RED_PATHS = Object.freeze(['.github/workflows/ci.yml']);
+const LEAD_UI_CI_CHANGED_PATHS = Object.freeze([
+    '.github/workflows/ci.yml',
+    'css/omni-workspace.css',
+    'css/pages-leads.css',
+    'docs/CODEX_PRODUCTION_AUTONOMY.md',
+    'docs/LEAD_UI_1_HANDOFF_2026-09-27.md',
+    'docs/LEAD_UI_2_HANDOFF_2026-09-27.md',
+    'docs/LEAD_UI_3_HANDOFF_2026-09-27.md',
+    'docs/LEAD_UI_4_RELEASE_NOTES.json',
+    'docs/LEAD_UI_4_CI_PROPOSAL.patch',
+    'docs/LEAD_WORKSPACE_UI_CONTRACT.md',
+    'docs/OMNI_LEAD_CONVERSATION_LINKS.md',
+    'js/customers-page.js',
+    'js/leads-page.js',
+    'leads.html',
+    'omni.html',
+    'package.json',
+    'scripts/production-block-policy.js',
+    'services/taskDetailContract.js',
+    'tests/browser/lead-communication-selection-fixtures.js',
+    'tests/browser/lead-editor-mode-fixtures.js',
+    'tests/browser/lead-editor-navigation-fixtures.js',
+    'tests/browser/lead-unified-card-live-readonly.js',
+    'tests/browser/omni-layout.checks.cjs',
+    'tests/browser/omni-lead-links-actual-app-browser-smoke.js',
+    'tests/browser/omni-native-zoom.cjs',
+    'tests/browser/omni-workspace-navigation-fixtures.js',
+    'tests/browser/task-center-parity-browser-smoke.js',
+    'tests/dashboard-leads-drilldown.test.js',
+    'tests/lead-workspace-navigation.test.js',
+    'tests/production-block-controller.test.js',
+    'tests/task-detail-drawer.test.js',
+    'tests/ui-check.js'
 ]);
 const SYS_MB_PROTECTED_PATH_PATTERNS = Object.freeze([
     /^config\/permissionRegistry\.js$/,
@@ -182,6 +218,21 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.LEAD_UI_CI_GATE) {
+        const changed = normalizePathList(changedPaths);
+        fail(JSON.stringify(redPaths) === JSON.stringify(LEAD_UI_CI_RED_PATHS),
+            'Lead UI CI workflow permits only its approved Red path',
+            'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
+        fail(changed.every(file => LEAD_UI_CI_CHANGED_PATHS.includes(file))
+            && !changed.some(file => file.startsWith('db/migrations/'))
+            && changed.includes('js/leads-page.js')
+            && changed.includes('leads.html')
+            && changed.includes('tests/browser/omni-lead-links-actual-app-browser-smoke.js')
+            && changed.includes('tests/browser/omni-workspace-navigation-fixtures.js'),
+        'Lead UI CI workflow is limited to the unified lead card and Omni regression release',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: [...LEAD_UI_CI_RED_PATHS] };
+    }
     if (workflow === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE) {
         const changed = normalizePathList(changedPaths);
         fail(JSON.stringify(redPaths) === JSON.stringify(CERTIFICATE_CI_RED_PATHS),
@@ -306,6 +357,11 @@ function buildManifest(facts, options = {}) {
             'Certificate CI release cannot include migrations or QA records',
             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
     }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.LEAD_UI_CI_GATE) {
+        fail(qaScope.enabled === false && migrations.length === 0,
+            'Lead UI CI release cannot include migrations or production QA records',
+            'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
     const redMigrations = migrations.filter(item => item.red);
     fail(facts.descendsFromLive === true, 'Candidate HEAD is not a descendant of live SHA', 'PRODUCTION_BLOCK_NOT_DESCENDANT');
     fail(redMigrations.length === 0, 'Candidate includes a Red migration', 'PRODUCTION_BLOCK_RED_MIGRATION', {
@@ -395,6 +451,12 @@ function validateManifest(manifest, options = {}) {
         fail(qaScope.enabled === false && manifest.allowedMigrationFiles.length === 0
             && manifest.migrationClassifications.length === 0,
             'Certificate CI release cannot include migrations or QA records',
+            'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.LEAD_UI_CI_GATE) {
+        fail(qaScope.enabled === false && manifest.allowedMigrationFiles.length === 0
+            && manifest.migrationClassifications.length === 0,
+            'Lead UI CI release cannot include migrations or production QA records',
             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
     }
     return manifest;

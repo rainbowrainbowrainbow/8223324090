@@ -82,24 +82,51 @@ async function login(config) {
     return token;
 }
 
+function matchesExpectedBusinessContext(snapshot, expectedBusiness) {
+    if (!snapshot || snapshot.runtimeContext !== expectedBusiness || snapshot.bodyContext !== expectedBusiness
+        || snapshot.scopeMode !== 'single' || snapshot.scopeContext !== expectedBusiness
+        || !Array.isArray(snapshot.selectedContexts) || snapshot.selectedContexts.length !== 1
+        || snapshot.selectedContexts[0] !== expectedBusiness || !Array.isArray(snapshot.urlContexts)) return false;
+    if (snapshot.urlContexts.length) return snapshot.urlContexts.every(context => context === expectedBusiness);
+    return expectedBusiness === 'event_genix' && snapshot.accountDefaultBusinessId === expectedBusiness;
+}
+
+async function checkPageBusinessContext(page, config) {
+    const snapshot = await page.evaluate(() => {
+        const runtime = window.CrmBusinessContext;
+        const scope = runtime?.scope?.();
+        const resolution = runtime?.resolution?.();
+        const params = new URL(location.href).searchParams;
+        return {
+            urlContexts: [...params.getAll('businessContext'), ...params.getAll('business_context')],
+            runtimeContext: runtime?.current?.(), bodyContext: document.body.dataset.crmBusinessContext,
+            scopeMode: scope?.mode, scopeContext: scope?.activeContext, selectedContexts: scope?.selectedContexts,
+            accountDefaultBusinessId: resolution?.accountDefaultBusinessId
+        };
+    });
+    check(matchesExpectedBusinessContext(snapshot, config.business), 'page_business_context_mismatch');
+}
+
 async function waitForLead(page, config) {
     await page.locator('#leadWorkspace.active').waitFor({ state: 'visible' });
     await page.locator('#leadWorkspacePanel-communications .workspace-conversation-row').first().waitFor({ state: 'visible' });
-    check(await page.evaluate(({ leadId, business }) => {
+    check(await page.evaluate(({ leadId }) => {
         const url = new URL(location.href);
         return Number(url.searchParams.get('lead')) === leadId && url.searchParams.get('leadTab') === 'communications'
-            && url.searchParams.get('businessContext') === business && document.getElementById('leadWorkspaceTab-communications')?.getAttribute('aria-selected') === 'true';
+            && document.getElementById('leadWorkspaceTab-communications')?.getAttribute('aria-selected') === 'true';
     }, config), 'lead_workspace_identity_mismatch');
+    await checkPageBusinessContext(page, config);
 }
 
 async function waitForConversation(page, config) {
     await page.locator('#omniChatAvatar.ch-instagram').waitFor({ state: 'visible' });
     await page.locator('#omniMessages .omni-msg').first().waitFor({ state: 'visible' });
     await page.waitForFunction(id => document.querySelector(`.omni-conv-item.active[data-id="${id}"]`)?.getAttribute('aria-pressed') === 'true', config.conversationId);
-    check(await page.evaluate(({ conversationId, business }) => {
+    check(await page.evaluate(({ conversationId }) => {
         const url = new URL(location.href);
-        return Number(url.searchParams.get('conversation')) === conversationId && url.searchParams.get('businessContext') === business;
+        return Number(url.searchParams.get('conversation')) === conversationId;
     }, config), 'conversation_identity_mismatch');
+    await checkPageBusinessContext(page, config);
 }
 
 async function checkLayout(page) {
@@ -227,5 +254,5 @@ async function main(args = process.argv.slice(2)) {
     return report;
 }
 
-module.exports = { parseArgs, requestPolicy };
+module.exports = { parseArgs, requestPolicy, matchesExpectedBusinessContext };
 if (require.main === module) main();

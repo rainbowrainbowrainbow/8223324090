@@ -172,6 +172,7 @@ async function main(args = process.argv.slice(2)) {
                     return decision.endsWith('_allowed') ? route.continue() : route.abort('blockedbyclient');
                 });
                 await context.addInitScript(({ token: accessToken, business }) => {
+                    window.__eventGenixLiveQaReadOnly = true;
                     localStorage.setItem('pzp_token', accessToken);
                     localStorage.setItem('pzp_access_token', accessToken);
                     localStorage.setItem('eventgenix_business_context', business);

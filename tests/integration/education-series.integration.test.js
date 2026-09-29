@@ -202,7 +202,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         );
         assert.equal(listed.status, 200, JSON.stringify(listed.body));
         assert.equal(listed.body.bookings.length, 3);
-        assert.equal(listed.body.bookings[1].programName, label);
+        assert.equal(listed.body.bookings[1].extraData.educationLesson.title, label);
 
         const cancelled = await request(
             'POST',

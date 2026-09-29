@@ -161,6 +161,8 @@
         document.addEventListener('click', async event => {
             const id = event.target.closest('[data-education-detail-group]')?.dataset.educationDetailGroup;
             if (!id) return;
+            if (typeof global.closeAllModals === 'function') await global.closeAllModals();
+            else byId('bookingModal')?.classList.add('hidden');
             global.EducationScheduleWorkspace?.setView('groups');
             await load();
             byId('educationGroupsList').value = id;

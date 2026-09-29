@@ -8,6 +8,8 @@
 .education-group-form { gap: 12px; margin-top: 14px; }
 .education-group-form[hidden], .education-today-panel[hidden] { display: none; }
 .education-groups-layout input, .education-groups-layout select { width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid var(--gray-300); border-radius: 10px; background: var(--surface, #fff); color: var(--gray-800); font: inherit; }
+body.dark-mode .education-groups-layout input, body.dark-mode .education-groups-layout select,
+html[data-theme="dark"] .education-groups-layout input, html[data-theme="dark"] .education-groups-layout select { background: #111827; color: #E5E7EB; }
 .education-groups-layout h3 { margin: 0 0 8px; }
 .education-groups-layout li { margin: 8px 0; }
 .education-schedule-tab { display: flex; align-items: center; gap: 12px; min-height: 66px; padding: 12px 16px; border: 1px solid var(--gray-200); border-radius: var(--radius-lg, 16px); background: var(--gray-50); color: var(--gray-700); text-align: left; cursor: pointer; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }

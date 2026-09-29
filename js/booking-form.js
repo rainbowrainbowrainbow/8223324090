@@ -14,7 +14,7 @@ window.BookingForm = {
     init() {
         const fields = ['bookingHasEventToggle', 'bookingTime', 'roomSelect', 'selectedProgram', 'bookingNotes', 'bookingGroupName',
             'costumeSelect', 'kidsCountInput', 'customerName', 'customerPhone',
-            'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup',
+            'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup', 'educationLessonGroupId',
             'educationLessonCourse', 'educationLessonSeriesSize', 'educationLessonRepeatEvery', 'educationLessonType',
             'pinataMode', 'pinataNumber', 'pinataFillerNumber', 'pinataFillerSelect',
             'clientPinataServicePrice', 'clientPinataServiceNote', 'bookingMenuProductSelect',

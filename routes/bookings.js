@@ -96,6 +96,7 @@ const {
     resolveAdmissionTicketQuote
 } = require('../services/admissionTickets');
 const { scheduleableStaffWhere } = require('../services/staffOperationalFilters');
+const { assertLessonGroup, EducationGroupError } = require('../services/educationGroups');
 const { normalizeCustomerSource } = require('../services/customerSource');
 const {
     listCustomerChildren,
@@ -1001,6 +1002,12 @@ function mergeExistingExtraDataForBookingUpdate(payload = {}, oldRow = {}) {
         ...cloneJson(previousExtra),
         ...cloneJson(incomingExtra)
     };
+    if (incomingExtra.educationLesson && previousExtra.educationLesson) {
+        mergedExtra.educationLesson = {
+            ...cloneJson(previousExtra.educationLesson),
+            ...cloneJson(incomingExtra.educationLesson)
+        };
+    }
     const previousPackage = previousExtra.bookingPackage || previousExtra.booking_package || null;
     const incomingPackage = incomingExtra.bookingPackage || incomingExtra.booking_package || null;
     const previousEntryCharge = previousPackage?.entryCharge || previousPackage?.entry_charge || null;
@@ -2370,7 +2377,7 @@ async function resolveBookingTimelineResource(queryable, payload, businessContex
 }
 
 function educationLessonFromPayload(payload = {}) {
-    const extra = payload.extraData || payload.extra_data || {};
+    const extra = parsePayloadExtraData(payload) || {};
     const lesson = extra.educationLesson
         || extra.education_lesson
         || extra.bookingWorkspace?.lesson
@@ -2388,6 +2395,25 @@ function educationLessonFromPayload(payload = {}) {
         teacherName,
         title: String(title || 'Заняття').trim()
     };
+}
+
+async function educationGroupWriteError(db, payload, businessContext, oldRow = null) {
+    const lesson = educationLessonFromPayload(payload);
+    if (!lesson || lesson.groupId == null || lesson.groupId === '') return null;
+    const previous = oldRow ? educationLessonFromPayload({ extraData: oldRow.extra_data }) : null;
+    try {
+        const group = await assertLessonGroup(db, businessContext, lesson.groupId, {
+            allowArchived: previous?.groupId != null && String(previous.groupId) === String(lesson.groupId)
+        });
+        if (!previous || String(previous.groupId || '') !== String(lesson.groupId)) {
+            setEducationLessonExtra(payload, { ...lesson, groupName: group.name });
+            payload.groupName = group.name;
+        }
+        return null;
+    } catch (error) {
+        if (!(error instanceof EducationGroupError)) throw error;
+        return { status: error.status, body: { success: false, error: error.message } };
+    }
 }
 
 function overlapsBookingTime(candidate, other) {
@@ -2476,7 +2502,7 @@ function cloneJson(value) {
 }
 
 function setEducationLessonExtra(payload, lesson) {
-    const extraData = cloneJson(payload.extraData || payload.extra_data || {});
+    const extraData = cloneJson(parsePayloadExtraData(payload) || {});
     extraData.educationLesson = lesson;
     if (!extraData.bookingWorkspace || typeof extraData.bookingWorkspace !== 'object') {
         extraData.bookingWorkspace = { source: 'booking_workspace_v2' };
@@ -3621,6 +3647,11 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        const educationGroupError = await educationGroupWriteError(client, b, businessContext);
+        if (educationGroupError) {
+            await client.query('ROLLBACK');
+            return res.status(educationGroupError.status).json(educationGroupError.body);
+        }
         qaContext = await prepareTrustedQaBookingInput(client, req, b, businessContext);
         await assertBookingLinkedParent(client, {
             childId: b.id,
@@ -4295,6 +4326,19 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+
+        const educationGroupError = await educationGroupWriteError(client, main, businessContext);
+        if (educationGroupError) {
+            await client.query('ROLLBACK');
+            return res.status(educationGroupError.status).json(educationGroupError.body);
+        }
+        if (lesson.groupId) {
+            const canonicalName = educationLessonFromPayload(main).groupName;
+            for (const candidate of candidates) {
+                setEducationLessonExtra(candidate, { ...educationLessonFromPayload(candidate), groupName: canonicalName });
+                candidate.groupName = canonicalName;
+            }
+        }
 
         const customerId = await resolveBookingCustomerId(client, main, businessContext);
         const insertedRows = [];
@@ -6298,6 +6342,11 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             businessContext
         });
         mergeExistingExtraDataForBookingUpdate(b, oldBooking);
+        const educationGroupError = await educationGroupWriteError(client, b, businessContext, oldBooking);
+        if (educationGroupError) {
+            await client.query('ROLLBACK');
+            return res.status(educationGroupError.status).json(educationGroupError.body);
+        }
         const ticketResolution = await resolveAndApplyAdmissionTicketQuote({
             queryable: client,
             businessContext,

@@ -14,7 +14,8 @@ const source = fs.readFileSync(path.join(root, 'js/education-schedule.js'), 'utf
 function createWorkspace() {
     const elements = {
         educationScheduleTeacherFilter: { value: '', addEventListener() {} },
-        educationScheduleCabinetFilter: { value: '', addEventListener() {} }
+        educationScheduleCabinetFilter: { value: '', addEventListener() {} },
+        educationScheduleGroupFilter: { value: '', addEventListener() {} }
     };
     const document = {
         readyState: 'complete',
@@ -72,10 +73,10 @@ test('lesson card fields support canonical and legacy education lesson payloads'
 });
 
 
-test('Today list filters lessons by teacher and cabinet without changing the source records', () => {
+test('Today list filters lessons by teacher, cabinet, and stable group ID without changing the source records', () => {
     const { workspace, elements } = createWorkspace();
-    const first = { id: 'lesson-1', extraData: { educationLesson: { title: 'Math', teacherId: 7, teacherName: 'Olena', resourceName: 'Room A' } } };
-    const second = { id: 'lesson-2', extraData: { educationLesson: { title: 'Art', teacherId: 8, teacherName: 'Ihor', resourceName: 'Room B' } } };
+    const first = { id: 'lesson-1', extraData: { educationLesson: { title: 'Math', teacherId: 7, teacherName: 'Olena', resourceName: 'Room A', groupId: 41 } } };
+    const second = { id: 'lesson-2', extraData: { educationLesson: { title: 'Art', teacherId: 8, teacherName: 'Ihor', resourceName: 'Room B', groupId: 42 } } };
     workspace.state.bookings = [first, second];
     assert.deepEqual(Array.from(workspace.visibleLessons(), booking => booking.id), ['lesson-1', 'lesson-2']);
     elements.educationScheduleTeacherFilter.value = '8';
@@ -83,5 +84,8 @@ test('Today list filters lessons by teacher and cabinet without changing the sou
     elements.educationScheduleTeacherFilter.value = '';
     elements.educationScheduleCabinetFilter.value = 'Room A';
     assert.deepEqual(Array.from(workspace.visibleLessons(), booking => booking.id), ['lesson-1']);
+    elements.educationScheduleCabinetFilter.value = '';
+    elements.educationScheduleGroupFilter.value = '42';
+    assert.deepEqual(Array.from(workspace.visibleLessons(), booking => booking.id), ['lesson-2']);
     assert.equal(workspace.state.bookings.length, 2);
 });

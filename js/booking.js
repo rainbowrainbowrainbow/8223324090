@@ -2908,6 +2908,8 @@ function resetEducationLessonFields() {
     });
     const teacher = document.getElementById('educationLessonTeacher');
     if (teacher) teacher.value = '';
+    const groupId = document.getElementById('educationLessonGroupId');
+    if (groupId) groupId.value = '';
     const repeatEvery = document.getElementById('educationLessonRepeatEvery');
     if (repeatEvery) repeatEvery.value = 'weekly';
     const type = document.getElementById('educationLessonType');
@@ -2997,6 +2999,7 @@ function getEducationLessonDetails(formData = {}) {
         : '';
     const seriesSize = parseInt(document.getElementById('educationLessonSeriesSize')?.value || '1', 10);
     const resource = getSelectedTimelineResourceLine();
+    const groupId = document.getElementById('educationLessonGroupId')?.value || '';
     const groupName = document.getElementById('educationLessonGroup')?.value?.trim()
         || document.getElementById('bookingGroupName')?.value?.trim()
         || '';
@@ -3007,6 +3010,7 @@ function getEducationLessonDetails(formData = {}) {
         title: document.getElementById('educationLessonTitle')?.value?.trim() || formData.program?.name || formData.label || '',
         teacherId: teacherId || null,
         teacherName: teacherName || null,
+        groupId: groupId || null,
         groupName: groupName || null,
         courseCode: document.getElementById('educationLessonCourse')?.value?.trim() || null,
         seriesSize: Number.isFinite(seriesSize) && seriesSize > 0 ? Math.min(seriesSize, 120) : 1,
@@ -3025,6 +3029,19 @@ function hydrateEducationLessonFields(booking = {}) {
     if (title) title.value = lesson.title || '';
     const group = document.getElementById('educationLessonGroup');
     if (group) group.value = lesson.groupName || booking.groupName || '';
+    const groupId = document.getElementById('educationLessonGroupId');
+    if (groupId) {
+        const applyGroup = () => {
+            if (lesson.groupId && !Array.from(groupId.options).some(option => option.value === String(lesson.groupId))) {
+                const option = document.createElement('option');
+                option.value = String(lesson.groupId);
+                option.textContent = lesson.groupName || `Група ${lesson.groupId}`;
+                groupId.appendChild(option);
+            }
+            groupId.value = lesson.groupId ? String(lesson.groupId) : '';
+        };
+        applyGroup();
+    }
     const course = document.getElementById('educationLessonCourse');
     if (course) course.value = lesson.courseCode || '';
     const seriesSize = document.getElementById('educationLessonSeriesSize');
@@ -16230,10 +16247,14 @@ function renderEducationLessonDetail(booking) {
     const seriesActions = lesson.seriesId && Number(lesson.seriesSize || 0) > 1 && canDeleteTimelineBooking()
         ? `<div class="booking-detail-row"><span class="label">Керування серією:</span><span class="value"><button type="button" class="btn-secondary btn-sm" onclick="openEducationSeriesManager('${escapeHtml(String(lesson.seriesId))}', '${escapeHtml(String(booking.id))}')">Відкрити серію</button></span></div>`
         : '';
+    const groupAction = /^\d+$/.test(String(lesson.groupId || ''))
+        ? `<div class="booking-detail-row"><span class="label">Склад групи:</span><span class="value"><button type="button" class="btn-secondary btn-sm" data-education-detail-group="${Number(lesson.groupId)}">Відкрити групу</button></span></div>`
+        : '';
     return `
         <div class="booking-lesson-detail">
             <div class="booking-lesson-detail-title">Навчальний запис</div>
             ${rows.map(([label, value]) => `<div class="booking-detail-row"><span class="label">${escapeHtml(label)}:</span><span class="value">${escapeHtml(value)}</span></div>`).join('')}
+            ${groupAction}
             ${seriesActions}
         </div>`;
 }

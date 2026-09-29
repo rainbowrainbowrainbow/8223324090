@@ -126,6 +126,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         assert.equal(detail.status, 200, JSON.stringify(detail.body));
         assert.equal(detail.body.booking.programName, title);
         assert.equal(detail.body.booking.extraData.educationLesson.title, title);
+        assert.equal(detail.body.booking.extraData.educationLesson.groupId ?? null, null, 'legacy lesson remains unlinked');
 
         const updated = await request(
             'PUT',
@@ -391,5 +392,118 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         assert.equal(rolledBack.rows[0].count, 0, 'first occurrence must roll back with the cabinet conflict');
         const conflictStillExists = await pool.query('SELECT id FROM bookings WHERE id = $1', [conflictId]);
         assert.equal(conflictStillExists.rows[0]?.id, conflictId);
+    });
+    test('groups isolate children, serialize capacity, retain history, and link lesson series', async () => {
+        const parent = await pool.query(
+            `INSERT INTO customers (business_context, name, source) VALUES ('dar', $1, 'education_test') RETURNING id`,
+            [`EDU parent ${suffix}`]
+        );
+        const parentId = parent.rows[0].id;
+        const children = await pool.query(
+            `INSERT INTO customer_children (business_context, customer_id, name, source_kind)
+             VALUES ('dar', $1, $2, 'education_test'), ('dar', $1, $3, 'education_test') RETURNING id`,
+            [parentId, `EDU child A ${suffix}`, `EDU child B ${suffix}`]
+        );
+        const foreignParent = await pool.query(
+            `INSERT INTO customers (business_context, name, source) VALUES ('event_genix', $1, 'education_test') RETURNING id`,
+            [`EDU foreign parent ${suffix}`]
+        );
+        const foreignChild = await pool.query(
+            `INSERT INTO customer_children (business_context, customer_id, name, source_kind)
+             VALUES ('event_genix', $1, $2, 'education_test') RETURNING id`,
+            [foreignParent.rows[0].id, `EDU foreign child ${suffix}`]
+        );
+        const groupResult = await request('POST', '/api/education/groups?businessContext=dar', token, {
+            businessContext: 'dar', name: `EDU group ${suffix}`, capacity: 1
+        });
+        assert.equal(groupResult.status, 201, JSON.stringify(groupResult.body));
+        const groupId = groupResult.body.group.id;
+        const foreignGroup = await pool.query(
+            `INSERT INTO education_groups (business_context, name, capacity)
+             VALUES ('event_genix', $1, 5) RETURNING id`,
+            [`EDU foreign group ${suffix}`]
+        );
+        const startDate = utcDateAfter(60);
+        const foreign = await request('POST', `/api/education/groups/${groupId}/members?businessContext=dar`, token, {
+            businessContext: 'dar', childId: foreignChild.rows[0].id, startDate
+        });
+        assert.equal(foreign.status, 404, JSON.stringify(foreign.body));
+        const otherContext = await request('GET', `/api/education/groups/${groupId}?businessContext=event_genix`, token);
+        assert.ok([403, 404].includes(otherContext.status), JSON.stringify(otherContext.body));
+
+        const enrollments = await Promise.all(children.rows.map(child => request(
+            'POST', `/api/education/groups/${groupId}/members?businessContext=dar`, token,
+            { businessContext: 'dar', childId: child.id, startDate }
+        )));
+        assert.deepEqual(enrollments.map(item => item.status).sort(), [201, 409]);
+        const winner = enrollments.find(item => item.status === 201).body.member;
+        const duplicate = await request('POST', `/api/education/groups/${groupId}/members?businessContext=dar`, token, {
+            businessContext: 'dar', childId: winner.child_id, startDate
+        });
+        assert.equal(duplicate.status, 409);
+        const roster = await request('GET', `/api/education/groups/${groupId}?businessContext=dar`, token);
+        assert.equal(roster.status, 200);
+        assert.equal(roster.body.group.members.length, 1);
+
+        const series = await createBooking(token, {
+            date: utcDateAfter(90), time: '09:10', duration: 40,
+            lineId: 'edu-cabinet-1', room: 'Кабінет 1', label: 'Заняття', category: 'education',
+            skipNotification: true,
+            extraData: { educationLesson: { mode: 'education_lesson', title: `EDU group series ${suffix}`,
+                groupId, groupName: `EDU group ${suffix}`, teacherId: `edu-group-teacher-${suffix}`,
+                teacherName: `Викладач ${suffix}`, seriesSize: 2, repeatEvery: 'weekly' } }
+        });
+        assert.equal(series.status, 200, JSON.stringify(series.body));
+        assert.equal(series.body.bookings.length, 2);
+        for (const booking of series.body.bookings) {
+            const detail = await request('GET', `/api/bookings/detail/${booking.id}?businessContext=dar`, token);
+            assert.equal(detail.status, 200);
+            assert.equal(Number(detail.body.booking.extraData.educationLesson.groupId), Number(groupId));
+        }
+        const secondGroup = await request('POST', '/api/education/groups?businessContext=dar', token, {
+            businessContext: 'dar', name: `EDU second group ${suffix}`, capacity: 2
+        });
+        assert.equal(secondGroup.status, 201, JSON.stringify(secondGroup.body));
+        const firstId = series.body.bookings[0].id;
+        const changedGroup = await request('PUT', `/api/bookings/${firstId}?businessContext=dar`, token, {
+            extraData: { educationLesson: { groupId: secondGroup.body.group.id } }
+        });
+        assert.equal(changedGroup.status, 200, JSON.stringify(changedGroup.body));
+        const changedDetail = await request('GET', `/api/bookings/detail/${firstId}?businessContext=dar`, token);
+        assert.equal(Number(changedDetail.body.booking.extraData.educationLesson.groupId), Number(secondGroup.body.group.id));
+        assert.equal(changedDetail.body.booking.extraData.educationLesson.teacherId, `edu-group-teacher-${suffix}`);
+        assert.equal(changedDetail.body.booking.time, '09:10');
+        const foreignSeries = await createBooking(token, {
+            date: utcDateAfter(120), time: '09:10', duration: 40,
+            lineId: 'edu-cabinet-1', room: 'Кабінет 1', label: 'Заняття', category: 'education',
+            skipNotification: true,
+            extraData: { educationLesson: { mode: 'education_lesson', title: `EDU foreign group ${suffix}`,
+                groupId: foreignGroup.rows[0].id, seriesSize: 2, repeatEvery: 'weekly' } }
+        });
+        assert.equal(foreignSeries.status, 404, JSON.stringify(foreignSeries.body));
+
+        const ended = await request('POST', `/api/education/groups/${groupId}/members/${winner.id}/end?businessContext=dar`, token, {
+            businessContext: 'dar', endDate: addDays(startDate, 1)
+        });
+        assert.equal(ended.status, 200, JSON.stringify(ended.body));
+        const archived = await request('POST', `/api/education/groups/${groupId}/archive?businessContext=dar`, token, { businessContext: 'dar' });
+        assert.equal(archived.status, 200, JSON.stringify(archived.body));
+        const history = await request('GET', `/api/education/groups/${groupId}?businessContext=dar`, token);
+        assert.equal(history.body.group.members.length, 1);
+        assert.equal(history.body.group.status, 'archived');
+        const archivedEnroll = await request('POST', `/api/education/groups/${groupId}/members?businessContext=dar`, token, {
+            businessContext: 'dar', childId: children.rows[1].id, startDate: utcDateAfter(150)
+        });
+        assert.equal(archivedEnroll.status, 409);
+        const archivedSeries = await createBooking(token, {
+            date: utcDateAfter(150), time: '09:10', duration: 40,
+            lineId: 'edu-cabinet-1', room: 'Кабінет 1', label: 'Заняття', category: 'education',
+            skipNotification: true,
+            extraData: { educationLesson: { mode: 'education_lesson', title: `EDU archived group ${suffix}`,
+                groupId, seriesSize: 2, repeatEvery: 'weekly' } }
+        });
+        assert.equal(archivedSeries.status, 409, JSON.stringify(archivedSeries.body));
+        const oldDetail = await request('GET', `/api/bookings/detail/${series.body.bookings[1].id}?businessContext=dar`, token);
+        assert.equal(Number(oldDetail.body.booking.extraData.educationLesson.groupId), Number(groupId));
     });
 });

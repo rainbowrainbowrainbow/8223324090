@@ -40,6 +40,7 @@
             lesson,
             title: lesson.title || booking.programName || booking.program_name || booking.label || 'Заняття',
             teacherId: String(lesson.teacherId || lesson.teacher_id || ''),
+            groupId: String(lesson.groupId || ''),
             teacher: lesson.teacherName || lesson.teacher_name || '',
             group: lesson.groupName || lesson.group_name || booking.groupName || booking.group_name || '',
             cabinet: lesson.resourceName || lesson.resource_name || booking.room || '',
@@ -65,10 +66,12 @@
     function visibleLessons() {
         const teacher = document.getElementById('educationScheduleTeacherFilter')?.value || '';
         const cabinet = document.getElementById('educationScheduleCabinetFilter')?.value || '';
+        const groupId = document.getElementById('educationScheduleGroupFilter')?.value || '';
         return currentLessons().filter(booking => {
             const fields = lessonFields(booking);
             return (!teacher || fields.teacherId === teacher)
-                && (!cabinet || fields.cabinet === cabinet);
+                && (!cabinet || fields.cabinet === cabinet)
+                && (!groupId || fields.groupId === groupId);
         }).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
     }
 
@@ -143,9 +146,9 @@
     }
 
     function setView(view, updateUrl = true) {
-        state.activeView = view === 'schedule' ? 'schedule' : 'today';
+        state.activeView = ['schedule', 'groups'].includes(view) ? view : 'today';
         const today = state.activeView === 'today';
-        document.body.classList.toggle('education-schedule-today', today && isEducationMode());
+        document.body.classList.toggle('education-schedule-today', state.activeView !== 'schedule' && isEducationMode());
         document.querySelectorAll('[data-education-schedule-tab]').forEach(button => {
             const active = button.dataset.educationScheduleTab === state.activeView;
             button.classList.toggle('active', active);
@@ -153,12 +156,15 @@
         });
         const panel = document.getElementById('educationTodayPanel');
         if (panel) panel.hidden = !today;
+        const groups = document.getElementById('educationGroupsPanel');
+        if (groups) groups.hidden = state.activeView !== 'groups';
         if (updateUrl && global.history?.replaceState) {
             const url = new URL(global.location.href);
             url.searchParams.set('educationSchedule', state.activeView);
             global.history.replaceState(global.history.state, '', url);
         }
         if (today) void load();
+        if (state.activeView === 'groups') void global.EducationGroups?.load();
     }
 
     function syncWorkspace() {
@@ -184,6 +190,7 @@
     });
     document.getElementById('educationScheduleTeacherFilter')?.addEventListener('change', render);
     document.getElementById('educationScheduleCabinetFilter')?.addEventListener('change', render);
+    document.getElementById('educationScheduleGroupFilter')?.addEventListener('change', render);
     global.addEventListener('timeline:summary-changed', event => {
         if (event.detail?.date) state.date = event.detail.date;
         if (state.activeView === 'today') void load(state.date || dateKey());

@@ -190,6 +190,9 @@
                     <button type="button" class="education-schedule-tab" data-education-schedule-tab="schedule" aria-pressed="false">
                         <span aria-hidden="true">▦</span><span><strong>Розклад</strong><small>День і тиждень</small></span>
                     </button>
+                    <button type="button" class="education-schedule-tab" data-education-schedule-tab="groups" aria-pressed="false">
+                        <span aria-hidden="true">♧</span><span><strong>Групи</strong><small>Склад дітей</small></span>
+                    </button>
                 </div>
                 <section class="education-today-panel" id="educationTodayPanel" aria-labelledby="educationTodayHeading">
                     <div class="education-today-heading">
@@ -197,10 +200,37 @@
                         <div class="education-schedule-filters" aria-label="Фільтри занять">
                             <label>Викладач<select id="educationScheduleTeacherFilter" aria-label="Фільтр за викладачем"><option value="">Усі викладачі</option></select></label>
                             <label>Кабінет<select id="educationScheduleCabinetFilter" aria-label="Фільтр за кабінетом"><option value="">Усі кабінети</option></select></label>
+                            <label>Група<select id="educationScheduleGroupFilter" aria-label="Фільтр за групою"><option value="">Усі групи</option></select></label>
                         </div>
                     </div>
                     <div id="educationTodayStatus" class="education-today-status" role="status" aria-live="polite"></div>
                     <div id="educationTodayList" class="education-today-list"></div>
+                </section>
+                <section class="education-today-panel" id="educationGroupsPanel" hidden aria-label="Групи занять">
+                    <div class="education-today-heading"><div><p class="education-schedule-eyebrow">СКЛАД ДІТЕЙ</p><h2>Групи</h2></div></div>
+                    <p id="educationGroupsStatus" role="status" aria-live="polite"></p>
+                    <div class="education-groups-layout">
+                        <div><label for="educationGroupsList">Група</label><select id="educationGroupsList"><option value="">Нова група</option></select>
+                            <form id="educationGroupForm" class="education-group-form">
+                                <label>Назва<input id="educationGroupName" maxlength="120" required></label>
+                                <label>Викладач<select id="educationGroupTeacher"><option value="">Без викладача</option></select></label>
+                                <label>Місткість<input id="educationGroupCapacity" type="number" min="1" max="500" value="12" required></label>
+                                <div><button type="submit" class="btn-primary">Зберегти групу</button> <button type="button" id="educationGroupArchive" class="btn-secondary" hidden>Архівувати</button></div>
+                            </form>
+                        </div>
+                        <div id="educationGroupRoster" hidden>
+                            <h3>Склад і наповнення</h3><p id="educationGroupOccupancy"></p>
+                            <form id="educationGroupEnrollForm" class="education-group-form">
+                                <label>Пошук дитини<input id="educationChildSearch" type="search" minlength="2" placeholder="Імʼя дитини або батьків"></label>
+                                <button type="button" id="educationChildFind" class="btn-secondary">Знайти</button>
+                                <label>Дитина<select id="educationChildSelect" required><option value="">Оберіть дитину</option></select></label>
+                                <label>Дата початку<input id="educationMemberStart" type="date" required></label>
+                                <label>Дата завершення (необовʼязково)<input id="educationMemberEnd" type="date"></label>
+                                <button type="submit" class="btn-primary">Зарахувати</button>
+                            </form>
+                            <div id="educationGroupMembers"></div>
+                        </div>
+                    </div>
                 </section>
             </section>
 
@@ -548,6 +578,7 @@
                             Група / клас
                             <input type="text" id="educationLessonGroup" maxlength="120" placeholder="Напр: 5-Б, група A2">
                         </label>
+                        <label>Група зі складом дітей<select id="educationLessonGroupId"><option value="">Без повʼязаної групи</option></select></label>
                         <label>
                             Курс / серія
                             <input type="text" id="educationLessonCourse" maxlength="120" placeholder="Напр: Весняний курс">
@@ -6369,5 +6400,6 @@
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/alerts.js?v=0.82.39"></script>
     <script src="js/education-schedule.js?v=0.82.39"></script>
+    <script src="js/education-groups.js?v=0.82.39"></script>
 </body>
 </html>

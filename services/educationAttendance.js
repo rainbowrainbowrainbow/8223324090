@@ -172,7 +172,8 @@ async function saveJournal(context, bookingId, input, actor) {
             if (row.status === status) continue;
             await client.query(
                 `UPDATE education_attendance
-                 SET status = $3, marked_by = $4, marked_at = CASE WHEN $3::text IS NULL THEN NULL ELSE NOW() END,
+                 SET status = $3::varchar(16), marked_by = $4,
+                     marked_at = CASE WHEN $3::varchar(16) IS NULL THEN NULL ELSE NOW() END,
                      updated_at = NOW()
                  WHERE id = $1 AND business_context = $2`,
                 [row.id, context, status, changedBy]

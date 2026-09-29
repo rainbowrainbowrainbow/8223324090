@@ -175,6 +175,7 @@
     "test:integration:payroll-profiles:isolated": "node scripts/run-isolated-postgres-tests.js payroll",
     "test:integration:payroll-fullstack:isolated": "node scripts/run-isolated-postgres-tests.js payroll-fullstack",
     "test:integration:admission-tickets:isolated": "node scripts/run-isolated-postgres-tests.js admission",
+    "test:integration:education-series:isolated": "node scripts/run-isolated-postgres-tests.js education-series",
     "test:integration:my-day:isolated": "node scripts/run-isolated-postgres-tests.js my-day",
     "test:integration:hr-onboarding:isolated": "node scripts/run-isolated-postgres-tests.js onboarding",
     "test:integration:hr-legacy-backfill:isolated": "node scripts/run-isolated-postgres-tests.js backfill",

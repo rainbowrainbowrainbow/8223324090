@@ -49,6 +49,9 @@ const MODES = {
     admission: [
         'tests/integration/admission-tickets.integration.test.js'
     ],
+    'education-series': [
+        'tests/integration/education-series.integration.test.js'
+    ],
     'catalog-sale': [
         'tests/integration/catalog-sale-migrations.integration.test.js'
     ],
@@ -115,7 +118,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
@@ -629,6 +632,7 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_PAYROLL_INSTALLMENTS_INTEGRATION: testFile.includes('payroll-installments') ? 'true' : 'false',
         RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION: testFile.includes('payroll-fullstack-settlement') ? 'true' : 'false',
         RUN_ADMISSION_TICKETS_INTEGRATION: testFile.includes('admission-tickets') ? 'true' : 'false',
+        RUN_EDUCATION_SERIES_INTEGRATION: testFile.includes('education-series.integration') ? 'true' : 'false',
         RUN_CATALOG_SALE_MIGRATIONS_INTEGRATION: testFile.includes('catalog-sale-migrations') ? 'true' : 'false',
         RUN_CATALOG_SALE_LOCAL_QA_INTEGRATION: catalogSaleLocalQa ? 'true' : 'false',
         RUN_MY_DAY_POSTGRES_INTEGRATION: testFile.includes('my-day-postgres.integration') ? 'true' : 'false',

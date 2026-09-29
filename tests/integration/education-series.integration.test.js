@@ -54,7 +54,7 @@ async function request(method, pathname, token, body) {
 }
 
 async function createBooking(token, booking) {
-    return request('POST', '/api/bookings/education-series?businessContext=event_genix', token, { booking });
+    return request('POST', '/api/bookings/education-series?businessContext=dar', token, { booking });
 }
 
 describe('education lesson series on isolated PostgreSQL', { skip: !enabled, concurrency: 1 }, () => {
@@ -72,11 +72,11 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         });
         await pool.query(
             `INSERT INTO settings (key, value)
-             VALUES ('timeline_display:event_genix', $1)
+             VALUES ('timeline_display:dar', $1)
              ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
             [JSON.stringify({ mode: 'education' })]
         );
-        await initializeTimelineResources(pool, 'event_genix', { types: ['cabinet'] });
+        await initializeTimelineResources(pool, 'dar', { types: ['cabinet'] });
         suffix = `${process.pid}_${Date.now()}`;
 
         const login = await request('POST', '/api/auth/login', null, {
@@ -94,7 +94,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
     test('single lesson can be created, opened in canonical details, and edited', async () => {
         const title = `EDU single ${suffix}`;
-        const created = await request('POST', '/api/bookings?businessContext=event_genix', token, {
+        const created = await request('POST', '/api/bookings?businessContext=dar', token, {
             date: utcDateAfter(9),
             time: '14:05',
             duration: 45,
@@ -120,7 +120,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
         const detail = await request(
             'GET',
-            `/api/bookings/detail/${encodeURIComponent(bookingId)}?businessContext=event_genix`,
+            `/api/bookings/detail/${encodeURIComponent(bookingId)}?businessContext=dar`,
             token
         );
         assert.equal(detail.status, 200, JSON.stringify(detail.body));
@@ -129,7 +129,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
         const updated = await request(
             'PUT',
-            `/api/bookings/${encodeURIComponent(bookingId)}?businessContext=event_genix`,
+            `/api/bookings/${encodeURIComponent(bookingId)}?businessContext=dar`,
             token,
             { notes: `Edited EDU ${suffix}` }
         );
@@ -137,7 +137,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
         const editedDetail = await request(
             'GET',
-            `/api/bookings/detail/${encodeURIComponent(bookingId)}?businessContext=event_genix`,
+            `/api/bookings/detail/${encodeURIComponent(bookingId)}?businessContext=dar`,
             token
         );
         assert.equal(editedDetail.status, 200, JSON.stringify(editedDetail.body));
@@ -181,14 +181,14 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         const editedId = created.body.bookings[1].id;
         const updated = await request(
             'PUT',
-            `/api/bookings/${encodeURIComponent(editedId)}?businessContext=event_genix`,
+            `/api/bookings/${encodeURIComponent(editedId)}?businessContext=dar`,
             token,
             { notes: `Edited occurrence ${suffix}` }
         );
         assert.equal(updated.status, 200, JSON.stringify(updated.body));
         const detail = await request(
             'GET',
-            `/api/bookings/detail/${encodeURIComponent(editedId)}?businessContext=event_genix`,
+            `/api/bookings/detail/${encodeURIComponent(editedId)}?businessContext=dar`,
             token
         );
         assert.equal(detail.status, 200, JSON.stringify(detail.body));
@@ -197,7 +197,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
         const listed = await request(
             'GET',
-            `/api/bookings/education-series/${encodeURIComponent(created.body.seriesId)}?businessContext=event_genix`,
+            `/api/bookings/education-series/${encodeURIComponent(created.body.seriesId)}?businessContext=dar`,
             token
         );
         assert.equal(listed.status, 200, JSON.stringify(listed.body));
@@ -206,7 +206,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
         const cancelled = await request(
             'POST',
-            `/api/bookings/education-series/${encodeURIComponent(created.body.seriesId)}/cancel?businessContext=event_genix`,
+            `/api/bookings/education-series/${encodeURIComponent(created.body.seriesId)}/cancel?businessContext=dar`,
             token,
             { scope: 'future', referenceBookingId: editedId }
         );
@@ -215,12 +215,53 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
         const active = await request(
             'GET',
-            `/api/bookings/education-series/${encodeURIComponent(created.body.seriesId)}?businessContext=event_genix`,
+            `/api/bookings/education-series/${encodeURIComponent(created.body.seriesId)}?businessContext=dar`,
             token
         );
         assert.equal(active.status, 200, JSON.stringify(active.body));
         assert.equal(active.body.bookings.length, 1);
         assert.equal(active.body.bookings[0].id, created.body.bookings[0].id);
+    });
+
+    test('daily and biweekly series preserve calendar dates and local start time', async () => {
+        const schedules = [
+            { repeatEvery: 'daily', intervalDays: 1, startOffset: 17, time: '16:10' },
+            { repeatEvery: 'biweekly', intervalDays: 14, startOffset: 18, time: '17:10' }
+        ];
+
+        for (const schedule of schedules) {
+            const title = `EDU ${schedule.repeatEvery} ${suffix}`;
+            const startDate = utcDateAfter(schedule.startOffset);
+            const created = await createBooking(token, {
+                date: startDate,
+                time: schedule.time,
+                duration: 45,
+                lineId: 'edu-cabinet-3',
+                room: 'Кабінет 3',
+                label: title,
+                category: 'education',
+                kidsCount: 3,
+                skipNotification: true,
+                extraData: {
+                    educationLesson: {
+                        mode: 'education_lesson',
+                        title,
+                        teacherId: `edu-${schedule.repeatEvery}-teacher-${suffix}`,
+                        teacherName: `Викладач ${schedule.repeatEvery} ${suffix}`,
+                        seriesSize: 3,
+                        repeatEvery: schedule.repeatEvery
+                    }
+                }
+            });
+
+            assert.equal(created.status, 200, `${schedule.repeatEvery}: ${JSON.stringify(created.body)}`);
+            assert.equal(created.body.bookings.length, 3);
+            assert.deepEqual(
+                created.body.bookings.map(item => item.date),
+                [0, 1, 2].map(index => addDays(startDate, schedule.intervalDays * index))
+            );
+            assert.ok(created.body.bookings.every(item => item.time === schedule.time));
+        }
     });
 
     test('teacher conflict on a later occurrence rolls back the earlier occurrence', async () => {
@@ -229,7 +270,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         const conflictDate = addDays(startDate, 7);
         const teacherId = `edu-conflict-teacher-${suffix}`;
 
-        const conflict = await request('POST', '/api/bookings?businessContext=event_genix', token, {
+        const conflict = await request('POST', '/api/bookings?businessContext=dar', token, {
             date: conflictDate,
             time: '15:10',
             duration: 45,
@@ -280,7 +321,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         const rolledBack = await pool.query(
             `SELECT COUNT(*)::int AS count
                FROM bookings
-              WHERE business_context = 'event_genix' AND program_name = $1`,
+              WHERE business_context = 'dar' AND program_name = $1`,
             [label]
         );
         assert.equal(rolledBack.rows[0].count, 0, 'first occurrence must roll back with the conflicting series');
@@ -293,7 +334,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         const startDate = utcDateAfter(14);
         const conflictDate = addDays(startDate, 7);
 
-        const conflict = await request('POST', '/api/bookings?businessContext=event_genix', token, {
+        const conflict = await request('POST', '/api/bookings?businessContext=dar', token, {
             date: conflictDate,
             time: '15:10',
             duration: 45,
@@ -344,7 +385,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         const rolledBack = await pool.query(
             `SELECT COUNT(*)::int AS count
                FROM bookings
-              WHERE business_context = 'event_genix' AND program_name = $1`,
+              WHERE business_context = 'dar' AND program_name = $1`,
             [label]
         );
         assert.equal(rolledBack.rows[0].count, 0, 'first occurrence must roll back with the cabinet conflict');

@@ -8,6 +8,7 @@ const { after, before, describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
+const { initializeTimelineResources } = require('../../services/timelineResources');
 
 const enabled = process.env.RUN_EDUCATION_SERIES_INTEGRATION === 'true';
 
@@ -69,6 +70,13 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
             max: 4,
             connectionTimeoutMillis: 10_000
         });
+        await pool.query(
+            `INSERT INTO settings (key, value)
+             VALUES ('timeline_display:event_genix', $1)
+             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+            [JSON.stringify({ mode: 'education' })]
+        );
+        await initializeTimelineResources(pool, 'event_genix', { types: ['cabinet'] });
         suffix = `${process.pid}_${Date.now()}`;
 
         const login = await request('POST', '/api/auth/login', null, {

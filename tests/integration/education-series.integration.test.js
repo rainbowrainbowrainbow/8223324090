@@ -219,130 +219,128 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         const label = `EDU rollback ${suffix}`;
         const startDate = utcDateAfter(12);
         const conflictDate = addDays(startDate, 7);
-        const conflictId = `edu-conflict-${suffix}`.slice(0, 50);
         const teacherId = `edu-conflict-teacher-${suffix}`;
 
-        await pool.query(
-            `INSERT INTO bookings (
-                id, business_context, date, time, line_id, label, room, duration, status, extra_data
-             ) VALUES ($1, 'event_genix', $2::date, '15:10', 'edu-cabinet-2',
-                       $3, 'Кабінет 2', 45, 'confirmed', $4::jsonb)`,
-            [
-                conflictId,
-                conflictDate,
-                `EDU existing conflict ${suffix}`,
-                JSON.stringify({
-                    educationLesson: {
-                        mode: 'education_lesson',
-                        title: 'Existing test lesson',
-                        teacherId,
-                        teacherName: `Викладач конфлікту ${suffix}`
-                    }
-                })
-            ]
-        );
-
-        try {
-            const result = await createBooking(token, {
-                date: startDate,
-                time: '15:10',
-                duration: 45,
-                lineId: 'edu-cabinet-1',
-                room: 'Кабінет 1',
-                label,
-                category: 'education',
-                kidsCount: 3,
-                skipNotification: true,
-                extraData: {
-                    educationLesson: {
-                        mode: 'education_lesson',
-                        title: label,
-                        teacherId,
-                        teacherName: `Викладач конфлікту ${suffix}`,
-                        seriesSize: 2,
-                        repeatEvery: 'weekly'
-                    }
+        const conflict = await request('POST', '/api/bookings?businessContext=event_genix', token, {
+            date: conflictDate,
+            time: '15:10',
+            duration: 45,
+            lineId: 'edu-cabinet-2',
+            room: 'Кабінет 2',
+            label: 'Заняття',
+            programName: `EDU existing conflict ${suffix}`,
+            category: 'education',
+            kidsCount: 2,
+            status: 'confirmed',
+            skipNotification: true,
+            extraData: {
+                educationLesson: {
+                    mode: 'education_lesson',
+                    title: 'Existing test lesson',
+                    teacherId,
+                    teacherName: `Викладач конфлікту ${suffix}`
                 }
-            });
+            }
+        });
+        assert.equal(conflict.status, 200, JSON.stringify(conflict.body));
+        const conflictId = conflict.body.booking.id;
 
-            assert.equal(result.status, 409, JSON.stringify(result.body));
-            assert.match(result.body.error, /Викладач/i);
-            const rolledBack = await pool.query(
-                `SELECT COUNT(*)::int AS count
-                   FROM bookings
-                  WHERE business_context = 'event_genix' AND program_name = $1`,
-                [label]
-            );
-            assert.equal(rolledBack.rows[0].count, 0, 'first occurrence must roll back with the conflicting series');
-            const conflictStillExists = await pool.query('SELECT id FROM bookings WHERE id = $1', [conflictId]);
-            assert.equal(conflictStillExists.rows[0]?.id, conflictId);
-        } finally {
-            await pool.query('DELETE FROM bookings WHERE id = $1', [conflictId]);
-        }
+        const result = await createBooking(token, {
+            date: startDate,
+            time: '15:10',
+            duration: 45,
+            lineId: 'edu-cabinet-1',
+            room: 'Кабінет 1',
+            label,
+            category: 'education',
+            kidsCount: 3,
+            skipNotification: true,
+            extraData: {
+                educationLesson: {
+                    mode: 'education_lesson',
+                    title: label,
+                    teacherId,
+                    teacherName: `Викладач конфлікту ${suffix}`,
+                    seriesSize: 2,
+                    repeatEvery: 'weekly'
+                }
+            }
+        });
+
+        assert.equal(result.status, 409, JSON.stringify(result.body));
+        assert.match(result.body.error, /Викладач/i);
+        const rolledBack = await pool.query(
+            `SELECT COUNT(*)::int AS count
+               FROM bookings
+              WHERE business_context = 'event_genix' AND program_name = $1`,
+            [label]
+        );
+        assert.equal(rolledBack.rows[0].count, 0, 'first occurrence must roll back with the conflicting series');
+        const conflictStillExists = await pool.query('SELECT id FROM bookings WHERE id = $1', [conflictId]);
+        assert.equal(conflictStillExists.rows[0]?.id, conflictId);
     });
 
     test('cabinet conflict on a later occurrence rolls back the earlier occurrence', async () => {
         const label = `EDU room rollback ${suffix}`;
         const startDate = utcDateAfter(14);
         const conflictDate = addDays(startDate, 7);
-        const conflictId = `edu-room-conflict-${suffix}`.slice(0, 50);
 
-        await pool.query(
-            `INSERT INTO bookings (
-                id, business_context, date, time, line_id, label, room, duration, status, extra_data
-             ) VALUES ($1, 'event_genix', $2::date, '15:10', 'edu-cabinet-2',
-                       $3, 'Кабінет 1', 45, 'confirmed', $4::jsonb)`,
-            [
-                conflictId,
-                conflictDate,
-                `EDU existing room conflict ${suffix}`,
-                JSON.stringify({
-                    educationLesson: {
-                        mode: 'education_lesson',
-                        title: 'Existing test lesson',
-                        teacherId: `edu-other-teacher-${suffix}`,
-                        teacherName: `Інший викладач ${suffix}`
-                    }
-                })
-            ]
-        );
-
-        try {
-            const result = await createBooking(token, {
-                date: startDate,
-                time: '15:10',
-                duration: 45,
-                lineId: 'edu-cabinet-1',
-                room: 'Кабінет 1',
-                label,
-                category: 'education',
-                kidsCount: 3,
-                skipNotification: true,
-                extraData: {
-                    educationLesson: {
-                        mode: 'education_lesson',
-                        title: label,
-                        teacherId: `edu-new-teacher-${suffix}`,
-                        teacherName: `Новий викладач ${suffix}`,
-                        seriesSize: 2,
-                        repeatEvery: 'weekly'
-                    }
+        const conflict = await request('POST', '/api/bookings?businessContext=event_genix', token, {
+            date: conflictDate,
+            time: '15:10',
+            duration: 45,
+            lineId: 'edu-cabinet-1',
+            room: 'Кабінет 1',
+            label: 'Заняття',
+            programName: `EDU existing room conflict ${suffix}`,
+            category: 'education',
+            kidsCount: 2,
+            status: 'confirmed',
+            skipNotification: true,
+            extraData: {
+                educationLesson: {
+                    mode: 'education_lesson',
+                    title: 'Existing test lesson',
+                    teacherId: `edu-other-teacher-${suffix}`,
+                    teacherName: `Інший викладач ${suffix}`
                 }
-            });
+            }
+        });
+        assert.equal(conflict.status, 200, JSON.stringify(conflict.body));
+        const conflictId = conflict.body.booking.id;
 
-            assert.equal(result.status, 409, JSON.stringify(result.body));
-            assert.match(result.body.error, /зайнятий|зайнята/i);
-            const rolledBack = await pool.query(
-                `SELECT COUNT(*)::int AS count
-                   FROM bookings
-                  WHERE business_context = 'event_genix' AND program_name = $1`,
-                [label]
-            );
-            assert.equal(rolledBack.rows[0].count, 0, 'first occurrence must roll back with the cabinet conflict');
-            const conflictStillExists = await pool.query('SELECT id FROM bookings WHERE id = $1', [conflictId]);
-            assert.equal(conflictStillExists.rows[0]?.id, conflictId);
-        } finally {
-            await pool.query('DELETE FROM bookings WHERE id = $1', [conflictId]);
-        }
+        const result = await createBooking(token, {
+            date: startDate,
+            time: '15:10',
+            duration: 45,
+            lineId: 'edu-cabinet-1',
+            room: 'Кабінет 1',
+            label,
+            category: 'education',
+            kidsCount: 3,
+            skipNotification: true,
+            extraData: {
+                educationLesson: {
+                    mode: 'education_lesson',
+                    title: label,
+                    teacherId: `edu-new-teacher-${suffix}`,
+                    teacherName: `Новий викладач ${suffix}`,
+                    seriesSize: 2,
+                    repeatEvery: 'weekly'
+                }
+            }
+        });
+
+        assert.equal(result.status, 409, JSON.stringify(result.body));
+        assert.match(result.body.error, /Кабінет зайнятий/i);
+        const rolledBack = await pool.query(
+            `SELECT COUNT(*)::int AS count
+               FROM bookings
+              WHERE business_context = 'event_genix' AND program_name = $1`,
+            [label]
+        );
+        assert.equal(rolledBack.rows[0].count, 0, 'first occurrence must roll back with the cabinet conflict');
+        const conflictStillExists = await pool.query('SELECT id FROM bookings WHERE id = $1', [conflictId]);
+        assert.equal(conflictStillExists.rows[0]?.id, conflictId);
     });
 });

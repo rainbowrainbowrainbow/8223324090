@@ -43,3 +43,22 @@ No production QA records, messages, invoices, payments or exports were created. 
 **Local verification:** `npm run check:runtime` passed on Node 22.23.1/npm 10.9.8. `npm run verify` passed, including syntax checks for 1,351 files, 1,327 UI checks, 4 code-splitting tests and all 3 EDU settings regressions. The standard test runner initially hit sandbox `spawn EPERM`; rerunning the same verifier with the approved local process permission passed.
 
 **Release disposition:** keep the deployed fix in place; do not change Dar's mode. EDU-SETTINGS-02 cannot be marked fully accepted until a valid Creator session can re-open the page and confirm the save button activates after a reversible, unsaved form change. No automatic rollback was performed. The release SHA has green CI and a successful deployment; the remaining failure is the live session-verification QA gate.
+
+## EDU-SETTINGS-02 follow-up — session recovery patch
+
+**Production impact: yes. Recovery fix released; Dar's education mode remains unchanged.**
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Root cause | PASS | `showMainApp()` called timeline-only `initializeTimeline()` on `/timeline-settings`, which does not load `timeline.js`; the thrown `ReferenceError` was caught by session bootstrap and surfaced as a false session-recovery error. |
+| Fix | PASS | Optional timeline-only initializers are guarded; recovery actions use shared CRM button styles and spacing. `manage_settings` and server authorization checks are unchanged. |
+| Local verification | PASS | Node 22.23.1/npm 10.9.8; `npm test` passed 3,156 tests / 119 suites with 0 failures; focused auth regression 72/72; UI smoke 1,327 checks plus education settings contracts 3/3; access, auth-boundary, CSS-surface, runtime, version and syntax checks passed. |
+| Release SHA/version | PASS | `a72d91451cc68e8a70fbbf468badd3d65c832ae0`, `v0.82.42 — Стабільний вхід до налаштувань таймлайну`, fast-forward pushed to `codex/eventgenix-production`. |
+| Exact-SHA CI | PASS | [Run 36608839366](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36608839366): all 8/8 jobs succeeded, including the Fast baseline, education lesson-series PostgreSQL integration, browser suites and Omni regression. |
+| Railway | PASS | Deployment `8b30f579-eef0-4a50-9bc2-a6e7da5e2451`, project `fortunate-appreciation`, environment `production`, service `8223324090`, status `SUCCESS`; submitted through `npm run release:railway-up` with explicit `RELEASE_DEPLOY_BRANCH=codex/eventgenix-production`. |
+| Live version | PASS | Release helper's `version:smoke`: v0.82.42, exact SHA `a72d91451cc68e8a70fbbf468badd3d65c832ae0`, branch `codex/eventgenix-production`, complete `manifest` metadata. |
+| Creator page/context | PASS | Live settings page loaded without session recovery, with Creator role and business Дар selected. |
+| Save activation | PASS | A temporary unsaved checkbox change enabled «Зберегти». The button was not pressed; page reload discarded the draft and restored the disabled/clean state. |
+| Dar mode/data | NO WRITE | The loaded business mode remained «Простий режим». No settings save or business-cabinet PUT was made; no customer data was read or changed. |
+
+**Disposition:** the live session bootstrap issue is resolved. The user can now choose «Навчання» manually in «Системні режими» and save when ready; no production mode switch was performed by this release QA.

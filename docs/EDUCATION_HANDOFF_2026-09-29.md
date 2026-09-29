@@ -109,3 +109,14 @@ EDU-01 не виявила підтвердженого дефекту чинн�
 - **Live QA:** сторінка відкрилась у Creator-сесії з вибраним Дар, але після повторної перевірки сесії з'явився той самий оверлей «Сесію тимчасово не підтверджено». QA зупинено до будь-якої зміни поля; «Зберегти» не натискалась, записів режиму не було. Саме поточне persisted значення через цю сесію не вдалося повторно прочитати.
 - **Production межа:** режим Дар не змінювали; ручне ввімкнення лишається за користувачем після відновлення авторизованої сесії. Live QA доступу до зміненого поля та Save-button activation лишається непідтвердженим.
 - **Файли зміни:** `js/timeline-settings-page.js`, `tests/ui-check.js`, новий `tests/timeline-settings-page.test.js`, version/cache/changelog артефакти та цей release handoff.
+
+### EDU-SETTINGS-02 follow-up — відновлення входу до налаштувань
+
+- **Статус:** виправлення випущене в `v0.82.42`; попередній блокер live QA закрито.
+- **Причина:** `showMainApp()` викликав `initializeTimeline()` на окремій сторінці налаштувань, де `timeline.js` не завантажується. `ReferenceError` перехоплювався як помилкова проблема перевірки сесії. Recovery-кнопкам також бракувало спільних класів і flex-відступів.
+- **Зміни:** guard для опційних timeline-only ініціалізаторів та стилізовані recovery actions. `manage_settings`, ролі й серверні перевірки доступу не змінювалися.
+- **Commits:** `d6c3db2d58538dec7d1651356349169e5d95c882` (fix), `a72d91451cc68e8a70fbbf468badd3d65c832ae0` (v0.82.42 release). Production branch: `codex/eventgenix-production`.
+- **CI/deploy:** [CI run 36608839366](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36608839366), 8/8 jobs success. Railway deployment `8b30f579-eef0-4a50-9bc2-a6e7da5e2451` — `SUCCESS`; live `/api/version` показав точні SHA, branch і complete manifest.
+- **Live QA:** Creator відкрив сторінку під Дар без recovery overlay. Тимчасова незбережена зміна активувала «Зберегти»; після reload чернетка зникла, кнопка неактивна. Режим залишився «Простий режим»; save/PUT у production не виконувався.
+- **Наступна дія користувача:** у вкладці «Системні режими» вибрати «Навчання» і натиснути «Зберегти», потім перевірити вкладку «Заняття». Це фактичне перемикання Дар навмисно лишається користувачеві.
+- **Proof:** [EDUCATION_RELEASE_PROOF_2026-09-29.md](EDUCATION_RELEASE_PROOF_2026-09-29.md).

@@ -285,6 +285,7 @@ app.use('/api/booking-templates', require('./routes/booking-templates'));
 app.use('/api/lines', require('./routes/lines'));
 app.use('/api/timeline', require('./routes/timeline-resources'));
 app.use('/api/education/groups', require('./routes/education-groups'));
+app.use('/api/education', require('./routes/education-attendance'));
 app.use('/api/history', require('./routes/history'));
 app.use('/api/afisha', require('./routes/afisha'));
 app.use('/api/telegram', require('./routes/telegram'));

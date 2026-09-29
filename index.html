@@ -193,6 +193,12 @@
                     <button type="button" class="education-schedule-tab" data-education-schedule-tab="groups" aria-pressed="false">
                         <span aria-hidden="true">♧</span><span><strong>Групи</strong><small>Склад дітей</small></span>
                     </button>
+                    <button type="button" class="education-schedule-tab" data-education-schedule-tab="attendance" aria-pressed="false">
+                        <span aria-hidden="true">✓</span><span><strong>Відвідування</strong><small>Журнал заняття</small></span>
+                    </button>
+                    <button type="button" class="education-schedule-tab" data-education-schedule-tab="reports" aria-pressed="false">
+                        <span aria-hidden="true">▥</span><span><strong>Звіти</strong><small>За період</small></span>
+                    </button>
                 </div>
                 <section class="education-today-panel" id="educationTodayPanel" aria-labelledby="educationTodayHeading">
                     <div class="education-today-heading">
@@ -231,6 +237,28 @@
                             <div id="educationGroupMembers"></div>
                         </div>
                     </div>
+                </section>
+                <section class="education-today-panel" id="educationAttendancePanel" hidden aria-label="Журнал відвідування">
+                    <div class="education-today-heading"><div><p class="education-schedule-eyebrow">ЖУРНАЛ ЗАНЯТТЯ</p><h2>Відвідування</h2></div></div>
+                    <div class="education-schedule-filters">
+                        <label>Дата<input id="educationAttendanceDate" type="date"></label>
+                        <label>Заняття<select id="educationAttendanceLesson"><option value="">Оберіть заняття</option></select></label>
+                        <button type="button" id="educationAttendanceReload" class="btn-secondary">Оновити</button>
+                    </div>
+                    <p id="educationAttendanceStatus" role="status" aria-live="polite"></p>
+                    <div id="educationAttendanceJournal"></div>
+                    <button type="button" id="educationAttendanceSave" class="btn-primary" hidden>Зберегти журнал</button>
+                </section>
+                <section class="education-today-panel" id="educationReportsPanel" hidden aria-label="Звіт відвідування">
+                    <div class="education-today-heading"><div><p class="education-schedule-eyebrow">ЗВІТ ЗА ПЕРІОД</p><h2>Заняття і відвідування</h2></div></div>
+                    <div class="education-schedule-filters">
+                        <label>Від<input id="educationReportFrom" type="date"></label>
+                        <label>До<input id="educationReportTo" type="date"></label>
+                        <label>Група<select id="educationReportGroup"><option value="">Усі групи</option></select></label>
+                        <button type="button" id="educationReportRun" class="btn-secondary">Показати</button>
+                    </div>
+                    <p id="educationReportStatus" role="status" aria-live="polite"></p>
+                    <div id="educationReportResult"></div>
                 </section>
             </section>
 
@@ -6401,5 +6429,6 @@
     <script src="js/alerts.js?v=0.82.39"></script>
     <script src="js/education-schedule.js?v=0.82.39"></script>
     <script src="js/education-groups.js?v=0.82.39"></script>
+    <script src="js/education-attendance.js?v=0.82.39"></script>
 </body>
 </html>

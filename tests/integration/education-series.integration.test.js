@@ -506,4 +506,126 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         const oldDetail = await request('GET', `/api/bookings/detail/${series.body.bookings[1].id}?businessContext=dar`, token);
         assert.equal(Number(oldDetail.body.booking.extraData.educationLesson.groupId), Number(groupId));
     });
+
+    test('attendance freezes the dated roster, preserves corrections, and reports held lessons', async () => {
+        const lessonDate = utcDateAfter(32);
+        const parent = await pool.query(
+            `INSERT INTO customers (business_context, name, source)
+             VALUES ('dar', $1, 'education_test') RETURNING id`, [`EDU attendance parent ${suffix}`]
+        );
+        const children = await pool.query(
+            `INSERT INTO customer_children (business_context, customer_id, name, source_kind)
+             VALUES ('dar', $1, $2, 'education_test'), ('dar', $1, $3, 'education_test'),
+                    ('dar', $1, $4, 'education_test') RETURNING id`,
+            [parent.rows[0].id, `EDU attendance A ${suffix}`, `EDU attendance B ${suffix}`, `EDU attendance C ${suffix}`]
+        );
+        const group = await pool.query(
+            `INSERT INTO education_groups (business_context, name, capacity)
+             VALUES ('dar', $1, 4) RETURNING id`, [`EDU attendance group ${suffix}`]
+        );
+        const groupId = group.rows[0].id;
+        await pool.query(
+            `INSERT INTO education_group_members (business_context, group_id, child_id, start_date)
+             VALUES ('dar', $1, $2, $4), ('dar', $1, $3, $4)`,
+            [groupId, children.rows[0].id, children.rows[1].id, addDays(lessonDate, -5)]
+        );
+        const created = await request('POST', '/api/bookings?businessContext=dar', token, {
+            date: lessonDate, time: '11:10', duration: 45, lineId: 'edu-cabinet-2',
+            room: 'Кабінет 2', label: 'Заняття', category: 'education', skipNotification: true,
+            extraData: { educationLesson: { mode: 'education_lesson', title: `EDU attendance ${suffix}`,
+                groupId, groupName: `EDU attendance group ${suffix}` } }
+        });
+        assert.equal(created.status, 200, JSON.stringify(created.body));
+        const bookingId = created.body.booking.id;
+        const endpoint = `/api/education/attendance/${bookingId}?businessContext=dar`;
+        const preview = await request('GET', endpoint, token);
+        assert.equal(preview.status, 200, JSON.stringify(preview.body));
+        assert.equal(preview.body.journal.frozen, false);
+        assert.equal(preview.body.journal.members.length, 2);
+        assert.ok(preview.body.journal.members.every(member => member.status === null));
+
+        const firstMark = { marks: [{ childId: children.rows[0].id, status: 'present' }] };
+        const simultaneous = await Promise.all([
+            request('PUT', endpoint, token, firstMark), request('PUT', endpoint, token, firstMark)
+        ]);
+        assert.deepEqual(simultaneous.map(result => result.status), [200, 200]);
+        assert.deepEqual(simultaneous.map(result => result.body.changes).sort(), [0, 1]);
+        const repeated = await request('PUT', endpoint, token, firstMark);
+        assert.equal(repeated.status, 200, JSON.stringify(repeated.body));
+        assert.equal(repeated.body.changes, 0);
+        let journal = repeated.body.journal;
+        assert.equal(journal.frozen, true);
+        assert.equal(journal.members.length, 2);
+        assert.equal(journal.members.find(member => Number(member.child_id) === Number(children.rows[0].id)).history.length, 1);
+        assert.equal(journal.members.find(member => Number(member.child_id) === Number(children.rows[1].id)).status, null);
+
+        await pool.query(
+            `UPDATE education_group_members SET end_date = $2 WHERE group_id = $1 AND child_id = $3`,
+            [groupId, addDays(lessonDate, -1), children.rows[1].id]
+        );
+        await pool.query(
+            `INSERT INTO education_group_members (business_context, group_id, child_id, start_date)
+             VALUES ('dar', $1, $2, $3)`, [groupId, children.rows[2].id, lessonDate]
+        );
+        journal = (await request('GET', endpoint, token)).body.journal;
+        assert.deepEqual(journal.members.map(member => Number(member.child_id)).sort(),
+            children.rows.slice(0, 2).map(child => Number(child.id)).sort());
+        const newMember = await request('PUT', endpoint, token, {
+            marks: [{ childId: children.rows[2].id, status: 'present' }]
+        });
+        assert.equal(newMember.status, 404);
+        const corrected = await request('PUT', endpoint, token, {
+            marks: [{ childId: children.rows[0].id, status: 'absent' }]
+        });
+        assert.equal(corrected.status, 200, JSON.stringify(corrected.body));
+        assert.equal(corrected.body.changes, 1);
+        const first = corrected.body.journal.members.find(member => Number(member.child_id) === Number(children.rows[0].id));
+        assert.deepEqual(first.history.map(event => [event.previous_status, event.new_status]),
+            [[null, 'present'], ['present', 'absent']]);
+        assert.ok(first.history.every(event => event.changed_by));
+
+        const replacement = await pool.query(
+            `INSERT INTO education_groups (business_context, name, capacity)
+             VALUES ('dar', $1, 4) RETURNING id`, [`EDU attendance replacement ${suffix}`]
+        );
+        const replaceGroup = await request('PUT', `/api/bookings/${bookingId}?businessContext=dar`, token, {
+            extraData: { educationLesson: { groupId: replacement.rows[0].id } }
+        });
+        assert.equal(replaceGroup.status, 409, JSON.stringify(replaceGroup.body));
+        const moveDate = await request('PUT', `/api/bookings/${bookingId}?businessContext=dar`, token, {
+            date: addDays(lessonDate, 1)
+        });
+        assert.equal(moveDate.status, 409, JSON.stringify(moveDate.body));
+        const foreignRead = await request('GET', `/api/education/attendance/${bookingId}?businessContext=event_genix`, token);
+        assert.ok([403, 404].includes(foreignRead.status), JSON.stringify(foreignRead.body));
+
+        // The isolated database allows a synthetic held lesson without mutating production data.
+        const heldDate = utcDateAfter(-2);
+        await pool.query('UPDATE bookings SET date = $2 WHERE id = $1', [bookingId, heldDate]);
+        const beforeCancel = await request('GET',
+            `/api/education/reports?businessContext=dar&from=${heldDate}&to=${lessonDate}&groupId=${groupId}`, token);
+        assert.equal(beforeCancel.status, 200, JSON.stringify(beforeCancel.body));
+        assert.equal(beforeCancel.body.report.summary.held, 1);
+        assert.equal(beforeCancel.body.report.summary.absent, 1);
+        assert.equal(beforeCancel.body.report.summary.unmarked, 1);
+        const empty = await request('GET',
+            `/api/education/reports?businessContext=dar&from=${addDays(lessonDate, 200)}&to=${addDays(lessonDate, 201)}&groupId=${groupId}`, token);
+        assert.equal(empty.status, 200);
+        assert.equal(empty.body.report.lessons.length, 0);
+
+        const cancelled = await request('DELETE', `/api/bookings/${bookingId}?businessContext=dar`, token);
+        assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
+        const afterCancel = await request('GET', endpoint, token);
+        assert.equal(afterCancel.status, 200, JSON.stringify(afterCancel.body));
+        assert.equal(afterCancel.body.journal.cancelled, true);
+        assert.equal(afterCancel.body.journal.members[0].history.length + afterCancel.body.journal.members[1].history.length, 2);
+        const deniedMark = await request('PUT', endpoint, token, firstMark);
+        assert.equal(deniedMark.status, 409);
+        const cancelledReport = await request('GET',
+            `/api/education/reports?businessContext=dar&from=${heldDate}&to=${lessonDate}&groupId=${groupId}`, token);
+        assert.equal(cancelledReport.status, 200, JSON.stringify(cancelledReport.body));
+        assert.equal(cancelledReport.body.report.summary.cancelled, 1);
+        assert.equal(cancelledReport.body.report.summary.absent, 0);
+        assert.equal(cancelledReport.body.report.summary.unmarked, 0);
+    });
 });

@@ -2416,6 +2416,23 @@ async function educationGroupWriteError(db, payload, businessContext, oldRow = n
     }
 }
 
+async function educationJournalChangeError(db, payload, oldRow, businessContext) {
+    const previous = educationLessonFromPayload({ extraData: oldRow.extra_data });
+    if (!previous?.groupId) return null;
+    const next = educationLessonFromPayload(payload);
+    const groupChanged = String(previous.groupId) !== String(next?.groupId || '');
+    const dateChanged = String(oldRow.date) !== String(payload.date);
+    if (!groupChanged && !dateChanged) return null;
+    const result = await db.query(
+        'SELECT 1 FROM education_attendance WHERE booking_id = $1 AND business_context = $2 LIMIT 1',
+        [oldRow.id, businessContext]
+    );
+    return result.rowCount ? {
+        status: 409,
+        body: { success: false, error: 'Lesson group and date cannot change after the attendance journal starts' }
+    } : null;
+}
+
 function overlapsBookingTime(candidate, other) {
     const start = timeToMinutes(candidate.time);
     const end = start + (parseInt(candidate.duration, 10) || 0);
@@ -5474,6 +5491,14 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         await insertScopedHistory(client, action, req.user?.username, mapBookingRow(booking), businessContext);
 
         if (permanent) {
+            const journal = await client.query(
+                'SELECT 1 FROM education_attendance WHERE booking_id = $1 AND business_context = $2 LIMIT 1',
+                [id, businessContext]
+            );
+            if (journal.rowCount) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, error: 'Attendance history prevents permanent deletion of this lesson' });
+            }
             await syncBanquetActualMenuTask(client, { ...booking, status: 'cancelled' }, { businessContext, actor: req.user, cancel: true });
             await client.query(
                 `DELETE FROM bookings WHERE (id = $1 OR linked_to = $1) AND ${bookingContextSql('', '$2')}`,
@@ -6342,6 +6367,11 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             businessContext
         });
         mergeExistingExtraDataForBookingUpdate(b, oldBooking);
+        const educationJournalError = await educationJournalChangeError(client, b, oldBooking, businessContext);
+        if (educationJournalError) {
+            await client.query('ROLLBACK');
+            return res.status(educationJournalError.status).json(educationJournalError.body);
+        }
         const educationGroupError = await educationGroupWriteError(client, b, businessContext, oldBooking);
         if (educationGroupError) {
             await client.query('ROLLBACK');

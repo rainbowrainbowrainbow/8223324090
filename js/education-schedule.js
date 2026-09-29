@@ -146,7 +146,7 @@
     }
 
     function setView(view, updateUrl = true) {
-        state.activeView = ['schedule', 'groups'].includes(view) ? view : 'today';
+        state.activeView = ['schedule', 'groups', 'attendance', 'reports'].includes(view) ? view : 'today';
         const today = state.activeView === 'today';
         document.body.classList.toggle('education-schedule-today', state.activeView !== 'schedule' && isEducationMode());
         document.querySelectorAll('[data-education-schedule-tab]').forEach(button => {
@@ -158,6 +158,10 @@
         if (panel) panel.hidden = !today;
         const groups = document.getElementById('educationGroupsPanel');
         if (groups) groups.hidden = state.activeView !== 'groups';
+        const attendance = document.getElementById('educationAttendancePanel');
+        if (attendance) attendance.hidden = state.activeView !== 'attendance';
+        const reports = document.getElementById('educationReportsPanel');
+        if (reports) reports.hidden = state.activeView !== 'reports';
         if (updateUrl && global.history?.replaceState) {
             const url = new URL(global.location.href);
             url.searchParams.set('educationSchedule', state.activeView);
@@ -165,6 +169,8 @@
         }
         if (today) void load();
         if (state.activeView === 'groups') void global.EducationGroups?.load();
+        if (state.activeView === 'attendance') void global.EducationAttendance?.loadLessons();
+        if (state.activeView === 'reports') void global.EducationAttendance?.runReport();
     }
 
     function syncWorkspace() {

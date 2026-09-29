@@ -1,17 +1,27 @@
 /* Education schedule entry and Today list share EventGenix toolbar tokens. */
 .education-schedule-workspace { margin: 0 0 18px; }
 .education-schedule-workspace.hidden { display: none; }
-.education-schedule-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
+.education-schedule-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
 .education-groups-layout { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.5fr); gap: 24px; }
 .education-groups-layout > div { min-width: 0; }
 .education-groups-layout label, .education-group-form { display: grid; gap: 6px; }
 .education-group-form { gap: 12px; margin-top: 14px; }
-.education-group-form[hidden], .education-today-panel[hidden] { display: none; }
+.education-group-form[hidden], .education-today-panel[hidden], #educationAttendanceSave[hidden] { display: none; }
 .education-groups-layout input, .education-groups-layout select { width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid var(--gray-300); border-radius: 10px; background: var(--surface, #fff); color: var(--gray-800); font: inherit; }
 body.dark-mode .education-groups-layout input, body.dark-mode .education-groups-layout select,
 html[data-theme="dark"] .education-groups-layout input, html[data-theme="dark"] .education-groups-layout select { background: #111827; color: #E5E7EB; }
 .education-groups-layout h3 { margin: 0 0 8px; }
 .education-groups-layout li { margin: 8px 0; }
+.education-attendance-roster { display: grid; gap: 8px; margin: 16px 0; }
+.education-attendance-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(160px, 220px); gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--gray-200); border-radius: 10px; }
+.education-attendance-row small { display: block; color: var(--gray-500); }
+.education-attendance-row select, .education-schedule-filters input { min-height: 38px; padding: 7px 10px; border: 1px solid var(--gray-300); border-radius: 10px; background: var(--surface, #fff); color: var(--gray-800); font: inherit; }
+.education-attendance-history { margin: 5px 0 0; padding-left: 18px; font-size: 12px; color: var(--gray-600); }
+.education-report-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.education-report-summary span { padding: 8px 11px; border-radius: 10px; background: rgba(14,165,134,.1); color: var(--gray-800); }
+.education-report-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.education-report-table th, .education-report-table td { padding: 9px; border-bottom: 1px solid var(--gray-200); text-align: left; }
+.education-report-table-wrap { overflow-x: auto; }
 .education-schedule-tab { display: flex; align-items: center; gap: 12px; min-height: 66px; padding: 12px 16px; border: 1px solid var(--gray-200); border-radius: var(--radius-lg, 16px); background: var(--gray-50); color: var(--gray-700); text-align: left; cursor: pointer; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
 .education-schedule-tab > span:first-child { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: rgba(14,165,134,.12); color: #0EA586; font-size: 22px; }
 .education-schedule-tab strong, .education-schedule-tab small { display: block; }
@@ -43,6 +53,8 @@ body.dark-mode .education-today-panel, html[data-theme="dark"] .education-today-
 body.dark-mode .education-schedule-filters select, html[data-theme="dark"] .education-schedule-filters select { background: #111827; color: #E5E7EB; }
 body.education-schedule-today .timeline-container { display: none !important; }
 @media (max-width: 720px) {
+  .education-schedule-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .education-attendance-row { grid-template-columns: 1fr; }
   .education-groups-layout { grid-template-columns: 1fr; }
   .education-today-heading { align-items: stretch; flex-direction: column; }
   .education-schedule-filters { display: grid; grid-template-columns: 1fr 1fr; }

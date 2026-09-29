@@ -48,6 +48,7 @@ focused route tests in the same pack.
 | `/api/crm-assistant` | `routes/crm-assistant.js` | CRM assistant AI/voice |
 | `/api/customers` | `routes/customers.js` | customers |
 | `/api/education/groups` | `routes/education-groups.js` | education groups and memberships |
+| `/api/education` | `routes/education-attendance.js` | education attendance journals and reports |
 | `/api/dashboard` | `routes/dashboard.js` | dashboard |
 | `/api/dashboard-assistant` | `routes/dashboard-assistant.js` | legacy alias for CRM assistant AI/voice |
 | `/api/decisions` | `routes/decisions.js` | decisions |

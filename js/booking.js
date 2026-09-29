@@ -16250,11 +16250,15 @@ function renderEducationLessonDetail(booking) {
     const groupAction = /^\d+$/.test(String(lesson.groupId || ''))
         ? `<div class="booking-detail-row"><span class="label">Склад групи:</span><span class="value"><button type="button" class="btn-secondary btn-sm" data-education-detail-group="${Number(lesson.groupId)}">Відкрити групу</button></span></div>`
         : '';
+    const attendanceAction = /^\d+$/.test(String(lesson.groupId || ''))
+        ? `<div class="booking-detail-row"><span class="label">Відвідування:</span><span class="value"><button type="button" class="btn-secondary btn-sm" data-education-attendance-booking="${escapeHtml(String(booking.id))}">Відкрити журнал</button></span></div>`
+        : '';
     return `
         <div class="booking-lesson-detail">
             <div class="booking-lesson-detail-title">Навчальний запис</div>
             ${rows.map(([label, value]) => `<div class="booking-detail-row"><span class="label">${escapeHtml(label)}:</span><span class="value">${escapeHtml(value)}</span></div>`).join('')}
             ${groupAction}
+            ${attendanceAction}
             ${seriesActions}
         </div>`;
 }

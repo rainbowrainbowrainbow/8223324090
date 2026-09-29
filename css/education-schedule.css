@@ -50,8 +50,11 @@ html[data-theme="dark"] .education-groups-layout input, html[data-theme="dark"] 
 .education-today-empty { padding: 28px 16px; border: 1px dashed var(--gray-300); border-radius: 12px; color: var(--gray-500); text-align: center; }
 body.dark-mode .education-schedule-tab, html[data-theme="dark"] .education-schedule-tab { background: rgba(24,29,45,.88); color: var(--gray-200); }
 body.dark-mode .education-today-panel, html[data-theme="dark"] .education-today-panel, body.dark-mode .education-lesson-card, html[data-theme="dark"] .education-lesson-card { background: rgba(17,24,39,.88); }
-body.dark-mode .education-schedule-filters select, html[data-theme="dark"] .education-schedule-filters select { background: #111827; color: #E5E7EB; }
+body.dark-mode .education-schedule-filters select, html[data-theme="dark"] .education-schedule-filters select,
+body.dark-mode .education-schedule-filters input, html[data-theme="dark"] .education-schedule-filters input,
+body.dark-mode .education-attendance-row select, html[data-theme="dark"] .education-attendance-row select { background: #111827; color: #E5E7EB; }
 body.education-schedule-today .timeline-container { display: none !important; }
+@media (max-width: 1100px) and (min-width: 721px) { .education-schedule-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 720px) {
   .education-schedule-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .education-attendance-row { grid-template-columns: 1fr; }

@@ -46,17 +46,18 @@ EDU-01 не виявила підтвердженого дефекту чинн�
 
 ## Наступна задача
 
-Наступна окрема задача за пакетом — EDU-02: окремий вхід «Заняття» з вкладками «Сьогодні / Розклад» на тому самому timeline workspace, без копії сторінки чи другого booking modal. Використовуй цей workspace і branch як точку продовження лише коли EDU-02 буде окремо запущена. EDU-03 не запускати автоматично.
+Наступна окрема задача за execution pack — EDU-03: групи та склад дітей, additive schema/API, optional `groupId` у заняттях і фільтр розкладу. Не запускай EDU-03 автоматично; потрібен окремий task.
 
 
 ## EDU-02 — реалізація
 
-- **Статус:** EDU-02 Done locally; full `npm test` пройшов. Після push очікується CI. EDU-03 не запускати автоматично.
+- **Статус:** EDU-02 Done. Локальний `npm test` і весь CI успішні; production deploy не виконувався.
 - **Гілка/worktree:** `codex/education-schedule` — `C:\Users\Plotva\.codex\worktrees\education-schedule\EventGenix`.
 - **EDU-02 code commit:** `c206c71ac221296700096fa20a6d624f859af21c` (`feat: add education schedule workspace`).
+- **Handoff commit pushed:** `94395998d69d4a371b3c8a5100d419b4131b5c77` на `origin/codex/education-schedule`.
 - **Вхід:** `/?educationSchedule=today`; зберігає поточний `businessContext`, доступний лише для профілю з `timeline.mode = education`. Використовує root page guard `/` і чинні booking action/API guards.
 - **UI:** вкладки «Сьогодні / Розклад» у спільному index/timeline shell. «Сьогодні» читає чинний `getBookingsForDate(...)`/timeline cache, показує topic/time/teacher/group/cabinet/studentCount і фільтри викладача та кабінету. Кількість позначається як учні у занятті, не як attendance/список зарахованих дітей. Відкриття користується `showBookingDetails(...)`. «Розклад» відкриває наявний день/тиждень timeline. Дубліката сторінки, API, booking modal або calendar engine немає.
 - **Доступ:** додано education-only sidebar visibility і `/?educationSchedule=today` до `PAGE_PERMISSIONS` root entry `sidebarLinks`. Ролі, action permissions, API guards та auth/session не змінювалися.
 - **Файли EDU-02:** `index.html`, `js/components/sidebar.js`, `js/education-schedule.js`, `css/education-schedule.css`, `config/cssSurface.js`, `docs/CSS_SURFACE.md`, `config/permissionRegistry.js`, `tests/education-schedule-ui.test.js`, `tests/permission-registry-contract.test.js`, `package.json`.
-- **Перевірки на цей момент:** PASS — `node --check js/education-schedule.js`; PASS — `node --test tests/education-schedule-ui.test.js tests/permission-registry-contract.test.js` (15/15); PASS — `node tests/ui-check.js` (1327/1327); PASS — CSS surface, theme surface, access matrix, API surface, static surface, timeline protected surface. PASS — повний `npm test` (runtime/version, access/action/permission contracts, syntax, unit та UI checks). PASS — `git diff --check`.
-- **QA/реліз:** production deploy не виконувався. Live-site QA не виконувався; він належить EDU-05. Real desktop/mobile screenshot review пропущено: browser tool відхилив локальний `file://` preview як недозволений протокол і заборонив обхід через іншу поверхню/протокол; Playwright недоступний у worktree. Не трактувати це як візуальний pass. CI очікується після push; production deploy не виконувався.
+- **Перевірки на цей момент:** PASS — `node --check js/education-schedule.js`; PASS — `node --test tests/education-schedule-ui.test.js tests/permission-registry-contract.test.js` (15/15); PASS — `node tests/ui-check.js` (1327/1327); PASS — CSS surface, theme surface, access matrix, API surface, static surface, timeline protected surface. PASS — повний `npm test` (runtime/version, access/action/permission contracts, syntax, unit та UI checks). PASS — `git diff --check`. PASS — повний GitHub CI [36562989860](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36562989860): усі jobs зелені, включно з Fast baseline, browser suites та education-series PostgreSQL integration.
+- **QA/реліз:** production deploy не виконувався. Live-site QA не виконувався; він належить EDU-05. Real desktop/mobile screenshot review пропущено: browser tool відхилив локальний `file://` preview як недозволений протокол і заборонив обхід через іншу поверхню/протокол; Playwright недоступний у worktree. Не трактувати це як візуальний pass. CI run `36562989860` пройшов; production deploy не виконувався.

@@ -23,3 +23,9 @@
 | Education workspace desktop/mobile visual review | NOT RUN live | Education mode was hidden in the only accessible test business. Static assets loaded; no positive visual claim is made. |
 
 No production QA records, messages, invoices, payments or exports were created. Browser snapshots/logs generated during QA were removed from the local release worktree after the browser closed. The additive tables remain after a code rollback; any rollback must preserve their history and use the documented manual release path, not a destructive migration.
+
+## EDU-SETTINGS-02 — release proof
+
+Release: in progress.
+
+The pre-release live `/api/version` check returned `v0.82.40`, SHA `c3814734dcc39c9b79b7de0cbaff1bfde7557861`, source branch `codex/eventgenix-production`, with complete deployment-manifest metadata. The authenticated CRM session is Creator in business context Дар; the visible menu includes «Налаштування таймлайну». No production business data has been changed. Final SHA, exact-SHA CI, Railway deployment and post-deploy QA evidence will be recorded here after each gate passes.

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.40",
+  "version": "0.82.41",
   "eventGenix": {
-    "releaseLabel": "Заняття: розклад, групи та відвідування"
+    "releaseLabel": "Збереження режиму навчання"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -116,7 +116,7 @@
     "eval:task-ai:live": "node scripts/task-ai-draft-live-eval.js",
     "smoke:my-day-ai:live-mutation": "node scripts/live-my-day-ai-mutation-smoke.js",
     "smoke:my-day-completion:live-mutation": "node scripts/live-my-day-completion-mutation-smoke.js",
-    "test:ui": "node tests/ui-check.js && node tests/frontend-code-splitting.test.js",
+    "test:ui": "node tests/ui-check.js && node tests/frontend-code-splitting.test.js && node tests/timeline-settings-page.test.js",
     "test:browser:event-cards": "npx --yes --package @playwright/test playwright test tests/browser/event-cards-visual-smoke.spec.js --reporter=line",
     "test:browser:account-access": "npx --yes --package @playwright/test playwright test tests/browser/account-access-editor.spec.js --reporter=line --workers=1",
     "test:browser:account-access:lifecycle": "npx --yes --package @playwright/test playwright test tests/browser/account-access-editor.spec.js --grep \"blocks accidental dismissal\" --reporter=line --workers=1",

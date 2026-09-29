@@ -36,6 +36,22 @@
         education: 'Навчання'
     };
 
+    const BUSINESS_TYPE_BY_MODE = {
+        disabled: 'no_timeline',
+        simple: 'simple',
+        specialist: 'specialist',
+        park: 'children_entertainment_park',
+        education: 'education'
+    };
+
+    const RESOURCE_MODEL_BY_MODE = {
+        disabled: 'none',
+        simple: 'specialist',
+        specialist: 'specialist',
+        park: 'auto',
+        education: 'cabinet'
+    };
+
     const START_PAGE_LABELS = {
         timeline: 'Таймлайн',
         dashboard: 'Дашборд',
@@ -417,12 +433,93 @@
     }
 
     function updateDisplay(patch) {
+        if (patch && Object.prototype.hasOwnProperty.call(patch, 'mode')) {
+            patch = applyBusinessModePreset(state.displaySettings || {}, patch.mode);
+        }
         state.displaySettings = {
             ...(state.displaySettings || {}),
             ...patch
         };
         markDirty('display');
         renderSystemEditor();
+    }
+
+    function applyBusinessModePreset(current, mode) {
+        const next = {
+            ...current,
+            mode,
+            businessType: BUSINESS_TYPE_BY_MODE[mode] || current.businessType,
+            resourceModel: RESOURCE_MODEL_BY_MODE[mode] || current.resourceModel,
+            timelineEnabled: mode !== 'disabled'
+        };
+        if (mode !== 'education') return next;
+
+        next.enabledModules = {
+            ...(current.enabledModules || {}),
+            timeline: true,
+            bookings: true,
+            resources: true,
+            teachers: true,
+            lessonSeries: true
+        };
+        next.timelineFeatures = {
+            ...(current.timelineFeatures || {}),
+            quickCloseSlot: true,
+            freeResources: true,
+            compactBlocks: true,
+            series: true,
+            seriesBadge: true,
+            teacherConflict: true,
+            resourceCapacity: true
+        };
+        next.bookingPolicy = {
+            ...(current.bookingPolicy || {}),
+            allowLessonsWithoutTeacher: true,
+            allowLessonsWithoutGroup: true,
+            enforceTeacherConflict: true,
+            enforceResourceCapacity: true,
+            notifyFirstOccurrenceOnly: true
+        };
+        return next;
+    }
+
+    function displaySettingsFromBusinessCabinet(cabinet) {
+        const timeline = cabinet?.timeline && typeof cabinet.timeline === 'object' ? cabinet.timeline : {};
+        return {
+            ...timeline,
+            context: cabinet?.businessContext || cabinet?.context || state.activeContext,
+            businessType: cabinet?.businessType || null,
+            timelineEnabled: cabinet?.timelineEnabled ?? timeline.timelineEnabled,
+            mode: cabinet?.timelineMode || timeline.mode || 'park',
+            parkKitchenMode: cabinet?.parkKitchenMode || timeline.parkKitchenMode,
+            startPage: cabinet?.startPage || timeline.startPage,
+            resourceModel: cabinet?.resourceModel || timeline.resourceModel,
+            roomTimelineEnabled: timeline.roomTimelineEnabled,
+            defaultTimelineView: timeline.defaultTimelineView,
+            enabledModules: timeline.enabledModules || {},
+            timelineFeatures: cabinet?.timelineFeatures || timeline.timelineFeatures || {},
+            bookingPolicy: cabinet?.bookingPolicy || timeline.bookingPolicy || {}
+        };
+    }
+
+    function businessCabinetPayload() {
+        const display = state.displaySettings || {};
+        const mode = MODE_LABELS[display.mode] ? display.mode : 'park';
+        return {
+            businessContext: state.activeContext,
+            businessType: BUSINESS_TYPE_BY_MODE[mode],
+            timelineEnabled: mode !== 'disabled',
+            timelineMode: mode,
+            mode,
+            parkKitchenMode: display.parkKitchenMode || 'with_kitchen',
+            startPage: display.startPage || (mode === 'disabled' ? 'dashboard' : 'timeline'),
+            resourceModel: display.resourceModel || (mode === 'education' ? 'cabinet' : 'auto'),
+            roomTimelineEnabled: display.roomTimelineEnabled,
+            defaultTimelineView: display.defaultTimelineView,
+            enabledModules: { ...(display.enabledModules || {}) },
+            timelineFeatures: { ...(display.timelineFeatures || {}) },
+            bookingPolicy: { ...(display.bookingPolicy || {}) }
+        };
     }
 
     function updateNestedDisplay(collection, key, value) {
@@ -608,7 +705,7 @@
                     <input type="checkbox" data-timeline-settings-module="${escapeHtml(key)}" ${modules[key] === false ? '' : 'checked'}>
                     <span aria-hidden="true"></span>
                 </span>
-                <small>Модуль з існуючого timeline-display payload.</small>
+                <small>Модуль бізнес-профілю таймлайну.</small>
             </label>
         `).join('');
         const featureRows = Object.entries(FEATURE_LABELS).map(([key, label]) => `
@@ -618,7 +715,7 @@
                     <input type="checkbox" data-timeline-settings-feature="${escapeHtml(key)}" ${features[key] === false ? '' : 'checked'}>
                     <span aria-hidden="true"></span>
                 </span>
-                <small>Feature flag з існуючого timeline-display payload.</small>
+                <small>Параметр бізнес-профілю таймлайну.</small>
             </label>
         `).join('');
         host.innerHTML = `
@@ -669,7 +766,7 @@
             </label>
             <div class="timeline-settings-system-card timeline-settings-field--wide">
                 <strong>Модулі</strong>
-                <small>Зберігаються в enabledModules без зміни API або ролей.</small>
+                <small>Зберігаються разом із режимом бізнесу.</small>
             </div>
             ${moduleRows}
             <div class="timeline-settings-system-card timeline-settings-field--wide">
@@ -801,9 +898,20 @@
                 state.visibilityDirty = false;
             }
             if (state.displayDirty) {
-                const display = await request('PUT', '/settings/timeline-display', state.displaySettings || {});
-                state.displaySettings = display || {};
-                state.displayMeta = { updatedAt: display?.updatedAt || null, updatedBy: display?.updatedBy || null };
+                if (typeof apiSaveBusinessCabinet !== 'function') {
+                    throw new Error('API бізнес-кабінету недоступний. Оновіть сторінку й спробуйте ще раз.');
+                }
+                const result = await apiSaveBusinessCabinet(businessCabinetPayload(), { context: state.activeContext });
+                if (!result?.success || !result.cabinet) {
+                    throw new Error(result?.error || 'Не вдалося зберегти бізнес-профіль.');
+                }
+                state.displaySettings = displaySettingsFromBusinessCabinet(result.cabinet);
+                state.displayMeta = { updatedAt: result.cabinet.updatedAt || null, updatedBy: result.cabinet.updatedBy || null };
+                if (result.businessProfile && typeof window.CrmBusinessContext?.applyProfile === 'function') {
+                    window.CrmBusinessContext.applyProfile(result.businessProfile, { updateUrl: false, emit: true });
+                } else {
+                    await hydrateBusinessProfile();
+                }
                 state.displayDirty = false;
             }
             notify('Налаштування таймлайну збережено.', 'success');
@@ -880,13 +988,17 @@
         state.loading = true;
         renderSaveStatus();
         try {
-            const [visibility, display] = await Promise.all([
+            if (typeof apiGetBusinessCabinet !== 'function') {
+                throw new Error('API бізнес-кабінету недоступний. Оновіть сторінку й спробуйте ще раз.');
+            }
+            const [visibility, cabinetResult] = await Promise.all([
                 request('GET', '/settings/timeline-visibility'),
-                request('GET', '/settings/timeline-display')
+                apiGetBusinessCabinet({ context: state.activeContext })
             ]);
+            if (!cabinetResult?.cabinet) throw new Error(cabinetResult?.error || 'Не вдалося завантажити бізнес-профіль.');
             applyVisibilityResponse(visibility);
-            state.displaySettings = display || {};
-            state.displayMeta = { updatedAt: display?.updatedAt || null, updatedBy: display?.updatedBy || null };
+            state.displaySettings = displaySettingsFromBusinessCabinet(cabinetResult.cabinet);
+            state.displayMeta = { updatedAt: cabinetResult.cabinet.updatedAt || null, updatedBy: cabinetResult.cabinet.updatedBy || null };
             state.visibilityDirty = false;
             state.displayDirty = false;
             state.loading = false;
@@ -1038,6 +1150,8 @@
         state.returnPath = sanitizeReturnPath(params.get('return') || '/');
         state.activeContext = parseInitialContext();
         state.activeView = parseInitialView(state.activeContext);
+        window.addEventListener('crm:authenticated-runtime-ready', renderSaveStatus);
+        if (typeof window.checkSession !== 'function' || await window.checkSession() !== true) return;
         await hydrateBusinessProfile();
         state.contexts = buildContextList();
         if (!state.contexts.some(item => contextOptionId(item) === activeContextOptionId())) {
@@ -1050,7 +1164,6 @@
         renderContexts();
         renderPresets();
         renderSaveStatus();
-        window.addEventListener('crm:authenticated-runtime-ready', renderSaveStatus);
         await loadContextSettings();
     }
 

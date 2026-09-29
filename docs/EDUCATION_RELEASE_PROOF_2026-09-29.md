@@ -26,6 +26,20 @@ No production QA records, messages, invoices, payments or exports were created. 
 
 ## EDU-SETTINGS-02 — release proof
 
-Release: in progress.
+**Production impact: yes. Code release deployed; live settings acceptance is blocked by session verification.**
 
-The pre-release live `/api/version` check returned `v0.82.40`, SHA `c3814734dcc39c9b79b7de0cbaff1bfde7557861`, source branch `codex/eventgenix-production`, with complete deployment-manifest metadata. The authenticated CRM session is Creator in business context Дар; the visible menu includes «Налаштування таймлайну». No production business data has been changed. Final SHA, exact-SHA CI, Railway deployment and post-deploy QA evidence will be recorded here after each gate passes.
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Pre-release source | PASS | Live `/api/version`: `v0.82.40`, SHA `c3814734dcc39c9b79b7de0cbaff1bfde7557861`, branch `codex/eventgenix-production`, complete manifest metadata. Remote production branch was exactly `5e22719f25f1b79f22a4ebf016a08f650c1f5bae`, the release base. |
+| Railway target | PASS | Read-only `railway status`: project `fortunate-appreciation` (`bc28b46c-d4bc-491c-893a-d8401c633668`), environment `production` (`d9f9b984-d54d-4620-a8bf-c48882ad5158`), service `8223324090` (`3fb62d4c-2dc2-4701-8e2b-09ce16e188ee`). |
+| Release SHA | PASS | `cc45af9982f34b2dfcb3df4ed3bbad33b268e203`, `v0.82.41 — Збереження режиму навчання`; fast-forward pushed to `codex/eventgenix-production`. |
+| Exact-SHA CI | PASS | [Run 36595419689](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36595419689): all 8/8 jobs `success`, including Fast baseline, education lesson-series PostgreSQL integration, My Day/HR browser integration, Certificate and Omni browser regression. |
+| Railway deployment | PASS with CLI transport warning | Deployment `78688796-c04e-4583-8129-8f3d680188f0` reached `SUCCESS`, one instance `RUNNING`. The required `npm run release:railway-up` submitted this deployment but returned exit 1 after `Uploading…` because Railway's GraphQL request timed out. Read-only status/log checks confirmed the accepted build and eventual success; no duplicate deploy or raw `railway up` was used. |
+| Live version/SHA | PASS | `npm run version:smoke` with expected commit/branch returned `v0.82.41`, exact SHA `cc45af9982f34b2dfcb3df4ed3bbad33b268e203`, `codex/eventgenix-production`, metadata `manifest`. |
+| Creator page/context | PARTIAL | Authenticated CRM page showed the Creator role, selected business Дар and «Налаштування таймлайну». A session-recovery overlay then reported «Сесію тимчасово не підтверджено»; pressing its retry produced the same overlay. |
+| Temporary field change / Save activation | NOT RUN | Stopped because the live session was not verified. No settings field was changed and «Зберегти» was never pressed. |
+| Dar mode/data | NO WRITE | This QA issued no settings save or PUT. Persisted mode could not be independently re-read after session recovery failed; manual mode switch remains for the user. No customer records were read or changed. |
+
+**Local verification:** `npm run check:runtime` passed on Node 22.23.1/npm 10.9.8. `npm run verify` passed, including syntax checks for 1,351 files, 1,327 UI checks, 4 code-splitting tests and all 3 EDU settings regressions. The standard test runner initially hit sandbox `spawn EPERM`; rerunning the same verifier with the approved local process permission passed.
+
+**Release disposition:** keep the deployed fix in place; do not change Dar's mode. EDU-SETTINGS-02 cannot be marked fully accepted until a valid Creator session can re-open the page and confirm the save button activates after a reversible, unsaved form change. No automatic rollback was performed. The release SHA has green CI and a successful deployment; the remaining failure is the live session-verification QA gate.

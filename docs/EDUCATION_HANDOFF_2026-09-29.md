@@ -90,3 +90,11 @@ EDU-01 не виявила підтвердженого дефекту чинн�
 - **CI:** [run 36567595593](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36567595593) для code commit — failure у новому education тесті через SQL parameter type. [run 36568215736](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36568215736) для SQL fix — усі 8 jobs PASS, включно з Fast baseline і реальним education HTTP/PostgreSQL сценарієм на disposable базі. Фінальний CSS/handoff commit `06912be79d2e162a6867bc7c2325e5a1fd2171a3`: [run 36569092175](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36569092175) — усі 8 jobs PASS, зокрема education HTTP/PostgreSQL step.
 - **Залишкове:** live-site QA і production deploy належать EDU-05. Порожній склад групи не може започаткувати журнал, бо модель фіксує склад рядками; API повертає 409 до появи хоча б однієї дитини на дату заняття.
 - **Наступна задача:** EDU-05 тільки після окремого запуску користувачем.
+
+## EDU-05 — production release
+
+- **Статус:** Delivered; production deploy completed. Release SHA `c3814734dcc39c9b79b7de0cbaff1bfde7557861`, `v0.82.40`, branch `codex/eventgenix-production`.
+- **CI:** [run 36571206812, attempt 2](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/36571206812/attempts/2), 8/8 jobs success. Attempt 1 hit the pre-existing Omni mobile 3 px layout regression; a same-SHA failed-job-only retry passed. No guard was disabled.
+- **Railway:** deployment `735e8e55-508c-4079-afd9-1cea42acf610`, project `fortunate-appreciation`, environment `production`, service `8223324090`, status `SUCCESS`. Live `/api/version` and version smoke proved exact SHA/branch/version with complete manifest metadata. Migrations 372/373 and three education tables confirmed read-only.
+- **QA:** Read-only live version, API status/isolation, deployed tab assets, legacy booking detail and accessible mobile shell passed. Positive education live write/visual flow was NOT RUN because the available test account has no isolated education QA business; equivalent data behavior passed disposable PostgreSQL CI. No production business records were changed.
+- **Proof:** [EDUCATION_RELEASE_PROOF_2026-09-29.md](EDUCATION_RELEASE_PROOF_2026-09-29.md). Release code SHA is distinct from any later documentation-only handoff commit.

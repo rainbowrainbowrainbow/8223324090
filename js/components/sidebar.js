@@ -163,6 +163,7 @@ const Sidebar = (() => {
         { type: 'group', key: 'today', label: 'Сьогодні', icon: '🏠', priority: 1, defaultOpen: true },
         { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'today' },
         { href: '/',             icon: '📅', label: 'Таймлайн', access: 'timeline',       group: 'today' },
+        { href: '/?educationSchedule=today', icon: '🎓', label: 'Заняття', access: 'timeline', group: 'today', educationWorkspace: true, pageAccess: '/' },
         { href: '/maysternya-doli', icon: '◇', label: 'Таймлайн МД', access: 'maysternya_doli', group: 'today' },
         { href: '/tasks',        icon: '✅', label: 'Центр задач', access: 'tasks',          group: 'today', statusKey: 'tasks' },
         { href: '/chat',         icon: '💬', label: 'Чат',           access: 'chat',           group: 'today', statusKey: 'chat' },
@@ -510,6 +511,9 @@ const Sidebar = (() => {
 
     function _isSidebarItemActive(item, currentPath, currentHash) {
         if (!item || item.noActive || item.isHashLink) return false;
+        const educationSchedule = new URLSearchParams(window.location.search || '').get('educationSchedule');
+        if (item.educationWorkspace) return currentPath === '/' && ['today', 'schedule'].includes(educationSchedule);
+        if (item.href === '/' && educationSchedule) return false;
         const href = String(item.href || '');
         if (href === '/certificates' && (currentPath === href || currentPath.startsWith(href + '/'))) return true;
         const itemPathWithSearch = href.split('#')[0];
@@ -1697,6 +1701,11 @@ const Sidebar = (() => {
     function _businessAllowsSidebarItem(item = {}, user = _getCurrentSidebarUser()) {
         const moduleId = _businessModuleForItem(item);
         const api = window.CrmBusinessContext;
+        if (item.educationWorkspace) {
+            const context = api?.current?.(user);
+            const profile = context ? _sidebarBusinessProfileForContext(context) : null;
+            return Boolean(profile?.timeline?.mode === 'education' && profile?.timeline?.timelineEnabled !== false);
+        }
         if (_isMaysternyaSidebarContext(user) && !_isMaysternyaSidebarHrefAllowed(item)) return false;
         if (!moduleId || !api?.current || !api?.hasModule) return true;
         const current = api.current(user);
@@ -1826,6 +1835,13 @@ const Sidebar = (() => {
 
     function _sidebarNavigationHrefForBusinessItem(item = {}, user = _getCurrentSidebarUser()) {
         if (item.href === '/certificates') return _certificateSidebarLanding() || '/certificates';
+        if (item.educationWorkspace) {
+            const current = window.CrmBusinessContext?.current?.(user);
+            const params = new URLSearchParams();
+            if (current && current !== 'event_genix') params.set('businessContext', current);
+            params.set('educationSchedule', 'today');
+            return `/${params.toString() ? `?${params.toString()}` : ''}`;
+        }
         const timelineCard = _sidebarTimelineCardModel(item, user);
         if (timelineCard) return timelineCard.href;
         return _sidebarHrefForBusinessItem(item, user);

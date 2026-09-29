@@ -654,6 +654,13 @@ const CSS_SURFACE = [
         reason: 'Sound library page styles.'
     },
     {
+        file: 'css/education-schedule.css',
+        owner: 'timeline',
+        category: 'shell',
+        status: 'active',
+        reason: 'Education schedule entry, Today list, filters, and responsive/dark presentation in the shared timeline shell.'
+    },
+    {
         file: 'css/timeline.css',
         owner: 'timeline',
         category: 'shell',

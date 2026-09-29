@@ -32,6 +32,7 @@
     <link rel="stylesheet" href="css/certificate-image-export.css?v=0.82.39">
     <link rel="stylesheet" href="css/dark-mode.css?v=0.82.39">
     <link rel="stylesheet" href="css/responsive.css?v=0.82.39">
+    <link rel="stylesheet" href="css/education-schedule.css?v=0.82.39">
     <link rel="stylesheet" href="css/pages-shell.css?v=0.82.39">
     <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.82.39">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -180,6 +181,28 @@
                     </div>
                 </div>
             </div>
+
+            <section class="education-schedule-workspace hidden" id="educationScheduleWorkspace" aria-label="Розклад занять">
+                <div class="education-schedule-tabs" role="group" aria-label="Режим розкладу занять">
+                    <button type="button" class="education-schedule-tab active" data-education-schedule-tab="today" aria-pressed="true">
+                        <span aria-hidden="true">◷</span><span><strong>Сьогодні</strong><small>Список занять</small></span>
+                    </button>
+                    <button type="button" class="education-schedule-tab" data-education-schedule-tab="schedule" aria-pressed="false">
+                        <span aria-hidden="true">▦</span><span><strong>Розклад</strong><small>День і тиждень</small></span>
+                    </button>
+                </div>
+                <section class="education-today-panel" id="educationTodayPanel" aria-labelledby="educationTodayHeading">
+                    <div class="education-today-heading">
+                        <div><p class="education-schedule-eyebrow">ПЛАН НА ДЕНЬ</p><h2 id="educationTodayHeading">Заняття на вибрану дату</h2></div>
+                        <div class="education-schedule-filters" aria-label="Фільтри занять">
+                            <label>Викладач<select id="educationScheduleTeacherFilter" aria-label="Фільтр за викладачем"><option value="">Усі викладачі</option></select></label>
+                            <label>Кабінет<select id="educationScheduleCabinetFilter" aria-label="Фільтр за кабінетом"><option value="">Усі кабінети</option></select></label>
+                        </div>
+                    </div>
+                    <div id="educationTodayStatus" class="education-today-status" role="status" aria-live="polite"></div>
+                    <div id="educationTodayList" class="education-today-list"></div>
+                </section>
+            </section>
 
             <!-- Quick Stats Bar — Widget Cards v19.2 -->
             <div id="quickStatsBar" class="quick-stats-bar hidden"></div>
@@ -6345,5 +6368,6 @@
     <script src="js/components/sidebar.js?v=0.82.39"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/alerts.js?v=0.82.39"></script>
+    <script src="js/education-schedule.js?v=0.82.39"></script>
 </body>
 </html>

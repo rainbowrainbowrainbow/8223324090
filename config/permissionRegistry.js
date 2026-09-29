@@ -195,7 +195,7 @@ const PAGE_PERMISSIONS = Object.freeze([
     }),
     page({
         key: '/', label: 'Таймлайн', group: 'today', canonicalPath: '/',
-        defaultRoles: ALL_STAFF, risk: 'high', sidebarLinks: ['/'],
+        defaultRoles: ALL_STAFF, risk: 'high', sidebarLinks: ['/', '/?educationSchedule=today'],
         frontendConsumers: [source('index.html', 'js/auth.js')],
         apiConsumers: [
             api('routes/bookings.js', '/api/bookings', null),

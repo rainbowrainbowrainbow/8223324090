@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const ROOT = path.join(__dirname, '..');
 const API_CODE = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
 const AUTH_CODE = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
+const PAGES_SHELL_CSS = fs.readFileSync(path.join(ROOT, 'css', 'pages-shell.css'), 'utf8');
 const ALERTS_CODE = fs.readFileSync(path.join(ROOT, 'js', 'alerts.js'), 'utf8');
 const APP_CODE = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
 const TIMELINE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'timeline.js'), 'utf8');
@@ -246,6 +247,61 @@ function extractSourceFunction(source, functionName) {
 function extractAuthFunction(functionName) {
     return `function recordRedirectDiagnostic() {}\n${extractSourceFunction(AUTH_CODE, functionName)}`;
 }
+
+function loadShowMainAppHarness(timelineInitializers = {}) {
+    const calls = [];
+    const context = {
+        AppState: { currentUser: { name: 'Creator' }, compactMode: false, statusFilter: 'all' },
+        window: { location: { search: '' } },
+        document: {
+            body: { classList: { remove() {} } },
+            getElementById() { return null; },
+            querySelectorAll() { return []; }
+        },
+        enforceCurrentPageAccess: () => true,
+        getUserRole: () => 'creator',
+        _normalizePagePath: value => value,
+        canAccessPage: () => true,
+        canAccess: () => true,
+        isViewer: () => false,
+        setTimelinePermissionHidden() {},
+        updateZoomButtons() {},
+        updateUndoButton() {},
+        shouldEnableAssistantIdleHints: () => false,
+        initGlobalHeaderSearch: () => calls.push('initGlobalHeaderSearch'),
+        showAuthenticatedPageShell: () => calls.push('showAuthenticatedPageShell'),
+        ...timelineInitializers
+    };
+    vm.createContext(context);
+    vm.runInContext(extractSourceFunction(AUTH_CODE, 'showMainApp'), context, { filename: 'js/auth.js' });
+    return { context, calls };
+}
+
+test('showMainApp supports shared pages without timeline-only scripts', () => {
+    const { context, calls } = loadShowMainAppHarness();
+
+    assert.doesNotThrow(() => context.showMainApp());
+    assert.deepEqual(calls, ['initGlobalHeaderSearch', 'showAuthenticatedPageShell']);
+});
+
+test('showMainApp still initializes timeline bundles when they are loaded', () => {
+    const calls = [];
+    const { context } = loadShowMainAppHarness({
+        initializeTimeline: () => calls.push('initializeTimeline'),
+        renderProgramIcons: () => calls.push('renderProgramIcons'),
+        setupSwipe: () => calls.push('setupSwipe')
+    });
+
+    context.showMainApp();
+
+    assert.deepEqual(calls, ['initializeTimeline', 'renderProgramIcons', 'setupSwipe']);
+});
+
+test('auth recovery actions use the shared page buttons with a spaced layout', () => {
+    assert.match(AUTH_CODE, /class="btn-page-primary" data-auth-session-retry/);
+    assert.match(AUTH_CODE, /class="btn-page-secondary" data-auth-session-copy-diagnostics/);
+    assert.match(PAGES_SHELL_CSS, /\.auth-session-bootstrap-actions\s*\{[^}]*display:\s*flex;[^}]*gap:\s*10px;/s);
+});
 
 function loadAutoFillHarness(options = {}) {
     const calls = [];

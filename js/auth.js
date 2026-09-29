@@ -1405,7 +1405,7 @@ function renderBusinessAccessSelection(user) {
     target.setAttribute('role', 'dialog');
     target.setAttribute('aria-modal', 'true');
     target.setAttribute('aria-labelledby', 'businessAccessSelectionTitle');
-    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error"><h3 id="businessAccessSelectionTitle">${title}</h3><p>Вхід в акаунт виконано. ${businesses.length ? 'Права та дані відкриються після вибору доступного бізнесу.' : 'Власник організації може відновити ваше членство.'}</p>${businesses.length ? `<label for="businessAccessSelection">Організація та бізнес</label><select id="businessAccessSelection" class="form-control">${choices}</select>` : ''}<p data-business-access-error role="status"></p><div class="auth-session-bootstrap-actions">${businesses.length ? '<button type="button" class="btn btn-primary" data-business-access-select>Відкрити бізнес</button>' : ''}<button type="button" class="btn btn-secondary" data-business-access-retry>Перевірити доступ</button><button type="button" class="btn btn-secondary" data-business-access-logout>Вийти</button></div></div>`;
+    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error"><h3 id="businessAccessSelectionTitle">${title}</h3><p>Вхід в акаунт виконано. ${businesses.length ? 'Права та дані відкриються після вибору доступного бізнесу.' : 'Власник організації може відновити ваше членство.'}</p>${businesses.length ? `<label for="businessAccessSelection">Організація та бізнес</label><select id="businessAccessSelection" class="form-control">${choices}</select>` : ''}<p data-business-access-error role="status"></p><div class="auth-session-bootstrap-actions">${businesses.length ? '<button type="button" class="btn-page-primary" data-business-access-select>Відкрити бізнес</button>' : ''}<button type="button" class="btn-page-secondary" data-business-access-retry>Перевірити доступ</button><button type="button" class="btn-page-secondary" data-business-access-logout>Вийти</button></div></div>`;
     target.querySelector('[data-business-access-select]')?.addEventListener('click', async event => {
         const button = event.currentTarget;
         const select = target.querySelector('#businessAccessSelection');
@@ -2034,7 +2034,7 @@ function renderAuthSessionBootstrapError(options = {}) {
     const reloadNote = canManualReload
         ? '<p class="muted" data-auth-session-reload-note>Оновлення сторінки є ручним виходом із завислого запиту. Воно не гарантує тихе відновлення сесії за чинного серверного контракту; якщо є незбережені зміни, CRM спитає підтвердження.</p>'
         : '';
-    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error"><h3>Сесію тимчасово не підтверджено</h3><p data-auth-session-state="transient">${_escHtml(authSessionFailureMessage(options.failure))}</p>${reloadNote}<div class="auth-session-bootstrap-actions">${retry ? '<button type="button" class="btn btn-primary" data-auth-session-retry>Повторити</button>' : ''}${canManualReload ? '<button type="button" class="btn btn-secondary" data-auth-session-reload>Оновити сторінку</button>' : ''}${diagnosticsAvailable ? '<button type="button" class="btn btn-secondary" data-auth-session-copy-diagnostics>Скопіювати діагностику</button>' : ''}</div><p class="muted" data-auth-session-diagnostics-status hidden></p></div>`;
+    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error"><h3>Сесію тимчасово не підтверджено</h3><p data-auth-session-state="transient">${_escHtml(authSessionFailureMessage(options.failure))}</p>${reloadNote}<div class="auth-session-bootstrap-actions">${retry ? '<button type="button" class="btn-page-primary" data-auth-session-retry>Повторити</button>' : ''}${canManualReload ? '<button type="button" class="btn-page-secondary" data-auth-session-reload>Оновити сторінку</button>' : ''}${diagnosticsAvailable ? '<button type="button" class="btn-page-secondary" data-auth-session-copy-diagnostics>Скопіювати діагностику</button>' : ''}</div><p class="muted" data-auth-session-diagnostics-status hidden></p></div>`;
     const button = target.querySelector?.('[data-auth-session-retry]');
     if (button && retry) {
         button.addEventListener('click', async () => {
@@ -2123,7 +2123,7 @@ function renderPermissionBootstrapError(options = {}) {
         || document.getElementById(options.containerId || 'main-content');
     if (!target) return;
     const retry = typeof options.retry === 'function' ? options.retry : null;
-    target.innerHTML = `<div class="page-fatal-error permission-bootstrap-error" role="alert" data-permission-state="error"><h3>Права доступу тимчасово недоступні</h3><p>${_escHtml(permissionFailureMessage())}</p>${retry ? '<button type="button" class="btn btn-primary" data-permission-retry>Повторити</button>' : ''}</div>`;
+    target.innerHTML = `<div class="page-fatal-error permission-bootstrap-error" role="alert" data-permission-state="error"><h3>Права доступу тимчасово недоступні</h3><p>${_escHtml(permissionFailureMessage())}</p>${retry ? '<button type="button" class="btn-page-primary" data-permission-retry>Повторити</button>' : ''}</div>`;
     const button = target.querySelector('[data-permission-retry]');
     if (button && retry) {
         button.addEventListener('click', async () => {
@@ -3575,9 +3575,10 @@ function showMainApp() {
         }
     }
 
-    initializeTimeline();
-    renderProgramIcons();
-    setupSwipe();
+    // Shared CRM pages also use this shell without loading timeline-only code.
+    if (typeof initializeTimeline === 'function') initializeTimeline();
+    if (typeof renderProgramIcons === 'function') renderProgramIcons();
+    if (typeof setupSwipe === 'function') setupSwipe();
 
     // v9.1: Connect WebSocket for live-sync
     if (typeof ParkWS !== 'undefined') ParkWS.connect();

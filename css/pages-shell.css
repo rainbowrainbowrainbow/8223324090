@@ -39,6 +39,20 @@
     width: min(100%, 520px);
 }
 
+.auth-session-bootstrap-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0;
+}
+
+.auth-session-bootstrap-actions > .btn-page-primary,
+.auth-session-bootstrap-actions > .btn-page-secondary {
+    flex: 0 1 auto;
+    min-width: 150px;
+}
+
 body.dark-mode .auth-session-recovery-overlay .page-fatal-error {
     border-color: rgba(248, 113, 113, 0.38);
     background: #172033;

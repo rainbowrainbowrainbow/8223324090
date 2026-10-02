@@ -3772,7 +3772,7 @@ async function apiGetBurgerMenuImageBlueprint(options = {}) {
         const params = new URLSearchParams();
         addProductBusinessContextParam(params, getProductBusinessContextValue(options));
         const response = await apiNetworkFetch(`${API_BASE}/products/menu-image/burger-blueprint?${params}`, {
-            headers: getAuthHeaders(false)
+            headers: getAuthHeaders(false), signal: options.signal
         });
         if (handleAuthError(response)) return { success: false };
         const body = await response.json().catch(() => ({}));
@@ -3826,7 +3826,8 @@ async function apiGetProductMenuImageStatus(id, options = {}) {
         addProductBusinessContextParam(params, getProductBusinessContextValue(options));
         const qs = params.toString() ? `?${params.toString()}` : '';
         const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/status${qs}`, {
-            headers: getAuthHeaders(false)
+            headers: getAuthHeaders(false),
+            signal: options.signal
         });
         if (handleAuthError(response)) return { success: false };
         const body = await response.json().catch(() => ({}));
@@ -3839,11 +3840,14 @@ async function apiGetProductMenuImageStatus(id, options = {}) {
                 retryable: body.retryable === true,
                 retryAfterSeconds: Number.isInteger(body.retryAfterSeconds) ? body.retryAfterSeconds : null,
                 requestId: body.requestId || null,
+                providerCode: body.providerCode || null,
+                providerTaskId: body.providerTaskId || null,
                 product: body.product || null
             };
         }
         return body;
     } catch (err) {
+        if (options.signal?.aborted) return { success: false, aborted: true };
         console.error('API getProductMenuImageStatus error:', err);
         return { success: false, error: err.message };
     }

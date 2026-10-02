@@ -98,7 +98,7 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /function renderKitchenCardVisual/);
     assert.match(pageJs, /function productMenuImageUrl\(product = \{\}\) \{\s*return productMenuSafeImageUrl/);
     assert.doesNotMatch(pageJs, /return explicitUrl \|\| productMenuImageManifestUrl\(product\)/);
-    assert.match(pageJs, /const imageUrl = productImage;/);
+    assert.match(pageJs, /const imageUrl = productMenuImageUrl\(product\);/);
     assert.doesNotMatch(pageJs, /img\.src = PRODUCT_MENU_FALLBACK_IMAGE/);
     assert.match(pageJs, /function renderKitchenMenuAiActions/);
     assert.match(pageJs, /function renderKitchenMenuImageStudio/);
@@ -258,7 +258,7 @@ test('products lifecycle uses active working lists, duplicate guards, and soft-d
     const cleanupMigration = read('db/migrations/224_products_zagadky_shi_duplicate_cleanup.sql');
     const cleanupMarkers = [...cleanupMigration.matchAll(/'migration_[^']+'/g)].map(match => match[0].slice(1, -1));
 
-    assert.match(pageJs, /apiGetProducts\(true, \{ businessContext: getProductApiBusinessContext\(\) \}\)/);
+    assert.match(pageJs, /apiGetProducts\(true, \{ businessContext \}\)/);
     assert.match(pageJs, /productSaveInFlight/);
     assert.match(pageJs, /productDeleteInFlight/);
     assert.match(pageJs, /findActiveProductDuplicateInState/);

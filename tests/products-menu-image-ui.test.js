@@ -52,7 +52,9 @@ function createPageHarness() {
             return id;
         },
         clearTimeout(id) { timers.delete(id); },
-        activeBusinessContext: 'event_genix',
+        activeBusinessContext: 'event_genix', productsLoadGeneration: 0, productsPageActive: true,
+        AbortController, bindProductBlueprintLifecycle: () => {},
+        productMenuSafeImageUrl: value => value || '', renderMenuPhotoImage: url => url ? `<img src="${url}" alt="">` : '',
         allProducts: [menuProduct()],
         MENU_IMAGE_SIZE_OPTIONS: [{ value: '1536x1024', label: 'wide' }],
         MENU_IMAGE_STYLE_OPTIONS: [{ value: 'catalog', label: 'Каталог' }],
@@ -87,11 +89,13 @@ function createPageHarness() {
 
     vm.runInContext('const menuImageGenerationState = new Map();', context);
     vm.runInContext('const menuImageGeneratorSelection = new Map();', context);
-    vm.runInContext('const burgerMenuImageBlueprints = new Map();', context);
+    vm.runInContext('const burgerMenuImageBlueprints = new Map(); const burgerMenuImageBlueprintLoads = new Map();', context);
     vm.runInContext([
         sourceSection(pageSource, 'function getMenuImageStudioDraft(', 'function menuAiFeedbackForMode('),
         sourceSection(pageSource, 'function setKitchenMenuImageStudioBusy(', 'function renderProgramProducts(')
     ].join('\n'), context, { filename: 'js/programs-page.js#menu-image' });
+    context.isKitchenMenuImageCardActive = () => true;
+    context.refreshProductCard = () => context.renderProducts();
     context.renderProducts();
 
     return {
@@ -128,7 +132,7 @@ test('a burger card saves one shared blueprint without applying a product draft'
         } };
     };
     page.context.renderProducts();
-    const button = page.panel().querySelector('.kitchen-menu-image-blueprint button');
+    const button = page.panel().querySelector('.kitchen-menu-image-blueprint button:not([data-burger-blueprint-retry])');
     assert.ok(button);
     await page.context.saveBurgerMenuImageBlueprint(product.id, button);
     assert.equal(calls, 1);

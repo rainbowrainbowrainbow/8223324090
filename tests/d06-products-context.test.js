@@ -33,7 +33,10 @@ function setup(context = 'event_genix') {
     w.apiGetBurgerMenuImageBlueprint = async () => ({ success: true, blueprint: null });
     vm.runInContext(fs.readFileSync(path.join(root, 'js/programs-page.js'), 'utf8')
         .replace("document.addEventListener('DOMContentLoaded', initPage);", ''), dom.getInternalVMContext());
-    return { w, profiles, close: () => dom.window.close() };
+    return { w, profiles, close: () => {
+        w.dispatchEvent(new w.PageTransitionEvent('pagehide'));
+        dom.window.close();
+    } };
 }
 
 test('products API context preserves each actual business and the legacy Park alias', () => {

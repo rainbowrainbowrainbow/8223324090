@@ -1250,6 +1250,10 @@ function menuImageGenerationMessage(state) {
     if (code === 'menu_image_generation_provider_rejected') {
         return 'Провайдер відхилив генерацію. Причина не підтверджена. Повідомте адміністратора або завантажте фото вручну.';
     }
+    if (code === 'menu_image_generation_failed' && state.feedback.providerTaskId) {
+        const providerCode = state.feedback.providerCode ? ` Код Kie: ${state.feedback.providerCode}.` : '';
+        return `Kie не завершив створення чернетки.${providerCode} ID завдання: ${state.feedback.providerTaskId}. Передайте ці дані адміністратору або завантажте фото вручну.`;
+    }
     return 'Не вдалося створити AI-чернетку. Причина невідома. Повідомте адміністратора або завантажте фото вручну.';
 }
 
@@ -1430,7 +1434,12 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
     const appliedImage = product.iconUrl || product.icon_url || '';
     const currentImage = appliedImage || productMenuImageUrl(product);
     const draftStatus = String(draft.status || (draft.imageUrl ? 'ready' : 'draft')).trim().toLowerCase();
-    const status = generationBusy ? 'generating' : (generationState?.feedback ? 'failed' : draftStatus);
+    const displayState = !generationBusy && !generationState?.feedback
+        && draftStatus === 'failed' && draft.provider === 'kie'
+        ? { feedback: { code: 'menu_image_generation_failed',
+            providerCode: draft.providerCode, providerTaskId: draft.taskId } }
+        : generationState;
+    const status = generationBusy ? 'generating' : (displayState?.feedback ? 'failed' : draftStatus);
     const hasDraft = Boolean(draft.imageUrl || draft.prompt || draft.error || draft.generatedAt || draft.preparedAt);
     const hasDraftImage = Boolean(draft.imageUrl);
     const statusLabel = menuImageDraftStatusLabel(status);
@@ -1484,7 +1493,7 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                         Відхилити
                     </button>
                 </div>
-                <p class="kitchen-menu-image-generation-status" data-menu-image-generation-status data-type="${generationBusy ? 'loading' : (generationState?.feedback ? 'error' : '')}" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(menuImageGenerationMessage(generationState))}</p>
+                <p class="kitchen-menu-image-generation-status" data-menu-image-generation-status data-type="${generationBusy ? 'loading' : (displayState?.feedback ? 'error' : '')}" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(menuImageGenerationMessage(displayState))}</p>
             </div>
             <div class="kitchen-menu-image-manual">
                 <label>
@@ -1739,7 +1748,11 @@ function scheduleKitchenMenuImageStatusPoll(productId, businessContext, state, d
         }
         if (result?.status === 'failed') {
             state.inFlight = false;
-            state.feedback = { code: result.code || null };
+            state.feedback = {
+                code: result.code || null,
+                providerCode: result.providerCode || null,
+                providerTaskId: result.providerTaskId || null
+            };
             if (businessContext === getProductApiBusinessContext()) {
                 renderProducts();
                 showNotification(menuImageGenerationMessage(state), 'error');

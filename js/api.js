@@ -3839,6 +3839,8 @@ async function apiGetProductMenuImageStatus(id, options = {}) {
                 retryable: body.retryable === true,
                 retryAfterSeconds: Number.isInteger(body.retryAfterSeconds) ? body.retryAfterSeconds : null,
                 requestId: body.requestId || null,
+                providerCode: body.providerCode || null,
+                providerTaskId: body.providerTaskId || null,
                 product: body.product || null
             };
         }

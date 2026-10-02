@@ -148,3 +148,37 @@ test('Kie product route creates one task, persists its ID, and status polling ne
     assert.deepEqual(uploadedUrls, ['https://tempfileb.aiquickdraw.com/menu.png']);
     assert.equal(providerCalls.filter(call => call.method === 'POST').length, 1);
 });
+
+test('failed Kie task keeps safe provider code and ID for diagnosis without changing the current photo', async () => {
+    process.env.KIE_API_KEY = 'synthetic-test-key';
+    const product = {
+        id: 'menu-qa-1', business_context: 'event_genix', domain: 'kitchen', kitchen_type: 'menu',
+        name: 'QA burger', icon_url: '/uploads/current.jpg', is_active: true, ai_card_draft: {}
+    };
+    pool.query = async (sql, params) => {
+        if (sql.includes('SELECT value FROM settings WHERE key = $1')) return { rows: [] };
+        if (sql.includes('WHERE p.id = $1')) return { rows: [{ ...product }], rowCount: 1 };
+        if (sql.includes('jsonb_set(')) {
+            product.ai_card_draft.imageStudio = JSON.parse(params[0]);
+            return { rowCount: 1 };
+        }
+        throw new Error(`Unexpected query: ${sql.slice(0, 50)}`);
+    };
+    global.fetch = async (_url, options) => new Response(JSON.stringify({
+        code: 200,
+        data: options.method === 'POST' ? { taskId: 'task_failed_123' }
+            : { state: 'fail', failCode: 'INPUT_IMAGE_FAILED', failMsg: 'PRIVATE_PROVIDER_MESSAGE' }
+    }), { status: 200 });
+    const started = await invoke(routeHandler('/:id/menu-image/draft', 'post'), 'POST', {
+        generator: 'kie/nano-banana-2'
+    });
+    assert.equal(started.status, 202);
+    const failed = await invoke(routeHandler('/:id/menu-image/status', 'get'), 'GET');
+    assert.equal(failed.body.status, 'failed');
+    assert.equal(failed.body.code, 'menu_image_generation_failed');
+    assert.equal(failed.body.providerCode, 'INPUT_IMAGE_FAILED');
+    assert.equal(failed.body.providerTaskId, 'task_failed_123');
+    assert.equal(product.ai_card_draft.imageStudio.taskId, 'task_failed_123');
+    assert.equal(product.icon_url, '/uploads/current.jpg');
+    assert.equal(JSON.stringify(failed.body).includes('PRIVATE_PROVIDER_MESSAGE'), false);
+});

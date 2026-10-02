@@ -29,6 +29,7 @@
 - Storage: generated files are copied through `services/imageStorage.js` into `/uploads/catalog-images/items`.
 - Draft state: CRM stores provider/model/size/style/prompt/status/image URL under `products.ai_card_draft.imageStudio`.
 - Задачі Kie асинхронні: чернетка зберігає ID задачі під час генерації; наявний авторизований status endpoint перевіряє Kie і копіює готове фото в CRM storage. Перевірка статусу не запускає повторної платної генерації. Після перезавантаження каталогу перевірка незавершеної задачі відновлюється.
+- Якщо Kie завершує задачу помилкою, CRM зберігає її ID і безпечний короткий `failCode` у failed draft та повертає `providerTaskId`/`providerCode` у першій status-відповіді. Сирий `failMsg` не записується й не показується оператору; ID дозволяє адміністратору перевірити конкретну задачу в Kie logs. Повторної платної генерації автоматично немає.
 - Approval: draft generation must not write `products.icon_url`; only explicit `apply` copies the approved draft URL to `products.icon_url`.
 
 ## Provider Diagnostics

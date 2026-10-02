@@ -58,6 +58,11 @@ function safeMenuImageRequestId(value) {
     return typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value) ? value : null;
 }
 
+function safeKieFailureCode(value) {
+    const code = typeof value === 'string' || Number.isInteger(value) ? String(value) : '';
+    return /^(?:[A-Za-z][A-Za-z0-9_-]{0,63}|[1-5][0-9]{2})$/.test(code) ? code : null;
+}
+
 function menuImageRetryAfterSeconds(value) {
     if (typeof value !== 'string' || !value || value.length > 128) return null;
     let seconds;
@@ -145,9 +150,13 @@ function menuImageFailureDiagnostic(err) {
         providerStatus: Number.isInteger(err?.providerStatus) && err.providerStatus >= 100 && err.providerStatus <= 599
             ? err.providerStatus : null,
         provider: err?.provider === 'kie' ? 'kie' : (err?.provider === 'openai' ? 'openai' : null),
-        providerCode: allowedProviderValue(err?.providerCode, MENU_IMAGE_PROVIDER_CODES),
+        providerCode: err?.provider === 'kie'
+            ? safeKieFailureCode(err?.providerCode)
+            : allowedProviderValue(err?.providerCode, MENU_IMAGE_PROVIDER_CODES),
         providerType: allowedProviderValue(err?.providerType, MENU_IMAGE_PROVIDER_TYPES),
         requestId: publicError.requestId,
+        ...(err?.provider === 'kie' && safeMenuImageRequestId(err?.providerTaskId)
+            ? { providerTaskId: err.providerTaskId } : {}),
         retryAfterSeconds: publicError.retryAfterSeconds,
         publicCode: publicError.code,
         retryable: publicError.retryable
@@ -234,12 +243,15 @@ async function pollMenuImageWithKie(taskId) {
     const body = await kieMenuImageRequest(`/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`);
     const data = body?.data || {};
     if (data.state === 'fail') {
-        const failStatus = Number(data.failCode);
+        const providerCode = safeKieFailureCode(data.failCode);
+        const failStatus = Number(providerCode);
         const err = [401, 402, 403, 429].includes(failStatus)
             ? kieMenuImageError(failStatus, { code: failStatus })
             : Object.assign(new Error('Kie menu image task failed'), {
                 code: 'kie_menu_image_failed', provider: 'kie'
             });
+        err.providerCode = providerCode;
+        err.providerTaskId = taskId;
         return { status: 'failed', error: err };
     }
     if (data.state !== 'success') return { status: 'generating' };

@@ -289,7 +289,7 @@ test('booking details can fall back to id read when current timeline projection 
     assert.match(detailRouteBlock, /canViewBooking\(req\.user, row\)/);
     assert.match(detailRouteBlock, /sendBookingDenied\(req, res, row\)/);
     assert.match(detailRouteBlock, /Booking not found/);
-    assert.match(detailRouteBlock, /attachBanquetLinksToBookings\(\[mapBookingRow\(row\)\], businessContext\)/);
+    assert.match(detailRouteBlock, /attachBanquetLinksToBookings\(\[mapBookingRowWithVersion\(row\)\], businessContext\)/);
 
     assert.match(api, /async function apiGetBookingById\(id, options = \{\}\)/);
     assert.match(api, /\/bookings\/detail\/\$\{encodeURIComponent\(cleanId\)\}/);

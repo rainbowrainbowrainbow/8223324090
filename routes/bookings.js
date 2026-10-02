@@ -7,7 +7,8 @@ const {
     validateDate,
     validateTime,
     validateId,
-    mapBookingRowWithVersion,
+    mapBookingRow,
+    mapBookingRowWithVersion: mapBookingRowWithVersionFromService,
     checkServerConflicts,
     checkServerDuplicate,
     checkRoomConflict,
@@ -22,6 +23,16 @@ const {
     validateBanquetCreationContext,
     validateBookingWithinWorkingHours
 } = require('../services/booking');
+
+function mapBookingRowWithVersion(row) {
+    if (typeof mapBookingRowWithVersionFromService === 'function') {
+        return mapBookingRowWithVersionFromService(row);
+    }
+    const booking = mapBookingRow(row);
+    if (row?.updated_at_version_token) booking.updatedAtVersion = row.updated_at_version_token;
+    return booking;
+}
+
 const { normalizePinataFields } = require('../services/pinataMode');
 const { assertBookingLinkedParent } = require('../services/bookingLinkOwnership');
 const { notifyTelegram } = require('../services/telegram');

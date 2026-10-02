@@ -6477,7 +6477,7 @@ async function handleBookingMenuWorkflowFinalizeClick() {
         if (result.booking) {
             hydrateBookingPackageWorkspace(result.booking, { ticketBooking: result.booking });
             AppState.editingBookingUpdatedAt = result.booking.updatedAt || AppState.editingBookingUpdatedAt;
-            AppState.editingBookingUpdatedAtVersion = result.booking.updatedAtVersion || AppState.editingBookingUpdatedAtVersion;
+            AppState.editingBookingUpdatedAtVersion = result.booking.updatedAtVersion || null;
         }
         invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
         await renderTimeline();
@@ -14455,7 +14455,7 @@ async function handleBookingSubmit(e) {
             // Update stored updatedAt from server response
             if (editPath.kind === 'banquet_booking_set') {
                 AppState.editingBookingUpdatedAt = updateResult?.primaryBooking?.updatedAt || AppState.editingBookingUpdatedAt;
-                AppState.editingBookingUpdatedAtVersion = updateResult?.primaryBooking?.updatedAtVersion || AppState.editingBookingUpdatedAtVersion;
+                AppState.editingBookingUpdatedAtVersion = updateResult?.primaryBooking?.updatedAtVersion || null;
             } else if (updateResult && updateResult.booking) {
                 AppState.editingBookingUpdatedAt = updateResult.booking.updatedAt;
                 AppState.editingBookingUpdatedAtVersion = updateResult.booking.updatedAtVersion || null;
@@ -14481,8 +14481,7 @@ async function handleBookingSubmit(e) {
                 }
                 AppState.editingBookingUpdatedAt = refreshedContext.primaryBooking?.updatedAt
                     || AppState.editingBookingUpdatedAt;
-                AppState.editingBookingUpdatedAtVersion = refreshedContext.primaryBooking?.updatedAtVersion
-                    || AppState.editingBookingUpdatedAtVersion;
+                AppState.editingBookingUpdatedAtVersion = refreshedContext.primaryBooking?.updatedAtVersion || null;
             }
             AppState.editingBookingId = null;
             closeBookingPanel(true);
@@ -14772,8 +14771,9 @@ async function handleOptimisticLockConflict(result, localBooking) {
     );
 
     if (overwrite) {
-        // Force overwrite: re-send with current server's updatedAt
+        // Retry the confirmed overwrite against the current server version.
         localBooking.updatedAt = serverData.updatedAt;
+        localBooking.updatedAtVersion = serverData.updatedAtVersion || null;
         const retryResult = await apiUpdateBooking(localBooking.id, localBooking);
         if (retryResult && retryResult.success) {
             invalidateBookingBanquetPreviewFreshness({
@@ -17373,8 +17373,7 @@ async function refreshBanquetEditContextAfterSave(updateResult = {}, previousCon
             hydrateBanquetEditActivityState(responseContext);
             AppState.editingBookingUpdatedAt = responseContext.primaryBooking?.updatedAt
                 || AppState.editingBookingUpdatedAt;
-            AppState.editingBookingUpdatedAtVersion = responseContext.primaryBooking?.updatedAtVersion
-                || AppState.editingBookingUpdatedAtVersion;
+            AppState.editingBookingUpdatedAtVersion = responseContext.primaryBooking?.updatedAtVersion || null;
         }
         showNotification(
             snapshot?.error

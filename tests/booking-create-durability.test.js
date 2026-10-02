@@ -533,6 +533,12 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
             );
             return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
         }
+        if (/^SELECT \*, to_char\(date_trunc\('milliseconds', updated_at\)/i.test(sql)) {
+            const [id, businessContext] = params;
+            const row = state.rows.find(item => item.id === id
+                && normalizeContext(item.business_context) === normalizeContext(businessContext));
+            return { rows: row ? [{ ...row, updated_at_version_token: String(row.updated_at).replace('T', ' ').slice(0, 23) }] : [], rowCount: row ? 1 : 0 };
+        }
         if (/SELECT id, business_context, date, time, line_id, program_id, program_code, label, program_name/i.test(sql) && /FROM bookings b WHERE b\.date = \$1/i.test(sql)) {
             const [date, businessContext] = params;
             const rows = state.rows
@@ -554,6 +560,11 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
                 normalizeContext(item.business_context) === normalizeContext(businessContext)
             );
             if (!row) return { rows: [], rowCount: 0 };
+            if (optimistic) {
+                const storedVersion = String(row.updated_at).replace('T', ' ').slice(0, 23);
+                const suppliedVersion = String(params[23]).replace('T', ' ').slice(0, 23);
+                if (storedVersion !== suppliedVersion) return { rows: [], rowCount: 0 };
+            }
             Object.assign(row, {
                 date: params[0],
                 time: params[1],
@@ -591,7 +602,11 @@ function makeDb({ commitCommand = 'COMMIT', failBanquetGroupInsert = false, fail
                 room_resource_id: params[35 + tailOffset],
                 updated_at: '2099-01-02T00:00:00.000Z'
             });
-            return { rows: [{ ...row }], rowCount: 1 };
+            const returned = { ...row };
+            if (/AS updated_at_version_token/i.test(sql)) {
+                returned.updated_at_version_token = String(row.updated_at).replace('T', ' ').slice(0, 23);
+            }
+            return { rows: [returned], rowCount: 1 };
         }
         if (/SELECT id, line_id, second_animator, program_id, price FROM bookings WHERE linked_to = \$1/i.test(sql)) {
             const [linkedTo, businessContext] = params;
@@ -1218,6 +1233,54 @@ async function updateBooking(baseUrl, id, payload) {
     const data = await res.json().catch(() => ({}));
     return { status: res.status, data };
 }
+
+test('booking token-only update locks atomically and rejects reuse of its stale token', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const created = await createBooking(baseUrl);
+        assert.equal(created.status, 200, JSON.stringify(created.data));
+        const id = created.data.booking.id;
+        const token = '2099-01-01 00:00:00.000';
+        const saved = await updateBooking(baseUrl, id, { notes: 'first token edit', updatedAtVersion: token });
+        assert.equal(saved.status, 200, JSON.stringify(saved.data));
+        assert.equal(saved.data.booking.updatedAtVersion, '2099-01-02 00:00:00.000');
+        const write = state.queries.find(item => /^UPDATE bookings SET date=/.test(item.sql));
+        assert.match(write.sql, /to_char\(date_trunc\('milliseconds', updated_at\)/);
+        assert.equal(write.params[23], token);
+        assert.equal(write.params[35], 'event_genix');
+        const stale = await updateBooking(baseUrl, id, { notes: 'stale overwrite', updatedAtVersion: token });
+        assert.equal(stale.status, 409, JSON.stringify(stale.data));
+        assert.equal(stale.data.conflict, true);
+        assert.equal(stale.data.currentData.updatedAtVersion, '2099-01-02 00:00:00.000');
+        assert.equal(state.rows.find(row => row.id === id).notes, 'first token edit');
+    });
+});
+
+test('booking version token takes precedence over a legacy ISO timestamp', async () => {
+    await withApp({}, async ({ baseUrl }) => {
+        const created = await createBooking(baseUrl);
+        const saved = await updateBooking(baseUrl, created.data.booking.id, {
+            notes: 'raw timestamp token wins',
+            updatedAtVersion: '2099-01-01 00:00:00.000',
+            updatedAt: '1999-01-01T00:00:00.000Z'
+        });
+        assert.equal(saved.status, 200, JSON.stringify(saved.data));
+    });
+});
+
+test('legacy booking ISO locking still rejects stale writes and token writes stay tenant scoped', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const created = await createBooking(baseUrl);
+        const id = created.data.booking.id;
+        const saved = await updateBooking(baseUrl, id, { notes: 'legacy edit', updatedAt: '2099-01-01T00:00:00.000Z' });
+        assert.equal(saved.status, 200, JSON.stringify(saved.data));
+        const stale = await updateBooking(baseUrl, id, { notes: 'legacy stale', updatedAt: '2099-01-01T00:00:00.000Z' });
+        assert.equal(stale.status, 409, JSON.stringify(stale.data));
+        state.rows.find(row => row.id === id).business_context = 'dar';
+        const tenantDenied = await updateBooking(baseUrl, id, { notes: 'wrong tenant', updatedAtVersion: '2099-01-02 00:00:00.000' });
+        assert.equal(tenantDenied.status, 404, JSON.stringify(tenantDenied.data));
+        assert.equal(state.rows.find(row => row.id === id).notes, 'legacy edit');
+    });
+});
 
 function timelineProjectionSnapshot(booking = {}) {
     const projection = booking.timelineProjection || {};

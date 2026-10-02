@@ -6560,7 +6560,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         }
 
         let updateResult;
-        if (clientUpdatedAt) {
+        if (clientUpdatedAtVersion || clientUpdatedAt) {
             // Optimistic locking: check updated_at matches client's version
             // Use date_trunc('milliseconds', ...) because JS Date has only ms precision
             updateResult = await client.query(
@@ -6613,7 +6613,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         // Optimistic locking: conflict detected (0 rows updated)
         if (updateResult.rowCount === 0) {
             const currentResult = await client.query(
-                `SELECT * FROM bookings WHERE id = $1 AND ${bookingContextSql('', '$2')}`,
+                `SELECT *, to_char(date_trunc('milliseconds', updated_at), 'YYYY-MM-DD HH24:MI:SS.MS') AS updated_at_version_token
+                   FROM bookings WHERE id = $1 AND ${bookingContextSql('', '$2')}`,
                 [id, businessContext]
             );
             await client.query('ROLLBACK');

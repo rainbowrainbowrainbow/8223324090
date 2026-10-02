@@ -30,6 +30,7 @@ function setup(context = 'event_genix') {
     w.formatPrice = value => `${Number(value)} ₴`;
     w.showNotification = () => {};
     w.EventCards = { renderEventCardImage: () => '' };
+    w.apiGetBurgerMenuImageBlueprint = async () => ({ success: true, blueprint: null });
     vm.runInContext(fs.readFileSync(path.join(root, 'js/programs-page.js'), 'utf8')
         .replace("document.addEventListener('DOMContentLoaded', initPage);", ''), dom.getInternalVMContext());
     return { w, profiles, close: () => dom.window.close() };
@@ -117,5 +118,16 @@ test('an older Park response cannot replace the actual custom-context product re
         assert.deepEqual(requested, ['event_genix', 'custom_studio']);
         assert.equal(h.w.eval('allProducts[0].id'), 'studio-own');
         assert.equal(h.w.document.querySelector('[data-id="park-old"]'), null);
+    } finally { h.close(); }
+});
+
+test('products remain available when the optional burger blueprint request fails', async () => {
+    const h = setup();
+    try {
+        h.w.apiGetProducts = async () => [{ id: 'fixture-own', businessContext: 'event_genix', name: 'Own product' }];
+        h.w.apiGetBurgerMenuImageBlueprint = async () => { throw new Error('Blueprint unavailable'); };
+        await h.w.loadProducts();
+        assert.equal(h.w.eval('productsLoadState'), 'ready');
+        assert.equal(h.w.eval('allProducts[0].id'), 'fixture-own');
     } finally { h.close(); }
 });

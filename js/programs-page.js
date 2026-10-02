@@ -963,7 +963,7 @@ async function loadProducts() {
         const businessContext = getProductApiBusinessContext();
         const [products, blueprintResult] = await Promise.all([
             apiGetProducts(true, { businessContext: getProductApiBusinessContext() }),
-            apiGetBurgerMenuImageBlueprint({ businessContext })
+            apiGetBurgerMenuImageBlueprint({ businessContext }).catch(() => null)
         ]);
         if (generation !== productsLoadGeneration || context !== activeBusinessContext) return;
         if (!Array.isArray(products)) throw new Error('Products unavailable');

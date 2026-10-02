@@ -9,6 +9,10 @@ const { runTimelineReleaseProof } = require('../scripts/timeline-release-proof')
 
 const ROOT = path.join(__dirname, '..');
 
+function htmlEscape(value) {
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function contentType(file) {
     if (file.endsWith('.html')) return 'text/html; charset=utf-8';
     if (file.endsWith('.js')) return 'application/javascript; charset=utf-8';
@@ -29,7 +33,7 @@ function createProofServer(options = {}) {
             const payload = {
                 success: true,
                 version,
-                releaseLabel: pkg.eventGenix.releaseLabel,
+                releaseLabel: options.releaseLabel || pkg.eventGenix.releaseLabel,
                 name: pkg.name
             };
             if (!options.omitDeploymentMetadata) {
@@ -50,6 +54,10 @@ function createProofServer(options = {}) {
 
         if (url.pathname === '/' || url.pathname === '/maysternya-doli') {
             let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+            if (options.releaseLabel || options.staleHtmlLabel) {
+                html = html.replaceAll(htmlEscape(pkg.eventGenix.releaseLabel),
+                    htmlEscape(options.staleHtmlLabel ? 'Stale release label' : options.releaseLabel));
+            }
             if (options.staleMaysternyaAsset && url.pathname === '/maysternya-doli') {
                 const staleTimelineSrc = 'js/timeline.js?' + 'v=0.0.0';
                 html = html.replace(`js/timeline.js?v=${pkg.version}`, staleTimelineSrc);
@@ -113,6 +121,25 @@ test('timeline release proof rejects stale timeline asset tags in Maysternya Dol
         );
     } finally {
         await app.close();
+    }
+});
+
+test('timeline release proof validates HTML-escaped release labels without weakening stale-label rejection', async () => {
+    const releaseLabel = 'Finance & <Costs> "2026"';
+    const app = await createProofServer({ releaseLabel });
+    try {
+        const report = await runTimelineReleaseProof(app.baseUrl, { releaseLabel });
+        assert.equal(report.releaseLabel, releaseLabel);
+        assert.equal(report.contexts.length, 2);
+    } finally {
+        await app.close();
+    }
+    const stale = await createProofServer({ releaseLabel, staleHtmlLabel: true });
+    try {
+        await assert.rejects(() => runTimelineReleaseProof(stale.baseUrl, { releaseLabel }),
+            /release label missing/);
+    } finally {
+        await stale.close();
     }
 });
 

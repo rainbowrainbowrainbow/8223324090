@@ -104,6 +104,14 @@ function ensureIncludes(text, needle, label) {
     }
 }
 
+function htmlEscape(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 function staleVersionMatches(text, expectedVersion, label) {
     const stale = [];
     const regex = /(?:href|src)=["'][^"']+\?v=([\d.]+)/g;
@@ -140,7 +148,7 @@ async function proveApiVersion(base, release, options = {}) {
 async function proveContextHtml(base, context, release) {
     const { text, url } = await fetchText(`${base}${context.path}`);
     ensureIncludes(text, `v${release.version}`, `${context.path} release text`);
-    if (release.releaseLabel) ensureIncludes(text, release.releaseLabel, `${context.path} release label`);
+    if (release.releaseLabel) ensureIncludes(text, htmlEscape(release.releaseLabel), `${context.path} release label`);
     for (const asset of TIMELINE_ASSETS) {
         ensureIncludes(text, `${asset.path}?v=${release.version}`, `${context.path} HTML`);
     }

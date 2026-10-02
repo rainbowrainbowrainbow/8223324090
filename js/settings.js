@@ -384,7 +384,22 @@ async function addNewLine() {
         return;
     }
 
-    if (window.TimelineBusinessContext?.current().key === 'maysternya_doli') {
+    const timelineContext = window.TimelineBusinessContext?.current?.();
+    const presentation = window.TimelineBusinessContext?.presentation?.();
+    const mode = presentation?.mode;
+    if (mode && mode !== 'park') {
+        const resourceType = timelineResourceTypeForMode(mode, presentation);
+        if (resourceType) {
+            await addTimelineResource(resourceType, { source: 'timeline_add_button' });
+            return;
+        }
+        if (timelineContext?.key === 'event_genix') {
+            showNotification('Для цієї моделі ресурсів додавання ліній вимкнене в налаштуваннях таймлайну.', 'error');
+            return;
+        }
+    }
+
+    if (timelineContext?.key === 'maysternya_doli') {
         let nameValue = null;
         if (typeof promptModal === 'function') {
             nameValue = await promptModal('Назва спеціаліста або кабінету', {
@@ -1238,9 +1253,14 @@ function renderBusinessCabinetGuardrails(settings, modules) {
         : '<span class="is-ok">Стан валідний: shell, модулі й стартова сторінка не конфліктують.</span>';
 }
 
+const timelineSavedDisplaySettings = new Map();
+let timelineDisplaySaving = false;
+let timelineControlsMode = null;
+
 function applyTimelineSettingsToControls(settings = {}) {
     const controls = getTimelineDisplayControls();
     const normalized = normalizeTimelineControlSettings(settings);
+    timelineControlsMode = normalized.mode;
     if (controls.mode) controls.mode.value = normalized.mode;
     if (controls.kitchen) controls.kitchen.value = normalized.parkKitchenMode;
     if (controls.roomFirst) controls.roomFirst.checked = normalized.roomTimelineEnabled;
@@ -1363,6 +1383,28 @@ function timelineResourceCopy(type) {
             unit: 'місць'
         };
     }
+    if (type === 'animator') {
+        return {
+            title: 'Аніматори каталогу',
+            add: '+ Додати аніматора',
+            hint: 'Це ресурс каталогу, який додається окремо від аніматорів із графіка змін.',
+            empty: 'Аніматорів у каталозі ще немає.',
+            prompt: 'Назва аніматора',
+            capacityPrompt: 'Місткість ресурсу',
+            unit: 'місць'
+        };
+    }
+    if (type === 'online') {
+        return {
+            title: 'Онлайн-ресурси',
+            add: '+ Додати онлайн-ресурс',
+            hint: 'Онлайн-ресурси є окремими ресурсами каталогу таймлайну.',
+            empty: 'Онлайн-ресурсів ще немає.',
+            prompt: 'Назва онлайн-ресурсу',
+            capacityPrompt: 'Місткість ресурсу',
+            unit: 'місць'
+        };
+    }
     return {
         title: 'Ресурси спеціалістів',
         add: '+ Додати ресурс',
@@ -1401,7 +1443,8 @@ function timelineDisplayPreviewText(modeOrSettings, kitchenMode) {
             : 'Парк з кухнею: поточний rich park mode з афішею, квестами і кухонним блоком.',
         education: 'Навчальний заклад: лінії читаються як кабінети, записи — як заняття.'
     };
-    return `${map[mode] || map.park} Старт: ${settings.startPage}. Рядки: ${settings.resourceModel}. Модулі: ${enabledModules || 'немає'}. Фічі: ${enabledFeatures || 'немає'}.`;
+    const source = window.TimelineBusinessContext?.rowSource?.(settings, settings.context)?.text || '';
+    return `${map[mode] || map.park} ${source} Старт: ${settings.startPage}. Модулі: ${enabledModules || 'немає'}. Фічі: ${enabledFeatures || 'немає'}.`;
 }
 
 function refreshTimelineDisplaySettingsPreview() {
@@ -1411,11 +1454,6 @@ function refreshTimelineDisplaySettingsPreview() {
     if (controls.kitchenGroup) controls.kitchenGroup.classList.toggle('hidden', mode !== 'park');
     if (controls.roomFirstGroup) controls.roomFirstGroup.classList.toggle('hidden', mode !== 'park');
     if (controls.defaultViewGroup) controls.defaultViewGroup.classList.toggle('hidden', mode !== 'park' || !settings.roomTimelineEnabled);
-    document.querySelectorAll('[data-timeline-module="kitchen"], [data-timeline-feature="kitchen"]').forEach(button => {
-        const active = settings.parkKitchenMode !== 'without_kitchen' && mode === 'park';
-        button.classList.toggle('is-active', active);
-        button.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
     if (controls.state) {
         controls.state.textContent = settings.timelineEnabled ? 'Таймлайн увімкнено' : 'Таймлайн вимкнено';
         controls.state.classList.toggle('is-disabled', !settings.timelineEnabled);
@@ -1472,10 +1510,13 @@ async function loadTimelineDisplaySettingsIntoModal() {
     const controls = getTimelineDisplayControls();
     if (!controls.mode) return;
     let settings = window.TimelineBusinessContext?.displaySettings?.() || { mode: 'park', parkKitchenMode: 'with_kitchen' };
+    const context = timelineSettingsActiveContextKey();
+    let loaded = false;
     try {
         if (typeof apiGetBusinessCabinet === 'function') {
             const result = await apiGetBusinessCabinet();
             if (result?.cabinet) {
+                loaded = true;
                 settings = {
                     ...(result.cabinet.timeline || {}),
                     ...result.cabinet,
@@ -1494,6 +1535,7 @@ async function loadTimelineDisplaySettingsIntoModal() {
                 if (res.ok) {
                     const serverSettings = await res.json();
                     settings = window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings) || serverSettings;
+                    loaded = true;
                     await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
                 }
             }
@@ -1504,6 +1546,7 @@ async function loadTimelineDisplaySettingsIntoModal() {
             if (res.ok) {
                 const serverSettings = await res.json();
                 settings = window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings) || serverSettings;
+                loaded = true;
                 await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
             }
         }
@@ -1516,11 +1559,17 @@ async function loadTimelineDisplaySettingsIntoModal() {
             if (res.ok) {
                 const serverSettings = await res.json();
                 settings = window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings) || serverSettings;
+                loaded = true;
                 await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
             }
         } catch (fallbackError) {
             console.warn('[TimelineDisplay] Legacy display settings fallback unavailable', fallbackError);
         }
+    }
+    if (loaded) {
+        const saved = normalizeTimelineControlSettings({ ...settings, context });
+        timelineSavedDisplaySettings.set(context, JSON.parse(JSON.stringify(saved)));
+        window.TimelineBusinessContext?.rememberParkView?.(saved, context);
     }
     applyTimelineSettingsToControls(settings);
     await renderTimelineResourcesManager();
@@ -1540,10 +1589,15 @@ function guardSystemSettings() {
 }
 async function saveTimelineDisplaySettingsFromSettings() {
     if (!guardSystemSettings()) return;
+    if (timelineDisplaySaving) return;
+    const context = timelineSettingsActiveContextKey();
     const payload = collectTimelineDisplaySettingsFromControls();
+    timelineDisplaySaving = true;
     try {
+        if (!await window.TimelineBusinessContext.confirmRowSourceChange(timelineSavedDisplaySettings.get(context), payload, context)) return;
+        if (timelineSettingsActiveContextKey() !== context) throw new Error('Business context changed during confirmation');
         if (typeof apiSaveBusinessCabinet === 'function') {
-            const result = await apiSaveBusinessCabinet(payload);
+            const result = await apiSaveBusinessCabinet(payload, { context });
             if (!result?.success) throw new Error(result?.error || 'Business cabinet save failed');
             const serverSettings = {
                 ...(result.cabinet?.timeline || {}),
@@ -1554,6 +1608,8 @@ async function saveTimelineDisplaySettingsFromSettings() {
                 bookingPolicy: result.cabinet?.bookingPolicy || result.cabinet?.timeline?.bookingPolicy || payload.bookingPolicy,
                 modules: result.cabinet?.modules || payload.modules
             };
+            timelineSavedDisplaySettings.set(context, normalizeTimelineControlSettings({ ...serverSettings, context }));
+            window.TimelineBusinessContext?.rememberParkView?.(serverSettings, context);
             window.TimelineBusinessContext?.saveDisplaySettings?.(result.cabinet?.timeline || serverSettings);
             if (result.businessProfile) window.CrmBusinessContext?.applyProfile?.(result.businessProfile, { updateUrl: false, emit: true });
             else await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
@@ -1569,6 +1625,8 @@ async function saveTimelineDisplaySettingsFromSettings() {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const serverSettings = await res.json();
+        timelineSavedDisplaySettings.set(context, normalizeTimelineControlSettings({ ...serverSettings, context }));
+        window.TimelineBusinessContext?.rememberParkView?.(serverSettings, context);
         window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings);
         await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
         showNotification('Кабінет таймлайну збережено. Перезавантажую сторінку...', 'success');
@@ -1576,22 +1634,32 @@ async function saveTimelineDisplaySettingsFromSettings() {
     } catch (error) {
         console.warn('[TimelineDisplay] Failed to save server display settings', error);
         showNotification('Не вдалося зберегти режим таймлайну на сервері.', 'error');
+    } finally {
+        timelineDisplaySaving = false;
     }
 }
 
-function handleTimelineDisplayModeChange() {
+function applyTimelineModeToControls(mode, resourceModel = defaultTimelineResourceModel(mode)) {
     const controls = getTimelineDisplayControls();
-    const mode = controls.mode?.value || 'park';
-    const parkKitchenMode = controls.kitchen?.value || 'with_kitchen';
+    const current = collectTimelineDisplaySettingsFromControls();
+    if (timelineControlsMode === 'park') {
+        window.TimelineBusinessContext?.rememberParkView?.({
+            ...current, mode: 'park',
+            roomTimelineEnabled: controls.roomFirst?.checked === true,
+            defaultTimelineView: controls.defaultView?.value
+        }, current.context);
+    }
     applyTimelineSettingsToControls({
+        ...current,
         mode,
         timelineEnabled: mode !== 'disabled',
-        parkKitchenMode,
-        startPage: mode === 'disabled' ? 'dashboard' : 'timeline',
-        resourceModel: defaultTimelineResourceModel(mode),
-        roomTimelineEnabled: mode === 'park',
-        defaultTimelineView: defaultTimelineViewForControlSettings({}, mode, mode === 'park')
+        resourceModel,
+        ...(mode === 'park' ? window.TimelineBusinessContext?.restoreParkView?.(current.context) || {} : {})
     });
+}
+
+function handleTimelineDisplayModeChange() {
+    applyTimelineModeToControls(getTimelineDisplayControls().mode?.value || 'park');
 }
 
 function handleTimelineControlClick(event) {
@@ -1602,16 +1670,7 @@ function handleTimelineControlClick(event) {
     if (button.dataset.timelinePreset) {
         const mode = button.dataset.mode || 'park';
         const resourceModel = button.dataset.resourceModel || defaultTimelineResourceModel(mode);
-        const kitchenMode = mode === 'park' ? (controls.kitchen?.value || 'with_kitchen') : 'with_kitchen';
-        applyTimelineSettingsToControls({
-            mode,
-            timelineEnabled: mode !== 'disabled',
-            parkKitchenMode: kitchenMode,
-            startPage: mode === 'disabled' ? 'dashboard' : 'timeline',
-            resourceModel,
-            roomTimelineEnabled: mode === 'park',
-            defaultTimelineView: defaultTimelineViewForControlSettings({}, mode, mode === 'park')
-        });
+        applyTimelineModeToControls(mode, resourceModel);
         return;
     }
     if (button.dataset.timelineStartPage) {
@@ -1660,17 +1719,18 @@ function resetTimelineResourceCaches() {
     }
 }
 
-async function addTimelineResourceFromSettings() {
-    const settings = collectTimelineDisplaySettingsFromControls();
-    const type = timelineResourceTypeForMode(settings.mode, settings);
-    if (!type) return;
+async function addTimelineResource(type, { source = 'settings_resource_manager' } = {}) {
+    if (!type || typeof apiSaveTimelineResource !== 'function') {
+        showNotification('Не вдалося відкрити каталог ресурсів таймлайну.', 'error');
+        return false;
+    }
     const copy = timelineResourceCopy(type);
     const name = await promptModal(copy.prompt, {
         title: copy.add.replace(/^\+\s*/, ''),
-        placeholder: type === 'room' ? 'Нова кімната' : (type === 'cabinet' ? 'Кабінет 4' : 'Спеціаліст'),
+        placeholder: type === 'room' ? 'Нова кімната' : (type === 'cabinet' ? 'Кабінет 4' : (type === 'animator' ? 'Аніматор' : 'Спеціаліст')),
         okText: 'Додати'
     });
-    if (!name) return;
+    if (name === null || name === undefined || !String(name).trim()) return false;
     let capacity = null;
     if (type === 'cabinet') {
         const rawCapacity = await promptModal(copy.capacityPrompt, {
@@ -1678,6 +1738,7 @@ async function addTimelineResourceFromSettings() {
             placeholder: '8',
             okText: 'Зберегти'
         });
+        if (rawCapacity === null || rawCapacity === undefined) return false;
         if (rawCapacity) capacity = parseInt(rawCapacity, 10) || null;
     }
     const existing = typeof apiGetTimelineResources === 'function'
@@ -1685,19 +1746,27 @@ async function addTimelineResourceFromSettings() {
         : [];
     const result = await apiSaveTimelineResource({
         type,
-        name,
+        name: String(name).trim(),
         capacity,
         sortOrder: existing.length * 10 + 10,
-        metadata: { source: 'settings_resource_manager' }
+        metadata: { source }
     });
     if (!result?.success) {
         showNotification(result?.error || 'Не вдалося зберегти ресурс таймлайну', 'error');
-        return;
+        return false;
     }
     resetTimelineResourceCaches();
-    await renderTimelineResourcesManager();
+    if (source === 'settings_resource_manager') await renderTimelineResourcesManager();
     if (typeof renderTimeline === 'function') await renderTimeline();
-    showNotification('Ресурс таймлайну збережено', 'success');
+    showNotification(type === 'animator' ? 'Ресурс аніматора додано' : 'Ресурс таймлайну збережено', 'success');
+    return result;
+}
+
+async function addTimelineResourceFromSettings() {
+    const settings = collectTimelineDisplaySettingsFromControls();
+    const type = timelineResourceTypeForMode(settings.mode, settings);
+    if (!type) return;
+    await addTimelineResource(type);
 }
 
 function normalizeTimelineResourceColorInput(value, fallback = '') {

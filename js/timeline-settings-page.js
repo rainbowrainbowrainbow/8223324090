@@ -139,6 +139,7 @@
         overrides: {},
         visibilityMeta: {},
         displaySettings: {},
+        savedDisplaySettings: null,
         displayMeta: {},
         visibilityDirty: false,
         displayDirty: false,
@@ -412,6 +413,7 @@
     }
 
     function updateBlock(id, patch) {
+        if (state.saving) return;
         if (!state.registry.some(item => item.id === id)) return;
         const next = { ...normalizeBlockSettings(id), ...patch };
         if (Object.prototype.hasOwnProperty.call(patch, 'visible')) next.visible = patch.visible !== false;
@@ -433,6 +435,7 @@
     }
 
     function updateDisplay(patch) {
+        if (state.saving) return;
         if (patch && Object.prototype.hasOwnProperty.call(patch, 'mode')) {
             patch = applyBusinessModePreset(state.displaySettings || {}, patch.mode);
         }
@@ -445,6 +448,7 @@
     }
 
     function applyBusinessModePreset(current, mode) {
+        window.TimelineBusinessContext?.rememberParkView?.(current, state.activeContext);
         const next = {
             ...current,
             mode,
@@ -452,6 +456,7 @@
             resourceModel: RESOURCE_MODEL_BY_MODE[mode] || current.resourceModel,
             timelineEnabled: mode !== 'disabled'
         };
+        if (mode === 'park') Object.assign(next, window.TimelineBusinessContext?.restoreParkView?.(state.activeContext) || {});
         if (mode !== 'education') return next;
 
         next.enabledModules = {
@@ -724,7 +729,8 @@
                 <select data-timeline-settings-display="mode">
                     ${Object.entries(MODE_LABELS).map(([value, label]) => `<option value="${escapeHtml(value)}"${display.mode === value ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
                 </select>
-                <small>Визначає презентаційну модель таймлайну.</small>
+                <small>Режим визначає оформлення та джерело рядків. Візуальні блоки нижче змінюють лише оформлення.</small>
+                <small role="status">${escapeHtml(window.TimelineBusinessContext?.rowSource?.(display, state.activeContext)?.text || '')}</small>
             </label>
             <label class="timeline-settings-field">
                 <span>Стартова сторінка</span>
@@ -738,7 +744,7 @@
                 <select data-timeline-settings-display="resourceModel">
                     ${Object.entries(RESOURCE_MODEL_LABELS).map(([value, label]) => `<option value="${escapeHtml(value)}"${display.resourceModel === value ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
                 </select>
-                <small>Для park режиму backend нормалізує auto.</small>
+                <small>У режимі парку вигляд аніматорів використовує графік змін. В інших режимах тип ресурсу визначає окремий каталог.</small>
             </label>
             <label class="timeline-settings-field">
                 <span>Кухня парку</span>
@@ -892,6 +898,7 @@
         state.saving = true;
         renderSaveStatus();
         try {
+            if (state.displayDirty && !await window.TimelineBusinessContext.confirmRowSourceChange(state.savedDisplaySettings, state.displaySettings, state.activeContext)) return;
             if (state.visibilityDirty) {
                 const visibility = await request('PUT', '/settings/timeline-visibility', buildVisibilityPayload());
                 applyVisibilityResponse(visibility);
@@ -906,6 +913,8 @@
                     throw new Error(result?.error || 'Не вдалося зберегти бізнес-профіль.');
                 }
                 state.displaySettings = displaySettingsFromBusinessCabinet(result.cabinet);
+                state.savedDisplaySettings = JSON.parse(JSON.stringify(state.displaySettings));
+                window.TimelineBusinessContext?.rememberParkView?.(state.displaySettings, state.activeContext);
                 state.displayMeta = { updatedAt: result.cabinet.updatedAt || null, updatedBy: result.cabinet.updatedBy || null };
                 if (result.businessProfile && typeof window.CrmBusinessContext?.applyProfile === 'function') {
                     window.CrmBusinessContext.applyProfile(result.businessProfile, { updateUrl: false, emit: true });
@@ -986,6 +995,7 @@
 
     async function loadContextSettings() {
         state.loading = true;
+        state.savedDisplaySettings = null;
         renderSaveStatus();
         try {
             if (typeof apiGetBusinessCabinet !== 'function') {
@@ -998,6 +1008,8 @@
             if (!cabinetResult?.cabinet) throw new Error(cabinetResult?.error || 'Не вдалося завантажити бізнес-профіль.');
             applyVisibilityResponse(visibility);
             state.displaySettings = displaySettingsFromBusinessCabinet(cabinetResult.cabinet);
+            state.savedDisplaySettings = JSON.parse(JSON.stringify(state.displaySettings));
+            window.TimelineBusinessContext?.rememberParkView?.(state.displaySettings, state.activeContext);
             state.displayMeta = { updatedAt: cabinetResult.cabinet.updatedAt || null, updatedBy: cabinetResult.cabinet.updatedBy || null };
             state.visibilityDirty = false;
             state.displayDirty = false;
@@ -1017,6 +1029,7 @@
     }
 
     async function switchContext(nextContext, nextView = null) {
+        if (state.saving) return;
         const normalizedView = nextContext === 'event_genix' ? normalizeTimelineView(nextView || 'animators') : 'animators';
         if (!nextContext || (nextContext === state.activeContext && normalizedView === state.activeView)) return;
         if ((state.visibilityDirty || state.displayDirty) && typeof window.confirmModal === 'function') {

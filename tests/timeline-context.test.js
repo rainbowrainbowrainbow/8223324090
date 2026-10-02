@@ -17,6 +17,97 @@ const { applyMembershipAccess, buildMembershipAccess } = require('../services/bu
 
 const ROOT = path.join(__dirname, '..');
 
+function createResourcePresentationTimeline() {
+    const source = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
+    const dom = new JSDOM(`<!doctype html><body>
+        <button id="addLineBtn"><span class="timeline-control-icon">+</span><span></span></button>
+        <label></label><span id="selectedLineDisplay"></span>
+    </body>`, { url: 'https://crm.test/', runScripts: 'outside-only' });
+    vm.runInContext(source, dom.getInternalVMContext());
+    return {
+        window: dom.window,
+        context: dom.window.TimelineBusinessContext,
+        close: () => dom.window.close()
+    };
+}
+
+test('switching specialist resources back to animators restores the visible animator labels', () => {
+    const timeline = createResourcePresentationTimeline();
+    try {
+        const { context, window } = timeline;
+        for (const mode of ['simple', 'specialist']) {
+            context.saveDisplaySettings({ mode, resourceModel: 'specialist' }, { merge: false });
+            context.applyLabels();
+            assert.equal(window.document.querySelector('#addLineBtn span:last-child').textContent, 'Додати спеціаліста');
+
+            context.saveDisplaySettings({ resourceModel: 'animator' });
+            context.applyLabels();
+            const presentation = context.presentation();
+            assert.equal(presentation.mode, mode);
+            assert.equal(presentation.resourceModel, 'animator');
+            assert.equal(presentation.addLineLabel, 'Додати аніматора');
+            assert.equal(window.document.querySelector('#addLineBtn span:last-child').textContent, 'Додати аніматора');
+            assert.equal(window.document.getElementById('addLineBtn').title, 'Додати ресурс аніматора з каталогу');
+            assert.equal(window.document.getElementById('selectedLineDisplay').previousElementSibling.textContent, 'Аніматор:');
+            assert.equal(window.document.querySelector('.timeline-control-icon').textContent, '+');
+
+            context.saveDisplaySettings({ resourceModel: 'specialist' });
+            context.applyLabels();
+            assert.equal(window.document.querySelector('#addLineBtn span:last-child').textContent, 'Додати спеціаліста');
+        }
+    } finally {
+        timeline.close();
+    }
+});
+
+test('resource label overrides preserve automatic, park and disabled mode presentation', () => {
+    const timeline = createResourcePresentationTimeline();
+    try {
+        const { context } = timeline;
+        for (const mode of ['disabled', 'simple', 'specialist', 'park', 'education']) {
+            for (const resourceModel of ['auto', 'none']) {
+                context.saveDisplaySettings({ mode, resourceModel }, { merge: false });
+                const presentation = context.presentation();
+                assert.equal(presentation.addLineLabel, context.DISPLAY_MODES[mode].addLineLabel);
+                assert.equal(presentation.addLineTitle, context.DISPLAY_MODES[mode].addLineTitle);
+                assert.equal(presentation.selectedLineLabel, context.DISPLAY_MODES[mode].selectedLineLabel);
+            }
+        }
+        context.saveDisplaySettings({ mode: 'disabled', resourceModel: 'animator' }, { merge: false });
+        assert.equal(context.presentation().addLineLabel, 'Ресурс');
+        assert.equal(context.presentation().controls.addLine, false);
+        context.saveDisplaySettings({ mode: 'park', resourceModel: 'specialist' }, { merge: false });
+        assert.equal(context.presentation().addLineLabel, 'Додати аніматора');
+    } finally {
+        timeline.close();
+    }
+});
+
+test('explicit resource models use their control labels without changing booking identity', () => {
+    const timeline = createResourcePresentationTimeline();
+    try {
+        const { context } = timeline;
+        const labels = {
+            animator: ['Додати аніматора', 'Аніматор:'],
+            specialist: ['Додати спеціаліста', 'Спеціаліст:'],
+            cabinet: ['Додати кабінет', 'Кабінет:'],
+            room: ['Додати кімнату', 'Кімната:'],
+            online: ['Додати онлайн-ресурс', 'Онлайн-ресурс:']
+        };
+        for (const [resourceModel, [addLineLabel, selectedLineLabel]] of Object.entries(labels)) {
+            context.saveDisplaySettings({ mode: 'simple', resourceModel }, { merge: false });
+            const presentation = context.presentation();
+            assert.equal(presentation.addLineLabel, addLineLabel);
+            assert.equal(presentation.selectedLineLabel, selectedLineLabel);
+            assert.equal(presentation.resourceType, context.DISPLAY_MODES.simple.resourceType);
+            assert.equal(presentation.lineTypeLabel, context.DISPLAY_MODES.simple.lineTypeLabel);
+            assert.equal(presentation.emptyLineName, context.DISPLAY_MODES.simple.emptyLineName);
+        }
+    } finally {
+        timeline.close();
+    }
+});
+
 function maysternyaMember(role, overrides = {}) {
     const row = {
         organization_id: 11,

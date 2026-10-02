@@ -671,6 +671,38 @@
         return normalized;
     }
 
+    function resourceControlLabels(mode, settings) {
+        if (mode.key === 'disabled' || mode.key === 'park') return {};
+        const resourceType = resourceTypeForMode(mode.key, settings);
+        if (!resourceType || resourceType === mode.resourceType) return {};
+        const labels = {
+            animator: {
+                addLineLabel: 'Додати аніматора',
+                addLineTitle: 'Додати ресурс аніматора з каталогу',
+                selectedLineLabel: 'Аніматор:'
+            },
+            specialist: DISPLAY_MODES.specialist,
+            cabinet: DISPLAY_MODES.education,
+            room: {
+                addLineLabel: 'Додати кімнату',
+                addLineTitle: 'Додати лінію кімнати',
+                selectedLineLabel: 'Кімната:'
+            },
+            online: {
+                addLineLabel: 'Додати онлайн-ресурс',
+                addLineTitle: 'Додати лінію онлайн-ресурсу',
+                selectedLineLabel: 'Онлайн-ресурс:'
+            }
+        }[resourceType];
+        if (!labels) return {};
+        // Control copy follows the selected resource model without changing booking identity.
+        return {
+            addLineLabel: labels.addLineLabel,
+            addLineTitle: labels.addLineTitle,
+            selectedLineLabel: labels.selectedLineLabel
+        };
+    }
+
     function presentation(ctx = currentContext()) {
         const settings = readDisplaySettings(ctx);
         const mode = DISPLAY_MODES[settings.mode] || DISPLAY_MODES[defaultDisplayMode(ctx)];
@@ -693,6 +725,7 @@
         }
         const result = {
             ...mode,
+            ...resourceControlLabels(mode, settings),
             mode: mode.key,
             context: ctx.key,
             settings,
@@ -723,6 +756,61 @@
         if (resourceModel === 'none') return null;
         if (RESOURCE_TYPES.has(resourceModel)) return resourceModel;
         return displayMode?.key === 'park' ? null : (displayMode?.resourceType || null);
+    }
+
+    function rowSource(settings = {}, context = currentContext().key) {
+        const mode = settings.timelineEnabled === false ? 'disabled' : (settings.mode || 'park');
+        if (mode === 'disabled') return { key: 'disabled', text: 'Таймлайн вимкнено: рядки не відображатимуться.' };
+        const type = resourceTypeForMode(mode, settings);
+        if (type) {
+            const labels = { animator: 'аніматори', specialist: 'спеціалісти', cabinet: 'кабінети', room: 'кімнати', online: 'онлайн-ресурси' };
+            const animatorHint = type === 'animator'
+                ? ' Вибір «Аніматори» у простому режимі або режимі спеціаліста не повертає графік змін; для нього використовується режим парку.'
+                : '';
+            return { key: `catalog:${type}`, text: `Рядки: окремо налаштовані ресурси (${labels[type]}).${animatorHint}` };
+        }
+        if (context !== 'event_genix') return { key: 'date_lines', text: 'Рядки: лінії на вибрану дату для цього бізнесу.' };
+        if (mode === 'park' && settings.roomTimelineEnabled === true) {
+            const roomsFirst = settings.defaultTimelineView === 'rooms';
+            return {
+                key: `park:rooms:${roomsFirst ? 'rooms' : 'animators'}`,
+                text: `Вигляд аніматорів: графік змін. Кімнатний вигляд: налаштовані кімнатні ресурси або наявні кімнати, без графіка аніматорів. Стартовий вигляд: ${roomsFirst ? 'кімнати' : 'аніматори'}.`
+            };
+        }
+        return { key: 'staff_schedule', text: 'Рядки аніматорів: графік змін на вибрану дату.' };
+    }
+
+    async function confirmRowSourceChange(saved, draft, context = currentContext().key) {
+        if (!saved) throw new Error('Спочатку завантажте збережені налаштування таймлайну.');
+        const before = rowSource(saved, context);
+        const after = rowSource(draft, context);
+        if (before.key === after.key) return true;
+        if (typeof window.confirmModal !== 'function') throw new Error('Вікно підтвердження ще не завантажилось. Спробуйте ще раз.');
+        return window.confirmModal(`Змінити джерело рядків таймлайну? Зараз: ${before.text} Після збереження: ${after.text} Наявні записи не видаляються; у новому вигляді набір рядків може відрізнятися.`, {
+            type: 'warning', okText: 'Зберегти зміну', cancelText: 'Скасувати'
+        });
+    }
+
+    // Non-park server settings normalize room preferences away. Keep the last
+    // park view locally in this browser so returning to park does not reset it.
+    const parkViewPreferences = new Map();
+
+    function rememberParkView(settings, context = currentContext().key) {
+        if (settings?.mode !== 'park') return;
+        const preferences = {
+            roomTimelineEnabled: settings.roomTimelineEnabled === true,
+            defaultTimelineView: settings.defaultTimelineView === 'rooms' ? 'rooms' : 'animators'
+        };
+        parkViewPreferences.set(context, preferences);
+        try {
+            localStorage.setItem(`timeline_park_view:${context}`, JSON.stringify(preferences));
+        } catch {}
+    }
+
+    function restoreParkView(context = currentContext().key) {
+        if (parkViewPreferences.has(context)) return { ...parkViewPreferences.get(context) };
+        try { return safeJson(localStorage.getItem(`timeline_park_view:${context}`)) || {}; }
+        catch { return {}; }
     }
 
     function appendApiContext(url) {
@@ -863,6 +951,10 @@
         presentation,
         controlVisibility: controlVisibilityForView,
         resourceTypeForMode,
+        rowSource,
+        confirmRowSourceChange,
+        rememberParkView,
+        restoreParkView,
         userRoles,
         userPageAllowlist,
         contextForBusiness,

@@ -2517,6 +2517,189 @@ test('settings UI exposes real timeline resource management for multi-cabinet mo
     assert.match(css, /\.timeline-control-center/);
 });
 
+function createTimelineAddActionHarness(options = {}) {
+    const source = read('js/settings.js');
+    const sourceBlock = (startToken, endToken) => {
+        const start = source.indexOf(startToken);
+        const end = source.indexOf(endToken, start);
+        assert.ok(start >= 0 && end > start, `settings block exists: ${startToken}`);
+        return source.slice(start, end);
+    };
+    const events = {
+        prompts: [],
+        saved: [],
+        notices: [],
+        telegram: 0,
+        localAnimatorFallback: 0,
+        cacheResets: 0,
+        timelineRenders: 0,
+        managerRenders: 0
+    };
+    const promptValues = [...(options.promptValues || [])];
+    const presentation = {
+        mode: options.mode || 'simple',
+        resourceModel: options.resourceModel || 'animator',
+        context: 'event_genix'
+    };
+    const context = vm.createContext({
+        console,
+        Date,
+        AppState: { selectedDate: new Date('2026-10-02T12:00:00Z') },
+        window: {
+            TimelineBusinessContext: {
+                current: () => ({ key: options.context || 'event_genix' }),
+                presentation: () => presentation
+            }
+        },
+        formatDate: () => '2026-10-02',
+        isRoomTimelineLineEditingBlocked: () => false,
+        timelineResourceTypeForMode: (_mode, settings) => settings.resourceModel,
+        promptModal: async (message, config) => {
+            events.prompts.push({ message, config });
+            return promptValues.length ? promptValues.shift() : null;
+        },
+        apiGetTimelineResources: async () => options.existingResources || [],
+        apiSaveTimelineResource: async resource => {
+            events.saved.push(resource);
+            return options.saveResult || { success: true, resource: { resourceId: 'normalized-resource-7' } };
+        },
+        showNotification: (message, type) => events.notices.push({ message, type }),
+        resetTimelineResourceCaches: () => { events.cacheResets += 1; },
+        renderTimeline: async () => { events.timelineRenders += 1; },
+        renderTimelineResourcesManager: async () => { events.managerRenders += 1; },
+        showNoteModal: async () => 'shift request',
+        cleanupPendingPoll() {},
+        apiTelegramAskAnimator: async () => {
+            events.telegram += 1;
+            return { success: false, reason: 'no_chat_id' };
+        },
+        removePendingLine() {},
+        addAnimatorLineLocallyAfterTelegramFallback: async () => { events.localAnimatorFallback += 1; }
+    });
+    const blocks = [
+        sourceBlock('async function addNewLine()', 'async function editLineModal('),
+        sourceBlock('function timelineResourceCopy(type)', 'function timelineDisplayPreviewText('),
+        sourceBlock('async function addTimelineResource(type,', 'function normalizeTimelineResourceColorInput(')
+    ];
+    vm.runInContext(blocks.join('\n'), context);
+    return { context, events };
+}
+
+for (const resourceModel of ['animator', 'specialist', 'online']) {
+    test(`timeline add button uses the saved ${resourceModel} catalog model`, async () => {
+        const { context, events } = createTimelineAddActionHarness({
+            mode: 'simple',
+            resourceModel,
+            promptValues: ['  Catalog resource  '],
+            existingResources: [{ resourceId: 'existing-resource' }]
+        });
+        context.collectTimelineDisplaySettingsFromControls = () => {
+            throw new Error('timeline add action must read the saved presentation, not the settings draft');
+        };
+
+        await context.addNewLine();
+
+        assert.equal(events.telegram, 0);
+        assert.equal(events.localAnimatorFallback, 0);
+        assert.equal(events.saved.length, 1);
+        assert.equal(events.saved[0].type, resourceModel);
+        assert.equal(events.saved[0].name, 'Catalog resource');
+        assert.equal(events.saved[0].sortOrder, 20);
+        assert.equal(events.saved[0].metadata.source, 'timeline_add_button');
+        const expectedTitle = {
+            animator: 'Додати аніматора',
+            specialist: 'Додати ресурс',
+            online: 'Додати онлайн-ресурс'
+        }[resourceModel];
+        assert.equal(events.prompts[0].config.title, expectedTitle);
+        assert.equal(events.cacheResets, 1);
+        assert.equal(events.timelineRenders, 1);
+        assert.equal(events.managerRenders, 0);
+        assert.deepEqual(events.notices.at(-1), {
+            message: resourceModel === 'animator' ? 'Ресурс аніматора додано' : 'Ресурс таймлайну збережено',
+            type: 'success'
+        });
+    });
+}
+
+for (const businessContext of ['dar', 'maysternya_doli', 'custom_business']) {
+    test(`catalog cabinet addition in ${businessContext} never starts the animator Telegram flow`, async () => {
+        const { context, events } = createTimelineAddActionHarness({
+            context: businessContext, mode: 'education', resourceModel: 'cabinet', promptValues: ['Cabinet 1', '10']
+        });
+        await context.addNewLine();
+        assert.equal(events.telegram, 0);
+        assert.equal(events.localAnimatorFallback, 0);
+        assert.equal(events.saved.length, 1);
+        assert.equal(events.saved[0].type, 'cabinet');
+    });
+}
+
+test('timeline add cancellation creates no resource and preserves the park Telegram flow', async () => {
+    const cancelled = createTimelineAddActionHarness({
+        mode: 'simple', resourceModel: 'animator', promptValues: [null]
+    });
+    await cancelled.context.addNewLine();
+    assert.equal(cancelled.events.saved.length, 0);
+    assert.equal(cancelled.events.cacheResets, 0);
+    assert.equal(cancelled.events.timelineRenders, 0);
+    assert.equal(cancelled.events.telegram, 0);
+
+    const park = createTimelineAddActionHarness({ mode: 'park', resourceModel: 'auto' });
+    await park.context.addNewLine();
+    assert.equal(park.events.telegram, 1);
+    assert.equal(park.events.localAnimatorFallback, 1);
+    assert.equal(park.events.saved.length, 0);
+});
+
+test('timeline add button saves the requested cabinet capacity through the resource API', async () => {
+    const { context, events } = createTimelineAddActionHarness({
+        mode: 'education',
+        resourceModel: 'cabinet',
+        promptValues: ['Cabinet 4', '12']
+    });
+
+    await context.addNewLine();
+
+    assert.equal(events.saved.length, 1);
+    assert.equal(events.saved[0].type, 'cabinet');
+    assert.equal(events.saved[0].name, 'Cabinet 4');
+    assert.equal(events.saved[0].capacity, 12);
+    assert.equal(events.telegram, 0);
+    assert.equal(events.timelineRenders, 1);
+});
+
+test('catalog save failure does not render an unsaved resource', async () => {
+    const { context, events } = createTimelineAddActionHarness({
+        mode: 'simple',
+        resourceModel: 'animator',
+        promptValues: ['Catalog animator'],
+        saveResult: { success: false, error: 'catalog unavailable' }
+    });
+
+    await context.addNewLine();
+
+    assert.equal(events.telegram, 0);
+    assert.equal(events.cacheResets, 0);
+    assert.equal(events.timelineRenders, 0);
+    assert.equal(events.notices.at(-1).type, 'error');
+});
+
+test('cancelling cabinet capacity does not create a catalog resource', async () => {
+    const { context, events } = createTimelineAddActionHarness({
+        mode: 'education',
+        resourceModel: 'cabinet',
+        promptValues: ['Cabinet 1', null]
+    });
+
+    await context.addNewLine();
+
+    assert.equal(events.prompts.length, 2);
+    assert.equal(events.saved.length, 0);
+    assert.equal(events.cacheResets, 0);
+    assert.equal(events.timelineRenders, 0);
+});
+
 test('timeline visual settings v2 keeps stable block ids, metadata, and legacy overrides', () => {
     const response = timelineVisibilityResponse({
         version: 1,

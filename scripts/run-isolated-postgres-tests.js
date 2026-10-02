@@ -42,7 +42,8 @@ const MODES = {
         'tests/integration/payroll-simultaneous-additional.integration.test.js',
         'tests/integration/zrs-payroll-period-lock.integration.test.js',
         'tests/integration/payroll-installments.integration.test.js',
-        'tests/integration/payroll-fullstack-settlement.integration.test.js'
+        'tests/integration/payroll-fullstack-settlement.integration.test.js',
+        'tests/integration/finance-transactions-pnl.integration.test.js'
     ],
     'payroll-fullstack': [
         'tests/integration/payroll-fullstack-settlement.integration.test.js'

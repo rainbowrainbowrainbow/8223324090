@@ -345,6 +345,8 @@ const AppState = {
     nowLineInterval: null,
     pendingPollInterval: null,  // v3.9: track polling for cleanup
     editingBookingId: null,     // v5.5: ID бронювання в режимі редагування
+    editingBookingUpdatedAt: null,
+    editingBookingUpdatedAtVersion: null,
     statusFilter: 'all',        // v5.15: 'all' | 'confirmed' | 'preliminary'
     // v7.0: Products cache from API
     products: null,             // Array of products from API (or null = not loaded)

@@ -1399,7 +1399,7 @@ function createFakePool() {
                 });
                 return { rows, rowCount: rows.length };
             }
-            if (/SELECT b\.\* FROM bookings b WHERE b\.id = \$1 AND CASE/i.test(text)) {
+            if (/SELECT b\.\*(?:,\s+to_char\(date_trunc\('milliseconds', b\.updated_at\), 'YYYY-MM-DD HH24:MI:SS\.MS'\) AS updated_at_version_token)?\s+FROM bookings b WHERE b\.id = \$1 AND CASE/i.test(text)) {
                 const row = routeSmokeBookingById(params[0]) || hrState.bookings.find(booking => booking.id === params[0]);
                 return { rows: row ? [{ ...row, business_context: params[1] || row.business_context }] : [], rowCount: row ? 1 : 0 };
             }

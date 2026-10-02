@@ -7,7 +7,7 @@ const {
     validateDate,
     validateTime,
     validateId,
-    mapBookingRow,
+    mapBookingRowWithVersion,
     checkServerConflicts,
     checkServerDuplicate,
     checkRoomConflict,
@@ -1391,7 +1391,7 @@ async function insertBookingMarkedPreliminaryHistory(client, { booking, actor, s
 }
 
 function bookingNotificationPayload(row) {
-    const mapped = mapBookingRow(row);
+    const mapped = mapBookingRowWithVersion(row);
     return {
         ...mapped,
         program_code: mapped.programCode,
@@ -1402,7 +1402,7 @@ function bookingNotificationPayload(row) {
 }
 
 function runBookingConfirmationSideEffects(row, actor, source, updatedRows = []) {
-    const booking = mapBookingRow(row);
+    const booking = mapBookingRowWithVersion(row);
     const username = actor?.username;
     const notifyPayload = bookingNotificationPayload(row);
     const notifyCatch = err => log.error(`Telegram notify failed (confirm): ${err.message}`);
@@ -1421,7 +1421,7 @@ function runBookingConfirmationSideEffects(row, actor, source, updatedRows = [])
 
     const broadcastRows = updatedRows.length ? updatedRows : [row];
     for (const updatedRow of broadcastRows) {
-        const updatedBooking = mapBookingRow(updatedRow);
+        const updatedBooking = mapBookingRowWithVersion(updatedRow);
         broadcastBookingEvent('booking:updated', updatedBooking, actor?.id?.toString());
     }
     _alertPush();
@@ -1441,12 +1441,12 @@ function runBookingConfirmationSideEffects(row, actor, source, updatedRows = [])
 }
 
 function runBookingPreliminarySideEffects(row, actor, source, updatedRows = [], previousStatus = 'confirmed') {
-    const booking = mapBookingRow(row);
+    const booking = mapBookingRowWithVersion(row);
     const username = actor?.username;
 
     const broadcastRows = updatedRows.length ? updatedRows : [row];
     for (const updatedRow of broadcastRows) {
-        const updatedBooking = mapBookingRow(updatedRow);
+        const updatedBooking = mapBookingRowWithVersion(updatedRow);
         broadcastBookingEvent('booking:updated', updatedBooking, actor?.id?.toString());
     }
     _alertPush();
@@ -2880,7 +2880,8 @@ router.get('/education-series/:seriesId', async (req, res) => {
         const params = [seriesId, businessContext];
         const visibility = buildBookingVisibilityScope(req.user, params, 'b');
         const result = await pool.query(
-            `SELECT b.*
+            `SELECT b.*,
+                    to_char(date_trunc('milliseconds', b.updated_at), 'YYYY-MM-DD HH24:MI:SS.MS') AS updated_at_version_token
                FROM bookings b
               WHERE ${educationSeriesSql('b', '$1')}
                 AND ${bookingContextSql('b', '$2')}
@@ -2889,7 +2890,7 @@ router.get('/education-series/:seriesId', async (req, res) => {
               ORDER BY b.date, b.time, b.id`,
             params
         );
-        const bookings = result.rows.map(mapBookingRow);
+        const bookings = result.rows.map(mapBookingRowWithVersion);
         res.json({ success: true, seriesId, businessContext, count: bookings.length, bookings });
     } catch (err) {
         log.error('GET /bookings/education-series/:seriesId error', err);
@@ -2923,7 +2924,8 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
             ? `AND b.date::date >= $${params.push(fromDate)}::date`
             : '';
         const candidates = await client.query(
-            `SELECT b.*
+            `SELECT b.*,
+                    to_char(date_trunc('milliseconds', b.updated_at), 'YYYY-MM-DD HH24:MI:SS.MS') AS updated_at_version_token
                FROM bookings b
               WHERE ${educationSeriesSql('b', '$1')}
                 AND ${bookingContextSql('b', '$2')}
@@ -2955,7 +2957,7 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
                 [candidateIds, businessContext]
             )
             : { rows: [] };
-        const cancelled = result.rows.map(mapBookingRow);
+        const cancelled = result.rows.map(mapBookingRowWithVersion);
         await insertScopedHistory(client, 'education_series_cancel', req.user?.username, {
                 seriesId,
                 businessContext,
@@ -3398,7 +3400,8 @@ router.get('/detail/:id', async (req, res) => {
         if (!requireTimelineContext(req, res, businessContext)) return;
 
         const result = await pool.query(
-            `SELECT b.*
+            `SELECT b.*,
+                    to_char(date_trunc('milliseconds', b.updated_at), 'YYYY-MM-DD HH24:MI:SS.MS') AS updated_at_version_token
                FROM bookings b
               WHERE b.id = $1
                 AND ${bookingContextSql('b', '$2')}
@@ -3410,7 +3413,7 @@ router.get('/detail/:id', async (req, res) => {
         if (!row) return res.status(404).json({ success: false, error: 'Booking not found' });
         if (!canViewBooking(req.user, row)) return sendBookingDenied(req, res, row);
 
-        const [booking] = await attachBanquetLinksToBookings([mapBookingRow(row)], businessContext);
+        const [booking] = await attachBanquetLinksToBookings([mapBookingRowWithVersion(row)], businessContext);
         res.json({ success: true, booking });
     } catch (err) {
         log.error('GET /bookings/detail/:id error', err);
@@ -3435,7 +3438,9 @@ router.get('/:date', async (req, res) => {
                     pinata_mode, pinata_number, pinata_filler_number,
                     client_pinata_service_price, client_pinata_service_note, costume,
                     room, room_resource_id, notes, created_by, created_at, linked_to, status, kids_count,
-                    updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
+                    updated_at,
+                    to_char(date_trunc('milliseconds', b.updated_at), 'YYYY-MM-DD HH24:MI:SS.MS') AS updated_at_version_token,
+                    group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
                     confirmed_at, confirmed_by, confirmation_note, confirmation_source,
                     banquet_guests, banquet_adults, banquet_tables, banquet_menu,
                     (
@@ -3452,7 +3457,7 @@ router.get('/:date', async (req, res) => {
             params
         );
         const sourceBookings = result.rows.map(row => ({
-            ...mapBookingRow(row),
+            ...mapBookingRowWithVersion(row),
             timelineCode: row.timeline_code || null
         }));
         const resolvedBookings = timelineView === 'rooms'
@@ -4005,8 +4010,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         const booking = durableById.has(String(b.id))
-            ? mapBookingRow(durableById.get(String(b.id)))
-            : (insertResult.rows[0] ? mapBookingRow(insertResult.rows[0]) : { id: b.id });
+            ? mapBookingRowWithVersion(durableById.get(String(b.id)))
+            : (insertResult.rows[0] ? mapBookingRowWithVersion(insertResult.rows[0]) : { id: b.id });
         booking.serverVerified = true;
         if (ensuredPrimaryLine) {
             booking.lineName = ensuredPrimaryLine.name || null;
@@ -4015,7 +4020,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             booking.timelineIdentity = b.extraData?.timelineIdentity || null;
         }
         const linkedBookings = linkedInsertedRows.map(row => {
-            const mapped = mapBookingRow(durableById.get(String(row.id)) || row);
+            const mapped = mapBookingRowWithVersion(durableById.get(String(row.id)) || row);
             mapped.serverVerified = true;
             return mapped;
         });
@@ -4482,7 +4487,7 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
 
         await client.query('COMMIT');
 
-        const bookings = insertedRows.map(mapBookingRow);
+        const bookings = insertedRows.map(mapBookingRowWithVersion);
         bookings.forEach(booking => {
             broadcastBookingEvent('booking:created', booking, req.user?.id?.toString(), { businessContext });
         });
@@ -5065,7 +5070,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 client,
                 'create',
                 activityRow.created_by || main.createdBy || req.user?.username,
-                mapBookingRow(activityRow),
+                mapBookingRowWithVersion(activityRow),
                 businessContext
             );
         }
@@ -5215,16 +5220,16 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
 
         const mainBooking = durableById.has(String(main.id))
-            ? mapBookingRow(durableById.get(String(main.id)))
-            : (mainInsert.rows[0] ? mapBookingRow(mainInsert.rows[0]) : { id: main.id });
+            ? mapBookingRowWithVersion(durableById.get(String(main.id)))
+            : (mainInsert.rows[0] ? mapBookingRowWithVersion(mainInsert.rows[0]) : { id: main.id });
         mainBooking.serverVerified = true;
         const linkedBookings = linkedRows.map(row => {
-            const mapped = mapBookingRow(durableById.get(String(row.id)) || row);
+            const mapped = mapBookingRowWithVersion(durableById.get(String(row.id)) || row);
             mapped.serverVerified = true;
             return mapped;
         });
         const activityBookings = activityRows.map(row => {
-            const mapped = mapBookingRow(durableById.get(String(row.id)) || row);
+            const mapped = mapBookingRowWithVersion(durableById.get(String(row.id)) || row);
             mapped.serverVerified = true;
             return mapped;
         });
@@ -5357,7 +5362,7 @@ router.post('/:id/menu-workflow/finalize', requireAction('edit_booking'), async 
             return res.json({
                 success: true,
                 idempotent: true,
-                booking: mapBookingRow(booking),
+                booking: mapBookingRowWithVersion(booking),
                 calculation: finalizeResult.calculation
             });
         }
@@ -5415,10 +5420,10 @@ router.post('/:id/menu-workflow/finalize', requireAction('edit_booking'), async 
         await syncBanquetActualMenuTask(client, updatedBooking, { businessContext, actor: req.user });
 
         await client.query('COMMIT');
-        const mapped = mapBookingRow(updatedBooking);
+        const mapped = mapBookingRowWithVersion(updatedBooking);
         broadcastBookingEvent('booking:updated', mapped, req.user?.id?.toString(), {
             businessContext,
-            previousBooking: mapBookingRow(booking)
+            previousBooking: mapBookingRowWithVersion(booking)
         });
         _alertPush();
         res.json({
@@ -5488,7 +5493,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         }
 
         const action = permanent ? 'permanent_delete' : 'delete';
-        await insertScopedHistory(client, action, req.user?.username, mapBookingRow(booking), businessContext);
+        await insertScopedHistory(client, action, req.user?.username, mapBookingRowWithVersion(booking), businessContext);
 
         if (permanent) {
             const journal = await client.query(
@@ -5905,19 +5910,19 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
 
         await client.query('COMMIT');
 
-        const mainBooking = savedMainRow ? mapBookingRow(savedMainRow) : mapBookingRow(oldMain);
-        const linkedBookings = savedLinkedRows.map(mapBookingRow);
+        const mainBooking = savedMainRow ? mapBookingRowWithVersion(savedMainRow) : mapBookingRowWithVersion(oldMain);
+        const linkedBookings = savedLinkedRows.map(mapBookingRowWithVersion);
 
         broadcastBookingEvent('booking:updated', mainBooking, req.user?.id?.toString(), {
             businessContext,
-            previousBooking: mapBookingRow(oldMain)
+            previousBooking: mapBookingRowWithVersion(oldMain)
         });
         for (const linkedRow of updatedLinkedRows) {
-            const linkedBooking = mapBookingRow(linkedRow);
+            const linkedBooking = mapBookingRowWithVersion(linkedRow);
             const previousLinked = linkedRows.find(row => String(row.id) === String(linkedRow.id));
             broadcastBookingEvent('booking:updated', linkedBooking, req.user?.id?.toString(), {
                 businessContext,
-                previousBooking: previousLinked ? mapBookingRow(previousLinked) : null
+                previousBooking: previousLinked ? mapBookingRowWithVersion(previousLinked) : null
             });
         }
         _alertPush();
@@ -5984,7 +5989,7 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
             return res.json({
                 success: true,
                 ok: true,
-                booking: mapBookingRow(current),
+                booking: mapBookingRowWithVersion(current),
                 action: { type: 'booking_confirmed', source, idempotent: true, durableMutation: false }
             });
         }
@@ -6066,7 +6071,7 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
     res.json({
         success: true,
         ok: true,
-        booking: mapBookingRow(confirmedRow),
+        booking: mapBookingRowWithVersion(confirmedRow),
         action: { type: 'booking_confirmed', source, durableMutation: true },
         cascade: { confirmedCount: confirmedRows.length }
     });
@@ -6184,7 +6189,7 @@ router.post('/:id/preliminary', requireAction('edit_booking'), async (req, res) 
             return res.json({
                 success: true,
                 ok: true,
-                booking: mapBookingRow(preliminaryRow),
+                booking: mapBookingRowWithVersion(preliminaryRow),
                 action: { type: 'booking_marked_preliminary', source, idempotent: true, durableMutation: false },
                 cascade: { markedPreliminaryCount: 0 }
             });
@@ -6222,7 +6227,7 @@ router.post('/:id/preliminary', requireAction('edit_booking'), async (req, res) 
     res.json({
         success: true,
         ok: true,
-        booking: mapBookingRow(preliminaryRow),
+        booking: mapBookingRowWithVersion(preliminaryRow),
         action: { type: 'booking_marked_preliminary', source, durableMutation: true },
         cascade: { markedPreliminaryCount: preliminaryRows.length }
     });
@@ -6232,6 +6237,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     const { id } = req.params;
     const b = req.body;
     const clientUpdatedAt = b.updatedAt || null;
+    const clientUpdatedAtVersion = b.updatedAtVersion || null;
     if (!validateId(id)) { return res.status(400).json({ error: 'Invalid booking ID' }); }
     const businessContext = timelineContextFromRequest(req);
     if (!requireTimelineContext(req, res, businessContext)) return;
@@ -6557,13 +6563,15 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  banquet_guests=$32, banquet_adults=$33, banquet_tables=$34, banquet_menu=$35
                  WHERE id=$23
                    AND ${bookingContextSql('', '$36')}
-                   AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)
-                 RETURNING *`,
+                   AND ${clientUpdatedAtVersion
+        ? `to_char(date_trunc('milliseconds', updated_at), 'YYYY-MM-DD HH24:MI:SS.MS') = $24`
+        : `date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)`}
+                   RETURNING *, to_char(date_trunc('milliseconds', updated_at), 'YYYY-MM-DD HH24:MI:SS.MS') AS updated_at_version_token`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
                  nullableBookingCount(b.kidsCount), b.groupName || null, updateExtraDataSql,
-                 id, clientUpdatedAt, updateCustomerId, b.paymentMethod || null, b.pinataMode,
+                 id, clientUpdatedAtVersion || clientUpdatedAt, updateCustomerId, b.paymentMethod || null, b.pinataMode,
                  b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber, b.pinataFillerNumber,
                  nullableBookingCount(b.banquetGuests), nullableBookingCount(b.banquetAdults), nullableBookingCount(b.banquetTables), b.banquetMenu || null, businessContext,
                  b.roomResourceId || b.room_resource_id || null]
@@ -6603,7 +6611,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 return res.status(404).json({ error: 'Бронювання не знайдено' });
             }
 
-            const currentBooking = mapBookingRow(currentResult.rows[0]);
+            const currentBooking = mapBookingRowWithVersion(currentResult.rows[0]);
             return res.status(409).json({
                 success: false,
                 error: 'Бронювання було змінено іншим користувачем',
@@ -6613,7 +6621,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         }
 
         await syncBanquetActualMenuTask(client, updateResult.rows[0], { businessContext, actor: req.user });
-        const savedBooking = mapBookingRow(updateResult.rows[0]);
+        const savedBooking = mapBookingRowWithVersion(updateResult.rows[0]);
         if (readAdmissionTicketSnapshot(updateResult.rows[0])?.kind === 'v3') {
             const ticketMembership = await client.query(
                 `SELECT group_id
@@ -6793,7 +6801,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 `SELECT * FROM bookings WHERE id = $1 AND ${bookingContextSql('', '$2')}`,
                 [id, businessContext]
             )
-                .then(r => r.rows[0] ? processBookingAutomation({ ...mapBookingRow(r.rows[0]), _event: 'confirm' }) : null)
+                .then(r => r.rows[0] ? processBookingAutomation({ ...mapBookingRowWithVersion(r.rows[0]), _event: 'confirm' }) : null)
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         }
 
@@ -6801,7 +6809,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         if (managerDepositResult?.projection) savedBooking.banquetDeposit = managerDepositResult.projection;
         broadcastBookingEvent('booking:updated', savedBooking, req.user?.id?.toString(), {
             businessContext,
-            previousBooking: mapBookingRow(oldBooking)
+            previousBooking: mapBookingRowWithVersion(oldBooking)
         });
         _alertPush();
 
@@ -6919,7 +6927,7 @@ router.patch('/:id/payment', requireAction('edit_booking'), async (req, res) => 
             );
         }
         await client.query('COMMIT');
-        res.json({ success: true, booking: mapBookingRow(result.rows[0]) });
+        res.json({ success: true, booking: mapBookingRowWithVersion(result.rows[0]) });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (payment patch)', rbErr));
         log.error('PATCH /bookings/:id/payment error', err);

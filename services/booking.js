@@ -979,6 +979,30 @@ function lineColorForIndex(index, fallback) {
     return AUTO_LINE_COLORS[index % AUTO_LINE_COLORS.length];
 }
 
+function bookingUpdatedAtVersion(value) {
+    if (!value) return null;
+    let date = value;
+    if (!(date instanceof Date)) {
+        const raw = String(value).trim();
+        const localTimestamp = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?$/);
+        if (localTimestamp) {
+            const milliseconds = String(localTimestamp[7] || '').padEnd(3, '0').slice(0, 3);
+            return `${localTimestamp[1]}-${localTimestamp[2]}-${localTimestamp[3]} ${localTimestamp[4]}:${localTimestamp[5]}:${localTimestamp[6]}.${milliseconds}`;
+        }
+        date = new Date(raw);
+    }
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+    const pad = number => String(number).padStart(2, '0');
+    const year = String(date.getFullYear()).padStart(4, '0');
+    return `${year}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3, '0')}`;
+}
+
+function mapBookingRowWithVersion(row) {
+    const booking = mapBookingRow(row);
+    booking.updatedAtVersion = row?.updated_at_version_token || bookingUpdatedAtVersion(row?.updated_at);
+    return booking;
+}
+
 async function getScheduledAnimatorLines(date, db = pool) {
     const result = await db.query(
         `SELECT
@@ -1266,7 +1290,7 @@ module.exports = {
     BANQUET_SERVICE_LINE_ID, TAKEAWAY_ROOM_ID, TAKEAWAY_ROOM_LABEL,
     normalizeBookingStatus, isTakeawayRoomValue, isRoomConflictBlockingRoom, isLineConflictBlockingLine, lockBookingConflictResources,
     checkRoomConflict, checkRoomConflictWithPolicy, checkServerConflicts, checkServerDuplicate, findRoomConflictAmongCandidates,
-    mapBookingRow, ensureDefaultLines, getScheduledAnimatorLines, getAnimatorTimelineLines,
+    mapBookingRow, mapBookingRowWithVersion, ensureDefaultLines, getScheduledAnimatorLines, getAnimatorTimelineLines,
     syncScheduledAnimatorLines, reconcileScheduledAnimatorLines, cleanupLegacyDefaultAnimatorLines, isLegacyDefaultAnimatorLineId,
     getKyivDate, getKyivDateStr, getKyivTimeStr
 };

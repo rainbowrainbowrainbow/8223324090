@@ -6477,6 +6477,7 @@ async function handleBookingMenuWorkflowFinalizeClick() {
         if (result.booking) {
             hydrateBookingPackageWorkspace(result.booking, { ticketBooking: result.booking });
             AppState.editingBookingUpdatedAt = result.booking.updatedAt || AppState.editingBookingUpdatedAt;
+            AppState.editingBookingUpdatedAtVersion = result.booking.updatedAtVersion || AppState.editingBookingUpdatedAtVersion;
         }
         invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
         await renderTimeline();
@@ -9557,6 +9558,7 @@ async function closeBookingPanel(force = false) {
     if (AppState.editingBookingId) {
         AppState.editingBookingId = null;
         AppState.editingBookingUpdatedAt = null; // Clear optimistic lock
+        AppState.editingBookingUpdatedAtVersion = null;
         const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
         const btnSubmit = document.querySelector('#bookingForm .btn-submit');
         if (panelH3) panelH3.textContent = 'Нове бронювання';
@@ -9594,6 +9596,7 @@ async function closeBookingPanel(force = false) {
 function resetBookingEditStateForCreate() {
     AppState.editingBookingId = null;
     AppState.editingBookingUpdatedAt = null;
+    AppState.editingBookingUpdatedAtVersion = null;
     BookingDrawerState.roomBookingAnimationBridge = null;
     BookingDrawerState.banquetEditContext = null;
     BookingDrawerState.legacyReplacementMode = false;
@@ -13416,6 +13419,7 @@ function buildBookingObject(formData, program) {
     // Optimistic locking: include updatedAt from the booking being edited
     if (AppState.editingBookingId) {
         obj.updatedAt = AppState.editingBookingUpdatedAt || null;
+        obj.updatedAtVersion = AppState.editingBookingUpdatedAtVersion || null;
     }
 
     attachActiveBanquetIntentMarker(obj);
@@ -14451,8 +14455,10 @@ async function handleBookingSubmit(e) {
             // Update stored updatedAt from server response
             if (editPath.kind === 'banquet_booking_set') {
                 AppState.editingBookingUpdatedAt = updateResult?.primaryBooking?.updatedAt || AppState.editingBookingUpdatedAt;
+                AppState.editingBookingUpdatedAtVersion = updateResult?.primaryBooking?.updatedAtVersion || AppState.editingBookingUpdatedAtVersion;
             } else if (updateResult && updateResult.booking) {
                 AppState.editingBookingUpdatedAt = updateResult.booking.updatedAt;
+                AppState.editingBookingUpdatedAtVersion = updateResult.booking.updatedAtVersion || null;
             }
             if (editPath.kind !== 'banquet_booking_set') {
                 await apiAddHistory('edit', AppState.currentUser?.username, booking);
@@ -14475,6 +14481,8 @@ async function handleBookingSubmit(e) {
                 }
                 AppState.editingBookingUpdatedAt = refreshedContext.primaryBooking?.updatedAt
                     || AppState.editingBookingUpdatedAt;
+                AppState.editingBookingUpdatedAtVersion = refreshedContext.primaryBooking?.updatedAtVersion
+                    || AppState.editingBookingUpdatedAtVersion;
             }
             AppState.editingBookingId = null;
             closeBookingPanel(true);
@@ -17365,6 +17373,8 @@ async function refreshBanquetEditContextAfterSave(updateResult = {}, previousCon
             hydrateBanquetEditActivityState(responseContext);
             AppState.editingBookingUpdatedAt = responseContext.primaryBooking?.updatedAt
                 || AppState.editingBookingUpdatedAt;
+            AppState.editingBookingUpdatedAtVersion = responseContext.primaryBooking?.updatedAtVersion
+                || AppState.editingBookingUpdatedAtVersion;
         }
         showNotification(
             snapshot?.error
@@ -17734,6 +17744,7 @@ async function editBooking(bookingId, options = {}) {
     AppState.editingBookingId = banquetEditContext?.primaryBookingId || bookingId;
     // Store updatedAt for optimistic locking
     AppState.editingBookingUpdatedAt = booking.updatedAt || null;
+    AppState.editingBookingUpdatedAtVersion = booking.updatedAtVersion || null;
 
     // Відкрити панель з даними бронювання
     const panelLineSource = banquetEditContext && !banquetEditContext.primaryIsActivity ? anchorBooking : booking;

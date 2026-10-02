@@ -962,7 +962,7 @@ async function loadProducts() {
     try {
         const businessContext = getProductApiBusinessContext();
         const [products, blueprintResult] = await Promise.all([
-            apiGetProducts(true, { businessContext }),
+            apiGetProducts(true, { businessContext: getProductApiBusinessContext() }),
             apiGetBurgerMenuImageBlueprint({ businessContext })
         ]);
         if (generation !== productsLoadGeneration || context !== activeBusinessContext) return;

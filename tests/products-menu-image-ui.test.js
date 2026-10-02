@@ -56,6 +56,11 @@ function createPageHarness() {
         allProducts: [menuProduct()],
         MENU_IMAGE_SIZE_OPTIONS: [{ value: '1536x1024', label: 'wide' }],
         MENU_IMAGE_STYLE_OPTIONS: [{ value: 'catalog', label: 'Каталог' }],
+        MENU_IMAGE_GENERATOR_OPTIONS: [
+            { value: 'kie/nano-banana-2', label: 'Kie · Nano Banana 2' },
+            { value: 'kie/nano-banana-pro', label: 'Kie · Nano Banana Pro' },
+            { value: 'openai', label: 'OpenAI · GPT Image' }
+        ],
         MENU_IMAGE_MANUAL_ALLOWED_TYPES: new Set(['image/png']),
         MENU_IMAGE_MANUAL_MAX_FILE_BYTES: 12 * 1024 * 1024,
         escapeHtml(value) {
@@ -81,6 +86,8 @@ function createPageHarness() {
     };
 
     vm.runInContext('const menuImageGenerationState = new Map();', context);
+    vm.runInContext('const menuImageGeneratorSelection = new Map();', context);
+    vm.runInContext('const burgerMenuImageBlueprints = new Map();', context);
     vm.runInContext([
         sourceSection(pageSource, 'function getMenuImageStudioDraft(', 'function menuAiFeedbackForMode('),
         sourceSection(pageSource, 'function setKitchenMenuImageStudioBusy(', 'function renderProgramProducts(')
@@ -104,6 +111,30 @@ function createPageHarness() {
         }
     };
 }
+
+test('a burger card saves one shared blueprint without applying a product draft', async () => {
+    const page = createPageHarness();
+    const product = menuProduct();
+    product.name = 'Курячий бургер';
+    product.iconUrl = '/uploads/catalog-images/items/current-burger.png';
+    page.context.allProducts = [product];
+    let calls = 0;
+    page.context.apiSaveBurgerMenuImageBlueprint = async payload => {
+        calls++;
+        assert.equal(payload.productId, product.id);
+        assert.equal(payload.source, 'current');
+        return { success: true, blueprint: {
+            imageUrl: product.iconUrl, instructions: payload.instructions
+        } };
+    };
+    page.context.renderProducts();
+    const button = page.panel().querySelector('.kitchen-menu-image-blueprint button');
+    assert.ok(button);
+    await page.context.saveBurgerMenuImageBlueprint(product.id, button);
+    assert.equal(calls, 1);
+    assert.equal(product.iconUrl, '/uploads/catalog-images/items/current-burger.png');
+    assert.match(page.panel().textContent, /Еталон для всіх бургерів цього бізнесу · задано/);
+});
 
 test('generation API preserves the structured IMG-02 failure without replaying the request', async () => {
     let calls = 0;
@@ -176,6 +207,54 @@ test('rerender and repeated clicks keep one in-flight request and server cooldow
     app.context.apiGenerateProductMenuImage = async () => { calls++; return { success: false, code: 'menu_image_generation_provider_rejected' }; };
     await app.context.generateKitchenMenuImage('dish-1', app.button());
     assert.equal(calls, 2);
+});
+
+test('Kie selection creates one task and status polling survives a card rerender', async () => {
+    const app = createPageHarness();
+    const selector = app.panel().querySelector('[data-menu-image-generator]');
+    assert.equal(selector.value, 'kie/nano-banana-2');
+    selector.value = 'kie/nano-banana-pro';
+    let generationCalls = 0;
+    let statusCalls = 0;
+    app.context.apiGenerateProductMenuImage = async (id, payload) => {
+        generationCalls++;
+        assert.equal(payload.generator, 'kie/nano-banana-pro');
+        return { success: true, status: 'generating', product: menuProduct(id, 'event_genix', {
+            status: 'generating', provider: 'kie', model: 'nano-banana-pro', taskId: 'task_123'
+        }) };
+    };
+    app.context.apiGetProductMenuImageStatus = async id => {
+        statusCalls++;
+        return statusCalls === 1
+            ? { success: true, status: 'generating', product: menuProduct(id, 'event_genix', {
+                status: 'generating', provider: 'kie', model: 'nano-banana-pro', taskId: 'task_123'
+            }) }
+            : {
+                success: true, status: 'ready',
+                draft: { imageStudio: { provider: 'kie' } },
+                product: menuProduct(id, 'event_genix', {
+                    status: 'ready', provider: 'kie', model: 'nano-banana-pro', imageUrl: '/uploads/kie-draft.png'
+                })
+            };
+    };
+    await app.context.generateKitchenMenuImage('dish-1', app.button());
+    assert.equal(generationCalls, 1);
+    app.context.renderProducts();
+    assert.equal(app.button().disabled, true);
+    await app.context.generateKitchenMenuImage('dish-1', app.button());
+    assert.equal(generationCalls, 1);
+    app.advance(3000);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(statusCalls, 1);
+    assert.equal(app.button().disabled, true);
+    app.advance(4000);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(statusCalls, 2);
+    assert.equal(app.button().disabled, false);
+    assert.equal(app.panel().querySelectorAll('.kitchen-menu-image-preview img')[0].getAttribute('src'), '/uploads/current-photo.jpg');
+    assert.equal(app.panel().querySelectorAll('.kitchen-menu-image-preview img')[1].getAttribute('src'), '/uploads/kie-draft.png');
+    assert.equal(app.panel().querySelector('[data-menu-image-action="apply"]').disabled, false);
+    assert.equal(generationCalls, 1);
 });
 
 test('quota and unknown failures explain the next action without disabling manual upload', async () => {

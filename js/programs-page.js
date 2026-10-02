@@ -358,6 +358,8 @@ let activeMenuSection = 'all';
 let currentCategory = readInitialCategory();
 let allProducts = [];
 const menuImageGenerationState = new Map();
+const menuImageGeneratorSelection = new Map();
+const burgerMenuImageBlueprints = new Map();
 let productsLoadGeneration = 0;
 let productsLoadState = 'ready';
 let productRouteNavigationBound = false;
@@ -444,6 +446,12 @@ const MENU_IMAGE_STYLE_OPTIONS = [
     { value: 'catalog', label: 'Каталог' },
     { value: 'realistic', label: 'Реалістично' },
     { value: 'clean-dark', label: 'Dark CRM' }
+];
+
+const MENU_IMAGE_GENERATOR_OPTIONS = [
+    { value: 'kie/nano-banana-2', label: 'Kie · Nano Banana 2' },
+    { value: 'kie/nano-banana-pro', label: 'Kie · Nano Banana Pro' },
+    { value: 'openai', label: 'OpenAI · GPT Image' }
 ];
 
 const MENU_IMAGE_MANUAL_MAX_FILE_BYTES = 12 * 1024 * 1024;
@@ -952,9 +960,14 @@ async function loadProducts() {
     productsLoadState = 'loading';
     renderProducts();
     try {
-        const products = await apiGetProducts(true, { businessContext: getProductApiBusinessContext() });
+        const businessContext = getProductApiBusinessContext();
+        const [products, blueprintResult] = await Promise.all([
+            apiGetProducts(true, { businessContext }),
+            apiGetBurgerMenuImageBlueprint({ businessContext })
+        ]);
         if (generation !== productsLoadGeneration || context !== activeBusinessContext) return;
         if (!Array.isArray(products)) throw new Error('Products unavailable');
+        burgerMenuImageBlueprints.set(businessContext, blueprintResult?.success ? blueprintResult.blueprint : null);
         allProducts = products;
         productsLoadState = 'ready';
         renderMenuSectionFilter();
@@ -990,6 +1003,7 @@ function renderProducts() {
     if (grid) renderProgramProducts(grid, canManage);
     if (kitchenGrid) renderKitchenProducts(kitchenGrid, canManage);
     syncProductReadOnlyUi();
+    if (kitchenGrid && canManage) resumePendingKitchenMenuImageJobs();
 }
 
 function renderMaysternyaProducts() {
@@ -1198,7 +1212,9 @@ function menuImageGenerationKey(businessContext, productId) {
 }
 
 function menuImageGenerationMessage(state) {
-    if (state?.inFlight) return 'Генеруємо AI-чернетку. Поточне фото не змінюється.';
+    if (state?.inFlight) return state.provider === 'kie'
+        ? 'Kie обробляє фото. Чекаємо на готову чернетку; поточне фото не змінюється.'
+        : 'Генеруємо AI-чернетку. Поточне фото не змінюється.';
     if (!state?.feedback) return '';
 
     const code = state.feedback.code;
@@ -1207,6 +1223,9 @@ function menuImageGenerationMessage(state) {
     }
     if (code === 'menu_image_generation_unavailable' || code === 'openai_not_configured') {
         return 'Генерація AI недоступна через доступ або налаштування провайдера. Повідомте адміністратора. Фото можна завантажити вручну.';
+    }
+    if (code === 'menu_image_reference_unavailable') {
+        return 'Еталонне фото недоступне провайдеру через публічну адресу CRM. Повідомте адміністратора або завантажте фото вручну.';
     }
     const temporarilyUnavailable = code === 'menu_image_generation_temporarily_unavailable';
     if (code === 'menu_image_generation_rate_limited'
@@ -1267,6 +1286,13 @@ function clearMenuImageGenerationFeedback(businessContext, productId) {
     if (!state || state.inFlight) return;
     if (state.cooldownTimer) clearTimeout(state.cooldownTimer);
     menuImageGenerationState.delete(key);
+}
+
+function rememberKitchenMenuImageGenerator(productId, select) {
+    const key = menuImageGenerationKey(getProductApiBusinessContext(), productId);
+    if (MENU_IMAGE_GENERATOR_OPTIONS.some(option => option.value === select?.value)) {
+        menuImageGeneratorSelection.set(key, select.value);
+    }
 }
 
 function menuImageOptionHtml(options = [], selected = '') {
@@ -1339,6 +1365,40 @@ function buildKitchenMenuImagePrompt(product = {}, settings = {}) {
     return lines.filter(Boolean).join('\n');
 }
 
+const BURGER_IMAGE_BLUEPRINT_DEFAULT = 'Однакові тарілка, ракурс, масштаб бургера, світло й кадрування для всієї лінійки. Поруч порція картоплі фрі та кетчуп в окремій маленькій соусниці. Начинку змінювати тільки за складом конкретного товару.';
+
+function isBurgerKitchenProduct(product = {}) {
+    return /бургер|burger/i.test([productMenuTitle(product), product.menuSection, product.menu_section]
+        .filter(Boolean).join(' '));
+}
+
+function renderBurgerMenuImageBlueprint(product, businessContext, draft) {
+    if (!isBurgerKitchenProduct(product)) return '';
+    const blueprint = burgerMenuImageBlueprints.get(businessContext);
+    const draftSource = ['ready', 'approved', 'applied'].includes(draft.status)
+        && /^\/uploads\/catalog-images\/items\//.test(draft.imageUrl || '');
+    const currentSource = /^\/uploads\/catalog-images\/items\//.test(product.iconUrl || product.icon_url || '');
+    const selectedSource = draftSource ? 'draft' : 'current';
+    return `
+        <details class="kitchen-menu-image-blueprint">
+            <summary>Еталон для всіх бургерів цього бізнесу${blueprint ? ' · задано' : ' · не задано'}</summary>
+            ${blueprint?.imageUrl ? renderKitchenMenuImagePreview('Спільний еталон', blueprint.imageUrl, 'для лінійки бургерів', 'Еталон недоступний') : ''}
+            <p>Виберіть вдале фото з цієї картки. Наступні генерації бургерів використають його як зразок тарілки, масштабу й ракурсу.</p>
+            <label><span>Фото-еталон</span>
+                <select data-burger-blueprint-source>
+                    <option value="draft"${selectedSource === 'draft' ? ' selected' : ''}${draftSource ? '' : ' disabled'}>Готова чернетка цієї картки</option>
+                    <option value="current"${selectedSource === 'current' ? ' selected' : ''}${currentSource ? '' : ' disabled'}>Поточне фото цієї картки</option>
+                </select>
+            </label>
+            <label><span>Правила подачі для всієї лінійки</span>
+                <textarea data-burger-blueprint-instructions maxlength="1000" rows="3">${escapeHtml(blueprint?.instructions || BURGER_IMAGE_BLUEPRINT_DEFAULT)}</textarea>
+            </label>
+            <button type="button" class="btn-page-secondary" onclick="saveBurgerMenuImageBlueprint('${escapeJsString(product.id)}', this)"${draftSource || currentSource ? '' : ' disabled'}>Зберегти еталон</button>
+            <p data-burger-blueprint-status role="status" aria-live="polite"></p>
+        </details>
+    `;
+}
+
 function renderKitchenMenuAiActions(product = {}, canManage = false) {
     if (!canManage || getKitchenType(product) !== 'menu') return '';
     const productId = escapeJsString(product.id);
@@ -1360,6 +1420,10 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
     const generationState = menuImageGenerationState.get(generationKey);
     const generationBusy = Boolean(generationState?.inFlight);
     const generationCoolingDown = Boolean(generationState?.cooldownUntil > Date.now());
+    const draftGenerator = draft.provider === 'kie' && draft.model
+        ? `kie/${draft.model}` : (draft.status === 'generating' && draft.provider === 'openai'
+            ? 'openai' : 'kie/nano-banana-2');
+    const generator = menuImageGeneratorSelection.get(generationKey) || draftGenerator;
     const size = MENU_IMAGE_SIZE_OPTIONS.some(item => item.value === draft.size) ? draft.size : '1536x1024';
     const style = MENU_IMAGE_STYLE_OPTIONS.some(item => item.value === draft.style) ? draft.style : 'catalog';
     const productId = escapeJsString(product.id);
@@ -1395,7 +1459,12 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                 ${renderKitchenMenuImagePreview('Поточне фото', currentImage, appliedMeta, 'Немає поточного фото')}
                 ${renderKitchenMenuImagePreview('AI draft', draft.imageUrl || '', draftMeta, 'Згенеруйте чернетку')}
             </div>
+            ${renderBurgerMenuImageBlueprint(product, businessContext, draft)}
             <div class="kitchen-menu-image-controls">
+                <label>
+                    <span>Генератор</span>
+                    <select data-menu-image-generator onchange="rememberKitchenMenuImageGenerator('${productId}', this)"${generationBusy ? ' disabled' : ''}>${menuImageOptionHtml(MENU_IMAGE_GENERATOR_OPTIONS, generator)}</select>
+                </label>
                 <label>
                     <span>Розмір</span>
                     <select data-menu-image-size${generationBusy ? ' disabled' : ''}>${menuImageOptionHtml(MENU_IMAGE_SIZE_OPTIONS, size)}</select>
@@ -1485,6 +1554,36 @@ function setKitchenMenuImageManualStatus(panel, message = '', type = '') {
     if (!status) return;
     status.textContent = message || '';
     status.dataset.type = type || '';
+}
+
+async function saveBurgerMenuImageBlueprint(productId, trigger = null) {
+    if (!guardProductWrite('зберігати еталон фото меню')) return;
+    const product = allProducts.find(item => String(item.id) === String(productId));
+    const panel = trigger?.closest?.('.kitchen-menu-image-studio');
+    if (!product || !panel || panel.getAttribute('aria-busy') === 'true') return;
+    const businessContext = getProductApiBusinessContext(product.businessContext || product.business_context);
+    const source = panel.querySelector('[data-burger-blueprint-source]')?.value;
+    const instructions = panel.querySelector('[data-burger-blueprint-instructions]')?.value?.trim();
+    const status = panel.querySelector('[data-burger-blueprint-status]');
+    if (!source || !instructions) {
+        if (status) status.textContent = 'Оберіть фото та додайте правила подачі.';
+        return;
+    }
+    setKitchenMenuImageStudioBusy(panel, true);
+    if (status) status.textContent = 'Зберігаємо еталон...';
+    try {
+        const result = await apiSaveBurgerMenuImageBlueprint({
+            businessContext, productId, source, instructions
+        });
+        if (!result?.success) throw new Error(result?.error || 'Не вдалося зберегти еталон');
+        burgerMenuImageBlueprints.set(businessContext, result.blueprint);
+        showNotification('Еталон бургерів збережено для цього бізнесу', 'success');
+        renderProducts();
+    } catch (err) {
+        if (status) status.textContent = err.message || 'Не вдалося зберегти еталон';
+    } finally {
+        if (panel.isConnected) setKitchenMenuImageStudioBusy(panel, false);
+    }
 }
 
 function readMenuImageFileAsDataUrl(file) {
@@ -1602,6 +1701,73 @@ function scheduleKitchenMenuImageCooldown(key, state) {
     }, delay + 10);
 }
 
+function scheduleKitchenMenuImageStatusPoll(productId, businessContext, state, delay = 3000) {
+    if (state.pollTimer || state.polling) return;
+    const key = menuImageGenerationKey(businessContext, productId);
+    state.pollStartedAt = state.pollStartedAt || Date.now();
+    if (Date.now() - state.pollStartedAt > 16 * 60 * 1000) {
+        state.inFlight = false;
+        state.feedback = { code: 'menu_image_generation_failed' };
+        if (businessContext === getProductApiBusinessContext()) renderProducts();
+        return;
+    }
+    state.pollTimer = setTimeout(async () => {
+        state.pollTimer = null;
+        if (menuImageGenerationState.get(key) !== state || !state.inFlight) return;
+        state.polling = true;
+        let result;
+        try {
+            result = await apiGetProductMenuImageStatus(productId, { businessContext });
+        } catch {
+            result = null;
+        } finally {
+            state.polling = false;
+        }
+        if (menuImageGenerationState.get(key) !== state) return;
+        if (result?.product && businessContext === getProductApiBusinessContext()) {
+            updateProductInState(result.product);
+        }
+        if (result?.status === 'ready') {
+            menuImageGenerationState.delete(key);
+            if (businessContext === getProductApiBusinessContext()) {
+                renderProducts();
+                if (result.draft?.imageStudio?.provider === 'kie') {
+                    showNotification('AI-чернетка фото меню готова до перегляду. Поточне фото не змінено.', 'success');
+                }
+            }
+            return;
+        }
+        if (result?.status === 'failed') {
+            state.inFlight = false;
+            state.feedback = { code: result.code || null };
+            if (businessContext === getProductApiBusinessContext()) {
+                renderProducts();
+                showNotification(menuImageGenerationMessage(state), 'error');
+            }
+            return;
+        }
+        scheduleKitchenMenuImageStatusPoll(productId, businessContext, state,
+            result?.success === false ? 8000 : 4000);
+    }, delay);
+}
+
+function resumePendingKitchenMenuImageJobs() {
+    for (const product of allProducts) {
+        if (getKitchenType(product) !== 'menu') continue;
+        const draft = getMenuImageStudioDraft(product);
+        if (draft.status !== 'generating' || draft.provider !== 'kie') continue;
+        const businessContext = getProductApiBusinessContext(product.businessContext || product.business_context);
+        const key = menuImageGenerationKey(businessContext, product.id);
+        const state = menuImageGenerationState.get(key) || { inFlight: true, provider: 'kie' };
+        if (!state.inFlight && state.feedback) continue;
+        state.inFlight = true;
+        state.provider = 'kie';
+        menuImageGenerationState.set(key, state);
+        syncKitchenMenuImageGenerationUi(key);
+        scheduleKitchenMenuImageStatusPoll(product.id, businessContext, state);
+    }
+}
+
 async function generateKitchenMenuImage(productId, trigger = null) {
     if (!guardProductWrite('генерувати фото меню')) return;
     const businessContext = getProductApiBusinessContext();
@@ -1616,15 +1782,19 @@ async function generateKitchenMenuImage(productId, trigger = null) {
     const panel = trigger?.closest?.('.kitchen-menu-image-studio');
     const size = panel?.querySelector?.('[data-menu-image-size]')?.value || '1536x1024';
     const style = panel?.querySelector?.('[data-menu-image-style]')?.value || 'catalog';
+    const generator = panel?.querySelector?.('[data-menu-image-generator]')?.value || 'kie/nano-banana-2';
+    menuImageGeneratorSelection.set(key, generator);
     if (state.cooldownTimer) clearTimeout(state.cooldownTimer);
     state.inFlight = true;
     state.feedback = null;
     state.cooldownUntil = 0;
     state.cooldownTimer = null;
+    state.provider = generator.startsWith('kie/') ? 'kie' : 'openai';
     menuImageGenerationState.set(key, state);
     if (panel) setKitchenMenuImageStudioBusy(panel, true);
     syncKitchenMenuImageGenerationUi(key);
     let notificationType = 'error';
+    let pending = false;
     try {
         if (typeof apiGenerateProductMenuImage !== 'function') {
             throw new Error('Menu image generation API is not available');
@@ -1632,12 +1802,16 @@ async function generateKitchenMenuImage(productId, trigger = null) {
         const result = await apiGenerateProductMenuImage(productId, {
             businessContext,
             size,
-            style
+            style,
+            generator
         });
         if (result?.product && businessContext === getProductApiBusinessContext()) {
             updateProductInState(result.product);
         }
-        if (result?.success) {
+        if (result?.success && result.status === 'generating') {
+            pending = true;
+            state.provider = 'kie';
+        } else if (result?.success) {
             notificationType = 'success';
             menuImageGenerationState.delete(key);
         } else {
@@ -1651,11 +1825,12 @@ async function generateKitchenMenuImage(productId, trigger = null) {
         state.feedback = { code: null };
         state.cooldownUntil = 0;
     } finally {
-        state.inFlight = false;
+        state.inFlight = pending;
         if (state.feedback && state.cooldownUntil) scheduleKitchenMenuImageCooldown(key, state);
         if (businessContext === getProductApiBusinessContext()) {
             renderProducts();
-            showNotification(notificationType === 'success'
+            if (pending) scheduleKitchenMenuImageStatusPoll(productId, businessContext, state);
+            else showNotification(notificationType === 'success'
                 ? 'AI-чернетка фото меню готова до перегляду. Поточне фото не змінено.'
                 : menuImageGenerationMessage(state), notificationType);
         }

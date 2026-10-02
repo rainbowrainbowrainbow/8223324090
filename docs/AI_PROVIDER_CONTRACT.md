@@ -18,14 +18,17 @@
 
 ## Kitchen Menu Image Drafts
 
-- Provider: direct OpenAI image generation.
-- Env: `OPENAI_API_KEY`, `OPENAI_API_BASE`, `OPENAI_MENU_IMAGE_MODEL`; fallback model env is `OPENAI_IMAGE_MODEL`.
+- Генератор обирає оператор: Kie.ai `nano-banana-2` або `nano-banana-pro`, чи direct OpenAI. У картці меню за замовчуванням обрано Kie Nano Banana 2; API-запити без `generator` зберігають попередню поведінку OpenAI для сумісності.
+- Env: `KIE_API_KEY` для Kie; `OPENAI_API_KEY`, `OPENAI_API_BASE`, `OPENAI_MENU_IMAGE_MODEL` для OpenAI, з `OPENAI_IMAGE_MODEL` як fallback-моделлю OpenAI.
 - Backend owner: `services/menuPhotoGeneration.js`.
 - Product API entrypoints: `/api/products/:id/menu-image/draft`, `/api/products/:id/menu-image/apply`, `/api/products/:id/menu-image/reject`, `/api/products/:id/menu-image/status`.
 - Hermes API entrypoints: `/api/hermes/menu-photos/:productId/draft`, `/api/hermes/menu-photos/:productId/apply`, `/api/hermes/menu-photos/:productId/reject`.
 - Prompt source: generated from product name, code, kitchen type, menu section, serving unit, weight/output, ingredients, description, requested size, and style template.
+- Бургерна лінійка визначається за назвою або розділом меню. Навіть без фото-еталона prompt задає однакову подачу: один бургер, картопля фрі та кетчуп в окремій соусниці. Оператор може зберегти спільний для бізнесу еталон із готової чернетки або поточного CRM-фото та відредагувати правила подачі у картці. Потрібне фото у `/uploads/catalog-images/items`; для інших URL спершу створіть ручну чернетку. Налаштування зберігається у `settings` під ключем `menu_image_blueprint:<businessContext>:burger` і не змінює продукт.
+- Product blueprint API: `GET/POST /api/products/menu-image/burger-blueprint`; POST приймає `productId`, `source` (`draft`/`current`) і `instructions`, але URL фото бере тільки зі збереженого продукту того самого бізнесу. Kie отримує цей еталон в `image_input`; абсолютний HTTPS URL CRM береться з `PUBLIC_BASE_URL`, `CRM_PUBLIC_URL`, `APP_URL` або `RAILWAY_PUBLIC_DOMAIN`. Якщо публічної адреси немає, генерація з еталоном відмовляє до створення платної задачі.
 - Storage: generated files are copied through `services/imageStorage.js` into `/uploads/catalog-images/items`.
 - Draft state: CRM stores provider/model/size/style/prompt/status/image URL under `products.ai_card_draft.imageStudio`.
+- Задачі Kie асинхронні: чернетка зберігає ID задачі під час генерації; наявний авторизований status endpoint перевіряє Kie і копіює готове фото в CRM storage. Перевірка статусу не запускає повторної платної генерації. Після перезавантаження каталогу перевірка незавершеної задачі відновлюється.
 - Approval: draft generation must not write `products.icon_url`; only explicit `apply` copies the approved draft URL to `products.icon_url`.
 
 ## Provider Diagnostics

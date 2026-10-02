@@ -68,6 +68,7 @@ const {
     normalizeMenuImageStyle,
     resolveMenuImageOpenAIModel
 } = require('../services/menuPhotoGeneration');
+const { isBurgerMenuProduct, readBurgerBlueprint } = require('../services/menuImageBlueprint');
 const {
     buildMenuImageContext,
     createExternalMenuImageDraft,
@@ -3376,7 +3377,9 @@ function createHermesRouter(options = {}) {
                 const currentStudio = normalizeHermesMenuImageStudio(currentDraft.imageStudio || currentDraft.image_studio || {});
                 const size = normalizeMenuImageSize(payload.size || currentStudio.size);
                 const style = normalizeMenuImageStyle(payload.style || currentStudio.style);
-                const prompt = payload.prompt || buildMenuImagePrompt(product, { size, style });
+                const blueprint = !payload.prompt && isBurgerMenuProduct(product)
+                    ? await readBurgerBlueprint(businessContext, mutationPool) : null;
+                const prompt = payload.prompt || buildMenuImagePrompt(product, { size, style, blueprint });
                 const preparedAt = new Date().toISOString();
                 const generatingStudio = normalizeHermesMenuImageStudio({
                     ...currentStudio,

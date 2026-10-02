@@ -476,6 +476,61 @@ body.dark-mode .kitchen-menu-image-generation-status[data-type="error"] {
     resize: vertical;
 }
 
+.kitchen-menu-image-blueprint {
+    padding: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 10px;
+}
+
+.kitchen-menu-image-blueprint summary {
+    cursor: pointer;
+    color: var(--text-primary, #0f172a);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.kitchen-menu-image-blueprint[open] {
+    display: grid;
+    gap: 8px;
+}
+
+.kitchen-menu-image-blueprint .kitchen-menu-image-preview {
+    max-width: 210px;
+}
+
+.kitchen-menu-image-blueprint p,
+.kitchen-menu-image-blueprint label span {
+    margin: 0;
+    color: var(--gray-500, #64748b);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.kitchen-menu-image-blueprint label {
+    display: grid;
+    gap: 4px;
+}
+
+.kitchen-menu-image-blueprint select,
+.kitchen-menu-image-blueprint textarea {
+    width: 100%;
+    padding: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--text-primary, #0f172a);
+    font: inherit;
+    font-size: 12px;
+}
+
+.kitchen-menu-image-blueprint textarea {
+    resize: vertical;
+}
+
+.kitchen-menu-image-blueprint button {
+    justify-self: start;
+}
+
 body.dark-mode .kitchen-menu-image-studio {
     background: rgba(255, 255, 255, 0.04);
     border-color: rgba(255, 255, 255, 0.10);
@@ -484,9 +539,15 @@ body.dark-mode .kitchen-menu-image-studio {
 body.dark-mode .kitchen-menu-image-controls select,
 body.dark-mode .kitchen-menu-image-manual input,
 body.dark-mode .kitchen-menu-image-prompt textarea,
+body.dark-mode .kitchen-menu-image-blueprint select,
+body.dark-mode .kitchen-menu-image-blueprint textarea,
 body.dark-mode .kitchen-menu-ai-action {
     background: rgba(15, 23, 42, 0.72);
     border-color: rgba(255, 255, 255, 0.12);
+    color: #f8fafc;
+}
+
+body.dark-mode .kitchen-menu-image-blueprint summary {
     color: #f8fafc;
 }
 

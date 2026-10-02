@@ -3,8 +3,10 @@
  * and local CRM upload persistence.
  */
 const { catalogImageStorageDescriptor, uploadFromUrl, makeFilename } = require('./imageStorage');
+const { isBurgerMenuProduct, BURGER_BLUEPRINT_INSTRUCTIONS } = require('./menuImageBlueprint');
 
 const MENU_IMAGE_DEFAULT_OPENAI_MODEL = 'gpt-image-1-mini';
+const MENU_IMAGE_KIE_MODELS = new Set(['nano-banana-2', 'nano-banana-pro']);
 const MENU_IMAGE_STUDIO_SIZES = new Set(['1536x1024', '1024x1024', '1024x1536']);
 const MENU_IMAGE_STUDIO_LEGACY_SIZE_MAP = {
     '1536x864': '1536x1024',
@@ -97,10 +99,13 @@ function menuImagePublicError(err) {
     if (code === 'openai_not_configured') {
         return { ...base, status: 503, code, error: 'OPENAI_API_KEY is not configured' };
     }
+    if (code === 'kie_not_configured' || code === 'kie_access_unavailable') {
+        return { ...base, status: 503, code: 'menu_image_generation_unavailable', error: 'Menu image generation provider access is unavailable' };
+    }
     if (code === 'menu_image_upload_failed') {
         return { ...base, status: 502, code, error: 'Generated image could not be saved to CRM uploads' };
     }
-    if (code === 'openai_quota_exceeded'
+    if (code === 'kie_quota_exceeded' || code === 'openai_quota_exceeded'
         || MENU_IMAGE_PROVIDER_QUOTA_CODES.has(err?.providerCode)
         || err?.providerType === 'insufficient_quota') {
         return { ...base, status: 429, code: 'menu_image_generation_quota_exceeded', error: 'Provider credits or account limits prevent menu image generation' };
@@ -108,7 +113,7 @@ function menuImagePublicError(err) {
     if (code === 'openai_access_unavailable' || providerStatus === 401 || providerStatus === 403) {
         return { ...base, status: 503, code: 'menu_image_generation_unavailable', error: 'Menu image generation provider access is unavailable' };
     }
-    if (code === 'openai_rate_limited') {
+    if (code === 'kie_rate_limited' || code === 'openai_rate_limited') {
         return {
             ...base,
             status: 429,
@@ -139,6 +144,7 @@ function menuImageFailureDiagnostic(err) {
     return {
         providerStatus: Number.isInteger(err?.providerStatus) && err.providerStatus >= 100 && err.providerStatus <= 599
             ? err.providerStatus : null,
+        provider: err?.provider === 'kie' ? 'kie' : (err?.provider === 'openai' ? 'openai' : null),
         providerCode: allowedProviderValue(err?.providerCode, MENU_IMAGE_PROVIDER_CODES),
         providerType: allowedProviderValue(err?.providerType, MENU_IMAGE_PROVIDER_TYPES),
         requestId: publicError.requestId,
@@ -146,6 +152,108 @@ function menuImageFailureDiagnostic(err) {
         publicCode: publicError.code,
         retryable: publicError.retryable
     };
+}
+
+function resolveMenuImageGenerator(value) {
+    const requested = String(value || 'openai').trim();
+    if (requested === 'openai') return { provider: 'openai', model: resolveMenuImageOpenAIModel() };
+    const model = requested.startsWith('kie/') ? requested.slice(4) : '';
+    if (MENU_IMAGE_KIE_MODELS.has(model)) return { provider: 'kie', model };
+    const err = new Error('Unsupported menu image generator');
+    err.code = 'menu_image_generator_invalid';
+    err.status = 400;
+    throw err;
+}
+
+function kieMenuImageError(status, response, headers) {
+    const providerStatus = Number.isInteger(response?.code) && response.code >= 400 && response.code <= 599
+        ? response.code : status;
+    const retryAfterSeconds = menuImageRetryAfterSeconds(headers?.get?.('retry-after'));
+    const code = providerStatus === 402 ? 'kie_quota_exceeded'
+        : providerStatus === 429 ? (retryAfterSeconds === null ? 'kie_unknown_rate_limit' : 'kie_rate_limited')
+            : providerStatus === 401 || providerStatus === 403 ? 'kie_access_unavailable'
+                : 'kie_menu_image_failed';
+    const err = new Error(`Kie menu image request failed (${providerStatus})`);
+    err.code = code;
+    err.provider = 'kie';
+    err.providerStatus = providerStatus;
+    err.requestId = safeMenuImageRequestId(headers?.get?.('x-request-id'));
+    err.retryAfterSeconds = code === 'kie_rate_limited' ? retryAfterSeconds : null;
+    return err;
+}
+
+async function kieMenuImageRequest(path, options = {}) {
+    const key = process.env.KIE_API_KEY;
+    if (!key) {
+        const err = new Error('KIE_API_KEY is not configured');
+        err.code = 'kie_not_configured';
+        err.provider = 'kie';
+        throw err;
+    }
+    const response = await fetch(`https://api.kie.ai${path}`, {
+        method: options.body ? 'POST' : 'GET',
+        headers: {
+            Authorization: `Bearer ${key}`,
+            ...(options.body ? { 'Content-Type': 'application/json' } : {})
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: AbortSignal.timeout(30000)
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || body?.code !== 200) throw kieMenuImageError(response.status, body, response.headers);
+    return body;
+}
+
+async function startMenuImageWithKie({ prompt, size, model, referenceImageUrl = null }) {
+    resolveMenuImageGenerator(`kie/${model}`);
+    const aspectRatio = { '1536x1024': '3:2', '1024x1024': '1:1', '1024x1536': '2:3' }[normalizeMenuImageSize(size)];
+    const body = await kieMenuImageRequest('/api/v1/jobs/createTask', {
+        body: {
+            model,
+            input: { prompt, image_input: referenceImageUrl ? [referenceImageUrl] : [],
+                aspect_ratio: aspectRatio, resolution: '1K', output_format: 'png' }
+        }
+    });
+    const taskId = body?.data?.taskId;
+    if (typeof taskId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(taskId)) {
+        const err = new Error('Kie did not return a valid task ID');
+        err.code = 'kie_menu_image_failed';
+        err.provider = 'kie';
+        throw err;
+    }
+    return { taskId, provider: 'kie', model };
+}
+
+async function pollMenuImageWithKie(taskId) {
+    if (typeof taskId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(taskId)) {
+        const err = new Error('Invalid Kie task ID');
+        err.code = 'kie_menu_image_failed';
+        err.provider = 'kie';
+        throw err;
+    }
+    const body = await kieMenuImageRequest(`/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`);
+    const data = body?.data || {};
+    if (data.state === 'fail') {
+        const failStatus = Number(data.failCode);
+        const err = [401, 402, 403, 429].includes(failStatus)
+            ? kieMenuImageError(failStatus, { code: failStatus })
+            : Object.assign(new Error('Kie menu image task failed'), {
+                code: 'kie_menu_image_failed', provider: 'kie'
+            });
+        return { status: 'failed', error: err };
+    }
+    if (data.state !== 'success') return { status: 'generating' };
+    let result;
+    try { result = typeof data.resultJson === 'string' ? JSON.parse(data.resultJson) : data.resultJson; }
+    catch { result = null; }
+    const sourceUrl = result?.resultUrls?.[0];
+    if (typeof sourceUrl !== 'string' || !/^https:\/\//i.test(sourceUrl) || sourceUrl.length > 2000) {
+        const err = new Error('Kie task returned no valid image URL');
+        err.code = 'kie_menu_image_failed';
+        err.provider = 'kie';
+        return { status: 'failed', error: err };
+    }
+    return { status: 'ready', sourceUrl };
 }
 
 function getOpenAIApiBase() {
@@ -222,6 +330,8 @@ function buildMenuImagePrompt(product = {}, options = {}) {
     const style = normalizeMenuImageStyle(options.style);
     const allergens = menuImageAllergenLabels(product.allergens || []);
     const price = Number(pickProductField(product, 'price', 'price') || pickProductField(product, 'legacy_price', 'legacyPrice') || 0);
+    const burger = isBurgerMenuProduct(product);
+    const blueprint = burger ? options.blueprint : null;
     const lines = [
         `Menu item: ${pickProductField(product, 'name', 'name') || pickProductField(product, 'label', 'label') || pickProductField(product, 'code', 'code') || pickProductField(product, 'id', 'id') || 'Untitled menu item'}`,
         pickProductField(product, 'code', 'code') ? `CRM code: ${pickProductField(product, 'code', 'code')}` : '',
@@ -238,6 +348,8 @@ function buildMenuImagePrompt(product = {}, options = {}) {
         `Target size: ${size}`,
         `Style preset: ${style}`,
         menuImageStyleInstruction(style),
+        burger ? (blueprint?.instructions || BURGER_BLUEPRINT_INSTRUCTIONS) : '',
+        blueprint?.imageUrl ? 'Use the supplied reference image as the visual blueprint for plate, scale, camera angle, lighting and composition. Preserve this product\'s own ingredients.' : '',
         'Create one product catalog photo for a Ukrainian children entertainment center CRM.',
         'Clean commercial restaurant menu photo, appetizing but realistic, centered dish, useful at small card size.',
         'Horizontal CRM menu card crop, dish fully visible, no text, no logo, no watermark, no people, no hands, no packaging.',
@@ -326,6 +438,39 @@ function buildMenuImageFilename(product = {}) {
     return makeFilename('menu', label, 'png');
 }
 
+async function storeMenuImageWithKie(product = {}, job = {}, options = {}) {
+    const savedUrl = await uploadFromUrl(job.sourceUrl, buildMenuImageFilename(product), {
+        ...options.uploadOptions,
+        validateUrl: imageUrl => {
+            const parsed = new URL(imageUrl);
+            const host = parsed.hostname.toLowerCase();
+            if (parsed.protocol !== 'https:'
+                || !(['kie.ai', 'aiquickdraw.com'].includes(host)
+                    || host.endsWith('.kie.ai') || host.endsWith('.aiquickdraw.com'))) {
+                throw new Error('Kie image result host is not allowed');
+            }
+        }
+    });
+    if (!savedUrl) {
+        const err = new Error('Generated image could not be saved to CRM uploads');
+        err.code = 'menu_image_upload_failed';
+        err.provider = 'kie';
+        throw err;
+    }
+    return {
+        status: 'ready',
+        source: 'kie',
+        imageUrl: savedUrl,
+        provider: 'kie',
+        model: options.model,
+        size: normalizeMenuImageSize(options.size),
+        style: normalizeMenuImageStyle(options.style),
+        generatedAt: new Date().toISOString(),
+        storage: catalogImageStorageDescriptor(options.uploadOptions, savedUrl),
+        error: null
+    };
+}
+
 async function generateAndStoreMenuPhotoDraft(product = {}, options = {}) {
     const size = normalizeMenuImageSize(options.size);
     const style = normalizeMenuImageStyle(options.style);
@@ -376,6 +521,10 @@ module.exports = {
     buildMenuImagePrompt,
     generateMenuImageWithOpenAI,
     generateAndStoreMenuPhotoDraft,
+    resolveMenuImageGenerator,
+    startMenuImageWithKie,
+    pollMenuImageWithKie,
+    storeMenuImageWithKie,
     resolveMenuImageOpenAIModel,
     menuImagePublicError,
     menuImageFailureDiagnostic

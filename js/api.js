@@ -3767,6 +3767,37 @@ async function apiGenerateProductMenuImage(id, payload = {}) {
     }
 }
 
+async function apiGetBurgerMenuImageBlueprint(options = {}) {
+    try {
+        const params = new URLSearchParams();
+        addProductBusinessContextParam(params, getProductBusinessContextValue(options));
+        const response = await apiNetworkFetch(`${API_BASE}/products/menu-image/burger-blueprint?${params}`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        return response.ok ? body : { success: false, error: body.error || 'API error' };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiSaveBurgerMenuImageBlueprint(payload = {}) {
+    try {
+        if (!guardCrmBusinessWrite('зберегти еталон фото меню')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'зберегти еталон фото меню') };
+        }
+        const response = await apiNetworkFetch(`${API_BASE}/products/menu-image/burger-blueprint`, {
+            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(payload)
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        return response.ok ? body : { success: false, error: body.error || 'API error', code: body.code };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
 async function apiCreateProductMenuExternalDraft(id, payload = {}) {
     try {
         if (!guardCrmBusinessWrite('зберегти ручний draft фото меню')) {
@@ -3800,7 +3831,16 @@ async function apiGetProductMenuImageStatus(id, options = {}) {
         if (handleAuthError(response)) return { success: false };
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-            return { success: false, error: body.error || 'API error', code: body.code };
+            return {
+                success: false,
+                status: body.status || null,
+                error: body.error || 'API error',
+                code: body.code || null,
+                retryable: body.retryable === true,
+                retryAfterSeconds: Number.isInteger(body.retryAfterSeconds) ? body.retryAfterSeconds : null,
+                requestId: body.requestId || null,
+                product: body.product || null
+            };
         }
         return body;
     } catch (err) {

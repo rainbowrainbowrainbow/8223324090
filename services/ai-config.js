@@ -448,6 +448,20 @@ async function getAIProviderDiagnostics() {
                 keyEnv: 'KIE_API_KEY'
             },
             {
+                id: 'menu_photo_kie',
+                provider: 'kie.ai',
+                status: kieConfigured ? 'ready' : 'missing_key',
+                model: 'nano-banana-2 / nano-banana-pro',
+                keyEnv: 'KIE_API_KEY'
+            },
+            {
+                id: 'menu_photo_openai',
+                provider: 'openai',
+                status: openAIConfigured ? 'ready' : 'missing_key',
+                model: process.env.OPENAI_MENU_IMAGE_MODEL || process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1-mini',
+                keyEnv: 'OPENAI_API_KEY'
+            },
+            {
                 id: 'sound_tts',
                 provider: 'kie.ai',
                 status: kieConfigured ? 'ready' : 'missing_key',

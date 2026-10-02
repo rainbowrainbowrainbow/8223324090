@@ -20,6 +20,7 @@ const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
 const MODES = {
     api: ['tests/api.test.js'],
+    finance: ['tests/integration/finance-transactions-pnl.integration.test.js'],
     attendance: [
         'tests/integration/attendance-lock-concurrency.integration.test.js',
         'tests/integration/hr-scheduler-jobs.integration.test.js',
@@ -118,7 +119,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
@@ -822,7 +823,7 @@ async function main() {
         }
     }
     const files = mode === 'all'
-        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['my-day-browser'], ...MODES['cashier-smoke'], ...MODES['checkbox-config'], ...MODES['checkbox-ui-real'], ...MODES.onboarding, ...MODES.backfill, ...MODES['upload-backfill']]
+        ? [...MODES.api, ...MODES.finance, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['my-day-browser'], ...MODES['cashier-smoke'], ...MODES['checkbox-config'], ...MODES['checkbox-ui-real'], ...MODES.onboarding, ...MODES.backfill, ...MODES['upload-backfill']]
         : MODES[mode];
 
     const databaseLock = await acquireIsolatedDatabaseLock(testDb);

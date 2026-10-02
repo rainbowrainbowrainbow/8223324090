@@ -420,6 +420,12 @@ jobs:
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:integration:payroll-profiles:isolated
 
+      - name: Run finance amount and uncategorized P&L integration
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:integration:finance:isolated
+
       - name: Run admission ticket catalog and concurrency integration
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test

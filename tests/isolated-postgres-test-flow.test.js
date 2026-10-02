@@ -363,7 +363,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION/);
         assert.match(runner, /RUN_ZRS_PAYROLL_PERIOD_LOCK_INTEGRATION/);
         assert.match(runner, /RUN_PAYROLL_INSTALLMENTS_INTEGRATION/);
-        assert.match(runner, /payroll:\s*\[\s*'tests\/integration\/payroll-profiles\.integration\.test\.js',\s*'tests\/integration\/payroll-simultaneous-additional\.integration\.test\.js',\s*'tests\/integration\/zrs-payroll-period-lock\.integration\.test\.js',\s*'tests\/integration\/payroll-installments\.integration\.test\.js',\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js'\s*\]/);
+        assert.match(runner, /payroll:\s*\[\s*'tests\/integration\/payroll-profiles\.integration\.test\.js',\s*'tests\/integration\/payroll-simultaneous-additional\.integration\.test\.js',\s*'tests\/integration\/zrs-payroll-period-lock\.integration\.test\.js',\s*'tests\/integration\/payroll-installments\.integration\.test\.js',\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js',\s*'tests\/integration\/finance-transactions-pnl\.integration\.test\.js'\s*\]/);
         assert.match(runner, /'payroll-fullstack':\s*\[\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js'\s*\]/);
         assert.match(runner, /RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION/);
         assert.match(runner, /PAYROLL_FULLSTACK_TEST_NOW/);

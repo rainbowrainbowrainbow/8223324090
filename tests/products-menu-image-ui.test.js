@@ -278,6 +278,42 @@ test('quota and unknown failures explain the next action without disabling manua
     }
 });
 
+test('failed Kie polling shows the safe task ID without triggering another generation', async () => {
+    const app = createPageHarness();
+    let generationCalls = 0;
+    app.context.apiGenerateProductMenuImage = async id => {
+        generationCalls++;
+        return { success: true, status: 'generating', product: menuProduct(id, 'event_genix', {
+            status: 'generating', provider: 'kie', model: 'nano-banana-2', taskId: 'task_failed_123'
+        }) };
+    };
+    app.context.apiGetProductMenuImageStatus = async id => ({
+        success: false, status: 'failed', code: 'menu_image_generation_failed',
+        providerCode: 'INPUT_IMAGE_FAILED', providerTaskId: 'task_failed_123',
+        product: menuProduct(id, 'event_genix', { status: 'failed', provider: 'kie' })
+    });
+    await app.context.generateKitchenMenuImage('dish-1', app.button());
+    app.advance(3000);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.match(app.message(), /INPUT_IMAGE_FAILED/);
+    assert.match(app.message(), /task_failed_123/);
+    assert.equal(app.panel().querySelector('[data-menu-image-file]').disabled, false);
+    assert.equal(generationCalls, 1);
+});
+
+test('failed Kie draft keeps its support ID visible after catalog rerender', () => {
+    const app = createPageHarness();
+    app.context.allProducts = [menuProduct('dish-1', 'event_genix', {
+        status: 'failed', provider: 'kie', providerCode: 'INPUT_IMAGE_FAILED',
+        taskId: 'task_failed_123', prompt: 'test prompt'
+    })];
+    app.context.renderProducts();
+    assert.match(app.message(), /INPUT_IMAGE_FAILED/);
+    assert.match(app.message(), /task_failed_123/);
+    assert.equal(app.button().disabled, false);
+    assert.equal(app.panel().querySelector('[data-menu-image-file]').disabled, false);
+});
+
 test('a quota failure still allows a manual draft and clears the AI error after saving it', async () => {
     const app = createPageHarness();
     app.context.apiGenerateProductMenuImage = async () => ({

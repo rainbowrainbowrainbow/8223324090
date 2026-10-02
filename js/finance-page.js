@@ -380,13 +380,14 @@ async function saveTransaction() {
     if (btn && btn.disabled) return;
     const type = document.getElementById('editType')?.value;
     const categoryId = document.getElementById('editCategory')?.value;
-    const amount = parseInt(document.getElementById('editAmount')?.value);
+    const amountInput = String(document.getElementById('editAmount')?.value || '').trim();
+    const amount = Number(amountInput);
     const date = document.getElementById('editDate')?.value;
     const paymentMethod = document.getElementById('editPayment')?.value;
     const description = document.getElementById('editDescription')?.value.trim();
 
-    if (!amount || amount <= 0) {
-        showNotification('Вкажіть суму', 'error');
+    if (!/^\d+$/.test(amountInput) || !Number.isSafeInteger(amount) || amount <= 0 || amount > 2147483647) {
+        showNotification('Вкажіть додатну цілу суму гривень (до 2 147 483 647)', 'error');
         return;
     }
     if (!date) {
@@ -408,7 +409,9 @@ async function saveTransaction() {
         await closeTransModal(true);
         refreshData();
     } catch (err) {
-        showNotification('Помилка збереження', 'error');
+        showNotification(err.code === 'finance_amount_invalid'
+            ? 'Вкажіть додатну цілу суму гривень (до 2 147 483 647)'
+            : 'Помилка збереження', 'error');
     } finally {
         if (btn) btn.disabled = false;
     }

@@ -12,6 +12,7 @@ const { createLogger } = require('../utils/logger');
 const { requireRole, requireAction } = require('../middleware/auth');
 const { publish } = require('../services/eventBus');
 const { getSalaryReport } = require('../services/payroll');
+const { normalizeFinanceTransactionAmount } = require('../utils/financeAmounts');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { classifyLegacyManualSalaryFinance } = require('../services/payrollSettlement');
 const {
@@ -424,9 +425,7 @@ router.post('/transactions', async (req, res) => {
         if (!type || !['income', 'expense'].includes(type)) {
             return res.status(400).json({ error: 'type (income|expense) required' });
         }
-        if (!amount || amount <= 0) {
-            return res.status(400).json({ error: 'amount must be positive integer' });
-        }
+        const normalizedAmount = normalizeFinanceTransactionAmount(amount);
         if (!date || !isValidDate(date)) {
             return res.status(400).json({ error: 'valid date (YYYY-MM-DD) required' });
         }
@@ -438,7 +437,7 @@ router.post('/transactions', async (req, res) => {
             const result = await client.query(
                 `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, staff_id, certificate_id, account_id, account_name, created_by)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
-                [businessContext, type, categoryId || null, parseInt(amount), description || null, date,
+                [businessContext, type, categoryId || null, normalizedAmount, description || null, date,
                  paymentMethod || null, bookingId || null, staffId || null, certificateId || null,
                  accountId || null, accountName, req.user?.username]
             );
@@ -476,6 +475,8 @@ router.put('/transactions/:id', async (req, res) => {
         if (!businessContext) return;
         const { id } = req.params;
         const { type, categoryId, amount, description, date, paymentMethod, accountId } = req.body;
+        const normalizedAmount = Object.prototype.hasOwnProperty.call(req.body, 'amount')
+            ? normalizeFinanceTransactionAmount(amount) : null;
 
         const updated = await withFinanceTransaction(async client => {
             const initial = await client.query(
@@ -526,7 +527,7 @@ router.put('/transactions/:id', async (req, res) => {
                     account_name = COALESCE($10, account_name),
                     updated_at = NOW()
                  WHERE id = $7 AND ${businessScopeSql('', '$8')}`,
-                [type, categoryId, amount ? parseInt(amount) : null, description, date, paymentMethod, id, businessContext,
+                [type, categoryId, normalizedAmount, description, date, paymentMethod, id, businessContext,
                     accountId === undefined ? null : (accountId || null),
                     accountId === undefined ? null : accountName]
             );
@@ -1333,7 +1334,8 @@ router.get('/report/pnl', async (req, res) => {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;
         const year = parseInt(req.query.year) || new Date().getFullYear();
-        const month = parseInt(req.query.month);
+        const requestedMonth = parseInt(req.query.month);
+        const month = requestedMonth >= 1 && requestedMonth <= 12 ? requestedMonth : null;
 
         let from, to;
         if (month && month >= 1 && month <= 12) {
@@ -1347,9 +1349,9 @@ router.get('/report/pnl', async (req, res) => {
 
         // Revenue by category
         const income = await pool.query(`
-            SELECT fc.name, fc.icon, COALESCE(SUM(ft.amount), 0)::int AS total
+            SELECT COALESCE(fc.name, 'Без категорії') AS name, fc.icon, COALESCE(SUM(ft.amount), 0)::int AS total
             FROM finance_transactions ft
-            JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
+            LEFT JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
             WHERE ft.type = 'income'
               AND ${financeRecognitionDateSql('ft')} >= $1::date
               AND ${financeRecognitionDateSql('ft')} <= $2::date
@@ -1359,9 +1361,9 @@ router.get('/report/pnl', async (req, res) => {
 
         // COGS / Direct expenses
         const expenses = await pool.query(`
-            SELECT fc.name, fc.icon, COALESCE(SUM(ft.amount), 0)::int AS total
+            SELECT COALESCE(fc.name, 'Без категорії') AS name, fc.icon, COALESCE(SUM(ft.amount), 0)::int AS total
             FROM finance_transactions ft
-            JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
+            LEFT JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
             WHERE ft.type = 'expense'
               AND ${financeRecognitionDateSql('ft')} >= $1::date
               AND ${financeRecognitionDateSql('ft')} <= $2::date

@@ -195,10 +195,36 @@ test('Kie task failure code 402 is a quota failure without an automatic retry', 
     }), { status: 200 });
     const result = await pollMenuImageWithKie('task_credits');
     assert.equal(result.status, 'failed');
+    assert.equal(result.error.providerCode, '402');
+    assert.equal(result.error.providerTaskId, 'task_credits');
     const publicError = menuImagePublicError(result.error);
     assert.equal(publicError.code, 'menu_image_generation_quota_exceeded');
     assert.equal(publicError.retryable, false);
     assert.equal(JSON.stringify(publicError).includes('PRIVATE_PROVIDER_MESSAGE'), false);
+});
+
+test('Kie task failures retain only a bounded code and task ID, never the provider message', async () => {
+    process.env.KIE_API_KEY = 'synthetic-test-key';
+    global.fetch = async () => new Response(JSON.stringify({
+        code: 200,
+        data: { state: 'fail', failCode: 'INPUT_IMAGE_FAILED', failMsg: 'PRIVATE_PROVIDER_MESSAGE' }
+    }), { status: 200 });
+    const result = await pollMenuImageWithKie('task_reference_123');
+    assert.equal(result.status, 'failed');
+    assert.equal(menuImagePublicError(result.error).code, 'menu_image_generation_failed');
+    assert.equal(result.error.providerCode, 'INPUT_IMAGE_FAILED');
+    assert.equal(result.error.providerTaskId, 'task_reference_123');
+    const diagnostic = menuImageFailureDiagnostic(result.error);
+    assert.equal(diagnostic.providerCode, 'INPUT_IMAGE_FAILED');
+    assert.equal(diagnostic.providerTaskId, 'task_reference_123');
+    assert.equal(JSON.stringify(diagnostic).includes('PRIVATE_PROVIDER_MESSAGE'), false);
+
+    global.fetch = async () => new Response(JSON.stringify({
+        code: 200,
+        data: { state: 'fail', failCode: 'PRIVATE URL https://example.test/key', failMsg: 'PRIVATE_PROVIDER_MESSAGE' }
+    }), { status: 200 });
+    const unsafe = await pollMenuImageWithKie('task_reference_456');
+    assert.equal(menuImageFailureDiagnostic(unsafe.error).providerCode, null);
 });
 
 test('quota, credits, spend, and usage failures never offer a timed retry', async () => {

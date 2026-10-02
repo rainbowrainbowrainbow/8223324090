@@ -587,6 +587,8 @@ function normalizeMenuImageStudio(value = {}) {
         model: cleanNullableString(raw.model, 100),
         referenceImageUrl: cleanNullableString(raw.referenceImageUrl, 2000),
         taskId: cleanNullableString(raw.taskId, 128),
+        providerCode: /^[A-Za-z0-9_-]{1,64}$/.test(String(raw.providerCode || ''))
+            ? String(raw.providerCode) : null,
         storage: safeJsonObject(raw.storage || {}),
         error
     };
@@ -2015,7 +2017,8 @@ router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), asy
             if (failure) {
                 log.warn('Menu image Kie task failed', menuImageFailureDiagnostic(failure));
                 completedStudio = normalizeMenuImageStudio({
-                    ...studio, status: 'failed', taskId: null, imageUrl: null,
+                    ...studio, status: 'failed', taskId: studio.taskId || null, imageUrl: null,
+                    providerCode: menuImageFailureDiagnostic(failure).providerCode,
                     generatedAt: new Date().toISOString(), error: publicError.error
                 });
             }
@@ -2031,7 +2034,9 @@ router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), asy
                 ...(freshStatus === 'failed' && publicError ? {
                     code: publicError.code, error: publicError.error,
                     retryable: publicError.retryable, retryAfterSeconds: publicError.retryAfterSeconds,
-                    requestId: publicError.requestId
+                    requestId: publicError.requestId,
+                    providerCode: freshDraft.imageStudio?.providerCode || null,
+                    providerTaskId: freshDraft.imageStudio?.taskId || null
                 } : {}),
                 imageUrl: freshDraft.imageStudio?.imageUrl || null,
                 appliedImageUrl: fresh.icon_url || null,

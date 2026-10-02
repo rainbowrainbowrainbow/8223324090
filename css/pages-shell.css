@@ -1,7 +1,7 @@
 /* Runtime shell for primary CRM pages. Page-specific CSS is linked by each entrypoint. */
 
-@import url("./pages-core.css?v=0.82.46");
-@import url("./pages-shared-widgets.css?v=0.82.46");
+@import url("./pages-core.css?v=0.82.47");
+@import url("./pages-shared-widgets.css?v=0.82.47");
 
 /* Shared fail-closed bootstrap recovery surface. */
 .page-fatal-error {

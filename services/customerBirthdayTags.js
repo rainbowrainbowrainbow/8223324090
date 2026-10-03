@@ -10,7 +10,9 @@ const DEFAULT_BATCH_SIZE = 500;
 const log = createLogger('CustomerBirthdayTags');
 
 function isPoolLike(clientOrPool) {
-    return Boolean(clientOrPool && typeof clientOrPool.connect === 'function');
+    // Checked-out pg clients also expose connect(); their caller owns the transaction.
+    return Boolean(clientOrPool && typeof clientOrPool.connect === 'function'
+        && typeof clientOrPool.release !== 'function');
 }
 
 function birthdayTagDefaultPool() {

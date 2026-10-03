@@ -334,6 +334,16 @@ test('syncBirthdayTagsForCustomer owns transaction only when pool is provided', 
     assert.equal(client.state.released, true);
 });
 
+test('syncBirthdayTagsForCustomer reuses checked-out pg clients without reconnecting or owning their transaction', async () => {
+    const client = createFakeBirthdayTagClient({ child_birthday: '2020-10-15' });
+    client.connect = async () => { throw new Error('Client has already been connected. You cannot reuse a client.'); };
+    const result = await syncBirthdayTagsForCustomer(client, 1);
+    assert.equal(result.synced, true);
+    assert.deepEqual(systemTags(client).map(tag => tag.system_key), ['birthday', 'birthday_month_10']);
+    assert.deepEqual(client.state.tx, []);
+    assert.equal(client.state.released, false);
+});
+
 test('syncBirthdayTagsForCustomer reports missing customer without tag writes', async () => {
     const client = createFakeBirthdayTagClient(null);
     client.state.customer = null;

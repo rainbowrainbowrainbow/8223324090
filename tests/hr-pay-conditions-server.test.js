@@ -83,3 +83,30 @@ test('unpaid absence does not accrue a daily exit or monthly planned share', () 
     absent.worked = false; absent.paidPlannedFactor = 0;
     assert.equal(calculateConditionSnapshots({ conditionDays: [absent] }, 1.5).totalAmount, 0);
 });
+
+test('monthly primary profile is never reused as a day top-up', () => {
+    const context = fixture();
+    const monthly = { id: 4, professionKey: 'reception', status: 'active', versions: [
+        { id: 40, rateUnit: 'month', defaultRate: 30000, effectiveFrom: '2026-01-01', dayRates: new Map() }] };
+    context.profiles.defaultProfilesByProfession.set('reception', monthly);
+    assert.equal(resolvePayrollConditions(context, 7, 'reception', date).rate, 30000);
+    assert.equal(resolvePayrollConditions(context, 7, 'reception', date, 'additional').rate, 0);
+    context.exceptions.set(exceptionKey(7, 'reception', date, 'additional'), { state: 'active', rate: 250, rateUnit: 'day' });
+    const extra = resolvePayrollConditions(context, 7, 'reception', date, 'additional');
+    assert.equal(extra.rate, 250); assert.equal(extra.rateUnit, 'day'); assert.deepEqual(extra.warnings, []);
+    assert.equal(resolvePayrollConditions(context, 7, 'reception', date).rate, 30000);
+});
+
+test('reporting lists a daily supplement once even when two physical blocks share that day', () => {
+    const allocations = [allocation('animator', 'day', 500, 210, { allocationType: 'simultaneous_additional', segmentId: 1 }),
+        allocation('animator', 'day', 500, 240, { allocationType: 'simultaneous_additional', segmentId: 2 }), allocation('reception', 'hour', 100, 450)];
+    const metrics = { physicalMinutes: 450, conditionDays: [day(allocations)], additionalProfessionAllocations: [
+        { professionKey: 'animator', minutes: 210, attendanceRef: 1, segmentRef: 1, date },
+        { professionKey: 'animator', minutes: 240, attendanceRef: 1, segmentRef: 2, date }] };
+    const pay = calculateConditionSnapshots(metrics, 1.5);
+    const report = require('../services/payroll').buildPayrollTransparencyMetrics(metrics, pay);
+    assert.equal(report.additionalAmount, 500);
+    assert.equal(report.additionalRoles.length, 1);
+    assert.equal(report.additionalRoles[0].amount, 500);
+    assert.equal(report.additionalRoles[0].rateUnit, 'day');
+});

@@ -4314,17 +4314,13 @@ router.put('/payroll-profiles/:id/archive', requirePayrollRules, async (req, res
 // Salary permissions and business-scope middleware are inherited from the HR router.
 router.get('/staff/:id/payroll-conditions', requirePayrollView, async (req, res) => {
     try {
-        const { loadPayrollConditionContext, resolvePayrollConditions } = require('../services/hrPayrollConditions');
+        const { getPayrollDayConditions } = require('../services/hrPayrollConditions');
+        if (!['additional', 'base_replacement'].includes(req.query.purpose || 'base_replacement')) {
+            return res.status(400).json({ success: false, code: 'PAYROLL_CONDITIONS_PURPOSE_INVALID', error: 'Невірне призначення оплати' });
+        }
         const date = require('../services/attendanceWriteLock').normalizeAttendanceWriteDate(req.query.date);
-        const staffId = Number(req.params.id);
-        const context = await loadPayrollConditionContext(pool, [staffId], { from: date, to: date });
-        const professionKey = normalizeProfessionKey(req.query.professionKey);
-        const staff = context.staff.get(staffId);
-        if (!staff || !staffProfessionKeys(staff).includes(professionKey)) return res.status(404).json({ success: false, error: 'Професію працівника не знайдено' });
-        const purpose = req.query.purpose === 'additional' ? 'additional' : 'base_replacement';
-        const conditions = resolvePayrollConditions(context, staffId, professionKey, date, purpose);
-        res.json({ success: true, data: { conditions, exceptions: [...context.exceptions.values()],
-            profiles: [...context.profiles.profilesById.values()].filter(profile => profile.professionKey === professionKey) } });
+        const data = await getPayrollDayConditions(pool, Number(req.params.id), req.query.professionKey, date, req.query.purpose || 'base_replacement');
+        res.json({ success: true, data });
     } catch (error) { sendPayrollProfileFailure(res, error, 'GET /hr/staff/:id/payroll-conditions error'); }
 });
 

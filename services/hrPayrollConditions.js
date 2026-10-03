@@ -61,12 +61,13 @@ function resolvePayrollConditions(context, staffId, professionKey, date, purpose
     const schemeUnit = { hourly: 'hour', per_shift: 'day', monthly_fixed: 'month' }[scheme?.schemeType];
     // Additional roles never inherit the employee's base wage or base scheme.
     const effectiveStaff = additional ? { ...staff, hourly_rate: 0, hourlyRate: 0, rate_unit: 'hour', rateUnit: 'hour' } : staff;
+    const primaryTopUp = additional && professionKey === normalizeProfessionKey(staff.role_type);
     const base = require('./payroll').resolveEffectivePayrollProfile(effectiveStaff, professionKey, date, {
-        payrollProfileContext: context.profiles, professionRateMap: context.rates, scheme,
+        payrollProfileContext: primaryTopUp ? null : context.profiles, professionRateMap: primaryTopUp ? new Map() : context.rates, scheme,
         preferredRateUnit: additional ? 'hour' : schemeUnit || staff.rate_unit || 'hour'
     });
     const exception = options.ignoreException ? null : context.exceptions.get(exceptionKey(staffId, professionKey, date, purpose));
-    const result = exception?.state === 'active' ? { ...base, applies: true, rate: exception.rate,
+    const result = exception?.state === 'active' ? { ...base, applies: true, warnings: [], rate: exception.rate,
         rateUnit: exception.rateUnit, source: 'payroll_day_exception', rateSource: 'payroll_day_exception',
         sourceOrder: 'day_exception', appliedRule: 'day_exception', exception } : { ...base, exception: null };
     const config = typeof scheme?.config === 'string' ? JSON.parse(scheme.config) : scheme?.config || {};
@@ -85,6 +86,56 @@ function resolvePayrollConditions(context, staffId, professionKey, date, purpose
     }
     return { ...result, ruleVersion: CONDITION_RULE_VERSION, purpose, workDate: date, professionKey,
         schemeType: scheme?.schemeType || null };
+}
+async function getPayrollDayConditions(db, staffId, professionKey, date, purpose = 'base_replacement') {
+    const context = await loadPayrollConditionContext(db, [staffId], { from: date, to: date });
+    const staff = context.staff.get(Number(staffId));
+    professionKey = normalizeProfessionKey(professionKey);
+    date = normalizeAttendanceWriteDate(date);
+    if (!staff || (!staffProfessionKeys(staff).includes(professionKey)
+        && !context.assignments.has(`${Number(staffId)}:${professionKey}`))) {
+        throw conditionError('PAYROLL_CONDITIONS_PROFESSION_NOT_FOUND', 'Професію працівника не знайдено', 404);
+    }
+    let conditions = resolvePayrollConditions(context, staffId, professionKey, date, purpose);
+    const records = await db.query('SELECT id, clock_in, clock_out, total_worked_minutes, compensation_snapshot FROM hr_time_records WHERE staff_id=$1 AND record_date=$2', [staffId, date]);
+    const record = records.rows[0];
+    const frozen = Boolean(record && (record.compensation_snapshot || record.clock_in || record.clock_out || Number(record.total_worked_minutes) > 0));
+    let blocker = null;
+    if (frozen) {
+        const snapshot = typeof record.compensation_snapshot === 'string' ? JSON.parse(record.compensation_snapshot) : record.compensation_snapshot;
+        const matches = (snapshot?.compensationAllocations || []).filter(row => row.professionKey === professionKey
+            && (purpose === 'additional' ? row.allocationType !== 'base' : row.allocationType === 'base'));
+        const terms = matches.map(row => row.conditions).filter(Boolean);
+        if (snapshot?.schemaVersion !== 2 || !terms.length) {
+            conditions = null;
+            blocker = { code: 'PAYROLL_BASE_SNAPSHOT_REQUIRED', message: 'Історичні умови не зафіксовано; поточна ставка не підміняє історію' };
+        } else {
+            conditions = terms[0];
+            if (snapshot.manualReview || terms.some(row => row.rate !== conditions.rate || row.rateUnit !== conditions.rateUnit)) {
+                blocker = { code: 'PAYROLL_CONDITION_REVIEW_REQUIRED', message: 'Зафіксовані умови потребують перевірки' };
+            }
+        }
+    } else if (purpose === 'additional' && professionKey !== normalizeProfessionKey(staff.role_type)) {
+        try { assertAdditionalAdmission(context, staffId, professionKey); }
+        catch (error) { blocker = { code: error.details?.blocker || error.code, message: error.message }; }
+    }
+    if (!blocker && conditions?.warnings?.some(row => row.code === 'PAYROLL_PROFILE_VERSION_UNRESOLVED')) {
+        blocker = { code: 'profile_inactive', message: 'Призначений профіль не має чинної версії на цю дату' };
+    }
+    if (!blocker && !(conditions?.rate > 0)) blocker = { code: 'rate_missing', message: 'Немає чинної ставки' };
+    const profiles = await require('./hrPayrollProfiles').listPayrollProfiles({ professionKey, status: 'active', asOfDate: date }, { db });
+    const weekday = new Date(date + 'T00:00:00Z').getUTCDay() || 7;
+    const choices = profiles.filter(profile => profile.profileKind === 'shared' || profile.ownerStaffId === Number(staffId))
+        .filter(profile => profile.currentVersion).map(profile => {
+            const version = profile.currentVersion;
+            const override = version.rateUnit === 'month' ? null : version.dayRates.find(row => row.isoWeekday === weekday);
+            return { profileId: profile.id, profileVersionId: version.id, title: profile.title,
+                rate: override ? override.rate : version.defaultRate, rateUnit: version.rateUnit,
+                effectiveFrom: version.effectiveFrom, effectiveTo: version.effectiveTo };
+        });
+    const exception = context.exceptions.get(exceptionKey(staffId, professionKey, date, purpose));
+    return { conditions, choices, frozen, blocker, available: !blocker, exceptionVersion: exception?.version || 0,
+        workDate: date, purpose, professionKey };
 }
 function assertAdditionalAdmission(context, staffId, professionKey) {
     const staff = context.staff.get(Number(staffId));
@@ -175,4 +226,4 @@ async function savePayrollDayException(db, payload, actor) {
 }
 
 module.exports = { CONDITION_RULE_VERSION, conditionError, exceptionKey, loadPayrollConditionContext,
-    resolvePayrollConditions, assertAdditionalAdmission, validateExceptionInput, savePayrollDayException };
+    resolvePayrollConditions, getPayrollDayConditions, assertAdditionalAdmission, validateExceptionInput, savePayrollDayException };

@@ -828,7 +828,7 @@ describe('payroll profile migration 297 on isolated PostgreSQL', { skip: !enable
             const writerBInsert = writerB.query(
                 `INSERT INTO staff_payroll_profile_assignments
                     (staff_id, profession_key, profile_id, assignment_kind, effective_from, effective_to)
-                 VALUES ($1, $2, $3, 'temporary', DATE '2199-06-01', DATE '2199-07-01')`,
+                 VALUES ($1, $2, $3, 'explicit', DATE '2199-06-01', DATE '2199-07-01')`,
                 [otherStaffId, professionKey, baseProfileId]
             ).then(
                 () => {

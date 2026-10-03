@@ -2375,7 +2375,8 @@ async function buildAssignmentPatchForEffectiveFrom(db, staffId, professionKey, 
     const hasFiniteNewEnd = Boolean(newAssignment.effectiveTo);
     const removeAssignmentIds = [];
     const assignments = [];
-    for (const assignment of existing.filter(row => normalizeProfessionKey(row.professionKey) === professionKey)) {
+    for (const assignment of existing.filter(row => normalizeProfessionKey(row.professionKey) === professionKey
+        && row.assignmentKind === newAssignment.assignmentKind)) {
         const assignmentStart = assignment.effectiveFrom;
         const assignmentEnd = assignment.effectiveTo || '9999-12-31';
         if (assignmentEnd < newStart || assignmentStart > newEnd) continue;

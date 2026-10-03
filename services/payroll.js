@@ -2652,7 +2652,8 @@ function buildPayrollTransparencyMetrics(metrics = {}, professionPay = {}) {
         ].join(':'),
         lineItem
     ])).values()];
-    const roleDetails = additionalAllocations.map(allocation => {
+    const frozenConditionLines = uniqueAdditionalLines.some(item => item.ruleVersion === 'hr-pay-conditions-v2');
+    const roleDetails = (frozenConditionLines ? [] : additionalAllocations).map(allocation => {
         const professionKey = normalizeProfessionKey(
             allocation.professionKey || allocation.profession_key
         );
@@ -2727,6 +2728,12 @@ function buildPayrollTransparencyMetrics(metrics = {}, professionPay = {}) {
             policyVersion: lineItem.policyVersion || lineItem.policy_version || null,
             workDate: lineItem.workDate || lineItem.work_date || null,
             formula: lineItem.formula || null,
+            rateUnit: lineItem.rateUnit || 'hour',
+            exceptionId: lineItem.exceptionId || null,
+            exceptionReason: lineItem.exceptionReason || null,
+            exceptionAuthor: lineItem.exceptionAuthor || null,
+            profileVersionId: lineItem.profileVersionId || null,
+            refs: lineItem.refs || [],
             status: 'ready'
         });
     }

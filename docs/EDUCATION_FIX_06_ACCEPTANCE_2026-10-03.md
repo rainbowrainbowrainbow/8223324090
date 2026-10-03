@@ -1,6 +1,6 @@
 # EDU-FIX-06 — acceptance та реліз пакета
 
-Production impact: yes. Робоче дерево: `C:/Users/Plotva/.codex/worktrees/education-qa-fixes/EventGenix`, гілка `codex/education-qa-fixes`. П'ять fixes збережені прямими предками merge commit `e663fee630d68c6c967880d2dc89fe1051098625`; другий батько merge — підтверджений production SHA `59d67e9916c0a6ce2f64fcafa08cc9e5ce0e5efc` (v0.82.56).
+Production impact: yes. Робоче дерево: `C:/Users/Plotva/.codex/worktrees/education-qa-fixes/EventGenix`, гілка `codex/education-qa-fixes`. П'ять fixes збережені в ancestry merge commit `7635c0b793a728c3a493193ad963a44138b5d35b`; інтегрований актуальний production SHA `de1f13aa7330229da8bdd0bf41b653557e2d14f4` (v0.82.57).
 
 ## Матриця acceptance
 
@@ -20,8 +20,8 @@ Production impact: yes. Робоче дерево: `C:/Users/Plotva/.codex/workt
 | Creator та reader без `manage_settings` через UI/API; business isolation | PASS | Creator може підготувати незбережену зміну; reader save disabled або сторінка 403, PUT 403; business profile після UI незмінний |
 | Park canonical detail і відсутність education entry | PASS | Synthetic Park booking із видимою лінією та каталогом кімнат; detail/Escape/focus return |
 | Два незалежні API POST з однаковою назвою групи | PASS за чинним контрактом | 2 відповіді 201 і 2 SQL rows; окремий browser double-click regression вимагає 1 POST/1 row. API exactly-once не обіцяється. |
-| Загальний локальний baseline Node22/npm10 | PASS | `output/edu-fix-06-npm-test.log`, exit 0 |
-| Синтаксис фінального acceptance test/runner | PASS | `node --check` і `git diff --check`; повний `check:syntax` окремо |
+| Загальний локальний baseline Node22/npm10 | PASS | `output/edu-fix-06-post-hr-npm-test.log`, exit 0 після інтеграції production v0.82.57 |
+| Синтаксис фінального acceptance test/runner | PASS | `npm run check:syntax` (1376 файлів), `npm run check:migrations` та `git diff --check` PASS після інтеграції |
 | Exact release SHA CI | NOT RUN | Починається після version/changelog commit та push |
 | Railway deploy, live version/SHA і read-only UI QA | NOT RUN | Лише після зеленого CI точного SHA |
 
@@ -30,3 +30,7 @@ Production impact: yes. Робоче дерево: `C:/Users/Plotva/.codex/workt
 ## Production baseline до релізу
 
 `GET /api/version`: v0.82.56, SHA `59d67e9916c0a6ce2f64fcafa08cc9e5ce0e5efc`, branch `codex/eventgenix-production`, complete manifest. Railway read-only: project `fortunate-appreciation`, environment `production`, service `8223324090`, domain `8223324090-production.up.railway.app`, deployment `b46d7c01-178c-4ff2-8e0f-24e4fb253cdf` SUCCESS. Read-only settings script: Creator login і GET cabinet 200; Дар `businessType=education`, `mode=education`, `resourceModel=cabinet`; projection до/після ідентична. Скрипт зафіксував фонові 401 на `/api/staff` і `/api/education/groups` та 403 на `/api/chat/unread`; жодного business write не було. Після релізу потрібен окремий read-only повторний прогін.
+
+## Оновлення production baseline перед релізом
+
+Production branch і live `/api/version` збіглися на v0.82.57, SHA `de1f13aa7330229da8bdd0bf41b653557e2d14f4`; її HR-міграція 374 залишена без змін. Повторна disposable acceptance після інтеграції: 13/13 базових + 11/11 розширених PostgreSQL tests, 43/43 actual-app browser checks (`output/edu-fix-06-post-hr-acceptance.log`), `npm test` exit 0. Релізний patch bump — v0.82.58. Старий baseline v0.82.56 вище наведено як історичний pre-HR замір.

@@ -1919,4 +1919,6 @@ router.delete('/accounts/:id', requireRole('admin'), async (req, res) => {
     }
 });
 
+router.use('/costing', require('./finance-costing'));
+
 module.exports = router;

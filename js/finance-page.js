@@ -182,7 +182,7 @@ function getInitialFinanceMode() {
     const tab = params.get('tab');
     if (tab === 'insights') return 'insights';
     if (['dashboard', 'transactions', 'operations', 'shift', 'cash', 'forecast',
-        'pnl', 'debts', 'monthly', 'salary', 'budget', 'advanced', 'accounts', 'personal'].includes(tab)) {
+        'pnl', 'debts', 'monthly', 'salary', 'budget', 'advanced', 'costing', 'accounts', 'personal'].includes(tab)) {
         return 'operations';
     }
     return 'overview';
@@ -204,6 +204,7 @@ function getInitialFinanceTab() {
         salary: 'salary',
         budget: 'budget',
         advanced: 'advanced',
+        costing: 'costing',
         accounts: 'accounts',
         personal: 'personal'
     };
@@ -2357,7 +2358,7 @@ function switchTab(tabName, options = {}) {
         btn.classList.toggle('active', btn.dataset.tab === tabName);
     });
 
-    const tabs = ['tabDashboard','tabTransactions','tabMonthly','tabSalary','tabBudget',
+    const tabs = ['tabDashboard','tabTransactions','tabMonthly','tabSalary','tabBudget','tabCosting',
                   'tabShift','tabForecast','tabPnl','tabDebts','tabAdvanced','tabAccounts','tabPersonal'];
     tabs.forEach(id => {
         const el = document.getElementById(id);
@@ -2368,15 +2369,16 @@ function switchTab(tabName, options = {}) {
         monthly: 'tabMonthly', salary: 'tabSalary', budget: 'tabBudget',
         shift: 'tabShift', forecast: 'tabForecast', pnl: 'tabPnl',
         debts: 'tabDebts', advanced: 'tabAdvanced', accounts: 'tabAccounts',
-        personal: 'tabPersonal'
+        personal: 'tabPersonal', costing: 'tabCosting'
     }[tabName]);
-    if (activePanel) activePanel.style.display = '';
+    if (activePanel) activePanel.style.display = tabName === 'costing' ? 'block' : '';
 
     if (tabName === 'dashboard') fetchDashboard();
     if (tabName === 'transactions') fetchTransactions();
     if (tabName === 'monthly') fetchMonthlyReport();
     if (tabName === 'salary') fetchSalaryReport();
     if (tabName === 'budget') initBudgetTab();
+    if (tabName === 'costing') window.CostingWorkspace?.load();
     if (tabName === 'shift') loadShiftData();
     if (tabName === 'forecast') loadForecast();
     if (tabName === 'pnl') loadPnlReport();

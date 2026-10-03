@@ -1308,6 +1308,7 @@
                         <button type="button" class="fin-tab fa-operation-btn" data-tab="budget">Бюджет</button>
                         <button type="button" class="fin-tab fa-operation-btn" data-tab="pnl">P&L</button>
                         <button type="button" class="fin-tab fa-operation-btn" data-tab="advanced">Фін. панель</button>
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="costing">Собівартість послуг</button>
                     </div>
                 </div>
                 <div class="fa-operation-group">
@@ -1578,6 +1579,44 @@
                     </div>
                 </div>
             </div>
+            <div id="tabCosting">
+                <div class="cost-shell">
+                    <section class="cost-card" aria-labelledby="costTemplateHeading">
+                        <h3 id="costTemplateHeading">Шаблон собівартості</h3>
+                        <p>Спільний шаблон для заняття, сеансу, оренди або замовлення. Нова версія не змінює раніше збережені плани.</p>
+                        <div class="cost-grid">
+                            <label>Шаблон<select id="costTemplateSelect"><option value="">Новий шаблон</option></select></label>
+                            <label>Назва<input id="costTemplateName" maxlength="160" placeholder="Наприклад: Груповий урок"></label>
+                            <label>Тип<select id="costTemplateKind"><option value="lesson">Заняття</option><option value="session">Сеанс</option><option value="rental">Оренда</option><option value="service">Послуга</option><option value="agency_order">Агентське замовлення</option><option value="admission_day">День парку</option></select></label>
+                            <label>Діє з<input id="costEffectiveFrom" type="date"></label>
+                            <label>Ціна, ₴<input id="costRevenueRate" inputmode="decimal" placeholder="300.00"></label>
+                            <label>Ціна за<select id="costRevenueBasis"><option value="execution">проведення</option><option value="hour">годину</option><option value="participant">платного учасника</option><option value="unit">одиницю</option></select></label>
+                        </div>
+                        <h4>Прямі витрати</h4>
+                        <div id="costLines" class="cost-lines"></div>
+                        <div class="cost-actions"><button type="button" id="costAddLine" class="btn-page-secondary">+ Рядок витрат</button><button type="button" id="costSaveTemplate" class="btn-page-primary">Зберегти шаблон</button></div>
+                    </section>
+                    <section class="cost-card" aria-labelledby="costPlanHeading">
+                        <h3 id="costPlanHeading">План конкретного виконання</h3>
+                        <p>Це плановий внесок після прямих витрат, не чистий прибуток і не фактичний P&amp;L.</p>
+                        <div class="cost-grid">
+                            <label>Назва виконання<input id="costExecutionLabel" maxlength="200" placeholder="Урок 12 жовтня"></label>
+                            <label>Дата<input id="costExecutionDate" type="date"></label>
+                            <label>Учасники / споживачі<input id="costParticipants" type="number" min="0" step="1" value="0"></label>
+                            <label>Платні учасники<input id="costPaidParticipants" type="number" min="0" step="1" value="0"></label>
+                            <label>Тривалість, год<input id="costHours" inputmode="decimal" value="1"></label>
+                            <label>Одиниць продажу<input id="costUnits" type="number" min="0" step="1" value="1"></label>
+                            <label>Знижка, %<input id="costDiscountPercent" inputmode="decimal" value="0"></label>
+                            <label>Додаткова знижка, ₴<input id="costDiscountMoney" inputmode="decimal" value="0"></label>
+                        </div>
+                        <div id="costLineQuantities" class="cost-grid"></div>
+                        <div class="cost-actions"><button type="button" id="costPreview" class="btn-page-secondary">Розрахувати</button><button type="button" id="costSavePlan" class="btn-page-primary" disabled>Зберегти план</button></div>
+                        <div id="costPreviewResult" class="cost-result" hidden></div>
+                        <div id="costStatus" class="cost-status" role="status" hidden></div>
+                    </section>
+                    <section class="cost-card" aria-labelledby="costSavedHeading"><h3 id="costSavedHeading">Збережені плани</h3><p>Історичні знімки; їхні ставки не перераховуються при новій версії шаблону.</p><div id="costPlanList" class="cost-plan-list"></div></section>
+                </div>
+            </div>
             </section>
         </main>
     </div>
@@ -1724,6 +1763,7 @@
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/analytics-page.js?v=0.82.59"></script>
     <script src="js/finance-page.js?v=0.82.59"></script>
+    <script src="js/finance-costing.js?v=0.82.59"></script>
 <script src="js/alerts.js?v=0.82.59"></script>
 </body>
 </html>

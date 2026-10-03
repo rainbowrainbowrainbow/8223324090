@@ -225,3 +225,26 @@ body.dark-mode .salary-payroll-movement small {
         flex-direction: column;
     }
 }
+#tabCosting { display:none; }
+.cost-shell { display:grid; gap:18px; min-width:0; }
+.cost-card { min-width:0; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px; }
+.cost-card h3 { margin:0 0 6px; font-size:18px; }
+.cost-card p { margin:0 0 14px; color:var(--gray-500); font-size:13px; }
+.cost-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; }
+.cost-grid label, .cost-line label { display:grid; min-width:0; gap:5px; font-size:13px; font-weight:700; color:var(--gray-700); }
+.cost-grid input, .cost-grid select, .cost-line input, .cost-line select { width:100%; min-height:44px; box-sizing:border-box; border:1px solid var(--gray-300); border-radius:9px; padding:8px; color:var(--gray-900); background:var(--surface); font:inherit; }
+.cost-lines { display:grid; gap:10px; margin:12px 0; }
+.cost-line { display:grid; grid-template-columns:minmax(140px,2fr) minmax(125px,1fr) minmax(110px,1fr) minmax(155px,1fr) auto; gap:8px; align-items:end; }
+.cost-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+.cost-actions button { min-height:44px; }
+.cost-result { margin-top:14px; padding:14px; border-radius:12px; background:rgba(16,185,129,.08); }
+.cost-result[hidden], .cost-status[hidden] { display:none; }
+.cost-result-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:10px; }
+.cost-result-grid strong { display:block; font-size:20px; }
+.cost-status { margin-top:12px; color:var(--gray-600); }
+.cost-status.error { color:#b91c1c; }
+.cost-plan-list { display:grid; gap:8px; }
+.cost-plan-list article { display:flex; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); }
+#costLineQuantities { margin-top:12px; }
+@media (max-width:1200px) { .cost-line { grid-template-columns:repeat(2,minmax(0,1fr)); } .cost-line label:first-child { grid-column:1/-1; } }
+@media (max-width:760px) { .cost-grid { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); } }

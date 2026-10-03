@@ -15,6 +15,13 @@ const GENERIC_API_ROUTE_MOUNTS = [
 
 const NESTED_API_ROUTE_MOUNTS = [
     {
+        mount: '/api/finance/costing',
+        routeFile: 'routes/finance-costing.js',
+        parentRouteFile: 'routes/finance.js',
+        owner: 'finance-costing',
+        reason: 'Versioned service costing inherits the existing finance role and action guards.'
+    },
+    {
         mount: '/api/hermes',
         routeFile: 'routes/hermes-schedule.js',
         parentRouteFile: 'routes/hermes.js',

@@ -4189,6 +4189,9 @@ async function runDayPayPickerFlow(browser, base) {
         assert.equal(writes.length,2);assert.equal(writes[0].idempotencyKey,writes[1].idempotencyKey);
         assert.equal(writes[1].selectedProfileId,11);assert.equal(writes[1].selectedProfileVersionId,12);
         assert.equal(writes[1].workDate,'2026-07-16');assert.match(await panel.innerText(),/450 хв[\s\S]*1.?875 грн/);
+        await card.locator('[data-segment-field="paid-profession"]').selectOption('reception');
+        assert.equal(await card.locator('[data-segment-field="paid-start"]').inputValue(),'10:00');
+        assert.equal(await card.locator('[data-segment-field="paid-end"]').inputValue(),'18:00');
         await panel.locator('[data-day-pay-field="choice"]').selectOption('custom');
         await panel.locator('[data-day-pay-field="rate"]').fill('280');await panel.locator('[data-day-pay-field="reason"]').fill('Unsaved');
         await page.locator('#schCancelBtn').click();

@@ -257,3 +257,14 @@ test('dated additional preview excludes blocks where the same profession is only
     termsDraft=null;
     assert.match(c.scheduleDayPayPreview('reception','additional',{rate:120,rateUnit:'hour',exception:{id:1}}),/480 хв.*960 грн/);
 });
+
+test('restricted salary view delegates dated rate validation to the server without relaxing admission', () => {
+    const c=vm.createContext({schedulePlanStaff:()=>[{id:1}],StaffState:{editingCell:{}},scheduleCanViewPayrollAmounts:()=>false});
+    let result={available:false,code:'HR_SHIFT_PAID_ROLE_RATE_REQUIRED',rate:null};
+    c.scheduleExplicitProfessionRate=()=>result;
+    vm.runInContext(extract(staff,'schedulePaidRoleRate'),c);
+    assert.equal(c.schedulePaidRoleRate('schedule','reception').pendingServerValidation,true);
+    assert.equal(c.schedulePaidRoleRate('schedule','reception').rate,null);
+    result={available:false,code:'HR_SHIFT_PAID_ROLE_NOT_ALLOWED',reason:'Admission required',rate:null};
+    assert.equal(c.schedulePaidRoleRate('schedule','reception').available,false);
+});

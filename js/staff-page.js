@@ -5158,7 +5158,14 @@ function schedulePaidRoleRate(scope, professionKey) {
         return {available:entry.data.available,rate:entry.data.conditions?.rate,rateUnit:entry.data.conditions?.rateUnit,
             conditions:entry.data.conditions,reason:entry.data.blocker?.message || '',code:entry.data.blocker?.code};
     }
-    return scheduleExplicitProfessionRate(staff[0], professionKey);
+    const legacy = scheduleExplicitProfessionRate(staff[0], professionKey);
+    if (scope === 'schedule' && !scheduleCanViewPayrollAmounts()
+        && (legacy.available || ['HR_SHIFT_PAID_ROLE_RATE_REQUIRED','HR_SHIFT_PAID_ROLE_RATE_UNIT_UNSUPPORTED'].includes(legacy.code))) {
+        // Schedule access permits editing the plan. The write API validates dated pay
+        // without disclosing amounts or trusting an undated legacy hourly flag.
+        return {...legacy,available:true,rate:null,pendingServerValidation:true,reason:''};
+    }
+    return legacy;
 }
 
 function scheduleFormatMoney(amount) {
@@ -5177,6 +5184,7 @@ function schedulePaidRolePreview(scope, role, segment) {
     if (!rateInfo.available) {
         return rateInfo.reason;
     }
+    if (rateInfo.pendingServerValidation) return 'Суми оплати приховано. Чинні умови професії перевіряються сервером під час збереження плану.';
     if (rateInfo.rateUnit && rateInfo.rateUnit !== 'hour') return scheduleDayPayPreview(role.professionKey,'additional',rateInfo.conditions);
     const canShowRate = scheduleCanViewPayrollAmounts() && Number.isFinite(rateInfo.rate) && rateInfo.rate > 0;
     const rateLabel = canShowRate
@@ -6178,6 +6186,11 @@ function bindSchedulePlanEditor(scope) {
         const card = event.target.closest('.sch-segment-card');
         if (card && list) list.dataset.activeSegmentIndex = card.dataset.segmentIndex || '0';
         if (event.target.matches('[data-segment-field="paid-profession"]')) {
+            const paidStart = card?.querySelector('[data-segment-field="paid-start"]');
+            if (event.target.value && paidStart?.disabled) {
+                paidStart.value = card.querySelector('[data-segment-field="start"]').value;
+                card.querySelector('[data-segment-field="paid-end"]').value = card.querySelector('[data-segment-field="end"]').value;
+            }
             const primaryValue = document.getElementById(config.primaryId)?.value || '';
             const activeIndex = Number(card?.dataset.segmentIndex || 0);
             const segments = readSchedulePlanSegments(scope);

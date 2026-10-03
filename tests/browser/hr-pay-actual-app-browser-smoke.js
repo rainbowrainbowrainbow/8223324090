@@ -61,6 +61,7 @@ async function savePay(page,panel,status=200) {
     const response=page.waitForResponse(r=>r.url().includes('/payroll-day-exception')&&r.request().method()==='PUT');
     await panel.locator('[data-day-pay-save]').click();
     assert.equal((await response).status(),status);
+    await page.waitForFunction(()=>document.querySelector('#schModalOverlay')?.getAttribute('aria-busy')!=='true');
     if(status===200)await panel.locator('[data-day-pay-field="choice"]').waitFor();
 }
 async function run() {
@@ -202,6 +203,14 @@ async function run() {
         await page.locator('[data-day-pay-slot]').first().waitFor();
         assert.deepEqual(salaryReads,[]);assert.match(await page.locator('[data-day-pay-slot]').first().innerText(),/Немає доступу/);
         assert.equal(await page.locator('[data-day-pay-field]').count(),0);
+        await page.locator('#schNote').fill('Restricted salary view can edit schedule notes');
+        const restrictedSave=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/staff/schedule'&&response.request().method()==='PUT');
+        await page.locator('#schSaveBtn').click();
+        const savedRestricted=await restrictedSave;assert.equal(savedRestricted.status(),200);
+        assert.doesNotMatch(JSON.stringify(await savedRestricted.json()),/"(?:rate|hourly_rate|default_rate)":(?:270|500|30000)\b/);
+        await page.locator('#schModalOverlay.visible').waitFor({state:'hidden'});
+        await page.locator(`.sch-cell[data-staff="${staffId}"][data-date="${date}"]`).first().click();
+        await page.locator('[data-day-pay-slot]').first().waitFor();
         const storage=await page.evaluate(()=>JSON.stringify({...sessionStorage}));assert.doesNotMatch(storage,/defaultRate|selectedProfile|30000/);
         await page.screenshot({path:path.join(output,'restricted-mobile.png'),fullPage:true});
         await restricted.close();assert.deepEqual(errors,[]);

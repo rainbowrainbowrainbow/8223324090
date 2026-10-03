@@ -8,6 +8,11 @@
     const context = () => global.TimelineBusinessContext?.current?.()?.apiValue || 'event_genix';
     const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
     const state = { journal: null, lessons: [], loading: false, loadVersion: 0 };
+    let generation = 0;
+    let journalVersion = 0;
+    let reportVersion = 0;
+    const capture = () => ({ business: context(), generation });
+    const isCurrent = request => request.generation === generation && request.business === context();
 
     function lessonOf(booking) {
         return global.EducationScheduleWorkspace?.lessonFromBooking(booking) || null;
@@ -42,13 +47,14 @@
 
     async function loadLessons(date = byId('educationAttendanceDate')?.value || today()) {
         if (!byId('educationAttendanceLesson') || typeof global.getBookingsForDate !== 'function') return;
+        const requestState = capture();
         const version = ++state.loadVersion;
         state.loading = true;
         byId('educationAttendanceDate').value = date;
         status('Завантажуємо заняття…');
         try {
             const bookings = await global.getBookingsForDate(date, { throwOnError: true });
-            if (version !== state.loadVersion) return;
+            if (!isCurrent(requestState) || version !== state.loadVersion) return;
             state.lessons = (Array.isArray(bookings) ? bookings : []).filter(booking => Boolean(lessonOf(booking)?.groupId));
             const selected = byId('educationAttendanceLesson').value;
             byId('educationAttendanceLesson').innerHTML = '<option value="">Оберіть заняття</option>' + state.lessons
@@ -61,12 +67,12 @@
             }
             status(`${state.lessons.length} занять з групою`);
         } catch (error) {
-            if (version !== state.loadVersion) return;
+            if (!isCurrent(requestState) || version !== state.loadVersion) return;
             state.lessons = [];
             byId('educationAttendanceLesson').innerHTML = '<option value="">Оберіть заняття</option>';
             status(`Не вдалося завантажити заняття: ${error.message}`);
         } finally {
-            if (version === state.loadVersion) state.loading = false;
+            if (isCurrent(requestState) && version === state.loadVersion) state.loading = false;
         }
     }
 
@@ -106,19 +112,24 @@
     }
 
     async function openBooking(bookingId) {
+        const requestState = capture();
+        const version = ++journalVersion;
+        state.journal = null;
+        renderJournal();
+        if (byId('educationAttendanceSave')) byId('educationAttendanceSave').disabled = false;
         if (!bookingId) {
-            state.journal = null;
-            renderJournal();
             return;
         }
         status('Завантажуємо журнал…');
         try {
-            const { journal } = await api(`/attendance/${encodeURIComponent(bookingId)}?businessContext=${encodeURIComponent(context())}`);
+            const { journal } = await api(`/attendance/${encodeURIComponent(bookingId)}?businessContext=${encodeURIComponent(requestState.business)}`);
+            if (!isCurrent(requestState) || version !== journalVersion) return;
             state.journal = journal;
             byId('educationAttendanceDate').value = journal.booking.date;
             renderJournal();
             status(journal.frozen ? 'Журнал збережено.' : 'Журнал ще не розпочато.');
             await loadLessons(journal.booking.date);
+            if (!isCurrent(requestState) || version !== journalVersion) return;
             if (!state.lessons.some(booking => String(booking.id) === String(bookingId))) {
                 const option = document.createElement('option');
                 option.value = bookingId;
@@ -127,6 +138,7 @@
             }
             byId('educationAttendanceLesson').value = bookingId;
         } catch (error) {
+            if (!isCurrent(requestState) || version !== journalVersion) return;
             state.journal = null;
             renderJournal();
             status(`Не вдалося відкрити журнал: ${error.message}`);
@@ -136,6 +148,8 @@
     async function saveJournal() {
         const bookingId = state.journal?.booking?.id;
         if (!bookingId || state.journal.cancelled) return;
+        const requestState = capture();
+        const version = journalVersion;
         const marks = [...byId('educationAttendanceJournal').querySelectorAll('[data-attendance-child-id]')]
             .map(select => ({ childId: Number(select.dataset.attendanceChildId), status: select.value || null }));
         byId('educationAttendanceSave').disabled = true;
@@ -143,13 +157,16 @@
             const result = await api(`/attendance/${encodeURIComponent(bookingId)}`, {
                 method: 'PUT', body: { marks }
             });
+            if (!isCurrent(requestState) || version !== journalVersion) return;
             state.journal = result.journal;
             renderJournal();
             status(result.changes ? `${result.changes} відміток змінено.` : 'Без змін; повторний запис не створено.');
         } catch (error) {
-            status(`Не вдалося зберегти журнал: ${error.message}`);
+            if (isCurrent(requestState) && version === journalVersion) {
+                status(`Не вдалося зберегти журнал: ${error.message}`);
+            }
         } finally {
-            byId('educationAttendanceSave').disabled = false;
+            if (isCurrent(requestState) && version === journalVersion) byId('educationAttendanceSave').disabled = false;
         }
     }
 
@@ -174,18 +191,22 @@
 
     async function runReport() {
         if (!byId('educationReportFrom') || !byId('educationReportTo')) return;
+        const requestState = capture();
+        const version = ++reportVersion;
         const from = byId('educationReportFrom').value;
         const to = byId('educationReportTo').value;
         if (!from || !to) return;
         status('Завантажуємо звіт…', 'educationReportStatus');
-        const params = new URLSearchParams({ businessContext: context(), from, to });
+        const params = new URLSearchParams({ businessContext: requestState.business, from, to });
         const groupId = byId('educationReportGroup').value;
         if (groupId) params.set('groupId', groupId);
         try {
             const { report } = await api(`/reports?${params}`);
+            if (!isCurrent(requestState) || version !== reportVersion) return;
             renderReport(report);
             status(`${report.lessons.length} занять у періоді.`, 'educationReportStatus');
         } catch (error) {
+            if (!isCurrent(requestState) || version !== reportVersion) return;
             byId('educationReportResult').replaceChildren();
             status(`Не вдалося завантажити звіт: ${error.message}`, 'educationReportStatus');
         }
@@ -198,14 +219,24 @@
         from.setUTCDate(from.getUTCDate() - 30);
         byId('educationReportFrom').value = from.toISOString().slice(0, 10);
         byId('educationAttendanceDate').addEventListener('change', () => {
+            journalVersion += 1;
             state.journal = null;
             renderJournal();
+            if (byId('educationAttendanceLesson')) byId('educationAttendanceLesson').innerHTML = '<option value="">Оберіть заняття</option>';
+            if (byId('educationAttendanceSave')) byId('educationAttendanceSave').disabled = false;
             void loadLessons();
         });
         byId('educationAttendanceLesson').addEventListener('change', event => void openBooking(event.target.value));
         byId('educationAttendanceReload').addEventListener('click', () => void loadLessons());
         byId('educationAttendanceSave').addEventListener('click', () => void saveJournal());
         byId('educationReportRun').addEventListener('click', () => void runReport());
+        for (const id of ['educationReportFrom', 'educationReportTo', 'educationReportGroup']) {
+            byId(id)?.addEventListener('change', () => {
+                reportVersion += 1;
+                byId('educationReportResult')?.replaceChildren();
+                status('', 'educationReportStatus');
+            });
+        }
         document.addEventListener('education:groups-updated', syncGroupOptions);
         syncGroupOptions();
     });
@@ -213,17 +244,28 @@
     document.addEventListener('click', async event => {
         const bookingId = event.target.closest('[data-education-attendance-booking]')?.dataset.educationAttendanceBooking;
         if (!bookingId) return;
+        const requestState = capture();
         if (typeof global.closeAllModals === 'function') await global.closeAllModals();
         else byId('bookingModal')?.classList.add('hidden');
+        if (!isCurrent(requestState)) return;
         global.EducationScheduleWorkspace?.setView('attendance');
         await openBooking(bookingId);
     });
     global.addEventListener('timeline:business-context-changed', () => {
+        generation += 1;
+        journalVersion += 1;
+        reportVersion += 1;
         state.journal = null;
         state.lessons = [];
         state.loadVersion += 1;
+        state.loading = false;
         renderJournal();
+        if (byId('educationAttendanceSave')) byId('educationAttendanceSave').disabled = false;
+        if (byId('educationAttendanceLesson')) byId('educationAttendanceLesson').innerHTML = '<option value="">Оберіть заняття</option>';
+        if (byId('educationReportGroup')) byId('educationReportGroup').value = '';
         byId('educationReportResult')?.replaceChildren();
+        status('');
+        status('', 'educationReportStatus');
         if (global.EducationScheduleWorkspace?.state.activeView === 'attendance') void loadLessons();
     });
     global.EducationAttendance = Object.freeze({ loadLessons, openBooking, runReport, state });

@@ -8,6 +8,13 @@
     const state = { groups: [], current: null };
     const context = () => global.TimelineBusinessContext?.current?.()?.apiValue || 'event_genix';
     const url = path => `${API_BASE}/education/groups${path}`;
+    let generation = 0;
+    let listVersion = 0;
+    let detailVersion = 0;
+    let searchVersion = 0;
+    let teacherVersion = 0;
+    const capture = () => ({ business: context(), generation });
+    const isCurrent = request => request.generation === generation && request.business === context();
 
     async function request(path, options = {}) {
         const response = await fetch(url(path), {
@@ -52,13 +59,17 @@
     }
 
     async function load() {
+        const requestState = capture();
+        const version = ++listVersion;
         try {
-            const payload = await request(`?businessContext=${encodeURIComponent(context())}&includeArchived=true`);
+            const payload = await request(`?businessContext=${encodeURIComponent(requestState.business)}&includeArchived=true`);
+            if (!isCurrent(requestState) || version !== listVersion) return;
             state.groups = payload.groups || [];
             syncOptions();
             status(`${state.groups.length} груп`);
             document.dispatchEvent(new Event('education:groups-updated'));
         } catch (error) {
+            if (!isCurrent(requestState) || version !== listVersion) return;
             state.groups = [];
             syncOptions();
             status(`Не вдалося завантажити групи: ${error.message}`);
@@ -66,6 +77,8 @@
     }
 
     async function showGroup(id) {
+        const requestState = capture();
+        const version = ++detailVersion;
         if (!id) {
             state.current = null;
             byId('educationGroupForm')?.reset();
@@ -75,7 +88,8 @@
             return;
         }
         try {
-            const { group } = await request(`/${encodeURIComponent(id)}?businessContext=${encodeURIComponent(context())}`);
+            const { group } = await request(`/${encodeURIComponent(id)}?businessContext=${encodeURIComponent(requestState.business)}`);
+            if (!isCurrent(requestState) || version !== detailVersion) return;
             state.current = group;
             byId('educationGroupName').value = group.name;
             byId('educationGroupTeacher').value = group.teacher_id || '';
@@ -94,23 +108,33 @@
             byId('educationGroupMembers').innerHTML = group.members.length
                 ? `<ul>${group.members.map(member => `<li>${escape(member.child_name || `ID ${member.child_id}`)} · ${escape(member.parent_name || '')} · ${escape(member.start_date.slice(0, 10))} — ${escape(member.end_date?.slice(0, 10) || 'дотепер')}${!member.end_date && group.status === 'active' ? ` <button type="button" data-end-member="${member.id}">Завершити</button>` : ''}</li>`).join('')}</ul>`
                 : '<p>Дітей ще не зараховано.</p>';
-        } catch (error) { status(error.message); }
+        } catch (error) {
+            if (isCurrent(requestState) && version === detailVersion) status(error.message);
+        }
     }
 
     async function loadTeachers() {
+        const requestState = capture();
+        const version = ++teacherVersion;
         try {
             const response = await fetch(`${API_BASE}/staff?active=true`, { headers: getAuthHeaders() });
+            if (!isCurrent(requestState) || version !== teacherVersion) return;
             if (!response.ok) return;
             const data = await response.json();
+            if (!isCurrent(requestState) || version !== teacherVersion) return;
             const staff = Array.isArray(data.staff) ? data.staff : Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
             byId('educationGroupTeacher').innerHTML = '<option value="">Без викладача</option>' + staff
                 .filter(person => person.id && person.is_active !== false)
                 .map(person => `<option value="${Number(person.id)}">${escape(person.name)}</option>`).join('');
-        } catch { status('Не вдалося завантажити викладачів.'); }
+        } catch {
+            if (isCurrent(requestState) && version === teacherVersion) status('Не вдалося завантажити викладачів.');
+        }
     }
 
     async function save(event) {
         event.preventDefault();
+        const requestState = capture();
+        const version = detailVersion;
         const id = state.current?.id;
         try {
             const { group } = await request(id ? `/${id}` : '/', {
@@ -121,29 +145,41 @@
                     capacity: Number(byId('educationGroupCapacity').value)
                 }
             });
+            if (!isCurrent(requestState) || version !== detailVersion) return;
             await load();
+            if (!isCurrent(requestState) || version !== detailVersion) return;
             byId('educationGroupsList').value = group.id;
             await showGroup(group.id);
-            status('Групу збережено.');
-        } catch (error) { status(error.message); }
+            if (isCurrent(requestState) && String(state.current?.id) === String(group.id)) status('Групу збережено.');
+        } catch (error) {
+            if (isCurrent(requestState) && version === detailVersion) status(error.message);
+        }
     }
 
     async function searchChildren() {
+        const requestState = capture();
+        const version = ++searchVersion;
         const q = byId('educationChildSearch').value.trim();
         if (q.length < 2) return status('Введіть щонайменше 2 символи.');
         try {
-            const { children } = await request(`/children/search?businessContext=${encodeURIComponent(context())}&q=${encodeURIComponent(q)}`);
+            const { children } = await request(`/children/search?businessContext=${encodeURIComponent(requestState.business)}&q=${encodeURIComponent(q)}`);
+            if (!isCurrent(requestState) || version !== searchVersion) return;
             byId('educationChildSelect').innerHTML = '<option value="">Оберіть дитину</option>' + children
                 .map(child => `<option value="${child.id}">${escape(child.name || `ID ${child.id}`)} · ${escape(child.parent_name)}</option>`).join('');
             status(`${children.length} результатів`);
-        } catch (error) { status(error.message); }
+        } catch (error) {
+            if (isCurrent(requestState) && version === searchVersion) status(error.message);
+        }
     }
 
     async function enroll(event) {
         event.preventDefault();
         if (!state.current) return;
+        const requestState = capture();
+        const version = detailVersion;
+        const groupId = state.current.id;
         try {
-            await request(`/${state.current.id}/members`, {
+            await request(`/${groupId}/members`, {
                 method: 'POST',
                 body: {
                     childId: byId('educationChildSelect').value,
@@ -151,20 +187,27 @@
                     endDate: byId('educationMemberEnd').value || null
                 }
             });
-            await showGroup(state.current.id);
+            if (!isCurrent(requestState) || version !== detailVersion) return;
+            await showGroup(groupId);
+            if (!isCurrent(requestState) || String(state.current?.id) !== String(groupId)) return;
             await load();
-            status('Дитину зараховано.');
-        } catch (error) { status(error.message); }
+            if (isCurrent(requestState) && String(state.current?.id) === String(groupId)) status('Дитину зараховано.');
+        } catch (error) {
+            if (isCurrent(requestState) && String(state.current?.id) === String(groupId)) status(error.message);
+        }
     }
 
     document.addEventListener('DOMContentLoaded', () => {
         document.addEventListener('click', async event => {
             const id = event.target.closest('[data-education-detail-group]')?.dataset.educationDetailGroup;
             if (!id) return;
+            const requestState = capture();
             if (typeof global.closeAllModals === 'function') await global.closeAllModals();
             else byId('bookingModal')?.classList.add('hidden');
+            if (!isCurrent(requestState)) return;
             global.EducationScheduleWorkspace?.setView('groups');
             await load();
+            if (!isCurrent(requestState)) return;
             byId('educationGroupsList').value = id;
             await showGroup(id);
         });
@@ -181,32 +224,62 @@
         byId('educationChildFind')?.addEventListener('click', () => void searchChildren());
         byId('educationGroupArchive')?.addEventListener('click', async () => {
             if (!state.current || !global.confirm('Архівувати групу? Історія занять і членства збережеться.')) return;
+            const requestState = capture();
+            const groupId = state.current.id;
+            const version = detailVersion;
             try {
-                await request(`/${state.current.id}/archive`, { method: 'POST', body: {} });
+                await request(`/${groupId}/archive`, { method: 'POST', body: {} });
+                if (!isCurrent(requestState) || version !== detailVersion) return;
                 await load();
-                await showGroup(state.current.id);
-                status('Групу архівовано.');
-            } catch (error) { status(error.message); }
+                if (!isCurrent(requestState) || version !== detailVersion) return;
+                await showGroup(groupId);
+                if (isCurrent(requestState) && String(state.current?.id) === String(groupId)) status('Групу архівовано.');
+            } catch (error) {
+                if (isCurrent(requestState) && version === detailVersion) status(error.message);
+            }
         });
         byId('educationGroupMembers')?.addEventListener('click', async event => {
             const id = event.target.closest('[data-end-member]')?.dataset.endMember;
             if (!id || !state.current) return;
             const endDate = global.prompt('Дата завершення (РРРР-ММ-ДД)', new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' }));
             if (!endDate) return;
+            const requestState = capture();
+            const groupId = state.current.id;
+            const version = detailVersion;
             try {
-                await request(`/${state.current.id}/members/${id}/end`, { method: 'POST', body: { endDate } });
-                await showGroup(state.current.id);
+                await request(`/${groupId}/members/${id}/end`, { method: 'POST', body: { endDate } });
+                if (!isCurrent(requestState) || version !== detailVersion) return;
+                await showGroup(groupId);
+                if (!isCurrent(requestState) || String(state.current?.id) !== String(groupId)) return;
                 await load();
-                status('Членство завершено.');
-            } catch (error) { status(error.message); }
+                if (isCurrent(requestState) && String(state.current?.id) === String(groupId)) status('Членство завершено.');
+            } catch (error) {
+                if (isCurrent(requestState) && version === detailVersion) status(error.message);
+            }
         });
         byId('educationMemberStart').value = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
         void loadTeachers();
         void load();
     });
     global.addEventListener('timeline:business-context-changed', () => {
+        generation += 1;
+        listVersion += 1;
+        searchVersion += 1;
+        teacherVersion += 1;
+        state.groups = [];
         state.current = null;
         void showGroup(null);
+        syncOptions();
+        if (byId('educationGroupsList')) byId('educationGroupsList').value = '';
+        if (byId('educationLessonGroupId')) byId('educationLessonGroupId').value = '';
+        if (byId('educationLessonGroup')) byId('educationLessonGroup').value = '';
+        if (byId('educationScheduleGroupFilter')) byId('educationScheduleGroupFilter').value = '';
+        if (byId('educationChildSearch')) byId('educationChildSearch').value = '';
+        if (byId('educationChildSelect')) byId('educationChildSelect').innerHTML = '<option value="">Оберіть дитину</option>';
+        if (byId('educationGroupTeacher')) byId('educationGroupTeacher').innerHTML = '<option value="">Без викладача</option>';
+        status('');
+        document.dispatchEvent(new Event('education:groups-updated'));
+        void loadTeachers();
         void load();
     });
     global.EducationGroups = Object.freeze({ load, showGroup, state });

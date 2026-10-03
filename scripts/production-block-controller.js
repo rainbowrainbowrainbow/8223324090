@@ -204,6 +204,21 @@ async function liveVersion(url = TARGET.liveUrl) {
     return body;
 }
 
+function assertHrPayrollProductionBase(manifest, live, remoteSha) {
+    if (manifest.allowedProtectedWorkflow?.kind !== PROTECTED_WORKFLOWS.HR_PAYROLL) return;
+    fail(live.sourceBranch === TARGET.branch && live.commitSha === manifest.baseLiveSha,
+        'Live production changed after HR/payroll preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+    fail(remoteSha === manifest.baseLiveSha || remoteSha === manifest.initialHeadSha,
+        'Production branch changed outside the exact HR/payroll release', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+}
+
+function remoteProductionSha() {
+    const output = git(['ls-remote', '--heads', 'origin', 'refs/heads/' + TARGET.branch]);
+    const sha = output.split(/\s+/)[0].toLowerCase();
+    fail(SHA_PATTERN.test(sha), 'Cannot verify remote production SHA', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    return sha;
+}
+
 function defaultRuntime() {
     const runtime = {
         async facts() {
@@ -237,7 +252,10 @@ function defaultRuntime() {
         plan(manifest) {
             return releaseCommandPlan(manifest);
         },
-        async preflightExecution() {
+        async preflightExecution(manifest) {
+            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+                assertHrPayrollProductionBase(manifest, await liveVersion(), remoteProductionSha());
+            }
             resolveSpawnCommand('npm', ['test']);
         },
         async resumeQa(manifest, releaseSha) {
@@ -670,6 +688,7 @@ if (require.main === module) {
 module.exports = {
     applyReleaseNotes,
     assertExecuteDrift,
+    assertHrPayrollProductionBase,
     defaultBlockFile,
     decodeQaScope,
     execute,

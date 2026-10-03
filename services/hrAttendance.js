@@ -429,7 +429,7 @@ async function buildAttendanceCompensationPlanSnapshot(db, input = {}) {
     }
     for (const [segmentIndex, segment] of segments.entries()) {
         capture(segment, segmentIndex, segment.professionKey, false);
-        const additional = new Set(permanentMonthly);
+        const additional = new Set(permanentMonthly.filter(professionKey => professionKey !== segment.professionKey));
         for (const role of segment.additionalRoles || []) {
             if (role.compensationMode === 'paid_hourly') {
                 additional.add(role.professionKey);

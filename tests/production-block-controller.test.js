@@ -16,6 +16,7 @@ const {
 } = require('../scripts/production-block-policy');
 const {
     applyReleaseNotes,
+    assertHrPayrollProductionBase,
     executeAction,
     findUnexpiredQaBlocker,
     parseOptions,
@@ -801,4 +802,14 @@ test('HR/payroll retains expiry, exact human confirmation and three-attempt stop
     const expired = manifest({ protectedWorkflow: 'hr-payroll', now: new Date(Date.now() - 10 * 60_000), validityMinutes: 5 }, hrPayFacts());
     const expiredFile = blockFile(t, expired);
     await assert.rejects(executeAction({ blockFile: expiredFile, confirmation: confirmationValue(expired), dryRun: true }, dryRuntime()), error => error.code === 'PRODUCTION_BLOCK_EXPIRED');
+});
+
+test('HR/payroll preflight rejects live or remote base drift and permits an exact-SHA push retry', () => {
+    const value = manifest({ protectedWorkflow: 'hr-payroll' }, hrPayFacts());
+    const live = { commitSha: LIVE_SHA, sourceBranch: value.allowedBranch };
+    assert.doesNotThrow(() => assertHrPayrollProductionBase(value, live, LIVE_SHA));
+    assert.doesNotThrow(() => assertHrPayrollProductionBase(value, live, HEAD_SHA));
+    assert.throws(() => assertHrPayrollProductionBase(value, live, RELEASE_SHA), error => error.code === 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    assert.throws(() => assertHrPayrollProductionBase(value, { ...live, commitSha: RELEASE_SHA }, LIVE_SHA), error => error.code === 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+    assert.throws(() => assertHrPayrollProductionBase(value, { ...live, sourceBranch: 'wrong' }, LIVE_SHA), error => error.code === 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
 });

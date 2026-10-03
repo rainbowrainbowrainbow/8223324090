@@ -3,8 +3,8 @@ const { before, after, describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
-const { loadPayrollConditionContext, resolvePayrollConditions, savePayrollDayException } = require('../../services/hrPayrollConditions');
-const { recordAttendanceClockIn, recordAttendanceClockOut } = require('../../services/hrAttendance');
+const { loadPayrollConditionContext, resolvePayrollConditions, getPayrollDayConditions, savePayrollDayException } = require('../../services/hrPayrollConditions');
+const { recordAttendanceClockIn, recordAttendanceClockOut, buildAttendanceCompensationPlanSnapshot } = require('../../services/hrAttendance');
 const { lockAttendanceWriteTarget } = require('../../services/attendanceWriteLock');
 const { calculateConditionSnapshots } = require('../../services/payrollConditionCalculation');
 const enabled = process.env.RUN_PAYROLL_PROFILES_INTEGRATION === 'true';
@@ -55,6 +55,10 @@ describe('HR PAY dated conditions on disposable PostgreSQL', { skip: !enabled, c
         ]);
         assert.equal(results.filter(row => row.status === 'fulfilled').length, 1);
         assert.equal(results.find(row => row.status === 'rejected').reason.code, 'PAYROLL_DAY_EXCEPTION_VERSION_CONFLICT');
+        const read = await getPayrollDayConditions(db, staffId, profession, date);
+        assert.equal(read.available, true); assert.equal(read.frozen, false); assert.equal(read.exceptionVersion, 2);
+        const choices = await getPayrollDayConditions(db, staffId, extraProfession, date, 'additional');
+        assert.equal(choices.choices[0].rate, 500); assert.equal(choices.choices[0].rateUnit, 'day');
         const context = await loadPayrollConditionContext(db, [staffId], { from: '2198-10-02', to: '2198-10-04' });
         assert.equal(resolvePayrollConditions(context, staffId, profession, '2198-10-02').rate, 100);
         assert.equal(resolvePayrollConditions(context, staffId, profession, '2198-10-04').rate, 100);
@@ -98,7 +102,38 @@ describe('HR PAY dated conditions on disposable PostgreSQL', { skip: !enabled, c
         assert.equal(result.baseAmount,Math.round(capturedRate*7.5));
         assert.equal(result.additionalAmount,500);
         assert.equal(result.additionalLines.length,1);
+        const read = await getPayrollDayConditions(db,staffId,extraProfession,date,'additional');
+        assert.equal(read.frozen,true); assert.equal(read.conditions.rate,500);
+        assert.equal(read.choices[0].rate,900); // Current catalog is separate from the immutable applied conditions.
         const repeat=await recordAttendanceClockOut(db,{staffId,recordDate:date,now:date+'T16:00:00Z',performedBy:actor.username});
         assert.deepEqual(repeat.record.compensation_snapshot,snapshot);
+    });
+    test('voiding a day exception restores inheritance only on its own date', async () => {
+        const future = payload({workDate:'2198-10-04',idempotencyKey:'future-exception'});
+        await savePayrollDayException(db,future,actor);
+        await savePayrollDayException(db,{...future,state:'voided',expectedVersion:1,idempotencyKey:'future-exception-void'},actor);
+        const read = await getPayrollDayConditions(db,staffId,profession,'2198-10-04');
+        assert.equal(read.exceptionVersion,2); assert.equal(read.conditions.rate,999);
+        assert.equal(read.conditions.exception,null);
+        assert.equal((await getPayrollDayConditions(db,staffId,profession,date)).frozen,true);
+    });
+    test('a permanent monthly role is not also added to a block where it is already the base profession', async () => {
+        await db.query("UPDATE payroll_profile_versions SET rate_unit='month',default_rate=6000 WHERE profile_id=$1",[profileId]);
+        const snapshot = await buildAttendanceCompensationPlanSnapshot(db,{staffId,recordDate:'2198-10-04',
+            plan:{segments:[{id:1,professionKey:extraProfession,plannedMinutes:480,additionalRoles:[]}]}});
+        assert.equal(snapshot.compensationAllocations.length,1);
+        assert.equal(snapshot.compensationAllocations[0].allocationType,'base');
+        assert.equal(snapshot.compensationAllocations[0].conditions.rateUnit,'month');
+    });
+    test('monthly base accepts a separate day top-up, while day replacement of that base is rejected', async () => {
+        await db.query("UPDATE staff SET rate_unit='month',hourly_rate=30000 WHERE id=$1",[staffId]);
+        const future = payload({workDate:'2198-10-05',rate:250,rateUnit:'day',idempotencyKey:'monthly-topup'});
+        await assert.rejects(savePayrollDayException(db,future,actor),error=>error.code==='PAYROLL_DAY_EXCEPTION_UNIT_CONFLICT');
+        await savePayrollDayException(db,{...future,purpose:'additional'},actor);
+        const base = await getPayrollDayConditions(db,staffId,profession,'2198-10-05');
+        const extra = await getPayrollDayConditions(db,staffId,profession,'2198-10-05','additional');
+        assert.equal(base.conditions.rate,30000); assert.equal(base.conditions.rateUnit,'month');
+        assert.equal(extra.conditions.rate,250); assert.equal(extra.conditions.rateUnit,'day');
+        assert.equal((await getPayrollDayConditions(db,staffId,profession,'2198-10-06','additional')).conditions.rate,0);
     });
 });

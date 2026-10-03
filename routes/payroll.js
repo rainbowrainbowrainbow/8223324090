@@ -29,6 +29,7 @@ const {
 const { closePayrollPeriod } = require('../services/hrPayrollPeriod');
 const { PAYROLL_HISTORICAL_CLASSIFICATION_MESSAGES } = require('../services/payrollSettlement');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
 const {
     requireWritableBusinessScope,
     resolveBusinessScope
@@ -36,7 +37,7 @@ const {
 
 const log = createLogger('PayrollRoutes');
 
-router.use(requireLegacyBusinessSurface('payroll'));
+router.use(requireParkHrPayrollAccess('payroll', requireLegacyBusinessSurface('payroll'), pool));
 
 function sendError(res, err, fallback = 'Internal server error') {
     const status = err.status || err.statusCode || 500;

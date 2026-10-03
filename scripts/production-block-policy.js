@@ -85,6 +85,9 @@ const HR_PAYROLL_MIGRATION = 'db/migrations/374_payroll_day_exceptions.sql';
 const HR_PAYROLL_RED_PATHS = Object.freeze(['.github/workflows/ci.yml', 'routes/payroll.js']);
 // Exact reviewed candidate surface; release marker files must be enumerated before preparing a final manifest.
 const HR_PAYROLL_CHANGED_PATHS = Object.freeze([
+    "services/parkHrPayrollAccess.js",
+    "tests/park-hr-payroll-access.test.js",
+    "tests/park-hr-staff-card-routes.test.js",
     ".github/workflows/ci.yml",
     "tests/browser/hr-pay-actual-app-browser-smoke.js",
     "css/hr-page.css",

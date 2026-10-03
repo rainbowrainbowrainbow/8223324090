@@ -231,8 +231,8 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
             }
         });
 
-        await t.test('no child route, write method or HEAD inherits the card exception', async () => {
-            state.actor = {};
+        await t.test('card-only access does not inherit the separate payroll lane, child writes or HEAD', async () => {
+            state.actor = { deny: ['hr.payroll.view'] };
             for (const [method, path] of [
                 ['GET', `/api/hr/staff/${STAFF_ID}/documents`],
                 ['GET', `/api/hr/staff/${STAFF_ID}/medical-book`],

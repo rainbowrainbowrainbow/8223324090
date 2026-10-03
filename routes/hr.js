@@ -29,6 +29,7 @@ const {
     resolveBusinessScope
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
 const { parkMonthlyPeriod, loadParkHrMonthlyReport } = require('../services/parkHrMonthlyReportRead');
 const {
     lockAttendanceWriteMaintenance,
@@ -418,10 +419,10 @@ function shapeHrStaffList(rows, capability, user) {
     return shapeHrPayrollFields(rows, user);
 }
 router.use(requireHrCapabilityContract);
-router.use(requireLegacyBusinessSurface('staff', {
+router.use(requireParkHrPayrollAccess('hr', requireLegacyBusinessSurface('staff', {
     parkScheduleRouter: 'hr', parkHrStaffCardRead: true, parkHrMonthlyReportRead: true,
     parkHrOnboardingRead: true, parkHrCompanyStructureRead: true
-}));
+}), pool));
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 

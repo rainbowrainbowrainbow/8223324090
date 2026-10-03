@@ -17,8 +17,8 @@ function playwright() {
     }
     throw Error('Playwright unavailable');
 }
-async function request(route,token,body,method='GET') {
-    const response=await fetch(new URL(route,base),{method,headers:{Accept:'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+async function request(route,token,body,method='GET',businessContext='event_genix') {
+    const response=await fetch(new URL(route,base),{method,headers:{Accept:'application/json','X-Business-Context':businessContext,...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
     return {status:response.status,body:await response.json()};
 }
 async function login(username,password) {
@@ -72,11 +72,27 @@ async function run() {
     const target=assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL,{...process.env,DATABASE_URL:''});
     const db=new Pool({connectionString:target.url.toString(),ssl:target.isLocal?false:{rejectUnauthorized:false}});
     fs.mkdirSync(output,{recursive:true});
+    const testActor=(await db.query('SELECT id FROM users WHERE username=$1',[process.env.TEST_USER])).rows[0];
+    assert.ok(testActor);
+    const organization=Number((await db.query("INSERT INTO organizations(slug,name) VALUES('isolated-hr-pay','Synthetic HR pay') RETURNING id")).rows[0].id);
+    const businessIds={};
+    for(const context of ['event_genix','dar']) {
+        businessIds[context]=Number((await db.query(`INSERT INTO businesses(organization_id,context_key,label,short_label,access_mode)
+            VALUES($1,$2,$2,$2,'membership') RETURNING id`,[organization,context])).rows[0].id);
+    }
+    async function member(userId,role,deny=[]) {
+        await db.query("INSERT INTO organization_memberships(organization_id,user_id,role) VALUES($1,$2,'owner')",[organization,userId]);
+        for(const context of ['event_genix','dar']) await db.query(`INSERT INTO business_memberships
+            (business_id,organization_id,user_id,role,is_default,action_denylist) VALUES($1,$2,$3,$4,$5,$6)`,
+            [businessIds[context],organization,userId,role,context==='event_genix',deny]);
+    }
+    await member(testActor.id,'creator');
     const auth=await login(process.env.TEST_USER,process.env.TEST_PASS),token=auth.accessToken||auth.token;
+    assert.equal(auth.user.membershipMode,'membership');
     const stamp=crypto.randomBytes(5).toString('hex');
     const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
     const next=new Date(new Date(date+'T12:00:00Z').getTime()+86400000).toISOString().slice(0,10);
-    const evidence={schemaVersion:1,commitSha:process.env.GITHUB_SHA||null,syntheticOnly:true,productionWrites:0,stages:{}};
+    const evidence={schemaVersion:2,membershipMode:true,commitSha:process.env.GITHUB_SHA||null,syntheticOnly:true,productionWrites:0,stages:{}};
     const {chromium}=playwright(),browser=await chromium.launch({headless:true});
     let page;
     try {
@@ -112,10 +128,15 @@ async function run() {
         await page.waitForURL(/\/hr\?/);
         const hrResponse=await hrRead;
         const hrResult=await hrResponse.json();
-        if(hrResponse.status()===403){
-            assert.equal(hrResult.code,'staff_not_migrated');
-            evidence.stages.hrCard={status:'BLOCKED',code:hrResult.code};
-        } else {assert.equal(hrResponse.status(),200);evidence.stages.hrCard={status:'PASS'};}
+        assert.equal(hrResponse.status(),200,JSON.stringify(hrResult));
+        await page.locator('#staffEditModal').waitFor({state:'visible'});
+        await page.waitForFunction(()=>document.querySelector('#staffEditModal')?.dataset.catalogState==='ready');
+        await page.locator('#editHourlyRate').fill('101');
+        const ratesSaved=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/hr/staff/'+staffId&&r.request().method()==='PUT');
+        await page.locator('#editPayrollSchemeSave').click();
+        assert.equal((await ratesSaved).status(),200);
+        assert.equal(Number((await db.query('SELECT hourly_rate FROM staff WHERE id=$1',[staffId])).rows[0].hourly_rate),101);
+        evidence.stages.hrCard={status:'PASS',salarySettingsSaved:true};
         await page.locator('#staffScheduleReturnLink').waitFor();
         const draft=await page.evaluate(()=>sessionStorage.getItem('pzp_schedule_hr_draft_v1'));
         assert.doesNotMatch(draft,/selectedProfile|defaultRate|profileVersionId|dayPay/);
@@ -195,6 +216,7 @@ async function run() {
         const readerId=created.body.user.id;
         const denied=await request('/api/users/'+readerId+'/access',token,{role:'hr',extraRoles:[],actionDenylist:['hr.payroll.view'],actionAllowlist:[],pageAllowlist:[],pageDenylist:[],businessContexts:['event_genix'],defaultBusinessContext:'event_genix'},'PATCH');
         assert.equal(denied.status,200);
+        await member(readerId,'hr',['hr.payroll.view']);
         const reader=await login(username,password),readerToken=reader.accessToken||reader.token;
         const blocked=await request(`/api/hr/staff/${staffId}/payroll-conditions?professionKey=animator&date=${date}`,readerToken);
         assert.equal(blocked.status,403);assert.doesNotMatch(JSON.stringify(blocked.body),/defaultRate|selectedProfile|30000|270/);
@@ -225,9 +247,8 @@ async function run() {
         const todayRow=page.locator(`#todayList [data-staff-id="${staffId}"]`);
         await todayRow.waitFor();
         const clockButton=todayRow.locator('.hr-clock-btn');
-        if(await clockButton.isDisabled()){
-            evidence.stages.attendance={status:'BLOCKED',code:'today_read_only_business_gate'};
-        } else {
+        assert.equal(await clockButton.isDisabled(),false,'Park attendance must be writable with existing capability');
+        {
             const clockIn=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/hr/clock-in'&&r.request().method()==='POST');
             await clockButton.click();const clockResponse=await clockIn;assert.equal(clockResponse.status(),200);
             const clockBody=await clockResponse.json();assert.equal(clockBody.data.compensation_snapshot.schemaVersion,2);
@@ -253,12 +274,10 @@ async function run() {
             const salaryResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/hr/salary');
             await page.goto(base+'/hr?tab=salary',{waitUntil:'domcontentloaded'});
             const salaryRead=await salaryResponse;
-            if(salaryRead.status()===403){
-                const failure=await salaryRead.json();assert.equal(failure.code,'staff_not_migrated');
-                evidence.stages.salaryBreakdown={status:'BLOCKED',code:failure.code};
-            } else {
+            {
                 assert.equal(salaryRead.status(),200);
                 const salaryBody=await salaryRead.json(), salary=salaryBody.data.find(row=>Number(row.staff_id)===staffId);
+                assert.equal(salaryBody.payroll_activation.readOnly,true);
                 assert.ok(salary);assert.equal(salary.base_salary,1485);assert.equal(salary.additional_pay,500);
                 assert.equal(salary.physical_hours,5.5);
                 await page.waitForFunction(()=>document.querySelector('#salaryList .hr-payroll-salary-item')||document.querySelector('[data-salary-retry]'));
@@ -287,7 +306,33 @@ async function run() {
             assert.deepEqual(after.compensation_snapshot,snapshotBefore);
         }
         await attendanceContext.close();
-        evidence.journeyStatus=Object.values(evidence.stages).some(stage=>stage.status==='BLOCKED')?'BLOCKED':'PASS';
+        // The same tokens are revalidated against fresh membership on every request.
+        const profilesRead=await request('/api/hr/payroll-profiles',token);
+        assert.equal(profilesRead.status,200);
+        assert.equal((await request('/api/payroll/preview?staffId='+staffId+'&month='+date.slice(0,7),token)).status,200);
+        for(const route of ['/api/hr/payroll-profiles','/api/hr/staff/'+staffId+'/payroll-conditions?professionKey=animator&date='+date,'/api/payroll/preview?staffId='+staffId+'&month='+date.slice(0,7)]) {
+            const foreign=await request(route,token,undefined,'GET','dar');
+            assert.equal(foreign.status,403,route);assert.doesNotMatch(JSON.stringify(foreign.body),/defaultRate|30000|Synthetic pay/);
+        }
+        for(const route of ['/api/payroll/installments/1/payments/confirm','/api/payroll/payments/1/reverse',
+            '/api/payroll/period/close','/api/payroll/installments/calculate','/api/hr/payroll-profiles/bulk/apply']) {
+            assert.equal((await request(route,token,{},'POST')).status,403,route);
+        }
+        assert.equal((await request('/api/hr/staff/'+staffId,token,{hourly_rate:101,hr_pool_status:'terminated'},'PUT')).status,403);
+        for(const badContext of ['dar','']) {
+            await db.query('UPDATE hr_time_records SET business_context=$3 WHERE staff_id=$1 AND record_date=$2',[staffId,date,badContext]);
+            const ownership=await request('/api/hr/payroll-profiles',token);
+            assert.equal(ownership.status,409);assert.equal(ownership.body.code,'PARK_HR_PAYROLL_OWNERSHIP_UNVERIFIED');
+        }
+        await db.query("UPDATE hr_time_records SET business_context='event_genix' WHERE staff_id=$1 AND record_date=$2",[staffId,date]);
+        await db.query('UPDATE business_memberships SET is_active=false WHERE business_id=$1 AND user_id=$2',[businessIds.event_genix,testActor.id]);
+        assert.equal((await request('/api/hr/payroll-profiles',token)).status,403);
+        await db.query('UPDATE business_memberships SET is_active=true WHERE business_id=$1 AND user_id=$2',[businessIds.event_genix,testActor.id]);
+        assert.equal((await request('/api/hr/payroll-profiles',token)).status,200);
+        evidence.stages.membershipBoundary={status:'PASS',foreignBusinessDenied:true,revokedTokenDenied:true,
+            unknownOwnershipDenied:true,paymentsDenied:true,unrelatedStaffMutationDenied:true};
+        assert.ok(Object.values(evidence.stages).every(stage=>stage.status==='PASS'));
+        evidence.journeyStatus='PASS';
         evidence.regressionStatus='PASS';
         fs.writeFileSync(path.join(output,'journey-evidence.json'),JSON.stringify(evidence,null,2)+'\n');
         console.log(JSON.stringify(evidence));

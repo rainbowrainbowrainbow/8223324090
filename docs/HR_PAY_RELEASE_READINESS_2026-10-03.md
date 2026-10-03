@@ -1,3 +1,18 @@
+# HR-PAY-10 — погоджений вузький Park HR/payroll доступ
+
+Production impact: yes. 2026-10-03 користувач окремо дозволив саме вузький Park HR/payroll доступ за планом нижче, зі збереженням зарплатних прав, без розширення ролей, інших бізнесів і виплат. Попередній блокер погодження нижче є історією; це погодження реалізації не замінює фінальне hash-bound підтвердження production manifest.
+
+- Новий services/parkHrPayrollAccess.js обгортає чинні legacy guards у routes/hr.js та routes/payroll.js. Дозволено лише точні методи/шляхи індивідуальних HR-умов, профілів, фактичного часу та read-only розрахунків. Усі чинні route capability checks залишені.
+- PUT картки приймає в цьому lane тільки поля ставок/професій. Змішані запити з кадровими або lifecycle змінами відхиляються. Bulk apply, payment/confirm/reverse/settlement/close не відкриті. Salary UI отримує readOnly activation.
+- Належність staff/profiles/schemes спирається на вже чинний Park-only namespace contract (parkStaffScheduleAccess). Перед новими запитами перевіряється явний контекст attendance: чужий, порожній або NULL контекст блокує lane, без автоматичного присвоєння Park. Це не загальна міграція HR у multibusiness.
+- SELECT-only production перевірка 2026-10-03T11:30:19Z: усі 821 hr_time_records мають event_genix; payroll profiles порожні. Примусова READ ONLY транзакція, ROLLBACK, productionWrites=0. Доказ output/hr-pay/hr-pay-park-ownership.json без імен і сум.
+- tests/park-hr-payroll-access.test.js: позитивні методи та негативні перевірки бізнесу/організації, revoked membership, salary/export denies, невідомої належності, помилок БД, виплат і зайвих полів.
+- Actual-app gate переведено в membership mode: HR-картка й збереження ставки, графік, виняток, attendance і зарплата тепер зобов'язані пройти PASS. 403/BLOCKED більше не приймаються як успішний наскрізний результат. Негативні запити і fixtures виконуються тільки в ізольованій БД.
+
+Перевірки нового SHA та фінальна готовність ще виконуються. Production не змінено; release manifest ще не сформовано.
+
+---
+
 # HR-PAY-10 — підготовка випуску та точний залишковий блокер
 
 Production impact: yes. **HOLD: production не змінено; фінальний manifest ще не готовий до підтвердження.**

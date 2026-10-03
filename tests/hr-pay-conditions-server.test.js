@@ -119,3 +119,15 @@ test('disabled salary scheme cannot replace the base unit or provide a monthly d
     assert.equal(result.rate,30000);assert.equal(result.rateUnit,'month');
     assert.equal(result.monthlyNorm.monthlyNormConfirmed,false);
 });
+
+test('blocked additional payroll details retain the snapshot unit instead of assuming hourly pay', () => {
+    const {buildPayrollTransparencyMetrics}=require('../services/payroll');
+    for(const rateUnit of ['day','month']){
+        const result=buildPayrollTransparencyMetrics({physicalMinutes:330,additionalProfessionAllocations:[
+            {professionKey:'animator',rate:500,rateUnit,minutes:330,payMultiplier:1}]},
+        {blockingIssues:[{code:'PAYROLL_CONDITION_REVIEW_REQUIRED',professionKey:'animator'}]});
+        assert.equal(result.additionalRoles[0].rateUnit,rateUnit);
+        assert.equal(result.additionalRoles[0].status,'blocked');
+        assert.equal(result.additionalRoles[0].amount,null);
+    }
+});

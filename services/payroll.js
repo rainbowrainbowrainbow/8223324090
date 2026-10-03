@@ -2686,6 +2686,7 @@ function buildPayrollTransparencyMetrics(metrics = {}, professionPay = {}) {
             minutes,
             hours: roundHoursFromMinutes(minutes),
             rate,
+            rateUnit: lineItem?.rateUnit || lineItem?.rate_unit || allocation.rateUnit || allocation.rate_unit || 'hour',
             rateSource: lineItem?.rateSource || lineItem?.rate_source
                 || allocation.rateSource || allocation.rate_source || null,
             multiplier,

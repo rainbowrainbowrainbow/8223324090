@@ -2043,7 +2043,7 @@ function renderPayrollAdditionalBreakdown(row = {}) {
             <div>${salaryNumber(role.hours).toLocaleString('uk-UA')} год × ${escapeHtml(rateLabel)} × ${escapeHtml(multiplierLabel)}</div>
             ${amount}
             ${blocker ? `<div class="salary-additional-warning"><code>${escapeHtml(blocker.code || 'PAYROLL_BLOCKED')}</code> — ${escapeHtml(blocker.message || '')}</div>` : ''}
-            <small>${escapeHtml(trace || role.policyVersion || 'Немає snapshot reference')}</small>
+            <small>${escapeHtml([role.rateSource, role.formula, trace || role.policyVersion || 'Немає snapshot reference'].filter(Boolean).join(' · '))}</small>
         </div>`;
     });
     if (blockers.length) {
@@ -2065,8 +2065,11 @@ function renderPayrollProfessionBreakdown(row = {}) {
                 ? 'місяць'
                 : `${item.actual_hours ?? item.hours ?? 0} год`;
         const source = item.allocation_source || item.allocationSource || 'none';
-        const kind = item.kind === 'overtime' ? ' · overtime' : '';
-        return `<div class="salary-muted"><b>${escapeHtml(profession)}</b> · ${escapeHtml(quantity)} · ${formatMoney(item.rate || 0)} / ${escapeHtml(item.rate_unit || 'hour')} · ${formatMoney(item.amount || 0)}${kind} · ${escapeHtml(source)}</div>`;
+        const kind = item.kind === 'overtime' ? ' · overtime'
+            : item.kind === 'simultaneous_additional' ? ' · Доплата за додаткову професію' : '';
+        const payConditions = [item.profile_title || '', item.rate_source || '', item.work_date || '', item.formula || '']
+            .filter(Boolean).map(value => escapeHtml(value)).join(' · ');
+        return `<div class="salary-muted"><b>${escapeHtml(profession)}</b> · ${escapeHtml(quantity)} · ${formatMoney(item.rate || 0)} / ${escapeHtml(item.rate_unit || 'hour')} · ${formatMoney(item.amount || 0)}${kind} · ${escapeHtml(source)}${payConditions ? `<div>${payConditions}</div>` : ''}</div>`;
     }).join('');
 }
 
@@ -2086,7 +2089,7 @@ function renderSalaryReportTable(data) {
             <div>
                 <div style="font-weight:900">Звіт за ${escapeHtml(data.month || '')}</div>
                 <div class="salary-muted">Breakdown по схемах, нарахуваннях, утриманнях і ЗРС.</div>
-                <div class="salary-role-hours-note">Оплачувані години професій можуть перевищувати фізичні години через одночасну роботу.</div>
+                <div class="salary-role-hours-note">Оплачувані години професій можуть перевищувати фізичні години через одночасну роботу. Суми рядків округлюються до гривні.</div>
             </div>
             <div>
                 ${canExportPayroll ? `<button type="button" class="btn-page-secondary" id="salaryReportExportBtn">CSV</button>

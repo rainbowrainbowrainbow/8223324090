@@ -120,8 +120,9 @@ test('single save keeps an optimistic plan version and handles stale conflicts w
     assert.match(page, /Ваші поля не перезаписані/);
     assert.match(page, /Оновити з сервера/);
     assert.match(page, /Залишити мої дані/);
-    assert.match(page, /if \(shouldRefresh && scheduleModalSessionIsCurrent\(editingSession\)\)/);
-    assert.match(page, /await refreshStaleScheduleModalPlan\(editingSession\)/);
+    assert.match(page, /await offerStaleSchedulePlanRefresh\(editingSession\)/);
+    assert.match(page, /if \(shouldRefresh && scheduleModalSessionIsCurrent\(session\)\) await refreshStaleScheduleModalPlan\(session\)/);
+    assert.match(page, /await refreshStaleScheduleModalPlan\(session\)/);
 });
 
 test('cells, role sections, export and print use segments instead of envelope duration', () => {

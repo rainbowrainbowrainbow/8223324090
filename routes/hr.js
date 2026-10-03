@@ -74,6 +74,8 @@ const {
 } = require('../services/hrOnboarding');
 const {
     parseTextList,
+    normalizeStaffProfessionRateChanges,
+    applyStaffProfessionRateChanges,
     normalizeProfessionKey,
     normalizeSecondaryProfessions,
     normalizeProfessionCatalogRow,
@@ -378,6 +380,7 @@ const HR_PAYROLL_RESPONSE_FIELDS = new Set([
     'hourly_rate', 'hourlyRate', 'rate_unit', 'rateUnit', 'estimated_salary', 'estimatedSalary',
     'salary', 'base_salary', 'baseSalary', 'total_salary', 'totalSalary',
     'profession_rates', 'professionRates', 'profession_rate_summary', 'professionRateSummary',
+    'compensation_snapshot', 'compensationSnapshot', 'conditions',
     'allocation_issues', 'allocationIssues', 'reconciliation', 'totalFOP', 'zrs', 'zrsAmount'
 ]);
 
@@ -4308,6 +4311,31 @@ router.put('/payroll-profiles/:id/archive', requirePayrollRules, async (req, res
     }
 });
 
+// Salary permissions and business-scope middleware are inherited from the HR router.
+router.get('/staff/:id/payroll-conditions', requirePayrollView, async (req, res) => {
+    try {
+        const { loadPayrollConditionContext, resolvePayrollConditions } = require('../services/hrPayrollConditions');
+        const date = require('../services/attendanceWriteLock').normalizeAttendanceWriteDate(req.query.date);
+        const staffId = Number(req.params.id);
+        const context = await loadPayrollConditionContext(pool, [staffId], { from: date, to: date });
+        const professionKey = normalizeProfessionKey(req.query.professionKey);
+        const staff = context.staff.get(staffId);
+        if (!staff || !staffProfessionKeys(staff).includes(professionKey)) return res.status(404).json({ success: false, error: 'Професію працівника не знайдено' });
+        const purpose = req.query.purpose === 'additional' ? 'additional' : 'base_replacement';
+        const conditions = resolvePayrollConditions(context, staffId, professionKey, date, purpose);
+        res.json({ success: true, data: { conditions, exceptions: [...context.exceptions.values()],
+            profiles: [...context.profiles.profilesById.values()].filter(profile => profile.professionKey === professionKey) } });
+    } catch (error) { sendPayrollProfileFailure(res, error, 'GET /hr/staff/:id/payroll-conditions error'); }
+});
+
+router.put('/staff/:id/payroll-day-exception', requirePayrollRules, async (req, res) => {
+    try {
+        const { savePayrollDayException } = require('../services/hrPayrollConditions');
+        const result = await savePayrollDayException(pool, { ...req.body, staffId: req.params.id }, req.user);
+        res.json({ success: true, data: result });
+    } catch (error) { sendPayrollProfileFailure(res, error, 'PUT /hr/staff/:id/payroll-day-exception error'); }
+});
+
 router.get('/staff/:id/payroll-profile-assignments', requirePayrollView, async (req, res) => {
     try {
         const data = await listStaffPayrollProfileAssignments(req.params.id, {
@@ -4493,7 +4521,7 @@ router.put('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
         const rateRows = rows
             .filter(row => row.hourly_rate !== null && Number(row.hourly_rate) > 0)
             .map(row => ({ profession_key: row.profession_key, hourly_rate: row.hourly_rate }));
-        await replaceStaffProfessionRates(client, req.params.id, rateRows);
+        await applyStaffProfessionRateChanges(client, req.params.id, rateRows);
         await client.query('COMMIT');
         await auditLog('staff_role_assignments_update', parseInt(req.params.id), req.user?.username, {
             primary_role: primaryRole,
@@ -4743,7 +4771,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             secondary_professions: hasSecondaryProfessions ? professionValidation.secondaryProfessions : beforeStaff.secondary_professions
         });
         const normalizedProfessionRates = hasProfessionRates
-            ? normalizeStaffProfessionRates(professionRateInput, effectiveProfessionKeys)
+            ? normalizeStaffProfessionRateChanges(professionRateInput, effectiveProfessionKeys)
             : [];
         const beforeRateRows = hasProfessionRates
             ? (await pool.query(
@@ -4840,7 +4868,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
                 return res.status(404).json({ success: false, error: 'Не знайдено' });
             }
             if (hasProfessionRates) {
-                afterRateRows = await replaceStaffProfessionRates(client, req.params.id, normalizedProfessionRates);
+                afterRateRows = await applyStaffProfessionRateChanges(client, req.params.id, normalizedProfessionRates);
                 result.rows[0].profession_rates = afterRateRows;
             }
             if (fieldPresence.hr_pool_status && ['blacklisted', 'reserve'].includes(requestedPoolStatus)) {
@@ -4891,7 +4919,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         res.json({ success: true, data: result.rows[0], schedule_cleanup: scheduleCleanup });
     } catch (err) {
         log.error('PUT /hr/staff/:id error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode === 400 ? 'Перевірте професію та додатну ставку. Видалення ставки потрібно обрати явно.' : 'Помилка сервера' });
     }
 });
 

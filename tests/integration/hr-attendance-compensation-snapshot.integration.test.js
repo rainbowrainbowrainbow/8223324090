@@ -51,8 +51,8 @@ describe('attendance compensation snapshot on isolated PostgreSQL', { skip: !ena
     test('clock-in freezes the paid role and clock-out keeps physical and compensation minutes independent', async () => {
         const suffix = `${process.pid}-${Date.now()}`;
         const staffResult = await client.query(
-            `INSERT INTO staff (name, department, position, role_type, is_active)
-             VALUES ($1, 'admin', 'Disposable compensation fixture', 'wardrobe', true)
+            `INSERT INTO staff (name, department, position, role_type, is_active, hourly_rate)
+             VALUES ($1, 'admin', 'Disposable compensation fixture', 'wardrobe', true, 100)
              RETURNING id`,
             [`Fictional Attendance Compensation ${suffix}`]
         );
@@ -108,6 +108,9 @@ describe('attendance compensation snapshot on isolated PostgreSQL', { skip: !ena
             [paidSegmentId]
         );
 
+        await client.query(`INSERT INTO staff_role_assignments
+            (staff_id, profession_key, is_primary, status, admission_status, internship_status, created_by, updated_by)
+            VALUES ($1, 'hallkeeper', false, 'active', 'approved', 'none', 'isolated_test', 'isolated_test')`, [staffId]);
         const clockInResult = await recordAttendanceClockIn(client, {
             staffId,
             recordDate: FIXTURE_DATE,

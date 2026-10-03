@@ -1221,8 +1221,9 @@ function normalizeAssignmentPayload(item = {}) {
 function assertNoAssignmentOverlap(assignments = []) {
     const byProfession = new Map();
     for (const assignment of assignments) {
-        if (!byProfession.has(assignment.professionKey)) byProfession.set(assignment.professionKey, []);
-        byProfession.get(assignment.professionKey).push(assignment);
+        const key = `${assignment.professionKey}:${assignment.assignmentKind}`;
+        if (!byProfession.has(key)) byProfession.set(key, []);
+        byProfession.get(key).push(assignment);
     }
     for (const [professionKey, rows] of byProfession.entries()) {
         const sorted = [...rows].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
@@ -2026,6 +2027,7 @@ async function diagnosePayrollProfiles(options = {}, serviceOptions = {}) {
          JOIN staff_payroll_profile_assignments a2
            ON a1.staff_id = a2.staff_id
           AND a1.profession_key = a2.profession_key
+          AND a1.assignment_kind = a2.assignment_kind
           AND a1.id < a2.id
           AND daterange(a1.effective_from, COALESCE(a1.effective_to, '9999-12-31'::date), '[]')
               && daterange(a2.effective_from, COALESCE(a2.effective_to, '9999-12-31'::date), '[]')

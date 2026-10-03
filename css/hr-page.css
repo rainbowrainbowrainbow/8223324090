@@ -10774,3 +10774,18 @@ body.dark-mode .hr-payroll-installment-action { color: #c4b5fd; }
 .hr-checklist-pagination > span {
     flex: 1 1 180px;
 }
+
+/* Explicit per-profession rate removal keeps its control usable on narrow cards. */
+.hr-profession-rate-control [data-remove-profession-rate] {
+    grid-column: 1 / -1; min-height: 44px; padding: 6px 10px; border: 1px solid var(--border-color, #475569);
+    border-radius: 8px; background: transparent; color: inherit; cursor: pointer;
+}
+
+#staffScheduleReturnLink {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}

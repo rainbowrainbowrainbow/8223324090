@@ -912,16 +912,18 @@ test('paid-role validation context reads only approved assignments and explicit 
             if (/FROM staff_profession_rates/.test(text)) {
                 return { rows: [{ staff_id: 17, profession_key: 'manager', hourly_rate: '180.00' }] };
             }
+            if (/FROM staff WHERE/.test(text)) return { rows: [{ id: 17, role_type: 'animator', rate_unit: 'month', hourly_rate: 30000 }] };
+            if (/FROM (payroll_profiles|payroll_profile_versions|payroll_profile_day_rates|staff_payroll_profile_assignments|payroll_day_exceptions|payroll_schemes)/.test(text)) return { rows: [] };
             throw new Error(`Unexpected SQL: ${text}`);
         }
     };
 
     const context = await loadPaidRoleValidationContext(db, [17, 17, 0]);
 
-    assert.equal(calls.length, 3);
+    assert.ok(context.payrollConditions);
     assert.deepEqual(calls[1].params, [[17]]);
     assert.deepEqual(calls[2].params, [[17]]);
-    assert.ok(calls.every(call => /FOR SHARE/.test(call.text)));
+    assert.ok(calls.slice(0, 3).every(call => /FOR SHARE/.test(call.text)));
     assert.ok(calls.every(call => !/\bstaff\.hourly_rate\b/.test(call.text)));
     assert.equal(context.approvedAssignments.has('17:manager'), true);
     assert.equal(context.approvedAssignments.has('17:animator'), false);

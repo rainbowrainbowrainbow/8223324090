@@ -3603,6 +3603,11 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
             /180 грн\/год[\s\S]*510 хв[\s\S]*multiplier 1\.0[\s\S]*1.?530 грн/,
             'payroll-authorized user sees rate, minutes, multiplier and estimated amount'
         );
+        await cards.nth(1).locator('[data-segment-field="break"]').fill('30');
+        assert.match(await cards.nth(1).locator('[data-paid-role-preview]').innerText(),
+            /План: 480 хв[\s\S]*перерви 30 хв[\s\S]*1.?440 грн/,
+            'editing a break immediately reduces the planned additional pay');
+        await cards.nth(1).locator('[data-segment-field="break"]').fill('0');
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), false, 'normalized paid-role plan is saveable');
         await captureStableScheduleScreenshot(
             page,
@@ -3647,11 +3652,11 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, 'paid mode is blocked when the explicit profession rate is missing');
         assert.match(
             await cards.nth(1).locator('[data-field-error="paid-profession"]').innerText(),
-            /немає явної погодинної ставки/,
+            /немає окремої погодинної ставки/,
             'missing-rate error is shown next to the profession field'
         );
-        assert.match(await page.locator('#schPlanSummary').innerText(), /Старший менеджер[\s\S]*немає явної погодинної ставки/);
-        assert.match(await page.locator('[data-schedule-save-validation]').innerText(), /немає явної погодинної ставки/);
+        assert.match(await page.locator('#schPlanSummary').innerText(), /Старший менеджер[\s\S]*немає окремої погодинної ставки/);
+        assert.match(await page.locator('[data-schedule-save-validation]').innerText(), /немає окремої погодинної ставки/);
 
         await cards.nth(1).locator('[data-segment-field="paid-profession"]').selectOption('');
         await cards.nth(1).locator('[data-segment-field="profession"]').selectOption('reception');
@@ -4121,6 +4126,98 @@ async function runSidebarIdentityWrapFlow(browser, base, viewport, label, darkMo
     }
 }
 
+
+async function runPayConditionsDraftFlow(browser, base) {
+    const { context, page } = await openStaffPage(browser, base, { width: 390, height: 844 }, { darkMode: true });
+    const originalRate = PROFESSIONS.find(item => item.key === 'reception').people[0].explicitRate;
+    const saveCount = apiCalls.scheduleBodies.length;
+    try {
+        await context.route('**/hr?**', route => route.fulfill({ contentType: 'text/html', body:
+            '<!doctype html><title>HR navigation fixture</title><a id="return">Повернутися до чернетки зміни</a>'
+            + '<script>const draft=JSON.parse(sessionStorage.getItem("pzp_schedule_hr_draft_v1"));'
+            + 'document.getElementById("return").href=draft.returnUrl;</script>' }));
+        await applyManualRange(page, '2026-07-16', '2026-07-17');
+        await activateScheduleDepartment(page, 'animators');
+        await expandScheduleGroup(page, 'animators');
+        await page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-16"]').click();
+        await page.locator('#schModalOverlay.visible').waitFor();
+        const card = () => page.locator('#schSegmentsList .sch-segment-card').first();
+        await card().locator('[data-segment-field="profession"]').selectOption('animator');
+        await card().locator('[data-segment-field="start"]').fill('10:15');
+        await card().locator('[data-segment-field="end"]').fill('18:30');
+        await card().locator('[data-segment-field="break"]').fill('30');
+        await card().locator('[data-segment-field="paid-profession"]').selectOption('reception');
+        await card().locator('[data-segment-field="paid-start"]').fill('12:00');
+        await card().locator('[data-segment-field="paid-end"]').fill('17:00');
+        await page.locator('#schNote').fill('Draft kept through HR');
+        await card().locator('[data-segment-field="start"]').fill('');
+        await card().locator('[data-schedule-pay-conditions]').click();
+        await page.waitForURL('**/hr?**');
+        const destination = new URL(page.url());
+        assert.equal(destination.searchParams.get('employee'), '101');
+        assert.equal(destination.searchParams.get('profession'), 'reception');
+        assert.equal(destination.searchParams.get('profileTab'), 'payroll');
+        assert.equal(destination.searchParams.get('payDate'), '2026-07-16');
+        assert.ok(destination.searchParams.get('scheduleDraft'));
+        PROFESSIONS.find(item => item.key === 'reception').people[0].explicitRate = 195;
+        await context.route('**/api/staff/schedule?**', route => route.fulfill({
+            status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'QA range failure' })
+        }));
+        await page.locator('#return').click();
+        await page.locator('#scheduleRangeRetryBtn').waitFor({ state: 'visible' });
+        assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pzp_schedule_hr_draft_v1')).pending), true,
+            'failed range load retains the pending draft');
+        await context.unroute('**/api/staff/schedule?**');
+        await page.locator('#scheduleRangeRetryBtn').click();
+        await page.locator('#schModalOverlay.visible').waitFor();
+        assert.equal(await page.locator('#scheduleDateFrom').inputValue(), '2026-07-16');
+        assert.equal(await page.locator('#scheduleDateTo').inputValue(), '2026-07-17');
+        assert.equal(await card().locator('[data-segment-field="start"]').inputValue(), '', 'unfinished time is not replaced by a default');
+        assert.equal(await card().locator('[data-segment-field="end"]').inputValue(), '18:30');
+        assert.equal(await card().locator('[data-segment-field="break"]').inputValue(), '30');
+        assert.equal(await card().locator('[data-segment-field="profession"]').inputValue(), 'animator');
+        assert.equal(await card().locator('[data-segment-field="paid-profession"]').inputValue(), 'reception');
+        assert.equal(await card().locator('[data-segment-field="paid-start"]').inputValue(), '12:00');
+        assert.equal(await page.locator('#schNote').inputValue(), 'Draft kept through HR');
+        assert.match(await card().locator('[data-paid-role-preview]').innerText(), /195 грн\/год/);
+        assert.equal(apiCalls.scheduleBodies.length, saveCount, 'navigation never writes a schedule or permanent payment conditions');
+        await card().locator('[data-segment-field="start"]').fill('10:15');
+        let release;
+        const held = new Promise(resolve => { release = resolve; });
+        await context.route('**/api/hr/professions*', async route => {
+            await held;
+            await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false }) });
+        });
+        await card().locator('[data-schedule-rates-retry]').click();
+        await card().locator('[data-segment-field="end"]').fill('19:00');
+        release();
+        await page.waitForFunction(() => document.querySelector('[data-paid-role-actions]')?.textContent.includes('Не вдалося завантажити'));
+        assert.equal(await card().locator('[data-segment-field="end"]').inputValue(), '19:00', 'edits during a failed request survive');
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), true);
+        await context.unroute('**/api/hr/professions*');
+        await card().locator('[data-schedule-rates-retry]').click();
+        await page.waitForFunction(() => document.querySelector('[data-paid-role-preview]')?.textContent.includes('195 грн'));
+        assert.equal(await card().locator('[data-segment-field="end"]').inputValue(), '19:00');
+        await page.evaluate(() => {
+            const original = window.canAccess;
+            window.canAccess = capability => capability === 'hr.payroll.view' ? false : original(capability);
+        });
+        await card().locator('[data-schedule-rates-retry]').click();
+        await page.waitForFunction(() => document.querySelector('[data-paid-role-actions]')?.textContent.includes('Немає доступу до сум'));
+        assert.doesNotMatch(await card().locator('[data-paid-role-preview]').innerText(), /грн/);
+        assert.match(await card().locator('[data-schedule-pay-conditions]').getAttribute('href'), /profileTab=work/);
+        await captureStableScheduleScreenshot(page, 'pay-conditions-draft-mobile.png', '#schModalOverlay .sch-modal');
+        await page.locator('#schCancelBtn').click();
+        const confirm = page.locator('.confirm-overlay[data-confirm-kind="confirm"]');
+        if (await confirm.isVisible().catch(() => false)) await confirm.locator('.confirm-ok').click();
+        await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+        assert.equal(await page.evaluate(() => sessionStorage.getItem('pzp_schedule_hr_draft_v1')), null);
+    } finally {
+        PROFESSIONS.find(item => item.key === 'reception').people[0].explicitRate = originalRate;
+        await context.close();
+    }
+}
+
 (async () => {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     assertSingleScheduleEntryPerStaffDate(SCHEDULE_FIXTURE_ENTRIES);
@@ -4128,6 +4225,16 @@ async function runSidebarIdentityWrapFlow(browser, base, viewport, label, darkMo
     const { server, base } = await createServer();
     const browser = await chromium.launch({ headless: HEADLESS });
     try {
+        if (process.argv.includes('--pay-calculation-only')) {
+            await runPaidAdditionalProfessionFlow(browser, base);
+            console.log('Schedule paid calculation browser smoke passed');
+            return;
+        }
+        await runPayConditionsDraftFlow(browser, base);
+        if (process.argv.includes('--pay-draft-only')) {
+            console.log('Schedule HR pay conditions draft browser smoke passed');
+            return;
+        }
         await runRecoveryReadOnlyFlow(browser, base);
         if (process.argv.includes('--recovery-readonly-only')) {
             console.log('Park recovery read-only browser smoke passed');

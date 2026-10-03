@@ -153,7 +153,7 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
         paidRoleId = Number(paidRole.rows[0].id);
 
         const compensationSnapshot = {
-            schemaVersion: 1,
+            schemaVersion: 2,
             state: 'final',
             manualReview: false,
             planSource: 'hr_shift',
@@ -242,6 +242,11 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
             issues: []
         };
 
+        for (const allocation of compensationSnapshot.compensationAllocations) {
+            allocation.conditions = { ruleVersion: 'hr-pay-conditions-v2', rateUnit: 'hour',
+                rate: allocation.allocationType === 'base' ? 100 : 200,
+                rateSource: 'staff_profession_rates.hourly_rate', appliedRule: 'legacy_rate' };
+        }
         await pool.query(
             `INSERT INTO hr_time_records
                 (staff_id, record_date, clock_in, clock_out, planned_start, planned_end,
@@ -312,7 +317,7 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
                 attendanceRef: firstBreakdown.metrics.additionalProfessionAllocations[0].attendanceRef,
                 segmentRef: secondSegmentId,
                 roleRef: paidRoleId,
-                policyVersion: 'simultaneous-profession-pay-v1',
+                policyVersion: 'hr-pay-conditions-v2',
                 amount: 1700
             }
         );
@@ -530,8 +535,8 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
                     monthlyNormSource: 'integration_full_month_schedule',
                     monthlyNormConfirmed: true
                 },
-                baseAmount: 30000,
-                totalAmount: 31700
+                baseAmount: 900,
+                totalAmount: 2600
             }
         ]) {
             await deleteDraftPayrollArtifacts(pool, MONTH, staffId);
@@ -560,7 +565,7 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
             assert.equal(previewLine.rate, 200);
             assert.equal(previewLine.rateSource, 'staff_profession_rates.hourly_rate');
             assert.equal(previewLine.amount, 1700);
-            assert.equal(previewLine.formula, '510 / 60 * 200 * 1');
+            assert.equal(previewLine.formula, '510 / 60 × 200');
 
             const hrSalary = await authRequest('GET', `/api/hr/salary?month=${MONTH}`);
             assert.equal(hrSalary.status, 200, JSON.stringify(hrSalary.data));

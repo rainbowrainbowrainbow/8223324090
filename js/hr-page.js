@@ -2755,11 +2755,7 @@ async function initPage() {
     initHrPrintDocuments();
     const initialTab = getInitialHrTab();
     await activateHrTab(initialTab, { updateHash: false });
-    const employeeId = new URLSearchParams(window.location.search).get('employee');
-    if (employeeId && /^\d+$/.test(employeeId)) {
-        await activateHrTab('team', { updateHash: false });
-        openStaffEdit(parseInt(employeeId, 10));
-    }
+    await openStaffEditFromLocation();
     await syncProfessionWorkspaceFromLocation({ initial: true });
     window.addEventListener('hashchange', () => syncHrLocationState());
     initHrRealtime();
@@ -5823,6 +5819,22 @@ function setProfessionWorkspaceTab(tab, options = {}) {
     }
 }
 
+async function openProfessionPayConditions() {
+    if (!canViewPayrollWorkspace()) return;
+    const key = professionWorkspaceState.data?.profession?.key;
+    if (!key || professionWorkspaceState.isNew) return;
+    const button = document.getElementById('professionWorkspacePayConditions');
+    const values = JSON.stringify(Array.from(document.querySelectorAll('[data-profession-workspace-panel="main"] input, [data-profession-workspace-panel="main"] select, [data-profession-workspace-panel="main"] textarea')).map(input => [input.id, input.value]));
+    if (button?.dataset.baseline !== values) {
+        const confirmed = await confirmHrAction('У картці професії є незбережені зміни. Відкрити умови оплати без їх збереження?', { okText: 'Відкрити умови' });
+        if (!confirmed) return;
+    }
+    closeProfessionWorkspaceUi();
+    Object.assign(payrollProfilesState, { profession: key, query: '', kind: 'all', status: 'all', usage: 'all', readiness: 'all' });
+    await activateHrTab('profiles', { updateHash: true });
+    if (payrollProfilesState.loadStatus === 'ready') renderPayrollProfilesCatalog();
+}
+
 function renderProfessionWorkspace() {
     const overlay = document.getElementById('professionWorkspaceOverlay');
     const workspace = document.getElementById('professionWorkspace');
@@ -5875,6 +5887,12 @@ function renderProfessionWorkspace() {
     document.getElementById('professionWorkspaceColor').value = /^#[0-9a-f]{6}$/i.test(profession.color || '') ? profession.color : '#10b981';
     document.getElementById('professionWorkspaceSortOrder').value = profession.sortOrder ?? profession.sort_order ?? 100;
     document.getElementById('professionWorkspaceActive').value = active ? 'true' : 'false';
+    const payConditions = document.getElementById('professionWorkspacePayConditions');
+    if (payConditions) {
+        payConditions.hidden = isNew || !canViewPayrollWorkspace();
+        payConditions.dataset.baseline = JSON.stringify(Array.from(document.querySelectorAll('[data-profession-workspace-panel="main"] input, [data-profession-workspace-panel="main"] select, [data-profession-workspace-panel="main"] textarea')).map(input => [input.id, input.value]));
+        payConditions.onclick = () => void openProfessionPayConditions();
+    }
     renderProfessionWorkspacePeople(data.people || []);
     renderProfessionWorkspaceChecklist();
     renderProfessionWorkspaceUsage(data);
@@ -9913,42 +9931,60 @@ function renderStaffProfessionRatesEditor(staff = {}) {
     const root = document.getElementById('editProfessionRates');
     if (!root) return;
     const primary = normalizeProfessionKey(document.getElementById('editRoleType')?.value || staff.role_type);
-    const keys = currentStaffProfessionKeysForEdit(staff).filter(key => key && key !== primary);
+    const rateMap = staffProfessionRateMap(staff);
+    const keys = currentStaffProfessionKeysForEdit(staff).filter(key => key && (key !== primary || rateMap.has(key)));
     if (!keys.length) {
         root.innerHTML = '<div class="hr-profession-picker-empty">Додаткові професії не вибрані. Для основної професії використовується базова ставка вище.</div>';
         return;
     }
-    const rateMap = staffProfessionRateMap(staff);
     const currentInputValues = new Map();
+    const removedKeys = new Set();
     root.querySelectorAll('[data-profession-rate]').forEach(input => {
         const key = normalizeProfessionKey(input.dataset.professionRate);
         if (key) currentInputValues.set(key, input.value);
+        if (input.dataset.rateRemoved === 'true' && rateMap.has(key)) removedKeys.add(key);
     });
-    const baseRate = Number(document.getElementById('editHourlyRate')?.value || staff.hourly_rate || 0);
-    const unit = currentEditRateUnit(staff);
-    const suffix = `₴/${staffRateUnitSuffix(unit)}`;
     root.innerHTML = keys.map(key => {
         const customRate = rateMap.get(key);
         const displayRate = currentInputValues.has(key)
             ? currentInputValues.get(key)
             : (Number.isFinite(customRate) && customRate > 0 ? customRate : '');
         return `<label class="hr-profession-rate-row" data-rate-profession="${escapeHtml(key)}">
-            <span><b>${escapeHtml(professionTitle(key))}</b><small>Додаткова професія</small></span>
+            <span><b>${escapeHtml(professionTitle(key))}</b><small>${key === primary ? 'Окрема ставка основної професії' : 'Додаткова професія'}</small></span>
             <div class="hr-profession-rate-control">
-                <input type="number" min="0" step="10" inputmode="decimal" data-profession-rate="${escapeHtml(key)}" value="${displayRate ? escapeHtml(displayRate) : ''}" placeholder="${baseRate > 0 ? escapeHtml(baseRate) : '0'}">
-                <small>${escapeHtml(suffix)}</small>
+                <input type="number" min="0" step="10" inputmode="decimal" id="editProfessionRate-${escapeHtml(key)}" data-profession-rate="${escapeHtml(key)}" data-original-rate="${customRate || ''}" data-rate-removed="${removedKeys.has(key)}" ${removedKeys.has(key) ? 'disabled' : ''} value="${displayRate ? escapeHtml(displayRate) : ''}" placeholder="Не задана">
+                <small>грн/год</small>
+                ${rateMap.has(key) ? `<button type="button" data-remove-profession-rate="${escapeHtml(key)}">${removedKeys.has(key) ? 'Скасувати видалення' : 'Видалити ставку'}</button>` : ''}
             </div>
         </label>`;
-    }).join('');
+    }).join('') + '<small>Порожнє поле зберігає наявну ставку. Для видалення натисніть «Видалити ставку».</small>';
+    root.onclick = event => {
+        const button = event.target.closest('[data-remove-profession-rate]');
+        if (!button) return;
+        const input = button.closest('[data-rate-profession]').querySelector('[data-profession-rate]');
+        const removing = input.dataset.rateRemoved !== 'true';
+        if (removing) input.dataset.beforeRemoval = input.value;
+        input.dataset.rateRemoved = String(removing);
+        input.value = removing ? '' : (input.dataset.beforeRemoval || String(rateMap.get(input.dataset.professionRate) || ''));
+        input.disabled = removing;
+        button.textContent = removing ? 'Скасувати видалення' : 'Видалити ставку';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
 }
 
 function readStaffProfessionRates() {
     return Array.from(document.querySelectorAll('[data-profession-rate]'))
-        .map(input => ({
-            profession_key: normalizeProfessionKey(input.dataset.professionRate),
-            hourly_rate: Number(input.value || 0)
-        }))
-        .filter(row => row.profession_key && Number.isFinite(row.hourly_rate) && row.hourly_rate > 0);
+        .map(input => input.dataset.rateRemoved === 'true'
+            ? { profession_key: normalizeProfessionKey(input.dataset.professionRate), remove: true }
+            : { profession_key: normalizeProfessionKey(input.dataset.professionRate), hourly_rate: Number(input.value || 0) })
+        .filter(row => row.profession_key && (row.remove === true || (Number.isFinite(row.hourly_rate) && row.hourly_rate > 0)));
+}
+
+function readStaffProfessionRateChanges() {
+    const inputs = Array.from(document.querySelectorAll('[data-profession-rate]'));
+    return readStaffProfessionRates().filter(row => row.remove === true || inputs.some(input =>
+        normalizeProfessionKey(input.dataset.professionRate) === row.profession_key
+        && Number(input.dataset.originalRate || 0) !== row.hourly_rate));
 }
 
 function populateStaffStructureSelect(staff = {}) {
@@ -11695,24 +11731,26 @@ function staffPayrollDefaultProfileForProfession(professionKey) {
     ) || null;
 }
 
-function staffPayrollEffectiveProfileForProfession(professionKey, date = todayStr()) {
-    const assignment = staffPayrollActiveAssignmentForProfession(professionKey, date);
-    const assignedProfile = assignment ? staffPayrollProfileById(staffPayrollAssignmentProfileId(assignment)) : null;
+function staffPayrollEffectiveProfileForProfession(professionKey, date = staffPayrollConditionsDate()) {
+    const requestedAssignment = staffPayrollActiveAssignmentForProfession(professionKey, date);
+    const assignedProfile = requestedAssignment ? staffPayrollProfileById(staffPayrollAssignmentProfileId(requestedAssignment)) : null;
     const defaultProfile = staffPayrollDefaultProfileForProfession(professionKey);
+    const assignedVersion = assignedProfile?.status === 'active' ? payrollProfileCurrentVersion(assignedProfile, date) : null;
+    const assignment = assignedVersion ? requestedAssignment : null;
+    const defaultVersion = defaultProfile ? payrollProfileCurrentVersion(defaultProfile, date) : null;
+    const profile = assignedVersion ? assignedProfile : (defaultVersion ? defaultProfile : null);
     return {
-        assignment,
-        profile: assignedProfile || defaultProfile,
-        defaultProfile,
-        source: assignment
-            ? (staffPayrollAssignmentKind(assignment) === 'temporary' ? 'temporary' : 'explicit')
-            : (defaultProfile ? 'inherited' : 'unresolved')
+        assignment, profile, defaultProfile, version: assignedVersion || defaultVersion,
+        warning: requestedAssignment && !assignedVersion ? 'Призначений профіль не має чинних умов на цю дату; перевірте історію.' : '',
+        source: assignment ? (staffPayrollAssignmentKind(assignment) === 'temporary' ? 'temporary' : 'explicit')
+            : (profile ? 'inherited' : 'unresolved')
     };
 }
 
 function staffPayrollProfileSourceLabel(source = '') {
     return {
-        inherited: 'успадковано default',
-        explicit: 'explicit profile',
+        inherited: 'Успадковано від професії',
+        explicit: 'Вибрані умови працівника',
         temporary: 'тимчасове призначення',
         unresolved: 'не визначено'
     }[source] || source || '—';
@@ -11740,13 +11778,13 @@ function staffPayrollAssignableProfilesForProfession(professionKey) {
 
 function staffPayrollProfileSelectOptions(professionKey) {
     return staffPayrollAssignableProfilesForProfession(professionKey).map(profile => {
-        const version = payrollProfileCurrentVersion(profile);
+        const version = payrollProfileCurrentVersion(profile, staffPayrollConditionsDate()) || payrollProfileLatestVersion(profile);
         const owner = payrollProfileOwnerLabel(profile);
         const kind = profile.profileKind || profile.profile_kind || 'shared';
         const rate = version ? ` · ${payrollProfileMoney(version.defaultRate ?? version.default_rate)} ${payrollProfileRateUnitLabel(version.rateUnit || version.rate_unit)}` : '';
         return {
             value: String(profile.id),
-            label: `${profile.title || `Профіль #${profile.id}`} · ${kind}${owner ? ` · ${owner}` : ''}${rate}`
+            label: `${profile.title || `Профіль #${profile.id}`} · ${payrollProfileKindLabel(kind)}${owner ? ` · ${owner}` : ''}${rate}${version ? ` · ${payrollProfileVersionLabel(version)}` : ''}`
         };
     });
 }
@@ -11760,17 +11798,18 @@ function staffPayrollLegacyRateForProfession(professionKey) {
     const primaryRate = Number(document.getElementById('editHourlyRate')?.value || 0);
     const explicitRate = Number(professionInput?.value || 0);
     if (key && key !== primary && Number.isFinite(explicitRate) && explicitRate > 0) {
-        return { rate: explicitRate, rateUnit: unit, source: 'staff_profession_rates' };
+        return { rate: explicitRate, rateUnit: 'hour', source: 'Окрема погодинна ставка (резервна)' };
     }
+    if (key !== primary) return { rate: 0, rateUnit: 'hour', source: 'Окремі умови не задано' };
     if (Number.isFinite(primaryRate) && primaryRate > 0) {
-        return { rate: primaryRate, rateUnit: unit, source: key === primary ? 'staff.hourly_rate' : 'staff.hourly_rate fallback' };
+        return { rate: primaryRate, rateUnit: unit, source: 'Базова ставка працівника (резервна)' };
     }
-    return { rate: 0, rateUnit: unit, source: 'legacy empty' };
+    return { rate: 0, rateUnit: unit, source: 'Не задано' };
 }
 
 function staffPayrollProfileDayDiff(activeProfile = null, baseProfile = null) {
-    const activeVersion = payrollProfileCurrentVersion(activeProfile || {});
-    const baseVersion = payrollProfileCurrentVersion(baseProfile || {});
+    const activeVersion = payrollProfileCurrentVersion(activeProfile || {}, staffPayrollConditionsDate());
+    const baseVersion = payrollProfileCurrentVersion(baseProfile || {}, staffPayrollConditionsDate());
     if (!activeVersion || !baseVersion) return [];
     const activeUnit = normalizeStaffRateUnit(activeVersion.rateUnit || activeVersion.rate_unit);
     const baseUnit = normalizeStaffRateUnit(baseVersion.rateUnit || baseVersion.rate_unit);
@@ -11835,47 +11874,52 @@ function renderStaffPayrollProfileDiff(activeProfile = null, baseProfile = null)
     const diffs = staffPayrollProfileDayDiff(activeProfile, baseProfile);
     if (!diffs.length) return '<div class="hr-staff-payroll-profile-diff is-muted">Профіль окремий, але умови збігаються з базовим.</div>';
     return `<div class="hr-staff-payroll-profile-diff">
-        <strong>Diff із базовим профілем</strong>
+        <strong>Відмінності від типових умов</strong>
         <span>${diffs.slice(0, 8).map(escapeHtml).join(' · ')}${diffs.length > 8 ? ' · …' : ''}</span>
     </div>`;
 }
 
 function renderStaffPayrollProfileCard(professionKey) {
     const key = normalizeProfessionKey(professionKey);
-    const { assignment, profile, defaultProfile, source } = staffPayrollEffectiveProfileForProfession(key);
-    const version = payrollProfileCurrentVersion(profile || {});
+    const { assignment, profile, defaultProfile, source, version, warning } = staffPayrollEffectiveProfileForProfession(key);
+    const conditionsDate = staffPayrollConditionsDate();
+    const primary = normalizeProfessionKey(document.getElementById('editRoleType')?.value || '');
     const profileKind = profile?.profileKind || profile?.profile_kind || '';
     const effectiveDates = assignment
         ? `${formatStaffDateValue(staffPayrollAssignmentFrom(assignment))}${staffPayrollAssignmentTo(assignment) ? ` → ${formatStaffDateValue(staffPayrollAssignmentTo(assignment))}` : ' → без завершення'}`
         : (version ? payrollProfileVersionLabel(version) : '—');
     const legacy = staffPayrollLegacyRateForProfession(key);
     const legacyLabel = profile
-        ? `legacy не використовується${legacy.rate > 0 ? ` · було ${formatStaffRate(legacy.rate, legacy.rateUnit)}` : ''}`
-        : (legacy.rate > 0 ? `legacy fallback: ${formatStaffRate(legacy.rate, legacy.rateUnit)}` : 'legacy не задано');
-    const actionDisabled = staffProfileDirtyScopes().includes('work') ? ' disabled title="Спершу збережіть робочі дані працівника"' : '';
+        ? `Профіль має пріоритет${legacy.rate > 0 ? ` · резервна ставка ${formatStaffRate(legacy.rate, legacy.rateUnit)}` : ''}`
+        : (legacy.rate > 0 ? `Резервна ставка: ${formatStaffRate(legacy.rate, legacy.rateUnit)}` : 'Резервна ставка не задана');
+    const actionDisabled = !hrCanUsePayrollAction('manage_payroll_rules') ? ' disabled title="Немає права змінювати умови оплати"'
+        : staffProfileDirtyScopes().includes('work') ? ' disabled title="Спершу збережіть робочі дані працівника"' : '';
     return `<article class="hr-staff-payroll-profile-card" data-staff-payroll-profession="${escapeHtml(key)}">
         <header class="hr-staff-payroll-profile-card-head">
             <div>
                 <strong>${escapeHtml(professionTitle(key) || key)}</strong>
-                <span>${escapeHtml(staffPayrollProfileSourceLabel(source))}</span>
+                <span>${key === primary ? 'Основна оплата' : 'Умови додаткової професії'} · ${escapeHtml(staffPayrollProfileSourceLabel(source))}</span>
             </div>
             <div class="hr-payroll-profile-badges">
                 <span class="hr-payroll-profile-badge ${source === 'temporary' ? 'is-draft' : source === 'unresolved' ? 'is-legacy' : 'is-ready'}">${escapeHtml(staffPayrollProfileSourceLabel(source))}</span>
-                ${profileKind ? `<span class="hr-payroll-profile-badge">${escapeHtml(profileKind)}</span>` : ''}
+                ${profileKind ? `<span class="hr-payroll-profile-badge">${escapeHtml(payrollProfileKindLabel(profileKind))}</span>` : ''}
             </div>
         </header>
         <div class="hr-payroll-profile-rate-grid">
-            <div><span>Active profile</span><strong>${profile ? escapeHtml(profile.title || `Профіль #${profile.id}`) : '—'}</strong><small>${profile ? `ID ${Number(profile.id)}` : 'Немає default-профілю'}</small></div>
+            <div><span>Варіант оплати</span><strong>${profile ? escapeHtml(profile.title || `Профіль #${profile.id}`) : '—'}</strong><small>${profile ? `ID ${Number(profile.id)}` : 'Немає чинних умов на вибрану дату'}</small></div>
             <div><span>Одиниця</span><strong>${version ? escapeHtml(payrollProfileRateUnitLabel(version.rateUnit || version.rate_unit)) : '—'}</strong></div>
-            <div><span>Default rate</span><strong>${version ? payrollProfileMoney(version.defaultRate ?? version.default_rate) : '—'}</strong><small>${escapeHtml(legacyLabel)}</small></div>
-            <div><span>Версія / дати</span><strong>${escapeHtml(version ? payrollProfileVersionLabel(version) : '—')}</strong><small>${escapeHtml(effectiveDates)}</small></div>
+            <div><span>Сума</span><strong>${version ? payrollProfileMoney(version.defaultRate ?? version.default_rate) : '—'}</strong><small>${escapeHtml(legacyLabel)}</small></div>
+            <div><span>Умови на ${escapeHtml(conditionsDate)}</span><strong>${escapeHtml(version ? payrollProfileVersionLabel(version) : '—')}</strong><small>${escapeHtml(effectiveDates)}</small></div>
         </div>
-        <div class="hr-payroll-profile-period-grid">${staffPayrollProfilePeriodSummary(version)}</div>
+        <p class="hr-staff-payroll-profile-diff">${version ? escapeHtml(payrollProfilePaymentHint(version.rateUnit || version.rate_unit)) : escapeHtml(legacyLabel)}</p>
+        ${warning ? `<p class="hr-staff-payroll-profile-diff" role="status">${escapeHtml(warning)}</p>` : ''}
+        ${version && (version.rateUnit || version.rate_unit) !== 'month' ? `<div class="hr-payroll-profile-period-grid">${staffPayrollProfilePeriodSummary(version)}</div>` : ''}
+        ${renderStaffPayrollFutureConditions(key)}
         ${renderStaffPayrollProfileDiff(profile, defaultProfile)}
         <div class="hr-staff-payroll-profile-actions">
-            <button type="button" data-staff-payroll-profile-action="use-default" data-profession-key="${escapeHtml(key)}"${!assignment ? ' disabled' : actionDisabled}>Використовувати базовий</button>
-            <button type="button" data-staff-payroll-profile-action="choose" data-profession-key="${escapeHtml(key)}"${actionDisabled}>Вибрати наявний</button>
-            <button type="button" data-staff-payroll-profile-action="clone" data-profession-key="${escapeHtml(key)}" data-profile-id="${profile ? Number(profile.id) : ''}"${!profile ? ' disabled' : actionDisabled}>Клонувати для працівника</button>
+            <button type="button" data-staff-payroll-profile-action="use-default" data-profession-key="${escapeHtml(key)}"${!assignment ? ' disabled' : actionDisabled}>Успадковувати від професії</button>
+            <button type="button" data-staff-payroll-profile-action="choose" data-profession-key="${escapeHtml(key)}"${actionDisabled}>Обрати варіант оплати</button>
+            <button type="button" data-staff-payroll-profile-action="clone" data-profession-key="${escapeHtml(key)}" data-profile-id="${profile ? Number(profile.id) : ''}"${!profile ? ' disabled' : actionDisabled}>Створити персональні умови</button>
             <button type="button" data-staff-payroll-profile-action="temporary" data-profession-key="${escapeHtml(key)}"${actionDisabled}>Тимчасове призначення</button>
             <button type="button" data-staff-payroll-profile-action="change" data-profession-key="${escapeHtml(key)}" data-profile-id="${profile ? Number(profile.id) : ''}"${!profile ? ' disabled' : actionDisabled}>Змінити з дати</button>
             <button type="button" data-staff-payroll-profile-action="history" data-profession-key="${escapeHtml(key)}">Історія</button>
@@ -11887,7 +11931,8 @@ function renderStaffPayrollLegacyPanel(professionKeys = currentStaffPayrollProfe
     const rows = professionKeys.map(key => {
         const legacy = staffPayrollLegacyRateForProfession(key);
         const defaultProfile = staffPayrollDefaultProfileForProfession(key);
-        const actionDisabled = staffProfileDirtyScopes().includes('work') ? ' disabled title="Спершу збережіть робочі дані працівника"' : '';
+        const actionDisabled = !hrCanUsePayrollAction('manage_payroll_rules') ? ' disabled title="Немає права змінювати умови оплати"'
+            : staffProfileDirtyScopes().includes('work') ? ' disabled title="Спершу збережіть робочі дані працівника"' : '';
         return `<div class="hr-staff-payroll-legacy-row" data-legacy-profession="${escapeHtml(key)}">
             <div>
                 <strong>${escapeHtml(professionTitle(key) || key)}</strong>
@@ -11895,14 +11940,14 @@ function renderStaffPayrollLegacyPanel(professionKeys = currentStaffPayrollProfe
             </div>
             <div>
                 <b>${legacy.rate > 0 ? escapeHtml(formatStaffRate(legacy.rate, legacy.rateUnit)) : '—'}</b>
-                <small>${defaultProfile ? `default profile: ${escapeHtml(defaultProfile.title || `#${defaultProfile.id}`)}` : 'default профілю немає'}</small>
+                <small>${defaultProfile ? `Типовий варіант: ${escapeHtml(defaultProfile.title || `#${defaultProfile.id}`)}` : 'Типовий варіант не задано'}</small>
             </div>
             <button type="button" data-staff-payroll-profile-action="convert-legacy" data-profession-key="${escapeHtml(key)}"${actionDisabled}>${legacy.rate > 0 ? 'Перенести у персональний профіль' : 'Створити персональний профіль'}</button>
         </div>`;
     }).join('');
-    return `<section class="hr-staff-payroll-legacy-panel" aria-label="Базові fallback-ставки">
+    return `<section class="hr-staff-payroll-legacy-panel" aria-label="Резервні ставки">
         <div class="hr-staff-payroll-legacy-head">
-            <strong>Базові fallback-ставки</strong>
+            <strong>Резервні ставки</strong>
             <span>Резервні значення старої моделі. Персональні будні й вихідні створюються окремо для кожної професії.</span>
         </div>
         ${rows || '<div class="hr-payroll-profile-empty-state">Професії ще не вибрані.</div>'}
@@ -11914,7 +11959,11 @@ function renderStaffPayrollProfiles() {
     if (!root) return;
     const professionKeys = currentStaffPayrollProfessionKeys();
     if (!professionKeys.length) {
-        root.innerHTML = '<div class="hr-payroll-profile-empty-state">Додайте професію працівнику, щоб побачити default-профіль.</div>';
+        root.innerHTML = '<div class="hr-payroll-profile-empty-state">Додайте професію працівнику, щоб налаштувати її оплату.</div>';
+        return;
+    }
+    if (!canViewPayrollWorkspace()) {
+        root.innerHTML = '<div class="hr-payroll-profile-empty-state">Немає права переглядати умови оплати.</div>';
         return;
     }
     root.innerHTML = [
@@ -11924,6 +11973,7 @@ function renderStaffPayrollProfiles() {
 }
 
 async function loadStaffPayrollProfiles(staffId, options = {}) {
+    if (!canViewPayrollWorkspace()) return { success: false, status: 403 };
     const root = document.getElementById('editStaffPayrollProfiles');
     if (!root || !staffId) return null;
     const seq = ++staffPayrollProfilesLoadSeq;
@@ -11955,6 +12005,10 @@ async function loadStaffPayrollProfiles(staffId, options = {}) {
 }
 
 function ensureStaffPayrollProfileCanMutate() {
+    if (!hrCanUsePayrollAction('manage_payroll_rules')) {
+        showNotification('Немає права змінювати умови оплати.', 'error');
+        return false;
+    }
     if (staffProfileDirtyScopes().includes('work')) {
         showNotification('Спершу збережіть робочі дані працівника: професії змінилися, тому зарплатні призначення поки заблоковані.', 'warning');
         void activateStaffProfileTab('work');
@@ -12169,7 +12223,7 @@ async function changeStaffPayrollProfileVersion(professionKey, profileId = null)
     const key = normalizeProfessionKey(professionKey);
     const profile = staffPayrollProfileById(profileId) || staffPayrollEffectiveProfileForProfession(key).profile;
     if (!profile) return { success: false, error: 'missing_profile' };
-    const version = payrollProfileCurrentVersion(profile);
+    const version = payrollProfileCurrentVersion(profile, staffPayrollConditionsDate()) || payrollProfileLatestVersion(profile);
     const kind = profile.profileKind || profile.profile_kind;
     if (kind === 'shared') {
         const confirmed = await confirmHrAction('Це shared-профіль. Нова версія змінить базову оплату для всіх, хто його успадковує. Для персональних умов краще спочатку клонувати профіль для працівника.', {
@@ -12182,9 +12236,9 @@ async function changeStaffPayrollProfileVersion(professionKey, profileId = null)
     const defaultRate = payrollProfileNumber(version?.defaultRate ?? version?.default_rate, 0);
     const result = await formModal(`Нова версія · ${profile.title || `Профіль #${profile.id}`}`, [
         { key: 'rateUnit', label: 'Одиниця оплати', type: 'select', defaultValue: unit, options: [
-            { value: 'hour', label: 'За годину' },
+            { value: 'hour', label: 'Погодинна оплата' },
             { value: 'day', label: 'За вихід' },
-            { value: 'month', label: 'За місяць' }
+            { value: 'month', label: 'Місячний оклад' }
         ] },
         { key: 'defaultRate', label: 'Базова ставка', type: 'number', required: true, defaultValue: String(defaultRate || '') },
         ...staffPayrollVersionPeriodFields(version),
@@ -12229,9 +12283,9 @@ async function convertLegacyStaffPayrollProfile(professionKey) {
     const result = await formModal(`Персональна оплата · ${professionTitle(key) || key}`, [
         { key: 'title', label: 'Назва профілю', required: true, defaultValue: `Профіль · ${staffName}` },
         { key: 'rateUnit', label: 'Одиниця оплати', type: 'select', defaultValue: legacy.rateUnit, options: [
-            { value: 'hour', label: 'За годину' },
+            { value: 'hour', label: 'Погодинна оплата' },
             { value: 'day', label: 'За вихід' },
-            { value: 'month', label: 'За місяць' }
+            { value: 'month', label: 'Місячний оклад' }
         ] },
         { key: 'defaultRate', label: 'Базова ставка', type: 'number', required: true, defaultValue: legacy.rate > 0 ? String(legacy.rate) : '' },
         ...staffPayrollVersionPeriodFields({
@@ -12518,7 +12572,7 @@ async function saveStaffPayrollScheme(button = null) {
             savedScheme = true;
         }
         if (savedRates && savedScheme) showNotification('Оплату збережено', 'success');
-        else if (savedRates) showNotification('Базові fallback-ставки збережено', 'success');
+        else if (savedRates) showNotification('Резервні ставки збережено', 'success');
         else if (savedScheme) showNotification('Зарплатну схему оновлено', 'success');
         else showNotification('Змін в оплаті немає', 'info');
         return result;
@@ -13381,6 +13435,11 @@ function prepareStaffProfileActionButtons(modal) {
         successLabel: 'Оновлено',
         errorLabel: 'Помилка'
     }, () => loadStaffProfileTabData('history', { force: true })));
+    const conditionsDate = modal.querySelector('#editPayrollConditionsDate');
+    if (conditionsDate && !conditionsDate.dataset.bound) {
+        conditionsDate.dataset.bound = 'true';
+        conditionsDate.addEventListener('change', () => renderStaffPayrollProfiles());
+    }
     const payrollProfilesRoot = modal.querySelector('#editStaffPayrollProfiles');
     if (payrollProfilesRoot && payrollProfilesRoot.dataset.bound !== 'true') {
         payrollProfilesRoot.dataset.bound = 'true';
@@ -13441,6 +13500,8 @@ function prepareStaffProfileDrawerLayout() {
 }
 
 function resetStaffProfileLazyState(staffId) {
+    const conditionsDate = document.getElementById('editPayrollConditionsDate');
+    if (conditionsDate) conditionsDate.value = todayStr();
     staffProfileLoadedTabs = new Set();
     staffProfileTabLoadPromises = new Map();
     staffProfileTabLoadSeq = new Map();
@@ -13844,6 +13905,63 @@ async function loadStaffProfileCatalogs(staffId, openSeq) {
     setStaffProfileCatalogState(modal, 'deferred', 'Довідники завантажено. Збережіть незбережені правки й відкрийте картку знову, щоб оновити вибір професій та структури.');
 }
 
+
+function hrScheduleDraftContext() {
+    const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    if (!user?.id) return '';
+    const scope = window.CrmBusinessContext?.scope?.() || {};
+    return JSON.stringify([String(user.id), String(user.role || ''), scope.mode || 'single',
+        scope.activeContext || window.CrmBusinessContext?.current?.() || '',
+        scope.activeBusinessId || '', [...(scope.selectedBusinessIds || scope.selectedContexts || [])].sort()]);
+}
+
+function renderStaffScheduleReturnLink(options = {}) {
+    document.getElementById('staffScheduleReturnLink')?.remove();
+    if (!options.scheduleDraft) return;
+    try {
+        const draft = JSON.parse(sessionStorage.getItem('pzp_schedule_hr_draft_v1') || 'null');
+        if (!draft || draft.token !== options.scheduleDraft || !hrScheduleDraftContext()
+            || !Number.isFinite(draft.createdAt) || draft.owner !== hrScheduleDraftContext() || Date.now() - draft.createdAt > 2 * 60 * 60 * 1000
+            || draft.createdAt > Date.now() || draft.staffId !== Number(activeEditStaffId())) return;
+        const url = new URL(draft.returnUrl, window.location.origin);
+        if (url.origin !== window.location.origin || !['/staff', '/hr'].includes(url.pathname)
+            || (url.pathname === '/hr' && url.hash !== '#schedule')) return;
+        const link = document.createElement('a');
+        link.id = 'staffScheduleReturnLink';
+        link.className = 'hr-account-link';
+        link.href = url.pathname + url.search + url.hash;
+        link.textContent = 'Повернутися до чернетки зміни';
+        const close = document.getElementById('editCloseTop');
+        const heading = close?.parentElement?.querySelector('.hr-staff-profile-heading');
+        if (heading) heading.append(link);
+        else close?.parentElement?.insertBefore(link, close);
+    } catch {}
+}
+
+async function openStaffEditFromLocation() {
+    const params = new URLSearchParams(window.location.search);
+    const employee = params.get('employee');
+    if (!employee || !/^\d+$/.test(employee)) return;
+    await activateHrTab('team', { updateHash: false });
+    return openStaffEdit(Number(employee), {
+        focus: params.get('profileTab') === 'payroll' && canViewPayrollWorkspace() ? 'payroll'
+            : params.get('profileTab') === 'work' || params.get('profileTab') === 'payroll' ? 'work' : undefined,
+        professionKey: normalizeProfessionKey(params.get('profession')),
+        payDate: params.get('payDate'), scheduleDraft: params.get('scheduleDraft')
+    });
+}
+
+function focusStaffPayConditions(professionKey) {
+    const key = normalizeProfessionKey(professionKey);
+    const root = document.getElementById('editStaffPayrollProfiles');
+    const card = Array.from(root?.querySelectorAll('[data-staff-payroll-profession]') || [])
+        .find(item => item.dataset.staffPayrollProfession === key);
+    if (!card) return;
+    card.tabIndex = -1;
+    card.scrollIntoView({ block: 'nearest' });
+    card.focus({ preventScroll: true });
+}
+
 async function openStaffEdit(staffId, options = {}) {
     const numericStaffId = Number(staffId);
     if (!Number.isFinite(numericStaffId) || numericStaffId <= 0) return;
@@ -13896,8 +14014,7 @@ async function openStaffEdit(staffId, options = {}) {
     document.getElementById('editAddress').value = s.address || '';
     document.getElementById('editEmergencyContact').value = s.emergency_contact || '';
     document.getElementById('editEmergencyPhone').value = s.emergency_phone || '';
-    const primaryRate = staffProfessionRateMap(s).get(normalizeProfessionKey(s.role_type));
-    document.getElementById('editHourlyRate').value = primaryRate || s.hourly_rate || 0;
+    document.getElementById('editHourlyRate').value = s.hourly_rate ?? 0;
     const rateUnitSelect = document.getElementById('editRateUnit');
     if (rateUnitSelect) rateUnitSelect.value = staffRateUnit(s);
     syncStaffRateUnitUi(s);
@@ -13958,7 +14075,12 @@ async function openStaffEdit(staffId, options = {}) {
     markStaffProfileScopesClean(Object.keys(STAFF_PROFILE_SCOPE_LABELS));
     setStaffProfileCardState(modal, 'ready');
     void loadStaffProfileCatalogs(numericStaffId, openSeq);
+    const payDate = document.getElementById('editPayrollConditionsDate');
+    if (payDate && /^\d{4}-\d{2}-\d{2}$/.test(options?.payDate || '')
+        && !Number.isNaN(Date.parse(options.payDate + 'T12:00:00Z'))) payDate.value = options.payDate;
+    renderStaffScheduleReturnLink(options);
     hydrateStaffEditProfile(numericStaffId, openSeq, initialTab).then(() => {
+        if (focusTarget === 'payroll' && openSeq === staffEditOpenSeq && isActiveStaffEditLoad(numericStaffId)) focusStaffPayConditions(options?.professionKey);
         if (focusTarget === 'documents' && openSeq === staffEditOpenSeq) focusStaffDocumentsPanel();
     });
     return profileData;
@@ -14036,7 +14158,7 @@ function buildStaffRatesPayload() {
     return {
         hourly_rate: parseFloat(document.getElementById('editHourlyRate')?.value) || 0,
         rate_unit: currentEditRateUnit(),
-        profession_rates: readStaffProfessionRates()
+        profession_rates: readStaffProfessionRateChanges()
     };
 }
 
@@ -14127,14 +14249,44 @@ async function saveStaffRates(staffId) {
         showNotification('Спершу збережіть робочі дані: ставки залежать від вибраних професій.', 'error');
         return { success: false, error: 'work_scope_dirty' };
     }
+    const submittedScope = staffProfileScopeFieldSnapshot('rates');
+    const submittedInputs = new Map(Array.from(document.querySelectorAll('[data-profession-rate]'))
+        .map(input => [input.dataset.professionRate, { value: input.value, removed: input.dataset.rateRemoved }]));
     const body = buildStaffRatesPayload();
     const data = await updateStaffProfileFields(staffId, body);
     if (!data?.success) {
         showNotification(data?.error || 'Не вдалося зберегти ставки професій', 'error');
         return data || { success: false };
     }
-    mergeFreshStaffProfile(data.data || { ...body, id: Number(staffId) });
-    markStaffProfileScopesClean(['rates']);
+    const merged = mergeFreshStaffProfile(data.data || { ...body, id: Number(staffId) });
+    const currentScope = staffProfileScopeFieldSnapshot('rates');
+    const concurrentEdit = currentScope.size !== submittedScope.size
+        || [...currentScope].some(([key, value]) => submittedScope.get(key) !== value);
+    if (!concurrentEdit) {
+        document.getElementById('editProfessionRates')?.replaceChildren();
+        renderStaffProfessionRatesEditor(merged);
+        markStaffProfileScopesClean(['rates']);
+    } else {
+        const savedRates = staffProfessionRateMap(merged);
+        const savedBaseline = new Map(submittedScope);
+        document.querySelectorAll('[data-profession-rate]').forEach(input => {
+            const key = input.dataset.professionRate;
+            const savedValue = String(savedRates.get(key) || '');
+            const submitted = submittedInputs.get(key);
+            input.dataset.originalRate = savedValue;
+            savedBaseline.set(input.id, savedValue);
+            if (submitted && input.value === submitted.value && input.dataset.rateRemoved === submitted.removed) {
+                input.value = savedValue;
+                input.dataset.rateRemoved = 'false';
+                input.disabled = false;
+                const button = input.closest('[data-rate-profession]')?.querySelector('[data-remove-profession-rate]');
+                if (!savedRates.has(key)) button?.remove();
+                else if (button) button.textContent = 'Видалити ставку';
+            }
+        });
+        staffProfileScopeBaselines.set('rates', savedBaseline);
+        updateStaffProfileDirtyIndicators();
+    }
     return data;
 }
 
@@ -18766,12 +18918,66 @@ function payrollProfileRateUnitLabel(unit = 'hour') {
     return {
         hour: 'за годину',
         day: 'за вихід',
-        month: 'за місяць'
+        month: 'місячний оклад'
     }[normalizeStaffRateUnit(unit)] || unit || '—';
 }
 
-function payrollProfileCurrentVersion(profile = {}) {
-    return profile.currentVersion || profile.current_version || profile.latestVersion || profile.latest_version || null;
+function payrollProfileCurrentVersion(profile = {}, date = todayStr()) {
+    const versions = [...(profile.versions || []), profile.currentVersion, profile.current_version,
+        profile.latestVersion, profile.latest_version].filter(Boolean);
+    return versions.filter(version => {
+        const from = String(version.effectiveFrom || version.effective_from || '').slice(0, 10);
+        const to = String(version.effectiveTo || version.effective_to || '').slice(0, 10);
+        return from && from <= date && (!to || to >= date);
+    }).sort((a, b) => String(b.effectiveFrom || b.effective_from).localeCompare(String(a.effectiveFrom || a.effective_from))
+        || Number(b.versionNumber || b.version_number || 0) - Number(a.versionNumber || a.version_number || 0))[0] || null;
+}
+
+function staffPayrollConditionsDate() {
+    return document.getElementById('editPayrollConditionsDate')?.value || todayStr();
+}
+
+function payrollProfilePaymentHint(unit) {
+    return { hour: 'Оплата за годину фактичної роботи.', day: 'Оплата за один вихід.',
+        month: 'Місячний оклад. Нарахування виконується за чинними правилами зарплати.' }[unit] || '';
+}
+
+function staffPayrollFutureConditions(professionKey, date = staffPayrollConditionsDate()) {
+    const key = normalizeProfessionKey(professionKey);
+    const dates = new Set();
+    const add = value => { if (value && value > date) dates.add(value); };
+    staffPayrollProfileState.assignments.filter(row => staffPayrollAssignmentProfessionKey(row) === key).forEach(row => {
+        add(staffPayrollAssignmentFrom(row));
+        const end = staffPayrollAssignmentTo(row);
+        if (end) add(addDaysString(end, 1));
+    });
+    staffPayrollProfileState.profiles.filter(profile => staffPayrollProfileProfessionKey(profile) === key).forEach(profile => {
+        (profile.versions || []).forEach(version => {
+            add(String(version.effectiveFrom || version.effective_from || '').slice(0, 10));
+            const end = String(version.effectiveTo || version.effective_to || '').slice(0, 10);
+            if (end) add(addDaysString(end, 1));
+        });
+    });
+    const rows = [];
+    let previous = staffPayrollEffectiveProfileForProfession(key, date);
+    for (const changeDate of [...dates].sort()) {
+        const current = staffPayrollEffectiveProfileForProfession(key, changeDate);
+        if (current.profile?.id !== previous.profile?.id || current.version?.id !== previous.version?.id || current.source !== previous.source) {
+            rows.push({ date: changeDate, ...current });
+        }
+        previous = current;
+    }
+    return rows;
+}
+
+function renderStaffPayrollFutureConditions(professionKey) {
+    const rows = staffPayrollFutureConditions(professionKey);
+    if (!rows.length) return '';
+    return '<details class="hr-staff-payroll-profile-diff"><summary>Заплановані зміни: ' + rows.length + '</summary>'
+        + rows.map(row => '<p>' + escapeHtml(row.date) + ' · ' + escapeHtml(row.profile?.title || 'Умови профілю не визначено')
+            + (row.version ? ' · ' + escapeHtml(formatStaffRate(row.version.defaultRate ?? row.version.default_rate,
+                row.version.rateUnit || row.version.rate_unit)) : '') + ' · ' + escapeHtml(staffPayrollProfileSourceLabel(row.source)) + '</p>').join('')
+        + '</details>';
 }
 
 function payrollProfileLatestVersion(profile = {}) {
@@ -18832,14 +19038,14 @@ function payrollProfileOwnerLabel(profile = {}) {
 }
 
 function payrollProfileKindLabel(kind = '') {
-    return kind === 'personal' ? 'personal' : 'shared';
+    return kind === 'personal' ? 'Персональні' : 'Спільні для професії';
 }
 
 function payrollProfileStatusLabel(status = '') {
     return {
-        draft: 'draft',
-        active: 'active',
-        archived: 'archived'
+        draft: 'Чернетка',
+        active: 'Чинний',
+        archived: 'Архівний'
     }[status] || status || '—';
 }
 
@@ -19004,7 +19210,7 @@ function renderPayrollProfileCard(profile = {}) {
             <div class="hr-payroll-profile-badges">
                 <span class="hr-payroll-profile-badge">${escapeHtml(payrollProfileKindLabel(kind))}</span>
                 <span class="hr-payroll-profile-badge is-${escapeHtml(status)}">${escapeHtml(payrollProfileStatusLabel(status))}</span>
-                ${profile.isDefaultForProfession || profile.is_default_for_profession ? '<span class="hr-payroll-profile-badge is-default">default</span>' : ''}
+                ${profile.isDefaultForProfession || profile.is_default_for_profession ? '<span class="hr-payroll-profile-badge is-default">Типовий для професії</span>' : ''}
                 <span class="hr-payroll-profile-badge ${ready ? 'is-ready' : 'is-legacy'}">${ready ? 'profile-ready' : 'legacy gap'}</span>
             </div>
         </header>
@@ -19076,7 +19282,7 @@ function payrollProfileNextEffectiveDate(profile = {}) {
 }
 
 function renderPayrollProfileVersionForm(profile = {}) {
-    const version = payrollProfileCurrentVersion(profile);
+    const version = payrollProfileCurrentVersion(profile) || payrollProfileLatestVersion(profile);
     const unit = normalizeStaffRateUnit(version?.rateUnit || version?.rate_unit || 'hour');
     const defaultRate = version ? payrollProfileNumber(version.defaultRate ?? version.default_rate) : '';
     const overrides = payrollProfileDayRateMap(version || {});
@@ -19089,9 +19295,9 @@ function renderPayrollProfileVersionForm(profile = {}) {
         <div class="hr-payroll-profile-form-grid">
             <label>Одиниця оплати
                 <select name="rateUnit">
-                    <option value="hour"${unit === 'hour' ? ' selected' : ''}>За годину</option>
+                    <option value="hour"${unit === 'hour' ? ' selected' : ''}>Погодинна оплата</option>
                     <option value="day"${unit === 'day' ? ' selected' : ''}>За вихід</option>
-                    <option value="month"${unit === 'month' ? ' selected' : ''}>За місяць</option>
+                    <option value="month"${unit === 'month' ? ' selected' : ''}>Місячний оклад</option>
                 </select>
             </label>
             <label>Базова ставка
@@ -19207,10 +19413,15 @@ function renderPayrollProfileInspector() {
         </div>
         <div class="hr-payroll-profile-day-grid">${payrollProfileVersionDayChips(version)}</div>
     </section>
-    ${profile.status === 'archived'
-        ? '<div class="hr-payroll-profile-empty-state">Архівний профіль не можна змінювати. Створіть новий shared/personal профіль або клон від активної бази.</div>'
-        : renderPayrollProfileVersionForm(profile)}
+    ${!hrCanUsePayrollAction('manage_payroll_rules')
+        ? '<div class="hr-payroll-profile-empty-state">Умови доступні лише для перегляду.</div>'
+        : profile.status === 'archived'
+            ? '<div class="hr-payroll-profile-empty-state">Архівний профіль не можна змінювати. Історичні умови збережені.</div>'
+            : renderPayrollProfileVersionForm(profile)}
     ${renderPayrollProfileComparison(profile)}`;
+    if (!hrCanUsePayrollAction('manage_payroll_rules')) {
+        root.querySelectorAll('[data-profile-action="clone"], [data-profile-action="archive"], #payrollProfileSyncForm button[type="submit"]').forEach(button => { button.disabled = true; });
+    }
     updatePayrollProfileImpactPreview(root.querySelector('#payrollProfileVersionForm'));
 }
 
@@ -19225,6 +19436,10 @@ function renderPayrollProfilesCatalog() {
             button.disabled = false;
             delete button.dataset.payrollUnavailableDisabled;
         }
+    }
+    for (const id of ['btnNewPayrollProfile', 'btnPayrollProfileBulk']) {
+        const button = document.getElementById(id);
+        if (button) button.disabled = payrollProfilesState.loadStatus !== 'ready' || !hrCanUsePayrollAction('manage_payroll_rules');
     }
     renderPayrollProfileFilterOptions();
     const rows = payrollProfileFilteredRows();
@@ -19429,34 +19644,41 @@ function payrollProfileStaffOptions(profile = {}) {
 }
 
 async function createPayrollProfileFromCatalog() {
+    if (!hrCanUsePayrollAction('manage_payroll_rules')) return;
     await ensureProfessionsLoaded({ silent: true });
     const professionOptions = payrollProfileProfessionOptions().map(option => ({ value: option.key, label: option.label }));
     if (!professionOptions.length) {
         showNotification('Спочатку створіть професію в HR → Професії', 'warning');
         return;
     }
-    const result = await formModal('Новий базовий зарплатний профіль', [
+    const result = await formModal('Новий варіант оплати професії', [
         { key: 'title', label: 'Назва профілю', required: true, placeholder: 'Інструктор на батутах' },
-        { key: 'professionKey', label: 'Професія', type: 'select', options: professionOptions, required: true },
+        { key: 'professionKey', label: 'Професія', type: 'select', options: professionOptions, required: true, defaultValue: payrollProfilesState.profession !== 'all' ? payrollProfilesState.profession : professionOptions[0]?.value },
         { key: 'rateUnit', label: 'Одиниця оплати', type: 'select', options: [
-            { value: 'hour', label: 'За годину' },
+            { value: 'hour', label: 'Погодинна оплата' },
             { value: 'day', label: 'За вихід' },
-            { value: 'month', label: 'За місяць' }
+            { value: 'month', label: 'Місячний оклад' }
         ], defaultValue: 'hour' },
         { key: 'defaultRate', label: 'Базова ставка', type: 'number', required: true, placeholder: '150' },
         { key: 'weekdayRate', label: 'Пн–Пт override', type: 'number', placeholder: 'порожньо = default' },
         { key: 'weekendRate', label: 'Сб–Нд override', type: 'number', placeholder: 'порожньо = default' },
         { key: 'effectiveFrom', label: 'Дата початку', type: 'date', required: true, defaultValue: todayStr() },
-        { key: 'isDefault', label: 'Default для професії', type: 'select', options: [
+        { key: 'isDefault', label: 'Типовий варіант професії', type: 'select', options: [
             { value: 'true', label: 'Так' },
             { value: 'false', label: 'Ні' }
-        ], defaultValue: 'true' },
-        { key: 'changeReason', label: 'Причина', required: true, placeholder: 'Initial payroll profile' }
+        ], defaultValue: 'false' },
+        { key: 'changeReason', label: 'Причина', required: true, placeholder: 'Початкові умови оплати' }
     ], { icon: '💸', okText: 'Створити профіль' });
     if (!result) return;
     const defaultRate = payrollProfileNumber(result.defaultRate, NaN);
     if (!Number.isFinite(defaultRate) || defaultRate <= 0) {
         showNotification('Базова ставка має бути додатною', 'error');
+        return;
+    }
+    if (result.isDefault === 'true' && payrollProfilesState.profiles.some(profile => profile.status === 'active'
+        && staffPayrollProfileProfessionKey(profile) === normalizeProfessionKey(result.professionKey)
+        && (profile.isDefaultForProfession || profile.is_default_for_profession))) {
+        showNotification('У професії вже є типовий варіант. Для зміни його ставок створіть нову версію з датою початку.', 'warning');
         return;
     }
     const rateUnit = normalizeStaffRateUnit(result.rateUnit);
@@ -19687,9 +19909,9 @@ async function showPayrollProfileImpactForecast(profileId) {
         { key: 'from', label: 'Період з', type: 'date', defaultValue: range.from, required: true },
         { key: 'to', label: 'Період до', type: 'date', defaultValue: range.to, required: true },
         { key: 'rateUnit', label: 'Одиниця', type: 'select', options: [
-            { value: 'hour', label: 'За годину' },
+            { value: 'hour', label: 'Погодинна оплата' },
             { value: 'day', label: 'За вихід' },
-            { value: 'month', label: 'За місяць' }
+            { value: 'month', label: 'Місячний оклад' }
         ], defaultValue: version.rateUnit || version.rate_unit || 'hour' },
         { key: 'defaultRate', label: 'Нова базова ставка', type: 'number', defaultValue: version.defaultRate ?? version.default_rate, required: true },
         { key: 'effectiveFrom', label: 'Дата старту версії', type: 'date', defaultValue: payrollProfileNextEffectiveDate(profile), required: true }

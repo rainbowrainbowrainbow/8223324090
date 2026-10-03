@@ -2033,3 +2033,132 @@ test('payroll profile resolver keeps profile query budget batched by staff and p
 });
 
 require('./payroll-reporting-routes.contract');
+
+test('legacy day pay counts each confirmed work date once across repeated blocks', () => {
+    const result = calculateProfessionPay(staff({ rateUnit: 'day', hourlyRate: 700 }),
+        { schemeType: 'per_shift', config: {}, isFallback: true }, metrics({
+            primaryDays: [
+                { date: '2026-07-13', professionKey: 'reception' },
+                { date: '2026-07-13', professionKey: 'reception' }
+            ]
+        }));
+    assert.equal(result.baseAmount, 700);
+    assert.equal(result.baseLines[0].quantity, 1);
+    assert.equal(result.professionRateSummary[0].formula, '1d × 700');
+});
+
+test('monthly calculation explains confirmed proration in lines and export summary', () => {
+    for (const context of [null, payrollProfileContext({ defaults: [payrollProfile({
+        id: 80, title: 'Monthly', rateUnit: 'month', defaultRate: 30000
+    })] })]) {
+        const result = calculateProfessionPay(staff({ rateUnit: 'month', hourlyRate: 30000 }),
+            { schemeType: 'monthly_fixed', config: {}, isFallback: true }, metrics({
+                plannedMinutes: 540, paidPlannedMinutes: 270, monthlyNormMinutes: 540,
+                monthlyNormSource: 'confirmed_test_norm', monthlyNormConfirmed: true,
+                monthlyNormMonth: '2026-07', periodFrom: '2026-07-01', periodTo: '2026-07-31'
+            }), new Map(), context);
+        assert.equal(result.baseAmount, 15000);
+        assert.equal(result.baseLines.length, 1);
+        assert.equal(result.baseLines[0].quantity, 0.5);
+        assert.equal(result.baseLines[0].meta.formula, '270 / 540 × 30000');
+        assert.equal(result.baseLines[0].meta.rateUnit, 'month');
+        assert.equal(result.professionRateSummary[0].formula, '270 / 540 × 30000');
+    }
+});
+
+test('a monthly profile cannot silently yield zero without a confirmed norm under an hourly scheme', () => {
+    const scheme = { schemeType: 'hourly', config: {}, isFallback: true };
+    const result = calculateProfessionPay(staff(), scheme, metrics(), new Map(),
+        payrollProfileContext({ defaults: [payrollProfile({ id: 81, title: 'Monthly', rateUnit: 'month', defaultRate: 30000 })] }));
+    assert.ok(result.blockingIssues.some(issue => issue.code === 'PAYROLL_MONTHLY_NORM_REQUIRED'));
+    assert.ok(calculatePayroll(staff(), scheme, metrics(), {}, [], result).blockers.length > 0);
+});
+
+test('unsupported day or month allocation within an hourly day blocks an incomplete payroll', () => {
+    for (const rateUnit of ['day', 'month']) {
+        const result = calculateProfessionPay(staff(), { schemeType: 'hourly', config: {}, isFallback: true },
+            metrics(), new Map(), payrollProfileContext({ defaults: [
+                payrollProfile({ id: 82, title: 'Primary hour', professionKey: 'reception', defaultRate: 100 }),
+                payrollProfile({ id: 83, title: 'Other unit', professionKey: 'manager', rateUnit, defaultRate: 1000 })
+            ] }));
+        assert.ok(result.blockingIssues.some(issue => issue.code === 'PAYROLL_BASE_RATE_UNIT_POLICY_REQUIRED' && issue.rateUnit === rateUnit));
+        assert.equal(result.professionRateSummary.some(row => row.profession_key === 'manager'), false);
+    }
+});
+
+test('day pay excludes absence and leave dates in both legacy and profile calculations', () => {
+    for (const context of [null, payrollProfileContext({ defaults: [payrollProfile({
+        id: 84, title: 'Day', rateUnit: 'day', defaultRate: 700
+    })] })]) {
+        const result = calculateProfessionPay(staff({ rateUnit: 'day', hourlyRate: 700 }),
+            { schemeType: 'per_shift', config: {}, isFallback: true }, metrics({
+                totalMinutes: 0, allocatedMinutes: 0, daysWorked: 0, primaryDays: [], professionAllocations: [],
+                attendanceDays: [{ date: '2026-07-13', actualMinutes: 0, worked: false, status: 'absent' },
+                    { date: '2026-07-14', actualMinutes: 0, worked: false, status: 'vacation' }]
+            }), new Map(), context);
+        assert.equal(result.baseAmount, 0);
+        assert.equal(result.baseLines.length, 0);
+    }
+});
+
+test('monthly rate changes inside the earning range require an approved formula, future changes do not', () => {
+    const profile = payrollProfile({ id: 85, title: 'Monthly', rateUnit: 'month', defaultRate: 30000 });
+    const initial = profile.versions[0];
+    const m = metrics({ plannedMinutes: 540, paidPlannedMinutes: 540, monthlyNormMinutes: 540,
+        monthlyNormSource: 'confirmed_test_norm', monthlyNormConfirmed: true, monthlyNormMonth: '2026-07',
+        periodFrom: '2026-07-01', periodTo: '2026-07-31' });
+    for (const [effectiveFrom, expectedBlock] of [['2026-07-16', true], ['2026-08-01', false]]) {
+        profile.versions = [initial, { ...initial, id: 851, versionNumber: 2, defaultRate: 35000, effectiveFrom }];
+        const result = calculateProfessionPay(staff(), { schemeType: 'hourly', config: {} }, m, new Map(),
+            payrollProfileContext({ defaults: [profile] }));
+        assert.equal(result.blockingIssues.some(issue => issue.code === 'PAYROLL_MONTHLY_PROFILE_CHANGE_POLICY_REQUIRED'), expectedBlock);
+    }
+});
+
+test('hourly formula keeps exact minutes and rounds only the resulting money', () => {
+    const result = calculateProfessionPay(staff(), { schemeType: 'hourly', config: {}, isFallback: true },
+        metrics({ professionAllocations: [{ professionKey: 'reception', minutes: 1, allocationSources: ['clock_interval'] }] }),
+        rateMap({ reception: 101 }));
+    assert.equal(result.baseAmount, 2);
+    assert.equal(result.professionRateSummary[0].formula, '1 / 60 × 101');
+});
+
+test('daily and monthly simultaneous additions fail closed with an explicit supported-unit explanation', () => {
+    for (const rateUnit of ['day', 'month']) {
+        const result = calculateProfessionPay(staff(), { schemeType: 'hourly', config: {}, isFallback: true },
+            metrics({ additionalProfessionAllocations: [simultaneousAdditionalAllocation({ rateUnit })] }));
+        assert.equal(result.additionalAmount, 0);
+        assert.match(result.blockingIssues[0].message, /лише погодинна доплата/);
+    }
+});
+
+test('salary profession detail visibly shows source, unit and formula with escaped content', () => {
+    const vm = require('node:vm');
+    const finance = fs.readFileSync(path.join(__dirname, '..', 'js/finance-page.js'), 'utf8');
+    const start = finance.indexOf('function renderPayrollProfessionBreakdown(');
+    const render = finance.slice(start, finance.indexOf('\n}', start) + 2);
+    const c = vm.createContext({ formatMoney: String, escapeHtml: value => String(value).replaceAll('<', '&lt;') });
+    vm.runInContext(render, c);
+    const html = c.renderPayrollProfessionBreakdown({ professionRateSummary: [{
+        profession_key: 'animator', rate_unit: 'month', rate: 30000, amount: 15000,
+        rate_source: 'payroll_profile.default.default_rate', profile_title: '<unsafe>',
+        formula: '270 / 540 × 30000'
+    }] });
+    assert.match(html, /270 \/ 540 × 30000/);
+    assert.match(html, /payroll_profile.default.default_rate/);
+    assert.match(html, /month/);
+    assert.doesNotMatch(html, /<unsafe>/);
+});
+
+test('payroll blocks a timezone-transition night even when a legacy snapshot lacks the warning', async () => {
+    const db = { async query(sql) {
+        if (sql.includes('FROM hr_time_records tr')) return { rows: [{
+            id: 99, staff_id: 7, date: '2026-10-24', record_date: '2026-10-24', status: 'present',
+            clock_in: '2026-10-24T19:00:00.000Z', clock_out: '2026-10-25T04:00:00.000Z'
+        }] };
+        if (sql.startsWith('SELECT * FROM hr_shifts')) return { rows: [] };
+        throw new Error('Unexpected query: ' + sql);
+    } };
+    const result = await loadPayrollAttendanceMetrics({ from: '2026-10-24', to: '2026-10-24', staffIds: [7] }, db);
+    assert.ok(result.get(7).payrollBlockingIssues.some(issue => issue.code === 'ATTENDANCE_TIMEZONE_TRANSITION_REVIEW_REQUIRED'));
+});

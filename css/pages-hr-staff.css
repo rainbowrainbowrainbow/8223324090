@@ -5744,6 +5744,38 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     text-decoration: underline;
 }
 
+.sch-pay-conditions-actions {
+    flex-wrap: wrap;
+}
+
+.sch-paid-rate-error.sch-pay-conditions-actions:not(.is-error) {
+    border-color: var(--border-color, rgba(100, 116, 139, 0.3));
+    background: transparent;
+    color: var(--text-secondary, #64748b);
+}
+
+.sch-pay-conditions-actions a {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.sch-pay-conditions-actions button {
+    min-height: 44px;
+    padding: 6px 12px;
+    border: 1px solid currentColor;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.sch-pay-conditions-actions button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 .sch-field-error {
     margin-top: 4px;
     color: #b91c1c;

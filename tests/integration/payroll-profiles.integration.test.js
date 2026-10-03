@@ -925,4 +925,32 @@ describe('payroll profile migration 297 on isolated PostgreSQL', { skip: !enable
             observer.release();
         }
     });
+    test('HR-PAY omitted and unchanged profession rates survive repeated saves; deletion is explicit', async () => {
+        const { applyStaffProfessionRateChanges, normalizeStaffProfessionRateChanges } = require('../../services/professions');
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query('SELECT id FROM staff WHERE id = $1 FOR UPDATE', [ownerStaffId]);
+            await client.query(
+                'INSERT INTO staff_profession_rates (staff_id, profession_key, hourly_rate) VALUES ($1, $2, 180), ($1, $3, 120) ON CONFLICT (staff_id, profession_key) DO UPDATE SET hourly_rate = EXCLUDED.hourly_rate',
+                [ownerStaffId, serviceProfessionKey, foreignProfessionKey]);
+            const readRates = async () => (await client.query(
+                'SELECT profession_key, hourly_rate FROM staff_profession_rates WHERE staff_id = $1 ORDER BY profession_key', [ownerStaffId]
+            )).rows.map(row => ({ key: row.profession_key, rate: Number(row.hourly_rate) }));
+            const initial = await readRates();
+            await applyStaffProfessionRateChanges(client, ownerStaffId, []);
+            await applyStaffProfessionRateChanges(client, ownerStaffId, []);
+            await applyStaffProfessionRateChanges(client, ownerStaffId, [{ profession_key: foreignProfessionKey, hourly_rate: 120 }]);
+            assert.deepEqual(await readRates(), initial);
+            await applyStaffProfessionRateChanges(client, ownerStaffId, normalizeStaffProfessionRateChanges(
+                [{ profession_key: foreignProfessionKey, hourly_rate: 150 }], [serviceProfessionKey, foreignProfessionKey]));
+            assert.equal((await readRates()).find(row => row.key === serviceProfessionKey).rate, 180);
+            await applyStaffProfessionRateChanges(client, ownerStaffId, [{ profession_key: foreignProfessionKey, remove: true }]);
+            assert.deepEqual(await readRates(), [{ key: serviceProfessionKey, rate: 180 }]);
+        } finally {
+            await rollbackQuietly(client);
+            client.release();
+        }
+    });
+
 });

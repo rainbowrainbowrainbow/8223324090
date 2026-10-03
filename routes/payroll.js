@@ -591,6 +591,38 @@ router.get('/export-xlsx', requireAction('view_payroll'), requireAction('export_
         summary.autoFilter = { from: 'A1', to: 'AR1' };
         summary.getRow(1).font = { bold: true };
 
+        const baseLines = workbook.addWorksheet('Base lines');
+        baseLines.columns = [
+            { header: 'staff_id', key: 'staff_id', width: 12 },
+            { header: 'staff_name', key: 'staff_name', width: 28 },
+            { header: 'profession', key: 'profession', width: 24 },
+            { header: 'kind', key: 'kind', width: 14 },
+            { header: 'work_date', key: 'work_date', width: 14 },
+            { header: 'actual_minutes', key: 'actual_minutes', width: 18 },
+            { header: 'days', key: 'days', width: 12 },
+            { header: 'rate', key: 'rate', width: 18 },
+            { header: 'rate_unit', key: 'rate_unit', width: 14 },
+            { header: 'rate_source', key: 'rate_source', width: 34 },
+            { header: 'profile_title', key: 'profile_title', width: 30 },
+            { header: 'formula', key: 'formula', width: 40 },
+            { header: 'amount', key: 'amount', width: 20 }
+        ];
+        for (const row of report.staff) {
+            for (const item of row.professionRateSummary || []) {
+                if (item.kind === 'simultaneous_additional') continue;
+                baseLines.addRow({
+                    staff_id: row.staffId, staff_name: row.name,
+                    profession: item.profession_key, kind: item.kind || 'base', work_date: item.work_date || null,
+                    actual_minutes: item.actual_minutes, days: item.days, rate: item.rate,
+                    rate_unit: item.rate_unit, rate_source: item.rate_source,
+                    profile_title: item.profile_title || null, formula: item.formula || null, amount: item.amount
+                });
+            }
+        }
+        baseLines.views = [{ state: 'frozen', ySplit: 1 }];
+        baseLines.autoFilter = { from: 'A1', to: 'M1' };
+        baseLines.getRow(1).font = { bold: true };
+
         const additionalLines = workbook.addWorksheet('Additional lines');
         additionalLines.columns = [
             { header: 'staff_id', key: 'staff_id', width: 12 },

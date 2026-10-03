@@ -2,7 +2,7 @@ const { createHash } = require('node:crypto');
 const { pool } = require('../db');
 const { canUseAction } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
-const { attendanceFactMinutes, hydrateAttendanceRecords } = require('./hrAttendance');
+const { attendanceFactMinutes, attendanceTimezoneTransitionIssue, hydrateAttendanceRecords } = require('./hrAttendance');
 const {
     assertPayrollPeriodOpen,
     buildPayrollRateUnitWarnings,
@@ -661,6 +661,21 @@ function monthlyFixedAmount(fullMonthlyRate, staff = {}, scheme = {}, metrics = 
     };
 }
 
+function monthlyFixedExplanation(fixed) {
+    return {
+        rateUnit: 'month',
+        formula: fixed.valid ? `${fixed.paidPlannedMinutes} / ${fixed.monthlyNormMinutes} × ${fixed.fullMonthlyRate}` : null,
+        monthlyProration: {
+            paidPlannedMinutes: fixed.paidPlannedMinutes,
+            monthlyNormMinutes: fixed.monthlyNormMinutes,
+            monthlyNormSource: fixed.monthlyNormSource || null,
+            monthlyNormMonth: fixed.monthlyNormMonth || null,
+            monthlyNormConfirmed: fixed.monthlyNormConfirmed === true,
+            ratio: fixed.valid ? fixed.ratio : null
+        }
+    };
+}
+
 function buildBaseLines(base, staff, metrics, labelPrefix = 'База') {
     const cfg = parseConfig(base);
     const kind = cfg.kind || cfg.type || 'hourly';
@@ -899,7 +914,13 @@ function calcPayrollPreview(lines) {
 
 function calculateMonthlyPayroll(staff, scheme, metrics, adjustments = {}, entries = [], professionPay = null) {
     const activeScheme = scheme || fallbackSchemeForStaff(staff);
-    const calculationBlockers = payrollCalculationBlockers(staff, activeScheme, metrics);
+    const usesConditionSnapshots = metrics.conditionDays?.length && professionPay?.applies;
+    const calculationBlockers = payrollCalculationBlockers(staff, activeScheme, metrics).filter(issue => {
+        // Frozen standard-pay conditions own their dated rate/unit/norm checks. Other business blockers remain.
+        if (!usesConditionSnapshots) return true;
+        return !['PAYROLL_SCHEME_CHANGE_IN_PERIOD_UNSUPPORTED', 'PAYROLL_MONTHLY_NORM_REQUIRED',
+            'PAYROLL_MONTHLY_NORM_INVALID'].includes(issue.code);
+    });
     const baseLines = professionPay?.applies
         ? [
             ...professionPay.baseLines,
@@ -1291,7 +1312,9 @@ function resolveSimultaneousAdditionalRate(allocation = {}) {
             ok: false,
             issue: payrollIssue(
                 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SNAPSHOT_INVALID',
-                'Paid simultaneous role has no complete immutable rate snapshot',
+                rateUnit === 'day' || rateUnit === 'month'
+                    ? 'Денна або місячна доплата за одночасну професію потребує окремих погоджених HR-умов; у зміні підтримується лише погодинна доплата.'
+                    : 'Paid simultaneous role has no complete immutable rate snapshot',
                 {
                     professionKey: professionKey || null,
                     attendanceRef: allocation.attendanceRef ?? allocation.attendance_ref ?? null,
@@ -1392,6 +1415,12 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         if (businessContext && !bucket.businessContexts.includes(businessContext)) {
             bucket.businessContexts.push(businessContext);
         }
+        const attendanceRef = row.attendance_ref || row.id || null;
+        const timezoneIssue = attendanceTimezoneTransitionIssue(row);
+        if (timezoneIssue) bucket.payrollBlockingIssues.push(payrollIssue(
+            timezoneIssue.code, timezoneIssue.message,
+            { date, attendanceRef: row.attendance_ref ?? row.id ?? null, elapsedMinutes: timezoneIssue.elapsedMinutes, civilMinutes: timezoneIssue.civilMinutes }, 'error'
+        ));
         const worked = actualMinutes > 0 || WORKED_ATTENDANCE_STATUSES.has(status);
         if (worked && date) workedDates.get(staffId).add(date);
 
@@ -1412,7 +1441,6 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             entry.sources.add(source);
         }
 
-        const attendanceRef = row.attendance_ref || row.id || null;
         const additionalAllocations = compensationAllocations.filter(allocation => (
             allocation.allocationType || allocation.allocation_type
         ) === SIMULTANEOUS_ADDITIONAL_LINE_TYPE);
@@ -1549,6 +1577,10 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         for (const issue of row.allocation_issues || row.allocationIssues || []) {
             bucket.allocationIssues.push({ date, ...issue });
         }
+        if (!bucket.conditionDays) bucket.conditionDays = [];
+        bucket.conditionDays.push({ date, attendanceRef, snapshot: compensationSnapshot, worked,
+            paidPlannedMinutes: Math.round(plannedMinutes * leavePolicy.paidPlannedFactor),
+            paidPlannedFactor: leavePolicy.paidPlannedFactor });
         bucket.attendanceDays.push({
             date,
             attendanceRef,
@@ -1566,6 +1598,8 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             overtimeMinutes,
             allocationSource: source,
             breakPolicy,
+            worked,
+            status,
             primaryProfessionKey,
             segmentAllocations
         });
@@ -2189,6 +2223,16 @@ function buildDailyProfessionAllocations(metrics, fallbackProfessionKey) {
         ));
 }
 
+function isConfirmedPayrollWorkDay(day, metrics) {
+    if (typeof day.worked === 'boolean') return day.worked;
+    const actualMinutes = day.actualMinutes ?? day.actual_minutes ?? day.physicalMinutes;
+    const status = String(day.status || day.time_status || '').trim();
+    if (actualMinutes !== undefined || status) {
+        return toNumber(actualMinutes, 0) > 0 || WORKED_ATTENDANCE_STATUSES.has(status);
+    }
+    return metrics.daysWorked > 0;
+}
+
 function buildPrimaryDayEntries(metrics, fallbackProfessionKey, dailyAllocations = []) {
     const map = new Map();
     for (const day of metrics.primaryDays || []) {
@@ -2202,7 +2246,7 @@ function buildPrimaryDayEntries(metrics, fallbackProfessionKey, dailyAllocations
     }
     for (const day of metrics.attendanceDays || []) {
         const date = normalizeDateValue(day.date);
-        if (!date || map.has(date)) continue;
+        if (!date || map.has(date) || !isConfirmedPayrollWorkDay(day, metrics)) continue;
         const segmentAllocations = Array.isArray(day.segmentAllocations)
             ? day.segmentAllocations
             : (Array.isArray(day.segment_allocations) ? day.segment_allocations : []);
@@ -2219,7 +2263,9 @@ function buildPrimaryDayEntries(metrics, fallbackProfessionKey, dailyAllocations
         });
     }
     if (!map.size && metrics.daysWorked > 0) {
-        const dates = (metrics.attendanceDays || []).map(day => normalizeDateValue(day.date)).filter(Boolean);
+        const dates = (metrics.attendanceDays || [])
+            .filter(day => isConfirmedPayrollWorkDay(day, metrics))
+            .map(day => normalizeDateValue(day.date)).filter(Boolean);
         if (dates.length) {
             for (const date of [...new Set(dates)].sort()) {
                 map.set(date, {
@@ -2323,10 +2369,12 @@ function collectResolutionWarnings(target, resolution) {
 
 function payrollFormula(type, quantity, rate, multiplier = null) {
     const roundedQuantity = Math.round(toNumber(quantity, 0) * 100) / 100;
-    if (type === 'hour') return `${roundedQuantity}h × ${rate}`;
-    if (type === 'overtime') return `${roundedQuantity}h × ${rate} × ${multiplier}`;
+    const hours = toNumber(quantity, 0);
+    const hourQuantity = Number.isInteger(hours) ? `${hours}h` : `${Math.round(hours * 60)} / 60`;
+    if (type === 'hour') return `${hourQuantity} × ${rate}`;
+    if (type === 'overtime') return `${hourQuantity} × ${rate} × ${multiplier}`;
     if (type === 'day') return `${roundedQuantity}d × ${rate}`;
-    if (type === 'month') return `1 × ${rate}`;
+    if (type === 'month') return `${toNumber(quantity, 0)} × ${rate}`;
     return `${roundedQuantity} × ${rate}`;
 }
 
@@ -2422,19 +2470,22 @@ function buildSimultaneousAdditionalPay(metrics = {}) {
 
 function attachSimultaneousAdditionalPay(result, metrics = {}) {
     const additional = buildSimultaneousAdditionalPay(metrics);
+    const blockingIssues = compactAllocationIssues([
+        ...(result.blockingIssues || []),
+        ...(result.reconciliation?.blockingIssues || []),
+        ...additional.blockingIssues
+    ]);
     const allocationIssues = compactAllocationIssues([
         ...(result.allocationIssues || []),
-        ...additional.blockingIssues
+        ...blockingIssues
     ]);
     const reconciliation = {
         ...(result.reconciliation || metrics.reconciliation || {}),
         days: [...(result.reconciliation?.days || metrics.reconciliation?.days || [])],
         warnings: [...(result.reconciliation?.warnings || metrics.reconciliation?.warnings || [])],
-        ...(additional.blockingIssues.length
-            ? { blockingIssues: [...additional.blockingIssues] }
-            : {})
+        ...(blockingIssues.length ? { blockingIssues } : {})
     };
-    for (const issue of additional.blockingIssues) {
+    for (const issue of blockingIssues) {
         const exists = reconciliation.warnings.some(warning => (
             warning.code === issue.code
             && String(warning.date || '') === String(issue.date || '')
@@ -2454,7 +2505,7 @@ function attachSimultaneousAdditionalPay(result, metrics = {}) {
             ...additional.professionRateSummary
         ],
         allocationIssues,
-        blockingIssues: additional.blockingIssues,
+        blockingIssues,
         reconciliation
     };
 }
@@ -2723,7 +2774,7 @@ function buildPayrollTransparencyMetrics(metrics = {}, professionPay = {}) {
     };
 }
 
-function finalizeProfessionPayResult({ metrics, fallbackProfessionKey, rateUnit, baseLines, overtimeLines, professionRateSummary, allocationIssues }) {
+function finalizeProfessionPayResult({ metrics, fallbackProfessionKey, rateUnit, baseLines, overtimeLines, professionRateSummary, allocationIssues, blockingIssues = [] }) {
     const baseAmount = baseLines.reduce((sum, item) => sum + item.amount, 0);
     const overtimeAmount = overtimeLines.reduce((sum, item) => sum + item.amount, 0);
     const issues = compactAllocationIssues([...(metrics.allocationIssues || []), ...(allocationIssues || [])]);
@@ -2739,6 +2790,7 @@ function finalizeProfessionPayResult({ metrics, fallbackProfessionKey, rateUnit,
     const reconciliation = {
         ...(metrics.reconciliation || {}),
         days: [...(metrics.reconciliation?.days || [])],
+        ...(blockingIssues.length ? { blockingIssues: compactAllocationIssues(blockingIssues) } : {}),
         warnings: [...(metrics.reconciliation?.warnings || [])]
     };
     for (const issue of issues) {
@@ -2760,6 +2812,7 @@ function finalizeProfessionPayResult({ metrics, fallbackProfessionKey, rateUnit,
         totalAmount: baseAmount + overtimeAmount,
         professionRateSummary,
         allocationIssues: issues,
+        blockingIssues: compactAllocationIssues(blockingIssues),
         reconciliation
     };
 }
@@ -2769,6 +2822,7 @@ function calculateProfessionPayWithResolver(staff, activeScheme, metrics, profes
     const overtimeLines = [];
     const professionRateSummary = [];
     const allocationIssues = [];
+    const blockingIssues = [];
     const periodStart = payrollProfileContext?.from
         || normalizeDateValue(metrics.attendanceDays?.[0]?.date || metrics.primaryDays?.[0]?.date)
         || normalizeDateValue(`${normalizePayrollMonth()}-01`);
@@ -2788,7 +2842,34 @@ function calculateProfessionPayWithResolver(staff, activeScheme, metrics, profes
     if (monthlyResolution.rateUnit === 'month') {
         const fixed = monthlyFixedAmount(monthlyResolution.rate, staff, activeScheme, metrics);
         const amount = fixed.amount;
-        const formula = payrollFormula('month', fixed.valid ? fixed.ratio : 0, monthlyResolution.rate);
+        const explanation = monthlyFixedExplanation(fixed);
+        const formula = explanation.formula;
+        const periodEnd = normalizeDateValue(payrollProfileContext?.to || metrics.periodTo || periodStart);
+        for (let workDate = periodStart; workDate && workDate <= periodEnd;) {
+            const resolution = resolveRate(fallbackProfessionKey, workDate, legacyRateUnit);
+            if (resolution.rateUnit !== monthlyResolution.rateUnit || resolution.rate !== monthlyResolution.rate) {
+                const issue = payrollIssue('PAYROLL_MONTHLY_PROFILE_CHANGE_POLICY_REQUIRED',
+                    'Зміна окладу або типу оплати всередині періоду потребує погодженої формули; застосувати оклад першого дня до всього періоду неможливо.', {
+                        staffId: staff.id, professionKey: fallbackProfessionKey, date: workDate,
+                        initialRate: monthlyResolution.rate, rate: resolution.rate,
+                        initialRateUnit: monthlyResolution.rateUnit, rateUnit: resolution.rateUnit
+                    }, 'error');
+                blockingIssues.push(issue);
+                allocationIssues.push(issue);
+                break;
+            }
+            const nextDate = new Date(workDate + 'T00:00:00.000Z');
+            nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+            workDate = nextDate.toISOString().slice(0, 10);
+        }
+        if (!fixed.valid) {
+            const issue = payrollIssue(fixed.code, fixed.message, {
+                staffId: staff.id, professionKey: fallbackProfessionKey,
+                ...explanation.monthlyProration
+            }, 'error');
+            blockingIssues.push(issue);
+            allocationIssues.push(issue);
+        }
         baseLines.push(line('base', 'profession_month', 'Monthly profile salary', amount, {
             quantity: fixed.valid ? fixed.ratio : 0,
             rate: monthlyResolution.rate,
@@ -2800,7 +2881,7 @@ function calculateProfessionPayWithResolver(staff, activeScheme, metrics, profes
                 profileTitle: monthlyResolution.profileTitle,
                 workDate: periodStart,
                 appliedRule: monthlyResolution.appliedRule,
-                formula
+                ...explanation
             }
         }));
         professionRateSummary.push(professionSummaryRow({
@@ -2823,7 +2904,8 @@ function calculateProfessionPayWithResolver(staff, activeScheme, metrics, profes
             baseLines,
             overtimeLines,
             professionRateSummary,
-            allocationIssues
+            allocationIssues,
+            blockingIssues
         });
     }
 
@@ -2872,17 +2954,18 @@ function calculateProfessionPayWithResolver(staff, activeScheme, metrics, profes
     for (const allocation of dailyAllocations) {
         if (allocation.date && dayPaidDates.has(allocation.date)) continue;
         const resolution = resolveRate(allocation.professionKey, allocation.date || periodStart, legacyRateUnit);
-        if (resolution.rateUnit === 'day') {
-            allocationIssues.push({
-                code: 'PAYROLL_DAY_RATE_SECONDARY_PROFESSION_SKIPPED',
-                date: allocation.date,
-                professionKey: allocation.professionKey,
-                profileId: resolution.profileId,
-                message: 'Day-rate payroll pays only the primary profession for a staff date'
-            });
+        if (resolution.rateUnit !== 'hour') {
+            const issue = payrollIssue('PAYROLL_BASE_RATE_UNIT_POLICY_REQUIRED',
+                'Потрібне погоджене правило денної або місячної оплати окремого блоку; ставку не можна множити на години.', {
+                    date: allocation.date,
+                    professionKey: allocation.professionKey,
+                    profileId: resolution.profileId,
+                    rateUnit: resolution.rateUnit
+                }, 'error');
+            allocationIssues.push(issue);
+            blockingIssues.push(issue);
             continue;
         }
-        if (resolution.rateUnit !== 'hour') continue;
         const hours = allocation.minutes / 60;
         const amount = roundMoney(hours * resolution.rate);
         const formula = payrollFormula('hour', hours, resolution.rate);
@@ -2964,7 +3047,8 @@ function calculateProfessionPayWithResolver(staff, activeScheme, metrics, profes
         baseLines,
         overtimeLines,
         professionRateSummary,
-        allocationIssues
+        allocationIssues,
+        blockingIssues
     });
 }
 
@@ -3008,6 +3092,9 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
     }
     const rateUnit = schemeType === 'monthly_fixed' ? 'month' : (schemeType === 'per_shift' ? 'day' : 'hour');
     const fallbackProfessionKey = normalizeProfessionKey(staff.roleType || staff.role_type);
+    if (Array.isArray(metrics.conditionDays) && metrics.conditionDays.length) {
+        return require('./payrollConditionCalculation').calculateConditionSnapshots(metrics, OVERTIME_MULTIPLIER);
+    }
     if (payrollProfileContextEnabled(payrollProfileContext)) {
         return applySimultaneousAdditionalPayPolicy(calculateProfessionPayWithResolver(
             staff,
@@ -3039,7 +3126,7 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
                 quantity: allocation.minutes / 60,
                 rate: resolved.rate,
                 source: resolved.source,
-                meta: { professionKey, allocationSources: allocation.allocationSources }
+                meta: { professionKey, rateUnit, formula: payrollFormula('hour', allocation.minutes / 60, resolved.rate), allocationSources: allocation.allocationSources }
             }));
             professionRateSummary.push(professionSummaryRow({
                 professionKey,
@@ -3048,7 +3135,8 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
                 amount,
                 rateUnit,
                 sources: allocation.allocationSources,
-                rateSource: resolved.source
+                rateSource: resolved.source,
+                formula: payrollFormula('hour', allocation.minutes / 60, resolved.rate)
             }));
         }
         const overtimeAllocations = metrics.overtimeAllocations.length
@@ -3066,7 +3154,7 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
                 quantity: overtime.minutes / 60,
                 rate: resolved.rate * OVERTIME_MULTIPLIER,
                 source: resolved.source,
-                meta: { professionKey, baseRate: resolved.rate, multiplier: OVERTIME_MULTIPLIER, allocationSources: overtime.allocationSources }
+                meta: { professionKey, rateUnit, formula: payrollFormula('overtime', overtime.minutes / 60, resolved.rate, OVERTIME_MULTIPLIER), baseRate: resolved.rate, multiplier: OVERTIME_MULTIPLIER, allocationSources: overtime.allocationSources }
             }));
             professionRateSummary.push(professionSummaryRow({
                 professionKey,
@@ -3076,15 +3164,16 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
                 rateUnit,
                 sources: overtime.allocationSources,
                 rateSource: resolved.source,
-                kind: 'overtime'
+                kind: 'overtime',
+                formula: payrollFormula('overtime', overtime.minutes / 60, resolved.rate, OVERTIME_MULTIPLIER)
             }));
         }
     } else if (rateUnit === 'day') {
         const dayMap = new Map();
-        for (const day of metrics.primaryDays) {
+        for (const day of buildPrimaryDayEntries(metrics, fallbackProfessionKey)) {
             const professionKey = normalizeProfessionKey(day.professionKey || fallbackProfessionKey);
             if (!dayMap.has(professionKey)) dayMap.set(professionKey, { days: 0, dates: [] });
-            dayMap.get(professionKey).days += 1;
+            dayMap.get(professionKey).days += day.days;
             dayMap.get(professionKey).dates.push(day.date);
         }
         if (!dayMap.size && metrics.daysWorked > 0) {
@@ -3103,7 +3192,7 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
                 quantity: dayData.days,
                 rate: resolved.rate,
                 source: resolved.source,
-                meta: { professionKey, dates: dayData.dates }
+                meta: { professionKey, rateUnit, formula: payrollFormula('day', dayData.days, resolved.rate), dates: dayData.dates }
             }));
             professionRateSummary.push(professionSummaryRow({
                 professionKey,
@@ -3113,17 +3202,20 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
                 amount,
                 rateUnit,
                 sources: metrics.attendanceDays.filter(day => dayData.dates.includes(day.date)).map(day => day.allocationSource),
-                rateSource: resolved.source
+                rateSource: resolved.source,
+                formula: payrollFormula('day', dayData.days, resolved.rate)
             }));
         }
     } else {
         const resolved = resolveProfessionPayRate(staff, fallbackProfessionKey, activeScheme, professionRateMap, rateUnit);
-        const amount = monthlyFixedAmount(resolved.rate, staff, activeScheme, metrics).amount;
+        const fixed = monthlyFixedAmount(resolved.rate, staff, activeScheme, metrics);
+        const explanation = monthlyFixedExplanation(fixed);
+        const amount = fixed.amount;
         baseLines.push(line('base', 'profession_month', 'Місячний оклад', amount, {
-            quantity: 1,
+            quantity: fixed.valid ? fixed.ratio : 0,
             rate: resolved.rate,
             source: resolved.source,
-            meta: { professionKey: fallbackProfessionKey }
+            meta: { professionKey: fallbackProfessionKey, ...explanation }
         }));
         professionRateSummary.push(professionSummaryRow({
             professionKey: fallbackProfessionKey,
@@ -3133,7 +3225,8 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
             amount,
             rateUnit,
             sources: metrics.attendanceDays.map(day => day.allocationSource),
-            rateSource: resolved.source
+            rateSource: resolved.source,
+            formula: explanation.formula
         }));
     }
 

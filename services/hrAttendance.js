@@ -391,80 +391,68 @@ function additionalCompensationAllocation(segment, role, rateSnapshot = {}, actu
 }
 
 async function buildAttendanceCompensationPlanSnapshot(db, input = {}) {
+    const { loadPayrollConditionContext, resolvePayrollConditions, assertAdditionalAdmission } = require('./hrPayrollConditions');
     const staffId = Number(input.staffId ?? input.staff_id);
     const recordDate = normalizeAttendancePlanDate(input.recordDate ?? input.record_date);
     const plan = attendanceCompensationPlan(input.plan || {});
     const capturedAt = timestampAuditValue(input.capturedAt || input.captured_at || new Date());
-    const paidRoles = plan.segments.flatMap(segment =>
-        (segment.additionalRoles || [])
-            .filter(role => role.compensationMode === 'paid_hourly')
-            .map(role => ({ segment, role })));
-    const context = paidRoles.length
-        ? await loadPaidRoleValidationContext(db, [staffId])
-        : { policies: [], professionRates: new Map() };
+    const context = await loadPayrollConditionContext(db, [staffId], { from: recordDate, to: recordDate });
+    const staff = context.staff.get(staffId);
     const issues = [];
     const compensationAllocations = [];
-
-    for (const [segmentIndex, segment] of plan.segments.entries()) {
-        compensationAllocations.push(baseCompensationAllocation(segment, 0, segmentIndex));
-        for (const role of segment.additionalRoles || []) {
-            if (role.compensationMode !== 'paid_hourly') continue;
-            const policy = (context.policies || []).find(item =>
-                item.policyVersion === role.policyVersion
-                && item.compensationMode === 'paid_hourly'
-                && item.status === 'active'
-                && item.effectiveFrom
-                && item.effectiveFrom <= recordDate
-                && Number(item.payMultiplier) === Number(role.payMultiplier));
-            const rate = context.professionRates?.get(`${staffId}:${role.professionKey}`);
-            if (!policy) {
-                issues.push(attendanceCompensationIssue(
-                    'ATTENDANCE_COMPENSATION_POLICY_REQUIRED',
-                    'Не вдалося зафіксувати активну політику додаткової оплати',
-                    { professionKey: role.professionKey, policyVersion: role.policyVersion || null },
-                    'manual_review'
-                ));
-            }
-            if (!Number.isFinite(Number(rate)) || Number(rate) <= 0) {
-                issues.push(attendanceCompensationIssue(
-                    'ATTENDANCE_COMPENSATION_RATE_REQUIRED',
-                    'Не вдалося зафіксувати явну погодинну ставку додаткової професії',
-                    { professionKey: role.professionKey, rateSource: HR_ATTENDANCE_COMPENSATION_RATE_SOURCE },
-                    'manual_review'
-                ));
-            }
-            compensationAllocations.push(additionalCompensationAllocation(segment, role, {
-                rate: Number.isFinite(Number(rate)) && Number(rate) > 0 ? Number(rate) : null,
-                rateUnit: 'hour',
-                rateSource: Number.isFinite(Number(rate)) && Number(rate) > 0
-                    ? HR_ATTENDANCE_COMPENSATION_RATE_SOURCE
-                    : null
-            }, 0, segmentIndex));
-        }
+    const segments = plan.segments.length ? plan.segments : [{ id: null, professionKey: staff?.role_type,
+        plannedMinutes: 0, additionalRoles: [] }];
+    const permanentMonthly = [];
+    for (const [key, assignments] of context.profiles.assignmentsByStaffProfession) {
+        if (!key.startsWith(staffId + ':')) continue;
+        const professionKey = key.slice(key.indexOf(':') + 1);
+        if (professionKey === staff?.role_type) continue;
+        const terms = resolvePayrollConditions(context, staffId, professionKey, recordDate, 'additional');
+        if (terms.rateUnit === 'month' && terms.assignmentId && assignments.length) permanentMonthly.push(professionKey);
     }
-
-    return {
-        schemaVersion: HR_ATTENDANCE_COMPENSATION_SNAPSHOT_VERSION,
-        state: issues.some(issue => issue.severity === 'manual_review') ? 'manual_review' : 'planned',
-        legacyBaseOnly: false,
-        staffId,
-        recordDate,
-        capturedAt,
-        finalizedAt: null,
-        correctedAt: null,
-        planSource: plan.source,
-        plan,
-        physicalAllocation: null,
-        compensationAllocations,
-        totals: {
-            physicalMinutes: 0,
-            baseMinutes: 0,
-            simultaneousAdditionalMinutes: 0,
-            compensationMinutes: 0
-        },
-        issues,
-        manualReview: issues.some(issue => issue.severity === 'manual_review')
-    };
+    function capture(segment, segmentIndex, professionKey, additional) {
+        const terms = resolvePayrollConditions(context, staffId, professionKey, recordDate, additional ? 'additional' : 'base_replacement');
+        if (additional && professionKey !== staff?.role_type) {
+            try { assertAdditionalAdmission(context, staffId, professionKey); }
+            catch (error) { issues.push(attendanceCompensationIssue(error.code, error.message, { professionKey }, 'manual_review')); }
+        }
+        for (const warning of terms.warnings || []) {
+            if (warning.code === 'PAYROLL_PROFILE_VERSION_UNRESOLVED') issues.push(attendanceCompensationIssue(
+                warning.code, 'Призначений профіль не має чинної версії на дату роботи', { professionKey }, 'manual_review'));
+        }
+        if (!(terms.rate > 0)) issues.push(attendanceCompensationIssue('ATTENDANCE_COMPENSATION_RATE_REQUIRED',
+            'Не вдалося зафіксувати чинну ставку професії', { professionKey }, 'manual_review'));
+        compensationAllocations.push({ ...baseCompensationAllocation(segment, 0, segmentIndex),
+            allocationType: additional ? 'simultaneous_additional' : 'base', professionKey,
+            compensationMode: additional ? 'paid_profile' : 'base', rate: terms.rate, rateUnit: terms.rateUnit,
+            rateSource: terms.rateSource, policyVersion: terms.ruleVersion, conditions: terms });
+    }
+    for (const [segmentIndex, segment] of segments.entries()) {
+        capture(segment, segmentIndex, segment.professionKey, false);
+        const additional = new Set(permanentMonthly);
+        for (const role of segment.additionalRoles || []) {
+            if (role.compensationMode === 'paid_hourly') {
+                additional.add(role.professionKey);
+                if (!context.policies.some(policy => policy.policy_version === role.policyVersion
+                    && policy.status === 'active' && dateOnly(policy.effective_from) <= recordDate
+                    && Number(policy.pay_multiplier) === Number(role.payMultiplier))) {
+                    issues.push(attendanceCompensationIssue('ATTENDANCE_COMPENSATION_POLICY_REQUIRED',
+                        'Не вдалося підтвердити політику оплачуваної ролі', { professionKey: role.professionKey }, 'manual_review'));
+                }
+            }
+        }
+        for (const exception of context.exceptions.values()) {
+            if (exception.state !== 'active' || exception.purpose !== 'additional') continue;
+            if (exception.professionKey === segment.professionKey
+                || (segment.additionalRoles || []).some(role => role.professionKey === exception.professionKey)) additional.add(exception.professionKey);
+        }
+        for (const professionKey of additional) capture(segment, segmentIndex, professionKey, true);
+    }
+    return { schemaVersion: 2, state: issues.length ? 'manual_review' : 'planned', legacyBaseOnly: false,
+        staffId, recordDate, capturedAt, finalizedAt: null, correctedAt: null, planSource: plan.source, plan,
+        physicalAllocation: null, compensationAllocations,
+        totals: { physicalMinutes: 0, baseMinutes: 0, simultaneousAdditionalMinutes: 0, compensationMinutes: 0 },
+        issues, manualReview: issues.length > 0 };
 }
 
 function buildLegacyAttendanceCompensationSnapshot(input = {}) {
@@ -555,6 +543,9 @@ function finalizeAttendanceCompensationSnapshot(snapshotValue, physicalAllocatio
         .filter(allocation => allocation.allocationType === 'simultaneous_additional')
         .reduce((sum, allocation) => sum + normalizeNonNegativeMinutes(allocation.actualMinutes), 0);
     const issues = [...(source.issues || [])];
+    for (const issue of physicalAllocation?.allocationIssues || []) {
+        if (issue.severity === 'manual_review' && !issues.some(existing => existing.code === issue.code)) issues.push(issue);
+    }
     if (physicalAllocationMinutes !== physicalMinutes) {
         issues.push(attendanceCompensationIssue(
             'ATTENDANCE_PHYSICAL_ALLOCATION_INVARIANT_FAILED',
@@ -998,6 +989,27 @@ function emptyAttendanceAllocation(segments, primaryProfessionKey, source = 'non
     };
 }
 
+function attendanceTimezoneTransitionIssue(input = {}) {
+    const recordDate = dateOnly(input.recordDate || input.record_date || input.date);
+    const clockIn = input.clockIn || input.clock_in;
+    const clockOut = input.clockOut || input.clock_out;
+    if (!recordDate || !clockIn || !clockOut) return null;
+    const start = new Date(clockIn);
+    const end = new Date(clockOut);
+    const elapsedMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+    const localStart = timestampToTimelineMinutes(start, recordDate);
+    const localEnd = timestampToTimelineMinutes(end, recordDate);
+    if (!Number.isFinite(elapsedMinutes) || elapsedMinutes <= 0 || localStart === null || localEnd === null) return null;
+    const civilMinutes = localEnd - localStart;
+    // Minute-only local timestamps can differ by one minute due to seconds rounding.
+    if (Math.abs(elapsedMinutes - civilMinutes) <= 1) return null;
+    return {
+        code: 'ATTENDANCE_TIMEZONE_TRANSITION_REVIEW_REQUIRED',
+        message: 'Зміна часового поясу під час роботи: реальна тривалість відрізняється від часу за годинником. Потрібне погоджене правило оплати нічної зміни.',
+        severity: 'manual_review', elapsedMinutes, civilMinutes, recordDate
+    };
+}
+
 function allocateAttendanceToSegments(input = {}) {
     const primaryProfessionKey = input.primaryProfessionKey || input.primary_profession_key || null;
     const segments = normalizeAttendanceSegments({
@@ -1024,6 +1036,8 @@ function allocateAttendanceToSegments(input = {}) {
         && clockOutDate.getTime() > clockInDate.getTime()
     );
 
+    const timezoneIssue = attendanceTimezoneTransitionIssue(input);
+    if (timezoneIssue) base.allocationIssues.push(timezoneIssue);
     if (hasReliableInterval) {
         const actualStart = timestampToTimelineMinutes(clockInDate, recordDate);
         const actualEnd = timestampToTimelineMinutes(clockOutDate, recordDate);
@@ -1063,7 +1077,7 @@ function allocateAttendanceToSegments(input = {}) {
                     ? Math.max(0, envelopeEnd - Math.max(actualEnd, envelopeStart))
                     : 0;
             }
-            const allocationIssues = [];
+            const allocationIssues = [...base.allocationIssues];
             if (overtimeMinutes > 0) {
                 allocationIssues.push(attendanceIssue(
                     'ACTUAL_TIME_OUTSIDE_PLANNED_SEGMENTS',
@@ -1108,7 +1122,7 @@ function allocateAttendanceToSegments(input = {}) {
         const paidAllocations = allocateIntegerProportion(allocatedTarget, segments);
         const allocatedMinutes = paidAllocations.reduce((sum, value) => sum + value, 0);
         const overtimeMinutes = Math.max(0, recordedTotalMinutes - allocatedMinutes);
-        const allocationIssues = [attendanceIssue(
+        const allocationIssues = [...base.allocationIssues, attendanceIssue(
             'ATTENDANCE_PROPORTIONAL_FALLBACK',
             'Фактичний інтервал ненадійний; години розподілено пропорційно до плану й потрібна звірка'
         )];
@@ -1812,6 +1826,7 @@ module.exports = {
     attendanceCsvCell,
     attendanceCsvRow,
     attendanceFactMinutes,
+    attendanceTimezoneTransitionIssue,
     attendancePlanWarningMessage,
     attendancePlanFromCompensationSnapshot,
     attendanceReportingFacts,

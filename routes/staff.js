@@ -133,6 +133,21 @@ const log = createLogger('Staff');
 // v39.8: Security — require authentication for all staff endpoints
 router.use(authenticateToken);
 router.use(requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'staff', parkCheckinJournalRead: true }));
+// Compensation snapshots now include base wages; keep the existing payroll-view boundary.
+function redactAttendanceCompensation(value) {
+    if (Array.isArray(value)) return value.map(redactAttendanceCompensation);
+    if (!value || typeof value !== 'object' || value instanceof Date) return value;
+    return Object.fromEntries(Object.entries(value)
+        .filter(([key]) => !['compensation_snapshot', 'compensationSnapshot', 'conditions'].includes(key))
+        .map(([key, nested]) => [key, redactAttendanceCompensation(nested)]));
+}
+router.use((req, res, next) => {
+    if (!canUseAction(req.user, 'hr.payroll.view')) {
+        const json = res.json.bind(res);
+        res.json = value => json(redactAttendanceCompensation(value));
+    }
+    next();
+});
 
 const ACCOUNT_MANAGER_PRIMARY_ROLES = new Set(['creator', 'director']);
 const STAFF_COPY_WEEK_RAW_DEPARTMENT_ALLOWLIST = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);

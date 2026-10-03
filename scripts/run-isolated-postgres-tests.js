@@ -39,6 +39,7 @@ const MODES = {
     permissions: ['tests/integration/permission-capabilities.integration.test.js'],
     payroll: [
         'tests/integration/payroll-profiles.integration.test.js',
+        'tests/integration/payroll-profiles-conditions.integration.test.js',
         'tests/integration/payroll-simultaneous-additional.integration.test.js',
         'tests/integration/zrs-payroll-period-lock.integration.test.js',
         'tests/integration/payroll-installments.integration.test.js',

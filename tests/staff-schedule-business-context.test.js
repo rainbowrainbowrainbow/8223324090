@@ -278,7 +278,7 @@ test('hidden configured rate permits schedule editing without exposing the rate 
     assert.equal(validation.valid, true, validation.errors.join('; '));
     assert.equal(validation.errorCodes.includes('HR_SHIFT_PAID_ROLE_RATE_REQUIRED'), false);
     assert.equal(api.schedulePaidRolePreview('schedule', segments[0].additionalRoles[0], segments[0]),
-        'Ставка налаштована · 120 хв · multiplier 1.0');
+        'Ставка налаштована · План: 120 хв після перерви 0 хв · multiplier 1.0. Нарахування — за фактичними оплачуваними хвилинами табеля.');
     assert.equal(JSON.stringify(api.state.professions).includes('explicitRate'), false);
 });
 
@@ -315,8 +315,8 @@ test('projected recovery plan preserves physical validation without inventing mi
     Object.assign(segments[0].additionalRoles[0], {
         payMultiplier: 1, intervalStart: segments[0].shiftStart, intervalEnd: segments[0].shiftEnd
     });
-    assert.ok(api.validateSchedulePlan('schedule').errorCodes.includes('HR_SHIFT_PAID_ROLE_RATE_REQUIRED'),
-        'compatibility editing still requires an explicit paid-role rate');
+    assert.ok(api.validateSchedulePlan('schedule').errorCodes.includes('HR_SHIFT_PAID_ROLE_CATALOG_UNAVAILABLE'),
+        'compatibility editing waits for the unloaded profession catalog');
     await api.fetchSchedule(...dateRange);
     const validation = api.validateSchedulePlan('schedule');
     assert.equal(validation.valid, true, validation.errors.join('; '));

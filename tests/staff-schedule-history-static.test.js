@@ -2437,7 +2437,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /\/api\/staff\/\$\{encodeURIComponent\(numericStaffId\)\}\/shift-preferences/);
         assert.match(staffPage, /renderScheduleShiftPreferencePanel\(preferences, \{ autoApply: 'force' \}\)/);
         assert.match(staffPage, /loadScheduleShiftPreferences\(staffId, \{/);
-        assert.match(staffPage, /autoApply: \(!entry\?\.shift_start && !entry\?\.shift_end\) \? 'missing-only' : false/);
+        assert.match(staffPage, /autoApply: !options\.restoreDraft && \(!entry\?\.shift_start && !entry\?\.shift_end\) \? 'missing-only' : false/);
         assert.match(staffPage, /getActiveScheduleSegmentCard\(\)\?\.querySelector\('\[data-segment-field="profession"\]'\)/);
         assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey, \{/);
         assert.match(staffPage, /segments:\s*validation\.segments\.map/);

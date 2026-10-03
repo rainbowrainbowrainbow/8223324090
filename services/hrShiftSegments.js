@@ -3,6 +3,7 @@
 const {
     normalizeProfessionKey,
     normalizeRequestedProfessionKey,
+    getPaidProfessionEligibility,
     parseJsonArray,
     resolveStaffProfessionAssignments,
     staffProfessionKeys
@@ -879,20 +880,24 @@ async function loadPaidRoleValidationContext(db, staffIds = []) {
     );
     const context = {
         policies: (policyResult.rows || []).map(normalizeCompensationPolicyRow),
+        assignments: new Map(),
         approvedAssignments: new Set(),
         professionRates: new Map()
     };
     if (!ids.length) return context;
 
     const assignmentResult = await db.query(
-        `SELECT staff_id, profession_key, status, admission_status
-         FROM staff_role_assignments
-         WHERE staff_id = ANY($1::int[])
-         ORDER BY staff_id, profession_key
-         FOR SHARE`,
+        `SELECT sra.staff_id, sra.profession_key, sra.status, sra.admission_status,
+                s.is_active AS staff_is_active, COALESCE(s.rate_unit, 'hour') AS rate_unit
+         FROM staff_role_assignments sra
+         JOIN staff s ON s.id = sra.staff_id
+         WHERE sra.staff_id = ANY($1::int[])
+         ORDER BY sra.staff_id, sra.profession_key
+         FOR SHARE OF sra, s`,
         [ids]
     );
     for (const row of assignmentResult.rows || []) {
+        context.assignments.set(`${Number(row.staff_id)}:${normalizeProfessionKey(row.profession_key)}`, row);
         if (String(row.status || '') !== 'active' || String(row.admission_status || '') !== 'approved') continue;
         const professionKey = normalizeProfessionKey(row.profession_key);
         if (!professionKey) continue;
@@ -914,6 +919,8 @@ async function loadPaidRoleValidationContext(db, staffIds = []) {
         if (!professionKey || !Number.isFinite(rate) || rate <= 0) continue;
         context.professionRates.set(`${Number(row.staff_id)}:${professionKey}`, rate);
     }
+    context.payrollConditions = await require('./hrPayrollConditions').loadPayrollConditionContext(
+        db, ids, { from: '1900-01-01', to: '2200-12-31' });
     return context;
 }
 
@@ -973,6 +980,34 @@ function validatePaidAdditionalRoles(plan, staffId, shiftDate, context) {
             ?.find(candidate => candidate.professionKey === role.professionKey);
         if (persistedRole) persistedRole.policyVersion = policy.policyVersion;
         const key = `${normalizedStaffId}:${role.professionKey}`;
+        if (context?.payrollConditions) {
+            const { resolvePayrollConditions, assertAdditionalAdmission } = require('./hrPayrollConditions');
+            assertAdditionalAdmission(context.payrollConditions, normalizedStaffId, role.professionKey);
+            const conditions = resolvePayrollConditions(context.payrollConditions, normalizedStaffId,
+                role.professionKey, normalizedDate, 'additional');
+            if (!(conditions.rate > 0)) fail('HR_SHIFT_PAID_ROLE_RATE_REQUIRED',
+                'Для додаткової професії немає чинних умов оплати', { professionKey: role.professionKey });
+            continue;
+        }
+        if (context?.assignments) {
+            const assignment = context.assignments.get(key);
+            const eligibility = getPaidProfessionEligibility({
+                hasPaidAssignment: Boolean(assignment),
+                isActive: assignment?.staff_is_active !== false,
+                assignmentStatus: assignment?.status,
+                admissionStatus: assignment?.admission_status,
+                rateUnit: 'hour', // Legacy explicit profession rates are hourly independently of the base wage.
+                explicitRate: context.professionRates.get(key),
+                rateSource: 'staff_profession_rates.hourly_rate'
+            });
+            if (!eligibility.available) {
+                fail(eligibility.code, eligibility.reason, {
+                    staffId: normalizedStaffId, shiftDate: normalizedDate,
+                    segmentIndex: role.segmentIndex, professionKey: role.professionKey,
+                    blocker: eligibility.blocker
+                });
+            }
+        }
         if (!context?.approvedAssignments?.has(key)) {
             fail(
                 'HR_SHIFT_PAID_ROLE_NOT_ALLOWED',

@@ -44,7 +44,7 @@ test('current booking metrics preserve arithmetic, dates, package ownership and 
         );
         CREATE TABLE bookings (
             id TEXT PRIMARY KEY, customer_id INT, business_context TEXT,
-            status TEXT, date DATE, price NUMERIC, linked_to TEXT, extra_data JSONB
+            status TEXT, date VARCHAR(20), price NUMERIC, linked_to TEXT, extra_data JSONB
         );
         INSERT INTO customers
         SELECT n, 'event_genix', 99, 99999, '2020-01-01'::date, '2030-01-01'::date
@@ -61,6 +61,7 @@ test('current booking metrics preserve arithmetic, dates, package ownership and 
             ('independent', 7, 'event_genix', ' CONFIRMED ', '2026-09-03', 200, ' '),
             ('moved', 8, 'event_genix', 'confirmed', '2026-10-01', 400, NULL),
             ('undated', 9, 'event_genix', 'confirmed', NULL, 200, NULL),
+            ('blank-date', 9, 'event_genix', 'confirmed', ' ', 100, NULL),
             ('unknown', 10, 'event_genix', 'completed', '2026-09-01', 900, NULL),
             ('blank', 10, 'event_genix', '', '2026-09-01', 900, NULL),
             ('missing-status', 10, 'event_genix', NULL, '2026-09-01', 900, NULL),
@@ -101,7 +102,9 @@ test('current booking metrics preserve arithmetic, dates, package ownership and 
     assert.equal(byId.get(5).frequency, 0);
     assert.equal(byId.get(7).totalBookings, 2);
     assert.equal(byId.get(7).totalSpent, 1700.25, 'package root price counted exactly once');
-    assert.equal(byId.get(9).undatedBookings, 1);
+    assert.equal(byId.get(9).undatedBookings, 2, 'NULL and blank legacy text dates are undated');
+    assert.equal(byId.get(2).recencyDays, 1, 'VARCHAR dates support calendar subtraction');
+    assert.equal(byId.get(9).totalBookings, 2);
     assert.equal(byId.get(9).lastVisit, null);
     assert.equal(byId.get(11).totalSpent, 0);
     assert.equal(byId.get(11).unpricedBookings, 2, 'zero is a known price');

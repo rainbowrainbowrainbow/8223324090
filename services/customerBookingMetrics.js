@@ -16,7 +16,9 @@ function buildScopedBookingAggregateSql(user, params, alias = 'b', businessScope
     const customerSql = options.customerIds
         ? `AND ${alias}.customer_id = ANY($${params.push(options.customerIds)}::int[])` : '';
     const status = `LOWER(BTRIM(${alias}.status))`;
-    const past = `${alias}.date < ${today}`;
+    // The canonical bookings schema stores calendar dates as VARCHAR(20).
+    const bookingDate = `NULLIF(BTRIM(${alias}.date::text), '')::date`;
+    const past = `${bookingDate} < ${today}`;
     const confirmedPast = `${status} = 'confirmed' AND ${past}`;
     const canViewRevenue = resolveCapability(user, 'view_revenue', { type: 'action' }).allowed;
     const bookingValue = canViewRevenue ? `COALESCE(SUM(${alias}.price) FILTER (WHERE ${alias}.price >= 0), 0)` : '0';
@@ -28,17 +30,17 @@ function buildScopedBookingAggregateSql(user, params, alias = 'b', businessScope
             COUNT(*) AS booking_count,
             ${bookingValue} AS booking_spent,
             COUNT(*) FILTER (WHERE ${past}) AS past_bookings,
-            COUNT(*) FILTER (WHERE ${alias}.date >= ${today}) AS planned_bookings,
-            COUNT(*) FILTER (WHERE ${alias}.date IS NULL) AS undated_bookings,
+            COUNT(*) FILTER (WHERE ${bookingDate} >= ${today}) AS planned_bookings,
+            COUNT(*) FILTER (WHERE ${bookingDate} IS NULL) AS undated_bookings,
             COUNT(*) FILTER (WHERE ${status} = 'preliminary') AS preliminary_bookings,
             ${unpricedCount} AS unpriced_bookings,
-            MIN(${alias}.date) FILTER (WHERE ${past}) AS real_first_visit,
-            MAX(${alias}.date) FILTER (WHERE ${past}) AS real_last_visit,
-            MIN(${alias}.date) FILTER (WHERE ${alias}.date >= ${today}) AS next_booking_date,
+            MIN(${bookingDate}) FILTER (WHERE ${past}) AS real_first_visit,
+            MAX(${bookingDate}) FILTER (WHERE ${past}) AS real_last_visit,
+            MIN(${bookingDate}) FILTER (WHERE ${bookingDate} >= ${today}) AS next_booking_date,
             COUNT(*) FILTER (WHERE ${confirmedPast}) AS rfm_frequency,
             ${rfmValue} AS rfm_monetary,
-            MAX(${alias}.date) FILTER (WHERE ${confirmedPast}) AS rfm_last_visit,
-            ${today} - MAX(${alias}.date) FILTER (WHERE ${confirmedPast}) AS recency_days,
+            MAX(${bookingDate}) FILTER (WHERE ${confirmedPast}) AS rfm_last_visit,
+            ${today} - MAX(${bookingDate}) FILTER (WHERE ${confirmedPast}) AS recency_days,
             ${today} AS metrics_as_of
         FROM bookings ${alias}
         WHERE ${status} IN ('confirmed', 'preliminary')

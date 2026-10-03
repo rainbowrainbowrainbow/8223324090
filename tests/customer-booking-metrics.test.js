@@ -84,6 +84,18 @@ test('batch metrics read binds business and IDs and performs no writes', async (
     assert.equal(rows.has(8), false);
 });
 
+test('SQL normalizes legacy text dates for comparisons, extrema and RFM subtraction', () => {
+    const params = [];
+    const { sql } = metrics.buildScopedBookingAggregateSql({ role: 'creator' }, params, 'b', 'event_genix', { asOf: '2026-10-03' });
+    const date = "NULLIF(BTRIM(b.date::text), '')::date";
+    assert.ok(sql.includes(date + ' < '));
+    assert.ok(sql.includes(date + ' >= '));
+    assert.ok(sql.includes(date + ' IS NULL'));
+    assert.ok(sql.includes('MIN(' + date + ')'));
+    assert.ok(sql.includes('MAX(' + date + ')'));
+    assert.doesNotMatch(sql, /b\.date\s*(?:<|>=)|(?:MIN|MAX)\(b\.date\)/);
+});
+
 test('denied revenue capability keeps count/date SQL without reading booking prices', () => {
     const params = [];
     const { sql } = metrics.buildScopedBookingAggregateSql({

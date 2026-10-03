@@ -136,6 +136,7 @@ async function run() {
         await page.locator('#editPayrollSchemeSave').click();
         assert.equal((await ratesSaved).status(),200);
         assert.equal(Number((await db.query('SELECT hourly_rate FROM staff WHERE id=$1',[staffId])).rows[0].hourly_rate),101);
+        await page.locator('.hr-staff-payroll-profile-card').first().screenshot({path:path.join(output,'hr-payroll-card-dark.png')});
         evidence.stages.hrCard={status:'PASS',salarySettingsSaved:true};
         await page.locator('#staffScheduleReturnLink').waitFor();
         const draft=await page.evaluate(()=>sessionStorage.getItem('pzp_schedule_hr_draft_v1'));

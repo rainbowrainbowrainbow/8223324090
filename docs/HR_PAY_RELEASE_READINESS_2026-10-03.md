@@ -9,7 +9,25 @@ Production impact: yes. 2026-10-03 користувач окремо дозво�
 - tests/park-hr-payroll-access.test.js: позитивні методи та негативні перевірки бізнесу/організації, revoked membership, salary/export denies, невідомої належності, помилок БД, виплат і зайвих полів.
 - Actual-app gate переведено в membership mode: HR-картка й збереження ставки, графік, виняток, attendance і зарплата тепер зобов'язані пройти PASS. 403/BLOCKED більше не приймаються як успішний наскрізний результат. Негативні запити і fixtures виконуються тільки в ізольованій БД.
 
-Перевірки нового SHA та фінальна готовність ще виконуються. Production не змінено; release manifest ще не сформовано.
+## Результат погодженого доступу
+
+**Серверний блокер 403 усунуто й наскрізно перевірено у кандидатові. Production release: HOLD через окрему розбіжність production-гілки та live.**
+
+- Функціональний SHA: `f26f0144b22679c07f5a8123d9db75bfb451dc64`.
+- [CI 37120656024](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/37120656024): **8/8 jobs PASS**, без skipped.
+- Датовані HR-PAY PostgreSQL регресії: **14/14 PASS**. Actual-app Express → PostgreSQL: **journeyStatus PASS**, membershipMode=true. HR-збереження ставок, dated/profile/exception, save/reopen, конфлікт, повернення чернетки, обмежений salary доступ, attendance 330 хв з перервою 30 хв, salary 1485 + 500 = 1985, snapshot незмінний.
+- Негативні actual-app API перевірки: чужий бізнес, той самий JWT після відкликання membership, чужий/порожній attendance context, payment/confirm/reverse/close/calculate/bulk apply, змішаний кадрово-зарплатний PUT — відхилені.
+- 107 цільових локальних регресій PASS; локальний npm test завершився PASS. Перший e3822a1ac CI був FAIL і не замовчується: старі read-only fixtures та дефект порожнього довідника. Порожню успішно завантажену оргструктуру тепер відрізняємо від error/restricted/loading.
+- Browser proof: `output/hr-pay/park-f26-browser/journey-evidence.json`, salary screenshot візуально перевірено. API копіювання перевірений; кнопка копіювання відсутня у чинному базовому layout за його окремим UI-контрактом. Не видаємо API перевірку за натискання кнопки і не повертаємо видалений контрол у межах доступу.
+- За screenshot також виправлено низький контраст картки оплати в темній темі наявними theme tokens. Підсумковий точний HEAD/CI та screenshot цієї косметичної правки записуються у `output/hr-pay/hr-pay-park-final-proof.json`; попередній функціональний CI не підміняє доказ фінального SHA.
+
+## Єдина зовнішня передумова для фінального manifest
+
+Повторна перевірка після успішного CI: live **0.82.52 / 97269de204726f4de9f9e6dd80d6e14a25c0f981**, source branch `codex/eventgenix-production`; remote production — **d5f7a7195c89dad6d5897840d16f3d23f00a4ddd**. Між ними чужий клієнтський реліз. Його [CI 37119559757](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/37119559757) — failure у `Omni browser regression / Run Omni lead workspace actual app browser regression`.
+
+Потрібно завершити окремий клієнтський реліз і знову отримати узгоджені live/remote production. Не можна підмінити його HR-PAY payload, force-push або послабити drift guard. Після цього: merge актуальної перевіреної бази, наступний вільний patch та окремий український release/cache commit, CI актуального HR-PAY SHA, точний manifest і одне фінальне підтвердження власника. Новий дозвіл на вже реалізований Park lane не потрібен.
+
+Production не змінено; version bump, manifest, production push і deploy не виконано. Ролі, permission registry, secrets, інші бізнеси, реальні HR/зарплатні записи та виплати не змінювались. Усі записи QA — лише синтетична ізольована БД. Сторонні зміни OneDrive збережено.
 
 ---
 

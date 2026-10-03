@@ -19,3 +19,12 @@ Production impact: yes. Release readiness remains HOLD until all product and tes
 Full candidate CI, HR-PAY PostgreSQL scenarios, actual-app browser coverage of the completed UI,
 Park business-context API availability under existing permissions, next free patch and exact live/remote/Railway identity.
 The workflow is authorization plumbing, not a readiness certificate. Do not request approval or deploy while any of these are missing.
+
+## Approved Park access prerequisite (2026-10-03)
+
+The owner separately approved the bounded Park HR/payroll lane in the readiness report.
+services/parkHrPayrollAccess.js preserves current membership/capability checks, rejects
+unverified attendance ownership and enumerates individual method/path operations only.
+Payments, settlement/close mutations, bulk apply and other businesses stay unavailable.
+Membership-mode actual-app coverage must report journeyStatus PASS; BLOCKED is not a release pass.
+This approval does not authorize production branch drift or replace the final manifest confirmation.

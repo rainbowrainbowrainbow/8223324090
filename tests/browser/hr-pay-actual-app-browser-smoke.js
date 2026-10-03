@@ -261,7 +261,16 @@ async function run() {
                 const salaryBody=await salaryRead.json(), salary=salaryBody.data.find(row=>Number(row.staff_id)===staffId);
                 assert.ok(salary);assert.equal(salary.base_salary,1485);assert.equal(salary.additional_pay,500);
                 assert.equal(salary.physical_hours,5.5);
-                const salaryCard=page.locator('.hr-payroll-salary-item').filter({hasText:'Synthetic pay '+stamp});
+                await page.waitForFunction(()=>document.querySelector('#salaryList .hr-payroll-salary-item')||document.querySelector('[data-salary-retry]'));
+                const retry=page.locator('[data-salary-retry]');
+                if(await retry.isVisible()){
+                    // Initial access hydration legitimately invalidates the pending read. Use the real retry control.
+                    const reloaded=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/hr/salary');
+                    await retry.click();assert.equal((await reloaded).status(),200);
+                    evidence.salaryAccessHydrationRetry=true;
+                }
+                await page.locator('#salarySearch').fill(salary.staff_name);
+                const salaryCard=page.locator('.hr-payroll-salary-item').filter({hasText:salary.staff_name});
                 await salaryCard.locator('[data-payroll-detail-toggle]').click();
                 await salaryCard.locator('.hr-payroll-details').waitFor({state:'visible'});
                 assert.match(await salaryCard.innerText(),/270/);

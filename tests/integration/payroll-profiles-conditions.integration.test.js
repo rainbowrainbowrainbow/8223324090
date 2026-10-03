@@ -218,6 +218,7 @@ describe('HR PAY dated conditions on disposable PostgreSQL', { skip: !enabled, c
         const pay=calculateConditionSnapshots(metrics,1.5);
         assert.equal(pay.baseAmount,0);assert.equal(pay.additionalAmount,0);assert.equal(metrics.physicalMinutes,0);
         assert.equal(pay.baseLines.length,0);
+        assert.ok(pay.blockingIssues.some(issue=>issue.code==='PAYROLL_LEAVE_POLICY_UNDEFINED')); // No invented absence formula.
     });
     test('a reviewed payroll snapshot rejects new dated overrides and remains unchanged', async () => {
         const inserted=(await db.query(`INSERT INTO payroll_reports(period_month,staff_id,gross_amount,net_amount,status,breakdown_json,created_by,updated_by)

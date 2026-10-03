@@ -117,7 +117,7 @@ test('customer and lead domains enforce business membership and related-record o
         await pool.query(`
             INSERT INTO organizations(id,slug,name) VALUES (1,'fixture-own','Fixture Own'),(2,'fixture-foreign','Fixture Foreign');
             INSERT INTO businesses(id,organization_id,context_key,label,short_label,access_mode,modules) VALUES
-                (1,1,'event_genix','Fixture Park','Park','membership','["customers","leads"]'),(2,1,'dar','Fixture Dar','Dar','membership','["customers","leads"]'),
+                (1,1,'event_genix','Fixture Park','Park','membership','["customers","leads"]'),(2,1,'dar','Fixture Dar','Dar','membership','["customers","leads","omni"]'),
                 (3,2,'fixture_other','Fixture Other','Other','membership','["customers","leads"]');
             INSERT INTO users(id,username,name,role) VALUES (1,'actor','Actor','animator'),(2,'dar_candidate','Dar candidate','animator'),
                 (3,'foreign_candidate','Foreign candidate','manager'),(4,'revoked_candidate','Revoked candidate','manager'),
@@ -367,10 +367,31 @@ test('customer and lead domains enforce business membership and related-record o
             assert.equal(customer.body.context.live.exactConversations[0].replyDeliveryStatus, null);
             const lead = await request('GET', '/api/leads/101/workspace');
             assert.equal(lead.status, 200, JSON.stringify(lead.body));
-            assert.deepEqual(lead.body.workspace.conversations.map(row => row.id).sort(), [201, 203]);
-            assert.equal(lead.body.workspace.conversations.find(row => row.id === 201).replyDeliveryStatus, null);
+            assert.deepEqual(lead.body.workspace.conversations, [], 'phone/name matches are not confirmed lead links');
+            assert.deepEqual(lead.body.workspace.conversationContext.suggestions.map(row => row.id).sort(), [201, 203]);
+            assert.equal(lead.body.workspace.conversationContext.resolution.action, 'link');
             assert.equal(JSON.stringify([customer.body, lead.body]).includes('Foreign secret'), false);
             assert.equal(JSON.stringify([customer.body, lead.body]).includes('Other organization secret'), false);
+
+            // Explicit fixture links are required by the current lead resolver contract.
+            await pool.query(`INSERT INTO lead_conversation_links
+                (business_context,lead_id,conversation_id,is_origin,is_primary,source)
+                VALUES ('dar',101,201,true,true,'manual'),('dar',101,203,false,false,'manual')`);
+            try {
+                const confirmed = await request('GET', '/api/leads/101/workspace');
+                assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+                assert.deepEqual(confirmed.body.workspace.conversations.map(row => row.id).sort(), [201, 203]);
+                assert.equal(confirmed.body.workspace.conversations.find(row => row.id === 201).replyDeliveryStatus, null);
+                assert.deepEqual(confirmed.body.workspace.conversationContext.suggestions, []);
+                assert.equal(confirmed.body.workspace.conversationContext.resolution.conversationId, 201);
+                assert.equal(JSON.stringify(confirmed.body).includes('Foreign secret'), false);
+                assert.equal(JSON.stringify(confirmed.body).includes('Other organization secret'), false);
+                const unrelatedCustomer = await request('GET', '/api/customers/10/communication-context');
+                assert.deepEqual(unrelatedCustomer.body.context.live.exactConversations.map(row => row.id), [201],
+                    'a lead primary must not become a customer link merely through a shared phone');
+            } finally {
+                await pool.query("DELETE FROM lead_conversation_links WHERE business_context='dar' AND lead_id=101");
+            }
         });
 
         await t.test('customer child list and reviews reject poisoned records from another business', async () => {

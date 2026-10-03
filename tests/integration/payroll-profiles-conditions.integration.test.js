@@ -120,7 +120,10 @@ describe('HR PAY dated conditions on disposable PostgreSQL', { skip: !enabled, c
     test('a permanent monthly role is not also added to a block where it is already the base profession', async () => {
         await db.query("UPDATE payroll_profile_versions SET rate_unit='month',default_rate=6000 WHERE profile_id=$1",[profileId]);
         const snapshot = await buildAttendanceCompensationPlanSnapshot(db,{staffId,recordDate:'2198-10-04',
-            plan:{segments:[{id:1,professionKey:extraProfession,plannedMinutes:480,additionalRoles:[]}]}});
+            plan:{professionKey:extraProfession,plannedStart:'10:00',plannedEnd:'18:00',
+                segments:[{id:1,professionKey:extraProfession,shiftStart:'10:00',shiftEnd:'18:00',breakMinutes:0,additionalRoles:[]}]}});
+        assert.equal(snapshot.plan.segments.length,1);
+        assert.equal(snapshot.plan.segments[0].professionKey,extraProfession);
         assert.equal(snapshot.compensationAllocations.length,1);
         assert.equal(snapshot.compensationAllocations[0].allocationType,'base');
         assert.equal(snapshot.compensationAllocations[0].conditions.rateUnit,'month');

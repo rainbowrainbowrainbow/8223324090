@@ -1,16 +1,56 @@
-# Оновлення HR-PAY-07/10 — кандидат ще не готовий до випуску
+# HR-PAY-07/10 — фактичний стан після серверної реалізації
 
-Production impact: yes. Статус: HOLD до PostgreSQL/actual-app перевірки та завершення UI винятків.
+Production impact: yes. **Рішення: HOLD. Production не змінено.**
 
-Додано міграцію 374 (порожній append-only журнал винятків, версії, ідемпотентність; без backfill), спільне визначення умов, snapshot v2 базової й додаткової оплати, окремі погодинні/денні/місячні складові. Нові умови не змінюють старі snapshots; за недостатньої історії нарахування блокується.
+Релізний Red-path blocker для routes/payroll.js усунено вузьким workflow `hr-payroll`.
+Це не підтверджує готовність продукту: інтерактивний UI та Park payroll access залишаються блокерами.
+Фінальний manifest, release/version commit і запит його підтвердження не створювалися.
+Спроб production-випуску: 0. Версія не підвищувалася.
 
-Поточні результати: цільові 95/95 PASS; check:migrations PASS; check:syntax PASS (1369 файлів); diff --check PASS. Перший повний npm test: 3298/3299 unit PASS, одна застаріла підстановка контексту; виправлення включене в цільові 95 PASS. Повний повторний baseline і PostgreSQL CI ще потрібні. Додано реальні PostgreSQL регресії конкуренції, повторного запиту, дат, append-only журналу та clock-in/clock-out.
+## Збережений кандидат і перевірки
 
-Docker недоступний після двох обмежених проб. Для перевірки використовується feature push та чинний disposable PostgreSQL CI; production БД не використовується. Випуск не виконано. Live і remote повторно звірені: 0.82.51 / 98ad5e139e8409407f7f04bc9ba9ade45567921d.
+- Робоча копія: C:/Users/Plotva/.codex/worktrees/hr-pay-release-review/EventGenix.
+- Feature-гілка: `codex/hr-pay-release-review-20261003`; сторонні зміни OneDrive не включені.
+- Останній SHA зміни runtime-логіки: `3741273a9911cc6ff0fdbfc96b4e3c3736412b21`.
+- [CI цього SHA](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/37112615521): Fast baseline PASS; PostgreSQL 6/7 нових регресій PASS. Одна нова fixture не містила часу блоку; виправлена в наступному commit без послаблення очікування. Остаточний результат повторного CI зберігається в output/hr-pay/candidate-ci-proof-2026-10-03.json і фінальному звіті чату.
+- Попередній SHA `4d6ae4f2c46f8ccdf82cde347215eae2f70e2b88`: [усі 8 CI jobs PASS](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/37112343930), включно з Fast baseline, HR/payroll PostgreSQL та наявним HR browser gate.
+- Нові PostgreSQL сценарії на попередньому SHA дійсно виконані: append-only/null guard; повторний запит/409/два редактори; temporary поверх explicit; clock-in/clock-out, перерва, денна доплата один раз, незмінність після редагування довідника.
+- До останнього SHA додано перевірки читання застосованих умов проти поточного каталогу, void одноденного винятку, місячної бази з денною доплатою та відсутності подвійної місячної складової.
+- Локально controller: 54/54 PASS, у тому числі SHA/files/migrations/target drift, строк, ліміт спроб, точне підтвердження та зміна live/remote бази. Реальний diff із 52 файлів проходить точний allowlist.
+- check:migrations PASS; check:syntax PASS; git diff --check PASS. Node 22.23.1 / npm 10.9.8. Локальна PostgreSQL недоступна; замість неї використано disposable PostgreSQL CI, без production БД.
 
-Залишок: інтерактивний вибір альтернативи/винятку в графіку, preview через спільний resolver, actual-app browser, перевірка доступності Park payroll API (чинна business surface policy блокує їх), вузький protected workflow і фінальний release manifest. Auth policy не змінювалася; фінальне підтвердження manifest не запитувалося.
+## Що реалізовано
 
-Нижче — попередній звіт HR-PAY-01…06 як історія перевірок, а не актуальне підтвердження готовності нової серверної моделі.
+1. Збережено виправлення HR-PAY-01…06: пропущені ставки не видаляються, причини допуску відрізняються від відсутньої ставки, HR-картка/чернетка/перехід і preview перерви.
+2. `services/hrPayrollConditions.js`: єдиний датований resolver; виняток → temporary → explicit → default → сумісний legacy. Додаткова професія не успадковує місячну базу іншої професії.
+3. `374_payroll_day_exceptions.sql`: порожній append-only журнал із датою, одиницею, призначенням, автором/причиною, версією й idempotency key. Backfill відсутній. Збереження серіалізоване з attendance; frozen/closed історію змінювати не можна.
+4. `services/hrAttendance.js`: snapshot v2 з умовами базової та додаткової оплати. Зміни довідника після фіксації не підміняють умови. За недостатньої історії — явний блокер.
+5. `services/payrollConditionCalculation.js`, `services/payroll.js`, `routes/payroll.js`: годинна оплата за хвилинами; денна один раз за професію/дату; місячна за чинною підтвердженою нормою один раз у місячній складовій. Джерело, одиниця, формула й виняток передаються в розшифрування/експорт. Фізичні години не дублюються.
+6. `routes/hr.js`: GET payroll-conditions та PUT payroll-day-exception під чинними salary permissions і business gate. GET повертає frozen applied conditions окремо від актуальних варіантів каталогу. Політика доступу не послаблювалася.
+7. Production policy/controller: лише точні 52 файли і міграція 374; єдиний Red path — routes/payroll.js. Сторонні protected paths, інші міграції та workflows відхиляються. Готовий release SHA має бути підписаний до підтвердження; автоматичного bump після підтвердження немає. Перед виконанням повторно перевіряються live і remote.
+
+## Блокери готовності
+
+| Блокер | Доказ / потрібна дія |
+| --- | --- |
+| Park HR/payroll access | Read-only GET профілів повертає 403 staff_not_migrated, GET payroll preview — 403 payroll_not_migrated. Чинний business gate блокує namespace до визначення власності даних. Це не відсутня ставка й не брак звичайного salary permission. |
+| HR-PAY-08 не завершений | Графік ще використовує legacy eligibility/годинний preview; новий dated API, вибір альтернативи/винятку й повідомлення про неперенесення винятку при копіюванні не підключені. Цей UI не видається за готовий. |
+| HR-PAY-09 не завершений | Зелені наявні browser jobs не є наскрізним підтвердженням нового picker через Express → PostgreSQL. Потрібен actual-app сценарій після завершення UI і дозволеного Park access. |
+| Фінальний випуск | Лише після попередніх пунктів: актуальна production-база, вільний patch, окремий release/cache/changelog commit, точна інвентаризація release-marker файлів, CI та hash-bound manifest. |
+
+## Межа окремого погодження
+
+Поточний TASK HR-PAY-10 прямо забороняє змінювати auth policy. Для Park access потрібен окремо погоджений вузький обсяг: підтвердити власність HR/payroll namespace за Park, дозволити тільки потрібні HR/payroll endpoint-и з чинними permissions та актуальним server-resolved membership; інші бізнеси, відсутній/revoked membership і користувачі без salary access мають залишитися закритими. Не можна просто прибрати requireLegacyBusinessSurface або дозволити весь namespace. Цей обсяг не реалізовувався й до поточного allowlist не доданий.
+
+## Production та rollback
+
+Остання звірка: 2026-10-03T09:20:16Z. Live і remote production узгоджені: **0.82.51**, `98ad5e139e8409407f7f04bc9ba9ade45567921d`, `codex/eventgenix-production`.
+[Санітизований read-only доказ](../output/hr-pay/release-access-proof-2026-10-03.json) містить тільки SHA, версію, endpoint, HTTP status і error code — без ПІБ, сум і токенів.
+Railway target залишається fortunate-appreciation / production / 8223324090; перед фінальним manifest потрібна свіжа звірка Railway identity.
+
+Rollback для майбутнього погодженого випуску: попередній перевірений live SHA через repository helper. Нові таблиця/версії/snapshots залишаються; destructive SQL, видалення журналу й перерахунок закритих зарплат не допускаються. Реальні ставки, кадрові записи й виплати не змінювалися.
+
+Нижче збережено попередній звіт як історію. Його твердження про відсутність commits/схеми/CI не є поточним статусом.
 
 ---
 # Готовність HR-PAY до випуску — 3 жовтня 2026

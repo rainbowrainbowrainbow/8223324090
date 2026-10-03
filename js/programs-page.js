@@ -592,12 +592,15 @@ function renderProductOverviewState() {
 function bindProductRouteNavigation() {
     if (productRouteNavigationBound) return;
     productRouteNavigationBound = true;
-    const restore = () => {
+    const restore = async () => {
         // Business context remains owned by the shared context lifecycle.
         if (!isParkProductsContext()) return;
         const hash = window.location.hash;
         if (hash && !PRODUCT_CATEGORY_HASH_TO_ID[hash]
             && !['#catalogs', '#kitchen', '#kitchen-cakes', '#kitchen-menu'].includes(hash)) return;
+        if (menuProductEditorSession && !(await closeProductForm())) {
+            syncProductsRouteState('replace'); return;
+        }
         activeProductTab = readInitialProductTab();
         currentCategory = readInitialCategory();
         activeKitchenTab = readInitialKitchenTab();
@@ -707,6 +710,7 @@ async function guardProductBusinessSwitch() {
         if (typeof showNotification === 'function') showNotification('Дочекайтесь збереження перед перемиканням бізнесу', 'warning');
         return false;
     }
+    if (menuProductEditorSession) return closeProductForm();
     if (!isProductFormOpen() && !isProductDocumentModalOpen() && !isProductAiReviewModalOpen()) return true;
     const message = 'Є відкрита картка продукту або документа. Перемкнути бізнес і закрити поточну роботу?';
     const ok = typeof confirmModal === 'function'
@@ -739,6 +743,7 @@ async function setProductBusinessContext(context) {
 }
 
 async function applyProductBusinessContext(context) {
+    if (menuProductEditorSession && !(await closeProductForm())) return activeBusinessContext;
     const nextContext = normalizeProductBusinessContext(context);
     if (nextContext === activeBusinessContext) return;
     activeBusinessContext = nextContext;
@@ -785,6 +790,7 @@ function renderProductIaTabs() {
 }
 
 async function setProductTab(tab) {
+    if (menuProductEditorSession && !(await closeProductForm())) return false;
     activeProductTab = ['programs', 'kitchen', 'catalogs'].includes(tab) ? tab : 'programs';
     safeWriteProductPreference(PRODUCT_TAB_STORAGE_KEY, activeProductTab);
     syncProductsRouteState();
@@ -869,6 +875,7 @@ function renderKitchenSubtabs() {
 }
 
 function setKitchenTab(tab) {
+    if (menuProductEditorSession) return closeProductForm().then(allowed => allowed ? setKitchenTab(tab) : false);
     activeKitchenTab = tab === 'menu' ? 'menu' : 'cake';
     if (activeProductTab === 'kitchen') {
         syncProductsRouteState();
@@ -897,6 +904,8 @@ function renderMenuSectionFilter() {
     if (!container) return;
     const visible = isParkProductsContext() && activeProductTab === 'kitchen' && activeKitchenTab === 'menu';
     container.classList.toggle('hidden', !visible);
+    document.getElementById('kitchenPanel')?.classList.toggle('kitchen-menu-active', visible);
+    document.body.classList.toggle('menu-catalog-active', visible);
     if (!visible) {
         container.innerHTML = '';
         return;
@@ -908,19 +917,30 @@ function renderMenuSectionFilter() {
     }
 
     container.innerHTML = [
-        `<button type="button" class="menu-section-chip${activeMenuSection === 'all' ? ' active' : ''}" data-menu-section="all">Усі розділи</button>`,
+        `<label class="menu-section-select-label" for="menuSectionSelect"><span>Розділ меню</span><select id="menuSectionSelect">
+            <option value="all"${activeMenuSection === 'all' ? ' selected' : ''}>Усі розділи</option>
+            ${sections.map(section => `<option value="${escapeHtml(section)}"${activeMenuSection === section ? ' selected' : ''}>${escapeHtml(section)}</option>`).join('')}
+        </select></label>`,
+        `<button type="button" class="menu-section-chip${activeMenuSection === 'all' ? ' active' : ''}" data-menu-section="all" aria-pressed="${activeMenuSection === 'all'}">Усі розділи</button>`,
         ...sections.map(section => `
-            <button type="button" class="menu-section-chip${activeMenuSection === section ? ' active' : ''}" data-menu-section="${escapeHtml(section)}">
+            <button type="button" class="menu-section-chip${activeMenuSection === section ? ' active' : ''}" data-menu-section="${escapeHtml(section)}" aria-pressed="${activeMenuSection === section}">
                 ${escapeHtml(section)}
             </button>
         `)
     ].join('');
 
+    container.querySelector('#menuSectionSelect').addEventListener('change', event => {
+        activeMenuSection = event.target.value || 'all';
+        renderMenuSectionFilter();
+        renderProducts();
+        document.getElementById('menuSectionSelect')?.focus({ preventScroll: true });
+    });
     container.querySelectorAll('[data-menu-section]').forEach(button => {
         button.addEventListener('click', () => {
             activeMenuSection = button.dataset.menuSection || 'all';
             renderMenuSectionFilter();
             renderProducts();
+            Array.from(container.querySelectorAll('[data-menu-section]')).find(chip => chip.dataset.menuSection === activeMenuSection)?.focus({ preventScroll: true });
         });
     });
 }
@@ -1101,6 +1121,7 @@ function renderProducts() {
     const canManage = canManageProducts();
 
     if (activeProductTab !== 'kitchen' || activeKitchenTab !== 'menu') {
+        closeKitchenMenuViewers();
         document.querySelectorAll('.kitchen-menu-image-dialog[open]').forEach(closeKitchenMenuImageStudio);
     }
     if (grid && activeProductTab === 'programs') renderProgramProducts(grid, canManage);
@@ -1284,15 +1305,21 @@ function productMenuEmoji(product = {}) {
 function renderKitchenCardVisual(product = {}) {
     const imageUrl = productMenuImageUrl(product);
     const title = productMenuTitle(product) || 'Позиція меню';
-    return `<div class="kitchen-product-media${imageUrl ? ' has-image' : ''}" data-photo-state="${imageUrl ? 'loading' : 'absent'}" data-photo-url="${escapeHtml(imageUrl)}" title="${escapeHtml(title)}">
-        ${renderMenuPhotoImage(imageUrl)}
+    const visual = `<div class="kitchen-product-media${imageUrl ? ' has-image' : ''}" data-photo-state="${imageUrl ? 'loading' : 'absent'}" data-photo-url="${escapeHtml(imageUrl)}" title="${escapeHtml(title)}">
+        ${renderMenuPhotoImage(imageUrl, getKitchenType(product) === 'menu' ? title : '')}
         <span aria-hidden="true">${escapeHtml(productMenuEmoji(product))}</span>
         <small class="menu-photo-state" data-photo-status role="status">${imageUrl ? 'Фото завантажується…' : 'Фото не задане'}</small>
     </div>`;
+    return getKitchenType(product) === 'menu' && imageUrl
+        ? renderKitchenMenuPhotoButton(imageUrl, title, visual) : visual;
 }
 
-function renderMenuPhotoImage(imageUrl) {
-    return imageUrl ? `<img loading="lazy" decoding="async" src="${escapeHtml(imageUrl)}" alt="" onload="productMenuCardHandleImageLoad(this)" onerror="productMenuCardHandleImageError(this)">` : '';
+function renderKitchenMenuPhotoButton(imageUrl, title, content) {
+    return `<button type="button" class="kitchen-menu-photo-open" data-menu-photo-url="${escapeHtml(imageUrl)}" data-menu-photo-title="${escapeHtml(title)}" aria-label="Відкрити фото: ${escapeHtml(title)}" onclick="openKitchenMenuPhoto(this)">${content}</button>`;
+}
+
+function renderMenuPhotoImage(imageUrl, title = '') {
+    return imageUrl ? `<img loading="lazy" decoding="async" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(title)}" onload="productMenuCardHandleImageLoad(this)" onerror="productMenuCardHandleImageError(this)">` : '';
 }
 
 function productMenuCardHandleImageLoad(img) {
@@ -1452,13 +1479,15 @@ function menuImageDraftStatusClass(status = '') {
         : '';
 }
 
-function renderKitchenMenuImagePreview(label, imageUrl, meta, emptyText) {
+function renderKitchenMenuImagePreview(label, imageUrl, meta, emptyText, productTitle = '') {
     const safeUrl = productMenuSafeImageUrl(imageUrl);
+    const title = productTitle ? `${label}: ${productTitle}` : label;
+    const frame = `<div class="kitchen-menu-image-frame" data-photo-state="${safeUrl ? 'loading' : 'absent'}" data-photo-url="${escapeHtml(safeUrl)}">
+        ${renderMenuPhotoImage(safeUrl, title)}<span data-photo-status role="status">${escapeHtml(safeUrl ? 'Фото завантажується…' : (emptyText || 'Фото не задане'))}</span>
+    </div>`;
     return `<div class="kitchen-menu-image-preview${safeUrl ? ' has-image' : ''}">
         <div class="kitchen-menu-image-preview-head"><strong>${escapeHtml(label)}</strong>${meta ? `<span>${escapeHtml(meta)}</span>` : ''}</div>
-        <div class="kitchen-menu-image-frame" data-photo-state="${safeUrl ? 'loading' : 'absent'}" data-photo-url="${escapeHtml(safeUrl)}">
-            ${renderMenuPhotoImage(safeUrl)}<span data-photo-status role="status">${escapeHtml(safeUrl ? 'Фото завантажується…' : (emptyText || 'Фото не задане'))}</span>
-        </div></div>`;
+        ${safeUrl ? renderKitchenMenuPhotoButton(safeUrl, title, frame) : frame}</div>`;
 }
 
 
@@ -1570,13 +1599,12 @@ function renderBurgerMenuImageBlueprint(product, businessContext, draft) {
 
 function renderKitchenMenuAiActions(product = {}, canManage = false) {
     if (!canManage || getKitchenType(product) !== 'menu') return '';
-    const productId = escapeJsString(product.id);
     return `
-        <div class="kitchen-menu-ai-actions" aria-label="AI дії для ${escapeHtml(productMenuTitle(product))}">
-            <button type="button" class="kitchen-menu-ai-action" onclick="openKitchenMenuAiFromCard('${productId}', 'nameDescription', 'details')">Опис</button>
-            <button type="button" class="kitchen-menu-ai-action" onclick="openKitchenMenuAiFromCard('${productId}', 'nameDescription', 'promo')">Промо</button>
-            <button type="button" class="kitchen-menu-ai-action kitchen-menu-ai-action--allergens" onclick="openKitchenMenuAiFromCard('${productId}', 'allergens', 'allergens')">Алергени</button>
-            <button type="button" class="kitchen-menu-ai-action kitchen-menu-ai-action--pairings" onclick="openKitchenMenuAiFromCard('${productId}', 'priceCost', 'pairings')">Комбо</button>
+        <div class="kitchen-menu-ai-actions" aria-label="AI дії для страви">
+            <button type="button" class="kitchen-menu-ai-action" onclick="openMenuAiReviewWizard({ initialStep: 'nameDescription', feedback: menuAiFeedbackForMode('details') })">AI: опис</button>
+            <button type="button" class="kitchen-menu-ai-action" onclick="openMenuAiReviewWizard({ initialStep: 'nameDescription', feedback: menuAiFeedbackForMode('promo') })">AI: промо</button>
+            <button type="button" class="kitchen-menu-ai-action kitchen-menu-ai-action--allergens" onclick="openMenuAiReviewWizard({ initialStep: 'allergens', feedback: menuAiFeedbackForMode('allergens') })">AI: алергени</button>
+            <button type="button" class="kitchen-menu-ai-action kitchen-menu-ai-action--pairings" onclick="openMenuAiReviewWizard({ initialStep: 'priceCost', feedback: menuAiFeedbackForMode('pairings') })">AI: комбо</button>
         </div>
     `;
 }
@@ -1630,8 +1658,8 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                 <button type="button" class="kitchen-menu-image-close" aria-label="Закрити редактор фото меню" onclick="closeKitchenMenuImageStudio(this)">×</button>
             </div>
             <div class="kitchen-menu-image-previews">
-                ${renderKitchenMenuImagePreview('Поточне фото', currentImage, appliedMeta, 'Немає поточного фото')}
-                ${renderKitchenMenuImagePreview('AI draft', draft.imageUrl || '', draftMeta, status === 'failed' ? 'Генерація завершилася помилкою' : (status === 'generating' ? 'Генерація триває; фото ще немає' : 'Фото чернетки не задане'))}
+                ${renderKitchenMenuImagePreview('Поточне фото', currentImage, appliedMeta, 'Немає поточного фото', productMenuTitle(product))}
+                ${renderKitchenMenuImagePreview('AI draft', draft.imageUrl || '', draftMeta, status === 'failed' ? 'Генерація завершилася помилкою' : (status === 'generating' ? 'Генерація триває; фото ще немає' : 'Фото чернетки не задане'), productMenuTitle(product))}
             </div>
             <div class="kitchen-menu-image-tracking">${kitchenMenuImageTrackingButton(product)}</div>
             ${renderBurgerMenuImageBlueprint(product, businessContext, draft)}
@@ -1713,7 +1741,7 @@ function setKitchenMenuImageStudioBusy(panel, busy) {
     if (!panel) return;
     panel.setAttribute('aria-busy', busy ? 'true' : 'false');
     panel.querySelectorAll('button, select, input, textarea').forEach(control => {
-        if (control.hasAttribute('data-menu-image-close')) return;
+        if (control.hasAttribute('data-menu-image-close') || control.hasAttribute('data-menu-photo-url')) return;
         if (busy) {
             if (control.dataset.menuImageWasDisabled === undefined) control.dataset.menuImageWasDisabled = control.disabled ? '1' : '0';
             control.disabled = true;
@@ -2352,6 +2380,15 @@ function productDetailImageError(img) {
 function renderProductDetailsContent(product) {
     const kitchen = getProductDomain(product) === 'kitchen';
     const imageUrl = kitchen ? productMenuImageUrl(product) : productMenuSafeImageUrl(product.iconUrl);
+    if (kitchen && getKitchenType(product) === 'menu') {
+        const descriptions = [...new Set([product.shortDescription, product.description].filter(Boolean))];
+        return `<div class="product-details-content kitchen-menu-details-content">
+            <header class="kitchen-menu-details-head"><div><h3>${escapeHtml(productMenuTitle(product))}</h3><p>${renderKitchenPrice(product)}</p></div>
+                <button type="button" class="kitchen-menu-image-close" aria-label="Закрити перегляд страви" onclick="closeKitchenMenuViewer(this)">×</button></header>
+            <div class="kitchen-menu-details-layout">${renderKitchenCardVisual(product)}
+                <div class="product-detail-copy">${descriptions.map(value => `<p>${escapeHtml(value)}</p>`).join('') || '<p>Опис ще не додано</p>'}${renderKitchenDetailPanel(product, true)}</div>
+            </div></div>`;
+    }
     const fields = [['Опис', product.description]];
     if (kitchen) fields.push(['Короткий опис', product.shortDescription]);
     const text = fields.filter(([, value]) => value).map(([label, value]) =>
@@ -2369,9 +2406,101 @@ function renderProductDetailsContent(product) {
 }
 
 function renderProductDetails(product) {
+    if (getProductDomain(product) === 'kitchen' && getKitchenType(product) === 'menu') {
+        return `<div class="kitchen-menu-details product-details" data-product-id="${escapeHtml(String(product.id))}" data-business-context="${escapeHtml(getProductApiBusinessContext(product.businessContext || product.business_context))}">
+            <button type="button" class="kitchen-menu-details-open" data-menu-details-open onclick="openKitchenMenuDetails('${escapeJsString(product.id)}', this)">Переглянути</button>
+            <dialog class="kitchen-menu-details-dialog kitchen-menu-readonly-dialog" aria-label="Страва: ${escapeHtml(productMenuTitle(product))}" onclose="kitchenMenuViewerClosed(this)"><div data-product-panel-content></div></dialog>
+        </div>`;
+    }
     return `<details class="product-details" data-product-id="${escapeHtml(String(product.id))}" data-business-context="${escapeHtml(getProductApiBusinessContext(product.businessContext || product.business_context))}" ontoggle="hydrateProductPanel(this)">
         <summary>Детальніше</summary><div data-product-panel-content></div>
     </details>`;
+}
+
+
+let kitchenMenuViewportBound = false;
+
+function syncKitchenMenuViewport() {
+    const viewport = window.visualViewport;
+    const root = document.documentElement;
+    // Follow the visible area when a keyboard opens; avoid interfering with pinch zoom.
+    const followViewport = viewport && Math.abs(viewport.scale - 1) < 0.01;
+    root.style.setProperty('--menu-viewport-height', followViewport ? `${viewport.height}px` : '100dvh');
+    root.style.setProperty('--menu-viewport-top', followViewport ? `${viewport.offsetTop}px` : '0px');
+}
+
+function bindKitchenMenuViewport() {
+    if (!kitchenMenuViewportBound) {
+        kitchenMenuViewportBound = true;
+        window.visualViewport?.addEventListener('resize', syncKitchenMenuViewport, { passive: true });
+        window.visualViewport?.addEventListener('scroll', syncKitchenMenuViewport, { passive: true });
+        window.addEventListener('resize', syncKitchenMenuViewport, { passive: true });
+    }
+    syncKitchenMenuViewport();
+}
+
+function openKitchenMenuDetails(productId, trigger) {
+    const panel = trigger?.closest('.kitchen-menu-details');
+    const product = allProducts.find(item => String(item.id) === String(productId));
+    if (!trigger?.isConnected || !panel || panel.dataset.businessContext !== getProductApiBusinessContext()
+        || !product || getProductDomain(product) !== 'kitchen' || getKitchenType(product) !== 'menu') return;
+    const dialog = panel.querySelector('.kitchen-menu-details-dialog');
+    if (dialog.dataset.hydrated !== 'true') {
+        dialog.querySelector('[data-product-panel-content]').innerHTML = renderProductDetailsContent(product);
+        dialog.dataset.hydrated = 'true';
+    }
+    dialog.menuReturnFocus = trigger;
+    openKitchenMenuViewer(dialog);
+}
+
+function openKitchenMenuPhoto(trigger) {
+    const url = productMenuSafeImageUrl(trigger?.dataset.menuPhotoUrl);
+    const context = getProductApiBusinessContext();
+    const panel = trigger?.closest('[data-business-context]');
+    if (!trigger?.isConnected || !url || (panel && panel.dataset.businessContext !== context)) return;
+    let dialog = document.querySelector('.kitchen-menu-photo-dialog');
+    if (!dialog) {
+        dialog = document.createElement('dialog');
+        dialog.className = 'kitchen-menu-photo-dialog kitchen-menu-readonly-dialog';
+        dialog.addEventListener('close', () => kitchenMenuViewerClosed(dialog));
+        document.body.append(dialog);
+    }
+    const title = trigger.dataset.menuPhotoTitle || 'Фото страви';
+    dialog.setAttribute('aria-label', title);
+    dialog.dataset.businessContext = context;
+    dialog.dataset.productId = trigger.closest('.kitchen-product-card')?.dataset.id || '';
+    dialog.innerHTML = `<header class="kitchen-menu-details-head"><h3>${escapeHtml(title)}</h3><button type="button" class="kitchen-menu-image-close" aria-label="Закрити перегляд фото" onclick="closeKitchenMenuViewer(this)">×</button></header>
+        <div class="kitchen-menu-photo-full" data-photo-state="loading" data-photo-url="${escapeHtml(url)}">${renderMenuPhotoImage(url, title)}<span data-photo-status role="status">Фото завантажується…</span></div>`;
+    dialog.menuReturnFocus = trigger;
+    openKitchenMenuViewer(dialog);
+}
+
+function openKitchenMenuViewer(dialog) {
+    bindKitchenMenuViewport();
+    if (!dialog?.open) {
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', '');
+    }
+    dialog.querySelector('button[aria-label^="Закрити"]')?.focus({ preventScroll: true });
+}
+
+function closeKitchenMenuViewer(trigger) {
+    const dialog = trigger?.closest?.('.kitchen-menu-readonly-dialog');
+    if (!dialog?.open) return;
+    if (typeof dialog.close === 'function') dialog.close();
+    else { dialog.removeAttribute('open'); kitchenMenuViewerClosed(dialog); }
+}
+
+function kitchenMenuViewerClosed(dialog) {
+    const opener = dialog.menuReturnFocus;
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
+}
+
+function closeKitchenMenuViewers(visibleIds) {
+    document.querySelectorAll('.kitchen-menu-readonly-dialog[open]').forEach(dialog => {
+        const id = dialog.dataset.productId || dialog.closest('[data-product-id]')?.dataset.productId;
+        if (!visibleIds || !visibleIds.has(id)) closeKitchenMenuViewer(dialog);
+    });
 }
 
 function ensureKitchenRenderContext() {
@@ -2379,6 +2508,7 @@ function ensureKitchenRenderContext() {
     if (kitchenProductCardsContext === context) return;
     stopKitchenMenuImageTracking();
     document.querySelectorAll('.kitchen-menu-image-dialog[open]').forEach(closeKitchenMenuImageStudio);
+    closeKitchenMenuViewers();
     kitchenProductCardsContext = context;
     kitchenProductCards.clear();
     for (const id of ['productsGrid', 'kitchenGrid', 'maysternyaProductsGrid']) {
@@ -2412,6 +2542,7 @@ function renderKitchenMenuImageDisclosure(product, canManage) {
 }
 
 function openKitchenMenuImageStudio(productId, trigger) {
+    bindKitchenMenuViewport();
     const disclosure = trigger?.closest('.kitchen-menu-image-disclosure');
     const dialog = disclosure?.querySelector('.kitchen-menu-image-dialog');
     const businessContext = getProductApiBusinessContext();
@@ -2453,6 +2584,8 @@ function syncProductCardContent(current, next) {
     if (current.nodeType === 1 && next.nodeType === 1 && current.hasAttribute('data-photo-state')
         && next.hasAttribute('data-photo-state') && current.dataset.photoUrl === next.dataset.photoUrl) {
         if (next.hasAttribute('title')) current.setAttribute('title', next.getAttribute('title'));
+        const image = current.querySelector('img'), nextImage = next.querySelector('img');
+        if (image && nextImage) image.alt = nextImage.alt;
         return;
     }
     if (current.nodeType !== next.nodeType || current.nodeName !== next.nodeName) {
@@ -2544,12 +2677,22 @@ function kitchenProductCard(product, canManage) {
             const name = next.classList[0];
             const current = [...record.element.children].find(child => child.classList.contains(name));
             if (!current) return next;
-            if (name === 'product-details' || name === 'kitchen-menu-image-disclosure') {
+            if (name === 'product-details' || name === 'kitchen-menu-image-disclosure' || name === 'kitchen-menu-details') {
                 if (name === 'kitchen-menu-image-disclosure') {
                     current.querySelector('[data-menu-image-open]').textContent = next.querySelector('[data-menu-image-open]').textContent;
                     const dialog = current.querySelector('.kitchen-menu-image-dialog');
                     if (dialog.dataset.hydrated === 'true') {
                         syncKitchenMenuImageStudio(dialog.querySelector('.kitchen-menu-image-studio'), product, canManage);
+                    }
+                } else if (name === 'kitchen-menu-details') {
+                    const dialog = current.querySelector('.kitchen-menu-details-dialog');
+                    dialog.setAttribute('aria-label', next.querySelector('dialog').getAttribute('aria-label'));
+                    if (dialog.dataset.hydrated === 'true') {
+                        const host = dialog.querySelector('[data-product-panel-content]');
+                        const content = document.createElement('div');
+                        content.innerHTML = renderProductDetailsContent(product);
+                        syncProductCardContent(host, content);
+                        host.setAttribute('data-product-panel-content', '');
                     }
                 } else {
                     current.querySelector('summary').textContent = next.querySelector('summary').textContent;
@@ -2613,10 +2756,10 @@ function renderKitchenProductCard(p, canManage) {
                             <span class="program-price">${renderKitchenPrice(p)}</span>
                         </div>
                         <div class="card-meta">
-                            <span>${escapeHtml(p.code || '')}</span>
+                            ${subtype === 'menu' ? '' : `<span>${escapeHtml(p.code || '')}</span>`}
                             <span>${subtype === 'cake' ? 'Торт' : (p.menuSection ? escapeHtml(p.menuSection) : 'Меню')}</span>
                             ${p.weightValue ? `<span>${escapeHtml(p.weightValue)}</span>` : ''}
-                            ${p.priceUnit ? `<span>${escapeHtml(p.priceUnit)}</span>` : ''}
+                            ${subtype !== 'menu' && p.priceUnit ? `<span>${escapeHtml(p.priceUnit)}</span>` : ''}
                             ${p.availabilityStatus ? `<span>${escapeHtml(MENU_AVAILABILITY_LABELS[p.availabilityStatus] || p.availabilityStatus)}</span>` : ''}
                         </div>
                         ${shortText ? `<p class="program-desc">${escapeHtml(shortText).substring(0, 150)}${shortText.length > 150 ? '...' : ''}</p>` : ''}
@@ -2629,9 +2772,9 @@ function renderKitchenProductCard(p, canManage) {
                             ${subtype === 'cake' && p.cakeDecoration ? '<span class="kitchen-badge">Оформлення</span>' : ''}
                         </div>
                     </div>
-                    ${renderKitchenMenuAiActions(p, canManage)}
+
                 </div>
-                ${renderKitchenDetailPanel(p)}
+                ${subtype === 'menu' ? '' : renderKitchenDetailPanel(p)}
                 ${renderProductDetails(p)}
                 ${renderKitchenMenuImageDisclosure(p, canManage)}
                 ${canManage ? `
@@ -2658,6 +2801,7 @@ function renderKitchenProducts(grid, canManage) {
         filtered = filtered.filter(p => normalizeMenuSection(p.menuSection) === activeMenuSection);
     }
     const visibleIds = new Set(filtered.map(product => String(product.id)));
+    closeKitchenMenuViewers(visibleIds);
     grid.querySelectorAll('.kitchen-menu-image-dialog[open]').forEach(dialog => {
         const id = dialog.closest('.kitchen-product-card')?.dataset.id;
         if (!visibleIds.has(id)) closeKitchenMenuImageStudio(dialog);
@@ -2690,6 +2834,7 @@ function renderKitchenDetailPanel(product, full = false) {
         ['Інгредієнти', product.ingredients],
         ['Техкарта', product.techCard]
     ];
+    if (full && getKitchenType(product) === 'menu') items.push(['Код', product.code], ['Короткий код таймлайна', product.timelineCode]);
     if (getKitchenType(product) === 'cake') items.push(['Оформлення', product.cakeDecoration]);
     const html = items
         .filter(([, value]) => Boolean(value))
@@ -3118,9 +3263,199 @@ function renderCatalogEntries() {
 // PRODUCT FORM
 // ==========================================
 
+let menuProductEditorSession = null;
+let productFormOpening = false;
+let productFormOriginalChildren = null;
+
+function menuProductEditorSnapshot() {
+    const form = document.getElementById('productForm');
+    return JSON.stringify([Array.from(form.querySelectorAll('input, select, textarea')).map(field =>
+        [field.id || field.dataset.techCardField, field.type === 'checkbox' ? field.checked : field.value]), techCardIngredientDrafts]);
+}
+
+function groupMenuProductForm(enabled) {
+    const form = document.getElementById('productForm');
+    if (!productFormOriginalChildren) {
+        productFormOriginalChildren = [...form.children];
+        const name = document.getElementById('pf-name');
+        form.menuNameAttributes = { label: name.getAttribute('aria-label'), placeholder: name.placeholder };
+    }
+    if (!enabled) {
+        productFormOriginalChildren.forEach(node => form.append(node));
+        form.querySelectorAll('[data-menu-form-group]').forEach(node => node.remove());
+        form.querySelectorAll('.menu-program-only').forEach(node => node.classList.remove('menu-program-only'));
+        form.classList.remove('menu-product-form');
+        const name = document.getElementById('pf-name');
+        name.setAttribute('aria-label', form.menuNameAttributes.label);
+        name.placeholder = form.menuNameAttributes.placeholder;
+        return;
+    }
+    if (form.classList.contains('menu-product-form')) return;
+    form.classList.add('menu-product-form');
+    const groups = [
+        ['Основне', ['pf-name', 'pf-menu-section', 'pf-price', 'pf-weight-value', 'pf-serving-unit', 'pf-availability-status']],
+        ['Опис і склад', ['pf-short-description', 'pf-ingredients', 'pf-allergens', 'productAiAutofillBtn']],
+        ['Додаткове', ['pf-promo-description', 'pf-price-variant-note', 'pf-description', 'pf-code', 'pf-timeline-code', 'pf-label', 'pf-icon', 'pf-tech-card', 'pf-tech-card-detailed', 'pf-active']]
+    ];
+    for (const [index, [title, ids]] of groups.entries()) {
+        const group = document.createElement(index === 2 ? 'details' : 'section');
+        group.setAttribute('data-menu-form-group', index === 2 ? 'additional' : String(index));
+        group.innerHTML = `${index === 2 ? '<summary>' : '<h3>'}${title}${index === 2 ? '</summary>' : '</h3>'}<div class="menu-product-form-grid"></div>`;
+        const grid = group.lastElementChild;
+        ids.forEach(id => { const field = document.getElementById(id)?.closest('.form-field'); if (field) grid.append(field); });
+        form.append(group);
+    }
+    for (const id of ['pf-category', 'pf-duration', 'pf-hosts', 'pf-age', 'pf-kids']) document.getElementById(id)?.closest('.form-field')?.classList.add('menu-program-only');
+    for (const id of ['pf-perchild', 'pf-filler']) document.getElementById(id)?.closest('label')?.classList.add('menu-program-only');
+    document.querySelector('[data-menu-editor-actions-host]').append(document.getElementById('saveProductBtn').parentElement);
+    document.getElementById('pf-name').setAttribute('aria-label', 'Назва страви');
+    document.getElementById('pf-name').placeholder = 'Назва страви';
+}
+
+function setMenuProductEditorBusy(busy) {
+    const session = menuProductEditorSession;
+    if (!session) return;
+    const form = document.getElementById('productForm');
+    form.setAttribute('aria-busy', busy ? 'true' : 'false');
+    if (busy && !session.disabledControls) {
+        session.disabledControls = [...form.querySelectorAll('input, select, textarea, button'), document.getElementById('saveProductBtn'), document.getElementById('saveProductNextBtn')]
+            .filter(control => control.id !== 'cancelProductBtn').map(control => [control, control.disabled]);
+        session.disabledControls.forEach(([control]) => { control.disabled = true; });
+    } else if (!busy && session.disabledControls) {
+        session.disabledControls.forEach(([control, disabled]) => { control.disabled = disabled; });
+        session.disabledControls = null;
+    }
+}
+
+function setMenuProductEditorStatus(message = '', failed = false) {
+    const status = document.getElementById('menuProductEditorStatus');
+    if (status) { status.textContent = message; status.classList.toggle('is-error', failed); }
+    const retry = document.querySelector('[data-menu-editor-retry]');
+    if (retry) retry.hidden = !menuProductEditorSession?.loadError;
+}
+
+function restoreMenuProductEditorFocus(session) {
+    const card = Array.from(document.querySelectorAll('.kitchen-menu-product-card[data-id]'))
+        .find(node => node.dataset.id === String(session.productId));
+    const target = session.trigger?.isConnected ? session.trigger : card?.querySelector('.card-actions button');
+    target?.focus({ preventScroll: true });
+}
+
+function beginMenuProductEditor(product, options = {}) {
+    bindKitchenMenuViewport();
+    const modal = document.getElementById('menuProductEditorModal');
+    const trigger = options.trigger || document.activeElement;
+    const session = {
+        productId: product?.id || '', context: getProductApiBusinessContext(), source: product ? { ...product } : null,
+        trigger, scroll: { left: window.scrollX, top: window.scrollY }, loading: true,
+        bodyOverflow: document.body.style.overflow, bodyPadding: document.body.style.paddingRight,
+        baseline: null, discardPromise: null
+    };
+    menuProductEditorSession = session;
+    document.getElementById('menuProductEditorTitle').textContent = product ? 'Редагувати страву' : 'Нова страва';
+    document.getElementById('productForm').style.display = '';
+    groupMenuProductForm(true);
+    if (typeof openModal === 'function') openModal(modal, trigger, {
+        initialFocus: '#pf-name', onRequestClose: () => closeProductForm(),
+        restoreFocus: () => ({ isConnected: true, focus: () => { restoreMenuProductEditorFocus(session); } })
+    });
+    else modal.classList.remove('hidden');
+    window.ModalLayer?.ensureTopLayer(modal);
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    if (scrollbarWidth > 0 && scrollbarWidth < 100) document.body.style.paddingRight = `${scrollbarWidth}px`;
+    document.body.style.overflow = 'hidden';
+    if (!modal.dataset.menuEditorBound) {
+        modal.dataset.menuEditorBound = 'true';
+        modal.addEventListener('click', event => { if (event.target === modal) void closeProductForm(); });
+        modal.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && typeof openModal !== 'function') { event.preventDefault(); void closeProductForm(); }
+        });
+        window.addEventListener('beforeunload', event => {
+            if (menuProductEditorSession && (productSaveInFlight || menuAiReviewSaving || menuProductEditorDirty())) {
+                event.preventDefault(); event.returnValue = '';
+            }
+        });
+    }
+    return session;
+}
+
+function menuProductEditorDirty() {
+    const session = menuProductEditorSession;
+    return Boolean(session?.baseline && session.baseline !== menuProductEditorSnapshot());
+}
+
+async function confirmMenuProductEditorDiscard() {
+    const session = menuProductEditorSession;
+    if (!session) return true;
+    if (productSaveInFlight || menuAiReviewSaving) {
+        showNotification('Дочекайтесь завершення збереження або AI review', 'warning');
+        return false;
+    }
+    if (!menuProductEditorDirty()) return true;
+    if (session.discardPromise) return session.discardPromise;
+    session.discardPromise = (async () => {
+        const message = 'Є незбережені зміни страви. Закрити без збереження?';
+        if (window.UnsafeDismissGuard) return window.UnsafeDismissGuard.confirmDiscardIfDirty(document.getElementById('menuProductEditorModal'), {
+            isDirty: menuProductEditorDirty, message
+        });
+        return typeof confirmModal === 'function' ? confirmModal(message, { type: 'warning', okText: 'Закрити без збереження', cancelText: 'Повернутись' }) : false;
+    })();
+    try { return await session.discardPromise; } finally { session.discardPromise = null; }
+}
+
+function finishMenuProductEditor() {
+    const session = menuProductEditorSession;
+    if (!session) return;
+    setMenuProductEditorBusy(false);
+    const modal = document.getElementById('menuProductEditorModal');
+    if (typeof closeModal === 'function') closeModal(modal, { force: true });
+    else { modal.classList.add('hidden'); restoreMenuProductEditorFocus(session); }
+    document.body.style.overflow = session.bodyOverflow;
+    document.body.style.paddingRight = session.bodyPadding;
+    menuProductEditorSession = null;
+    window.scrollTo({ ...session.scroll, behavior: 'instant' });
+}
+
+function focusMenuProductField(id) {
+    if (!menuProductEditorSession) return;
+    const field = document.getElementById(id);
+    const additional = field?.closest('details');
+    if (additional) additional.open = true;
+    field?.focus({ preventScroll: true });
+    field?.scrollIntoView({ block: 'nearest' });
+}
+
+async function retryMenuProductTechCard() {
+    const session = menuProductEditorSession;
+    if (!session || session.loading || productSaveInFlight || menuAiReviewSaving) return;
+    const wasDirty = menuProductEditorDirty();
+    session.loading = true;
+    session.loadError = false;
+    setMenuProductEditorBusy(true);
+    setMenuProductEditorStatus('Завантажуємо техкарту…');
+    try {
+        await hydrateTechCardForm(session.productId, session.source, 'kitchen', 'menu', { isCurrent: () => menuProductEditorSession === session });
+        if (menuProductEditorSession !== session) return;
+        if (!wasDirty) session.baseline = menuProductEditorSnapshot();
+        setMenuProductEditorStatus();
+    } catch (error) {
+        if (menuProductEditorSession !== session) return;
+        session.loadError = true;
+        setMenuProductEditorStatus('Не вдалося завантажити техкарту. Повторіть завантаження перед збереженням.', true);
+    } finally {
+        if (menuProductEditorSession === session) { session.loading = false; setMenuProductEditorBusy(false); }
+    }
+}
+
+
 function placeProductForm() {
     const form = document.getElementById('productForm');
     if (!form) return null;
+    if (menuProductEditorSession) {
+        document.querySelector('[data-menu-product-form-host]').append(form);
+        return form;
+    }
+    groupMenuProductForm(false);
     if (!isParkProductsContext()) {
         const maysternyaPanel = document.getElementById('maysternyaPanel');
         const maysternyaGrid = document.getElementById('maysternyaProductsGrid');
@@ -3159,6 +3494,16 @@ function setKitchenFormVisibility(domain, kitchenType) {
     document.querySelectorAll('.cake-decoration-field').forEach(field => {
         field.classList.toggle('hidden', !(isKitchen && kitchenType === 'cake'));
     });
+    const aiEntry = document.querySelector('#productForm .menu-ai-entry');
+    if (aiEntry && isKitchen && kitchenType === 'menu') {
+        let actions = aiEntry.querySelector('[data-menu-ai-editor-actions]');
+        if (!actions) {
+            actions = document.createElement('div');
+            actions.setAttribute('data-menu-ai-editor-actions', '');
+            aiEntry.append(actions);
+        }
+        actions.innerHTML = renderKitchenMenuAiActions({ kitchenType: 'menu' }, canManageProducts());
+    }
     const saveNextBtn = document.getElementById('saveProductNextBtn');
     if (saveNextBtn) saveNextBtn.style.display = isKitchen ? '' : 'none';
     renderAllergenChipsFromForm();
@@ -3430,7 +3775,10 @@ async function openMenuAiReviewWizard(options = {}) {
     const currentCard = collectCurrentMenuCardForAi();
     const elements = getMenuAiElements();
     if (elements.productName) elements.productName.textContent = currentCard.name || currentCard.code || 'Нова меню-картка';
-    elements.modal?.classList.remove('hidden');
+    if (menuProductEditorSession && typeof openModal === 'function') {
+        openModal(elements.modal, document.activeElement, { onRequestClose: closeMenuAiReviewWizard, initialFocus: '#productAiReviewCloseBtn' });
+        window.ModalLayer?.ensureTopLayer(elements.modal);
+    } else elements.modal?.classList.remove('hidden');
     const requestedStep = MENU_AI_BLOCKS.some(block => block.key === options.initialStep)
         ? options.initialStep
         : 'nameDescription';
@@ -3468,7 +3816,9 @@ async function openMenuAiReviewWizard(options = {}) {
 
 function closeMenuAiReviewWizard() {
     if (menuAiReviewSaving) return;
-    document.getElementById('productAiReviewModal')?.classList.add('hidden');
+    const modal = document.getElementById('productAiReviewModal');
+    if (modal?._focusTrapHandler && typeof closeModal === 'function') closeModal(modal, { force: true });
+    else modal?.classList.add('hidden');
     menuAiReviewState = null;
     setMenuAiReviewStatus('');
 }
@@ -3760,7 +4110,7 @@ async function applyMenuAiReviewFinal() {
         showNotification('AI-картку меню підтверджено і збережено', 'success');
         setMenuAiReviewSaving(false);
         closeMenuAiReviewWizard();
-        closeProductForm();
+        closeProductForm({ force: true });
         await loadProducts();
     } catch (err) {
         setMenuAiReviewStatus(err.message || 'Не вдалося застосувати AI-картку', 'error');
@@ -3785,11 +4135,15 @@ async function hydrateTechCardForm(productId, product, domain, kitchenType, opti
         return;
     }
 
+    const businessContext = getProductApiBusinessContext();
     await loadProductWarehouseItems().catch(() => {});
+    if (options.isCurrent && !options.isCurrent()) return;
     let mode = product?.techCardMode || 'simple';
     let rows = [];
     if (productId) {
-        const response = await apiGetProductTechCard(productId, { businessContext: getProductApiBusinessContext() });
+        const response = await apiGetProductTechCard(productId, { businessContext });
+        if (options.isCurrent && !options.isCurrent()) return;
+        if (menuProductEditorSession && !response?.success) throw new Error('Tech card unavailable');
         if (response?.success && response.techCard) {
             mode = response.techCard.mode || mode;
             rows = response.techCard.ingredients || [];
@@ -4094,6 +4448,50 @@ async function saveProgramIconSettingsFromModal() {
 }
 
 async function openProductForm(productId = null, options = {}) {
+    if (!guardProductWrite(productId ? 'редагувати продукти' : 'створювати продукти')) return false;
+    if (productSaveInFlight || menuAiReviewSaving || productFormOpening) return false;
+    const product = productId ? allProducts.find(item => item.id === productId) : null;
+    if (productId && !product) return false;
+    const isMenu = product ? getProductDomain(product) === 'kitchen' && getKitchenType(product) === 'menu'
+        : isParkProductsContext() && activeProductTab === 'kitchen' && activeKitchenTab === 'menu';
+    if (menuProductEditorSession?.productId === (productId || '') && menuProductEditorSession.context === getProductApiBusinessContext()) {
+        focusMenuProductField('pf-name'); return true;
+    }
+    if (menuProductEditorSession && !(await closeProductForm())) return false;
+    const opening = {};
+    productFormOpening = opening;
+    const session = isMenu ? beginMenuProductEditor(product, options) : null;
+    const isCurrent = () => productFormOpening === opening && (!session || menuProductEditorSession === session);
+    try {
+        await populateProductForm(productId, { ...options, isCurrent });
+        if (!isCurrent()) return false;
+        if (session) {
+            session.baseline = menuProductEditorSnapshot();
+            setMenuProductEditorStatus();
+        }
+        return true;
+    } catch (error) {
+        if (!isCurrent()) return false;
+        if (session) {
+            session.loadError = true;
+            session.baseline = menuProductEditorSnapshot();
+            setMenuProductEditorStatus('Не вдалося завантажити техкарту. Повторіть завантаження перед збереженням.', true);
+        } else showNotification('Не вдалося завантажити форму продукту', 'error');
+        return false;
+    } finally {
+        if (isCurrent() && session) {
+            session.loading = false;
+            setMenuProductEditorBusy(false);
+            if (options.focusWriteOff) {
+                document.querySelector('[data-menu-form-group="additional"]').open = true;
+                focusMenuProductField('pf-tech-writeoff-units');
+            } else focusMenuProductField('pf-name');
+        }
+        if (productFormOpening === opening) productFormOpening = false;
+    }
+}
+
+async function populateProductForm(productId = null, options = {}) {
     if (!guardProductWrite(productId ? 'редагувати продукти' : 'створювати продукти')) return;
     const form = placeProductForm();
     if (!form) return;
@@ -4114,7 +4512,7 @@ async function openProductForm(productId = null, options = {}) {
         document.getElementById('pf-category').value = p.category || 'quest';
         document.getElementById('pf-duration').value = p.duration || 0;
         document.getElementById('pf-price').value = p.price || 0;
-        document.getElementById('pf-hosts').value = p.hosts || 1;
+        document.getElementById('pf-hosts').value = p.hosts ?? 1;
         document.getElementById('pf-age').value = p.ageRange || '';
         document.getElementById('pf-kids').value = p.kidsCapacity || '';
         document.getElementById('pf-description').value = p.description || '';
@@ -4136,7 +4534,9 @@ async function openProductForm(productId = null, options = {}) {
         const detailedCheckbox = document.getElementById('pf-tech-card-detailed');
         if (detailedCheckbox) detailedCheckbox.checked = p.techCardMode === 'detailed';
         setKitchenFormVisibility(domain, kitchenType);
+        setMenuProductEditorBusy(true);
         await hydrateTechCardForm(productId, p, domain, kitchenType, options);
+        if (options.isCurrent && !options.isCurrent()) return;
         renderProductFormIconGeneration(p, domain);
     } else {
         const isMaysternya = !isParkProductsContext();
@@ -4179,23 +4579,45 @@ async function openProductForm(productId = null, options = {}) {
         const detailedCheckbox = document.getElementById('pf-tech-card-detailed');
         if (detailedCheckbox) detailedCheckbox.checked = false;
         setKitchenFormVisibility(isKitchen ? 'kitchen' : 'program', kitchenType);
-        await hydrateTechCardForm(null, null, isKitchen ? 'kitchen' : 'program', kitchenType);
+        setMenuProductEditorBusy(true);
+        await hydrateTechCardForm(null, null, isKitchen ? 'kitchen' : 'program', kitchenType, options);
+        if (options.isCurrent && !options.isCurrent()) return;
         renderProductFormIconGeneration(null, isKitchen ? 'kitchen' : 'program');
     }
 
     updateTimelineCodeCounter();
 
-    form.scrollIntoView({ behavior: 'smooth' });
+    if (!menuProductEditorSession) form.scrollIntoView({ behavior: 'smooth' });
 }
 
-function closeProductForm() {
+function closeProductForm(options = {}) {
+    if (menuProductEditorSession && !options.force) {
+        const session = menuProductEditorSession;
+        return confirmMenuProductEditorDiscard().then(allowed => {
+            if (!allowed || menuProductEditorSession !== session) return false;
+            if (isProductAiReviewModalOpen()) closeMenuAiReviewWizard();
+            return closeProductForm({ force: true });
+        });
+    }
+    finishMenuProductEditor();
+    productFormOpening = false;
     document.getElementById('productForm').style.display = 'none';
     techCardLoadedProductId = null;
     productFormFocusWriteOff = false;
     renderProductFormIconGeneration(null, 'program');
+    return true;
 }
 
 async function saveProduct(options = {}) {
+    if (productSaveInFlight) return { success: false, error: 'save_in_flight' };
+    if (menuProductEditorSession?.loading || menuProductEditorSession?.loadError) {
+        showNotification('Спочатку дочекайтесь завантаження техкарти або повторіть його', 'warning');
+        return { success: false, error: 'form_not_ready' };
+    }
+    if (menuProductEditorSession && menuProductEditorSession.context !== getProductApiBusinessContext()) {
+        showNotification('Бізнес змінився. Повторно відкрийте редактор страви.', 'error');
+        return { success: false, error: 'form_context_changed' };
+    }
     if (!guardProductWrite('редагувати продукти')) return { success: false, error: 'business_scope_read_only' };
     const id = document.getElementById('pf-id')?.value;
     const domain = document.getElementById('pf-domain')?.value === 'kitchen' ? 'kitchen' : 'program';
@@ -4240,6 +4662,13 @@ async function saveProduct(options = {}) {
         isActive: document.getElementById('pf-active')?.checked,
         sortOrder: parseInt(document.getElementById('pf-sort')?.value) || 0
     };
+    if (domain === 'kitchen' && kitchenType === 'menu' && menuProductEditorSession?.source) {
+        const source = menuProductEditorSession.source;
+        // Hidden program and legacy fields retain their original values, including 0/false.
+        for (const key of ['duration', 'hosts', 'ageRange', 'kidsCapacity', 'isPerChild', 'hasFiller', 'isCustom', 'cakeDecoration']) {
+            if (Object.prototype.hasOwnProperty.call(source, key)) product[key] = source[key];
+        }
+    }
     if (domain === 'kitchen') {
         if (!product.isActive) product.availabilityStatus = 'hidden';
         if (product.availabilityStatus === 'hidden') product.isActive = false;
@@ -4247,17 +4676,20 @@ async function saveProduct(options = {}) {
 
     if (!product.code || !product.name) {
         showNotification('Код та назва обовʼязкові', 'error');
+        focusMenuProductField(!product.name ? 'pf-name' : 'pf-code');
         return { success: false, error: 'code_and_name_required' };
     }
 
     const timelineCodeLength = Array.from(product.timelineCode).length;
     if (timelineCodeLength < 2 || timelineCodeLength > 6 || /[\r\n]/.test(product.timelineCode)) {
         showNotification('Короткий код таймлайна має містити 2–6 символів в одному рядку', 'error');
+        focusMenuProductField('pf-timeline-code');
         return { success: false, error: 'timeline_code_invalid' };
     }
 
     if (/\(\s*\d+\s*(?:хв\.?|min)?\s*\)/iu.test(product.timelineCode) || /\d+\s*(?:хв\.?|min)(?=\s|$)/iu.test(product.timelineCode)) {
         showNotification('Не додавайте тривалість до короткого коду таймлайна', 'error');
+        focusMenuProductField('pf-timeline-code');
         return { success: false, error: 'timeline_code_duration' };
     }
 
@@ -4281,6 +4713,7 @@ async function saveProduct(options = {}) {
     const previous = allProducts.find(item => item.id === id);
     const generation = productsLoadGeneration;
     productSaveInFlight = true;
+    setMenuProductEditorBusy(true);
     setProductSavingState(true);
     try {
         let result;
@@ -4293,6 +4726,11 @@ async function saveProduct(options = {}) {
 
         if (result && result.success) {
             const savedProductId = id || result.product?.id || product.id;
+            if (menuProductEditorSession) {
+                // A partial tech-card failure must retry UPDATE, never create a second product.
+                document.getElementById('pf-id').value = savedProductId;
+                menuProductEditorSession.productId = savedProductId;
+            }
             const techCardResult = await saveProductTechCardIfNeeded(savedProductId, domain, kitchenType);
             if (!techCardResult?.success) {
                 return { success: false, error: techCardResult?.error || 'tech_card_save_failed' };
@@ -4324,11 +4762,14 @@ async function saveProduct(options = {}) {
                 refreshProductCard(savedProductId, businessContext);
                 if (!fresh) showNotification('Збережено. Не вдалося повторно отримати актуальні дані позиції.', 'warning');
             }
-            if (options.keepOpen !== true) {
-                closeProductForm();
+            if (menuProductEditorSession) {
+                menuProductEditorSession.source = saved;
+                menuProductEditorSession.baseline = menuProductEditorSnapshot();
             }
+            if (options.keepOpen !== true) closeProductForm({ force: true });
             if (options.addNext === true && domain === 'kitchen') {
-                openProductForm();
+                productSaveInFlight = false;
+                await openProductForm();
             }
             return { success: true, savedProductId, product: result.product || product };
         }
@@ -4336,8 +4777,12 @@ async function saveProduct(options = {}) {
         const error = result?.error || 'Помилка збереження';
         if (!options.silent) showNotification(error, 'error');
         return { success: false, error };
+    } catch (error) {
+        if (!options.silent) showNotification(error.message || 'Помилка збереження', 'error');
+        return { success: false, error: error.message || 'save_failed' };
     } finally {
         productSaveInFlight = false;
+        setMenuProductEditorBusy(false);
         setProductSavingState(false);
     }
 }

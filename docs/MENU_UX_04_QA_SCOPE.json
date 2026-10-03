@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "execution": "manual_menu_qa_after_exact_live_sha_proof",
+  "baseLiveSha": "98ad5e139e8409407f7f04bc9ba9ade45567921d",
+  "branch": "codex/eventgenix-production",
+  "liveUrl": "https://8223324090-production.up.railway.app",
+  "runId": "qa-menu-ux04-20261003",
+  "testAccountId": 48,
+  "businessContext": "event_genix",
+  "ttlMinutes": 30,
+  "fixtureLimit": 1,
+  "product": {
+    "id": "qa-menu-ux04-20261003",
+    "code": "QA-MUX04",
+    "timelineCode": "QMU04",
+    "name": "CODEX QA MENU UX04",
+    "category": "menu",
+    "domain": "kitchen",
+    "kitchenType": "menu",
+    "menuSection": "QA MENU UX04",
+    "duration": 0,
+    "hosts": 0,
+    "isPerChild": false,
+    "hasFiller": false
+  },
+  "inventory": {
+    "trustedQaRuns": 1,
+    "trustedQaRunEntities": 1,
+    "products": 1,
+    "uploadedImagesMaximum": 1,
+    "techCardIngredientRows": 0,
+    "stockMovements": 0,
+    "bookings": 0,
+    "customers": 0,
+    "paidGenerationRequests": 0
+  },
+  "registry": "trusted_qa_runs + trusted_qa_run_entities: exact product entity and marker; upload URL recorded in entity payload and sanitized local state",
+  "preflight": "Read-only account/ID/code/timelineCode/run availability and registry privileges passed on 2026-10-03. Recheck immediately before creation.",
+  "allowedActions": [
+    "create registered disposable menu product",
+    "open/close viewer and editor",
+    "edit then Cancel and verify unchanged record",
+    "edit then Save and reopen",
+    "one fixture file upload to external-draft",
+    "verify current photo unchanged before Apply",
+    "one manual Apply and reopen",
+    "verify hidden zero/false and businessContext",
+    "exact registered product cleanup"
+  ],
+  "cleanup": {
+    "at": "run TTL or earlier explicit scope completion; never clean another active run",
+    "method": "Verify registry ownership, exact ID/code/marker/account/context, then canonical cleanupTrustedQaRun in a transaction; verify product inactive and registry cleaned",
+    "retainedArtifacts": "One inactive QA product, its applied fixture image and audit registry remain as the canonical soft-cleanup record. No physical deletion or broad storage cleanup.",
+    "onMismatch": "Mark the exact run blocked and stop; no fallback cleanup."
+  },
+  "excluded": [
+    "real business records",
+    "warehouse writes",
+    "schema/auth/provider/billing/secrets/settings changes",
+    "paid AI requests",
+    "physical deletion",
+    "unregistered writes"
+  ],
+  "controllerCompatibility": "Current production-block controller has no menu QA kind. Its automatic timeline/certificate QA stays disabled; this enabled manual menu scope must be explicitly included in the same owner authorization. Do not describe the release QA as none."
+}

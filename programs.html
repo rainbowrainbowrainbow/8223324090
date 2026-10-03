@@ -7,7 +7,7 @@
     </script>
 
     <script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","w841e2emn0");</script>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
     <title>Event Genix | Products</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
@@ -22,14 +22,14 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.82.51">
-    <link rel="stylesheet" href="css/layout.css?v=0.82.51">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.82.51">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.82.51">
-    <link rel="stylesheet" href="css/pages-products.css?v=0.82.51">
-    <link rel="stylesheet" href="css/modals.css?v=0.82.51">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.82.51">
-    <link rel="stylesheet" href="css/responsive.css?v=0.82.51">
+    <link rel="stylesheet" href="css/base.css?v=0.82.52">
+    <link rel="stylesheet" href="css/layout.css?v=0.82.52">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.82.52">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.82.52">
+    <link rel="stylesheet" href="css/pages-products.css?v=0.82.52">
+    <link rel="stylesheet" href="css/modals.css?v=0.82.52">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.82.52">
+    <link rel="stylesheet" href="css/responsive.css?v=0.82.52">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1685,7 +1685,7 @@
                         <option value="Коктейлі та холодні напої"></option>
                         <option value="Оформлення торта"></option>
                     </datalist>
-                    <div style="display:flex; gap:8px; margin-top:20px;">
+                    <div class="menu-product-form-actions" style="display:flex; gap:8px; margin-top:20px;">
                         <button type="button" id="saveProductBtn" class="btn-page-primary">Зберегти</button>
                         <button type="button" id="saveProductNextBtn" class="btn-page-secondary">Зберегти і додати ще</button>
                         <button type="button" id="cancelProductBtn" class="btn-page-secondary">Скасувати</button>
@@ -1698,7 +1698,7 @@
 
             <section id="kitchenPanel" class="product-tab-panel hidden">
                 <div id="kitchenSubtabs" class="kitchen-subtabs" aria-label="Kitchen tabs"></div>
-                <div id="menuSectionFilter" class="menu-section-filter hidden" aria-label="Menu section filters"></div>
+                <div id="menuSectionFilter" class="menu-section-filter hidden" aria-label="Розділи меню"></div>
                 <div id="kitchenGrid" class="cards-grid"></div>
             </section>
 
@@ -1738,6 +1738,19 @@
                 </div>
             </section>
         </main>
+    </div>
+
+    <div id="menuProductEditorModal" class="modal hidden menu-product-editor-modal" role="dialog" aria-modal="true" aria-labelledby="menuProductEditorTitle" aria-describedby="menuProductEditorStatus">
+        <div class="modal-content menu-product-editor-card">
+            <header class="menu-product-editor-head">
+                <div><h2 id="menuProductEditorTitle">Редагувати страву</h2><p>Дані страви та складська техкарта</p></div>
+                <button type="button" class="kitchen-menu-image-close" aria-label="Закрити редактор страви" onclick="closeProductForm()">×</button>
+            </header>
+            <p id="menuProductEditorStatus" role="status" aria-live="polite"></p>
+            <button type="button" data-menu-editor-retry hidden class="btn-page-secondary" onclick="retryMenuProductTechCard()">Повторити завантаження техкарти</button>
+            <div data-menu-product-form-host></div>
+            <footer data-menu-editor-actions-host></footer>
+        </div>
     </div>
 
     <div id="productDocumentModal" class="modal hidden product-doc-modal" role="dialog" aria-modal="true" aria-labelledby="productDocModalTitle" aria-describedby="productDocModeNote productDocFeedback">
@@ -1918,16 +1931,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.82.51"></script>
-    <script src="js/config.js?v=0.82.51"></script>
-    <script src="js/notification.js?v=0.82.51"></script>
-    <script src="js/api.js?v=0.82.51"></script>
-    <script src="js/auth.js?v=0.82.51"></script>
-    <script src="js/components/sidebar.js?v=0.82.51"></script>
+    <script src="js/ui.js?v=0.82.52"></script>
+    <script src="js/config.js?v=0.82.52"></script>
+    <script src="js/notification.js?v=0.82.52"></script>
+    <script src="js/api.js?v=0.82.52"></script>
+    <script src="js/auth.js?v=0.82.52"></script>
+    <script src="js/components/sidebar.js?v=0.82.52"></script>
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
-    <script src="js/kitchen-menu-images.js?v=0.82.51"></script>
-    <script src="js/event-cards.js?v=0.82.51"></script>
-    <script src="js/programs-page.js?v=0.82.51"></script>
-    <script src="js/alerts.js?v=0.82.51"></script>
+    <script src="js/kitchen-menu-images.js?v=0.82.52"></script>
+    <script src="js/event-cards.js?v=0.82.52"></script>
+    <script src="js/programs-page.js?v=0.82.52"></script>
+    <script src="js/alerts.js?v=0.82.52"></script>
 </body>
 </html>

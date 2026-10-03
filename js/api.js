@@ -1617,6 +1617,18 @@ function crmBusinessHasTimelineDateHandoff(url, context) {
         || normalizeCrmBusinessContext(requestedContext) === normalizeCrmBusinessContext(context);
 }
 
+function crmBusinessHasEducationScheduleHandoff(url, context) {
+    const params = url?.searchParams;
+    const view = params?.get('educationSchedule');
+    if (!['today', 'schedule', 'groups', 'attendance', 'reports'].includes(view)) return false;
+    const requestedContext = params.get('businessContext');
+    if (requestedContext && normalizeCrmBusinessContext(requestedContext) !== normalizeCrmBusinessContext(context)) return false;
+    const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    if (!userCanAccessCrmBusinessContext(user, context)) return false;
+    const profile = getCrmBusinessProfileForContext(context);
+    return profile?.timeline?.mode === 'education' && profile.timeline.timelineEnabled !== false;
+}
+
 function crmBusinessDefaultTimelineRouteForUser(user) {
     const policy = resolveCrmBusinessPolicy(user);
     const defaultContext = policy.defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
@@ -1639,12 +1651,17 @@ function navigateCrmBusinessDestination(context, page = currentCrmBusinessScoped
     if (!destination) return false;
     const target = new URL(destination, window.location.origin);
     const current = new URL(window.location.href);
+    if (current.searchParams.has('educationSchedule') && !crmBusinessHasEducationScheduleHandoff(current, context)) {
+        current.searchParams.delete('educationSchedule');
+        window.history.replaceState(window.history.state, '', current);
+    }
     if (target.pathname === current.pathname && target.search === current.search) return false;
     if (page?.id === 'timeline'
         && target.pathname === current.pathname
         && (crmBusinessHasLeadBookingHandoff(current)
             || crmBusinessHasTimelineViewHandoff(current, context)
-            || crmBusinessHasTimelineDateHandoff(current, context))) {
+            || crmBusinessHasTimelineDateHandoff(current, context)
+            || crmBusinessHasEducationScheduleHandoff(current, context))) {
         return false;
     }
     window.__crmBusinessNavigationPending = true;

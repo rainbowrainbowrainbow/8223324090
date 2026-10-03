@@ -679,6 +679,73 @@ test('timeline shell canonicalization preserves an explicit URL date', () => {
     assert.deepEqual(navigations, []);
 });
 
+test('education tabs survive direct URL, reload and browser back without a date only in an allowed education business', () => {
+    const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+    const user = {
+        id: 7, role: 'creator', businessContextPolicy: {
+            allowed: ['dar', 'event_genix'], defaultContext: 'dar'
+        }
+    };
+    let currentUrl = new URL('https://crm.test/?businessContext=dar&educationSchedule=groups');
+    const navigations = [];
+    const location = {
+        get origin() { return currentUrl.origin; },
+        get pathname() { return currentUrl.pathname; },
+        get search() { return currentUrl.search; },
+        get hash() { return currentUrl.hash; },
+        get href() { return currentUrl.href; },
+        set href(value) { navigations.push(String(value)); }
+    };
+    const storage = new Map();
+    const sandbox = {
+        console, URL, URLSearchParams,
+        CustomEvent: class CustomEvent { constructor(type, init = {}) { this.type = type; this.detail = init.detail; } },
+        window: {
+            location,
+            history: { state: null, replaceState(_state, _title, value) { currentUrl = new URL(String(value), currentUrl); } },
+            dispatchEvent() {}, addEventListener() {}
+        },
+        document: { body: { dataset: {} }, getElementById: () => null },
+        localStorage: {
+            getItem: key => storage.get(key) || null,
+            setItem: (key, value) => storage.set(key, String(value)),
+            removeItem: key => storage.delete(key)
+        },
+        AppState: { currentUser: user }
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+    vm.runInNewContext(apiCode + '\ncrmBusinessProfileState.businessesById.set("dar", { timeline: { mode: "education", timelineEnabled: true } });\ncrmBusinessProfileState.businessesById.set("event_genix", { timeline: { mode: "park" } });', sandbox);
+    for (const tab of ['today', 'schedule', 'groups', 'attendance', 'reports']) {
+        currentUrl = new URL(`https://crm.test/?businessContext=dar&educationSchedule=${tab}`);
+        assert.equal(sandbox.window.CrmBusinessContext.renderShell(user), false, `${tab}: direct URL`);
+        assert.equal(currentUrl.searchParams.get('educationSchedule'), tab);
+        assert.equal(sandbox.window.CrmBusinessContext.renderShell(user), false, `${tab}: reload`);
+        assert.equal(currentUrl.searchParams.get('educationSchedule'), tab);
+        currentUrl = new URL('https://crm.test/?businessContext=event_genix');
+        const parkNavigationCount = navigations.length;
+        sandbox.window.CrmBusinessContext.renderShell(user);
+        assert.ok(navigations.slice(parkNavigationCount).every(href => !href.includes('educationSchedule')), `${tab}: Park has no education tab`);
+        currentUrl = new URL(`https://crm.test/?businessContext=dar&educationSchedule=${tab}`);
+        assert.equal(sandbox.window.CrmBusinessContext.renderShell(user), false, `${tab}: browser back`);
+        assert.equal(currentUrl.searchParams.get('educationSchedule'), tab);
+    }
+    assert.ok(navigations.every(href => !href.includes('educationSchedule')));
+    currentUrl = new URL('https://crm.test/?businessContext=event_genix&educationSchedule=groups&date=2099-01-01');
+    sandbox.window.CrmBusinessContext.renderShell(user);
+    assert.equal(currentUrl.searchParams.has('educationSchedule'), false, 'Park removes a stale education tab');
+    assert.equal(currentUrl.searchParams.get('date'), '2099-01-01', 'date handoff remains intact');
+    for (const [url, context] of [
+        ['https://crm.test/?businessContext=event_genix&educationSchedule=groups', 'event_genix'],
+        ['https://crm.test/?businessContext=dar&educationSchedule=unknown', 'dar'],
+        ['https://crm.test/?businessContext=event_genix&educationSchedule=groups', 'dar']
+    ]) {
+        currentUrl = new URL(url);
+        assert.equal(vm.runInNewContext(`crmBusinessHasEducationScheduleHandoff(new URL(${JSON.stringify(url)}), ${JSON.stringify(context)})`, sandbox), false);
+    }
+    user.businessContextPolicy.allowed = ['event_genix'];
+    assert.equal(vm.runInNewContext('crmBusinessHasEducationScheduleHandoff(new URL("https://crm.test/?businessContext=dar&educationSchedule=groups"), "dar")', sandbox), false);
+});
+
 test('sidebar timeline launcher derives zero, one, or two modes from the hydrated business profile', async () => {
     const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
     const sidebarRhythmCss = fs.readFileSync(path.join(ROOT, 'css', 'sidebar-aurora-rhythm.css'), 'utf8');

@@ -52,7 +52,8 @@ const MODES = {
         'tests/integration/admission-tickets.integration.test.js'
     ],
     'education-series': [
-        'tests/integration/education-series.integration.test.js'
+        'tests/integration/education-series.integration.test.js',
+        'tests/integration/education-series.integration-acceptance.test.js'
     ],
     'education-context-browser': [
         'tests/browser/education-context-actual-app-browser-smoke.js'

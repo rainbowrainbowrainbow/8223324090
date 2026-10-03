@@ -207,7 +207,12 @@ async function run() {
         await topup.locator('[data-day-pay-field="reason"]').fill('Daily top-up above monthly base');
         await savePay(page,topup);
         await page.waitForFunction(()=>document.querySelector('[data-pay-purpose="additional"] .sch-day-pay-current')?.textContent.includes('400'));
-        await page.screenshot({path:path.join(output,'monthly-mobile.png'),fullPage:true});
+        // Capture actual mobile viewport after transient save notifications expire naturally.
+        await page.waitForFunction(()=>document.querySelectorAll('#toastContainer .toast').length===0);
+        await panel().locator('.sch-day-pay-current').scrollIntoViewIfNeeded();
+        await page.screenshot({path:path.join(output,'monthly-mobile.png')});
+        await topup.locator('.sch-day-pay-current').scrollIntoViewIfNeeded();
+        await page.screenshot({path:path.join(output,'monthly-topup-mobile.png')});
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
         await closeCell(page);await context.close();
         // Existing role plus explicit salary deny: API is 403 and UI never requests or stores amounts.
@@ -238,7 +243,9 @@ async function run() {
         await page.locator(`.sch-cell[data-staff="${staffId}"][data-date="${date}"]`).first().click();
         await page.locator('[data-day-pay-slot]').first().waitFor();
         const storage=await page.evaluate(()=>JSON.stringify({...sessionStorage}));assert.doesNotMatch(storage,/defaultRate|selectedProfile|30000/);
-        await page.screenshot({path:path.join(output,'restricted-mobile.png'),fullPage:true});
+        await page.waitForFunction(()=>document.querySelectorAll('#toastContainer .toast').length===0);
+        await page.locator('[data-day-pay-slot]').first().scrollIntoViewIfNeeded();
+        await page.screenshot({path:path.join(output,'restricted-mobile.png')});
         await restricted.close();assert.deepEqual(errors,[]);
         evidence.stages.schedule={status:'PASS',dateReload:true,exceptionConflict:true,draftReturn:true,salaryRestricted:true,copyApi:true,copyButton:'NOT_VISIBLE'};
         // Continue through actual HR controls and real API/database writes. No response stubs.

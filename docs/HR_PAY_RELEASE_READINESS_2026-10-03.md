@@ -1,3 +1,39 @@
+# HR-PAY-11 — актуальна production-база та перевірений кандидат
+
+Production impact: yes. **Блокер production-base drift знято. HR-PAY ще не випущено; наступний крок — HR-PAY-12, release commit та hash-bound manifest.**
+
+## Актуальна база й межі змін
+
+- Read-only перевірки 2026-10-03: live **0.82.56**, SHA `59d67e9916c0a6ce2f64fcafa08cc9e5ce0e5efc`, branch `codex/eventgenix-production`; remote production має той самий SHA. [CI production-бази](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/37121483286) — success. Клієнтський реліз уже був завершений його власником до HR-PAY merge; у цьому таску його не випускали.
+- Робоча копія: `C:/Users/Plotva/.codex/worktrees/hr-pay-release-review/EventGenix`; feature branch `codex/hr-pay-release-review-20261003`.
+- Merge commit: `41ab0b8318517dc944f3c5c3b8d2f804e991e93e`; батьківський HR-PAY кандидат `1dd1b121a5a96f2d7ceda26e5cf578e1c567052c` збережено. Звичайний merge, без переписування історії.
+- Єдиний конфлікт файлу `package.json`: збережено обидва переліки unit-тестів, HR readiness audit та customer-birthdays runner. Автоматичне об'єднання `hr.html` і `scripts/run-isolated-postgres-tests.js` перевірено: HR-форма, dated PostgreSQL та actual-app suites залишилися підключеними, production suites також збережені.
+- HR-PAY runtime/resolver/access/UI під час merge не змінювався. Diff до нової production-бази: 59 файлів, усі у literal HR-PAY allowlist. Єдина міграція — `374_payroll_day_exceptions.sql`; нових міграцій немає.
+- Версія `0.82.56` успадкована від production, це не новий HR-PAY release marker. Сторонні зміни OneDrive не включалися. Production writes/deploys у цьому таску: **0**.
+
+## Фактичні перевірки
+
+- `npm run check:runtime`: Node **22.23.1**, npm **10.9.8**, PASS.
+- `node scripts/version-sync.js`: PASS, лише перевірка узгодженості, без bump.
+- `node --test tests/hr-pay-conditions-server.test.js tests/hr-pay-conditions-ui.test.js tests/hr-pay-rate-safety.test.js tests/hr-pay-readiness.test.js tests/hr-pay-schedule-draft.test.js tests/park-hr-payroll-access.test.js tests/isolated-postgres-test-flow.test.js tests/production-block-controller.test.js`: **135/135 PASS**, skipped=0. Лог: `output/hr-pay/hr-pay-11-targeted-installed.log`.
+- Початковий локальний запуск без установлених залежностей: 4 failures через `Cannot find module 'pg'`. Після `npm ci --no-audit --no-fund` перевірки повторені успішно; dependency versions/lockfile не змінювались. Початковий лог збережено, його не називаємо PASS.
+- `npm test`: PASS, включно з migration governance, syntax, unit та UI baseline. Лог: `output/hr-pay/hr-pay-11-npm-test.log`.
+- [CI merge SHA 41ab0b831](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/37122442014): **8/8 jobs SUCCESS**, без rerun або skipped jobs. Це новий кандидат, а не повторне використання CI старого production.
+- Disposable PostgreSQL: **14/14 dated HR-PAY tests PASS**; профілі, тимчасові умови, сусідні дати, винятки, ідемпотентність і конкурентне редагування, три одиниці, незалежна доплата, відсутність подвійної денної/місячної оплати, immutable snapshots та закриті нарахування. Attendance lock і решта required PostgreSQL suites також PASS.
+- Actual-app Express → PostgreSQL: **journeyStatus=PASS, regressionStatus=PASS, membershipMode=true**, exact SHA `41ab0b8318517dc944f3c5c3b8d2f804e991e93e`. HR-картка зі збереженням ставки → графік → виняток → save/reopen → фактичні 330 хв з 30-хв перервою → зарплатне розшифрування; конфлікт, зміна дати, повернення чернетки й обмежений salary доступ перевірено.
+- Негативні actual-app перевірки: чужий бізнес, revoked membership, невідома належність attendance, виплати і сторонні кадрові мутації заблоковані. Тільки синтетичні записи ізольованої БД.
+- Первинні CI артефакти: `output/hr-pay/hr-pay-11-41ab-browser/journey-evidence.json` і `output/hr-pay/hr-pay-11-41ab-postgres.log`. Темну HR-картку візуально перевірено.
+- У browser capture усунуто обмеження доказу: mobile full-page screenshot перекривали transient toast після швидких тестових збережень. Тест чекає їх штатного зникнення, прокручує до ставки та знімає справжній viewport; для місячної доплати додано окремий кадр. DOM/відповіді API не підміняються, runtime UI не змінюється.
+- **Фінальний HEAD після документації й уточнення screenshot також потребує власного CI.** Його точний SHA, CI URL, 8 job results, PostgreSQL та actual-app evidence, перевірені зображення й повторна live/remote перевірка фіксуються після завершення у [підсумковому доказі HR-PAY-11](../output/hr-pay/hr-pay-11-final-proof.json). До появи completed/success для цього SHA попередній CI не підміняє його gate.
+
+## Чесні межі та наступний крок
+
+- Копіювання підтверджено через чинний API: одноденний виняток не переноситься. Copy-week button відсутній за чинним UI-контрактом; browser-клік не заявляється й видалений контрол не відновлюється.
+- Непогоджена норма місяця та відсутні бізнес-правила залишають явне блокування відповідного нарахування. Реальні пропуски допусків/норм не заповнювалися. Старий аудит даних — історичний доказ, а не свіжий повний аудит після merge.
+- HR-PAY-12: повторно звірити production, вибрати наступний вільний patch, підготувати окремий український release/cache commit і точний allowlist release-файлів, пройти gates нового SHA, сформувати manifest та отримати одне справжнє фінальне підтвердження. Production release/QA нової функції належить HR-PAY-13.
+- Дозвіл на вузький Park HR/payroll lane вже наданий і збережений. Нижчі HOLD-записи про відсутнє погодження, 403 кандидата або розбіжність бази є історією; актуальні факти наведені в цьому розділі та фінальному proof.
+
+---
 # HR-PAY-10 — погоджений вузький Park HR/payroll доступ
 
 Production impact: yes. 2026-10-03 користувач окремо дозволив саме вузький Park HR/payroll доступ за планом нижче, зі збереженням зарплатних прав, без розширення ролей, інших бізнесів і виплат. Попередній блокер погодження нижче є історією; це погодження реалізації не замінює фінальне hash-bound підтвердження production manifest.

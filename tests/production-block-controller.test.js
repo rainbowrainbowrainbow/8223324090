@@ -17,6 +17,8 @@ const {
 const {
     applyReleaseNotes,
     assertHrPayrollProductionBase,
+    assertHrPayrollCiResult,
+    selectHrPayrollCiRun,
     executeAction,
     findUnexpiredQaBlocker,
     parseOptions,
@@ -813,4 +815,50 @@ test('HR/payroll preflight rejects live or remote base drift and permits an exac
     assert.throws(() => assertHrPayrollProductionBase(value, live, RELEASE_SHA), error => error.code === 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
     assert.throws(() => assertHrPayrollProductionBase(value, { ...live, commitSha: RELEASE_SHA }, LIVE_SHA), error => error.code === 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
     assert.throws(() => assertHrPayrollProductionBase(value, { ...live, sourceBranch: 'wrong' }, LIVE_SHA), error => error.code === 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+});
+
+function successfulHrPayrollCi() {
+    return { databaseId: 17, headSha: HEAD_SHA, headBranch: 'codex/eventgenix-production',
+        workflowName: 'CI', event: 'push', status: 'completed', conclusion: 'success', jobs: [
+            'Fast baseline', 'Omni browser regression', 'Certificate redemption regression',
+            'Checkbox park PostgreSQL mock integration', 'HR Team browser smoke',
+            'HR and payroll PostgreSQL integration', 'My Day PostgreSQL integration', 'My Day browser interactions'
+        ].map(name => ({ name, status: 'completed', conclusion: 'success' })) };
+}
+
+test('HR/payroll selects only the latest exact production push CI', () => {
+    const valid = successfulHrPayrollCi();
+    const invalid = [
+        { ...valid, databaseId: 30, workflowName: 'Unrelated workflow' },
+        { ...valid, databaseId: 31, event: 'pull_request' },
+        { ...valid, databaseId: 32, event: 'workflow_dispatch' },
+        { ...valid, databaseId: 33, headBranch: 'codex/hr-pay-release-review-20261003' },
+        { ...valid, databaseId: 34, headSha: LIVE_SHA }
+    ];
+    assert.equal(selectHrPayrollCiRun(invalid, HEAD_SHA), null);
+    assert.equal(selectHrPayrollCiRun([...invalid, valid, { ...valid, databaseId: 18 }], HEAD_SHA).databaseId, 18);
+});
+
+test('HR/payroll rejects green summaries with missing, skipped or failed required jobs', () => {
+    const valid = successfulHrPayrollCi();
+    assert.doesNotThrow(() => assertHrPayrollCiResult(valid, HEAD_SHA));
+    for (const required of valid.jobs) {
+        const missing = { ...valid, jobs: valid.jobs.filter(job => job.name !== required.name) };
+        assert.throws(() => assertHrPayrollCiResult(missing, HEAD_SHA), error => error.code === 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED');
+        for (const conclusion of ['skipped', 'failure', 'cancelled', 'neutral', '']) {
+            const changed = { ...valid, jobs: valid.jobs.map(job => job.name === required.name ? { ...job, conclusion } : job) };
+            assert.throws(() => assertHrPayrollCiResult(changed, HEAD_SHA), error => error.code === 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED');
+        }
+    }
+    assert.throws(() => assertHrPayrollCiResult({ ...valid, jobs: [...valid.jobs, valid.jobs[0]] }, HEAD_SHA), error => error.code === 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED');
+});
+
+test('HR/payroll revalidates exact CI identity and completion after waiting', () => {
+    const valid = successfulHrPayrollCi();
+    for (const override of [{ headSha: RELEASE_SHA }, { headBranch: 'other' }, { workflowName: 'other' }, { event: 'pull_request' }]) {
+        assert.throws(() => assertHrPayrollCiResult({ ...valid, ...override }, HEAD_SHA), error => error.code === 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
+    }
+    for (const override of [{ status: 'in_progress' }, { conclusion: 'failure' }, { conclusion: 'cancelled' }]) {
+        assert.throws(() => assertHrPayrollCiResult({ ...valid, ...override }, HEAD_SHA), error => error.code === 'PRODUCTION_BLOCK_CI_INCOMPLETE');
+    }
 });

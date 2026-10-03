@@ -293,9 +293,16 @@ function defaultRuntime() {
             fail(JSON.stringify(migrationFiles) === JSON.stringify(manifest.allowedMigrationFiles),
                 'Migration set drifted after authorization', 'PRODUCTION_BLOCK_MIGRATION_DRIFT');
             commandResult('git', ['push', 'origin', `HEAD:refs/heads/${manifest.allowedBranch}`], { inherit: true });
-            const exact = findExactCiRun(releaseSha);
+            const exact = findExactCiRun(releaseSha, { hrPayroll: manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL });
             fail(Boolean(exact), 'Exact-SHA GitHub CI run was not found', 'PRODUCTION_BLOCK_CI_NOT_FOUND');
             commandResult('gh', ['run', 'watch', String(exact.databaseId), '--exit-status'], { inherit: true });
+            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+                const ci = JSON.parse(commandResult('gh', ['run', 'view', String(exact.databaseId), '--json',
+                    'headSha,headBranch,workflowName,event,status,conclusion,jobs']));
+                assertHrPayrollCiResult(ci, releaseSha);
+                // CI can take minutes; check foreign live/remote drift again immediately before upload.
+                assertHrPayrollProductionBase(manifest, await liveVersion(), remoteProductionSha());
+            }
             commandResult('npm', ['run', 'release:railway-up', '--',
                 '--branch', manifest.allowedBranch,
                 '--commit', releaseSha,
@@ -494,15 +501,46 @@ async function resumeAuthorizedQa(manifest, releaseSha, dependencies = {}) {
     return executeQa(manifest, releaseSha);
 }
 
+const HR_PAYROLL_REQUIRED_CI_JOBS = Object.freeze([
+    'Fast baseline',
+    'Omni browser regression',
+    'Certificate redemption regression',
+    'Checkbox park PostgreSQL mock integration',
+    'HR Team browser smoke',
+    'HR and payroll PostgreSQL integration',
+    'My Day PostgreSQL integration',
+    'My Day browser interactions'
+]);
+
+function selectHrPayrollCiRun(runs, releaseSha) {
+    return runs.filter(run => run.headSha === releaseSha && run.headBranch === TARGET.branch
+        && run.workflowName === 'CI' && run.event === 'push')
+        .sort((left, right) => Number(right.databaseId) - Number(left.databaseId))[0] || null;
+}
+
+function assertHrPayrollCiResult(run, releaseSha) {
+    fail(run?.headSha === releaseSha && run.headBranch === TARGET.branch
+        && run.workflowName === 'CI' && run.event === 'push',
+    'HR/payroll requires the production push CI for the exact release SHA', 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
+    fail(run.status === 'completed' && run.conclusion === 'success',
+        'HR/payroll production CI is not successful', 'PRODUCTION_BLOCK_CI_INCOMPLETE');
+    const jobs = Array.isArray(run.jobs) ? run.jobs : [];
+    fail(HR_PAYROLL_REQUIRED_CI_JOBS.every(name => {
+        const matching = jobs.filter(job => job.name === name);
+        return matching.length === 1 && matching[0].status === 'completed' && matching[0].conclusion === 'success';
+    }), 'HR/payroll required CI jobs are missing, skipped or unsuccessful', 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED');
+}
+
 function findExactCiRun(releaseSha, options = {}) {
     const attempts = Number(options.attempts || 12);
     const delayMs = Number(options.delayMs || 5000);
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
         const runs = JSON.parse(commandResult('gh', [
             'run', 'list', '--commit', releaseSha, '--limit', '10',
-            '--json', 'databaseId,headSha,status,conclusion,url'
+            ...(options.hrPayroll ? ['--workflow', 'ci.yml', '--branch', TARGET.branch, '--event', 'push'] : []),
+            '--json', 'databaseId,headSha,headBranch,workflowName,event,status,conclusion,url'
         ]));
-        const exact = runs.find(run => run.headSha === releaseSha);
+        const exact = options.hrPayroll ? selectHrPayrollCiRun(runs, releaseSha) : runs.find(run => run.headSha === releaseSha);
         if (exact) return exact;
         if (attempt < attempts) childProcess.spawnSync(process.execPath, ['-e', `setTimeout(() => {}, ${delayMs})`], {
             cwd: ROOT, windowsHide: true, stdio: 'ignore'
@@ -689,6 +727,8 @@ module.exports = {
     applyReleaseNotes,
     assertExecuteDrift,
     assertHrPayrollProductionBase,
+    assertHrPayrollCiResult,
+    selectHrPayrollCiRun,
     defaultBlockFile,
     decodeQaScope,
     execute,

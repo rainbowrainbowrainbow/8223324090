@@ -9,6 +9,7 @@ Production impact: yes. Release readiness remains HOLD until all product and tes
 - Functional commit and a separate Ukrainian version/changelog commit precede manifest creation.
 - Manifest binds the prepared release SHA; even another descendant is rejected. No automatic bump after confirmation.
 - Live must still match the signed base before execution; remote production must match that base or the same prepared SHA for a CI retry. Foreign production changes stop before push.
+- Production execution selects only `ci.yml` / `CI` triggered by a push to the production branch at the exact SHA. All eight required jobs must complete successfully; a skipped job or a green unrelated workflow is rejected. Live/remote drift is checked again after CI, immediately before upload.
 - Fixed production identity, six-hour maximum validity, three attempts, exact confirmation and exact-SHA CI remain enforced.
 - Production QA is read-only. One-off/attendance/payroll writes run only on synthetic disposable PostgreSQL fixtures.
 - Rollback deploys the previous live code while retaining new journal structures and snapshots. No destructive SQL.

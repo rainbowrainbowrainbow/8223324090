@@ -1,3 +1,56 @@
+# HR-PAY-10 — підготовка випуску та точний залишковий блокер
+
+Production impact: yes. **HOLD: production не змінено; фінальний manifest ще не готовий до підтвердження.**
+
+## Виконано в межах погодження
+
+- Повторно прочитано AGENTS, production runbook та фактичні докази HR-PAY-09. Workflow `hr-payroll` уже був реалізований у кандидатові; його не підмінено іншою задачею.
+- Перевірено literal allowlist: 54 HR-PAY файли від актуальної live-бази, тільки `routes/payroll.js` та `.github/workflows/ci.yml` як дозволені Red paths, тільки `374_payroll_day_exceptions.sql`. CI diff додає лише завантаження HR-PAY browser evidence; triggers, permissions і secrets не змінено.
+- Посилено `scripts/production-block-controller.js`: пошук тільки `CI` / `ci.yml`, подія `push`, production-гілка і точний release SHA. Після очікування перевіряються всі 8 потрібних jobs; відсутній, skipped чи невдалий job зупиняє виконання. Перед upload повторно перевіряється live/remote drift.
+- `tests/production-block-controller.test.js`: **57/57 PASS**, включно зі стороннім Red path, зайвою міграцією, target/SHA drift, простроченням, 3 спробами, неправильним підтвердженням, чужим workflow/PR/feature CI та пропущеними required jobs.
+- Сумісність нового CI guard зі справжніми GitHub JSON metadata перевірена на відомому зеленому production run `37117533584`. Це перевірка формату guard, не доказ нового кандидата.
+- Актуальну live-базу `97269de204726f4de9f9e6dd80d6e14a25c0f981` приєднано merge без переписування історії. Збережені HR-PAY зміни, production UI та обидва переліки unit-тестів. Сторонні dirty зміни OneDrive не включено.
+- `node scripts/version-sync.js` — PASS для успадкованої live-версії `0.82.52`; це ще не новий HR-PAY release marker.
+
+Фінальний SHA цієї підготовки, локальний baseline, CI URL та результати jobs зберігаються після перевірки в [санітизованому доказі](../output/hr-pay/hr-pay-10-ci-proof.json). Повний локальний лог: `output/hr-pay/hr-pay-10-npm-test.log`. Скриншоти та `journey-evidence.json` exact-SHA CI зберігаються локально під `output/hr-pay/hr-pay10-browser-<SHA>/`.
+
+## Перевірена production identity та розходження
+
+- Live preflight: **0.82.52**, SHA `97269de204726f4de9f9e6dd80d6e14a25c0f981`, `codex/eventgenix-production`.
+- Railway: project `fortunate-appreciation` / `bc28b46c-d4bc-491c-893a-d8401c633668`, environment `production`, service `8223324090` / `3fb62d4c-2dc2-4701-8e2b-09ce16e188ee`, domain `8223324090-production.up.railway.app`. Активний deployment на момент preflight: `5eeb471e-002d-458f-8b40-8418da05b278`, SUCCESS. Жодного `railway link` або settings update.
+- Remote production на момент preflight: `7277b1987b05555c7e1ca8ad8f6593fb68c2965b`, клієнтський реліз після live. Його [CI 37118270373](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/37118270373) мав failure в `Omni browser regression / Run Omni lead links PostgreSQL integration`.
+- Чужий невипущений реліз не включено в HR-PAY payload і не переписано. Перед остаточним HR-PAY merge/manifest потрібно знову перевірити live/remote; автор іншого релізу має завершити свій випуск або надати інший погоджений стан production. Наявний controller зупиняє drift.
+
+## Блокер продукту, який не усувається allowlist controller
+
+Новий GET-аудит поточного live повторно підтвердив `403 staff_not_migrated` для зарплатних профілів. Аудит — 46 працівників / 59 пар, PARTIAL; суми й ПІБ у доказах не збережено. Файл: `output/hr-pay/hr-pay-10-api-preflight.json`.
+
+Причина — production membership gate у `requireLegacyBusinessSurface`, а не неправильна назва бізнесу чи відсутня зарплатна capability. Чинні `parkHrStaffCardRead` і `parkStaffScheduleAccess` відкривають лише конкретні кадрові/графікові маршрути. Дозволеного Park-шляху для профілів, dated conditions, винятків і зарплати немає. Actual-app доказ HR-PAY-09 чесно містить `journeyStatus: BLOCKED`, хоча окремі дозволені етапи розрахунку пройшли.
+
+HR-PAY-10 прямо забороняє змінювати **auth policy**. Дозвіл на payroll Red path у release controller не дає дозволу змінювати бізнес-доступ. Розширення ролей, інших бізнесів чи обхід 403 не виконувались.
+
+### Конкретний обсяг окремого погодження, необхідного для продовження
+
+Вузький Park HR/payroll доступ: тільки `event_genix` / `park`, чинне membership, чинні salary/attendance capabilities, перевірена належність даних Park. Потрібен список дозволених method+path для:
+
+1. HR-картки та налаштування професій/ставок, payroll profiles/версій і датованих призначень; без bulk apply або масового заповнення ставок.
+2. GET `/api/hr/staff/:id/payroll-conditions`, PUT `/api/hr/staff/:id/payroll-day-exception` та потрібних індивідуальних payroll-profile/scheme маршрутів.
+3. Фактичного часу, GET `/api/hr/salary` і зарплатного preview/range-preview/розшифрування; export лишається під чинною `export_data`.
+
+Реалізація повинна використовувати вузький route guard за зразком чинних Park guards; не відкривати весь namespace. Чинні action guards не видаляти, ролі/permission registry не розширювати. Невизначену власність запису, чужий бізнес, revoked membership і відсутню salary capability блокувати. Не відкривати confirm/reverse/payment/close/settlement mutations у межах цього доступу. Усі мутаційні перевірки — тільки synthetic isolated PostgreSQL; production QA — read-only.
+
+Після погодження потрібні позитивний membership-mode actual-app сценарій HR → графік → виняток → фактичний час → зарплата та негативні тести чужого бізнесу/відкликаного membership/відсутності доступу до сум. Нові файли guard і регресій тоді включаються до exact HR-PAY allowlist окремою перевіреною зміною.
+
+## Що навмисно ще не виконано
+
+Новий patch, release/cache/changelog commit, hash-bound manifest, production push і deploy не виконано: кандидат поки не відповідає продуктовому gate та live/remote не збігаються. Не видано fake controller confirmation. Після зняття блокерів треба повторно вибрати вільний patch, підготувати окремий український release commit, пройти exact-SHA CI й лише тоді показати один фінальний controller confirmation.
+
+Rollback reference на момент preflight — live `97269de204726f4de9f9e6dd80d6e14a25c0f981`. Відкат лише коду через repository helper; журнал migration 374 і snapshots зберігаються. Перед фінальним manifest reference потрібно повторно звірити. Destructive SQL, backfill, зміни реальних кадрових записів, нарахувань і виплат заборонені та не виконані.
+
+Нижче збережена історія HR-PAY-09/08/07; її старі live SHA не є поточною релізною базою.
+
+---
+
 # HR-PAY-09 — PostgreSQL, actual-app browser та аудит
 
 Production impact: yes. **Випуск: HOLD. Повний production-сценарій не підтверджений через чинне бізнес-обмеження HR/payroll.**

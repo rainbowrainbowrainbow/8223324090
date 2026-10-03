@@ -260,6 +260,11 @@ window.CostingWorkspace = (() => {
         select.replaceChildren(new Option(state.plans.length ? 'Оберіть виконання' : 'Планів ще немає', ''));
         state.plans.forEach(plan => select.add(new Option(`${plan.execution_label} · ${plan.execution_date}`, plan.id)));
         select.value = state.plans.some(plan => String(plan.id) === previous) ? previous : '';
+        const management = $('costManagementPlan');
+        const selectedManagement = management.value;
+        management.replaceChildren(new Option(state.plans.length ? 'Оберіть виконання' : 'Планів ще немає', ''));
+        state.plans.forEach(plan => management.add(new Option(`${plan.execution_label} · ${plan.execution_date}`, plan.id)));
+        management.value = state.plans.some(plan => String(plan.id) === selectedManagement) ? selectedManagement : '';
         renderGroupMembers();
         if (!state.plans.length) { list.textContent = 'Планів поки немає.'; state.actual = null; $('costActualSummary').textContent = 'Спочатку збережіть план.'; return; }
         list.innerHTML = state.plans.map(plan => `<article><div><strong>${escapeHtml(plan.execution_label)}</strong><br><small>${escapeHtml(plan.execution_date)} · ${escapeHtml(plan.template_name)} · v${escapeHtml(String(plan.version_number))}</small></div><div>Внесок: <strong>${uahFromMinor(plan.contribution_minor)}</strong></div></article>`).join('');
@@ -496,12 +501,102 @@ window.CostingWorkspace = (() => {
         } catch (error) { groupStatus(error.message, true); }
     }
 
+    function managementStatus(elementId, message, error = false) {
+        const element = $(elementId);
+        element.hidden = !message;
+        element.classList.toggle('error', error);
+        element.textContent = error ? friendlyError(message) : message;
+    }
+
+    async function loadManagementSources() {
+        const select = $('costManagementSource');
+        select.replaceChildren(new Option('Оберіть фактичне джерело', ''));
+        const planId = $('costManagementPlan').value;
+        if (!planId) return;
+        try {
+            const detail = await apiRequest('GET', `/api/finance/costing/actual/plans/${encodeURIComponent(planId)}`);
+            detail.sources.forEach(source => select.add(new Option(
+                `${source.external_id} · ${source.category} · ${uahFromMinor(source.amount_minor)} · ${source.evidence_state === 'confirmed' ? 'підтверджено вручну' : 'оцінка'}`,
+                source.id
+            )));
+            const plan = state.plans.find(item => String(item.id) === planId);
+            if (plan) {
+                $('costManagementPerformedOn').value = plan.execution_date;
+                $('costManagementEffectOn').value = plan.execution_date;
+            }
+        } catch (error) { managementStatus('costManagementLinkStatus', error.message, true); }
+    }
+
+    async function savePerformance() {
+        try {
+            const planId = $('costManagementPlan').value;
+            if (!planId) throw new Error('Оберіть виконання');
+            const url = `/api/finance/costing/management/plans/${encodeURIComponent(planId)}/performance`;
+            const current = await apiRequest('GET', url);
+            const evidenceType = $('costManagementEvidence').value;
+            const payload = { expectedRevision: current.current?.revision_number || 0, state: 'performed',
+                performedOn: $('costManagementPerformedOn').value, evidenceType,
+                reason: $('costManagementPerformanceReason').value.trim() };
+            if (evidenceType === 'attendance') payload.evidenceId = $('costManagementAttendanceId').value.trim();
+            await apiRequest('POST', url, payload);
+            $('costManagementEffectOn').value = payload.performedOn;
+            managementStatus('costManagementPerformanceStatus', 'Факт виконання додано до незмінної історії.');
+        } catch (error) { managementStatus('costManagementPerformanceStatus', error.message, true); }
+    }
+
+    async function saveManagementLink() {
+        try {
+            const sourceId = $('costManagementSource').value;
+            if (!sourceId) throw new Error('Оберіть підтверджене фактичне джерело');
+            const url = `/api/finance/costing/management/sources/${encodeURIComponent(sourceId)}/links`;
+            const current = await apiRequest('GET', url);
+            const payload = { expectedRevision: current.current?.revision_number || 0,
+                kind: $('costManagementKind').value, effectOn: $('costManagementEffectOn').value,
+                reason: $('costManagementLinkReason').value.trim() };
+            for (const [field, elementId] of [
+                ['financeTransactionId', 'costManagementFinanceId'], ['paymentOrderId', 'costManagementPaymentOrderId'],
+                ['paymentRefundId', 'costManagementRefundId'], ['originalLinkId', 'costManagementOriginalLinkId'],
+                ['payrollInstallmentId', 'costManagementPayrollId'], ['hrTimeRecordId', 'costManagementTimeId'],
+                ['confirmedMinutes', 'costManagementMinutes']
+            ]) {
+                const value = $(elementId).value.trim();
+                if (value) payload[field] = value;
+            }
+            if ($('costManagementHourlyRate').value.trim()) {
+                payload.hourlyRateMinor = minorFromUah($('costManagementHourlyRate').value, 'Погодинна ставка');
+            }
+            const saved = await apiRequest('POST', url, payload);
+            managementStatus('costManagementLinkStatus', `Зв’язок #${saved.link.id} збережено як ревізію ${saved.link.revision_number}. Оновіть звіт.`);
+        } catch (error) { managementStatus('costManagementLinkStatus', error.message, true); }
+    }
+
+    async function loadManagementReport() {
+        const result = $('costManagementSummary');
+        try {
+            const from = $('costManagementFrom').value;
+            const to = $('costManagementTo').value;
+            const data = await apiRequest('GET', `/api/finance/costing/management/pnl?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+            result.innerHTML = `<div class="cost-result-grid">
+                <div>Зароблена виручка<strong>${uahFromMinor(data.summary.earnedRevenueMinor)}</strong></div>
+                <div>Прямі й зарплатні витрати<strong>${uahFromMinor(data.summary.directCostMinor)}</strong></div>
+                <div>Управлінський внесок<strong>${uahFromMinor(data.summary.contributionMinor)}</strong></div>
+            </div><p>Лише звірені операції: ${data.lines.length}. Нерозв’язані зв’язки: ${data.unresolved.length}.
+            Незв’язані старі finance-транзакції: ${data.legacyUnlinked.finance.count}; фактичні джерела без зв’язку: ${data.legacyUnlinked.costingSourceCount}. Ці суми не додано до підсумку.</p>
+            <div class="cost-actual-history">${data.lines.map(line => `<article>${escapeHtml(line.kind)} · ${escapeHtml(line.effectOn)} · ${uahFromMinor(line.amountMinor)} · ${escapeHtml(line.provenance)}</article>`).join('')}</div>`;
+        } catch (error) { result.textContent = friendlyError(error.message); }
+    }
+
     async function load() {
         if (!state.initialized) {
             state.initialized = true;
             const today = new Date().toISOString().slice(0, 10);
             $('costEffectiveFrom').value = today;
             $('costExecutionDate').value = today;
+            $('costManagementFrom').value = `${today.slice(0, 8)}01`;
+            $('costManagementTo').value = today;
+            $('costManagementPerformedOn').value = today;
+            $('costManagementEffectOn').value = today;
+            $('costManagementAttendanceId').disabled = true;
             $('costTemplateSelect').addEventListener('change', () => { selectTemplate().catch(error => status(error.message, true)); });
             $('costAddLine').addEventListener('click', () => addLine());
             $('costSaveTemplate').addEventListener('click', saveTemplate);
@@ -522,6 +617,13 @@ window.CostingWorkspace = (() => {
             $('costCreateGroup').addEventListener('click', createGroup);
             $('costSaveGroupRevision').addEventListener('click', saveGroupRevision);
             $('costGroupSelect').addEventListener('change', loadGroup);
+            $('costManagementPlan').addEventListener('change', loadManagementSources);
+            $('costManagementPerform').addEventListener('click', savePerformance);
+            $('costManagementLink').addEventListener('click', saveManagementLink);
+            $('costManagementRefresh').addEventListener('click', loadManagementReport);
+            $('costManagementEvidence').addEventListener('change', () => {
+                $('costManagementAttendanceId').disabled = $('costManagementEvidence').value !== 'attendance';
+            });
             $('costSourceCategory').addEventListener('change', () => {
                 $('costSourceSemantic').value = $('costSourceCategory').value === 'direct_cost' ? 'cost' : 'charge';
             });

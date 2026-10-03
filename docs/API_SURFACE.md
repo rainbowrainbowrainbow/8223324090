@@ -125,6 +125,7 @@ is owned by the parent router.
 
 | Public Mount | Route File | Parent Route File | Owner |
 | --- | --- | --- | --- |
+| `/api/finance/costing/management` | `routes/finance-costing-management.js` | `routes/finance-costing.js` | Performance and economic reconciliation under costing/finance guards |
 | `/api/finance/costing/actual` | `routes/finance-costing-actual.js` | `routes/finance-costing.js` | Append-only execution evidence and groups under costing/finance guards |
 | `/api/finance/costing` | `routes/finance-costing.js` | `routes/finance.js` | Versioned service costing under existing finance access guards |
 | `/api/hermes` | `routes/hermes-schedule.js` | `routes/hermes.js` | Hermes staff and schedule reads after Hermes API-key authentication |

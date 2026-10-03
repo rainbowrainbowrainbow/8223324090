@@ -224,5 +224,6 @@ router.get('/plans', async (req, res) => {
 });
 
 router.use('/actual', require('./finance-costing-actual'));
+router.use('/management', require('./finance-costing-management'));
 
 module.exports = router;

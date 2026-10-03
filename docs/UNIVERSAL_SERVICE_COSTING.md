@@ -28,22 +28,25 @@ The canonical source preview reads `bookings`, `education_attendance` plus its b
 
 Execution detail and group reads use one PostgreSQL repeatable-read, read-only snapshot, so a concurrent correction cannot mix an active source from one moment with history or completion from another.
 
-## Payroll and P&L boundary
+## Local management P&L bridge (migration 378)
 
-`payroll_reports` are monthly staff aggregates, while `payroll_installments` have approval and single-business allocation fields. Neither table assigns a cost to one costing execution. `payroll_payment_movements` represent payout movements, not necessarily the earning expense. The pure payroll candidate contract therefore requires an approved report/installment, matching business, and explicit execution earning allocation; even a verified candidate is never posted by this slice. No existing payroll amount, report, installment, payment, or closed period is changed.
+The owner accepted these narrow base rules: service revenue is earned after confirmed performance; cash payment/deposit is separate; a refund is retained separately with a link to the original payment; piecework belongs to one execution, hourly labor uses confirmed time, and unallocated payroll remains a business-level cost. This local slice does **not** resolve subscription allocation, no-show/cancellation recognition dates, or overhead distribution.
 
-The reconciliation bridge remains read-only because three accounting rules are unresolved:
+Migration 378 adds only append-only costing-domain performance and reconciliation events. An operator can attest performance for an execution or bind a `present` Education attendance row on that lesson date. The latest performance event is checked again at report time; voiding or changing it withholds linked revenue. `costing_management_links` bind an active confirmed actual-source revision to a canonical finance transaction or explicit revenue correction. A corrected source invalidates its old link until a reasoned new link revision is saved. Stale `expectedRevision` writes return 409. Estimates and plan snapshots never enter the management subtotal.
 
-1. Which booking, payment, invoice, or subscription event recognizes earned revenue, and on which date?
-2. How do refunds and reversals affect recognized revenue and historical periods?
-3. Which payroll earning/allocation and shared-cost source is canonical, and how is an existing finance transaction deduplicated?
+`GET /api/finance/costing/management/pnl?from=...&to=...` is a separate, repeatable-read management projection. For an earned booking service, the linked **finance transaction is the monetary source of truth**, while the performance event sets the recognition date. Payment orders are cash references only and are not summed a second time. Direct expenses likewise use the matching finance row. An explicit negative confirmed revenue source, linked to the prior earned-revenue event and—when its semantic is `refund`—a matching completed cash refund, creates a separate correction on its reviewed effect date. A payment refund alone never reduces earned revenue. Duplicate finance or refund claims and corrections larger than the original earned amount fail closed.
 
-Until those decisions are agreed and tested against the existing P&L, plan snapshots and manual actual assertions must not be inserted into current P&L totals. Kitchen remains excluded.
+Approved, single-business payroll installments can be allocated by execution as piecework or as hourly work when the scoped HR time record has a non-auto-closed clock-out, exact confirmed minutes, the same staff member, and a half-up minor-unit rate calculation. Allocated shares may not exceed the approved installment or the linked finance expense. The finance transaction is counted **once**: execution shares are attributed to the plans, and its remaining balance is a business-level payroll cost. A later change to payroll, time, refund, booking, source evidence, or performance blocks the affected link on the next read. Existing `payroll_reports`, installments, payment rows, finance rows, and closed periods are not edited.
 
-## Next bounded slices
+Unlinked legacy finance transactions and plan sources are reported separately as unresolved and are never guessed into the linked-operation subtotal. The existing `/api/finance/report/pnl` stays byte-for-byte unchanged and retains its historical totals. The new subtotal is not additive to that legacy report. Source corrections and explicit re-linking preserve history; no migration backfills old records or changes existing recognition dates.
 
-1. Resolve canonical booking, cashier/payment, subscription, and payroll identities and recognition policies; then implement read-only source adapters with exact allocation and deduplication tests.
-2. After reconciliation tests, add a guarded P&L adapter that consumes only the approved canonical posted sources. Never sum plan snapshots or manual assertions into P&L.
-3. Model multi-session course and day-pass operational linkage to the execution/group contract. Kitchen stays excluded.
+The disposable PostgreSQL integration test exercises (1) a deposit/payment before performance followed by earned revenue on the lesson date, (2) a cash refund that has no effect until a separate linked negative correction, and (3) piecework plus confirmed hourly time against one payroll finance expense with a business-level remainder. It also checks tenant isolation, concurrent finance claims, stale revisions, source/performance/refund/time invalidation, unchanged legacy P&L, and no writes to canonical finance/payment/payroll tables. With `COSTING_BROWSER_E2E=1`, the same real route and database test opens the finance page in local Chromium and verifies all three report states and tablet layout.
 
-Booking, payment, payroll, permissions, and production migration/deployment are outside this first local slice and require their own guarded review before modification.
+## Remaining policy gates
+
+1. Subscription allocation across lessons, including no-shows, cancellations, and date changes. The current bridge rejects a non-booking payment-order identity.
+2. Direct service revenue without a canonical booking or matching finance income, including unpaid receivables and invoice recognition. Such items remain unresolved.
+3. Shared overhead distribution and historic finance rows without an exact operation link. The management subtotal intentionally excludes them.
+4. Any merge of the separate management projection into the existing P&L endpoint, production migration, or operational data repair requires its own guarded review and authorization.
+
+Kitchen remains excluded.

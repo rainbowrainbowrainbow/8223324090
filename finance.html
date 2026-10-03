@@ -1677,6 +1677,45 @@
                         <div id="costGroupHistory" class="cost-actual-history"></div>
                         <div id="costGroupStatus" class="cost-status" role="status" hidden></div>
                     </section>
+                    <section class="cost-card cost-wide" aria-labelledby="costManagementHeading">
+                        <h3 id="costManagementHeading">Управлінський P&amp;L · звірені операції</h3>
+                        <p>Окремий звіт за підтвердженим виконанням і явними зв’язками з finance ledger. Оплати й завдатки до виконання, незв’язані старі транзакції та оцінки залишаються поза підсумком. Чинний P&amp;L не змінюється.</p>
+                        <h4>Факт виконання</h4>
+                        <div class="cost-grid">
+                            <label>План<select id="costManagementPlan"></select></label>
+                            <label>Дата виконання<input id="costManagementPerformedOn" type="date"></label>
+                            <label>Підстава<select id="costManagementEvidence"><option value="operator">Підтвердження оператора</option><option value="attendance">Education attendance: present</option></select></label>
+                            <label>ID attendance<input id="costManagementAttendanceId" inputmode="numeric" placeholder="Лише для Education"></label>
+                            <label class="cost-wide">Причина / перевірка<input id="costManagementPerformanceReason" maxlength="300" placeholder="Що підтверджує виконання"></label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costManagementPerform" class="btn-page-secondary">Підтвердити виконання</button></div>
+                        <div id="costManagementPerformanceStatus" class="cost-status" role="status" hidden></div>
+                        <h4>Зв’язати підтверджений факт</h4>
+                        <p>Для виручки й прямих витрат потрібна точна finance-транзакція. Відрядна/погодинна праця додатково потребує схваленої payroll-виплати; повернення — окремого від’ємного факту та посилання на первинну операцію.</p>
+                        <div class="cost-grid">
+                            <label>Фактичне джерело<select id="costManagementSource"></select></label>
+                            <label>Ефект<select id="costManagementKind"><option value="earned_revenue">Зароблена виручка</option><option value="direct_cost">Пряма витрата</option><option value="piecework">Відрядна праця</option><option value="hourly">Погодинна праця</option><option value="revenue_correction">Коригування виручки</option><option value="unresolved">Зняти зі звірки</option></select></label>
+                            <label>Дата ефекту<input id="costManagementEffectOn" type="date"></label>
+                            <label>ID finance-транзакції<input id="costManagementFinanceId" inputmode="numeric"></label>
+                            <label>ID платіжного замовлення<input id="costManagementPaymentOrderId" inputmode="numeric"></label>
+                            <label>ID повернення<input id="costManagementRefundId" inputmode="numeric"></label>
+                            <label>ID первинного зв’язку<input id="costManagementOriginalLinkId" inputmode="numeric"></label>
+                            <label>ID payroll-виплати<input id="costManagementPayrollId" inputmode="numeric"></label>
+                            <label>ID запису часу<input id="costManagementTimeId" inputmode="numeric"></label>
+                            <label>Підтверджені хвилини<input id="costManagementMinutes" inputmode="numeric"></label>
+                            <label>Погодинна ставка, ₴<input id="costManagementHourlyRate" inputmode="decimal"></label>
+                            <label class="cost-wide">Причина зв’язку<input id="costManagementLinkReason" maxlength="300" placeholder="Підстава економічного ефекту"></label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costManagementLink" class="btn-page-secondary">Зберегти зв’язок</button></div>
+                        <div id="costManagementLinkStatus" class="cost-status" role="status" hidden></div>
+                        <h4>Перегляд звіту</h4>
+                        <div class="cost-grid">
+                            <label>Від<input id="costManagementFrom" type="date"></label>
+                            <label>До<input id="costManagementTo" type="date"></label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costManagementRefresh" class="btn-page-secondary">Оновити управлінський P&amp;L</button></div>
+                        <div id="costManagementSummary" class="cost-actual-summary" role="status">Оберіть період для звіту.</div>
+                    </section>
                 </div>
             </div>
             </section>

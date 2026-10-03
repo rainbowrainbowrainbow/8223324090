@@ -376,7 +376,11 @@ function renderDesignGrid() {
     const grid = document.getElementById('designGrid');
     if (designs.length === 0) {
         reconcileDesignThumbnailUrls(new Set());
-        grid.innerHTML = '<div class="empty-state"><span>🎨</span>Немає дизайнів. Перетягніть файли у зону завантаження.</div>';
+        const hasFilters = Boolean(document.getElementById('searchInput')?.value.trim()
+            || document.getElementById('collectionFilter')?.value || activePinFilter || activeTagFilter);
+        grid.innerHTML = hasFilters
+            ? '<div class="empty-state" role="status"><span>🔎</span>Дизайнів за цими фільтрами не знайдено. Змініть пошук або скиньте фільтри.</div>'
+            : '<div class="empty-state" role="status"><span>🎨</span>Немає дизайнів. Перетягніть файли у зону завантаження.</div>';
         return;
     }
 

@@ -2065,9 +2065,10 @@ async function fetchCustomers() {
     if (hasVisitBound(CrmState.filters.maxVisits)) params.set('maxVisits', CrmState.filters.maxVisits);
 
     const tableBody = document.getElementById('customerTableBody');
+    const columnCount = tableBody?.closest('table')?.querySelectorAll('thead th').length || 7;
     const birthdaySummary = document.getElementById('customerBirthdaySegmentSummary');
     if (birthdaySummary) { birthdaySummary.hidden = true; birthdaySummary.textContent = ''; }
-    if (tableBody) tableBody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
+    if (tableBody) tableBody.innerHTML = `<tr><td colspan="${columnCount}" class="empty-state">Завантаження...</td></tr>`;
 
     try {
         const res = await fetch(customerApiUrl(`/api/customers?${params}`), {
@@ -2098,7 +2099,10 @@ async function fetchCustomers() {
         return true;
     } catch (err) {
         if (err?.name === 'AbortError') return false;
-        if (requestSeq === customersRequestSeq) throw err;
+        if (requestSeq === customersRequestSeq) {
+            renderCustomerLoadError(tableBody, columnCount);
+            throw err;
+        }
         return false;
     }
 }
@@ -2113,8 +2117,7 @@ async function reloadCustomers() {
     } catch (err) {
         const tbody = document.getElementById('customerTableBody');
         if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="7" role="alert">Не вдалося завантажити клієнтів. <button type="button" class="btn-page-secondary" data-customers-retry>Повторити</button></td></tr>';
-            tbody.querySelector('[data-customers-retry]')?.addEventListener('click', reloadCustomers);
+            renderCustomerLoadError(tbody, tbody.closest('table')?.querySelectorAll('thead th').length || 7);
         }
         const pagination = document.getElementById('pagination');
         if (pagination) pagination.innerHTML = '';
@@ -2135,6 +2138,12 @@ async function applyCustomerTagFilter(tag) {
         if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Не вдалося завантажити клієнтів. Спробуйте ще раз.</td></tr>';
         showNotification(err.message || 'Помилка завантаження клієнтів.', 'error');
     }
+}
+
+function renderCustomerLoadError(tableBody, columnCount) {
+    if (!tableBody) return;
+    tableBody.innerHTML = `<tr><td colspan="${columnCount}" class="empty-state" role="alert">Не вдалося завантажити клієнтів. <button type="button" class="btn-page-secondary" data-customers-retry>Повторити</button></td></tr>`;
+    tableBody.querySelector('[data-customers-retry]')?.addEventListener('click', reloadCustomers);
 }
 
 async function fetchStats() {

@@ -242,6 +242,21 @@ html[data-theme="dark"] .customer-filter-reset {
     overflow: auto;
 }
 
+/* Empty, loading and error rows use the available width instead of data-column sizing. */
+.customer-list-table:has(#customerTableBody > tr > td[colspan]) {
+    min-width: 0;
+    table-layout: fixed;
+}
+
+.customer-list-table:has(#customerTableBody > tr > td[colspan]) thead {
+    display: none;
+}
+
+.customer-list-table td[colspan] {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .customer-list-table thead th {
     position: sticky;
     top: 0;

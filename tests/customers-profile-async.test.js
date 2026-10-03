@@ -21,7 +21,7 @@ function customerHarness() {
     const end = customersSource.indexOf('async function fetchStats()', start);
     assert.ok(start >= 0 && end > start, 'customer reload lifecycle exists');
 
-    const dom = new JSDOM('<table><tbody id="crmTableBody"></tbody></table><div id="pagination"></div>', {
+    const dom = new JSDOM('<table><tbody id="customerTableBody"></tbody></table><div id="pagination"></div>', {
         runScripts: 'outside-only',
         url: 'https://crm.test/customers'
     });

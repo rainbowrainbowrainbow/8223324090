@@ -1036,6 +1036,12 @@
         .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
 
         .fa-shell { display: grid; gap: 18px; margin-bottom: 18px; }
+        .fa-period-controls { margin: 0; }
+        .fa-period-controls label { display: grid; gap: 4px; color: var(--gray-600); font-size: var(--font-sm); }
+        .fin-load-error { color: var(--gray-800); }
+        .dark-mode .fin-load-error { color: #e2e8f0; }
+        .fin-load-retry { min-height: 44px; margin-top: 12px; padding: 8px 16px; border: 0; border-radius: var(--radius-sm); background: #065f46; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+        .fin-load-retry:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
         .fa-hero {
             display: flex;
             justify-content: space-between;
@@ -1269,6 +1275,14 @@
                         <button type="button" class="fa-mode-btn" data-mode="insights" role="tab" aria-selected="false">Інсайти</button>
                     </div>
                 </header>
+                <div id="financePeriodControls" class="fin-filters fa-period-controls" role="group" aria-label="Період фінансової аналітики">
+                    <label for="dateFromFilter">Від
+                        <input type="date" id="dateFromFilter" class="fin-filter-date" title="Від">
+                    </label>
+                    <label for="dateToFilter">До
+                        <input type="date" id="dateToFilter" class="fin-filter-date" title="До">
+                    </label>
+                </div>
                 <div id="faExecutiveZone" class="fa-executive-grid" aria-live="polite"></div>
                 <div id="faActionRail" class="fa-action-rail" aria-label="Швидкі фінансові дії"></div>
                 <div id="faWorkspace" class="fa-workspace" aria-live="polite"></div>
@@ -1355,8 +1369,6 @@
                         <option value="transfer">Переказ</option>
                         <option value="mixed">Змішаний</option>
                     </select>
-                    <input type="date" id="dateFromFilter" class="fin-filter-date" title="Від">
-                    <input type="date" id="dateToFilter" class="fin-filter-date" title="До">
                 </div>
 
                 <!-- Table -->

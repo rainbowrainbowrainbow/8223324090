@@ -115,9 +115,10 @@ function formatMoney(amount) {
 
 function formatDate(dateStr) {
     if (!dateStr) return '—';
-    const parts = dateStr.split('-');
-    if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
-    return dateStr;
+    const value = String(dateStr);
+    const parts = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/);
+    if (parts) return `${parts[3]}.${parts[2]}.${parts[1]}`;
+    return value;
 }
 
 function formatCompactMoney(amount) {
@@ -176,9 +177,14 @@ function getAnalyticsParams() {
 
 function getInitialFinanceMode() {
     const params = new URLSearchParams(window.location.search);
-    const mode = params.get('mode') || params.get('tab');
-    if (mode === 'operations') return 'operations';
-    if (mode === 'insights') return 'insights';
+    const mode = params.get('mode');
+    if (['overview', 'operations', 'insights'].includes(mode)) return mode;
+    const tab = params.get('tab');
+    if (tab === 'insights') return 'insights';
+    if (['dashboard', 'transactions', 'operations', 'shift', 'cash', 'forecast',
+        'pnl', 'debts', 'monthly', 'salary', 'budget', 'advanced', 'accounts', 'personal'].includes(tab)) {
+        return 'operations';
+    }
     return 'overview';
 }
 
@@ -2303,6 +2309,14 @@ function populateYearFilter() {
 // MODE / TAB SWITCHING
 // ==========================================
 
+function updateFinancePeriodControls() {
+    const controls = document.getElementById('financePeriodControls');
+    if (!controls) return;
+    const visible = FinState.mode !== 'operations'
+        || ['transactions', 'dashboard'].includes(FinState.currentTab);
+    controls.style.display = visible ? '' : 'none';
+}
+
 function setFinanceMode(mode, options = {}) {
     if (!['overview', 'operations', 'insights'].includes(mode)) mode = 'overview';
     FinState.mode = mode;
@@ -2324,6 +2338,7 @@ function setFinanceMode(mode, options = {}) {
     if (workspace) workspace.style.display = isOperations ? 'none' : '';
     if (operationsNav) operationsNav.style.display = isOperations ? '' : 'none';
     if (operationsWorkspace) operationsWorkspace.style.display = isOperations ? '' : 'none';
+    updateFinancePeriodControls();
 
     if (isOperations) {
         if (options.switchTab !== false) switchTab(options.tab || FinState.currentTab || 'transactions', { preserveMode: true });
@@ -2336,6 +2351,7 @@ function switchTab(tabName, options = {}) {
     if (!tabName) tabName = 'transactions';
     FinState.currentTab = tabName;
     if (!options.preserveMode) setFinanceMode('operations', { switchTab: false });
+    updateFinancePeriodControls();
 
     document.querySelectorAll('.fin-tab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === tabName);
@@ -3174,10 +3190,11 @@ window.markPaid = async function(bookingId) {
 // ==========================================
 
 async function loadAdvancedDashboard() {
+    const container = document.getElementById('advancedContent');
+    if (!container) return;
+    container.innerHTML = '<p role="status">Завантаження фінансової панелі…</p>';
     try {
         const data = await apiRequest('GET', '/api/finance/advanced-dashboard');
-        const container = document.getElementById('advancedContent');
-        if (!container) return;
 
         const m = data.metrics;
         let html = `<div class="fin-stats">
@@ -3275,6 +3292,8 @@ async function loadAdvancedDashboard() {
         container.innerHTML = html;
     } catch (err) {
         console.error('Failed to load advanced dashboard', err);
+        container.innerHTML = '<div class="fin-chart fin-load-error" role="alert"><p>Не вдалося завантажити фінансову панель. Дані недоступні.</p><button type="button" class="fin-load-retry">Спробувати ще раз</button></div>';
+        container.querySelector('button').addEventListener('click', loadAdvancedDashboard);
     }
 }
 

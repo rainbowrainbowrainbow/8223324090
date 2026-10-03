@@ -1569,7 +1569,7 @@ async function loadLeadCustomerSearchFallback(search) {
         try {
             const params = new URLSearchParams({ q: query });
             const res = await fetch(leadApiUrl(`/api/customers/search?${params}`), {
-                headers: getHeaders(false)
+                headers: getAuthHeaders(false)
             });
             if (!res || res.status === 401 || res.status === 403 || !res.ok) continue;
             const payload = await res.json().catch(() => []);

@@ -51,7 +51,8 @@ test('each cost component accepts API decimals while external costs retain their
 test('package numeric strings and overrides give the same totals as numeric payloads', () => {
     const calculate = runtime(records);
     const result = calculate('calcPackageTotals({services:[{serviceId:1},{serviceId:2},{serviceId:3,overridePrice:"90.00"}]})');
-    assert.equal(result.totalPerChild, 220);
+    assert.equal(result.totalPerChild, 211);
+    assert.equal(result.totalAll, 3170);
     assert.deepEqual(result.rows.map(row => row.price), [10, 120, 90]);
     assert.equal(result.totalDuration, 90);
     assert.equal(calculate('calcPackageTotals({services:[{serviceId:3,overridePrice:0}]}).totalPerChild'), 80);
@@ -61,6 +62,22 @@ test('package manual child count uses the same 1–99 limits as its stepper', ()
     for (const [input, expected] of [['100', 99], ['-2', 1], ['15', 15], ['', 15]]) {
         const calculate = runtime(records, { currentTab: 'packages', document: { getElementById: () => ({ value: input }) } });
         assert.equal(calculate('getKidsCount()'), expected);
+    }
+});
+
+test('package price follows group-entry rules and agrees with the constructor', () => {
+    const services = [
+        { id: 1, name: 'Entry', priceType: 'fixed', pricePerChild: '10.00', entryRule: { 8: 1, 16: 2, 99: 3 } },
+        { id: 2, name: 'Activities', priceType: 'fixed', pricePerChild: '1060.00', durationMin: 128 }
+    ];
+    const pkg = { services: [{ serviceId: 1 }, { serviceId: 2 }] };
+    for (const [kids, expectedTotal] of [[1, 1070], [15, 15920], [99, 104970]]) {
+        const calculate = runtime(services, { currentKidsCount: kids, currentDiscount: 0 });
+        const packageTotals = calculate(`calcPackageTotals(${JSON.stringify(pkg)})`);
+        const constructorTotals = calculate('calcTotals()');
+        assert.equal(packageTotals.totalAll, expectedTotal);
+        assert.equal(packageTotals.totalAll, constructorTotals.totalAll);
+        assert.equal(packageTotals.totalPerChild, constructorTotals.totalPerChild);
     }
 });
 
@@ -92,6 +109,35 @@ test('package cards activate by Enter/Space without hijacking nested controls', 
     } finally {
         dom.window.close();
     }
+});
+
+test('rendered package total matches the rendered constructor at unchanged inputs', () => {
+    const dom = new JSDOM('<div id="gradContent"></div>', {
+        url: 'http://localhost/graduation', runScripts: 'dangerously'
+    });
+    const fixtures = [
+        { id: 1, name: 'Entry', priceType: 'fixed', pricePerChild: 10, entryRule: { 8: 1, 16: 2, 99: 3 }, category: 'additional' },
+        { id: 2, name: 'Activities', priceType: 'fixed', pricePerChild: 1060, durationMin: 128, category: 'main' }
+    ];
+    const { window } = dom;
+    try {
+        window.AppState = { currentUser: { role: 'creator' } };
+        window.resolveCapability = () => ({ allowed: true });
+        window.eval(source.replace('    // Public API', `
+            services = ${JSON.stringify(fixtures)};
+            packages = [{name:'Fixture',slug:'best-dj',services:[{serviceId:1},{serviceId:2}]}];
+            selectedServiceIds = new Set([1,2]);
+            userRole = 'creator';
+            window.renderPackagesFixture = () => renderPackages(document.getElementById('gradContent'));
+            window.renderConstructorFixture = () => renderConstructor(document.getElementById('gradContent'));
+            // Public API`));
+        window.renderPackagesFixture();
+        const packageText = window.document.querySelector('.grad-pkg-total-line').textContent.replace(/\s/g, '');
+        assert.match(packageText, /15920/);
+        window.renderConstructorFixture();
+        const constructorText = window.document.querySelector('.grad-summary-main').textContent.replace(/\s/g, '');
+        assert.match(constructorText, /15920/);
+    } finally { dom.window.close(); }
 });
 
 test('Escape closes the local info modal without removing the sidebar', async () => {

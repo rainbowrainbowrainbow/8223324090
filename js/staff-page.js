@@ -5160,7 +5160,7 @@ function schedulePaidRoleRate(scope, professionKey) {
     }
     const legacy = scheduleExplicitProfessionRate(staff[0], professionKey);
     if (scope === 'schedule' && !scheduleCanViewPayrollAmounts()
-        && (legacy.available || ['HR_SHIFT_PAID_ROLE_RATE_REQUIRED','HR_SHIFT_PAID_ROLE_RATE_UNIT_UNSUPPORTED'].includes(legacy.code))) {
+        && ['HR_SHIFT_PAID_ROLE_RATE_REQUIRED','HR_SHIFT_PAID_ROLE_RATE_UNIT_UNSUPPORTED'].includes(legacy.code)) {
         // Schedule access permits editing the plan. The write API validates dated pay
         // without disclosing amounts or trusting an undated legacy hourly flag.
         return {...legacy,available:true,rate:null,pendingServerValidation:true,reason:''};

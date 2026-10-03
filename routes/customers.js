@@ -10,11 +10,17 @@ const { BUSINESS_CERTIFICATE_FILTER } = require('../services/certificateQa');
 const { createLogger } = require('../utils/logger');
 const { exportLimiter } = require('../middleware/rateLimit');
 const { authenticateToken, canUseAction, requireAction, requireRole, requireMinRole } = require('../middleware/auth');
-const { getCustomerCommunicationContext } = require('../services/customerCommunicationHub');
+const { getCustomerCommunicationContext, getCustomerOmniSummaries } = require('../services/customerCommunicationHub');
 const { buildCustomerSearchQuery } = require('../services/customerSearchQuery');
+const { buildScopedBookingAggregateSql: scopedBookingAggregateSql, customerMetricsProjectionSql,
+    mapCustomerBookingMetrics, loadCustomerBookingMetricRows, calculateRFMScores, customerMetricsDate } = require('../services/customerBookingMetrics');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 const { syncBirthdayTagsForCustomer } = require('../services/customerBirthdayTags');
+const {
+    BIRTHDAY_SYSTEM_TAG_KEYS, BIRTHDAY_TAG_LABELS, birthdaySystemTag, birthdayChildrenSql,
+    activeBirthdayChildSql, customerBirthdayTagFilterSql, selectedBirthdayChildren, currentCustomerBirthdayTags
+} = require('../services/customerBirthdaySegments');
 const {
     CustomerChildrenError,
     normalizeChildInput,
@@ -100,7 +106,7 @@ function cleanText(value) {
     return text || null;
 }
 
-const SOCIAL_IDENTITY_CHANNELS = new Set(['telegram', 'instagram', 'facebook', 'viber', 'tiktok', 'phone', 'email', 'site', 'other']);
+const SOCIAL_IDENTITY_CHANNELS = new Set(['telegram', 'instagram', 'facebook', 'whatsapp', 'viber', 'tiktok', 'phone', 'email', 'site', 'other']);
 
 function parseJsonArray(value) {
     if (Array.isArray(value)) return value;
@@ -601,25 +607,9 @@ async function getCustomerTagsPg(queryable, customerId) {
     return result.rows.map(mapCustomerTagRow);
 }
 
-function scopedBookingAggregateSql(user, params, alias = 'b') {
-    const businessScope = arguments.length >= 4 ? arguments[3] : DEFAULT_BUSINESS_CONTEXT;
-    const businessSql = customerScopeCondition(params, businessScope, alias);
-    const visibility = getVisibleBookingScope(user, params, alias);
-    return {
-        visibility,
-        sql: `
-            SELECT ${alias}.customer_id,
-                   COUNT(*) AS booking_count,
-                   COALESCE(SUM(${alias}.price), 0) AS booking_spent,
-                   MIN(${alias}.date) AS real_first_visit,
-                   MAX(${alias}.date) AS real_last_visit
-            FROM bookings ${alias}
-            WHERE ${alias}.status != 'cancelled'
-              AND ${businessSql}
-              ${visibility.sql}
-            GROUP BY ${alias}.customer_id
-        `
-    };
+async function withCustomerBookingMetrics(row, req, queryable = pool) {
+    const metrics = await loadCustomerBookingMetricRows(queryable, [Number(row.id)], req.user, row.business_context || DEFAULT_BUSINESS_CONTEXT);
+    return { ...row, ...metrics.get(Number(row.id)) };
 }
 
 async function loadCustomerChildrenMap(customerIds = [], businessContext = null, options = {}) {
@@ -666,15 +656,15 @@ function applyCustomerChildrenProjection(customer, childRows = []) {
     const projection = buildCustomerChildrenProjection(customer, childRows);
     const primary = firstCustomerChild(projection);
     customer.children = projection;
-    customer.childName = primary?.name || customer.childName || null;
-    customer.childBirthday = primary?.birthday || customer.childBirthday || null;
-    customer.childNameDisplay = customerChildrenNameDisplay(projection) || customer.childName || null;
-    customer.childBirthdayDisplay = customerChildrenBirthdayDisplay(projection) || customer.childBirthday || null;
+    customer.childName = primary?.name || null;
+    customer.childBirthday = primary?.birthday || null;
+    customer.childNameDisplay = customerChildrenNameDisplay(projection) || null;
+    customer.childBirthdayDisplay = customerChildrenBirthdayDisplay(projection) || null;
     return customer;
 }
 
 function customerChildReviewActiveSql(alias = 'cc') {
-    return `COALESCE(${alias}.source_payload #>> '{manual_review,superseded}', 'false') <> 'true'`;
+    return activeBirthdayChildSql(alias);
 }
 
 function customerChildReviewCandidateSql(alias = 'cc') {
@@ -1090,7 +1080,7 @@ router.post('/children-review/:customerId/resolve', requireRole('manager', 'admi
 
         await syncBirthdayTagsAfterCustomerSave(client, customerId, reviewedBy);
         const savedChildren = await listCustomerChildren(customerId, businessContext, { client });
-        const customer = applyCustomerChildrenProjection(mapCustomerRow(customerResult.rows[0]), savedChildren);
+        const customer = applyCustomerChildrenProjection(mapCustomerRow(await withCustomerBookingMetrics(customerResult.rows[0], req, client)), savedChildren);
         await client.query('COMMIT');
 
         res.json({
@@ -1150,42 +1140,30 @@ router.get('/rfm', async (req, res) => {
         const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
         const contextSql = customerContextCondition(params, businessContext, 'c');
         const result = await pool.query(`
-            SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
-                   COALESCE(b.cnt, 0) AS total_bookings,
-                   COALESCE(b.spent, 0) AS total_spent,
-                   b.first_visit, b.last_visit,
-                   c.created_at, c.updated_at
+            SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.business_context,
+                   ${customerMetricsProjectionSql()}, c.created_at, c.updated_at
             FROM customers c
-            LEFT JOIN (
-                SELECT customer_id, booking_count AS cnt, booking_spent AS spent,
-                       real_first_visit AS first_visit, real_last_visit AS last_visit
-                FROM (${bookingAgg.sql}) scoped_bookings
-            ) b ON b.customer_id = c.id
+            LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
             WHERE ${contextSql}
-            ORDER BY b.last_visit DESC NULLS LAST
+            ORDER BY b_agg.rfm_last_visit DESC NULLS LAST, c.id
         `, params);
         rows = result.rows;
 
-        const today = new Date();
         const customers = rows.map(row => {
             const c = mapCustomerRow(row);
-            let recencyDays = null;
-            if (c.lastVisit) {
-                const lastDate = new Date(c.lastVisit);
-                recencyDays = Math.floor((today - lastDate) / (1000 * 60 * 60 * 24));
-            }
-            const frequency = c.totalBookings || 0;
-            const monetary = c.totalSpent || 0;
-            return { ...c, recencyDays, frequency, monetary };
+            const recencyDays = row.recency_days == null ? null : Number(row.recency_days);
+            return { ...c, recencyDays, frequency: Number(row.rfm_frequency || 0), monetary: Number(row.rfm_monetary || 0),
+                rfmLastBookingDate: row.rfm_last_visit || null };
         });
 
         const withScores = calculateRFMScores(customers);
-        const segments = { champions: 0, loyal: 0, potential: 0, atRisk: 0, lost: 0 };
+        const segments = { champions: 0, loyal: 0, potential: 0, atRisk: 0, lost: 0, noHistory: 0 };
         for (const c of withScores) {
             if (c.rfmSegment === 'champion') segments.champions++;
             else if (c.rfmSegment === 'loyal') segments.loyal++;
             else if (c.rfmSegment === 'potential') segments.potential++;
             else if (c.rfmSegment === 'at_risk') segments.atRisk++;
+            else if (c.rfmSegment === 'no_history') segments.noHistory++;
             else segments.lost++;
         }
 
@@ -1206,22 +1184,24 @@ router.get('/segments', async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
-        const now = new Date();
+        const asOf = customerMetricsDate();
+        const now = new Date(asOf + 'T00:00:00Z');
         const threeMonthsAgo = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         const oneMonthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         const params = [threeMonthsAgo, oneMonthAgo];
-        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext, { asOf });
         const contextSql = customerContextCondition(params, businessContext, 'c');
 
         const result = await pool.query(`
             SELECT
                 COUNT(*) FILTER (WHERE b.last_visit >= $1) AS active,
-                COUNT(*) FILTER (WHERE b.last_visit < $1 OR b.last_visit IS NULL) AS sleeping,
+                COUNT(*) FILTER (WHERE b.last_visit < $1) AS sleeping,
+                COUNT(*) FILTER (WHERE b.last_visit IS NULL) AS no_history,
                 COUNT(*) FILTER (WHERE c.created_at >= $2::timestamp) AS new,
                 COUNT(*) FILTER (WHERE COALESCE(b.spent, 0) >= 10000) AS vip
             FROM customers c
             LEFT JOIN (
-                SELECT customer_id, real_last_visit AS last_visit, booking_spent AS spent
+                SELECT customer_id, rfm_last_visit AS last_visit, rfm_monetary AS spent
                 FROM (${bookingAgg.sql}) scoped_bookings
             ) b ON b.customer_id = c.id
             WHERE ${contextSql}
@@ -1234,6 +1214,7 @@ router.get('/segments', async (req, res) => {
             segments: {
                 active: parseInt(row.active) || 0,
                 sleeping: parseInt(row.sleeping) || 0,
+                noHistory: parseInt(row.no_history) || 0,
                 new: parseInt(row.new) || 0,
                 ...(canViewRevenue ? { vip: parseInt(row.vip) || 0 } : {})
             }
@@ -1277,8 +1258,11 @@ router.get('/export', requireAction('export_data'), requireAction('view_revenue'
         if (!businessContext) return;
         let customerRows;
         const params = [];
-        const contextSql = customerContextCondition(params, businessContext);
-        const result = await pool.query(`SELECT * FROM customers WHERE ${contextSql} ORDER BY name LIMIT 5000`, params);
+        const contextSql = customerContextCondition(params, businessContext, 'c');
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
+        const result = await pool.query(`SELECT c.*, ${customerMetricsProjectionSql()}
+            FROM customers c LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+            WHERE ${contextSql} ORDER BY c.name LIMIT 5000`, params);
         customerRows = result.rows;
         const childrenMap = await loadCustomerChildrenMap(customerRows.map(row => row.id), businessContext);
         const projectedCustomers = customerRows.map(row => applyCustomerChildrenProjection(
@@ -1297,7 +1281,7 @@ router.get('/export', requireAction('export_data'), requireAction('view_revenue'
         const header = [
             'ID', "Ім'я", 'Телефон', 'Instagram', 'Соц. ідентичності', 'Діти',
             'ДН дітей', 'Джерело', 'Нотатки', 'Бронювань',
-            'Витрачено (грн)', 'Перший візит', 'Останній візит',
+            'Вартість бронювань (грн)', 'Перше минуле бронювання', 'Останнє минуле бронювання',
             'Сертифікатів', 'Створено'
         ].join(';');
 
@@ -1313,10 +1297,10 @@ router.get('/export', requireAction('export_data'), requireAction('view_revenue'
                 escapeCsv(projected.childBirthdayDisplay || ''),
                 escapeCsv(getCustomerSourceLabel(r.source)),
                 escapeCsv(r.notes || ''),
-                r.total_bookings || 0,
-                r.total_spent || 0,
-                r.first_visit ? formatDate(r.first_visit) : '',
-                r.last_visit ? formatDate(r.last_visit) : '',
+                projected.totalBookings,
+                projected.totalSpent,
+                projected.firstVisit ? formatDate(projected.firstVisit) : '',
+                projected.lastVisit ? formatDate(projected.lastVisit) : '',
                 certMap[r.id] || 0,
                 r.created_at ? formatDate(r.created_at) : ''
             ].join(';');
@@ -1339,8 +1323,11 @@ router.get('/export-xlsx', requireAction('export_data'), requireAction('view_rev
         if (!businessContext) return;
         let customerRows;
         const params = [];
-        const contextSql = customerContextCondition(params, businessContext);
-        const result = await pool.query(`SELECT * FROM customers WHERE ${contextSql} ORDER BY name LIMIT 5000`, params);
+        const contextSql = customerContextCondition(params, businessContext, 'c');
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
+        const result = await pool.query(`SELECT c.*, ${customerMetricsProjectionSql()}
+            FROM customers c LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+            WHERE ${contextSql} ORDER BY c.name LIMIT 5000`, params);
         customerRows = result.rows;
         const childrenMap = await loadCustomerChildrenMap(customerRows.map(row => row.id), businessContext);
         const projectedCustomers = customerRows.map(row => applyCustomerChildrenProjection(
@@ -1369,9 +1356,9 @@ router.get('/export-xlsx', requireAction('export_data'), requireAction('view_rev
             { header: 'ДН дітей', key: 'childBday', width: 24 },
             { header: 'Джерело', key: 'source', width: 14 },
             { header: 'Бронювань', key: 'bookings', width: 12 },
-            { header: 'Витрачено (₴)', key: 'spent', width: 14 },
-            { header: 'Перший візит', key: 'firstVisit', width: 14 },
-            { header: 'Останній візит', key: 'lastVisit', width: 14 },
+            { header: 'Вартість бронювань (₴)', key: 'spent', width: 24 },
+            { header: 'Перше минуле бронювання', key: 'firstVisit', width: 24 },
+            { header: 'Останнє минуле бронювання', key: 'lastVisit', width: 24 },
             { header: 'Сертифікатів', key: 'certs', width: 12 },
             { header: 'Нотатки', key: 'notes', width: 24 }
         ];
@@ -1390,10 +1377,10 @@ router.get('/export-xlsx', requireAction('export_data'), requireAction('view_rev
                 childName: projected.childNameDisplay || '',
                 childBday: projected.childBirthdayDisplay || '',
                 source: getCustomerSourceLabel(r.source),
-                bookings: r.total_bookings || 0,
-                spent: r.total_spent || 0,
-                firstVisit: r.first_visit || '',
-                lastVisit: r.last_visit || '',
+                bookings: projected.totalBookings,
+                spent: projected.totalSpent,
+                firstVisit: projected.firstVisit || '',
+                lastVisit: projected.lastVisit || '',
                 certs: certMap[r.id] || 0,
                 notes: r.notes || ''
             });
@@ -1426,53 +1413,32 @@ router.get('/stats', async (req, res) => {
              FROM customers WHERE ${totalContextSql} GROUP BY ${sourceExpr} ORDER BY count DESC`,
             totalParams
         );
+        const metricsParams = [];
+        const bookingAgg = scopedBookingAggregateSql(req.user, metricsParams, 'b', businessContext);
+        const metricsContextSql = customerContextCondition(metricsParams, businessContext, 'c');
         const topResult = canViewRevenue ? await pool.query(
-            `SELECT c.id, c.name,
-                    COALESCE(b.cnt, 0) AS total_bookings,
-                    COALESCE(b.spent, 0) AS total_spent,
-                    b.last_visit
+            `SELECT c.id, c.name, c.business_context, ${customerMetricsProjectionSql()}
              FROM customers c
-             LEFT JOIN (
-                 SELECT customer_id, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS spent, MAX(date) AS last_visit
-                 FROM bookings WHERE status != 'cancelled' AND COALESCE(business_context, 'event_genix') = $1 GROUP BY customer_id
-             ) b ON b.customer_id = c.id
-             WHERE ${totalContextSql}
-             ORDER BY COALESCE(b.spent, 0) DESC LIMIT 5`
-            , totalParams) : { rows: [] };
-        const recentSpendProjection = canViewRevenue
-            ? 'COALESCE(b.spent, 0) AS total_spent,'
-            : '';
-        const recentSpendAggregation = canViewRevenue
-            ? ', COALESCE(SUM(price),0) AS spent'
-            : '';
+             LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+             WHERE ${metricsContextSql}
+             ORDER BY COALESCE(b_agg.booking_spent, 0) DESC, c.id LIMIT 5`
+            , metricsParams) : { rows: [] };
         const recentResult = await pool.query(
-            `SELECT c.id, c.name,
-                    COALESCE(b.cnt, 0) AS total_bookings,
-                    ${recentSpendProjection}
-                    c.created_at
+            `SELECT c.id, c.name, c.business_context, ${customerMetricsProjectionSql()}, c.created_at
              FROM customers c
-             LEFT JOIN (
-                 SELECT customer_id, COUNT(*) AS cnt${recentSpendAggregation}
-                 FROM bookings WHERE status != 'cancelled' AND COALESCE(business_context, 'event_genix') = $1 GROUP BY customer_id
-             ) b ON b.customer_id = c.id
-             WHERE ${totalContextSql}
-             ORDER BY c.created_at DESC LIMIT 5`
-            , totalParams);
+             LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+             WHERE ${metricsContextSql}
+             ORDER BY c.created_at DESC, c.id LIMIT 5`
+            , metricsParams);
         const avgSpendProjection = canViewRevenue
-            ? ', ROUND(AVG(b.spent), 0) AS avg_spent'
-            : '';
-        const avgSpendAggregation = canViewRevenue
-            ? ', COALESCE(SUM(price),0) AS spent'
+            ? ', ROUND(AVG(COALESCE(b_agg.booking_spent, 0)), 0) AS avg_spent'
             : '';
         const avgResult = await pool.query(
-            `SELECT ROUND(AVG(b.cnt), 1) AS avg_bookings${avgSpendProjection}
+            `SELECT ROUND(AVG(COALESCE(b_agg.booking_count, 0)), 1) AS avg_bookings${avgSpendProjection}
              FROM customers c
-             INNER JOIN (
-                 SELECT customer_id, COUNT(*) AS cnt${avgSpendAggregation}
-                 FROM bookings WHERE status != 'cancelled' AND COALESCE(business_context, 'event_genix') = $1 GROUP BY customer_id
-             ) b ON b.customer_id = c.id
-             WHERE ${totalContextSql}`
-            , totalParams);
+             LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+             WHERE ${metricsContextSql}`
+            , metricsParams);
 
         res.json({
             total: parseInt(totalResult.rows[0].count),
@@ -1509,9 +1475,23 @@ router.get('/tags', async (req, res) => {
              GROUP BY tag, color ORDER BY count DESC`,
             [businessContext]
         );
+        const birthdayCounts = await pool.query(
+            `SELECT EXTRACT(MONTH FROM bd.birthday)::integer AS month,
+                    COUNT(DISTINCT c.id)::integer AS families, COUNT(*)::integer AS children
+             FROM customers c CROSS JOIN LATERAL (${birthdayChildrenSql('c')}) bd
+             WHERE COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+             GROUP BY GROUPING SETS ((EXTRACT(MONTH FROM bd.birthday)), ())`,
+            [businessContext]
+        );
+        const liveBirthdayTags = BIRTHDAY_SYSTEM_TAG_KEYS.map(key => {
+            const month = key === 'birthday' ? null : Number(key.slice(-2));
+            const counts = birthdayCounts.rows.find(row => (row.month === null ? null : Number(row.month)) === month);
+            return { ...birthdaySystemTag(key), count: Number(counts?.families || 0),
+                birthdayChildrenCount: Number(counts?.children || 0), liveBirthday: true };
+        });
         res.json({
             success: true,
-            tags: result.rows,
+            tags: [...result.rows.filter(row => !Object.values(BIRTHDAY_TAG_LABELS).includes(row.tag)), ...liveBirthdayTags],
             predefined: PREDEFINED_TAGS,
             capabilities: {
                 source: caps.hasSource,
@@ -1609,97 +1589,14 @@ router.get('/duplicates', async (req, res) => {
     }
 });
 
-router.post('/:primaryId/merge', requireMinRole('manager'), async (req, res) => {
-    const client = await pool.connect();
-    try {
-        const businessContext = ensureBusinessContext(req, res);
-        if (!businessContext) return;
-        const primaryId = parseInt(req.params.primaryId);
-        const { duplicateId } = req.body;
-        if (!duplicateId) return res.status(400).json({ error: 'duplicateId обовʼязковий' });
-        const dupId = parseInt(duplicateId);
-        if (primaryId === dupId) return res.status(400).json({ error: 'Не можна обʼєднати з собою' });
-
-        await client.query('BEGIN');
-
-        // Check both exist
-        const [p, d] = await Promise.all([
-            client.query("SELECT * FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2", [primaryId, businessContext]),
-            client.query("SELECT * FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2", [dupId, businessContext])
-        ]);
-        if (p.rows.length === 0 || d.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ error: 'Клієнт не знайдений' });
-        }
-        const primary = p.rows[0];
-        const dup = d.rows[0];
-
-        // Move bookings, certificates, tags, communication logs
-        await client.query("UPDATE bookings SET customer_id = $1 WHERE customer_id = $2 AND COALESCE(business_context, 'event_genix') = $3", [primaryId, dupId, businessContext]);
-        await client.query('UPDATE certificates SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]).catch(() => {});
-        await client.query('DELETE FROM customer_tags WHERE customer_id = $1 AND tag IN (SELECT tag FROM customer_tags WHERE customer_id = $2)', [dupId, primaryId]).catch(() => {});
-        await client.query('UPDATE customer_tags SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]).catch(() => {});
-        await client.query('UPDATE communication_log SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]).catch(() => {});
-        await client.query(
-            `UPDATE customer_children
-             SET customer_id = $1, updated_at = NOW()
-             WHERE customer_id = $2
-               AND business_context = $3`,
-            [primaryId, dupId, businessContext]
-        ).catch(() => {});
-
-        // Merge missing fields
-        const updates = [];
-        const params = [];
-        if (!primary.phone && dup.phone) { params.push(dup.phone); updates.push(`phone = $${params.length}`); }
-        if (!primary.instagram && dup.instagram) { params.push(dup.instagram); updates.push(`instagram = $${params.length}`); }
-        if (!primary.child_name && dup.child_name) { params.push(dup.child_name); updates.push(`child_name = $${params.length}`); }
-        if (!primary.child_birthday && dup.child_birthday) { params.push(dup.child_birthday); updates.push(`child_birthday = $${params.length}`); }
-
-        // Recalculate aggregates
-        const aggResult = await client.query(
-            `SELECT COUNT(*) AS cnt, COALESCE(SUM(price), 0) AS total,
-                    MIN(date) AS first, MAX(date) AS last
-             FROM bookings
-             WHERE customer_id = $1
-               AND linked_to IS NULL
-               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
-            [primaryId, businessContext]
-        );
-        const agg = aggResult.rows[0];
-        params.push(parseInt(agg.cnt)); updates.push(`total_bookings = $${params.length}`);
-        params.push(parseInt(agg.total)); updates.push(`total_spent = $${params.length}`);
-        if (agg.first) { params.push(agg.first); updates.push(`first_visit = $${params.length}`); }
-        if (agg.last) { params.push(agg.last); updates.push(`last_visit = $${params.length}`); }
-
-        if (updates.length > 0) {
-            params.push(primaryId);
-            params.push(businessContext);
-            await client.query(
-                `UPDATE customers SET ${updates.join(', ')}, updated_at = NOW()
-                 WHERE id = $${params.length - 1}
-                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $${params.length}`,
-                params
-            );
-        }
-
-        // Delete duplicate
-        await client.query(
-            `DELETE FROM customers
-             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
-            [dupId, businessContext]
-        );
-        await client.query('COMMIT');
-
-        log.info(`Merged customer ${dupId} into ${primaryId} by ${req.user?.username}`);
-        res.json({ success: true, primaryId, deletedId: dupId });
-    } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
-        log.error('POST /:id/merge error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    } finally {
-        client.release();
-    }
+router.post('/:primaryId/merge', requireMinRole('manager'), (req, res) => {
+    const businessContext = ensureBusinessContext(req, res);
+    if (!businessContext) return;
+    return res.status(409).json({
+        success: false,
+        code: 'CUSTOMER_MERGE_DISABLED',
+        error: 'Об’єднання клієнтів тимчасово недоступне до перевірки перенесення всіх зв’язків.'
+    });
 });
 
 // ==========================================
@@ -1710,15 +1607,19 @@ router.get('/journey-stats', async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
+        const params = [];
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
+        const contextSql = customerContextCondition(params, businessContext, 'c');
         const result = await pool.query(`
             SELECT
-                COUNT(*) FILTER (WHERE total_bookings = 0) AS prospects,
-                COUNT(*) FILTER (WHERE total_bookings = 1) AS first_timers,
-                COUNT(*) FILTER (WHERE total_bookings BETWEEN 2 AND 4) AS returning,
-                COUNT(*) FILTER (WHERE total_bookings >= 5) AS loyal
-            FROM customers
-            WHERE COALESCE(business_context, 'event_genix') = $1
-        `, [businessContext]);
+                COUNT(*) FILTER (WHERE COALESCE(b_agg.booking_count, 0) = 0) AS prospects,
+                COUNT(*) FILTER (WHERE b_agg.booking_count = 1) AS first_timers,
+                COUNT(*) FILTER (WHERE b_agg.booking_count BETWEEN 2 AND 4) AS returning,
+                COUNT(*) FILTER (WHERE b_agg.booking_count >= 5) AS loyal
+            FROM customers c
+            LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+            WHERE ${contextSql}
+        `, params);
         const leadsResult = await pool.query(
             "SELECT COUNT(*) AS cnt FROM leads WHERE status = 'new' AND COALESCE(business_context, 'event_genix') = $1",
             [businessContext]
@@ -1740,17 +1641,7 @@ router.get('/ltv', requireAction('view_revenue'), async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
-        const result = await pool.query(`
-            SELECT id, name, phone, total_bookings, total_spent, first_visit, last_visit
-            FROM customers WHERE total_bookings > 0 AND COALESCE(business_context, 'event_genix') = $1
-            ORDER BY total_spent DESC LIMIT 100
-        `, [businessContext]);
-        const customers = result.rows.map(r => {
-            const c = mapCustomerRow(r);
-            c.ltv = calculateLTV(r);
-            return c;
-        });
-        res.json({ success: true, customers });
+        res.status(410).json({ success: false, code: 'LTV_UNAVAILABLE', error: 'Прогноз LTV недоступний: його достовірність не підтверджена.' });
     } catch (err) {
         log.error('GET /ltv error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -2100,20 +1991,29 @@ router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
-        const { filters, template, dryRun } = req.body;
-        if (!template) return res.status(400).json({ error: 'Шаблон повідомлення обовʼязковий' });
+        const { filters, template, dryRun } = req.body || {};
+        if (dryRun !== true) {
+            return res.status(501).json({
+                success: false,
+                code: 'bulk_delivery_unavailable',
+                error: 'Масова доставка недоступна. Підготуйте повідомлення та відкрийте діалог в Omni.'
+            });
+        }
+        if (typeof template !== 'string' || !template.trim()) {
+            return res.status(400).json({ success: false, error: 'Текст повідомлення обовʼязковий' });
+        }
 
         // Build filter query
         const conditions = [];
         const params = [];
         conditions.push(customerContextCondition(params, businessContext, 'c'));
-        if (filters?.tags?.length) {
-            params.push(filters.tags);
-            conditions.push(`c.id IN (SELECT customer_id FROM customer_tags WHERE tag = ANY($${params.length}))`);
-        }
-        if (filters?.minVisits) {
-            params.push(parseInt(filters.minVisits));
-            conditions.push(`c.total_bookings >= $${params.length}`);
+        const birthdayFilter = customerBirthdayTagFilterSql(filters?.tags || [], params);
+        if (birthdayFilter.condition) conditions.push(birthdayFilter.condition);
+        const minVisits = parseCustomerVisitBound(filters?.minVisits);
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
+        if (minVisits !== null) {
+            params.push(minVisits);
+            conditions.push(`COALESCE(b_agg.booking_count, 0) >= $${params.length}`);
         }
         if (filters?.source) {
             params.push(normalizeCustomerSource(filters.source, { unknownAsNull: false }));
@@ -2121,16 +2021,18 @@ router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
         }
         const where = 'WHERE ' + conditions.join(' AND ');
 
-        // Get matching customers
+        // Count the whole segment but render only a bounded, read-only preview.
+        const previewLimit = 20;
         const result = await pool.query(
-            `SELECT c.id, c.name, c.phone, c.child_name, c.instagram
-             FROM customers c ${where}
-             ORDER BY c.name`, params
+            `SELECT c.id, c.name, c.phone, c.child_name, c.child_birthday, c.instagram, c.business_context,
+                    COUNT(*) OVER() AS segment_count
+                    ${birthdayFilter.selection ? ', SUM(birthday_segment.child_count) OVER() AS birthday_children_count' : ''}
+             FROM customers c
+             LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+             ${birthdayFilter.join} ${where}
+             ORDER BY c.name, c.id
+             LIMIT ${previewLimit}`, params
         );
-
-        if (dryRun) {
-            return res.json({ success: true, dryRun: true, recipientCount: result.rows.length });
-        }
 
         const childrenMap = await loadCustomerChildrenMap(result.rows.map(row => row.id), businessContext);
         const customers = result.rows.map(row => applyCustomerChildrenProjection(
@@ -2138,27 +2040,39 @@ router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
             childrenMap.get(Number(row.id)) || []
         ));
 
-        // v38.4.0: Batch INSERT instead of N+1 loop
-        const rows = customers.map(customer => {
-            const message = template
-                .replace(/\{name\}/g, customer.name || '')
-                .replace(/\{childName\}/g, customer.childNameDisplay || customer.childName || '')
-                .replace(/\{childBirthday\}/g, customer.childBirthdayDisplay || customer.childBirthday || '')
-                .replace(/\{phone\}/g, customer.phone || '');
-            return { id: customer.id, message };
+        const previews = customers.map(customer => {
+            const birthdayChildren = birthdayFilter.selection
+                ? selectedBirthdayChildren(customer.children, birthdayFilter.selection, businessContext) : null;
+            const neutral = birthdayChildren && (!birthdayChildren.length || birthdayChildren.some(child => !child.name));
+            const values = {
+                name: customer.name || '',
+                childName: birthdayChildren
+                    ? (neutral ? (!birthdayChildren.length ? 'вашу родину' : birthdayChildren.length > 1 ? 'ваших дітей' : 'вашу дитину') : customerChildrenNameDisplay(birthdayChildren))
+                    : customer.childNameDisplay || customer.childName || '',
+                childBirthday: birthdayChildren ? customerChildrenBirthdayDisplay(birthdayChildren) || ''
+                    : customer.childBirthdayDisplay || customer.childBirthday || '',
+                phone: customer.phone || ''
+            };
+            const message = template.replace(/\{(name|childName|childBirthday|phone)\}/g, (_, key) => values[key]);
+            return { customerId: customer.id, name: customer.name || '', message,
+                ...(birthdayChildren ? { birthdayChildren: birthdayChildren.map(child => ({
+                    id: child.id, name: child.name, birthday: child.birthday
+                })), neutralGreeting: Boolean(neutral) } : {}) };
         });
-        if (rows.length > 0) {
-            const values = rows.map((r, i) => `($${i*4+1}, $${i*4+2}, $${i*4+3}, $${i*4+4})`).join(',');
-            const params = rows.flatMap(r => [r.id, 'bulk_message', r.message, req.user?.id || null]);
-            await pool.query(
-                `INSERT INTO communication_log (customer_id, type, summary, created_by) VALUES ${values}`,
-                params
-            );
-        }
-        const sent = rows.length;
-
-        log.info(`Bulk message sent to ${sent} customers by ${req.user?.username}`);
-        res.json({ success: true, sent });
+        const segmentCount = Number(result.rows[0]?.segment_count || 0);
+        res.json({
+            success: true,
+            dryRun: true,
+            deliveryAvailable: false,
+            segmentCount,
+            ...(birthdayFilter.selection ? { birthdaySegment: {
+                months: birthdayFilter.selection.months, familyCount: segmentCount,
+                childCount: Number(result.rows[0]?.birthday_children_count || 0)
+            } } : {}),
+            recipientCount: segmentCount,
+            previewLimit,
+            previews
+        });
     } catch (err) {
         log.error('POST /bulk-message error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -2181,6 +2095,8 @@ router.get('/', async (req, res) => {
         const dateTo = (req.query.dateTo || '').trim();
         const sortBy = (req.query.sortBy || 'updated_at').trim();
         const tag = (req.query.tag || '').trim();
+
+        if (sortBy === 'ltv') return res.status(400).json({ error: 'Сортування за прогнозним LTV недоступне.', code: 'LTV_UNAVAILABLE' });
 
         if (sortBy === 'total_spent' && !canUseAction(req.user, 'view_revenue')) {
             return res.status(403).json({ error: 'Insufficient permissions' });
@@ -2205,44 +2121,45 @@ router.get('/', async (req, res) => {
             params.push(normalizedSource);
             conditions.push(`${customerSourceSqlExpression('c.source')} = $${params.length}`);
         }
-        if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) { params.push(dateFrom); conditions.push(`c.last_visit >= $${params.length}::date`); }
-        if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) { params.push(dateTo); conditions.push(`c.last_visit <= $${params.length}::date`); }
-        if (tag) { params.push(tag); conditions.push(`c.id IN (SELECT customer_id FROM customer_tags WHERE tag = $${params.length})`); }
+        if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) { params.push(dateFrom); conditions.push(`b_agg.real_last_visit >= $${params.length}::date`); }
+        if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) { params.push(dateTo); conditions.push(`b_agg.real_last_visit <= $${params.length}::date`); }
+        const birthdayFilter = customerBirthdayTagFilterSql(tag ? [tag] : [], params);
+        if (birthdayFilter.condition) conditions.push(birthdayFilter.condition);
 
         const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessScope);
-        const visitCountExpr = 'COALESCE(b_agg.booking_count, c.total_bookings, 0)';
+        const visitCountExpr = 'COALESCE(b_agg.booking_count, 0)';
         if (minVisits !== null) { params.push(minVisits); conditions.push(`${visitCountExpr} >= $${params.length}`); }
         if (maxVisits !== null) { params.push(maxVisits); conditions.push(`${visitCountExpr} <= $${params.length}`); }
 
         const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
         const allowedSorts = {
             'updated_at': 'c.updated_at DESC', 'name': 'c.name ASC',
-            'total_bookings': `${visitCountExpr} DESC`, 'total_spent': 'COALESCE(b_agg.booking_spent, c.total_spent, 0) DESC',
-            'last_visit': 'COALESCE(b_agg.real_last_visit, c.last_visit) DESC NULLS LAST', 'created_at': 'c.created_at DESC'
+            'total_bookings': `${visitCountExpr} DESC`, 'total_spent': 'COALESCE(b_agg.booking_spent, 0) DESC',
+            'last_visit': 'b_agg.real_last_visit DESC NULLS LAST',
+            'next_booking': 'b_agg.next_booking_date ASC NULLS LAST', 'created_at': 'c.created_at DESC'
         };
         const orderBy = allowedSorts[sortBy] || allowedSorts.updated_at;
 
         const countResult = await pool.query(
             `SELECT COUNT(*)
+                    ${birthdayFilter.selection ? ', COALESCE(SUM(birthday_segment.child_count), 0) AS birthday_children_count' : ''}
              FROM customers c
              LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+             ${birthdayFilter.join}
              ${where}`,
             params
         );
         const total = parseInt(countResult.rows[0].count);
 
         const dataParams = [...params, limit, offset];
-        // v32.1: JOIN bookings to compute real totalBookings/totalSpent/LTV
+        // Use current booking metrics, independent of legacy customer caches.
         const result = await pool.query(
-            `SELECT c.*,
-                    COALESCE(b_agg.booking_count, 0) AS real_total_bookings,
-                    COALESCE(b_agg.booking_spent, 0) AS real_total_spent,
-                    b_agg.real_last_visit,
-                    b_agg.real_first_visit
+            `SELECT c.*, ${customerMetricsProjectionSql()}
              FROM customers c
              LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+             ${birthdayFilter.join}
              ${where}
-             ORDER BY ${orderBy} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+             ORDER BY ${orderBy}, c.id ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
             dataParams
         );
 
@@ -2266,22 +2183,27 @@ router.get('/', async (req, res) => {
         }
 
         const childrenMap = await loadCustomerChildrenMap(result.rows.map(r => r.id));
+        let omniSummaries = new Map();
+        try {
+            omniSummaries = await getCustomerOmniSummaries(result.rows, { pool });
+        } catch (err) {
+            log.warn('Customer Omni summaries unavailable', { error: err.message });
+        }
         res.json({
             customers: result.rows.map(r => {
-                // v32.1: Override denormalized fields with real booking aggregates
-                r.total_bookings = parseInt(r.real_total_bookings) || r.total_bookings || 0;
-                r.total_spent = parseInt(r.real_total_spent) || r.total_spent || 0;
-                if (r.real_last_visit) r.last_visit = r.real_last_visit;
-                if (r.real_first_visit) r.first_visit = r.real_first_visit;
                 const c = applyCustomerChildrenProjection(
                     mapCustomerRow(r),
                     childrenMap.get(Number(r.id)) || []
                 );
-                c.tags = tagsMap[r.id] || [];
-                c.ltv = calculateLTV(r);
+                c.tags = currentCustomerBirthdayTags(tagsMap[r.id] || [], c.children);
+                c.omniNavigation = omniSummaries.get(Number(r.id)) || { action: 'unavailable', conversations: [], links: {} };
                 return c;
             }),
             total, page,
+            ...(birthdayFilter.selection ? { birthdaySegment: {
+                months: birthdayFilter.selection.months, familyCount: total,
+                childCount: Number(countResult.rows[0].birthday_children_count || 0)
+            } } : {}),
             pages: Math.ceil(total / limit)
         });
     } catch (err) {
@@ -2329,10 +2251,13 @@ router.get('/:id', async (req, res) => {
         const numId = parseInt(id);
 
         let customer;
+        const detailParams = [numId];
+        const bookingAgg = scopedBookingAggregateSql(req.user, detailParams, 'b', businessContext, { customerIds: [numId] });
+        const contextSql = customerContextCondition(detailParams, businessContext, 'c');
         const result = await pool.query(
-            `SELECT * FROM customers WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
-            [numId, businessContext]
-        );
+            `SELECT c.*, ${customerMetricsProjectionSql()} FROM customers c
+             LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+             WHERE c.id = $1 AND ${contextSql}`, detailParams);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
         customer = applyCustomerChildrenProjection(
             mapCustomerRow(result.rows[0]),
@@ -2432,12 +2357,12 @@ router.get('/:id', async (req, res) => {
         const bookingParams = [numId, businessContext];
         const bookingVisibility = getVisibleBookingScope(req.user, bookingParams, 'b');
         const bookings = await pool.query(
-            `SELECT id, date, time, program_name, program_code, label, category, price, status, room, duration,
+            `SELECT id, date::text AS date, time, program_name, program_code, label, category, price, status, room, duration,
                     banquet_guests, banquet_adults, banquet_tables, banquet_menu
              FROM bookings b
              WHERE b.customer_id = $1
                AND COALESCE(b.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
-               AND b.linked_to IS NULL
+               AND NULLIF(BTRIM(b.linked_to), '') IS NULL
                ${bookingVisibility.sql}
              ORDER BY b.date DESC LIMIT 50`,
             bookingParams
@@ -2463,7 +2388,7 @@ router.get('/:id', async (req, res) => {
 
         // v30.4: Tags
         try {
-            customer.tags = await getCustomerTagsPg(pool, numId);
+            customer.tags = currentCustomerBirthdayTags(await getCustomerTagsPg(pool, numId), customer.children);
         } catch { customer.tags = []; }
 
         // v33.8.0 Integration 5: Reviews + average_rating
@@ -2486,15 +2411,6 @@ router.get('/:id', async (req, res) => {
                 date: r.date, programName: r.program_name
             }));
         } catch { customer.reviews = []; }
-
-        // v30.4: LTV
-        if (customer.totalBookings > 0) {
-            const raw = { total_bookings: customer.totalBookings, total_spent: customer.totalSpent,
-                          first_visit: customer.firstVisit, last_visit: customer.lastVisit };
-            customer.ltv = calculateLTV(raw);
-        } else {
-            customer.ltv = 0;
-        }
 
         res.json(customer);
     } catch (err) {
@@ -2532,7 +2448,7 @@ router.post('/', async (req, res) => {
                 await syncManualCustomerTags(client, result.rows[0].id, input.tags, req.user?.id || null);
             }
             await syncBirthdayTagsAfterCustomerSave(client, result.rows[0].id, req.user?.id || null);
-            const customer = applyCustomerChildrenProjection(mapCustomerRow(result.rows[0]), savedChildren);
+            const customer = applyCustomerChildrenProjection(mapCustomerRow(await withCustomerBookingMetrics(result.rows[0], req, client)), savedChildren);
             customer.tags = await getCustomerTagsPg(client, customer.id);
             await client.query('COMMIT');
             res.json(customer);
@@ -2589,7 +2505,7 @@ router.put('/:id', async (req, res) => {
                 await syncManualCustomerTags(client, result.rows[0].id, input.tags, req.user?.id || null);
             }
             await syncBirthdayTagsAfterCustomerSave(client, result.rows[0].id, req.user?.id || null);
-            const customer = applyCustomerChildrenProjection(mapCustomerRow(result.rows[0]), savedChildren);
+            const customer = applyCustomerChildrenProjection(mapCustomerRow(await withCustomerBookingMetrics(result.rows[0], req, client)), savedChildren);
             customer.tags = await getCustomerTagsPg(client, customer.id);
             await client.query('COMMIT');
             res.json(customer);
@@ -2676,69 +2592,10 @@ function mapCustomerRow(row) {
         source: normalizeCustomerSource(row.source, { unknownAsNull: false }),
         sourceLabel: getCustomerSourceLabel(row.source),
         notes: row.notes || null,
-        // v33.3: Prefer live aggregation from bookings JOIN when available
-        totalBookings: row.real_total_bookings != null ? parseInt(row.real_total_bookings) : (row.total_bookings || 0),
-        totalSpent: row.real_total_spent != null ? parseInt(row.real_total_spent) : (row.total_spent || 0),
-        firstVisit: row.real_first_visit || row.first_visit || null,
-        lastVisit: row.real_last_visit || row.last_visit || null,
+        ...mapCustomerBookingMetrics(row),
         createdAt: row.created_at,
         updatedAt: row.updated_at
     };
-}
-
-// v15.1: RFM score calculation
-function calculateRFMScores(customers) {
-    if (customers.length === 0) return [];
-    const recencies = customers.filter(c => c.recencyDays !== null).map(c => c.recencyDays);
-    const frequencies = customers.map(c => c.frequency);
-    const monetaries = customers.map(c => c.monetary);
-
-    return customers.map(c => {
-        let rScore = 1;
-        if (c.recencyDays !== null && recencies.length > 0) rScore = getPercentileScore(recencies, c.recencyDays, true);
-        let fScore = 1;
-        if (frequencies.length > 0) fScore = getPercentileScore(frequencies, c.frequency, false);
-        let mScore = 1;
-        if (monetaries.length > 0) mScore = getPercentileScore(monetaries, c.monetary, false);
-        const rfmScore = rScore + fScore + mScore;
-        const rfmSegment = getRFMSegment(rScore, fScore, mScore);
-        return { ...c, rScore, fScore, mScore, rfmScore, rfmSegment };
-    });
-}
-
-function getPercentileScore(arr, value, inverted) {
-    const sorted = [...arr].sort((a, b) => a - b);
-    const idx = sorted.indexOf(value);
-    const percentile = idx / Math.max(sorted.length - 1, 1);
-    const score = inverted ? (1 - percentile) : percentile;
-    if (score >= 0.8) return 5;
-    if (score >= 0.6) return 4;
-    if (score >= 0.4) return 3;
-    if (score >= 0.2) return 2;
-    return 1;
-}
-
-function getRFMSegment(r, f, m) {
-    const avg = (r + f + m) / 3;
-    if (r >= 4 && f >= 4) return 'champion';
-    if (f >= 3 && m >= 3) return 'loyal';
-    if (r >= 3 && f <= 2) return 'potential';
-    if (r <= 2 && f >= 2) return 'at_risk';
-    if (avg <= 2) return 'lost';
-    return 'potential';
-}
-
-// v30.4: LTV calculation
-function calculateLTV(row) {
-    const bookings = row.total_bookings || 0;
-    const spent = row.total_spent || 0;
-    if (bookings === 0 || !row.first_visit) return 0;
-    const firstDate = new Date(row.first_visit);
-    const lastDate = row.last_visit ? new Date(row.last_visit) : new Date();
-    const daysDiff = Math.max(1, (lastDate - firstDate) / (1000 * 60 * 60 * 24));
-    const visitsPerYear = bookings / (daysDiff / 365);
-    const avgSpend = spent / bookings;
-    return Math.round(spent + (avgSpend * visitsPerYear * 2));
 }
 
 function escapeCsv(str) {
@@ -2750,6 +2607,10 @@ function escapeCsv(str) {
 
 function formatDate(d) {
     if (!d) return '';
+    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        const [year, month, day] = d.split('-');
+        return `${day}.${month}.${year}`;
+    }
     const date = new Date(d);
     const dd = String(date.getDate()).padStart(2, '0');
     const mm = String(date.getMonth() + 1).padStart(2, '0');

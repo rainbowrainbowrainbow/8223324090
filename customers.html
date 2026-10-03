@@ -30,15 +30,15 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.82.52">
-    <link rel="stylesheet" href="css/layout.css?v=0.82.52">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.82.52">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.82.52">
-    <link rel="stylesheet" href="css/pages-customers.css?v=0.82.52">
-    <link rel="stylesheet" href="css/modals.css?v=0.82.52">
-    <link rel="stylesheet" href="css/entity-card.css?v=0.82.52">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.82.52">
-    <link rel="stylesheet" href="css/responsive.css?v=0.82.52">
+    <link rel="stylesheet" href="css/base.css?v=0.82.56">
+    <link rel="stylesheet" href="css/layout.css?v=0.82.56">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.82.56">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.82.56">
+    <link rel="stylesheet" href="css/pages-customers.css?v=0.82.56">
+    <link rel="stylesheet" href="css/modals.css?v=0.82.56">
+    <link rel="stylesheet" href="css/entity-card.css?v=0.82.56">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.82.56">
+    <link rel="stylesheet" href="css/responsive.css?v=0.82.56">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -804,8 +804,8 @@
 
         @media (max-width: 720px) {
             .customer-hub-grid { grid-template-columns: 1fr; }
-            .customer-dialog-icon { flex: 0 0 42px; }
-            .customer-dialog-icon-text { display: none; }
+            .customer-dialog-icon { flex: 0 1 auto; }
+            .customer-dialog-icon-text { display: inline; }
             .customer-hub-action { flex: 1 1 140px; }
         }
 
@@ -959,6 +959,11 @@
             color: var(--gray-600);
             margin-bottom: 12px;
         }
+        .bulk-preview-note { font-size: 13px; font-weight: 400; line-height: 1.5; margin: 8px 0 12px; }
+        .bulk-preview-customer { padding: 12px 0; border-top: 1px solid var(--gray-200); min-width: 0; }
+        .bulk-preview-customer-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+        .bulk-preview-customer-header strong { overflow-wrap: anywhere; }
+        .bulk-preview-message { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 400; line-height: 1.5; margin-top: 8px; }
 
         /* v0.57.3: customer create/edit modal polished source and linking tools */
         .customer-edit-field {
@@ -1133,7 +1138,7 @@
         }
         [data-theme="dark"] .comm-entry { border-bottom-color: var(--gray-700); }
         [data-theme="dark"] .nps-bar-track { background: var(--gray-700); }
-        [data-theme="dark"] .bulk-preview { background: var(--gray-700); color: var(--gray-300); }
+        body.dark-mode .bulk-preview,[data-theme="dark"] .bulk-preview { background:#1E293B; color:#CBD5E1; }
         [data-theme="dark"] .bulk-form select,
         [data-theme="dark"] .bulk-form input,
         [data-theme="dark"] .bulk-form textarea {
@@ -1456,13 +1461,28 @@
             <div id="crmStats" class="crm-stats"></div>
 
             <!-- Tabs -->
-            <div class="crm-tabs">
-                <button type="button" class="crm-tab active" data-tab="list">Список</button>
-                <button type="button" class="crm-tab" data-tab="rfm">RFM-аналітика</button>
-                <button type="button" class="crm-tab" data-tab="duplicates">Дублікати</button>
-                <button type="button" class="crm-tab" data-tab="nps">NPS / відгуки</button>
-                <button type="button" class="crm-tab" data-tab="children-review">Ревізія дітей</button>
-                <button type="button" class="crm-tab" data-tab="bulk">Розсилка</button>
+            <nav class="crm-tabs customer-section-nav" aria-label="Розділ клієнтів">
+                <a class="crm-tab active" data-tab="list" href="/customers?tab=list" aria-controls="tabList" aria-current="page">Клієнти</a>
+                <div class="customer-nav-group" role="group" aria-label="Аналітика">
+                    <span class="customer-nav-group-label">Аналітика</span>
+                    <div class="customer-nav-group-links">
+                        <a class="crm-tab" data-tab="rfm" href="/customers?tab=rfm" aria-controls="tabRfm">RFM</a>
+                        <a class="crm-tab" data-tab="nps" href="/customers?tab=nps" aria-controls="tabNps">NPS / відгуки</a>
+                    </div>
+                </div>
+                <div class="customer-nav-group" role="group" aria-label="Якість даних">
+                    <span class="customer-nav-group-label">Якість даних</span>
+                    <div class="customer-nav-group-links">
+                        <a class="crm-tab" data-tab="children-review" href="/customers?tab=children-review" aria-controls="tabChildrenReview">Уточнення даних дітей</a>
+                        <a class="crm-tab" data-tab="duplicates" href="/customers?tab=duplicates" aria-controls="tabDuplicates">Можливі дублікати</a>
+                    </div>
+                </div>
+                <a class="crm-tab" data-tab="bulk" href="/customers?tab=bulk" aria-controls="tabBulk">Підготовка повідомлень</a>
+            </nav>
+            <div id="customerToolIntro" class="customer-tool-intro" hidden>
+                <h2 id="customerToolTitle"></h2>
+                <p id="customerToolDescription"></p>
+                <button type="button" class="btn-page-secondary" id="customerReturnToList">Повернутися до клієнтів</button>
             </div>
 
             <!-- List tab -->
@@ -1511,24 +1531,26 @@
                         <select id="sortFilter" class="crm-filter-select">
                             <option value="updated_at">За оновленням</option>
                             <option value="name">За іменем</option>
-                            <option value="total_bookings">За візитами</option>
-                            <option value="total_spent">За витратами</option>
-                            <option value="last_visit">За останнім візитом</option>
+                            <option value="total_bookings">За кількістю бронювань</option>
+                            <option value="total_spent">За вартістю бронювань</option>
+                            <option value="last_visit">За останнім минулим бронюванням</option>
+                            <option value="next_booking">За найближчим бронюванням</option>
                             <option value="created_at">За створенням</option>
-                            <option value="ltv">За LTV</option>
                         </select>
                     </div>
                     <div class="customer-filter-field">
-                        <label for="dateFromFilter">Візити від</label>
-                        <input type="date" id="dateFromFilter" class="crm-filter-date" title="Візити від" aria-label="Дата від">
+                        <label for="dateFromFilter">Останнє минуле від</label>
+                        <input type="date" id="dateFromFilter" class="crm-filter-date" title="Дата останнього минулого бронювання від" aria-label="Дата від">
                     </div>
                     <div class="customer-filter-field">
-                        <label for="dateToFilter">Візити до</label>
-                        <input type="date" id="dateToFilter" class="crm-filter-date" title="Візити до" aria-label="Дата до">
+                        <label for="dateToFilter">Останнє минуле до</label>
+                        <input type="date" id="dateToFilter" class="crm-filter-date" title="Дата останнього минулого бронювання до" aria-label="Дата до">
                     </div>
                 </div>
 
                 <div id="customerExplainability" hidden></div>
+                <p id="customerBirthdaySegmentSummary" class="bulk-preview-note" role="status" aria-live="polite" hidden></p>
+                <p class="customer-hub-note">Кількість і вартість — для підтверджених та попередніх основних бронювань без скасованих. Фільтр дат працює за останнім минулим бронюванням. Сума цін не підтверджує оплату.</p>
 
                 <!-- Table -->
                 <div class="crm-table-wrap customer-list-table-wrap">
@@ -1537,11 +1559,11 @@
                             <tr>
                                 <th class="customer-list-col customer-list-col--identity">Клієнт</th>
                                 <th class="customer-list-col customer-list-col--phone">Телефон</th>
-                                <th class="customer-list-col customer-list-col--secondary">Instagram</th>
+                                <th class="customer-list-col customer-list-col--secondary">Контакти</th>
                                 <th class="customer-list-col customer-list-col--secondary">Джерело</th>
-                                <th class="customer-list-col customer-list-col--number">Візити</th>
-                                <th id="customerSpentHeader" class="customer-list-col customer-list-col--number customer-list-col--secondary">Витрачено</th>
-                                <th class="customer-list-col customer-list-col--last-visit">Останній візит</th>
+                                <th class="customer-list-col customer-list-col--number">Бронювання</th>
+                                <th id="customerSpentHeader" class="customer-list-col customer-list-col--number customer-list-col--secondary">Вартість бронювань</th>
+                                <th class="customer-list-col customer-list-col--last-visit">Дати бронювань</th>
                             </tr>
                         </thead>
                         <tbody id="customerTableBody"></tbody>
@@ -1554,6 +1576,7 @@
 
             <!-- RFM tab -->
             <div id="tabRfm" style="display:none">
+                <p class="customer-hub-note">Попередня аналітика за підтвердженими основними бронюваннями до сьогодні (Київ). Сьогоднішні, майбутні та попередні бронювання не входять у RFM. Вартість не означає отримані гроші, а минула дата не доводить проведення.</p>
                 <div id="rfmOverview" class="rfm-overview"></div>
                 <div class="crm-table-wrap">
                     <table class="crm-table">
@@ -1561,8 +1584,8 @@
                             <tr>
                                 <th>Клієнт</th>
                                 <th>R (днів)</th>
-                                <th>F (візити)</th>
-                                <th>M (грн)</th>
+                                <th>F (підтверджені минулі бронювання)</th>
+                                <th>M (вартість бронювань, грн)</th>
                                 <th>RFM</th>
                                 <th>Сегмент</th>
                             </tr>
@@ -1669,6 +1692,7 @@
                         <div class="customer-edit-link-tools" aria-label="Швидко додати канал клієнта">
                             <button type="button" class="customer-edit-link-btn" data-customer-identity-add="telegram">+ Telegram</button>
                             <button type="button" class="customer-edit-link-btn" data-customer-identity-add="viber">+ Viber</button>
+                            <button type="button" class="customer-edit-link-btn" data-customer-identity-add="whatsapp">+ WhatsApp</button>
                             <button type="button" class="customer-edit-link-btn" data-customer-identity-add="instagram">+ Instagram</button>
                             <button type="button" class="customer-edit-link-btn" data-customer-identity-add="phone">+ Телефон</button>
                             <button type="button" class="customer-edit-link-btn" data-customer-identity-add="facebook">+ Facebook</button>
@@ -1705,15 +1729,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.82.52"></script>
-    <script src="js/notification.js?v=0.82.52"></script>
-    <script src="js/api.js?v=0.82.52"></script>
-    <script src="js/auth.js?v=0.82.52"></script>
-    <script src="js/ui.js?v=0.82.52"></script>
-    <script src="js/components/sidebar.js?v=0.82.52"></script>
+    <script src="js/config.js?v=0.82.56"></script>
+    <script src="js/notification.js?v=0.82.56"></script>
+    <script src="js/api.js?v=0.82.56"></script>
+    <script src="js/auth.js?v=0.82.56"></script>
+    <script src="js/ui.js?v=0.82.56"></script>
+    <script src="js/components/sidebar.js?v=0.82.56"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/crm-create-handoff.js?v=0.82.52"></script>
-    <script src="js/customers-page.js?v=0.82.52"></script>
-<script src="js/alerts.js?v=0.82.52"></script>
+    <script src="js/crm-create-handoff.js?v=0.82.56"></script>
+    <script src="js/customers-page.js?v=0.82.56"></script>
+<script src="js/alerts.js?v=0.82.56"></script>
 </body>
 </html>

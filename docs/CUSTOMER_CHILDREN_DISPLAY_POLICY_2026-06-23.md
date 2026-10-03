@@ -33,5 +33,6 @@ Production impact: yes.
 
 - `services/customerChildren.js` exports `CUSTOMER_CHILD_DISPLAY_POLICY`.
 - Customer exports and bulk messages use `childNameDisplay` / `childBirthdayDisplay`.
+- A birthday-month preview uses only current children of the selected month. Missing names use a neutral greeting; missing dates are never inferred. See [Birthday segment policy](CUSTOMER_BIRTHDAY_SEGMENTS.md).
 - Birthday reminders query canonical `customer_children` first and fall back to legacy fields only when canonical birthday rows do not exist.
 - Banquet summary exposes `customer.children`, `customer.childrenDisplay`, `celebrants`, and old `celebrant` for compatibility.

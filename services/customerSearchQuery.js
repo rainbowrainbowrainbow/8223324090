@@ -1,10 +1,9 @@
 'use strict';
 
-const { getVisibleBookingScope } = require('./bookingVisibility');
+const { buildScopedBookingAggregateSql, customerMetricsProjectionSql } = require('./customerBookingMetrics');
 const {
     DEFAULT_BUSINESS_CONTEXT,
-    pushBusinessContextCondition,
-    pushBusinessScopeCondition
+    pushBusinessContextCondition
 } = require('./businessContext');
 
 function customerChildrenSearchSql(patternRef, alias = 'c') {
@@ -15,30 +14,6 @@ function customerChildrenSearchSql(patternRef, alias = 'c') {
           AND cc_search.business_context = COALESCE(${alias}.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
           AND cc_search.name ILIKE ${patternRef}
     )`;
-}
-
-function customerScopeCondition(params, businessScope, alias = '') {
-    return pushBusinessScopeCondition(params, businessScope || DEFAULT_BUSINESS_CONTEXT, alias);
-}
-
-function buildScopedBookingAggregateSql(user, params, alias = 'b', businessScope = DEFAULT_BUSINESS_CONTEXT) {
-    const businessSql = customerScopeCondition(params, businessScope, alias);
-    const visibility = getVisibleBookingScope(user, params, alias);
-    return {
-        visibility,
-        sql: `
-            SELECT ${alias}.customer_id,
-                   COUNT(*) AS booking_count,
-                   COALESCE(SUM(${alias}.price), 0) AS booking_spent,
-                   MIN(${alias}.date) AS real_first_visit,
-                   MAX(${alias}.date) AS real_last_visit
-            FROM bookings ${alias}
-            WHERE ${alias}.status != 'cancelled'
-              AND ${businessSql}
-              ${visibility.sql}
-            GROUP BY ${alias}.customer_id
-        `
-    };
 }
 
 function buildCustomerSearchQuery({
@@ -74,11 +49,8 @@ function buildCustomerSearchQuery({
     return {
         q,
         params,
-        sql: `SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.child_birthday,
-                    c.source, c.notes, c.total_bookings,
-                    COALESCE(b_agg.booking_count, 0) AS real_total_bookings,
-                    COALESCE(b_agg.booking_spent, 0) AS real_total_spent,
-                    b_agg.real_last_visit
+        sql: `SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.child_birthday, c.business_context,
+                    c.source, c.notes, ${customerMetricsProjectionSql()}
              FROM customers c
              LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
              WHERE ${contextSql}

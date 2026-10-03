@@ -28,6 +28,7 @@ function mapCustomer(row) {
         name: row.name,
         phone: row.phone || null,
         instagram: row.instagram || null,
+        businessContext: normalizeBusinessContext(row.business_context),
         childName: row.child_name || null,
         source: row.source || null,
         leadId: row.lead_id || null,
@@ -146,22 +147,82 @@ function buildSearchValue(customer) {
     return customer.phone || customer.name || customer.instagram || '';
 }
 
+// Read only persisted relationships. Lead primary/origin flags belong to the lead,
+// and must never select a primary conversation for the entire customer.
+function confirmedCustomerConversationSql(customerAlias = 'p', conversationAlias = 'c') {
+    return `(${conversationAlias}.customer_id = ${customerAlias}.id OR (
+        ${conversationAlias}.customer_id IS NULL AND EXISTS (
+            SELECT 1 FROM lead_conversation_links lcl
+            JOIN leads l ON l.id = lcl.lead_id
+              AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(${customerAlias}.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+            WHERE lcl.conversation_id = ${conversationAlias}.id
+              AND lcl.business_context = COALESCE(${customerAlias}.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+              AND (l.id = ${customerAlias}.lead_id OR EXISTS (
+                  SELECT 1 FROM lead_customer_links customer_link
+                  WHERE customer_link.lead_id = l.id AND customer_link.customer_id = ${customerAlias}.id
+                    AND customer_link.business_context = lcl.business_context
+              ))
+        )
+    ))`;
+}
+
+function uniqueConversations(conversations = []) {
+    return [...new Map(conversations.map(conversation => [Number(conversation.id), conversation])).values()];
+}
+
+function buildCustomerOmniNavigation(customer, conversations = []) {
+    const confirmed = uniqueConversations(conversations);
+    const businessContext = normalizeBusinessContext(customer.businessContext || customer.business_context);
+    const contextQuery = `businessContext=${encodeURIComponent(businessContext)}`;
+    const search = buildSearchValue(customer);
+    return {
+        action: confirmed.length === 1 ? 'open' : confirmed.length > 1 ? 'choose' : 'search',
+        exactConversationCount: confirmed.length,
+        conversations: confirmed.map(({ id, channel, status }) => ({ id: Number(id), channel, status })),
+        links: {
+            omniExact: confirmed.length === 1 ? `/omni?conversation=${encodeURIComponent(confirmed[0].id)}&${contextQuery}` : null,
+            omniChoose: confirmed.length > 1 ? `/customers?open=${encodeURIComponent(customer.id)}&${contextQuery}` : null,
+            omniSuggested: null,
+            omniSearch: search ? `/omni?search=${encodeURIComponent(search)}&${contextQuery}` : null
+        }
+    };
+}
+
+async function getCustomerOmniSummaries(customers = [], options = {}) {
+    const summaries = new Map();
+    if (!customers.length) return summaries;
+    const db = options.pool || defaultPool;
+    const ids = customers.map(customer => Number(customer.id));
+    const result = await db.query(`
+        SELECT p.id AS navigation_customer_id, c.id, c.channel, c.status
+        FROM customers p
+        JOIN conversations c
+          ON COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+         AND ${confirmedCustomerConversationSql()}
+        WHERE p.id = ANY($1::int[])
+        ORDER BY p.id, c.last_message_at DESC NULLS LAST, c.updated_at DESC, c.id DESC
+    `, [ids]);
+    const byCustomer = new Map();
+    for (const row of result.rows) {
+        const id = Number(row.navigation_customer_id);
+        if (!byCustomer.has(id)) byCustomer.set(id, []);
+        byCustomer.get(id).push(row);
+    }
+    for (const customer of customers) {
+        summaries.set(Number(customer.id), buildCustomerOmniNavigation(customer, byCustomer.get(Number(customer.id)) || []));
+    }
+    return summaries;
+}
+
 function buildContextLinks({ customer, lead, primaryBooking, live }) {
     const phoneDigits = normalizeDigits(customer.phone);
     const tel = customer.phone ? `tel:${String(customer.phone).replace(/[^+\d]/g, '')}` : null;
     const telegramExternal = phoneDigits ? `https://t.me/${phoneDigits}` : null;
-    const exactConversation = live.exactConversations[0] || null;
-    const suggestedConversation = live.suggestedConversations[0] || null;
-    const searchValue = buildSearchValue(customer);
 
     return {
         call: tel,
         telegramExternal,
-        omniExact: exactConversation ? `/omni?conversation=${encodeURIComponent(exactConversation.id)}` : null,
-        omniSuggested: !exactConversation && suggestedConversation ? `/omni?conversation=${encodeURIComponent(suggestedConversation.id)}` : null,
-        omniSearch: !exactConversation && !suggestedConversation && searchValue
-            ? `/omni?search=${encodeURIComponent(searchValue)}`
-            : null,
+        ...buildCustomerOmniNavigation(customer, live.exactConversations).links,
         leadWorkspace: lead?.id ? `/sales-funnel?lead=${encodeURIComponent(lead.id)}` : null,
         booking: primaryBooking ? buildTimelineLink(primaryBooking) : null
     };
@@ -222,6 +283,8 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
                expected_msg.delivery_status AS reply_expected_delivery_status,
                m.content AS last_message
         FROM conversations c
+        JOIN customers p ON p.id = $1
+          AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
         LEFT JOIN conversation_messages expected_msg ON expected_msg.id = c.reply_expected_message_id
           AND expected_msg.conversation_id = c.id
         LEFT JOIN LATERAL (
@@ -231,12 +294,11 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
             ORDER BY created_at DESC
             LIMIT 1
         ) m ON true
-        WHERE c.customer_id = $1
+        WHERE ${confirmedCustomerConversationSql()}
           AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
         ORDER BY c.last_message_at DESC NULLS LAST, c.updated_at DESC
-        LIMIT 5
     `, [id, businessContext]);
-    const exactConversations = exactConversationsResult.rows.map(row => mapConversation(row, 'exact'));
+    const exactConversations = uniqueConversations(exactConversationsResult.rows.map(row => mapConversation(row, 'exact')));
 
     const phoneDigits = normalizeDigits(customer.phone);
     const namePattern = customer.name ? `%${customer.name}%` : '';
@@ -261,6 +323,7 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
                 LIMIT 1
             ) m ON true
             WHERE (c.customer_id IS NULL OR c.customer_id <> $1)
+              AND NOT (c.id = ANY($5::int[]))
               AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
               AND (
                   ($2 <> '' AND regexp_replace(COALESCE(c.customer_phone, ''), '\\D', '', 'g') = $2)
@@ -274,8 +337,10 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
                 c.last_message_at DESC NULLS LAST,
                 c.updated_at DESC
             LIMIT 5
-        `, [id, phoneDigits, namePattern, businessContext]);
-        suggestedConversations = suggestedResult.rows.map(row => mapConversation(row, 'suggested'));
+        `, [id, phoneDigits, namePattern, businessContext, exactConversations.map(conversation => conversation.id)]);
+        const exactIds = new Set(exactConversations.map(conversation => Number(conversation.id)));
+        suggestedConversations = uniqueConversations(suggestedResult.rows.map(row => mapConversation(row, 'suggested')))
+            .filter(conversation => !exactIds.has(Number(conversation.id)));
     }
 
     const liveStatus = exactConversations.length
@@ -285,9 +350,9 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
         status: liveStatus,
         exactConversations,
         suggestedConversations,
-        primaryConversation: exactConversations[0] || suggestedConversations[0] || null,
+        primaryConversation: exactConversations.length === 1 ? exactConversations[0] : null,
         explanation: liveStatus === 'exact'
-            ? 'Є точна Omni-розмова через conversations.customer_id.'
+            ? 'Є підтверджений зв’язок клієнта або його лідів із Omni. Якщо діалогів кілька, оберіть потрібний.'
             : liveStatus === 'suggested'
                 ? 'Є ймовірна Omni-розмова за телефоном або ім’ям. Це не записано як точна CRM-прив’язка.'
                 : 'Точної живої Omni-розмови для клієнта не знайдено.'
@@ -319,6 +384,8 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
 
 module.exports = {
     getCustomerCommunicationContext,
+    getCustomerOmniSummaries,
+    buildCustomerOmniNavigation,
     normalizeDigits,
     buildTimelineLink,
     INBOUND_ONLY_CHANNELS

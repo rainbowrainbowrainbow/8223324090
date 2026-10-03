@@ -517,14 +517,16 @@ function buildLegacyChildProjection(customerRow = {}) {
 }
 
 function buildCustomerChildrenProjection(customerRow = {}, canonicalRows = []) {
-    const rows = Array.isArray(canonicalRows) ? canonicalRows : [];
+    const context = customerRow.businessContext || customerRow.business_context || null;
+    const rows = (Array.isArray(canonicalRows) ? canonicalRows : [])
+        .filter(row => !context || (row.businessContext || row.business_context || DEFAULT_BUSINESS_CONTEXT) === context);
     const projection = rows
         .map(mapCustomerChildRow)
         .filter(child => !child.superseded)
         .filter(customerChildHasData)
         .sort((a, b) => (a.sortOrder - b.sortOrder) || ((a.id || 0) - (b.id || 0)));
 
-    return projection.length ? projection : buildLegacyChildProjection(customerRow);
+    return rows.length ? projection : buildLegacyChildProjection(customerRow);
 }
 
 function buildLegacyChildSnapshot(children = [], fallback = {}) {

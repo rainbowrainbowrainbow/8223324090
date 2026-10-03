@@ -71,7 +71,13 @@ const MODES = {
         'tests/browser/my-day-actual-app-browser-smoke.js'
     ],
     'omni-links': [
-        'tests/integration/lead-conversation-links-postgres.test.js'
+        'tests/integration/lead-conversation-links-postgres.test.js',
+        'tests/integration/customer-booking-metrics-postgres.test.js',
+        'tests/integration/customer-birthday-segments-postgres.test.js',
+        'tests/integration/customer-lead-business-isolation-postgres.test.js'
+    ],
+    'customer-birthdays': [
+        'tests/integration/customer-birthday-segments-postgres.test.js'
     ],
     'omni-links-browser': [
         'tests/browser/omni-lead-links-actual-app-browser-smoke.js'
@@ -121,7 +127,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
@@ -505,6 +511,7 @@ function runsAgainstDatabaseOnly(testFile) {
         || testFile.includes('checkbox-park-config.integration')
         || testFile.includes('checkbox-x-report-lifecycle.integration')
         || testFile.includes('lead-conversation-links-postgres.test')
+        || testFile.includes('customer-birthday-segments-postgres.test')
         || testFile.includes('legacy-upload-backfill.integration');
 }
 
@@ -645,6 +652,15 @@ async function runSuite(testDb, testFile, suiteMode) {
             ? testDb.url.toString()
             : '',
         LEAD_CONVERSATION_LINKS_TEST_DATABASE_URL: testFile.includes('lead-conversation-links-postgres.test')
+            ? testDb.url.toString()
+            : '',
+        CUSTOMER_BIRTHDAYS_TEST_DATABASE_URL: testFile.includes('customer-birthday-segments-postgres.test')
+            ? testDb.url.toString()
+            : '',
+        CUSTOMER_METRICS_TEST_DATABASE_URL: testFile.includes('customer-booking-metrics-postgres.test')
+            ? testDb.url.toString()
+            : '',
+        BUSINESS_MEMBERSHIP_TEST_DATABASE_URL: testFile.includes('customer-lead-business-isolation-postgres.test')
             ? testDb.url.toString()
             : '',
         RUN_REDIRECT_AUTH_POSTGRES_BROWSER: testFile.includes('redirect-auth-postgres-browser-smoke') ? 'true' : 'false',

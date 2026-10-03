@@ -1,3 +1,90 @@
+# HR-PAY-09 — PostgreSQL, actual-app browser та аудит
+
+Production impact: yes. **Випуск: HOLD. Повний production-сценарій не підтверджений через чинне бізнес-обмеження HR/payroll.**
+
+Функціональний код (до документації та уточнення currency assertion у тесті): `fb3d6975ed68e2bc2dc819e9f84a3de16d10a218`, гілка `codex/hr-pay-release-review-20261003`.
+Робоча копія: `C:/Users/Plotva/.codex/worktrees/hr-pay-release-review/EventGenix`.
+Початкові HR-PAY-01…08 збережені. Сторонні зміни OneDrive не включені.
+
+## Що змінено
+
+- `services/hrPayReadiness.js`: аудит викликає спільний датований `resolvePayrollConditions`. Чинний профіль не оголошується відсутньою legacy-ставкою. Окремі причини: допуск, призначення, нечинний профіль, одиниця, місячна норма, неперевірене джерело.
+- `scripts/audit-hr-pay-readiness.js`: додано `--source database` тільки через `TRUSTED_QA_OPERATOR_DATABASE_URL`; немає fallback до `DATABASE_URL`. Підключення та транзакція примусово READ ONLY; фіксовані SELECT, перевірка `transaction_read_only`, `ROLLBACK`, таймаути. У файлах немає ПІБ, сум, авторів чи вільного тексту причин.
+- `services/hrPayrollConditions.js`: виправлено вибір неактивної зарплатної схеми. Вимкнена схема не змінює одиницю бази й не надає місячну норму.
+- `js/hr-page.js`, `js/finance-page.js`, `services/payroll.js`: за screenshot actual-app знайдено й виправлено денну доплату, підписану як погодинну. Одиниця збережена і в заблокованих рядках; HR показує формулу та причину одноденного винятку. Додано unit/browser регресії у `tests/hr-pay-conditions-ui.test.js` та чинний actual-app файл.
+- `tests/hr-pay-readiness.test.js`, `tests/hr-pay-conditions-server.test.js`: регресії пріоритету умов, неповних джерел, санітизації, read-only та неактивної схеми.
+- `tests/integration/payroll-profiles-conditions.integration.test.js`: справжні PostgreSQL-перевірки допуску, двох місячних складових за кілька дат/блоків, відсутності, закритого нарахування та read-only аудиту.
+- `tests/browser/hr-pay-actual-app-browser-smoke.js`: додано фактичний прихід, корекцію часу через HR UI, зарплатне розшифрування й незмінність snapshot після зміни каталогу. Жодних підроблених відповідей API. `journey-evidence.json` відділяє PASS окремих етапів від BLOCKED повного шляху.
+
+Нові міграції, залежності, auth/roles, secrets, CI triggers і hosting settings у HR-PAY-09 не змінювались. Чинний CI уже запускає розширені файли, тому зміни workflow не знадобилися.
+
+## Перевірки
+
+- `npm run check:runtime` — PASS, Node 22.23.1 / npm 10.9.8.
+- `node --test tests/hr-pay-conditions-server.test.js tests/hr-pay-conditions-ui.test.js tests/hr-pay-readiness.test.js tests/hr-button-contract.test.js` — PASS, 69/69, без skipped.
+- `npm test` — PASS локально до останнього уточнення одиниць у розшифруванні; фінальна редакція проходить повний baseline у точному CI нижче. Migration governance — 366 SQL файлів, діапазон 001–374. Нових міграцій HR-PAY-09 немає.
+- PostgreSQL: `npm run test:integration:payroll-profiles:isolated` у GitHub Actions, PostgreSQL 16. Датовані HR-PAY регресії — PASS, 14/14, без skipped. Окремий чинний тест у `payroll-profiles.integration.test.js` перевіряє повторне збереження, пропущені ставки, редагування однієї та явне видалення.
+- Actual-app: `npm run test:browser:hr-onboarding:fullstack:isolated` — реальний графік → фактичний час → зарплатне розшифрування доведено; повний HR-шлях має `journeyStatus: BLOCKED`. Фінальний посилений gate і його SHA записуються в CI-доказ нижче.
+- Фінальний точний SHA, CI URL, висновки jobs і browser journey: [санітизований CI-доказ](../output/hr-pay/hr-pay-09-ci-proof.json). Він зберігається після завершення CI фінального HEAD; у цьому JSON відділені результат тестів і HOLD випуску.
+
+Локальний `TEST_DATABASE_URL` відсутній; Docker не відповів, перевірку припинено без тривалої діагностики. Integration не підключався до production. PostgreSQL і browser перевірені чинним disposable CI.
+
+Перший прогін `668a82b75bf11ebded0056731b6302f265ce8063` не називається PASS: PG 14/14 пройшли, browser зупинився на salary UI після початкового оновлення access context. Тест уточнено: використовується справжня кнопка retry, далі пошук відкриває потрібну групу. Той прогін також мав стороннє падіння Omni mobile layout на 1 px за допустимою межею. Повторний CI `f1ecadfa2fdf216d42f5b3fae687375115bedbe3` пройшов 8/8; візуальна перевірка його screenshot виявила помилковий підпис денної ставки, виправлений у фінальному кандидатові.
+
+## Матриця наскрізного сценарію
+
+| Етап | Фактичний результат |
+| --- | --- |
+| HR-картка в isolated compatibility fixture | BLOCKED: `staff_not_migrated`; потрібен позитивний membership-mode сценарій після погодженого Park lane |
+| Графік, профіль, виняток, save/reopen, дата, conflict, повернення чернетки | PASS через справжній Express → PostgreSQL |
+| Copy-week | API PASS: виняток на нову дату не переноситься; видимої кнопки у поточному layout немає, browser-клік не видається за перевірений |
+| Обмеження salary access | PASS: суми не запитуються і не потрапляють до форми/чернетки; дозволене редагування графіка збережено |
+| Фактичний час через HR UI | PASS: 11:00–17:00, перерва 30 хв → 330 хв фізичного часу |
+| Синтетичне розшифрування | 270/год × 5,5 год = 1485, денна доплата 500 один раз; усього 1985. Години фізично не подвоюються |
+| Snapshot | PASS: зміна каталогу після фіксації не змінює умови й результат |
+| Денна/місячна одиниця, формула й причина | Виправлені та покриті 69 цільовими тестами; фінальний browser gate перевіряє `₴/день`, формулу та причину |
+
+Докази browser зберігаються під `output/hr-pay/hr-pay09-browser-<SHA>/`; фінальний каталог зазначений у CI-доказі. Реальні production-суми тут не наведені.
+
+На проміжному `fb3d6975ed68e2bc2dc819e9f84a3de16d10a218` PostgreSQL знову пройшов 14/14. Browser виявив лише невірне очікування валюти в новому assertion (`грн/день` замість канонічного `₴/день`); screenshot підтвердив правильну одиницю, формулу та причину. Assertion уточнено без зміни поведінки UI. Падіння цього прогону не позначається PASS.
+
+Ізольована база браузерного runner працює у legacy compatibility mode. Її позитивні API-тести не підтверджують доступність цих маршрутів у production membership mode. Відмови не обходилися іншим бізнесом чи зміною прав.
+
+## Read-only аудит на 2026-10-03
+
+Два джерела перевірено незалежно:
+
+| Джерело | Покриття | Результат |
+| --- | --- | --- |
+| Live API у Park | 46 працівників, 59 пар | PARTIAL: профілі — 403 `staff_not_migrated`; без висновку про відсутність ставок через цей 403 |
+| Дозволене операторське DB-підключення | 57 активних записів, 70 пар | Профілі, версії, призначення, ставки й схеми прочитані; 6 непогоджених допусків, 1 непідтверджена місячна норма |
+| Одноденні винятки в production | Таблиця `payroll_day_exceptions` відсутня | `schema_missing`, неперевірено; міграція 374 ще не випускалась |
+
+API `active=true` використовує `scheduleableStaffWhere`: core pool, без freelance та завершених кадрових записів. DB-аудит має ширший явний критерій `staff.is_active = true`; різниця кількості не означає втрату працівників. Потенційна додаткова професія — перевірка налаштувань, а не вимога оплачувати всі професії кожному працівнику.
+
+Команди (секрети попередньо завантажені локально, значення не виводяться):
+
+```powershell
+node scripts/audit-hr-pay-readiness.js --date 2026-10-03 --source api --output output/hr-pay/hr-pay-09-api-audit.json
+node scripts/audit-hr-pay-readiness.js --date 2026-10-03 --source database --output output/hr-pay/hr-pay-09-database-audit.json
+```
+
+Санітизовані докази: `output/hr-pay/hr-pay-09-api-audit.json`, `hr-pay-09-database-audit.json`, `hr-pay-09-live-readonly.json`. Шляхи `output/` локальні й ignored. Аудит не доводить історичної втрати ставок і не виконує backfill.
+
+## Що саме блокує випуск
+
+Live повторно перевірено 2026-10-03T10:41:56Z: **0.82.51**, SHA `98ad5e139e8409407f7f04bc9ba9ade45567921d`, branch `codex/eventgenix-production`.
+«Сьогодні», розгорнутий графік і HR-картка відкрилися. Вкладка профілів показує обмеження: GET `/api/hr/payroll-profiles` — 403 `staff_not_migrated`; GET `/api/payroll/preview` — 403 `payroll_not_migrated`. GET картки — 200. HTML 200 не називається успішним завантаженням зарплатних даних.
+
+Причина встановлена в `requireLegacyBusinessSurface`, `parkHrStaffCardRead` та `parkStaffScheduleAccess`: є вузькі Park-маршрути картки/графіка, але payroll namespace і потрібні HR/payroll маршрути не мають дозволеного membership-шляху. `park` є канонічним alias `event_genix`, це не інший бізнес. Помилки URL, яка б законно знімала це обмеження, не знайдено.
+
+**Одна відсутня передумова:** окремо погоджений вузький Park HR/payroll доступ із визначеною власністю даних та чинними salary capabilities. Потрібні лише маршрути профілів/призначень, dated conditions/винятків, табеля й зарплати; інші бізнеси, revoked membership і користувачі без salary access мають залишитися закритими. Поточний HR-PAY-09 прямо забороняє розширення доступу, тому цей policy-блок не змінювався. Після його погодженої реалізації потрібен позитивний actual-app тест у production-подібному membership mode.
+
+Реальні кадрові дані, нарахування, виплати й production schema не змінено. Production deploy не виконувався. HR-PAY-10 не переходить до manifest/deploy, доки цей блокер не знятий.
+
+Нижче збережено попередні звіти HR-PAY-08/07 як історію; поточний статус наведений вище.
+
+---
 # HR-PAY-08 — інтерактивна оплата зміни
 
 Production impact: yes. **Production release: HOLD. Production не змінено.**

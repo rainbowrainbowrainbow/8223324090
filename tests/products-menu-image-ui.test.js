@@ -88,6 +88,7 @@ function createPageHarness() {
     };
 
     vm.runInContext('const menuImageGenerationState = new Map();', context);
+    vm.runInContext('const menuImageManualDraftInFlight = new Set();', context);
     vm.runInContext('const menuImageGeneratorSelection = new Map();', context);
     vm.runInContext('const burgerMenuImageBlueprints = new Map(); const burgerMenuImageBlueprintLoads = new Map();', context);
     vm.runInContext([
@@ -329,11 +330,31 @@ test('a quota failure still allows a manual draft and clears the AI error after 
             status: 'ready', imageUrl: '/uploads/manual-draft.jpg'
         }) };
     };
-    await app.context.createKitchenMenuExternalDraft('dish-1', app.panel().querySelector('[data-menu-image-action="external-draft"]'));
+    await app.context.createKitchenMenuExternalDraft('dish-1', app.panel().querySelector('[data-menu-image-url]'), 'url');
     assert.equal(manualCalls, 1);
     assert.equal(app.message(), '');
     assert.equal(app.panel().querySelectorAll('.kitchen-menu-image-preview img')[0].getAttribute('src'), '/uploads/current-photo.jpg');
     assert.equal(app.panel().querySelectorAll('.kitchen-menu-image-preview img')[1].getAttribute('src'), '/uploads/manual-draft.jpg');
+});
+
+test('URL selection auto-saves one draft and never changes the current photo', async () => {
+    const app = createPageHarness();
+    const urlInput = app.panel().querySelector('[data-menu-image-url]');
+    assert.match(urlInput.getAttribute('onchange'), /createKitchenMenuExternalDraft/);
+    urlInput.value = 'https://example.test/new.jpg';
+    const response = deferred();
+    let calls = 0;
+    app.context.apiCreateProductMenuExternalDraft = async () => { calls++; return response.promise; };
+    const first = app.context.createKitchenMenuExternalDraft('dish-1', urlInput, 'url');
+    await app.context.createKitchenMenuExternalDraft('dish-1', urlInput, 'url');
+    assert.equal(calls, 1);
+    response.resolve({ success: true, product: menuProduct('dish-1', 'event_genix', {
+        status: 'ready', imageUrl: '/uploads/manual-draft.jpg'
+    }) });
+    await first;
+    assert.equal(app.context.allProducts[0].iconUrl, '/uploads/current-photo.jpg');
+    assert.equal(app.panel().querySelector('[data-menu-image-action="apply"]').disabled, false);
+    assert.equal(app.panel().querySelector('[data-menu-image-url]').value, '');
 });
 
 test('a failed regeneration does not block review of an existing ready draft', async () => {

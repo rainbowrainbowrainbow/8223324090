@@ -38,6 +38,10 @@ function harness(products = [menu(), menu('burger-2', 'Салати')], role = '
     const card = id => [...w.document.querySelectorAll('.kitchen-product-card')].find(c => c.dataset.id === id);
     const open = (id, kind = 'photo') => {
         const panel = card(id).querySelector(kind === 'photo' ? '.kitchen-menu-image-disclosure' : '.product-details:not(.kitchen-menu-image-disclosure)');
+        if (kind === 'photo') {
+            w.openKitchenMenuImageStudio(id, panel.querySelector('[data-menu-image-open]'));
+            return panel.querySelector('.kitchen-menu-image-dialog');
+        }
         panel.open = true; w.hydrateProductPanel(panel); return panel;
     };
     return { w, dom, calls, notifications, card, open, close: () => {
@@ -115,7 +119,8 @@ test('filtering, cake/menu and product tabs preserve photo draft nodes and hydra
         h.w.updateProductInState({ ...menu(), name: 'Fresh while hidden' }); h.w.refreshProductCard('burger-1');
         await h.w.setProductTab('kitchen');
         assert.equal(h.card('burger-1'), card); assert.equal(photo.querySelector('[data-menu-image-url]'), input);
-        assert.equal(input.value, 'Draft retained'); assert.ok(photo.open);
+        assert.equal(input.value, 'Draft retained'); assert.equal(photo.open,false);
+        h.open('burger-1'); assert.equal(photo.open,true);
         assert.match(card.textContent, /Fresh while hidden/);
     } finally { h.close(); }
 });

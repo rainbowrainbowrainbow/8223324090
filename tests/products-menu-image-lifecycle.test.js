@@ -45,6 +45,10 @@ function harness(products = [menu(), menu('burger-2', 'Салати')], role = '
     const card = id => [...w.document.querySelectorAll('.kitchen-product-card')].find(c => c.dataset.id === id);
     const open = (id, kind = 'photo') => {
         const panel = card(id).querySelector(kind === 'photo' ? '.kitchen-menu-image-disclosure' : '.product-details:not(.kitchen-menu-image-disclosure)');
+        if (kind === 'photo') {
+            w.openKitchenMenuImageStudio(id, panel.querySelector('[data-menu-image-open]'));
+            return panel.querySelector('.kitchen-menu-image-dialog');
+        }
         panel.open = true; w.hydrateProductPanel(panel); return panel;
     };
     return { w, dom, calls, clock, notifications, card, open, close: () => {
@@ -86,14 +90,18 @@ test('transport loading/ready/error states survive unrelated partial updates and
     }finally{h.close();}
 });
 
-test('render, reopening and opening pending studio never start mutating status reads', async () => {
-    const h=harness([pending()]);try{
-        let calls=0;h.w.apiGetProductMenuImageStatus=async()=>{calls++;throw new Error('unexpected')};
-        for(let i=0;i<3;i++){h.w.renderProducts();h.open('burger-1');h.w.resumePendingKitchenMenuImageJobs();}
-        await h.clock.advance(60000);assert.equal(calls,0);assert.equal(h.clock.timers.size,0);
-        const button=h.card('burger-1').querySelector('[data-menu-image-action="track"]');assert.ok(button);assert.equal(button.disabled,false);
-        h.w.dispatchEvent(new h.w.PageTransitionEvent('pagehide'));h.w.dispatchEvent(new h.w.PageTransitionEvent('pageshow',{persisted:true}));
-        await h.clock.advance(60000);assert.equal(calls,0);
+test('pending Kie job is collected automatically once without another paid generation', async () => {
+    const p=pending(),h=harness([p]);try{
+        let reads=0, paid=0;
+        h.w.apiGetProductMenuImageStatus=async()=>{reads++;return{success:true,status:'ready',product:completed(p)}};
+        h.w.apiGenerateProductMenuImage=async()=>{paid++;throw Error('Unexpected paid generation')};
+        for(let i=0;i<3;i++){h.w.renderProducts();h.open(p.id);h.w.resumePendingKitchenMenuImageJobs();}
+        await h.clock.advance(0);
+        assert.equal(reads,1);assert.equal(paid,0);assert.equal(h.clock.timers.size,0);
+        const panel=h.open(p.id);
+        assert.equal(panel.querySelector('[data-menu-image-action="apply"]').disabled,false);
+        assert.equal(h.w.eval('allProducts[0].iconUrl'),p.iconUrl);
+        assert.equal(h.w.eval('getMenuImageStudioDraft(allProducts[0]).imageUrl'),'/uploads/draft.jpg');
     }finally{h.close();}
 });
 
@@ -117,12 +125,26 @@ test('pending responses and repeated clicks/renders maintain exactly one poll ti
     }finally{h.close();}
 });
 
-for(const transition of ['close','filter','tab','context','pagehide','visibility','reload','job'])test(`${transition} cancels tracking and rejects an already dispatched late result`,async()=>{
+test('closing the photo dialog keeps tracking and collects the completed draft',async()=>{
+    const p=pending(),h=harness([p]);try{
+        const response=deferred();let reads=0;
+        h.w.apiGetProductMenuImageStatus=async()=>{reads++;return response.promise};
+        const dialog=h.open(p.id);await h.clock.advance(0);
+        assert.equal(reads,1);h.w.closeKitchenMenuImageStudio(dialog);
+        assert.equal(dialog.open,false);
+        response.resolve({success:true,status:'ready',product:completed(p)});
+        await h.clock.advance(0);
+        assert.equal(h.w.eval('getMenuImageStudioDraft(allProducts[0]).status'),'ready');
+        assert.equal(h.w.eval('allProducts[0].iconUrl'),p.iconUrl);
+        assert.equal(h.clock.timers.size,0);
+    }finally{h.close();}
+});
+
+for(const transition of ['filter','tab','context','pagehide','visibility','reload','job'])test(`${transition} cancels an in-flight read and ignores its stale result`,async()=>{
     const p=pending(),h=harness([p,menu('burger-2')]);try{
         const response=deferred();let calls=0,signal;
         h.w.apiGetProductMenuImageStatus=async(id,options)=>{calls++;signal=options.signal;return response.promise};
         await track(h);assert.equal(calls,1);const card=h.card(p.id);assert.equal(h.clock.timers.size,1);
-        if(transition==='close'){const panel=card.querySelector('.kitchen-menu-image-disclosure');panel.open=false;h.w.hydrateProductPanel(panel);}
         if(transition==='filter')h.w.eval("activeMenuSection='Салати';renderProducts();");
         if(transition==='tab')h.w.eval("activeProductTab='programs';renderProducts();");
         if(transition==='context')h.w.eval("activeBusinessContext='maysternya';renderProducts();");
@@ -130,12 +152,14 @@ for(const transition of ['close','filter','tab','context','pagehide','visibility
         if(transition==='visibility'){Object.defineProperty(h.w.document,'hidden',{configurable:true,get:()=>true});h.w.document.dispatchEvent(new h.w.Event('visibilitychange'));}
         if(transition==='reload')h.w.eval("productsLoadGeneration++;productsLoadState='loading';renderProducts();");
         if(transition==='job'){h.w.nextJob=pending(p.id,'2026-10-02T20:01:00Z','fixture-task-2');h.w.eval('updateProductInState(nextJob);renderProducts();');}
-        assert.equal(signal.aborted,true);await h.clock.advance(0);assert.equal(h.clock.timers.size,0);
-        response.resolve({success:true,status:'ready',product:completed(p)});await h.clock.advance(60000);
-        assert.equal(calls,1);assert.equal(card.textContent.includes('Fixture ready'),false);assert.equal(h.w.eval("allProducts[0].name"),p.name);
-        if(transition==='close'||transition==='filter'||transition==='tab'){
-            h.w.eval("activeProductTab='kitchen';activeMenuSection='all';renderProducts();");h.open(p.id);await h.clock.advance(10000);
-            assert.equal(calls,1);assert.equal(h.card(p.id).querySelector('[data-menu-image-action="track"]').disabled,false);
+        assert.equal(signal.aborted,true);
+        response.resolve({success:true,status:'ready',product:completed(p)});await h.clock.advance(0);
+        assert.equal(card.textContent.includes('Fixture ready'),false);assert.equal(h.w.eval("allProducts[0].name"),p.name);
+        if(transition==='filter'||transition==='tab'){
+            h.w.eval("activeProductTab='kitchen';activeMenuSection='all';renderProducts();");
+            await h.clock.advance(0);
+            assert.equal(calls,2,'return automatically checks the existing task');
+            assert.equal(h.w.eval('allProducts[0].iconUrl'),p.iconUrl);
         }
     }finally{h.close();}
 });
@@ -143,32 +167,42 @@ for(const transition of ['close','filter','tab','context','pagehide','visibility
 test('unresolved request has a bounded timeout without treating timeout as generation failure',async()=>{
     const p=pending(),h=harness([p]);try{
         let calls=0,signal;h.w.apiGetProductMenuImageStatus=async(id,options)=>{calls++;signal=options.signal;return new Promise(()=>{})};
-        await track(h);await h.clock.advance(15000);assert.equal(signal.aborted,true);assert.equal(h.clock.timers.size,0);
-        const panel=h.open(p.id);assert.match(panel.textContent,/Час відстеження вичерпано/);assert.match(panel.textContent,/Генерація ще може тривати/);
-        assert.equal(panel.querySelector('[data-menu-image-action="track"]').disabled,false);assert.equal(h.w.eval("getMenuImageStudioDraft(allProducts[0]).status"),'generating');
-        await h.clock.advance(100000);assert.equal(calls,1);
+        await track(h);await h.clock.advance(15000);assert.equal(signal.aborted,true);assert.equal(h.clock.timers.size,1);
+        assert.match(h.open(p.id).textContent,/Повторюємо без запуску нової генерації/);
+        await h.clock.advance(4000);assert.equal(calls,2);await h.clock.advance(15000);
+        await h.clock.advance(8000);assert.equal(calls,3);await h.clock.advance(15000);
+        const panel=h.open(p.id);assert.match(panel.textContent,/Не вдалося перевірити стан після кількох спроб/);
+        assert.equal(panel.querySelector('[data-menu-image-action="track"]').disabled,false);
+        assert.equal(h.w.eval("getMenuImageStudioDraft(allProducts[0]).status"),'generating');
+        assert.equal(h.clock.timers.size,0);
     }finally{h.close();}
 });
 
-test('temporary status failure stops tracking instead of accumulating requests',async()=>{
+test('temporary status failure retries only status reads and offers a manual fallback',async()=>{
     const h=harness([pending()]);try{
         let calls=0;h.w.apiGetProductMenuImageStatus=async()=>{calls++;throw new Error('fixture network failure')};await track(h);
-        assert.match(h.open('burger-1').textContent,/стан генерації не підтверджено/i);assert.equal(h.clock.timers.size,0);
-        await h.clock.advance(60000);assert.equal(calls,1);
+        assert.match(h.open('burger-1').textContent,/Повторюємо без запуску нової генерації/);
+        await h.clock.advance(4000);await h.clock.advance(8000);
+        assert.equal(calls,3);assert.equal(h.clock.timers.size,0);
+        assert.match(h.open('burger-1').textContent,/Не вдалося перевірити стан після кількох спроб/);
+        assert.ok(h.open('burger-1').querySelector('[data-menu-image-action="track"]'));
     }finally{h.close();}
 });
 
 test('response belonging to another job is never applied',async()=>{
     const p=pending(),h=harness([p]);try{
         h.w.apiGetProductMenuImageStatus=async()=>({success:true,status:'ready',product:completed(pending(p.id,'2026-10-02T20:05:00Z','other-job'))});
-        await track(h);assert.equal(h.w.eval('allProducts[0].name'),p.name);assert.match(h.open(p.id).textContent,/Запізнілий результат не застосовано/);assert.equal(h.clock.timers.size,0);
+        await track(h);assert.equal(h.w.eval('allProducts[0].name'),p.name);
+        assert.match(h.open(p.id).textContent,/Запізнілий результат не застосовано/);assert.equal(h.clock.timers.size,0);
     }finally{h.close();}
 });
 
 test('tracking session budget stops even when requests keep returning pending',async()=>{
     const h=harness([pending()]);try{
         h.w.apiGetProductMenuImageStatus=async()=>({success:true,status:'generating',product:pending()});await track(h);
-        await h.clock.advance(16*60*1000);assert.equal(h.clock.timers.size,0);assert.match(h.open('burger-1').textContent,/Час відстеження вичерпано/);
+        await h.clock.advance(16*60*1000);assert.equal(h.clock.timers.size,0);
+        assert.match(h.open('burger-1').textContent,/Не вдалося підтвердити результат за відведений час/);
+        assert.ok(h.open('burger-1').querySelector('[data-menu-image-action="track"]'));
     }finally{h.close();}
 });
 
@@ -210,11 +244,11 @@ test('status transport forwards AbortSignal and preserves existing provider diag
     context.apiNetworkFetch=async()=>{throw Error('Abort fixture')};controller.abort();const cancelled=await context.apiGetProductMenuImageStatus('fixture',{signal:controller.signal});assert.equal(cancelled.aborted,true);
 });
 
-test('bfcache return refreshes paused controls without restarting status checks',async()=>{
+test('bfcache return resumes status checks without a second paid request',async()=>{
     const h=harness([pending()]);try{
         let calls=0;h.w.apiGetProductMenuImageStatus=async()=>{calls++;return{success:true,status:'generating',product:pending()}};await track(h);
         h.w.dispatchEvent(new h.w.PageTransitionEvent('pagehide'));h.w.dispatchEvent(new h.w.PageTransitionEvent('pageshow',{persisted:true}));await h.clock.advance(0);
-        const panel=h.open('burger-1');assert.equal(panel.querySelector('[data-menu-image-action="track"]').disabled,false);
-        assert.match(panel.textContent,/Відстеження призупинено/);assert.equal(h.clock.timers.size,0);await h.clock.advance(60000);assert.equal(calls,1);
+        const panel=h.open('burger-1');assert.equal(panel.querySelector('[data-menu-image-action="track"]'),null);
+        assert.match(panel.textContent,/Kie обробляє фото/);assert.equal(calls,2);
     }finally{h.close();}
 });

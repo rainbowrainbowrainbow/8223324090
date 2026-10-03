@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.51",
+  "version": "0.82.52",
   "eventGenix": {
-    "releaseLabel": "Автоматичні чернетки фото меню"
+    "releaseLabel": "Зручне меню та редактор страв"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

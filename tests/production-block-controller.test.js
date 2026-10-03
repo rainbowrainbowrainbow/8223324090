@@ -869,7 +869,7 @@ test('HR/payroll accepts the exact prepared release markers without admitting ad
     const options = { protectedWorkflow: 'hr-payroll' };
     const value = manifest(options, { ...scope, changedPaths: [...scope.changedPaths, ...releaseFiles] });
     assert.doesNotThrow(() => validateManifest(value));
-    for (const foreign of ['future-page.html', 'css/new-release.css', 'js/new-release.js',
+    for (const foreign of ['future-page.html', 'css/account-access-editor.css', 'js/new-release.js',
         'docs/HR_PAY_RELEASE_NOTES_OTHER.json', 'scripts/unreviewed-release.js']) {
         assert.throws(() => manifest(options, { ...scope, changedPaths: [...value.changedPaths, foreign] }),
             error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');

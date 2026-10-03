@@ -30,6 +30,52 @@ test('actual provenance, correction, completion, business scope and group aggreg
         for (const migration of ['375_universal_costing_plan_foundation.sql', '376_costing_actual_provenance.sql']) {
             await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations', migration), 'utf8'));
         }
+        const legacyTemplate = await pool.query("INSERT INTO costing_templates (business_context,name,kind) VALUES ('event_genix','Legacy group','service') RETURNING id");
+        const legacyVersion = await pool.query(
+            "INSERT INTO costing_template_versions (business_context,template_id,version_number,effective_from,definition) VALUES ('event_genix',$1,1,'2026-01-01','{}'::jsonb) RETURNING id",
+            [legacyTemplate.rows[0].id]
+        );
+        const legacyPlan = await pool.query(
+            `INSERT INTO costing_plan_snapshots (business_context,template_version_id,client_key,execution_kind,execution_label,
+             execution_date,inputs,result,revenue_minor,direct_cost_minor,contribution_minor,margin_bps)
+             VALUES ('event_genix',$1,$2::uuid,'service','Legacy execution','2026-10-12','{}'::jsonb,'{}'::jsonb,10000,2000,8000,8000) RETURNING id`,
+            [legacyVersion.rows[0].id, crypto.randomUUID()]
+        );
+        const legacyGroup = await pool.query(
+            "INSERT INTO costing_execution_groups (business_context,kind,label) VALUES ('event_genix','course','Pre-377 group') RETURNING id"
+        );
+        await pool.query(`INSERT INTO costing_group_members
+            (group_id,plan_id,business_context,include_plan_revenue,include_plan_direct_cost)
+            VALUES ($1,$2,'event_genix',TRUE,FALSE)`, [legacyGroup.rows[0].id, legacyPlan.rows[0].id]);
+        await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/377_costing_group_composition_revisions.sql'), 'utf8'));
+        const imported = await pool.query(
+            `SELECT r.revision_number, m.plan_id FROM costing_group_revisions r
+             JOIN costing_group_revision_members m ON m.revision_id=r.id
+             WHERE r.group_id=$1`, [legacyGroup.rows[0].id]
+        );
+        assert.equal(imported.rowCount, 1);
+        assert.equal(imported.rows[0].revision_number, 1);
+        assert.equal(String(imported.rows[0].plan_id), String(legacyPlan.rows[0].id));
+        await pool.query(`
+            CREATE TABLE bookings (id VARCHAR(50) PRIMARY KEY, business_context VARCHAR(64), price INTEGER, status TEXT);
+            CREATE TABLE education_attendance (id BIGINT PRIMARY KEY, business_context VARCHAR(64), booking_id VARCHAR(50), status TEXT);
+            CREATE TABLE payroll_reports (id BIGINT PRIMARY KEY, status TEXT, finance_transaction_id INTEGER);
+            CREATE TABLE payroll_installments (id BIGINT PRIMARY KEY, payroll_report_id BIGINT, business_context VARCHAR(64),
+                locked_amount INTEGER, workflow_status TEXT, allocation_status TEXT);
+            CREATE TABLE fiscal_profiles (id BIGINT PRIMARY KEY, crm_profile_key VARCHAR(64));
+            CREATE TABLE payment_orders (id BIGINT PRIMARY KEY, fiscal_profile_id BIGINT, total_amount_minor BIGINT,
+                status TEXT, payment_status TEXT, source_type TEXT, source_id TEXT);
+            CREATE TABLE payment_refunds (id BIGINT PRIMARY KEY, fiscal_profile_id BIGINT, amount_minor BIGINT,
+                status TEXT, payment_order_id BIGINT);
+            INSERT INTO bookings VALUES ('booking-park', 'event_genix', 250, 'confirmed'), ('booking-dar', 'dar', 900, 'confirmed');
+            INSERT INTO education_attendance VALUES (11, 'event_genix', 'booking-park', 'present');
+            INSERT INTO payroll_reports VALUES (21, 'approved', NULL);
+            INSERT INTO payroll_installments VALUES (31, 21, 'event_genix', 300, 'approved', 'single');
+            INSERT INTO fiscal_profiles VALUES (41, 'event_genix'), (42, 'dar');
+            INSERT INTO payment_orders VALUES (51, 41, 200000, 'payment_recorded', 'recorded', 'booking', 'booking-park'),
+                                              (52, 42, 90000, 'payment_recorded', 'recorded', 'booking', 'booking-dar');
+            INSERT INTO payment_refunds VALUES (61, 41, 30000, 'money_refunded', 51);
+        `);
         require.cache[cachePaths[0]] = { id: cachePaths[0], filename: cachePaths[0], loaded: true, exports: { pool } };
         delete require.cache[cachePaths[1]];
         delete require.cache[cachePaths[2]];
@@ -57,6 +103,32 @@ test('actual provenance, correction, completion, business scope and group aggreg
             assert.equal(saved.status, 201, JSON.stringify(saved.body));
             return saved.body.planId;
         }
+        const links = [
+            { type: 'booking', sourceId: 'booking-park', expectedAmountMinor: '25000' },
+            { type: 'education_attendance', sourceId: '11' },
+            { type: 'payroll_installment', sourceId: '31', expectedAmountMinor: '30000' },
+            { type: 'payment_order', sourceId: '51', expectedAmountMinor: '200000' },
+            { type: 'payment_refund', sourceId: '61', expectedAmountMinor: '-30000' }
+        ];
+        for (const link of links) {
+            const preview = await request('POST', '/actual/source-links/preview', link);
+            assert.equal(preview.status, 200, JSON.stringify(preview.body));
+            assert.equal(preview.body.preview.referenceValid, true);
+            assert.equal(preview.body.preview.postingAllowed, false);
+            assert.deepEqual(preview.body.preview.verifiedFields,
+                link.type === 'education_attendance' ? ['id', 'business_context'] : ['id', 'business_context', 'amount']);
+            assert.equal(preview.body.preview.amountMatches, link.type === 'education_attendance' ? null : true);
+        }
+        const foreignSource = await request('POST', '/actual/source-links/preview',
+            { type: 'payment_order', sourceId: '52', expectedAmountMinor: '90000' });
+        assert.equal(foreignSource.body.preview.referenceValid, false);
+        assert.deepEqual(foreignSource.body.preview.verifiedFields, []);
+        assert.equal(Object.hasOwn(foreignSource.body.preview, 'canonicalAmountMinor'), false);
+        assert.equal((await request('POST', '/actual/source-links/preview',
+            { type: 'payment_order', sourceId: '51', expectedAmountMinor: '199999' })).body.preview.referenceValid, false);
+        assert.equal((await request('POST', '/actual/source-links/preview',
+            { type: 'education_attendance', sourceId: '11', expectedAmountMinor: '0' })).status, 400);
+        assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM costing_actual_sources')).rows[0].count, 0);
         const rentalId = await plan('rental', 'Room B', { revenueBasis: 'hour', revenueRateMinor: '60000', lines: [
             { code: 'cleaning', label: 'Cleaning', basis: 'execution', rateMinor: '18000' },
             { code: 'host', label: 'Host estimate', basis: 'execution', rateMinor: '28000' },
@@ -146,6 +218,30 @@ test('actual provenance, correction, completion, business scope and group aggreg
             { planId: agencyId, includePlanRevenue: false, includePlanDirectCost: true }
         ] });
         assert.equal(grouped.status, 201, JSON.stringify(grouped.body));
+        assert.equal((await request('POST', '/actual/groups', { kind: 'course', label: 'Repeated in request', members: [
+            { planId: rentalId, includePlanRevenue: true, includePlanDirectCost: false },
+            { planId: rentalId, includePlanRevenue: false, includePlanDirectCost: true }
+        ] })).status, 400);
+        assert.equal((await request('POST', '/actual/groups', { kind: 'course', label: 'Nested group', members: [
+            { planId: rentalId, groupId: grouped.body.groupId, includePlanRevenue: true, includePlanDirectCost: true }
+        ] })).status, 400);
+        assert.equal((await request('POST', '/actual/groups', { kind: 'course', label: 'No contribution', members: [
+            { planId: rentalId, includePlanRevenue: false, includePlanDirectCost: false }
+        ] })).status, 400);
+        const darTemplate = await pool.query("INSERT INTO costing_templates (business_context,name,kind) VALUES ('dar','Other business','service') RETURNING id");
+        const darVersion = await pool.query(
+            "INSERT INTO costing_template_versions (business_context,template_id,version_number,effective_from,definition) VALUES ('dar',$1,1,'2026-01-01','{}'::jsonb) RETURNING id",
+            [darTemplate.rows[0].id]
+        );
+        const darPlan = await pool.query(
+            `INSERT INTO costing_plan_snapshots (business_context,template_version_id,client_key,execution_kind,execution_label,
+             execution_date,inputs,result,revenue_minor,direct_cost_minor,contribution_minor,margin_bps)
+             VALUES ('dar',$1,$2::uuid,'service','Dar execution','2026-10-12','{}'::jsonb,'{}'::jsonb,10000,2000,8000,8000) RETURNING id`,
+            [darVersion.rows[0].id, crypto.randomUUID()]
+        );
+        assert.equal((await request('POST', '/actual/groups', { kind: 'course', label: 'Cross-business', members: [
+            { planId: darPlan.rows[0].id, includePlanRevenue: true, includePlanDirectCost: true }
+        ] })).status, 404);
         const group = await request('GET', `/actual/groups/${grouped.body.groupId}`);
         assert.equal(group.body.summary.planned.revenueMinor, '200000');
         assert.equal(group.body.summary.planned.directCostMinor, '200000');
@@ -159,12 +255,58 @@ test('actual provenance, correction, completion, business scope and group aggreg
             isComplete: true, reason: 'Synthetic venue invoice checked' })).status, 201);
         for (const category of ['revenue', 'direct_cost']) {
             assert.equal((await request('POST', `/actual/groups/${grouped.body.groupId}/completions`, { category,
-                isComplete: true, reason: 'No shared group-level actuals in fixture' })).status, 201);
+                isComplete: true, expectedRevision: 1, reason: 'No shared group-level actuals in fixture' })).status, 201);
         }
         const finishedGroup = await request('GET', `/actual/groups/${grouped.body.groupId}`);
         assert.equal(finishedGroup.body.summary.revenue.confirmedMinor, '170000');
         assert.equal(finishedGroup.body.summary.directCost.confirmedMinor, '200000');
         assert.equal(finishedGroup.body.summary.actualContributionMinor, '-30000');
+        assert.equal(finishedGroup.body.revision, 1);
+        const groupPath = `/actual/groups/${grouped.body.groupId}`;
+        const revisionPayload = { expectedRevision: 1, reason: 'Move venue into its own aggregate', members: [
+            { planId: rentalId, includePlanRevenue: true, includePlanDirectCost: true }
+        ] };
+        assert.equal((await request('POST', `${groupPath}/revisions`, { ...revisionPayload, members: [
+            { planId: rentalId, includePlanRevenue: true, includePlanDirectCost: true },
+            { planId: rentalId, includePlanRevenue: false, includePlanDirectCost: true }
+        ] })).status, 400);
+        assert.equal((await request('POST', `${groupPath}/revisions`, { ...revisionPayload, members: [
+            { groupId: grouped.body.groupId, includePlanRevenue: true, includePlanDirectCost: true }
+        ] })).status, 400);
+        assert.equal((await request('POST', `${groupPath}/revisions`, { ...revisionPayload, members: [
+            { planId: darPlan.rows[0].id, includePlanRevenue: true, includePlanDirectCost: true }
+        ] })).status, 404);
+        assert.equal((await request('POST', `${groupPath}/revisions`, revisionPayload, 'dar')).status, 403);
+        const competing = await Promise.all([
+            request('POST', `${groupPath}/revisions`, revisionPayload),
+            request('POST', `${groupPath}/revisions`, revisionPayload)
+        ]);
+        assert.deepEqual(competing.map(result => result.status).sort(), [201, 409]);
+        const revised = await request('GET', groupPath);
+        assert.equal(revised.body.revision, 2);
+        assert.deepEqual(revised.body.history.map(item => item.revision_number), [1, 2]);
+        assert.deepEqual(revised.body.history[0].members.map(item => String(item.plan_id)), [String(rentalId), String(agencyId)]);
+        assert.deepEqual(revised.body.members.map(item => String(item.planId)), [String(rentalId)]);
+        assert.equal(revised.body.summary.actualContributionMinor, null, 'composition change invalidates group attestations');
+        assert.equal(revised.body.completions.slice(-2).every(item => item.is_complete === false), true);
+        assert.equal((await request('POST', `${groupPath}/completions`, { category: 'revenue', isComplete: true,
+            expectedRevision: 1, reason: 'Stale group reconciliation' })).status, 409);
+        assert.equal((await request('GET', groupPath)).body.summary.actualContributionMinor, null);
+        for (const category of ['revenue', 'direct_cost']) {
+            assert.equal((await request('POST', `${groupPath}/completions`, { category, isComplete: true,
+                expectedRevision: 2, reason: 'Reviewed revised composition' })).status, 201);
+        }
+        assert.equal((await request('GET', groupPath)).body.summary.actualContributionMinor, '96000');
+        assert.equal((await request('POST', `${groupPath}/revisions`, revisionPayload)).status, 409);
+        assert.equal((await request('POST', `${groupPath}/revisions`, { ...revisionPayload,
+            expectedRevision: 2 })).status, 409, 'same composition is not appended again');
+        const moved = await request('POST', '/actual/groups', { kind: 'session', label: 'Venue aggregate', members: [
+            { planId: agencyId, includePlanRevenue: false, includePlanDirectCost: true }
+        ] });
+        assert.equal(moved.status, 201, JSON.stringify(moved.body));
+        await assert.rejects(pool.query('UPDATE costing_group_revisions SET reason=$1 WHERE group_id=$2',
+            ['rewrite', grouped.body.groupId]), /immutable/);
+        await assert.rejects(pool.query('DELETE FROM costing_group_revision_members WHERE plan_id=$1', [agencyId]), /immutable/);
         for (const kind of ['session', 'day']) {
             const memberId = await plan(kind === 'day' ? 'admission_day' : 'session', `${kind} fixture`,
                 { revenueBasis: 'execution', revenueRateMinor: '10000', lines: [
@@ -182,6 +324,21 @@ test('actual provenance, correction, completion, business scope and group aggreg
         assert.equal((await request('POST', '/actual/groups', { kind: 'day', label: 'Duplicate member', members: [
             { planId: rentalId, includePlanRevenue: true, includePlanDirectCost: true }
         ] })).status, 409);
+        for (let revision = 0; revision < 6; revision += 1) {
+            const [read, correction] = await Promise.all([
+                request('GET', actualPath),
+                request('POST', `/actual/sources/${host.body.sourceId}/correct`, {
+                    amountMinor: revision % 2 ? '30000' : '32000', evidenceState: 'confirmed', semantic: 'cost',
+                    reason: `Concurrent snapshot fixture revision ${revision}`
+                })
+            ]);
+            assert.equal(read.status, 200);
+            assert.equal(correction.status, 201);
+            for (const active of read.body.sources) {
+                assert.ok(read.body.entries.some(entry => String(entry.id) === String(active.entry_id) && entry.entry_type === 'record'));
+                assert.ok(!read.body.entries.some(entry => String(entry.reverses_entry_id) === String(active.entry_id)));
+            }
+        }
         await assert.rejects(pool.query('UPDATE costing_actual_entries SET amount_minor=1 WHERE id=$1', [posted.body.entryId]), /immutable/);
     } finally {
         if (server) await new Promise(resolve => server.close(resolve));

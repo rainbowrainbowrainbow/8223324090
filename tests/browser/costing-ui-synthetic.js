@@ -21,6 +21,7 @@ const definition = { revenueBasis: 'participant', revenueRateMinor: '30000', lin
 const template = { id: '1', name: 'Групове заняття', kind: 'lesson' };
 const version = { id: '1', version_number: 1, effective_from: '2026-01-01', definition };
 const plans = [];
+const groups = [];
 const actualSources = [];
 const actualEntries = [];
 const completionEvents = [];
@@ -57,6 +58,59 @@ async function main() {
             if (req.method === 'GET' && endpoint === '/templates') return json(res, 200, { templates: [template] });
             if (req.method === 'GET' && endpoint === '/templates/1') return json(res, 200, { template, versions: [version] });
             if (req.method === 'GET' && endpoint === '/plans') return json(res, 200, { plans });
+            if (req.method === 'GET' && endpoint === '/actual/groups') return json(res, 200, { groups });
+            if (req.method === 'POST' && endpoint === '/actual/source-links/preview') {
+                let body = '';
+                for await (const part of req) body += part;
+                const payload = JSON.parse(body);
+                const attendance = payload.type === 'education_attendance' && payload.sourceId === '11';
+                const booking = payload.type === 'booking' && payload.sourceId === 'booking_ui';
+                return json(res, 200, { preview: { type: payload.type, sourceId: payload.sourceId,
+                    referenceValid: attendance || (booking && payload.expectedAmountMinor === '216000'),
+                    verifiedFields: attendance ? ['id', 'business_context'] : booking ? ['id', 'business_context', 'amount'] : [],
+                    amountMatches: attendance ? null : booking, canonicalAmountMinor: attendance ? null : '216000',
+                    status: 'confirmed', postingAllowed: false,
+                    blockers: [attendance ? 'Attendance has no monetary amount' : 'Booking price is not earned revenue'] } });
+            }
+            if (req.method === 'POST' && endpoint === '/actual/groups') {
+                let body = '';
+                for await (const part of req) body += part;
+                const payload = JSON.parse(body);
+                if (groups.some(group => group.members.some(member => payload.members.some(next => String(next.planId) === String(member.planId))))) {
+                    return json(res, 409, { error: 'Plan already belongs to an aggregate' });
+                }
+                const group = { id: String(groups.length + 1), kind: payload.kind, label: payload.label,
+                    members: payload.members, revision: 1, history: [{ revision_number: 1, reason: 'Initial composition', members: payload.members }] };
+                groups.push(group);
+                return json(res, 201, { groupId: group.id });
+            }
+            const groupRevision = endpoint.match(/^\/actual\/groups\/(\d+)\/revisions$/);
+            if (req.method === 'POST' && groupRevision) {
+                let body = '';
+                for await (const part of req) body += part;
+                const payload = JSON.parse(body);
+                const group = groups.find(item => item.id === groupRevision[1]);
+                if (payload.expectedRevision !== group.revision) return json(res, 409, { error: 'Group composition changed; reload before revising' });
+                group.revision += 1;
+                group.members = payload.members;
+                group.history.push({ revision_number: group.revision, reason: payload.reason, members: payload.members });
+                return json(res, 201, { groupId: group.id, revision: group.revision });
+            }
+            const groupDetail = endpoint.match(/^\/actual\/groups\/(\d+)$/);
+            if (req.method === 'GET' && groupDetail) {
+                const group = groups.find(item => item.id === groupDetail[1]);
+                const revenue = group.members.reduce((total, member) => total + (member.includePlanRevenue
+                    ? BigInt(plans.find(plan => plan.id === String(member.planId)).revenue_minor) : 0n), 0n);
+                const cost = group.members.reduce((total, member) => total + (member.includePlanDirectCost
+                    ? BigInt(plans.find(plan => plan.id === String(member.planId)).direct_cost_minor) : 0n), 0n);
+                return json(res, 200, { group, revision: group.revision, history: group.history.map(revision => ({
+                    ...revision, members: revision.members.map(member => ({ plan_id: member.planId,
+                        include_plan_revenue: member.includePlanRevenue, include_plan_direct_cost: member.includePlanDirectCost }))
+                })), members: group.members.map(member => ({ planId: member.planId,
+                    include_plan_revenue: member.includePlanRevenue, include_plan_direct_cost: member.includePlanDirectCost })),
+                summary: { planned: { revenueMinor: String(revenue), directCostMinor: String(cost),
+                    contributionMinor: String(revenue - cost) }, actualComplete: false, actualContributionMinor: null } });
+            }
             const actualPlan = endpoint.match(/^\/actual\/plans\/(\d+)(?:\/(sources|completions))?$/);
             const correction = endpoint.match(/^\/actual\/sources\/(\d+)\/correct$/);
             if (actualPlan && req.method === 'GET' && !actualPlan[2]) {
@@ -180,6 +234,34 @@ async function main() {
         await page.locator('#costCompletionConfirmed').check();
         await page.locator('#costCompleteCategory').click();
         await page.locator('#costActualSummary').getByText('960,00 ₴').last().waitFor();
+        await page.locator('#costLinkId').fill('booking_ui');
+        await page.locator('#costLinkAmount').fill('2160');
+        await page.locator('#costPreviewLink').click();
+        await page.locator('#costLinkResult').getByText('Перевірено ID, бізнес і суму').waitFor();
+        assert.match(await page.locator('#costLinkResult').innerText(), /не створює фактичного запису/);
+        await page.locator('#costLinkType').selectOption('education_attendance');
+        await page.locator('#costLinkId').fill('11');
+        await page.locator('#costPreviewLink').click();
+        await page.locator('#costLinkResult').getByText('Перевірено ID і бізнес; цей запис не містить суми').waitFor();
+        assert.doesNotMatch(await page.locator('#costLinkResult').innerText(), /сума збігається/);
+        assert.equal(actualSources.length, 2, 'read-only source preview must not add actual evidence');
+        await page.locator('#costGroupLabel').fill('Курс синтетичних занять');
+        await page.locator('#costGroupMembers [data-plan-id="1"] [data-include-revenue]').check();
+        await page.locator('#costGroupMembers [data-plan-id="1"] [data-include-cost]').check();
+        await page.locator('#costCreateGroup').click();
+        await page.locator('#costGroupSummary').getByText('Курс синтетичних занять').waitFor();
+        assert.equal(groups.length, 1);
+        assert.match(await page.locator('#costGroupSummary').innerText(), /Ще не визначено/);
+        await page.locator('#costGroupEditMembers [data-plan-id="1"] [data-include-cost]').uncheck();
+        await page.locator('#costGroupRevisionReason').fill('Витрати обліковуються в іншій групі');
+        await page.locator('#costSaveGroupRevision').click();
+        await page.locator('#costGroupSummary').getByText('ревізія 2').waitFor();
+        assert.equal(groups[0].history.length, 2);
+        assert.match(await page.locator('#costGroupHistory').innerText(), /Ревізія 1[\s\S]*Ревізія 2/);
+        assert.match(await page.locator('#costGroupHistory').innerText(), /Ревізія 2[\s\S]*без витрат/);
+        await page.locator('#costCreateGroup').click();
+        await page.locator('#costGroupStatus').getByText('Цей план або ID джерела вже прив’язаний до іншого виконання.').waitFor();
+        assert.equal(groups.length, 1);
         await page.screenshot({ path: path.join(output, 'desktop.png'), fullPage: true });
         await page.setViewportSize({ width: 820, height: 1180 });
         const tabletBounds = await page.locator('#tabCosting .cost-card').evaluateAll(cards => cards.map(card => {

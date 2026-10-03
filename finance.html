@@ -1626,10 +1626,19 @@
                             <label>Економічна роль<input id="costSourceRole" maxlength="80" placeholder="host_pay"></label>
                             <label>Категорія<select id="costSourceCategory"><option value="direct_cost">Пряма витрата</option><option value="revenue">Виручка</option></select></label>
                             <label>Сума, ₴<input id="costSourceAmount" inputmode="decimal" placeholder="0.00"></label>
-                            <label>Підстава<select id="costSourceEvidence"><option value="estimate">Оцінка</option><option value="confirmed">Підтверджено вручну</option></select></label>
+                            <label>Підстава<select id="costSourceEvidence"><option value="estimate">Оцінка</option><option value="confirmed">Підтверджено вручну (не перевірка payroll/payment)</option></select></label>
                             <label>Семантика<select id="costSourceSemantic"><option value="cost">Витрата</option><option value="charge">Нарахування виручки</option><option value="refund">Повернення</option><option value="adjustment">Коригування виручки</option></select></label>
                         </div>
                         <div class="cost-actions"><button type="button" id="costAddSource" class="btn-page-secondary">Додати факт / оцінку</button></div>
+                        <h4>Перевірити посилання на джерело</h4>
+                        <p>Лише читання канонічного запису. Перевірка ID, бізнесу й суми не додає факту та не проводить його в P&amp;L.</p>
+                        <div class="cost-grid">
+                            <label>Система<select id="costLinkType"><option value="booking">Бронювання</option><option value="education_attendance">Education attendance</option><option value="payroll_installment">Зарплатна виплата</option><option value="payment_order">Платіжне замовлення</option><option value="payment_refund">Повернення</option></select></label>
+                            <label>ID запису<input id="costLinkId" maxlength="120" placeholder="Канонічний ID"></label>
+                            <label>Очікувана сума, ₴<input id="costLinkAmount" inputmode="decimal" placeholder="0.00"></label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costPreviewLink" class="btn-page-secondary">Перевірити джерело</button></div>
+                        <div id="costLinkResult" class="cost-actual-summary" role="status" hidden></div>
                         <h4>Виправити джерело без втрати історії</h4>
                         <div class="cost-grid">
                             <label>Джерело<select id="costCorrectionSource"></select></label>
@@ -1648,6 +1657,25 @@
                         <div class="cost-actions"><button type="button" id="costCompleteCategory" class="btn-page-secondary">Зберегти стан звірки</button></div>
                         <div id="costActualHistory" class="cost-actual-history"></div>
                         <div id="costActualStatus" class="cost-status" role="status" hidden></div>
+                    </section>
+                    <section class="cost-card" aria-labelledby="costGroupHeading">
+                        <h3 id="costGroupHeading">Агрегати виконань</h3>
+                        <p>Зберіть курс, сеанс або день із планів одного бізнесу. Для кожного плану явно виберіть виручку та прямі витрати. Виправлення складу створює нову незмінну ревізію і скасовує попередню звірку групи.</p>
+                        <div class="cost-grid">
+                            <label>Тип групи<select id="costGroupKind"><option value="course">Курс</option><option value="session">Сеанс</option><option value="day">День</option></select></label>
+                            <label>Назва групи<input id="costGroupLabel" maxlength="200" placeholder="Курс жовтня"></label>
+                        </div>
+                        <div id="costGroupMembers" class="cost-group-members"></div>
+                        <div class="cost-actions"><button type="button" id="costCreateGroup" class="btn-page-secondary">Зберегти склад групи</button></div>
+                        <div class="cost-grid"><label>Збережена група<select id="costGroupSelect"></select></label></div>
+                        <div id="costGroupSummary" class="cost-actual-summary" role="status">Груп ще немає.</div>
+                        <h4>Виправити склад групи</h4>
+                        <p>Оберіть збережену групу, змініть склад і вкажіть причину. Попередні ревізії залишаться в історії.</p>
+                        <div id="costGroupEditMembers" class="cost-group-members"></div>
+                        <div class="cost-grid"><label class="cost-wide">Причина виправлення<input id="costGroupRevisionReason" maxlength="240" placeholder="Що змінилося у складі"></label></div>
+                        <div class="cost-actions"><button type="button" id="costSaveGroupRevision" class="btn-page-secondary">Зберегти нову ревізію</button></div>
+                        <div id="costGroupHistory" class="cost-actual-history"></div>
+                        <div id="costGroupStatus" class="cost-status" role="status" hidden></div>
                     </section>
                 </div>
             </div>

@@ -6,6 +6,7 @@ const { pool } = require('../db');
 const { businessContextFromRequest, requireBusinessContext } = require('../services/businessContext');
 const { ActualInputError, normalizeRecord, summarizeTarget, aggregateGroup } = require('../services/costingActuals');
 const { previewReconciliation } = require('../services/costingReconciliation');
+const { SourceLinkInputError, previewCanonicalSource } = require('../services/costingSourceLink');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('FinanceCostingActual');
 
@@ -28,6 +29,66 @@ function field(raw, name, max, pattern = null) {
     return value;
 }
 
+function normalizeMembers(members) {
+    if (!Array.isArray(members) || members.length < 1 || members.length > 200) throw new ActualInputError('Group needs 1–200 explicit members');
+    const seen = new Set();
+    return members.map(member => {
+        if (!member || typeof member !== 'object' || Array.isArray(member) ||
+            Object.keys(member).some(key => !['planId', 'includePlanRevenue', 'includePlanDirectCost'].includes(key))) {
+            throw new ActualInputError('Nested groups are not supported; members must be plans');
+        }
+        const planId = id(member.planId);
+        if (seen.has(planId) || typeof member.includePlanRevenue !== 'boolean' || typeof member.includePlanDirectCost !== 'boolean') {
+            throw new ActualInputError('Each group member needs unique planId and explicit revenue/cost inclusion');
+        }
+        if (!member.includePlanRevenue && !member.includePlanDirectCost) {
+            throw new ActualInputError('Each member must contribute revenue, cost, or both');
+        }
+        seen.add(planId);
+        return { planId, includePlanRevenue: member.includePlanRevenue, includePlanDirectCost: member.includePlanDirectCost };
+    });
+}
+
+function revisionNumber(raw) {
+    if (!/^[1-9]\d*$/.test(String(raw ?? '')) || Number(raw) > 2147483646) {
+        throw new ActualInputError('expectedRevision must be a positive revision number');
+    }
+    return Number(raw);
+}
+
+async function lockPlans(db, context, planIds) {
+    const result = await db.query(
+        'SELECT id FROM costing_plan_snapshots WHERE business_context=$1 AND id=ANY($2::bigint[]) ORDER BY id FOR UPDATE',
+        [context, planIds]
+    );
+    if (result.rowCount !== planIds.length) {
+        const error = new Error('Execution not found'); error.status = 404; throw error;
+    }
+}
+
+async function assertPlansAvailable(db, context, planIds, groupId = null) {
+    const result = await db.query(
+        `SELECT m.plan_id FROM costing_group_revision_members m
+         JOIN costing_group_revisions r ON r.id=m.revision_id AND r.business_context=m.business_context
+         WHERE m.business_context=$1 AND m.plan_id=ANY($2::bigint[])
+           AND r.revision_number=(SELECT MAX(latest.revision_number) FROM costing_group_revisions latest WHERE latest.group_id=r.group_id)
+           AND ($3::bigint IS NULL OR r.group_id<>$3::bigint) LIMIT 1`,
+        [context, planIds, groupId]
+    );
+    if (result.rowCount) throw conflict(`Plan ${result.rows[0].plan_id} already belongs to an aggregate`);
+}
+
+async function insertRevisionMembers(db, context, revisionId, members) {
+    for (const member of members) {
+        await db.query(
+            `INSERT INTO costing_group_revision_members
+             (revision_id, plan_id, business_context, include_plan_revenue, include_plan_direct_cost)
+             VALUES ($1,$2,$3,$4,$5)`,
+            [revisionId, member.planId, context, member.includePlanRevenue, member.includePlanDirectCost]
+        );
+    }
+}
+
 function conflict(message) {
     const error = new Error(message);
     error.status = 409;
@@ -35,9 +96,10 @@ function conflict(message) {
 }
 
 function fail(res, error, action) {
-    if (error instanceof ActualInputError) return res.status(400).json({ success: false, error: error.message });
+    if (error instanceof ActualInputError || error instanceof SourceLinkInputError) return res.status(400).json({ success: false, error: error.message });
     if (error.status === 404 || error.status === 409) return res.status(error.status).json({ success: false, error: error.message });
     if (error.code === '23505') return res.status(409).json({ success: false, error: 'This source or plan is already linked' });
+    if (error.code === '40P01' || error.code === '40001') return res.status(409).json({ success: false, error: 'Concurrent group change; reload and retry' });
     log.error(action, error);
     return res.status(500).json({ success: false, error: 'Internal server error' });
 }
@@ -49,27 +111,38 @@ async function targetRow(db, context, kind, targetId, lock = false) {
     return result.rows[0];
 }
 
+async function withReadSnapshot(run) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+        const value = await run(client);
+        await client.query('COMMIT');
+        return value;
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+    } finally { client.release(); }
+}
+
 async function evidence(db, context, kind, targetId) {
     const column = kind === 'plan' ? 'plan_id' : 'group_id';
-    const [sources, entries, completions] = await Promise.all([
-        db.query(`SELECT s.id, s.source_system, s.external_id, s.economic_role, s.category,
+    const sources = await db.query(`SELECT s.id, s.source_system, s.external_id, s.economic_role, s.category,
                          e.id AS entry_id, e.amount_minor::text, e.evidence_state, e.semantic, e.revision_number
                     FROM costing_actual_sources s
                     JOIN costing_actual_entries e ON e.source_id=s.id AND e.business_context=s.business_context AND e.entry_type='record'
                     LEFT JOIN costing_actual_entries reversal ON reversal.reverses_entry_id=e.id
                    WHERE s.business_context=$1 AND s.${column}=$2 AND reversal.id IS NULL
-                   ORDER BY s.id`, [context, targetId]),
-        db.query(`SELECT e.id, e.source_id, e.revision_number, e.entry_type, e.amount_minor::text,
+                   ORDER BY s.id`, [context, targetId]);
+    const entries = await db.query(`SELECT e.id, e.source_id, e.revision_number, e.entry_type, e.amount_minor::text,
                          e.evidence_state, e.semantic, e.reason, e.reverses_entry_id, e.created_by, e.created_at,
                          s.source_system, s.external_id, s.economic_role, s.category
                     FROM costing_actual_entries e
                     JOIN costing_actual_sources s ON s.id=e.source_id AND s.business_context=e.business_context
                    WHERE s.business_context=$1 AND s.${column}=$2
-                   ORDER BY e.id`, [context, targetId]),
-        db.query(`SELECT id, category, is_complete, evidence_entry_id, reason, created_by, created_at
+                   ORDER BY e.id`, [context, targetId]);
+    const completions = await db.query(`SELECT id, category, is_complete, evidence_entry_id, reason, created_by, created_at
                     FROM costing_actual_completions
-                   WHERE business_context=$1 AND ${column}=$2 ORDER BY id`, [context, targetId])
-    ]);
+                   WHERE business_context=$1 AND ${column}=$2 ORDER BY id`, [context, targetId]);
     return { sources: sources.rows, entries: entries.rows, completions: completions.rows };
 }
 
@@ -87,14 +160,21 @@ async function detail(db, context, kind, targetId) {
 async function listPlan(req, res) {
     try {
         const context = business(req, res); if (!context) return;
-        res.json({ success: true, ...(await detail(pool, context, 'plan', id(req.params.id))) });
+        res.json({ success: true, ...(await withReadSnapshot(db => detail(db, context, 'plan', id(req.params.id)))) });
     } catch (error) { fail(res, error, 'GET plan actual'); }
 }
 router.get('/plans/:id', listPlan);
+router.post('/source-links/preview', async (req, res) => {
+    try {
+        const context = business(req, res); if (!context) return;
+        res.json({ success: true, preview: await previewCanonicalSource(pool, context, req.body) });
+    } catch (error) { fail(res, error, 'POST canonical source preview'); }
+});
 router.get('/plans/:id/reconciliation', async (req, res) => {
     try {
         const context = business(req, res); if (!context) return;
-        res.json({ success: true, preview: previewReconciliation(await detail(pool, context, 'plan', id(req.params.id))) });
+        const data = await withReadSnapshot(db => detail(db, context, 'plan', id(req.params.id)));
+        res.json({ success: true, preview: previewReconciliation(data) });
     } catch (error) { fail(res, error, 'GET reconciliation preview'); }
 });
 
@@ -213,6 +293,17 @@ async function complete(req, res, kind) {
         client = await pool.connect();
         await client.query('BEGIN');
         await targetRow(client, context, kind, targetId, true);
+        if (kind === 'group') {
+            const expectedRevision = revisionNumber(req.body?.expectedRevision);
+            const latest = await client.query(
+                `SELECT revision_number FROM costing_group_revisions
+                 WHERE group_id=$1 AND business_context=$2 ORDER BY revision_number DESC LIMIT 1`,
+                [targetId, context]
+            );
+            if (!latest.rowCount || latest.rows[0].revision_number !== expectedRevision) {
+                throw conflict('Group composition changed; reload before reconciling');
+            }
+        }
         const column = kind === 'plan' ? 'plan_id' : 'group_id';
         if (req.body.isComplete) {
             const estimates = await client.query(
@@ -252,37 +343,80 @@ router.post('/groups', async (req, res) => {
         const kind = field(req.body?.kind, 'group kind', 16);
         if (!GROUP_KINDS.has(kind)) throw new ActualInputError('Unsupported group kind');
         const label = field(req.body?.label, 'group label', 200);
-        const members = req.body?.members;
-        if (!Array.isArray(members) || members.length < 1 || members.length > 200) throw new ActualInputError('Group needs 1–200 explicit members');
-        const seen = new Set();
-        const normalized = members.map(member => {
-            const planId = id(member?.planId);
-            if (seen.has(planId) || typeof member.includePlanRevenue !== 'boolean' || typeof member.includePlanDirectCost !== 'boolean') {
-                throw new ActualInputError('Each group member needs unique planId and explicit revenue/cost inclusion');
-            }
-            seen.add(planId);
-            return { planId, includePlanRevenue: member.includePlanRevenue, includePlanDirectCost: member.includePlanDirectCost };
-        });
+        const normalized = normalizeMembers(req.body?.members);
         client = await pool.connect();
         await client.query('BEGIN');
-        for (const member of normalized) await targetRow(client, context, 'plan', member.planId);
+        const planIds = normalized.map(member => member.planId);
+        await lockPlans(client, context, planIds);
+        await assertPlansAvailable(client, context, planIds);
         const group = await client.query(
             'INSERT INTO costing_execution_groups (business_context, kind, label, created_by) VALUES ($1,$2,$3,$4) RETURNING id',
             [context, kind, label, req.user?.username || null]
         );
-        for (const member of normalized) {
-            await client.query(
-                `INSERT INTO costing_group_members
-                 (group_id, plan_id, business_context, include_plan_revenue, include_plan_direct_cost)
-                 VALUES ($1,$2,$3,$4,$5)`,
-                [group.rows[0].id, member.planId, context, member.includePlanRevenue, member.includePlanDirectCost]
-            );
-        }
+        const revision = await client.query(
+            `INSERT INTO costing_group_revisions
+             (group_id, business_context, revision_number, reason, created_by)
+             VALUES ($1,$2,1,$3,$4) RETURNING id`,
+            [group.rows[0].id, context, 'Initial composition', req.user?.username || null]
+        );
+        await insertRevisionMembers(client, context, revision.rows[0].id, normalized);
         await client.query('COMMIT');
-        res.status(201).json({ success: true, groupId: group.rows[0].id });
+        res.status(201).json({ success: true, groupId: group.rows[0].id, revision: 1 });
     } catch (error) {
         if (client) await client.query('ROLLBACK').catch(() => {});
         fail(res, error, 'POST actual group');
+    } finally { client?.release(); }
+});
+
+router.post('/groups/:id/revisions', async (req, res) => {
+    let client;
+    try {
+        const context = business(req, res); if (!context) return;
+        const groupId = id(req.params.id);
+        const expectedRevision = revisionNumber(req.body?.expectedRevision);
+        const reason = field(req.body?.reason, 'revision reason', 240);
+        const members = normalizeMembers(req.body?.members);
+        client = await pool.connect();
+        await client.query('BEGIN');
+        await targetRow(client, context, 'group', groupId, true);
+        const current = await client.query(
+            'SELECT id, revision_number FROM costing_group_revisions WHERE group_id=$1 AND business_context=$2 ORDER BY revision_number DESC LIMIT 1',
+            [groupId, context]
+        );
+        if (!current.rowCount) throw conflict('Group has no composition revision');
+        if (current.rows[0].revision_number !== expectedRevision) throw conflict('Group composition changed; reload before revising');
+        const previous = await client.query(
+            `SELECT plan_id, include_plan_revenue, include_plan_direct_cost
+             FROM costing_group_revision_members WHERE revision_id=$1 ORDER BY plan_id`, [current.rows[0].id]
+        );
+        const oldIds = previous.rows.map(row => String(row.plan_id));
+        const newIds = members.map(member => member.planId);
+        await lockPlans(client, context, [...new Set([...oldIds, ...newIds])]);
+        await assertPlansAvailable(client, context, newIds, groupId);
+        const prior = previous.rows.map(row => `${row.plan_id}:${row.include_plan_revenue}:${row.include_plan_direct_cost}`).sort();
+        const next = members.map(member => `${member.planId}:${member.includePlanRevenue}:${member.includePlanDirectCost}`).sort();
+        if (JSON.stringify(prior) === JSON.stringify(next)) throw conflict('Group composition is unchanged');
+        const revisionNumberNext = expectedRevision + 1;
+        const revision = await client.query(
+            `INSERT INTO costing_group_revisions
+             (group_id, business_context, revision_number, reason, created_by)
+             VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+            [groupId, context, revisionNumberNext, reason, req.user?.username || null]
+        );
+        await insertRevisionMembers(client, context, revision.rows[0].id, members);
+        for (const category of ['revenue', 'direct_cost']) {
+            await client.query(
+                `INSERT INTO costing_actual_completions
+                 (business_context, group_id, category, is_complete, evidence_entry_id, reason, created_by)
+                 VALUES ($1,$2,$3,FALSE,0,$4,$5)`,
+                [context, groupId, category, `Composition revision ${revisionNumberNext}: ${reason}`, req.user?.username || null]
+            );
+        }
+        await client.query('COMMIT');
+        res.status(201).json({ success: true, groupId, revision: revisionNumberNext });
+    } catch (error) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        fail(res, error, 'POST actual group revision');
     } finally { client?.release(); }
 });
 
@@ -300,19 +434,40 @@ router.get('/groups/:id', async (req, res) => {
     try {
         const context = business(req, res); if (!context) return;
         const groupId = id(req.params.id);
-        const own = await detail(pool, context, 'group', groupId);
-        const memberRows = await pool.query(
-            `SELECT m.plan_id, m.include_plan_revenue, m.include_plan_direct_cost
-               FROM costing_group_members m WHERE m.group_id=$1 AND m.business_context=$2 ORDER BY m.plan_id`, [groupId, context]
-        );
-        const members = [];
-        for (const member of memberRows.rows) {
-            const plan = await detail(pool, context, 'plan', member.plan_id);
-            members.push({ planId: member.plan_id, include_plan_revenue: member.include_plan_revenue,
-                include_plan_direct_cost: member.include_plan_direct_cost, summary: plan.summary });
-        }
-        res.json({ success: true, group: own.target, sources: own.sources, entries: own.entries,
-            completions: own.completions, members, summary: aggregateGroup(members, own.summary) });
+        const response = await withReadSnapshot(async db => {
+            const own = await detail(db, context, 'group', groupId);
+            const revisionRows = await db.query(
+                `SELECT id, revision_number, reason, created_by, created_at
+                 FROM costing_group_revisions WHERE group_id=$1 AND business_context=$2 ORDER BY revision_number`,
+                [groupId, context]
+            );
+            const historyMembers = await db.query(
+                `SELECT r.revision_number, m.plan_id, m.include_plan_revenue, m.include_plan_direct_cost
+                 FROM costing_group_revisions r
+                 JOIN costing_group_revision_members m ON m.revision_id=r.id AND m.business_context=r.business_context
+                 WHERE r.group_id=$1 AND r.business_context=$2 ORDER BY r.revision_number, m.plan_id`,
+                [groupId, context]
+            );
+            const history = revisionRows.rows.map(revision => ({ ...revision,
+                members: historyMembers.rows.filter(member => member.revision_number === revision.revision_number) }));
+            const active = revisionRows.rows.at(-1);
+            if (!active) throw conflict('Group has no composition revision');
+            const memberRows = await db.query(
+                `SELECT m.plan_id, m.include_plan_revenue, m.include_plan_direct_cost
+                   FROM costing_group_revision_members m
+                  WHERE m.revision_id=$1 AND m.business_context=$2 ORDER BY m.plan_id`, [active.id, context]
+            );
+            const members = [];
+            for (const member of memberRows.rows) {
+                const plan = await detail(db, context, 'plan', member.plan_id);
+                members.push({ planId: member.plan_id, include_plan_revenue: member.include_plan_revenue,
+                    include_plan_direct_cost: member.include_plan_direct_cost, summary: plan.summary });
+            }
+            return { success: true, group: own.target, revision: active.revision_number, history,
+                sources: own.sources, entries: own.entries, completions: own.completions,
+                members, summary: aggregateGroup(members, own.summary) };
+        });
+        res.json(response);
     } catch (error) { fail(res, error, 'GET actual group'); }
 });
 

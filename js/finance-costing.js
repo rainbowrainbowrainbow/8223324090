@@ -3,7 +3,7 @@
 
 // The finance page already enforces its existing role/capability gate.
 window.CostingWorkspace = (() => {
-    const state = { initialized: false, templates: [], current: null, preview: null, plans: [], actual: null };
+    const state = { initialized: false, templates: [], current: null, preview: null, plans: [], actual: null, group: null };
     const $ = id => document.getElementById(id);
     const kinds = { lesson: 'Заняття', session: 'Сеанс', rental: 'Оренда', service: 'Послуга', agency_order: 'Агентське замовлення', admission_day: 'День парку' };
     const bases = { execution: 'за проведення', hour: 'за годину', participant: 'за учасника', unit: 'за одиницю', percent: 'відсоток' };
@@ -27,6 +27,19 @@ window.CostingWorkspace = (() => {
         return `${sign}${(absolute / 100n).toLocaleString('uk-UA')},${String(absolute % 100n).padStart(2, '0')} ₴`;
     }
 
+    function friendlyError(message) {
+        const value = String(message || 'Помилка запиту');
+        if (/already belongs to an aggregate|already linked to another execution/i.test(value)) return 'Цей план або ID джерела вже прив’язаний до іншого виконання.';
+        if (/already exists with different evidence/i.test(value)) return 'Джерело вже має іншу суму або підставу. Використайте виправлення з причиною.';
+        if (/Resolve estimated sources/i.test(value)) return 'Спочатку замініть усі оцінки цієї категорії підтвердженими записами.';
+        if (/already saved|already linked/i.test(value)) return 'Цей запис уже збережено. Оновіть список перед повторною дією.';
+        if (/Source not found in this business/i.test(value)) return 'Джерело не знайдено в поточному бізнесі.';
+        if (/Canonical amount differs/i.test(value)) return 'Сума не збігається з канонічним записом.';
+        if (/Group composition changed|Concurrent group change/i.test(value)) return 'Склад групи вже змінився. Оновіть групу й повторіть виправлення.';
+        if (/Group composition is unchanged/i.test(value)) return 'Склад не змінився. Виберіть інші складові перед збереженням.';
+        return value;
+    }
+
     function inputUah(value) {
         const absolute = BigInt(value || '0');
         return `${absolute / 100n}.${String(absolute % 100n).padStart(2, '0')}`;
@@ -45,7 +58,7 @@ window.CostingWorkspace = (() => {
         const element = $('costStatus');
         element.hidden = !message;
         element.classList.toggle('error', error);
-        element.textContent = message || '';
+        element.textContent = error ? friendlyError(message) : (message || '');
     }
 
     function invalidatePreview() {
@@ -247,6 +260,7 @@ window.CostingWorkspace = (() => {
         select.replaceChildren(new Option(state.plans.length ? 'Оберіть виконання' : 'Планів ще немає', ''));
         state.plans.forEach(plan => select.add(new Option(`${plan.execution_label} · ${plan.execution_date}`, plan.id)));
         select.value = state.plans.some(plan => String(plan.id) === previous) ? previous : '';
+        renderGroupMembers();
         if (!state.plans.length) { list.textContent = 'Планів поки немає.'; state.actual = null; $('costActualSummary').textContent = 'Спочатку збережіть план.'; return; }
         list.innerHTML = state.plans.map(plan => `<article><div><strong>${escapeHtml(plan.execution_label)}</strong><br><small>${escapeHtml(plan.execution_date)} · ${escapeHtml(plan.template_name)} · v${escapeHtml(String(plan.version_number))}</small></div><div>Внесок: <strong>${uahFromMinor(plan.contribution_minor)}</strong></div></article>`).join('');
         if (select.value) await loadActual();
@@ -272,7 +286,7 @@ window.CostingWorkspace = (() => {
         const element = $('costActualStatus');
         element.hidden = !message;
         element.classList.toggle('error', error);
-        element.textContent = message || '';
+        element.textContent = error ? friendlyError(message) : (message || '');
     }
 
     function renderActual(data) {
@@ -291,10 +305,10 @@ window.CostingWorkspace = (() => {
         const select = $('costCorrectionSource');
         const selected = select.value;
         select.replaceChildren(new Option('Оберіть джерело', ''));
-        data.sources.forEach(source => select.add(new Option(`${source.external_id} · ${source.economic_role} · ${source.evidence_state === 'estimate' ? 'оцінка' : 'підтверджено'}`, source.id)));
+        data.sources.forEach(source => select.add(new Option(`${source.external_id} · ${source.economic_role} · ${source.evidence_state === 'estimate' ? 'оцінка' : 'підтверджено вручну'}`, source.id)));
         select.value = data.sources.some(source => String(source.id) === selected) ? selected : '';
         $('costActualHistory').innerHTML = data.entries.length ? `<h4>Історія джерел і виправлень</h4>${data.entries.map(entry =>
-            `<article>${escapeHtml(entry.external_id)} · ${escapeHtml(entry.economic_role)} · ${entry.entry_type === 'reversal' ? 'сторно' : entry.evidence_state === 'estimate' ? 'оцінка' : 'підтверджено'} · ${uahFromMinor(entry.amount_minor)}${entry.reason ? ` · ${escapeHtml(entry.reason)}` : ''}</article>`).join('')}` : '<p>Фактичних джерел поки немає.</p>';
+            `<article>${escapeHtml(entry.external_id)} · ${escapeHtml(entry.economic_role)} · ${entry.entry_type === 'reversal' ? 'сторно' : entry.evidence_state === 'estimate' ? 'оцінка' : 'підтверджено вручну'} · ${uahFromMinor(entry.amount_minor)}${entry.reason ? ` · ${escapeHtml(entry.reason)}` : ''}</article>`).join('')}` : '<p>Фактичних джерел поки немає.</p>';
     }
 
     async function loadActual() {
@@ -318,6 +332,28 @@ window.CostingWorkspace = (() => {
             await loadActual();
             actualStatus(result.idempotent ? 'Джерело вже враховано; повтор не додав суму.' : 'Джерело записано. Попередню звірку цієї категорії треба підтвердити знову.');
         } catch (error) { actualStatus(error.message, true); }
+    }
+
+    async function previewCanonicalLink() {
+        const result = $('costLinkResult');
+        try {
+            const type = $('costLinkType').value;
+            const payload = { type, sourceId: $('costLinkId').value.trim() };
+            if (type !== 'education_attendance') payload.expectedAmountMinor = signedMinorFromUah($('costLinkAmount').value, 'Очікувана сума');
+            const response = await apiRequest('POST', '/api/finance/costing/actual/source-links/preview', payload);
+            const preview = response.preview;
+            const fields = preview.verifiedFields || [];
+            const match = fields.includes('amount') ? 'Перевірено ID, бізнес і суму' :
+                fields.includes('id') && preview.canonicalAmountMinor === null && type !== 'education_attendance' ? 'ID і бізнес збігаються; канонічної суми немає' :
+                fields.includes('id') && preview.amountMatches === false ? 'ID і бізнес збігаються; сума відрізняється' :
+                fields.includes('id') ? 'Перевірено ID і бізнес; цей запис не містить суми' :
+                'Посилання не пройшло перевірку';
+            result.innerHTML = `<strong>${match}</strong>
+                ${fields.includes('id') ? `<p>${preview.canonicalAmountMinor === null ? 'Суми немає' : `Сума запису: ${uahFromMinor(preview.canonicalAmountMinor)}`} · стан: ${escapeHtml(preview.status || 'невідомий')}</p>` : `<p>${escapeHtml(preview.reason || 'Запис не знайдено в поточному бізнесі')}</p>`}
+                <p>Перевірка посилання не створює фактичного запису й не проводить суму в P&amp;L.</p>
+                ${preview.blockers?.length ? `<ul>${preview.blockers.map(blocker => `<li>${escapeHtml(blocker)}</li>`).join('')}</ul>` : ''}`;
+            result.hidden = false;
+        } catch (error) { result.textContent = friendlyError(error.message); result.hidden = false; }
     }
 
     function selectCorrectionSource() {
@@ -359,6 +395,107 @@ window.CostingWorkspace = (() => {
         } catch (error) { actualStatus(error.message, true); }
     }
 
+    function groupStatus(message, error = false) {
+        const element = $('costGroupStatus');
+        element.hidden = !message;
+        element.classList.toggle('error', error);
+        element.textContent = error ? friendlyError(message) : (message || '');
+    }
+
+    function renderGroupMembers(containerId = 'costGroupMembers', selected = []) {
+        const container = $(containerId);
+        if (!state.plans.length) { container.textContent = 'Спочатку створіть плани виконань.'; return; }
+        container.innerHTML = state.plans.map(plan => {
+            const member = selected.find(item => String(item.planId) === String(plan.id));
+            return `<article data-plan-id="${escapeHtml(String(plan.id))}">
+            <div><strong>${escapeHtml(plan.execution_label)}</strong><small>${escapeHtml(plan.execution_date)} · ${escapeHtml(plan.template_name)} · план ${uahFromMinor(plan.revenue_minor)} / ${uahFromMinor(plan.direct_cost_minor)}</small></div>
+            <label><input type="checkbox" data-include-revenue${member?.include_plan_revenue ? ' checked' : ''}> Включити виручку</label>
+            <label><input type="checkbox" data-include-cost${member?.include_plan_direct_cost ? ' checked' : ''}> Включити витрати</label></article>`;
+        }).join('');
+    }
+
+    function selectedGroupMembers(containerId) {
+        return [...$(containerId).querySelectorAll('[data-plan-id]')].map(row => ({
+            planId: row.dataset.planId,
+            includePlanRevenue: row.querySelector('[data-include-revenue]').checked,
+            includePlanDirectCost: row.querySelector('[data-include-cost]').checked
+        })).filter(member => member.includePlanRevenue || member.includePlanDirectCost);
+    }
+
+    async function refreshGroups(selectedId = null) {
+        const data = await apiRequest('GET', '/api/finance/costing/actual/groups');
+        const select = $('costGroupSelect');
+        const previous = selectedId === null ? select.value : String(selectedId);
+        const groups = data.groups || [];
+        select.replaceChildren(new Option(groups.length ? 'Оберіть групу' : 'Груп ще немає', ''));
+        groups.forEach(group => select.add(new Option(`${group.label} · ${group.kind}`, group.id)));
+        select.value = groups.some(group => String(group.id) === previous) ? previous : '';
+        await loadGroup();
+    }
+
+    async function loadGroup() {
+        const groupId = $('costGroupSelect').value;
+        if (!groupId) {
+            state.group = null;
+            $('costGroupSummary').textContent = 'Виберіть збережену групу або створіть нову.';
+            $('costGroupEditMembers').textContent = 'Оберіть групу для виправлення складу.';
+            $('costGroupHistory').replaceChildren();
+            return;
+        }
+        try {
+            const data = await apiRequest('GET', `/api/finance/costing/actual/groups/${encodeURIComponent(groupId)}`);
+            state.group = data;
+            const summary = data.summary;
+            const members = data.members.map(member => {
+                const plan = state.plans.find(item => String(item.id) === String(member.planId));
+                return `${escapeHtml(plan?.execution_label || `#${member.planId}`)}: ${member.include_plan_revenue ? 'виручка' : 'без виручки'}, ${member.include_plan_direct_cost ? 'витрати' : 'без витрат'}`;
+            });
+            $('costGroupSummary').innerHTML = `<strong>${escapeHtml(data.group.label)} · ревізія ${data.revision}</strong><div class="cost-result-grid">
+                <div>Планова виручка<strong>${uahFromMinor(summary.planned.revenueMinor)}</strong></div>
+                <div>Планові прямі витрати<strong>${uahFromMinor(summary.planned.directCostMinor)}</strong></div>
+                <div>Плановий внесок<strong>${uahFromMinor(summary.planned.contributionMinor)}</strong></div>
+                <div>Фактичний внесок<strong>${summary.actualComplete ? uahFromMinor(summary.actualContributionMinor) : 'Ще не визначено'}</strong></div>
+            </div><p>${summary.actualComplete ? 'Факт звірено.' : 'Факт групи або її складових ще не звірено.'}</p>
+            <ul>${members.map(member => `<li>${member}</li>`).join('')}</ul>`;
+            renderGroupMembers('costGroupEditMembers', data.members);
+            $('costGroupHistory').innerHTML = `<h4>Історія складу</h4>${data.history.map(revision => {
+                const composition = revision.members.map(member => {
+                    const plan = state.plans.find(item => String(item.id) === String(member.plan_id));
+                    return `<li>${escapeHtml(plan?.execution_label || `#${member.plan_id}`)}: ${member.include_plan_revenue ? 'виручка' : 'без виручки'}, ${member.include_plan_direct_cost ? 'витрати' : 'без витрат'}</li>`;
+                }).join('');
+                return `<article><strong>Ревізія ${revision.revision_number}</strong> · ${escapeHtml(revision.reason)}<ul>${composition}</ul></article>`;
+            }).join('')}`;
+        } catch (error) { groupStatus(error.message, true); }
+    }
+
+    async function createGroup() {
+        try {
+            const members = selectedGroupMembers('costGroupMembers');
+            if (!members.length) throw new Error('Виберіть принаймні один план і складову виручки або витрат');
+            const response = await apiRequest('POST', '/api/finance/costing/actual/groups', {
+                kind: $('costGroupKind').value, label: $('costGroupLabel').value.trim(), members
+            });
+            await refreshGroups(response.groupId);
+            groupStatus('Склад групи збережено як незмінний історичний знімок.');
+        } catch (error) { groupStatus(error.message, true); }
+    }
+
+    async function saveGroupRevision() {
+        try {
+            if (!state.group) throw new Error('Спочатку виберіть збережену групу');
+            const members = selectedGroupMembers('costGroupEditMembers');
+            if (!members.length) throw new Error('Залиште в групі принаймні один план');
+            const groupId = state.group.group.id;
+            await apiRequest('POST', `/api/finance/costing/actual/groups/${encodeURIComponent(groupId)}/revisions`, {
+                expectedRevision: state.group.revision,
+                reason: $('costGroupRevisionReason').value.trim(), members
+            });
+            $('costGroupRevisionReason').value = '';
+            await refreshGroups(groupId);
+            groupStatus('Нову ревізію складу збережено; звірку групи потрібно повторити.');
+        } catch (error) { groupStatus(error.message, true); }
+    }
+
     async function load() {
         if (!state.initialized) {
             state.initialized = true;
@@ -372,9 +509,19 @@ window.CostingWorkspace = (() => {
             $('costSavePlan').addEventListener('click', savePlan);
             $('costActualPlan').addEventListener('change', loadActual);
             $('costAddSource').addEventListener('click', addActualSource);
+            $('costPreviewLink').addEventListener('click', previewCanonicalLink);
+            $('costLinkType').addEventListener('change', () => {
+                const attendance = $('costLinkType').value === 'education_attendance';
+                $('costLinkAmount').disabled = attendance;
+                $('costLinkAmount').placeholder = $('costLinkType').value === 'payment_refund' ? '-300.00' : '0.00';
+                $('costLinkResult').hidden = true;
+            });
             $('costCorrectionSource').addEventListener('change', selectCorrectionSource);
             $('costCorrectSource').addEventListener('click', correctActualSource);
             $('costCompleteCategory').addEventListener('click', saveCompletion);
+            $('costCreateGroup').addEventListener('click', createGroup);
+            $('costSaveGroupRevision').addEventListener('click', saveGroupRevision);
+            $('costGroupSelect').addEventListener('change', loadGroup);
             $('costSourceCategory').addEventListener('change', () => {
                 $('costSourceSemantic').value = $('costSourceCategory').value === 'direct_cost' ? 'cost' : 'charge';
             });
@@ -385,6 +532,7 @@ window.CostingWorkspace = (() => {
         }
         try {
             await Promise.all([refreshTemplates($('costTemplateSelect').value || null), refreshPlans()]);
+            await refreshGroups();
         } catch (error) { status(error.message, true); }
     }
 

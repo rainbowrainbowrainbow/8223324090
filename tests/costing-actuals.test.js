@@ -60,3 +60,14 @@ test('course/day group includes package revenue once and session costs once', ()
     assert.equal(group.planned.directCostMinor, '50000');
     assert.equal(group.actualContributionMinor, '50000');
 });
+
+test('actual and aggregate money cannot overflow PostgreSQL BIGINT', () => {
+    assert.throws(() => normalizeRecord({ amountMinor: '9223372036854775808', semantic: 'cost' }, 'direct_cost'), ActualInputError);
+    const huge = summarizeTarget({ revenue_minor: '9000000000000000000', direct_cost_minor: '0',
+        contribution_minor: '9000000000000000000' });
+    const own = summarizeTarget(null, [], [complete(1, 'revenue'), complete(2, 'direct_cost')]);
+    assert.throws(() => aggregateGroup([
+        { include_plan_revenue: true, include_plan_direct_cost: false, summary: huge },
+        { include_plan_revenue: true, include_plan_direct_cost: false, summary: huge }
+    ], own), ActualInputError);
+});

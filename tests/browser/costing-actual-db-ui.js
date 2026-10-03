@@ -87,7 +87,7 @@ async function main() {
             return data;
         }
         // Seed only through the actual API. The browser performs the plan and actual workflow.
-        await post('/templates', { name: 'Disposable group lesson', kind: 'lesson', effectiveFrom: '2026-01-01',
+        await post('/templates', { name: 'Групове заняття з малювання', kind: 'lesson', effectiveFrom: '2026-01-01',
             definition: { revenueBasis: 'participant', revenueRateMinor: '30000', lines: [
                 { code: 'teacher', label: 'Teacher', basis: 'hour', rateMinor: '25000' },
                 { code: 'materials', label: 'Materials', basis: 'participant', rateMinor: '4000' },
@@ -106,7 +106,8 @@ async function main() {
         await page.goto(`${origin}/finance?tab=costing`);
         await page.locator('#costTemplateSelect option[value="1"]').waitFor({ state: 'attached' });
         await page.locator('#costTemplateSelect').selectOption('1');
-        await page.locator('#costExecutionLabel').fill('Disposable lesson');
+        await page.locator('[data-cost-nav="plan"]').click();
+        await page.locator('#costExecutionLabel').fill('Заняття з малювання 12 жовтня');
         await page.locator('#costExecutionDate').fill('2026-10-12');
         await page.locator('#costExecutionBookingId').fill('lesson-qa');
         await page.locator('#costParticipants').fill('10');
@@ -131,22 +132,28 @@ async function main() {
         }
         for (const category of ['revenue', 'direct_cost']) {
             await page.locator('#costCompletionCategory').selectOption(category);
-            await page.locator('#costCompletionReason').fill(`Disposable ${category} reconciliation`);
+            await page.locator('#costCompletionReason').fill(category === 'revenue' ? 'Перевірено надходження за заняття' : 'Перевірено прямі витрати заняття');
             await page.locator('#costCompletionConfirmed').check();
+            const completionResponse = page.waitForResponse(response => response.url().includes('/completions') && response.request().method() === 'POST');
             await page.locator('#costCompleteCategory').click();
+            const completion = await completionResponse;
+            assert.equal(completion.status(), 201, await completion.text());
+            await page.waitForFunction(() => document.querySelector('#costCompletionReason').value === '' && !document.querySelector('#costCompletionConfirmed').checked);
         }
-        await page.locator('#costActualSummary').getByText('1 002,00 ₴').last().waitFor();
-        await page.locator('#costGroupLabel').fill('Disposable course');
+        await page.waitForFunction(() => document.querySelector('#costActualSummary .cost-result-grid > div:nth-child(4) strong')?.textContent?.replace(/\s/g, ' ').includes('1 002,00'));
+        await page.locator('[data-cost-nav="group"]').click();
+        await page.locator('#costGroupLabel').fill('Курс малювання жовтня');
         await page.locator('#costGroupMembers [data-plan-id="1"] [data-include-revenue]').check();
         await page.locator('#costGroupMembers [data-plan-id="1"] [data-include-cost]').check();
         await page.locator('#costCreateGroup').click();
-        await page.locator('#costGroupSummary').getByText('Disposable course').waitFor();
+        await page.locator('#costGroupSummary').getByText('Курс малювання жовтня').waitFor();
         await page.locator('#costGroupEditMembers [data-plan-id="1"] [data-include-cost]').uncheck();
-        await page.locator('#costGroupRevisionReason').fill('Move shared costs to a separate allocation');
+        await page.locator('#costGroupRevisionReason').fill('Спільні витрати враховуємо окремо');
         await page.locator('#costSaveGroupRevision').click();
         await page.locator('#costGroupSummary').getByText('ревізія 2').waitFor();
         assert.match(await page.locator('#costGroupHistory').innerText(), /Ревізія 1[\s\S]*Ревізія 2/);
         assert.match(await page.locator('#costGroupHistory').innerText(), /Ревізія 2[\s\S]*без витрат/);
+        await page.locator('[data-cost-nav="actual"]').click();
         await page.locator('#costLinkId').fill('lesson-qa');
         await page.locator('#costLinkAmount').fill('2160');
         await page.locator('#costPreviewLink').click();
@@ -163,6 +170,7 @@ async function main() {
         assert.deepEqual(httpErrors, []);
         const bounds = await page.locator('#tabCosting .cost-card').evaluateAll(cards => cards.map(card => card.getBoundingClientRect().right));
         assert.ok(bounds.every(right => right <= 821), JSON.stringify(bounds));
+        await page.waitForLoadState('networkidle');
         await page.screenshot({ path: path.join(output, 'tablet-fullstack.png'), fullPage: true });
         console.log(JSON.stringify({ passed: true, counts: counts.rows[0], output }));
     } finally {

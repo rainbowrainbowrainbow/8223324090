@@ -3,10 +3,70 @@
 
 // The finance page already enforces its existing role/capability gate.
 window.CostingWorkspace = (() => {
-    const state = { initialized: false, templates: [], current: null, preview: null, plans: [], actual: null, group: null };
+    const state = { initialized: false, templates: [], current: null, preview: null, plans: [], actual: null, group: null, managementSources: [] };
     const $ = id => document.getElementById(id);
     const kinds = { lesson: 'Заняття', session: 'Сеанс', rental: 'Оренда', service: 'Послуга', agency_order: 'Агентське замовлення', admission_day: 'День парку' };
     const bases = { execution: 'за проведення', hour: 'за годину', participant: 'за учасника', unit: 'за одиницю', percent: 'відсоток' };
+    const sections = new Set(['template', 'plan', 'actual', 'group', 'management']);
+
+    function showSection(name, historyMode = null) {
+        const section = sections.has(name) ? name : 'template';
+        document.querySelectorAll('#tabCosting [data-cost-section]').forEach(card => {
+            card.hidden = card.dataset.costSection !== section;
+        });
+        document.querySelectorAll('#tabCosting [data-cost-nav]').forEach(button => {
+            if (button.dataset.costNav === section) button.setAttribute('aria-current', 'step');
+            else button.removeAttribute('aria-current');
+        });
+        const nav = document.querySelector('.cost-workspace-nav');
+        const active = nav.querySelector('[aria-current="step"]');
+        const revealActive = () => {
+            const delta = active.getBoundingClientRect().left - nav.getBoundingClientRect().left;
+            nav.scrollLeft += delta - 12;
+        };
+        revealActive();
+        window.requestAnimationFrame(revealActive);
+        if (historyMode) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('costSection', section);
+            window.history[historyMode === 'replace' ? 'replaceState' : 'pushState']({ costSection: section }, '', url);
+        }
+    }
+
+    function updateWorkspaceSummary() {
+        const selected = state.plans.find(plan => String(plan.id) === $('costActualPlan').value);
+        const element = $('costWorkspaceSummary');
+        if (!selected) {
+            element.innerHTML = `<strong>Собівартість виконання послуги</strong><small>${state.plans.length
+                ? `Збережено планів: ${state.plans.length}. Оберіть виконання в розділі «Факт і звірка».`
+                : 'Оберіть шаблон і створіть план заняття, оренди, сеансу або іншої послуги.'}</small>`;
+            return;
+        }
+        const complete = state.actual?.target && String(state.actual.target.id) === String(selected.id) && state.actual.summary?.actualComplete;
+        element.innerHTML = `<strong>${escapeHtml(selected.execution_label)} · ${escapeHtml(selected.execution_date)}</strong>
+            <span>Планова виручка: <b>${uahFromMinor(selected.revenue_minor)}</b> · Планові прямі витрати: <b>${uahFromMinor(selected.direct_cost_minor)}</b> · Плановий внесок: <b>${uahFromMinor(selected.contribution_minor)}</b></span>
+            <small>${complete ? 'Факт звірено; подробиці — у розділі «Факт і звірка».' : 'Фактичний внесок ще не підтверджено або звірку не завершено.'}</small>`;
+    }
+
+    function updateManagementFields() {
+        const kind = $('costManagementKind').value;
+        const source = state.managementSources.find(item => String(item.id) === $('costManagementSource').value);
+        document.querySelectorAll('#costManagementTechnical [data-cost-management-for]').forEach(label => {
+            const input = label.querySelector('input');
+            const applicable = label.dataset.costManagementFor.split(' ').includes(kind) &&
+                (input.id !== 'costManagementRefundId' || !source || source.semantic === 'refund');
+            label.hidden = !applicable;
+            input.disabled = !applicable;
+            if (!applicable) input.value = '';
+        });
+    }
+
+    function updateAttendanceField() {
+        const visible = $('costManagementEvidence').value === 'attendance';
+        $('costManagementAttendanceField').hidden = !visible;
+        $('costManagementAttendanceId').disabled = !visible;
+        if (!visible) $('costManagementAttendanceId').value = '';
+    }
 
     function minorFromUah(value, field) {
         const text = String(value ?? '').trim().replace(',', '.');
@@ -266,9 +326,10 @@ window.CostingWorkspace = (() => {
         state.plans.forEach(plan => management.add(new Option(`${plan.execution_label} · ${plan.execution_date}`, plan.id)));
         management.value = state.plans.some(plan => String(plan.id) === selectedManagement) ? selectedManagement : '';
         renderGroupMembers();
-        if (!state.plans.length) { list.textContent = 'Планів поки немає.'; state.actual = null; $('costActualSummary').textContent = 'Спочатку збережіть план.'; return; }
+        if (!state.plans.length) { list.textContent = 'Планів поки немає.'; state.actual = null; $('costActualSummary').textContent = 'Спочатку збережіть план.'; updateWorkspaceSummary(); return; }
         list.innerHTML = state.plans.map(plan => `<article><div><strong>${escapeHtml(plan.execution_label)}</strong><br><small>${escapeHtml(plan.execution_date)} · ${escapeHtml(plan.template_name)} · v${escapeHtml(String(plan.version_number))}</small></div><div>Внесок: <strong>${uahFromMinor(plan.contribution_minor)}</strong></div></article>`).join('');
         if (select.value) await loadActual();
+        else updateWorkspaceSummary();
     }
 
     async function savePlan() {
@@ -285,6 +346,7 @@ window.CostingWorkspace = (() => {
             $('costActualPlan').value = String(saved.planId);
             await loadActual();
             status('Плановий знімок збережено.');
+            showSection('actual', 'push');
         } catch (error) { $('costSavePlan').disabled = false; status(error.message, true); }
     }
 
@@ -319,11 +381,12 @@ window.CostingWorkspace = (() => {
 
     async function loadActual() {
         const planId = $('costActualPlan').value;
-        if (!planId) { state.actual = null; $('costActualSummary').textContent = 'Виберіть збережений план.'; $('costActualHistory').textContent = ''; return; }
+        if (!planId) { state.actual = null; $('costActualSummary').textContent = 'Виберіть збережений план.'; $('costActualHistory').textContent = ''; updateWorkspaceSummary(); return; }
         try {
             const data = await apiRequest('GET', `/api/finance/costing/actual/plans/${encodeURIComponent(planId)}`);
             state.actual = data;
             renderActual(data);
+            updateWorkspaceSummary();
         } catch (error) { actualStatus(error.message, true); }
     }
 
@@ -354,10 +417,24 @@ window.CostingWorkspace = (() => {
                 fields.includes('id') && preview.amountMatches === false ? 'ID і бізнес збігаються; сума відрізняється' :
                 fields.includes('id') ? 'Перевірено ID і бізнес; цей запис не містить суми' :
                 'Посилання не пройшло перевірку';
+            const blockerLabels = {
+                'Canonical amount differs from the expected amount': 'Сума запису відрізняється від очікуваної.',
+                'Canonical amount is unavailable': 'У вихідному записі немає суми.',
+                'Booking price is an estimate, not an earned or paid revenue posting': 'Ціна бронювання є оцінкою, а не підтвердженою виручкою чи оплатою.',
+                'Booking price is not earned revenue': 'Ціна бронювання ще не є заробленою виручкою.',
+                'Attendance identifies a lesson but has no cost/revenue amount': 'Запис відвідування підтверджує заняття, але не містить суми виручки чи витрат.',
+                'Attendance has no monetary amount': 'Запис відвідування не містить суми.',
+                'Monthly payroll installment has no execution-level earning allocation': 'Місячна зарплатна виплата ще не розподілена між виконаннями.',
+                'Payroll report/installment is not approved for single-business allocation': 'Зарплатний звіт або виплата не затверджені для розподілу в цьому бізнесі.',
+                'Linked finance transaction must be deduplicated': 'Пов’язану фінансову операцію треба врахувати лише один раз.',
+                'Payment status does not resolve earned-revenue recognition': 'Статус платежу сам по собі не підтверджує зароблену виручку.',
+                'Refund timing and recognition policy are unresolved': 'Період і правило визнання повернення ще не визначено.'
+            };
+            const sourceStatus = { confirmed: 'підтверджено', approved: 'затверджено', paid: 'оплачено' };
             result.innerHTML = `<strong>${match}</strong>
-                ${fields.includes('id') ? `<p>${preview.canonicalAmountMinor === null ? 'Суми немає' : `Сума запису: ${uahFromMinor(preview.canonicalAmountMinor)}`} · стан: ${escapeHtml(preview.status || 'невідомий')}</p>` : `<p>${escapeHtml(preview.reason || 'Запис не знайдено в поточному бізнесі')}</p>`}
+                ${fields.includes('id') ? `<p>${preview.canonicalAmountMinor === null ? 'Суми немає' : `Сума запису: ${uahFromMinor(preview.canonicalAmountMinor)}`} · стан: ${escapeHtml(sourceStatus[preview.status] || preview.status || 'невідомий')}</p>` : `<p>${escapeHtml(friendlyError(preview.reason || 'Запис не знайдено в поточному бізнесі'))}</p>`}
                 <p>Перевірка посилання не створює фактичного запису й не проводить суму в P&amp;L.</p>
-                ${preview.blockers?.length ? `<ul>${preview.blockers.map(blocker => `<li>${escapeHtml(blocker)}</li>`).join('')}</ul>` : ''}`;
+                ${preview.blockers?.length ? `<ul>${preview.blockers.map(blocker => `<li>${escapeHtml(blockerLabels[blocker] || blocker)}</li>`).join('')}</ul>` : ''}`;
             result.hidden = false;
         } catch (error) { result.textContent = friendlyError(error.message); result.hidden = false; }
     }
@@ -414,9 +491,10 @@ window.CostingWorkspace = (() => {
         container.innerHTML = state.plans.map(plan => {
             const member = selected.find(item => String(item.planId) === String(plan.id));
             return `<article data-plan-id="${escapeHtml(String(plan.id))}">
-            <div><strong>${escapeHtml(plan.execution_label)}</strong><small>${escapeHtml(plan.execution_date)} · ${escapeHtml(plan.template_name)} · план ${uahFromMinor(plan.revenue_minor)} / ${uahFromMinor(plan.direct_cost_minor)}</small></div>
-            <label><input type="checkbox" data-include-revenue${member?.include_plan_revenue ? ' checked' : ''}> Включити виручку</label>
-            <label><input type="checkbox" data-include-cost${member?.include_plan_direct_cost ? ' checked' : ''}> Включити витрати</label></article>`;
+            <div><strong>${escapeHtml(plan.execution_label)}</strong><small>${escapeHtml(plan.execution_date)} · ${escapeHtml(plan.template_name)}</small>
+            <span class="cost-plan-amounts"><span>Планова виручка: <b>${uahFromMinor(plan.revenue_minor)}</b></span><span>Планові прямі витрати: <b>${uahFromMinor(plan.direct_cost_minor)}</b></span></span></div>
+            <div class="cost-group-options"><label><input type="checkbox" data-include-revenue${member?.include_plan_revenue ? ' checked' : ''}> Включити виручку</label>
+            <label><input type="checkbox" data-include-cost${member?.include_plan_direct_cost ? ' checked' : ''}> Включити витрати</label></div></article>`;
         }).join('');
     }
 
@@ -434,7 +512,8 @@ window.CostingWorkspace = (() => {
         const previous = selectedId === null ? select.value : String(selectedId);
         const groups = data.groups || [];
         select.replaceChildren(new Option(groups.length ? 'Оберіть групу' : 'Груп ще немає', ''));
-        groups.forEach(group => select.add(new Option(`${group.label} · ${group.kind}`, group.id)));
+        const groupKinds = { course: 'курс', session: 'сеанс', day: 'день' };
+        groups.forEach(group => select.add(new Option(`${group.label} · ${groupKinds[group.kind] || group.kind}`, group.id)));
         select.value = groups.some(group => String(group.id) === previous) ? previous : '';
         await loadGroup();
     }
@@ -469,7 +548,8 @@ window.CostingWorkspace = (() => {
                     const plan = state.plans.find(item => String(item.id) === String(member.plan_id));
                     return `<li>${escapeHtml(plan?.execution_label || `#${member.plan_id}`)}: ${member.include_plan_revenue ? 'виручка' : 'без виручки'}, ${member.include_plan_direct_cost ? 'витрати' : 'без витрат'}</li>`;
                 }).join('');
-                return `<article><strong>Ревізія ${revision.revision_number}</strong> · ${escapeHtml(revision.reason)}<ul>${composition}</ul></article>`;
+                const reason = revision.reason === 'Initial composition' ? 'Початковий склад' : revision.reason;
+                return `<article><strong>Ревізія ${revision.revision_number}</strong> · ${escapeHtml(reason)}<ul>${composition}</ul></article>`;
             }).join('')}`;
         } catch (error) { groupStatus(error.message, true); }
     }
@@ -512,14 +592,17 @@ window.CostingWorkspace = (() => {
     async function loadManagementSources() {
         const select = $('costManagementSource');
         select.replaceChildren(new Option('Оберіть фактичне джерело', ''));
+        state.managementSources = [];
         const planId = $('costManagementPlan').value;
-        if (!planId) return;
+        if (!planId) { updateManagementFields(); return; }
         try {
             const detail = await apiRequest('GET', `/api/finance/costing/actual/plans/${encodeURIComponent(planId)}`);
+            state.managementSources = detail.sources;
             detail.sources.forEach(source => select.add(new Option(
-                `${source.external_id} · ${source.category} · ${uahFromMinor(source.amount_minor)} · ${source.evidence_state === 'confirmed' ? 'підтверджено вручну' : 'оцінка'}`,
+                `${source.external_id} · ${source.category === 'revenue' ? 'виручка' : 'пряма витрата'} · ${uahFromMinor(source.amount_minor)} · ${source.evidence_state === 'confirmed' ? 'підтверджено вручну' : 'оцінка'}`,
                 source.id
             )));
+            updateManagementFields();
             const plan = state.plans.find(item => String(item.id) === planId);
             if (plan) {
                 $('costManagementPerformedOn').value = plan.execution_date;
@@ -561,9 +644,9 @@ window.CostingWorkspace = (() => {
                 ['confirmedMinutes', 'costManagementMinutes']
             ]) {
                 const value = $(elementId).value.trim();
-                if (value) payload[field] = value;
+                if (value && !$(elementId).disabled) payload[field] = value;
             }
-            if ($('costManagementHourlyRate').value.trim()) {
+            if (!$('costManagementHourlyRate').disabled && $('costManagementHourlyRate').value.trim()) {
                 payload.hourlyRateMinor = minorFromUah($('costManagementHourlyRate').value, 'Погодинна ставка');
             }
             const saved = await apiRequest('POST', url, payload);
@@ -576,20 +659,30 @@ window.CostingWorkspace = (() => {
         'Confirmed evidence changed or is no longer active': 'Підтверджене джерело змінилося або більше не активне',
         'Execution performance is absent, voided, or changed': 'Факт виконання відсутній, скасований або змінений',
         'Present attendance evidence changed': 'Підтвердження присутності змінилося',
-        'Linked finance transaction is missing or outside this business': 'Finance-транзакція відсутня або належить іншому бізнесу',
-        'Finance transaction is claimed by multiple economic operations': 'Finance-транзакція прив’язана до кількох операцій',
-        'Payroll allocations exceed finance expense': 'Розподіл зарплати перевищує finance-витрату',
-        'Earned revenue does not match the linked finance income': 'Виручка не збігається з finance-надходженням',
-        'Canonical booking or cash reference changed': 'Booking або платіжний зв’язок змінився',
-        'Direct cost does not match the linked finance expense': 'Пряма витрата не збігається з finance-витратою',
-        'Finance cost recognition date changed': 'Дата визнання finance-витрати змінилася',
+        'Linked finance transaction is missing or outside this business': 'Фінансова операція відсутня або належить іншому бізнесу',
+        'Finance transaction is claimed by multiple economic operations': 'Фінансова операція прив’язана до кількох економічних операцій',
+        'Payroll allocations exceed finance expense': 'Розподіл зарплати перевищує фінансову витрату',
+        'Earned revenue does not match the linked finance income': 'Виручка не збігається з фінансовим надходженням',
+        'Canonical booking or cash reference changed': 'Бронювання або платіжний зв’язок змінився',
+        'Direct cost does not match the linked finance expense': 'Пряма витрата не збігається з фінансовою витратою',
+        'Finance cost recognition date changed': 'Дата визнання фінансової витрати змінилася',
         'Execution performance changed after labor allocation': 'Факт виконання змінився після розподілу праці',
-        'Payroll approval, business, or finance link changed': 'Підтвердження зарплати, бізнес або finance-зв’язок змінився',
+        'Payroll approval, business, or finance link changed': 'Підтвердження зарплати, бізнес або фінансовий зв’язок змінився',
         'Labor allocations exceed the approved installment': 'Розподіл праці перевищує затверджену виплату',
         'Confirmed hourly time or amount changed': 'Підтверджений час або погодинна сума змінилися',
         'Original earned revenue is no longer financially valid': 'Початкова виручка більше не проходить фінансову перевірку',
         'Original earned-revenue link is missing or correction is too large': 'Початковий зв’язок відсутній або коригування завелике',
         'Refund is not linked to the original payment': 'Повернення не пов’язане з початковим платежем'
+    };
+    const managementKinds = {
+        earned_revenue: 'Зароблена виручка', direct_cost: 'Пряма витрата', piecework: 'Відрядна праця',
+        hourly: 'Погодинна праця', revenue_correction: 'Коригування виручки', unresolved: 'Потребує звірки',
+        unallocated_payroll: 'Нерозподілена зарплатна витрата'
+    };
+    const managementProvenance = {
+        linked_finance_transaction: 'зв’язано з фінансовою операцією',
+        explicit_correction: 'окреме підтверджене коригування',
+        finance_transaction_business_level: 'залишок фінансової витрати бізнесу'
     };
 
     async function loadManagementReport() {
@@ -603,10 +696,10 @@ window.CostingWorkspace = (() => {
                 <div>Прямі й зарплатні витрати<strong>${uahFromMinor(data.summary.directCostMinor)}</strong></div>
                 <div>Управлінський внесок<strong>${uahFromMinor(data.summary.contributionMinor)}</strong></div>
             </div><p>Лише звірені операції: ${data.lines.length}. Нерозв’язані зв’язки: ${data.unresolved.length}.
-            Незв’язані старі finance-транзакції: ${data.legacyUnlinked.finance.count}; фактичні джерела без зв’язку: ${data.legacyUnlinked.costingSourceCount}. Ці суми не додано до підсумку.</p>
-            <div class="cost-actual-history">${data.lines.map(line => `<article>${escapeHtml(line.kind)} · ${escapeHtml(line.effectOn)} · ${uahFromMinor(line.amountMinor)} · ${escapeHtml(line.provenance)}</article>`).join('')}</div>
+            Незв’язані старі фінансові операції: ${data.legacyUnlinked.finance.count}; фактичні джерела без зв’язку: ${data.legacyUnlinked.costingSourceCount}. Ці суми не додано до підсумку.</p>
+            <div class="cost-actual-history">${data.lines.map(line => `<article>${escapeHtml(managementKinds[line.kind] || line.kind)} · ${escapeHtml(line.effectOn)} · ${uahFromMinor(line.amountMinor)} · ${escapeHtml(managementProvenance[line.provenance] || line.provenance)}</article>`).join('')}</div>
             ${data.unresolved.length ? `<div class="cost-actual-history"><strong>Потребують звірки</strong>${data.unresolved.map(item =>
-                `<article><strong>${item.linkId == null ? 'Finance-витрата' : `Зв’язок #${escapeHtml(String(item.linkId))}`}${item.sourceId == null ? '' : ` · джерело #${escapeHtml(String(item.sourceId))}`}${item.financeTransactionId == null ? '' : ` · finance #${escapeHtml(String(item.financeTransactionId))}`}</strong>
+                `<article><strong>${item.linkId == null ? 'Фінансова витрата' : `Зв’язок #${escapeHtml(String(item.linkId))}`}${item.sourceId == null ? '' : ` · джерело #${escapeHtml(String(item.sourceId))}`}${item.financeTransactionId == null ? '' : ` · фінансова операція #${escapeHtml(String(item.financeTransactionId))}`}</strong>
                 <ul>${(item.issues || []).map(issue => `<li>${escapeHtml(managementIssueLabels[issue] || String(issue))}</li>`).join('')}</ul></article>`).join('')}</div>` : ''}`;
         } catch (error) { result.textContent = friendlyError(error.message); }
     }
@@ -621,7 +714,12 @@ window.CostingWorkspace = (() => {
             $('costManagementTo').value = today;
             $('costManagementPerformedOn').value = today;
             $('costManagementEffectOn').value = today;
-            $('costManagementAttendanceId').disabled = true;
+            document.querySelectorAll('#tabCosting [data-cost-nav]').forEach(button => button.addEventListener('click', () => showSection(button.dataset.costNav, 'push')));
+            window.addEventListener('popstate', () => showSection(new URLSearchParams(window.location.search).get('costSection')));
+            window.addEventListener('resize', () => showSection(document.querySelector('#tabCosting [data-cost-nav][aria-current="step"]').dataset.costNav));
+            showSection(new URLSearchParams(window.location.search).get('costSection'));
+            updateAttendanceField();
+            updateManagementFields();
             $('costTemplateSelect').addEventListener('change', () => { selectTemplate().catch(error => status(error.message, true)); });
             $('costAddLine').addEventListener('click', () => addLine());
             $('costSaveTemplate').addEventListener('click', saveTemplate);
@@ -643,12 +741,15 @@ window.CostingWorkspace = (() => {
             $('costSaveGroupRevision').addEventListener('click', saveGroupRevision);
             $('costGroupSelect').addEventListener('change', loadGroup);
             $('costManagementPlan').addEventListener('change', loadManagementSources);
+            $('costManagementSource').addEventListener('change', updateManagementFields);
+            $('costManagementKind').addEventListener('change', () => {
+                updateManagementFields();
+                $('costManagementTechnical').open = $('costManagementKind').value !== 'unresolved';
+            });
             $('costManagementPerform').addEventListener('click', savePerformance);
             $('costManagementLink').addEventListener('click', saveManagementLink);
             $('costManagementRefresh').addEventListener('click', loadManagementReport);
-            $('costManagementEvidence').addEventListener('change', () => {
-                $('costManagementAttendanceId').disabled = $('costManagementEvidence').value !== 'attendance';
-            });
+            $('costManagementEvidence').addEventListener('change', updateAttendanceField);
             $('costSourceCategory').addEventListener('change', () => {
                 $('costSourceSemantic').value = $('costSourceCategory').value === 'direct_cost' ? 'cost' : 'charge';
             });

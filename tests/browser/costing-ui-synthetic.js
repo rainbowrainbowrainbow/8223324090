@@ -191,6 +191,7 @@ async function main() {
         await page.goto(`${origin}/finance?tab=costing`);
         await page.locator('#costTemplateSelect option[value="1"]').waitFor({ state: 'attached' });
         await page.locator('#costTemplateSelect').selectOption('1');
+        await page.locator('[data-cost-nav="plan"]').click();
         await page.locator('#costExecutionLabel').fill('Урок 12 жовтня');
         await page.locator('#costExecutionDate').fill('2026-10-12');
         await page.locator('#costExecutionBookingId').fill('lesson-qa');
@@ -202,7 +203,7 @@ async function main() {
         await page.locator('#costPreviewResult').getByText('1 002,00 ₴').waitFor();
         assert.match(await page.locator('#costPreviewResult').innerText(), /46\.39%/);
         await page.locator('#costSavePlan').click();
-        await page.locator('#costPlanList').getByText('Урок 12 жовтня').waitFor();
+        await page.locator('#costPlanList').getByText('Урок 12 жовтня').waitFor({ state: 'attached' });
         assert.equal(plans.length, 1);
         await page.locator('#costActualSummary').getByText('Ще не визначено').waitFor();
         await page.locator('#costSourceExternalId').fill('sale_ui');
@@ -247,6 +248,7 @@ async function main() {
         await page.locator('#costLinkResult').getByText('Перевірено ID і бізнес; цей запис не містить суми').waitFor();
         assert.doesNotMatch(await page.locator('#costLinkResult').innerText(), /сума збігається/);
         assert.equal(actualSources.length, 2, 'read-only source preview must not add actual evidence');
+        await page.locator('[data-cost-nav="group"]').click();
         await page.locator('#costGroupLabel').fill('Курс синтетичних занять');
         await page.locator('#costGroupMembers [data-plan-id="1"] [data-include-revenue]').check();
         await page.locator('#costGroupMembers [data-plan-id="1"] [data-include-cost]').check();
@@ -264,16 +266,62 @@ async function main() {
         await page.locator('#costCreateGroup').click();
         await page.locator('#costGroupStatus').getByText('Цей план або ID джерела вже прив’язаний до іншого виконання.').waitFor();
         assert.equal(groups.length, 1);
+        const assertGroupFits = async () => {
+            const bounds = await page.locator('#costGroupMembers article, #costGroupEditMembers article').evaluateAll(rows => rows.map(row => {
+                const card = row.closest('.cost-card').getBoundingClientRect();
+                const rect = row.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, cardLeft: card.left, cardRight: card.right };
+            }));
+            assert.ok(bounds.every(row => row.left >= row.cardLeft && row.right <= row.cardRight), JSON.stringify(bounds));
+        };
+        await assertGroupFits();
+        await page.locator('[data-cost-nav="actual"]').focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await page.locator('[data-cost-nav="actual"]').getAttribute('aria-current'), 'step');
+        await page.goBack();
+        assert.equal(await page.locator('[data-cost-nav="group"]').getAttribute('aria-current'), 'step');
+        await page.waitForFunction(() => {
+            const nav = document.querySelector('.cost-workspace-nav').getBoundingClientRect();
+            const active = document.querySelector('[data-cost-nav="group"]').getBoundingClientRect();
+            return active.left >= nav.left - 1 && active.right <= nav.right + 1;
+        });
         await page.screenshot({ path: path.join(output, 'desktop.png'), fullPage: true });
+        await page.locator('#tabCosting').screenshot({ path: path.join(output, 'desktop-workspace.png') });
         await page.setViewportSize({ width: 820, height: 1180 });
+        await assertGroupFits();
         const tabletBounds = await page.locator('#tabCosting .cost-card').evaluateAll(cards => cards.map(card => {
             const rect = card.getBoundingClientRect();
             return { left: rect.left, right: rect.right };
         }));
         assert.ok(tabletBounds.every(rect => rect.left >= 0 && rect.right <= 821), JSON.stringify(tabletBounds));
         await page.screenshot({ path: path.join(output, 'tablet.png'), fullPage: true });
+        await page.locator('#tabCosting').screenshot({ path: path.join(output, 'tablet-workspace.png') });
         await page.setViewportSize({ width: 390, height: 844 });
+        await page.waitForFunction(() => {
+            const main = document.querySelector('.page-container').getBoundingClientRect();
+            const nav = document.querySelector('.cost-workspace-nav').getBoundingClientRect();
+            const active = document.querySelector('[data-cost-nav="group"]').getBoundingClientRect();
+            return main.left === 0 && main.right <= innerWidth && active.left >= nav.left - 1 && active.right <= nav.right + 1;
+        });
+        await assertGroupFits();
         await page.screenshot({ path: path.join(output, 'mobile.png'), fullPage: true });
+        await page.locator('#tabCosting').screenshot({ path: path.join(output, 'mobile-workspace.png') });
+        await page.locator('[data-cost-nav="management"]').click();
+        await page.locator('#costManagementKind').selectOption('hourly');
+        assert.equal(await page.locator('#costManagementPayrollId').isVisible(), true);
+        assert.equal(await page.locator('#costManagementTimeId').isVisible(), true);
+        await page.locator('#costManagementTimeId').fill('77');
+        await page.locator('#costManagementKind').selectOption('earned_revenue');
+        assert.equal(await page.locator('#costManagementTimeId').isVisible(), false);
+        assert.equal(await page.locator('#costManagementTimeId').inputValue(), '');
+        await page.locator('#costManagementEvidence').selectOption('attendance');
+        await page.locator('#costManagementAttendanceId').fill('11');
+        await page.locator('#costManagementEvidence').selectOption('operator');
+        assert.equal(await page.locator('#costManagementAttendanceId').isVisible(), false);
+        assert.equal(await page.locator('#costManagementAttendanceId').inputValue(), '');
+        await page.locator('#tabCosting').screenshot({ path: path.join(output, 'mobile-management.png') });
+        await page.evaluate(() => { document.body.classList.remove('dark-mode'); document.documentElement.setAttribute('data-theme', 'light'); });
+        await page.locator('#tabCosting').screenshot({ path: path.join(output, 'mobile-management-light.png') });
         assert.ok(await page.locator('#tabCosting').isVisible());
         assert.deepEqual(errors, []);
         console.log(JSON.stringify({ passed: true, contributionMinor: plans[0].contribution_minor,

@@ -1580,8 +1580,16 @@
                 </div>
             </div>
             <div id="tabCosting">
+                <nav class="cost-workspace-nav" aria-label="Етапи роботи із собівартістю">
+                    <button type="button" data-cost-nav="template">1. Шаблон</button>
+                    <button type="button" data-cost-nav="plan">2. План</button>
+                    <button type="button" data-cost-nav="actual">3. Факт і звірка</button>
+                    <button type="button" data-cost-nav="group">4. Групи</button>
+                    <button type="button" data-cost-nav="management">5. Управлінський P&amp;L</button>
+                </nav>
+                <div id="costWorkspaceSummary" class="cost-workspace-summary" role="status" aria-live="polite">Оберіть шаблон і створіть план виконання послуги.</div>
                 <div class="cost-shell">
-                    <section class="cost-card" aria-labelledby="costTemplateHeading">
+                    <section class="cost-card" data-cost-section="template" aria-labelledby="costTemplateHeading">
                         <h3 id="costTemplateHeading">Шаблон собівартості</h3>
                         <p>Спільний шаблон для заняття, сеансу, оренди або замовлення. Нова версія не змінює раніше збережені плани.</p>
                         <div class="cost-grid">
@@ -1596,13 +1604,13 @@
                         <div id="costLines" class="cost-lines"></div>
                         <div class="cost-actions"><button type="button" id="costAddLine" class="btn-page-secondary">+ Рядок витрат</button><button type="button" id="costSaveTemplate" class="btn-page-primary">Зберегти шаблон</button></div>
                     </section>
-                    <section class="cost-card" aria-labelledby="costPlanHeading">
+                    <section class="cost-card" data-cost-section="plan" aria-labelledby="costPlanHeading">
                         <h3 id="costPlanHeading">План конкретного виконання</h3>
                         <p>Це плановий внесок після прямих витрат, не чистий прибуток і не фактичний P&amp;L.</p>
                         <div class="cost-grid">
                             <label>Назва виконання<input id="costExecutionLabel" maxlength="200" placeholder="Урок 12 жовтня"></label>
                             <label>Дата<input id="costExecutionDate" type="date"></label>
-                            <label>Booking ID для майбутньої звірки виручки<input id="costExecutionBookingId" maxlength="50" placeholder="Точний ID бронювання, якщо є"></label>
+                            <label>ID бронювання для звірки виручки, якщо є<input id="costExecutionBookingId" maxlength="50" placeholder="Точний ID бронювання"></label>
                             <label>Учасники / споживачі<input id="costParticipants" type="number" min="0" step="1" value="0"></label>
                             <label>Платні учасники<input id="costPaidParticipants" type="number" min="0" step="1" value="0"></label>
                             <label>Тривалість, год<input id="costHours" inputmode="decimal" value="1"></label>
@@ -1615,8 +1623,8 @@
                         <div id="costPreviewResult" class="cost-result" hidden></div>
                         <div id="costStatus" class="cost-status" role="status" hidden></div>
                     </section>
-                    <section class="cost-card" aria-labelledby="costSavedHeading"><h3 id="costSavedHeading">Збережені плани</h3><p>Історичні знімки; їхні ставки не перераховуються при новій версії шаблону.</p><div id="costPlanList" class="cost-plan-list"></div></section>
-                    <section class="cost-card" aria-labelledby="costActualHeading">
+                    <section class="cost-card" data-cost-section="plan" aria-labelledby="costSavedHeading"><h3 id="costSavedHeading">Збережені плани</h3><p>Історичні знімки; їхні ставки не перераховуються при новій версії шаблону.</p><div id="costPlanList" class="cost-plan-list"></div></section>
+                    <section class="cost-card" data-cost-section="actual" aria-labelledby="costActualHeading">
                         <h3 id="costActualHeading">План / факт виконання</h3>
                         <p>Факт підтверджується окремими джерелами. Поки виручка і прямі витрати не звірені, фактичний внесок та різниця не показуються.</p>
                         <div class="cost-grid"><label>Виконання<select id="costActualPlan"></select></label></div>
@@ -1624,17 +1632,17 @@
                         <h4>Додати джерело</h4>
                         <div class="cost-grid">
                             <label>ID джерела<input id="costSourceExternalId" maxlength="120" placeholder="Номер чека або акта"></label>
-                            <label>Економічна роль<input id="costSourceRole" maxlength="80" placeholder="host_pay"></label>
+                            <label>Роль витрати або надходження<input id="costSourceRole" maxlength="80" placeholder="Наприклад: оплата ведучому"></label>
                             <label>Категорія<select id="costSourceCategory"><option value="direct_cost">Пряма витрата</option><option value="revenue">Виручка</option></select></label>
                             <label>Сума, ₴<input id="costSourceAmount" inputmode="decimal" placeholder="0.00"></label>
-                            <label>Підстава<select id="costSourceEvidence"><option value="estimate">Оцінка</option><option value="confirmed">Підтверджено вручну (не перевірка payroll/payment)</option></select></label>
+                            <label>Підстава<select id="costSourceEvidence"><option value="estimate">Оцінка</option><option value="confirmed">Підтверджено вручну (без перевірки зарплати чи платежу)</option></select></label>
                             <label>Семантика<select id="costSourceSemantic"><option value="cost">Витрата</option><option value="charge">Нарахування виручки</option><option value="refund">Повернення</option><option value="adjustment">Коригування виручки</option></select></label>
                         </div>
                         <div class="cost-actions"><button type="button" id="costAddSource" class="btn-page-secondary">Додати факт / оцінку</button></div>
                         <h4>Перевірити посилання на джерело</h4>
                         <p>Лише читання канонічного запису. Перевірка ID, бізнесу й суми не додає факту та не проводить його в P&amp;L.</p>
                         <div class="cost-grid">
-                            <label>Система<select id="costLinkType"><option value="booking">Бронювання</option><option value="education_attendance">Education attendance</option><option value="payroll_installment">Зарплатна виплата</option><option value="payment_order">Платіжне замовлення</option><option value="payment_refund">Повернення</option></select></label>
+                            <label>Система<select id="costLinkType"><option value="booking">Бронювання</option><option value="education_attendance">Відвідування заняття</option><option value="payroll_installment">Зарплатна виплата</option><option value="payment_order">Платіжне замовлення</option><option value="payment_refund">Повернення</option></select></label>
                             <label>ID запису<input id="costLinkId" maxlength="120" placeholder="Канонічний ID"></label>
                             <label>Очікувана сума, ₴<input id="costLinkAmount" inputmode="decimal" placeholder="0.00"></label>
                         </div>
@@ -1659,8 +1667,8 @@
                         <div id="costActualHistory" class="cost-actual-history"></div>
                         <div id="costActualStatus" class="cost-status" role="status" hidden></div>
                     </section>
-                    <section class="cost-card" aria-labelledby="costGroupHeading">
-                        <h3 id="costGroupHeading">Агрегати виконань</h3>
+                    <section class="cost-card" data-cost-section="group" aria-labelledby="costGroupHeading">
+                        <h3 id="costGroupHeading">Групи виконань</h3>
                         <p>Зберіть курс, сеанс або день із планів одного бізнесу. Для кожного плану явно виберіть виручку та прямі витрати. Виправлення складу створює нову незмінну ревізію і скасовує попередню звірку групи.</p>
                         <div class="cost-grid">
                             <label>Тип групи<select id="costGroupKind"><option value="course">Курс</option><option value="session">Сеанс</option><option value="day">День</option></select></label>
@@ -1678,35 +1686,41 @@
                         <div id="costGroupHistory" class="cost-actual-history"></div>
                         <div id="costGroupStatus" class="cost-status" role="status" hidden></div>
                     </section>
-                    <section class="cost-card cost-wide" aria-labelledby="costManagementHeading">
+                    <section class="cost-card" data-cost-section="management" aria-labelledby="costManagementHeading">
                         <h3 id="costManagementHeading">Управлінський P&amp;L · звірені операції</h3>
-                        <p>Окремий звіт за підтвердженим виконанням і явними зв’язками з finance ledger. Оплати й завдатки до виконання, незв’язані старі транзакції та оцінки залишаються поза підсумком. Чинний P&amp;L не змінюється.</p>
+                        <p>Окремий звіт за підтвердженим виконанням послуги і явними зв’язками з фінансовим журналом. Оплати й завдатки до виконання, незв’язані старі транзакції та оцінки залишаються поза підсумком. Чинний P&amp;L не змінюється.</p>
                         <h4>Факт виконання</h4>
                         <div class="cost-grid">
                             <label>План<select id="costManagementPlan"></select></label>
                             <label>Дата виконання<input id="costManagementPerformedOn" type="date"></label>
-                            <label>Підстава<select id="costManagementEvidence"><option value="operator">Підтвердження оператора</option><option value="attendance">Education attendance: present</option></select></label>
-                            <label>ID attendance<input id="costManagementAttendanceId" inputmode="numeric" placeholder="Лише для Education"></label>
+                            <label>Підстава<select id="costManagementEvidence"><option value="operator">Підтвердження оператора</option><option value="attendance">Підтверджена присутність на занятті</option></select></label>
+                            <label id="costManagementAttendanceField" hidden>ID запису присутності<input id="costManagementAttendanceId" inputmode="numeric" placeholder="Лише для заняття"></label>
                             <label class="cost-wide">Причина / перевірка<input id="costManagementPerformanceReason" maxlength="300" placeholder="Що підтверджує виконання"></label>
                         </div>
                         <div class="cost-actions"><button type="button" id="costManagementPerform" class="btn-page-secondary">Підтвердити виконання</button></div>
                         <div id="costManagementPerformanceStatus" class="cost-status" role="status" hidden></div>
                         <h4>Зв’язати підтверджений факт</h4>
-                        <p>Для виручки й прямих витрат потрібна точна finance-транзакція. Відрядна/погодинна праця додатково потребує схваленої payroll-виплати; повернення — окремого від’ємного факту та посилання на первинну операцію.</p>
+                        <p>Для виручки й прямих витрат потрібна точна фінансова операція. Відрядна та погодинна праця додатково потребують затвердженої зарплатної виплати; повернення — окремого від’ємного факту та посилання на первинну операцію.</p>
                         <div class="cost-grid">
                             <label>Фактичне джерело<select id="costManagementSource"></select></label>
                             <label>Ефект<select id="costManagementKind"><option value="earned_revenue">Зароблена виручка</option><option value="direct_cost">Пряма витрата</option><option value="piecework">Відрядна праця</option><option value="hourly">Погодинна праця</option><option value="revenue_correction">Коригування виручки</option><option value="unresolved">Зняти зі звірки</option></select></label>
                             <label>Дата ефекту<input id="costManagementEffectOn" type="date"></label>
-                            <label>ID finance-транзакції<input id="costManagementFinanceId" inputmode="numeric"></label>
-                            <label>ID платіжного замовлення<input id="costManagementPaymentOrderId" inputmode="numeric"></label>
-                            <label>ID повернення<input id="costManagementRefundId" inputmode="numeric"></label>
-                            <label>ID первинного зв’язку<input id="costManagementOriginalLinkId" inputmode="numeric"></label>
-                            <label>ID payroll-виплати<input id="costManagementPayrollId" inputmode="numeric"></label>
-                            <label>ID запису часу<input id="costManagementTimeId" inputmode="numeric"></label>
-                            <label>Підтверджені хвилини<input id="costManagementMinutes" inputmode="numeric"></label>
-                            <label>Погодинна ставка, ₴<input id="costManagementHourlyRate" inputmode="decimal"></label>
                             <label class="cost-wide">Причина зв’язку<input id="costManagementLinkReason" maxlength="300" placeholder="Підстава економічного ефекту"></label>
                         </div>
+                        <details class="cost-technical" id="costManagementTechnical" open>
+                            <summary>Посилання на облікові записи</summary>
+                            <p>Вкажіть лише записи, що відповідають обраному ефекту. Історія та вимоги звірки зберігаються.</p>
+                            <div class="cost-grid">
+                                <label data-cost-management-for="earned_revenue direct_cost piecework hourly">ID фінансової операції<input id="costManagementFinanceId" inputmode="numeric"></label>
+                                <label data-cost-management-for="earned_revenue">ID платіжного замовлення, якщо є<input id="costManagementPaymentOrderId" inputmode="numeric"></label>
+                                <label data-cost-management-for="revenue_correction">ID повернення, якщо є<input id="costManagementRefundId" inputmode="numeric"></label>
+                                <label data-cost-management-for="revenue_correction">ID первинного зв’язку<input id="costManagementOriginalLinkId" inputmode="numeric"></label>
+                                <label data-cost-management-for="piecework hourly">ID затвердженої зарплатної виплати<input id="costManagementPayrollId" inputmode="numeric"></label>
+                                <label data-cost-management-for="hourly">ID запису робочого часу<input id="costManagementTimeId" inputmode="numeric"></label>
+                                <label data-cost-management-for="hourly">Підтверджені хвилини<input id="costManagementMinutes" inputmode="numeric"></label>
+                                <label data-cost-management-for="hourly">Погодинна ставка, ₴<input id="costManagementHourlyRate" inputmode="decimal"></label>
+                            </div>
+                        </details>
                         <div class="cost-actions"><button type="button" id="costManagementLink" class="btn-page-secondary">Зберегти зв’язок</button></div>
                         <div id="costManagementLinkStatus" class="cost-status" role="status" hidden></div>
                         <h4>Перегляд звіту</h4>

@@ -123,7 +123,8 @@ document.documentElement.setAttribute('data-theme','dark');
             const rootUrl = `http://127.0.0.1:${server.address().port}`;
             await page.route('**/*', route => route.request().url().startsWith(rootUrl + '/') ? route.continue() : route.abort());
             await page.goto(`${rootUrl}/finance?tab=costing`);
-            await page.locator('#costManagementRefresh').waitFor();
+            await page.locator('[data-cost-nav="management"]').waitFor();
+            await page.locator('[data-cost-nav="management"]').click();
             await page.locator('#costManagementFrom').fill('2026-10-01');
             await page.locator('#costManagementTo').fill('2026-10-31');
         }
@@ -221,6 +222,7 @@ document.documentElement.setAttribute('data-theme','dark');
         assert.ok(estimate);
         if (page) {
             await page.reload();
+            await page.locator('[data-cost-nav="management"]').click();
             await page.locator('#costManagementPlan option').filter({ hasText: 'Lesson QA' }).waitFor({ state: 'attached' });
             await page.locator('#costManagementPlan').selectOption(String(planId));
             await page.locator('#costManagementSource option').filter({ hasText: 'earned_qa' }).waitFor({ state: 'attached' });
@@ -341,8 +343,8 @@ document.documentElement.setAttribute('data-theme','dark');
         await browserReport('1 860,00 ₴', '2 158,00 ₴');
         if (page) {
             const visible = await page.locator('#costManagementSummary').innerText();
-            for (const kind of ['earned_revenue', 'revenue_correction', 'piecework', 'hourly', 'unallocated_payroll']) {
-                assert.match(visible, new RegExp(kind));
+            for (const label of ['Зароблена виручка', 'Коригування виручки', 'Відрядна праця', 'Погодинна праця', 'Нерозподілена зарплатна витрата']) {
+                assert.ok(visible.includes(label), label);
             }
             const bounds = await page.locator('#tabCosting .cost-card').evaluateAll(cards => cards.map(card => card.getBoundingClientRect().right));
             assert.ok(bounds.every(right => right <= 821), JSON.stringify(bounds));

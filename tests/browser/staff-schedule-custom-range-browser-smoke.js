@@ -4146,6 +4146,7 @@ async function runDayPayPickerFlow(browser, base) {
     const {context,page}=await openStaffPage(browser,base,{width:1440,height:1000});
     let version=0, exception=null, failRead=true, failWrite=true;
     const writes=[];
+    let releaseWrite;const firstWrite=new Promise(resolve=>{releaseWrite=resolve;});
     const inherited={rate:100,rateUnit:'hour',sourceOrder:'explicit',profileTitle:'Основна ставка',professionKey:'animator'};
     try {
         await context.route('**/api/hr/staff/101/payroll-conditions?**',async route=>{
@@ -4158,7 +4159,7 @@ async function runDayPayPickerFlow(browser, base) {
         });
         await context.route('**/api/hr/staff/101/payroll-day-exception',async route=>{
             const body=route.request().postDataJSON();writes.push(body);
-            if(failWrite){failWrite=false;return route.abort('failed');}
+            if(failWrite){failWrite=false;await firstWrite;return route.abort('failed');}
             version++;
             exception={...inherited,rate:body.rate,sourceOrder:'day_exception',profileTitle:'Вихідний тариф',exception:{reason:body.reason}};
             return route.fulfill({json:{success:true,data:{version}}});
@@ -4179,6 +4180,8 @@ async function runDayPayPickerFlow(browser, base) {
         await panel.locator('[data-day-pay-field="choice"]').selectOption('profile:11:12');
         await panel.locator('[data-day-pay-field="reason"]').fill('Оплата у вихідний');
         await panel.locator('[data-day-pay-save]').click();
+        assert.equal(await panel.locator('[data-day-pay-field=reason]').isDisabled(),true,'in-flight pay edits cannot be silently lost');
+        releaseWrite();
         await page.waitForFunction(()=>document.querySelector('.sch-day-pay-error')?.textContent.includes('Результат збереження невідомий'));
         assert.equal(await panel.locator('[data-day-pay-save]').isEnabled(),true,'unknown outcome is safely retryable');
         await panel.locator('[data-day-pay-save]').click();

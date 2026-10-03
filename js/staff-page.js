@@ -4944,10 +4944,12 @@ function scheduleDayPayPreview(professionKey, purpose, terms) {
     const rate = scheduleFormatMoney(terms.rate) + ' ' + scheduleDayPayUnit(terms.rateUnit);
     if (terms.rateUnit === 'month') return rate + '. Місячний оклад; не множиться на години або зміни. Нарахування — за підтвердженою місячною нормою.';
     const relevant = [];
+    const draftChoice = scheduleDayPayEntry(professionKey,purpose)?.draft?.choice;
+    const explicitTopUp = terms.exception || (draftChoice && !['current','inherit'].includes(draftChoice));
     for (const segment of readSchedulePlanSegments('schedule')) {
         const role = segment.additionalRoles.find(row => row.professionKey === professionKey && row.compensationMode === 'paid_hourly');
         const matches = purpose === 'base_replacement' ? segment.professionKey === professionKey
-            : role || segment.professionKey === professionKey;
+            : role || (explicitTopUp && segment.professionKey === professionKey);
         if (!matches) continue;
         const interval = role || {intervalStart:segment.shiftStart,intervalEnd:segment.shiftEnd};
         const bounds = schedulePaidIntervalBounds(segment,interval);
@@ -5002,8 +5004,9 @@ function renderScheduleDayPayPanel(professionKey, purpose, id, topUp = false) {
     const custom = draft.choice === 'custom';
     const changed = draft.choice !== 'current';
     let html = start + `<div class="sch-day-pay-current">${escapeHtml(current)}</div><small>${escapeHtml(source)} · ${escapeHtml(period)}</small>
+        ${terms?.exception?.reason ? `<p>Причина: ${escapeHtml(terms.exception.reason)}</p>` : ''}
         ${data.blocker && !(topUp && data.blocker.code === 'rate_missing') ? `<p class="sch-day-pay-error" role="status">${escapeHtml(data.blocker.message)}</p>` : ''}
-        <p data-day-pay-preview>${escapeHtml(scheduleDayPayPreview(professionKey,purpose,previewTerms))}</p>
+        <p data-day-pay-preview>${changed ? 'Незбережена зміна · ' : ''}${escapeHtml(scheduleDayPayPreview(professionKey,purpose,previewTerms))}</p>
         ${data.frozen ? '<p>Умови вже зафіксовано в табелі. Зміна довідника їх не замінює.</p>' : ''}`;
     if (editable) html += `<div class="form-group"><label for="${id}-choice">Умови оплати на ${data.workDate}</label>
         <select id="${id}-choice" data-day-pay-field="choice"><option value="current"${selected('current')}>Чинні умови · ${escapeHtml(current)}</option>${choices}
@@ -5020,10 +5023,21 @@ function renderScheduleDayPayPanel(professionKey, purpose, id, topUp = false) {
 
 function renderScheduleDayPayPanels() {
     const state = scheduleDayPayState();
+    const focused = document.activeElement;
+    const focusId = focused?.matches?.('[data-day-pay-field]') ? focused.id : null;
+    const selection = focusId && focused.tagName === 'INPUT' && focused.type === 'text'
+        ? [focused.selectionStart,focused.selectionEnd] : null;
     document.querySelectorAll('#schSegmentsList [data-day-pay-slot]').forEach(slot => {
         slot.innerHTML = state ? renderScheduleDayPayPanel(slot.dataset.payProfession,slot.dataset.payPurpose,slot.dataset.payId)
             : '<p>Немає доступу до сум оплати.</p>';
     });
+    if (StaffState.editingCell?.mutationPending) document.querySelectorAll('#schSegmentsList [data-day-pay-panel] input, #schSegmentsList [data-day-pay-panel] select, #schSegmentsList [data-day-pay-panel] button')
+        .forEach(control => { control.disabled = true; });
+    const restored = focusId && document.getElementById(focusId);
+    if (restored) {
+        restored.focus({preventScroll:true});
+        if (selection) restored.setSelectionRange(...selection);
+    }
 }
 
 function updateScheduleDayPayPreviews() {
@@ -5065,6 +5079,7 @@ async function saveScheduleDayPay(panel) {
     if (entry.requestSignature !== signature) { entry.requestSignature = signature; entry.idempotencyKey = crypto.randomUUID(); }
     payload.idempotencyKey = entry.idempotencyKey;
     if (!beginScheduleModalMutation(session)) return;
+    renderScheduleDayPayPanels();
     try {
         const response = await staffApiFetch('/api/hr/staff/' + Number(session.staffId) + '/payroll-day-exception',{
             method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});

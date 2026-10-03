@@ -104,8 +104,15 @@ async function run() {
         await card().locator('[data-segment-field="break"]').fill('30');
         await page.locator('#schNote').fill('Keep this shift draft');
         assert.match(await panel().innerText(),/450 хв[\s\S]*750 грн/);
+        const hrRead=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/hr/staff/'+staffId);
         await card().locator('[data-schedule-pay-conditions]').first().click();
         await page.waitForURL(/\/hr\?/);
+        const hrResponse=await hrRead;
+        const hrResult=await hrResponse.json();
+        if(hrResponse.status()===403){
+            assert.equal(hrResult.code,'staff_not_migrated');
+            console.log('Known release blocker: HR profile business gate is 403; verifying safe draft return from the error state');
+        } else assert.equal(hrResponse.status(),200);
         await page.locator('#staffScheduleReturnLink').waitFor();
         const draft=await page.evaluate(()=>sessionStorage.getItem('pzp_schedule_hr_draft_v1'));
         assert.doesNotMatch(draft,/selectedProfile|defaultRate|profileVersionId|dayPay/);

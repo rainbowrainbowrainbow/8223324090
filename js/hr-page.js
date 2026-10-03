@@ -13915,14 +13915,16 @@ function hrScheduleDraftContext() {
         scope.activeBusinessId || '', [...(scope.selectedBusinessIds || scope.selectedContexts || [])].sort()]);
 }
 
-function renderStaffScheduleReturnLink(options = {}) {
+function renderStaffScheduleReturnLink(options = {}, staffId = activeEditStaffId()) {
     document.getElementById('staffScheduleReturnLink')?.remove();
-    if (!options.scheduleDraft) return;
     try {
+        const params = new URLSearchParams(window.location.search);
+        const token = options.scheduleDraft || (Number(params.get('employee')) === Number(staffId) ? params.get('scheduleDraft') : '');
+        if (!token) return;
         const draft = JSON.parse(sessionStorage.getItem('pzp_schedule_hr_draft_v1') || 'null');
-        if (!draft || draft.token !== options.scheduleDraft || !hrScheduleDraftContext()
+        if (!draft || draft.token !== token || !hrScheduleDraftContext()
             || !Number.isFinite(draft.createdAt) || draft.owner !== hrScheduleDraftContext() || Date.now() - draft.createdAt > 2 * 60 * 60 * 1000
-            || draft.createdAt > Date.now() || draft.staffId !== Number(activeEditStaffId())) return;
+            || draft.createdAt > Date.now() || draft.staffId !== Number(staffId)) return;
         const url = new URL(draft.returnUrl, window.location.origin);
         if (url.origin !== window.location.origin || !['/staff', '/hr'].includes(url.pathname)
             || (url.pathname === '/hr' && url.hash !== '#schedule')) return;
@@ -13996,6 +13998,8 @@ async function openStaffEdit(staffId, options = {}) {
     if (!profileData?.success) {
         setStaffProfileHydrationState(modal, false);
         setStaffProfileCardState(modal, 'error', profileData?.error || 'Не вдалося завантажити профіль працівника.', numericStaffId);
+        syncStaffProfileHeaderName('Картка недоступна', {});
+        renderStaffScheduleReturnLink(options,numericStaffId);
         return profileData || { success: false };
     }
     const s = mergeFreshStaffProfile(profileData.data || { id: numericStaffId });

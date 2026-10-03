@@ -179,6 +179,12 @@ test('HR return link accepts numeric staff identifiers from the form and rejects
     storage.set('pzp_schedule_hr_draft_v1', JSON.stringify(draft));
     c.renderStaffScheduleReturnLink({ scheduleDraft: 'qa-token' });
     assert.equal(added.href, '/staff?scheduleDraft=qa-token');
+    added=null;c.activeEditStaffId=()=>'';
+    c.window.location.search='?employee=10&scheduleDraft=qa-token';
+    c.renderStaffScheduleReturnLink({},10);
+    assert.equal(added.href,'/staff?scheduleDraft=qa-token','failed profile read and retry retain the safe return action');
+    added=null;c.renderStaffScheduleReturnLink({},11);assert.equal(added,null,'another employee never receives this draft link');
+    c.activeEditStaffId=()=> '10';
     added = null;
     storage.set('pzp_schedule_hr_draft_v1', JSON.stringify({ ...draft, returnUrl: 'https://other.test/staff' }));
     c.renderStaffScheduleReturnLink({ scheduleDraft: 'qa-token' });
@@ -230,4 +236,24 @@ test('an unfinished draft still shows the refreshed rate without inventing a pay
     assert.doesNotMatch(preview, /≈/);
     c.scheduleCanViewPayrollAmounts = () => false;
     assert.doesNotMatch(c.schedulePaidRolePreview('schedule', { professionKey: 'animator' }, { shiftStart: '', shiftEnd: '18:00' }), /195|грн/);
+});
+
+test('dated additional preview excludes blocks where the same profession is only the base', () => {
+    let termsDraft=null;
+    const segments=[
+        {professionKey:'animator',shiftStart:'10:00',shiftEnd:'14:00',breakMinutes:0,additionalRoles:[{professionKey:'reception',compensationMode:'paid_hourly'}]},
+        {professionKey:'reception',shiftStart:'14:00',shiftEnd:'18:00',breakMinutes:0,additionalRoles:[]}
+    ];
+    const c=vm.createContext({
+        scheduleFormatMoney: value=>String(value), scheduleDayPayUnit:()=> 'грн/год',
+        scheduleDayPayEntry:()=>({draft:termsDraft}),readSchedulePlanSegments:()=>segments,
+        schedulePaidIntervalBounds:()=>({start:0,end:240,segmentBounds:{start:0,end:240}})
+    });
+    vm.runInContext(extract(staff,'scheduleDayPayPreview'),c);
+    assert.match(c.scheduleDayPayPreview('reception','additional',{rate:120,rateUnit:'hour'}),/240 хв.*480 грн/);
+    assert.match(c.scheduleDayPayPreview('reception','base_replacement',{rate:120,rateUnit:'hour'}),/240 хв.*480 грн/);
+    termsDraft={choice:'custom'};
+    assert.match(c.scheduleDayPayPreview('reception','additional',{rate:120,rateUnit:'hour'}),/480 хв.*960 грн/,'explicit top-up follows the server exception scope');
+    termsDraft=null;
+    assert.match(c.scheduleDayPayPreview('reception','additional',{rate:120,rateUnit:'hour',exception:{id:1}}),/480 хв.*960 грн/);
 });

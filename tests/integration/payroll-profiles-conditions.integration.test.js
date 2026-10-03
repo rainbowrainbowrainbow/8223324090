@@ -69,6 +69,7 @@ describe('HR PAY dated conditions on disposable PostgreSQL', { skip: !enabled, c
         const choice = read.choices[0];
         const request = payload({professionKey:extraProfession,workDate:'2198-10-09',purpose:'additional',rate:500,rateUnit:'day',
             selectedProfileId:choice.profileId,selectedProfileVersionId:choice.profileVersionId,idempotencyKey:'selected-profile-day',expectedPlanUpdatedAt:null});
+        await assert.rejects(savePayrollDayException(db,{...request,expectedPlanUpdatedAt:'stale-plan'},actor),error=>error.code==='HR_SHIFT_PLAN_STALE');
         await assert.rejects(savePayrollDayException(db,{...request,rate:1},actor),error=>error.code==='PAYROLL_DAY_PROFILE_STALE');
         const saved=await savePayrollDayException(db,request,actor);
         assert.equal(saved.selectedProfile.profileVersionId,choice.profileVersionId);

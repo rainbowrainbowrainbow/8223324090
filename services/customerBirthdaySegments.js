@@ -193,4 +193,3 @@ module.exports = {
     birthdaySystemTag, birthdayChildrenSql, activeBirthdayChildSql,
     birthdaySelection, customerBirthdayTagFilterSql, selectedBirthdayChildren, currentCustomerBirthdayTags
 };
-

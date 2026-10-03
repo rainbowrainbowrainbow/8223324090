@@ -83,4 +83,16 @@ test('PostgreSQL birthday selection, full counts, edits, and single-family tag s
     assert.equal(bounded.length, 20);
     assert.equal(Number(bounded[0].families), 30);
     assert.equal(Number(bounded[0].children), 30);
+
+    await client.query('BEGIN');
+    try {
+        await client.query("UPDATE customer_children SET birthday='2020-12-15' WHERE id=1");
+        await syncBirthdayTagsForCustomer(client, 1);
+        const pending = await client.query("SELECT system_key FROM customer_tags WHERE customer_id=1 AND source='system'");
+        assert.deepEqual(pending.rows.map(row => row.system_key).sort(), ['birthday', 'birthday_month_12']);
+    } finally {
+        await client.query('ROLLBACK');
+    }
+    assert.equal((await client.query('SELECT birthday FROM customer_children WHERE id=1')).rows[0].birthday, null);
+    assert.deepEqual((await client.query('SELECT tag FROM customer_tags WHERE customer_id=1')).rows.map(row => row.tag), ['VIP']);
 });

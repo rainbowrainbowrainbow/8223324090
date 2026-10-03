@@ -48,6 +48,9 @@ test('actual provenance, correction, completion, business scope and group aggreg
             (group_id,plan_id,business_context,include_plan_revenue,include_plan_direct_cost)
             VALUES ($1,$2,'event_genix',TRUE,FALSE)`, [legacyGroup.rows[0].id, legacyPlan.rows[0].id]);
         await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/377_costing_group_composition_revisions.sql'), 'utf8'));
+        await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/379_costing_execution_booking_identity.sql'), 'utf8'));
+        assert.equal((await pool.query('SELECT booking_id FROM costing_plan_snapshots WHERE id=$1',
+            [legacyPlan.rows[0].id])).rows[0].booking_id, null, 'older plans are not assigned a booking by migration');
         const imported = await pool.query(
             `SELECT r.revision_number, m.plan_id FROM costing_group_revisions r
              JOIN costing_group_revision_members m ON m.revision_id=r.id

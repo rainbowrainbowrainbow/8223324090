@@ -277,7 +277,8 @@ window.CostingWorkspace = (() => {
             const executionLabel = $('costExecutionLabel').value.trim();
             if (!executionLabel) throw new Error('Вкажіть назву виконання');
             $('costSavePlan').disabled = true;
-            const payload = { ...state.preview, expectedVersionId: state.preview.versionId, executionLabel, clientKey: crypto.randomUUID() };
+            const payload = { ...state.preview, expectedVersionId: state.preview.versionId, executionLabel,
+                bookingId: $('costExecutionBookingId').value.trim(), clientKey: crypto.randomUUID() };
             const saved = await apiRequest('POST', '/api/finance/costing/plans', payload);
             invalidatePreview();
             await refreshPlans();
@@ -570,6 +571,27 @@ window.CostingWorkspace = (() => {
         } catch (error) { managementStatus('costManagementLinkStatus', error.message, true); }
     }
 
+    const managementIssueLabels = {
+        'Reconciliation explicitly unresolved': 'Звірку призупинено вручну',
+        'Confirmed evidence changed or is no longer active': 'Підтверджене джерело змінилося або більше не активне',
+        'Execution performance is absent, voided, or changed': 'Факт виконання відсутній, скасований або змінений',
+        'Present attendance evidence changed': 'Підтвердження присутності змінилося',
+        'Linked finance transaction is missing or outside this business': 'Finance-транзакція відсутня або належить іншому бізнесу',
+        'Finance transaction is claimed by multiple economic operations': 'Finance-транзакція прив’язана до кількох операцій',
+        'Payroll allocations exceed finance expense': 'Розподіл зарплати перевищує finance-витрату',
+        'Earned revenue does not match the linked finance income': 'Виручка не збігається з finance-надходженням',
+        'Canonical booking or cash reference changed': 'Booking або платіжний зв’язок змінився',
+        'Direct cost does not match the linked finance expense': 'Пряма витрата не збігається з finance-витратою',
+        'Finance cost recognition date changed': 'Дата визнання finance-витрати змінилася',
+        'Execution performance changed after labor allocation': 'Факт виконання змінився після розподілу праці',
+        'Payroll approval, business, or finance link changed': 'Підтвердження зарплати, бізнес або finance-зв’язок змінився',
+        'Labor allocations exceed the approved installment': 'Розподіл праці перевищує затверджену виплату',
+        'Confirmed hourly time or amount changed': 'Підтверджений час або погодинна сума змінилися',
+        'Original earned revenue is no longer financially valid': 'Початкова виручка більше не проходить фінансову перевірку',
+        'Original earned-revenue link is missing or correction is too large': 'Початковий зв’язок відсутній або коригування завелике',
+        'Refund is not linked to the original payment': 'Повернення не пов’язане з початковим платежем'
+    };
+
     async function loadManagementReport() {
         const result = $('costManagementSummary');
         try {
@@ -582,7 +604,10 @@ window.CostingWorkspace = (() => {
                 <div>Управлінський внесок<strong>${uahFromMinor(data.summary.contributionMinor)}</strong></div>
             </div><p>Лише звірені операції: ${data.lines.length}. Нерозв’язані зв’язки: ${data.unresolved.length}.
             Незв’язані старі finance-транзакції: ${data.legacyUnlinked.finance.count}; фактичні джерела без зв’язку: ${data.legacyUnlinked.costingSourceCount}. Ці суми не додано до підсумку.</p>
-            <div class="cost-actual-history">${data.lines.map(line => `<article>${escapeHtml(line.kind)} · ${escapeHtml(line.effectOn)} · ${uahFromMinor(line.amountMinor)} · ${escapeHtml(line.provenance)}</article>`).join('')}</div>`;
+            <div class="cost-actual-history">${data.lines.map(line => `<article>${escapeHtml(line.kind)} · ${escapeHtml(line.effectOn)} · ${uahFromMinor(line.amountMinor)} · ${escapeHtml(line.provenance)}</article>`).join('')}</div>
+            ${data.unresolved.length ? `<div class="cost-actual-history"><strong>Потребують звірки</strong>${data.unresolved.map(item =>
+                `<article><strong>${item.linkId == null ? 'Finance-витрата' : `Зв’язок #${escapeHtml(String(item.linkId))}`}${item.sourceId == null ? '' : ` · джерело #${escapeHtml(String(item.sourceId))}`}${item.financeTransactionId == null ? '' : ` · finance #${escapeHtml(String(item.financeTransactionId))}`}</strong>
+                <ul>${(item.issues || []).map(issue => `<li>${escapeHtml(managementIssueLabels[issue] || String(issue))}</li>`).join('')}</ul></article>`).join('')}</div>` : ''}`;
         } catch (error) { result.textContent = friendlyError(error.message); }
     }
 

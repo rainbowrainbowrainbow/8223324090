@@ -32,6 +32,8 @@ test('costing version selection, immutable plan and business scope in disposable
         created = true;
         pool = new Pool({ ...connection, database: name, max: 5 });
         await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/375_universal_costing_plan_foundation.sql'), 'utf8'));
+        await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/379_costing_execution_booking_identity.sql'), 'utf8'));
+        await pool.query("CREATE TABLE bookings (id VARCHAR(50) PRIMARY KEY, business_context TEXT); INSERT INTO bookings VALUES ('lesson-qa','event_genix'),('other-business','dar')");
         require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { pool } };
         delete require.cache[routePath];
         const app = express();
@@ -76,15 +78,19 @@ test('costing version selection, immutable plan and business scope in disposable
         const clientKey = crypto.randomUUID();
         const planBody = { templateId, executionDate: '2026-10-12', executionLabel: 'October group lesson',
             inputs: { participants: 10, paidParticipants: 8, durationMinutes: 120, discountBps: 1000 },
-            expectedVersionId: oldVersionId, clientKey };
+            expectedVersionId: oldVersionId, bookingId: 'lesson-qa', clientKey };
+        assert.equal((await request('POST', '/plans', { ...planBody, clientKey: crypto.randomUUID(), bookingId: 'other-business' })).status, 404);
         const saved = await request('POST', '/plans', planBody);
         assert.equal(saved.status, 201, JSON.stringify(saved.body));
         assert.equal(saved.body.calculation.directCostMinor, '90000');
         assert.equal((await request('POST', '/plans', planBody)).status, 409);
         const planRow = (await pool.query('SELECT * FROM costing_plan_snapshots WHERE id=$1', [saved.body.planId])).rows[0];
         assert.equal(planRow.business_context, 'event_genix');
+        assert.equal(planRow.booking_id, 'lesson-qa');
         assert.equal(String(planRow.template_version_id), String(oldVersionId));
         await assert.rejects(pool.query('UPDATE costing_plan_snapshots SET execution_label=$1 WHERE id=$2', ['Changed', saved.body.planId]), /immutable/);
+        await assert.rejects(pool.query('UPDATE costing_plan_snapshots SET booking_id=$1 WHERE id=$2',
+            ['other-business', saved.body.planId]), /immutable/);
 
         const revised = await request('POST', `/templates/${templateId}/versions`, {
             effectiveFrom: '2026-11-01', definition: { ...definition, revenueRateMinor: '35000' }
@@ -99,6 +105,37 @@ test('costing version selection, immutable plan and business scope in disposable
         await assert.rejects(pool.query('UPDATE costing_template_versions SET effective_from=$1 WHERE id=$2', ['2026-01-02', oldVersionId]), /immutable/);
         const staleSave = await request('POST', '/plans', { ...planBody, executionDate: '2026-11-12', clientKey: crypto.randomUUID() });
         assert.equal(staleSave.status, 409);
+        const concurrent = await pool.connect();
+        try {
+            await concurrent.query('BEGIN');
+            await concurrent.query('SELECT id FROM costing_templates WHERE id=$1 FOR UPDATE', [templateId]);
+            await concurrent.query(
+                `INSERT INTO costing_template_versions
+                 (business_context,template_id,version_number,effective_from,definition)
+                 VALUES ('event_genix',$1,3,'2026-12-01',$2::jsonb)`,
+                [templateId, JSON.stringify({ ...definition, revenueRateMinor: '40000' })]
+            );
+            const raceKey = crypto.randomUUID();
+            const pendingSave = request('POST', '/plans', { ...planBody, executionDate: '2026-12-12',
+                expectedVersionId: revised.body.version.id, clientKey: raceKey });
+            let waiting = false;
+            for (let attempt = 0; attempt < 100 && !waiting; attempt += 1) {
+                const activity = await admin.query(
+                    `SELECT 1 FROM pg_stat_activity WHERE datname=$1 AND wait_event_type='Lock'
+                     AND query LIKE '%costing_templates%' LIMIT 1`, [name]
+                );
+                waiting = activity.rowCount > 0;
+                if (!waiting) await new Promise(resolve => setTimeout(resolve, 20));
+            }
+            assert.ok(waiting, 'plan save waits for the template lock held by a concurrent version');
+            await concurrent.query('COMMIT');
+            const raced = await pendingSave;
+            assert.equal(raced.status, 409, JSON.stringify(raced.body));
+            assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM costing_plan_snapshots WHERE client_key=$1', [raceKey])).rows[0].count, 0);
+        } finally {
+            await concurrent.query('ROLLBACK').catch(() => {});
+            concurrent.release();
+        }
     } finally {
         if (server) await new Promise(resolve => server.close(resolve));
         if (pool) await pool.end();

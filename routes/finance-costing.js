@@ -175,6 +175,7 @@ router.post('/preview', async (req, res) => {
 });
 
 router.post('/plans', async (req, res) => {
+    let client;
     try {
         const context = business(req, res);
         if (!context) return;
@@ -183,26 +184,50 @@ router.post('/plans', async (req, res) => {
         if (!executionLabel || executionLabel.length > 200) throw new CostingInputError('Execution label must be 1–200 characters');
         const clientKey = String(req.body?.clientKey || '').trim();
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientKey)) throw new CostingInputError('clientKey must be a UUID');
-        const version = await scopedVersion(pool, context, id(req.body?.templateId, 'templateId'), executionDate);
+        const templateId = id(req.body?.templateId, 'templateId');
+        const bookingId = String(req.body?.bookingId ?? '').trim();
+        if (bookingId.length > 50) throw new CostingInputError('bookingId must be at most 50 characters');
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const template = await client.query(
+            'SELECT id FROM costing_templates WHERE id=$1 AND business_context=$2 FOR SHARE', [templateId, context]
+        );
+        if (!template.rowCount) {
+            const error = new Error('Template not found'); error.status = 404; throw error;
+        }
+        const version = await scopedVersion(client, context, templateId, executionDate);
         if (req.body?.expectedVersionId && String(req.body.expectedVersionId) !== String(version.id)) {
             const error = new Error('Template version changed; preview the plan again'); error.status = 409; throw error;
         }
+        if (bookingId) {
+            const booking = await client.query(
+                `SELECT id FROM bookings WHERE id=$1 AND COALESCE(business_context,'event_genix')=$2 FOR KEY SHARE`,
+                [bookingId, context]
+            );
+            if (!booking.rowCount) {
+                const error = new Error('Booking not found in this business'); error.status = 404; throw error;
+            }
+        }
         const calculation = calculatePlan(version.definition, req.body?.inputs);
-        const result = await pool.query(
+        const result = await client.query(
             `INSERT INTO costing_plan_snapshots
              (business_context, template_version_id, client_key, execution_kind, execution_label,
-              execution_date, inputs, result, revenue_minor, direct_cost_minor, contribution_minor, margin_bps, created_by)
-             VALUES ($1, $2, $3::uuid, $4, $5, $6::date, $7::jsonb, $8::jsonb,
-                     $9::bigint, $10::bigint, $11::bigint, $12, $13)
+              execution_date, booking_id, inputs, result, revenue_minor, direct_cost_minor, contribution_minor, margin_bps, created_by)
+             VALUES ($1, $2, $3::uuid, $4, $5, $6::date, $7, $8::jsonb, $9::jsonb,
+                     $10::bigint, $11::bigint, $12::bigint, $13, $14)
              ON CONFLICT (business_context, client_key) DO NOTHING RETURNING id`,
-            [context, version.id, clientKey, version.kind, executionLabel, executionDate,
+            [context, version.id, clientKey, version.kind, executionLabel, executionDate, bookingId || null,
                 JSON.stringify(calculation.inputs), JSON.stringify(calculation), calculation.revenueMinor,
                 calculation.directCostMinor, calculation.contributionMinor, calculation.marginBps,
                 req.user?.username || null]
         );
-        if (!result.rowCount) return res.status(409).json({ success: false, error: 'This plan was already saved; refresh the list before retrying' });
+        if (!result.rowCount) throw Object.assign(new Error('This plan was already saved; refresh the list before retrying'), { status: 409 });
+        await client.query('COMMIT');
         res.status(201).json({ success: true, planId: result.rows[0].id, versionId: version.id, calculation });
-    } catch (error) { fail(res, error, 'POST /costing/plans'); }
+    } catch (error) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        fail(res, error, 'POST /costing/plans');
+    } finally { client?.release(); }
 });
 
 router.get('/plans', async (req, res) => {

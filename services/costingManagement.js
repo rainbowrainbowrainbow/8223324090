@@ -57,6 +57,12 @@ function bounded(total, field) {
 }
 
 function projectManagementPnl(rows, legacy, from, to) {
+    // A correction can reference only an earlier immutable link, even if the caller supplies unordered rows.
+    const orderedRows = [...rows].sort((left, right) => {
+        const a = BigInt(left.id);
+        const b = BigInt(right.id);
+        return a < b ? -1 : a > b ? 1 : 0;
+    });
     const inPeriod = value => value >= from && value <= to;
     const lines = [];
     const unresolved = [];
@@ -65,7 +71,8 @@ function projectManagementPnl(rows, legacy, from, to) {
     const refundClaims = new Map();
     const correctionClaims = new Map();
     const installmentClaims = new Map();
-    for (const row of rows) {
+    const validEarnedLinks = new Set();
+    for (const row of orderedRows) {
         if (['piecework', 'hourly'].includes(row.kind) && row.finance_transaction_id &&
             row.finance_type === 'expense' && row.finance_business === row.business_context &&
             row.finance_amount_uah !== null) {
@@ -93,7 +100,7 @@ function projectManagementPnl(rows, legacy, from, to) {
     }
     let revenue = 0n;
     let cost = 0n;
-    for (const row of rows) {
+    for (const row of orderedRows) {
         const issues = [];
         if (row.kind === 'unresolved') issues.push('Reconciliation explicitly unresolved');
         if (String(row.entry_id) !== String(row.active_entry_id) || row.evidence_state !== 'confirmed') {
@@ -106,6 +113,7 @@ function projectManagementPnl(rows, legacy, from, to) {
             if (row.performance_evidence_type === 'attendance' &&
                 (row.attendance_status !== 'present' || row.attendance_business !== row.business_context ||
                  row.attendance_booking_business !== row.business_context ||
+                 row.execution_booking_id && row.attendance_booking_id !== row.execution_booking_id ||
                  row.attendance_date !== row.performance_on)) {
                 issues.push('Present attendance evidence changed');
             }
@@ -125,6 +133,7 @@ function projectManagementPnl(rows, legacy, from, to) {
             issues.push('Earned revenue does not match the linked finance income');
         }
         if (row.kind === 'earned_revenue' && (row.booking_business !== row.business_context ||
+            !row.execution_booking_id || row.execution_booking_id !== row.finance_booking_id ||
             ['cancelled', 'preliminary'].includes(String(row.booking_status).toLowerCase()) || !row.booking_status ||
             row.payment_order_id && (row.payment_business !== row.business_context ||
                 row.payment_order_type !== 'booking' || row.payment_source_id !== row.finance_booking_id))) {
@@ -158,6 +167,9 @@ function projectManagementPnl(rows, legacy, from, to) {
             }
         }
         if (row.kind === 'revenue_correction') {
+            if (!validEarnedLinks.has(String(row.original_link_id))) {
+                issues.push('Original earned revenue is no longer financially valid');
+            }
             if (!row.original_kind || row.original_kind !== 'earned_revenue' ||
                 row.original_business !== row.business_context || row.original_plan_id !== row.plan_id ||
                 row.original_active_revision !== row.original_revision_number ||
@@ -177,6 +189,7 @@ function projectManagementPnl(rows, legacy, from, to) {
             unresolved.push({ linkId: row.id, sourceId: row.source_id, issues });
             continue;
         }
+        if (row.kind === 'earned_revenue') validEarnedLinks.add(String(row.id));
         if (['piecework', 'hourly'].includes(row.kind)) {
             const key = String(row.finance_transaction_id);
             payroll.get(key).allocated += money(row.amount_minor);

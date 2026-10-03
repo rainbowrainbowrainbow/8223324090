@@ -11,7 +11,7 @@ function earned(sourceId, financeId) {
         performance_state: 'performed', performance_on: '2026-10-12', performance_evidence_type: 'operator',
         finance_transaction_id: String(financeId), finance_type: 'income', finance_amount_uah: '100',
         finance_business: 'event_genix', finance_booking_id: 'booking-1', booking_status: 'confirmed',
-        booking_business: 'event_genix', payment_order_id: null };
+        booking_business: 'event_genix', execution_booking_id: 'booking-1', payment_order_id: null };
 }
 
 test('hourly rounding is half-up in integer minor units and rejects overflow', () => {
@@ -52,4 +52,24 @@ test('invalid execution labor leaves the finance payroll expense at business lev
     assert.equal(report.lines.length, 1);
     assert.equal(report.lines[0].kind, 'unallocated_payroll');
     assert.equal(report.unresolved.length, 1);
+});
+
+test('cross-period correction is withheld when original finance or source evidence drifts', () => {
+    const original = earned(1, 9);
+    const correction = { ...earned(2, 10), kind: 'revenue_correction', amount_minor: '-2000',
+        effect_on: '2026-11-20', semantic: 'adjustment', finance_transaction_id: null,
+        original_link_id: '1', original_kind: 'earned_revenue', original_business: 'event_genix',
+        original_plan_id: '1', original_amount_minor: '10000', original_revision_number: 1,
+        original_active_revision: 1, original_entry_id: '1', original_active_entry_id: '1' };
+    const legacy = { finance: { count: 0 }, costingSourceCount: 0 };
+    const report = rows => projectManagementPnl(rows, legacy, '2026-11-01', '2026-11-30');
+    assert.equal(report([original, correction]).summary.earnedRevenueMinor, '-2000');
+    assert.equal(report([correction, original]).summary.earnedRevenueMinor, '-2000');
+    for (const changed of [{ finance_amount_uah: '90' }, { active_entry_id: '99' }]) {
+        const invalid = report([{ ...original, ...changed }, correction]);
+        assert.equal(invalid.summary.earnedRevenueMinor, '0');
+        assert.equal(invalid.lines.length, 0);
+        assert.equal(invalid.unresolved.length, 2);
+        assert.ok(invalid.unresolved.find(item => item.linkId === '2').issues.some(issue => /Original earned revenue/.test(issue)));
+    }
 });

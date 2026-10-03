@@ -30,7 +30,7 @@ function fail(res, error, action) {
 
 async function plan(db, context, planId, lock = false) {
     const result = await db.query(
-        `SELECT id, business_context, execution_kind, execution_date::text AS execution_date
+        `SELECT id, business_context, execution_kind, execution_date::text AS execution_date, booking_id
          FROM costing_plan_snapshots WHERE id=$1 AND business_context=$2${lock ? ' FOR UPDATE' : ''}`,
         [planId, context]
     );
@@ -120,8 +120,9 @@ router.post('/plans/:id/performance', async (req, res) => {
             const attendance = await client.query(
                 `SELECT ea.id FROM education_attendance ea
                  JOIN bookings b ON b.id=ea.booking_id AND COALESCE(b.business_context,'event_genix')=ea.business_context
-                 WHERE ea.id=$1 AND ea.business_context=$2 AND ea.status='present' AND ea.lesson_date=$3::date`,
-                [evidenceId, context, performedOn]
+                 WHERE ea.id=$1 AND ea.business_context=$2 AND ea.status='present' AND ea.lesson_date=$3::date
+                   AND ($4::varchar(50) IS NULL OR ea.booking_id=$4::varchar(50))`,
+                [evidenceId, context, performedOn, execution.booking_id]
             );
             if (!attendance.rowCount) throw conflict('Present attendance on the performed date was not verified');
         }
@@ -206,7 +207,9 @@ router.post('/sources/:id/links', async (req, res) => {
                 throw conflict('Direct cost uses the finance recognition date');
             }
             if (kind === 'earned_revenue') {
-                if (!ft.booking_id) throw conflict('Earned revenue needs a canonical booking; direct/subscription allocation is unresolved');
+                if (!execution.booking_id || !ft.booking_id || ft.booking_id !== execution.booking_id) {
+                    throw conflict('Earned revenue needs the exact booking fixed on this execution plan');
+                }
                 const booking = await client.query(
                     `SELECT id,status FROM bookings WHERE id=$1 AND COALESCE(business_context,'event_genix')=$2`,
                     [ft.booking_id, context]
@@ -385,9 +388,11 @@ router.get('/pnl', async (req, res) => {
                     l.payment_refund_id::text,l.original_link_id::text,l.payroll_installment_id::text,
                     l.hr_time_record_id::text,l.confirmed_minutes,l.hourly_rate_minor::text,l.reason,
                     active.id AS active_entry_id,active.evidence_state,active.semantic,
+                    execution.booking_id AS execution_booking_id,
                     perf.state AS performance_state,perf.performed_on::text AS performance_on,
                     perf.evidence_type AS performance_evidence_type,
                     ea.status AS attendance_status,ea.business_context AS attendance_business,
+                    ea.booking_id AS attendance_booking_id,
                     COALESCE(attendance_booking.business_context,'event_genix') AS attendance_booking_business,
                     ea.lesson_date::text AS attendance_date,
                     ft.type AS finance_type,ft.amount::text AS finance_amount_uah,
@@ -418,6 +423,7 @@ router.get('/pnl', async (req, res) => {
                     refund.status AS refund_status,refund.payment_order_id::text AS refund_order_id,
                     refund.amount_minor::text AS refund_amount_minor,profile.crm_profile_key AS refund_business
              FROM costing_management_links l
+             JOIN costing_plan_snapshots execution ON execution.id=l.plan_id AND execution.business_context=l.business_context
              JOIN costing_actual_sources s ON s.id=l.source_id AND s.business_context=l.business_context
              LEFT JOIN LATERAL (
                  SELECT e.id,e.evidence_state,e.semantic FROM costing_actual_entries e

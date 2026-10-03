@@ -47,7 +47,7 @@ async function main() {
         created = true;
         pool = new Pool({ ...connection, database: name, max: 5 });
         for (const migration of ['375_universal_costing_plan_foundation.sql', '376_costing_actual_provenance.sql',
-            '377_costing_group_composition_revisions.sql']) {
+            '377_costing_group_composition_revisions.sql', '379_costing_execution_booking_identity.sql']) {
             await pool.query(fs.readFileSync(path.join(root, 'db/migrations', migration), 'utf8'));
         }
         await pool.query("CREATE TABLE bookings (id VARCHAR(50) PRIMARY KEY, business_context VARCHAR(64), price INTEGER, status TEXT)");
@@ -108,6 +108,7 @@ async function main() {
         await page.locator('#costTemplateSelect').selectOption('1');
         await page.locator('#costExecutionLabel').fill('Disposable lesson');
         await page.locator('#costExecutionDate').fill('2026-10-12');
+        await page.locator('#costExecutionBookingId').fill('lesson-qa');
         await page.locator('#costParticipants').fill('10');
         await page.locator('#costPaidParticipants').fill('8');
         await page.locator('#costHours').fill('2');
@@ -116,6 +117,7 @@ async function main() {
         await page.locator('#costPreviewResult').getByText('1 002,00 ₴').waitFor();
         await page.locator('#costSavePlan').click();
         await page.locator('#costActualSummary').getByText('Ще не визначено').waitFor();
+        assert.equal((await pool.query('SELECT booking_id FROM costing_plan_snapshots WHERE id=1')).rows[0].booking_id, 'lesson-qa');
         for (const item of [
             { id: 'sale-qa', role: 'lesson_sale', category: 'revenue', amount: '2160' },
             { id: 'cost-qa', role: 'lesson_cost', category: 'direct_cost', amount: '1158' }

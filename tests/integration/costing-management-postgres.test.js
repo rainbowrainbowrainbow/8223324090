@@ -31,7 +31,8 @@ test('management P&L links performed revenue, explicit refund, and allocated lab
         created = true;
         pool = new Pool({ ...connection, database, max: 8 });
         for (const migration of ['375_universal_costing_plan_foundation.sql', '376_costing_actual_provenance.sql',
-            '377_costing_group_composition_revisions.sql', '378_costing_management_reconciliation.sql']) {
+            '377_costing_group_composition_revisions.sql', '378_costing_management_reconciliation.sql',
+            '379_costing_execution_booking_identity.sql']) {
             await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations', migration), 'utf8'));
         }
         await pool.query(`
@@ -60,7 +61,8 @@ test('management P&L links performed revenue, explicit refund, and allocated lab
                 (3,'event_genix','expense',2,1000,'2026-10-12',NULL,'payroll',NULL),
                 (4,'event_genix','income',1,50,'2026-10-05',NULL,'legacy',NULL),
                 (5,'dar','income',1,2160,'2026-10-01',NULL,'cashier',NULL);
-            INSERT INTO bookings VALUES ('lesson-qa','event_genix',2160,'2026-10-12','confirmed',NULL);
+            INSERT INTO bookings VALUES ('lesson-qa','event_genix',2160,'2026-10-12','confirmed',NULL),
+                ('other-lesson','event_genix',2160,'2026-10-12','confirmed',NULL);
             INSERT INTO education_attendance VALUES (11,'event_genix','lesson-qa','present','2026-10-12');
             INSERT INTO fiscal_profiles VALUES (41,'event_genix'),(42,'dar');
             INSERT INTO payment_orders VALUES (51,41,'booking','lesson-qa',100000,'payment_recorded','recorded');
@@ -130,8 +132,12 @@ document.documentElement.setAttribute('data-theme','dark');
             await page.locator('#costManagementFrom').fill('2026-10-01');
             await page.locator('#costManagementTo').fill('2026-10-31');
             await page.locator('#costManagementRefresh').click();
-            await page.locator('#costManagementSummary').getByText(expectedRevenue).first().waitFor();
-            if (expectedCost) await page.locator('#costManagementSummary').getByText(expectedCost).first().waitFor();
+            const waitForAmount = (position, expected) => page.waitForFunction(({ position, expected }) => {
+                const actual = document.querySelector(`#costManagementSummary .cost-result-grid > div:nth-child(${position}) strong`)?.textContent;
+                return actual?.replace(/\s/g, ' ').trim() === expected.replace(/\s/g, ' ').trim();
+            }, { position, expected });
+            await waitForAmount(1, expectedRevenue);
+            if (expectedCost) await waitForAmount(2, expectedCost);
         }
         async function request(method, endpoint, body, context = 'event_genix', role = 'creator') {
             const response = await fetch(origin + endpoint, { method, signal: AbortSignal.timeout(10000),
@@ -146,7 +152,7 @@ document.documentElement.setAttribute('data-theme','dark');
         assert.equal(template.status, 201, JSON.stringify(template.body));
         const plan = await request('POST', `${base}/plans`, { templateId: template.body.template.id,
             expectedVersionId: template.body.version.id, executionDate: '2026-10-12', executionLabel: 'Lesson QA',
-            clientKey: crypto.randomUUID(), inputs: {} });
+            bookingId: 'lesson-qa', clientKey: crypto.randomUUID(), inputs: {} });
         assert.equal(plan.status, 201, JSON.stringify(plan.body));
         const planId = plan.body.planId;
         const management = `${base}/management`;
@@ -157,6 +163,44 @@ document.documentElement.setAttribute('data-theme','dark');
         assert.equal(legacyBefore.body.summary.totalExpenses, 2158);
         assert.equal((await request('GET', reportPath)).body.summary.earnedRevenueMinor, '0');
         assert.equal((await request('GET', reportPath, undefined, 'event_genix', 'viewer')).status, 403);
+        const wrongPlan = await request('POST', `${base}/plans`, { templateId: template.body.template.id,
+            expectedVersionId: template.body.version.id, executionDate: '2026-10-12', executionLabel: 'Other booking QA',
+            bookingId: 'other-lesson', clientKey: crypto.randomUUID(), inputs: {} });
+        assert.equal(wrongPlan.status, 201, JSON.stringify(wrongPlan.body));
+        const wrongSource = await request('POST', `${base}/actual/plans/${wrongPlan.body.planId}/sources`, {
+            externalId: 'wrong_booking_qa', economicRole: 'lesson_sale', category: 'revenue',
+            amountMinor: '216000', evidenceState: 'confirmed', semantic: 'charge'
+        });
+        assert.equal(wrongSource.status, 201, JSON.stringify(wrongSource.body));
+        assert.equal((await request('POST', `${management}/plans/${wrongPlan.body.planId}/performance`, {
+            expectedRevision: 0, state: 'performed', performedOn: '2026-10-12', evidenceType: 'operator',
+            reason: 'Synthetic other booking performed'
+        })).status, 201);
+        const wrongLink = await request('POST', `${management}/sources/${wrongSource.body.sourceId}/links`, {
+            expectedRevision: 0, kind: 'earned_revenue', effectOn: '2026-10-12',
+            financeTransactionId: 1, reason: 'Same business and amount, but another booking'
+        });
+        assert.equal(wrongLink.status, 409);
+        assert.match(wrongLink.body.error, /exact booking fixed on this execution plan/);
+        const unlinkedPlan = await request('POST', `${base}/plans`, { templateId: template.body.template.id,
+            expectedVersionId: template.body.version.id, executionDate: '2026-10-12', executionLabel: 'No booking QA',
+            clientKey: crypto.randomUUID(), inputs: {} });
+        assert.equal(unlinkedPlan.status, 201, JSON.stringify(unlinkedPlan.body));
+        const unlinkedSource = await request('POST', `${base}/actual/plans/${unlinkedPlan.body.planId}/sources`, {
+            externalId: 'unlinked_booking_qa', economicRole: 'lesson_sale', category: 'revenue',
+            amountMinor: '216000', evidenceState: 'confirmed', semantic: 'charge'
+        });
+        assert.equal(unlinkedSource.status, 201, JSON.stringify(unlinkedSource.body));
+        assert.equal((await request('POST', `${management}/plans/${unlinkedPlan.body.planId}/performance`, {
+            expectedRevision: 0, state: 'performed', performedOn: '2026-10-12', evidenceType: 'operator',
+            reason: 'Synthetic unlinked plan performed'
+        })).status, 201);
+        const unlinkedEarned = await request('POST', `${management}/sources/${unlinkedSource.body.sourceId}/links`, {
+            expectedRevision: 0, kind: 'earned_revenue', effectOn: '2026-10-12',
+            financeTransactionId: 1, reason: 'No booking identity was fixed on this plan'
+        });
+        assert.equal(unlinkedEarned.status, 409);
+        assert.match(unlinkedEarned.body.error, /exact booking fixed on this execution plan/);
         async function source(externalId, role, category, amountMinor, semantic, evidenceState = 'confirmed') {
             const response = await request('POST', `${base}/actual/plans/${planId}/sources`, {
                 externalId, economicRole: role, category, amountMinor, evidenceState, semantic
@@ -227,6 +271,37 @@ document.documentElement.setAttribute('data-theme','dark');
         assert.equal(correction.status, 201, JSON.stringify(correction.body));
         assert.equal((await request('GET', reportPath)).body.summary.earnedRevenueMinor, '186000');
         await browserReport('1 860,00 ₴');
+        const correctionOnlyPath = `${management}/pnl?from=2026-10-20&to=2026-10-31`;
+        assert.equal((await request('GET', correctionOnlyPath)).body.summary.earnedRevenueMinor, '-30000');
+        await pool.query('UPDATE finance_transactions SET amount=2100 WHERE id=1');
+        const drifted = await request('GET', correctionOnlyPath);
+        assert.equal(drifted.body.summary.earnedRevenueMinor, '0', 'correction cannot survive invalid original finance income');
+        assert.ok(drifted.body.unresolved.some(item => String(item.sourceId) === String(revenueId)));
+        assert.ok(drifted.body.unresolved.some(item => String(item.sourceId) === String(refundId) &&
+            item.issues.some(issue => /Original earned revenue/.test(issue))));
+        if (page) {
+            await browserReport('0,00 ₴');
+            assert.match(await page.locator('#costManagementSummary').innerText(), /Початкова виручка більше не проходить фінансову перевірку/);
+            const injection = '<img src=x onerror="window.__costingXss=1">';
+            const injectUnresolved = async route => {
+                const response = await route.fetch();
+                const data = await response.json();
+                data.unresolved.push({ linkId: injection, sourceId: injection, issues: [injection] });
+                await route.fulfill({ response, json: data });
+            };
+            await page.route('**/api/finance/costing/management/pnl?**', injectUnresolved);
+            await browserReport('0,00 ₴');
+            await page.waitForFunction(() => document.querySelector('#costManagementSummary')?.textContent.includes('<img src=x'));
+            assert.match(await page.locator('#costManagementSummary').innerText(), /<img src=x/);
+            assert.equal(await page.locator('#costManagementSummary img').count(), 0);
+            assert.equal(await page.evaluate(() => window.__costingXss), undefined);
+            await page.unroute('**/api/finance/costing/management/pnl?**', injectUnresolved);
+        }
+        await pool.query('UPDATE finance_transactions SET amount=2160 WHERE id=1');
+        await pool.query("UPDATE finance_transactions SET booking_id='other-lesson' WHERE id=1");
+        assert.equal((await request('GET', reportPath)).body.summary.earnedRevenueMinor, '0',
+            'report rechecks the immutable execution booking against the finance booking');
+        await pool.query("UPDATE finance_transactions SET booking_id='lesson-qa' WHERE id=1");
         const repeatedRefund = await source('refund_duplicate', 'refund_duplicate', 'revenue', '-10000', 'refund');
         assert.equal((await request('POST', `${management}/sources/${repeatedRefund}/links`, {
             expectedRevision: 0, kind: 'revenue_correction', effectOn: '2026-10-20', originalLinkId: originalLink,

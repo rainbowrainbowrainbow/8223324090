@@ -157,6 +157,7 @@ async function main() {
                 const calculation = calculatePlan(definition, payload.inputs);
                 if (endpoint === '/preview') return json(res, 200, { version: { id: '1', number: 1, effectiveFrom: version.effective_from }, calculation });
                 assert.equal(payload.expectedVersionId, '1');
+                assert.equal(payload.bookingId, 'lesson-qa');
                 plans.push({ id: String(plans.length + 1), execution_label: payload.executionLabel, execution_date: payload.executionDate,
                     template_name: template.name, version_number: 1, revenue_minor: calculation.revenueMinor,
                     direct_cost_minor: calculation.directCostMinor, contribution_minor: calculation.contributionMinor });
@@ -192,6 +193,7 @@ async function main() {
         await page.locator('#costTemplateSelect').selectOption('1');
         await page.locator('#costExecutionLabel').fill('Урок 12 жовтня');
         await page.locator('#costExecutionDate').fill('2026-10-12');
+        await page.locator('#costExecutionBookingId').fill('lesson-qa');
         await page.locator('#costParticipants').fill('10');
         await page.locator('#costPaidParticipants').fill('8');
         await page.locator('#costHours').fill('2');

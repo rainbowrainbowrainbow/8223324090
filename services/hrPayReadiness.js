@@ -1,111 +1,144 @@
 'use strict';
 
-const { resolveEffectivePayrollProfile } = require('../services/payroll');
+const { resolvePayrollConditions, exceptionKey } = require('./hrPayrollConditions');
 
 function activeOnDate(row, date) {
-    const from = row.effectiveFrom || row.effective_from;
-    const to = row.effectiveTo || row.effective_to;
+    const from = row.effectiveFrom ?? row.effective_from;
+    const to = row.effectiveTo ?? row.effective_to;
     return (!from || from <= date) && (!to || to >= date);
 }
 
 function buildProfileContext(profiles, assignments, date) {
     const profilesById = new Map(profiles.map(profile => [Number(profile.id), {
-        ...profile,
+        id: Number(profile.id), title: '', status: profile.status,
+        professionKey: profile.professionKey ?? profile.profession_key,
+        profileKind: profile.profileKind ?? profile.profile_kind,
+        isDefaultForProfession: profile.isDefaultForProfession ?? profile.is_default_for_profession,
         versions: (profile.versions || []).map(version => ({
-            ...version,
-            dayRates: new Map((version.dayRates || version.day_rates || []).map(day => [Number(day.isoWeekday ?? day.iso_weekday), Number(day.rate)]))
+            id: Number(version.id), profileId: Number(profile.id),
+            versionNumber: Number(version.versionNumber ?? version.version_number),
+            rateUnit: version.rateUnit ?? version.rate_unit,
+            defaultRate: Number(version.defaultRate ?? version.default_rate),
+            effectiveFrom: version.effectiveFrom ?? version.effective_from,
+            effectiveTo: version.effectiveTo ?? version.effective_to,
+            dayRates: new Map((version.dayRates || version.day_rates || []).map(day =>
+                [Number(day.isoWeekday ?? day.iso_weekday), Number(day.rate)]))
         }))
     }]));
     const defaultProfilesByProfession = new Map();
     for (const profile of profilesById.values()) {
-        if (profile.isDefaultForProfession || profile.is_default_for_profession) defaultProfilesByProfession.set(profile.professionKey || profile.profession_key, profile);
+        if (profile.isDefaultForProfession) defaultProfilesByProfession.set(profile.professionKey, profile);
     }
     const assignmentsByStaffProfession = new Map();
-    for (const assignment of assignments) {
-        const staffId = Number(assignment.staffId || assignment.staff_id);
-        const key = `${staffId}:${assignment.professionKey || assignment.profession_key}`;
+    for (const row of assignments) {
+        const assignment = { id: Number(row.id), staffId: Number(row.staffId ?? row.staff_id),
+            professionKey: row.professionKey ?? row.profession_key,
+            assignmentKind: row.assignmentKind ?? row.assignment_kind,
+            effectiveFrom: row.effectiveFrom ?? row.effective_from,
+            effectiveTo: row.effectiveTo ?? row.effective_to,
+            profile: profilesById.get(Number(row.profileId ?? row.profile_id)) };
+        const key = `${assignment.staffId}:${assignment.professionKey}`;
         if (!assignmentsByStaffProfession.has(key)) assignmentsByStaffProfession.set(key, []);
-        assignmentsByStaffProfession.get(key).push({ ...assignment, profile: profilesById.get(Number(assignment.profileId || assignment.profile_id)) });
+        assignmentsByStaffProfession.get(key).push(assignment);
     }
     return { enabled: true, from: date, to: date, profilesById, defaultProfilesByProfession, assignmentsByStaffProfession };
 }
 
-function buildHrPayReadiness({ staff = [], professions = [], profiles = [], assignments = [], date,
-    profilesAvailable = false, assignmentsAvailable = false, catalogPartial = false, payrollAmountsAvailable = false,
-    liveProof = null, sourceErrors = [] }) {
+function validateDate(date) {
     if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date || '')
         || new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) !== date) throw new Error('VALID_WORK_DATE_REQUIRED');
-    const context = buildProfileContext(profiles, assignments, date);
+    return date;
+}
+
+function buildHrPayReadiness({ staff = [], professions = [], profiles = [], assignments = [], date,
+    rates = [], roleAssignments = [], exceptions = [], schemes = [],
+    profilesAvailable = false, assignmentsAvailable = false, catalogPartial = false, payrollAmountsAvailable = false,
+    legacyRatesAvailable = payrollAmountsAvailable, rolesAvailable = false, exceptionsAvailable = false,
+    schemesAvailable = false, liveProof = null, sourceErrors = [], source = 'api' }) {
+    validateDate(date);
     const roster = staff.filter(person => person.is_active !== false && person.isActive !== false);
+    const profileContext = buildProfileContext(profiles, assignments, date);
     const catalog = new Map();
-    for (const profession of professions) {
-        for (const person of profession.people || []) catalog.set(`${Number(person.id)}:${profession.key}`, person);
+    for (const profession of professions) for (const person of profession.people || []) {
+        catalog.set(`${Number(person.id)}:${profession.key}`, person);
     }
+    const rateMap = new Map(rates.map(row => [`${row.staff_id}:${row.profession_key}`, Number(row.hourly_rate)]));
+    const roleMap = new Map(roleAssignments.map(row => [`${row.staff_id}:${row.profession_key}`, row]));
+    for (const person of roster) for (const rate of person.profession_rates || []) {
+        rateMap.set(`${person.id}:${rate.profession_key}`, Number(rate.hourly_rate));
+    }
+    for (const [key, person] of catalog) {
+        if (!rolesAvailable) roleMap.set(key, { status: person.assignmentStatus, admission_status: person.admissionStatus });
+        if (person.rateSource === 'staff_profession_rates.hourly_rate' && person.explicitRate != null) rateMap.set(key, Number(person.explicitRate));
+    }
+    const context = { from: date, to: date, staff: new Map(roster.map(row => [Number(row.id), row])),
+        profiles: profileContext, rates: rateMap, schemes, assignments: roleMap,
+        exceptions: new Map(exceptions.map(row => [exceptionKey(row.staffId, row.professionKey, row.workDate, row.purpose), row])) };
     const rows = [];
     for (const person of roster) {
         const staffId = Number(person.id);
         if (!Number.isSafeInteger(staffId) || staffId <= 0) continue;
-        const primary = person.role_type || person.roleType;
-        const secondary = Array.isArray(person.secondary_professions) ? person.secondary_professions : [];
-        const keys = new Set([primary, ...secondary].filter(Boolean));
-        for (const [key, catalogPerson] of catalog) if (Number(catalogPerson.id) === staffId) keys.add(key.slice(key.indexOf(':') + 1));
+        const primary = person.role_type ?? person.roleType;
+        const keys = new Set([primary, ...(person.secondary_professions || [])].filter(Boolean));
+        for (const key of roleMap.keys()) if (key.startsWith(staffId + ':')) keys.add(key.slice(key.indexOf(':') + 1));
+        for (const assignment of assignments) if (Number(assignment.staffId ?? assignment.staff_id) === staffId
+            && activeOnDate(assignment, date)) keys.add(assignment.professionKey ?? assignment.profession_key);
         for (const professionKey of keys) {
-            const catalogPerson = catalog.get(`${staffId}:${professionKey}`);
             const isPrimary = professionKey === primary;
-            const findings = [];
-            const unknown = [];
-            if (!catalogPerson) unknown.push('assignment_unverified');
-            else {
-                if (catalogPerson.isActive === false || catalogPerson.assignmentStatus !== 'active') findings.push('assignment_inactive');
-                if (catalogPerson.admissionStatus !== 'approved') findings.push('admission_not_approved');
-                if (!isPrimary) {
-                    const unit = catalogPerson.rateUnit;
-                    if (unit && unit !== 'hour') findings.push('rate_unit_conflict');
-                    else if (unit === 'hour' && payrollAmountsAvailable) {
-                        if (!(Number(catalogPerson.explicitRate) > 0)
-                            || catalogPerson.rateSource !== 'staff_profession_rates.hourly_rate') findings.push('explicit_additional_rate_missing');
-                    } else if (catalogPerson.hasExplicitHourlyRate !== true) unknown.push('explicit_additional_rate_unverified');
-                }
+            const findings = [], unverified = [];
+            const role = roleMap.get(`${staffId}:${professionKey}`);
+            if (!role) {
+                if (rolesAvailable && !isPrimary) findings.push('assignment_missing');
+                else unverified.push('assignment_unverified');
+            } else {
+                if (role.status !== 'active') findings.push('assignment_inactive');
+                if (role.admission_status !== 'approved') findings.push('admission_not_approved');
             }
-            let effectiveSource = null;
-            let effectiveUnit = null;
-            if (!profilesAvailable || !assignmentsAvailable) unknown.push('payroll_profile_unverified');
+            if (!exceptionsAvailable) unverified.push('day_exception_unverified');
+            if (!schemesAvailable) unverified.push('payroll_scheme_unverified');
+            let effectiveSource = null, effectiveUnit = null;
+            if (!profilesAvailable || !assignmentsAvailable) unverified.push('payroll_profile_unverified');
             else {
-                const activeAssignments = (context.assignmentsByStaffProfession.get(`${staffId}:${professionKey}`) || []).filter(row => activeOnDate(row, date));
-                for (const assignment of activeAssignments) {
-                    const profile = assignment.profile;
-                    if (!profile || profile.status !== 'active' || !(profile.versions || []).some(version => activeOnDate(version, date))) findings.push('payroll_profile_invalid');
-                }
-                const defaultProfile = context.defaultProfilesByProfession.get(professionKey);
-                if (defaultProfile && (defaultProfile.status !== 'active' || !(defaultProfile.versions || []).some(version => activeOnDate(version, date)))) findings.push('payroll_profile_invalid');
-                const resolution = resolveEffectivePayrollProfile(person, professionKey, date, {
-                    payrollProfileContext: context, preferredRateUnit: isPrimary ? person.rate_unit || person.rateUnit || 'hour' : 'hour',
-                    professionRateMap: new Map((person.profession_rates || []).map(rate => [`${staffId}:${rate.profession_key}`, Number(rate.hourly_rate)]))
-                });
+                const resolution = resolvePayrollConditions(context, staffId, professionKey, date, isPrimary ? 'base_replacement' : 'additional');
                 effectiveSource = resolution.rateSource;
                 effectiveUnit = resolution.rateUnit;
+                const candidates = (profileContext.assignmentsByStaffProfession.get(`${staffId}:${professionKey}`) || [])
+                    .filter(row => activeOnDate(row, date)).map(row => row.profile);
+                const defaultProfile = profileContext.defaultProfilesByProfession.get(professionKey);
+                if (defaultProfile) candidates.push(defaultProfile);
+                if (!resolution.exception && candidates.some(profile => !profile || profile.status !== 'active'
+                    || !profile.versions.some(version => activeOnDate(version, date)))) findings.push('payroll_profile_invalid');
+                if (!['hour', 'day', 'month'].includes(effectiveUnit)) findings.push('rate_unit_conflict');
                 if (!(resolution.rate > 0)) {
-                    if (payrollAmountsAvailable) findings.push('effective_rate_missing');
-                    else unknown.push('effective_rate_unverified');
+                    // Missing higher-priority sources cannot prove an effective rate is absent.
+                    if (payrollAmountsAvailable && legacyRatesAvailable && schemesAvailable && exceptionsAvailable) findings.push('effective_rate_missing');
+                    else unverified.push('effective_rate_unverified');
                 }
-                if (!isPrimary && resolution.applies && resolution.rate > 0) findings.push('additional_profile_calculation_pending');
+                if (!resolution.applies && !legacyRatesAvailable) unverified.push('legacy_rate_unverified');
+                if (effectiveUnit === 'month') {
+                    const norm = resolution.monthlyNorm;
+                    if (!schemesAvailable) unverified.push('monthly_norm_unverified');
+                    else if (!norm.monthlyNormConfirmed || !norm.monthlyNormSource || !(norm.monthlyNormMinutes > 0)
+                        || norm.monthlyNormMonth !== date.slice(0, 7)) findings.push('monthly_norm_unconfirmed');
+                }
+                const inherited = resolution.exception && resolvePayrollConditions(context, staffId, professionKey, date,
+                    isPrimary ? 'base_replacement' : 'additional', { ignoreException: true });
+                if (inherited && isPrimary && inherited.rateUnit !== resolution.rateUnit) findings.push('rate_unit_conflict');
             }
             rows.push({ staffId, professionKey, use: isPrimary ? 'primary' : 'potential_additional',
-                findings: [...new Set(findings)], unverified: [...new Set(unknown)], effectiveSource, effectiveUnit });
+                findings: [...new Set(findings)], unverified: [...new Set(unverified)], effectiveSource, effectiveUnit });
         }
     }
     const counts = {};
     for (const row of rows) for (const finding of row.findings) counts[finding] = (counts[finding] || 0) + 1;
-    return {
-        schemaVersion: 1, readOnly: true, date,
-        status: catalogPartial || !profilesAvailable || !assignmentsAvailable || sourceErrors.length || rows.some(row => row.unverified.length) ? 'PARTIAL' : 'DATA_AUDIT_COMPLETE',
-        purpose: 'Data configuration audit; not proof of release readiness or payroll correctness',
-        liveProof,
-        coverage: { staff: roster.length, staffProfessionPairs: rows.length, catalogPartial, payrollAmountsAvailable, profilesAvailable, assignmentsAvailable },
+    return { schemaVersion: 2, readOnly: true, source, date,
+        status: catalogPartial || !profilesAvailable || !assignmentsAvailable || !exceptionsAvailable || !schemesAvailable || sourceErrors.length || rows.some(row => row.unverified.length) ? 'PARTIAL' : 'DATA_AUDIT_COMPLETE',
+        purpose: 'Configuration audit using the candidate resolver; not release or historical payroll proof', liveProof,
+        coverage: { staff: roster.length, staffProfessionPairs: rows.length, catalogPartial, payrollAmountsAvailable,
+            profilesAvailable, assignmentsAvailable, legacyRatesAvailable, rolesAvailable, exceptionsAvailable, schemesAvailable },
         counts, sourceErrors, rows,
-        exclusions: ['one_day_exceptions_not_implemented', 'additional_day_and_month_formulas_not_implemented', 'no_salary_generation', 'no_payment_mutation'],
-        interpretation: 'Potential additional roles are configuration checks, not claims that every employee needs an additional paid profession. No personal records or compensation amounts are saved.'
-    };
+        exclusions: ['no_historical_rate_reconstruction', 'no_closed_payroll_recalculation', 'no_salary_generation', 'no_payment_mutation'],
+        interpretation: 'Potential additional roles are configuration checks, not mandatory paid roles. No names, salaries, free-text reasons or authors are saved.' };
 }
 
-module.exports = { activeOnDate, buildHrPayReadiness };
+module.exports = { activeOnDate, validateDate, buildProfileContext, buildHrPayReadiness };

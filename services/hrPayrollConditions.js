@@ -45,7 +45,7 @@ async function loadPayrollConditionContext(db, staffIds, range) {
         schemes: schemes.rows, assignments: new Map(assignments.rows.map(row => [`${row.staff_id}:${row.profession_key}`, row])) };
 }
 function schemeOnDate(context, staffId, date) {
-    const candidates = context.schemes.filter(row => Number(row.staff_id) === Number(staffId)
+    const candidates = context.schemes.filter(row => row.is_active !== false && Number(row.staff_id) === Number(staffId)
         && (!row.effective_from || normalizeAttendanceWriteDate(row.effective_from) <= date)
         && (!row.effective_to || normalizeAttendanceWriteDate(row.effective_to) >= date));
     const row = candidates[candidates.length - 1];

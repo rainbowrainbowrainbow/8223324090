@@ -74,7 +74,9 @@ async function run() {
     fs.mkdirSync(output,{recursive:true});
     const auth=await login(process.env.TEST_USER,process.env.TEST_PASS),token=auth.accessToken||auth.token;
     const stamp=crypto.randomBytes(5).toString('hex');
-    const date=new Date(Date.now()+3*86400000).toISOString().slice(0,10),next=new Date(Date.now()+4*86400000).toISOString().slice(0,10);
+    const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const next=new Date(new Date(date+'T12:00:00Z').getTime()+86400000).toISOString().slice(0,10);
+    const evidence={schemaVersion:1,commitSha:process.env.GITHUB_SHA||null,syntheticOnly:true,productionWrites:0,stages:{}};
     const {chromium}=playwright(),browser=await chromium.launch({headless:true});
     let page;
     try {
@@ -112,8 +114,8 @@ async function run() {
         const hrResult=await hrResponse.json();
         if(hrResponse.status()===403){
             assert.equal(hrResult.code,'staff_not_migrated');
-            console.log('Known release blocker: HR profile business gate is 403; verifying safe draft return from the error state');
-        } else assert.equal(hrResponse.status(),200);
+            evidence.stages.hrCard={status:'BLOCKED',code:hrResult.code};
+        } else {assert.equal(hrResponse.status(),200);evidence.stages.hrCard={status:'PASS'};}
         await page.locator('#staffScheduleReturnLink').waitFor();
         const draft=await page.evaluate(()=>sessionStorage.getItem('pzp_schedule_hr_draft_v1'));
         assert.doesNotMatch(draft,/selectedProfile|defaultRate|profileVersionId|dayPay/);
@@ -171,7 +173,8 @@ async function run() {
         assert.match(await panel().innerText(),/100 грн/);assert.doesNotMatch(await panel().innerText(),/Разова ставка на цю дату/);
         await closeCell(page);
         // Monthly terms are supplied through the same real API; daily top-up remains a separate purpose.
-        await db.query("UPDATE staff_payroll_profile_assignments SET profile_id=$2 WHERE staff_id=$1 AND profession_key='animator'",[staffId,monthly.id]);
+        await db.query(`INSERT INTO staff_payroll_profile_assignments(staff_id,profession_key,profile_id,assignment_kind,effective_from,effective_to,created_by,updated_by)
+            VALUES($1,'animator',$2,'temporary',$3,$3,'isolated_pay','isolated_pay')`,[staffId,monthly.id,next]);
         await page.setViewportSize({width:390,height:844});await openCell(page,staffId,next);
         // Monthly base stays read-only; the top-up has its own choice and purpose.
         assert.match(await panel().innerText(),/30.?000 грн\/місяць/);
@@ -214,7 +217,67 @@ async function run() {
         const storage=await page.evaluate(()=>JSON.stringify({...sessionStorage}));assert.doesNotMatch(storage,/defaultRate|selectedProfile|30000/);
         await page.screenshot({path:path.join(output,'restricted-mobile.png'),fullPage:true});
         await restricted.close();assert.deepEqual(errors,[]);
-        console.log('HR pay actual-app browser to API to PostgreSQL passed');
+        evidence.stages.schedule={status:'PASS',dateReload:true,exceptionConflict:true,draftReturn:true,salaryRestricted:true,copyApi:true,copyButton:'NOT_VISIBLE'};
+        // Continue through actual HR controls and real API/database writes. No response stubs.
+        const attendanceContext=await browserContext(browser,auth);
+        page=await attendanceContext.newPage();page.setDefaultTimeout(30000);
+        await page.goto(base+'/hr?tab=today',{waitUntil:'domcontentloaded'});
+        const todayRow=page.locator(`#todayList [data-staff-id="${staffId}"]`);
+        await todayRow.waitFor();
+        const clockButton=todayRow.locator('.hr-clock-btn');
+        if(await clockButton.isDisabled()){
+            evidence.stages.attendance={status:'BLOCKED',code:'today_read_only_business_gate'};
+        } else {
+            const clockIn=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/hr/clock-in'&&r.request().method()==='POST');
+            await clockButton.click();const clockResponse=await clockIn;assert.equal(clockResponse.status(),200);
+            const clockBody=await clockResponse.json();assert.equal(clockBody.data.compensation_snapshot.schemaVersion,2);
+            await page.waitForFunction(id=>document.querySelector(`#todayList [data-staff-id="${id}"] .clock-out`),staffId);
+            await todayRow.click({button:'right'});
+            await page.locator('#contextMenu [data-action="correct"]').click();
+            await page.locator('#correctionModal').waitFor({state:'visible'});
+            await page.locator('#corrClockIn').fill('11:00');
+            await page.locator('#corrClockOut').fill('17:00');
+            await page.locator('#corrNotes').fill('Synthetic actual arrival and departure');
+            const corrected=page.waitForResponse(r=>/\/api\/hr\/records\/\d+\/correct$/.test(new URL(r.url()).pathname)&&r.request().method()==='PUT');
+            await page.locator('#corrSave').click();assert.equal((await corrected).status(),200);
+            await page.locator('#correctionModal').waitFor({state:'hidden'});
+            const record=(await db.query('SELECT compensation_snapshot,total_worked_minutes FROM hr_time_records WHERE staff_id=$1 AND record_date=$2',[staffId,date])).rows[0];
+            assert.equal(record.total_worked_minutes,330);
+            assert.equal(record.compensation_snapshot.totals.physicalMinutes,330);
+            const baseTerms=record.compensation_snapshot.compensationAllocations.find(row=>row.allocationType==='base').conditions;
+            assert.equal(baseTerms.rate,270);assert.equal(baseTerms.exception.reason,'Second editor');
+            evidence.stages.attendance={status:'PASS',physicalMinutes:330,breakMinutes:30};
+            // Later catalog edits must not alter the frozen conditions or the final snapshot.
+            await db.query('UPDATE payroll_profile_versions SET default_rate=999 WHERE id=$1',[primary.version]);
+            const snapshotBefore=record.compensation_snapshot;
+            const salaryResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/hr/salary');
+            await page.goto(base+'/hr?tab=salary',{waitUntil:'domcontentloaded'});
+            const salaryRead=await salaryResponse;
+            if(salaryRead.status()===403){
+                const failure=await salaryRead.json();assert.equal(failure.code,'staff_not_migrated');
+                evidence.stages.salaryBreakdown={status:'BLOCKED',code:failure.code};
+            } else {
+                assert.equal(salaryRead.status(),200);
+                const salaryBody=await salaryRead.json(), salary=salaryBody.data.find(row=>Number(row.staff_id)===staffId);
+                assert.ok(salary);assert.equal(salary.base_salary,1485);assert.equal(salary.additional_pay,500);
+                assert.equal(salary.physical_hours,5.5);
+                const salaryCard=page.locator('.hr-payroll-salary-item').filter({hasText:'Synthetic pay '+stamp});
+                await salaryCard.locator('[data-payroll-detail-toggle]').click();
+                await salaryCard.locator('.hr-payroll-details').waitFor({state:'visible'});
+                assert.match(await salaryCard.innerText(),/270/);
+                assert.match(await salaryCard.innerText(),/500/);
+                await salaryCard.screenshot({path:path.join(output,'salary-breakdown.png')});
+                evidence.stages.salaryBreakdown={status:'PASS',physicalHours:5.5,additionalLines:1};
+            }
+            const after=(await db.query('SELECT compensation_snapshot FROM hr_time_records WHERE staff_id=$1 AND record_date=$2',[staffId,date])).rows[0];
+            assert.deepEqual(after.compensation_snapshot,snapshotBefore);
+        }
+        await attendanceContext.close();
+        evidence.journeyStatus=Object.values(evidence.stages).some(stage=>stage.status==='BLOCKED')?'BLOCKED':'PASS';
+        evidence.regressionStatus='PASS';
+        fs.writeFileSync(path.join(output,'journey-evidence.json'),JSON.stringify(evidence,null,2)+'\n');
+        console.log(JSON.stringify(evidence));
+
     } catch(error) {
         await page?.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{});
         throw error;

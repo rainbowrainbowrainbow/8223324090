@@ -110,3 +110,12 @@ test('reporting lists a daily supplement once even when two physical blocks shar
     assert.equal(report.additionalRoles[0].amount, 500);
     assert.equal(report.additionalRoles[0].rateUnit, 'day');
 });
+
+test('disabled salary scheme cannot replace the base unit or provide a monthly denominator', () => {
+    const context=fixture();
+    context.schemes=[{staff_id:7,is_active:false,scheme_type:'per_shift',effective_from:'2026-01-01',
+        config_json:{perShiftRate:9000,monthlyNormConfirmed:true,monthlyNormMinutes:9600,monthlyNormMonth:'2026-10',monthlyNormSource:'disabled'}}];
+    const result=resolvePayrollConditions(context,7,'reception',date);
+    assert.equal(result.rate,30000);assert.equal(result.rateUnit,'month');
+    assert.equal(result.monthlyNorm.monthlyNormConfirmed,false);
+});

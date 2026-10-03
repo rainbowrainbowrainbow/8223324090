@@ -3,9 +3,21 @@ const { before, after, test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const path = require('node:path');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { initializeTimelineResources } = require('../../services/timelineResources');
+function requirePlaywright() {
+  if (process.env.EDU_QA_PLAYWRIGHT) return require(process.env.EDU_QA_PLAYWRIGHT);
+  try { return require('playwright'); } catch {}
+  for (const entry of String(process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+    const normalized = entry.replace(/[\\/]+$/, '');
+    if (!/node_modules[\\/]?\.bin$/i.test(normalized)) continue;
+    const packageDir = path.join(path.dirname(normalized), 'playwright');
+    if (fs.existsSync(packageDir)) return require(packageDir);
+  }
+  throw new Error('Playwright is unavailable; run through npm run test:integration:education-series:isolated');
+}
 const enabled = process.env.RUN_EDUCATION_SERIES_INTEGRATION === 'true';
 let pool, token, groupId, childIds, teacherIds, lessonId, readerToken, readerCredentials;
 async function request(method, pathname, body, auth = token) {
@@ -133,7 +145,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
     assert.equal(rows.rows[0].n,2,'two independent POST requests create two groups under the current API contract');
   });
   test('actual-app UI groups/attendance/report and mobile/light/dark, errors preserve draft', async () => {
-    const { chromium }=require(process.env.EDU_QA_PLAYWRIGHT);
+    const { chromium }=requirePlaywright();
     const browser=await chromium.launch({headless:true}); const evidence={checks:[],errors:[],failed:[]};
     const check=(name,pass,detail)=>{evidence.checks.push({name,status:pass?'PASS':'FAIL',detail}); fs.writeFileSync('output/edu-qa-01/synthetic-browser.json',JSON.stringify(evidence,null,2));};
     try {
@@ -251,7 +263,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
     assert.equal(evidence.checks.filter(c=>c.status==='FAIL').length,0,'see sanitized synthetic-browser.json for actual-app failures');
   });
   test('actual-app group child lesson create edit and cancel through the booking form', async () => {
-    const { chromium } = require(process.env.EDU_QA_PLAYWRIGHT);
+    const { chromium } = requirePlaywright();
     const parent = await pool.query("SELECT id FROM customers WHERE business_context='dar' AND name='QA synthetic parent' ORDER BY id DESC LIMIT 1");
     assert.equal(parent.rows.length, 1);
     const browser = await chromium.launch({ headless: true });
@@ -309,7 +321,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
   test('Creator can stage settings while a reader cannot save via UI or API', async () => {
     const before = await request('GET', '/api/business/cabinet?businessContext=dar');
     assert.equal(before.status, 200);
-    const { chromium } = require(process.env.EDU_QA_PLAYWRIGHT);
+    const { chromium } = requirePlaywright();
     const browser = await chromium.launch({ headless: true });
     try {
       for (const actor of [
@@ -365,7 +377,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
     });
     assert.equal(created.status, 200, JSON.stringify(created.data));
     const id = String(created.data.booking.id);
-    const { chromium } = require(process.env.EDU_QA_PLAYWRIGHT);
+    const { chromium } = requirePlaywright();
     const browser = await chromium.launch({ headless: true });
     try {
       const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });

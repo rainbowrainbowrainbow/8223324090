@@ -88,6 +88,8 @@ const HR_PAYROLL_CHANGED_PATHS = Object.freeze([
     "services/parkHrPayrollAccess.js",
     "tests/park-hr-payroll-access.test.js",
     "tests/park-hr-staff-card-routes.test.js",
+    "tests/park-hr-today-routes.test.js",
+    "tests/park-staff-schedule-routes.test.js",
     ".github/workflows/ci.yml",
     "tests/browser/hr-pay-actual-app-browser-smoke.js",
     "css/hr-page.css",

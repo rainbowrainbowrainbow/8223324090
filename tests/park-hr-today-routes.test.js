@@ -40,6 +40,10 @@ function createPoolFixture(state) {
             const normalized = String(sql).replace(/\s+/g, ' ').trim();
             calls.push({ sql: normalized, params });
             assert.match(normalized, /^SELECT\b/i, 'Today recovery only reads');
+            if (normalized.startsWith('SELECT EXISTS ( SELECT 1 FROM hr_time_records WHERE business_context IS DISTINCT FROM $1')) {
+                assert.deepEqual(params, ['event_genix']);
+                return { rows: [{ ownership_conflict: false }] };
+            }
             if (state.failDatabase) throw new Error(PRIVATE);
             let rows;
             if (normalized.startsWith('SELECT id, name, department, position, color, role_type,')) {
@@ -121,7 +125,7 @@ async function withActualHrRouter(run) {
             const memberships = registry.filter(row => !(state.actor.revoked && row.context_key === 'event_genix'))
                 .map(row => ({ ...row, role: principal.role, organization_role: 'member', business_modules: [],
                     is_default: row.context_key === 'event_genix', action_allowlist: state.actor.allow || [],
-                    action_denylist: state.actor.deny || [] }));
+                    action_denylist: ['hr.schedule.manage', 'hr.payroll.view', ...(state.actor.deny || [])] }));
             req.user = applyMembershipAccess(principal, buildMembershipAccess(principal, memberships, context, registry));
             if (state.actor.missingSnapshot) delete req.user.businessMembershipAccess;
             return next();

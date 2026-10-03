@@ -13891,7 +13891,7 @@ async function loadStaffProfileCatalogs(staffId, openSeq) {
     ]);
     clearTimeout(timeoutId);
     if (openSeq !== staffEditOpenSeq || !isActiveStaffEditLoad(staffId)) return;
-    if (!settled || professionCatalogLoadState !== 'ready' || companyStructureLoadState !== 'ready') {
+    if (!settled || professionCatalogLoadState !== 'ready' || !['ready', 'empty'].includes(companyStructureLoadState)) {
         setStaffProfileCatalogState(modal, 'error', 'Довідники професій або структури недоступні. Редагування робочих даних призупинено.');
         return;
     }

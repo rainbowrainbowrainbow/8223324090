@@ -130,3 +130,22 @@ test('both staff update entrypoints use preserving writes and form submits only 
     assert.match(routes,/await applyStaffProfessionRateChanges\(client, req.params.id, rateRows\)/);
     assert.match(block('js/hr-page.js','buildStaffRatesPayload'),/profession_rates: readStaffProfessionRateChanges\(\)/);
 });
+
+test('successfully loaded empty structure permits rates; unavailable catalogs still block editing', async () => {
+    for (const structureState of ['ready', 'empty', 'error', 'restricted', 'loading']) {
+        const modal = { dataset: {} }; let populated = 0;
+        const context = vm.createContext({ document: { getElementById: () => modal },
+            setTimeout, clearTimeout, staffProfileRequestTimeoutMs: 1000,
+            staffEditOpenSeq: 1, isActiveStaffEditLoad: () => true,
+            professionCatalogLoadState: 'ready', companyStructureLoadState: structureState,
+            ensureProfessionsLoaded: async () => [], ensureCompanyStructureNodesLoaded: async () => [],
+            setStaffProfileCatalogState: (target, state) => { target.dataset.catalogState = state; },
+            teamStaff: [{ id: 7 }], staffProfileDirtyScopes: () => [],
+            populateStaffProfessionControls: () => { populated++; }, markStaffProfileScopesClean: () => {} });
+        vm.runInContext(block('js/hr-page.js', 'loadStaffProfileCatalogs', true), context);
+        await context.loadStaffProfileCatalogs(7, 1);
+        const ready = ['ready', 'empty'].includes(structureState);
+        assert.equal(modal.dataset.catalogState, ready ? 'ready' : 'error', structureState);
+        assert.equal(populated, ready ? 1 : 0, structureState);
+    }
+});

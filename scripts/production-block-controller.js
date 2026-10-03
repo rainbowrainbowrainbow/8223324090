@@ -6,6 +6,9 @@ const os = require('node:os');
 const path = require('node:path');
 const {
     ProductionBlockError,
+    PROTECTED_WORKFLOWS,
+    validateProtectedWorkflow,
+    redChangedPaths,
     TARGET,
     buildManifest,
     confirmationValue,
@@ -212,6 +215,7 @@ function defaultRuntime() {
             return {
                 head,
                 currentBranch,
+                releaseVersion: JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version,
                 live,
                 descendsFromLive: gitIsAncestor(live.commitSha, head),
                 changedPaths: paths,
@@ -246,16 +250,24 @@ function defaultRuntime() {
         },
         async execute(manifest, blockFile) {
             commandResult('npm', ['test'], { inherit: true });
-            commandResult('npm', ['run', 'version:bump', '--', 'patch', '--label', manifest.releaseLabel], { inherit: true });
-            applyReleaseNotes(manifest);
-            const releasePaths = git(['diff', '--name-only']).split(/\r?\n/).filter(Boolean);
-            fail(releasePaths.length > 0, 'Version bump did not produce release artifacts', 'PRODUCTION_BLOCK_RELEASE_ARTIFACTS_MISSING');
-            const invalidReleasePaths = releasePaths.filter(file => !isReleaseArtifact(file));
-            fail(invalidReleasePaths.length === 0, 'Version bump changed files outside the release artifact allowlist',
-                'PRODUCTION_BLOCK_RELEASE_ARTIFACT_DRIFT', { paths: invalidReleasePaths });
-            commandResult('git', ['add', '--', ...releasePaths]);
-            const versionStatus = git(['status', '--porcelain']);
-            if (versionStatus) commandResult('git', ['commit', '-m', `Release ${manifest.releaseLabel}`], { inherit: true });
+            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+                commandResult('npm', ['run', 'check:version'], { inherit: true });
+                fail(git(['rev-parse', 'HEAD']).toLowerCase() === manifest.initialHeadSha
+                    && !git(['status', '--porcelain'])
+                    && JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version === manifest.preparedRelease.version,
+                    'Prepared HR/payroll release drifted', 'PRODUCTION_BLOCK_RELEASE_SHA_DRIFT');
+            } else {
+                commandResult('npm', ['run', 'version:bump', '--', 'patch', '--label', manifest.releaseLabel], { inherit: true });
+                applyReleaseNotes(manifest);
+                const releasePaths = git(['diff', '--name-only']).split(/\r?\n/).filter(Boolean);
+                fail(releasePaths.length > 0, 'Version bump did not produce release artifacts', 'PRODUCTION_BLOCK_RELEASE_ARTIFACTS_MISSING');
+                const invalidReleasePaths = releasePaths.filter(file => !isReleaseArtifact(file));
+                fail(invalidReleasePaths.length === 0, 'Version bump changed files outside the release artifact allowlist',
+                    'PRODUCTION_BLOCK_RELEASE_ARTIFACT_DRIFT', { paths: invalidReleasePaths });
+                commandResult('git', ['add', '--', ...releasePaths]);
+                const versionStatus = git(['status', '--porcelain']);
+                if (versionStatus) commandResult('git', ['commit', '-m', `Release ${manifest.releaseLabel}`], { inherit: true });
+                }
             const releaseSha = git(['rev-parse', 'HEAD']).toLowerCase();
             fail(gitIsAncestor(manifest.initialHeadSha, releaseSha),
                 'Release commit is not a descendant of the authorized functional SHA', 'PRODUCTION_BLOCK_RELEASE_SHA_DRIFT');
@@ -484,7 +496,9 @@ function findExactCiRun(releaseSha, options = {}) {
 function releaseCommandPlan(manifest) {
     return [
         'npm test',
-        `npm run version:bump -- patch --label "${manifest.releaseLabel}"`,
+        ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL
+            ? ['npm run check:version (prepared exact SHA)']
+            : [`npm run version:bump -- patch --label "${manifest.releaseLabel}"`]),
         `git push origin HEAD:refs/heads/${manifest.allowedBranch}`,
         'gh run watch <exact-sha-run> --exit-status',
         `npm run release:railway-up -- --branch ${manifest.allowedBranch} --project ${manifest.railwayProjectId} --environment ${manifest.railwayEnvironment} --service ${manifest.railwayServiceId}`,
@@ -518,6 +532,12 @@ async function statusAction(options) {
 
 async function assertExecuteDrift(manifest, runtime) {
     const drift = await runtime.drift(manifest);
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+        fail(drift.head === manifest.initialHeadSha, 'HR/payroll requires its exact prepared SHA', 'PRODUCTION_BLOCK_SHA_DRIFT');
+        fail(JSON.stringify([...(drift.changedPaths || [])].sort()) === JSON.stringify([...manifest.changedPaths].sort()),
+            'HR/payroll file inventory drifted', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+        validateProtectedWorkflow(PROTECTED_WORKFLOWS.HR_PAYROLL, drift.changedPaths, redChangedPaths(drift.changedPaths));
+    }
     fail(drift.descendsFromBase === true && gitIsSafeDescendant(manifest.initialHeadSha, drift.head, drift),
         'Candidate SHA is outside the authorized descendant envelope', 'PRODUCTION_BLOCK_SHA_DRIFT');
     fail(JSON.stringify(drift.migrations) === JSON.stringify(manifest.allowedMigrationFiles),

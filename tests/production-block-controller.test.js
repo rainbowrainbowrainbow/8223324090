@@ -739,3 +739,66 @@ test('production autonomy runbook documents npm-safe Windows argument boundaries
 });
 
 require('./codex-autopilot-policy.test');
+
+function hrPayFacts() {
+    const migrationFile = 'db/migrations/374_payroll_day_exceptions.sql';
+    return {
+        releaseVersion: '0.0.2',
+        changedPaths: ['routes/payroll.js', 'services/hrPayrollConditions.js', 'services/payrollConditionCalculation.js',
+            'tests/integration/payroll-profiles-conditions.integration.test.js', migrationFile],
+        migrations: [{ file: migrationFile, sql: fs.readFileSync(path.join(__dirname, '..', migrationFile), 'utf8') }]
+    };
+}
+test('HR/payroll gate binds only its exact paths, migration and prepared version', () => {
+    const scope = hrPayFacts();
+    const options = { protectedWorkflow: 'hr-payroll' };
+    const value = manifest(options, scope);
+    assert.deepEqual(value.allowedProtectedWorkflow, { enabled: true, kind: 'hr-payroll', protectedChangedPaths: ['routes/payroll.js'] });
+    assert.equal(value.preparedRelease.sha, HEAD_SHA);
+    assert.equal(value.preparedRelease.version, '0.0.2');
+    assert.doesNotThrow(() => validateManifest(value));
+    assert.ok(releaseCommandPlan(value).includes('npm run check:version (prepared exact SHA)'));
+    assert.ok(!releaseCommandPlan(value).some(command => command.includes('version:bump')));
+    assert.throws(() => manifest({}, scope), error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    for (const extra of ['middleware/auth.js', 'routes/finance.js', '.github/workflows/ci.yml', 'railway.json']) {
+        assert.throws(() => manifest(options, { ...scope, changedPaths: [...scope.changedPaths, extra] }), error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    }
+    for (const extra of ['services/legacyBusinessSurface.js', 'routes/leads.js', 'docs/unreviewed.md']) {
+        assert.throws(() => manifest(options, { ...scope, changedPaths: [...scope.changedPaths, extra] }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
+    assert.throws(() => manifest(options, { ...scope, migrations: [...scope.migrations, { file: 'db/migrations/999_extra.sql', sql: scope.migrations[0].sql }] }),
+        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    assert.throws(() => manifest(options, { ...scope, releaseVersion: '0.0.1' }), error => error.code === 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    assert.throws(() => manifest({ ...options, qaScope: { enabled: true, kind: 'canary', date: '2026-10-03', ttlMinutes: 15, animators: '1', fixtureLimit: 1 } }, scope),
+        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    for (const foreign of ['certificate-ci-gate', 'certificate-qa-isolation', 'lead-ui-ci-gate']) {
+        assert.throws(() => manifest({ protectedWorkflow: foreign }, scope));
+    }
+});
+test('HR/payroll execution rejects target, descendant SHA, file and migration drift before any command', async t => {
+    const value = manifest({ protectedWorkflow: 'hr-payroll' }, hrPayFacts());
+    const file = blockFile(t, value);
+    await assert.doesNotReject(executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true }, dryRuntime()));
+    for (const [override, code] of [
+        [{ head: RELEASE_SHA, descendsFromInitial: true }, 'PRODUCTION_BLOCK_SHA_DRIFT'],
+        [{ changedPaths: [...value.changedPaths, 'routes/finance.js'] }, 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT'],
+        [{ migrations: [...value.allowedMigrationFiles, 'db/migrations/999_extra.sql'] }, 'PRODUCTION_BLOCK_MIGRATION_DRIFT']
+    ]) {
+        const runtime = dryRuntime({ async drift(current) { return { ...(await dryRuntime().drift(current)), ...override }; } });
+        await assert.rejects(executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true }, runtime), error => error.code === code);
+    }
+    for (const field of ['allowedBranch', 'railwayProjectId', 'railwayEnvironment', 'railwayServiceId', 'liveUrl']) {
+        const changed = JSON.parse(JSON.stringify(value)); changed[field] = 'wrong'; changed.manifestHash = manifestHash(changed);
+        assert.throws(() => validateManifest(changed), error => error.code === 'PRODUCTION_BLOCK_TARGET_MISMATCH');
+    }
+});
+test('HR/payroll retains expiry, exact human confirmation and three-attempt stop', async t => {
+    const value = manifest({ protectedWorkflow: 'hr-payroll', maxReleaseAttempts: 3 }, hrPayFacts());
+    const file = blockFile(t, value);
+    await assert.rejects(executeAction({ blockFile: file, confirmation: 'not-human-confirmation', dryRun: true }, dryRuntime()), error => error.code === 'PRODUCTION_BLOCK_CONFIRMATION_INVALID');
+    value.runtimeState.releaseAttempts = 3; writeBlockFile(file, value);
+    await assert.rejects(executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true }, dryRuntime()), error => error.code === 'PRODUCTION_BLOCK_ATTEMPT_BUDGET_EXHAUSTED');
+    const expired = manifest({ protectedWorkflow: 'hr-payroll', now: new Date(Date.now() - 10 * 60_000), validityMinutes: 5 }, hrPayFacts());
+    const expiredFile = blockFile(t, expired);
+    await assert.rejects(executeAction({ blockFile: expiredFile, confirmation: confirmationValue(expired), dryRun: true }, dryRuntime()), error => error.code === 'PRODUCTION_BLOCK_EXPIRED');
+});

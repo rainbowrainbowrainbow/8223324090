@@ -169,8 +169,8 @@ describe('attendance compensation snapshot on isolated PostgreSQL', { skip: !ena
     test('terminal base-only attendance is finalized atomically and cannot overwrite worked time', async () => {
         const suffix = `${process.pid}-${Date.now()}`;
         const staffResult = await client.query(
-            `INSERT INTO staff (name, department, position, role_type, is_active)
-             VALUES ($1, 'admin', 'Disposable status fixture', 'wardrobe', true)
+            `INSERT INTO staff (name, department, position, role_type, is_active, hourly_rate)
+             VALUES ($1, 'admin', 'Disposable status fixture', 'wardrobe', true, 100)
              RETURNING id`,
             [`Fictional Attendance Status ${suffix}`]
         );

@@ -862,3 +862,16 @@ test('HR/payroll revalidates exact CI identity and completion after waiting', ()
         assert.throws(() => assertHrPayrollCiResult({ ...valid, ...override }, HEAD_SHA), error => error.code === 'PRODUCTION_BLOCK_CI_INCOMPLETE');
     }
 });
+
+test('HR/payroll accepts the exact prepared release markers without admitting adjacent paths', () => {
+    const scope = hrPayFacts();
+    const releaseFiles = ["CHANGELOG.md","accounting-deposits.html","afisha.html","art-director.html","booking-summary.html","cashier-payments.html","center.html","certificates.html","chat-settings.html","chat.html","checkin.html","content.html","copilot.html","css/assistant-rail.css","css/pages-shell.css","css/pages.css","css/sidebar-aurora.css","customers.html","dashboard.html","data-deletion.html","demo.html","designer.html","designs.html","docs/integrations/checkbox/IMPLEMENTATION_STATUS.md","finance.html","game.html","graduation.html","guardian-ops.html","hermes-studio.html","hr.html","index.html","invite.html","js/designs-page.js","landing/index.html","leads.html","omni.html","package-lock.json","package.json","privacy-policy.html","profile.html","programs.html","quiz.html","report-agent.html","reports.html","room.html","server.js","shop.html","sound.html","staff.html","status.html","sw.js","tasks.html","terms-of-service.html","tests/ui-check.js","timeline-settings.html","training.html","warehouse.html","docs/HR_PAY_RELEASE_NOTES.json"];
+    const options = { protectedWorkflow: 'hr-payroll' };
+    const value = manifest(options, { ...scope, changedPaths: [...scope.changedPaths, ...releaseFiles] });
+    assert.doesNotThrow(() => validateManifest(value));
+    for (const foreign of ['future-page.html', 'css/new-release.css', 'js/new-release.js',
+        'docs/HR_PAY_RELEASE_NOTES_OTHER.json', 'scripts/unreviewed-release.js']) {
+        assert.throws(() => manifest(options, { ...scope, changedPaths: [...value.changedPaths, foreign] }),
+            error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
+});

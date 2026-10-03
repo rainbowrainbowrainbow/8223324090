@@ -1,3 +1,20 @@
+# HR-PAY-12 — підготовка точного release SHA
+
+Production impact: yes. **Підготовлена версія 0.82.57 — «HR: ставки та додаткові професії». Production-випуск ще не виконано.**
+
+- База read-only preflight: live/remote `59d67e9916c0a6ce2f64fcafa08cc9e5ce0e5efc`, v0.82.56, `codex/eventgenix-production`. Railway: `fortunate-appreciation` / production / `8223324090`, UUID сервісу `3fb62d4c-2dc2-4701-8e2b-09ce16e188ee`, domain `8223324090-production.up.railway.app`, deployment `b46d7c01-178c-4ff2-8e0f-24e4fb253cdf` SUCCESS. У candidate checkout немає Railway link; identity перевірено з уже прив'язаного checkout без зміни його файлів або settings.
+- Попередній HR-PAY-11 SHA `b7d2248f0ad6f129747248736d0018e28a6d6611` має 8/8 PASS; це історичний продуктовий доказ, а не CI нового release SHA.
+- Release preparation: `npm run version:bump -- patch --label "HR: ставки та додаткові професії"`; синхронізовано package/lockfile, asset/cache markers, українські CHANGELOG.md і changelog modal через штатний applyReleaseNotes. Текст збережено в `docs/HR_PAY_RELEASE_NOTES.json`.
+- До literal hr-payroll allowlist додано лише фактичні generated release/cache файли й файл release notes. Red paths залишаються рівно `routes/payroll.js` та HR evidence-зміна `.github/workflows/ci.yml`; єдина міграція — additive `374_payroll_day_exceptions.sql`. Жодних wildcard або чужих protected workflows.
+- `npm run check:runtime`: Node 22.23.1 / npm 10.9.8, PASS. `node --test tests/production-block-controller.test.js tests/release-railway-up-predeploy.test.js`: **129/129 PASS**, skipped=0; лог `output/hr-pay/hr-pay-12-controller.log`. Перевірені сторонній protected path, невідомий release path, зайва міграція, target, SHA/file drift, expiry, exact confirmation та 3-attempt stop.
+- Функціональну зміну allowlist/регресій і документацію відокремлено від release/cache commit. Нових продуктових або зарплатних правил у HR-PAY-12 немає.
+- Фінальний release SHA має пройти власні 8 required CI jobs, dated PostgreSQL та membership-mode actual-app HR → графік → виняток → attendance → salary. Фактичні підсумки, CI URL, SHA, артефакти та live/remote повторна звірка записуються у [фінальному доказі HR-PAY-12](../output/hr-pay/hr-pay-12-final-proof.json); попередній зелений CI не підміняє цей gate.
+- Manifest створюється штатним `codex:production-block prepare` лише після CI: exact base/release SHA, повний перелік файлів, migration 374, production target, 3 спроби, read-only QA, rollback source. Справжнє людське підтвердження ще не надане.
+- Строк чинного controller — до 6 годин від створення manifest, тобто суворіший за 6 годин після підтвердження. Цей expiry guard не послаблювався; власник отримує точний validUntil разом із фразою підтвердження.
+- Rollback source — попередній live SHA; нові структури й snapshots зберігаються. Нормальний helper не дозволяє пряме завантаження старої версії: безпечне повернення коду потребує forward recovery commit, нового patch, CI та нового manifest. Процедура й межі описані в `docs/HR_PAY_PROTECTED_RELEASE.md`; destructive SQL або force-push не дозволені.
+- Production writes/deploys: **0**. Дані, ролі, secrets, Railway settings і сторонні OneDrive зміни не чіпали. Після exact-SHA CI та готового manifest залишається лише одна фінальна фраза власника; виконання випуску належить HR-PAY-13.
+
+---
 # HR-PAY-11 — актуальна production-база та перевірений кандидат
 
 Production impact: yes. **Блокер production-base drift знято. HR-PAY ще не випущено; наступний крок — HR-PAY-12, release commit та hash-bound manifest.**

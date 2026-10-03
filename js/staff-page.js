@@ -4773,6 +4773,7 @@ async function refreshScheduleProfessionRates(scope) {
     const session = StaffState.editingCell;
     const context = scheduleHrDraftContext();
     const request = fetchHrProfessions();
+    if (typeof refreshScheduleDayPay === 'function') void refreshScheduleDayPay(scope,true);
     updateScheduleRatePresentation(scope);
     await request;
     if (context !== scheduleHrDraftContext() || (scope === 'schedule' && !scheduleModalSessionIsCurrent(session))) return;
@@ -4782,6 +4783,10 @@ async function refreshScheduleProfessionRates(scope) {
 function navigateSchedulePayConditions(link) {
     const session = StaffState.editingCell;
     if (!session || session.mutationPending || !StaffState.canManageSchedule || !scheduleHrDraftContext()) return false;
+    if (session.dayPay && [...session.dayPay.entries.values()].some(entry => entry.draft?.choice && entry.draft.choice !== 'current')) {
+        showNotification('Збережіть або скасуйте введення разової оплати перед переходом у HR. Час і професії залишаться у чернетці.', 'info');
+        return false;
+    }
     const token = crypto.randomUUID();
     const returnUrl = new URL(window.location.href);
     for (const key of ['employee', 'profession', 'profileTab', 'payDate', 'scheduleDraft']) returnUrl.searchParams.delete(key);
@@ -4847,6 +4852,247 @@ function restoreScheduleHrDraft(draft) {
     return true;
 }
 
+// Dated salary data lives only in the active modal, never in the persisted shift draft.
+function scheduleDayPayKey(professionKey, purpose) {
+    return purpose + ':' + normalizeProfessionKey(professionKey);
+}
+
+function scheduleDayPayState() {
+    const session = StaffState.editingCell;
+    if (!session || !scheduleCanViewPayrollAmounts() || isScheduleRecoveryReadOnly('schedule')) {
+        if (session) session.dayPay = null;
+        return null;
+    }
+    const owner = scheduleHrDraftContext() + ':' + session.staffId + ':' + session.date;
+    if (!session.dayPay || session.dayPay.owner !== owner) session.dayPay = {owner, entries: new Map()};
+    return session.dayPay;
+}
+
+function scheduleDayPayEntry(professionKey, purpose = 'additional') {
+    return scheduleDayPayState()?.entries.get(scheduleDayPayKey(professionKey, purpose));
+}
+
+function scheduleDayPaySource(conditions) {
+    if (conditions?.exception) return 'Разова ставка на цю дату';
+    if (conditions?.sourceOrder === 'default_profile') return 'Умови професії';
+    if (conditions?.sourceOrder === 'temporary_assignment') return 'Тимчасові персональні умови';
+    if (conditions?.sourceOrder === 'explicit_assignment') return 'Персональна ставка';
+    return 'Наявна персональна ставка';
+}
+
+function scheduleDayPayUnit(unit) {
+    return {hour:'грн/год',day:'грн/вихід',month:'грн/місяць'}[unit] || 'невідома одиниця';
+}
+
+function scheduleDayPayError(body, status) {
+    if (status === 403) return ['staff_not_migrated','payroll_not_migrated'].includes(body?.code)
+        ? 'Умови оплати недоступні в цьому бізнес-кабінеті до розмежування даних.'
+        : 'Немає доступу до умов оплати.';
+    if (status === 409) return body?.code === 'HR_SHIFT_PLAN_STALE'
+        ? 'План зміни вже змінено. Чернетку збережено; оновіть план перед зміною оплати.'
+        : 'Умови вже змінено або зафіксовано в табелі. Оновіть ставки перед повторною дією.';
+    // Never echo a server payload that may contain salary values to a restricted user.
+    return status >= 500 || !status ? 'Не вдалося завантажити умови оплати. Повторіть спробу.'
+        : 'Не вдалося застосувати умови. Перевірте суму, одиницю, професію та причину.';
+}
+
+async function refreshScheduleDayPay(scope, force = false) {
+    if (scope !== 'schedule') return;
+    const session = StaffState.editingCell;
+    const state = scheduleDayPayState();
+    if (!state) { renderScheduleDayPayPanels(); return; }
+    const segments = readSchedulePlanSegments(scope);
+    const needs = new Map();
+    for (const segment of segments) {
+        if (segment.professionKey) needs.set(scheduleDayPayKey(segment.professionKey,'base_replacement'), [segment.professionKey,'base_replacement']);
+        for (const option of schedulePlanProfessionOptions(scope,[segment.professionKey,...segment.additionalProfessionKeys])) {
+            needs.set(scheduleDayPayKey(option.value,'additional'), [option.value,'additional']);
+        }
+    }
+    const jobs = [];
+    for (const [key,[professionKey,purpose]] of needs) {
+        const old = state.entries.get(key);
+        if (old && (!force || old.state === 'loading')) continue;
+        const entry = {state:'loading',professionKey,purpose,draft:old?.draft || null};
+        state.entries.set(key,entry);
+        jobs.push((async () => {
+            try {
+                const query = new URLSearchParams({date:session.date,professionKey,purpose});
+                const response = await staffApiFetch('/api/hr/staff/' + Number(session.staffId) + '/payroll-conditions?' + query);
+                const body = await response.json();
+                if (!scheduleModalSessionIsCurrent(session) || scheduleDayPayState() !== state) return;
+                if (!response.ok || body.success !== true) {
+                    entry.state = response.status === 403 ? 'restricted' : 'error';
+                    entry.error = scheduleDayPayError(body,response.status);
+                    if (response.status === 403) entry.draft = null;
+                } else { entry.state = 'ready'; entry.data = body.data; }
+            } catch {
+                if (!scheduleModalSessionIsCurrent(session) || scheduleDayPayState() !== state) return;
+                entry.state = 'error'; entry.error = scheduleDayPayError(null,0);
+            }
+            if (!scheduleModalSessionIsCurrent(session) || scheduleDayPayState() !== state) return;
+            renderScheduleDayPayPanels();
+            updateScheduleRatePresentation('schedule');
+        })());
+    }
+    renderScheduleDayPayPanels();
+    await Promise.all(jobs);
+}
+
+function scheduleDayPayPreview(professionKey, purpose, terms) {
+    if (!terms || !(terms.rate > 0)) return 'Суму за планом ще не визначено.';
+    const rate = scheduleFormatMoney(terms.rate) + ' ' + scheduleDayPayUnit(terms.rateUnit);
+    if (terms.rateUnit === 'month') return rate + '. Місячний оклад; не множиться на години або зміни. Нарахування — за підтвердженою місячною нормою.';
+    const relevant = [];
+    for (const segment of readSchedulePlanSegments('schedule')) {
+        const role = segment.additionalRoles.find(row => row.professionKey === professionKey && row.compensationMode === 'paid_hourly');
+        const matches = purpose === 'base_replacement' ? segment.professionKey === professionKey
+            : role || segment.professionKey === professionKey;
+        if (!matches) continue;
+        const interval = role || {intervalStart:segment.shiftStart,intervalEnd:segment.shiftEnd};
+        const bounds = schedulePaidIntervalBounds(segment,interval);
+        const rest = Number(segment.breakMinutes || 0);
+        if (!bounds || bounds.start < bounds.segmentBounds.start || bounds.end > bounds.segmentBounds.end
+            || !Number.isFinite(rest) || rest < 0 || rest >= bounds.end - bounds.start) {
+            return rate + '. Для суми за планом задайте повний час і коректну перерву.';
+        }
+        if (rest && (bounds.start !== bounds.segmentBounds.start || bounds.end !== bounds.segmentBounds.end)) {
+            return rate + '. Розділіть блок і прив’яжіть перерву до конкретного інтервалу.';
+        }
+        relevant.push(bounds.end - bounds.start - rest);
+    }
+    if (!relevant.length) return rate + '. Додайте робочий блок для розрахунку.';
+    const minutes = relevant.reduce((total,value)=>total+value,0);
+    if (terms.rateUnit === 'day') return `${rate} · План за дату: ≈ ${scheduleFormatMoney(terms.rate)} грн, один раз за професію, незалежно від кількості блоків. Факт — після підтвердженого виходу.`;
+    return `${rate} · План за дату: ${minutes} хв після перерв × ${scheduleFormatMoney(terms.rate)} / 60 ≈ ${scheduleFormatMoney(Math.round(minutes * terms.rate / 60))} грн. Факт — за оплачуваними хвилинами табеля.`;
+}
+
+function scheduleDayPayDraftTerms(entry) {
+    const draft = entry?.draft;
+    if (!draft || draft.choice === 'current') return entry?.data?.conditions;
+    if (draft.choice === 'inherit') return entry.data.inheritedConditions;
+    if (draft.choice === 'custom') return {rate:Number(draft.rate),rateUnit:draft.rateUnit};
+    return entry.data.choices.find(row => 'profile:' + row.profileId + ':' + row.profileVersionId === draft.choice);
+}
+
+function renderScheduleDayPayPanel(professionKey, purpose, id, topUp = false) {
+    const key = scheduleDayPayKey(professionKey,purpose);
+    const entry = scheduleDayPayEntry(professionKey,purpose);
+    const title = topUp ? 'Разова доплата понад оклад' : purpose === 'additional' ? 'Оплата додаткової професії' : 'Основна оплата';
+    const start = `<section class="sch-day-pay-panel" data-day-pay-panel data-pay-profession="${escapeHtml(professionKey)}" data-pay-purpose="${purpose}" data-pay-key="${escapeHtml(key)}"><strong>${title}</strong>`;
+    if (!entry || entry.state === 'loading') return start + '<p role="status">Завантажуємо умови на дату…</p></section>';
+    if (entry.state !== 'ready') return start + `<p role="status">${escapeHtml(entry.error)}</p><button type="button" class="btn-page-secondary" data-day-pay-retry>Повторити завантаження</button></section>`;
+    const data = entry.data, terms = data.conditions;
+    const draft = entry.draft || {choice:'current',rate:'',rateUnit:data.inheritedConditions?.rateUnit === 'day' ? 'day' : 'hour',reason:''};
+    const previewTerms = scheduleDayPayDraftTerms(entry);
+    const current = terms?.rate > 0 ? `${terms.profileTitle || 'Персональні умови'} · ${scheduleFormatMoney(terms.rate)} ${scheduleDayPayUnit(terms.rateUnit)}` : 'Ставку ще не задано';
+    const source = terms?.rate > 0 ? scheduleDayPaySource(terms) : '';
+    const period = terms?.effectiveFrom ? `${terms.effectiveFrom} — ${terms.effectiveTo || 'без кінцевої дати'}` : `Чинні умови на ${data.workDate}`;
+    const monthlyBase = purpose === 'base_replacement' && data.inheritedConditions?.rateUnit === 'month';
+    const monthlyExtra = purpose === 'additional' && data.inheritedConditions?.rateUnit === 'month';
+    const hardBlock = data.blocker && !['rate_missing','profile_inactive'].includes(data.blocker.code);
+    const editable = StaffState.canManageSchedule && typeof canAccess === 'function' && canAccess('manage_payroll_rules') === true
+        && !data.frozen && !hardBlock && !monthlyBase && !monthlyExtra;
+    const selected = value => draft.choice === value ? ' selected' : '';
+    const choices = data.choices.map(row => {
+        const value = 'profile:' + row.profileId + ':' + row.profileVersionId;
+        const compatible = ['hour','day'].includes(row.rateUnit) && (purpose === 'additional' || row.rateUnit === data.inheritedConditions?.rateUnit);
+        return `<option value="${value}"${selected(value)}${compatible ? '' : ' disabled'}>${escapeHtml(row.title)} · ${escapeHtml(scheduleFormatMoney(row.rate))} ${scheduleDayPayUnit(row.rateUnit)}${compatible ? '' : ' · змінюється в HR'}</option>`;
+    }).join('');
+    const custom = draft.choice === 'custom';
+    const changed = draft.choice !== 'current';
+    let html = start + `<div class="sch-day-pay-current">${escapeHtml(current)}</div><small>${escapeHtml(source)} · ${escapeHtml(period)}</small>
+        ${data.blocker && !(topUp && data.blocker.code === 'rate_missing') ? `<p class="sch-day-pay-error" role="status">${escapeHtml(data.blocker.message)}</p>` : ''}
+        <p data-day-pay-preview>${escapeHtml(scheduleDayPayPreview(professionKey,purpose,previewTerms))}</p>
+        ${data.frozen ? '<p>Умови вже зафіксовано в табелі. Зміна довідника їх не замінює.</p>' : ''}`;
+    if (editable) html += `<div class="form-group"><label for="${id}-choice">Умови оплати на ${data.workDate}</label>
+        <select id="${id}-choice" data-day-pay-field="choice"><option value="current"${selected('current')}>Чинні умови · ${escapeHtml(current)}</option>${choices}
+        <option value="custom"${selected('custom')}>Інша ставка лише на цю дату</option>
+        ${terms?.exception ? `<option value="inherit"${selected('inherit')}>Скасувати разову ставку й успадкувати умови</option>` : ''}</select></div>
+        ${custom ? `<div class="sch-day-pay-fields"><div class="form-group"><label for="${id}-unit">Тип оплати</label><select id="${id}-unit" data-day-pay-field="rateUnit"${purpose === 'base_replacement' ? ' disabled' : ''}><option value="hour"${draft.rateUnit === 'hour' ? ' selected' : ''}>Погодинна</option><option value="day"${draft.rateUnit === 'day' ? ' selected' : ''}>За вихід</option></select></div><div class="form-group"><label for="${id}-rate">Сума, грн</label><input id="${id}-rate" data-day-pay-field="rate" type="number" min="0.01" step="0.01" inputmode="decimal" value="${escapeHtml(draft.rate)}"></div></div>` : ''}
+        ${changed ? `<div class="form-group"><label for="${id}-reason">Причина разової зміни</label><input id="${id}-reason" data-day-pay-field="reason" maxlength="1000" value="${escapeHtml(draft.reason)}"></div><p>Зміна застосовується до цієї професії в усіх блоках цієї дати. Постійні умови — у HR. План зміни зберігається окремо.</p><button type="button" class="btn-page-primary" data-day-pay-save${StaffState.editingCell?.mutationPending ? ' disabled' : ''}>Зберегти оплату лише на ${data.workDate}</button><button type="button" class="btn-page-secondary" data-day-pay-cancel>Скасувати введення</button>` : ''}`;
+    if (entry.message) html += `<p class="sch-day-pay-error" role="status">${escapeHtml(entry.message)}</p><button type="button" class="btn-page-secondary" data-day-pay-retry>Оновити умови</button>`;
+    if (monthlyExtra) html += '<p>Постійний додатковий оклад змінюється в HR; одноденна заміна не підтримується.</p>';
+    html += '</section>';
+    if (monthlyBase && !data.frozen && !hardBlock) html += renderScheduleDayPayPanel(professionKey,'additional',id+'-topup',true);
+    return html;
+}
+
+function renderScheduleDayPayPanels() {
+    const state = scheduleDayPayState();
+    document.querySelectorAll('#schSegmentsList [data-day-pay-slot]').forEach(slot => {
+        slot.innerHTML = state ? renderScheduleDayPayPanel(slot.dataset.payProfession,slot.dataset.payPurpose,slot.dataset.payId)
+            : '<p>Немає доступу до сум оплати.</p>';
+    });
+}
+
+function updateScheduleDayPayPreviews() {
+    if (!scheduleCanViewPayrollAmounts()) { renderScheduleDayPayPanels(); return; }
+    document.querySelectorAll('#schSegmentsList [data-day-pay-panel]').forEach(panel => {
+        const entry = scheduleDayPayEntry(panel.dataset.payProfession,panel.dataset.payPurpose);
+        const preview = panel.querySelector('[data-day-pay-preview]');
+        if (entry?.state === 'ready' && preview) preview.textContent = (entry.draft?.choice && entry.draft.choice !== 'current' ? 'Незбережена зміна · ' : '')
+            + scheduleDayPayPreview(panel.dataset.payProfession,panel.dataset.payPurpose,scheduleDayPayDraftTerms(entry));
+    });
+}
+
+function changeScheduleDayPayField(target) {
+    const panel = target.closest('[data-day-pay-panel]');
+    const entry = panel && scheduleDayPayEntry(panel.dataset.payProfession,panel.dataset.payPurpose);
+    if (!entry?.data || !scheduleCanViewPayrollAmounts()) return;
+    if (!entry.draft) entry.draft = {choice:'current',rate:'',rateUnit:entry.data.inheritedConditions?.rateUnit === 'day' ? 'day' : 'hour',reason:''};
+    entry.draft[target.dataset.dayPayField] = target.value;
+    entry.message = '';
+    if (target.dataset.dayPayField === 'choice') renderScheduleDayPayPanels();
+    updateScheduleDayPayPreviews();
+}
+
+async function saveScheduleDayPay(panel) {
+    const session = StaffState.editingCell, state = scheduleDayPayState();
+    const entry = state?.entries.get(panel.dataset.payKey);
+    if (!entry?.draft || entry.draft.choice === 'current' || !StaffState.canManageSchedule
+        || typeof canAccess !== 'function' || !canAccess('manage_payroll_rules')) return;
+    if (session.hrDraftStale || session.staleConflict) { entry.message = 'Оновіть застарілий план перед зміною оплати.'; renderScheduleDayPayPanels(); return; }
+    const terms = scheduleDayPayDraftTerms(entry), draft = entry.draft;
+    if (!draft.reason.trim() || (draft.choice !== 'inherit' && (!terms || !(terms.rate > 0) || !['hour','day'].includes(terms.rateUnit)))) {
+        entry.message = 'Вкажіть додатну суму, погодинну або денну оплату та причину.'; renderScheduleDayPayPanels(); return;
+    }
+    const payload = {professionKey:entry.professionKey,workDate:session.date,purpose:entry.purpose,
+        expectedVersion:entry.data.exceptionVersion,expectedPlanUpdatedAt:session.planUpdatedAt || null,
+        reason:draft.reason.trim(),state:draft.choice === 'inherit' ? 'voided' : 'active',rate:terms?.rate,rateUnit:terms?.rateUnit};
+    if (draft.choice.startsWith('profile:')) { payload.selectedProfileId=terms.profileId; payload.selectedProfileVersionId=terms.profileVersionId; }
+    const signature = JSON.stringify(payload);
+    if (entry.requestSignature !== signature) { entry.requestSignature = signature; entry.idempotencyKey = crypto.randomUUID(); }
+    payload.idempotencyKey = entry.idempotencyKey;
+    if (!beginScheduleModalMutation(session)) return;
+    try {
+        const response = await staffApiFetch('/api/hr/staff/' + Number(session.staffId) + '/payroll-day-exception',{
+            method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        const body = await response.json();
+        if (!scheduleModalSessionIsCurrent(session) || scheduleDayPayState() !== state) return;
+        if (response.ok && body.success === true) {
+            entry.draft = null;
+            await refreshScheduleDayPay('schedule',true);
+            showNotification('Оплату на цю дату збережено. Час і професії збережіть кнопкою «Зберегти зміну».');
+        } else {
+            entry.message = response.status >= 500 || !response.status
+                ? 'Результат збереження невідомий. Повторіть ту саму дію: подвійного винятку не буде.'
+                : scheduleDayPayError(body,response.status);
+            if (response.status === 403) { entry.data = null; entry.draft = null; entry.state = 'restricted'; entry.error = entry.message; }
+            if (body.code === 'HR_SHIFT_PLAN_STALE') session.staleConflict = {};
+            renderScheduleDayPayPanels();
+        }
+    } catch {
+        if (scheduleModalSessionIsCurrent(session) && scheduleDayPayState() === state) {
+            entry.message = 'Результат збереження невідомий. Повторіть ту саму дію: подвійного винятку не буде.';
+            renderScheduleDayPayPanels();
+        }
+    } finally {
+        finishScheduleModalMutation(session);
+        if (scheduleModalSessionIsCurrent(session) && scheduleDayPayState() === state) renderScheduleDayPayPanels();
+    }
+}
+
 function scheduleExplicitProfessionRate(staff, professionKey) {
     const normalizedKey = normalizeProfessionKey(professionKey);
     const profession = StaffState.professions.find(item => normalizeProfessionKey(item.key) === normalizedKey);
@@ -4890,6 +5136,13 @@ function schedulePaidRoleRate(scope, professionKey) {
             reason: 'Оплачувану додаткову професію можна налаштувати лише для одного працівника.'
         };
     }
+    if (scope === 'schedule' && StaffState.editingCell?.dayPay && scheduleCanViewPayrollAmounts()) {
+        const entry = scheduleDayPayEntry(professionKey);
+        if (!entry || entry.state === 'loading') return {available:false,rate:null,reason:'Умови оплати ще завантажуються.'};
+        if (entry.state !== 'ready') return {available:false,rate:null,reason:entry.error};
+        return {available:entry.data.available,rate:entry.data.conditions?.rate,rateUnit:entry.data.conditions?.rateUnit,
+            conditions:entry.data.conditions,reason:entry.data.blocker?.message || '',code:entry.data.blocker?.code};
+    }
     return scheduleExplicitProfessionRate(staff[0], professionKey);
 }
 
@@ -4909,9 +5162,10 @@ function schedulePaidRolePreview(scope, role, segment) {
     if (!rateInfo.available) {
         return rateInfo.reason;
     }
+    if (rateInfo.rateUnit && rateInfo.rateUnit !== 'hour') return scheduleDayPayPreview(role.professionKey,'additional',rateInfo.conditions);
     const canShowRate = scheduleCanViewPayrollAmounts() && Number.isFinite(rateInfo.rate) && rateInfo.rate > 0;
     const rateLabel = canShowRate
-        ? `Доплата · Персональна ставка · ${scheduleFormatMoney(rateInfo.rate)} грн/год`
+        ? `Доплата · ${rateInfo.conditions ? scheduleDayPaySource(rateInfo.conditions) : 'Персональна ставка'} · ${scheduleFormatMoney(rateInfo.rate)} грн/год`
         : 'Ставка налаштована';
     const bounds = schedulePaidIntervalBounds(segment, role);
     if (!bounds || bounds.start < bounds.segmentBounds.start || bounds.end > bounds.segmentBounds.end) {
@@ -5023,6 +5277,7 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                     <input type="text" id="${escapeHtml(noteId)}" data-segment-field="note" value="${escapeHtml(segment.note || '')}" placeholder="Необов'язково">
                 </div>
             </div>
+            ${scope === 'schedule' ? `<div data-day-pay-slot data-pay-purpose="base_replacement" data-pay-profession="${escapeHtml(segment.professionKey)}" data-pay-id="${escapeHtml(segment.clientKey)}-base"></div>` : ''}
             <fieldset class="sch-additional-roles sch-unpaid-roles">
                 <legend>Додаткова роль без доплати</legend>
                 <div class="sch-additional-role-options">${unpaidHtml}</div>
@@ -5062,6 +5317,7 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                 <div class="sch-paid-role-preview sch-paid-role-policy-note">
                     Окрема оплата розраховується для hourly, per shift і monthly fixed. Hybrid, percent та manual payroll залишаються заблокованими до погодження окремої формули.
                 </div>
+                ${scope === 'schedule' && paidRole ? `<div data-day-pay-slot data-pay-purpose="additional" data-pay-profession="${escapeHtml(paidRole.professionKey)}" data-pay-id="${escapeHtml(segment.clientKey)}-extra"></div>` : ''}
                 <div data-paid-role-actions>${paidRateError}</div>
             </fieldset>
         </article>`;
@@ -5758,6 +6014,7 @@ function bindScheduleOverlapConversionControls(scope, summary) {
 }
 
 function updateSchedulePlanSummary(scope) {
+    if (scope === 'schedule' && StaffState.editingCell?.dayPay) updateScheduleDayPayPreviews();
     const config = schedulePlanScopeConfig(scope);
     const summary = document.getElementById(config.summaryId);
     const validation = validateSchedulePlan(scope);
@@ -5849,6 +6106,7 @@ function renderSchedulePlanEditor(scope, rawSegments = [], options = {}) {
     activeCard?.classList.add('is-active');
     updateSchedulePlanPrimaryOptions(scope, options.primaryProfessionKey);
     updateSchedulePlanSummary(scope);
+    if (scope === 'schedule') void refreshScheduleDayPay(scope);
 }
 
 function getActiveScheduleSegmentCard() {
@@ -5894,11 +6152,13 @@ function bindSchedulePlanEditor(scope) {
         }
     });
     editor.addEventListener('input', event => {
+        if (event.target.matches('[data-day-pay-field]')) { if (event.target.dataset.dayPayField !== 'choice') changeScheduleDayPayField(event.target); return; }
         if (!event.target.matches('[data-segment-field]')) return;
         updateSchedulePlanPrimaryOptions(scope);
         updateSchedulePlanSummary(scope);
     });
     editor.addEventListener('change', event => {
+        if (event.target.matches('[data-day-pay-field]')) { changeScheduleDayPayField(event.target); return; }
         if (!event.target.matches('[data-segment-field]')) return;
         const card = event.target.closest('.sch-segment-card');
         if (card && list) list.dataset.activeSegmentIndex = card.dataset.segmentIndex || '0';
@@ -5931,6 +6191,13 @@ function bindSchedulePlanEditor(scope) {
         updateSchedulePlanSummary(scope);
     });
     editor.addEventListener('click', event => {
+        const panel = event.target.closest('[data-day-pay-panel]');
+        if (panel && event.target.closest('[data-day-pay-save]')) { void saveScheduleDayPay(panel); return; }
+        if (panel && event.target.closest('[data-day-pay-retry]')) { void refreshScheduleDayPay('schedule',true); return; }
+        if (panel && event.target.closest('[data-day-pay-cancel]')) {
+            const entry = scheduleDayPayEntry(panel.dataset.payProfession,panel.dataset.payPurpose);
+            if (entry) { entry.draft = null; entry.message = ''; } renderScheduleDayPayPanels(); return;
+        }
         const conditions = event.target.closest('[data-schedule-pay-conditions]');
         if (conditions && scope === 'schedule' && StaffState.canManageSchedule) {
             event.preventDefault();
@@ -6513,6 +6780,8 @@ async function closeEditModal(force = false, expectedSession = null) {
             overlay?.classList.add('hidden');
         }
         clearScheduleHrDraft(closingSession);
+        if (closingSession) closingSession.dayPay = null;
+        document.querySelectorAll('#schSegmentsList [data-day-pay-slot], #schSegmentsList [data-paid-role-preview]').forEach(slot => { slot.innerHTML = ''; });
         StaffState.editingCell = null;
         overlay?.setAttribute?.('aria-busy', 'false');
         const shiftPreferencePanel = document.getElementById('schShiftPreferencePanel');
@@ -6532,7 +6801,8 @@ async function closeEditModal(force = false, expectedSession = null) {
         if (window.UnsafeDismissGuard && overlay) {
             return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, closeNow, {
                 force,
-                isDirty: () => getStaffScheduleState() !== _staffScheduleInitialState,
+                isDirty: () => getStaffScheduleState() !== _staffScheduleInitialState
+                    || [...(closingSession?.dayPay?.entries?.values() || [])].some(entry => entry.draft?.choice && entry.draft.choice !== 'current'),
                 message: 'Є незбережені зміни розкладу. Закрити без збереження?',
                 okText: 'Закрити без збереження',
                 cancelText: 'Повернутись'
@@ -6767,6 +7037,9 @@ async function handleSave() {
     if (emp && !isScheduleableStaffForUi(emp, date)) {
         showNotification(scheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
         return;
+    }
+    if (editingSession.dayPay && [...editingSession.dayPay.entries.values()].some(entry => entry.draft?.choice && entry.draft.choice !== 'current')) {
+        showNotification('Спочатку збережіть або скасуйте введення разової оплати.', 'info'); return;
     }
     const validation = updateSchedulePlanSummary('schedule');
     if (!validation.valid) {
@@ -7328,6 +7601,7 @@ async function handleCopyWeek() {
         '',
         `Діапазон копіювання: ${fromMonday} - ${sourceEnd} -> ${toMonday} - ${targetEnd}`,
         'Довільний visible range не копіюється цією дією.',
+        'Разова ставка не копіюється. Для нової дати застосовано її чинні умови.',
         '',
         `Режим: ${copyMode === 'explicit_staff_ids' ? 'visible staffIds[]' : (copyMode === 'raw_department' ? 'raw department' : 'all staff')}`,
         `Працівників: ${preview.staffCount || 0}`,

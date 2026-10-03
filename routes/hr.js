@@ -4324,7 +4324,7 @@ router.get('/staff/:id/payroll-conditions', requirePayrollView, async (req, res)
     } catch (error) { sendPayrollProfileFailure(res, error, 'GET /hr/staff/:id/payroll-conditions error'); }
 });
 
-router.put('/staff/:id/payroll-day-exception', requirePayrollRules, async (req, res) => {
+router.put('/staff/:id/payroll-day-exception', requirePayrollView, requirePayrollRules, async (req, res) => {
     try {
         const { savePayrollDayException } = require('../services/hrPayrollConditions');
         const result = await savePayrollDayException(pool, { ...req.body, staffId: req.params.id }, req.user);

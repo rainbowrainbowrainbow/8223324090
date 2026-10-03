@@ -447,6 +447,14 @@ jobs:
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:browser:hr-onboarding:fullstack:isolated
 
+      - name: Upload isolated HR pay browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hr-pay-actual-app-browser
+          path: output/playwright/hr-pay-actual-app
+          if-no-files-found: ignore
+
   my-day-postgres:
     name: My Day PostgreSQL integration
     runs-on: ubuntu-latest

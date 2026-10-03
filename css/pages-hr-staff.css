@@ -7589,3 +7589,15 @@ body.dark-mode .hr-shift-multi-guard__segments span,
         margin: 8mm;
     }
 }
+
+/* Dated pay controls reuse schedule form and theme tokens. */
+.sch-day-pay-panel { margin: 12px 0; padding: 14px; border: 1px solid var(--border-color, #64748b); border-radius: 12px; min-width: 0; }
+.sch-day-pay-panel > strong { display: block; margin-bottom: 8px; }
+.sch-day-pay-current { font-weight: 600; overflow-wrap: anywhere; }
+.sch-day-pay-panel small, .sch-day-pay-panel p { display: block; line-height: 1.5; overflow-wrap: anywhere; }
+.sch-day-pay-panel .form-group { margin-top: 10px; min-width: 0; }
+.sch-day-pay-panel input, .sch-day-pay-panel select { width: 100%; min-width: 0; box-sizing: border-box; }
+.sch-day-pay-panel button { margin: 8px 8px 0 0; white-space: normal; }
+.sch-day-pay-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sch-day-pay-error { color: var(--danger-color, #b91c1c); }
+@media (max-width: 600px) { .sch-day-pay-fields { grid-template-columns: 1fr; gap: 0; } .sch-day-pay-panel { padding: 10px; } }

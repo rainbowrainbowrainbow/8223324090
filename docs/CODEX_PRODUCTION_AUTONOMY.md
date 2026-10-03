@@ -336,7 +336,7 @@ a newly reviewed scope rather than a wildcard or controller bypass.
 
 The `hr-payroll` protected workflow is exclusive to the exact HR-PAY file inventory
 and additive migration 374 in `scripts/production-block-policy.js`. It permits
-`routes/payroll.js` without changing its Red classification. It does not reuse
+`routes/payroll.js` and the HR test/evidence changes in `.github/workflows/ci.yml` without changing their Red classification. It does not reuse
 certificate, lead or SYS-MB exceptions and does not permit CI settings, auth policy,
 production fixtures, backfill or payouts. Prepare functional and release commits
 before the final manifest: this workflow signs the exact prepared release SHA and

@@ -16,7 +16,7 @@ function mapException(row) {
     return { id: Number(row.id), staffId: Number(row.staff_id), professionKey: row.profession_key,
         workDate: normalizeAttendanceWriteDate(row.work_date), purpose: row.purpose, version: Number(row.version),
         state: row.state, rate: row.rate === null ? null : Number(row.rate), rateUnit: row.rate_unit,
-        reason: row.reason, createdBy: row.created_by, createdAt: row.created_at };
+        selectedProfile: row.selected_profile_snapshot || null, reason: row.reason, createdBy: row.created_by, createdAt: row.created_at };
 }
 async function loadPayrollConditionContext(db, staffIds, range) {
     // Lazy import keeps attendance -> conditions -> payroll from initializing a circular module.
@@ -69,7 +69,8 @@ function resolvePayrollConditions(context, staffId, professionKey, date, purpose
     const exception = options.ignoreException ? null : context.exceptions.get(exceptionKey(staffId, professionKey, date, purpose));
     const result = exception?.state === 'active' ? { ...base, applies: true, warnings: [], rate: exception.rate,
         rateUnit: exception.rateUnit, source: 'payroll_day_exception', rateSource: 'payroll_day_exception',
-        sourceOrder: 'day_exception', appliedRule: 'day_exception', exception } : { ...base, exception: null };
+        sourceOrder: 'day_exception', appliedRule: 'day_exception',
+        ...(exception.selectedProfile ? {profileId:exception.selectedProfile.profileId, profileVersionId:exception.selectedProfile.profileVersionId, profileTitle:exception.selectedProfile.title} : {}), exception } : { ...base, exception: null };
     const config = typeof scheme?.config === 'string' ? JSON.parse(scheme.config) : scheme?.config || {};
     // The monthly norm is frozen too; future edits cannot change the denominator.
     result.monthlyNorm = { monthlyNormMinutes: Number(config.monthlyNormMinutes ?? config.monthly_norm_minutes ?? 0),
@@ -84,7 +85,13 @@ function resolvePayrollConditions(context, staffId, professionKey, date, purpose
             monthlyNormSource: norm.monthlyNormSource ?? norm.monthly_norm_source ?? null,
             monthlyNormMonth: norm.monthlyNormMonth ?? norm.monthly_norm_month ?? null };
     }
-    return { ...result, ruleVersion: CONDITION_RULE_VERSION, purpose, workDate: date, professionKey,
+    const version = context.profiles?.profilesById?.get(result.profileId)?.versions?.find(row => row.id === result.profileVersionId);
+    const assignment = (context.profiles?.assignmentsByStaffProfession?.get(staffId + ':' + professionKey) || []).find(row => row.id === result.assignmentId);
+    const starts = [version?.effectiveFrom, assignment?.effectiveFrom].filter(Boolean).sort();
+    const ends = [version?.effectiveTo, assignment?.effectiveTo].filter(Boolean).sort();
+    return { ...result, effectiveFrom: result.exception ? date : starts.at(-1) || null,
+        effectiveTo: result.exception ? date : ends[0] || null,
+        ruleVersion: CONDITION_RULE_VERSION, purpose, workDate: date, professionKey,
         schemeType: scheme?.schemeType || null };
 }
 async function getPayrollDayConditions(db, staffId, professionKey, date, purpose = 'base_replacement') {
@@ -97,6 +104,7 @@ async function getPayrollDayConditions(db, staffId, professionKey, date, purpose
         throw conditionError('PAYROLL_CONDITIONS_PROFESSION_NOT_FOUND', 'Професію працівника не знайдено', 404);
     }
     let conditions = resolvePayrollConditions(context, staffId, professionKey, date, purpose);
+    const inheritedConditions = resolvePayrollConditions(context, staffId, professionKey, date, purpose, {ignoreException:true});
     const records = await db.query('SELECT id, clock_in, clock_out, total_worked_minutes, compensation_snapshot FROM hr_time_records WHERE staff_id=$1 AND record_date=$2', [staffId, date]);
     const record = records.rows[0];
     const frozen = Boolean(record && (record.compensation_snapshot || record.clock_in || record.clock_out || Number(record.total_worked_minutes) > 0));
@@ -134,7 +142,7 @@ async function getPayrollDayConditions(db, staffId, professionKey, date, purpose
                 effectiveFrom: version.effectiveFrom, effectiveTo: version.effectiveTo };
         });
     const exception = context.exceptions.get(exceptionKey(staffId, professionKey, date, purpose));
-    return { conditions, choices, frozen, blocker, available: !blocker, exceptionVersion: exception?.version || 0,
+    return { conditions, inheritedConditions, choices, frozen, blocker, available: !blocker, exceptionVersion: exception?.version || 0,
         workDate: date, purpose, professionKey };
 }
 function assertAdditionalAdmission(context, staffId, professionKey) {
@@ -165,7 +173,17 @@ function validateExceptionInput(payload) {
         || (state === 'active' && (!Number.isFinite(rate) || rate <= 0 || rate > 9999999999.99 || !['hour', 'day'].includes(rateUnit)))) {
         throw conditionError('PAYROLL_DAY_EXCEPTION_INVALID', 'Перевірте дату, професію, одиницю, додатну суму, причину та версію');
     }
-    return { staffId, professionKey, workDate, purpose, expectedVersion, reason, idempotencyKey, state, rate, rateUnit };
+    const selection = {};
+    if (payload.selectedProfileId !== undefined || payload.selectedProfileVersionId !== undefined) {
+        if (!Number.isSafeInteger(Number(payload.selectedProfileId)) || Number(payload.selectedProfileId) <= 0
+            || !Number.isSafeInteger(Number(payload.selectedProfileVersionId)) || Number(payload.selectedProfileVersionId) <= 0 || state !== 'active') {
+            throw conditionError('PAYROLL_DAY_PROFILE_INVALID', 'Оберіть чинний варіант оплати');
+        }
+        selection.selectedProfileId = Number(payload.selectedProfileId);
+        selection.selectedProfileVersionId = Number(payload.selectedProfileVersionId);
+    }
+    if (Object.hasOwn(payload, 'expectedPlanUpdatedAt')) selection.expectedPlanUpdatedAt = payload.expectedPlanUpdatedAt || null;
+    return { staffId, professionKey, workDate, purpose, expectedVersion, reason, idempotencyKey, state, rate, rateUnit, ...selection };
 }
 async function savePayrollDayException(db, payload, actor) {
     const input = validateExceptionInput(payload);
@@ -186,6 +204,12 @@ async function savePayrollDayException(db, payload, actor) {
             return { ...mapException(replay.rows[0]), replayed: true };
         }
         await assertPayrollPeriodOpen(input.workDate.slice(0, 7), client);
+        if (Object.hasOwn(input, 'expectedPlanUpdatedAt')) {
+            const { loadHrShiftDayPlan, hrShiftPlanUpdatedAt } = require('./hrShiftSegments');
+            const plan = await loadHrShiftDayPlan(client, {staffId:input.staffId, shiftDate:input.workDate});
+            const token = plan ? hrShiftPlanUpdatedAt(plan.shift) : null;
+            if (token !== input.expectedPlanUpdatedAt) throw conditionError('HR_SHIFT_PLAN_STALE', 'План зміни вже змінено. Вашу чернетку збережено; оновіть план перед зміною оплати.', 409);
+        }
         const lockedReport = await client.query(
             `SELECT pr.id FROM payroll_reports pr WHERE pr.staff_id = $1 AND pr.period_month = $2
              AND (pr.status IN ('reviewed', 'approved', 'paid') OR EXISTS (
@@ -204,6 +228,21 @@ async function savePayrollDayException(db, payload, actor) {
         }
         const previous = context.exceptions.get(exceptionKey(input.staffId, input.professionKey, input.workDate, input.purpose));
         if ((previous?.version || 0) !== input.expectedVersion) throw conditionError('PAYROLL_DAY_EXCEPTION_VERSION_CONFLICT', 'Умови вже змінено іншим користувачем. Оновіть форму.', 409);
+        let selectedProfile = null;
+        if (input.selectedProfileId) {
+            const profile = (await require('./hrPayrollProfiles').listPayrollProfiles(
+                {professionKey:input.professionKey,status:'active',asOfDate:input.workDate},{db:client}))
+                .find(row => row.id === input.selectedProfileId && (row.profileKind === 'shared' || row.ownerStaffId === input.staffId));
+            const version = profile?.currentVersion;
+            const weekday = new Date(input.workDate + 'T00:00:00Z').getUTCDay() || 7;
+            const override = version?.rateUnit === 'month' ? null : version?.dayRates?.find(row => row.isoWeekday === weekday);
+            if (!version || version.id !== input.selectedProfileVersionId || version.rateUnit !== input.rateUnit
+                || Number(override ? override.rate : version.defaultRate) !== input.rate) {
+                throw conditionError('PAYROLL_DAY_PROFILE_STALE', 'Варіант оплати змінився або більше недоступний. Оновіть умови.', 409);
+            }
+            selectedProfile = {profileId:profile.id,profileVersionId:version.id,title:profile.title,
+                rate:input.rate,rateUnit:input.rateUnit,effectiveFrom:version.effectiveFrom,effectiveTo:version.effectiveTo};
+        }
         if (input.state === 'active') {
             if (input.purpose === 'additional' && input.professionKey !== staff.role_type) assertAdditionalAdmission(context, input.staffId, input.professionKey);
             const original = resolvePayrollConditions(context, input.staffId, input.professionKey, input.workDate, input.purpose, { ignoreException: true });
@@ -213,10 +252,10 @@ async function savePayrollDayException(db, payload, actor) {
             if (input.purpose === 'additional' && original.rateUnit === 'month') throw conditionError('PAYROLL_MONTHLY_ADDITIONAL_OVERRIDE_UNSUPPORTED', 'Постійний додатковий оклад не замінюється одноденною ставкою');
         }
         const result = await client.query(`INSERT INTO payroll_day_exceptions
-            (staff_id, profession_key, work_date, purpose, version, state, rate, rate_unit, reason, created_by, idempotency_key, request_hash)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+            (staff_id, profession_key, work_date, purpose, version, state, rate, rate_unit, reason, created_by, idempotency_key, request_hash, selected_profile_snapshot)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) RETURNING *`,
         [input.staffId, input.professionKey, input.workDate, input.purpose, input.expectedVersion + 1,
-            input.state, input.rate, input.rateUnit, input.reason, username, input.idempotencyKey, hash]);
+            input.state, input.rate, input.rateUnit, input.reason, username, input.idempotencyKey, hash, selectedProfile ? JSON.stringify(selectedProfile) : null]);
         await client.query('COMMIT');
         return mapException(result.rows[0]);
     } catch (error) {

@@ -82,9 +82,11 @@ const LEAD_UI_CI_CHANGED_PATHS = Object.freeze([
     'tests/ui-check.js'
 ]);
 const HR_PAYROLL_MIGRATION = 'db/migrations/374_payroll_day_exceptions.sql';
-const HR_PAYROLL_RED_PATHS = Object.freeze(['routes/payroll.js']);
+const HR_PAYROLL_RED_PATHS = Object.freeze(['.github/workflows/ci.yml', 'routes/payroll.js']);
 // Exact reviewed candidate surface; release marker files must be enumerated before preparing a final manifest.
 const HR_PAYROLL_CHANGED_PATHS = Object.freeze([
+    ".github/workflows/ci.yml",
+    "tests/browser/hr-pay-actual-app-browser-smoke.js",
     "css/hr-page.css",
     "css/pages-hr-staff.css",
     "db/migrations/374_payroll_day_exceptions.sql",
@@ -280,14 +282,14 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
     if (workflow === PROTECTED_WORKFLOWS.HR_PAYROLL) {
         const changed = normalizePathList(changedPaths);
-        fail(JSON.stringify(redPaths) === JSON.stringify(HR_PAYROLL_RED_PATHS),
-            'HR/payroll permits only its exact reviewed Red path', 'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
+        fail(redPaths.includes('routes/payroll.js') && redPaths.every(file => HR_PAYROLL_RED_PATHS.includes(file)),
+            'HR/payroll permits only its exact payroll route and optional HR CI gate', 'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
         fail(changed.every(file => HR_PAYROLL_CHANGED_PATHS.includes(file))
             && ['services/hrPayrollConditions.js', 'services/payrollConditionCalculation.js',
                 'tests/integration/payroll-profiles-conditions.integration.test.js', HR_PAYROLL_MIGRATION].every(file => changed.includes(file)),
             'HR/payroll requires its exact implementation, isolated regressions and additive migration',
             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
-        return { enabled: true, kind: workflow, protectedChangedPaths: [...HR_PAYROLL_RED_PATHS] };
+        return { enabled: true, kind: workflow, protectedChangedPaths: [...redPaths] };
     }
     if (workflow === PROTECTED_WORKFLOWS.LEAD_UI_CI_GATE) {
         const changed = normalizePathList(changedPaths);

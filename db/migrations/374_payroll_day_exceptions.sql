@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS payroll_day_exceptions (
     UNIQUE (staff_id, profession_key, work_date, purpose, version),
     UNIQUE (staff_id, idempotency_key)
 );
+-- Frozen source of an explicitly chosen profile; old custom exceptions remain valid.
+ALTER TABLE payroll_day_exceptions ADD COLUMN IF NOT EXISTS selected_profile_snapshot JSONB;
 CREATE INDEX IF NOT EXISTS idx_payroll_day_exceptions_staff_date
     ON payroll_day_exceptions(staff_id, work_date, profession_key, purpose, version DESC);
 

@@ -753,6 +753,21 @@ async function handleApi(req, res, url) {
         sendJson(res, permissionsFor(SMOKE_USER));
         return true;
     }
+    if (/^\/api\/hr\/staff\/\d+\/payroll-conditions$/.test(url.pathname)) {
+        const staffId=Number(url.pathname.split('/')[4]), professionKey=url.searchParams.get('professionKey'), purpose=url.searchParams.get('purpose');
+        const person=PROFESSIONS.find(row=>row.key===professionKey)?.people?.find(row=>row.id===staffId);
+        const rate=purpose==='additional' ? person?.explicitRate : person?.hourlyRate || 100;
+        let blocker=null;
+        if (purpose==='additional') {
+            if (!person) blocker={code:'assignment_missing',message:'Професію не призначено працівнику.'};
+            else if (person.assignmentStatus!=='active') blocker={code:'assignment_inactive',message:'Призначення цієї професії неактивне.'};
+            else if (person.admissionStatus!=='approved') blocker={code:'admission_required',message:'Допуск до цієї професії ще не погоджено.'};
+            else if (!(rate>0)) blocker={code:'rate_missing',message:'Для цієї професії немає окремої погодинної ставки.'};
+        }
+        const conditions={rate:Number(rate||0),rateUnit:'hour',sourceOrder:'legacy_staff_profession_rates',rateSource:'staff_profession_rates.hourly_rate',workDate:url.searchParams.get('date'),professionKey,exception:null};
+        sendJson(res,{success:true,data:{conditions,inheritedConditions:conditions,choices:[],frozen:false,blocker,available:!blocker,exceptionVersion:0,workDate:conditions.workDate,professionKey,purpose}});
+        return true;
+    }
     if (url.pathname === '/api/hr/professions') {
         sendJson(res, { success: true, data: PROFESSIONS });
         return true;
@@ -4127,6 +4142,66 @@ async function runSidebarIdentityWrapFlow(browser, base, viewport, label, darkMo
 }
 
 
+async function runDayPayPickerFlow(browser, base) {
+    const {context,page}=await openStaffPage(browser,base,{width:1440,height:1000});
+    let version=0, exception=null, failRead=true, failWrite=true;
+    const writes=[];
+    const inherited={rate:100,rateUnit:'hour',sourceOrder:'explicit',profileTitle:'Основна ставка',professionKey:'animator'};
+    try {
+        await context.route('**/api/hr/staff/101/payroll-conditions?**',async route=>{
+            const query=new URL(route.request().url()).searchParams;
+            if(query.get('purpose')!=='base_replacement'||query.get('professionKey')!=='animator')return route.continue();
+            if(failRead)return route.fulfill({status:500,json:{success:false}});
+            return route.fulfill({json:{success:true,data:{workDate:query.get('date'),purpose:'base_replacement',professionKey:'animator',
+                conditions:exception||inherited,inheritedConditions:inherited,exceptionVersion:version,frozen:false,blocker:null,available:true,
+                choices:[{profileId:11,profileVersionId:12,title:'Вихідний тариф',rate:250,rateUnit:'hour',effectiveFrom:'2026-01-01',effectiveTo:null}]}}});
+        });
+        await context.route('**/api/hr/staff/101/payroll-day-exception',async route=>{
+            const body=route.request().postDataJSON();writes.push(body);
+            if(failWrite){failWrite=false;return route.abort('failed');}
+            version++;
+            exception={...inherited,rate:body.rate,sourceOrder:'day_exception',profileTitle:'Вихідний тариф',exception:{reason:body.reason}};
+            return route.fulfill({json:{success:true,data:{version}}});
+        });
+        await applyManualRange(page,'2026-07-16','2026-07-17');
+        await activateScheduleDepartment(page,'animators');await expandScheduleGroup(page,'animators');
+        await page.locator('#scheduleBody [data-schedule-staff-row="101"][data-schedule-department="animators"] .sch-cell[data-date="2026-07-16"]').click();
+        const card=page.locator('#schSegmentsList .sch-segment-card').first();
+        await card.locator('[data-segment-field="profession"]').selectOption('animator');
+        const panel=card.locator('[data-day-pay-panel][data-pay-purpose="base_replacement"]');
+        await panel.locator('[data-day-pay-retry]').waitFor();assert.match(await panel.innerText(),/Не вдалося завантажити/);
+        failRead=false;await panel.locator('[data-day-pay-retry]').click();
+        await panel.locator('[data-day-pay-field="choice"]').waitFor();
+        await card.locator('[data-segment-field="start"]').fill('10:00');await card.locator('[data-segment-field="end"]').fill('18:00');
+        await card.locator('[data-segment-field="break"]').fill('30');
+        await panel.locator('[data-day-pay-field="choice"]').selectOption('custom');
+        await panel.locator('[data-day-pay-save]').click();assert.equal(writes.length,0);assert.match(await panel.innerText(),/Вкажіть додатну суму/);
+        await panel.locator('[data-day-pay-field="choice"]').selectOption('profile:11:12');
+        await panel.locator('[data-day-pay-field="reason"]').fill('Оплата у вихідний');
+        await panel.locator('[data-day-pay-save]').click();
+        await page.waitForFunction(()=>document.querySelector('.sch-day-pay-error')?.textContent.includes('Результат збереження невідомий'));
+        assert.equal(await panel.locator('[data-day-pay-save]').isEnabled(),true,'unknown outcome is safely retryable');
+        await panel.locator('[data-day-pay-save]').click();
+        await page.waitForFunction(()=>document.querySelector('.sch-day-pay-current')?.textContent.includes('250'));
+        assert.equal(writes.length,2);assert.equal(writes[0].idempotencyKey,writes[1].idempotencyKey);
+        assert.equal(writes[1].selectedProfileId,11);assert.equal(writes[1].selectedProfileVersionId,12);
+        assert.equal(writes[1].workDate,'2026-07-16');assert.match(await panel.innerText(),/450 хв[\s\S]*1.?875 грн/);
+        await panel.locator('[data-day-pay-field="choice"]').selectOption('custom');
+        await panel.locator('[data-day-pay-field="rate"]').fill('280');await panel.locator('[data-day-pay-field="reason"]').fill('Unsaved');
+        await page.locator('#schCancelBtn').click();
+        const confirm=page.locator('.confirm-overlay[data-confirm-kind="confirm"]');await confirm.waitFor();
+        await confirm.locator('.confirm-cancel').click();
+        assert.equal(await panel.locator('[data-day-pay-field="rate"]').inputValue(),'280');
+        await page.setViewportSize({width:390,height:844});
+        await captureStableScheduleScreenshot(page,'day-pay-picker-mobile.png','#schModalOverlay .sch-modal');
+        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+        await panel.locator('[data-day-pay-cancel]').click();
+        await page.locator('#schCancelBtn').click();if(await confirm.isVisible())await confirm.locator('.confirm-ok').click();
+    } catch(error) { console.error('Synthetic picker state',JSON.stringify({writes,panels:await page.locator('[data-day-pay-panel]').allTextContents()}));throw error;
+    } finally {await context.close();}
+}
+
+
 async function runPayConditionsDraftFlow(browser, base) {
     const { context, page } = await openStaffPage(browser, base, { width: 390, height: 844 }, { darkMode: true });
     const originalRate = PROFESSIONS.find(item => item.key === 'reception').people[0].explicitRate;
@@ -4184,7 +4259,7 @@ async function runPayConditionsDraftFlow(browser, base) {
         await card().locator('[data-segment-field="start"]').fill('10:15');
         let release;
         const held = new Promise(resolve => { release = resolve; });
-        await context.route('**/api/hr/professions*', async route => {
+        await context.route(/\/api\/hr\/(?:professions|staff\/\d+\/payroll-conditions)/, async route => {
             await held;
             await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false }) });
         });
@@ -4194,7 +4269,7 @@ async function runPayConditionsDraftFlow(browser, base) {
         await page.waitForFunction(() => document.querySelector('[data-paid-role-actions]')?.textContent.includes('Не вдалося завантажити'));
         assert.equal(await card().locator('[data-segment-field="end"]').inputValue(), '19:00', 'edits during a failed request survive');
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), true);
-        await context.unroute('**/api/hr/professions*');
+        await context.unroute(/\/api\/hr\/(?:professions|staff\/\d+\/payroll-conditions)/);
         await card().locator('[data-schedule-rates-retry]').click();
         await page.waitForFunction(() => document.querySelector('[data-paid-role-preview]')?.textContent.includes('195 грн'));
         assert.equal(await card().locator('[data-segment-field="end"]').inputValue(), '19:00');
@@ -4230,6 +4305,8 @@ async function runPayConditionsDraftFlow(browser, base) {
             console.log('Schedule paid calculation browser smoke passed');
             return;
         }
+        await runDayPayPickerFlow(browser, base);
+        if (process.argv.includes('--pay-picker-only')) { console.log('Day pay picker browser passed'); return; }
         await runPayConditionsDraftFlow(browser, base);
         if (process.argv.includes('--pay-draft-only')) {
             console.log('Schedule HR pay conditions draft browser smoke passed');

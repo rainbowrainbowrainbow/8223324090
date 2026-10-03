@@ -64,6 +64,21 @@ describe('HR PAY dated conditions on disposable PostgreSQL', { skip: !enabled, c
         assert.equal(resolvePayrollConditions(context, staffId, profession, '2198-10-04').rate, 100);
         assert.ok([130,140].includes(resolvePayrollConditions(context, staffId, profession, date).rate));
     });
+    test('selected profile is verified server-side, freezes its source and rejects stale amount', async () => {
+        const read = await getPayrollDayConditions(db,staffId,extraProfession,'2198-10-09','additional');
+        const choice = read.choices[0];
+        const request = payload({professionKey:extraProfession,workDate:'2198-10-09',purpose:'additional',rate:500,rateUnit:'day',
+            selectedProfileId:choice.profileId,selectedProfileVersionId:choice.profileVersionId,idempotencyKey:'selected-profile-day',expectedPlanUpdatedAt:null});
+        await assert.rejects(savePayrollDayException(db,{...request,rate:1},actor),error=>error.code==='PAYROLL_DAY_PROFILE_STALE');
+        const saved=await savePayrollDayException(db,request,actor);
+        assert.equal(saved.selectedProfile.profileVersionId,choice.profileVersionId);
+        assert.equal(saved.selectedProfile.title,choice.title);
+        assert.equal((await savePayrollDayException(db,request,actor)).replayed,true);
+        const applied=await getPayrollDayConditions(db,staffId,extraProfession,'2198-10-09','additional');
+        assert.equal(applied.conditions.profileVersionId,choice.profileVersionId);
+        assert.equal(applied.conditions.effectiveFrom,'2198-10-09');
+        assert.equal(applied.conditions.effectiveTo,'2198-10-09');
+    });
     test('temporary assignment overlaps permanent terms but two permanent assignments are rejected', async () => {
         await db.query(`INSERT INTO staff_payroll_profile_assignments (staff_id,profession_key,profile_id,assignment_kind,effective_from,created_by,updated_by)
             VALUES ($1,$2,$3,'explicit','2198-01-01','isolated_hr_pay','isolated_hr_pay')`, [staffId, extraProfession, profileId]);

@@ -755,13 +755,14 @@ test('HR/payroll gate binds only its exact paths, migration and prepared version
     const options = { protectedWorkflow: 'hr-payroll' };
     const value = manifest(options, scope);
     assert.deepEqual(value.allowedProtectedWorkflow, { enabled: true, kind: 'hr-payroll', protectedChangedPaths: ['routes/payroll.js'] });
+    assert.doesNotThrow(() => manifest(options, {...scope,changedPaths:[...scope.changedPaths,'.github/workflows/ci.yml','tests/browser/hr-pay-actual-app-browser-smoke.js']}));
     assert.equal(value.preparedRelease.sha, HEAD_SHA);
     assert.equal(value.preparedRelease.version, '0.0.2');
     assert.doesNotThrow(() => validateManifest(value));
     assert.ok(releaseCommandPlan(value).includes('npm run check:version (prepared exact SHA)'));
     assert.ok(!releaseCommandPlan(value).some(command => command.includes('version:bump')));
     assert.throws(() => manifest({}, scope), error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
-    for (const extra of ['middleware/auth.js', 'routes/finance.js', '.github/workflows/ci.yml', 'railway.json']) {
+    for (const extra of ['middleware/auth.js', 'routes/finance.js', '.github/workflows/deploy.yml', 'railway.json']) {
         assert.throws(() => manifest(options, { ...scope, changedPaths: [...scope.changedPaths, extra] }), error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
     }
     for (const extra of ['services/legacyBusinessSurface.js', 'routes/leads.js', 'docs/unreviewed.md']) {

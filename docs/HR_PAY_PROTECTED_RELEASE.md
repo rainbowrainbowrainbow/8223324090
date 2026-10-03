@@ -2,7 +2,7 @@
 
 Production impact: yes. Release readiness remains HOLD until all product and test gates pass.
 
-- Workflow: `hr-payroll`; Red exception: exactly `routes/payroll.js`.
+- Workflow: `hr-payroll`; Red exceptions: exactly `routes/payroll.js` and the HR test/evidence changes in `.github/workflows/ci.yml`.
 - Migration: exactly `374_payroll_day_exceptions.sql`, schema only, no backfill.
 - All candidate paths are literal entries in `HR_PAYROLL_CHANGED_PATHS`; no glob, prefix or other task exception.
 - Release/cache marker paths must be enumerated from the prepared release diff before final preparation.

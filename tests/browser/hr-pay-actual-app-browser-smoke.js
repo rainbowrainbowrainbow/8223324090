@@ -142,7 +142,7 @@ async function run() {
         await card().locator('[data-segment-field="end"]').fill('18:00');
         await card().locator('[data-segment-field="paid-profession"]').selectOption('reception');
         await page.waitForFunction(()=>document.querySelector('[data-pay-purpose="additional"] .sch-day-pay-current')?.textContent.includes('500'));
-        assert.match(await card().locator('[data-pay-purpose="additional"]').innerText(),/один раз за професію/);
+        assert.match(await card().locator('[data-day-pay-panel][data-pay-purpose="additional"]').innerText(),/один раз за професію/);
         const saveShift=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/staff/schedule'&&r.request().method()==='PUT');
         await page.locator('#schSaveBtn').click();assert.equal((await saveShift).status(),200);
         await page.locator('#schModalOverlay.visible').waitFor({state:'hidden'});

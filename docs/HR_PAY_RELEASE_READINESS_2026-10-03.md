@@ -1,3 +1,48 @@
+# HR-PAY-08 — інтерактивна оплата зміни
+
+Production impact: yes. **Production release: HOLD. Production не змінено.**
+
+Робоча копія: `C:/Users/Plotva/.codex/worktrees/hr-pay-release-review/EventGenix`.
+Feature-гілка: `codex/hr-pay-release-review-20261003`. Сторонні зміни OneDrive не включені.
+Функціональні commits: `71bb676448bf0a214fef6fab5ccbd1458517a300`, `2543cf20cbe79e6f73de5a81abd1dbfa01c6bb1f` та наступне уточнення browser selector.
+
+## Зміни HR-PAY-08
+
+- Графік читає датовані серверні умови окремо для бази й додаткової професії: назва, сума, одиниця, джерело та період дії.
+- Альтернативний профіль записується як одноденний виняток із перевіреними сервером profile/version ID і знімком джерела. Постійний профіль не змінюється.
+- Разова ставка має тип, суму й обов’язкову причину; її можна явно скасувати з поверненням до успадкованих умов. Місячна база має окрему погодинну/денну доплату; оклад не множиться на зміни.
+- Preview відрізняє план від факту, враховує перерву й не вигадує суму за неповного часу. Основний блок іншої професії не додається до звичайної додаткової оплати; явний одноденний виняток має ту саму область дії, що й сервер.
+- Збереження перевіряє версію винятку та плану. Повтор після невідомого результату використовує той самий idempotency key. Платіжна форма заблокована під час запису; введення й фокус зберігаються при фонових читаннях.
+- Чернетка часу, професій, перерв і приміток повертається з HR, включно з помилкою читання картки та retry. Прив’язка до акаунта/ролі/бізнесу, працівника й TTL збережена. Суми не записуються в sessionStorage.
+- Зміна дати завантажує її власні умови. Copy-week не копіює журнал винятків; у чинному handler копіювання є явне попередження. Ізольований тест перевіряє реальний copy API та умови цільової дати; це не доказ доступності прихованої legacy-кнопки в поточному layout.
+- GET і PUT захищені чинним salary-view permission; PUT також потребує чинного manage-payroll-rules. Права не розширено. Помилки 403 не підміняються повідомленням про відсутню ставку.
+
+Основні файли: `js/staff-page.js`, `js/hr-page.js`, `css/pages-hr-staff.css`, `routes/hr.js`, `services/hrPayrollConditions.js`.
+До ще не випущеної additive міграції `374_payroll_day_exceptions.sql` додано nullable `selected_profile_snapshot`; backfill відсутній.
+Новий тест: `tests/browser/hr-pay-actual-app-browser-smoke.js`. Він підключений до наявного disposable PostgreSQL runner і CI, без моків API.
+Вузький HR allowlist включає саме цей тест і `.github/workflows/ci.yml` для публікації синтетичних screenshot artifacts. Фактичний candidate diff: 54 файли; сторонні protected paths не дозволено.
+
+## Перевірки та докази
+
+- Node 22.23.1 / npm 10.9.8. Локальний `npm test` PASS; повний schedule browser smoke PASS.
+- Після точкових виправлень: 42 цільові unit перевірки PASS, picker/draft browser PASS; controller + isolated-runner contract — 66 PASS.
+- [Перший CI HR-PAY-08](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/37114306561): Fast baseline та PostgreSQL payment cases пройшли; actual-app зупинився на відсутньому поверненні з HR 403. Це виправлено. Окремий збій Task Center responsive test не стосувався HR-PAY і не виправлявся зміною чужого коду.
+- [Повторний CI](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/37114799604): actual-app підтвердив HR error-return, вибір профілю, запис його джерела й кастомну ставку. Далі виявлено неоднозначний CSS selector самого тесту; selector уточнено без послаблення перевірки.
+- Остаточний exact-SHA CI, фактичні результати actual-app та перелік evidence зберігаються в [локальному санітизованому доказі](../output/hr-pay/hr-pay-08-ci-proof-2026-10-03.json). Screenshot artifacts містять лише синтетичні записи ізольованої БД. Наявність тестового файлу сама по собі не є PASS.
+
+## Межі готовності
+
+**Залишається реальний Park access blocker:** `/api/hr/staff/:id` у фактичному HR browser повертає `403 staff_not_migrated`; раніше read-only підтверджено також `payroll_not_migrated`. Новий actual-app тест явно фіксує цей стан і перевіряє безпечне повернення до чернетки. Він не видає його за успішне редагування постійних HR-умов.
+
+Потрібний окремий обсяг перевірки власності даних і дозволеного доступу Park; TASK HR-PAY-08 прямо виключає розширення прав. Не прибирати business gate і не обходити його загальним дозволом namespace.
+HR-PAY-09 має завершити аудит готовності та позитивний шлях HR → графік → attendance → payroll у дозволеному business context. HR-PAY-10 — свіжа production-база, release/cache/changelog commit, exact-SHA CI, hash-bound manifest і його фінальне підтвердження.
+
+Версію не підвищено; production migrations/deploy, реальні кадрові дані, зарплати й виплати не змінювалися. Спроб production-випуску: 0.
+
+Нижче збережено попередній звіт як історію; його пункт про відсутність picker не описує поточний код.
+
+---
+
 # HR-PAY-07/10 — фактичний стан після серверної реалізації
 
 Production impact: yes. **Рішення: HOLD. Production не змінено.**

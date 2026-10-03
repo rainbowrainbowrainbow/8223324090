@@ -34,6 +34,7 @@ const booking = b => request('POST', '/api/bookings?businessContext=dar', b);
 describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !enabled, concurrency: 1 }, () => {
   before(async () => {
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
+    fs.mkdirSync(path.join('output', 'edu-qa-01'), { recursive: true });
     const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, { ...process.env, DATABASE_URL: '' });
     pool = new Pool({ connectionString: target.url.toString(), ssl: false });
     await pool.query(`INSERT INTO settings (key,value) VALUES ('timeline_display:dar', $1) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`, [JSON.stringify({ mode: 'education' })]);
@@ -299,8 +300,21 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       const detail = await request('GET', `/api/bookings/detail/${id}?businessContext=dar`);
       assert.equal(detail.status, 200);
       assert.equal(Number(detail.data.booking.extraData.educationLesson.groupId), Number(groupId));
+      await page.goto(process.env.TEST_URL + '/?businessContext=dar&date=2027-06-15&educationSchedule=schedule', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => window.CrmBusinessContext?.profileFor?.('dar')?.timeline?.mode === 'education');
+      await page.locator('.grid-cell[data-time="12:00"][data-line="edu-cabinet-1"]').first().waitFor({ state: 'visible', timeout: 20000 });
+      await page.waitForFunction(async bookingId => {
+        if (timelineDateKey(AppState.selectedDate) !== '2027-06-15') return false;
+        try {
+          return (await getBookingsForDate(AppState.selectedDate)).some(booking => String(booking.id) === String(bookingId));
+        } catch (error) {
+          if (isTimelineStaleRequestError(error)) return false;
+          throw error;
+        }
+      }, id, { timeout: 20000 });
+      assert.equal(await page.evaluate(() => timelineDateKey(AppState.selectedDate)), '2027-06-15', 'edit stays on the selected lesson date');
       await page.evaluate(bookingId => editBooking(bookingId), id);
-      await page.locator('#bookingPanel').waitFor({ state: 'visible' });
+      await page.locator('#educationLessonTitle').waitFor({ state: 'visible', timeout: 20000 });
       await page.locator('#educationLessonTitle').fill('QA UI lifecycle lesson edited');
       const editedResponse = page.waitForResponse(response => response.request().method() === 'PUT' && new URL(response.url()).pathname.includes(`/api/bookings/${id}`), { timeout: 20000 });
       await page.locator('#bookingSubmitBtn').click();

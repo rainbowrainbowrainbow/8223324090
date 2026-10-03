@@ -12,20 +12,20 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.82.56">
-    <link rel="stylesheet" href="css/layout.css?v=0.82.56">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.82.56">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.82.56">
-    <link rel="stylesheet" href="css/pages-hr-staff.css?v=0.82.56">
-    <link rel="stylesheet" href="css/pages-hr-foundation.css?v=0.82.56">
-    <link rel="stylesheet" href="css/pages-analytics-vacancy.css?v=0.82.56">
-    <link rel="stylesheet" href="css/modals.css?v=0.82.56">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.82.56">
-    <link rel="stylesheet" href="css/responsive.css?v=0.82.56">
+    <link rel="stylesheet" href="css/base.css?v=0.82.57">
+    <link rel="stylesheet" href="css/layout.css?v=0.82.57">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.82.57">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.82.57">
+    <link rel="stylesheet" href="css/pages-hr-staff.css?v=0.82.57">
+    <link rel="stylesheet" href="css/pages-hr-foundation.css?v=0.82.57">
+    <link rel="stylesheet" href="css/pages-analytics-vacancy.css?v=0.82.57">
+    <link rel="stylesheet" href="css/modals.css?v=0.82.57">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.82.57">
+    <link rel="stylesheet" href="css/responsive.css?v=0.82.57">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/hr-page.css?v=0.82.56">
-    <link rel="stylesheet" href="css/account-access-editor.css?v=0.82.56">
+    <link rel="stylesheet" href="css/hr-page.css?v=0.82.57">
+    <link rel="stylesheet" href="css/account-access-editor.css?v=0.82.57">
 </head>
 <body data-page-group="hr">
     <script>
@@ -234,6 +234,7 @@
                         </nav>
                         <form id="professionWorkspaceForm" novalidate>
                             <section data-profession-workspace-panel="main" class="hr-profession-workspace-panel">
+                                <button type="button" id="professionWorkspacePayConditions" class="btn-secondary" hidden>Варіанти оплати професії</button>
                                 <div id="professionWorkspaceKeyReadonly" class="hr-profession-key-readonly"></div>
                                 <label id="professionWorkspaceKeyCreateField" class="hidden">Технічний key<input id="professionWorkspaceKey" autocomplete="off" placeholder="animator"></label>
                                 <div class="hr-profession-workspace-grid">
@@ -619,13 +620,13 @@
                 <div class="hr-salary-toolbar hr-payroll-profiles-toolbar">
                     <div class="hr-payroll-profiles-title">
                         <strong>Зарплатні профілі</strong>
-                        <span>Базові, персональні та архівні умови оплати без змішування з legacy-ставками.</span>
+                        <span>Іменовані варіанти оплати професій, персональні умови та їх історія.</span>
                     </div>
                     <button type="button" id="btnRefreshPayrollProfiles" class="btn-add hr-salary-secondary">Оновити</button>
                     <button type="button" id="btnPayrollProfileDiagnostics" class="btn-add hr-salary-secondary">Діагностика</button>
                     <button type="button" id="btnPayrollProfileForecast" class="btn-add hr-salary-secondary">Forecast</button>
                     <button type="button" id="btnPayrollProfileBulk" class="btn-add hr-salary-secondary">Bulk</button>
-                    <button type="button" id="btnNewPayrollProfile" class="btn-add">+ Базовий профіль</button>
+                    <button type="button" id="btnNewPayrollProfile" class="btn-add">+ Варіант оплати</button>
                 </div>
                 <section class="hr-payroll-profile-filters" aria-label="Фільтри зарплатних профілів">
                     <input type="search" id="payrollProfileSearch" class="hr-payroll-search" aria-label="Пошук профілю" placeholder="Пошук: назва, професія, власник..." autocomplete="off">
@@ -633,15 +634,15 @@
                         <option value="all">Усі професії</option>
                     </select>
                     <select id="payrollProfileKindFilter" class="hr-team-select" aria-label="Тип профілю">
-                        <option value="all">Shared + personal</option>
-                        <option value="shared">Shared</option>
-                        <option value="personal">Personal</option>
+                        <option value="all">Спільні та персональні</option>
+                        <option value="shared">Спільні для професії</option>
+                        <option value="personal">Персональні</option>
                     </select>
                     <select id="payrollProfileStatusFilter" class="hr-team-select" aria-label="Статус">
                         <option value="all">Усі статуси</option>
-                        <option value="draft">Draft</option>
-                        <option value="active">Active</option>
-                        <option value="archived">Archived</option>
+                        <option value="draft">Чернетка</option>
+                        <option value="active">Чинний</option>
+                        <option value="archived">Архівний</option>
                     </select>
                     <select id="payrollProfileUsageFilter" class="hr-team-select" aria-label="Використання">
                         <option value="all">Використовується + ні</option>
@@ -1269,8 +1270,8 @@
                 </div>
                 <div class="hr-profession-rate-panel">
                     <div class="hr-profession-rate-head">
-                        <strong>Fallback-ставки додаткових професій</strong>
-                        <span>Кожна додаткова професія має власну резервну ставку. Ставки буднів і вихідних задаються у її зарплатному профілі.</span>
+                        <strong>Окремі ставки професій</strong>
+                        <span>Тут зберігаються окремі ставки професій, зокрема основної. Умови буднів і вихідних налаштовуються у зарплатному профілі.</span>
                     </div>
                     <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
                 </div>
@@ -1278,10 +1279,11 @@
                     <div class="hr-staff-payroll-profile-head">
                         <div>
                             <strong>Оплата за професіями</strong>
-                            <span>Окремі ставки буднів і вихідних для основної та кожної додаткової професії: базовий, персональний або тимчасовий профіль.</span>
+                            <span>Погодинна оплата, за вихід або місячний оклад. Для кожної професії: успадковані, персональні чи тимчасові умови з датою початку дії.</span>
                         </div>
                         <button type="button" id="editPayrollProfilesRefresh" class="btn-secondary">Оновити профілі</button>
                     </div>
+                    <label>Умови на дату <input type="date" id="editPayrollConditionsDate" aria-label="Дата перегляду умов оплати"></label>
                     <div id="editStaffPayrollProfiles" class="hr-staff-payroll-profile-list" aria-live="polite"></div>
                     <div class="hr-staff-payroll-preview">
                         <div class="hr-staff-payroll-preview-controls">
@@ -1684,20 +1686,20 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.82.56"></script>
-    <script src="js/config.js?v=0.82.56"></script>
-    <script src="js/notification.js?v=0.82.56"></script>
-    <script src="js/api.js?v=0.82.56"></script>
-    <script src="js/auth.js?v=0.82.56"></script>
-    <script src="js/components/sidebar.js?v=0.82.56"></script>
+    <script src="js/ui.js?v=0.82.57"></script>
+    <script src="js/config.js?v=0.82.57"></script>
+    <script src="js/notification.js?v=0.82.57"></script>
+    <script src="js/api.js?v=0.82.57"></script>
+    <script src="js/auth.js?v=0.82.57"></script>
+    <script src="js/components/sidebar.js?v=0.82.57"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.82.56"></script>
-    <script src="js/hr-pulse-switcher.js?v=0.82.56"></script>
-    <script src="js/staff-schedule-shell.js?v=0.82.56"></script>
-    <script src="js/staff-schedule-loader.js?v=0.82.56"></script>
-    <script src="js/hr-attendance-state.js?v=0.82.56"></script>
-    <script src="js/account-access-editor.js?v=0.82.56"></script>
-    <script src="js/hr-page.js?v=0.82.56"></script>
-    <script src="js/alerts.js?v=0.82.56"></script>
+    <script src="js/ws.js?v=0.82.57"></script>
+    <script src="js/hr-pulse-switcher.js?v=0.82.57"></script>
+    <script src="js/staff-schedule-shell.js?v=0.82.57"></script>
+    <script src="js/staff-schedule-loader.js?v=0.82.57"></script>
+    <script src="js/hr-attendance-state.js?v=0.82.57"></script>
+    <script src="js/account-access-editor.js?v=0.82.57"></script>
+    <script src="js/hr-page.js?v=0.82.57"></script>
+    <script src="js/alerts.js?v=0.82.57"></script>
 </body>
 </html>

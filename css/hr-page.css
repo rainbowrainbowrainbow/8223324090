@@ -10774,3 +10774,41 @@ body.dark-mode .hr-payroll-installment-action { color: #c4b5fd; }
 .hr-checklist-pagination > span {
     flex: 1 1 180px;
 }
+
+/* Explicit per-profession rate removal keeps its control usable on narrow cards. */
+.hr-profession-rate-control [data-remove-profession-rate] {
+    grid-column: 1 / -1; min-height: 44px; padding: 6px 10px; border: 1px solid var(--border-color, #475569);
+    border-radius: 8px; background: transparent; color: inherit; cursor: pointer;
+}
+
+#staffScheduleReturnLink {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* Salary cards reuse theme surfaces inside the staff drawer as well as the catalog. */
+#staffProfilePanelPayroll .hr-staff-payroll-profile-card,
+#staffProfilePanelPayroll .hr-staff-payroll-preview,
+#staffProfilePanelPayroll .hr-staff-payroll-legacy-panel {
+    background: var(--white);
+}
+#staffProfilePanelPayroll .hr-payroll-profile-rate-grid > div {
+    background: var(--gray-50);
+}
+body.dark-mode #staffProfilePanelPayroll .hr-staff-payroll-profile-actions button,
+body.dark-mode #staffProfilePanelPayroll .hr-staff-payroll-profile-head button,
+body.dark-mode #staffProfilePanelPayroll .hr-staff-payroll-preview-controls button,
+[data-theme="dark"] #staffProfilePanelPayroll .hr-staff-payroll-profile-actions button,
+[data-theme="dark"] #staffProfilePanelPayroll .hr-staff-payroll-profile-head button,
+[data-theme="dark"] #staffProfilePanelPayroll .hr-staff-payroll-preview-controls button {
+    color: #5EEAD4;
+}
+body.dark-mode #staffProfilePanelPayroll .hr-payroll-profile-badge,
+[data-theme="dark"] #staffProfilePanelPayroll .hr-payroll-profile-badge {
+    background: rgba(16, 185, 129, 0.18);
+    color: #A7F3D0;
+}

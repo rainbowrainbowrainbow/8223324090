@@ -112,7 +112,7 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(hrPage, /other: \{ tab: 'vacancies' \}/);
         assert.match(hrPage, /window\.location\.replace\('\/training#onboarding'\)/);
         assert.match(hrPage, /payroll: \{ tab: 'salary' \}/);
-        assert.match(hrPage, /new URLSearchParams\(window\.location\.search\)\.get\('employee'\)/);
+        assert.match(hrPage, /const params = new URLSearchParams\(window\.location\.search\)/);
         assert.match(hrPage, /activateHrTab\('team'/);
         assert.match(hrHtml, /id="tab-structure"/);
         assert.match(hrPage, /id: 'reserve'/);

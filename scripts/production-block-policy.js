@@ -20,7 +20,8 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover',
     CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
     CERTIFICATE_CI_GATE: 'certificate-ci-gate',
-    LEAD_UI_CI_GATE: 'lead-ui-ci-gate'
+    LEAD_UI_CI_GATE: 'lead-ui-ci-gate',
+    HR_PAYROLL: 'hr-payroll'
 });
 const CERTIFICATE_QA_RED_PATHS = Object.freeze(['routes/auth.js', 'routes/finance.js']);
 const CERTIFICATE_QA_MIGRATION = 'db/migrations/371_trusted_qa_certificate_lookup.sql';
@@ -79,6 +80,128 @@ const LEAD_UI_CI_CHANGED_PATHS = Object.freeze([
     'tests/production-block-controller.test.js',
     'tests/task-detail-drawer.test.js',
     'tests/ui-check.js'
+]);
+const HR_PAYROLL_MIGRATION = 'db/migrations/374_payroll_day_exceptions.sql';
+const HR_PAYROLL_RED_PATHS = Object.freeze(['.github/workflows/ci.yml', 'routes/payroll.js']);
+// Exact reviewed HR implementation and generated release inventory; no path prefixes or globs.
+const HR_PAYROLL_CHANGED_PATHS = Object.freeze([
+    // Exact v0.82.57 generated release/cache files, reviewed separately from HR runtime.
+    "CHANGELOG.md",
+    "accounting-deposits.html",
+    "afisha.html",
+    "art-director.html",
+    "booking-summary.html",
+    "cashier-payments.html",
+    "center.html",
+    "certificates.html",
+    "chat-settings.html",
+    "chat.html",
+    "checkin.html",
+    "content.html",
+    "copilot.html",
+    "css/assistant-rail.css",
+    "css/pages-shell.css",
+    "css/pages.css",
+    "css/sidebar-aurora.css",
+    "customers.html",
+    "dashboard.html",
+    "data-deletion.html",
+    "demo.html",
+    "designer.html",
+    "designs.html",
+    "docs/integrations/checkbox/IMPLEMENTATION_STATUS.md",
+    "finance.html",
+    "game.html",
+    "graduation.html",
+    "guardian-ops.html",
+    "hermes-studio.html",
+    "index.html",
+    "invite.html",
+    "js/designs-page.js",
+    "landing/index.html",
+    "leads.html",
+    "omni.html",
+    "package-lock.json",
+    "privacy-policy.html",
+    "profile.html",
+    "programs.html",
+    "quiz.html",
+    "report-agent.html",
+    "reports.html",
+    "room.html",
+    "server.js",
+    "shop.html",
+    "sound.html",
+    "staff.html",
+    "status.html",
+    "sw.js",
+    "tasks.html",
+    "terms-of-service.html",
+    "tests/ui-check.js",
+    "timeline-settings.html",
+    "training.html",
+    "warehouse.html",
+    "docs/HR_PAY_RELEASE_NOTES.json",
+
+    "services/parkHrPayrollAccess.js",
+    "tests/park-hr-payroll-access.test.js",
+    "tests/park-hr-staff-card-routes.test.js",
+    "tests/park-hr-today-routes.test.js",
+    "tests/park-staff-schedule-routes.test.js",
+    ".github/workflows/ci.yml",
+    "tests/browser/hr-pay-actual-app-browser-smoke.js",
+    "css/hr-page.css",
+    "css/pages-hr-staff.css",
+    "db/migrations/374_payroll_day_exceptions.sql",
+    "docs/CODEX_PRODUCTION_AUTONOMY.md",
+    "docs/HR_PAY_PROTECTED_RELEASE.md",
+    "docs/HR_PAY_RELEASE_READINESS_2026-10-03.md",
+    "hr.html",
+    "js/finance-page.js",
+    "js/hr-page.js",
+    "js/staff-page.js",
+    "package.json",
+    "routes/hr.js",
+    "routes/payroll.js",
+    "routes/staff.js",
+    "scripts/audit-hr-pay-readiness.js",
+    "scripts/production-block-controller.js",
+    "scripts/production-block-policy.js",
+    "scripts/run-isolated-postgres-tests.js",
+    "services/hrAttendance.js",
+    "services/hrPayReadiness.js",
+    "services/hrPayrollConditions.js",
+    "services/hrPayrollProfiles.js",
+    "services/hrShiftSegments.js",
+    "services/parkStaffScheduleProjection.js",
+    "services/payroll.js",
+    "services/payrollConditionCalculation.js",
+    "services/professions.js",
+    "tests/backoffice-foundation.test.js",
+    "tests/browser/hr-team-browser-smoke.js",
+    "tests/browser/staff-schedule-custom-range-browser-smoke.js",
+    "tests/hr-attendance-clock-in.test.js",
+    "tests/hr-attendance-segments.test.js",
+    "tests/hr-pay-conditions-server.test.js",
+    "tests/hr-pay-conditions-ui.test.js",
+    "tests/hr-pay-rate-safety.test.js",
+    "tests/hr-pay-readiness.test.js",
+    "tests/hr-pay-schedule-draft.test.js",
+    "tests/hr-payroll-profiles-service.test.js",
+    "tests/hr-profession-readiness-static.test.js",
+    "tests/hr-shift-segments-service.test.js",
+    "tests/integration/hr-attendance-compensation-snapshot.integration.test.js",
+    "tests/integration/payroll-profiles-conditions.integration.test.js",
+    "tests/integration/payroll-profiles.integration.test.js",
+    "tests/integration/payroll-fullstack-settlement.integration.test.js",
+    "tests/isolated-postgres-test-flow.test.js",
+    "tests/integration/payroll-simultaneous-additional.integration.test.js",
+    "tests/payroll-profession-allocation.test.js",
+    "tests/payroll-reporting-routes.contract.js",
+    "tests/production-block-controller.test.js",
+    "tests/staff-schedule-business-context.test.js",
+    "tests/staff-schedule-history-static.test.js",
+    "tests/staff-schedule-segments-ui.test.js"
 ]);
 const SYS_MB_PROTECTED_PATH_PATTERNS = Object.freeze([
     /^config\/permissionRegistry\.js$/,
@@ -220,6 +343,17 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+        const changed = normalizePathList(changedPaths);
+        fail(redPaths.includes('routes/payroll.js') && redPaths.every(file => HR_PAYROLL_RED_PATHS.includes(file)),
+            'HR/payroll permits only its exact payroll route and optional HR CI gate', 'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
+        fail(changed.every(file => HR_PAYROLL_CHANGED_PATHS.includes(file))
+            && ['services/hrPayrollConditions.js', 'services/payrollConditionCalculation.js',
+                'tests/integration/payroll-profiles-conditions.integration.test.js', HR_PAYROLL_MIGRATION].every(file => changed.includes(file)),
+            'HR/payroll requires its exact implementation, isolated regressions and additive migration',
+            'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: [...redPaths] };
+    }
     if (workflow === PROTECTED_WORKFLOWS.LEAD_UI_CI_GATE) {
         const changed = normalizePathList(changedPaths);
         fail(JSON.stringify(redPaths) === JSON.stringify(LEAD_UI_CI_RED_PATHS),
@@ -364,6 +498,11 @@ function buildManifest(facts, options = {}) {
             'Lead UI CI release cannot include migrations or production QA records',
             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
     }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+        validateHrPayrollScope(qaScope, migrations);
+        fail(isNewerVersion(facts.releaseVersion, facts.live?.version),
+            'HR/payroll needs a prepared release commit newer than live', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    }
     const redMigrations = migrations.filter(item => item.red);
     fail(facts.descendsFromLive === true, 'Candidate HEAD is not a descendant of live SHA', 'PRODUCTION_BLOCK_NOT_DESCENDANT');
     fail(redMigrations.length === 0, 'Candidate includes a Red migration', 'PRODUCTION_BLOCK_RED_MIGRATION', {
@@ -397,6 +536,9 @@ function buildManifest(facts, options = {}) {
             migrations: Object.fromEntries(migrations.map(item => [item.file, item.rollback || 'No automatic rollback documented']))
         },
         changedPaths: changed,
+        ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.HR_PAYROLL ? {
+            preparedRelease: { sha: head, version: facts.releaseVersion, baseVersion: facts.live.version }
+        } : {}),
         runtimeState: {
             releaseAttempts: 0,
             lastAttemptAt: null,
@@ -461,7 +603,28 @@ function validateManifest(manifest, options = {}) {
             'Lead UI CI release cannot include migrations or production QA records',
             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
     }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+        validateHrPayrollScope(qaScope, manifest.migrationClassifications);
+        fail(JSON.stringify(manifest.allowedMigrationFiles) === JSON.stringify([HR_PAYROLL_MIGRATION]),
+            'HR/payroll migration inventory differs', 'PRODUCTION_BLOCK_MIGRATION_DRIFT');
+        fail(manifest.preparedRelease?.sha === manifest.initialHeadSha
+            && isNewerVersion(manifest.preparedRelease?.version, manifest.preparedRelease?.baseVersion),
+            'HR/payroll requires an exact prepared release SHA', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    }
     return manifest;
+}
+
+function isNewerVersion(candidate, base) {
+    if (!/^\d+\.\d+\.\d+$/.test(String(candidate)) || !/^\d+\.\d+\.\d+$/.test(String(base))) return false;
+    const left = candidate.split('.').map(Number), right = base.split('.').map(Number);
+    const first = left.findIndex((value, index) => value !== right[index]);
+    return first >= 0 && left[first] > right[first];
+}
+function validateHrPayrollScope(qa, migrations) {
+    fail(qa.enabled === false && migrations.length === 1 && migrations[0].file === HR_PAYROLL_MIGRATION
+        && migrations[0].kind === 'schema' && migrations[0].red === false,
+        'HR/payroll permits only migration 374 schema and read-only production QA',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
 }
 
 function confirmationValue(manifest) {
@@ -485,7 +648,9 @@ function warningText(manifest) {
         `Дія: випуск ${manifest.releaseLabel}.`,
         '',
         'Наслідки:',
-        `1. Release commit — descendant candidate SHA ${manifest.initialHeadSha} — буде запушено у ${manifest.allowedBranch}.`,
+        manifest.preparedRelease
+            ? `1. Точний готовий release SHA ${manifest.initialHeadSha} буде запушено у ${manifest.allowedBranch}.`
+            : `1. Release commit — descendant candidate SHA ${manifest.initialHeadSha} — буде запушено у ${manifest.allowedBranch}.`,
         '2. Запуск exact-SHA GitHub CI.',
         `3. Deploy у Railway service ${manifest.railwayServiceId}.`,
         `4. Застосування migrations: ${migrations}.`,

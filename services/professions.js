@@ -668,6 +668,7 @@ async function loadProfessionWorkspaceCatalog(db, options = {}) {
                     COALESCE(s.rate_unit, 'hour') AS rate_unit,
                     COALESCE(sra.status, CASE WHEN COALESCE(s.is_active, true) THEN 'active' ELSE 'inactive' END) AS assignment_status,
                     COALESCE(sra.admission_status, CASE WHEN pa.profession_key = s.role_type THEN 'approved' ELSE 'pending' END) AS admission_status,
+                    (sra.staff_id IS NOT NULL) AS has_paid_assignment,
                     COALESCE(sra.internship_status, CASE WHEN pa.profession_key = 'intern' THEN 'in_progress' ELSE 'none' END) AS internship_status,
                     s.company_structure_node_id
              FROM profession_assignments pa
@@ -753,6 +754,15 @@ async function loadProfessionWorkspaceCatalog(db, options = {}) {
             rateMode: explicitRate == null ? 'fallback' : 'explicit',
             explicitRate,
             storedExplicitRate,
+            paidRoleEligibility: getPaidProfessionEligibility({
+                hasPaidAssignment: row.has_paid_assignment,
+                isActive: row.is_active !== false,
+                assignmentStatus: row.assignment_status || 'active',
+                admissionStatus: row.admission_status || 'pending',
+                rateUnit: 'hour',
+                explicitRate: storedExplicitRate,
+                rateSource: storedExplicitRate == null ? 'staff.hourly_rate' : 'staff_profession_rates.hourly_rate'
+            }),
             ignoredExplicitRate: rateIgnored ? storedExplicitRate : null,
             rateIgnored,
             fallbackRate,
@@ -899,7 +909,85 @@ async function loadProfessionWorkspace(db, identity = {}, options = {}) {
     };
 }
 
+function getPaidProfessionEligibility(person = {}) {
+    let code = null;
+    let reason = '';
+    let blocker = null;
+    if (person.hasPaidAssignment === false) {
+        code = 'HR_SHIFT_PAID_ROLE_NOT_ALLOWED';
+        blocker = 'assignment_missing';
+        reason = 'Професію ще не призначено працівнику з погодженим допуском.';
+    } else if (person.isActive === false || person.assignmentStatus !== 'active') {
+        code = 'HR_SHIFT_PAID_ROLE_NOT_ALLOWED';
+        blocker = 'assignment_inactive';
+        reason = 'Працівник або призначення цієї професії неактивні.';
+    } else if (person.admissionStatus !== 'approved') {
+        code = 'HR_SHIFT_PAID_ROLE_NOT_ALLOWED';
+        blocker = 'admission_required';
+        reason = 'Допуск до цієї професії ще не погоджено.';
+    } else if (person.rateUnit !== 'hour') {
+        code = 'HR_SHIFT_PAID_ROLE_RATE_UNIT_UNSUPPORTED';
+        blocker = 'rate_unit_unsupported';
+        reason = 'Для додаткової оплати потрібна погодинна ставка; денна або місячна оплата тут не підтримується.';
+    } else if (!(Number(person.explicitRate) > 0 && Number.isFinite(Number(person.explicitRate)))
+        || person.rateSource !== 'staff_profession_rates.hourly_rate') {
+        code = 'HR_SHIFT_PAID_ROLE_RATE_REQUIRED';
+        blocker = 'rate_required';
+        reason = 'Для цієї професії немає окремої погодинної ставки.';
+    }
+    return { available: code === null, code, blocker, reason };
+}
+
+function normalizeStaffProfessionRateChanges(value, allowedProfessionKeys = []) {
+    if (!Array.isArray(value)) throw professionConditionError('profession_rates must be an array');
+    const allowed = new Set(allowedProfessionKeys.map(normalizeProfessionKey));
+    const seen = new Set();
+    return value.map(row => {
+        const key = normalizeRequestedProfessionKey(row?.profession_key ?? row?.professionKey ?? row?.key);
+        if (!key || !allowed.has(key) || seen.has(key)) {
+            throw professionConditionError('Invalid or duplicate profession rate key');
+        }
+        seen.add(key);
+        if (row.remove === true) return { profession_key: key, remove: true };
+        const rate = Math.round(Number(row.hourly_rate ?? row.hourlyRate ?? row.rate) * 100) / 100;
+        if (!Number.isFinite(rate) || rate <= 0 || rate > 1000000) {
+            throw professionConditionError('rate must be greater than 0 and no more than 1000000');
+        }
+        return { profession_key: key, hourly_rate: rate };
+    });
+}
+
+// The caller holds the staff row lock. Omission never removes another rate.
+async function applyStaffProfessionRateChanges(db, staffId, changes = []) {
+    const current = await db.query(
+        'SELECT profession_key, hourly_rate FROM staff_profession_rates WHERE staff_id = $1 ORDER BY profession_key FOR UPDATE',
+        [staffId]
+    );
+    const rates = new Map(current.rows.map(row => [row.profession_key, Number(row.hourly_rate)]));
+    for (const row of changes) {
+        if (row.remove === true) {
+            await db.query('DELETE FROM staff_profession_rates WHERE staff_id = $1 AND profession_key = $2',
+                [staffId, row.profession_key]);
+            rates.delete(row.profession_key);
+        } else if (rates.get(row.profession_key) !== row.hourly_rate) {
+            await db.query(
+                `INSERT INTO staff_profession_rates (staff_id, profession_key, hourly_rate, updated_at)
+                 VALUES ($1, $2, $3, NOW())
+                 ON CONFLICT (staff_id, profession_key) DO UPDATE SET
+                    hourly_rate = EXCLUDED.hourly_rate, updated_at = NOW()`,
+                [staffId, row.profession_key, row.hourly_rate]
+            );
+            rates.set(row.profession_key, row.hourly_rate);
+        }
+    }
+    return [...rates].sort(([left], [right]) => left.localeCompare(right, 'en'))
+        .map(([profession_key, hourly_rate]) => ({ profession_key, hourly_rate }));
+}
+
 module.exports = {
+    getPaidProfessionEligibility,
+    normalizeStaffProfessionRateChanges,
+    applyStaffProfessionRateChanges,
     parseJsonArray,
     parseTextList,
     normalizeProfessionKey,

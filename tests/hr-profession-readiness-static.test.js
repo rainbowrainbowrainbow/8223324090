@@ -441,7 +441,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrRoute, /company_structure_node_id/);
         assert.match(hrRoute, /profession_rates/);
         assert.match(hrRoute, /await client\.query\('BEGIN'\)/);
-        assert.match(hrRoute, /replaceStaffProfessionRates\(client, req\.params\.id, normalizedProfessionRates\)/);
+        assert.match(hrRoute, /applyStaffProfessionRateChanges\(client, req\.params\.id, normalizedProfessionRates\)/);
         assert.match(hrRoute, /await client\.query\('COMMIT'\)/);
         assert.match(hrRoute, /router\.put\('\/company-structure', requireHrManage/);
         assert.match(hrRoute, /Object\.prototype\.hasOwnProperty\.call\(source, 'baseUpdatedAt'\)/);

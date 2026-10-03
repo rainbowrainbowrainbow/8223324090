@@ -29,6 +29,7 @@ const {
 const { closePayrollPeriod } = require('../services/hrPayrollPeriod');
 const { PAYROLL_HISTORICAL_CLASSIFICATION_MESSAGES } = require('../services/payrollSettlement');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
 const {
     requireWritableBusinessScope,
     resolveBusinessScope
@@ -36,7 +37,7 @@ const {
 
 const log = createLogger('PayrollRoutes');
 
-router.use(requireLegacyBusinessSurface('payroll'));
+router.use(requireParkHrPayrollAccess('payroll', requireLegacyBusinessSurface('payroll'), pool));
 
 function sendError(res, err, fallback = 'Internal server error') {
     const status = err.status || err.statusCode || 500;
@@ -410,6 +411,7 @@ router.get('/export', requireAction('view_payroll'), requireAction('export_data'
                 item.profile_version_id || '',
                 item.applied_rule || '',
                 item.formula || '',
+                item.exception_id || '', item.exception_reason || '', item.exception_author || '',
                 item.amount || 0,
                 item.allocation_source || 'none'
             ].join('|')).join(' / ');
@@ -591,6 +593,42 @@ router.get('/export-xlsx', requireAction('view_payroll'), requireAction('export_
         summary.autoFilter = { from: 'A1', to: 'AR1' };
         summary.getRow(1).font = { bold: true };
 
+        const baseLines = workbook.addWorksheet('Base lines');
+        baseLines.columns = [
+            { header: 'staff_id', key: 'staff_id', width: 12 },
+            { header: 'staff_name', key: 'staff_name', width: 28 },
+            { header: 'profession', key: 'profession', width: 24 },
+            { header: 'kind', key: 'kind', width: 14 },
+            { header: 'work_date', key: 'work_date', width: 14 },
+            { header: 'actual_minutes', key: 'actual_minutes', width: 18 },
+            { header: 'days', key: 'days', width: 12 },
+            { header: 'rate', key: 'rate', width: 18 },
+            { header: 'rate_unit', key: 'rate_unit', width: 14 },
+            { header: 'rate_source', key: 'rate_source', width: 34 },
+            { header: 'profile_title', key: 'profile_title', width: 30 },
+            { header: 'formula', key: 'formula', width: 40 },
+            { header: 'exception_id', key: 'exception_id', width: 16 },
+            { header: 'exception_reason', key: 'exception_reason', width: 40 },
+            { header: 'exception_author', key: 'exception_author', width: 25 },
+            { header: 'amount', key: 'amount', width: 20 }
+        ];
+        for (const row of report.staff) {
+            for (const item of row.professionRateSummary || []) {
+                if (item.kind === 'simultaneous_additional') continue;
+                baseLines.addRow({
+                    staff_id: row.staffId, staff_name: row.name,
+                    profession: item.profession_key, kind: item.kind || 'base', work_date: item.work_date || null,
+                    actual_minutes: item.actual_minutes, days: item.days, rate: item.rate,
+                    rate_unit: item.rate_unit, rate_source: item.rate_source,
+                    profile_title: item.profile_title || null, formula: item.formula || null, amount: item.amount,
+                    exception_id: item.exception_id || null, exception_reason: item.exception_reason || null, exception_author: item.exception_author || null
+                });
+            }
+        }
+        baseLines.views = [{ state: 'frozen', ySplit: 1 }];
+        baseLines.autoFilter = { from: 'A1', to: 'P1' };
+        baseLines.getRow(1).font = { bold: true };
+
         const additionalLines = workbook.addWorksheet('Additional lines');
         additionalLines.columns = [
             { header: 'staff_id', key: 'staff_id', width: 12 },
@@ -608,6 +646,10 @@ router.get('/export-xlsx', requireAction('view_payroll'), requireAction('export_
             { header: 'additional_amount', key: 'amount', width: 20 },
             { header: 'policy_version', key: 'policy_version', width: 30 },
             { header: 'formula', key: 'formula', width: 34 },
+            { header: 'rate_unit', key: 'rate_unit', width: 14 },
+            { header: 'exception_id', key: 'exception_id', width: 16 },
+            { header: 'exception_reason', key: 'exception_reason', width: 40 },
+            { header: 'exception_author', key: 'exception_author', width: 25 },
             { header: 'status', key: 'status', width: 16 },
             { header: 'blocker_code', key: 'blocker_code', width: 48 },
             { header: 'blocker_message', key: 'blocker_message', width: 64 }
@@ -630,6 +672,8 @@ router.get('/export-xlsx', requireAction('view_payroll'), requireAction('export_
                     amount: role.amount ?? null,
                     policy_version: role.policyVersion || null,
                     formula: role.formula || null,
+                    rate_unit: role.rateUnit || null, exception_id: role.exceptionId || null,
+                    exception_reason: role.exceptionReason || null, exception_author: role.exceptionAuthor || null,
                     status: role.status,
                     blocker_code: role.blockerCode || null,
                     blocker_message: role.blockerMessage || null
@@ -637,7 +681,7 @@ router.get('/export-xlsx', requireAction('view_payroll'), requireAction('export_
             }
         }
         additionalLines.views = [{ state: 'frozen', ySplit: 1 }];
-        additionalLines.autoFilter = { from: 'A1', to: 'R1' };
+        additionalLines.autoFilter = { from: 'A1', to: 'V1' };
         additionalLines.getRow(1).font = { bold: true };
 
         const paymentsSheet = workbook.addWorksheet('Payments');

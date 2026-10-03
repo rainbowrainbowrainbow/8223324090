@@ -26,7 +26,12 @@ const report = {
             deductionsAmount: 0,
             advancesAmount: 0,
             netAmount: 2600,
-            professionRateSummary: [],
+            professionRateSummary: [{
+                profession_key: 'reception', kind: 'base', work_date: '2026-07-22',
+                actual_minutes: 540, actual_hours: 9, days: 1, rate: 100, rate_unit: 'hour',
+                rate_source: 'staff_profession_rates.hourly_rate', profile_title: null,
+                formula: '9h × 100', amount: 900
+            }],
             reconciliation: { days: [] },
             payrollBlockingIssues: [],
             payrollTransparency: {
@@ -202,6 +207,7 @@ test('CSV keeps ready and blocked additional payroll lines aligned with report b
         status: 'ready',
         blockerCode: ''
     });
+    assert.match(rows[0]['Розподіл за професіями'], /9h × 100/);
     assert.equal(rows[1].additional_amount, '0');
     assert.equal(rows[1].additional_line_status, 'blocked');
     assert.equal(rows[1].blocker_code, blockedCode);
@@ -217,6 +223,12 @@ test('XLSX summary and additional-lines sheets expose the same blocker contract'
 
     const summary = workbook.getWorksheet('Payroll');
     const lines = workbook.getWorksheet('Additional lines');
+    const bases = workbook.getWorksheet('Base lines');
+    assert.ok(bases);
+    assert.equal(xlsxValue(bases, 2, 'rate_unit'), 'hour');
+    assert.equal(xlsxValue(bases, 2, 'formula'), '9h × 100');
+    assert.equal(xlsxValue(bases, 2, 'rate_source'), 'staff_profession_rates.hourly_rate');
+    assert.equal(xlsxValue(bases, 2, 'amount'), 900);
     assert.ok(summary);
     assert.ok(lines);
     assert.equal(xlsxValue(summary, 2, 'physical_hours'), 9);

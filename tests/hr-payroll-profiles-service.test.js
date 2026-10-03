@@ -310,8 +310,8 @@ test('staff card payroll tab exposes profile assignments, preview, onboarding hi
     assert.match(hrPageCode, /loadStaffPayrollProfilePreview/);
     assert.match(hrPageCode, /showStaffPayrollProfileSimulator/);
     assert.match(hrPageCode, /\/payroll-profiles\/simulator/);
-    assert.match(hrPageCode, /legacy не використовується/);
-    assert.match(hrPageCode, /legacy fallback:/);
+    assert.match(hrPageCode, /Резервна ставка/);
+    assert.match(hrPageCode, /Резервні значення старої моделі/);
     assert.match(hrPageCode, /ensureStaffPayrollProfileCanMutate/);
     assert.match(hrPageCode, /ensureAccountOnboardingPayrollProfiles/);
     assert.match(hrPageCode, /Спершу збережіть робочі дані працівника/);
@@ -327,7 +327,7 @@ test('HR team browser smoke covers staff-card payroll profile panel', () => {
     assert.match(hrTeamBrowserSmokeCode, /\/payroll-profile-assignments\?include_past=true/);
     assert.match(hrTeamBrowserSmokeCode, /#editStaffPayrollProfiles/);
     assert.match(hrTeamBrowserSmokeCode, /#editPayrollProfileSimulator/);
-    assert.match(hrTeamBrowserSmokeCode, /legacy не використовується/);
+    assert.match(hrTeamBrowserSmokeCode, /Профіль має пріоритет/);
 });
 
 test('payroll profile browser smoke is wired into npm and CI', () => {

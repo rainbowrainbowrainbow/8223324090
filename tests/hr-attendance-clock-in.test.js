@@ -72,6 +72,12 @@ function createClockInDb(options = {}) {
                 });
                 return { rows: [] };
             }
+
+            if (text.startsWith('SELECT * FROM staff WHERE')) return { rows: [{ id: Number(params?.[0]?.[0] || 7), role_type: 'animator', hourly_rate: 100, rate_unit: 'hour', is_active: true }] };
+            if (text.includes('FROM staff_payroll_profile_assignments') || text.includes('FROM payroll_profiles')
+                || text.includes('FROM payroll_day_exceptions') || text.includes('FROM payroll_schemes')
+                || text.includes('FROM hr_compensation_policies') || text.includes('FROM staff_role_assignments')
+                || text.includes('FROM staff_profession_rates')) return { rows: [] };
             throw new Error(`Unexpected SQL: ${text}`);
         }
     };
@@ -281,6 +287,12 @@ test('terminal attendance status creates a finalized zero-minute compensation sn
                 audits.push(JSON.parse(params[2]));
                 return { rows: [] };
             }
+
+            if (text.startsWith('SELECT * FROM staff WHERE')) return { rows: [{ id: Number(params?.[0]?.[0] || 7), role_type: 'animator', hourly_rate: 100, rate_unit: 'hour', is_active: true }] };
+            if (text.includes('FROM staff_payroll_profile_assignments') || text.includes('FROM payroll_profiles')
+                || text.includes('FROM payroll_day_exceptions') || text.includes('FROM payroll_schemes')
+                || text.includes('FROM hr_compensation_policies') || text.includes('FROM staff_role_assignments')
+                || text.includes('FROM staff_profession_rates')) return { rows: [] };
             throw new Error(`Unexpected SQL: ${text}`);
         }
     };

@@ -114,7 +114,7 @@ async function insertAttendance(pool, staffId, date, startTime, endTime) {
     const minutes = Math.round((clockOut.getTime() - clockIn.getTime()) / 60000);
     const segmentId = `codex-qa-${date}`;
     const compensationSnapshot = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         state: 'final',
         manualReview: false,
         planSource: 'test_fixture',
@@ -163,6 +163,9 @@ async function insertAttendance(pool, staffId, date, startTime, endTime) {
         }],
         issues: []
     };
+    const { loadPayrollConditionContext, resolvePayrollConditions } = require('../../services/hrPayrollConditions');
+    const context = await loadPayrollConditionContext(pool, [staffId], { from: date, to: date });
+    compensationSnapshot.compensationAllocations[0].conditions = resolvePayrollConditions(context, staffId, 'codex_qa_payroll_202608', date);
     const result = await pool.query(
         `INSERT INTO hr_time_records
             (staff_id, record_date, clock_in, clock_out, planned_start, planned_end,

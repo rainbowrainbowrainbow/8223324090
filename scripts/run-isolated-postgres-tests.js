@@ -39,6 +39,7 @@ const MODES = {
     permissions: ['tests/integration/permission-capabilities.integration.test.js'],
     payroll: [
         'tests/integration/payroll-profiles.integration.test.js',
+        'tests/integration/payroll-profiles-conditions.integration.test.js',
         'tests/integration/payroll-simultaneous-additional.integration.test.js',
         'tests/integration/zrs-payroll-period-lock.integration.test.js',
         'tests/integration/payroll-installments.integration.test.js',
@@ -131,7 +132,7 @@ const MODES = {
     ],
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
     'upload-backfill': ['tests/integration/legacy-upload-backfill.integration.test.js'],
-    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js'],
+    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js'],
     qa: [
         'tests/integration/live-multi-segment-qa.integration.test.js',
         'tests/integration/live-multi-segment-runner.integration.test.js'
@@ -684,6 +685,7 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_ACCOUNT_ONBOARDING_INTEGRATION: testFile.includes('account-onboarding.integration') ? 'true' : 'false',
         RUN_HR_LEGACY_BACKFILL_INTEGRATION: testFile.includes('hr-legacy-hire-backfill') ? 'true' : 'false',
         RUN_LEGACY_UPLOAD_BACKFILL_INTEGRATION: testFile.includes('legacy-upload-backfill.integration') ? 'true' : 'false',
+        RUN_HR_PAY_ACTUAL_APP_BROWSER: testFile.includes('hr-pay-actual-app-browser-smoke') ? 'true' : 'false',
         RUN_HR_ONBOARDING_FULLSTACK_BROWSER: testFile.includes('hr-onboarding-fullstack-browser-smoke') ? 'true' : 'false',
         RUN_FRESH_DB_STARTUP_INTEGRATION: testFile.includes('fresh-db-startup') ? 'true' : 'false',
         RUN_LIVE_MULTI_SEGMENT_QA_INTEGRATION: testFile.includes('live-multi-segment') ? 'true' : 'false'

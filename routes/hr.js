@@ -29,6 +29,7 @@ const {
     resolveBusinessScope
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
 const { parkMonthlyPeriod, loadParkHrMonthlyReport } = require('../services/parkHrMonthlyReportRead');
 const {
     lockAttendanceWriteMaintenance,
@@ -74,6 +75,8 @@ const {
 } = require('../services/hrOnboarding');
 const {
     parseTextList,
+    normalizeStaffProfessionRateChanges,
+    applyStaffProfessionRateChanges,
     normalizeProfessionKey,
     normalizeSecondaryProfessions,
     normalizeProfessionCatalogRow,
@@ -378,6 +381,7 @@ const HR_PAYROLL_RESPONSE_FIELDS = new Set([
     'hourly_rate', 'hourlyRate', 'rate_unit', 'rateUnit', 'estimated_salary', 'estimatedSalary',
     'salary', 'base_salary', 'baseSalary', 'total_salary', 'totalSalary',
     'profession_rates', 'professionRates', 'profession_rate_summary', 'professionRateSummary',
+    'compensation_snapshot', 'compensationSnapshot', 'conditions',
     'allocation_issues', 'allocationIssues', 'reconciliation', 'totalFOP', 'zrs', 'zrsAmount'
 ]);
 
@@ -415,10 +419,10 @@ function shapeHrStaffList(rows, capability, user) {
     return shapeHrPayrollFields(rows, user);
 }
 router.use(requireHrCapabilityContract);
-router.use(requireLegacyBusinessSurface('staff', {
+router.use(requireParkHrPayrollAccess('hr', requireLegacyBusinessSurface('staff', {
     parkScheduleRouter: 'hr', parkHrStaffCardRead: true, parkHrMonthlyReportRead: true,
     parkHrOnboardingRead: true, parkHrCompanyStructureRead: true
-}));
+}), pool));
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 
@@ -4308,6 +4312,27 @@ router.put('/payroll-profiles/:id/archive', requirePayrollRules, async (req, res
     }
 });
 
+// Salary permissions and business-scope middleware are inherited from the HR router.
+router.get('/staff/:id/payroll-conditions', requirePayrollView, async (req, res) => {
+    try {
+        const { getPayrollDayConditions } = require('../services/hrPayrollConditions');
+        if (!['additional', 'base_replacement'].includes(req.query.purpose || 'base_replacement')) {
+            return res.status(400).json({ success: false, code: 'PAYROLL_CONDITIONS_PURPOSE_INVALID', error: 'Невірне призначення оплати' });
+        }
+        const date = require('../services/attendanceWriteLock').normalizeAttendanceWriteDate(req.query.date);
+        const data = await getPayrollDayConditions(pool, Number(req.params.id), req.query.professionKey, date, req.query.purpose || 'base_replacement');
+        res.json({ success: true, data });
+    } catch (error) { sendPayrollProfileFailure(res, error, 'GET /hr/staff/:id/payroll-conditions error'); }
+});
+
+router.put('/staff/:id/payroll-day-exception', requirePayrollView, requirePayrollRules, async (req, res) => {
+    try {
+        const { savePayrollDayException } = require('../services/hrPayrollConditions');
+        const result = await savePayrollDayException(pool, { ...req.body, staffId: req.params.id }, req.user);
+        res.json({ success: true, data: result });
+    } catch (error) { sendPayrollProfileFailure(res, error, 'PUT /hr/staff/:id/payroll-day-exception error'); }
+});
+
 router.get('/staff/:id/payroll-profile-assignments', requirePayrollView, async (req, res) => {
     try {
         const data = await listStaffPayrollProfileAssignments(req.params.id, {
@@ -4493,7 +4518,7 @@ router.put('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
         const rateRows = rows
             .filter(row => row.hourly_rate !== null && Number(row.hourly_rate) > 0)
             .map(row => ({ profession_key: row.profession_key, hourly_rate: row.hourly_rate }));
-        await replaceStaffProfessionRates(client, req.params.id, rateRows);
+        await applyStaffProfessionRateChanges(client, req.params.id, rateRows);
         await client.query('COMMIT');
         await auditLog('staff_role_assignments_update', parseInt(req.params.id), req.user?.username, {
             primary_role: primaryRole,
@@ -4743,7 +4768,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             secondary_professions: hasSecondaryProfessions ? professionValidation.secondaryProfessions : beforeStaff.secondary_professions
         });
         const normalizedProfessionRates = hasProfessionRates
-            ? normalizeStaffProfessionRates(professionRateInput, effectiveProfessionKeys)
+            ? normalizeStaffProfessionRateChanges(professionRateInput, effectiveProfessionKeys)
             : [];
         const beforeRateRows = hasProfessionRates
             ? (await pool.query(
@@ -4840,7 +4865,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
                 return res.status(404).json({ success: false, error: 'Не знайдено' });
             }
             if (hasProfessionRates) {
-                afterRateRows = await replaceStaffProfessionRates(client, req.params.id, normalizedProfessionRates);
+                afterRateRows = await applyStaffProfessionRateChanges(client, req.params.id, normalizedProfessionRates);
                 result.rows[0].profession_rates = afterRateRows;
             }
             if (fieldPresence.hr_pool_status && ['blacklisted', 'reserve'].includes(requestedPoolStatus)) {
@@ -4891,7 +4916,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         res.json({ success: true, data: result.rows[0], schedule_cleanup: scheduleCleanup });
     } catch (err) {
         log.error('PUT /hr/staff/:id error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode === 400 ? 'Перевірте професію та додатну ставку. Видалення ставки потрібно обрати явно.' : 'Помилка сервера' });
     }
 });
 

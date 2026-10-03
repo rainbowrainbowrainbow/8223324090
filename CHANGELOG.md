@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.59 - Фінанси та точні розрахунки інтерфейсу
+
+### Release / Versioning / (03.10.2026) [codex]
+- **Фінанси та точні розрахунки інтерфейсу** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.58 - Заняття: стабільний розклад і журнал
 
 ### Release / Versioning / (03.10.2026) [codex]

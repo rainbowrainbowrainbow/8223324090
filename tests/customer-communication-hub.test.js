@@ -15,6 +15,9 @@ function makePool(state) {
             if (text.includes('SELECT * FROM customers WHERE id = $1')) {
                 return { rows: state.customer ? [state.customer] : [] };
             }
+            if (text.includes('FROM conversations c JOIN customers p')) {
+                return { rows: state.exactConversations || [] };
+            }
             if (text.includes('FROM leads l')) {
                 return { rows: state.lead ? [state.lead] : [] };
             }
@@ -95,7 +98,7 @@ describe('customer communication hub context', () => {
         assert.equal(context.live.primaryConversation.replyOwner, 'Manager');
         assert.equal(context.live.primaryConversation.replyOwnerUserId, 501);
         assert.equal(context.live.primaryConversation.replySlaState, 'on_track');
-        assert.equal(context.links.omniExact, '/omni?conversation=903');
+        assert.equal(context.links.omniExact, '/omni?conversation=903&businessContext=event_genix');
         assert.equal(context.links.omniSuggested, null);
         assert.equal(context.links.leadWorkspace, '/sales-funnel?lead=501');
         assert.equal(context.links.booking, '/?date=2099-05-12&highlight=BK-701');
@@ -128,9 +131,10 @@ describe('customer communication hub context', () => {
         });
 
         assert.equal(context.live.status, 'suggested');
-        assert.equal(context.live.primaryConversation.confidence, 'suggested');
+        assert.equal(context.live.primaryConversation, null);
         assert.equal(context.links.omniExact, null);
-        assert.equal(context.links.omniSuggested, '/omni?conversation=904');
+        assert.equal(context.links.omniSuggested, null);
+        assert.match(context.links.omniSearch, /search=/);
         assert.match(context.live.explanation, /не записано як точна CRM/i);
     });
 
@@ -186,7 +190,7 @@ describe('customer communication hub context', () => {
         assert.equal(context.live.primaryConversation, null);
         assert.equal(context.links.omniExact, null);
         assert.equal(context.links.omniSuggested, null);
-        assert.equal(context.links.omniSearch, '/omni?search=%2B380000000003');
+        assert.equal(context.links.omniSearch, '/omni?search=%2B380000000003&businessContext=event_genix');
     });
 
     it('marks inbound-only channels as not send-capable', async () => {
@@ -229,14 +233,15 @@ describe('customer communication hub context', () => {
         assert.match(customersHtml, /customer-hub-pill\.waiting/);
     });
 
-    it('renders a truthful interactive dialog icon from exact, suggested, or search links', () => {
+    it('renders a truthful action from exact or search links and a chooser for multiple conversations', () => {
         const repoRoot = path.resolve(__dirname, '..');
         const customersJs = fs.readFileSync(path.join(repoRoot, 'js/customers-page.js'), 'utf8');
         const customersHtml = fs.readFileSync(path.join(repoRoot, 'customers.html'), 'utf8');
 
         assert.match(customersJs, /function customerHubDialogTarget/);
         assert.match(customersJs, /links\.omniExact/);
-        assert.match(customersJs, /links\.omniSuggested/);
+        assert.match(customersJs, /links\.omniChoose/);
+        assert.match(customersJs, /function renderCustomerOmniNavigation/);
         assert.match(customersJs, /links\.omniSearch/);
         assert.match(customersJs, /function customerHubDialogIcon/);
         assert.match(customersJs, /if \(!target\?\.href\) return ''/);

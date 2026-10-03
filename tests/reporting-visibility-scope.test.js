@@ -116,7 +116,10 @@ test('cross-entity search and workspace shortcuts cannot bypass booking/task vis
 
     const customers = read('routes/customers.js');
     assert.match(customers, /router\.use\(requireRole\('admin', 'reception'\)\)/, 'customer routes should match page/sidebar access');
-    assert.match(customers, /function scopedBookingAggregateSql/, 'customer booking aggregates should be scoped in one reusable helper');
+    assert.match(customers, /buildScopedBookingAggregateSql: scopedBookingAggregateSql/, 'customer routes should use the shared live aggregate');
+    const customerMetrics = read('services/customerBookingMetrics.js');
+    assert.match(customerMetrics, /function buildScopedBookingAggregateSql/, 'customer booking aggregates should be scoped in one reusable helper');
+    assert.match(customerMetrics, /getVisibleBookingScope\(user, params, alias\)/, 'shared customer aggregate should preserve canonical booking scope');
     assert.match(customers, /getVisibleBookingScope\(req\.user, bookingParams, 'b'\)/, 'customer booking history should reuse canonical booking visibility');
 
     const leads = read('routes/leads.js');

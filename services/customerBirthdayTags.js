@@ -1,105 +1,13 @@
 const { createLogger } = require('../utils/logger');
 
-const BIRTHDAY_TAG_KEY = 'birthday';
-const BIRTHDAY_TAG_LABEL = 'Іменинник';
-const BIRTHDAY_TAG_COLOR = '#EC4899';
+const {
+    BIRTHDAY_TAG_KEY, BIRTHDAY_TAG_LABEL, BIRTHDAY_TAG_COLOR, BIRTHDAY_MONTH_KEYS,
+    BIRTHDAY_SYSTEM_TAG_KEYS, BIRTHDAY_TAG_LABELS, BIRTHDAY_TAG_COLORS,
+    birthdayMonthKey, birthdayMonthLabel, birthdaySystemTagsForDate,
+    birthdaySystemTagsForChildren, birthdayChildrenSql
+} = require('./customerBirthdaySegments');
 const DEFAULT_BATCH_SIZE = 500;
-const DEFAULT_BUSINESS_CONTEXT = 'event_genix';
-
 const log = createLogger('CustomerBirthdayTags');
-
-const BIRTHDAY_MONTH_NAMES = Object.freeze([
-    'січня',
-    'лютого',
-    'березня',
-    'квітня',
-    'травня',
-    'червня',
-    'липня',
-    'серпня',
-    'вересня',
-    'жовтня',
-    'листопада',
-    'грудня'
-]);
-
-function padMonth(month) {
-    return String(month).padStart(2, '0');
-}
-
-const BIRTHDAY_MONTH_KEYS = Object.freeze(
-    BIRTHDAY_MONTH_NAMES.map((_, index) => `birthday_month_${padMonth(index + 1)}`)
-);
-const BIRTHDAY_SYSTEM_TAG_KEYS = Object.freeze([BIRTHDAY_TAG_KEY, ...BIRTHDAY_MONTH_KEYS]);
-
-const BIRTHDAY_TAG_LABELS = Object.freeze({
-    [BIRTHDAY_TAG_KEY]: BIRTHDAY_TAG_LABEL,
-    ...Object.fromEntries(BIRTHDAY_MONTH_KEYS.map((key, index) => [
-        key,
-        `Іменинники ${BIRTHDAY_MONTH_NAMES[index]}`
-    ]))
-});
-
-const BIRTHDAY_TAG_COLORS = Object.freeze({
-    [BIRTHDAY_TAG_KEY]: BIRTHDAY_TAG_COLOR,
-    ...Object.fromEntries(BIRTHDAY_MONTH_KEYS.map(key => [key, BIRTHDAY_TAG_COLOR]))
-});
-
-function normalizeBirthdayMonth(value) {
-    if (value instanceof Date) {
-        return Number.isNaN(value.getTime()) ? null : value.getUTCMonth() + 1;
-    }
-
-    if (Number.isInteger(value)) {
-        return value >= 1 && value <= 12 ? value : null;
-    }
-
-    const text = String(value || '').trim();
-    if (!text) return null;
-
-    const keyMatch = text.match(/^birthday_month_(\d{2})$/);
-    if (keyMatch) {
-        const month = Number.parseInt(keyMatch[1], 10);
-        return month >= 1 && month <= 12 ? month : null;
-    }
-
-    const dateMatch = text.match(/^\d{4}-(\d{2})-\d{2}/);
-    if (dateMatch) {
-        const month = Number.parseInt(dateMatch[1], 10);
-        return month >= 1 && month <= 12 ? month : null;
-    }
-
-    return null;
-}
-
-function birthdayMonthKey(date) {
-    const month = normalizeBirthdayMonth(date);
-    return month ? `birthday_month_${padMonth(month)}` : null;
-}
-
-function birthdayMonthLabel(month) {
-    const key = birthdayMonthKey(month);
-    return key ? BIRTHDAY_TAG_LABELS[key] : null;
-}
-
-function birthdaySystemTag(key) {
-    if (!key || !BIRTHDAY_TAG_LABELS[key]) return null;
-    return {
-        source: 'system',
-        systemKey: key,
-        tag: BIRTHDAY_TAG_LABELS[key],
-        color: BIRTHDAY_TAG_COLORS[key] || BIRTHDAY_TAG_COLOR
-    };
-}
-
-function birthdaySystemTagsForDate(childBirthday) {
-    const monthKey = birthdayMonthKey(childBirthday);
-    if (!monthKey) return [];
-    return [
-        birthdaySystemTag(BIRTHDAY_TAG_KEY),
-        birthdaySystemTag(monthKey)
-    ].filter(Boolean);
-}
 
 function isPoolLike(clientOrPool) {
     return Boolean(clientOrPool && typeof clientOrPool.connect === 'function');
@@ -163,17 +71,12 @@ async function syncBirthdayTagsForCustomer(clientOrPool, customerId, options = {
         try {
             customerResult = await db.query(
                 `SELECT c.id, c.child_birthday, c.business_context,
-                        cc.birthday AS canonical_child_birthday
+                        cc.children AS birthday_children
                  FROM customers c
                  LEFT JOIN LATERAL (
-                     SELECT birthday
-                     FROM customer_children
-                     WHERE customer_id = c.id
-                       AND business_context = COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
-                       AND birthday IS NOT NULL
-                       AND COALESCE(source_payload #>> '{manual_review,superseded}', 'false') <> 'true'
-                     ORDER BY sort_order ASC, id ASC
-                     LIMIT 1
+                     SELECT COALESCE(jsonb_agg(jsonb_build_object('birthday', bd.birthday::text)
+                         ORDER BY bd.sort_order, bd.id), '[]'::jsonb) AS children
+                     FROM (${birthdayChildrenSql('c')}) bd
                  ) cc ON TRUE
                  WHERE c.id = $1
                  LIMIT 1`,
@@ -195,7 +98,9 @@ async function syncBirthdayTagsForCustomer(clientOrPool, customerId, options = {
         }
 
         const customer = customerResult.rows[0];
-        const childBirthday = customer?.canonical_child_birthday || customer?.child_birthday || null;
+        const birthdayChildren = customer?.birthday_children
+            ?? (customer?.child_birthday ? [{ birthday: customer.child_birthday }] : []);
+        const childBirthday = birthdayChildren[0]?.birthday || null;
         if (!customer) {
             return {
                 found: false,
@@ -216,7 +121,7 @@ async function syncBirthdayTagsForCustomer(clientOrPool, customerId, options = {
             [numericCustomerId, BIRTHDAY_SYSTEM_TAG_KEYS]
         );
 
-        const desiredTags = birthdaySystemTagsForDate(childBirthday);
+        const desiredTags = birthdaySystemTagsForChildren(birthdayChildren);
         const desiredLabels = desiredTags.map(tag => tag.tag);
         let manualLabels = new Set();
         if (desiredLabels.length) {
@@ -267,6 +172,12 @@ async function syncBirthdayTagsForCustomer(clientOrPool, customerId, options = {
 }
 
 async function syncBirthdayTagsForAllCustomers(options = {}) {
+    // Scheduled calls must never authorize a historical data reconciliation.
+    // An operator may opt in only in a separately approved, scoped operation.
+    if (options.allowReconciliation !== true) {
+        return { processed: 0, updated: 0, errors: 0, batches: 0,
+            skipped: true, reason: 'explicit_reconciliation_required' };
+    }
     const queryable = options.clientOrPool || options.pool || birthdayTagDefaultPool();
     const batchSize = normalizeBatchSize(options.batchSize);
     const logger = options.logger || log;

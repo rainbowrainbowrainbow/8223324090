@@ -114,16 +114,19 @@ test('customer child display policy defines placeholder and printable summary be
     assert.match(policyDoc, /Do not use first child as storage truth/);
 });
 
-test('customer closeout guards duplicate merge and booking legacy create ownership', () => {
+test('customer closeout keeps duplicate merge disabled and booking legacy create ownership', () => {
     const customersRoute = fs.readFileSync(path.join(ROOT, 'routes', 'customers.js'), 'utf8');
     const bookingsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
     const policyDoc = fs.readFileSync(path.join(ROOT, 'docs', 'CUSTOMER_CHILDREN_LEGACY_FIELDS_POLICY_2026-06-23.md'), 'utf8');
 
-    assert.match(customersRoute, /UPDATE customer_children[\s\S]*SET customer_id = \$1[\s\S]*WHERE customer_id = \$2[\s\S]*AND business_context = \$3/);
-    assert.match(customersRoute, /if \(!primary\.child_name && dup\.child_name\)/);
-    assert.match(customersRoute, /if \(!primary\.child_birthday && dup\.child_birthday\)/);
-    assert.match(policyDoc, /duplicate merge \| Fill empty legacy snapshot fields/);
-    assert.match(policyDoc, /Move `customer_children` rows from duplicate to primary customer/);
+    const mergeStart = customersRoute.indexOf("router.post('/:primaryId/merge'");
+    const mergeEnd = customersRoute.indexOf('// v30.4: CUSTOMER JOURNEY', mergeStart);
+    assert.ok(mergeStart >= 0 && mergeEnd > mergeStart);
+    const mergeRoute = customersRoute.slice(mergeStart, mergeEnd);
+    assert.match(mergeRoute, /CUSTOMER_MERGE_DISABLED/);
+    assert.doesNotMatch(mergeRoute, /pool\.connect|\.query\(|UPDATE|DELETE|INSERT/);
+    assert.match(policyDoc, /duplicate merge \| Disabled in UI and API/);
+    assert.match(policyDoc, /No data writes or child moves are allowed while merge is disabled/);
 
     assert.match(bookingsRoute, /INSERT INTO customers \(business_context, name, phone, instagram, child_name, child_birthday, source\)/);
     assert.doesNotMatch(bookingsRoute, /replaceCustomerChildren/);

@@ -60,7 +60,8 @@ function createFakeBirthdayTagClient(customerOverrides = {}, tagRows = []) {
                 return {
                     rows: [{
                         ...row,
-                        canonical_child_birthday: row.canonical_child_birthday || row.canonicalChildBirthday || null
+                        birthday_children: row.birthday_children ?? [row.canonical_child_birthday || row.canonicalChildBirthday || row.child_birthday]
+                            .filter(Boolean).map(birthday => ({ birthday }))
                     }],
                     rowCount: 1
                 };
@@ -246,7 +247,10 @@ test('syncBirthdayTagsForCustomer prefers canonical child birthday over legacy f
 test('syncBirthdayTagsForCustomer ignores manually superseded canonical child birthdays', () => {
     const serviceSource = readSource('services/customerBirthdayTags.js');
 
-    assert.ok(serviceSource.includes("COALESCE(source_payload #>> '{manual_review,superseded}', 'false') <> 'true'"));
+    const segmentsSource = readSource('services/customerBirthdaySegments.js');
+    assert.ok(serviceSource.includes('birthdayChildrenSql'));
+    assert.ok(segmentsSource.includes("'{manual_review,superseded}'"));
+    assert.ok(segmentsSource.includes("'{manual_review,status}'"));
 });
 
 test('syncBirthdayTagsForCustomer is idempotent and does not duplicate system rows', async () => {
@@ -278,6 +282,20 @@ test('syncBirthdayTagsForCustomer removes all birthday system tags when birthday
     await syncBirthdayTagsForCustomer(client, 1);
 
     assert.deepEqual(systemTags(client), []);
+});
+
+test('single-family synchronization includes all distinct current months and preserves manual data', async () => {
+    const manual = { id: 90, customer_id: 1, tag: 'VIP', source: 'manual', color: '#123456' };
+    const client = createFakeBirthdayTagClient({ child_birthday: '2019-07-01', birthday_children: [
+        { birthday: '2020-03-12' }, { birthday: '2021-10-15' }, { birthday: '2020-10-17' }
+    ] }, [manual]);
+    await syncBirthdayTagsForCustomer(client, 1);
+    assert.deepEqual(systemTags(client).map(tag => tag.system_key), ['birthday', 'birthday_month_03', 'birthday_month_10']);
+    assert.deepEqual(client.state.tags.find(tag => tag.id === 90), manual);
+    client.state.customer.birthday_children = [];
+    await syncBirthdayTagsForCustomer(client, 1);
+    assert.deepEqual(systemTags(client), [], 'an explicit empty canonical selection cannot revive the legacy date');
+    assert.deepEqual(client.state.tags, [manual]);
 });
 
 test('syncBirthdayTagsForCustomer preserves manual tags with the same label', async () => {
@@ -360,6 +378,7 @@ test('syncBirthdayTagsForAllCustomers reconciles all customers in batches', asyn
     };
 
     const result = await syncBirthdayTagsForAllCustomers({
+        allowReconciliation: true,
         pool,
         batchSize: 2,
         userId: 9,
@@ -387,7 +406,7 @@ test('syncBirthdayTagsForAllCustomers skips safely when system tag columns are m
         warn(message, data) { logs.push({ level: 'warn', message, data }); }
     };
 
-    const result = await syncBirthdayTagsForAllCustomers({ pool, logger });
+    const result = await syncBirthdayTagsForAllCustomers({ pool, logger, allowReconciliation: true });
 
     assert.equal(result.skipped, true);
     assert.equal(result.reason, 'customer_tags_system_columns_missing');

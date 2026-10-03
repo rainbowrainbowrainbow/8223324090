@@ -811,15 +811,15 @@ test('customer stats skip spend SQL while retaining operational metrics when rev
             queries.push(text);
             if (/SELECT COUNT\(\*\) FROM customers/.test(text)) return { rows: [{ count: '7' }] };
             if (/AS source, COUNT\(\*\) AS count/.test(text)) return { rows: [{ source: 'instagram', count: '4' }] };
-            if (/ORDER BY COALESCE\(b\.spent, 0\) DESC/.test(text)) {
-                return { rows: [{ id: 1, name: 'VIP', total_bookings: '4', total_spent: '900', last_visit: '2026-08-01' }] };
+            if (/ORDER BY COALESCE\(b_agg\.booking_spent, 0\) DESC/.test(text)) {
+                return { rows: [{ id: 1, name: 'VIP', real_total_bookings: '4', real_total_spent: '900', real_last_visit: '2026-08-01' }] };
             }
             if (/ORDER BY c\.created_at DESC/.test(text)) {
-                const row = { id: 2, name: 'Recent', total_bookings: '3', created_at: '2026-08-02' };
-                if (/AS total_spent/.test(text)) row.total_spent = '700';
+                const row = { id: 2, name: 'Recent', real_total_bookings: '3', created_at: '2026-08-02' };
+                if (/SUM\(b\.price\)/.test(text)) row.real_total_spent = '700';
                 return { rows: [row] };
             }
-            if (/AVG\(b\.cnt\)/.test(text)) {
+            if (/AVG\(COALESCE\(b_agg\.booking_count/.test(text)) {
                 return { rows: [{ avg_bookings: '2.5', ...(/AS avg_spent/.test(text) ? { avg_spent: '450' } : {}) }] };
             }
             throw new Error('Unexpected customer stats SQL: ' + text);
@@ -882,7 +882,7 @@ test('customer stats skip spend SQL while retaining operational metrics when rev
                 assert.equal(deniedBody.averages.avg_spent, undefined);
                 assert.equal(deniedBody.topBySpent, undefined);
                 assert.equal(queries.length, 4);
-                assert.doesNotMatch(queries.join('\n'), /SUM\(price\)|AVG\(b\.spent\)|ORDER BY COALESCE\(b\.spent/);
+                assert.doesNotMatch(queries.join('\n'), /SUM\((?:b\.)?price\)|AVG\(COALESCE\(b_agg\.booking_spent|ORDER BY COALESCE\(b_agg\.booking_spent/);
 
                 queries.length = 0;
                 const allowedResponse = await fetch(baseUrl + '/customers/stats', {
@@ -894,8 +894,8 @@ test('customer stats skip spend SQL while retaining operational metrics when rev
                 assert.equal(Number(allowedBody.recentCustomers[0].totalSpent), 700);
                 assert.equal(allowedBody.averages.avg_spent, '450');
                 assert.equal(queries.length, 5);
-                assert.match(queries.join('\n'), /SUM\(price\)/);
-                assert.match(queries.join('\n'), /AVG\(b\.spent\)/);
+                assert.match(queries.join('\n'), /SUM\(b\.price\)/);
+                assert.match(queries.join('\n'), /AVG\(COALESCE\(b_agg\.booking_spent/);
             }
         );
     } finally {

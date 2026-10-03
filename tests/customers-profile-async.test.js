@@ -53,7 +53,7 @@ function customerHarness() {
 }
 
 function response(data) {
-    return { status: 200, json: async () => data };
+    return { status: 200, ok: true, json: async () => data };
 }
 
 for (const latestFirst of [true, false]) {

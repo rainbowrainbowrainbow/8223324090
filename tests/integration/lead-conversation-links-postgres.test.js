@@ -357,4 +357,49 @@ test('lead conversation links preserve cardinality, concurrency, and business is
         assert.equal(crossPlan.ready.length, 0);
         assert.equal(crossPlan.conflicts[0].reason, 'business_context_mismatch');
     });
+    await t.test('customer summaries read all scoped confirmed links without adopting lead primary flags or reassigning conversations', async () => {
+        await pool.query(`
+            CREATE TABLE customers (id INTEGER PRIMARY KEY, business_context TEXT, lead_id INTEGER,
+                name TEXT, phone TEXT, instagram TEXT);
+            CREATE TABLE lead_customer_links (business_context TEXT, lead_id INTEGER, customer_id INTEGER);
+            ALTER TABLE conversations ADD COLUMN customer_id INTEGER, ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+            INSERT INTO leads (id, business_context, client_name) VALUES
+                (900001,'dar','First case'),(900002,'dar','Second case'),(900003,'event_genix','Foreign case');
+            INSERT INTO customers (id,business_context,lead_id,name,phone) VALUES
+                (900001,'dar',900001,'Family A','+380000000001'),
+                (900002,'event_genix',900003,'Family B','+380000000001'),
+                (900003,'dar',NULL,'Family C','+380000000001'),
+                (900004,'dar',NULL,'No confirmed link','+380000000001');
+            INSERT INTO lead_customer_links VALUES ('dar',900001,900001),('dar',900002,900001);
+            INSERT INTO conversations (id,business_context,channel,status,customer_id,customer_name) VALUES
+                (900001,'dar','instagram','closed',900001,'Family A'),
+                (900002,'dar','telegram','open',NULL,'Family A'),
+                (900003,'dar','whatsapp','open',NULL,'Family A'),
+                (900004,'event_genix','instagram','open',900002,'Family B'),
+                (900005,'dar','instagram','open',900003,'Family C'),
+                (900006,'dar','telegram','open',NULL,'Family A');
+            INSERT INTO lead_conversation_links (business_context,lead_id,conversation_id,is_primary) VALUES
+                ('dar',900001,900001,FALSE),('dar',900001,900002,TRUE),
+                ('dar',900002,900002,FALSE),('dar',900002,900003,TRUE),
+                ('dar',900001,900005,FALSE);
+        `);
+        const { getCustomerOmniSummaries } = require('../../services/customerCommunicationHub');
+        const customers = (await pool.query('SELECT * FROM customers ORDER BY id')).rows;
+        const before = (await pool.query('SELECT * FROM lead_conversation_links ORDER BY id')).rows;
+        const summaries = await getCustomerOmniSummaries(customers, { pool });
+        const familyA = summaries.get(900001);
+        assert.equal(familyA.action, 'choose');
+        assert.equal(familyA.links.omniExact, null);
+        assert.deepEqual(familyA.conversations.map(row => row.id).sort(), [900001,900002,900003]);
+        assert.equal(familyA.conversations.find(row => row.id === 900001).status, 'closed');
+        assert.deepEqual(summaries.get(900002).conversations.map(row => row.id), [900004]);
+        assert.match(summaries.get(900002).links.omniExact, /businessContext=event_genix/);
+        assert.deepEqual(summaries.get(900003).conversations.map(row => row.id), [900005]);
+        assert.equal(summaries.get(900004).action, 'search');
+        await pool.query("UPDATE customers SET phone='+380000000099' WHERE id=900001");
+        const afterPhone = await getCustomerOmniSummaries((await pool.query('SELECT * FROM customers WHERE id=900001')).rows, { pool });
+        assert.deepEqual(afterPhone.get(900001).conversations.map(row => row.id).sort(), [900001,900002,900003]);
+        assert.deepEqual((await pool.query('SELECT * FROM lead_conversation_links ORDER BY id')).rows, before);
+        assert.equal((await pool.query('SELECT customer_id FROM conversations WHERE id=900002')).rows[0].customer_id, null);
+    });
 });

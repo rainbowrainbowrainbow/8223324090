@@ -141,24 +141,25 @@ const RFM_SEGMENTS = {
     loyal: { label: 'Лояльні', icon: '💚', color: '#2563EB' },
     potential: { label: 'Потенційні', icon: '⭐', color: '#D97706' },
     at_risk: { label: 'Під загрозою', icon: '⚠️', color: '#DC2626' },
-    lost: { label: 'Втрачені', icon: '💤', color: '#64748B' }
+    lost: { label: 'Втрачені', icon: '💤', color: '#64748B' },
+    no_history: { label: 'Без підтвердженої минулої історії', icon: '○', color: '#64748B' }
 };
 
 const CUSTOMER_LIFECYCLE_SEGMENTS = [
     {
         id: 'prospects',
-        label: 'Перспективні (0 візитів)',
+        label: 'Перспективні (0 бронювань)',
         countKey: 'prospects',
         color: '#7C3AED',
         icon: '◎',
         kind: 'customers',
         minVisits: 0,
         maxVisits: 0,
-        actionLabel: 'Показати клієнтів без візитів'
+        actionLabel: 'Показати клієнтів без бронювань'
     },
     {
         id: 'first_timers',
-        label: 'Нові (1 візит)',
+        label: 'Нові (1 бронювання)',
         countKey: 'first_timers',
         color: '#3B82F6',
         icon: '🆕',
@@ -668,7 +669,7 @@ function renderChildrenReviewEditor() {
             ${renderChildrenReviewEditorRows()}
         </div>
         <div class="children-review-note-row">
-            <label for="childrenReviewNote">Коментар до ревізії</label>
+            <label for="childrenReviewNote">Коментар до уточнення</label>
             <input type="text" id="childrenReviewNote" value="${escapeHtml(editor.reviewNote || '')}" placeholder="що саме виправлено">
         </div>
         <div class="children-review-actions">
@@ -683,7 +684,7 @@ function renderChildrenReviewTab() {
     if (!el) return;
     const data = CrmState.childrenReview;
     if (!data) {
-        el.innerHTML = '<div class="crm-empty"><div class="empty-text">Завантаження ревізії дітей...</div></div>';
+        el.innerHTML = '<div class="crm-empty"><div class="empty-text">Завантаження даних дітей...</div></div>';
         return;
     }
     const items = Array.isArray(data.items) ? data.items : [];
@@ -708,14 +709,14 @@ function renderChildrenReviewTab() {
                 <button type="button" class="btn-page-secondary" data-review-action="edit-review" data-customer-id="${item.customerId}">Розкласти</button>
             </td>
         </tr>`;
-    }).join('') : `<tr><td colspan="4"><div class="crm-empty"><div class="empty-text">Немає активних записів для ревізії</div></div></td></tr>`;
+    }).join('') : `<tr><td colspan="4"><div class="crm-empty"><div class="empty-text">Немає активних записів для уточнення</div></div></td></tr>`;
 
     el.innerHTML = `
         <div class="children-review-panel">
             <div class="children-review-toolbar">
                 <div>
-                    <h4>Ревізія дітей</h4>
-                    <p>${items.length} клієнтів, ${data.sourceRows || 0} source rows. Ручне виправлення не вигадує ДН з віку.</p>
+                    <h4>Уточнення даних дітей</h4>
+                    <p>${items.length} клієнтів, ${data.sourceRows || 0} пов’язаних записів. Дату народження не визначаємо лише за віком.</p>
                 </div>
                 <div class="children-review-actions">
                     <button type="button" class="btn-page-secondary" data-review-action="refresh">Оновити</button>
@@ -725,7 +726,7 @@ function renderChildrenReviewTab() {
             ${renderChildrenReviewEditor()}
             <div class="crm-table-wrap children-review-table-wrap">
                 <table class="crm-table children-review-table">
-                    <thead><tr><th>Клієнт</th><th>Причини</th><th>Original source</th><th>Дія</th></tr></thead>
+                    <thead><tr><th>Клієнт</th><th>Причини</th><th>Джерело даних</th><th>Дія</th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
             </div>
@@ -739,14 +740,14 @@ async function loadChildrenReview(force = false) {
         renderChildrenReviewTab();
         return;
     }
-    el.innerHTML = '<div class="crm-empty"><div class="empty-text">Завантаження ревізії дітей...</div></div>';
+    el.innerHTML = '<div class="crm-empty"><div class="empty-text">Завантаження даних дітей...</div></div>';
     const token = localStorage.getItem('pzp_token');
     try {
         const res = await fetch(customerApiUrl('/api/customers/children-review?limit=200'), {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Помилка завантаження ревізії дітей');
+        if (!res.ok) throw new Error(data.error || 'Помилка завантаження даних дітей');
         CrmState.childrenReview = data;
         renderChildrenReviewTab();
     } catch (err) {
@@ -817,7 +818,7 @@ async function saveChildrenReviewEditor() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Помилка збереження ревізії');
-        showNotification('Ревізію дітей збережено');
+        showNotification('Уточнення даних дітей збережено');
         CrmState.childrenReviewEditor = null;
         CrmState.childrenReview = null;
         await refreshData();
@@ -830,7 +831,7 @@ function exportChildrenReviewCsv() {
     if (!guardCustomerExport()) return;
     const token = localStorage.getItem('pzp_token');
     const touchWindow = typeof openTouchDownloadWindow === 'function'
-        ? openTouchDownloadWindow('Ревізія дітей')
+        ? openTouchDownloadWindow('Уточнення даних дітей')
         : null;
     fetch(customerApiUrl('/api/customers/children-review?format=csv&limit=500'), {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -987,13 +988,13 @@ function syncCustomerPresentationUi() {
     const addBtn = document.getElementById('addCustomerBtn');
     if (addBtn) addBtn.textContent = maysternyaMode ? '+ Новий клієнт Майстерні' : '+ Новий клієнт';
     const headers = document.querySelectorAll('.crm-table thead th');
-    if (headers[4]) headers[4].textContent = maysternyaMode ? 'Сесії' : 'Візити';
-    if (headers[5]) headers[5].textContent = maysternyaMode ? 'Оплачено' : 'Витрачено';
-    if (headers[6]) headers[6].textContent = maysternyaMode ? 'Остання сесія' : 'Останній візит';
+    if (headers[4]) headers[4].textContent = 'Бронювання';
+    if (headers[5]) headers[5].textContent = 'Вартість бронювань';
+    if (headers[6]) headers[6].textContent = 'Дати бронювань';
     const sortVisits = document.querySelector('#sortFilter option[value="total_bookings"]');
-    if (sortVisits) sortVisits.textContent = maysternyaMode ? 'За сесіями' : 'За візитами';
+    if (sortVisits) sortVisits.textContent = 'За кількістю бронювань';
     const sortSpent = document.querySelector('#sortFilter option[value="total_spent"]');
-    if (sortSpent) sortSpent.textContent = maysternyaMode ? 'За оплатами' : 'За витратами';
+    if (sortSpent) sortSpent.textContent = 'За вартістю бронювань';
     syncCustomerEditBusinessFields();
 }
 
@@ -1022,8 +1023,10 @@ function initCustomerBusinessContext(user) {
             CrmState.businessContext = current;
             CrmState.page = 1;
             CrmState.rfmData = null;
+            syncCustomerSectionNavigation(CrmState.activeTab);
             syncCustomerPresentationUi();
             syncCustomerReadOnlyUi();
+            if (CrmState.activeTab === 'bulk') loadBulkTab();
             await refreshData();
             openCustomerDeepLink();
         }
@@ -1049,7 +1052,7 @@ function customerHubAction(href, label, cls = '', options = {}) {
 function customerCrmContextHref(path, params = {}, context = customerBusinessContext()) {
     const normalized = window.CrmBusinessContext?.normalize?.(context) || context || 'event_genix';
     const url = new URL(path, window.location.origin);
-    if (normalized && normalized !== 'event_genix') url.searchParams.set('businessContext', normalized);
+    if (normalized) url.searchParams.set('businessContext', normalized);
     Object.entries(params || {}).forEach(([key, value]) => {
         if (value === undefined || value === null || value === '') return;
         url.searchParams.set(key, String(value));
@@ -1095,15 +1098,17 @@ function customerInitials(name) {
     return (letters.join('') || 'К').toUpperCase();
 }
 
-function pickCustomerHeaderBooking(bookings = []) {
+function pickCustomerHeaderBooking(bookings = [], asOf = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date()), nextBookingDate = null) {
     if (!Array.isArray(bookings) || bookings.length === 0) return null;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const active = bookings.filter(b => b?.status !== 'cancelled');
+    const active = bookings.filter(b => ['confirmed', 'preliminary'].includes(String(b?.status || '').trim().toLowerCase()));
+    if (nextBookingDate) {
+        return active.filter(b => dateInputValue(b.date) === nextBookingDate)
+            .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')))[0] || null;
+    }
     const upcoming = active
         .filter(b => {
-            const date = new Date(b.date);
-            return !Number.isNaN(date.getTime()) && date >= today;
+            const date = dateInputValue(b.date);
+            return date && date >= asOf;
         })
         .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')));
     return upcoming[0] || active[0] || bookings[0] || null;
@@ -1113,8 +1118,7 @@ function customerBookingStatusLabel(status) {
     const normalized = String(status || '').toLowerCase();
     if (normalized === 'confirmed') return 'Підтверджено';
     if (normalized === 'cancelled') return 'Скасовано';
-    if (normalized === 'completed') return 'Проведено';
-    if (normalized === 'pending') return 'Очікує';
+    if (normalized === 'preliminary') return 'Попереднє';
     return normalized ? normalized.replace(/_/g, ' ') : '';
 }
 
@@ -1128,7 +1132,7 @@ function customerBookingIsBanquet(booking = {}) {
 }
 
 function customerBookingDateTimeText(booking = {}) {
-    const dateText = formatDate(booking.date);
+    const dateText = formatDateOnly(booking.date);
     const timeText = booking.time || '';
     const arrivalText = customerBookingIsBanquet(booking) && timeText ? `Прихід гостей: ${timeText}` : timeText;
     return [dateText, arrivalText].filter(Boolean).join(' · ');
@@ -1163,20 +1167,20 @@ function customerContextualizeHref(href, context = customerBusinessContext()) {
 
 function customerHeaderOmniTarget(customer = {}, communicationContext = null) {
     const links = communicationContext?.links || {};
-    const rawHref = links.omniExact || links.omniSuggested || links.omniSearch || null;
+    const rawHref = links.omniExact || links.omniChoose || links.omniSearch || null;
     const fallbackSearch = customer.phone || customer.name || customer.instagram || '';
     const href = rawHref
         ? customerContextualizeHref(rawHref, customer.businessContext || customerBusinessContext())
         : (fallbackSearch ? customerCrmContextHref('/omni', { search: fallbackSearch }, customer.businessContext || customerBusinessContext()) : null);
     const label = links.omniExact
         ? 'Omni: діалог'
-        : links.omniSuggested
-            ? 'Omni: збіг'
+        : links.omniChoose
+            ? 'Omni: обрати діалог'
             : 'Omni: пошук';
     return {
         href,
         label,
-        cls: links.omniExact ? 'exact' : (links.omniSuggested ? 'suggested' : 'search')
+        cls: links.omniExact ? 'exact' : (links.omniChoose ? 'choose' : 'search')
     };
 }
 
@@ -1185,19 +1189,18 @@ function renderCustomerDetailHero(customer, communicationContext = null, mayster
         ...customer,
         leadPipelineStage: customer.leadPipelineStage || communicationContext?.lead?.pipelineStage
     });
-    const booking = pickCustomerHeaderBooking(customer.bookings);
-    const bookingDetails = customerHeaderBookingDetails(booking, maysternyaMode);
-    const omni = customerHeaderOmniTarget(customer, communicationContext);
+    const booking = pickCustomerHeaderBooking(customer.bookings, customer.metricsAsOf, customer.nextBookingDate);
+    const bookingDetails = !booking && customer.nextBookingDate
+        ? { title: formatDateOnly(customer.nextBookingDate), meta: 'Деталі поза останніми 50 записами історії', muted: false }
+        : customerHeaderBookingDetails(booking, maysternyaMode);
     const leadLine = customer.leadId
         ? `<a href="${escapeHtml(leadCrmLinkForCustomer(customer.leadId))}">Лід #${escapeHtml(customer.leadId)}</a>`
         : '<span>Лід не привʼязано</span>';
     const contactSummary = [
         customer.phone ? escapeHtml(customer.phone) : 'телефон не вказано',
-        customer.instagram ? `@${escapeHtml(customer.instagram)}` : ''
+        renderSocialIdentities(customer.socialIdentities, customer.instagram)
     ].filter(Boolean).map(item => `<span>${item}</span>`).join('');
-    const omniButton = omni.href
-        ? `<a class="btn-page-secondary entity-card-action customer-hero-omni ${escapeHtml(omni.cls)}" href="${escapeHtml(omni.href)}">${escapeHtml(omni.label)}</a>`
-        : '<span class="btn-page-secondary entity-card-action customer-hero-omni disabled" aria-disabled="true">Omni недоступний</span>';
+    const omniButton = renderCustomerOmniNavigation(customer, communicationContext);
 
     return `<div class="customer-detail-header entity-card-header customer-detail-hero">
         <div class="customer-hero-identity">
@@ -1214,7 +1217,7 @@ function renderCustomerDetailHero(customer, communicationContext = null, mayster
                 <small>${leadLine}</small>
             </div>
             <div class="customer-hero-tile customer-hero-booking${bookingDetails.muted ? ' muted' : ''}">
-                <span>${maysternyaMode ? 'Найближчий запис' : 'Бронювання'}</span>
+                <span>${customer.nextBookingDate ? (maysternyaMode ? 'Найближчий запис' : 'Найближче бронювання') : 'Бронювання'}</span>
                 <strong>${escapeHtml(bookingDetails.title)}</strong>
                 <small>${escapeHtml(bookingDetails.meta)}</small>
             </div>
@@ -1242,16 +1245,6 @@ function customerHubDialogTarget(links = {}) {
             title: 'Точна Omni-розмова привʼязана до цього клієнта'
         };
     }
-    if (links.omniSuggested) {
-        return {
-            href: links.omniSuggested,
-            confidence: 'suggested',
-            icon: '💬',
-            shortLabel: 'Ймовірний',
-            label: 'Відкрити ймовірний діалог в Omni',
-            title: 'Ймовірна Omni-розмова знайдена за телефоном або іменем'
-        };
-    }
     if (links.omniSearch) {
         return {
             href: links.omniSearch,
@@ -1267,7 +1260,7 @@ function customerHubDialogTarget(links = {}) {
 
 function customerHubDialogIcon(target) {
     if (!target?.href) return '';
-    return `<a class="customer-dialog-icon ${escapeHtml(target.confidence)}"
+    return `<a class="btn-page-secondary entity-card-action customer-hero-omni customer-dialog-icon ${escapeHtml(target.confidence)}"
         href="${escapeHtml(target.href)}"
         title="${escapeHtml(target.title)}"
         aria-label="${escapeHtml(target.label)}"
@@ -1275,6 +1268,31 @@ function customerHubDialogIcon(target) {
         <span class="customer-dialog-icon-glyph" aria-hidden="true">${escapeHtml(target.icon)}</span>
         <span class="customer-dialog-icon-text">${escapeHtml(target.shortLabel)}</span>
     </a>`;
+}
+
+function renderCustomerOmniNavigation(customer, communicationContext = null) {
+    const context = communicationContext || customer.omniNavigation || {};
+    const businessContext = customer.businessContext || customerBusinessContext();
+    const conversations = context.conversations || context.live?.exactConversations || [];
+    if (conversations.length > 1) {
+        return `<details class="customer-omni-choice"><summary class="btn-page-secondary entity-card-action">Обрати діалог (${conversations.length})</summary>
+            <div class="customer-hub-actions">${conversations.map(conversation => {
+                const href = customerCrmContextHref('/omni', { conversation: conversation.id }, businessContext);
+                const label = `${conversation.channel || 'Omni'} · #${conversation.id}${conversation.status === 'closed' ? ' · закритий' : ''}`;
+                return `<a class="customer-hub-action" href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
+            }).join('')}</div></details>`;
+    }
+    const target = customerHeaderOmniTarget(customer, context);
+    const dialogTarget = customerHubDialogTarget({
+        omniExact: target.cls === 'exact' ? target.href : null,
+        omniSearch: target.cls === 'search' ? target.href : null
+    });
+    if (dialogTarget && context.action === 'unavailable') {
+        dialogTarget.shortLabel = 'Пошук (зв’язки не перевірено)';
+        dialogTarget.title = 'Не вдалося перевірити зв’язки Omni. Відкрийте явний пошук.';
+        dialogTarget.label = dialogTarget.title;
+    }
+    return customerHubDialogIcon(dialogTarget);
 }
 
 function parseJsonArray(value) {
@@ -1310,7 +1328,8 @@ function parseSocialIdentitiesInput(value) {
 }
 
 const CUSTOMER_IDENTITY_PRESETS = {
-    telegram: { label: 'Telegram', from: 'instagram' },
+    telegram: { label: 'Telegram', from: '' },
+    whatsapp: { label: 'WhatsApp', from: 'phone' },
     viber: { label: 'Viber', from: 'phone' },
     instagram: { label: 'Instagram', from: 'instagram' },
     phone: { label: 'Телефон', from: 'phone' },
@@ -1360,14 +1379,21 @@ function bindCustomerIdentityTools() {
 }
 
 function renderSocialIdentities(identities = [], instagram = '') {
-    const normalized = parseJsonArray(identities);
-    const items = normalized.length ? normalized : (instagram ? [{ channel: 'instagram', handle: instagram, source: 'legacy_primary' }] : []);
+    const items = [...parseJsonArray(identities)];
+    if (instagram) items.push({ channel: 'instagram', handle: instagram });
     if (!items.length) return '-';
-    return items.map(item => {
-        const channel = item.channel || item.type || 'other';
-        const value = item.channel === 'instagram' && item.handle ? '@' + item.handle : (item.handle || item.username || item.value || item.externalId || item.url || '');
-        return escapeHtml([channel, value].filter(Boolean).join(': '));
-    }).join('<br>');
+    const labels = { telegram: 'Telegram', whatsapp: 'WhatsApp', instagram: 'Instagram', facebook: 'Facebook', viber: 'Viber', phone: 'Телефон', email: 'Email', site: 'Сайт', tiktok: 'TikTok' };
+    const seen = new Set();
+    return items.filter(item => item && typeof item === 'object').map(item => {
+        const channel = String(item.channel || item.type || 'other').toLowerCase();
+        let value = String(item.handle || item.username || item.value || item.externalId || item.url || '');
+        if (!value) return '';
+        if (channel === 'instagram') value = '@' + value.replace(/^@+/, '');
+        const key = channel + ':' + value.toLowerCase();
+        if (seen.has(key)) return '';
+        seen.add(key);
+        return escapeHtml([labels[channel] || channel, value].join(': '));
+    }).filter(Boolean).join('<br>') || '-';
 }
 
 function customerHubReplySlaLabel(conversation) {
@@ -1420,7 +1446,6 @@ function renderCustomerCommunicationHub(context) {
     const live = context.live || {};
     const links = context.links || {};
     const summary = context.summary || {};
-    const primary = live.primaryConversation || null;
     const status = live.status || 'unavailable';
     const statusLabel = status === 'exact'
         ? 'Точна live-розмова'
@@ -1428,16 +1453,6 @@ function renderCustomerCommunicationHub(context) {
             ? 'Ймовірна live-розмова'
             : 'Live-розмову не знайдено';
     const statusText = live.explanation || 'Перевірте Omni або додайте CRM-нотатку нижче.';
-    const omniHref = links.omniExact || links.omniSuggested || links.omniSearch;
-    const omniClass = links.omniExact ? 'primary' : (links.omniSuggested ? 'suggested' : '');
-    const dialogTarget = customerHubDialogTarget(links);
-    const omniLabel = links.omniExact
-        ? 'Відкрити точну Omni-розмову'
-        : links.omniSuggested
-            ? 'Відкрити ймовірну Omni-розмову'
-            : links.omniSearch
-                ? 'Шукати в Omni'
-                : 'Omni недоступний';
     const booking = context.primaryBooking || null;
     const bookingText = booking
         ? [customerBookingDateTimeText(booking), customerHubText(booking.programName || booking.label || booking.id)].filter(Boolean).join(' · ')
@@ -1449,16 +1464,14 @@ function renderCustomerCommunicationHub(context) {
             <span class="customer-hub-meta">${escapeHtml(statusText)}</span>
         </div>
         <div class="customer-hub-actions" aria-label="Комунікаційні дії клієнта">
-            ${customerHubDialogIcon(dialogTarget)}
             ${customerHubAction(links.call, 'Подзвонити', 'success')}
-            ${customerHubAction(omniHref, omniLabel, omniClass, { title: dialogTarget?.title, ariaLabel: dialogTarget?.label })}
-            ${customerHubAction(links.leadWorkspace, 'Відкрити кейс ліда')}
             ${customerHubAction(links.booking, 'Відкрити бронювання')}
         </div>
         <div class="customer-hub-grid">
             <div class="customer-hub-card">
                 <div class="customer-hub-card-title">Live Omni</div>
-                ${primary ? customerHubConversation(primary) : '<div class="customer-hub-empty">Точної live-розмови немає. Якщо потрібен канал, відкрийте Omni через пошук і зв’яжіть розмову з клієнтом, коли точність підтверджена.</div>'}
+                ${(live.exactConversations || []).length ? live.exactConversations.map(customerHubConversation).join('') : '<div class="customer-hub-empty">Підтвердженого діалогу немає. Скористайтеся пошуком Omni у верхній частині картки.</div>'}
+                ${(live.suggestedConversations || []).map(customerHubConversation).join('')}
             </div>
             <div class="customer-hub-card">
                 <div class="customer-hub-card-title">CRM-контекст</div>
@@ -1637,7 +1650,7 @@ function applyInitialCustomerQueryParams() {
     const stage = getCustomerLifecycleSegment(requestedJourney);
     if (stage?.kind === 'customers') {
         applyCustomerLifecycleSegment(stage, { skipUrl: true });
-        return 'list';
+        return ['list', 'rfm', 'duplicates', 'nps', 'children-review', 'bulk'].includes(requestedTab) ? requestedTab : 'list';
     }
     const minVisits = params.get('minVisits');
     const maxVisits = params.get('maxVisits');
@@ -1657,8 +1670,8 @@ function getCustomerFilterSummary() {
         f.search ? { label: 'Пошук', value: f.search } : null,
         f.tag ? { label: 'Тег', value: f.tag } : null,
         f.source ? { label: 'Джерело', value: getCustomerSourceLabel(f.source) } : null,
-        f.dateFrom ? { label: 'Візити від', value: f.dateFrom } : null,
-        f.dateTo ? { label: 'Візити до', value: f.dateTo } : null
+        f.dateFrom ? { label: 'Останнє минуле від', value: f.dateFrom } : null,
+        f.dateTo ? { label: 'Останнє минуле до', value: f.dateTo } : null
     ].filter(Boolean);
 }
 
@@ -1687,7 +1700,7 @@ function getCustomerActiveFilterChips() {
     else if (hasVisitBound(f.minVisits) || hasVisitBound(f.maxVisits)) {
         const from = hasVisitBound(f.minVisits) ? `${f.minVisits}+` : 'будь-яка';
         const to = hasVisitBound(f.maxVisits) ? `до ${f.maxVisits}` : 'без межі';
-        chips.push({ key: 'visits', label: 'Візити', value: `${from}, ${to}` });
+        chips.push({ key: 'visits', label: 'Бронювання', value: `${from}, ${to}` });
     }
     if (f.search) chips.push({ key: 'search', label: 'Пошук', value: f.search });
     if (f.tag) chips.push({ key: 'tag', label: 'Тег', value: f.tag });
@@ -1695,8 +1708,8 @@ function getCustomerActiveFilterChips() {
     if (f.sortBy && f.sortBy !== 'updated_at') {
         chips.push({ key: 'sort', label: 'Сортування', value: customerSelectText('sortFilter', f.sortBy, f.sortBy) });
     }
-    if (f.dateFrom) chips.push({ key: 'dateFrom', label: 'Візити від', value: f.dateFrom });
-    if (f.dateTo) chips.push({ key: 'dateTo', label: 'Візити до', value: f.dateTo });
+    if (f.dateFrom) chips.push({ key: 'dateFrom', label: 'Останнє минуле від', value: f.dateFrom });
+    if (f.dateTo) chips.push({ key: 'dateTo', label: 'Останнє минуле до', value: f.dateTo });
     return chips;
 }
 
@@ -1784,6 +1797,7 @@ function normalizeCustomerTagCatalogItem(item = {}) {
         tag,
         color: item.color || '#6B7280',
         count: Number.isFinite(count) ? count : 0,
+        liveBirthday: item.liveBirthday === true,
         system: Boolean(item.system || item.source === 'system'),
         systemKey: item.systemKey || item.system_key || null
     };
@@ -1793,7 +1807,9 @@ function mergeCustomerTagCatalogItem(existing, normalized) {
     return {
         ...(existing || {}),
         ...normalized,
-        count: Math.max(existing?.count || 0, normalized.count || 0),
+        count: normalized.liveBirthday ? normalized.count
+            : existing?.liveBirthday ? existing.count : Math.max(existing?.count || 0, normalized.count || 0),
+        liveBirthday: Boolean(existing?.liveBirthday || normalized.liveBirthday),
         system: Boolean(existing?.system || normalized.system),
         systemKey: existing?.systemKey || normalized.systemKey || null
     };
@@ -1826,7 +1842,9 @@ function getCustomerTagCatalog({ includeBirthdaySystemTags = false } = {}) {
         if (!normalized) return;
         byTag.set(normalized.tag, mergeCustomerTagCatalogItem(byTag.get(normalized.tag), normalized));
     });
-    return [...byTag.values()].sort((a, b) => a.tag.localeCompare(b.tag, 'uk'));
+    return [...byTag.values()]
+        .filter(item => includeBirthdaySystemTags || !item.system)
+        .sort((a, b) => a.tag.localeCompare(b.tag, 'uk'));
 }
 
 function renderCustomerTagOptions(selectedValue = '', emptyLabel = 'Всі теги', options = {}) {
@@ -1899,6 +1917,11 @@ function renderCustomerTagPill(item = {}, options = {}) {
         ? `<button type="button" class="crm-tag-remove" onclick="removeTag(${options.customerId},${item.id},this)" aria-label="Прибрати тег ${escapeHtml(tag)}">×</button>`
         : '';
     const title = isSystem ? 'Керується датою народження' : '';
+    if (options.filterable) {
+        return `<button type="button" class="${classes} crm-tag-filter" data-customer-tag-filter="${escapeHtml(tag)}"
+            aria-label="Фільтрувати клієнтів: ${escapeHtml(tag)}" data-tag-source="${sourceAttr}"
+            style="${customerTagStyle(item)}" title="Фільтрувати клієнтів: ${escapeHtml(tag)}">${escapeHtml(tag)}${marker}</button>`;
+    }
     return `<span class="${classes}" data-tag-source="${sourceAttr}" style="${customerTagStyle(item)}"${title ? ` title="${title}"` : ''}>${escapeHtml(tag)}${marker}${remove}</span>`;
 }
 
@@ -2041,7 +2064,9 @@ async function fetchCustomers() {
     if (hasVisitBound(CrmState.filters.minVisits)) params.set('minVisits', CrmState.filters.minVisits);
     if (hasVisitBound(CrmState.filters.maxVisits)) params.set('maxVisits', CrmState.filters.maxVisits);
 
-    const tableBody = document.getElementById('crmTableBody');
+    const tableBody = document.getElementById('customerTableBody');
+    const birthdaySummary = document.getElementById('customerBirthdaySegmentSummary');
+    if (birthdaySummary) { birthdaySummary.hidden = true; birthdaySummary.textContent = ''; }
     if (tableBody) tableBody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
 
     try {
@@ -2055,10 +2080,21 @@ async function fetchCustomers() {
         }
         const data = await res.json();
         if (requestSeq !== customersRequestSeq) return false;
+        if (!res.ok || !Array.isArray(data.customers)) throw new Error(data.error || 'Не вдалося завантажити клієнтів.');
+        if (data.birthdaySegment && (!Number.isSafeInteger(data.birthdaySegment.familyCount)
+            || !Number.isSafeInteger(data.birthdaySegment.childCount) || data.birthdaySegment.childCount < 0
+            || data.birthdaySegment.familyCount !== data.total)) {
+            throw new Error('Не вдалося отримати підрахунок іменинників. Спробуйте ще раз.');
+        }
         CrmState.customers = data.customers || [];
         CrmState.total = data.total || 0;
         CrmState.pages = data.pages || 1;
         CrmState.page = data.page || 1;
+        CrmState.birthdaySegment = data.birthdaySegment || null;
+        if (birthdaySummary && data.birthdaySegment) {
+            birthdaySummary.hidden = false;
+            birthdaySummary.textContent = `Сімей (клієнтів) у сегменті: ${data.birthdaySegment.familyCount}. Дітей-іменинників: ${data.birthdaySegment.childCount}. Підрахунок охоплює весь сегмент.`;
+        }
         return true;
     } catch (err) {
         if (err?.name === 'AbortError') return false;
@@ -2068,11 +2104,37 @@ async function fetchCustomers() {
 }
 
 async function reloadCustomers() {
-    const applied = await fetchCustomers();
-    if (!applied) return false;
-    renderCustomerTable();
-    renderPagination();
-    return true;
+    try {
+        const applied = await fetchCustomers();
+        if (!applied) return false;
+        renderCustomerTable();
+        renderPagination();
+        return true;
+    } catch (err) {
+        const tbody = document.getElementById('customerTableBody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="7" role="alert">Не вдалося завантажити клієнтів. <button type="button" class="btn-page-secondary" data-customers-retry>Повторити</button></td></tr>';
+            tbody.querySelector('[data-customers-retry]')?.addEventListener('click', reloadCustomers);
+        }
+        const pagination = document.getElementById('pagination');
+        if (pagination) pagination.innerHTML = '';
+        showNotification(err.message || 'Помилка завантаження клієнтів.', 'error');
+        return false;
+    }
+}
+
+async function applyCustomerTagFilter(tag) {
+    CrmState.filters.tag = tag;
+    CrmState.page = 1;
+    const select = document.getElementById('tagFilter');
+    if (select) select.value = tag;
+    try {
+        await reloadCustomers();
+    } catch (err) {
+        const tbody = document.getElementById('customerTableBody');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Не вдалося завантажити клієнтів. Спробуйте ще раз.</td></tr>';
+        showNotification(err.message || 'Помилка завантаження клієнтів.', 'error');
+    }
 }
 
 async function fetchStats() {
@@ -2108,7 +2170,11 @@ async function fetchRFM() {
     const res = await fetch(customerApiUrl('/api/customers/rfm'), {
         headers: { 'Authorization': `Bearer ${token}` }
     });
-    CrmState.rfmData = await res.json();
+    const data = await res.json();
+    if (!res.ok || !Array.isArray(data.customers) || !data.segments) {
+        throw new Error('Не вдалося завантажити RFM-аналітику.');
+    }
+    CrmState.rfmData = data;
 }
 
 async function fetchCustomerDetail(id) {
@@ -2185,7 +2251,7 @@ function renderStats() {
     const revenueCard = canViewCustomerRevenue() ? `
         <div class="stat-card">
             <div class="stat-value">${formatMoney(parseInt(s.averages?.avg_spent) || 0)}</div>
-            <div class="stat-label">${maysternyaMode ? 'Сер. оплата' : 'Сер. витрати'}</div>
+            <div class="stat-label">Сер. вартість бронювань на клієнта</div>
         </div>
     ` : '';
     el.innerHTML = `
@@ -2195,7 +2261,7 @@ function renderStats() {
         </div>
         <div class="stat-card">
             <div class="stat-value">${s.averages?.avg_bookings || 0}</div>
-            <div class="stat-label">${maysternyaMode ? 'Сер. сесій' : 'Сер. візитів'}</div>
+            <div class="stat-label">Сер. бронювань на клієнта</div>
         </div>
         ${revenueCard}
         <div class="stat-card">
@@ -2209,8 +2275,8 @@ function renderCustomerTable() {
     const tbody = document.getElementById('customerTableBody');
     const maysternyaMode = isMaysternyaCustomerContext();
     const canViewRevenue = canViewCustomerRevenue();
-    const visitLabel = maysternyaMode ? 'Сесій' : 'Візитів';
-    const lastVisitLabel = maysternyaMode ? 'Остання сесія' : 'Останній візит';
+    const visitLabel = 'Бронювань';
+    const lastVisitLabel = 'Останнє минуле';
     syncCustomerPresentationUi();
     renderCustomerExplainability();
     renderCustomerFilterControls();
@@ -2224,35 +2290,42 @@ function renderCustomerTable() {
     tbody.innerHTML = CrmState.customers.map(c => {
         const sourceKey = getCustomerSourceBadgeKey(c.source);
         const sourceLabel = getCustomerSourceLabel(c.source);
-        const tagsHtml = (c.tags || []).map(t => renderCustomerTagPill(t)).join('');
+        const tagsHtml = (c.tags || []).map(t => renderCustomerTagPill(t, { filterable: true })).join('');
         const childrenLabel = customerChildrenInlineLabel(c);
-        const ltvBadge = canViewRevenue && c.ltv > 10000 ? ' 🔥' : '';
         const phone = c.phone ? escapeHtml(c.phone) : 'Немає телефону';
-        const lastVisit = formatDate(c.lastVisit);
+        const lastVisit = formatDateOnly(c.lastVisit);
         const visits = Number.isFinite(Number(c.totalBookings)) ? Number(c.totalBookings) : 0;
         const rowLabel = `Відкрити картку клієнта ${c.name || 'без імені'}, телефон ${c.phone || 'не вказано'}, ${visitLabel.toLowerCase()} ${visits}, ${lastVisitLabel.toLowerCase()} ${lastVisit}`;
         return `<tr class="customer-list-row" data-id="${c.id}" tabindex="0" aria-label="${escapeHtml(rowLabel)}">
             <td class="customer-list-cell customer-list-cell--identity" data-label="Клієнт">
-                <div class="customer-name">${escapeHtml(c.name)}${ltvBadge}</div>
+                <div class="customer-name">${escapeHtml(c.name)}</div>
                 ${!maysternyaMode && childrenLabel ? `<div class="customer-child">${escapeHtml(childrenLabel)}</div>` : ''}
                 ${tagsHtml ? `<div class="crm-tags-row">${tagsHtml}</div>` : ''}
             </td>
             <td class="customer-list-cell customer-list-cell--phone" data-label="Телефон"><span class="customer-list-phone">${phone}</span></td>
-            <td class="customer-list-cell customer-list-cell--secondary" data-label="Instagram">${c.instagram ? '@' + escapeHtml(c.instagram) : '—'}</td>
+            <td class="customer-list-cell customer-list-cell--secondary" data-label="Контакти">${renderSocialIdentities(c.socialIdentities, c.instagram)}<div>${renderCustomerOmniNavigation(c)}</div></td>
             <td class="customer-list-cell customer-list-cell--secondary" data-label="Джерело"><span class="badge badge-source badge-source-${escapeHtml(sourceKey)}">${escapeHtml(sourceLabel)}</span></td>
-            <td class="customer-list-cell customer-list-cell--visits customer-list-cell--numeric" data-label="${escapeHtml(visitLabel)}"><span class="badge badge-visits">${visits}</span></td>
-            ${canViewRevenue ? `<td class="customer-list-cell customer-list-cell--spent customer-list-cell--numeric customer-list-cell--secondary" data-label="${maysternyaMode ? 'Оплачено' : 'Витрачено'}"><span class="badge badge-spent">${formatMoney(c.totalSpent)}</span></td>` : ''}
-            <td class="customer-list-cell customer-list-cell--last-visit" data-label="${escapeHtml(lastVisitLabel)}">${lastVisit}</td>
+            <td class="customer-list-cell customer-list-cell--visits customer-list-cell--numeric" data-label="${escapeHtml(visitLabel)}"><span class="badge badge-visits">${visits}</span><div class="customer-child customer-metrics-note">Минулих: ${c.pastBookings || 0} · Запланованих: ${c.plannedBookings || 0}${c.undatedBookings ? ` · Без дати: ${c.undatedBookings}` : ''}</div></td>
+            ${canViewRevenue ? `<td class="customer-list-cell customer-list-cell--spent customer-list-cell--numeric customer-list-cell--secondary" data-label="Вартість бронювань"><span class="badge badge-spent">${formatMoney(c.totalSpent)}</span>${c.unpricedBookings ? '<div class="customer-child">Вартість неповна</div>' : ''}</td>` : ''}
+            <td class="customer-list-cell customer-list-cell--last-visit" data-label="${escapeHtml(lastVisitLabel)}"><div>${lastVisit}</div><div class="customer-child customer-metrics-note">Найближче: ${formatDateOnly(c.nextBookingDate)}</div></td>
         </tr>`;
     }).join('');
 
     // Click handler for rows
+    tbody.querySelectorAll('[data-customer-tag-filter]').forEach(button => {
+        button.addEventListener('click', async event => {
+            event.stopPropagation();
+            await applyCustomerTagFilter(button.dataset.customerTagFilter);
+        });
+    });
     tbody.querySelectorAll('tr[data-id]').forEach(row => {
-        row.addEventListener('click', () => {
+        row.addEventListener('click', (event) => {
+            if (event.target.closest('a, button, summary, details')) return;
             const id = parseInt(row.dataset.id);
             showCustomerDetail(id);
         });
         row.addEventListener('keydown', (event) => {
+            if (event.target !== row) return;
             if (event.key !== 'Enter' && event.key !== ' ') return;
             event.preventDefault();
             const id = parseInt(row.dataset.id);
@@ -2286,10 +2359,10 @@ function renderRFM() {
     if (!CrmState.rfmData) return;
 
     const overviewEl = document.getElementById('rfmOverview');
-    const segments = CrmState.rfmData.segments;
+    const segments = CrmState.rfmData.segments || {};
 
     overviewEl.innerHTML = Object.entries(RFM_SEGMENTS).map(([key, seg]) => {
-        const count = segments[key === 'at_risk' ? 'atRisk' : key] || 0;
+        const count = segments[({ champion: 'champions', at_risk: 'atRisk', no_history: 'noHistory' })[key] || key] || 0;
         return `<div class="rfm-segment-card">
             <div class="rfm-segment-icon" style="background: ${seg.color}15">${seg.icon}</div>
             <div class="rfm-segment-info">
@@ -2319,7 +2392,7 @@ function renderRFM() {
             <td>${c.recencyDays !== null ? c.recencyDays + ' дн.' : '—'}</td>
             <td>${c.frequency}</td>
             <td>${formatMoney(c.monetary)}</td>
-            <td><b>${c.rfmScore}</b> (${c.rScore}/${c.fScore}/${c.mScore})</td>
+            <td>${c.rfmScore == null ? '—' : `<b>${c.rfmScore}</b> (${c.rScore}/${c.fScore}/${c.mScore})`}</td>
             <td><span class="badge rfm-${c.rfmSegment}">${seg.icon} ${seg.label}</span></td>
         </tr>`;
     }).join('');
@@ -2331,9 +2404,39 @@ function renderRFM() {
     });
 }
 
+let customerDetailRequestSeq = 0;
+
+function customerBookingHistoryHtml(customer, canViewRevenue) {
+    const groups = new Map([
+        ['planned', { label: 'Заплановані (сьогодні й пізніше)', rows: [] }],
+        ['past', { label: 'Минулі за датою', rows: [] }],
+        ['cancelled', { label: 'Скасовані', rows: [] }],
+        ['undated', { label: 'Без дати', rows: [] }]
+    ]);
+    for (const booking of customer.bookings || []) {
+        const date = dateInputValue(booking.date);
+        const status = String(booking.status || '').trim().toLowerCase();
+        const key = status === 'cancelled' ? 'cancelled' : !date ? 'undated'
+            : date < customer.metricsAsOf ? 'past' : 'planned';
+        groups.get(key).rows.push(booking);
+    }
+    return [...groups.values()].filter(group => group.rows.length).map(group => `<div class="detail-section">
+        <h4>${escapeHtml(group.label)} (${group.rows.length})</h4><div class="detail-bookings">
+        ${group.rows.map(b => `<div class="detail-booking-row">
+            <span>${escapeHtml(customerBookingStatusLabel(b.status) || 'Статус не вказано')}</span>
+            <span style="font-weight:700">${escapeHtml(customerBookingDateTimeText(b) || 'Дата не вказана')}</span>
+            <span>${escapeHtml(b.label || b.programName || '')}</span>
+            ${canViewRevenue ? `<span style="color:var(--gray-400);margin-left:auto">${b.price == null || Number(b.price) < 0 ? 'Вартість не вказана' : formatMoney(Number(b.price))}</span>` : ''}
+        </div>`).join('')}</div></div>`).join('');
+}
+
 async function showCustomerDetail(id) {
     const modal = document.getElementById('customerDetailModal');
     const content = document.getElementById('customerDetailContent');
+    const requestSeq = ++customerDetailRequestSeq;
+    const requestScope = JSON.stringify(customerBusinessScope());
+    const isCurrentDetail = () => requestSeq === customerDetailRequestSeq
+        && requestScope === JSON.stringify(customerBusinessScope()) && !modal.classList.contains('hidden');
     const activeElement = document.activeElement;
     modal._customerDetailReturnFocus = activeElement instanceof HTMLElement
         && activeElement !== document.body
@@ -2347,6 +2450,7 @@ async function showCustomerDetail(id) {
             fetchCustomerDetail(id),
             fetchCustomerCommunicationContext(id).catch(() => null)
         ]);
+        if (!isCurrentDetail()) return;
         const maysternyaMode = isMaysternyaCustomerContext();
         const canViewRevenue = canViewCustomerRevenue();
 
@@ -2361,11 +2465,7 @@ async function showCustomerDetail(id) {
                         <div class="field-value">${escapeHtml(customer.phone) || '—'}</div>
                     </div>
                     <div class="detail-field">
-                        <div class="field-label">Instagram</div>
-                        <div class="field-value">${customer.instagram ? '@' + escapeHtml(customer.instagram) : '—'}</div>
-                    </div>
-                    <div class="detail-field">
-                        <div class="field-label">Соц. ідентичності</div>
+                        <div class="field-label">Канали зв’язку</div>
                         <div class="field-value">${renderSocialIdentities(customer.socialIdentities, customer.instagram)}</div>
                     </div>
                     <div class="detail-field">
@@ -2374,7 +2474,7 @@ async function showCustomerDetail(id) {
                     </div>
                     <div class="detail-field">
                         <div class="field-label">Лід</div>
-                        <div class="field-value">${customer.leadId ? `<a href="${escapeHtml(leadCrmLinkForCustomer(customer.leadId))}">#${escapeHtml(customer.leadId)}</a>` : '—'}</div>
+                        <div class="field-value">${customer.leadId ? `#${escapeHtml(customer.leadId)}` : '—'}</div>
                     </div>
                     <div class="detail-field">
                         <div class="field-label">Клієнт з</div>
@@ -2387,20 +2487,32 @@ async function showCustomerDetail(id) {
                 <h4>Статистика</h4>
                 <div class="detail-grid">
                     <div class="detail-field">
-                        <div class="field-label">${maysternyaMode ? 'Сесій' : 'Бронювань'}</div>
+                        <div class="field-label">Бронювань</div>
                         <div class="field-value">${customer.totalBookings}</div>
                     </div>
                     ${canViewRevenue ? `<div class="detail-field">
-                        <div class="field-label">${maysternyaMode ? 'Оплачено' : 'Витрачено'}</div>
-                        <div class="field-value">${formatMoney(customer.totalSpent)}</div>
+                        <div class="field-label">Вартість бронювань</div>
+                        <div class="field-value">${formatMoney(customer.totalSpent)}${customer.unpricedBookings ? ' · Вартість неповна' : ''}</div>
                     </div>` : ''}
                     <div class="detail-field">
-                        <div class="field-label">${maysternyaMode ? 'Перша сесія' : 'Перший візит'}</div>
-                        <div class="field-value">${formatDate(customer.firstVisit)}</div>
+                        <div class="field-label">Перше минуле бронювання</div>
+                        <div class="field-value">${formatDateOnly(customer.firstVisit)}</div>
                     </div>
                     <div class="detail-field">
-                        <div class="field-label">${maysternyaMode ? 'Остання сесія' : 'Останній візит'}</div>
-                        <div class="field-value">${formatDate(customer.lastVisit)}</div>
+                        <div class="field-label">Останнє минуле бронювання</div>
+                        <div class="field-value">${formatDateOnly(customer.lastVisit)}</div>
+                    </div>
+                    <div class="detail-field">
+                        <div class="field-label">Минулих / Запланованих</div>
+                        <div class="field-value">${customer.pastBookings || 0} / ${customer.plannedBookings || 0}</div>
+                    </div>
+                    <div class="detail-field">
+                        <div class="field-label">Найближче бронювання</div>
+                        <div class="field-value">${formatDateOnly(customer.nextBookingDate)}</div>
+                    </div>
+                    <div class="detail-field">
+                        <div class="field-label">Попередніх / Без дати</div>
+                        <div class="field-value">${customer.preliminaryBookings || 0} / ${customer.undatedBookings || 0}</div>
                     </div>
             </div>
             </div>`;
@@ -2418,14 +2530,6 @@ async function showCustomerDetail(id) {
                 <button class="crm-tag-add-btn" onclick="showAddTagDropdown(${customer.id})">+ Тег</button>
             </div>
         </div>`;
-
-        // v30.4: LTV
-        if (canViewRevenue && customer.ltv > 0) {
-            html += `<div class="detail-section">
-                <h4>LTV (Lifetime Value)</h4>
-                <div class="stat-value" style="font-size:24px;color:var(--primary)">${formatMoney(customer.ltv)}</div>
-            </div>`;
-        }
 
         // v30.4: Communications timeline
         html += `<div class="detail-section">
@@ -2459,21 +2563,10 @@ async function showCustomerDetail(id) {
         }
 
         // Bookings
-        if (customer.bookings && customer.bookings.length > 0) {
-            html += `<div class="detail-section">
-                <h4>${maysternyaMode ? 'Історія сесій' : 'Історія бронювань'} (${customer.bookings.length})</h4>
-                <div class="detail-bookings">`;
-            for (const b of customer.bookings) {
-                const statusIcon = b.status === 'confirmed' ? '✅' : b.status === 'cancelled' ? '❌' : '⏳';
-                const dateTimeText = customerBookingDateTimeText(b);
-                html += `<div class="detail-booking-row">
-                    <span>${statusIcon}</span>
-                    <span style="font-weight:700">${escapeHtml(dateTimeText || 'Дата не вказана')}</span>
-                    <span>${escapeHtml(b.label || b.programName || '')}</span>
-                    ${canViewRevenue ? `<span style="color:var(--gray-400);margin-left:auto">${b.price ? formatMoney(b.price) : ''}</span>` : ''}
-                </div>`;
-            }
-            html += `</div></div>`;
+        if (customer.bookings?.length) {
+            html += `<div class="detail-section"><h4>${maysternyaMode ? 'Історія сесій' : 'Історія бронювань'}</h4>
+                <div class="customer-hub-note">Показано до 50 останніх основних бронювань, включно зі скасованими. Загальні показники вище враховують усю актуальну історію. Минула дата не підтверджує проведення чи оплату.</div></div>`;
+            html += customerBookingHistoryHtml(customer, canViewRevenue);
         }
 
         html += `</div>`;
@@ -2484,6 +2577,7 @@ async function showCustomerDetail(id) {
 
         // Load communications timeline
         loadCommunications(customer.id).then(comms => {
+            if (!isCurrentDetail()) return;
             const commsEl = document.getElementById('detailComms');
             if (!commsEl) return;
             const COMM_ICONS = { call: '📞', sms: '💬', telegram: '💬', email: '📧', note: '📝', meeting: '🤝' };
@@ -2498,6 +2592,7 @@ async function showCustomerDetail(id) {
             </div>`).join('');
         });
     } catch (err) {
+        if (!isCurrentDetail()) return;
         content.innerHTML = `<div style="text-align:center;padding:20px;color:#DC2626">Помилка завантаження</div>`;
     }
 }
@@ -2894,56 +2989,97 @@ window.addTag = async function(customerId, tag, color, button) {
 // v30.4: DUPLICATES
 // ==========================================
 
-async function loadDuplicates() {
-    const token = localStorage.getItem('pzp_token');
-    try {
-        const res = await fetch(customerApiUrl('/api/customers/duplicates'), { headers: { 'Authorization': `Bearer ${token}` } });
-        const data = await res.json();
-        const el = document.getElementById('tabDuplicates');
-        if (!data.duplicates || data.duplicates.length === 0) {
-            el.innerHTML = '<div class="crm-empty"><div class="empty-icon">✅</div><div class="empty-text">Дублікатів не знайдено</div></div>';
-            return;
-        }
-        el.innerHTML = `<h4 style="margin-bottom:12px">⚠️ Знайдено ${data.count} можливих дублікатів</h4>
-            <div class="duplicates-list">${data.duplicates.map(d => `
-                <div class="duplicate-pair">
-                    <div class="dup-card">
-                        <b>${escapeHtml(d.name1)}</b><br>
-                        📞 ${escapeHtml(d.phone1 || '—')} · IG: ${escapeHtml(d.ig1 || '—')}<br>
-                        ${d.bookings1} бронювань${canViewCustomerRevenue() ? ` · ${formatMoney(d.spent1)}` : ''}
-                    </div>
-                    <span class="dup-match">= ${d.match_type === 'phone' ? '📞' : '📷'}</span>
-                    <div class="dup-card">
-                        <b>${escapeHtml(d.name2)}</b><br>
-                        📞 ${escapeHtml(d.phone2 || '—')} · IG: ${escapeHtml(d.ig2 || '—')}<br>
-                        ${d.bookings2} бронювань${canViewCustomerRevenue() ? ` · ${formatMoney(d.spent2)}` : ''}
-                    </div>
-                    <button class="btn-page-primary" onclick="mergeCustomers(${d.id1},${d.id2})" style="padding:6px 12px;font-size:12px;min-height:36px">Об'єднати →</button>
-                </div>
-            `).join('')}</div>`;
-        applyCustomerReadOnlyControls(el);
-    } catch { /* duplicates load failed */ }
+let duplicatesRequestController = null;
+let duplicatesRequestSeq = 0;
+
+function renderDuplicateCustomerCard(duplicate, side) {
+    const id = Number(duplicate['id' + side]);
+    return `<div class="dup-card">
+        <b>${escapeHtml(duplicate['name' + side])}</b><br>
+        📞 ${escapeHtml(duplicate['phone' + side] || '—')} · IG: ${escapeHtml(duplicate['ig' + side] || '—')}<br>
+        <span class="customer-hub-note">Актуальні бронювання — у картці клієнта.</span>
+        <div style="margin-top:8px">
+            <button type="button" class="btn-page-secondary" data-duplicate-customer-id="${id}"
+                aria-label="Відкрити картку клієнта ${escapeHtml(duplicate['name' + side] || String(id))}">Відкрити картку</button>
+        </div>
+    </div>`;
 }
 
-window.mergeCustomers = async function(primaryId, duplicateId) {
-    if (!guardCustomerWrite('обʼєднувати клієнтів')) return;
-    if (!await confirmModal(`Об'єднати клієнтів? Всі бронювання будуть перенесені до основного профілю.`, { type: 'warning', okText: "Об'єднати" })) return;
+async function loadDuplicates() {
+    const el = document.getElementById('tabDuplicates');
+    if (!el) return false;
+    duplicatesRequestController?.abort();
+    const controller = new AbortController();
+    duplicatesRequestController = controller;
+    const requestSeq = ++duplicatesRequestSeq;
+    const scopeKey = JSON.stringify(customerBusinessScope());
+    const isCurrent = () => requestSeq === duplicatesRequestSeq
+        && scopeKey === JSON.stringify(customerBusinessScope());
+    const restoreFocus = el.contains(document.activeElement);
     const token = localStorage.getItem('pzp_token');
+    el.setAttribute('aria-busy', 'true');
+    el.innerHTML = '<div class="crm-empty" role="status"><div class="empty-text">Пошук можливих дублікатів...</div></div>';
     try {
-        const res = await fetch(customerApiUrl(`/api/customers/${primaryId}/merge`), {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ duplicateId })
+        const res = await fetch(customerApiUrl('/api/customers/duplicates'), {
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: controller.signal
         });
         const data = await res.json();
-        if (data.success) {
-            showNotification('Клієнтів об\'єднано');
-            loadDuplicates();
-            refreshData();
-        } else {
-            showNotification(data.error || 'Помилка', 'error');
+        if (!isCurrent()) return false;
+        if (!res.ok || data.success !== true) throw new Error('Duplicate lookup failed');
+        if (!Array.isArray(data.duplicates) || data.duplicates.some(d => !d
+            || !Number.isInteger(Number(d.id1)) || Number(d.id1) <= 0
+            || !Number.isInteger(Number(d.id2)) || Number(d.id2) <= 0)) {
+            throw new Error('Invalid duplicate lookup response');
         }
-    } catch { showNotification('Помилка об\'єднання', 'error'); }
+        const notice = '<p class="customer-hub-note">Об’єднання тимчасово недоступне: перевіряємо перенесення всіх зв’язків. Відкрийте обидві картки для ручної перевірки. Збіг контактів не доводить, що це одна людина.</p>';
+        if (data.duplicates.length === 0) {
+            el.innerHTML = `<h4 tabindex="-1">Можливі дублікати</h4>${notice}<div class="crm-empty" role="status"><div class="empty-icon">✅</div><div class="empty-text">Можливих дублікатів не знайдено</div></div>`;
+        } else {
+            el.innerHTML = `<h4 tabindex="-1" style="margin-bottom:12px">Пар можливих дублікатів у списку: ${data.duplicates.length} (до 100)</h4>
+                ${notice}<div class="duplicates-list">${data.duplicates.map(d => `
+                    <div class="duplicate-pair">
+                        ${renderDuplicateCustomerCard(d, 1)}
+                        <span class="dup-match">${d.match_type === 'phone' ? 'Збіг телефону' : d.match_type === 'instagram' ? 'Збіг Instagram' : 'Збіг контактів'}</span>
+                        ${renderDuplicateCustomerCard(d, 2)}
+                        <button type="button" class="btn-page-secondary" disabled aria-disabled="true"
+                            title="Об’єднання недоступне до перевірки перенесення всіх зв’язків">Об’єднання недоступне</button>
+                    </div>
+                `).join('')}</div>`;
+            el.querySelectorAll('[data-duplicate-customer-id]').forEach(button => {
+                button.addEventListener('click', () => {
+                    if (isCurrent()) showCustomerDetail(Number(button.dataset.duplicateCustomerId));
+                });
+            });
+        }
+        if (restoreFocus) el.querySelector('h4')?.focus();
+        return true;
+    } catch (err) {
+        if (!isCurrent() || err?.name === 'AbortError') return false;
+        el.innerHTML = `<div class="crm-empty error" role="alert">
+            <div class="empty-text">Не вдалося перевірити дублікати. Це не означає, що збігів немає.</div>
+            <button type="button" class="btn-page-secondary" data-duplicates-retry>Повторити пошук</button>
+        </div>`;
+        const retry = el.querySelector('[data-duplicates-retry]');
+        retry.addEventListener('click', loadDuplicates);
+        if (restoreFocus) retry.focus();
+        return false;
+    } finally {
+        if (requestSeq === duplicatesRequestSeq) {
+            el.setAttribute('aria-busy', 'false');
+            duplicatesRequestController = null;
+            if (scopeKey !== JSON.stringify(customerBusinessScope())) {
+                el.innerHTML = '<div class="crm-empty" role="status"><div class="empty-text">Бізнес-контекст змінився. Повторіть пошук дублікатів.</div><button type="button" class="btn-page-secondary" data-duplicates-retry>Повторити пошук</button></div>';
+                el.querySelector('[data-duplicates-retry]').addEventListener('click', loadDuplicates);
+            }
+        }
+    }
+}
+
+// Keep stale inline handlers safe without sending a merge request.
+window.mergeCustomers = function() {
+    showNotification('Об’єднання клієнтів тимчасово недоступне до перевірки перенесення всіх зв’язків.', 'info');
+    return false;
 };
 
 // ==========================================
@@ -3091,7 +3227,7 @@ async function loadNps() {
     try {
         const res = await fetch(customerApiUrl('/api/customers/nps-stats'), { headers: { 'Authorization': `Bearer ${token}` } });
         const data = await res.json();
-        if (!data.success) { el.innerHTML = '<div class="crm-empty"><div class="empty-icon">📊</div><div class="empty-text">Дані NPS недоступні</div></div>'; return; }
+        if (!res.ok || !data.success) throw new Error('NPS unavailable');
 
         const npsScore = parseInt(data.npsScore ?? data.avgNps ?? 0, 10) || 0;
         const total = parseInt(data.totalResponses ?? data.totalReviews, 10) || 0;
@@ -3150,39 +3286,59 @@ async function loadNps() {
             <div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Клієнт</th><th>NPS</th><th>Група</th><th>Коментар</th><th>Дата</th></tr></thead><tbody>${recentRows}</tbody></table></div>
         </div>
         ${renderLegacyReviewsSection(data.legacyReviews || {})}`;
-    } catch { el.innerHTML = '<div class="crm-empty"><div class="empty-icon">📊</div><div class="empty-text">Помилка завантаження NPS</div></div>'; }
+    } catch { el.innerHTML = '<div class="crm-empty" role="alert"><div class="empty-icon">📊</div><div class="empty-text">Помилка завантаження NPS</div></div>'; }
 }
 
 // ==========================================
 // v30.4: BULK MESSAGING
 // ==========================================
 
+let bulkPreviewRequestSeq = 0;
+
+function invalidateBulkPreview() {
+    bulkPreviewRequestSeq++;
+    const preview = document.getElementById('bulkPreview');
+    if (preview) {
+        preview.style.display = 'none';
+        preview.innerHTML = '';
+    }
+    const status = document.getElementById('bulkPreviewStatus');
+    if (status) status.textContent = '';
+    const button = document.getElementById('bulkPreviewButton');
+    if (button) button.disabled = false;
+}
+
 async function loadBulkTab() {
+    bulkPreviewRequestSeq++;
     const el = document.getElementById('tabBulk');
     el.innerHTML = `<div class="bulk-form">
-        <h4 style="margin-bottom:16px;font-size:14px;font-weight:800">Масова розсилка Telegram</h4>
-        <label>Фільтр по тегу</label>
+        <h4 style="margin-bottom:12px;font-size:14px;font-weight:800">Підготовка повідомлень</h4>
+        <p class="bulk-preview-note">Виберіть сегмент і перевірте текст для клієнтів. Масова доставка недоступна. Для особистого звернення відкрийте діалог в Omni.</p>
+        <label for="bulkTagFilter">Фільтр по тегу</label>
         <select id="bulkTagFilter">
-            ${renderCustomerTagOptions('', 'Всі клієнти', { includeBirthdaySystemTags: true, includeCurrentBirthdayShortcut: true })}
+            ${renderCustomerTagOptions(CrmState.filters.tag || '', 'Всі клієнти', { includeBirthdaySystemTags: true, includeCurrentBirthdayShortcut: true })}
         </select>
-        <label>Мін. кількість візитів</label>
+        <label for="bulkMinVisits">Мін. кількість бронювань</label>
         <input type="number" id="bulkMinVisits" value="0" min="0">
-        <label>Джерело</label>
+        <label for="bulkSourceFilter">Джерело</label>
         <select id="bulkSourceFilter">
             <option value="">Всі джерела</option>
             <option value="telegram">Telegram</option>
             <option value="instagram">Instagram</option>
             <option value="facebook">Facebook</option>
         </select>
-        <label>Шаблон повідомлення</label>
+        <label for="bulkTemplate">Текст повідомлення</label>
         <textarea id="bulkTemplate" placeholder="Привіт, {name}! Запрошуємо {childName} на свято 🎉"></textarea>
         <div style="font-size:11px;color:var(--gray-400);margin-top:-8px;margin-bottom:12px">Доступні змінні: {name}, {childName}, {childBirthday}, {phone}. Для кількох дітей {childName} і {childBirthday} підставляють короткий список.</div>
-        <div id="bulkPreview" class="bulk-preview" style="display:none"></div>
-        <div style="display:flex;gap:8px">
-            <button class="btn-page-secondary" onclick="previewBulk()" style="flex:1">Попередній перегляд</button>
-            <button class="btn-page-primary" onclick="sendBulk()" style="flex:1">Надіслати</button>
-        </div>
+        <button type="button" id="bulkPreviewButton" class="btn-page-secondary" onclick="previewBulk()">Попередній перегляд</button>
+        <p id="bulkPreviewStatus" class="bulk-preview-note" role="status" aria-live="polite"></p>
+        <div id="bulkPreview" class="bulk-preview" style="display:none" aria-live="polite"></div>
     </div>`;
+    ['bulkTagFilter', 'bulkMinVisits', 'bulkSourceFilter', 'bulkTemplate'].forEach(id => {
+        const field = document.getElementById(id);
+        field.addEventListener('input', invalidateBulkPreview);
+        field.addEventListener('change', invalidateBulkPreview);
+    });
 }
 
 window.previewBulk = async function() {
@@ -3192,53 +3348,75 @@ window.previewBulk = async function() {
         minVisits: parseInt(document.getElementById('bulkMinVisits')?.value) || 0,
         source: document.getElementById('bulkSourceFilter')?.value || undefined
     };
-    const template = document.getElementById('bulkTemplate')?.value;
-    if (!template.trim()) { showNotification('Введіть шаблон повідомлення', 'error'); return; }
+    const template = document.getElementById('bulkTemplate')?.value || '';
+    invalidateBulkPreview();
+    const status = document.getElementById('bulkPreviewStatus');
+    if (!template.trim()) {
+        status.textContent = 'Введіть текст повідомлення.';
+        return;
+    }
+    const requestSeq = ++bulkPreviewRequestSeq;
+    const businessContext = customerBusinessContext();
+    const button = document.getElementById('bulkPreviewButton');
+    button.disabled = true;
+    status.textContent = 'Готуємо попередній перегляд…';
     try {
         const res = await fetch(customerApiUrl('/api/customers/bulk-message'), {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify(customerPayload({ filters, template, dryRun: true }))
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        if (requestSeq !== bulkPreviewRequestSeq || businessContext !== customerBusinessContext()) return;
+        if (!res.ok || data.success !== true) {
+            throw new Error(data.error || 'Не вдалося підготувати повідомлення. Спробуйте ще раз.');
+        }
+        if (!Number.isSafeInteger(data.segmentCount) || data.segmentCount < 0 || !Array.isArray(data.previews)
+            || data.previews.length > data.segmentCount || (data.segmentCount > 0 && !data.previews.length)
+            || data.previews.some(item => !Number.isSafeInteger(item.customerId) || item.customerId <= 0
+                || typeof item.name !== 'string' || typeof item.message !== 'string')) {
+            throw new Error('Не вдалося отримати повний попередній перегляд. Спробуйте ще раз.');
+        }
         const preview = document.getElementById('bulkPreview');
+        if (data.birthdaySegment && (!Number.isSafeInteger(data.birthdaySegment.childCount)
+            || data.birthdaySegment.childCount < 0 || data.birthdaySegment.familyCount !== data.segmentCount)) {
+            throw new Error('Не вдалося отримати підрахунок іменинників. Спробуйте ще раз.');
+        }
         preview.style.display = '';
-        preview.textContent = `Отримають: ${data.recipientCount || 0} клієнтів`;
-    } catch { showNotification('Помилка перегляду', 'error'); }
+        preview.innerHTML = `<div>Клієнтів у сегменті: ${data.segmentCount}</div>
+            ${data.birthdaySegment ? `<div>Дітей-іменинників у сегменті: ${data.birthdaySegment.childCount}</div>` : ''}
+            <p class="bulk-preview-note">${data.segmentCount === 0 ? 'За цими фільтрами клієнтів немає.' : `Попередній перегляд: ${data.previews.length} із ${data.segmentCount} клієнтів. Наявність клієнта в сегменті не означає доступність доставки.`}</p>
+            ${data.previews.map(item => `<article class="bulk-preview-customer">
+                <div class="bulk-preview-customer-header"><strong>${escapeHtml(item.name || 'Клієнт #' + item.customerId)}</strong>
+                    <button type="button" class="btn-page-secondary" onclick="openBulkCustomerDialog(this, ${item.customerId})">Відкрити в Omni</button></div>
+                <div class="bulk-preview-message">${escapeHtml(item.message)}</div>
+                ${item.neutralGreeting ? '<p class="bulk-preview-note">Використано нейтральне звернення: ім’я дитини не вказане або немає дітей обраного місяця.</p>' : ''}
+            </article>`).join('')}`;
+        status.textContent = '';
+    } catch (err) {
+        if (requestSeq !== bulkPreviewRequestSeq || businessContext !== customerBusinessContext()) return;
+        status.textContent = err.message || 'Помилка попереднього перегляду. Спробуйте ще раз.';
+        showNotification(status.textContent, 'error');
+    } finally {
+        if (requestSeq === bulkPreviewRequestSeq) button.disabled = false;
+    }
 };
 
-let _sendBulkBusy = false;
-window.sendBulk = async function() {
-    if (_sendBulkBusy) return;
-    if (!await confirmModal('Надіслати повідомлення всім обраним клієнтам?', { type: 'warning', okText: 'Надіслати' })) return;
-    if (_sendBulkBusy) return;
-    const template = document.getElementById('bulkTemplate')?.value;
-    if (!template.trim()) { showNotification('Введіть шаблон повідомлення', 'error'); return; }
-    _sendBulkBusy = true;
-    const btn = document.querySelector('[onclick="sendBulk()"]');
-    if (btn) btn.disabled = true;
-    const token = localStorage.getItem('pzp_token');
-    const filters = {
-        tags: document.getElementById('bulkTagFilter')?.value ? [document.getElementById('bulkTagFilter')?.value] : [],
-        minVisits: parseInt(document.getElementById('bulkMinVisits')?.value) || 0,
-        source: document.getElementById('bulkSourceFilter')?.value || undefined
-    };
+window.openBulkCustomerDialog = async function(button, customerId) {
+    const businessContext = customerBusinessContext();
+    button.disabled = true;
     try {
-        const res = await fetch(customerApiUrl('/api/customers/bulk-message'), {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(customerPayload({ filters, template, dryRun: false }))
-        });
-        const data = await res.json();
-        if (data.success) {
-            showNotification(`Надіслано: ${data.sent || 0} повідомлень`);
-        } else {
-            showNotification(data.error || 'Помилка розсилки', 'error');
+        const context = await fetchCustomerCommunicationContext(customerId);
+        if (businessContext !== customerBusinessContext() || !button.isConnected) return;
+        const target = customerHeaderOmniTarget({ businessContext }, context);
+        if (!target.href) throw new Error('Діалог або пошук цього клієнта в Omni недоступний.');
+        window.location.assign(target.href);
+    } catch (err) {
+        if (businessContext === customerBusinessContext() && button.isConnected) {
+            showNotification(err.message || 'Не вдалося відкрити Omni. Спробуйте ще раз.', 'error');
         }
-    } catch { showNotification('Помилка розсилки', 'error'); }
-    finally {
-        _sendBulkBusy = false;
-        if (btn) btn.disabled = false;
+    } finally {
+        button.disabled = false;
     }
 };
 
@@ -3303,13 +3481,57 @@ async function importVcf(file) {
 // TAB SWITCHING
 // ==========================================
 
+const CUSTOMER_TOOL_DESCRIPTIONS = Object.freeze({
+    rfm: { title: 'RFM-аналітика', text: 'Попередній поділ клієнтів за минулими підтвердженими бронюваннями. Вартість бронювань не означає оплату. Клієнти без такої історії показані окремо.' },
+    nps: { title: 'NPS / відгуки', text: 'Оцінки й відгуки клієнтів: переглядайте історію та збирайте зворотний зв’язок через наявний інструмент.' },
+    'children-review': { title: 'Уточнення даних дітей', text: 'Перевіряйте неповні або суперечливі відомості про дітей і уточнюйте їх після звірки. Цей інструмент не об’єднує клієнтів.' },
+    duplicates: { title: 'Можливі дублікати', text: 'Збіг телефону або Instagram — привід перевірити обидві картки. Об’єднання заблоковане до перевірки перенесення всіх зв’язків.' },
+    bulk: { title: 'Підготовка повідомлень', text: 'Виберіть сегмент і перевірте підстановку тексту. Preview не відправляє повідомлень. Для особистого звернення відкрийте Omni.' }
+});
+
+function syncCustomerSectionNavigation(tab) {
+    document.querySelectorAll('.crm-tab[data-tab]').forEach(link => {
+        const selected = link.dataset.tab === tab;
+        link.classList.toggle('active', selected);
+        if (selected) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+        const url = new URL(window.location.href);
+        url.searchParams.set('businessContext', customerBusinessContext());
+        url.searchParams.set('tab', link.dataset.tab);
+        link.href = url.pathname + url.search + url.hash;
+    });
+    const info = CUSTOMER_TOOL_DESCRIPTIONS[tab];
+    const intro = document.getElementById('customerToolIntro');
+    if (intro) intro.hidden = !info;
+    if (info) {
+        document.getElementById('customerToolTitle').textContent = info.title;
+        document.getElementById('customerToolDescription').textContent = info.text;
+    }
+}
+
+function bindCustomerSectionNavigation() {
+    document.querySelectorAll('.crm-tab').forEach(tab => {
+        tab.addEventListener('click', event => {
+            if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+            event.preventDefault();
+            switchTab(tab.dataset.tab);
+        });
+    });
+    syncCustomerSectionNavigation('list');
+    document.getElementById('customerReturnToList')?.addEventListener('click', () => {
+        switchTab('list');
+        document.getElementById('customerSearchInput')?.focus({ preventScroll: true });
+    });
+}
+
 function switchTab(tab) {
+    if (!['list', 'rfm', 'duplicates', 'nps', 'children-review', 'bulk'].includes(tab)) tab = 'list';
     if (tab === 'rfm' && !canViewCustomerRevenue()) {
         showNotification('Недостатньо прав для перегляду фінансової RFM-аналітики', 'error');
         tab = 'list';
     }
     CrmState.activeTab = tab;
-    document.querySelectorAll('.crm-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    syncCustomerSectionNavigation(tab);
     const tabs = ['tabList', 'tabRfm', 'tabDuplicates', 'tabNps', 'tabChildrenReview', 'tabBulk'];
     const map = { list: 'tabList', rfm: 'tabRfm', duplicates: 'tabDuplicates', nps: 'tabNps', 'children-review': 'tabChildrenReview', bulk: 'tabBulk' };
     tabs.forEach(id => {
@@ -3318,7 +3540,12 @@ function switchTab(tab) {
     });
 
     if (tab === 'rfm' && !CrmState.rfmData) {
-        fetchRFM().then(renderRFM).catch(function(err) { console.warn('RFM load failed', err); });
+        const tbody = document.getElementById('rfmTableBody');
+        tbody.innerHTML = '<tr><td colspan="6" role="status">Завантаження RFM...</td></tr>';
+        fetchRFM().then(renderRFM).catch(() => {
+            document.getElementById('rfmOverview').innerHTML = '';
+            tbody.innerHTML = '<tr><td colspan="6" role="alert">Не вдалося завантажити RFM. Відкрийте цю вкладку повторно.</td></tr>';
+        });
     }
     if (tab === 'duplicates') loadDuplicates();
     if (tab === 'nps') loadNps();
@@ -3331,14 +3558,13 @@ function switchTab(tab) {
 // ==========================================
 
 async function refreshData() {
-    const [customersApplied] = await Promise.all([fetchCustomers(), fetchStats(), fetchCustomerTags()]);
+    await Promise.all([reloadCustomers(), fetchStats(), fetchCustomerTags()]);
     renderTagFilters();
     renderStats();
-    if (customersApplied) {
-        renderCustomerTable();
-        renderPagination();
-    }
     syncCustomerReadOnlyUi();
+    if (CrmState.activeTab === 'duplicates') {
+        await loadDuplicates();
+    }
     if (CrmState.activeTab === 'rfm' && canViewCustomerRevenue()) {
         await fetchRFM();
         renderRFM();
@@ -3521,9 +3747,9 @@ async function initPage() {
     if (spentHeader) spentHeader.style.display = canViewRevenue ? '' : 'none';
     if (!canViewRevenue) {
         const sortFilter = document.getElementById('sortFilter');
-        sortFilter?.querySelectorAll('option[value="total_spent"], option[value="ltv"]')
+        sortFilter?.querySelectorAll('option[value="total_spent"]')
             .forEach(option => option.remove());
-        if (['total_spent', 'ltv'].includes(CrmState.filters.sortBy)) {
+        if (CrmState.filters.sortBy === 'total_spent') {
             CrmState.filters.sortBy = 'updated_at';
             if (sortFilter) sortFilter.value = 'updated_at';
         }
@@ -3538,10 +3764,7 @@ async function initPage() {
     bindCustomerFilterControls();
     renderCustomerFilterControls();
 
-    // Tabs
-    document.querySelectorAll('.crm-tab').forEach(tab => {
-        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
-    });
+    bindCustomerSectionNavigation();
     bindChildrenReviewTools();
 
     // Filters with debounce
@@ -3603,9 +3826,7 @@ async function initPage() {
 
     // Tag filter
     document.getElementById('tagFilter')?.addEventListener('change', async (e) => {
-        CrmState.filters.tag = e.target.value;
-        CrmState.page = 1;
-        await reloadCustomers();
+        await applyCustomerTagFilter(e.target.value);
     });
     document.addEventListener('click', async (e) => {
         const clear = e.target.closest('[data-explain-clear="customers"]');

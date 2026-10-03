@@ -111,7 +111,7 @@ test('customer and lead domains enforce business membership and related-record o
             CREATE TABLE conversation_messages (id SERIAL PRIMARY KEY, conversation_id INT REFERENCES conversations(id),
                 content TEXT, delivery_status TEXT, created_at TIMESTAMP DEFAULT NOW());
         `);
-        for (const migration of ['357_organizations_business_memberships.sql', '262_leads_customer_links_and_value.sql']) {
+        for (const migration of ['357_organizations_business_memberships.sql', '262_leads_customer_links_and_value.sql', '367_lead_conversation_links.sql']) {
             await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations', migration), 'utf8'));
         }
         await pool.query(`

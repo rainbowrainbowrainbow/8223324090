@@ -24,7 +24,7 @@ Production impact: yes.
 | `routes/leads.js` lead-to-customer sync | Write `child_name` only as first-child lead snapshot when the customer belongs to that lead or the snapshot is empty. | Save all lead `celebrants` through `replaceCustomerChildren` with `sourceKind = 'lead_celebrant'`. |
 | `routes/bookings.js` booking customer create | Write `child_name` / `child_birthday` only when creating a brand-new customer from a booking payload. | Must not update an existing customer's canonical children from one booking legacy payload. Add canonical sync separately before broadening this path. |
 | `services/maysternyaBookingWebhook.js` customer create | Write `child_name` / `child_birthday` only when creating a brand-new Maysternya customer from webhook payload. | Must not update an existing customer's canonical children from one webhook legacy payload. |
-| `routes/customers.js` duplicate merge | Fill empty legacy snapshot fields from the duplicate customer only. | Move `customer_children` rows from duplicate to primary customer. |
+| `routes/customers.js` duplicate merge | Disabled in UI and API pending verification of all customer relationships. | No data writes or child moves are allowed while merge is disabled. |
 | Read/search/export/scheduler services | Read legacy fields as fallback only. | Prefer canonical `customer_children` when available. |
 
 ## Forbidden Patterns

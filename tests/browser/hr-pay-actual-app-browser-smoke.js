@@ -275,6 +275,11 @@ async function run() {
                 await salaryCard.locator('.hr-payroll-details').waitFor({state:'visible'});
                 assert.match(await salaryCard.innerText(),/270/);
                 assert.match(await salaryCard.innerText(),/500/);
+                const additionalText=await salaryCard.locator('.hr-payroll-additional-role').innerText();
+                assert.match(additionalText,/500 грн\/день/);assert.doesNotMatch(additionalText,/500 грн\/год/);
+                assert.match(await salaryCard.locator('.hr-payroll-rate-summary').innerText(),/Разова ставка на цю дату/);
+                assert.match(await salaryCard.locator('.hr-payroll-rate-summary').innerText(),/Second editor/);
+                assert.match(await salaryCard.locator('.hr-payroll-rate-summary').innerText(),/330 \/ 60/);
                 await salaryCard.screenshot({path:path.join(output,'salary-breakdown.png')});
                 evidence.stages.salaryBreakdown={status:'PASS',physicalHours:5.5,additionalLines:1};
             }

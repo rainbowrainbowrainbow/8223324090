@@ -2038,12 +2038,16 @@ function renderPayrollAdditionalBreakdown(row = {}) {
         const multiplierLabel = role.multiplier === null || role.multiplier === undefined
             ? 'multiplier не визначено'
             : salaryNumber(role.multiplier).toLocaleString('uk-UA');
+        const rateUnit = role.rateUnit || role.rate_unit || 'hour';
+        const formula = rateUnit === 'day' ? `1 вихід × ${rateLabel}`
+            : rateUnit === 'month' ? (role.formula || `${rateLabel} / місяць`)
+                : `${salaryNumber(role.hours).toLocaleString('uk-UA')} год × ${rateLabel} × ${multiplierLabel}`;
         return `<div class="salary-additional-line">
             <div><b>${escapeHtml(role.professionKey || '—')}</b>${status}</div>
-            <div>${salaryNumber(role.hours).toLocaleString('uk-UA')} год × ${escapeHtml(rateLabel)} × ${escapeHtml(multiplierLabel)}</div>
+            <div>${escapeHtml(formula)}</div>
             ${amount}
             ${blocker ? `<div class="salary-additional-warning"><code>${escapeHtml(blocker.code || 'PAYROLL_BLOCKED')}</code> — ${escapeHtml(blocker.message || '')}</div>` : ''}
-            <small>${escapeHtml([role.rateSource, role.formula, trace || role.policyVersion || 'Немає snapshot reference'].filter(Boolean).join(' · '))}</small>
+            <small>${escapeHtml([role.rateSource, role.formula, role.exceptionReason ? `Причина: ${role.exceptionReason}` : '', trace || role.policyVersion || 'Немає snapshot reference'].filter(Boolean).join(' · '))}</small>
         </div>`;
     });
     if (blockers.length) {

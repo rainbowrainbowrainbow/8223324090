@@ -18121,11 +18121,14 @@ function renderSalaryRateSummary(row = {}) {
             key: normalizeProfessionKey(segment.profession_key || segment.professionKey || segment.key),
             rate: Number(segment.rate || segment.hourly_rate || segment.hourlyRate || 0),
             rateUnit: normalizeStaffRateUnit(segment.rate_unit || segment.rateUnit || fallbackUnit),
-            hours: Number(segment.hours || 0),
+            hours: Number(segment.hours ?? segment.actual_hours ?? 0),
             days: Number(segment.days || 0),
             amount: Number(segment.amount || 0),
             hasAmount: segment.amount !== null && segment.amount !== undefined,
             allocationSource: String(segment.allocation_source || segment.allocationSource || '').trim(),
+            rateSource: String(segment.rate_source || segment.rateSource || '').trim(),
+            formula: segment.formula || '',
+            exceptionReason: segment.exception_reason || segment.exceptionReason || '',
             kind: String(segment.kind || 'base').trim()
         }))
         .filter(segment => segment.key && segment.rate > 0);
@@ -18139,8 +18142,13 @@ function renderSalaryRateSummary(row = {}) {
                     : (segment.hours ? ` · ${segment.hours} год` : '');
             const kind = segment.kind === 'overtime' ? ' · overtime' : '';
             const amount = segment.hasAmount ? ` · ${new Intl.NumberFormat('uk-UA').format(segment.amount)} ₴` : '';
-            const source = segment.allocationSource ? ` · ${escapeHtml(segment.allocationSource)}` : '';
-            return `${escapeHtml(professionTitle(segment.key))}: ${formatStaffRate(segment.rate, segment.rateUnit)}${quantity}${amount}${kind}${source}`;
+            const sourceLabel = segment.rateSource === 'payroll_day_exception' ? 'Разова ставка на цю дату'
+                : segment.rateSource.startsWith('payroll_profile.') ? 'Зарплатний профіль'
+                    : segment.rateSource || segment.allocationSource;
+            const source = sourceLabel ? ` · ${escapeHtml(sourceLabel)}` : '';
+            const formula = segment.formula ? ` · Формула: ${escapeHtml(segment.formula)}` : '';
+            const reason = segment.exceptionReason ? ` · Причина: ${escapeHtml(segment.exceptionReason)}` : '';
+            return `${escapeHtml(professionTitle(segment.key))}: ${formatStaffRate(segment.rate, segment.rateUnit)}${quantity}${amount}${kind}${source}${formula}${reason}`;
         })
         .join('<br>');
 }
@@ -18409,20 +18417,23 @@ function renderSalaryAdditionalRoleDetails(row = {}) {
             role.roleRef ? `role #${role.roleRef}` : ''
         ].filter(Boolean).join(' · ');
         const amount = blocked ? 'Не розраховано' : `+${fmtMoney(Number(role.amount || 0))}`;
+        const rateUnit = normalizeStaffRateUnit(role.rateUnit || role.rate_unit || 'hour');
         const rateLabel = role.rate === null || role.rate === undefined
             ? 'ставку не визначено'
-            : formatStaffRate(Number(role.rate), 'hour');
+            : formatStaffRate(Number(role.rate), rateUnit);
+        const quantityLabel = rateUnit === 'day' ? 'За вихід' : rateUnit === 'month' ? 'Місячна складова'
+            : `${Number(role.hours || 0).toLocaleString('uk-UA')} год`;
         const multiplierLabel = role.multiplier === null || role.multiplier === undefined
             ? 'multiplier не визначено'
             : `multiplier ${Number(role.multiplier).toLocaleString('uk-UA')}`;
         return `<div class="hr-payroll-additional-role ${blocked ? 'is-warning' : ''}">
             <div>
                 <strong>${escapeHtml(professionTitle(role.professionKey) || role.professionKey || '—')}</strong>
-                <span>${Number(role.hours || 0).toLocaleString('uk-UA')} год · ${escapeHtml(rateLabel)} · ${escapeHtml(multiplierLabel)}</span>
+                <span>${escapeHtml(quantityLabel)} · ${escapeHtml(rateLabel)}${rateUnit === 'hour' ? ` · ${escapeHtml(multiplierLabel)}` : ''}</span>
             </div>
             <b>${escapeHtml(amount)}</b>
             ${blocker ? `<div><code>${escapeHtml(blocker.code || 'PAYROLL_BLOCKED')}</code> — ${escapeHtml(blocker.message || '')}</div>` : ''}
-            <small>${escapeHtml(references || role.policyVersion || 'Немає snapshot reference')}</small>
+            <small>${escapeHtml([role.formula ? `Формула: ${role.formula}` : '', role.exceptionReason ? `Причина: ${role.exceptionReason}` : '', references || role.policyVersion || 'Немає snapshot reference'].filter(Boolean).join(' · '))}</small>
         </div>`;
     });
     if (blockers.length) {

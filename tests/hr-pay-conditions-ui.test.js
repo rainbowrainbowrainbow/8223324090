@@ -120,3 +120,38 @@ test('profession pay navigation keeps the existing catalogue, scopes it to this 
     await c.openProfessionPayConditions();
     assert.equal(navigated, '');
 });
+
+test('salary details preserve daily/monthly units and render the frozen formula and exception reason', () => {
+    const escape=value=>String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const c=vm.createContext({salaryTransparency:row=>row,salaryAdditionalRoleBlocker:()=>null,
+        normalizeStaffRateUnit:unit=>unit||'hour',normalizeProfessionKey:key=>key,staffRateUnit:()=> 'hour',
+        professionTitle:key=>key,escapeHtml:escape,fmtMoney:value=>value+' ₴',
+        formatStaffRate:(rate,unit)=>`${rate} грн/${{hour:'год',day:'день',month:'місяць'}[unit]}`});
+    const start=source.indexOf('function renderSalaryAdditionalRoleDetails(');
+    vm.runInContext(source.slice(start,source.indexOf('\nconst PAYROLL_INSTALLMENT_KIND_LABELS',start)),c);
+    vm.runInContext(functionSource('renderSalaryRateSummary'),c);
+    for(const unit of ['day','month']){
+        const html=c.renderSalaryAdditionalRoleDetails({additionalRoles:[{professionKey:'animator',rateUnit:unit,
+            rate:500,hours:5.5,multiplier:1,amount:500,formula:unit==='day'?'1 вихід × 500':'900 / 9600 × 500',exceptionReason:'<private reason>'}]});
+        assert.match(html,unit==='day'?/500 грн\/день/:/500 грн\/місяць/);
+        assert.doesNotMatch(html,/500 грн\/год|5,5 год|<private reason>/);
+        assert.match(html,/Формула:/);assert.match(html,/&lt;private reason&gt;/);
+    }
+    const summary=c.renderSalaryRateSummary({profession_rate_summary:[{profession_key:'animator',rate:270,
+        rate_unit:'hour',actual_hours:5.5,amount:1485,rate_source:'payroll_day_exception',formula:'330 / 60 × 270',exception_reason:'Approved extra day'}]});
+    assert.match(summary,/Разова ставка на цю дату/);assert.match(summary,/330 \/ 60/);assert.match(summary,/Approved extra day/);
+});
+test('finance additional pay does not multiply a daily or monthly amount by physical hours', () => {
+    const finance=fs.readFileSync(path.join(__dirname,'..','js','finance-page.js'),'utf8');
+    const output=finance.indexOf('return `<div class="salary-additional-line">');
+    const start=finance.lastIndexOf('\nfunction ',output)+1;
+    const end=finance.indexOf('\nfunction ',output);
+    const declaration=finance.slice(start,end),functionName=/function (\w+)/.exec(declaration)[1];
+    const c=vm.createContext({salaryNumber:value=>Number(value)||0,formatMoney:value=>value+' ₴',escapeHtml:String,
+        payrollAdditionalRoleBlocker:()=>null,payrollTransparency:row=>row.payrollTransparency});
+    vm.runInContext(declaration,c);
+    const html=c[functionName]({payrollTransparency:{additionalRoles:[{professionKey:'animator',rateUnit:'day',hours:5.5,rate:500,multiplier:1,amount:500}]}});
+    assert.match(html,/1 вихід × 500/);assert.doesNotMatch(html,/5,5 год × 500/);
+    const monthly=c[functionName]({payrollTransparency:{additionalRoles:[{professionKey:'animator',rateUnit:'month',hours:5.5,rate:500,multiplier:1,amount:250,formula:'4800 / 9600 × 500'}]}});
+    assert.match(monthly,/4800 \/ 9600 × 500/);assert.doesNotMatch(monthly,/5,5 год × 500/);
+});

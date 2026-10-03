@@ -55,6 +55,7 @@ function harness() {
         }
     });
     vm.runInContext(section(source, 'function cancelBurgerMenuImageBlueprintLoad(', 'function renderProducts('), context);
+    vm.runInContext(section(source, 'function renderKitchenMenuPhotoButton(', 'function renderMenuPhotoImage('), context);
     vm.runInContext(section(source, 'function renderKitchenMenuImagePreview(', 'function buildKitchenMenuImagePrompt('), context);
     vm.runInContext(section(source, 'const BURGER_IMAGE_BLUEPRINT_DEFAULT =', 'function renderKitchenMenuAiActions('), context);
     vm.runInContext(section(source, 'async function saveBurgerMenuImageBlueprint(', 'function readMenuImageFileAsDataUrl('), context);

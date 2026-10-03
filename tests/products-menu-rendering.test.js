@@ -42,7 +42,8 @@ function harness(products = [menu(), menu('burger-2', 'Салати')], role = '
             w.openKitchenMenuImageStudio(id, panel.querySelector('[data-menu-image-open]'));
             return panel.querySelector('.kitchen-menu-image-dialog');
         }
-        panel.open = true; w.hydrateProductPanel(panel); return panel;
+        w.openKitchenMenuDetails(id, panel.querySelector('[data-menu-details-open]'));
+        return panel.querySelector('.kitchen-menu-details-dialog');
     };
     return { w, dom, calls, notifications, card, open, close: () => {
         w.dispatchEvent(new w.PageTransitionEvent('pagehide')); dom.window.close();
@@ -58,7 +59,10 @@ test('initial menu keeps visible business facts and actions but creates no hidde
         assert.equal(h.w.document.querySelector('#productsGrid').children.length, 0);
         assert.equal(h.w.document.querySelectorAll('#kitchenGrid input, #kitchenGrid textarea, #kitchenGrid select').length, 0);
         assert.match(h.card('burger-0').textContent, /320 г/);
-        assert.match(h.card('burger-0').textContent, /Синтетичний склад/);
+        assert.doesNotMatch(h.card('burger-0').textContent, /Синтетичний склад|Технологічна карта/);
+        assert.equal(h.card('burger-0').querySelector('.kitchen-menu-ai-actions'), null);
+        assert.match(h.card('burger-0').textContent, /Переглянути/);
+        assert.equal(h.card('burger-0').querySelector('details'), null);
         assert.match(h.card('burger-0').textContent, /Алергени/);
         assert.match(h.card('burger-0').textContent, /Редагувати/);
         assert.match(h.card('burger-0').textContent, /Фото меню/);
@@ -68,7 +72,7 @@ test('initial menu keeps visible business facts and actions but creates no hidde
 test('opening details and photo panel hydrates only that panel once and exposes all existing controls', () => {
     const h = harness();
     try {
-        const details = h.open('burger-1', 'details'), content = details.firstElementChild.nextElementSibling.firstElementChild;
+        const details = h.open('burger-1', 'details'), content = details.querySelector('[data-product-panel-content]').firstElementChild;
         assert.match(details.textContent, /Повний синтетичний опис/);
         const photo = h.open('burger-1');
         assert.equal(h.w.document.querySelectorAll('.kitchen-menu-image-studio').length, 1);
@@ -247,5 +251,95 @@ for (const mode of ['deactivate', 'reorder']) test(`menu save preserves canonica
         assert.equal(h.card('burger-2'), other); assert.equal(input.value, 'Retained');
         if (mode === 'deactivate') { assert.equal(h.card('burger-1'), undefined); assert.equal(h.calls.products, 0); }
         else { assert.equal(h.w.document.querySelector('.kitchen-product-card'), other); assert.equal(h.calls.products, 1); }
+    } finally { h.close(); }
+});
+
+test('read-only viewers use the current image, preserve focus and never write or apply a ready draft', () => {
+    const product = { ...menu(), aiCardDraft: { imageStudio: { status: 'ready', imageUrl: '/uploads/catalog-images/items/draft.jpg' } } };
+    const h = harness([product], 'animator');
+    try {
+        let writes = 0;
+        for (const name of ['apiUpdateProduct', 'apiApplyProductMenuImage', 'apiGenerateProductMenuImage', 'apiRejectProductMenuImage']) h.w[name] = () => { writes++; throw Error('Viewer must not write'); };
+        const opener = h.card(product.id).querySelector('[data-menu-details-open]');
+        const details = h.open(product.id, 'details');
+        const content = details.querySelector('.product-details-content');
+        assert.ok(details.open);
+        assert.equal(details.querySelector('img').getAttribute('src'), product.iconUrl);
+        assert.match(content.textContent, /Синтетичний склад/);
+        assert.match(content.textContent, /Технологічна карта/);
+        assert.match(content.textContent, /Короткий код таймлайна/);
+        assert.equal(h.w.document.activeElement, details.querySelector('button[aria-label^="Закрити"]'));
+        const photoOpener = details.querySelector('[data-menu-photo-url]');
+        h.w.openKitchenMenuPhoto(photoOpener);
+        const photo = h.w.document.querySelector('.kitchen-menu-photo-dialog');
+        assert.equal(photo.querySelector('img').getAttribute('src'), product.iconUrl);
+        assert.equal(photo.querySelector('img').alt, product.name);
+        h.w.closeKitchenMenuViewer(photo.querySelector('button'));
+        assert.equal(h.w.document.activeElement, photoOpener);
+        h.w.closeKitchenMenuViewer(details.querySelector('button[aria-label^="Закрити"]'));
+        assert.equal(h.w.document.activeElement, opener);
+        h.open(product.id, 'details');
+        assert.equal(details.querySelector('.product-details-content'), content);
+        assert.equal(writes, 0); assert.equal(h.calls.product, 0); assert.equal(h.calls.products, 0);
+        assert.equal(product.iconUrl, '/uploads/catalog-images/items/current.jpg');
+    } finally { h.close(); }
+});
+
+test('current and draft photo zoom remain separate and available while the studio is busy', () => {
+    const product = { ...menu(), aiCardDraft: { imageStudio: { status: 'ready', imageUrl: '/uploads/catalog-images/items/draft.jpg' } } };
+    const h = harness([product]);
+    try {
+        const studio = h.open(product.id), buttons = studio.querySelectorAll('.kitchen-menu-image-previews [data-menu-photo-url]');
+        assert.equal(buttons.length, 2);
+        h.w.setKitchenMenuImageStudioBusy(studio, true);
+        for (const button of buttons) {
+            assert.equal(button.disabled, false);
+            h.w.openKitchenMenuPhoto(button);
+            const viewer = h.w.document.querySelector('.kitchen-menu-photo-dialog');
+            assert.equal(viewer.querySelector('img').getAttribute('src'), button.dataset.menuPhotoUrl);
+            h.w.closeKitchenMenuViewer(viewer);
+            assert.equal(h.w.document.activeElement, button);
+        }
+        assert.equal(h.card(product.id).querySelector('img').getAttribute('src'), product.iconUrl);
+        assert.equal(h.calls.product, 0);
+    } finally { h.close(); }
+});
+
+test('filter and context changes close read-only viewers without exposing the previous business', () => {
+    const h = harness();
+    try {
+        const details = h.open('burger-1', 'details'), opener = details.querySelector('[data-menu-photo-url]');
+        h.w.openKitchenMenuPhoto(opener);
+        const photo = h.w.document.querySelector('.kitchen-menu-photo-dialog');
+        h.w.eval("activeMenuSection='Салати'; renderProducts();");
+        assert.equal(details.open, false); assert.equal(photo.open, false);
+        h.w.eval("activeMenuSection='all'; renderProducts();");
+        h.open('burger-1', 'details'); h.w.openKitchenMenuPhoto(opener);
+        h.w.eval("activeBusinessContext='another';");
+        h.w.ensureKitchenRenderContext();
+        assert.equal(details.open, false); assert.equal(photo.open, false);
+        h.w.openKitchenMenuPhoto(opener);
+        assert.equal(photo.open, false);
+    } finally { h.close(); }
+});
+
+test('AI actions live only in the menu editor and keep unsaved form values', async () => {
+    const h = harness();
+    try {
+        h.w.apiGetProductTechCard = async () => ({ success: true, techCard: { mode: 'simple', ingredients: [] } });
+        await h.w.openProductForm('burger-1');
+        const name = h.w.document.getElementById('pf-name'); name.value = 'Unsaved menu name';
+        h.w.setKitchenFormVisibility('kitchen', 'menu');
+        const groups = h.w.document.querySelectorAll('#productForm [data-menu-ai-editor-actions]');
+        assert.equal(groups.length, 1);
+        assert.equal(h.w.document.querySelector('#kitchenGrid .kitchen-menu-ai-actions'), null);
+        const buttons = groups[0].querySelectorAll('button'); assert.equal(buttons.length, 4);
+        let options;
+        h.w.openMenuAiReviewWizard = value => { options = value; };
+        h.w.eval(buttons[1].getAttribute('onclick'));
+        assert.equal(options.initialStep, 'nameDescription'); assert.ok(options.feedback);
+        assert.equal(name.value, 'Unsaved menu name');
+        h.w.setKitchenFormVisibility('kitchen', 'cake');
+        assert.ok(groups[0].closest('.menu-ai-entry').classList.contains('hidden'));
     } finally { h.close(); }
 });

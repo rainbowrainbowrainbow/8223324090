@@ -92,6 +92,7 @@ function createPageHarness() {
     vm.runInContext('const menuImageGeneratorSelection = new Map();', context);
     vm.runInContext('const burgerMenuImageBlueprints = new Map(); const burgerMenuImageBlueprintLoads = new Map();', context);
     vm.runInContext([
+        sourceSection(pageSource, 'function renderKitchenMenuPhotoButton(', 'function productMenuCardHandleImageLoad('),
         sourceSection(pageSource, 'function getMenuImageStudioDraft(', 'function menuAiFeedbackForMode('),
         sourceSection(pageSource, 'function setKitchenMenuImageStudioBusy(', 'function renderProgramProducts(')
     ].join('\n'), context, { filename: 'js/programs-page.js#menu-image' });

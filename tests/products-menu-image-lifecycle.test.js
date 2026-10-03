@@ -49,7 +49,8 @@ function harness(products = [menu(), menu('burger-2', 'Салати')], role = '
             w.openKitchenMenuImageStudio(id, panel.querySelector('[data-menu-image-open]'));
             return panel.querySelector('.kitchen-menu-image-dialog');
         }
-        panel.open = true; w.hydrateProductPanel(panel); return panel;
+        w.openKitchenMenuDetails(id, panel.querySelector('[data-menu-details-open]'));
+        return panel.querySelector('.kitchen-menu-details-dialog');
     };
     return { w, dom, calls, clock, notifications, card, open, close: () => {
         w.dispatchEvent(new w.PageTransitionEvent('pagehide')); dom.window.close();

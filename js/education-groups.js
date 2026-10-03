@@ -13,6 +13,7 @@
     let detailVersion = 0;
     let searchVersion = 0;
     let teacherVersion = 0;
+    let saveInFlight = null;
     const capture = () => ({ business: context(), generation });
     const isCurrent = request => request.generation === generation && request.business === context();
 
@@ -133,9 +134,17 @@
 
     async function save(event) {
         event.preventDefault();
+        if (saveInFlight) return;
         const requestState = capture();
         const version = detailVersion;
         const id = state.current?.id;
+        const form = byId('educationGroupForm');
+        const submit = form?.querySelector('button[type="submit"]');
+        const attempt = { requestState, version };
+        saveInFlight = attempt;
+        if (submit) submit.disabled = true;
+        form?.setAttribute('aria-busy', 'true');
+        status('Збереження групи...');
         try {
             const { group } = await request(id ? `/${id}` : '/', {
                 method: id ? 'PUT' : 'POST',
@@ -153,6 +162,14 @@
             if (isCurrent(requestState) && String(state.current?.id) === String(group.id)) status('Групу збережено.');
         } catch (error) {
             if (isCurrent(requestState) && version === detailVersion) status(error.message);
+        } finally {
+            if (saveInFlight === attempt) {
+                saveInFlight = null;
+                form?.removeAttribute('aria-busy');
+                if (submit && isCurrent(requestState) && version === detailVersion) {
+                    submit.disabled = state.current?.status === 'archived';
+                }
+            }
         }
     }
 
@@ -263,6 +280,8 @@
     });
     global.addEventListener('timeline:business-context-changed', () => {
         generation += 1;
+        saveInFlight = null;
+        byId('educationGroupForm')?.removeAttribute('aria-busy');
         listVersion += 1;
         searchVersion += 1;
         teacherVersion += 1;

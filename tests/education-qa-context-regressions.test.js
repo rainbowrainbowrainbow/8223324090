@@ -179,6 +179,41 @@ test('group save started in A cannot restore its draft or selection in B', async
   } finally { f.close(); }
 });
 
+test('old group save completion cannot release the new business submit guard', async () => {
+  const f = await fixture('education-groups');
+  try {
+    f.w.document.dispatchEvent(new f.w.Event('DOMContentLoaded'));
+    const form = f.w.document.getElementById('educationGroupForm');
+    const submit = form.querySelector('button[type="submit"]');
+    const name = f.w.document.getElementById('educationGroupName');
+    const capacity = f.w.document.getElementById('educationGroupCapacity');
+    name.value = 'Old A draft';
+    capacity.value = '3';
+    form.dispatchEvent(new f.w.Event('submit', { bubbles: true, cancelable: true }));
+    const oldSave = f.pending.filter(item => item.method === 'POST').at(-1);
+    assert.ok(oldSave);
+    assert.equal(submit.disabled, true);
+    f.switchContext('event_genix');
+    assert.equal(submit.disabled, false, 'new business form is usable');
+    name.value = 'Current B draft';
+    capacity.value = '3';
+    form.dispatchEvent(new f.w.Event('submit', { bubbles: true, cancelable: true }));
+    const newSave = f.pending.filter(item => item.method === 'POST').at(-1);
+    assert.notEqual(newSave, oldSave);
+    assert.equal(submit.disabled, true);
+    oldSave.resolve({ group: group(1, 'Old A draft') });
+    await flush();
+    assert.equal(submit.disabled, true, 'old A finally must not release B submit');
+    assert.equal(form.getAttribute('aria-busy'), 'true');
+    newSave.reject(new Error('Synthetic B failure'));
+    await flush();
+    assert.equal(submit.disabled, false);
+    assert.equal(form.hasAttribute('aria-busy'), false);
+    assert.equal(name.value, 'Current B draft');
+    assert.match(f.w.document.getElementById('educationGroupsStatus').textContent, /Synthetic B failure/);
+  } finally { f.close(); }
+});
+
 test('journal save started in A cannot repaint B or change the new save button state', async () => {
   const f = await fixture('education-attendance');
   try {

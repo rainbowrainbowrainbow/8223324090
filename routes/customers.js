@@ -17,6 +17,7 @@ const { buildScopedBookingAggregateSql: scopedBookingAggregateSql, customerMetri
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 const { syncBirthdayTagsForCustomer } = require('../services/customerBirthdayTags');
+const { CustomerMergeError, previewCustomerMerge } = require('../services/customerMerge');
 const {
     BIRTHDAY_SYSTEM_TAG_KEYS, BIRTHDAY_TAG_LABELS, birthdaySystemTag, birthdayChildrenSql,
     activeBirthdayChildSql, customerBirthdayTagFilterSql, selectedBirthdayChildren, currentCustomerBirthdayTags
@@ -1586,6 +1587,22 @@ router.get('/duplicates', async (req, res) => {
     } catch (err) {
         log.error('GET /duplicates error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/:primaryId/merge-preview', requireMinRole('manager'), async (req, res) => {
+    const businessContext = ensureBusinessContext(req, res);
+    if (!businessContext) return;
+    res.set('Cache-Control', 'no-store');
+    try {
+        const preview = await previewCustomerMerge(pool, req.params.primaryId, req.query.duplicateId, businessContext);
+        res.json({ success: true, preview });
+    } catch (error) {
+        if (error instanceof CustomerMergeError) {
+            return res.status(error.status).json({ success: false, code: error.code, error: error.message });
+        }
+        log.error('Customer merge preview failed', { code: error.code || 'UNKNOWN' });
+        res.status(500).json({ success: false, error: 'Не вдалося перевірити зв’язки. Це не означає, що конфліктів немає.' });
     }
 });
 

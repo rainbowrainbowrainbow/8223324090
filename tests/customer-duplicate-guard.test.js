@@ -50,6 +50,16 @@ function createRouter(state) {
                     }
                 };
             }
+            if (id === '../services/customerMerge') {
+                const real = nativeRequire(id);
+                return { ...real, async previewCustomerMerge(pool, primaryId, duplicateId, context) {
+                    const input = real.validateMergeInput(primaryId, duplicateId, context);
+                    state.previewCalls = (state.previewCalls || 0) + 1;
+                    state.previewInput = input;
+                    if (state.previewError) throw state.previewError;
+                    return { primary: { id: input.primaryId }, duplicate: { id: input.duplicateId }, businessContext: context, canMerge: false, changesPerformed: false, records: [], blockers: [] };
+                } };
+            }
             if (id === '../utils/logger') return { createLogger: () => ({ info() {}, warn() {}, error() {} }) };
             return nativeRequire(id);
         },
@@ -102,6 +112,34 @@ test('customer merge HTTP endpoint refuses writes while duplicate lookup remains
         assert.equal(state.connections, 0);
         assert.equal(state.queries.length, 0);
     });
+    await t.test('reference preview preserves the same role and selected-business boundaries', async () => {
+        const url = base + '/41/merge-preview?duplicateId=42&businessContext=dar';
+        assert.equal((await fetch(url)).status, 401);
+        assert.equal((await fetch(url, { headers: { 'x-test-role': 'reception' } })).status, 403);
+        assert.equal(state.previewCalls || 0, 0);
+        const response = await fetch(url, { headers: { 'x-test-role': 'creator' } });
+        assert.equal(response.status, 200);
+        assert.match(response.headers.get('cache-control'), /no-store/);
+        const data = await response.json();
+        assert.equal(data.preview.canMerge, false);
+        assert.equal(data.preview.changesPerformed, false);
+        assert.equal(state.previewInput.businessContext, 'dar');
+        assert.equal((await fetch(base + '/41/merge-preview?duplicateId=42&businessScope=all', { headers: { 'x-test-role': 'creator' } })).status, 400);
+        assert.equal(state.previewCalls, 1);
+        assert.equal(state.connections, 0);
+        assert.equal(state.queries.length, 0);
+    });
+    await t.test('invalid reference pair and server failure never become an empty success', async () => {
+        const headers = { 'x-test-role': 'creator' };
+        assert.equal((await fetch(base + '/41/merge-preview?duplicateId=41', { headers })).status, 400);
+        state.previewError = Object.assign(new Error('Sensitive synthetic SQL error'), { code: 'XX000' });
+        const response = await fetch(base + '/41/merge-preview?duplicateId=42', { headers });
+        assert.equal(response.status, 500);
+        const data = await response.json();
+        assert.equal(data.success, false);
+        assert.doesNotMatch(data.error, /Sensitive|SQL/);
+        state.previewError = null;
+    });
     await t.test('duplicate lookup returns scoped candidate pairs', async () => {
         state.rows = [{ id1: 41, id2: 42, name1: 'Test A', name2: 'Test B', match_type: 'phone' }];
         const response = await fetch(base + '/duplicates?businessContext=maysternya_doli', { headers: { 'x-test-role': 'creator' } });
@@ -135,6 +173,7 @@ function uiHarness({ revenue = true } = {}) {
     context.customerBusinessScope = () => context.scope;
     context.customerApiUrl = value => value + '?businessContext=' + context.scope.activeContext;
     context.canViewCustomerRevenue = () => revenue;
+    context.canManageCustomerActions = () => true;
     context.formatMoney = value => String(value) + ' грн';
     context.escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     context.showCustomerDetail = id => opened.push({ id, context: context.scope.activeContext });
@@ -248,3 +287,83 @@ for (const scenario of ['stale-success', 'stale-error', 'context-change']) {
         assert.doesNotMatch(h.panel.textContent, /Old result|Не вдалося/);
     });
 }
+
+const fixturePreview = (extra = {}) => ({ primary: { id: 41 }, duplicate: { id: 42 }, businessContext: 'event_genix', canMerge: false, changesPerformed: false,
+    records: [{ key: 'bookings', label: 'Бронювання', count: 3 }], blockers: [], ...extra });
+async function loadedDuplicatePair(t) {
+    const h = uiHarness();
+    t.after(() => h.dom.window.close());
+    const loaded = h.context.loadTestDuplicates();
+    h.requests[0].resolve(response({ success: true, duplicates: [pair] }));
+    await loaded;
+    return h;
+}
+test('duplicate reference preview is explicit, escaped, read-only and does not enable merge', async t => {
+    const h = await loadedDuplicatePair(t);
+    assert.equal(h.requests.length, 1, 'No per-row reference queries during duplicate lookup');
+    const button = h.panel.querySelector('[data-duplicate-preview]');
+    button.focus(); button.click();
+    assert.equal(button.disabled, true);
+    assert.equal(button.getAttribute('aria-expanded'), 'true');
+    assert.match(h.requests[1].url, /41\/merge-preview\?businessContext=event_genix&duplicateId=42/);
+    assert.ok(!h.requests[1].options.method || h.requests[1].options.method === 'GET');
+    h.requests[1].resolve(response({ success: true, preview: fixturePreview({ blockers: [{ message: '<script>unsafe</script>' }] }) }));
+    await new Promise(resolve => setImmediate(resolve));
+    const result = h.panel.querySelector('[data-duplicate-preview-result]');
+    assert.match(result.textContent, /Бронювання: 3/);
+    assert.match(result.textContent, /<script>unsafe/);
+    assert.equal(result.querySelector('script'), null);
+    assert.equal(result.getAttribute('aria-busy'), 'false');
+    assert.match(result.textContent, /Дані не змінено/);
+    assert.ok(h.panel.querySelector('button[disabled]'));
+    assert.equal(button.disabled, false);
+    assert.equal(h.dom.window.document.activeElement, button);
+});
+for (const scenario of ['http','network','invalid','wrong-pair']) {
+    test('reference preview ' + scenario + ' requires retry rather than reporting no conflicts', async t => {
+        const h = await loadedDuplicatePair(t);
+        const button = h.panel.querySelector('[data-duplicate-preview]');
+        button.click();
+        if (scenario === 'network') h.requests[1].reject(new Error('Synthetic'));
+        else h.requests[1].resolve(response({ success: scenario !== 'http', preview: fixturePreview(scenario === 'invalid' ? { canMerge: true } : scenario === 'wrong-pair' ? { duplicate: { id: 999 } } : {}) }, scenario !== 'http'));
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(h.panel.querySelector('[data-duplicate-preview-result]').getAttribute('role'), 'alert');
+        assert.doesNotMatch(h.panel.textContent, /Конфліктів під час цієї перевірки не виявлено/);
+        button.click();
+        h.requests[2].resolve(response({ success: true, preview: fixturePreview() }));
+        await new Promise(resolve => setImmediate(resolve));
+        assert.match(h.panel.textContent, /Це не гарантує/);
+        assert.equal(h.panel.querySelector('[data-duplicate-preview-result]').getAttribute('role'), 'status');
+    });
+}
+for (const scenario of ['reload','context-change']) {
+    test('reference preview ignores response after ' + scenario, async t => {
+        const h = await loadedDuplicatePair(t);
+        h.panel.querySelector('[data-duplicate-preview]').click();
+        if (scenario === 'reload') {
+            const loaded = h.context.loadTestDuplicates();
+            assert.equal(h.requests[1].options.signal.aborted, true);
+            h.requests[2].resolve(response({ success: true, duplicates: [pair] }));
+            await loaded;
+        } else h.context.scope = { mode: 'single', activeContext: 'dar' };
+        h.requests[1].resolve(response({ success: true, preview: fixturePreview() }));
+        await new Promise(resolve => setImmediate(resolve));
+        assert.doesNotMatch(h.panel.textContent, /Бронювання: 3/);
+        assert.equal(h.panel.querySelector('[data-duplicate-preview-result]').hidden, true);
+    });
+}
+test('reference preview is unavailable to a read-only role or all-business scope', async t => {
+    const h = uiHarness();
+    t.after(() => h.dom.window.close());
+    h.context.canManageCustomerActions = () => false;
+    let loaded = h.context.loadTestDuplicates();
+    h.requests[0].resolve(response({ success: true, duplicates: [pair] }));
+    await loaded;
+    assert.equal(h.panel.querySelector('[data-duplicate-preview]'), null);
+    h.context.canManageCustomerActions = () => true;
+    h.context.scope.mode = 'all';
+    loaded = h.context.loadTestDuplicates();
+    h.requests[1].resolve(response({ success: true, duplicates: [pair] }));
+    await loaded;
+    assert.equal(h.panel.querySelector('[data-duplicate-preview]'), null);
+});

@@ -14,11 +14,33 @@ The first slice adds a business-scoped, versioned costing template for lessons, 
 
 The focused calculator tests cover a group lesson with two free places, a 3.5-hour rental, an agency order with separate quantities, minor-unit rounding, zero revenue, and a fixed discount across low-attendance break-even values. The disposable PostgreSQL HTTP test covers version selection by date, business scoping, immutable history, idempotency key conflict, and stale-version conflict. A browser test opens the real finance page/scripts against a synthetic in-memory API, previews and saves a group lesson, and captures desktop/tablet layouts. No test touches production data.
 
+## Local second slice: execution evidence
+
+Migration 376 adds append-only manual source identities, evidence revisions, correction reversals, completeness attestations, and course/session/day groups. A source is unique by business, system, and external ID across all executions and groups. When one invoice has multiple economic lines, its external IDs must include stable line identifiers. Retrying an identical active record returns the existing entry; a conflicting record requires a reasoned correction, which records a reversal and replacement without rewriting plan or history.
+
+Evidence is either an estimate or a manual confirmation. The word “confirmed” in this workspace means an operator assertion, not a verified payment, payroll posting, or accounting recognition. A category is complete only after an explicit attestation; an active estimate blocks completion, and new evidence invalidates the prior attestation. Zero is shown as fact only after both categories are attested. Until then, actual contribution, margin, and variance stay null. Revenue refunds/negative adjustments need an explicit semantic. A nonpositive net revenue has no margin percentage.
+
+Group membership explicitly includes or excludes each member's planned revenue and cost, so a course sale can be counted once while its sessions contribute their costs. Each plan can belong to at most one group. Group-level completeness also has to be attested, including when shared actuals are zero. Group evidence uses the same source identity index as plan evidence. Group membership is immutable in this local slice; correcting a mis-grouped plan requires a reviewed follow-on migration/workflow.
+
+The browser workspace supports source registration, manual confirmation, reasoned correction, source history, and completeness attestation for a single plan. Group creation and inspection are API-only for now. The read-only reconciliation preview returns every active source as a blocked candidate and writes nothing to finance/P&L.
+
+## Payroll and P&L boundary
+
+`payroll_reports` are monthly staff aggregates, while `payroll_installments` have approval and single-business allocation fields. Neither table assigns a cost to one costing execution. `payroll_payment_movements` represent payout movements, not necessarily the earning expense. The pure payroll candidate contract therefore requires an approved report/installment, matching business, and explicit execution earning allocation; even a verified candidate is never posted by this slice. No existing payroll amount, report, installment, payment, or closed period is changed.
+
+The reconciliation bridge remains read-only because three accounting rules are unresolved:
+
+1. Which booking, payment, invoice, or subscription event recognizes earned revenue, and on which date?
+2. How do refunds and reversals affect recognized revenue and historical periods?
+3. Which payroll earning/allocation and shared-cost source is canonical, and how is an existing finance transaction deduplicated?
+
+Until those decisions are agreed and tested against the existing P&L, plan snapshots and manual actual assertions must not be inserted into current P&L totals. Kitchen remains excluded.
+
 ## Next bounded slices
 
-1. **Execution linkage and actuals.** Add an explicit execution reference and append-only actual cost/revenue adjustments, each with a source ID, business context, timestamp, and correction/reversal link. Keep a plan-to-actual variance view; never rewrite the plan snapshot. Support signed negative revenue adjustments in actuals with a documented margin convention.
-2. **Source reconciliation.** Resolve booking, cashier/payment, invoice, payroll, and warehouse source identities before writing adapters. Deduplicate by `(business_context, source_system, source_id, economic_role)` so a booking estimate and a posted payment cannot both count as earned revenue, and a planned staff line cannot count again as payroll actual.
-3. **Financial reporting.** After reconciliation tests, expose actual contribution and variance by execution in finance. Feed P&L only from canonical posted sources through the existing reporting policy. Do not sum plan snapshots into P&L.
-4. **Operational specializations.** Model multi-session courses, shared shifts/day passes, and kitchen recipes/stock depletion as separate adapters to the same execution/actual contract. Kitchen remains deferred until stock and recipe source rules are agreed.
+1. Add an append-only group-membership correction workflow and group management UI before operational rollout.
+2. Resolve canonical booking, cashier/payment, subscription, and payroll identities and recognition policies; then implement read-only source adapters with exact allocation and deduplication tests.
+3. After reconciliation tests, add a guarded P&L adapter that consumes only the approved canonical posted sources. Never sum plan snapshots or manual assertions into P&L.
+4. Model multi-session course and day-pass operational linkage to the execution/group contract. Kitchen stays excluded.
 
 Booking, payment, payroll, permissions, and production migration/deployment are outside this first local slice and require their own guarded review before modification.

@@ -248,3 +248,13 @@ body.dark-mode .salary-payroll-movement small {
 #costLineQuantities { margin-top:12px; }
 @media (max-width:1200px) { .cost-line { grid-template-columns:repeat(2,minmax(0,1fr)); } .cost-line label:first-child { grid-column:1/-1; } }
 @media (max-width:760px) { .cost-grid { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); } }
+.cost-actual-summary { margin:14px 0; padding:14px; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
+.cost-actual-summary .cost-result-grid { margin-top:10px; }
+.cost-actual-summary small { display:block; color:var(--gray-500); }
+.cost-actual-summary .cost-pending { color:#b45309; font-weight:700; }
+.cost-actual-history { margin-top:16px; display:grid; gap:6px; font-size:13px; }
+.cost-actual-history article { border-top:1px solid var(--border); padding:8px 0; }
+.cost-wide { grid-column:span 2; }
+.cost-grid .cost-check { display:flex; align-items:center; gap:8px; font-weight:600; }
+.cost-grid .cost-check input { width:auto; min-height:auto; }
+@media (max-width:760px) { .cost-wide { grid-column:1/-1; } }

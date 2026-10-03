@@ -15,6 +15,13 @@ const GENERIC_API_ROUTE_MOUNTS = [
 
 const NESTED_API_ROUTE_MOUNTS = [
     {
+        mount: '/api/finance/costing/actual',
+        routeFile: 'routes/finance-costing-actual.js',
+        parentRouteFile: 'routes/finance-costing.js',
+        owner: 'finance-costing-actual',
+        reason: 'Append-only plan/actual evidence inherits the costing and finance access guards.'
+    },
+    {
         mount: '/api/finance/costing',
         routeFile: 'routes/finance-costing.js',
         parentRouteFile: 'routes/finance.js',

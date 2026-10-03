@@ -7,6 +7,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { chromium } = require('playwright');
 const { calculatePlan } = require('../../services/costingCalculator');
+const { summarizeTarget } = require('../../services/costingActuals');
 
 const root = path.resolve(__dirname, '../..');
 const output = path.join(root, 'output/playwright/costing-synthetic');
@@ -20,6 +21,9 @@ const definition = { revenueBasis: 'participant', revenueRateMinor: '30000', lin
 const template = { id: '1', name: 'Групове заняття', kind: 'lesson' };
 const version = { id: '1', version_number: 1, effective_from: '2026-01-01', definition };
 const plans = [];
+const actualSources = [];
+const actualEntries = [];
+const completionEvents = [];
 const requests = [];
 const boot = `<script>
 window.AppState = {};
@@ -53,6 +57,45 @@ async function main() {
             if (req.method === 'GET' && endpoint === '/templates') return json(res, 200, { templates: [template] });
             if (req.method === 'GET' && endpoint === '/templates/1') return json(res, 200, { template, versions: [version] });
             if (req.method === 'GET' && endpoint === '/plans') return json(res, 200, { plans });
+            const actualPlan = endpoint.match(/^\/actual\/plans\/(\d+)(?:\/(sources|completions))?$/);
+            const correction = endpoint.match(/^\/actual\/sources\/(\d+)\/correct$/);
+            if (actualPlan && req.method === 'GET' && !actualPlan[2]) {
+                const target = plans.find(plan => String(plan.id) === actualPlan[1]);
+                const watermarks = {};
+                actualEntries.forEach(entry => { watermarks[entry.category] = entry.id; });
+                return json(res, 200, { target, sources: actualSources,
+                    entries: actualEntries, completions: completionEvents,
+                    summary: summarizeTarget(target, actualSources, completionEvents, watermarks) });
+            }
+            if ((actualPlan && req.method === 'POST') || (correction && req.method === 'POST')) {
+                let body = '';
+                for await (const part of req) body += part;
+                const payload = JSON.parse(body);
+                if (actualPlan?.[2] === 'sources') {
+                    const source = { id: String(actualSources.length + 1), external_id: payload.externalId,
+                        economic_role: payload.economicRole, category: payload.category,
+                        amount_minor: payload.amountMinor, evidence_state: payload.evidenceState, semantic: payload.semantic };
+                    actualSources.push(source);
+                    actualEntries.push({ ...source, id: String(actualEntries.length + 1), source_id: source.id, entry_type: 'record' });
+                    return json(res, 201, { sourceId: source.id, idempotent: false });
+                }
+                if (actualPlan?.[2] === 'completions') {
+                    const ids = actualEntries.filter(entry => entry.category === payload.category).map(entry => Number(entry.id));
+                    completionEvents.push({ id: String(completionEvents.length + 1), category: payload.category,
+                        is_complete: payload.isComplete, reason: payload.reason, evidence_entry_id: String(Math.max(0, ...ids)) });
+                    return json(res, 201, { completionId: String(completionEvents.length) });
+                }
+                if (correction) {
+                    const source = actualSources.find(item => item.id === correction[1]);
+                    const old = { ...source };
+                    actualEntries.push({ ...old, id: String(actualEntries.length + 1), source_id: source.id,
+                        entry_type: 'reversal', amount_minor: String(-BigInt(old.amount_minor)), reason: payload.reason });
+                    Object.assign(source, { amount_minor: payload.amountMinor, evidence_state: payload.evidenceState, semantic: payload.semantic });
+                    actualEntries.push({ ...source, id: String(actualEntries.length + 1), source_id: source.id,
+                        entry_type: 'record', reason: payload.reason });
+                    return json(res, 201, { sourceId: source.id });
+                }
+            }
             if (req.method === 'POST' && ['/preview', '/plans'].includes(endpoint)) {
                 let body = '';
                 for await (const part of req) body += part;
@@ -60,8 +103,9 @@ async function main() {
                 const calculation = calculatePlan(definition, payload.inputs);
                 if (endpoint === '/preview') return json(res, 200, { version: { id: '1', number: 1, effectiveFrom: version.effective_from }, calculation });
                 assert.equal(payload.expectedVersionId, '1');
-                plans.push({ execution_label: payload.executionLabel, execution_date: payload.executionDate,
-                    template_name: template.name, version_number: 1, contribution_minor: calculation.contributionMinor });
+                plans.push({ id: String(plans.length + 1), execution_label: payload.executionLabel, execution_date: payload.executionDate,
+                    template_name: template.name, version_number: 1, revenue_minor: calculation.revenueMinor,
+                    direct_cost_minor: calculation.directCostMinor, contribution_minor: calculation.contributionMinor });
                 return json(res, 201, { planId: String(plans.length), versionId: '1', calculation });
             }
             if (req.method === 'GET') {
@@ -104,6 +148,38 @@ async function main() {
         await page.locator('#costSavePlan').click();
         await page.locator('#costPlanList').getByText('Урок 12 жовтня').waitFor();
         assert.equal(plans.length, 1);
+        await page.locator('#costActualSummary').getByText('Ще не визначено').waitFor();
+        await page.locator('#costSourceExternalId').fill('sale_ui');
+        await page.locator('#costSourceRole').fill('lesson_sale');
+        await page.locator('#costSourceCategory').selectOption('revenue');
+        await page.locator('#costSourceAmount').fill('2160');
+        await page.locator('#costSourceEvidence').selectOption('confirmed');
+        await page.locator('#costAddSource').click();
+        await page.locator('#costActualSummary').getByText('2 160,00 ₴').first().waitFor();
+        assert.match(await page.locator('#costActualSummary').innerText(), /Ще не визначено/);
+        await page.locator('#costSourceExternalId').fill('cost_ui');
+        await page.locator('#costSourceRole').fill('lesson_cost');
+        await page.locator('#costSourceCategory').selectOption('direct_cost');
+        await page.locator('#costSourceAmount').fill('1158');
+        await page.locator('#costAddSource').click();
+        await page.locator('#costCompletionReason').fill('Synthetic revenue checked');
+        await page.locator('#costCompletionConfirmed').check();
+        await page.locator('#costCompleteCategory').click();
+        await page.locator('#costCompletionCategory').selectOption('direct_cost');
+        await page.locator('#costCompletionReason').fill('Synthetic costs checked');
+        await page.locator('#costCompletionConfirmed').check();
+        await page.locator('#costCompleteCategory').click();
+        await page.locator('#costActualSummary').getByText('1 002,00 ₴').last().waitFor();
+        await page.locator('#costCorrectionSource').selectOption('2');
+        await page.locator('#costCorrectionAmount').fill('1200');
+        await page.locator('#costCorrectionReason').fill('Verified corrected cost');
+        await page.locator('#costCorrectSource').click();
+        await page.locator('#costActualSummary').getByText('Ще не визначено').waitFor();
+        assert.match(await page.locator('#costActualHistory').innerText(), /сторно/);
+        await page.locator('#costCompletionReason').fill('Corrected cost checked');
+        await page.locator('#costCompletionConfirmed').check();
+        await page.locator('#costCompleteCategory').click();
+        await page.locator('#costActualSummary').getByText('960,00 ₴').last().waitFor();
         await page.screenshot({ path: path.join(output, 'desktop.png'), fullPage: true });
         await page.setViewportSize({ width: 820, height: 1180 });
         const tabletBounds = await page.locator('#tabCosting .cost-card').evaluateAll(cards => cards.map(card => {

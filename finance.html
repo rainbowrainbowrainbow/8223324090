@@ -1615,6 +1615,40 @@
                         <div id="costStatus" class="cost-status" role="status" hidden></div>
                     </section>
                     <section class="cost-card" aria-labelledby="costSavedHeading"><h3 id="costSavedHeading">Збережені плани</h3><p>Історичні знімки; їхні ставки не перераховуються при новій версії шаблону.</p><div id="costPlanList" class="cost-plan-list"></div></section>
+                    <section class="cost-card" aria-labelledby="costActualHeading">
+                        <h3 id="costActualHeading">План / факт виконання</h3>
+                        <p>Факт підтверджується окремими джерелами. Поки виручка і прямі витрати не звірені, фактичний внесок та різниця не показуються.</p>
+                        <div class="cost-grid"><label>Виконання<select id="costActualPlan"></select></label></div>
+                        <div id="costActualSummary" class="cost-actual-summary" role="status">Виберіть збережений план.</div>
+                        <h4>Додати джерело</h4>
+                        <div class="cost-grid">
+                            <label>ID джерела<input id="costSourceExternalId" maxlength="120" placeholder="Номер чека або акта"></label>
+                            <label>Економічна роль<input id="costSourceRole" maxlength="80" placeholder="host_pay"></label>
+                            <label>Категорія<select id="costSourceCategory"><option value="direct_cost">Пряма витрата</option><option value="revenue">Виручка</option></select></label>
+                            <label>Сума, ₴<input id="costSourceAmount" inputmode="decimal" placeholder="0.00"></label>
+                            <label>Підстава<select id="costSourceEvidence"><option value="estimate">Оцінка</option><option value="confirmed">Підтверджено вручну</option></select></label>
+                            <label>Семантика<select id="costSourceSemantic"><option value="cost">Витрата</option><option value="charge">Нарахування виручки</option><option value="refund">Повернення</option><option value="adjustment">Коригування виручки</option></select></label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costAddSource" class="btn-page-secondary">Додати факт / оцінку</button></div>
+                        <h4>Виправити джерело без втрати історії</h4>
+                        <div class="cost-grid">
+                            <label>Джерело<select id="costCorrectionSource"></select></label>
+                            <label>Нова сума, ₴<input id="costCorrectionAmount" inputmode="decimal" placeholder="0.00"></label>
+                            <label>Підстава<select id="costCorrectionEvidence"><option value="estimate">Оцінка</option><option value="confirmed">Підтверджено вручну</option></select></label>
+                            <label>Семантика<select id="costCorrectionSemantic"><option value="cost">Витрата</option><option value="charge">Нарахування виручки</option><option value="refund">Повернення</option><option value="adjustment">Коригування виручки</option></select></label>
+                            <label class="cost-wide">Причина виправлення<input id="costCorrectionReason" maxlength="300" placeholder="Що змінилося у джерелі"></label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costCorrectSource" class="btn-page-secondary">Записати виправлення</button></div>
+                        <h4>Звірка повноти</h4>
+                        <div class="cost-grid">
+                            <label>Категорія<select id="costCompletionCategory"><option value="revenue">Виручка</option><option value="direct_cost">Прямі витрати</option></select></label>
+                            <label class="cost-wide">Підстава звірки<input id="costCompletionReason" maxlength="300" placeholder="Які джерела перевірено"></label>
+                            <label class="cost-check"><input id="costCompletionConfirmed" type="checkbox"> Усі фактичні записи цієї категорії внесено; відсутні суми справді дорівнюють нулю.</label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costCompleteCategory" class="btn-page-secondary">Зберегти стан звірки</button></div>
+                        <div id="costActualHistory" class="cost-actual-history"></div>
+                        <div id="costActualStatus" class="cost-status" role="status" hidden></div>
+                    </section>
                 </div>
             </div>
             </section>

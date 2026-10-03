@@ -3,7 +3,7 @@
 
 // The finance page already enforces its existing role/capability gate.
 window.CostingWorkspace = (() => {
-    const state = { initialized: false, templates: [], current: null, preview: null };
+    const state = { initialized: false, templates: [], current: null, preview: null, plans: [], actual: null };
     const $ = id => document.getElementById(id);
     const kinds = { lesson: 'Заняття', session: 'Сеанс', rental: 'Оренда', service: 'Послуга', agency_order: 'Агентське замовлення', admission_day: 'День парку' };
     const bases = { execution: 'за проведення', hour: 'за годину', participant: 'за учасника', unit: 'за одиницю', percent: 'відсоток' };
@@ -13,6 +13,11 @@ window.CostingWorkspace = (() => {
         if (!/^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/.test(text)) throw new Error(`${field}: введіть суму в гривнях, до двох знаків після коми`);
         const [whole, fraction = ''] = text.split('.');
         return (BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2))).toString();
+    }
+
+    function signedMinorFromUah(value, field) {
+        const text = String(value ?? '').trim().replace(',', '.');
+        return text.startsWith('-') ? `-${minorFromUah(text.slice(1), field)}` : minorFromUah(text, field);
     }
 
     function uahFromMinor(value) {
@@ -235,9 +240,16 @@ window.CostingWorkspace = (() => {
 
     async function refreshPlans() {
         const data = await apiRequest('GET', '/api/finance/costing/plans');
+        state.plans = data.plans || [];
         const list = $('costPlanList');
-        if (!data.plans?.length) { list.textContent = 'Планів поки немає.'; return; }
-        list.innerHTML = data.plans.map(plan => `<article><div><strong>${escapeHtml(plan.execution_label)}</strong><br><small>${escapeHtml(plan.execution_date)} · ${escapeHtml(plan.template_name)} · v${escapeHtml(String(plan.version_number))}</small></div><div>Внесок: <strong>${uahFromMinor(plan.contribution_minor)}</strong></div></article>`).join('');
+        const select = $('costActualPlan');
+        const previous = select.value;
+        select.replaceChildren(new Option(state.plans.length ? 'Оберіть виконання' : 'Планів ще немає', ''));
+        state.plans.forEach(plan => select.add(new Option(`${plan.execution_label} · ${plan.execution_date}`, plan.id)));
+        select.value = state.plans.some(plan => String(plan.id) === previous) ? previous : '';
+        if (!state.plans.length) { list.textContent = 'Планів поки немає.'; state.actual = null; $('costActualSummary').textContent = 'Спочатку збережіть план.'; return; }
+        list.innerHTML = state.plans.map(plan => `<article><div><strong>${escapeHtml(plan.execution_label)}</strong><br><small>${escapeHtml(plan.execution_date)} · ${escapeHtml(plan.template_name)} · v${escapeHtml(String(plan.version_number))}</small></div><div>Внесок: <strong>${uahFromMinor(plan.contribution_minor)}</strong></div></article>`).join('');
+        if (select.value) await loadActual();
     }
 
     async function savePlan() {
@@ -247,11 +259,104 @@ window.CostingWorkspace = (() => {
             if (!executionLabel) throw new Error('Вкажіть назву виконання');
             $('costSavePlan').disabled = true;
             const payload = { ...state.preview, expectedVersionId: state.preview.versionId, executionLabel, clientKey: crypto.randomUUID() };
-            await apiRequest('POST', '/api/finance/costing/plans', payload);
+            const saved = await apiRequest('POST', '/api/finance/costing/plans', payload);
             invalidatePreview();
             await refreshPlans();
+            $('costActualPlan').value = String(saved.planId);
+            await loadActual();
             status('Плановий знімок збережено.');
         } catch (error) { $('costSavePlan').disabled = false; status(error.message, true); }
+    }
+
+    function actualStatus(message, error = false) {
+        const element = $('costActualStatus');
+        element.hidden = !message;
+        element.classList.toggle('error', error);
+        element.textContent = message || '';
+    }
+
+    function renderActual(data) {
+        const summary = data.summary;
+        const plan = summary.planned;
+        const category = (row, label, planned) => `<div>${label}<strong>${uahFromMinor(planned)}</strong>
+            <small>Підтверджено: ${row.confirmedMinor === null ? 'ще немає' : uahFromMinor(row.confirmedMinor)} · оцінка: ${row.estimateMinor === null ? 'немає' : uahFromMinor(row.estimateMinor)}</small>
+            <small>Стан: ${row.status === 'complete' ? 'звірено' : row.status === 'partial' ? 'неповно' : 'факт відсутній'}</small></div>`;
+        $('costActualSummary').innerHTML = `<div class="cost-result-grid">
+            ${category(summary.revenue, 'Планова виручка', plan.revenueMinor)}
+            ${category(summary.directCost, 'Планові прямі витрати', plan.directCostMinor)}
+            <div>Плановий внесок<strong>${uahFromMinor(plan.contributionMinor)}</strong></div>
+            <div>Фактичний внесок<strong>${summary.actualComplete ? uahFromMinor(summary.actualContributionMinor) : 'Ще не визначено'}</strong>
+                <small>${summary.actualComplete ? `Різниця з планом: ${uahFromMinor(summary.contributionVarianceMinor)} · маржа: ${summary.actualMarginBps === null ? 'н/д' : `${(summary.actualMarginBps / 100).toFixed(2)}%`}` : 'Потрібні фактичні джерела і звірка обох категорій.'}</small></div>
+            </div>${summary.actualComplete ? '' : '<p class="cost-pending">Неповний факт: це ще не завершений прибуток.</p>'}`;
+        const select = $('costCorrectionSource');
+        const selected = select.value;
+        select.replaceChildren(new Option('Оберіть джерело', ''));
+        data.sources.forEach(source => select.add(new Option(`${source.external_id} · ${source.economic_role} · ${source.evidence_state === 'estimate' ? 'оцінка' : 'підтверджено'}`, source.id)));
+        select.value = data.sources.some(source => String(source.id) === selected) ? selected : '';
+        $('costActualHistory').innerHTML = data.entries.length ? `<h4>Історія джерел і виправлень</h4>${data.entries.map(entry =>
+            `<article>${escapeHtml(entry.external_id)} · ${escapeHtml(entry.economic_role)} · ${entry.entry_type === 'reversal' ? 'сторно' : entry.evidence_state === 'estimate' ? 'оцінка' : 'підтверджено'} · ${uahFromMinor(entry.amount_minor)}${entry.reason ? ` · ${escapeHtml(entry.reason)}` : ''}</article>`).join('')}` : '<p>Фактичних джерел поки немає.</p>';
+    }
+
+    async function loadActual() {
+        const planId = $('costActualPlan').value;
+        if (!planId) { state.actual = null; $('costActualSummary').textContent = 'Виберіть збережений план.'; $('costActualHistory').textContent = ''; return; }
+        try {
+            const data = await apiRequest('GET', `/api/finance/costing/actual/plans/${encodeURIComponent(planId)}`);
+            state.actual = data;
+            renderActual(data);
+        } catch (error) { actualStatus(error.message, true); }
+    }
+
+    async function addActualSource() {
+        try {
+            const planId = $('costActualPlan').value;
+            if (!planId) throw new Error('Оберіть виконання');
+            const payload = { externalId: $('costSourceExternalId').value.trim(), economicRole: $('costSourceRole').value.trim(),
+                category: $('costSourceCategory').value, amountMinor: signedMinorFromUah($('costSourceAmount').value, 'Сума'),
+                evidenceState: $('costSourceEvidence').value, semantic: $('costSourceSemantic').value };
+            const result = await apiRequest('POST', `/api/finance/costing/actual/plans/${encodeURIComponent(planId)}/sources`, payload);
+            await loadActual();
+            actualStatus(result.idempotent ? 'Джерело вже враховано; повтор не додав суму.' : 'Джерело записано. Попередню звірку цієї категорії треба підтвердити знову.');
+        } catch (error) { actualStatus(error.message, true); }
+    }
+
+    function selectCorrectionSource() {
+        const source = state.actual?.sources.find(item => String(item.id) === $('costCorrectionSource').value);
+        if (!source) return;
+        $('costCorrectionAmount').value = inputUah(source.amount_minor.replace(/^-/, ''));
+        if (source.amount_minor.startsWith('-')) $('costCorrectionAmount').value = `-${$('costCorrectionAmount').value}`;
+        $('costCorrectionEvidence').value = source.evidence_state;
+        $('costCorrectionSemantic').value = source.semantic;
+    }
+
+    async function correctActualSource() {
+        try {
+            const sourceId = $('costCorrectionSource').value;
+            if (!sourceId) throw new Error('Оберіть джерело для виправлення');
+            await apiRequest('POST', `/api/finance/costing/actual/sources/${encodeURIComponent(sourceId)}/correct`, {
+                amountMinor: signedMinorFromUah($('costCorrectionAmount').value, 'Нова сума'),
+                evidenceState: $('costCorrectionEvidence').value, semantic: $('costCorrectionSemantic').value,
+                reason: $('costCorrectionReason').value.trim()
+            });
+            $('costCorrectionReason').value = '';
+            await loadActual();
+            actualStatus('Виправлення записано зі сторнуванням і новою ревізією. Повторіть звірку категорії.');
+        } catch (error) { actualStatus(error.message, true); }
+    }
+
+    async function saveCompletion() {
+        try {
+            const planId = $('costActualPlan').value;
+            if (!planId) throw new Error('Оберіть виконання');
+            await apiRequest('POST', `/api/finance/costing/actual/plans/${encodeURIComponent(planId)}/completions`, {
+                category: $('costCompletionCategory').value, isComplete: $('costCompletionConfirmed').checked,
+                reason: $('costCompletionReason').value.trim()
+            });
+            $('costCompletionConfirmed').checked = false;
+            $('costCompletionReason').value = '';
+            await loadActual();
+            actualStatus('Стан звірки записано в історію.');
+        } catch (error) { actualStatus(error.message, true); }
     }
 
     async function load() {
@@ -265,6 +370,14 @@ window.CostingWorkspace = (() => {
             $('costSaveTemplate').addEventListener('click', saveTemplate);
             $('costPreview').addEventListener('click', preview);
             $('costSavePlan').addEventListener('click', savePlan);
+            $('costActualPlan').addEventListener('change', loadActual);
+            $('costAddSource').addEventListener('click', addActualSource);
+            $('costCorrectionSource').addEventListener('change', selectCorrectionSource);
+            $('costCorrectSource').addEventListener('click', correctActualSource);
+            $('costCompleteCategory').addEventListener('click', saveCompletion);
+            $('costSourceCategory').addEventListener('change', () => {
+                $('costSourceSemantic').value = $('costSourceCategory').value === 'direct_cost' ? 'cost' : 'charge';
+            });
             $('tabCosting').addEventListener('input', event => {
                 if (event.target.closest('#costLineQuantities') ||
                     ['costExecutionDate','costParticipants','costPaidParticipants','costHours','costUnits','costDiscountPercent','costDiscountMoney'].includes(event.target.id)) invalidatePreview();

@@ -223,4 +223,6 @@ router.get('/plans', async (req, res) => {
     } catch (error) { fail(res, error, 'GET /costing/plans'); }
 });
 
+router.use('/actual', require('./finance-costing-actual'));
+
 module.exports = router;

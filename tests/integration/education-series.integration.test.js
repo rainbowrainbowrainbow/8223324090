@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { initializeTimelineResources } = require('../../services/timelineResources');
+const { lockBookingConflictResources } = require('../../services/booking');
 
 const enabled = process.env.RUN_EDUCATION_SERIES_INTEGRATION === 'true';
 
@@ -90,6 +91,187 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
     after(async () => {
         await pool?.end();
+    });
+
+    test('concurrent lessons for one teacher in different cabinets have one winner', async () => {
+        const teacherId = `edu-race-teacher-${suffix}`;
+        const teacherName = `Race teacher ${suffix}`;
+        for (let day = 0; day < 6; day++) {
+            const date = utcDateAfter(300 + day);
+            const lesson = cabinet => ({
+                date, time: '09:00', duration: 45,
+                lineId: `edu-cabinet-${cabinet}`, room: `Кабінет ${cabinet}`,
+                label: 'Заняття', category: 'education', kidsCount: 2,
+                skipNotification: true,
+                extraData: { educationLesson: {
+                    mode: 'education_lesson', title: `Race lesson ${suffix}`,
+                    teacherId, teacherName
+                } }
+            });
+            const results = await Promise.all([1, 2].map(cabinet =>
+                request('POST', '/api/bookings?businessContext=dar', token, lesson(cabinet))));
+            assert.deepEqual(results.map(result => result.status).sort(), [200, 409],
+                `teacher collision on ${date}: ${results.map(result => result.status)}`);
+            const count = await pool.query(
+                `SELECT COUNT(*)::int AS count FROM bookings
+                 WHERE business_context = 'dar' AND date = $1 AND time = '09:00'
+                   AND extra_data->'educationLesson'->>'teacherId' = $2`,
+                [date, teacherId]
+            );
+            assert.equal(count.rows[0].count, 1, `only one lesson persists on ${date}`);
+        }
+    });
+
+    test('teacher conflict also serializes a create against a time edit', async () => {
+        const date = utcDateAfter(320);
+        const teacherId = `edu-edit-race-${suffix}`;
+        const lesson = (cabinet, time) => ({
+            date, time, duration: 45,
+            lineId: `edu-cabinet-${cabinet}`, room: `Кабінет ${cabinet}`,
+            label: 'Заняття', category: 'education', kidsCount: 2,
+            skipNotification: true,
+            extraData: { educationLesson: {
+                mode: 'education_lesson', title: `Edit race ${suffix}`,
+                teacherId, teacherName: `Edit race teacher ${suffix}`
+            } }
+        });
+        const original = await request('POST', '/api/bookings?businessContext=dar', token, lesson(2, '10:00'));
+        assert.equal(original.status, 200, JSON.stringify(original.body));
+        const bookingId = original.body.booking.id;
+        const results = await Promise.all([
+            request('POST', '/api/bookings?businessContext=dar', token, lesson(1, '11:00')),
+            request('PUT', `/api/bookings/${encodeURIComponent(bookingId)}?businessContext=dar`, token, {
+                time: '11:00'
+            })
+        ]);
+        assert.deepEqual(results.map(result => result.status).sort(), [200, 409],
+            `create/edit collision: ${results.map(result => result.status)}`);
+        const count = await pool.query(
+            `SELECT COUNT(*)::int AS count FROM bookings
+             WHERE business_context = 'dar' AND date = $1 AND time = '11:00'
+               AND extra_data->'educationLesson'->>'teacherId' = $2`,
+            [date, teacherId]
+        );
+        assert.equal(count.rows[0].count, 1);
+    });
+
+    test('editing the teacher acquires the new teacher conflict lock', async () => {
+        const date = utcDateAfter(325);
+        const oldTeacherId = `edu-old-teacher-${suffix}`;
+        const newTeacherId = `edu-new-teacher-${suffix}`;
+        const lesson = (cabinet, time, teacherId) => ({
+            date, time, duration: 45,
+            lineId: `edu-cabinet-${cabinet}`, room: `Кабінет ${cabinet}`,
+            label: 'Заняття', category: 'education', kidsCount: 2,
+            skipNotification: true,
+            extraData: { educationLesson: {
+                mode: 'education_lesson', title: `Teacher edit ${suffix}`,
+                teacherId, teacherName: teacherId
+            } }
+        });
+        const original = await request('POST', '/api/bookings?businessContext=dar', token,
+            lesson(2, '10:00', oldTeacherId));
+        assert.equal(original.status, 200, JSON.stringify(original.body));
+        const results = await Promise.all([
+            request('POST', '/api/bookings?businessContext=dar', token,
+                lesson(1, '11:00', newTeacherId)),
+            request('PUT', `/api/bookings/${encodeURIComponent(original.body.booking.id)}?businessContext=dar`,
+                token, { time: '11:00', extraData: lesson(2, '11:00', newTeacherId).extraData })
+        ]);
+        assert.deepEqual(results.map(result => result.status).sort(), [200, 409],
+            `new teacher collision: ${results.map(result => result.status)}`);
+        const count = await pool.query(
+            `SELECT COUNT(*)::int AS count FROM bookings
+             WHERE business_context = 'dar' AND date = $1 AND time = '11:00'
+               AND extra_data->'educationLesson'->>'teacherId' = $2`,
+            [date, newTeacherId]
+        );
+        assert.equal(count.rows[0].count, 1);
+    });
+
+    test('teacher conflict keeps a racing series atomic', async () => {
+        const date = utcDateAfter(330);
+        const teacherId = `edu-series-race-${suffix}`;
+        const lesson = (cabinet, seriesSize) => ({
+            date, time: '13:00', duration: 45,
+            lineId: `edu-cabinet-${cabinet}`, room: `Кабінет ${cabinet}`,
+            label: 'Заняття', category: 'education', kidsCount: 2,
+            skipNotification: true,
+            extraData: { educationLesson: {
+                mode: 'education_lesson', title: `Series race ${suffix}`,
+                teacherId, teacherName: `Series race teacher ${suffix}`,
+                ...(seriesSize ? { seriesSize, repeatEvery: 'daily' } : {})
+            } }
+        });
+        const [single, series] = await Promise.all([
+            request('POST', '/api/bookings?businessContext=dar', token, lesson(1)),
+            createBooking(token, lesson(2, 2))
+        ]);
+        assert.deepEqual([single.status, series.status].sort(), [200, 409],
+            `create/series collision: ${single.status},${series.status}`);
+        const rows = await pool.query(
+            `SELECT date::text AS lesson_date, time FROM bookings
+             WHERE business_context = 'dar' AND date IN ($1, $2)
+               AND extra_data->'educationLesson'->>'teacherId' = $3`,
+            [date, addDays(date, 1), teacherId]
+        );
+        assert.equal(rows.rows.filter(row => row.lesson_date === date).length, 1);
+        assert.equal(rows.rows.filter(row => row.lesson_date === addDays(date, 1)).length,
+            series.status === 200 ? 1 : 0, 'failed series cannot leave a future occurrence');
+    });
+
+    test('teacher IDs and names respect adjacent slots and other teachers', async () => {
+        const date = utcDateAfter(340);
+        const teacherId = `edu-alias-${suffix}`;
+        const teacherName = `Alias teacher ${suffix}`;
+        const lesson = (cabinet, time, id, name) => ({
+            date, time, duration: 45,
+            lineId: `edu-cabinet-${cabinet}`, room: `Кабінет ${cabinet}`,
+            label: 'Заняття', category: 'education', kidsCount: 2,
+            skipNotification: true,
+            extraData: { educationLesson: {
+                mode: 'education_lesson', title: `Alias lesson ${suffix}`,
+                teacherId: id, teacherName: name
+            } }
+        });
+        const create = (context, cabinet, time, id, name) =>
+            request('POST', `/api/bookings?businessContext=${context}`, token,
+                lesson(cabinet, time, id, name));
+
+        assert.equal((await create('dar', 1, '09:00', teacherId, teacherName)).status, 200);
+        assert.equal((await create('dar', 2, '09:00', '', teacherName)).status, 409,
+            'a legacy name-only lesson must collide with the named ID-backed lesson');
+        assert.equal((await create('dar', 2, '09:00', teacherId, 'Another label')).status, 409,
+            'teacher ID must collide even when the name changes');
+        assert.equal((await create('dar', 2, '09:00', `other-${suffix}`, 'Other teacher')).status, 200,
+            'another teacher may teach concurrently in another cabinet');
+        assert.equal((await create('dar', 3, '09:45', teacherId, teacherName)).status, 200,
+            'adjacent time does not overlap');
+    });
+
+    test('the teacher lock stays scoped to its business', async () => {
+        const date = utcDateAfter(345);
+        const lesson = {
+            date, lineId: 'edu-cabinet-1', room: 'Кабінет 1',
+            extraData: { educationLesson: {
+                mode: 'education_lesson', teacherId: `edu-context-${suffix}`,
+                teacherName: `Context teacher ${suffix}`
+            } }
+        };
+        const first = await pool.connect();
+        const second = await pool.connect();
+        try {
+            await first.query('BEGIN');
+            await second.query('BEGIN');
+            await second.query("SET LOCAL lock_timeout = '250ms'");
+            await lockBookingConflictResources(first, lesson, 'dar');
+            await lockBookingConflictResources(second, lesson, 'event_genix');
+        } finally {
+            await first.query('ROLLBACK');
+            await second.query('ROLLBACK');
+            first.release();
+            second.release();
+        }
     });
 
     test('single lesson can be created, opened in canonical details, and edited', async () => {

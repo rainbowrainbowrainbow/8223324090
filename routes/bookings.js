@@ -4376,12 +4376,14 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
         const customerId = await resolveBookingCustomerId(client, main, businessContext);
         const insertedRows = [];
         const generatedIds = [];
+        // Single lessons acquire conflict locks before reserving a booking number.
+        // Keep the same order here so a racing series cannot deadlock with one.
+        await lockBookingConflictResources(client, candidates, businessContext);
         for (const candidate of candidates) {
             candidate.id = await generateBookingNumber(client);
             generatedIds.push(candidate.id);
         }
         const rootBookingId = generatedIds[0];
-        await lockBookingConflictResources(client, candidates, businessContext);
 
         for (let index = 0; index < candidates.length; index += 1) {
             const candidate = candidates[index];

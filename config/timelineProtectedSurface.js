@@ -34,11 +34,11 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'js/booking.js',
         start: "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",
         end: 'function selectedBanquetCandidateRole(bookingId)',
-        sha256: '198a22c5a0f22034b1706474a6402b4f1a7c814edf2f69b329ec65e54a802b2a',
+        sha256: '83e482b5a8f4776e770bd86df7effd7485ea5e7a3eb1fa1284349bb10b7aaf0d',
         approval: {
-            approvedBy: 'Product owner (explicit Codex Tasks 1-5 approval)',
-            approvedOn: '2026-08-14',
-            reason: 'Canonical detail modal now renders booking cancellation actions from server readiness and routes active banquet members to canonical cancellation endpoints. Booking detail ownership, source priorities, and timeline renderer boundaries are unchanged.'
+            approvedBy: 'Product owner (explicit EDU-FIX-04 approval)',
+            approvedOn: '2026-10-03',
+            reason: 'Canonical booking detail opens through the shared modal focus and Escape lifecycle, while retaining booking identity, API sources, and renderer ownership.'
         },
         requiredNeedles: [
             "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",
@@ -57,16 +57,16 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'js/timeline.js',
         start: 'function timelineBookingDetailModalIsOpen()',
         end: 'function normalizeTimelineLinesForContext(lines = [])',
-        sha256: '4f2aec2ccbf0b2874a14d52465be354e72542b11cd8c5b2c1cdaab62e3844d03',
+        sha256: 'b7e6ac42cf69e3506a2ac19eb4128b70b696d76da86f0e3a097ed3b444c7fb44',
         approval: {
-            approvedBy: 'Serhii',
-            approvedOn: '2026-07-03',
-            reason: 'Timeline linked activity blocks must open their own booking first, with parent as fallback only.'
+            approvedBy: 'Product owner (explicit EDU-FIX-04 approval)',
+            approvedOn: '2026-10-03',
+            reason: 'Timeline day and week openers pass their element to the canonical booking modal for focus return; linked-booking fallback and detail source remain unchanged.'
         },
         requiredNeedles: [
             'function timelineBookingDetailModalIsOpen()',
             'async function timelineProbeBookingOpenDiagnostic(bookingId',
-            'async function openTimelineBookingDetailsFromBlock(renderBooking = {})',
+            'async function openTimelineBookingDetailsFromBlock(renderBooking = {}, triggerEl = null)',
             'await showBookingDetails(targetId',
             'await showBookingDetails(linkedId',
             "source: 'timeline_block_click_parent_fallback'",

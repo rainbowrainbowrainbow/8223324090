@@ -16527,6 +16527,13 @@ function renderBookingCancellationAction(booking, readiness) {
 async function showBookingDetails(bookingId, options = {}) {
     const cleanBookingId = String(bookingId || '').trim();
     if (!cleanBookingId) return false;
+    const modal = document.getElementById('bookingModal');
+    const detailTrigger = modal && !modal.classList.contains('hidden')
+        ? (modal._bookingDetailTrigger || options.triggerEl || document.activeElement)
+        : (options.triggerEl || document.activeElement);
+    if (options.triggerEl && !options.triggerEl.hasAttribute('tabindex') && options.triggerEl.tabIndex < 0) {
+        options.triggerEl.setAttribute('tabindex', '-1');
+    }
     const detailRecord = await resolveBookingDetailsRecord(cleanBookingId, options);
     const { booking, bookings } = detailRecord;
     if (!booking) {
@@ -16576,7 +16583,10 @@ async function showBookingDetails(bookingId, options = {}) {
             ${renderBookingCommentDetailRow(booking, { legacyLabel: 'Коментар' })}
             ${actions}
         `;
-        document.getElementById('bookingModal')?.classList.remove('hidden');
+        if (modal) {
+            modal._bookingDetailTrigger = detailTrigger;
+            openModal(modal, detailTrigger);
+        }
         return true;
     }
 
@@ -16845,7 +16855,10 @@ async function showBookingDetails(bookingId, options = {}) {
         ${editControls}
     `;
 
-    document.getElementById('bookingModal')?.classList.remove('hidden');
+    if (modal) {
+        modal._bookingDetailTrigger = detailTrigger;
+        openModal(modal, detailTrigger);
+    }
     if (banquetEditIntegrityIssue && options.focusIntegrityGuard === true) {
         window.requestAnimationFrame(() => {
             const guard = document.getElementById('bookingLegacyBanquetEditGuard');

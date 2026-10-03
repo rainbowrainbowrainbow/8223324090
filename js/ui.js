@@ -1495,6 +1495,12 @@ function resolveModalLifecycleTarget(target, modalEl) {
     return target || null;
 }
 
+function isVisibleModalFocusTarget(el) {
+    if (el.offsetParent === null) return false;
+    const closedDetails = el.closest('details:not([open])');
+    return !closedDetails || Boolean(closedDetails.querySelector('summary')?.contains(el));
+}
+
 function openModal(modalEl, triggerEl, options = {}) {
     if (!modalEl) return;
 
@@ -1535,7 +1541,7 @@ function openModal(modalEl, triggerEl, options = {}) {
             return;
         }
         const focusableEls = modalEl.querySelectorAll(FOCUSABLE_SELECTOR);
-        const visible = Array.from(focusableEls).filter(el => el.offsetParent !== null);
+        const visible = Array.from(focusableEls).filter(isVisibleModalFocusTarget);
         if (visible.length > 0) {
             visible[0].focus();
         } else {
@@ -1554,7 +1560,7 @@ function openModal(modalEl, triggerEl, options = {}) {
             // Re-query focusable elements (content may change dynamically)
             const focusable = Array.from(
                 modalEl.querySelectorAll(FOCUSABLE_SELECTOR)
-            ).filter(el => el.offsetParent !== null);
+            ).filter(isVisibleModalFocusTarget);
 
             if (focusable.length === 0) return;
 

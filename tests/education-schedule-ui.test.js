@@ -10,6 +10,7 @@ const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const sidebar = fs.readFileSync(path.join(root, 'js/components/sidebar.js'), 'utf8');
 const source = fs.readFileSync(path.join(root, 'js/education-schedule.js'), 'utf8');
+const educationCss = fs.readFileSync(path.join(root, 'css/education-schedule.css'), 'utf8');
 
 function createWorkspace() {
     const elements = {
@@ -42,7 +43,15 @@ test('education schedule reuses the guarded timeline and existing canonical deta
     assert.match(html, /id="educationTodayPanel"/);
     assert.match(source, /getBookingsForDate\(date, \{ throwOnError: true \}\)/);
     assert.match(source, /showBookingDetails\(card\.dataset\.educationBookingId/);
+    assert.match(source, /triggerEl: card/);
     assert.doesNotMatch(html, /id="bookingModal"[\s\S]*id="educationBookingModal"/);
+    assert.match(html, /id="bookingModal"[\s\S]*?<button type="button" class="modal-close" aria-label="Закрити деталі бронювання"/);
+});
+
+test('education tabs use semantic dark foreground and visible keyboard focus', () => {
+    assert.match(educationCss, /body\.dark-mode \.education-schedule-tab[^\n]*color: var\(--text-primary/);
+    assert.match(educationCss, /\.education-schedule-tab:focus-visible \{ outline: 2px solid/);
+    assert.doesNotMatch(educationCss, /body\.dark-mode \.education-schedule-tab[^\n]*color: var\(--gray-200\)/);
 });
 
 test('lesson card fields support canonical and legacy education lesson payloads', () => {

@@ -27,7 +27,8 @@ html[data-theme="dark"] .education-groups-layout input, html[data-theme="dark"] 
 .education-schedule-tab strong, .education-schedule-tab small { display: block; }
 .education-schedule-tab strong { font-size: 15px; }
 .education-schedule-tab small { margin-top: 3px; color: var(--gray-500); font-size: 12px; }
-.education-schedule-tab:hover, .education-schedule-tab:focus-visible { border-color: #0EA586; outline: none; }
+.education-schedule-tab:hover, .education-schedule-tab:focus-visible { border-color: #0EA586; }
+.education-schedule-tab:focus-visible { outline: 2px solid #0EA586; outline-offset: 2px; }
 .education-schedule-tab.active { border-color: #0EA586; background: rgba(14,165,134,.08); box-shadow: 0 5px 18px rgba(14,165,134,.10); }
 .education-today-panel { padding: clamp(14px, 2.2vw, 22px); border: 1px solid var(--gray-200); border-radius: var(--radius-lg, 16px); background: var(--surface, var(--white, #fff)); }
 .education-today-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
@@ -48,7 +49,7 @@ html[data-theme="dark"] .education-groups-layout input, html[data-theme="dark"] 
 .education-lesson-copy small { margin-top: 4px; color: var(--gray-500); font-size: 12px; }
 .education-lesson-count { padding: 6px 9px; border-radius: 999px; background: rgba(14,165,134,.1); color: #08745F; font-size: 11px; font-weight: 800; white-space: nowrap; }
 .education-today-empty { padding: 28px 16px; border: 1px dashed var(--gray-300); border-radius: 12px; color: var(--gray-500); text-align: center; }
-body.dark-mode .education-schedule-tab, html[data-theme="dark"] .education-schedule-tab { background: rgba(24,29,45,.88); color: var(--gray-200); }
+body.dark-mode .education-schedule-tab, html[data-theme="dark"] .education-schedule-tab { background: rgba(24,29,45,.88); color: var(--text-primary, #F8FAFC); }
 body.dark-mode .education-today-panel, html[data-theme="dark"] .education-today-panel, body.dark-mode .education-lesson-card, html[data-theme="dark"] .education-lesson-card { background: rgba(17,24,39,.88); }
 body.dark-mode .education-schedule-filters select, html[data-theme="dark"] .education-schedule-filters select,
 body.dark-mode .education-schedule-filters input, html[data-theme="dark"] .education-schedule-filters input,

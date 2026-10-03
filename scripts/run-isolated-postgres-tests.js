@@ -63,6 +63,9 @@ const MODES = {
     'education-group-submit-browser': [
         'tests/browser/education-group-submit-actual-app-browser-smoke.js'
     ],
+    'education-modal-browser': [
+        'tests/browser/education-modal-actual-app-browser-smoke.js'
+    ],
     'catalog-sale': [
         'tests/integration/catalog-sale-migrations.integration.test.js'
     ],
@@ -135,7 +138,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|education-modal-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {

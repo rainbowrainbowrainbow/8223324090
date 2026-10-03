@@ -191,7 +191,7 @@
         if (event.target.closest('[data-education-retry]')) void load(state.date || dateKey());
         const card = event.target.closest('[data-education-booking-id]');
         if (card && typeof global.showBookingDetails === 'function') {
-            void global.showBookingDetails(card.dataset.educationBookingId, { source: 'education-today-list' });
+            void global.showBookingDetails(card.dataset.educationBookingId, { source: 'education-today-list', triggerEl: card });
         }
     });
     document.getElementById('educationScheduleTeacherFilter')?.addEventListener('change', render);

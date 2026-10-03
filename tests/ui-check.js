@@ -349,7 +349,7 @@ checkPage('index.html', (doc, html) => {
     check('Timeline booking detail modal rendering stays owned by booking.js',
         bookingCode.includes('async function showBookingDetails(bookingId, options = {})')
         && bookingCode.includes("document.getElementById('bookingDetails').innerHTML")
-        && bookingCode.includes("document.getElementById('bookingModal')?.classList.remove('hidden')")
+        && bookingCode.includes('openModal(modal, detailTrigger)')
         && !timelineCode.includes('timelineOpenRecoveredBookingDetails')
         && !timelineCode.includes('TL-BK-DETAIL-RECOVERY-OPENED')
         && !timelineCode.includes("getElementById('bookingDetails')")
@@ -3724,7 +3724,7 @@ check('Room timeline banquet activity blocks open booking modal instead of compa
     timelineCode.includes("TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set(['activity', 'service', 'manual'])")
     && /function timelineBanquetBlockCanOpenInspector[\s\S]*TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES\.has\(role\)\) return false/.test(timelineCode)
     && /function showTimelineBanquetPreviewFromBlock[\s\S]*if \(!timelineBanquetBlockCanOpenInspector\(block\)\) return false;[\s\S]*showTimelineBanquetInspector\(event, block\._timelineBanquetSummary \|\| null, block, \{/.test(timelineCode)
-    && /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/.test(timelineCode)
+    && /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking, block\)/.test(timelineCode)
     && timelineCode.includes('const targetId = ownId || linkedId')
     && timelineCode.includes("source: 'timeline_block_click_parent_fallback'")
     && timelineCode.includes('fallbackBooking: renderBooking'));

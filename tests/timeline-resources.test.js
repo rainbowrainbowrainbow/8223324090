@@ -4941,8 +4941,8 @@ test('room timeline banquet activity blocks keep full booking modal click owners
     );
     assert.doesNotMatch(openDetailsFunction, /showBookingDetails\(\s*renderBooking\.(?:linkedTo|linked_to)\s*\)/);
     assert.doesNotMatch(timeline, /showBookingDetails\(\s*booking\.(?:linkedTo|linked_to)\s*\)/);
-    assert.match(linkedClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/);
-    assert.match(ownClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/);
+    assert.match(linkedClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking, block\)/);
+    assert.match(ownClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking, block\)/);
 });
 
 test('timeline block click open helper calls booking details with expected ids and fallback behavior', async () => {
@@ -4950,6 +4950,9 @@ test('timeline block click open helper calls booking details with expected ids a
     const helperStart = timeline.indexOf('function timelineBookingDetailModalIsOpen');
     const openStart = timeline.indexOf('async function openTimelineBookingDetailsFromBlock');
     const openEnd = timeline.indexOf('document.addEventListener', openStart);
+    assert.match(timeline.slice(openStart, openEnd), /triggerEl/);
+    assert.match(timeline, /openTimelineBookingDetailsFromBlock\(renderBooking, block\)/);
+    assert.match(timeline, /showBookingDetails\(bookingId, \{ triggerEl: item \}\)/);
     assert.ok(helperStart >= 0 && helperStart < openStart, 'timeline block open helper dependencies exist');
     assert.ok(openStart >= 0 && openEnd > openStart, 'timeline block open helper source exists');
 
@@ -5109,12 +5112,20 @@ test('timeline block click opens the canonical booking.js details modal', async 
         <!doctype html>
         <html>
             <body>
+                <button id="detailTrigger" type="button">Open booking</button>
                 <div id="bookingModal" class="modal hidden" aria-hidden="true">
-                    <div id="bookingDetails"></div>
+                    <div class="modal-content">
+                        <button class="modal-close" type="button">Close</button>
+                        <div id="bookingDetails"></div>
+                    </div>
                 </div>
+                <div id="nestedModal" class="modal hidden"><div class="modal-content"><button type="button">Nested close</button></div></div>
             </body>
         </html>
     `, { url: 'https://crm.example.test/' });
+    Object.defineProperty(dom.window.HTMLElement.prototype, 'offsetParent', {
+        get() { return this.closest('.hidden') ? null : dom.window.document.body; }
+    });
     const warnings = [];
     const notifications = [];
     const detailBooking = {
@@ -5138,6 +5149,7 @@ test('timeline block click opens the canonical booking.js details modal', async 
         },
         window: dom.window,
         document: dom.window.document,
+        requestAnimationFrame: callback => callback(),
         navigator: dom.window.navigator,
         Date,
         URLSearchParams,
@@ -5271,12 +5283,20 @@ test('timeline block click opens the canonical booking.js details modal', async 
         current: () => ({ apiValue: 'event_genix' })
     };
     vm.createContext(context);
+    const ui = read('js/ui.js');
+    vm.runInContext(`
+        const FOCUSABLE_SELECTOR = 'button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        const _focusTrapStack = [];
+        ${ui.slice(ui.indexOf('function resolveModalLifecycleTarget'), ui.indexOf('function closeModalFromControl'))}
+    `, context, { filename: 'booking-modal-lifecycle.vm.js' });
     vm.runInContext(`
         ${booking.slice(resolverStart, resolverEnd)}
         ${timeline.slice(helperStart, openEnd)}
         this.__openTimelineBookingDetailsFromBlock = openTimelineBookingDetailsFromBlock;
     `, context, { filename: 'timeline-booking-details-canonical.vm.js' });
 
+    const trigger = dom.window.document.getElementById('detailTrigger');
+    trigger.focus();
     const opened = await context.__openTimelineBookingDetailsFromBlock({ id: detailBooking.id });
     const modal = dom.window.document.getElementById('bookingModal');
     const detailsHtml = dom.window.document.getElementById('bookingDetails').innerHTML;
@@ -5287,6 +5307,26 @@ test('timeline block click opens the canonical booking.js details modal', async 
         detailsHtml
     }, null, 2));
     assert.equal(modal.classList.contains('hidden'), false, 'canonical modal is visible');
+    assert.equal(modal.contains(dom.window.document.activeElement), true, 'canonical detail takes focus');
+    const focusable = Array.from(modal.querySelectorAll('button'))
+        .filter(button => !button.closest('details:not([open])'));
+    focusable.at(-1).focus();
+    focusable.at(-1).dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.equal(dom.window.document.activeElement, focusable[0], 'Tab wraps inside canonical detail');
+    focusable[0].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+    assert.equal(dom.window.document.activeElement, focusable.at(-1), 'Shift+Tab wraps inside canonical detail');
+    const nested = dom.window.document.getElementById('nestedModal');
+    context.openModal(nested);
+    nested.querySelector('button').dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(nested.classList.contains('hidden'), true, 'Escape closes only the top nested dialog');
+    assert.equal(modal.classList.contains('hidden'), false, 'canonical detail remains open under nested dialog');
+    modal.querySelector('.modal-close').dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(modal.classList.contains('hidden'), true, 'Escape closes canonical detail');
+    assert.equal(dom.window.document.activeElement, trigger, 'Escape returns focus to the opener');
+    trigger.focus();
+    await context.__openTimelineBookingDetailsFromBlock({ id: detailBooking.id });
+    context.closeModal(modal);
+    assert.equal(dom.window.document.activeElement, trigger, 'close control lifecycle returns focus');
     assert.equal(notifications.length, 0, 'canonical open does not show a failure toast');
     assert.match(detailsHtml, /booking-detail-header booking-detail-header--compact/);
     assert.match(detailsHtml, /event-card-image--booking/);

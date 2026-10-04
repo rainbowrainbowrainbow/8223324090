@@ -32,7 +32,7 @@ test('management P&L links performed revenue, explicit refund, and allocated lab
         pool = new Pool({ ...connection, database, max: 8 });
         for (const migration of ['375_universal_costing_plan_foundation.sql', '376_costing_actual_provenance.sql',
             '377_costing_group_composition_revisions.sql', '378_costing_management_reconciliation.sql',
-            '379_costing_execution_booking_identity.sql']) {
+            '379_costing_execution_booking_identity.sql', '380_costing_group_composition_initial_copy.sql']) {
             await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations', migration), 'utf8'));
         }
         await pool.query(`

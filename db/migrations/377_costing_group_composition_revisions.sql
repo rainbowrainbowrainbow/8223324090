@@ -1,7 +1,6 @@
--- MIGRATION_KIND: mixed
--- SAFETY: Additive append-only composition history for costing groups. Revision 1 copies only existing costing_group_members; no existing rows are updated or deleted. Re-running the seed is idempotent.
--- ROLLBACK: Disable group composition revisions, export the new history tables, and restore from a reviewed database backup; do not rewrite old group rows.
--- DATA_SCOPE: Existing rows in costing_execution_groups and costing_group_members introduced by migration 376 only.
+-- MIGRATION_KIND: schema
+-- SAFETY: Additive composition revision tables, indexes, and immutable-history triggers only; no existing rows are copied or changed. Migration 380 copies pre-existing group membership after the schema is ready.
+-- ROLLBACK: Disable composition revision reads and retain the additive history tables for a reviewed forward recovery; do not rewrite group rows.
 
 CREATE TABLE IF NOT EXISTS costing_group_revisions (
     id BIGSERIAL PRIMARY KEY,
@@ -32,19 +31,6 @@ CREATE INDEX IF NOT EXISTS idx_costing_group_revisions_latest_v377
     ON costing_group_revisions (group_id, revision_number DESC);
 CREATE INDEX IF NOT EXISTS idx_costing_group_revision_members_plan_v377
     ON costing_group_revision_members (business_context, plan_id);
-
-INSERT INTO costing_group_revisions (group_id, business_context, revision_number, reason, created_by, created_at)
-SELECT id, business_context, 1, 'Initial composition from costing_group_members', created_by, created_at
-FROM costing_execution_groups
-ON CONFLICT (group_id, revision_number) DO NOTHING;
-
-INSERT INTO costing_group_revision_members
-    (revision_id, plan_id, business_context, include_plan_revenue, include_plan_direct_cost)
-SELECT r.id, m.plan_id, m.business_context, m.include_plan_revenue, m.include_plan_direct_cost
-FROM costing_group_revisions r
-JOIN costing_group_members m ON m.group_id=r.group_id AND m.business_context=r.business_context
-WHERE r.revision_number=1
-ON CONFLICT (revision_id, plan_id) DO NOTHING;
 
 CREATE TRIGGER trg_costing_group_revisions_immutable_v377
 BEFORE UPDATE OR DELETE ON costing_group_revisions

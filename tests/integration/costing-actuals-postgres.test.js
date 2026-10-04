@@ -343,6 +343,37 @@ test('actual provenance, correction, completion, business scope and group aggreg
             }
         }
         await assert.rejects(pool.query('UPDATE costing_actual_entries SET amount_minor=1 WHERE id=$1', [posted.body.entryId]), /immutable/);
+        const foreignTemplate = await pool.query("INSERT INTO costing_templates (business_context,name,kind) VALUES ('dar','Foreign list marker','service') RETURNING id");
+        const foreignVersion = await pool.query(
+            "INSERT INTO costing_template_versions (business_context,template_id,version_number,effective_from,definition) VALUES ('dar',$1,1,'2026-01-01','{}'::jsonb) RETURNING id",
+            [foreignTemplate.rows[0].id]
+        );
+        const foreignPlan = await pool.query(
+            `INSERT INTO costing_plan_snapshots (business_context,template_version_id,client_key,execution_kind,execution_label,
+             execution_date,inputs,result,revenue_minor,direct_cost_minor,contribution_minor,margin_bps)
+             VALUES ('dar',$1,$2::uuid,'service','Foreign list marker','2026-12-31','{}'::jsonb,'{}'::jsonb,999999,0,999999,10000) RETURNING id`,
+            [foreignVersion.rows[0].id, crypto.randomUUID()]
+        );
+        await pool.query(
+            `INSERT INTO costing_plan_snapshots (business_context,template_version_id,client_key,execution_kind,execution_label,
+             execution_date,inputs,result,revenue_minor,direct_cost_minor,contribution_minor,margin_bps)
+             SELECT 'event_genix',$1,('00000000-0000-4000-8000-' || lpad(g::text,12,'0'))::uuid,
+                    'service','Batch plan ' || g, DATE '2026-11-01' + (g % 3),
+                    '{}'::jsonb,'{}'::jsonb,g * 100,g * 10,g * 90,9000
+               FROM generate_series(1,105) AS g`, [legacyVersion.rows[0].id]
+        );
+        const expectedPlans = (await pool.query(
+            `SELECT id::text, revenue_minor::text FROM costing_plan_snapshots
+              WHERE business_context='event_genix' ORDER BY execution_date DESC, costing_plan_snapshots.id DESC LIMIT 100`
+        )).rows;
+        const summaries = await request('GET', '/actual/plans/summaries');
+        assert.equal(summaries.status, 200);
+        assert.equal(summaries.body.plans.length, 100);
+        assert.deepEqual(summaries.body.plans.map(item => item.id), expectedPlans.map(item => item.id));
+        assert.deepEqual(summaries.body.plans.map(item => item.summary.planned.revenueMinor),
+            expectedPlans.map(item => item.revenue_minor), 'each summary stays aligned with its ordered plan');
+        assert.ok(!summaries.body.plans.some(item => item.id === String(foreignPlan.rows[0].id)));
+        assert.equal((await request('GET', '/actual/plans/summaries', undefined, 'dar')).status, 403);
     } finally {
         if (server) await new Promise(resolve => server.close(resolve));
         if (pool) await pool.end();

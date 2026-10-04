@@ -37,6 +37,11 @@
         .fa-overview-trend .an-chart-title span { color:var(--gray-500); font-size:12px; font-weight:600; }
         .fa-chart-aside { padding:20px; border:1px solid var(--gray-200); border-radius:12px; background:var(--white); }
         .fa-chart-aside p { color:var(--gray-600); font-size:14px; }
+        .fa-insights-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+        .fa-insight-metric { display:grid; gap:6px; min-width:0; padding:16px; border:1px solid var(--gray-200); border-radius:12px; background:var(--white); }
+        .fa-insight-metric span { color:var(--gray-600); font-size:13px; font-weight:700; }
+        .fa-insight-metric strong { color:var(--gray-900); font-size:20px; font-weight:900; font-variant-numeric:tabular-nums; }
+        .fa-insight-metric small { color:var(--gray-500); font-size:13px; }
         .fa-operations-nav { display:block; margin:0 0 16px; }
         .fa-operation-group { padding:4px; border-radius:12px; box-shadow:none; background:var(--gray-50); }
         .fa-operation-buttons { display:flex; flex-wrap:wrap; gap:4px; }
@@ -55,6 +60,7 @@
         @media (max-width:1200px) {
             .salary-workspace { grid-template-columns:minmax(0,1fr); }
             .salary-staff-list { max-height:260px; }
+            .fa-insights-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
         }
         @media (max-width:860px) {
             .fa-executive-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -71,6 +77,7 @@
             .fa-mode-btn, .fa-primary-btn { white-space:normal; line-height:1.2; }
             .fa-mode-switch [data-finance-group="team"] { grid-column:1/-1; }
             .fa-executive-grid, .fa-panel-grid { grid-template-columns:minmax(0,1fr); }
+            .fa-insights-metrics { grid-template-columns:minmax(0,1fr); }
             .fa-attention { align-items:stretch; flex-direction:column; }
             .fa-operation-buttons { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
             .fa-operation-btn, .fa-context-mode { white-space:normal; line-height:1.2; }

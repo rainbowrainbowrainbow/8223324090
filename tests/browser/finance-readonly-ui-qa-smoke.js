@@ -11,6 +11,14 @@ const output = path.join(root, 'output/playwright/finance-qa-local');
 const html = fs.readFileSync(path.join(root, 'finance.html'), 'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
 const requests = [];
 let advancedAttempts = 0;
+const fixtureNow = new Date();
+const fixtureMonth = `${fixtureNow.getFullYear()}-${String(fixtureNow.getMonth() + 1).padStart(2, '0')}`;
+const fixtureDate = day => `${fixtureMonth}-${String(day).padStart(2, '0')}`;
+const previousMonthRange = month => {
+    const [year, number] = month.split('-').map(Number);
+    return { from:new Date(Date.UTC(year, number - 2, 1)).toISOString().slice(0, 10),
+        to:new Date(Date.UTC(year, number - 1, 0)).toISOString().slice(0, 10) };
+};
 const totals = { income: 11600, expense: 0, profit: 11600 };
 const metrics = { monthIncome: 11600, monthExpense: 0, monthProfit: 11600, avgBookingPrice: 1933, bookingsCount: 6, margin: 100 };
 const pnl = { summary: { totalIncome: 11600, totalExpenses: 0, grossProfit: 11600, margin: 100,
@@ -33,8 +41,10 @@ window.showAuthenticatedPageShell = () => {
 window.getLegacyBusinessSurfaceAvailability = (surface) => surface === 'finance_salary'
     ? ({available:true}) : ({available:false,message:'Synthetic isolated fixture'});
 window.apiFetchWithAuthRetry = (url,options) => fetch(url,options);
-window.apiGetBudgetComparison = async () => ({ comparison:[{categoryName:'Матеріали',categoryType:'expense',planned:2500,actual:2100,diff:-400,percentUsed:84}],
+window.__budgetRequests = [];
+window.apiGetBudgetComparison = async (year, month) => { window.__budgetRequests.push({year, month}); return ({ comparison:[{categoryName:'Матеріали',categoryType:'expense',planned:2500,actual:2100,diff:-400,percentUsed:84}],
     totals:{incomeActual:11600,incomePlanned:11000,expenseActual:2100,expensePlanned:2500,profitActual:9500,profitPlanned:8500} });
+};
 document.documentElement.setAttribute('data-theme',localStorage.getItem('pzp_dark_mode') === 'false' ? 'light' : 'dark');
 </script><script src="/js/analytics-page.js"></script><script src="/js/finance-page.js"></script><script src="/js/finance-costing.js"></script>`;
 
@@ -43,33 +53,37 @@ async function main() {
     const server = http.createServer((req, res) => {
         const url = new URL(req.url, 'http://localhost');
         if (url.pathname.startsWith('/api/')) {
-            requests.push({ method: req.method, path: url.pathname });
+            requests.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams) });
             if (req.method !== 'GET') { res.writeHead(405); return res.end(); }
             let data;
+            const rangeMonth = (url.searchParams.get('from') || fixtureDate(1)).slice(0, 7);
+            const dated = day => `${rangeMonth}-${String(day).padStart(2, '0')}`;
             if (url.pathname.endsWith('/categories')) data = [];
             else if (url.pathname.endsWith('/dashboard')) data = { totals, bookingRevenue: { revenue: 11600, count: 6 },
-                daily:[{date:'2026-09-03',income:2800,expense:900},{date:'2026-09-10',income:4100,expense:1600}],
+                daily:[{date:dated(3),income:2800,expense:900},{date:dated(10),income:4100,expense:1600}],
                 incomeByCategory:[{name:'Послуги',total:11600}], expenseByCategory:[{name:'Матеріали',total:2100}] };
-            else if (url.pathname.endsWith('/overview')) data = { finance: totals, bookings: { revenue: 11600, total: 6, confirmed: 6 } };
+            else if (url.pathname.endsWith('/overview')) data = { finance: totals,
+                bookings: { revenue: 11600, total: 6, confirmed: 4, preliminary: 2, avgCheck: 1933 },
+                customers: { newCustomers: 4, prevNew: 3 }, hr: { totalHours: 84, activeStaff: 6 } };
             else if (url.pathname.endsWith('/charts')) data = {
-                dailyFinance: [{ date:'2026-09-03', income:2800, expense:900 }, { date:'2026-09-10', income:4100, expense:1600 }, { date:'2026-09-17', income:4700, expense:2100 }],
-                dailyBookings: [{ date:'2026-09-03', revenue:2800, count:2 }, { date:'2026-09-10', revenue:4100, count:2 }, { date:'2026-09-17', revenue:4700, count:2 }],
+                dailyFinance: [{ date:dated(3), income:2800, expense:900 }, { date:dated(10), income:4100, expense:1600 }, { date:dated(17), income:4700, expense:2100 }],
+                dailyBookings: [{ date:dated(3), revenue:2800, count:2 }, { date:dated(10), revenue:4100, count:2 }, { date:dated(17), revenue:4700, count:2 }],
                 topPrograms: [{ name:'Групове заняття', count:4, revenue:7200 }, { name:'Оренда зали', count:2, revenue:4400 }],
                 financeCategories: [{ name:'Послуги', total:11600, color:'#10B981' }],
                 weekdayLoad: [{ name:'Субота', count:4, revenue:7200 }], customerSegments:{ total:6, champions:1, loyal:2, potential:3 }
             };
-            else if (url.pathname.endsWith('/comparison')) data = { current:{from:'2026-09-01',to:'2026-09-30'}, previous:{from:'2026-08-01',to:'2026-08-31'},
+            else if (url.pathname.endsWith('/comparison')) data = { current:{from:url.searchParams.get('from'),to:url.searchParams.get('to')}, previous:previousMonthRange(rangeMonth),
                 metrics:[{key:'finIncome',label:'Доходи',current:11600,previous:9800,growth:18.4},{key:'finExpense',label:'Витрати',current:2100,previous:2500,growth:-16}] };
-            else if (url.pathname.endsWith('/deals-lifecycle')) data = { period:{from:'2026-09-01',to:'2026-09-30'},accepted:5,closed:4,conversionRatio:80,
-                trend:[{date:'2026-09-03',accepted:2,closed:1},{date:'2026-09-10',accepted:3,closed:3}] };
+            else if (url.pathname.endsWith('/deals-lifecycle')) data = { period:{from:url.searchParams.get('from'),to:url.searchParams.get('to')},accepted:5,closed:4,conversionRatio:80,
+                trend:[{date:dated(3),accepted:2,closed:1},{date:dated(10),accepted:3,closed:3}] };
             else if (url.pathname.endsWith('/transactions')) data = { transactions: [
-                {id:1,date:'2026-09-17',type:'income',categoryName:'Послуги',description:'Групове заняття',amount:3200,paymentMethod:'card',createdBy:'Synthetic QA'},
-                {id:2,date:'2026-09-18',type:'expense',categoryName:'Матеріали',description:'Матеріали для заняття',amount:600,paymentMethod:'cash',createdBy:'Synthetic QA'}], totalPages: 1 };
-            else if (url.pathname.endsWith('/report/monthly')) data = { months:[{monthName:'Вересень',month:'2026-09',income:11600,expense:2100,profit:9500}],
+                {id:1,date:dated(17),type:'income',categoryName:'Послуги',description:'Групове заняття',amount:3200,paymentMethod:'card',createdBy:'Synthetic QA'},
+                {id:2,date:dated(18),type:'expense',categoryName:'Матеріали',description:'Матеріали для заняття',amount:600,paymentMethod:'cash',createdBy:'Synthetic QA'}], totalPages: 1 };
+            else if (url.pathname.endsWith('/report/monthly')) data = { months:[{monthName:'Поточний місяць',month:`${url.searchParams.get('year') || fixtureMonth.slice(0,4)}-${fixtureMonth.slice(5)}`,income:11600,expense:2100,profit:9500}],
                 totals:{income:11600,expense:2100,profit:9500} };
             else if (url.pathname.endsWith('/shift/current')) data = { isOpen:true,shift:{openingCash:1000,cashIncome:3200,cashExpense:600,expectedCash:3600} };
-            else if (url.pathname.endsWith('/shift/history')) data = { shifts:[{opened_at:'2026-09-17T09:00:00Z',closed_at:'2026-09-17T18:00:00Z',opening_cash:1000,closing_cash:3600,expected_cash:3600,cash_difference:0,status:'closed'}] };
-            else if (url.pathname.endsWith('/debts')) data = { totalDebt:700,count:1,debts:[{date:'2026-09-18',label:'Оренда зали',customerName:'Тестовий клієнт',price:1700,paidAmount:1000,debtAmount:700,bookingId:'synthetic-1'}] };
+            else if (url.pathname.endsWith('/shift/history')) data = { shifts:[{opened_at:`${fixtureDate(17)}T09:00:00Z`,closed_at:`${fixtureDate(17)}T18:00:00Z`,opening_cash:1000,closing_cash:3600,expected_cash:3600,cash_difference:0,status:'closed'}] };
+            else if (url.pathname.endsWith('/debts')) data = { totalDebt:700,count:1,debts:[{date:fixtureDate(18),label:'Оренда зали',customerName:'Тестовий клієнт',price:1700,paidAmount:1000,debtAmount:700,bookingId:'synthetic-1'}] };
             else if (url.pathname.endsWith('/accounts')) data = { accounts:[{id:1,name:'Каса локації',emoji:'💵',type:'cash',description:'Тестовий рахунок'}] };
             else if (url.pathname.endsWith('/my')) data = { accounts:[{id:1,name:'Особистий рахунок',emoji:'💳',role:'owner'}] };
             else if (url.pathname.endsWith('/schemes')) data = { staff:[],schemes:[],totals:{} };
@@ -80,8 +94,9 @@ async function main() {
             else if (url.pathname.endsWith('/plans/summaries')) data = { plans:[] };
             else if (url.pathname.endsWith('/plans')) data = { plans:[] };
             else if (url.pathname.endsWith('/groups')) data = { groups:[] };
+            else if (url.pathname.endsWith('/management/pnl')) data = { summary:{ earnedRevenueMinor:'0',directCostMinor:'0',contributionMinor:'0' },lines:[],unresolved:[] };
             else if (url.pathname.endsWith('/forecast')) data = { totals: { expectedRevenue: 8700, bookingCount: 5 },
-                weekly: [{week_start:'2026-09-28T00:00:00.000Z',booking_count:5,expected_revenue:8700}],historicalAverage:[] };
+                weekly: [{week_start:`${fixtureDate(7)}T00:00:00.000Z`,booking_count:5,expected_revenue:8700}],historicalAverage:[] };
             else if (url.pathname.endsWith('/advanced-dashboard')) {
                 advancedAttempts++;
                 if (advancedAttempts === 1) { res.writeHead(500, {'content-type':'application/json'}); return res.end(JSON.stringify({error:'synthetic unavailable'})); }
@@ -111,10 +126,35 @@ async function main() {
         await page.goto(`${origin}/finance`);
         await page.locator('#faExecutiveZone .fa-exec-card').first().waitFor();
         assert.ok(await page.locator('#dateFromFilter').isVisible());
+        const initialRange = await page.evaluate(() => ({
+            from: document.getElementById('dateFromFilter').value,
+            to: document.getElementById('dateToFilter').value
+        }));
+        for (const endpoint of ['/api/finance/dashboard','/api/analytics/overview','/api/analytics/charts',
+            '/api/analytics/comparison','/api/analytics/deals-lifecycle']) {
+            const seen = requests.find(item => item.path === endpoint);
+            assert.ok(seen, `${endpoint}: initial GET missing`);
+            assert.equal(seen.query.from, initialRange.from, endpoint);
+            assert.equal(seen.query.to, initialRange.to, endpoint);
+            if (endpoint.startsWith('/api/analytics/')) assert.equal(seen.query.period, 'custom', endpoint);
+        }
+        const changedRange = page.waitForResponse(response => {
+            const url = new URL(response.url());
+            return url.pathname === '/api/analytics/overview' && url.searchParams.get('from') === '2026-09-01'
+                && url.searchParams.get('to') === '2026-09-30';
+        });
         await page.locator('#dateFromFilter').fill('2026-09-01');
         await page.locator('#dateToFilter').fill('2026-09-30');
+        await changedRange;
         await page.locator('[data-finance-group="results"]').click();
         assert.ok(await page.locator('#dateToFilter').isVisible());
+        assert.equal(await page.locator('#dateFromFilter').inputValue(), '2026-09-01');
+        assert.equal(await page.locator('#dateToFilter').inputValue(), '2026-09-30');
+        await page.locator('#financeInsightsMetrics').waitFor({ state:'visible' });
+        assert.match(await page.locator('#financeInsightsMetrics').innerText(), /Нові клієнти[\s\S]*4[\s\S]*Попередній період: 3/);
+        assert.match(await page.locator('#financeInsightsMetrics').innerText(), /Навантаження команди[\s\S]*84 год[\s\S]*Активних працівників: 6/);
+        assert.match(await page.locator('#financeInsightsMetrics').innerText(), /Середній чек бронювання[\s\S]*1\s933/);
+        assert.match(await page.locator('#financeInsightsMetrics').innerText(), /Статуси бронювань[\s\S]*4 підтверджено[\s\S]*Попередніх: 2/);
         await page.locator('[data-finance-group="overview"]').click();
         await page.locator('main').screenshot({path:path.join(output,'overview-desktop.png'),animations:'disabled'});
         await page.setViewportSize({width:820,height:1180});
@@ -125,7 +165,7 @@ async function main() {
         await page.locator('main').screenshot({path:path.join(output,'overview-tablet.png'),animations:'disabled'});
         await page.locator('[data-finance-group="planning"]').click();
         await page.locator('.fin-tab[data-tab="forecast"]').click();
-        await page.getByRole('cell', {name:'28.09.2026',exact:true}).waitFor();
+        await page.getByRole('cell', {name:`07.${fixtureMonth.slice(5)}.${fixtureMonth.slice(0,4)}`,exact:true}).waitFor();
         await page.locator('#tabForecast').screenshot({path:path.join(output,'forecast-tablet.png'),animations:'disabled'});
         await page.locator('[data-finance-group="results"]').click();
         await page.locator('.fin-tab[data-tab="advanced"]').click();
@@ -153,13 +193,55 @@ async function main() {
         const groups = { transactions:'cash',shift:'cash',accounts:'cash',personal:'cash',debts:'cash',
             pnl:'results',monthly:'results',dashboard:'results',advanced:'results',
             budget:'planning',forecast:'planning',costing:'planning',salary:'team' };
+        const ownPeriodEndpoints = { transactions:'/api/finance/transactions',dashboard:'/api/finance/dashboard',
+            monthly:'/api/finance/report/monthly',salary:'/api/finance/report/salary',
+            forecast:'/api/finance/forecast',pnl:'/api/finance/report/pnl' };
+        async function assertInsightsNavBeforeContent(width) {
+            await page.locator('#financeInsightsMetrics .fa-insight-metric').first().waitFor({ state:'visible' });
+            const position = await page.evaluate(() => {
+                const nav = document.getElementById('financeOperationsNav').getBoundingClientRect();
+                const content = document.getElementById('faWorkspace').getBoundingClientRect();
+                return { navBottom:nav.bottom, contentTop:content.top };
+            });
+            assert.ok(position.navBottom <= position.contentTop + 1, `insights ${width}: contextual navigation follows content`);
+        }
         const errors = [];
         page.on('pageerror', error => errors.push(error.message));
         const matrix = [];
         await page.setViewportSize({width:1440,height:1000});
         for (const [tab,panel] of Object.entries(panels)) {
+            const before = requests.length;
+            const endpoint = ownPeriodEndpoints[tab];
+            const response = endpoint ? page.waitForResponse(item => new URL(item.url()).pathname === endpoint) : null;
             await page.goto(`${origin}/finance?tab=${tab}`);
+            if (response) await response;
             await page.locator(`#${panel}`).waitFor({ state:'visible' });
+            if (endpoint) {
+                const call = requests.slice(before).find(item => item.path === endpoint);
+                assert.ok(call, `${tab}: own request missing`);
+                if (['transactions','dashboard'].includes(tab)) {
+                    assert.equal(call.query.from, await page.locator('#dateFromFilter').inputValue(), tab);
+                    assert.equal(call.query.to, await page.locator('#dateToFilter').inputValue(), tab);
+                } else {
+                    assert.equal(call.query.from, undefined, `${tab}: shared date leaked into own period`);
+                    assert.equal(call.query.to, undefined, `${tab}: shared date leaked into own period`);
+                    if (tab === 'monthly') assert.equal(call.query.year, await page.locator('#yearFilter').inputValue());
+                    if (tab === 'salary') assert.equal(call.query.month, await page.locator('#salaryMonth').inputValue());
+                    if (tab === 'forecast') assert.equal(call.query.days, await page.locator('#forecastDays').inputValue());
+                    if (tab === 'pnl') {
+                        assert.equal(call.query.year, await page.locator('#pnlYear').inputValue());
+                        assert.equal(call.query.month || '', await page.locator('#pnlMonth').inputValue());
+                    }
+                }
+            }
+            if (tab === 'budget') {
+                await page.waitForFunction(() => window.__budgetRequests.length > 0);
+                const own = await page.evaluate(() => ({
+                    last:window.__budgetRequests.at(-1), year:Number(document.getElementById('budgetYear').value),
+                    month:Number(document.getElementById('budgetMonth').value)
+                }));
+                assert.deepEqual(own.last, { year:own.year, month:own.month }, 'budget uses its own year and month');
+            }
             assert.equal(await page.locator(`[data-finance-group="${groups[tab]}"]`).getAttribute('aria-current'), 'page', tab);
             assert.equal(await page.locator('#financePeriodControls').isVisible(), ['transactions','dashboard'].includes(tab), tab);
             assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tab}: horizontal page overflow`);
@@ -167,9 +249,19 @@ async function main() {
             matrix.push({view:tab,group:groups[tab],period:['transactions','dashboard'].includes(tab)});
         }
         for (const mode of ['overview','insights']) {
+            const before = requests.length;
+            const response = page.waitForResponse(item => new URL(item.url()).pathname === '/api/analytics/overview');
             await page.goto(`${origin}/finance?mode=${mode}`);
+            await response;
             await page.locator('#faWorkspace').waitFor({ state:'visible' });
             assert.equal(await page.locator('#financePeriodControls').isVisible(), true);
+            const overviewCall = requests.slice(before).find(item => item.path === '/api/analytics/overview');
+            assert.equal(overviewCall.query.from, await page.locator('#dateFromFilter').inputValue(), mode);
+            assert.equal(overviewCall.query.to, await page.locator('#dateToFilter').inputValue(), mode);
+            if (mode === 'insights') {
+                await assertInsightsNavBeforeContent(1440);
+                assert.equal(await page.locator('#financeInsightsMetrics .fa-insight-metric').count(), 4);
+            }
             await page.locator('main').screenshot({path:path.join(output,`matrix-${mode}-1440-dark.png`),animations:'disabled'});
             matrix.push({view:mode,group:mode === 'overview' ? 'overview' : 'results',period:true});
         }
@@ -178,6 +270,7 @@ async function main() {
             for (const view of ['overview','insights','transactions','salary','costing']) {
                 await page.goto(`${origin}/finance?${['overview','insights'].includes(view) ? `mode=${view}` : `tab=${view}`}`);
                 if (view === 'overview') await page.locator('#dailyFinanceChart').waitFor();
+                if (view === 'insights') await assertInsightsNavBeforeContent(viewport.width);
                 assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${view} ${viewport.width}: page overflow`);
                 assert.ok(await page.evaluate(() => document.getElementById('main-content').scrollWidth <= innerWidth + 1), `${view} ${viewport.width}: clipped main content`);
                 if (view === 'salary') {
@@ -207,8 +300,22 @@ async function main() {
         assert.match(page.url(), /tab=costing/);
         await page.goBack();
         assert.equal(await page.locator('#tabBudget').isVisible(), true);
+        assert.equal(new URL(page.url()).searchParams.get('tab'), 'budget');
+        assert.equal(await page.locator('#financePeriodControls').isVisible(), false);
         await page.goBack();
         assert.equal(await page.locator('#faWorkspace').isVisible(), true);
+        assert.equal(new URL(page.url()).searchParams.get('mode'), 'overview');
+        assert.equal(await page.locator('#financePeriodControls').isVisible(), true);
+        await page.goto(`${origin}/finance?tab=costing`);
+        await page.locator('[data-cost-nav="management"]').click();
+        assert.equal(await page.locator('#financePeriodControls').isVisible(), false);
+        await page.locator('#costManagementFrom').fill('2026-09-05');
+        await page.locator('#costManagementTo').fill('2026-09-20');
+        const managementResponse = page.waitForResponse(item => new URL(item.url()).pathname === '/api/finance/costing/management/pnl');
+        await page.locator('#costManagementRefresh').click();
+        await managementResponse;
+        const managementCall = requests.filter(item => item.path === '/api/finance/costing/management/pnl').at(-1);
+        assert.deepEqual(managementCall.query, { from:'2026-09-05', to:'2026-09-20' });
         await page.goto(`${origin}/finance?tab=transactions`);
         assert.equal(await page.locator('#addTransactionBtn').isVisible(), true);
         assert.equal(await page.locator('#exportCsvBtn').count(), 1);

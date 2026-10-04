@@ -616,7 +616,20 @@ function renderOverviewWorkspace() {
 function renderInsightsWorkspace() {
     const el = document.getElementById('faWorkspace');
     if (!el) return;
+    const { bookings, customers, hr } = financeMetricParts();
+    const bookingRevenue = Number(bookings.revenue ?? FinState.dashboard?.bookingRevenue?.revenue ?? 0);
+    const bookingCount = Number(bookings.total ?? FinState.dashboard?.bookingRevenue?.count ?? 0);
+    const avgCheck = Number(bookings.avgCheck ?? (bookingCount ? bookingRevenue / bookingCount : 0));
     el.innerHTML = `
+        <section id="financeInsightsMetrics" class="an-section" aria-label="Деталі показників за період">
+            <h3 class="an-section-title">Деталі показників за період</h3>
+            <div class="fa-insights-metrics">
+                <article class="fa-insight-metric"><span>Нові клієнти</span><strong>${Number(customers.newCustomers || 0)}</strong><small>Попередній період: ${Number(customers.prevNew || 0)}</small></article>
+                <article class="fa-insight-metric"><span>Навантаження команди</span><strong>${Number(hr.totalHours || 0)} год</strong><small>Активних працівників: ${Number(hr.activeStaff || 0)}</small></article>
+                <article class="fa-insight-metric"><span>Середній чек бронювання</span><strong>${formatMoney(avgCheck)}</strong><small>Бронювань за період: ${bookingCount}</small></article>
+                <article class="fa-insight-metric"><span>Статуси бронювань</span><strong>${Number(bookings.confirmed || 0)} підтверджено</strong><small>Попередніх: ${Number(bookings.preliminary || 0)}</small></article>
+            </div>
+        </section>
         <div class="fa-panel-grid">
             <section class="an-chart-container"><h3 class="an-chart-title">Доходи бронювань по днях</h3><div id="dailyBookingsChart" class="an-bar-chart"></div></section>
             <section class="an-chart-container"><h3 class="an-chart-title">Топ програм за виручкою</h3><div id="topProgramsChart"></div></section>

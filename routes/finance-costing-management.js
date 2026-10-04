@@ -346,7 +346,12 @@ router.post('/sources/:id/links', async (req, res) => {
             }
         } else if (kind === 'unresolved') {
             // Append an explicit hold; old links remain in history but cease contributing to the projection.
-            if (current?.kind === 'hourly' && current.effect_on.toISOString().slice(0, 10) !== effectOn) {
+            const priorEffect = current && await client.query(
+                `SELECT kind,effect_on::text AS effect_on FROM costing_management_links
+                 WHERE source_id=$1 AND business_context=$2 AND kind<>'unresolved'
+                 ORDER BY revision_number DESC LIMIT 1`, [sourceId, context]
+            );
+            if (priorEffect?.rows[0]?.kind === 'hourly' && priorEffect.rows[0].effect_on !== effectOn) {
                 throw conflict('An unresolved hourly share must retain its original effect date');
             }
         }
@@ -430,6 +435,7 @@ router.get('/pnl', async (req, res) => {
                     original.payment_order_id::text AS original_payment_order_id,
                     original.revision_number AS original_revision_number,
                     original.entry_id AS original_entry_id,
+                    prior_effect.kind AS prior_effect_kind,prior_effect.effect_on::text AS prior_effect_on,
                     (SELECT MAX(latest.revision_number) FROM costing_management_links latest
                      WHERE latest.source_id=original.source_id) AS original_active_revision,
                     (SELECT e.id FROM costing_actual_entries e
@@ -462,6 +468,12 @@ router.get('/pnl', async (req, res) => {
              LEFT JOIN payroll_reports pr ON pr.id=pi.payroll_report_id
              LEFT JOIN hr_time_records tr ON tr.id=l.hr_time_record_id
              LEFT JOIN costing_management_links original ON original.id=l.original_link_id
+             LEFT JOIN LATERAL (
+                 SELECT prior.kind,prior.effect_on FROM costing_management_links prior
+                 WHERE prior.source_id=l.source_id AND prior.business_context=l.business_context
+                   AND prior.revision_number<l.revision_number AND prior.kind<>'unresolved'
+                 ORDER BY prior.revision_number DESC LIMIT 1
+             ) prior_effect ON TRUE
              LEFT JOIN payment_refunds refund ON refund.id=l.payment_refund_id
              LEFT JOIN fiscal_profiles profile ON profile.id=refund.fiscal_profile_id
              WHERE l.business_context=$1 AND l.revision_number=(

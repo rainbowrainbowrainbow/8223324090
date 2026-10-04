@@ -93,6 +93,16 @@ test('an unresolved revision releases time while remaining visible in its effect
     assert.ok(report.unresolved[0].issues.includes('Reconciliation explicitly unresolved'));
 });
 
+test('a preexisting misplaced unresolved revision reports in the prior hourly effect period', () => {
+    const misplaced = { ...hourly(2, 60), kind: 'unresolved', finance_transaction_id: null,
+        effect_on: '2026-11-12', prior_effect_kind: 'hourly', prior_effect_on: '2026-10-12' };
+    const legacy = { finance: { count: 0 }, costingSourceCount: 0 };
+    const october = projectManagementPnl([hourly(1, 60), misplaced], legacy, '2026-10-01', '2026-10-31');
+    const november = projectManagementPnl([hourly(1, 60), misplaced], legacy, '2026-11-01', '2026-11-30');
+    assert.deepEqual(october.unresolved.map(item => item.sourceId), ['2']);
+    assert.equal(november.unresolved.length, 0);
+});
+
 test('out-of-period issues stay hidden while invalid originals still block in-period corrections', () => {
     const original = earned(1, 9);
     original.active_entry_id = '99';

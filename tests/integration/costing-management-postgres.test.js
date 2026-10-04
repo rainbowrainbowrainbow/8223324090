@@ -468,10 +468,31 @@ document.documentElement.setAttribute('data-theme','dark');
             reason: 'Release this execution share pending review'
         })).status, 201);
         assert.equal((await share(partialC)).status, 201, 'an unresolved latest revision releases its time share');
+        assert.equal((await request('POST', `${management}/sources/${partialB}/links`, {
+            expectedRevision: 2, kind: 'unresolved', effectOn: '2026-11-12',
+            reason: 'Attempt to move a repeated unresolved revision out of the hourly period'
+        })).status, 409);
+        assert.equal((await request('POST', `${management}/sources/${partialB}/links`, {
+            expectedRevision: 2, kind: 'unresolved', effectOn: '2026-10-12',
+            reason: 'Keep the disputed hourly share held in its original period'
+        })).status, 201);
         const releasedTimeReport = await request('GET', reportPath);
         assert.ok(releasedTimeReport.body.unresolved.some(item => String(item.sourceId) === String(partialB) &&
             item.issues.includes('Reconciliation explicitly unresolved')),
         'the released share remains visible as an issue in its effect period');
+
+        await pool.query("INSERT INTO finance_transactions VALUES (10,'event_genix','expense',2,100,'2026-10-12',NULL,'manual',NULL)");
+        assert.equal((await request('POST', `${management}/sources/${partialB}/links`, {
+            expectedRevision: 3, kind: 'direct_cost', effectOn: '2026-10-12', financeTransactionId: 10,
+            reason: 'Correct the source to a separate verified direct cost'
+        })).status, 201);
+        assert.equal((await request('POST', `${management}/sources/${partialB}/links`, {
+            expectedRevision: 4, kind: 'unresolved', effectOn: '2026-11-12',
+            reason: 'Hold the later direct-cost review in its own period'
+        })).status, 201, 'a substantive correction ends the hourly hold chain');
+        const correctedPeriod = await request('GET', `${management}/pnl?from=2026-11-01&to=2026-11-30`);
+        assert.ok(correctedPeriod.body.unresolved.some(item => String(item.sourceId) === String(partialB)),
+            'the later direct-cost hold is visible in its own period');
 
         await pool.query(`INSERT INTO finance_transactions VALUES
             (8,'event_genix','expense',2,1000,'2026-10-12',NULL,'payroll',NULL),
@@ -503,7 +524,7 @@ document.documentElement.setAttribute('data-theme','dark');
         await pool.query(`INSERT INTO costing_management_links
             (business_context,plan_id,source_id,entry_id,revision_number,kind,amount_minor,effect_on,
              finance_transaction_id,payroll_installment_id,hr_time_record_id,confirmed_minutes,hourly_rate_minor,reason)
-            VALUES ('event_genix',$1,$2,$3,3,'hourly',10000,'2026-10-12',3,31,72,60,10000,'Synthetic legacy over-allocation')`,
+            VALUES ('event_genix',$1,$2,$3,6,'hourly',10000,'2026-10-12',3,31,72,60,10000,'Synthetic legacy over-allocation')`,
             [planId, partialB, partialEntry.rows[0].id]);
         const overallocatedReport = await request('GET', reportPath);
         for (const sourceId of [partialA, partialB, partialC]) {

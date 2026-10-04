@@ -195,7 +195,9 @@ function projectManagementPnl(rows, legacy, from, to) {
             }
         }
         if (issues.length) {
-            if (inPeriod(row.effect_on)) unresolved.push({ linkId: row.id, sourceId: row.source_id, issues });
+            const issueOn = row.kind === 'unresolved' && row.prior_effect_kind === 'hourly'
+                ? row.prior_effect_on || row.effect_on : row.effect_on;
+            if (inPeriod(issueOn)) unresolved.push({ linkId: row.id, sourceId: row.source_id, issues });
             continue;
         }
         if (row.kind === 'earned_revenue') validEarnedLinks.add(String(row.id));

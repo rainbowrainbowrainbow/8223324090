@@ -1,0 +1,125 @@
+.hr-today-print-overlay[hidden],
+.hr-today-print-document [hidden] { display: none !important; }
+
+.hr-today-print-trigger { white-space: normal; }
+.hr-today-filter-row:has(.hr-today-print-trigger) {
+    grid-template-columns: minmax(220px, 1fr) auto auto auto;
+}
+
+.hr-today-print-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, .7);
+}
+
+.hr-today-print-modal {
+    width: min(1100px, 100%);
+    max-height: min(94vh, 1200px);
+    overflow: auto;
+    border-radius: 16px;
+    background: var(--card-bg, #fff);
+    color: var(--text-primary, #202936);
+    padding: 22px;
+    box-shadow: 0 16px 50px rgba(0, 0, 0, .3);
+}
+
+.hr-today-print-modal header,
+.hr-today-print-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.hr-today-print-modal header { justify-content: space-between; }
+.hr-today-print-modal h2 { margin: 0 0 4px; font-size: 1.35rem; }
+.hr-today-print-modal p { margin: 0 0 14px; }
+.hr-today-print-modal header button { font-size: 1.8rem; min-width: 42px; }
+.hr-today-print-controls { margin: 18px 0 12px; }
+.hr-today-print-controls input { width: 75px; padding: 7px; }
+.hr-today-print-controls button,
+.hr-today-print-modal header button { cursor: pointer; }
+.hr-today-print-controls button:disabled { cursor: not-allowed; opacity: .5; }
+#hrTodayPrintStatus[data-state="error"] { color: #b42318; }
+.hr-today-print-preview { width: 100%; overflow: auto; }
+.hr-today-print-preview:has(#hrTodayPrintFrame[hidden]) { display: none; }
+#hrTodayPrintFrame {
+    width: 100%;
+    min-width: 210mm;
+    height: min(70vh, 900px);
+    border: 1px solid #b6bcc6;
+    background: #fff;
+}
+
+.hr-today-print-document {
+    margin: 0 auto;
+    padding: 10mm;
+    max-width: 210mm;
+    min-height: 297mm;
+    box-sizing: border-box;
+    background: #fff;
+    color: #111;
+    font: 9pt Arial, sans-serif;
+}
+
+.attendance-sheet { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.sheet-page + .sheet-page { margin-top: 10mm; }
+.attendance-sheet th,
+.attendance-sheet td {
+    border: .35mm solid #4d4d4d;
+    padding: 1.5mm 1mm;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+.attendance-sheet .sheet-heading th {
+    padding: 3mm 1.5mm;
+    text-align: left;
+    border-bottom: 0;
+}
+.sheet-heading strong { display: block; font-size: 14pt; }
+.sheet-heading span { display: block; margin-top: 1mm; font-weight: normal; }
+.attendance-sheet .column-heading th { font-size: 8pt; background: #eee; }
+.attendance-sheet th:nth-child(1) { width: 4%; }
+.attendance-sheet th:nth-child(2) { width: 18%; }
+.attendance-sheet th:nth-child(3) { width: 24%; }
+.attendance-sheet th:nth-child(4) { width: 22%; }
+.attendance-sheet th:nth-child(5),
+.attendance-sheet th:nth-child(6) { width: 7%; }
+.attendance-sheet th:nth-child(7) { width: 11%; }
+.attendance-sheet th:nth-child(8) { width: 7%; }
+.attendance-sheet tbody tr { height: 11mm; break-inside: avoid; page-break-inside: avoid; }
+.attendance-sheet .number { text-align: center; }
+.attendance-sheet .person-name { font-weight: bold; }
+.attendance-sheet .plan-line,
+.attendance-sheet .role-line { margin-bottom: 1mm; }
+.attendance-sheet .muted { color: #555; }
+.paper-checkbox {
+    display: inline-block;
+    width: 3mm;
+    height: 3mm;
+    border: .35mm solid #111;
+    vertical-align: -.5mm;
+    margin-right: 1mm;
+}
+
+@media (max-width: 640px) {
+    .hr-today-filter-row:has(.hr-today-print-trigger) { grid-template-columns: 1fr; }
+    .hr-today-print-trigger { width: 100%; }
+    .hr-today-print-overlay { padding: 0; }
+    .hr-today-print-modal { max-height: 100vh; border-radius: 0; padding: 14px; }
+    #hrTodayPrintFrame { height: 60vh; }
+}
+
+@page { size: A4 portrait; margin: 12mm 10mm; }
+@media print {
+    .hr-today-print-document { padding: 0; min-height: 0; max-width: none; }
+    .sheet-page { break-after: page; page-break-after: always; }
+    .sheet-page:last-child { break-after: auto; page-break-after: auto; }
+    .sheet-page + .sheet-page { margin-top: 0; }
+    .attendance-sheet thead { display: table-header-group; }
+    .attendance-sheet .column-heading th { background: #eee !important; print-color-adjust: exact; }
+}

@@ -25,6 +25,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/hr-page.css?v=0.82.64">
+    <link rel="stylesheet" href="css/hr-today-print.css?v=0.82.64">
     <link rel="stylesheet" href="css/account-access-editor.css?v=0.82.64">
 </head>
 <body data-page-group="hr">
@@ -122,6 +123,7 @@
                     <div class="hr-today-filter-row">
                         <input type="search" id="todaySearch" class="hr-today-search" aria-label="Пошук у сьогоднішньому пульсі" placeholder="Пошук: ПІБ, професія, відділ, статус...">
                         <div id="todayFilterInfo" class="hr-today-filter-info"></div>
+                        <button type="button" id="btnHrTodayPrint" class="btn-page-secondary hr-today-print-trigger" hidden>Надрукувати бланк на сьогодні</button>
                         <button type="button" id="btnHrPrintDocuments" class="btn-page-secondary hr-print-documents-trigger">
                             <span aria-hidden="true">▣</span>
                             Документи для друку
@@ -1718,6 +1720,7 @@
     <script src="js/hr-attendance-state.js?v=0.82.64"></script>
     <script src="js/account-access-editor.js?v=0.82.64"></script>
     <script src="js/hr-page.js?v=0.82.64"></script>
+    <script src="js/hr-today-print.js?v=0.82.64"></script>
     <script src="js/alerts.js?v=0.82.64"></script>
 </body>
 </html>

@@ -346,6 +346,13 @@ const CSS_SURFACE = [
         reason: 'HR workspace styles extracted from hr.html; large-file consolidation candidate.'
     },
     {
+        file: 'css/hr-today-print.css',
+        owner: 'hr',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Read-only Today attendance print dialog and A4 sheet.'
+    },
+    {
         file: 'css/kleshnya-widget.css',
         owner: 'kleshnya',
         category: 'feature-shared',

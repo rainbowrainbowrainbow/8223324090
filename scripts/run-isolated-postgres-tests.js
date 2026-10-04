@@ -36,7 +36,10 @@ const MODES = {
     recovery: ['tests/integration/full-backup-recovery.integration.test.js'],
     'banquet-recovery': ['tests/integration/banquet-production-recovery.integration.test.js'],
     hr: ['tests/integration/hr-disposable.integration.test.js'],
-    permissions: ['tests/integration/permission-capabilities.integration.test.js'],
+    permissions: [
+        'tests/integration/permission-capabilities.integration.test.js',
+        'tests/integration/timeline-membership-postgres.test.js'
+    ],
     payroll: [
         'tests/integration/payroll-profiles.integration.test.js',
         'tests/integration/payroll-profiles-conditions.integration.test.js',
@@ -673,7 +676,8 @@ async function runSuite(testDb, testFile, suiteMode) {
         CUSTOMER_METRICS_TEST_DATABASE_URL: testFile.includes('customer-booking-metrics-postgres.test')
             ? testDb.url.toString()
             : '',
-        BUSINESS_MEMBERSHIP_TEST_DATABASE_URL: testFile.includes('customer-lead-business-isolation-postgres.test')
+        BUSINESS_MEMBERSHIP_TEST_DATABASE_URL: (testFile.includes('customer-lead-business-isolation-postgres.test')
+            || testFile.includes('timeline-membership-postgres.test'))
             ? testDb.url.toString()
             : '',
         RUN_REDIRECT_AUTH_POSTGRES_BROWSER: testFile.includes('redirect-auth-postgres-browser-smoke') ? 'true' : 'false',

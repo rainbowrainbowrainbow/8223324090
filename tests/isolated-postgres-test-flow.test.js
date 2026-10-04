@@ -329,7 +329,8 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /PostgreSQL startup errors detected/);
         assert.match(runner, /--test-concurrency=1/);
         assert.match(runner, /ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true'/);
-        assert.match(runner, /permissions:\s*\['tests\/integration\/permission-capabilities\.integration\.test\.js'\]/);
+        assert.match(runner, /permissions:\s*\[\s*'tests\/integration\/permission-capabilities\.integration\.test\.js',\s*'tests\/integration\/timeline-membership-postgres\.test\.js'\s*\]/);
+        assert.match(runner, /BUSINESS_MEMBERSHIP_TEST_DATABASE_URL:[\s\S]*testFile\.includes\('timeline-membership-postgres\.test'\)/);
         assert.match(runner, /RUN_PERMISSION_CAPABILITIES_INTEGRATION/);
         assert.match(permissionSuite, /RUN_PERMISSION_CAPABILITIES_INTEGRATION/);
         assert.match(permissionSuite, /REQUIRE_ISOLATED_TEST_TARGET/);

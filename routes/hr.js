@@ -7073,6 +7073,7 @@ router.get('/report/monthly', async (req, res) => {
                 days_vacation: s.days_vacation,
                 total_worked_hours: totalWorkedHours,
                 total_overtime_hours: totalOvertimeHours,
+                total_overtime_minutes: s.total_overtime_minutes,
                 profession_card_days: s.profession_card_days,
                 unscheduled_days: s.unscheduled_days,
                 plan_warning_count: s.profession_card_days + s.unscheduled_days,

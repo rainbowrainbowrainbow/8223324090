@@ -51,9 +51,9 @@ function projectParkReportDetails(value, keys, fields) {
 function projectParkHrMonthlyReport(payload) {
     if (payload?.success !== true) return payload;
     const fields = [
-        'staff_id', 'staff_name', 'days_scheduled', 'days_worked', 'days_late',
+        'staff_id', 'staff_name', 'role_type', 'days_scheduled', 'days_worked', 'days_late',
         'days_early_leave', 'days_absent', 'days_sick', 'days_vacation',
-        'total_worked_hours', 'total_overtime_hours', 'late_count', 'avg_late_minutes',
+        'total_worked_hours', 'total_overtime_hours', 'total_overtime_minutes', 'late_count', 'avg_late_minutes',
         'profession_card_days', 'unscheduled_days', 'plan_warning_count',
         'attendance_rate', 'task_completion_rate', 'planned_worked_count',
         'unplanned_worked_count', 'task_data_status'
@@ -78,7 +78,7 @@ function projectParkHrMonthlyReport(payload) {
 
 async function loadParkHrMonthlyReport(pool, { dateFrom, dateTo }) {
     const staff = await pool.query(
-        `SELECT s.id, s.name FROM staff s WHERE ${scheduleableStaffWhere('s')} ORDER BY s.name`
+        `SELECT s.id, s.name, s.role_type FROM staff s WHERE ${scheduleableStaffWhere('s')} ORDER BY s.name`
     );
     const staffIds = staff.rows.map(row => Number(row.id));
     if (staffIds.length === 0) return [];
@@ -140,7 +140,7 @@ async function loadParkHrMonthlyReport(pool, { dateFrom, dateTo }) {
         const task = taskMap.get(id) || { tasks_assigned: 0, tasks_done: 0,
             tasks_overdue: 0, tasks_assigned_details: [], tasks_done_details: [], tasks_overdue_details: [] };
         return {
-            staff_id: id, staff_name: row.name,
+            staff_id: id, staff_name: row.name, role_type: row.role_type,
             days_scheduled: item.days_scheduled, days_worked: item.days_worked,
             planned_worked_count: item.planned_worked_count,
             unplanned_worked_count: item.unplanned_worked_count,
@@ -150,6 +150,7 @@ async function loadParkHrMonthlyReport(pool, { dateFrom, dateTo }) {
             days_vacation: item.days_vacation,
             total_worked_hours: item.total_worked_hours,
             total_overtime_hours: item.total_overtime_hours,
+            total_overtime_minutes: item.total_overtime_minutes,
             late_count: item.late_count,
             avg_late_minutes: item.avg_late_minutes,
             profession_card_days: item.profession_card_days,

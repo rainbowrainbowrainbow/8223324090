@@ -17158,6 +17158,7 @@ function formatReportPlanWarnings(row = {}) {
 function reportHeaderMetricsFromRows(rows = []) {
     const safeRows = Array.isArray(rows) ? rows : [];
     const sum = key => safeRows.reduce((total, row) => total + reportMetricNumber(row[key]), 0);
+    const totalOvertimeMinutes = safeRows.reduce((total, row) => total + reportOvertimeMinutes(row), 0);
     const totalScheduled = sum('days_scheduled');
     const totalPlannedWorked = safeRows.reduce((total, row) => total
         + reportMetricNumber(row.planned_worked_count ?? Math.min(row.days_worked || 0, row.days_scheduled || 0)), 0);
@@ -17173,7 +17174,8 @@ function reportHeaderMetricsFromRows(rows = []) {
         totalLate: sum('late_count'),
         totalEarlyLeave: sum('days_early_leave'),
         totalAbsent: sum('days_absent'),
-        totalOvertime: sum('total_overtime_hours'),
+        totalOvertimeMinutes,
+        totalOvertime: totalOvertimeMinutes / 60,
         totalTasksAssigned,
         totalTasksDone,
         totalTasksOverdue: taskSum('tasks_overdue'),
@@ -17182,6 +17184,12 @@ function reportHeaderMetricsFromRows(rows = []) {
             ? Math.round(totalTasksDone / totalTasksAssigned * 100) : null,
         taskAvailable
     };
+}
+
+function reportOvertimeMinutes(row = {}) {
+    return row.total_overtime_minutes == null
+        ? Math.round(reportMetricNumber(row.total_overtime_hours) * 60)
+        : reportMetricNumber(row.total_overtime_minutes);
 }
 
 function updateReportHeaderMetrics(metrics = {}) {
@@ -17217,7 +17225,8 @@ function reportVisibleRows() {
         `${row.staff_name || ''} ${row.role_type || ''} ${row.role_type ? professionTitle(row.role_type) : ''}`).includes(query));
     const { key, direction } = reportSort;
     return rows.sort((left, right) => {
-        const value = row => key.startsWith('task_') ? row.task_kpi?.[key.slice(5)] : row[key];
+        const value = row => key === 'total_overtime_minutes' ? reportOvertimeMinutes(row)
+            : key.startsWith('task_') ? row.task_kpi?.[key.slice(5)] : row[key];
         const a = value(left), b = value(right);
         const comparison = typeof a === 'string' || typeof b === 'string'
             ? String(a || '').localeCompare(String(b || ''), 'uk')
@@ -17286,7 +17295,7 @@ function renderReportRows() {
         ['staff_name', 'Працівник'], ['days_scheduled', 'Зміни'],
         ['planned_worked_count', 'За графіком'], ['unplanned_worked_count', 'Поза графіком'],
         ['late_count', 'Запізнення'], ['days_early_leave', 'Ранні виходи'],
-        ['days_absent', 'Відсутність'], ['total_overtime_hours', 'Понаднормово'],
+        ['days_absent', 'Відсутність'], ['total_overtime_minutes', 'Понаднормово'],
         ['avg_late_minutes', 'Середнє запізнення'], ['plan_warning_count', 'Джерело плану'],
         ['total_worked_hours', 'Відпрацьовано'], ['task_tasks_done', 'Задачі']
     ];
@@ -17308,7 +17317,7 @@ function renderReportRows() {
             <td class="num">${reportDetailButton('late', row.late_count || 0, staffId)}</td>
             <td class="num">${reportDetailButton('early_leave', row.days_early_leave || 0, staffId)}</td>
             <td class="num">${reportDetailButton('absent', row.days_absent || 0, staffId)}</td>
-            <td class="num">${reportDetailButton('overtime', `${formatReportHours(row.total_overtime_hours)} год`, staffId)}</td>
+            <td class="num">${reportDetailButton('overtime', `${formatReportHours(reportOvertimeMinutes(row) / 60)} год`, staffId)}</td>
             <td class="num">${formatReportDuration(row.avg_late_minutes)}</td>
             <td>${reportDetailButton('plan_warning', formatReportPlanWarnings(row), staffId)}</td>
             <td class="num">${formatReportHours(row.total_worked_hours)} год</td>
@@ -17380,6 +17389,7 @@ function bindReportControls() {
             const key = sort.dataset.reportSort;
             reportSort = { key, direction: reportSort.key === key ? -reportSort.direction : 1 };
             renderReportRows();
+            root.querySelector(`[data-report-sort="${key}"]`)?.focus();
             return;
         }
         const detail = event.target.closest('[data-report-detail]');

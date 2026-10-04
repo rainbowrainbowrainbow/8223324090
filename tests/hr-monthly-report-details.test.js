@@ -36,6 +36,7 @@ test('monthly report separates matched and unplanned attendance with traceable d
     assert.equal(result.attendance_details.late[0].late_minutes, 205);
     assert.equal(result.attendance_details.early_leave.length, 1);
     assert.equal(result.attendance_details.overtime.length, 1);
+    assert.equal(result.total_overtime_minutes, 45);
     assert.equal(result.attendance_details.plan_warning.length, 2);
 });
 

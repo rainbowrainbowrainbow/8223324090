@@ -223,10 +223,24 @@ test('HR reports failure uses unavailable state, clears stale rows and blocks cu
         assert.equal(win.document.getElementById('reportHeroAttendance').textContent, '2');
         assert.equal(win.document.getElementById('reportHeroTasks').textContent, '—');
         assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /0\/0|224%/);
-        win.document.querySelector('[data-report-sort="staff_name"]').click();
+        const sortButton = win.document.querySelector('[data-report-sort="staff_name"]');
+        sortButton.focus();
+        sortButton.click();
+        assert.equal(win.document.activeElement.dataset.reportSort, 'staff_name');
+        assert.equal(win.document.activeElement.closest('th').getAttribute('aria-sort'), 'descending');
         assert.match(win.document.querySelector('#reportBody tr:first-child').textContent, /Zulu Staff/);
         win.document.querySelector('[data-report-detail="unplanned_worked"][data-staff-id="42"]').click();
         assert.equal(win.document.querySelectorAll('#reportDetailsBody li').length, 2);
+        win.document.getElementById('reportDetailsClose').click();
+        win.renderReports({ data: [1, 2, 3].map(id => ({
+            staff_id: id, staff_name: `Overtime ${id}`, days_scheduled: 1,
+            planned_worked_count: 1, total_overtime_minutes: 16, total_overtime_hours: 0.3,
+            attendance_details: { overtime: [{ date: `2026-09-0${id}`, overtime_minutes: 16 }] },
+            task_kpi: { tasks_assigned: 0, tasks_done: 0, tasks_overdue: 0 }
+        })) });
+        assert.equal(win.document.querySelector('#reportSummary [data-report-detail="overtime"]').textContent.trim(), '0.8 год');
+        win.document.querySelector('#reportSummary [data-report-detail="overtime"]').click();
+        assert.equal(win.document.querySelectorAll('#reportDetailsBody li').length, 3);
         win.document.getElementById('reportDetailsClose').click();
         assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /1000/);
         assert.doesNotMatch(win.document.getElementById('reportHead').textContent, /Сума/);
@@ -259,7 +273,7 @@ test('Park monthly report disables export and retries 500/offline without showin
             monthlyCalls++;
             if (mode === 'offline') throw new Error('Synthetic offline');
             if (mode === 'server') return response(500, { success: false, error: 'Synthetic server error' });
-            return response(200, { success: true, data: [{ staff_name: 'Park QA', days_scheduled: 1,
+            return response(200, { success: true, data: [{ staff_name: 'Park QA', role_type: 'animator', days_scheduled: 1,
                 days_worked: 1, total_worked_hours: 8, task_kpi: { tasks_assigned: 0, tasks_done: 0 } }],
             reportAccess: { exportAllowed: false } });
         }
@@ -267,6 +281,14 @@ test('Park monthly report disables export and retries 500/offline without showin
     try {
         await win.loadReports();
         assert.match(win.document.getElementById('reportBody').textContent, /Park QA/);
+        win.document.getElementById('reportSearch').value = win.professionTitle('animator');
+        win.document.getElementById('reportSearch').dispatchEvent(new win.Event('input'));
+        assert.match(win.document.getElementById('reportBody').textContent, /Park QA/);
+        win.document.getElementById('reportSearch').value = 'cook';
+        win.document.getElementById('reportSearch').dispatchEvent(new win.Event('input'));
+        assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /Park QA/);
+        win.document.getElementById('reportSearch').value = '';
+        win.document.getElementById('reportSearch').dispatchEvent(new win.Event('input'));
         assert.equal(win.document.getElementById('reportExport').disabled, true);
         mode = 'server';
         await win.loadReports();

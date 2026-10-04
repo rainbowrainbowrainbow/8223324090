@@ -759,6 +759,7 @@ async function loadProfessionWorkspaceCatalog(db, options = {}) {
                 isActive: row.is_active !== false,
                 assignmentStatus: row.assignment_status || 'active',
                 admissionStatus: row.admission_status || 'pending',
+                deferRateCheck: true,
                 rateUnit: 'hour',
                 explicitRate: storedExplicitRate,
                 rateSource: storedExplicitRate == null ? 'staff.hourly_rate' : 'staff_profession_rates.hourly_rate'
@@ -925,6 +926,11 @@ function getPaidProfessionEligibility(person = {}) {
         code = 'HR_SHIFT_PAID_ROLE_NOT_ALLOWED';
         blocker = 'admission_required';
         reason = 'Допуск до цієї професії ще не погоджено.';
+    } else if (person.deferRateCheck === true) {
+        // The undated catalog cannot decide which profile or exception applies.
+        code = 'HR_SHIFT_PAID_ROLE_RATE_CHECK_PENDING';
+        blocker = 'rate_check_pending';
+        reason = 'Ставку буде перевірено для дати зміни.';
     } else if (person.rateUnit !== 'hour') {
         code = 'HR_SHIFT_PAID_ROLE_RATE_UNIT_UNSUPPORTED';
         blocker = 'rate_unit_unsupported';

@@ -94,6 +94,13 @@ function resolvePayrollConditions(context, staffId, professionKey, date, purpose
         ruleVersion: CONDITION_RULE_VERSION, purpose, workDate: date, professionKey,
         schemeType: scheme?.schemeType || null };
 }
+function payrollRateBlocker(conditions) {
+    if (conditions?.warnings?.some(row => row.code === 'PAYROLL_PROFILE_VERSION_UNRESOLVED')) {
+        return { code: 'profile_inactive', message: 'Призначений профіль не має чинної версії на цю дату' };
+    }
+    if (!(conditions?.rate > 0)) return { code: 'rate_missing', message: 'Немає чинної ставки' };
+    return null;
+}
 async function getPayrollDayConditions(db, staffId, professionKey, date, purpose = 'base_replacement') {
     const context = await loadPayrollConditionContext(db, [staffId], { from: date, to: date });
     const staff = context.staff.get(Number(staffId));
@@ -127,10 +134,7 @@ async function getPayrollDayConditions(db, staffId, professionKey, date, purpose
         try { assertAdditionalAdmission(context, staffId, professionKey); }
         catch (error) { blocker = { code: error.details?.blocker || error.code, message: error.message }; }
     }
-    if (!blocker && conditions?.warnings?.some(row => row.code === 'PAYROLL_PROFILE_VERSION_UNRESOLVED')) {
-        blocker = { code: 'profile_inactive', message: 'Призначений профіль не має чинної версії на цю дату' };
-    }
-    if (!blocker && !(conditions?.rate > 0)) blocker = { code: 'rate_missing', message: 'Немає чинної ставки' };
+    if (!blocker) blocker = payrollRateBlocker(conditions);
     const profiles = await require('./hrPayrollProfiles').listPayrollProfiles({ professionKey, status: 'active', asOfDate: date }, { db });
     const weekday = new Date(date + 'T00:00:00Z').getUTCDay() || 7;
     const choices = profiles.filter(profile => profile.profileKind === 'shared' || profile.ownerStaffId === Number(staffId))
@@ -265,4 +269,5 @@ async function savePayrollDayException(db, payload, actor) {
 }
 
 module.exports = { CONDITION_RULE_VERSION, conditionError, exceptionKey, loadPayrollConditionContext,
-    resolvePayrollConditions, getPayrollDayConditions, assertAdditionalAdmission, validateExceptionInput, savePayrollDayException };
+    resolvePayrollConditions, payrollRateBlocker, getPayrollDayConditions, assertAdditionalAdmission,
+    validateExceptionInput, savePayrollDayException };

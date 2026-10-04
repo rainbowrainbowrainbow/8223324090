@@ -981,12 +981,13 @@ function validatePaidAdditionalRoles(plan, staffId, shiftDate, context) {
         if (persistedRole) persistedRole.policyVersion = policy.policyVersion;
         const key = `${normalizedStaffId}:${role.professionKey}`;
         if (context?.payrollConditions) {
-            const { resolvePayrollConditions, assertAdditionalAdmission } = require('./hrPayrollConditions');
+            const { resolvePayrollConditions, payrollRateBlocker, assertAdditionalAdmission } = require('./hrPayrollConditions');
             assertAdditionalAdmission(context.payrollConditions, normalizedStaffId, role.professionKey);
             const conditions = resolvePayrollConditions(context.payrollConditions, normalizedStaffId,
                 role.professionKey, normalizedDate, 'additional');
-            if (!(conditions.rate > 0)) fail('HR_SHIFT_PAID_ROLE_RATE_REQUIRED',
-                'Для додаткової професії немає чинних умов оплати', { professionKey: role.professionKey });
+            const blocker = payrollRateBlocker(conditions);
+            if (blocker) fail('HR_SHIFT_PAID_ROLE_RATE_REQUIRED', blocker.message,
+                { professionKey: role.professionKey, blocker: blocker.code });
             continue;
         }
         if (context?.assignments) {

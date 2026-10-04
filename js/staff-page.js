@@ -5183,7 +5183,10 @@ function schedulePaidRoleRate(scope, professionKey) {
             reason: 'Оплачувану додаткову професію можна налаштувати лише для одного працівника.'
         };
     }
-    if (scope === 'schedule' && StaffState.editingCell?.dayPay && scheduleCanViewPayrollAmounts()) {
+    if (scope === 'schedule' && scheduleCanViewPayrollAmounts()) {
+        if (['loading', 'error', 'restricted'].includes(StaffState.professionsLoadState)) {
+            return scheduleExplicitProfessionRate(staff[0], professionKey);
+        }
         const entry = scheduleDayPayEntry(professionKey);
         if (!entry || entry.state === 'loading') return {available:false,rate:null,reason:'Умови оплати ще завантажуються.'};
         if (entry.state !== 'ready') return {available:false,rate:null,reason:entry.error};
@@ -5191,10 +5194,10 @@ function schedulePaidRoleRate(scope, professionKey) {
             conditions:entry.data.conditions,reason:entry.data.blocker?.message || '',code:entry.data.blocker?.code};
     }
     const legacy = scheduleExplicitProfessionRate(staff[0], professionKey);
-    if (scope === 'schedule' && !scheduleCanViewPayrollAmounts()
-        && ['HR_SHIFT_PAID_ROLE_RATE_REQUIRED','HR_SHIFT_PAID_ROLE_RATE_UNIT_UNSUPPORTED'].includes(legacy.code)) {
-        // Schedule access permits editing the plan. The write API validates dated pay
-        // without disclosing amounts or trusting an undated legacy hourly flag.
+    if (['HR_SHIFT_PAID_ROLE_RATE_CHECK_PENDING', 'HR_SHIFT_PAID_ROLE_RATE_REQUIRED',
+        'HR_SHIFT_PAID_ROLE_RATE_UNIT_UNSUPPORTED'].includes(legacy.code)) {
+        // An undated catalog cannot validate pay for this work date or bulk range.
+        // The write API resolves every date without disclosing restricted amounts.
         return {...legacy,available:true,rate:null,pendingServerValidation:true,reason:''};
     }
     return legacy;
@@ -5216,8 +5219,10 @@ function schedulePaidRolePreview(scope, role, segment) {
     if (!rateInfo.available) {
         return rateInfo.reason;
     }
-    if (rateInfo.pendingServerValidation) return 'Суми оплати приховано. Чинні умови професії перевіряються сервером під час збереження плану.';
-    if (rateInfo.rateUnit && rateInfo.rateUnit !== 'hour') return scheduleDayPayPreview(role.professionKey,'additional',rateInfo.conditions);
+    if (rateInfo.pendingServerValidation) return 'Чинні умови професії перевіряються для кожної дати під час збереження плану.';
+    if (rateInfo.rateUnit && rateInfo.rateUnit !== 'hour') {
+        return `${scheduleDayPaySource(rateInfo.conditions)} · ${scheduleDayPayPreview(role.professionKey,'additional',rateInfo.conditions)}`;
+    }
     const canShowRate = scheduleCanViewPayrollAmounts() && Number.isFinite(rateInfo.rate) && rateInfo.rate > 0;
     const rateLabel = canShowRate
         ? `Доплата · ${rateInfo.conditions ? scheduleDayPaySource(rateInfo.conditions) : 'Персональна ставка'} · ${scheduleFormatMoney(rateInfo.rate)} грн/год`
@@ -5251,8 +5256,12 @@ function schedulePaidRoleOptions(scope, professionOptions, segment) {
             const isPrimary = option.value === segment.professionKey;
             const selected = option.value === paidRole?.professionKey;
             const rateInfo = schedulePaidRoleRate(scope, option.value);
+            const basis = rateInfo.available && !rateInfo.pendingServerValidation && scheduleCanViewPayrollAmounts()
+                && ['hour', 'day', 'month'].includes(rateInfo.rateUnit) && Number(rateInfo.rate) > 0
+                ? ` · ${scheduleFormatMoney(rateInfo.rate)} ${scheduleDayPayUnit(rateInfo.rateUnit)} · ${scheduleDayPaySource(rateInfo.conditions)}`
+                : '';
             const suffix = rateInfo.available || isScheduleRecoveryReadOnly(scope) ? '' : ` · ${rateInfo.reason}`;
-            return `<option value="${escapeHtml(option.value)}" ${selected ? 'selected' : ''} ${isPrimary ? 'disabled' : ''}>${escapeHtml(option.label)}${escapeHtml(suffix)}</option>`;
+            return `<option value="${escapeHtml(option.value)}" ${selected ? 'selected' : ''} ${isPrimary ? 'disabled' : ''}>${escapeHtml(option.label)}${escapeHtml(basis)}${escapeHtml(suffix)}</option>`;
         })
     ].join('');
 }

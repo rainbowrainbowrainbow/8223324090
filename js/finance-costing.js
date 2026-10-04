@@ -711,6 +711,7 @@ window.CostingWorkspace = (() => {
         'Payroll approval, business, or finance link changed': 'Підтвердження зарплати, бізнес або фінансовий зв’язок змінився',
         'Labor allocations exceed the approved installment': 'Розподіл праці перевищує затверджену виплату',
         'Confirmed hourly time or amount changed': 'Підтверджений час або погодинна сума змінилися',
+        'Hourly allocations exceed confirmed time': 'Погодинні розподіли перевищують підтверджений час',
         'Original earned revenue is no longer financially valid': 'Початкова виручка більше не проходить фінансову перевірку',
         'Original earned-revenue link is missing or correction is too large': 'Початковий зв’язок відсутній або коригування завелике',
         'Refund is not linked to the original payment': 'Повернення не пов’язане з початковим платежем'

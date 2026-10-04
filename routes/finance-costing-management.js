@@ -166,7 +166,7 @@ router.post('/sources/:id/links', async (req, res) => {
         const effectOn = date(req.body?.effectOn, 'effectOn');
         const explanation = reason(req.body?.reason);
         client = await pool.connect();
-        await client.query('BEGIN');
+        await client.query('BEGIN ISOLATION LEVEL READ COMMITTED');
         const owner = await client.query(
             'SELECT plan_id FROM costing_actual_sources WHERE id=$1 AND business_context=$2', [sourceId, context]
         );
@@ -266,13 +266,26 @@ router.post('/sources/:id/links', async (req, res) => {
                     hourlyRateMinor = money(req.body?.hourlyRateMinor, 'hourlyRateMinor');
                     const time = await client.query(
                         `SELECT id,business_context,staff_id,total_worked_minutes,clock_out,auto_closed
-                         FROM hr_time_records WHERE id=$1`, [hrTimeRecordId]
+                         FROM hr_time_records WHERE id=$1 AND business_context=$2 FOR UPDATE`, [hrTimeRecordId, context]
                     );
                     const record = time.rows[0];
-                    if (!record || record.business_context !== context || record.staff_id !== pay.staff_id ||
-                        !record.clock_out || record.auto_closed || record.total_worked_minutes !== confirmedMinutes ||
+                    if (!record || record.staff_id !== pay.staff_id || !Number.isInteger(record.total_worked_minutes) ||
+                        !record.clock_out || record.auto_closed || confirmedMinutes > record.total_worked_minutes ||
                         hourlyAmount(hourlyRateMinor.toString(), confirmedMinutes) !== amount) {
                         throw conflict('Confirmed time, staff, and hourly amount must match the source');
+                    }
+                    // The row lock serializes claims; READ COMMITTED sees the prior claimant after it commits.
+                    const claimedTime = await client.query(
+                        `SELECT l.confirmed_minutes FROM costing_management_links l
+                         WHERE l.business_context=$1 AND l.hr_time_record_id=$2 AND l.source_id<>$3
+                           AND l.revision_number=(SELECT MAX(newest.revision_number) FROM costing_management_links newest
+                                                  WHERE newest.source_id=l.source_id) AND l.kind='hourly'`,
+                        [context, hrTimeRecordId, sourceId]
+                    );
+                    const minutesClaimed = claimedTime.rows.reduce(
+                        (total, row) => total + BigInt(row.confirmed_minutes), BigInt(confirmedMinutes));
+                    if (minutesClaimed > BigInt(record.total_worked_minutes)) {
+                        throw conflict('Hourly allocations exceed confirmed time');
                     }
                 }
             }
@@ -333,6 +346,9 @@ router.post('/sources/:id/links', async (req, res) => {
             }
         } else if (kind === 'unresolved') {
             // Append an explicit hold; old links remain in history but cease contributing to the projection.
+            if (current?.kind === 'hourly' && current.effect_on.toISOString().slice(0, 10) !== effectOn) {
+                throw conflict('An unresolved hourly share must retain its original effect date');
+            }
         }
         const saved = await client.query(
             `INSERT INTO costing_management_links

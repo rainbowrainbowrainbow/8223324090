@@ -7,15 +7,27 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const { Pool } = require('pg');
+const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 
 test('management P&L links performed revenue, explicit refund, and allocated labor without double counting finance', {
-    skip: !process.env.COSTING_TEST_PG_PORT, timeout: 120000
+    skip: !process.env.COSTING_TEST_PG_PORT && !process.env.TEST_DATABASE_URL &&
+        process.env.COSTING_TEST_PG_REQUIRED !== 'true', timeout: 120000
 }, async () => {
     assert.notEqual(process.env.NODE_ENV, 'production');
     for (const key of ['RAILWAY_ENVIRONMENT', 'RAILWAY_PROJECT_ID', 'RAILWAY_SERVICE_ID']) assert.ok(!process.env[key]);
-    const connection = { host: '127.0.0.1', port: Number(process.env.COSTING_TEST_PG_PORT), user: 'postgres',
-        password: process.env.COSTING_TEST_PG_PASSWORD, ssl: false, connectionTimeoutMillis: 5000 };
-    assert.ok(Number.isInteger(connection.port) && connection.port > 1024 && connection.password?.length >= 12);
+    if (process.env.COSTING_TEST_PG_REQUIRED === 'true') assert.ok(process.env.TEST_DATABASE_URL,
+        'The isolated finance CI gate requires TEST_DATABASE_URL');
+    const target = process.env.TEST_DATABASE_URL
+        ? assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env) : null;
+    if (target) assert.ok(target.isLocal, 'Costing integration creates disposable databases only on local PostgreSQL');
+    const connection = target
+        ? { host: target.hostname, port: Number(target.url.port || 5432),
+            user: decodeURIComponent(target.url.username), password: decodeURIComponent(target.url.password),
+            ssl: false, connectionTimeoutMillis: 5000 }
+        : { host: '127.0.0.1', port: Number(process.env.COSTING_TEST_PG_PORT), user: 'postgres',
+            password: process.env.COSTING_TEST_PG_PASSWORD, ssl: false, connectionTimeoutMillis: 5000 };
+    assert.ok(Number.isInteger(connection.port) && connection.port > 1024 &&
+        (target ? !!connection.password : connection.password?.length >= 12));
     const database = `eventgenix_costing_management_${crypto.randomUUID().replaceAll('-', '')}`;
     const admin = new Pool({ ...connection, database: 'postgres', max: 1 });
     let pool;
@@ -278,7 +290,8 @@ document.documentElement.setAttribute('data-theme','dark');
         await pool.query('UPDATE finance_transactions SET amount=2100 WHERE id=1');
         const drifted = await request('GET', correctionOnlyPath);
         assert.equal(drifted.body.summary.earnedRevenueMinor, '0', 'correction cannot survive invalid original finance income');
-        assert.ok(drifted.body.unresolved.some(item => String(item.sourceId) === String(revenueId)));
+        assert.ok(!drifted.body.unresolved.some(item => String(item.sourceId) === String(revenueId)),
+            'the earlier original does not appear in the correction-only period');
         assert.ok(drifted.body.unresolved.some(item => String(item.sourceId) === String(refundId) &&
             item.issues.some(issue => /Original earned revenue/.test(issue))));
         if (page) {
@@ -415,6 +428,90 @@ document.documentElement.setAttribute('data-theme','dark');
         assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM payment_refunds')).rows[0].count, 1);
         assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM payroll_installments')).rows[0].count, 1);
         await assert.rejects(pool.query('UPDATE costing_management_links SET amount_minor=1 WHERE id=$1', [originalLink]), /immutable/);
+
+        const otherExecutionHourly = await request('POST', `${base}/actual/plans/${unlinkedPlan.body.planId}/sources`, {
+            externalId: 'hourly_other_execution', economicRole: 'teacher_hourly', category: 'direct_cost',
+            amountMinor: '20000', evidenceState: 'confirmed', semantic: 'cost'
+        });
+        assert.equal(otherExecutionHourly.status, 201, JSON.stringify(otherExecutionHourly.body));
+        const fullRecordReuse = await request('POST', `${management}/sources/${otherExecutionHourly.body.sourceId}/links`, {
+            expectedRevision: 0, kind: 'hourly', effectOn: '2026-10-12', financeTransactionId: 3,
+            payrollInstallmentId: 31, hrTimeRecordId: 71, confirmedMinutes: 120, hourlyRateMinor: '10000',
+            reason: 'Attempt to reuse all confirmed time on another execution'
+        });
+        assert.equal(fullRecordReuse.status, 409, JSON.stringify(fullRecordReuse.body));
+        assert.match(fullRecordReuse.body.error, /exceed confirmed time/);
+
+        await pool.query("INSERT INTO hr_time_records VALUES (72,'event_genix',7,120,'2026-10-12T12:00:00Z',FALSE)");
+        const partialA = await source('partial_hourly_a', 'teacher_hourly', 'direct_cost', '10000', 'cost');
+        const partialB = await source('partial_hourly_b', 'teacher_hourly', 'direct_cost', '10000', 'cost');
+        const partialC = await source('partial_hourly_c', 'teacher_hourly', 'direct_cost', '10000', 'cost');
+        const share = sourceId => request('POST', `${management}/sources/${sourceId}/links`, {
+            expectedRevision: 0, kind: 'hourly', effectOn: '2026-10-12', financeTransactionId: 3,
+            payrollInstallmentId: 31, hrTimeRecordId: 72, confirmedMinutes: 60, hourlyRateMinor: '10000',
+            reason: 'One confirmed hour attributed to this execution'
+        });
+        assert.equal((await share(partialA)).status, 201);
+        assert.equal((await share(partialB)).status, 201);
+        assert.equal((await request('POST', `${management}/sources/${partialA}/links`, {
+            expectedRevision: 1, kind: 'hourly', effectOn: '2026-10-12', financeTransactionId: 3,
+            payrollInstallmentId: 31, hrTimeRecordId: 72, confirmedMinutes: 60, hourlyRateMinor: '10000',
+            reason: 'Reconfirm the same hour without claiming it twice'
+        })).status, 201, 'the superseded revision does not consume time');
+        assert.equal((await share(partialC)).status, 409, 'the third hour exceeds the same 120-minute record');
+        assert.equal((await request('POST', `${management}/sources/${partialB}/links`, {
+            expectedRevision: 1, kind: 'unresolved', effectOn: '2026-11-12',
+            reason: 'Attempt to move a disputed time share out of its effect period'
+        })).status, 409);
+        assert.equal((await request('POST', `${management}/sources/${partialB}/links`, {
+            expectedRevision: 1, kind: 'unresolved', effectOn: '2026-10-12',
+            reason: 'Release this execution share pending review'
+        })).status, 201);
+        assert.equal((await share(partialC)).status, 201, 'an unresolved latest revision releases its time share');
+        const releasedTimeReport = await request('GET', reportPath);
+        assert.ok(releasedTimeReport.body.unresolved.some(item => String(item.sourceId) === String(partialB) &&
+            item.issues.includes('Reconciliation explicitly unresolved')),
+        'the released share remains visible as an issue in its effect period');
+
+        await pool.query(`INSERT INTO finance_transactions VALUES
+            (8,'event_genix','expense',2,1000,'2026-10-12',NULL,'payroll',NULL),
+            (9,'event_genix','expense',2,1000,'2026-10-12',NULL,'payroll',NULL);
+            INSERT INTO payroll_reports VALUES (22,'approved',7,8),(23,'approved',7,9);
+            INSERT INTO payroll_installments VALUES
+            (32,22,'event_genix','approved','single',1000),
+            (33,23,'event_genix','approved','single',1000);
+            INSERT INTO hr_time_records VALUES (73,'event_genix',7,60,'2026-10-12T12:00:00Z',FALSE);`);
+        const raceA = await source('time_race_a', 'teacher_hourly', 'direct_cost', '4000', 'cost');
+        const raceB = await request('POST', `${base}/actual/plans/${unlinkedPlan.body.planId}/sources`, {
+            externalId: 'time_race_b', economicRole: 'teacher_hourly', category: 'direct_cost',
+            amountMinor: '4000', evidenceState: 'confirmed', semantic: 'cost'
+        });
+        assert.equal(raceB.status, 201, JSON.stringify(raceB.body));
+        const racingTime = await Promise.all([
+            [raceA, 8, 32], [raceB.body.sourceId, 9, 33]
+        ].map(([sourceId, financeTransactionId, payrollInstallmentId]) => request('POST',
+            `${management}/sources/${sourceId}/links`, { expectedRevision: 0, kind: 'hourly',
+                effectOn: '2026-10-12', financeTransactionId, payrollInstallmentId,
+                hrTimeRecordId: 73, confirmedMinutes: 40, hourlyRateMinor: '6000',
+                reason: 'Concurrent claim against one confirmed time record' })));
+        assert.deepEqual(racingTime.map(result => result.status).sort(), [201, 409]);
+
+        // Simulate legacy over-allocation only in this disposable database; the append-only history is not changed.
+        const partialEntry = await pool.query(
+            "SELECT id FROM costing_actual_entries WHERE source_id=$1 AND entry_type='record' ORDER BY revision_number DESC LIMIT 1",
+            [partialB]);
+        await pool.query(`INSERT INTO costing_management_links
+            (business_context,plan_id,source_id,entry_id,revision_number,kind,amount_minor,effect_on,
+             finance_transaction_id,payroll_installment_id,hr_time_record_id,confirmed_minutes,hourly_rate_minor,reason)
+            VALUES ('event_genix',$1,$2,$3,3,'hourly',10000,'2026-10-12',3,31,72,60,10000,'Synthetic legacy over-allocation')`,
+            [planId, partialB, partialEntry.rows[0].id]);
+        const overallocatedReport = await request('GET', reportPath);
+        for (const sourceId of [partialA, partialB, partialC]) {
+            assert.ok(overallocatedReport.body.unresolved.some(item => String(item.sourceId) === String(sourceId) &&
+                item.issues.some(issue => /allocations exceed confirmed time/.test(issue))));
+        }
+        assert.equal(overallocatedReport.body.lines.filter(item => [partialA, partialB, partialC]
+            .some(sourceId => String(sourceId) === String(item.sourceId))).length, 0);
     } finally {
         if (browser) await browser.close();
         if (server) await new Promise(resolve => server.close(resolve));

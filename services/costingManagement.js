@@ -71,6 +71,7 @@ function projectManagementPnl(rows, legacy, from, to) {
     const refundClaims = new Map();
     const correctionClaims = new Map();
     const installmentClaims = new Map();
+    const timeClaims = new Map();
     const validEarnedLinks = new Set();
     for (const row of orderedRows) {
         if (['piecework', 'hourly'].includes(row.kind) && row.finance_transaction_id &&
@@ -83,6 +84,10 @@ function projectManagementPnl(rows, legacy, from, to) {
         if (['piecework', 'hourly'].includes(row.kind) && row.payroll_installment_id) {
             const key = String(row.payroll_installment_id);
             installmentClaims.set(key, (installmentClaims.get(key) || 0n) + money(row.amount_minor));
+        }
+        if (row.kind === 'hourly' && row.hr_time_record_id) {
+            const key = `${row.business_context}:${row.hr_time_record_id}`;
+            timeClaims.set(key, (timeClaims.get(key) || 0n) + BigInt(row.confirmed_minutes));
         }
         if (row.kind === 'revenue_correction' && row.original_link_id) {
             const key = String(row.original_link_id);
@@ -159,11 +164,15 @@ function projectManagementPnl(rows, legacy, from, to) {
                 let hourlyValid = false;
                 try {
                     hourlyValid = row.time_business === row.business_context && !!row.clock_out && !row.auto_closed &&
-                        Number(row.worked_minutes) === Number(row.confirmed_minutes) &&
+                        Number(row.worked_minutes) >= Number(row.confirmed_minutes) &&
                         row.time_staff_id === row.payroll_staff_id &&
                         hourlyAmount(row.hourly_rate_minor, Number(row.confirmed_minutes)) === money(row.amount_minor);
                 } catch (_error) { hourlyValid = false; }
                 if (!hourlyValid) issues.push('Confirmed hourly time or amount changed');
+                if (row.hr_time_record_id &&
+                    timeClaims.get(`${row.business_context}:${row.hr_time_record_id}`) > BigInt(row.worked_minutes ?? 0)) {
+                    issues.push('Hourly allocations exceed confirmed time');
+                }
             }
         }
         if (row.kind === 'revenue_correction') {
@@ -186,7 +195,7 @@ function projectManagementPnl(rows, legacy, from, to) {
             }
         }
         if (issues.length) {
-            unresolved.push({ linkId: row.id, sourceId: row.source_id, issues });
+            if (inPeriod(row.effect_on)) unresolved.push({ linkId: row.id, sourceId: row.source_id, issues });
             continue;
         }
         if (row.kind === 'earned_revenue') validEarnedLinks.add(String(row.id));
@@ -205,7 +214,8 @@ function projectManagementPnl(rows, legacy, from, to) {
     }
     for (const item of payroll.values()) {
         if (item.allocated > item.total) {
-            unresolved.push({ financeTransactionId: item.financeTransactionId, issues: ['Payroll allocations exceed finance expense'] });
+            if (inPeriod(item.financeDate)) unresolved.push({ financeTransactionId: item.financeTransactionId,
+                issues: ['Payroll allocations exceed finance expense'] });
             continue;
         }
         const remainder = item.total - item.allocated;

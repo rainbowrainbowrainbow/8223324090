@@ -20,7 +20,10 @@ const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
 const MODES = {
     api: ['tests/api.test.js'],
-    finance: ['tests/integration/finance-transactions-pnl.integration.test.js'],
+    finance: [
+        'tests/integration/finance-transactions-pnl.integration.test.js',
+        'tests/integration/costing-management-postgres.test.js'
+    ],
     attendance: [
         'tests/integration/attendance-lock-concurrency.integration.test.js',
         'tests/integration/hr-scheduler-jobs.integration.test.js',
@@ -527,6 +530,7 @@ function runsAgainstDatabaseOnly(testFile) {
         || testFile.includes('checkbox-park-config.integration')
         || testFile.includes('checkbox-x-report-lifecycle.integration')
         || testFile.includes('lead-conversation-links-postgres.test')
+        || testFile.includes('costing-management-postgres.test')
         || testFile.includes('customer-birthday-segments-postgres.test')
         || testFile.includes('legacy-upload-backfill.integration');
 }
@@ -657,6 +661,7 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_ZRS_PAYROLL_PERIOD_LOCK_INTEGRATION: testFile.includes('zrs-payroll-period-lock') ? 'true' : 'false',
         RUN_PAYROLL_INSTALLMENTS_INTEGRATION: testFile.includes('payroll-installments') ? 'true' : 'false',
         RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION: testFile.includes('payroll-fullstack-settlement') ? 'true' : 'false',
+        COSTING_TEST_PG_REQUIRED: testFile.includes('costing-management-postgres.test') ? 'true' : 'false',
         RUN_ADMISSION_TICKETS_INTEGRATION: testFile.includes('admission-tickets') ? 'true' : 'false',
         RUN_EDUCATION_SERIES_INTEGRATION: testFile.includes('education-series.integration') ? 'true' : 'false',
         RUN_CATALOG_SALE_MIGRATIONS_INTEGRATION: testFile.includes('catalog-sale-migrations') ? 'true' : 'false',

@@ -2739,6 +2739,7 @@ const STAFF_SCHEDULE_MAX_RANGE_DAYS = 31;
 // A 31-day month has a 16-day second half; keep both half-month presets fitted.
 const STAFF_SCHEDULE_LONG_RANGE_DAYS = 16;
 const STAFF_SCHEDULE_BULK_CONFIRM_ENTRY_THRESHOLD = 40;
+let staffScheduleMonthDensity = 'compact';
 const STAFF_SCHEDULE_LAYOUT = {
     schedule: {
         desktop: { minWidth: 900, stickyColumn: 240, dayColumn: 144 },
@@ -2748,6 +2749,10 @@ const STAFF_SCHEDULE_LAYOUT = {
         fullRange: {
             desktop: { minWidth: 900, stickyColumn: 220, dayColumn: 30 },
             mobile: { minWidth: 900, stickyColumn: 160, dayColumn: 42 }
+        },
+        detailedMonth: {
+            desktop: { minWidth: 900, stickyColumn: 240, dayColumn: 152 },
+            mobile: { minWidth: 900, stickyColumn: 176, dayColumn: 136 }
         }
     },
     load: {
@@ -2756,6 +2761,27 @@ const STAFF_SCHEDULE_LAYOUT = {
     }
 };
 
+function isScheduleCompactMonth(dayCount) {
+    return dayCount >= 28 && staffScheduleMonthDensity === 'compact';
+}
+
+function syncScheduleMonthDensityControls(dayCount) {
+    const controls = document.getElementById('scheduleMonthDensity');
+    if (!controls) return;
+    controls.hidden = dayCount < 28 || StaffState.showLoadView;
+    controls.querySelectorAll('[data-schedule-month-density]').forEach(button => {
+        const active = button.dataset.scheduleMonthDensity === staffScheduleMonthDensity;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        if (button.dataset.scheduleMonthDensityBound === 'true') return;
+        button.addEventListener('click', () => {
+            if (staffScheduleMonthDensity === button.dataset.scheduleMonthDensity) return;
+            staffScheduleMonthDensity = button.dataset.scheduleMonthDensity;
+            renderSchedule();
+        });
+        button.dataset.scheduleMonthDensityBound = 'true';
+    });
+}
+
 function syncScheduleRangeLayout(wrapperId, dates = [], variant = 'schedule') {
     const wrapper = document.getElementById(wrapperId);
     if (!wrapper) return;
@@ -2763,7 +2789,9 @@ function syncScheduleRangeLayout(wrapperId, dates = [], variant = 'schedule') {
     const dayCount = Array.isArray(dates) ? dates.length : 0;
     const layout = STAFF_SCHEDULE_LAYOUT[variant] || STAFF_SCHEDULE_LAYOUT.schedule;
     const fullRange = dayCount >= 28;
-    const rangeLayout = fullRange && layout.fullRange ? layout.fullRange : layout;
+    const rangeLayout = fullRange && variant === 'schedule' && staffScheduleMonthDensity === 'detailed'
+        ? layout.detailedMonth
+        : (fullRange && layout.fullRange ? layout.fullRange : layout);
     const compactViewport = typeof window !== 'undefined'
         && typeof window.matchMedia === 'function'
         && window.matchMedia('(max-width: 768px)').matches;
@@ -2776,6 +2804,10 @@ function syncScheduleRangeLayout(wrapperId, dates = [], variant = 'schedule') {
 
     wrapper.classList.toggle('is-long-range', longRange);
     wrapper.classList.toggle('is-full-range', fullRange);
+    if (variant === 'schedule') {
+        wrapper.classList.toggle('is-compact-month', isScheduleCompactMonth(dayCount));
+        syncScheduleMonthDensityControls(dayCount);
+    }
     wrapper.dataset.scheduleDayCount = String(dayCount);
     wrapper.style.setProperty('--schedule-visible-days', String(dayCount));
     wrapper.style.setProperty('--schedule-sticky-column-width', `${config.stickyColumn}px`);
@@ -4307,7 +4339,7 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
                 entry,
                 entry?.profession_key || emp.role_type,
                 scheduleProfessionKey,
-                dates.length >= 28
+                isScheduleCompactMonth(dates.length)
             );
             if (isReplacement) {
                 metaContent.push(`<span class="sch-replacement-badge">Заміна</span>`);

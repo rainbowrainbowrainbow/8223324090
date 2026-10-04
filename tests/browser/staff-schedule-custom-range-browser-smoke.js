@@ -1090,7 +1090,7 @@ async function captureStableScheduleScreenshot(page, filename, selector = '#sche
 }
 
 async function openStaffPage(browser, base, viewport, options = {}) {
-    const context = await browser.newContext({ viewport, acceptDownloads: true, serviceWorkers: options.serviceWorkers || 'allow' });
+    const context = await browser.newContext({ viewport, acceptDownloads: true, hasTouch: Boolean(options.hasTouch), serviceWorkers: options.serviceWorkers || 'allow' });
     await context.addInitScript(({ user, ignoreAbort, darkMode }) => {
         localStorage.setItem('pzp_token', 'staff-schedule-smoke-token');
         localStorage.setItem('pzp_access_token', 'staff-schedule-smoke-token');
@@ -1844,6 +1844,77 @@ async function assertWideScheduleLayout(page, label, options = {}) {
     assert.ok(Math.abs(metrics.firstHeaderLeft - metrics.wrapperLeft) <= 3, `${label}: sticky header column stays pinned after scroll`);
     assert.ok(Math.abs(metrics.firstBodyLeft - metrics.wrapperLeft) <= 3, `${label}: sticky body column stays pinned after scroll`);
     assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
+}
+
+async function assertDetailedMonthLayout(page, label, expectedDays, minDayWidth, shiftDate = '', screenshotFile = '', verifyExport = false) {
+    const from = await page.locator('#scheduleDateFrom').inputValue();
+    const to = await page.locator('#scheduleDateTo').inputValue();
+    const search = await page.locator('#scheduleStaffSearch').inputValue();
+    const calls = apiCalls.scheduleRanges.length;
+    const controls = page.locator('#scheduleMonthDensity');
+    await controls.waitFor({ state: 'visible' });
+    await controls.locator('[data-schedule-month-density="detailed"]').click();
+    assert.equal(await controls.locator('[data-schedule-month-density="detailed"]').getAttribute('aria-pressed'), 'true', `${label}: detailed choice is pressed`);
+    assert.equal(await page.locator('#scheduleWrapper').evaluate(el => el.classList.contains('is-compact-month')), false, `${label}: compact styling is removed`);
+    await assertWideScheduleLayout(page, `${label} detailed`, { expectedDays, minDayWidth });
+    assert.deepEqual([
+        await page.locator('#scheduleDateFrom').inputValue(),
+        await page.locator('#scheduleDateTo').inputValue(),
+        await page.locator('#scheduleStaffSearch').inputValue()
+    ], [from, to, search], `${label}: date and search state survive density change`);
+    assert.equal(apiCalls.scheduleRanges.length, calls, `${label}: density change does not refetch schedule`);
+
+    const sticky = await page.locator('#scheduleWrapper').evaluate(wrapper => {
+        wrapper.scrollLeft = Math.min(400, wrapper.scrollWidth - wrapper.clientWidth);
+        wrapper.scrollTop = Math.min(160, wrapper.scrollHeight - wrapper.clientHeight);
+        const header = wrapper.querySelector('thead th:first-child');
+        const dayHeader = wrapper.querySelector('thead th:nth-child(2)');
+        const staffCell = wrapper.querySelector('tbody tr:not(.dept-row):not(.sub-group-row) > td:first-child');
+        const box = wrapper.getBoundingClientRect();
+        return {
+            horizontal: wrapper.scrollLeft,
+            vertical: wrapper.scrollTop,
+            headerLeft: header.getBoundingClientRect().left,
+            staffLeft: staffCell.getBoundingClientRect().left,
+            dayTop: dayHeader.getBoundingClientRect().top,
+            wrapperLeft: box.left,
+            wrapperTop: box.top,
+            headerHeight: dayHeader.getBoundingClientRect().height
+        };
+    });
+    assert.ok(sticky.horizontal > 0, `${label}: detailed month scrolls horizontally`);
+    assert.ok(Math.abs(sticky.headerLeft - sticky.wrapperLeft) <= 3, `${label}: employee header stays pinned`);
+    assert.ok(Math.abs(sticky.staffLeft - sticky.wrapperLeft) <= 3, `${label}: employee column stays pinned`);
+    if (sticky.vertical > 0) {
+        assert.ok(sticky.dayTop >= sticky.wrapperTop - 2 && sticky.dayTop <= sticky.wrapperTop + sticky.headerHeight + 2, `${label}: date header stays visible on vertical scroll`);
+    }
+    if (shiftDate) {
+        const shift = page.locator(`#scheduleBody .sch-cell[data-staff="101"][data-date="${shiftDate}"]`).first();
+        assert.match(await shift.innerText(), /10.*20/, `${label}: the day shows shift times instead of a monthly count`);
+        await shift.click();
+        await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#schSegmentsList [data-segment-field="start"]').first().inputValue(), '10:00', `${label}: click opens full shift start`);
+        assert.equal(await page.locator('#schSegmentsList [data-segment-field="end"]').first().inputValue(), '20:00', `${label}: click opens full shift end`);
+        await page.locator('#schCancelBtn').click();
+    }
+    if (verifyExport) {
+        const workbook = await captureScheduleWorkbook(page);
+        assert.equal(workbook.filename, `grafik_${from}_${to}.xlsx`, `${label}: detailed view exports the selected range`);
+        assert.ok(workbook.buffer.subarray(0, 2).equals(Buffer.from('PK')), `${label}: Excel workbook remains valid`);
+    }
+    if (screenshotFile) {
+        await page.locator('#scheduleWrapper').evaluate((wrapper, selectedDate) => {
+            const day = Number(selectedDate.slice(-2));
+            const dayWidth = Number.parseFloat(getComputedStyle(wrapper).getPropertyValue('--schedule-day-column-width')) || 0;
+            wrapper.scrollLeft = day > 4 ? (day - 4) * dayWidth : 0;
+            wrapper.scrollTop = 0;
+        }, shiftDate);
+        await captureStableScheduleScreenshot(page, screenshotFile);
+        await captureStableScheduleScreenshot(page, screenshotFile.replace(/\.png$/, '-controls.png'), '#scheduleMonthDensity');
+    }
+    await controls.locator('[data-schedule-month-density="compact"]').click();
+    assert.equal(await page.locator('#scheduleWrapper').evaluate(el => el.classList.contains('is-compact-month')), true, `${label}: compact overview is restored`);
+    assert.equal(apiCalls.scheduleRanges.length, calls, `${label}: switching back does not refetch schedule`);
 }
 
 async function assertFittedScheduleLayout(page, label, expectedDays) {
@@ -3972,9 +4043,22 @@ async function runDesktopFlow(browser, base) {
         await page.locator('#scheduleStaffSearch').fill('');
         await waitForDayColumns(page, monthDays);
         await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 28, shouldFit: true });
+        await assertDetailedMonthLayout(page, 'desktop July', monthDays, 150, '2026-07-11', 'desktop-month-detailed.png', true);
         await assertDepartmentChipsFit(page, 'desktop month');
         assert.equal(await page.locator('#loadViewWrapper').isHidden(), true, 'month schedule keeps removed load view hidden');
         await captureStableScheduleScreenshot(page, 'desktop-month.png');
+
+        await applyManualRange(page, '2026-09-01', '2026-09-30');
+        await assertDetailedMonthLayout(page, 'desktop September 1-30', 30, 150);
+        const currentMonth = await page.evaluate(() => {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const end = String(new Date(year, today.getMonth() + 1, 0).getDate()).padStart(2, '0');
+            return { from: `${year}-${month}-01`, to: `${year}-${month}-${end}` };
+        });
+        await applyManualRange(page, currentMonth.from, currentMonth.to);
+        await assertDetailedMonthLayout(page, 'desktop current month', dateRangeDays(currentMonth.from, currentMonth.to), 150);
 
         await page.locator('#todayWeekBtn').click();
         await waitForDayColumns(page, 9);
@@ -3985,7 +4069,8 @@ async function runDesktopFlow(browser, base) {
 
 async function runMobileFlow(browser, base, viewport = { width: 390, height: 844 }, label = 'mobile', options = {}) {
     const { context, page } = await openStaffPage(browser, base, viewport, {
-        darkMode: Boolean(options.darkMode)
+        darkMode: Boolean(options.darkMode),
+        hasTouch: true
     });
     try {
         await waitForDayColumns(page, 9);
@@ -4006,6 +4091,13 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await assertNoControlOverlap(page, `${label} month`);
         await assertDepartmentChipsFit(page, `${label} month`);
         await assertWideScheduleLayout(page, `${label} month schedule`, { expectedDays: monthDays, minDayWidth: 40 });
+        await assertDetailedMonthLayout(page, `${label} July`, monthDays, 134, '2026-07-11', `${label}-month-detailed.png`);
+        await page.locator('[data-schedule-month-density="detailed"]').tap();
+        assert.equal(await page.locator('#scheduleWrapper').evaluate(el => el.classList.contains('is-compact-month')), false, `${label}: touch opens detailed month`);
+        await page.locator('[data-schedule-month-density="compact"]').tap();
+        await applyManualRange(page, '2026-09-01', '2026-09-30');
+        await assertDetailedMonthLayout(page, `${label} September 1-30`, 30, 134);
+        await applyManualRange(page, '2026-07-01', '2026-07-31');
         await assertScheduleGroupLabelsReadable(page, `${label} month department headers`, { simulatedTechCount: 3 });
         await assertDepartmentRerenderPreservesPageScroll(page, `${label} departments`);
         await assertDepartmentScrollCue(page, `${label} departments`);
@@ -4058,6 +4150,19 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         if (options.screenshot) {
             await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}-plan-modal.png`), fullPage: false });
         }
+    } finally {
+        await context.close();
+    }
+}
+
+async function runTabletMonthFlow(browser, base) {
+    const { context, page } = await openStaffPage(browser, base, { width: 820, height: 980 }, { hasTouch: true });
+    try {
+        await expandAllScheduleGroups(page);
+        await applyManualRange(page, '2026-09-01', '2026-09-30');
+        await assertDetailedMonthLayout(page, 'tablet September 1-30', 30, 150);
+        await applyManualRange(page, '2026-07-01', '2026-07-31');
+        await assertDetailedMonthLayout(page, 'tablet July', 31, 150, '2026-07-11', 'tablet-month-detailed.png');
     } finally {
         await context.close();
     }
@@ -4334,6 +4439,7 @@ async function runPayConditionsDraftFlow(browser, base) {
         await runMultiSegmentPersistenceFlow(browser, base);
         await runPaidAdditionalProfessionFlow(browser, base);
         await runDesktopFlow(browser, base);
+        await runTabletMonthFlow(browser, base);
         await runSidebarIdentityWrapFlow(browser, base, { width: 1440, height: 900 }, 'desktop-light', false);
         await runSidebarIdentityWrapFlow(browser, base, { width: 1024, height: 768 }, 'laptop-dark', true);
         const mobileViewports = [

@@ -2323,8 +2323,9 @@ checkPage('staff.html', (doc, html) => {
         && staffPagesCss.includes('--schedule-table-min-width')
         && staffPagesCss.includes('#scheduleWrapper.is-long-range .schedule-table thead th:not(:first-child)')
         && staffPagesCss.includes('#loadViewWrapper.is-long-range .schedule-table thead th:not(:first-child):not(:last-child)')
-        && staffPagesCss.includes('#scheduleWrapper.is-full-range .schedule-table .sch-cell')
-        && staffPagesCss.includes('#scheduleWrapper.is-full-range .schedule-table .sch-time'));
+        && staffPagesCss.includes('#scheduleWrapper.is-compact-month .schedule-table .sch-cell')
+        && staffPagesCss.includes('#scheduleWrapper.is-compact-month .schedule-table .sch-time')
+        && staffPagesCss.includes('#scheduleWrapper.is-full-range:not(.is-compact-month) .sch-cell'));
     check('Staff schedule bulk actions respect the selected period safely',
         staffScheduleShellCode.includes('id="fillWeekTitle"')
         && staffScheduleShellCode.includes('id="fillWeekPeriodHint"')

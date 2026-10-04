@@ -58,6 +58,12 @@ async function main() {
             if (req.method === 'GET' && endpoint === '/templates') return json(res, 200, { templates: [template] });
             if (req.method === 'GET' && endpoint === '/templates/1') return json(res, 200, { template, versions: [version] });
             if (req.method === 'GET' && endpoint === '/plans') return json(res, 200, { plans });
+            if (req.method === 'GET' && endpoint === '/actual/plans/summaries') {
+                const watermarks = {};
+                actualEntries.forEach(entry => { watermarks[entry.category] = entry.id; });
+                return json(res, 200, { plans: plans.map(plan => ({ id: plan.id,
+                    summary: summarizeTarget(plan, actualSources, completionEvents, watermarks) })) });
+            }
             if (req.method === 'GET' && endpoint === '/actual/groups') return json(res, 200, { groups });
             if (req.method === 'POST' && endpoint === '/actual/source-links/preview') {
                 let body = '';
@@ -107,7 +113,9 @@ async function main() {
                     ...revision, members: revision.members.map(member => ({ plan_id: member.planId,
                         include_plan_revenue: member.includePlanRevenue, include_plan_direct_cost: member.includePlanDirectCost }))
                 })), members: group.members.map(member => ({ planId: member.planId,
-                    include_plan_revenue: member.includePlanRevenue, include_plan_direct_cost: member.includePlanDirectCost })),
+                    include_plan_revenue: member.includePlanRevenue, include_plan_direct_cost: member.includePlanDirectCost,
+                    summary: summarizeTarget(plans.find(plan => plan.id === String(member.planId)), actualSources, completionEvents,
+                        Object.fromEntries(actualEntries.map(entry => [entry.category, entry.id]))) })),
                 summary: { planned: { revenueMinor: String(revenue), directCostMinor: String(cost),
                     contributionMinor: String(revenue - cost) }, actualComplete: false, actualContributionMinor: null } });
             }
@@ -190,6 +198,7 @@ async function main() {
         await page.route('**/*', route => route.request().url().startsWith(origin + '/') ? route.continue() : route.abort());
         await page.goto(`${origin}/finance?tab=costing`);
         await page.locator('#costTemplateSelect option[value="1"]').waitFor({ state: 'attached' });
+        await page.locator('[data-cost-nav="template"]').click();
         await page.locator('#costTemplateSelect').selectOption('1');
         await page.locator('[data-cost-nav="plan"]').click();
         await page.locator('#costExecutionLabel').fill('Урок 12 жовтня');
@@ -206,6 +215,7 @@ async function main() {
         await page.locator('#costPlanList').getByText('Урок 12 жовтня').waitFor({ state: 'attached' });
         assert.equal(plans.length, 1);
         await page.locator('#costActualSummary').getByText('Ще не визначено').waitFor();
+        await page.locator('#costSourceTools > summary').click();
         await page.locator('#costSourceExternalId').fill('sale_ui');
         await page.locator('#costSourceCategory').selectOption('revenue');
         assert.equal(await page.locator('#costSourceRole').getAttribute('placeholder'), 'service_revenue');
@@ -226,8 +236,10 @@ async function main() {
         await page.locator('#costSourceRole').fill(await page.locator('#costSourceRole').getAttribute('placeholder'));
         await page.locator('#costSourceAmount').fill('1158');
         await page.locator('#costAddSource').click();
+        await page.locator('#costHistoryTools > summary').click();
         await page.locator('#costActualHistory').getByText('cost_ui').waitFor();
         assert.equal(actualSources[1].economic_role, 'service_cost');
+        await page.locator('#costReconcileTools > summary').click();
         await page.locator('#costCompletionReason').fill('Synthetic revenue checked');
         await page.locator('#costCompletionConfirmed').check();
         await page.locator('#costCompleteCategory').click();
@@ -236,6 +248,7 @@ async function main() {
         await page.locator('#costCompletionConfirmed').check();
         await page.locator('#costCompleteCategory').click();
         await page.locator('#costActualSummary').getByText('1 002,00 ₴').last().waitFor();
+        await page.locator('#costCorrectionTools > summary').click();
         await page.locator('#costCorrectionSource').selectOption('2');
         await page.locator('#costCorrectionAmount').fill('1200');
         await page.locator('#costCorrectionReason').fill('Verified corrected cost');
@@ -246,6 +259,7 @@ async function main() {
         await page.locator('#costCompletionConfirmed').check();
         await page.locator('#costCompleteCategory').click();
         await page.locator('#costActualSummary').getByText('960,00 ₴').last().waitFor();
+        await page.locator('#costLinkTools > summary').click();
         await page.locator('#costLinkId').fill('booking_ui');
         await page.locator('#costLinkAmount').fill('2160');
         await page.locator('#costPreviewLink').click();
@@ -270,8 +284,9 @@ async function main() {
         await page.locator('#costSaveGroupRevision').click();
         await page.locator('#costGroupSummary').getByText('ревізія 2').waitFor();
         assert.equal(groups[0].history.length, 2);
+        await page.locator('details:has(#costGroupHistory) > summary').click();
         assert.match(await page.locator('#costGroupHistory').innerText(), /Ревізія 1[\s\S]*Ревізія 2/);
-        assert.match(await page.locator('#costGroupHistory').innerText(), /Ревізія 2[\s\S]*без витрат/);
+        assert.match(await page.locator('#costGroupHistory').innerText(), /Ревізія 2[\s\S]*витрати виключено/);
         await page.locator('#costCreateGroup').click();
         await page.locator('#costGroupStatus').getByText('Цей план або ID джерела вже прив’язаний до іншого виконання.').waitFor();
         assert.equal(groups.length, 1);

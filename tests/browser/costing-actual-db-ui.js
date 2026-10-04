@@ -105,6 +105,7 @@ async function main() {
         await page.route('**/*', route => route.request().url().startsWith(origin + '/') ? route.continue() : route.abort());
         await page.goto(`${origin}/finance?tab=costing`);
         await page.locator('#costTemplateSelect option[value="1"]').waitFor({ state: 'attached' });
+        await page.locator('[data-cost-nav="template"]').click();
         await page.locator('#costTemplateSelect').selectOption('1');
         await page.locator('[data-cost-nav="plan"]').click();
         await page.locator('#costExecutionLabel').fill('Заняття з малювання 12 жовтня');
@@ -118,6 +119,14 @@ async function main() {
         await page.locator('#costPreviewResult').getByText('1 002,00 ₴').waitFor();
         await page.locator('#costSavePlan').click();
         await page.locator('#costActualSummary').getByText('Ще не визначено').waitFor();
+        const pendingResponse = await fetch(`${origin}/api/finance/costing/actual/plans/summaries`, { headers: { 'X-Business-Context':'event_genix' } });
+        assert.equal(pendingResponse.status, 200);
+        const pendingPlans = await pendingResponse.json();
+        assert.equal(pendingPlans.plans[0].summary.actualComplete, false);
+        assert.equal(pendingPlans.plans[0].summary.revenue.status, 'missing');
+        assert.equal(pendingPlans.plans[0].summary.directCost.status, 'missing');
+        await page.locator('#costPlanList').getByText('Факт відсутній').waitFor();
+        await page.locator('#costSourceTools > summary').click();
         assert.equal((await pool.query('SELECT booking_id FROM costing_plan_snapshots WHERE id=1')).rows[0].booking_id, 'lesson-qa');
         for (const item of [
             { id: 'sale-qa', role: 'service_revenue', category: 'revenue', amount: '2160' },
@@ -133,9 +142,11 @@ async function main() {
             await page.locator('#costAddSource').click();
             const source = await sourceResponse;
             assert.equal(source.status(), 201, await source.text());
+            if (!(await page.locator('#costHistoryTools').evaluate(element => element.open))) await page.locator('#costHistoryTools > summary').click();
             await page.locator('#costActualHistory').getByText(item.id).waitFor();
         }
         assert.deepEqual((await pool.query('SELECT economic_role FROM costing_actual_sources ORDER BY id')).rows.map(row => row.economic_role), ['service_revenue', 'service_cost']);
+        await page.locator('#costReconcileTools > summary').click();
         for (const category of ['revenue', 'direct_cost']) {
             await page.locator('#costCompletionCategory').selectOption(category);
             await page.locator('#costCompletionReason').fill(category === 'revenue' ? 'Перевірено надходження за заняття' : 'Перевірено прямі витрати заняття');
@@ -147,6 +158,11 @@ async function main() {
             await page.waitForFunction(() => document.querySelector('#costCompletionReason').value === '' && !document.querySelector('#costCompletionConfirmed').checked);
         }
         await page.waitForFunction(() => document.querySelector('#costActualSummary .cost-result-grid > div:nth-child(4) strong')?.textContent?.replace(/\s/g, ' ').includes('1 002,00'));
+        const listResponse = await fetch(`${origin}/api/finance/costing/actual/plans/summaries`, { headers: { 'X-Business-Context':'event_genix' } });
+        assert.equal(listResponse.status, 200);
+        const listSummaries = await listResponse.json();
+        assert.equal(listSummaries.plans[0].summary.actualComplete, true);
+        await page.locator('#costPlanList').getByText('Факт звірено').waitFor();
         await page.locator('[data-cost-nav="group"]').click();
         await page.locator('#costGroupLabel').fill('Курс малювання жовтня');
         await page.locator('#costGroupMembers [data-plan-id="1"] [data-include-revenue]').check();
@@ -157,9 +173,12 @@ async function main() {
         await page.locator('#costGroupRevisionReason').fill('Спільні витрати враховуємо окремо');
         await page.locator('#costSaveGroupRevision').click();
         await page.locator('#costGroupSummary').getByText('ревізія 2').waitFor();
+        await page.waitForFunction(() => document.querySelector('#costGroupHistory')?.textContent?.includes('Ревізія 2'));
+        await page.locator('details:has(#costGroupHistory) > summary').click();
         assert.match(await page.locator('#costGroupHistory').innerText(), /Ревізія 1[\s\S]*Ревізія 2/);
-        assert.match(await page.locator('#costGroupHistory').innerText(), /Ревізія 2[\s\S]*без витрат/);
+        assert.match(await page.locator('#costGroupHistory').innerText(), /Ревізія 2[\s\S]*витрати виключено/);
         await page.locator('[data-cost-nav="actual"]').click();
+        await page.locator('#costLinkTools > summary').click();
         await page.locator('#costLinkId').fill('lesson-qa');
         await page.locator('#costLinkAmount').fill('2160');
         await page.locator('#costPreviewLink').click();

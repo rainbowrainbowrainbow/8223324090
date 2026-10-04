@@ -163,6 +163,48 @@ async function listPlan(req, res) {
         res.json({ success: true, ...(await withReadSnapshot(db => detail(db, context, 'plan', id(req.params.id)))) });
     } catch (error) { fail(res, error, 'GET plan actual'); }
 }
+router.get('/plans/summaries', async (req, res) => {
+    try {
+        const context = business(req, res); if (!context) return;
+        const plans = await withReadSnapshot(async db => {
+            const targets = (await db.query(
+                `SELECT * FROM costing_plan_snapshots WHERE business_context=$1 ORDER BY execution_date DESC, id DESC LIMIT 100`,
+                [context]
+            )).rows;
+            if (!targets.length) return [];
+            const ids = targets.map(plan => String(plan.id));
+            const sources = (await db.query(
+                `SELECT s.plan_id::text, s.category, e.id AS entry_id, e.amount_minor::text, e.evidence_state, e.semantic
+                   FROM costing_actual_sources s
+                   JOIN costing_actual_entries e ON e.source_id=s.id AND e.business_context=s.business_context AND e.entry_type='record'
+                   LEFT JOIN costing_actual_entries reversal ON reversal.reverses_entry_id=e.id
+                  WHERE s.business_context=$1 AND s.plan_id=ANY($2::bigint[]) AND reversal.id IS NULL`,
+                [context, ids]
+            )).rows;
+            const entries = (await db.query(
+                `SELECT s.plan_id::text, s.category, MAX(e.id)::text AS last_entry_id
+                   FROM costing_actual_entries e
+                   JOIN costing_actual_sources s ON s.id=e.source_id AND s.business_context=e.business_context
+                  WHERE s.business_context=$1 AND s.plan_id=ANY($2::bigint[])
+                  GROUP BY s.plan_id, s.category`, [context, ids]
+            )).rows;
+            const completions = (await db.query(
+                `SELECT plan_id::text, id, category, is_complete, evidence_entry_id, reason, created_by, created_at
+                   FROM costing_actual_completions WHERE business_context=$1 AND plan_id=ANY($2::bigint[]) ORDER BY id`,
+                [context, ids]
+            )).rows;
+            return targets.map(plan => {
+                const planId = String(plan.id);
+                const watermarks = {};
+                entries.filter(entry => entry.plan_id === planId).forEach(entry => { watermarks[entry.category] = entry.last_entry_id; });
+                return { id: planId, summary: summarizeTarget(plan,
+                    sources.filter(source => source.plan_id === planId),
+                    completions.filter(event => event.plan_id === planId), watermarks) };
+            });
+        });
+        res.json({ success: true, plans });
+    } catch (error) { fail(res, error, 'GET plan summaries'); }
+});
 router.get('/plans/:id', listPlan);
 router.post('/source-links/preview', async (req, res) => {
     try {

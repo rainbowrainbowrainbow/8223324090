@@ -3,14 +3,14 @@
 
 // The finance page already enforces its existing role/capability gate.
 window.CostingWorkspace = (() => {
-    const state = { initialized: false, templates: [], current: null, preview: null, plans: [], actual: null, group: null, managementSources: [] };
+    const state = { initialized: false, templates: [], current: null, preview: null, plans: [], planSummaries: new Map(), actual: null, group: null, managementSources: [] };
     const $ = id => document.getElementById(id);
     const kinds = { lesson: 'Заняття', session: 'Сеанс', rental: 'Оренда', service: 'Послуга', agency_order: 'Агентське замовлення', admission_day: 'День парку' };
     const bases = { execution: 'за проведення', hour: 'за годину', participant: 'за учасника', unit: 'за одиницю', percent: 'відсоток' };
     const sections = new Set(['template', 'plan', 'actual', 'group', 'management']);
 
     function showSection(name, historyMode = null) {
-        const section = sections.has(name) ? name : 'template';
+        const section = sections.has(name) ? name : 'actual';
         document.querySelectorAll('#tabCosting [data-cost-section]').forEach(card => {
             card.hidden = card.dataset.costSection !== section;
         });
@@ -319,17 +319,50 @@ window.CostingWorkspace = (() => {
         const previous = select.value;
         select.replaceChildren(new Option(state.plans.length ? 'Оберіть виконання' : 'Планів ще немає', ''));
         state.plans.forEach(plan => select.add(new Option(`${plan.execution_label} · ${plan.execution_date}`, plan.id)));
-        select.value = state.plans.some(plan => String(plan.id) === previous) ? previous : '';
+        select.value = state.plans.some(plan => String(plan.id) === previous) ? previous : (state.plans[0] ? String(state.plans[0].id) : '');
         const management = $('costManagementPlan');
         const selectedManagement = management.value;
         management.replaceChildren(new Option(state.plans.length ? 'Оберіть виконання' : 'Планів ще немає', ''));
         state.plans.forEach(plan => management.add(new Option(`${plan.execution_label} · ${plan.execution_date}`, plan.id)));
         management.value = state.plans.some(plan => String(plan.id) === selectedManagement) ? selectedManagement : '';
         renderGroupMembers();
-        if (!state.plans.length) { list.textContent = 'Планів поки немає.'; state.actual = null; $('costActualSummary').textContent = 'Спочатку збережіть план.'; updateWorkspaceSummary(); return; }
-        list.innerHTML = state.plans.map(plan => `<article><div><strong>${escapeHtml(plan.execution_label)}</strong><br><small>${escapeHtml(plan.execution_date)} · ${escapeHtml(plan.template_name)} · v${escapeHtml(String(plan.version_number))}</small></div><div>Внесок: <strong>${uahFromMinor(plan.contribution_minor)}</strong></div></article>`).join('');
+        if (!state.plans.length) { list.textContent = 'Виконань поки немає. Створіть перший план.'; state.actual = null; $('costActualSummary').textContent = 'Спочатку збережіть план.'; updateWorkspaceSummary(); updateNextAction(); return; }
+        try {
+            const summaries = await apiRequest('GET', '/api/finance/costing/actual/plans/summaries');
+            state.planSummaries = new Map((summaries.plans || []).map(item => [String(item.id), item.summary]));
+        } catch (error) {
+            state.planSummaries = new Map();
+            console.warn('[costing] Execution statuses unavailable', error);
+        }
+        renderPlanList();
         if (select.value) await loadActual();
         else updateWorkspaceSummary();
+    }
+
+    function renderPlanList() {
+        const selected = $('costActualPlan').value;
+        $('costPlanList').innerHTML = state.plans.map(plan => {
+            const summary = state.planSummaries.get(String(plan.id));
+            const stateText = !summary ? 'Стан факту недоступний' : summary.actualComplete ? 'Факт звірено'
+                : summary.revenue.status === 'missing' && summary.directCost.status === 'missing' ? 'Факт відсутній' : 'Звірка не завершена';
+            return `<button type="button" class="cost-execution-item${String(plan.id) === selected ? ' is-selected' : ''}" data-cost-plan-id="${escapeHtml(String(plan.id))}" aria-pressed="${String(plan.id) === selected}">
+                <span class="cost-execution-name"><strong>${escapeHtml(plan.execution_label)}</strong><small>${escapeHtml(plan.execution_date)} · ${escapeHtml(plan.template_name)}</small></span>
+                <span class="cost-execution-figures"><span>План <b>${uahFromMinor(plan.contribution_minor)}</b></span><span>Факт <b>${summary?.actualComplete ? uahFromMinor(summary.actualContributionMinor) : '—'}</b></span></span>
+                <span class="cost-execution-status">${stateText}</span>
+            </button>`;
+        }).join('');
+    }
+
+    function updateNextAction() {
+        const button = $('costNextAction');
+        const label = $('costNextActionText');
+        const summary = state.actual?.summary;
+        if (!summary) { label.textContent = state.plans.length ? 'Оберіть виконання зі списку.' : 'Створіть план для першого виконання.'; button.textContent = 'Створити план'; button.hidden = false; return; }
+        if (summary.actualComplete) { label.textContent = 'Виручку й прямі витрати звірено. Деталі залишаються в історії.'; button.hidden = true; return; }
+        const needsSource = [summary.revenue, summary.directCost].some(row => row.status === 'missing' || row.estimateMinor !== null);
+        label.textContent = needsSource ? 'Додайте підтверджені джерела виручки й прямих витрат.' : 'Підтвердіть повноту обох категорій, включно з нульовими сумами.';
+        button.textContent = needsSource ? 'Додати джерело' : 'Звірити повноту';
+        button.hidden = false;
     }
 
     async function savePlan() {
@@ -377,17 +410,20 @@ window.CostingWorkspace = (() => {
         select.value = data.sources.some(source => String(source.id) === selected) ? selected : '';
         $('costActualHistory').innerHTML = data.entries.length ? `<h4>Історія джерел і виправлень</h4>${data.entries.map(entry =>
             `<article>${escapeHtml(entry.external_id)} · ${escapeHtml(entry.economic_role)} · ${entry.entry_type === 'reversal' ? 'сторно' : entry.evidence_state === 'estimate' ? 'оцінка' : 'підтверджено вручну'} · ${uahFromMinor(entry.amount_minor)}${entry.reason ? ` · ${escapeHtml(entry.reason)}` : ''}</article>`).join('')}` : '<p>Фактичних джерел поки немає.</p>';
+        state.planSummaries.set(String(data.target.id), summary);
+        renderPlanList();
+        updateNextAction();
     }
 
     async function loadActual() {
         const planId = $('costActualPlan').value;
-        if (!planId) { state.actual = null; $('costActualSummary').textContent = 'Виберіть збережений план.'; $('costActualHistory').textContent = ''; updateWorkspaceSummary(); return; }
+        if (!planId) { state.actual = null; $('costActualSummary').textContent = 'Виберіть збережений план.'; $('costActualHistory').textContent = ''; updateWorkspaceSummary(); updateNextAction(); return; }
         try {
             const data = await apiRequest('GET', `/api/finance/costing/actual/plans/${encodeURIComponent(planId)}`);
             state.actual = data;
             renderActual(data);
             updateWorkspaceSummary();
-        } catch (error) { actualStatus(error.message, true); }
+        } catch (error) { actualStatus(error.message, true); updateNextAction(); }
     }
 
     async function addActualSource() {
@@ -494,7 +530,8 @@ window.CostingWorkspace = (() => {
             const member = selected.find(item => String(item.planId) === String(plan.id));
             return `<article data-plan-id="${escapeHtml(String(plan.id))}">
             <div><strong>${escapeHtml(plan.execution_label)}</strong><small>${escapeHtml(plan.execution_date)} · ${escapeHtml(plan.template_name)}</small>
-            <span class="cost-plan-amounts"><span>Планова виручка: <b>${uahFromMinor(plan.revenue_minor)}</b></span><span>Планові прямі витрати: <b>${uahFromMinor(plan.direct_cost_minor)}</b></span></span></div>
+            <span class="cost-plan-amounts"><span>Планова виручка: <b>${uahFromMinor(plan.revenue_minor)}</b></span><span>Планові прямі витрати: <b>${uahFromMinor(plan.direct_cost_minor)}</b></span></span>
+            <small>Знята позначка виключає відповідну планову суму зі складу групи; вона не означає нульовий факт.</small></div>
             <div class="cost-group-options"><label><input type="checkbox" data-include-revenue${member?.include_plan_revenue ? ' checked' : ''}> Включити виручку</label>
             <label><input type="checkbox" data-include-cost${member?.include_plan_direct_cost ? ' checked' : ''}> Включити витрати</label></div></article>`;
         }).join('');
@@ -535,7 +572,9 @@ window.CostingWorkspace = (() => {
             const summary = data.summary;
             const members = data.members.map(member => {
                 const plan = state.plans.find(item => String(item.id) === String(member.planId));
-                return `${escapeHtml(plan?.execution_label || `#${member.planId}`)}: ${member.include_plan_revenue ? 'виручка' : 'без виручки'}, ${member.include_plan_direct_cost ? 'витрати' : 'без витрат'}`;
+                const revenue = member.include_plan_revenue ? `Виручка ${uahFromMinor(member.summary.planned.revenueMinor)} · ${member.summary.revenue.status === 'complete' ? 'факт звірено' : 'факт не завершено'}` : 'Виручку виключено';
+                const cost = member.include_plan_direct_cost ? `Витрати ${uahFromMinor(member.summary.planned.directCostMinor)} · ${member.summary.directCost.status === 'complete' ? 'факт звірено' : 'факт не завершено'}` : 'Витрати виключено';
+                return `<article><strong>${escapeHtml(plan?.execution_label || `Виконання #${member.planId}`)}</strong><span>${revenue}</span><span>${cost}</span></article>`;
             });
             $('costGroupSummary').innerHTML = `<strong>${escapeHtml(data.group.label)} · ревізія ${data.revision}</strong><div class="cost-result-grid">
                 <div>Планова виручка<strong>${uahFromMinor(summary.planned.revenueMinor)}</strong></div>
@@ -543,12 +582,12 @@ window.CostingWorkspace = (() => {
                 <div>Плановий внесок<strong>${uahFromMinor(summary.planned.contributionMinor)}</strong></div>
                 <div>Фактичний внесок<strong>${summary.actualComplete ? uahFromMinor(summary.actualContributionMinor) : 'Ще не визначено'}</strong></div>
             </div><p>${summary.actualComplete ? 'Факт звірено.' : 'Факт групи або її складових ще не звірено.'}</p>
-            <ul>${members.map(member => `<li>${member}</li>`).join('')}</ul>`;
+             <div class="cost-composition-list">${members.join('')}</div>`;
             renderGroupMembers('costGroupEditMembers', data.members);
             $('costGroupHistory').innerHTML = `<h4>Історія складу</h4>${data.history.map(revision => {
                 const composition = revision.members.map(member => {
                     const plan = state.plans.find(item => String(item.id) === String(member.plan_id));
-                    return `<li>${escapeHtml(plan?.execution_label || `#${member.plan_id}`)}: ${member.include_plan_revenue ? 'виручка' : 'без виручки'}, ${member.include_plan_direct_cost ? 'витрати' : 'без витрат'}</li>`;
+                    return `<li>${escapeHtml(plan?.execution_label || `#${member.plan_id}`)}: ${member.include_plan_revenue ? 'виручку включено' : 'виручку виключено'}, ${member.include_plan_direct_cost ? 'витрати включено' : 'витрати виключено'}</li>`;
                 }).join('');
                 const reason = revision.reason === 'Initial composition' ? 'Початковий склад' : revision.reason;
                 return `<article><strong>Ревізія ${revision.revision_number}</strong> · ${escapeHtml(reason)}<ul>${composition}</ul></article>`;
@@ -728,6 +767,20 @@ window.CostingWorkspace = (() => {
             $('costPreview').addEventListener('click', preview);
             $('costSavePlan').addEventListener('click', savePlan);
             $('costActualPlan').addEventListener('change', loadActual);
+            $('costPlanList').addEventListener('click', event => {
+                const item = event.target.closest('[data-cost-plan-id]');
+                if (!item) return;
+                $('costActualPlan').value = item.dataset.costPlanId;
+                loadActual();
+            });
+            $('costNextAction').addEventListener('click', () => {
+                if (!state.actual) { showSection('plan', 'push'); $('costExecutionLabel').focus(); return; }
+                const needsSource = [state.actual.summary.revenue, state.actual.summary.directCost].some(row => row.status === 'missing' || row.estimateMinor !== null);
+                const details = $(needsSource ? 'costSourceTools' : 'costReconcileTools');
+                details.open = true;
+                details.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                details.querySelector('summary').focus();
+            });
             $('costAddSource').addEventListener('click', addActualSource);
             $('costPreviewLink').addEventListener('click', previewCanonicalLink);
             $('costLinkType').addEventListener('change', () => {

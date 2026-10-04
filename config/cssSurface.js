@@ -493,6 +493,13 @@ const CSS_SURFACE = [
         reason: 'Finance payroll transparency, role-hour breakdown, and simultaneous additional-pay styles.'
     },
     {
+        file: 'css/finance-redesign.css',
+        owner: 'finance',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Finance workspace navigation, compact overview, responsive layouts, and light/dark interaction states.'
+    },
+    {
         file: 'css/cashier-payments.css',
         owner: 'payments',
         category: 'page-scoped',

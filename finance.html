@@ -1097,7 +1097,7 @@
         .fa-action-card:hover, .fa-action-card:focus-visible { border-color: #10B981; transform: translateY(-1px); outline: none; }
         .fa-action-title { font-size: 14px; font-weight: 900; }
         .fa-action-meta { color: var(--gray-500); font-size: 12px; font-weight: 700; }
-        .fa-workspace { display: grid; gap: 16px; }
+        .fa-workspace { display: grid; grid-template-columns:minmax(0,1fr); gap: 16px; }
         .fa-panel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
         .fa-operations-nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
         .fa-operation-group { background: var(--white); border: 1px solid var(--gray-200); border-radius: 18px; padding: 12px; box-shadow: var(--shadow-sm); }
@@ -1196,6 +1196,8 @@
             .an-segments { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
+    <link rel="stylesheet" href="css/finance-redesign.css?v=0.82.59">
+
 </head>
 <body data-page-group="mgmt">
     <script>
@@ -1249,32 +1251,37 @@
         </header>
 
         <main id="main-content" class="page-container">
-            <div class="page-header">
-                <h2>Фінанси та аналітика</h2>
-                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <div class="page-header fa-page-actions">
+                <span class="fa-location">Фінанси / <span id="financeCurrentLocation">Огляд</span></span>
+                <div class="fa-header-actions">
+                    <button type="button" id="addTransactionBtn" class="btn-page-primary" style="display:none">+ Дохід</button>
+                    <details class="fa-tools"><summary>Додаткові інструменти</summary><div class="fa-tools-menu">
+                    <button type="button" id="addExpenseBtn" class="btn-page-secondary" style="display:none">+ Витрата</button>
                     <a href="/reports" class="btn-page-secondary" style="text-decoration:none">📋 Звіти</a>
                     <a href="/center" class="btn-page-secondary" style="text-decoration:none">💲 Центр цін</a>
                     <button type="button" id="openCurrencyRatesBtn" class="btn-page-secondary">Курси валют</button>
                     <button type="button" id="exportXlsxBtn" class="btn-page-secondary" title="Excel">Excel</button>
                     <button type="button" id="exportCsvBtn" class="btn-page-secondary">CSV</button>
-                    <button type="button" id="addTransactionBtn" class="btn-page-primary" style="display:none">+ Дохід</button>
-                    <button type="button" id="addExpenseBtn" class="btn-page-primary" style="display:none;background:#EF4444">💸 Витрата</button>
+                    </div></details>
                 </div>
             </div>
 
             <section class="fa-shell" aria-label="Фінанси та аналітика">
                 <header class="fa-hero">
                     <div>
-                        <div class="fa-kicker">Control Tower</div>
+                        <div class="fa-kicker">Робочий простір</div>
                         <h1>Фінанси та аналітика</h1>
-                        <p>Один екран для грошей, бронювань, маржі, ризиків і операційних дій.</p>
-                    </div>
-                    <div class="fa-mode-switch" role="tablist" aria-label="Режими фінансового модуля">
-                        <button type="button" class="fa-mode-btn active" data-mode="overview" role="tab" aria-selected="true">Огляд</button>
-                        <button type="button" class="fa-mode-btn" data-mode="operations" role="tab" aria-selected="false">Операції</button>
-                        <button type="button" class="fa-mode-btn" data-mode="insights" role="tab" aria-selected="false">Інсайти</button>
+                        <p id="financeViewDescription">Ключові показники й питання, які потребують уваги.</p>
                     </div>
                 </header>
+                <nav class="fa-mode-switch" aria-label="Розділи фінансів">
+                    <button type="button" class="fa-mode-btn active" data-mode="overview" data-finance-group="overview" aria-current="page">Огляд</button>
+                    <button type="button" class="fa-mode-btn" data-mode="operations" data-finance-group="cash">Рух коштів</button>
+                    <button type="button" class="fa-mode-btn" data-mode="insights" data-finance-group="results">Результати й аналітика</button>
+                    <button type="button" class="fa-primary-btn" data-finance-group="planning">Планування</button>
+                    <button type="button" class="fa-primary-btn" data-finance-group="team">Команда</button>
+                </nav>
+                <p id="financeScopeNote" class="fa-scope-note">Період нижче впливає на показники огляду.</p>
                 <div id="financePeriodControls" class="fin-filters fa-period-controls" role="group" aria-label="Період фінансової аналітики">
                     <label for="dateFromFilter">Від
                         <input type="date" id="dateFromFilter" class="fin-filter-date" title="Від">
@@ -1291,42 +1298,32 @@
             <!-- Legacy KPI host kept for backwards-compatible render helpers; unified overview owns visible KPI cards. -->
             <div id="finStats" class="fin-stats" style="display:none"></div>
 
-            <section id="financeOperationsNav" class="fa-operations-nav" aria-label="Операційні розділи фінансів" style="display:none">
-                <div class="fa-operation-group">
-                    <h3 class="fa-operation-group-title">Рух коштів</h3>
-                    <div class="fa-operation-buttons">
-                        <button type="button" class="fin-tab fa-operation-btn active" data-tab="transactions">Транзакції</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="shift">Каса</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="accounts">Рахунки</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="personal">Особисті</button>
-                    </div>
-                </div>
-                <div class="fa-operation-group">
-                    <h3 class="fa-operation-group-title">Контроль</h3>
-                    <div class="fa-operation-buttons">
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="debts">Борги</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="budget">Бюджет</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="pnl">P&L</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="advanced">Фін. панель</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="costing">Собівартість послуг</button>
-                    </div>
-                </div>
-                <div class="fa-operation-group">
-                    <h3 class="fa-operation-group-title">Команда</h3>
-                    <div class="fa-operation-buttons">
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="salary">Зарплати</button>
-                    </div>
-                </div>
-                <div class="fa-operation-group">
-                    <h3 class="fa-operation-group-title">Планування</h3>
-                    <div class="fa-operation-buttons">
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="forecast">Прогноз</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="monthly">Місяці</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="dashboard">Фін. дашборд</button>
-                    </div>
-                </div>
+            <section id="financeOperationsNav" class="fa-operations-nav" aria-label="Сторінки вибраного розділу" style="display:none">
+                <div class="fa-operation-group" data-finance-context="cash"><div class="fa-operation-buttons">
+                    <button type="button" class="fin-tab fa-operation-btn active" data-tab="transactions">Транзакції</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="shift">Каса</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="accounts">Рахунки</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="personal">Особисті</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="debts">Борги</button>
+                </div></div>
+                <div class="fa-operation-group" data-finance-context="results"><div class="fa-operation-buttons">
+                    <button type="button" class="fa-context-mode" data-mode="insights">Інсайти</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="pnl">P&L</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="monthly">Місяці</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="dashboard">Доходи та витрати</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="advanced">Розширена панель</button>
+                </div></div>
+                <div class="fa-operation-group" data-finance-context="planning"><div class="fa-operation-buttons">
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="budget">Бюджет</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="forecast">Прогноз</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="costing">Собівартість послуг</button>
+                </div></div>
+                <div class="fa-operation-group" data-finance-context="team"><div class="fa-operation-buttons">
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="salary">Зарплати</button>
+                </div></div>
             </section>
 
+            <div id="financeTabHeading" class="fa-tab-heading" hidden></div>
             <section id="financeOperationalWorkspace" class="fa-operational-workspace" style="display:none">
 
             <!-- Dashboard tab -->
@@ -1581,11 +1578,11 @@
             </div>
             <div id="tabCosting">
                 <nav class="cost-workspace-nav" aria-label="Етапи роботи із собівартістю">
-                    <button type="button" data-cost-nav="template">1. Шаблон</button>
-                    <button type="button" data-cost-nav="plan">2. План</button>
-                    <button type="button" data-cost-nav="actual">3. Факт і звірка</button>
-                    <button type="button" data-cost-nav="group">4. Групи</button>
-                    <button type="button" data-cost-nav="management">5. Управлінський P&amp;L</button>
+                    <button type="button" data-cost-nav="actual">Виконання і звірка</button>
+                    <button type="button" data-cost-nav="plan">Новий план</button>
+                    <button type="button" data-cost-nav="template">Шаблони</button>
+                    <button type="button" data-cost-nav="group">Групи</button>
+                    <button type="button" data-cost-nav="management">Управлінський P&amp;L</button>
                 </nav>
                 <div id="costWorkspaceSummary" class="cost-workspace-summary" role="status" aria-live="polite">Оберіть шаблон і створіть план виконання послуги.</div>
                 <div class="cost-shell">
@@ -1623,12 +1620,14 @@
                         <div id="costPreviewResult" class="cost-result" hidden></div>
                         <div id="costStatus" class="cost-status" role="status" hidden></div>
                     </section>
-                    <section class="cost-card" data-cost-section="plan" aria-labelledby="costSavedHeading"><h3 id="costSavedHeading">Збережені плани</h3><p>Історичні знімки; їхні ставки не перераховуються при новій версії шаблону.</p><div id="costPlanList" class="cost-plan-list"></div></section>
+                    <section class="cost-card cost-execution-list" data-cost-section="actual" aria-labelledby="costSavedHeading"><h3 id="costSavedHeading">Виконання послуг</h3><p>Оберіть виконання для перегляду плану, факту й стану звірки. Планові ставки збережено в знімку.</p><div id="costPlanList" class="cost-plan-list"></div></section>
                     <section class="cost-card" data-cost-section="actual" aria-labelledby="costActualHeading">
                         <h3 id="costActualHeading">План / факт виконання</h3>
                         <p>Факт підтверджується окремими джерелами. Поки виручка і прямі витрати не звірені, фактичний внесок та різниця не показуються.</p>
                         <div class="cost-grid"><label>Виконання<select id="costActualPlan"></select></label></div>
                         <div id="costActualSummary" class="cost-actual-summary" role="status">Виберіть збережений план.</div>
+                        <div class="cost-next-action"><span id="costNextActionText">Оберіть виконання зі списку.</span><button type="button" id="costNextAction" class="btn-page-primary">Створити план</button></div>
+                        <details id="costSourceTools" class="cost-tool-disclosure"><summary>Додати факт або оцінку</summary>
                         <h4>Додати джерело</h4>
                         <div class="cost-grid">
                             <label>ID джерела<input id="costSourceExternalId" maxlength="120" placeholder="Номер чека або акта"></label>
@@ -1639,6 +1638,8 @@
                             <label>Семантика<select id="costSourceSemantic"><option value="cost">Витрата</option><option value="charge">Нарахування виручки</option><option value="refund">Повернення</option><option value="adjustment">Коригування виручки</option></select></label>
                         </div>
                         <div class="cost-actions"><button type="button" id="costAddSource" class="btn-page-secondary">Додати факт / оцінку</button></div>
+                        </details>
+                        <details id="costLinkTools" class="cost-tool-disclosure"><summary>Перевірити джерело за ID</summary>
                         <h4>Перевірити посилання на джерело</h4>
                         <p>Лише читання канонічного запису. Перевірка ID, бізнесу й суми не додає факту та не проводить його в P&amp;L.</p>
                         <div class="cost-grid">
@@ -1648,6 +1649,8 @@
                         </div>
                         <div class="cost-actions"><button type="button" id="costPreviewLink" class="btn-page-secondary">Перевірити джерело</button></div>
                         <div id="costLinkResult" class="cost-actual-summary" role="status" hidden></div>
+                        </details>
+                        <details id="costCorrectionTools" class="cost-tool-disclosure"><summary>Виправити запис</summary>
                         <h4>Виправити джерело без втрати історії</h4>
                         <div class="cost-grid">
                             <label>Джерело<select id="costCorrectionSource"></select></label>
@@ -1657,6 +1660,8 @@
                             <label class="cost-wide">Причина виправлення<input id="costCorrectionReason" maxlength="300" placeholder="Що змінилося у джерелі"></label>
                         </div>
                         <div class="cost-actions"><button type="button" id="costCorrectSource" class="btn-page-secondary">Записати виправлення</button></div>
+                        </details>
+                        <details id="costReconcileTools" class="cost-tool-disclosure"><summary>Звірити повноту</summary>
                         <h4>Звірка повноти</h4>
                         <div class="cost-grid">
                             <label>Категорія<select id="costCompletionCategory"><option value="revenue">Виручка</option><option value="direct_cost">Прямі витрати</option></select></label>
@@ -1664,7 +1669,10 @@
                             <label class="cost-check"><input id="costCompletionConfirmed" type="checkbox"> Усі фактичні записи цієї категорії внесено; відсутні суми справді дорівнюють нулю.</label>
                         </div>
                         <div class="cost-actions"><button type="button" id="costCompleteCategory" class="btn-page-secondary">Зберегти стан звірки</button></div>
+                        </details>
+                        <details id="costHistoryTools" class="cost-tool-disclosure"><summary>Історія джерел і виправлень</summary>
                         <div id="costActualHistory" class="cost-actual-history"></div>
+                        </details>
                         <div id="costActualStatus" class="cost-status" role="status" hidden></div>
                     </section>
                     <section class="cost-card" data-cost-section="group" aria-labelledby="costGroupHeading">
@@ -1683,7 +1691,7 @@
                         <div id="costGroupEditMembers" class="cost-group-members"></div>
                         <div class="cost-grid"><label class="cost-wide">Причина виправлення<input id="costGroupRevisionReason" maxlength="240" placeholder="Що змінилося у складі"></label></div>
                         <div class="cost-actions"><button type="button" id="costSaveGroupRevision" class="btn-page-secondary">Зберегти нову ревізію</button></div>
-                        <div id="costGroupHistory" class="cost-actual-history"></div>
+                        <details class="cost-tool-disclosure"><summary>Історія змін складу</summary><div id="costGroupHistory" class="cost-actual-history"></div></details>
                         <div id="costGroupStatus" class="cost-status" role="status" hidden></div>
                     </section>
                     <section class="cost-card" data-cost-section="management" aria-labelledby="costManagementHeading">

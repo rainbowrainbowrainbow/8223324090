@@ -1658,6 +1658,11 @@ function navigateCrmBusinessDestination(context, page = currentCrmBusinessScoped
     }
     if (target.pathname === current.pathname && target.search === current.search) return false;
     if (page?.id === 'timeline'
+        && current.pathname === '/'
+        && crmBusinessHasEducationScheduleHandoff(current, context)) {
+        return false;
+    }
+    if (page?.id === 'timeline'
         && target.pathname === current.pathname
         && (crmBusinessHasLeadBookingHandoff(current)
             || crmBusinessHasTimelineViewHandoff(current, context)

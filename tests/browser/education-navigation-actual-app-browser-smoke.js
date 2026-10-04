@@ -76,21 +76,38 @@ async function api(method, route, token, body) {
         await page.reload({ waitUntil: 'domcontentloaded' });
         await expectDarTab('reports');
         assert.match(await page.evaluate(() => localStorage.getItem('eg_sidebar_extra_menu_items_v3')), /\/chat/);
+        // Retain the original in-memory module contract independently of UI navigation.
         await page.evaluate(() => window.CrmBusinessContext.switchTo('event_genix', { navigate: false, updateUrl: true }));
         await page.waitForFunction(() => window.CrmBusinessContext?.current?.() === 'event_genix');
         assert.equal(await page.locator('#sidebarDesignExtras a[href*="educationSchedule"]').count(), 0, 'switch to Park hides education entry');
         await page.evaluate(() => window.CrmBusinessContext.switchTo('dar', { navigate: false, updateUrl: true }));
         await expectDarTab('reports');
+        // Actual sidebar selection navigates. api.js removes educationSchedule in Park;
+        // returning to Dar therefore starts at Today, not the in-memory Reports state.
+        await page.locator('#sidebarBusinessContextSelect').selectOption('event_genix');
+        await page.waitForFunction(() => window.CrmBusinessContext?.current?.() === 'event_genix'
+            && document.getElementById('sidebarBusinessContextSelect')?.disabled === false);
+        await page.locator('#sidebarDesignExtras a[href*="educationSchedule"]').waitFor({ state: 'detached' });
+        assert.equal(new URL(page.url()).searchParams.has('educationSchedule'), false, 'Park navigation removes education-only route state');
+        await page.locator('#sidebarBusinessContextSelect').selectOption('dar');
+        await page.waitForFunction(() => window.CrmBusinessContext?.current?.() === 'dar'
+            && window.EducationScheduleWorkspace?.state.activeView === 'today'
+            && document.getElementById('sidebarBusinessContextSelect')?.disabled === false);
+        assert.equal(await page.locator('[data-education-schedule-tab="today"]').getAttribute('aria-pressed'), 'true');
         await page.locator('#sidebarDesignExtras a.sidebar-design-extra-link').filter({ hasText: 'Заняття' }).click();
         await expectDarTab('today');
 
-        const output = path.join(process.cwd(), 'output');
+        const output = path.resolve(process.env.EDU_NAVIGATION_OUTPUT || 'output');
         fs.mkdirSync(output, { recursive: true });
         await page.screenshot({ path: path.join(output, 'edu-fix-02-desktop.png') });
         await page.setViewportSize({ width: 390, height: 844 });
         await page.locator('#sidebarToggle').click();
         await page.locator('#sidebarDesignExtras a.sidebar-design-extra-link').filter({ hasText: 'Заняття' }).waitFor({ state: 'visible' });
-        await page.waitForTimeout(400);
+        await page.evaluate(() => document.fonts.ready);
+        await page.locator('#sidebarNav').evaluate(async element => {
+            const finite = element.getAnimations({ subtree: true }).filter(animation => animation.effect?.getTiming().iterations !== Infinity);
+            await Promise.all(finite.map(animation => animation.finished.catch(() => {})));
+        });
         await page.screenshot({ path: path.join(output, 'edu-fix-02-mobile.png') });
         assert.deepEqual(errors, [], 'no uncaught browser errors');
         console.log('Education navigation actual-app direct/reload/back, default/custom, desktop/mobile: PASS');

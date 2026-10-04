@@ -41,7 +41,7 @@ test('education schedule reuses the guarded timeline and existing canonical deta
     assert.match(sidebar, /pageAccess:\s*'\/'/);
     assert.match(html, /id="educationScheduleWorkspace"/);
     assert.match(html, /id="educationTodayPanel"/);
-    assert.match(source, /getBookingsForDate\(date, \{ throwOnError: true \}\)/);
+    assert.match(source, /getBookingsForDate\(date, \{ throwOnError: true, force: options\.force === true, signal: controller\.signal \}\)/);
     assert.match(source, /showBookingDetails\(card\.dataset\.educationBookingId/);
     assert.match(source, /triggerEl: card/);
     assert.doesNotMatch(html, /id="bookingModal"[\s\S]*id="educationBookingModal"/);

@@ -288,7 +288,7 @@ test('server-hydrated timeline display settings override stale local storage', (
     assert.equal(events.at(-1).detail.source, 'server_business_profile');
 });
 
-test('active timeline display legends include the shift overrun marker', () => {
+test('staff timeline legends retain overrun while education shows only lesson states', () => {
     const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
     const sandbox = {
         console,
@@ -328,11 +328,14 @@ test('active timeline display legends include the shift overrun marker', () => {
     vm.runInNewContext(contextCode, sandbox);
 
     const modes = sandbox.window.TimelineBusinessContext.DISPLAY_MODES;
-    ['simple', 'specialist', 'park', 'education'].forEach(mode => {
+    ['simple', 'specialist', 'park'].forEach(mode => {
         assert.match(modes[mode].legendHtml, /legend-item--time-overrun/);
         assert.match(modes[mode].legendHtml, /dot overrun/);
     });
     assert.doesNotMatch(modes.disabled.legendHtml, /legend-item--time-overrun/);
+    assert.match(modes.education.legendHtml, /Заняття/);
+    assert.match(modes.education.legendHtml, /Попереднє/);
+    assert.doesNotMatch(modes.education.legendHtml, /legend-item--time-overrun|dot masterclass/);
 });
 
 test('park timeline keeps add animator control when resource manager is disabled', () => {

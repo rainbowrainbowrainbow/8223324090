@@ -1250,7 +1250,7 @@ function renderBusinessCabinetGuardrails(settings, modules) {
         : collectBusinessCabinetGuardrails(settings || {}, modules || collectBusinessCabinetModules());
     controls.businessGuardrails.innerHTML = warnings.length
         ? warnings.map(item => `<span>${escapeHtml(String(item))}</span>`).join('')
-        : '<span class="is-ok">Стан валідний: shell, модулі й стартова сторінка не конфліктують.</span>';
+        : `<span class="is-ok">${settings.mode === 'education' ? 'Розділи й стартова сторінка узгоджені.' : 'Стан валідний: shell, модулі й стартова сторінка не конфліктують.'}</span>`;
 }
 
 const timelineSavedDisplaySettings = new Map();
@@ -1280,8 +1280,8 @@ function applyTimelineSettingsToControls(settings = {}) {
             .filter(([, enabled]) => enabled)
             .map(([key]) => key);
         controls.profileContract.innerHTML = `
-            <strong>Business profile</strong>
-            <span>Старт: ${escapeHtml(activeProfile?.startPagePath || normalized.startPage)} · type: ${escapeHtml(activeProfile?.type || normalized.mode)} · модулі: ${escapeHtml(modules.slice(0, 8).join(', ') || 'немає')}</span>
+            <strong>${normalized.mode === 'education' ? 'Навчальний центр' : 'Business profile'}</strong>
+            <span>${normalized.mode === 'education' ? 'Заняття, групи, викладачі та журнали працюють у межах вибраного бізнесу.' : `Старт: ${escapeHtml(activeProfile?.startPagePath || normalized.startPage)} · type: ${escapeHtml(activeProfile?.type || normalized.mode)} · модулі: ${escapeHtml(modules.slice(0, 8).join(', ') || 'немає')}`}</span>
         `;
     }
     const moduleState = settings.modules?.enabled
@@ -1443,6 +1443,7 @@ function timelineDisplayPreviewText(modeOrSettings, kitchenMode) {
             : 'Парк з кухнею: поточний rich park mode з афішею, квестами і кухонним блоком.',
         education: 'Навчальний заклад: лінії читаються як кабінети, записи — як заняття.'
     };
+    if (mode === 'education') return 'Кабінети задають рядки розкладу. Заняття зберігають тему, тривалість, викладача й групу. Склад учнів та відвідування доступні у вкладках «Групи» й «Відвідування».';
     const source = window.TimelineBusinessContext?.rowSource?.(settings, settings.context)?.text || '';
     return `${map[mode] || map.park} ${source} Старт: ${settings.startPage}. Модулі: ${enabledModules || 'немає'}. Фічі: ${enabledFeatures || 'немає'}.`;
 }

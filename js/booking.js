@@ -957,7 +957,35 @@ function renderBookingRoomCatalogOptions(resources = [], options = {}) {
     snapshotBookingRoomOptions();
 }
 
+let educationCabinetRequestVersion = 0;
 async function loadBookingRoomResourcesForSelect(options = {}) {
+    if (isEducationTimelineBookingMode()) {
+        const business = window.TimelineBusinessContext?.current?.()?.apiValue;
+        const version = ++educationCabinetRequestVersion;
+        const currentRoom = document.getElementById('roomSelect')?.value || '';
+        try {
+            const resources = await apiGetTimelineResources('cabinet', { includeInactive: true });
+            if (business !== window.TimelineBusinessContext?.current?.()?.apiValue || version !== educationCabinetRequestVersion) return [];
+            if (!Array.isArray(resources) || !resources.length) return [];
+            const liveRoom = document.getElementById('roomSelect')?.value || '';
+            // Cabinets use bookingLine identity; they are not roomResourceId records.
+            renderBookingRoomCatalogOptions(resources.map(resource => ({ ...resource, resourceId: '', resource_id: '' })), {
+                ...options, selectedRoom: liveRoom || options.selectedRoom || currentRoom,
+                selectedResourceId: liveRoom && liveRoom !== options.selectedRoom ? '' : options.selectedResourceId,
+                includeCurrentRoom: true, currentRoomDisabled: false
+            });
+            const select = document.getElementById('roomSelect');
+            for (const option of Array.from(select?.options || [])) {
+                const cabinet = resources.find(resource => resource.name === option.value);
+                if (cabinet) option.dataset.educationCabinetId = cabinet.resourceId;
+            }
+            updateBookingSubmitState();
+            return resources;
+        } catch (error) {
+            console.warn('[EducationCabinets] directory unavailable; existing cabinet retained');
+            return [];
+        }
+    }
     if (!isParkTimelineBookingMode()) {
         snapshotBookingRoomOptions();
         return BookingRoomCatalogState.resources;
@@ -1470,13 +1498,14 @@ function occupiedNowRoomsFromAvailabilityResponse(data = {}) {
 }
 
 function getBookingRoomAvailabilityRequest() {
-    const date = formatDate(AppState.selectedDate);
+    const date = formatDate(bookingFormDate());
     let time = document.getElementById('bookingTime')?.value;
     if (!time && AppState.selectedCell) time = AppState.selectedCell.dataset.time;
     const programId = document.getElementById('selectedProgram')?.value;
     const program = programId ? getProductsSync().find(p => String(p.id) === String(programId)) : null;
     const customDuration = parseInt(document.getElementById('customDuration')?.value || '', 10);
-    const duration = Number.isFinite(customDuration) && customDuration > 0 ? customDuration : (program ? program.duration : 60);
+    const duration = isEducationTimelineBookingMode() ? educationLessonDurationMinutes()
+        : (Number.isFinite(customDuration) && customDuration > 0 ? customDuration : (program ? program.duration : 60));
     return { date, time, duration: parseInt(duration, 10) || 60 };
 }
 
@@ -1577,7 +1606,7 @@ function bookingBoundaryWarningsForFormData(formData = null) {
     if (!boundaryResolver) return [];
 
     const warnings = [];
-    const bookingDate = normalizeBookingDateKey(AppState.selectedDate);
+    const bookingDate = normalizeBookingDateKey(bookingFormDate());
     const addBoundaryWarning = (lineId, fallback, role) => {
         if (!lineId) return;
         const line = bookingLineSnapshotForBoundary(lineId, fallback);
@@ -1586,7 +1615,7 @@ function bookingBoundaryWarningsForFormData(formData = null) {
             duration: formData.duration,
             date: bookingDate,
             lineId
-        }, line, AppState.selectedDate);
+        }, line, bookingFormDate());
         if (!status?.overrun) return;
 
         warnings.push({
@@ -2137,7 +2166,7 @@ function bookingSelectedCustomerKitchenHtml(customer = {}) {
     }).join('');
     return `
         <div class="booking-selected-customer__kitchen">
-            <span class="booking-selected-customer__section-label">Важливо для кухні</span>
+            <span class="booking-selected-customer__section-label">${typeof isEducationTimelineBookingMode === 'function' && isEducationTimelineBookingMode() ? 'Примітки про дітей' : 'Важливо для кухні'}</span>
             ${rowHtml}
             ${hiddenCount > 0 ? `<small>+${escapeHtml(String(hiddenCount))} ще у списку дітей</small>` : ''}
             ${bookingSelectedCustomerKitchenActionHtml(customer)}
@@ -2437,6 +2466,12 @@ function getSmartBookingValidationState() {
     };
 
     if (!hasDateTime) addBookingValidationIssue(state, 'date_time', 'Не вдалося визначити дату або час для бронювання.', ['bookingTime']);
+    if (isEducation && !educationLessonDateKey()) {
+        addBookingValidationIssue(state, 'education_date', 'Вкажіть коректну дату заняття.', ['educationLessonDate']);
+    }
+    if (isEducation && !educationLessonDurationMinutes()) {
+        addBookingValidationIssue(state, 'duration', 'Вкажіть тривалість заняття цілим числом від 1 до 1440 хвилин.', ['educationLessonDuration']);
+    }
     if (!hasRoom && !roomOptional) {
         addBookingValidationIssue(state, 'room', presentation.mode === 'education' ? 'Оберіть кабінет.' : 'Оберіть кімнату.', ['roomSelect']);
     }
@@ -2599,6 +2634,8 @@ function applyBookingValidationInvalidFields(validation) {
         'selectedProgram',
         'bookingTime',
         'educationLessonTitle',
+        'educationLessonDate',
+        'educationLessonDuration',
         'bookingPrimaryAnimatorSelect',
         'pinataMode',
         'pinataNumber',
@@ -2867,20 +2904,26 @@ function prepareDisplayModeBookingPanel(options = {}) {
     renderBookingPackageSummary();
 }
 
-const EDUCATION_STAFF_KEYWORDS = [
-    'teacher', 'mentor', 'instructor', 'coach', 'tutor',
-    'викладач', 'вчитель', 'учитель', 'педагог', 'тренер', 'наставник'
-];
 let _educationLessonTeachersLoaded = false;
 let _educationLessonTeachers = [];
-
-function isEducationStaffMember(staff) {
-    const haystack = [
-        staff?.roleType, staff?.role_type, staff?.position, staff?.department,
-        staff?.profession, staff?.specialization, staff?.name
-    ].filter(Boolean).join(' ').toLowerCase();
-    return EDUCATION_STAFF_KEYWORDS.some(keyword => haystack.includes(keyword));
-}
+let _educationLessonTeacherContext = '';
+let _educationLessonTeacherGeneration = 0;
+let _educationLessonTeacherRequest = 0;
+const educationTeacherContext = () => window.TimelineBusinessContext?.current?.()?.apiValue || 'event_genix';
+window.addEventListener('education:teachers-updated', event => {
+    if (event.detail?.business !== educationTeacherContext()) return;
+    _educationLessonTeacherRequest += 1;
+    _educationLessonTeachersLoaded = false;
+    if (document.getElementById('educationLessonTeacher')?.offsetParent) void loadEducationLessonTeachers();
+});
+window.addEventListener('timeline:business-context-changed', () => {
+    _educationLessonTeacherGeneration += 1;
+    _educationLessonTeachersLoaded = false;
+    _educationLessonTeachers = [];
+    _educationLessonTeacherContext = '';
+    const select = document.getElementById('educationLessonTeacher');
+    if (select) { select.value = ''; setEducationTeacherOptions([]); select.disabled = true; }
+});
 
 function educationLessonDetailsFromBooking(booking = {}) {
     const extra = booking.extraData || booking.extra_data || {};
@@ -2901,7 +2944,44 @@ function educationLessonRepeatEveryLabel(value) {
     return 'Щотижня';
 }
 
+let educationEditHydration = null;
+
+function beginEducationEditHydration() {
+    if (!isEducationTimelineBookingMode()) return null;
+    const form = document.getElementById('bookingForm');
+    const owner = {
+        form,
+        bookingId: AppState.editingBookingId,
+        business: window.TimelineBusinessContext?.current?.()?.apiValue
+    };
+    educationEditHydration = owner;
+    if (form) {
+        form.inert = true;
+        form.setAttribute('aria-busy', 'true');
+    }
+    return owner;
+}
+
+function educationEditHydrationIsCurrent(owner) {
+    return !owner || (educationEditHydration === owner
+        && AppState.editingBookingId === owner.bookingId
+        && window.TimelineBusinessContext?.current?.()?.apiValue === owner.business);
+}
+
+function finishEducationEditHydration(owner = educationEditHydration) {
+    if (!owner || educationEditHydration !== owner) return;
+    if (owner.form) {
+        owner.form.inert = false;
+        owner.form.removeAttribute('aria-busy');
+    }
+    educationEditHydration = null;
+}
+
 function resetEducationLessonFields() {
+    const date = document.getElementById('educationLessonDate');
+    if (date) date.value = formatDate(AppState.selectedDate);
+    const duration = document.getElementById('educationLessonDuration');
+    if (duration) duration.value = '60';
     ['educationLessonTitle', 'educationLessonGroup', 'educationLessonCourse', 'educationLessonSeriesSize'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
@@ -2920,6 +3000,7 @@ function setEducationTeacherOptions(teachers = []) {
     const select = document.getElementById('educationLessonTeacher');
     if (!select) return;
     const current = select.value;
+    const currentOption = select.selectedOptions[0]?.cloneNode(true);
     select.innerHTML = '<option value="">Без викладача</option>';
     teachers.forEach(staff => {
         const option = document.createElement('option');
@@ -2928,35 +3009,54 @@ function setEducationTeacherOptions(teachers = []) {
         option.dataset.staffName = option.textContent;
         select.appendChild(option);
     });
-    if (current && Array.from(select.options).some(opt => opt.value === current)) {
+    if (current) {
+        if (!Array.from(select.options).some(opt => opt.value === current) && currentOption) select.appendChild(currentOption);
         select.value = current;
     }
 }
 
 async function loadEducationLessonTeachers() {
-    if (_educationLessonTeachersLoaded) {
+    const business = educationTeacherContext();
+    const generation = _educationLessonTeacherGeneration;
+    const version = ++_educationLessonTeacherRequest;
+    const select = document.getElementById('educationLessonTeacher');
+    const status = document.getElementById('educationLessonTeacherStatus');
+    const retry = document.getElementById('educationLessonTeachersRetry');
+    if (_educationLessonTeachersLoaded && _educationLessonTeacherContext === business) {
         setEducationTeacherOptions(_educationLessonTeachers);
+        if (select) select.disabled = false;
+        if (status) status.textContent = '';
+        if (retry) retry.hidden = true;
         return _educationLessonTeachers;
     }
+    if (select) select.disabled = true;
+    if (status) status.textContent = 'Завантаження довідника викладачів...';
+    if (retry) retry.hidden = true;
     try {
-        const response = await fetch(`${API_BASE}/staff?active=true`, { headers: getAuthHeaders() });
-        if (!response.ok) throw new Error('staff unavailable');
+        const response = await fetch(`${API_BASE}/education/groups/teachers?businessContext=${encodeURIComponent(business)}`, { headers: getAuthHeaders() });
+        if (!response.ok) throw new Error('Довідник викладачів недоступний');
         const data = await response.json();
-        const staff = Array.isArray(data.staff) ? data.staff : (Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []));
-        const preferred = staff.filter(isEducationStaffMember);
-        _educationLessonTeachers = (preferred.length ? preferred : staff)
-            .filter(item => item && (item.id || item.userId || item.username || item.name))
-            .sort((a, b) => String(a.name || a.username || '').localeCompare(String(b.name || b.username || ''), 'uk'));
+        if (generation !== _educationLessonTeacherGeneration || version !== _educationLessonTeacherRequest || business !== educationTeacherContext()) return [];
+        if (!Array.isArray(data.teachers)) throw new Error('Некоректний довідник викладачів');
+        _educationLessonTeachers = data.teachers;
+        _educationLessonTeacherContext = business;
         _educationLessonTeachersLoaded = true;
         setEducationTeacherOptions(_educationLessonTeachers);
+        if (select) { select.disabled = false; select.removeAttribute('title'); }
+        if (status) status.textContent = '';
         return _educationLessonTeachers;
     } catch (err) {
-        _educationLessonTeachersLoaded = true;
-        _educationLessonTeachers = [];
-        setEducationTeacherOptions([]);
+        if (generation !== _educationLessonTeacherGeneration || version !== _educationLessonTeacherRequest || business !== educationTeacherContext()) return [];
+        _educationLessonTeachersLoaded = false;
+        if (status) status.textContent = 'Довідник викладачів не завантажився. Призначення збережено; зміна викладача тимчасово недоступна.';
+        if (retry) retry.hidden = false;
         return [];
     }
 }
+
+document.addEventListener('click', event => {
+    if (event.target.closest('#educationLessonTeachersRetry')) void loadEducationLessonTeachers();
+});
 
 function syncEducationGroupToBookingGroup() {
     const lessonGroup = document.getElementById('educationLessonGroup')?.value?.trim() || '';
@@ -2973,6 +3073,10 @@ function prepareEducationLessonPanel(options = {}) {
     const enabled = isEducationTimelineBookingMode();
     section.classList.toggle('hidden', !enabled);
     section.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+    const date = document.getElementById('educationLessonDate');
+    if (date) { date.disabled = !enabled; date.required = enabled; }
+    const dateHint = document.getElementById('educationLessonDateHint');
+    if (dateHint) dateHint.textContent = 'Для серії це дата першого заняття. Дати вказано за київським часом.';
     if (!enabled) return;
 
     const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'Кабінет';
@@ -2987,6 +3091,37 @@ function prepareEducationLessonPanel(options = {}) {
     const kidsInput = document.getElementById('kidsCountInput');
     if (kidsInput) kidsInput.placeholder = 'Кількість учнів';
     loadEducationLessonTeachers();
+    void loadBookingRoomResourcesForSelect({ selectedRoom: document.getElementById('roomSelect')?.value || '' });
+}
+
+function educationLessonDateKey() {
+    const value = String(document.getElementById('educationLessonDate')?.value || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.slice(0, 4) === '0000') return '';
+    const date = new Date(`${value}T12:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value ? value : '';
+}
+
+function bookingFormDate() {
+    if (!isEducationTimelineBookingMode()) return AppState.selectedDate;
+    const key = educationLessonDateKey();
+    // Local noon keeps a civil date stable across Kyiv DST; invalid dates cannot be submitted.
+    return key ? new Date(`${key}T12:00:00`) : AppState.selectedDate;
+}
+
+function syncEducationLessonDateDisplay() {
+    if (!isEducationTimelineBookingMode()) return;
+    const display = document.getElementById('selectedDateDisplay');
+    if (!display) return;
+    const key = educationLessonDateKey();
+    display.textContent = key
+        ? `${key} (${new Intl.DateTimeFormat('uk-UA', { weekday: 'long' }).format(bookingFormDate())})`
+        : 'Оберіть дату заняття';
+}
+
+function educationLessonDurationMinutes() {
+    const raw = document.getElementById('educationLessonDuration')?.value;
+    const value = raw == null || String(raw).trim() === '' ? NaN : Number(raw);
+    return Number.isInteger(value) && value > 0 && value <= 1440 ? value : 0;
 }
 
 function getEducationLessonDetails(formData = {}) {
@@ -3023,6 +3158,17 @@ function getEducationLessonDetails(formData = {}) {
 }
 
 function hydrateEducationLessonFields(booking = {}) {
+    if (isEducationTimelineBookingMode()) {
+        const date = document.getElementById('educationLessonDate');
+        if (date) date.value = String(booking.date || '').slice(0, 10);
+        if (document.getElementById('selectedDateDisplay')) syncEducationLessonDateDisplay();
+        const dateHint = document.getElementById('educationLessonDateHint');
+        if (dateHint) dateHint.textContent = educationLessonDetailsFromBooking(booking).seriesId
+            ? 'Переноситься лише це заняття. Дати інших занять серії не змінюються.'
+            : 'Змінюється лише дата цього заняття. Дати вказано за київським часом.';
+        const duration = document.getElementById('educationLessonDuration');
+        if (duration) duration.value = booking.duration ?? '';
+    }
     const lesson = educationLessonDetailsFromBooking(booking);
     if (!lesson || Object.keys(lesson).length === 0) return;
     const title = document.getElementById('educationLessonTitle');
@@ -3052,7 +3198,10 @@ function hydrateEducationLessonFields(booking = {}) {
     if (type) type.value = lesson.lessonType || 'lesson';
     const teacher = document.getElementById('educationLessonTeacher');
     if (teacher && lesson.teacherId) {
+        const business = educationTeacherContext();
+        const generation = _educationLessonTeacherGeneration;
         const applyTeacher = () => {
+            if (business !== educationTeacherContext() || generation !== _educationLessonTeacherGeneration) return;
             if (!Array.from(teacher.options).some(opt => opt.value === String(lesson.teacherId))) {
                 const opt = document.createElement('option');
                 opt.value = String(lesson.teacherId);
@@ -3062,8 +3211,8 @@ function hydrateEducationLessonFields(booking = {}) {
             }
             teacher.value = String(lesson.teacherId);
         };
-        if (_educationLessonTeachersLoaded) applyTeacher();
-        else loadEducationLessonTeachers().then(applyTeacher);
+        applyTeacher();
+        if (!_educationLessonTeachersLoaded || _educationLessonTeacherContext !== business) void loadEducationLessonTeachers();
     }
 }
 
@@ -6553,9 +6702,13 @@ function updateBookingSubmitState() {
         submitBtn.setAttribute('aria-disabled', validation.canSubmit ? 'false' : 'true');
         submitBtn.classList.toggle('btn-submit--needs-input', !validation.canSubmit);
         submitBtn.classList.toggle('btn-submit--preflight-warning', validation.canSubmit && preflightUnavailable);
-        submitBtn.textContent = validation.canSubmit
+        const nextText = validation.canSubmit
             ? (preflightUnavailable ? BOOKING_SUBMIT_PREFLIGHT_OVERRIDE_TEXT : readyText)
             : BOOKING_SUBMIT_INCOMPLETE_TEXT;
+        // Replacing a pressed text node during blur drops WebKit native activation.
+        if (!isEducationTimelineBookingMode() || submitBtn.textContent !== nextText) {
+            submitBtn.textContent = nextText;
+        }
     }
     if (BookingDrawerState.validationAttempted) applyBookingValidationInvalidFields(validation);
     if (!validation.canSubmit) {
@@ -6579,6 +6732,7 @@ function bookingSummaryActivityName(program = {}, index = 0, total = 1) {
 }
 
 function bookingSummaryActivityDuration(program = {}) {
+    if (isEducationTimelineBookingMode()) return educationLessonDurationMinutes();
     const catalogDuration = Number(program.duration || 0) || 0;
     if (!program.isCustom) return catalogDuration;
     const selectedProgramId = document.getElementById('selectedProgram')?.value;
@@ -7197,6 +7351,14 @@ function initBookingPackageWorkspace() {
     renderBookingMenuProductOptions();
     syncBookingWorkspaceMode({ markDirty: false });
     document.getElementById('roomSelect')?.addEventListener('change', (e) => {
+        if (isEducationTimelineBookingMode()) {
+            const option = e.target.selectedOptions?.[0];
+            if (option?.dataset.educationCabinetId) {
+                document.getElementById('bookingLine').value = option.dataset.educationCabinetId;
+                const display = document.getElementById('selectedLineDisplay');
+                if (display) display.textContent = option.textContent;
+            }
+        }
         if (e.target.value) e.target.setAttribute('aria-invalid', 'false');
         handleBookingRoomSelectionContextChange().catch(error => {
             console.warn('[Booking] Не вдалося підтягнути контекст кімнати', error);
@@ -7207,10 +7369,11 @@ function initBookingPackageWorkspace() {
         const price = document.getElementById('bookingMenuUnitPrice');
         if (price) price.value = product ? String(product.price || 0) : '';
     });
-    ['bookingTime', 'bookingLine', 'customDuration'].forEach(id => {
+    ['bookingTime', 'bookingLine', 'customDuration', 'educationLessonDuration', 'educationLessonDate'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
         const refreshHosts = () => {
+            if (id === 'educationLessonDate') syncEducationLessonDateDisplay();
             if (id === 'bookingTime') {
                 if (typeof handleBookingTimeControlChange === 'function') handleBookingTimeControlChange(el.value);
                 return;
@@ -7488,7 +7651,7 @@ function initBookingPackageWorkspace() {
     ['roomSelect', 'customerSearch', 'customerName', 'customerChildName', 'selectedProgram', 'bookingPrimaryAnimatorSelect', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'pinataNumber', 'pinataFillerNumber', 'pinataFillerSelect',
      'secondAnimatorSelect', 'extraHostToggle', 'extraHostAnimatorSelect', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables',
      'bookingDepositExpectedAmount', 'bookingDepositManagerStatus', 'bookingDepositManagerNote',
-     'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup', 'educationLessonCourse',
+     'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup', 'educationLessonCourse', 'educationLessonDuration', 'educationLessonDate', 'educationLessonGroupId',
      'educationLessonSeriesSize', 'educationLessonRepeatEvery', 'educationLessonType',
      'bookingGroupName', 'bookingNotes', 'bookingLeadSource', 'bookingLeadStatus', 'bookingLeadInterestDate',
      'bookingLeadBudget', 'bookingLeadChildrenInfo', 'bookingLeadNotes'].forEach(id => {
@@ -7911,7 +8074,10 @@ async function newBanquetContextFromArrivalDraft(options = {}) {
     return { mode: 'new', groupId: null, guestArrivalTime };
 }
 
+let educationPanelModalActive = false;
+
 async function openBookingPanel(time, lineId, options = {}) {
+    const educationFocusTrigger = document.activeElement;
     const existingPanel = document.getElementById('bookingPanel');
     if (existingPanel && !existingPanel.classList.contains('hidden')) {
         const closed = await closeBookingPanel(false);
@@ -8076,6 +8242,16 @@ async function openBookingPanel(time, lineId, options = {}) {
     document.getElementById('panelBackdrop')?.classList.remove('hidden');
     const panel = document.getElementById('bookingPanel');
     if (window.UnsafeDismissGuard && panel) window.UnsafeDismissGuard.remember(panel);
+    if (isEducationTimelineBookingMode() && panel && typeof openModal === 'function') {
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-modal', 'true');
+        panel.setAttribute('aria-labelledby', 'bookingPanelHeading');
+        educationPanelModalActive = true;
+        openModal(panel, educationFocusTrigger, {
+            initialFocus: '#closePanel',
+            onRequestClose: () => closeBookingPanel(false)
+        });
+    }
     if (window.BookingForm?.markClean) BookingForm.markClean();
     syncBookingLeadCreateButtonAccess();
     requestBookingEntryPriceRulesPreview();
@@ -9306,13 +9482,13 @@ function initCustomerCRM() {
 
 // v5.18: Show free rooms for selected time/duration
 async function showFreeRooms() {
-    const date = formatDate(AppState.selectedDate);
+    const date = formatDate(bookingFormDate());
     let time = document.getElementById('bookingTime')?.value;
     // v5.19: fallback to selected cell time
     if (!time && AppState.selectedCell) time = AppState.selectedCell.dataset.time;
     const programId = document.getElementById('selectedProgram')?.value;
     const program = programId ? getProductsSync().find(p => p.id === programId) : null;
-    const duration = program ? program.duration : 60;
+    const duration = isEducationTimelineBookingMode() ? educationLessonDurationMinutes() : (program ? program.duration : 60);
 
     if (!time) {
         showNotification('Спочатку оберіть час', 'error');
@@ -9543,7 +9719,15 @@ async function closeBookingPanel(force = false) {
             markClean: false
         });
     }
+    finishEducationEditHydration();
     disposeActiveBookingCreateHandoffs();
+    if (educationPanelModalActive && panel) {
+        if (typeof closeModal === 'function') closeModal(panel, { force: true });
+        panel.removeAttribute('role');
+        panel.removeAttribute('aria-modal');
+        panel.removeAttribute('aria-labelledby');
+        educationPanelModalActive = false;
+    }
     document.getElementById('bookingPanel')?.classList.add('hidden');
     document.getElementById('bookingPanel')?.classList.remove('booking-panel--maysternya', 'booking-panel--minimal-timeline', 'booking-panel--education-timeline', 'booking-panel--room-first', 'booking-panel--time-overrun', 'booking-panel--legacy-outside-working-hours');
     BookingDrawerState.legacyWorkingHoursBooking = null;
@@ -10267,6 +10451,7 @@ function normalizeSelectedActivityScheduleTime(value) {
 }
 
 function selectedActivityScheduleDate() {
+    if (isEducationTimelineBookingMode()) return bookingFormDate();
     return AppState.selectedDate || document.getElementById('bookingDate')?.value || new Date();
 }
 
@@ -10311,6 +10496,7 @@ function selectedActivitiesTotalDuration() {
 }
 
 function bookingTimeSlotDurationMinutes() {
+    if (isEducationTimelineBookingMode()) return educationLessonDurationMinutes();
     const programs = typeof getSelectedActivityPrograms === 'function' ? getSelectedActivityPrograms() : [];
     if (bookingMultiActivityEnabled() && programs.length > 1) {
         return selectedActivitiesTotalDuration();
@@ -10363,7 +10549,7 @@ function bookingLegacyWorkingHoursSnapshot() {
 function bookingLegacyWorkingHoursTimeIsUnchanged(formData = {}) {
     const snapshot = bookingLegacyWorkingHoursSnapshot();
     if (!snapshot?.outsideWorkingHours) return false;
-    const date = String(formatDate(AppState.selectedDate) || '').slice(0, 10);
+    const date = String(formatDate(bookingFormDate()) || '').slice(0, 10);
     const time = normalizeSelectedActivityScheduleTime(formData.time || document.getElementById('bookingTime')?.value || '');
     const duration = Number(formData.duration ?? bookingTimeSlotDurationMinutes());
     return date === snapshot.date
@@ -10950,7 +11136,7 @@ async function validateBookingTimeChangePreflight(token = BookingDrawerState.boo
             ));
         } else {
             setSelectedActivityScheduleIssues({});
-            const bookings = await getBookingsForDate(AppState.selectedDate, { force: true });
+            const bookings = await getBookingsForDate(bookingFormDate(), { force: true });
             if (!isLatestBookingTimeChangeToken(token)) return null;
             const existingBookings = existingScheduleBookingsForValidation(bookings, excludeId);
             issues = bookingTimeSingleSlotPreflightIssues(formData, existingBookings);
@@ -12131,21 +12317,21 @@ function renderScriptCategory(category) {
 }
 
 async function getAnimatorLinesForBookingDate(options = {}) {
-    const dateStr = formatDate(AppState.selectedDate);
+    const dateStr = formatDate(bookingFormDate());
     if (isRoomFirstTimelineView() || options.forceAnimatorView) {
         const lines = await apiGetLines(dateStr, { timelineView: 'animators', fresh: options.fresh !== false });
         return Array.isArray(lines) ? lines : [];
     }
-    return await getLinesForDate(AppState.selectedDate);
+    return await getLinesForDate(bookingFormDate());
 }
 
 async function getAnimatorBookingsForBookingDate(options = {}) {
-    const dateStr = formatDate(AppState.selectedDate);
+    const dateStr = formatDate(bookingFormDate());
     if (isRoomFirstTimelineView() || options.forceAnimatorView) {
         const bookings = await apiGetBookings(dateStr, { timelineView: 'animators', fresh: options.fresh !== false });
         return Array.isArray(bookings) ? bookings : [];
     }
-    return await getBookingsForDate(AppState.selectedDate, { force: options.force === true });
+    return await getBookingsForDate(bookingFormDate(), { force: options.force === true });
 }
 
 function normalizeAnimatorLineCandidate(candidate = {}) {
@@ -12260,6 +12446,7 @@ async function buildAnimatorLineCandidates(lines = [], currentLineId = '') {
 }
 
 function getAnimatorPickerDuration() {
+    if (isEducationTimelineBookingMode()) return educationLessonDurationMinutes();
     const selectedProgramId = document.getElementById('selectedProgram')?.value || '';
     const selectedProgram = selectedProgramId ? getProductsSync().find(p => p.id === selectedProgramId) : null;
     const selectedDuration = Number(selectedProgram?.duration || 0);
@@ -12542,6 +12729,10 @@ function getBookingFormData() {
         const customName = document.getElementById('customName')?.value || 'Інше';
         label = `${customName}(${duration})`;
     }
+    if (isEducationTimelineBookingMode()) {
+        duration = educationLessonDurationMinutes();
+        label = document.getElementById('educationLessonTitle')?.value?.trim() || label || 'Заняття';
+    }
 
     let pinataMode = 'none';
     let pinataFiller = '';
@@ -12637,7 +12828,7 @@ function getBookingFormData() {
 }
 
 async function validateBookingConflicts(lineId, time, duration, program, secondAnimator, excludeId = null) {
-    invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
+    invalidateBookingTimelineDateCache(bookingFormDate(), { lines: false });
     const conflict = await checkConflicts(lineId, time, duration, excludeId);
 
     if (conflict.overlap) {
@@ -12657,7 +12848,7 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
             || secondCandidate;
         if (secondLine) {
             // v5.5: При редагуванні виключити linked бронювання цього ж запису
-            const allBookings = excludeId ? await getBookingsForDate(AppState.selectedDate) : [];
+            const allBookings = excludeId ? await getBookingsForDate(bookingFormDate()) : [];
             const linkedId = Array.isArray(excludeId)
                 ? excludeId
                 : (allBookings.find(b => String(b.linkedTo || '') === String(excludeId || '') && b.lineId === secondLine.id)?.id || null);
@@ -12732,7 +12923,7 @@ async function checkDuplicateProgram(programId, program, time, duration, exclude
     // are conceptually different — must not block each other.
     if (program.category === 'animation' || program.category === 'custom' || program.isCustom || programId === 'anim_extra' || programId === 'custom') return true;
 
-    const allBookings = await getBookingsForDate(AppState.selectedDate);
+    const allBookings = await getBookingsForDate(bookingFormDate());
     if (!isDuplicateProgramRelevantEdit(allBookings, excludeId, programId, time, duration)) return true;
     const excludedBookingIds = collectDuplicateProgramExclusionIds(allBookings, excludeId);
     const newStart = timeToMinutes(time);
@@ -12880,8 +13071,8 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
     const issueMap = {};
     const lineId = formData.lineId || document.getElementById('bookingLine')?.value || '';
     const room = String(formData.room || document.getElementById('roomSelect')?.value || '').trim();
-    const date = normalizeBookingDateKey(AppState.selectedDate);
-    const allBookings = await getBookingsForDate(AppState.selectedDate, { force: options.force !== false });
+    const date = normalizeBookingDateKey(bookingFormDate());
+    const allBookings = await getBookingsForDate(bookingFormDate(), { force: options.force !== false });
     if (!isCurrentValidation()) return staleResult();
     clearSelectedActivityPreflightState();
     const existingBookings = existingScheduleBookingsForValidation(allBookings, options.excludeId || null);
@@ -13213,7 +13404,7 @@ function buildBookingObject(formData, program) {
         : baseHosts;
 
     const obj = {
-        date: formatDate(AppState.selectedDate),
+        date: isEducationLessonBooking ? educationLessonDateKey() : formatDate(AppState.selectedDate),
         time: formData.time,
         lineId: formData.lineId,
         lineName: formData.lineName || null,
@@ -14330,7 +14521,7 @@ async function handleBookingSubmit(e) {
 
     // [FIX] Заборона бронювання в минулому
     if (!AppState.editingBookingId) {
-        const pastValidationError = bookingCreatePastValidationError(formData, AppState.selectedDate);
+        const pastValidationError = bookingCreatePastValidationError(formData, bookingFormDate());
         if (pastValidationError) {
             showNotification(pastValidationError, 'error');
             unlockSubmitBtn();
@@ -14468,6 +14659,10 @@ async function handleBookingSubmit(e) {
             if (oldBooking) pushUndo('edit', { old: { ...oldBooking }, updated: { ...booking } });
 
             restoreTimelineDateAfterBookingSave(selectedDateBeforeSave || booking.date);
+            if (isEducationTimelineBookingMode()) {
+                invalidateBookingTimelineDateCache(booking.date, { lines: false });
+                if (oldBooking?.date) invalidateBookingTimelineDateCache(oldBooking.date, { lines: false });
+            }
             invalidateBookingBanquetPreviewFreshness({
                 bookingIds: bookingMutationBookingIds(updateResult, [booking.id, oldBooking?.id]),
                 groupId: banquetEditContext?.groupId
@@ -14490,7 +14685,7 @@ async function handleBookingSubmit(e) {
             showNotification(editPath.kind === 'banquet_booking_set' ? 'Склад банкету оновлено!' : 'Бронювання оновлено!', 'success');
         } else {
             if (editingBookingId) {
-                const pastValidationError = bookingCreatePastValidationError(formData, AppState.selectedDate);
+                const pastValidationError = bookingCreatePastValidationError(formData, bookingFormDate());
                 if (pastValidationError) {
                     showNotification(pastValidationError, 'error');
                     unlockSubmitBtn();
@@ -14804,8 +14999,8 @@ async function checkConflicts(lineId, time, duration, excludeId = null) {
         return { overlap: false, noPause: false, conflictWith: null };
     }
     const allBookings = isRoomFirstTimelineView()
-        ? (await apiGetBookings(formatDate(AppState.selectedDate), { timelineView: 'animators', fresh: true }) || [])
-        : await getBookingsForDate(AppState.selectedDate);
+        ? (await apiGetBookings(formatDate(bookingFormDate()), { timelineView: 'animators', fresh: true }) || [])
+        : await getBookingsForDate(bookingFormDate());
     const excludeIds = new Set((Array.isArray(excludeId) ? excludeId : [excludeId])
         .map(normalizeBookingIdentity)
         .filter(Boolean));
@@ -16243,9 +16438,12 @@ function renderEducationLessonDetail(booking) {
     const lesson = educationLessonDetailsFromBooking(booking);
     if (!lesson || Object.keys(lesson).length === 0) return '';
     const rows = [
-        lesson.title ? ['Заняття', lesson.title] : null,
+        lesson.title ? ['Тема', lesson.title] : null,
+        booking.date ? ['Дата', booking.date] : null,
+        booking.time ? ['Початок', booking.time] : null,
+        Number.isFinite(Number(booking.duration)) && Number(booking.duration) > 0 ? ['Тривалість', `${Number(booking.duration)} хвилин`] : null,
         lesson.teacherName ? ['Викладач', lesson.teacherName] : null,
-        lesson.groupName || booking.groupName ? ['Група / клас', lesson.groupName || booking.groupName] : null,
+        lesson.groupName || booking.groupName ? ['Група', lesson.groupName || booking.groupName] : null,
         lesson.courseCode ? ['Курс / серія', lesson.courseCode] : null,
         lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['Серія', `${lesson.seriesIndex || 1}/${lesson.seriesSize}`] : null,
         lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['Повторення', educationLessonRepeatEveryLabel(lesson.repeatEvery)] : null,
@@ -16253,21 +16451,19 @@ function renderEducationLessonDetail(booking) {
     ].filter(Boolean);
     if (!rows.length) return '';
     const seriesActions = lesson.seriesId && Number(lesson.seriesSize || 0) > 1 && canDeleteTimelineBooking()
-        ? `<div class="booking-detail-row"><span class="label">Керування серією:</span><span class="value"><button type="button" class="btn-secondary btn-sm" onclick="openEducationSeriesManager('${escapeHtml(String(lesson.seriesId))}', '${escapeHtml(String(booking.id))}')">Відкрити серію</button></span></div>`
+        ? `<button type="button" class="btn-secondary education-action" onclick="openEducationSeriesManager('${escapeHtml(String(lesson.seriesId))}', '${escapeHtml(String(booking.id))}', this)">Відкрити серію</button>`
         : '';
     const groupAction = /^\d+$/.test(String(lesson.groupId || ''))
-        ? `<div class="booking-detail-row"><span class="label">Склад групи:</span><span class="value"><button type="button" class="btn-secondary btn-sm" data-education-detail-group="${Number(lesson.groupId)}">Відкрити групу</button></span></div>`
+        ? `<button type="button" class="btn-secondary education-action" data-education-detail-group="${Number(lesson.groupId)}">Відкрити групу</button>`
         : '';
     const attendanceAction = /^\d+$/.test(String(lesson.groupId || ''))
-        ? `<div class="booking-detail-row"><span class="label">Відвідування:</span><span class="value"><button type="button" class="btn-secondary btn-sm" data-education-attendance-booking="${escapeHtml(String(booking.id))}">Відкрити журнал</button></span></div>`
+        ? `<button type="button" class="btn-secondary education-action" data-education-attendance-booking="${escapeHtml(String(booking.id))}">Відкрити журнал</button>`
         : '';
     return `
         <div class="booking-lesson-detail">
-            <div class="booking-lesson-detail-title">Навчальний запис</div>
+            <div class="booking-lesson-detail-title">Деталі заняття</div>
             ${rows.map(([label, value]) => `<div class="booking-detail-row"><span class="label">${escapeHtml(label)}:</span><span class="value">${escapeHtml(value)}</span></div>`).join('')}
-            ${groupAction}
-            ${attendanceAction}
-            ${seriesActions}
+            <div class="education-action-row">${groupAction}${attendanceAction}${seriesActions}</div>
         </div>`;
 }
 
@@ -17763,7 +17959,10 @@ async function editBooking(bookingId, options = {}) {
     const panelLineId = isRoomFirstTimelineView()
         ? (panelLineSource.roomResourceId || panelLineSource.room_resource_id || panelLineSource.resourceId || panelLineSource.room || panelLineSource.lineId)
         : panelLineSource.lineId;
-    await openBookingPanel(booking.time, panelLineId);
+    const opened = await openBookingPanel(booking.time, panelLineId);
+    if (opened === false) return false;
+    const educationHydrationOwner = beginEducationEditHydration();
+    try {
     BookingDrawerState.banquetEditContext = banquetEditContext;
     if (banquetEditContext?.groupId) {
         BookingDrawerState.selectedBanquetGroupId = banquetEditContext.groupId;
@@ -17800,6 +17999,7 @@ async function editBooking(bookingId, options = {}) {
         selectedResourceId: booking.roomResourceId || booking.room_resource_id || '',
         excludeId: bookingId
     });
+    if (!educationEditHydrationIsCurrent(educationHydrationOwner)) return false;
     if (typeof ensureCostumeSelectOption === 'function') ensureCostumeSelectOption(booking.costume);
     document.getElementById('costumeSelect').value = booking.costume || '';
     document.getElementById('bookingNotes').value = bookingCommentValueForType(editComments, editCommentType) || booking.notes || '';
@@ -17873,6 +18073,7 @@ async function editBooking(bookingId, options = {}) {
         renderSummary: false,
         preselectBanquetGroupId: banquetEditContext?.groupId || ''
     });
+    if (!educationEditHydrationIsCurrent(educationHydrationOwner)) return false;
     if (banquetEditContext?.groupId) {
         renderBookingBanquetGroupSelector();
     }
@@ -17886,6 +18087,7 @@ async function editBooking(bookingId, options = {}) {
         ticketBooking: ticketOwnerBooking
     });
     await hydrateBookingDepositFromServer(booking.id);
+    if (!educationEditHydrationIsCurrent(educationHydrationOwner)) return false;
 
     // Статус
     const statusRadio = document.querySelector(`input[name="bookingStatus"][value="${booking.status || 'confirmed'}"]`);
@@ -17902,6 +18104,7 @@ async function editBooking(bookingId, options = {}) {
             secondAnimatorLineId: storedSecondAnimatorLineId,
             primaryLineId: bookingPrimaryLineId(booking)
         });
+        if (!educationEditHydrationIsCurrent(educationHydrationOwner)) return false;
         const selectedSecondAnimatorName = secondAnimatorCandidate?.name || storedSecondAnimator;
         hydrateStandaloneEditSecondAnimatorActivityState(booking, secondAnimatorCandidate);
         await populateSecondAnimatorSelect({
@@ -17911,18 +18114,31 @@ async function editBooking(bookingId, options = {}) {
             excludeBookingIds: bookingEditConflictExcludeIds(),
             primaryLineId: bookingPrimaryLineId(booking)
         });
+        if (!educationEditHydrationIsCurrent(educationHydrationOwner)) return false;
         await resolveSecondAnimatorSelect(selectedSecondAnimatorName, booking.id, {
             selectedCandidate: secondAnimatorCandidate,
             secondAnimatorLineId: storedSecondAnimatorLineId,
             primaryLineId: bookingPrimaryLineId(booking)
         });
+        if (!educationEditHydrationIsCurrent(educationHydrationOwner)) return false;
         await populateSelectedActivitySecondAnimatorSelects({ fresh: false });
+        if (!educationEditHydrationIsCurrent(educationHydrationOwner)) return false;
     }
     renderBookingPackageSummary();
     syncBookingCommentFieldPresentation(getBookingFormData());
     setBookingLegacyWorkingHoursSnapshot(booking);
     syncBookingTimeControlValue(booking.time, { syncTimeline: false });
     if (window.BookingForm?.markClean) BookingForm.markClean();
+    } catch (error) {
+        if (!educationHydrationOwner) throw error;
+        if (educationEditHydrationIsCurrent(educationHydrationOwner)) {
+            await closeBookingPanel(true);
+            showNotification('Не вдалося завантажити заняття для редагування. Відкрийте картку ще раз.', 'error');
+        }
+        return false;
+    } finally {
+        finishEducationEditHydration(educationHydrationOwner);
+    }
 }
 
 // ==========================================
@@ -18229,7 +18445,7 @@ function ensureEducationSeriesModal() {
     modal.setAttribute('aria-label', 'Керування серією занять');
     modal.innerHTML = `
         <div class="modal-content modal-wide">
-            <span class="modal-close" onclick="closeEducationSeriesManager()">&times;</span>
+            <button type="button" class="modal-close" aria-label="Закрити серію занять" onclick="closeEducationSeriesManager()">&times;</button>
             <h3>Серія занять</h3>
             <div id="educationSeriesManagerBody" class="education-series-manager"></div>
         </div>`;
@@ -18238,7 +18454,9 @@ function ensureEducationSeriesModal() {
 }
 
 function closeEducationSeriesManager() {
-    document.getElementById('educationSeriesModal')?.classList.add('hidden');
+    const modal = document.getElementById('educationSeriesModal');
+    if (typeof closeModal === 'function') closeModal(modal);
+    else modal?.classList.add('hidden');
 }
 
 function renderEducationSeriesManager(seriesId, referenceBookingId, payload = {}) {
@@ -18248,37 +18466,38 @@ function renderEducationSeriesManager(seriesId, referenceBookingId, payload = {}
     const rows = bookings.map(booking => {
         const lesson = educationLessonDetailsFromBooking(booking);
         const title = lesson.title || booking.programName || booking.label || booking.id;
-        const seriesPosition = lesson.seriesIndex && lesson.seriesSize ? `#${lesson.seriesIndex}/${lesson.seriesSize}` : '';
+        const seriesPosition = lesson.seriesIndex && lesson.seriesSize ? `Заняття ${lesson.seriesIndex} із ${lesson.seriesSize}` : '';
         return `<div class="education-series-row${booking.status === 'cancelled' ? ' is-cancelled' : ''}">
             <div>
                 <strong>${escapeHtml(booking.date)} ${escapeHtml(booking.time)} ${escapeHtml(seriesPosition)}</strong>
                 <small>${escapeHtml(title)}${lesson.teacherName ? ' · ' + escapeHtml(lesson.teacherName) : ''}${lesson.resourceName || booking.room ? ' · ' + escapeHtml(lesson.resourceName || booking.room) : ''}</small>
             </div>
-            <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${escapeHtml(booking.status || 'confirmed')}</span>
+            <span class="status-badge status-badge--${booking.status === 'cancelled' ? 'cancelled' : booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${escapeHtml(({ cancelled: 'Скасовано', preliminary: 'Попереднє', confirmed: 'Підтверджено' })[booking.status] || booking.status || 'Підтверджено')}</span>
         </div>`;
     }).join('');
     body.innerHTML = `
         <div class="education-series-manager-head">
             <div>
-                <strong>${escapeHtml(seriesId)}</strong>
+                <strong>${escapeHtml(educationLessonDetailsFromBooking(bookings[0] || {}).groupName || 'Навчальні заняття')}</strong>
                 <p class="digest-hint">Знайдено занять: ${bookings.length}. Скасування працює тільки в активному бізнес-контексті.</p>
             </div>
         </div>
         <div class="education-series-manager-list">${rows || '<div class="empty-state-text">У серії немає активних занять.</div>'}</div>
         <div class="education-series-manager-actions">
-            <button type="button" class="btn-secondary" onclick="closeEducationSeriesManager()">Закрити</button>
+            <button type="button" class="btn-secondary education-action" onclick="closeEducationSeriesManager()">Закрити</button>
             <span>
-                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'future', '${escapeHtml(String(referenceBookingId || ''))}')">Скасувати майбутні</button>
-                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'all', '${escapeHtml(String(referenceBookingId || ''))}')">Скасувати всю серію</button>
+                <button type="button" class="btn-delete-booking education-action education-action--danger" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'future', '${escapeHtml(String(referenceBookingId || ''))}')">Скасувати майбутні</button>
+                <button type="button" class="btn-delete-booking education-action education-action--danger" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'all', '${escapeHtml(String(referenceBookingId || ''))}')">Скасувати всю серію</button>
             </span>
         </div>`;
 }
 
-async function openEducationSeriesManager(seriesId, referenceBookingId = '') {
+async function openEducationSeriesManager(seriesId, referenceBookingId = '', triggerEl = document.activeElement) {
     const modal = ensureEducationSeriesModal();
     const body = document.getElementById('educationSeriesManagerBody');
     if (body) body.innerHTML = '<div class="loading-spinner">Завантаження серії...</div>';
-    modal.classList.remove('hidden');
+    if (typeof openModal === 'function') openModal(modal, triggerEl);
+    else modal.classList.remove('hidden');
     const payload = typeof apiGetEducationLessonSeries === 'function'
         ? await apiGetEducationLessonSeries(seriesId)
         : { success: false, error: 'API unavailable', bookings: [] };

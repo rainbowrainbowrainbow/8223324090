@@ -81,7 +81,7 @@ test('A to B to A ignores both earlier generations even when replies arrive out 
     const first = f.w.EducationGroups.load();
     const firstRequest = f.pending.at(-1);
     f.switchContext('event_genix');
-    const middleRequest = f.pending.find(item => item.url.includes('businessContext=event_genix'));
+    const middleRequest = f.pending.find(item => item.url.includes('/education/groups?businessContext=event_genix'));
     f.switchContext('dar');
     const lastRequest = f.pending.filter(item => item.url.includes('/education/groups?businessContext=dar')).at(-1);
     assert.notEqual(firstRequest, lastRequest);
@@ -99,6 +99,7 @@ test('A to B to A ignores both earlier generations even when replies arrive out 
 test('quick group selection keeps the newest detail and ignores the older error', async () => {
   const f = await fixture('education-groups');
   try {
+    f.w.document.getElementById('educationGroupsList').innerHTML = '<option value="1">A</option><option value="2">B</option>';
     const first = f.w.EducationGroups.showGroup('1');
     const firstRequest = f.pending.at(-1);
     const second = f.w.EducationGroups.showGroup('2');
@@ -109,6 +110,62 @@ test('quick group selection keeps the newest detail and ignores the older error'
     await first;
     assert.equal(f.w.EducationGroups.state.current.id, 2);
     assert.equal(f.w.document.getElementById('educationGroupName').value, 'Selected group');
+  } finally { f.close(); }
+});
+
+test('pending group clears the old draft and rejects programmatic save/archive/member actions', async () => {
+  const f = await fixture('education-groups');
+  try {
+    f.w.document.dispatchEvent(new f.w.Event('DOMContentLoaded'));
+    f.w.document.getElementById('educationGroupsList').innerHTML = '<option value="1">A</option><option value="2">B</option>';
+    const first = f.w.EducationGroups.showGroup('1');
+    f.pending.at(-1).resolve({ group: { ...group(1, 'A'), members: [{ id: 9, child_id: 7, start_date: '2026-01-01' }] } });
+    await first;
+    const second = f.w.EducationGroups.showGroup('2');
+    const delayed = f.pending.at(-1);
+    assert.equal(f.w.EducationGroups.state.current, null);
+    assert.equal(f.w.document.getElementById('educationGroupName').value, '');
+    assert.equal(f.w.document.getElementById('educationGroupRoster').hidden, true);
+    for (const id of ['educationGroupForm', 'educationGroupEnrollForm']) f.w.document.getElementById(id)
+      .dispatchEvent(new f.w.Event('submit', { bubbles: true, cancelable: true }));
+    f.w.document.getElementById('educationGroupArchive').dispatchEvent(new f.w.MouseEvent('click', { bubbles: true }));
+    assert.equal(f.pending.filter(item => item.method !== 'GET').length, 0);
+    delayed.reject(new Error('B unavailable')); await second;
+    assert.equal(f.w.document.getElementById('educationGroupForm').querySelector('button[type="submit"]').disabled, true);
+    assert.equal(f.w.document.getElementById('educationGroupRetry').hidden, false);
+  } finally { f.close(); }
+});
+
+test('late teacher lookup preserves the latest group assignment and explicit empty choice', async () => {
+  const f = await fixture('education-groups');
+  try {
+    f.w.document.dispatchEvent(new f.w.Event('DOMContentLoaded'));
+    const listing = f.w.EducationGroups.load();
+    const teacherRead = f.pending.find(item => item.url.includes('/groups/teachers?'));
+    f.pending.find(item => item.url.includes('/groups?')).resolve({ groups: [group(1, 'A'), group(2, 'B')] });
+    await listing;
+    const detail = f.w.EducationGroups.showGroup('2');
+    f.pending.at(-1).resolve({ group: { ...group(2, 'B'), teacher_id: 42, teacher_name: 'Олена Ковальчук' } }); await detail;
+    assert.equal(f.w.document.getElementById('educationGroupTeacher').value, '42');
+    teacherRead.resolve({ teachers: [{ id: 42, name: 'Олена Ковальчук', is_active: true }] }); await flush();
+    assert.equal(f.w.document.getElementById('educationGroupTeacher').value, '42');
+    f.w.document.getElementById('educationGroupTeacher').value = '';
+    f.w.document.getElementById('educationTeachersRetry').click();
+    f.pending.at(-1).resolve({ teachers: [{ id: 42, name: 'Олена Ковальчук', is_active: true }] }); await flush();
+    assert.equal(f.w.document.getElementById('educationGroupTeacher').value, '');
+  } finally { f.close(); }
+});
+
+test('education lookup does not request legacy staff or start before authentication', async () => {
+  const f = await fixture('education-groups');
+  try {
+    f.w.hasAuthenticatedRuntimeSession = () => false;
+    await f.w.EducationGroups.load(); assert.equal(f.pending.length, 0);
+    f.w.hasAuthenticatedRuntimeSession = () => true;
+    const listing = f.w.EducationGroups.load();
+    assert.ok(f.pending.some(item => item.url.includes('/education/groups/teachers?businessContext=dar')));
+    assert.ok(!f.pending.some(item => item.url.includes('/staff')));
+    f.pending.find(item => item.url.includes('/groups?')).resolve({ groups: [] }); await listing;
   } finally { f.close(); }
 });
 
@@ -243,6 +300,10 @@ test('child search ignores older query results and clears choices on business sw
   const f = await fixture('education-groups');
   try {
     f.w.document.dispatchEvent(new f.w.Event('DOMContentLoaded'));
+    f.w.document.getElementById('educationGroupsList').innerHTML = '<option value="1">A</option>';
+    const detail = f.w.EducationGroups.showGroup('1');
+    f.pending.at(-1).resolve({ group: group(1, 'Selected group') });
+    await detail;
     const input = f.w.document.getElementById('educationChildSearch');
     const button = f.w.document.getElementById('educationChildFind');
     input.value = 'Alice';
@@ -275,8 +336,11 @@ test('lesson list ignores the old business response after a switch', async () =>
     f.w.getBookingsForDate = () => new Promise(resolve => pending.push(resolve));
     const old = f.w.EducationAttendance.loadLessons('2026-10-01');
     f.switchContext('event_genix');
+    // Workspace activation owns the fresh read after all context listeners reset.
+    const current = f.w.EducationAttendance.loadLessons('2026-10-01');
     assert.equal(pending.length, 2);
     pending[1]([{ id: 'lesson-b', time: '10:00', lesson: { groupId: 2, title: 'B' } }]);
+    await current;
     await flush();
     pending[0]([{ id: 'lesson-a', time: '09:00', lesson: { groupId: 1, title: 'A' } }]);
     await old;
@@ -285,7 +349,7 @@ test('lesson list ignores the old business response after a switch', async () =>
   } finally { f.close(); }
 });
 
-test('changing lessons while a journal save is pending keeps the new journal usable', async () => {
+test('journal save disables lesson changes until completion, then the next journal is usable', async () => {
   const f = await fixture('education-attendance');
   try {
     f.w.document.dispatchEvent(new f.w.Event('DOMContentLoaded'));
@@ -298,18 +362,39 @@ test('changing lessons while a journal save is pending keeps the new journal usa
     f.w.document.getElementById('educationAttendanceSave').click();
     const oldSave = f.pending.find(item => item.method === 'PUT' && item.url.endsWith('/lesson-a'));
     assert.ok(oldSave);
+    assert.equal(f.w.document.getElementById('educationAttendanceLesson').disabled, true);
+    await f.w.EducationAttendance.openBooking('lesson-b');
+    assert.equal(f.pending.some(item => item.url.includes('/attendance/lesson-b?')), false);
+    oldSave.resolve({ journal: journal('lesson-a', 'A lesson'), changes: 1 });
+    await flush();
+    assert.equal(f.w.document.getElementById('educationAttendanceLesson').disabled, false);
     const next = f.w.EducationAttendance.openBooking('lesson-b');
-    assert.equal(f.w.document.getElementById('educationAttendanceJournal').textContent, '');
     f.pending.find(item => item.url.includes('/attendance/lesson-b?')).resolve({ journal: {
       ...journal('lesson-b', 'B lesson'),
       members: [{ child_id: 8, child_name: 'Other child', parent_name: 'Other parent', status: null }]
     } });
     await next;
-    oldSave.resolve({ journal: journal('lesson-a', 'A lesson'), changes: 1 });
-    await flush();
     assert.equal(f.w.EducationAttendance.state.journal.booking.id, 'lesson-b');
     assert.equal(f.w.document.getElementById('educationAttendanceSave').disabled, false);
     assert.match(f.w.document.getElementById('educationAttendanceJournal').textContent, /B lesson/);
+  } finally { f.close(); }
+});
+
+test('unavailable draft storage protects earlier unsaved journals before reload', async () => {
+  const f = await fixture('education-attendance');
+  try {
+    Object.defineProperty(f.w, 'sessionStorage', { value: { getItem: () => null, setItem() { throw new Error('Storage unavailable'); }, removeItem() { throw new Error('Storage unavailable'); } } });
+    f.w.document.dispatchEvent(new f.w.Event('DOMContentLoaded'));
+    const first = f.w.EducationAttendance.openBooking('draft-a');
+    f.pending.at(-1).resolve({ journal: { ...journal('draft-a', 'Earlier journal'), members: [{ child_id: 7, child_name: 'Child', status: null }] } });
+    await first;
+    const field = f.w.document.querySelector('[data-attendance-child-id="7"]');
+    field.value = 'present'; field.dispatchEvent(new f.w.Event('change', { bubbles: true }));
+    const second = f.w.EducationAttendance.openBooking('draft-b');
+    f.pending.at(-1).resolve({ journal: journal('draft-b', 'Current clean journal') });
+    await second;
+    const reload = new f.w.Event('beforeunload', { cancelable: true }); f.w.dispatchEvent(reload);
+    assert.equal(reload.defaultPrevented, true);
   } finally { f.close(); }
 });
 
@@ -319,7 +404,7 @@ test('old request errors cannot replace the new business status or report', asyn
     const old = groups.w.EducationGroups.load();
     const stale = groups.pending.at(-1);
     groups.switchContext('event_genix');
-    groups.pending.find(item => item.url.includes('businessContext=event_genix'))
+    groups.pending.find(item => item.url.includes('/education/groups?businessContext=event_genix'))
       .resolve({ groups: [group(2, 'Current B')] });
     await flush();
     stale.reject(new Error('stale group failure'));

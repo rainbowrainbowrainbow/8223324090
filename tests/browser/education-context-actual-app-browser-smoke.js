@@ -83,8 +83,33 @@ const report = title => ({
             assert.equal(observed.timeline, business, `business switch did not update the timeline: ${JSON.stringify(observed)}`);
         };
 
+        await page.locator('#mainApp').waitFor({state:'visible'});
+        await page.waitForFunction(()=>window.isAuthenticatedRuntimeReady?.()&&window.EducationGroups.state.listStatus==='ready');
+        await page.waitForLoadState('networkidle');
         const groups = [];
-        await page.route('**/api/education/groups?*', route => { groups.push(route); });
+        let freshAfter=Infinity;
+        const delivered=new WeakSet(), pendingDeliveries=new Set();
+        // These are controlled frontend contract tests with mocked payloads,
+        // not an end-to-end education lifecycle or PostgreSQL persistence proof.
+        const deliver = async (route, payload) => {
+            if(delivered.has(route))return;
+            delivered.add(route);
+            const finished = page.waitForEvent('requestfinished', { predicate: request => request === route.request() });
+            await route.fulfill(payload);
+            await finished;
+            await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        };
+        // Business and authenticated-runtime events may each load the active A.
+        // Hold stale A/B, but never leave a newer active-A mock unresolved.
+        await page.route('**/api/education/groups?*', route => {
+            groups.push(route);
+            if(groups.length-1>=freshAfter&&route.request().url().includes('businessContext=dar')){
+                const task=deliver(route,{status:200,json:{groups:[group(3,'Fresh A')]}});
+                pendingDeliveries.add(task);
+                task.finally(()=>pendingDeliveries.delete(task));
+                return task;
+            }
+        });
         await page.evaluate(() => { void window.EducationGroups.load(); });
         const first = await waitForRequest(groups, 0, route => route.request().url().includes('businessContext=dar'));
         const beforeB = groups.length;
@@ -92,12 +117,14 @@ const report = title => ({
         await waitForRequest(groups, beforeB, route => route.request().url().includes('businessContext=event_genix'));
         const beforeFinalA = groups.length;
         await switchTo('dar');
+        freshAfter=beforeFinalA;
+        for(const route of groups.slice(beforeFinalA))await deliver(route,{status:200,json:{groups:[group(3,'Fresh A')]}});
         const beforeExplicitA = groups.length;
         await page.evaluate(() => { void window.EducationGroups.load(); });
         const finalA = await waitForRequest(groups, beforeExplicitA,
             route => route.request().url().includes('businessContext=dar'));
-        await finalA.fulfill({ status: 200, json: { groups: [group(3, 'Fresh A')] } });
-        await page.waitForTimeout(300);
+        await deliver(finalA, { status: 200, json: { groups: [group(3, 'Fresh A')] } });
+        await page.waitForFunction(() => window.EducationGroups.state.groups.some(group => group.name === 'Fresh A'));
         const freshState = await page.evaluate(() => ({
             groups: window.EducationGroups.state.groups.map(item => item.name),
             business: window.TimelineBusinessContext.current().apiValue,
@@ -105,24 +132,22 @@ const report = title => ({
         }));
         assert.deepEqual(freshState.groups, ['Fresh A'], `fresh group response was ignored: ${JSON.stringify({ freshState, pending: groups.map(route => route.request().url()), pageErrors })}`);
         for (const route of groups.slice(beforeB, beforeFinalA)) {
-            await route.fulfill({ status: 200, json: { groups: [group(2, 'Stale B')] } });
+            await deliver(route, { status: 200, json: { groups: [group(2, 'Stale B')] } });
         }
-        await first.fulfill({ status: 200, json: { groups: [group(1, 'Stale A')] } });
+        await deliver(first, { status: 200, json: { groups: [group(1, 'Stale A')] } });
         for (const route of groups.slice(beforeFinalA)) {
-            if (route !== finalA) await route.fulfill({ status: 200, json: { groups: [group(3, 'Fresh A')] } });
+            if (route !== finalA) await deliver(route, { status: 200, json: { groups: [group(3, 'Fresh A')] } });
         }
-        await page.waitForTimeout(150);
         assert.deepEqual(await page.evaluate(() => window.EducationGroups.state.groups.map(item => item.name)), ['Fresh A']);
         assert.match(await page.locator('#educationGroupsList').innerText(), /Fresh A/);
-        await page.unroute('**/api/education/groups?*');
+        await Promise.all([...pendingDeliveries]);await page.unroute('**/api/education/groups?*');
 
         const journals = [];
         await page.route('**/api/education/attendance/qa-lesson-a?*', route => { journals.push(route); });
         await page.evaluate(() => { void window.EducationAttendance.openBooking('qa-lesson-a'); });
         const oldJournal = await waitForRequest(journals, 0, () => true);
         await switchTo('event_genix');
-        await oldJournal.fulfill({ status: 200, json: { journal: journal('qa-lesson-a', 'Private A lesson') } });
-        await page.waitForTimeout(150);
+        await deliver(oldJournal, { status: 200, json: { journal: journal('qa-lesson-a', 'Private A lesson') } });
         assert.equal(await page.evaluate(() => window.EducationAttendance.state.journal), null);
         assert.doesNotMatch(await page.locator('#educationAttendanceJournal').innerText(), /Private A lesson/);
         await page.unroute('**/api/education/attendance/qa-lesson-a?*');
@@ -133,8 +158,7 @@ const report = title => ({
         await page.evaluate(() => { void window.EducationAttendance.runReport(); });
         const oldReport = await waitForRequest(reports, 0, () => true);
         await switchTo('event_genix');
-        await oldReport.fulfill({ status: 200, json: { report: report('Private A report') } });
-        await page.waitForTimeout(150);
+        await deliver(oldReport, { status: 200, json: { report: report('Private A report') } });
         assert.doesNotMatch(await page.locator('#educationReportResult').innerText(), /Private A report/);
         await page.unroute('**/api/education/reports?*');
 
@@ -153,8 +177,7 @@ const report = title => ({
         assert.match(oldSave.request().postData() || '', /"businessContext":"dar"/);
         await switchTo('event_genix');
         assert.equal(await page.locator('#educationGroupName').inputValue(), '');
-        await oldSave.fulfill({ status: 201, json: { group: group(7, 'Private A draft') } });
-        await page.waitForTimeout(150);
+        await deliver(oldSave, { status: 201, json: { group: group(7, 'Private A draft') } });
         assert.equal(await page.locator('#educationGroupName').inputValue(), '');
         assert.equal(await page.locator('#educationGroupsList').inputValue(), '');
         assert.equal(await page.evaluate(() => window.EducationGroups.state.current), null);

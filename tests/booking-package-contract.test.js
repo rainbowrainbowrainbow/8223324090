@@ -993,7 +993,7 @@ function createMultiActivityScheduleHarness(options = {}) {
         current: () => ({ apiValue: 'event_genix' })
     };
     vm.createContext(context);
-    vm.runInContext(`${bookingJs.slice(start, end)}\n${bookingJs.slice(banquetEditStart, banquetEditEnd)}`, context, { filename: 'js/booking.js' });
+    vm.runInContext(`${extractNamedFunction(bookingJs, 'educationLessonDateKey')}\n${extractNamedFunction(bookingJs, 'bookingFormDate')}\n${bookingJs.slice(start, end)}\n${bookingJs.slice(banquetEditStart, banquetEditEnd)}`, context, { filename: 'js/booking.js' });
     if (!options.useRealAnimatorRefresh) {
         context.refreshAnimatorSelectsForCurrentSlot = async () => {
             dependencyCalls.animatorRefreshes += 1;
@@ -1170,6 +1170,7 @@ function createBookingDrawerSummaryHarness(options = {}) {
         document: dom.window.document,
         window: dom.window,
         BookingDrawerState: { validationAttempted: false },
+        isEducationTimelineBookingMode: () => false,
         BookingPackageState: {
             menuWorkflow: null,
             menuRuleContract: buildBanquetPreorderRuleContract([]),

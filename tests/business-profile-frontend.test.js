@@ -92,6 +92,26 @@ async function flushMicrotasks() {
     for (let count = 0; count < 12; count += 1) await Promise.resolve();
 }
 
+test('allowed education handoff keeps the canonical root workspace across a legacy destination', () => {
+    const user = readyUser('dar', { allowed: ['dar', 'maysternya_doli'], defaultContext: 'dar' });
+    const f = loadApi(user, undefined, { url: 'http://localhost/?businessContext=maysternya_doli&educationSchedule=reports&date=2026-10-03' });
+    const payload = profilePayload(user);
+    payload.businessProfile.businesses.push({ key: 'maysternya_doli', id: 'maysternya_doli', businessContext: 'maysternya_doli',
+        businessId: 99, organizationId: 1, modules: { enabled: { timeline: true } }, timeline: { mode: 'education', timelineEnabled: true } });
+    f.context.applyCrmBusinessProfile(payload, { user, syncScope: false, emit: false });
+    assert.equal(f.context.navigateCrmBusinessDestination('maysternya_doli', { id: 'timeline' }), false);
+    assert.equal(f.location.pathname, '/');
+    assert.equal(f.location.searchParams.get('educationSchedule'), 'reports');
+    assert.equal(f.context.crmBusinessHasEducationScheduleHandoff(new URL('http://localhost/?businessContext=maysternya_doli&educationSchedule=reports'), 'dar'), false);
+    payload.businessProfile.businesses.at(-1).timeline.mode = 'simple';
+    f.context.applyCrmBusinessProfile(payload, { user, syncScope: false, emit: false });
+    // Browser Location accepts relative navigation; Node's URL setter does not.
+    f.context.window.location = { href: f.location.href, origin: f.location.origin, pathname: '/', search: f.location.search };
+    assert.equal(f.context.navigateCrmBusinessDestination('maysternya_doli', { id: 'timeline' }), true);
+    assert.equal(new URL(f.context.window.location.href, f.location.origin).pathname, '/maysternya-doli');
+    assert.equal(f.location.searchParams.has('educationSchedule'), false);
+});
+
 test('membership module map never falls back to static defaults before or after profile hydration', () => {
     const user = readyUser('event_genix', { overrides: { membershipMode: 'membership' } });
     const { context } = loadApi(user);

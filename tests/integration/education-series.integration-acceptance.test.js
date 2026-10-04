@@ -19,6 +19,7 @@ function requirePlaywright() {
   throw new Error('Playwright is unavailable; run through npm run test:integration:education-series:isolated');
 }
 const enabled = process.env.RUN_EDUCATION_SERIES_INTEGRATION === 'true';
+const output = path.resolve(process.env.EDU_ACCEPTANCE_OUTPUT || 'output/edu-qa-01');
 let pool, token, groupId, childIds, teacherIds, lessonId, readerToken, readerCredentials;
 async function request(method, pathname, body, auth = token) {
   const r = await fetch(process.env.TEST_URL + pathname, { method, headers: { Authorization: `Bearer ${auth}`, 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20000) });
@@ -34,7 +35,7 @@ const booking = b => request('POST', '/api/bookings?businessContext=dar', b);
 describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !enabled, concurrency: 1 }, () => {
   before(async () => {
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
-    fs.mkdirSync(path.join('output', 'edu-qa-01'), { recursive: true });
+    fs.mkdirSync(output, { recursive: true });
     const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, { ...process.env, DATABASE_URL: '' });
     pool = new Pool({ connectionString: target.url.toString(), ssl: false });
     await pool.query(`INSERT INTO settings (key,value) VALUES ('timeline_display:dar', $1) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`, [JSON.stringify({ mode: 'education' })]);
@@ -45,6 +46,10 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
     assert.equal(cabinet.status,200,'disposable business profile education setup');
     assert.equal(cabinet.data.cabinet.timeline.resourceModel,'cabinet','fixture matches the live cabinet model');
     teacherIds = (await pool.query(`INSERT INTO staff (name,department,position,is_active) VALUES ('QA Teacher A','education','teacher',true),('QA Teacher B','education','teacher',true) RETURNING id`)).rows.map(r => r.id);
+    // Fixture prerequisite: staff is global; education selection projects existing business assignments.
+    // This is setup, not a successful UI group creation or a repair of a failed UI step.
+    await pool.query(`INSERT INTO education_groups(business_context,name,capacity,teacher_id)
+      VALUES ('dar','QA teacher directory A',1,$1),('dar','QA teacher directory B',1,$2)`, teacherIds);
     const parent = (await pool.query(`INSERT INTO customers (business_context,name,source) VALUES ('dar','QA synthetic parent','education_test') RETURNING id`)).rows[0].id;
     childIds = (await pool.query(`INSERT INTO customer_children (business_context,customer_id,name,source_kind) VALUES ('dar',$1,'QA Child A','education_test'),('dar',$1,'QA Child B','education_test'),('dar',$1,'QA Child C','education_test') RETURNING id`, [parent])).rows.map(r => Number(r.id));
     const group = await request('POST','/api/education/groups?businessContext=dar',{name:'QA main group', capacity:4, teacherId:teacherIds[0]});
@@ -85,7 +90,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
     const first=await booking(lesson(sequentialDate,'09:00',1));
     const second=await booking(lesson(sequentialDate,'09:00',2));
     const evidence={trials,sequential:[first.status,second.status]};
-    fs.writeFileSync('output/edu-qa-01/teacher-concurrency.json',JSON.stringify(evidence,null,2));
+    fs.writeFileSync(path.join(output,'teacher-concurrency.json'),JSON.stringify(evidence,null,2));
     assert.deepEqual(evidence.sequential,[200,409],'sequential conflict control');
     assert.ok(trials.every(r=>r.statuses.join(',')==='200,409'&&r.rows===1),'concurrent teacher conflicts: '+JSON.stringify(trials));
   });
@@ -136,7 +141,9 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       ['PUT',`/api/education/attendance/${lessonId}?businessContext=dar`,{marks:[]}],
       ['GET','/api/education/groups?businessContext=event_genix',undefined]
     ]) assert.equal((await request(method,url,body,readerToken)).status,403,`${method} ${url}`);
-    for(const url of ['/api/education/groups?businessContext=dar',`/api/education/reports?businessContext=dar&from=2026-09-28&to=2026-09-28`]) assert.equal((await request('GET',url,undefined,readerToken)).status,200,url);
+    for(const url of ['/api/education/groups?businessContext=dar','/api/education/groups/teachers?businessContext=dar',`/api/education/reports?businessContext=dar&from=2026-09-28&to=2026-09-28`]) assert.equal((await request('GET',url,undefined,readerToken)).status,200,url);
+    assert.equal((await request('GET','/api/education/groups/teachers?businessContext=event_genix',undefined,readerToken)).status,403);
+    assert.equal((await request('GET','/api/staff?businessContext=dar',undefined,readerToken)).status,403);
   });
   test('two independent group POST requests follow the existing API contract', async () => {
     const body={name:'QA repeat same group',capacity:3};
@@ -148,7 +155,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
   test('actual-app UI groups/attendance/report and mobile/light/dark, errors preserve draft', async () => {
     const { chromium }=requirePlaywright();
     const browser=await chromium.launch({headless:true}); const evidence={checks:[],errors:[],failed:[]};
-    const check=(name,pass,detail)=>{evidence.checks.push({name,status:pass?'PASS':'FAIL',detail}); fs.writeFileSync('output/edu-qa-01/synthetic-browser.json',JSON.stringify(evidence,null,2));};
+    const check=(name,pass,detail)=>{evidence.checks.push({name,status:pass?'PASS':'FAIL',detail}); fs.writeFileSync(path.join(output,'synthetic-browser.json'),JSON.stringify(evidence,null,2));};
     try {
       const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block'});
       await context.route('**/*',route=>new URL(route.request().url()).origin===new URL(process.env.TEST_URL).origin?route.continue():route.abort());
@@ -249,8 +256,8 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       await page.locator('#educationGroupForm button[type="submit"]').click(); await page.waitForTimeout(500); check('group retry succeeds',await page.locator('#educationGroupsStatus').textContent()==='Групу збережено.');
       await page.reload({waitUntil:'domcontentloaded'}); await page.waitForTimeout(1200); check('selected groups tab survives reload',await page.locator('#educationGroupsPanel').isVisible(),new URL(page.url()).search);
       // Capture only synthetic education panel, never credentials or the identity rail.
-      await page.locator('[data-education-schedule-tab="groups"]').click(); await page.locator('#educationScheduleWorkspace').screenshot({path:'output/edu-qa-01/synthetic-groups-desktop.png'});
-      await page.setViewportSize({width:390,height:844}); await page.locator('#educationScheduleWorkspace').screenshot({path:'output/edu-qa-01/synthetic-groups-mobile.png'});
+      await page.locator('[data-education-schedule-tab="groups"]').click(); await page.locator('#educationScheduleWorkspace').screenshot({path:path.join(output,'synthetic-groups-desktop.png')});
+      await page.setViewportSize({width:390,height:844}); await page.locator('#educationScheduleWorkspace').screenshot({path:path.join(output,'synthetic-groups-mobile.png')});
       await page.keyboard.press('Tab'); check('keyboard reaches a control',await page.evaluate(()=>document.activeElement!==document.body));
       await page.setViewportSize({width:1440,height:1000});
       await page.locator('#educationGroupsList').selectOption(''); await page.locator('#educationGroupName').fill('QA actual double click');
@@ -259,7 +266,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       const submitCount=await page.evaluate(()=>window.__eduQaSubmitCount);
       const duplicates=(await pool.query(`SELECT count(*)::int n FROM education_groups WHERE business_context='dar' AND name='QA actual double click'`)).rows[0].n;
       check('double click under slow network creates one group',duplicates===1,{submitCount,rows:duplicates});
-    } finally { await browser.close(); fs.writeFileSync('output/edu-qa-01/synthetic-browser.json',JSON.stringify(evidence,null,2)); }
+    } finally { await browser.close(); fs.writeFileSync(path.join(output,'synthetic-browser.json'),JSON.stringify(evidence,null,2)); }
     assert.equal(evidence.errors.length,0,'actual-app uncaught errors');
     assert.equal(evidence.checks.filter(c=>c.status==='FAIL').length,0,'see sanitized synthetic-browser.json for actual-app failures');
   });
@@ -412,6 +419,15 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       await page.locator('#bookingModal').waitFor({ state: 'hidden' });
       assert.equal(await card.evaluate(node => document.activeElement === node), true, 'Park focus returns to card');
       assert.equal(await page.locator('#sidebarDesignExtras a[href*="educationSchedule"]').count(), 0, 'Park has no education entry');
+      const beforeEdit = (await pool.query('SELECT to_jsonb(b) row FROM bookings b WHERE id=$1', [id])).rows[0].row;
+      await card.click();
+      await page.locator('#bookingModal .btn-edit-booking').click();
+      await page.locator('#bookingPanel').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#educationLessonDate').isVisible(), false, 'education date field is hidden in Park');
+      assert.equal(await page.locator('#educationLessonDate').isDisabled(), true, 'hidden education date cannot block Park submission');
+      assert.equal(await page.locator('#educationLessonDate').evaluate(el => el.required), false);
+      assert.equal(await page.locator('#timelineDate').inputValue(), date, 'opening Park edit keeps its timeline date');
+      assert.deepEqual((await pool.query('SELECT to_jsonb(b) row FROM bookings b WHERE id=$1', [id])).rows[0].row, beforeEdit);
     } finally {
       await browser.close();
     }

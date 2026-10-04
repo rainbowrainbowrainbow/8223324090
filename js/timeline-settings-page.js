@@ -573,12 +573,12 @@
             return `
                 <button type="button" class="timeline-settings-context-btn${contextOptionId(ctx) === activeContextOptionId() ? ' active' : ''}" data-timeline-settings-context="${escapeHtml(ctx.key)}" data-timeline-settings-view="${escapeHtml(isPark ? view : '')}">
                     <strong>${escapeHtml(ctx.label || ctx.productName || ctx.key)}</strong>
-                    <span>${escapeHtml(ctx.key)}${viewLabel} \u00b7 ${escapeHtml(ctx.route || '/')}</span>
+                    <span>${state.displaySettings.mode === 'education' ? 'Окремі налаштування розкладу' : `${escapeHtml(ctx.key)}${viewLabel} \u00b7 ${escapeHtml(ctx.route || '/')}`}</span>
                 </button>
             `;
         }).join('');
         const activeTimelineId = $('timelineSettingsTimelineId');
-        if (activeTimelineId) activeTimelineId.textContent = state.activeContext === 'event_genix'
+            if (activeTimelineId) activeTimelineId.textContent = state.displaySettings.mode === 'education' ? 'Розклад занять' : state.activeContext === 'event_genix'
             ? `timeline:${state.activeContext}:${state.activeView}`
             : `timeline:${state.activeContext}`;
         const backLink = $('timelineSettingsBackLink');
@@ -625,7 +625,7 @@
                         <div class="timeline-settings-block-row${selected ? ' active' : ''}${hidden ? ' is-hidden' : ''}">
                             <button type="button" class="timeline-settings-block-main" data-timeline-settings-block="${escapeHtml(item.id)}">
                                 <strong>${escapeHtml(labelForBlock(item))}</strong>
-                                <small>${escapeHtml(item.id)} · order ${escapeHtml(settings.order)}</small>
+                                <small>${state.displaySettings.mode === 'education' ? 'Порядок' : `${escapeHtml(item.id)} · order`} ${escapeHtml(settings.order)}</small>
                             </button>
                             <span class="timeline-settings-block-badges">${badges}</span>
                         </div>
@@ -651,7 +651,7 @@
                     <input type="checkbox" data-timeline-settings-field="visible" ${settings.visible === false ? '' : 'checked'}>
                     <span aria-hidden="true"></span>
                 </span>
-                <small>Ховає тільки visual block. Ролі, API і дані бронювань не змінюються.</small>
+                <small>${state.displaySettings.mode === 'education' ? 'Керує видимістю блоку в розкладі.' : 'Ховає тільки visual block. Ролі, API і дані бронювань не змінюються.'}</small>
             </label>
             <label class="timeline-settings-field">
                 <span>Порядок</span>
@@ -663,7 +663,7 @@
                 <select data-timeline-settings-field="density">
                     ${Object.entries(DENSITY_LABELS).map(([value, label]) => `<option value="${escapeHtml(value)}"${settings.density === value ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
                 </select>
-                <small>Compact стискає відступи, comfortable додає повітря для важливих зон.</small>
+                <small>${state.displaySettings.mode === 'education' ? 'Компактний вигляд зменшує відступи, вільний — збільшує.' : 'Compact стискає відступи, comfortable додає повітря для важливих зон.'}</small>
             </label>
             <label class="timeline-settings-field">
                 <span>Акцент</span>
@@ -730,7 +730,7 @@
                     ${Object.entries(MODE_LABELS).map(([value, label]) => `<option value="${escapeHtml(value)}"${display.mode === value ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
                 </select>
                 <small>Режим визначає оформлення та джерело рядків. Візуальні блоки нижче змінюють лише оформлення.</small>
-                <small role="status">${escapeHtml(window.TimelineBusinessContext?.rowSource?.(display, state.activeContext)?.text || '')}</small>
+                <small role="status">${escapeHtml(display.mode === 'education' ? 'Кабінети визначають рядки навчального розкладу.' : window.TimelineBusinessContext?.rowSource?.(display, state.activeContext)?.text || '')}</small>
             </label>
             <label class="timeline-settings-field">
                 <span>Стартова сторінка</span>
@@ -740,13 +740,13 @@
                 <small>Куди вести користувача для цього бізнес-контексту.</small>
             </label>
             <label class="timeline-settings-field">
-                <span>Ресурсна модель</span>
+                <span>${display.mode === 'education' ? 'Рядки розкладу' : 'Ресурсна модель'}</span>
                 <select data-timeline-settings-display="resourceModel">
                     ${Object.entries(RESOURCE_MODEL_LABELS).map(([value, label]) => `<option value="${escapeHtml(value)}"${display.resourceModel === value ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
                 </select>
                 <small>У режимі парку вигляд аніматорів використовує графік змін. В інших режимах тип ресурсу визначає окремий каталог.</small>
             </label>
-            <label class="timeline-settings-field">
+            <label class="timeline-settings-field" ${display.mode === 'education' ? 'hidden' : ''}>
                 <span>Кухня парку</span>
                 <select data-timeline-settings-display="parkKitchenMode">
                     <option value="with_kitchen"${display.parkKitchenMode !== 'without_kitchen' ? ' selected' : ''}>З кухнею</option>
@@ -754,16 +754,16 @@
                 </select>
                 <small>Працює тільки для park timeline.</small>
             </label>
-            <label class="timeline-settings-field timeline-settings-field--switch">
-                <span>Room timeline</span>
+            <label class="timeline-settings-field timeline-settings-field--switch" ${display.mode === 'education' ? 'hidden' : ''}>
+                <span>${display.mode === 'education' ? 'Розклад за кабінетами' : 'Room timeline'}</span>
                 <span class="timeline-settings-switch">
                     <input type="checkbox" data-timeline-settings-display="roomTimelineEnabled" ${display.roomTimelineEnabled === false ? '' : 'checked'}>
                     <span aria-hidden="true"></span>
                 </span>
                 <small>Дозволяє перемикання кімнати/аніматори, якщо режим це підтримує.</small>
             </label>
-            <label class="timeline-settings-field">
-                <span>Default view</span>
+            <label class="timeline-settings-field" ${display.mode === 'education' ? 'hidden' : ''}>
+                <span>${display.mode === 'education' ? 'Початковий вигляд' : 'Default view'}</span>
                 <select data-timeline-settings-display="defaultTimelineView">
                     <option value="animators"${display.defaultTimelineView !== 'rooms' ? ' selected' : ''}>Аніматори</option>
                     <option value="rooms"${display.defaultTimelineView === 'rooms' ? ' selected' : ''}>Кімнати</option>
@@ -776,8 +776,8 @@
             </div>
             ${moduleRows}
             <div class="timeline-settings-system-card timeline-settings-field--wide">
-                <strong>Features</strong>
-                <small>Зберігаються в timelineFeatures без зміни бронювань.</small>
+                <strong>${display.mode === 'education' ? 'Можливості розкладу' : 'Features'}</strong>
+                <small>${display.mode === 'education' ? 'Доступні інструменти навчального центру.' : 'Зберігаються в timelineFeatures без зміни бронювань.'}</small>
             </div>
             ${featureRows}
         `;
@@ -796,17 +796,17 @@
         const updatedBy = state.visibilityMeta.updatedBy || state.displayMeta.updatedBy || 'невідомо';
         host.innerHTML = `
             <article class="timeline-settings-detail-card">
-                <small>${escapeHtml(item.id)}</small>
+                <small>${state.displaySettings.mode === 'education' ? 'Блок розкладу' : escapeHtml(item.id)}</small>
                 <h3>${escapeHtml(labelForBlock(item))}</h3>
-                <p>${escapeHtml(item.description || 'Візуальний блок таймлайну.')}</p>
+                <p>${escapeHtml(state.displaySettings.mode === 'education' ? 'Налаштуйте видимість і розташування цього блоку розкладу.' : item.description || 'Візуальний блок таймлайну.')}</p>
             </article>
             <article class="timeline-settings-detail-card">
                 <small>Як змінювати</small>
-                <p>${escapeHtml(item.howToUse || 'Змінюйте тільки візуальні параметри. Дані бронювань не змінюються.')}</p>
+                <p>${escapeHtml(state.displaySettings.mode === 'education' ? 'На вкладці «Візуал» оберіть видимість, порядок, відступи й акцент.' : item.howToUse || 'Змінюйте тільки візуальні параметри. Дані бронювань не змінюються.')}</p>
             </article>
             <article class="timeline-settings-detail-card">
                 <small>Вплив</small>
-                <p>${escapeHtml(item.impact || 'Впливає тільки на відображення активного timeline context.')}</p>
+                <p>${escapeHtml(state.displaySettings.mode === 'education' ? 'Змінює вигляд поточного розкладу.' : item.impact || 'Впливає тільки на відображення активного timeline context.')}</p>
             </article>
             <article class="timeline-settings-detail-card">
                 <small>Поточний стан</small>
@@ -863,6 +863,12 @@
     }
 
     function renderAll() {
+        const education = state.displaySettings.mode === 'education';
+        document.body.dataset.educationSettings = String(education);
+        document.querySelectorAll('[data-education-copy]').forEach(element => {
+            if (!Object.hasOwn(element.dataset, 'originalCopy')) element.dataset.originalCopy = element.textContent;
+            element.textContent = education ? element.dataset.educationCopy : element.dataset.originalCopy;
+        });
         renderContexts();
         renderBlocks();
         renderVisualEditor();

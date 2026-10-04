@@ -26,7 +26,7 @@ function isolatedDatabase() {
 }
 
 function utcDateAfter(days) {
-    const date = new Date();
+    const date = new Date('2026-10-03T00:00:00Z');
     date.setUTCHours(0, 0, 0, 0);
     date.setUTCDate(date.getUTCDate() + days);
     return date.toISOString().slice(0, 10);
@@ -62,6 +62,13 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
     let pool;
     let token;
     let suffix;
+    const teachers = new Map();
+    async function scopedTeacher(key, name = key) {
+        if (teachers.has(key)) return teachers.get(key);
+        const row = (await pool.query("INSERT INTO staff(name,department,position,is_active) VALUES ($1,'education','Викладач',true) RETURNING id",[name])).rows[0];
+        await pool.query("INSERT INTO education_teacher_memberships(business_context,staff_id) VALUES ('dar',$1)",[row.id]);
+        const id=String(row.id);teachers.set(key,id);return id;
+    }
 
     before(async () => {
         const testDb = isolatedDatabase();
@@ -93,8 +100,101 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         await pool?.end();
     });
 
+    test('fixed calendar series cross month/year and Kyiv DST without shifting wall-clock time', async () => {
+        const cases = [
+            { start: '2030-11-30', dates: ['2030-11-30','2030-12-01','2030-12-02'] },
+            { start: '2030-12-31', dates: ['2030-12-31','2031-01-01','2031-01-02'] },
+            { start: '2028-03-25', dates: ['2028-03-25','2028-03-26','2028-03-27'], hours: ['15','16','16'] },
+            { start: '2028-10-28', dates: ['2028-10-28','2028-10-29','2028-10-30'], hours: ['16','15','15'] }
+        ];
+        for (const item of cases) {
+            const created = await createBooking(token, { date: item.start, time: '15:00', duration: 45,
+                lineId: 'edu-cabinet-3', room: 'Кабінет 3', category: 'education', label: 'Подорож у світ чисел', skipNotification: true,
+                extraData: { educationLesson: { mode: 'education_lesson', title: 'Подорож у світ чисел', teacherId: await scopedTeacher(`calendar-${item.start}`, `Календарний викладач ${item.start}`),
+                    teacherName: `Календарний викладач ${item.start}`, seriesSize: 3, repeatEvery: 'daily' } } });
+            assert.equal(created.status, 200, JSON.stringify(created.body));
+            assert.deepEqual(created.body.bookings.map(row => row.date), item.dates);
+            const ids = created.body.bookings.map(row => row.id);
+            const sql = (await pool.query('SELECT date::text AS date,time::text AS time,duration FROM bookings WHERE id=ANY($1::text[]) ORDER BY date', [ids])).rows;
+            assert.deepEqual(sql.map(row => row.date), item.dates); assert.ok(sql.every(row => row.time === '15:00' && row.duration === 45));
+            if (item.hours) assert.deepEqual(item.dates.map(date => new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', hourCycle: 'h23' }).format(new Date(`${date}T13:00:00Z`))), item.hours);
+        }
+    });
+
+    test('controlled DB barriers serialize create/create, create/edit and create/series atomically', async () => {
+        for (const [index, kind] of ['create','edit','series'].entries()) {
+            const date = `2032-01-${String(index + 10).padStart(2, '0')}`;
+            const teacherId = await scopedTeacher(`controlled-${kind}`);
+            const lesson = (cabinet, time = '12:00') => ({ date, time, duration: 45, lineId: `edu-cabinet-${cabinet}`, room: `Кабінет ${cabinet}`,
+                category: 'education', label: 'Досліджуємо механізми', skipNotification: true,
+                extraData: { educationLesson: { mode: 'education_lesson', title: 'Досліджуємо механізми', teacherId, teacherName: teacherId } } });
+            let original;
+            if (kind === 'edit') { original = await request('POST', '/api/bookings?businessContext=dar', token, lesson(2, '10:00')); assert.equal(original.status, 200); }
+            const holder = await pool.connect(); let pending;
+            try {
+                await holder.query('BEGIN');
+                await lockBookingConflictResources(holder, [lesson(1), lesson(2)], 'dar');
+                const first = request('POST', '/api/bookings?businessContext=dar', token, lesson(1));
+                const second = kind === 'edit'
+                    ? request('PUT', `/api/bookings/${original.body.booking.id}?businessContext=dar`, token, { time: '12:00' })
+                    : kind === 'series' ? createBooking(token, { ...lesson(2), extraData: { educationLesson: { ...lesson(2).extraData.educationLesson, seriesSize: 2, repeatEvery: 'daily' } } })
+                    : request('POST', '/api/bookings?businessContext=dar', token, lesson(2));
+                pending = Promise.all([first, second]);
+                const deadline = Date.now() + 10000; let blocked = 0;
+                while (Date.now() < deadline) {
+                    blocked = (await pool.query("SELECT count(*)::int n FROM pg_stat_activity WHERE datname=current_database() AND wait_event='advisory' AND pid<>pg_backend_pid()")).rows[0].n;
+                    if (blocked >= 2) break;
+                    await new Promise(resolve => setImmediate(resolve));
+                }
+                assert.ok(blocked >= 2, `${kind}: both real Express transactions reached the controlled lock`);
+                await holder.query('ROLLBACK'); const responses = await pending;
+                assert.deepEqual(responses.map(row => row.status).sort(), [200,409]);
+                const persisted = (await pool.query("SELECT date::text AS date,time::text AS time FROM bookings WHERE business_context='dar' AND extra_data->'educationLesson'->>'teacherId'=$1", [teacherId])).rows;
+                assert.equal(persisted.filter(row => row.date === date && row.time === '12:00').length, 1);
+                assert.equal(persisted.filter(row => row.date === addDays(date, 1)).length, kind === 'series' && responses[1].status === 200 ? 1 : 0);
+            } finally { await holder.query('ROLLBACK'); holder.release(); await pending?.catch(() => {}); }
+        }
+    });
+
+    test('invalid education duration is rejected for create, edit and series before SQL writes', async () => {
+        const lesson = { date: '2033-01-10', time: '12:00', duration: 45, lineId: 'edu-cabinet-1', room: 'Кабінет 1', category: 'education', label: 'Читаємо казку', skipNotification: true,
+            extraData: { educationLesson: { mode: 'education_lesson', title: 'Читаємо казку', teacherId: await scopedTeacher('duration-validation') } } };
+        const created = await request('POST', '/api/bookings?businessContext=dar', token, lesson); assert.equal(created.status, 200);
+        const count = (await pool.query('SELECT count(*)::int n FROM bookings')).rows[0].n;
+        for (const duration of [null,'',0,-1,1.5,1441,'45oops']) {
+            assert.equal((await request('POST', '/api/bookings?businessContext=dar', token, { ...lesson, duration })).status, 400);
+            assert.equal((await request('PUT', `/api/bookings/${created.body.booking.id}?businessContext=dar`, token, { duration })).status, 400);
+            assert.equal((await createBooking(token, { ...lesson, duration, extraData: { educationLesson: { ...lesson.extraData.educationLesson, seriesSize: 2 } } })).status, 400);
+            assert.equal((await pool.query('SELECT duration FROM bookings WHERE id=$1', [created.body.booking.id])).rows[0].duration, 45);
+            assert.equal((await pool.query('SELECT count(*)::int n FROM bookings')).rows[0].n, count);
+        }
+    });
+
+    test('same teacher in different businesses has independent HTTP/SQL bookings', async () => {
+        const configured = await request('PUT', '/api/business/cabinet?businessContext=maysternya_doli', token, { businessType: 'education', timelineMode: 'education', resourceModel: 'cabinet' });
+        assert.equal(configured.status, 200, 'Explicit local secondary-business fixture');
+        await pool.query("INSERT INTO settings(key,value) VALUES ('timeline_display:maysternya_doli',$1) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value", [JSON.stringify({ mode: 'education' })]);
+        await initializeTimelineResources(pool, 'maysternya_doli', { types: ['cabinet'] });
+        // This context has no default cabinet template; explicit synthetic prerequisite, not a failed-write repair.
+        await pool.query("INSERT INTO timeline_resources(business_context,resource_id,type,name,is_active,capacity) VALUES ('maysternya_doli','ready04-second-cabinet','cabinet','Мовний кабінет «Обрій»',true,10) ON CONFLICT(business_context,resource_id) DO NOTHING");
+        const sharedTeacher = await scopedTeacher('same-context-teacher','Олена Ковальчук');
+        await pool.query("INSERT INTO education_teacher_memberships(business_context,staff_id) VALUES ('maysternya_doli',$1)",[sharedTeacher]);
+        const booking = { date: '2034-01-10', time: '12:00', duration: 45, lineId: 'edu-cabinet-1', room: 'Кабінет 1', label: 'Математика навколо нас', skipNotification: true,
+            extraData: { educationLesson: { mode: 'education_lesson', teacherId: sharedTeacher, teacherName: 'Олена Ковальчук', title: 'Математика навколо нас' } } };
+        const directory = await request('GET', '/api/timeline/resources?businessContext=maysternya_doli&type=cabinet', token);
+        assert.equal(directory.status, 200); const cabinet = directory.body.resources.find(row => row.isActive !== false);
+        assert.ok(cabinet, 'Secondary context requires its own visible cabinet fixture');
+        const responses = await Promise.all([
+            request('POST', '/api/bookings?businessContext=dar', token, booking),
+            request('POST', '/api/bookings?businessContext=maysternya_doli', token, { ...booking, lineId: cabinet.resourceId, room: cabinet.name })
+        ]);
+        assert.deepEqual(responses.map(row => row.status), [200,200], JSON.stringify(responses));
+        const contexts = (await pool.query("SELECT business_context FROM bookings WHERE extra_data->'educationLesson'->>'teacherId'=$1 ORDER BY business_context",[sharedTeacher])).rows.map(row => row.business_context);
+        assert.deepEqual(contexts, ['dar','maysternya_doli']);
+    });
+
     test('concurrent lessons for one teacher in different cabinets have one winner', async () => {
-        const teacherId = `edu-race-teacher-${suffix}`;
+        const teacherId = await scopedTeacher(`edu-race-teacher-${suffix}`,`Race teacher ${suffix}`);
         const teacherName = `Race teacher ${suffix}`;
         for (let day = 0; day < 6; day++) {
             const date = utcDateAfter(300 + day);
@@ -124,7 +224,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
     test('teacher conflict also serializes a create against a time edit', async () => {
         const date = utcDateAfter(320);
-        const teacherId = `edu-edit-race-${suffix}`;
+        const teacherId = await scopedTeacher(`edu-edit-race-${suffix}`,`Edit race teacher ${suffix}`);
         const lesson = (cabinet, time) => ({
             date, time, duration: 45,
             lineId: `edu-cabinet-${cabinet}`, room: `Кабінет ${cabinet}`,
@@ -157,8 +257,8 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
     test('editing the teacher acquires the new teacher conflict lock', async () => {
         const date = utcDateAfter(325);
-        const oldTeacherId = `edu-old-teacher-${suffix}`;
-        const newTeacherId = `edu-new-teacher-${suffix}`;
+        const oldTeacherId = await scopedTeacher(`edu-old-teacher-${suffix}`);
+        const newTeacherId = await scopedTeacher(`edu-new-teacher-${suffix}`);
         const lesson = (cabinet, time, teacherId) => ({
             date, time, duration: 45,
             lineId: `edu-cabinet-${cabinet}`, room: `Кабінет ${cabinet}`,
@@ -191,7 +291,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
     test('teacher conflict keeps a racing series atomic', async () => {
         const date = utcDateAfter(330);
-        const teacherId = `edu-series-race-${suffix}`;
+        const teacherId = await scopedTeacher(`edu-series-race-${suffix}`,`Series race teacher ${suffix}`);
         const lesson = (cabinet, seriesSize) => ({
             date, time: '13:00', duration: 45,
             lineId: `edu-cabinet-${cabinet}`, room: `Кабінет ${cabinet}`,
@@ -222,8 +322,8 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
     test('teacher IDs and names respect adjacent slots and other teachers', async () => {
         const date = utcDateAfter(340);
-        const teacherId = `edu-alias-${suffix}`;
         const teacherName = `Alias teacher ${suffix}`;
+        const teacherId = await scopedTeacher(`edu-alias-${suffix}`,teacherName);
         const lesson = (cabinet, time, id, name) => ({
             date, time, duration: 45,
             lineId: `edu-cabinet-${cabinet}`, room: `Кабінет ${cabinet}`,
@@ -239,11 +339,14 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
                 lesson(cabinet, time, id, name));
 
         assert.equal((await create('dar', 1, '09:00', teacherId, teacherName)).status, 200);
-        assert.equal((await create('dar', 2, '09:00', '', teacherName)).status, 409,
-            'a legacy name-only lesson must collide with the named ID-backed lesson');
+        assert.equal((await create('dar', 2, '09:00', '', teacherName)).status, 400,
+            'new assignments require an eligible directory ID');
+        // Explicit legacy fixture: persisted name-only history still participates in conflicts.
+        await pool.query("UPDATE bookings SET extra_data=jsonb_set(extra_data,'{educationLesson,teacherId}','\"\"'::jsonb) WHERE business_context='dar' AND date=$1 AND time='09:00' AND extra_data->'educationLesson'->>'teacherId'=$2",[date,teacherId]);
+        assert.equal((await create('dar', 2, '09:00', teacherId, teacherName)).status,409,'Existing name-only lesson still conflicts');
         assert.equal((await create('dar', 2, '09:00', teacherId, 'Another label')).status, 409,
             'teacher ID must collide even when the name changes');
-        assert.equal((await create('dar', 2, '09:00', `other-${suffix}`, 'Other teacher')).status, 200,
+        assert.equal((await create('dar', 2, '09:00', await scopedTeacher(`other-${suffix}`,'Other teacher'), 'Other teacher')).status, 200,
             'another teacher may teach concurrently in another cabinet');
         assert.equal((await create('dar', 3, '09:45', teacherId, teacherName)).status, 200,
             'adjacent time does not overlap');
@@ -291,7 +394,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
                 educationLesson: {
                     mode: 'education_lesson',
                     title,
-                    teacherId: `edu-single-teacher-${suffix}`,
+                    teacherId: await scopedTeacher(`edu-single-teacher-${suffix}`,`Викладач ${suffix}`),
                     teacherName: `Викладач ${suffix}`
                 }
             }
@@ -325,7 +428,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         );
         assert.equal(editedDetail.status, 200, JSON.stringify(editedDetail.body));
         assert.equal(editedDetail.body.booking.notes, `Edited EDU ${suffix}`);
-        assert.equal(editedDetail.body.booking.extraData.educationLesson.teacherId, `edu-single-teacher-${suffix}`);
+        assert.equal(editedDetail.body.booking.extraData.educationLesson.teacherId, await scopedTeacher(`edu-single-teacher-${suffix}`));
     });
 
     test('weekly series creates occurrences, preserves a single edit, opens details, and cancels future entries', async () => {
@@ -344,7 +447,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
                 educationLesson: {
                     mode: 'education_lesson',
                     title: label,
-                    teacherId: `edu-teacher-${suffix}`,
+                    teacherId: await scopedTeacher(`edu-teacher-${suffix}`),
                     teacherName: `Викладач ${suffix}`,
                     seriesSize: 3,
                     repeatEvery: 'weekly'
@@ -429,7 +532,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
                     educationLesson: {
                         mode: 'education_lesson',
                         title,
-                        teacherId: `edu-${schedule.repeatEvery}-teacher-${suffix}`,
+                        teacherId: await scopedTeacher(`edu-${schedule.repeatEvery}-teacher-${suffix}`),
                         teacherName: `Викладач ${schedule.repeatEvery} ${suffix}`,
                         seriesSize: 3,
                         repeatEvery: schedule.repeatEvery
@@ -451,7 +554,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         const label = `EDU rollback ${suffix}`;
         const startDate = utcDateAfter(12);
         const conflictDate = addDays(startDate, 7);
-        const teacherId = `edu-conflict-teacher-${suffix}`;
+        const teacherId = await scopedTeacher(`edu-conflict-teacher-${suffix}`);
 
         const conflict = await request('POST', '/api/bookings?businessContext=dar', token, {
             date: conflictDate,
@@ -533,7 +636,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
                 educationLesson: {
                     mode: 'education_lesson',
                     title: 'Existing test lesson',
-                    teacherId: `edu-other-teacher-${suffix}`,
+                    teacherId: await scopedTeacher(`edu-other-teacher-${suffix}`),
                     teacherName: `Інший викладач ${suffix}`
                 }
             }
@@ -555,7 +658,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
                 educationLesson: {
                     mode: 'education_lesson',
                     title: label,
-                    teacherId: `edu-new-teacher-${suffix}`,
+                    teacherId: await scopedTeacher(`edu-new-teacher-${suffix}`),
                     teacherName: `Новий викладач ${suffix}`,
                     seriesSize: 2,
                     repeatEvery: 'weekly'
@@ -632,7 +735,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
             lineId: 'edu-cabinet-1', room: 'Кабінет 1', label: 'Заняття', category: 'education',
             skipNotification: true,
             extraData: { educationLesson: { mode: 'education_lesson', title: `EDU group series ${suffix}`,
-                groupId, groupName: `EDU group ${suffix}`, teacherId: `edu-group-teacher-${suffix}`,
+                groupId, groupName: `EDU group ${suffix}`, teacherId: await scopedTeacher(`edu-group-teacher-${suffix}`),
                 teacherName: `Викладач ${suffix}`, seriesSize: 2, repeatEvery: 'weekly' } }
         });
         assert.equal(series.status, 200, JSON.stringify(series.body));
@@ -653,7 +756,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         assert.equal(changedGroup.status, 200, JSON.stringify(changedGroup.body));
         const changedDetail = await request('GET', `/api/bookings/detail/${firstId}?businessContext=dar`, token);
         assert.equal(Number(changedDetail.body.booking.extraData.educationLesson.groupId), Number(secondGroup.body.group.id));
-        assert.equal(changedDetail.body.booking.extraData.educationLesson.teacherId, `edu-group-teacher-${suffix}`);
+        assert.equal(changedDetail.body.booking.extraData.educationLesson.teacherId, await scopedTeacher(`edu-group-teacher-${suffix}`));
         assert.equal(changedDetail.body.booking.time, '09:10');
         const foreignSeries = await createBooking(token, {
             date: utcDateAfter(120), time: '09:10', duration: 40,

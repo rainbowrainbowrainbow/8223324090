@@ -67,7 +67,8 @@ async function waitFor(predicate, message) {
         };
         const assertOneSaved = async (name, expectedPostCount) => {
             await waitFor(() => countRows(name).then(count => count === 1), 'Expected one saved SQL row');
-            await page.waitForTimeout(700);
+            await page.waitForFunction(() => !document.getElementById('educationGroupForm').hasAttribute('aria-busy')
+                && document.getElementById('educationGroupsStatus').textContent === 'Групу збережено.');
             assert.equal(await countRows(name), 1, 'one form action must create one SQL row');
             assert.equal(expectedPostCount(), 1, 'one form action must send one POST');
             const listed = await api('GET', '/api/education/groups?businessContext=dar&includeArchived=true', token);
@@ -78,27 +79,35 @@ async function waitFor(predicate, message) {
         const doubleName = `EDU double ${crypto.randomUUID().slice(0, 8)}`;
         await beginNew(doubleName);
         let doublePosts = 0;
+        let releaseDouble;
+        const doubleBarrier = new Promise(resolve => { releaseDouble = resolve; });
         await page.route(postPath, async route => {
             if (route.request().method() !== 'POST') return route.continue();
             doublePosts += 1;
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await doubleBarrier;
             await route.continue();
         });
         await submit.dblclick({ delay: 60 });
+        await waitFor(async () => doublePosts > 0, 'Double-click POST must reach barrier');
+        releaseDouble();
         await assertOneSaved(doubleName, () => doublePosts);
         await page.unroute(postPath);
 
         const enterName = `EDU enter ${crypto.randomUUID().slice(0, 8)}`;
         await beginNew(enterName);
         let enterPosts = 0;
+        let releaseEnter;
+        const enterBarrier = new Promise(resolve => { releaseEnter = resolve; });
         await page.route(postPath, async route => {
             if (route.request().method() !== 'POST') return route.continue();
             enterPosts += 1;
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await enterBarrier;
             await route.continue();
         });
         await nameField.press('Enter');
         await nameField.press('Enter');
+        await waitFor(async () => enterPosts > 0, 'Enter POST must reach barrier');
+        releaseEnter();
         await assertOneSaved(enterName, () => enterPosts);
         await page.unroute(postPath);
 
@@ -109,7 +118,6 @@ async function waitFor(predicate, message) {
             await page.route(postPath, async route => {
                 if (route.request().method() !== 'POST') return route.continue();
                 failedPosts += 1;
-                await new Promise(resolve => setTimeout(resolve, 120));
                 await route.fulfill({ status: code, json: { error: `Synthetic ${code}` } });
             });
             await submit.click();

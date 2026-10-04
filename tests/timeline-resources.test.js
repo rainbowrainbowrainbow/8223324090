@@ -2545,20 +2545,27 @@ function createTimelineAddActionHarness(options = {}) {
         context: 'event_genix'
     };
     const addLineButton = { disabled: false };
+    const requestIds = options.requestIds || ['11111111-1111-4111-8111-111111111111'];
+    const storage = options.storage || new Map();
     const context = vm.createContext({
         console,
         Date,
         document: { getElementById: id => id === 'addLineBtn' ? addLineButton : null },
         AppState: { selectedDate: new Date('2026-10-02T12:00:00Z') },
         window: {
-            crypto: { randomUUID: () => '11111111-1111-4111-8111-111111111111' },
+            crypto: { randomUUID: () => requestIds.shift() || '99999999-9999-4999-8999-999999999999' },
+            sessionStorage: {
+                getItem: key => storage.get(key) || null,
+                setItem: (key, value) => storage.set(key, value),
+                removeItem: key => storage.delete(key)
+            },
             invalidateTimelineDateCache: (date, settings) => events.cacheInvalidations.push({ date, settings }),
             TimelineBusinessContext: {
                 current: () => ({ key: options.context || 'event_genix' }),
                 presentation: () => presentation
             }
         },
-        formatDate: () => '2026-10-02',
+        formatDate: () => options.date || '2026-10-02',
         isRoomTimelineLineEditingBlocked: () => false,
         timelineResourceTypeForMode: (_mode, settings) => settings.resourceModel,
         promptModal: async (message, config) => {
@@ -2578,7 +2585,9 @@ function createTimelineAddActionHarness(options = {}) {
         cleanupPendingPoll() {},
         apiAddManualAnimatorLine: async (date, requestId) => {
             events.manualAdds.push({ date, requestId });
-            return options.manualAddResult || { success: true, created: true };
+            return typeof options.manualAddResult === 'function'
+                ? options.manualAddResult(date, requestId)
+                : options.manualAddResult || { success: true, created: true };
         },
         apiTelegramAskAnimator: async () => {
             events.telegram += 1;
@@ -2593,7 +2602,7 @@ function createTimelineAddActionHarness(options = {}) {
         sourceBlock('async function addTimelineResource(type,', 'function normalizeTimelineResourceColorInput(')
     ];
     vm.runInContext(blocks.join('\n'), context);
-    return { context, events, addLineButton };
+    return { context, events, addLineButton, storage };
 }
 
 for (const resourceModel of ['animator', 'specialist', 'online']) {
@@ -2697,6 +2706,51 @@ test('Park manual line save failure leaves the button available for a retry', as
     assert.equal(park.events.cacheInvalidations.length, 0);
     assert.equal(park.addLineButton.disabled, false);
     assert.deepEqual(park.events.notices.map(notice => notice.type), ['error', 'error']);
+});
+
+test('lost manual-line response reuses the ID; confirmed replay makes the next click distinct', async () => {
+    const options = {
+        mode: 'park', resourceModel: 'auto',
+        requestIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
+        manualAddResult: (() => {
+            let attempts = 0;
+            return () => (++attempts === 1
+                ? { success: false, offline: true, error: 'response lost' }
+                : { success: true, created: attempts > 2 });
+        })()
+    };
+    const park = createTimelineAddActionHarness(options);
+    await park.context.addNewLine();
+    assert.equal(park.storage.size, 1);
+    await park.context.addNewLine();
+    assert.equal(park.events.manualAdds[1].requestId, park.events.manualAdds[0].requestId);
+    assert.equal(park.storage.size, 0);
+    await park.context.addNewLine();
+    assert.equal(park.events.manualAdds[2].requestId, '22222222-2222-4222-8222-222222222222');
+});
+
+test('uncertain manual-line operation survives reload and stays scoped to business and date', async () => {
+    const storage = new Map();
+    const options = {
+        mode: 'park', resourceModel: 'auto', storage,
+        requestIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222',
+            '33333333-3333-4333-8333-333333333333'],
+        manualAddResult: { success: false, offline: true, error: 'response lost' }
+    };
+    const first = createTimelineAddActionHarness(options);
+    await first.context.addNewLine();
+    options.date = '2026-10-03';
+    await first.context.addNewLine();
+    options.date = '2026-10-02';
+    options.context = 'dar';
+    await first.context.addManualAnimatorLineDirectly('2026-10-02');
+    assert.equal(new Set(first.events.manualAdds.map(add => add.requestId)).size, 3);
+    options.context = 'event_genix';
+    options.requestIds = ['44444444-4444-4444-8444-444444444444'];
+    const reloaded = createTimelineAddActionHarness(options);
+    await reloaded.context.addNewLine();
+    assert.equal(reloaded.events.manualAdds[0].requestId, first.events.manualAdds[0].requestId);
+    assert.equal(storage.size, 3);
 });
 
 test('timeline add button saves the requested cabinet capacity through the resource API', async () => {

@@ -249,6 +249,41 @@ test('actual booking and timeline HTTP routes preserve membership context with P
                 { requestId: '66666666-6666-4666-8666-666666666666' })).status, 403);
         });
 
+        await t.test('whole-roster save cannot erase a concurrent manual addition', async () => {
+            const actor = await reset({ parkRole: 'director' });
+            const date = '2026-09-12';
+            const manual = `/api/lines/${date}/manual?businessContext=event_genix&timelineView=animators`;
+            const replace = `/api/lines/${date}?businessContext=event_genix`;
+            const key1 = '77777777-7777-4777-8777-777777777777';
+            const key2 = '88888888-8888-4888-8888-888888888888';
+            const first = await request(actor, 'POST', manual, { requestId: key1 });
+            assert.equal(first.status, 201);
+            const stale = await request(actor, 'POST', replace, [], { 'X-Timeline-Manual-Line-Base': '[]' });
+            assert.equal(stale.status, 409);
+            assert.equal(stale.body.code, 'stale_manual_line_roster');
+            assert.equal((await request(actor, 'POST', replace, [])).status, 409);
+            assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM lines_by_date WHERE line_id = $1',
+                [first.body.line.id])).rows[0].count, 1);
+
+            const [append, save] = await Promise.all([
+                request(actor, 'POST', manual, { requestId: key2 }),
+                request(actor, 'POST', replace, [], { 'X-Timeline-Manual-Line-Base': JSON.stringify([first.body.line.id]) })
+            ]);
+            assert.equal(append.status, 201);
+            assert.ok([200, 409].includes(save.status));
+            const persisted = (await pool.query('SELECT line_id FROM lines_by_date WHERE business_context = $1 AND date = $2',
+                ['event_genix', date])).rows.map(row => row.line_id);
+            assert.ok(persisted.includes(append.body.line.id));
+            const intentional = await request(actor, 'POST', replace, [], {
+                'X-Timeline-Manual-Line-Base': JSON.stringify(persisted)
+            });
+            assert.equal(intentional.status, 200);
+            assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM lines_by_date WHERE business_context = $1 AND date = $2',
+                ['event_genix', date])).rows[0].count, 0);
+            assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM lines_by_date WHERE business_context = $1',
+                ['dar'])).rows[0].count, 0);
+        });
+
         await t.test('manual animator append denies non-manager and explicit create-booking denial', async () => {
             const actor = await reset({ parkRole: 'animator' });
             const route = '/api/lines/2026-09-12/manual?businessContext=event_genix&timelineView=animators';

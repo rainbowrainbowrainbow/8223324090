@@ -12,7 +12,7 @@ const { broadcastLineEvent } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
 const { resolveCapability } = require('../services/accountAccessPolicy');
-const { appendManualAnimatorLine } = require('../services/manualAnimatorLine');
+const { appendManualAnimatorLine, DIRECT_MANUAL_LINE_ID_PATTERN } = require('../services/manualAnimatorLine');
 const {
     DEFAULT_TIMELINE_CONTEXT,
     timelineContextFromRequest,
@@ -365,6 +365,35 @@ router.post('/:date', async (req, res) => {
         }
 
         await client.query('BEGIN');
+        if (businessContext === DEFAULT_TIMELINE_CONTEXT && display.mode === 'park') {
+            // Coordinate with single-line appends, then compare the roster the
+            // caller saw so a stale replacement cannot erase a new manual row.
+            await client.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+                [`timeline_manual_animator:${businessContext}`, date]);
+            const baseHeader = req.get('X-Timeline-Manual-Line-Base');
+            let baseIds;
+            try {
+                baseIds = baseHeader === undefined ? [] : JSON.parse(baseHeader);
+                if (!Array.isArray(baseIds) || baseIds.length > 500
+                    || baseIds.some(id => typeof id !== 'string' || !DIRECT_MANUAL_LINE_ID_PATTERN.test(id))) {
+                    throw new Error('Invalid manual line base');
+                }
+            } catch (_) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, code: 'invalid_manual_line_base', error: 'Invalid manual line base' });
+            }
+            const current = await client.query(
+                `SELECT line_id FROM lines_by_date WHERE date = $1 AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2`,
+                [date, businessContext]
+            );
+            const currentIds = new Set(current.rows.map(row => row.line_id).filter(id => DIRECT_MANUAL_LINE_ID_PATTERN.test(id)));
+            const expectedIds = new Set(baseIds);
+            if (currentIds.size !== expectedIds.size || [...currentIds].some(id => !expectedIds.has(id))) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, code: 'stale_manual_line_roster',
+                    error: 'Animator lines changed. Reload the timeline before saving.' });
+            }
+        }
         await client.query(
             `DELETE FROM lines_by_date WHERE date = $1 AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2`,
             [date, businessContext]

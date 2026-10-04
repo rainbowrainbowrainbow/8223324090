@@ -5,6 +5,7 @@ const { getAnimatorTimelineLines } = require('./booking');
 const { DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
 
 const REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DIRECT_MANUAL_LINE_ID_PATTERN = /^manual_animator_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MANUAL_ANIMATOR_COLORS = Object.freeze([
     '#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'
 ]);
@@ -69,4 +70,4 @@ async function appendManualAnimatorLine(pool, date, requestId, options = {}) {
     }
 }
 
-module.exports = { appendManualAnimatorLine, nextManualAnimatorName, REQUEST_ID_PATTERN };
+module.exports = { appendManualAnimatorLine, nextManualAnimatorName, REQUEST_ID_PATTERN, DIRECT_MANUAL_LINE_ID_PATTERN };

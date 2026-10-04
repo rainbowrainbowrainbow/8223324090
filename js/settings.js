@@ -366,7 +366,7 @@ async function addAnimatorLineLocallyAfterTelegramFallback(dateStr, note, result
     const nextLine = getNextTimelineAnimatorLine(lines, dateStr);
     if (note) nextLine.note = note;
 
-    const saved = await saveLinesForDate(AppState.selectedDate, [...lines, nextLine]);
+    const saved = await saveLinesForDate(AppState.selectedDate, [...lines, nextLine], lines);
     if (!saved) {
         showNotification('Telegram недоступний, і локально аніматора теж не вдалося додати.', 'error');
         return false;
@@ -378,6 +378,29 @@ async function addAnimatorLineLocallyAfterTelegramFallback(dateStr, note, result
 }
 
 let _manualAnimatorLineAddPending = false;
+const _manualAnimatorLineRequestIds = new Map();
+
+function manualAnimatorLineRequestKey(dateStr) {
+    const businessContext = window.TimelineBusinessContext?.current?.()?.key || 'event_genix';
+    return `timeline:manual-animator-add:${businessContext}:${dateStr}`;
+}
+
+function manualAnimatorLineRequestId(key) {
+    let stored = _manualAnimatorLineRequestIds.get(key);
+    try { stored = window.sessionStorage?.getItem(key) || stored; } catch (_) { /* in-memory fallback */ }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stored || '')) {
+        stored = window.crypto?.randomUUID?.();
+    }
+    if (!stored) throw new Error('Cannot create a manual line request ID');
+    _manualAnimatorLineRequestIds.set(key, stored);
+    try { window.sessionStorage?.setItem(key, stored); } catch (_) { /* in-memory fallback */ }
+    return stored;
+}
+
+function clearManualAnimatorLineRequestId(key) {
+    _manualAnimatorLineRequestIds.delete(key);
+    try { window.sessionStorage?.removeItem(key); } catch (_) { /* in-memory fallback */ }
+}
 
 async function addManualAnimatorLineDirectly(dateStr) {
     if (_manualAnimatorLineAddPending) return false;
@@ -385,8 +408,10 @@ async function addManualAnimatorLineDirectly(dateStr) {
     const button = document.getElementById('addLineBtn');
     if (button) button.disabled = true;
     try {
-        const requestId = window.crypto?.randomUUID?.();
+        const key = manualAnimatorLineRequestKey(dateStr);
+        const requestId = manualAnimatorLineRequestId(key);
         const result = await apiAddManualAnimatorLine(dateStr, requestId);
+        if (result?.success || (result?.status && !result?.offline)) clearManualAnimatorLineRequestId(key);
         if (!result?.success) {
             showNotification(result?.error || 'Не вдалося додати аніматора. Спробуйте ще раз.', 'error');
             return false;
@@ -444,7 +469,7 @@ async function addNewLine() {
             color: '#0EA586',
             fromSheet: false
         };
-        const saved = await saveLinesForDate(dateStr, [...lines, line]);
+        const saved = await saveLinesForDate(dateStr, [...lines, line], lines);
         if (!saved) {
             showNotification('Не вдалося додати лінію Майстерні долі', 'error');
             return;
@@ -662,7 +687,8 @@ async function handleEditLine(e) {
         }
         lines[index].name = newName;
         lines[index].color = document.getElementById('editLineColor')?.value || lines[index].color;
-        await saveLinesForDate(AppState.selectedDate, lines);
+        const saved = await saveLinesForDate(AppState.selectedDate, lines, lines);
+        if (!saved) return;
 
         closeAllModals();
         await renderTimeline();
@@ -687,7 +713,8 @@ async function deleteLine() {
     if (!confirmed) return;
 
     const newLines = lines.filter(l => l.id !== lineId);
-    await saveLinesForDate(AppState.selectedDate, newLines);
+    const saved = await saveLinesForDate(AppState.selectedDate, newLines, lines);
+    if (!saved) return;
 
     closeAllModals();
     await renderTimeline();

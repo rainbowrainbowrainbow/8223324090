@@ -3199,7 +3199,7 @@ async function apiGetLines(date, options = {}) {
     }
 }
 
-async function apiSaveLines(date, lines) {
+async function apiSaveLines(date, lines, baseLines = []) {
     try {
         if (typeof window !== 'undefined' && window.TimelineView?.isRooms?.()) {
             return {
@@ -3208,13 +3208,19 @@ async function apiSaveLines(date, lines) {
                 code: 'room_timeline_legacy_line_save_blocked'
             };
         }
+        const headers = getTimelineAuthHeaders();
+        headers['X-Timeline-Manual-Line-Base'] = JSON.stringify((baseLines || []).map(line => line.id)
+            .filter(id => /^manual_animator_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)));
         const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrlWithView(`/lines/${date}`)}`, {
             method: 'POST',
-            headers: getTimelineAuthHeaders(),
+            headers,
             body: JSON.stringify((lines || []).map(line => timelineApiPayload(line)))
         });
         if (handleAuthError(response)) return { success: false };
-        if (!response.ok) throw new Error('API error');
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            return { success: false, status: response.status, code: payload.code, error: payload.error || 'API error' };
+        }
         return await response.json();
     } catch (err) {
         console.error('API saveLines error:', err);

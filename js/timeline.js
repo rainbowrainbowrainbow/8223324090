@@ -842,7 +842,7 @@ async function getLinesForDate(date, options = {}) {
     return lines;
 }
 
-async function saveLinesForDate(date, lines) {
+async function saveLinesForDate(date, lines, baseLines = []) {
     const dateStr = timelineDateKey(date);
     if (typeof isRoomTimelineView === 'function' && isRoomTimelineView()) {
         console.warn('[Timeline] Blocked legacy line save from room timeline view', { date: dateStr });
@@ -852,10 +852,12 @@ async function saveLinesForDate(date, lines) {
         return false;
     }
     // v5.2: Оновлювати кеш ТІЛЬКИ після успішного збереження на сервер
-    const result = await apiSaveLines(dateStr, lines);
+    const result = await apiSaveLines(dateStr, lines, baseLines);
     if (result && result.success === false) {
         console.error('[saveLinesForDate] API save failed, NOT updating cache');
-        showNotification('Помилка збереження ліній. Спробуйте ще раз.', 'error');
+        showNotification(result.code === 'stale_manual_line_roster'
+            ? 'Лінії змінилися. Оновіть таймлайн перед збереженням.'
+            : 'Помилка збереження ліній. Спробуйте ще раз.', 'error');
         return false;
     }
     setTimelineCacheEntry(AppState.cachedLines, dateStr, lines);

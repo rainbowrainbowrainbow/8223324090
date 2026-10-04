@@ -402,6 +402,13 @@ function clearManualAnimatorLineRequestId(key) {
     try { window.sessionStorage?.removeItem(key); } catch (_) { /* in-memory fallback */ }
 }
 
+function manualAnimatorLineResultIsDefinitive(result) {
+    if (result?.success === true) return true;
+    // A 5xx or timeout may arrive after COMMIT. Reuse the ID until a replay
+    // confirms the result; only explicit client rejections prove no insert.
+    return !result?.offline && [400, 401, 403, 404, 409, 422].includes(result?.status);
+}
+
 async function addManualAnimatorLineDirectly(dateStr) {
     if (_manualAnimatorLineAddPending) return false;
     _manualAnimatorLineAddPending = true;
@@ -411,7 +418,7 @@ async function addManualAnimatorLineDirectly(dateStr) {
         const key = manualAnimatorLineRequestKey(dateStr);
         const requestId = manualAnimatorLineRequestId(key);
         const result = await apiAddManualAnimatorLine(dateStr, requestId);
-        if (result?.success || (result?.status && !result?.offline)) clearManualAnimatorLineRequestId(key);
+        if (manualAnimatorLineResultIsDefinitive(result)) clearManualAnimatorLineRequestId(key);
         if (!result?.success) {
             showNotification(result?.error || 'Не вдалося додати аніматора. Спробуйте ще раз.', 'error');
             return false;

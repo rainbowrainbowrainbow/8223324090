@@ -4,9 +4,10 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { appendManualAnimatorLine, nextManualAnimatorName } = require('../services/manualAnimatorLine');
 
-function fakePool(initialRows = []) {
+function fakePool(initialRows = [], options = {}) {
     const rows = initialRows.map(row => ({ ...row }));
     let pendingLock = Promise.resolve();
+    let failCommitAfterApply = Boolean(options.failCommitAfterApply);
     return {
         rows,
         async connect() {
@@ -22,6 +23,10 @@ function fakePool(initialRows = []) {
                     }
                     if (sql === 'COMMIT' || sql === 'ROLLBACK') {
                         unlock?.();
+                        if (sql === 'COMMIT' && failCommitAfterApply) {
+                            failCommitAfterApply = false;
+                            throw new Error('COMMIT response lost');
+                        }
                         return { rows: [] };
                     }
                     if (sql.startsWith('SELECT line_id, name, color FROM lines_by_date')) {
@@ -90,6 +95,17 @@ test('same request ID in concurrent requests creates only one row', async () => 
         appendManualAnimatorLine(pool, date, key1, options)
     ]);
     assert.deepEqual(outcomes.map(outcome => outcome.created).sort(), [false, true]);
+    assert.equal(pool.rows.length, 1);
+});
+
+test('retry after an ambiguous COMMIT response returns the already committed line', async () => {
+    const pool = fakePool([], { failCommitAfterApply: true });
+    const options = { getLines: currentDateLines(pool) };
+    await assert.rejects(appendManualAnimatorLine(pool, date, key1, options), /COMMIT response lost/);
+    assert.equal(pool.rows.length, 1);
+    const replay = await appendManualAnimatorLine(pool, date, key1, options);
+    assert.equal(replay.created, false);
+    assert.equal(replay.line.id, pool.rows[0].line_id);
     assert.equal(pool.rows.length, 1);
 });
 

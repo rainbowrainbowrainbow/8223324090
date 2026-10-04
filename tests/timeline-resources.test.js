@@ -2729,6 +2729,45 @@ test('lost manual-line response reuses the ID; confirmed replay makes the next c
     assert.equal(park.events.manualAdds[2].requestId, '22222222-2222-4222-8222-222222222222');
 });
 
+test('committed manual-line operation returning 500 replays its ID after reload', async () => {
+    const storage = new Map();
+    const options = {
+        mode: 'park', resourceModel: 'auto', storage,
+        requestIds: ['11111111-1111-4111-8111-111111111111'],
+        manualAddResult: { success: false, status: 500, error: 'commit response failed' }
+    };
+    const first = createTimelineAddActionHarness(options);
+    await first.context.addNewLine();
+    assert.equal(storage.size, 1);
+    assert.equal(first.events.timelineRenders, 0);
+
+    options.requestIds = ['22222222-2222-4222-8222-222222222222'];
+    options.manualAddResult = { success: true, created: false };
+    const reloaded = createTimelineAddActionHarness(options);
+    await reloaded.context.addNewLine();
+    assert.equal(reloaded.events.manualAdds[0].requestId, first.events.manualAdds[0].requestId);
+    assert.equal(storage.size, 0);
+    await reloaded.context.addNewLine();
+    assert.equal(reloaded.events.manualAdds[1].requestId, '22222222-2222-4222-8222-222222222222');
+});
+
+test('definitive 403 clears a rejected manual-line operation; timeout remains retryable', async () => {
+    const options = {
+        mode: 'park', resourceModel: 'auto',
+        requestIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
+        manualAddResult: { success: false, status: 403, error: 'No permission' }
+    };
+    const park = createTimelineAddActionHarness(options);
+    await park.context.addNewLine();
+    assert.equal(park.storage.size, 0);
+    options.manualAddResult = { success: false, status: 408, error: 'Timeout' };
+    await park.context.addNewLine();
+    assert.equal(park.events.manualAdds[1].requestId, '22222222-2222-4222-8222-222222222222');
+    assert.equal(park.storage.size, 1);
+    await park.context.addNewLine();
+    assert.equal(park.events.manualAdds[2].requestId, park.events.manualAdds[1].requestId);
+});
+
 test('uncertain manual-line operation survives reload and stays scoped to business and date', async () => {
     const storage = new Map();
     const options = {

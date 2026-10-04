@@ -1106,6 +1106,11 @@
                     </div>
                 </div>
             </div>
+            <section id="staffAccountAccess" class="hr-staff-foundation-panel" aria-labelledby="staffAccountAccessTitle" hidden>
+                <h3 id="staffAccountAccessTitle">Доступ до CRM</h3>
+                <p class="form-hint">Збережений пароль неможливо переглянути. Якщо його забули, згенеруйте новий: він зʼявиться один раз, а попередній пароль і сесії перестануть діяти.</p>
+                <div id="staffAccountAccessContent" aria-live="polite"></div>
+            </section>
             <div class="hr-staff-profile-save-scope">
                 <span>Зберігає ПІБ, контакти, фото й базові поля профілю.</span>
                 <button type="button" id="editSave" class="btn-primary">Зберегти основне</button>
@@ -1597,11 +1602,10 @@
                         </div>
                         <div class="form-group">
                             <label>Дія з акаунтом</label>
-                            <select id="editOffboardingAccountAction">
-                                <option value="review">Перевірити вручну</option>
-                                <option value="none">Не чіпати</option>
-                                <option value="disable">Вимкнути CRM-акаунт</option>
+                            <select id="editOffboardingAccountAction" disabled aria-describedby="editOffboardingAccountHelp">
+                                <option value="disable">Автоматично вимкнути CRM-акаунт</option>
                             </select>
+                            <small id="editOffboardingAccountHelp">Завершення співпраці вимикає повʼязані CRM-акаунти та завершує їхні сесії.</small>
                         </div>
                         <div class="form-group is-wide">
                             <label>Причина</label>

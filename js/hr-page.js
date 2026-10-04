@@ -6595,6 +6595,103 @@ function staffRoleToAccountRole(roleType) {
     return roles.includes(mapped) ? mapped : 'animator';
 }
 
+let staffAccountLoadRequestSeq = 0;
+let staffAccountRows = [];
+
+function resetStaffAccountAccess() {
+    staffAccountLoadRequestSeq += 1;
+    staffAccountRows = [];
+    const section = document.getElementById('staffAccountAccess');
+    const root = document.getElementById('staffAccountAccessContent');
+    if (section) section.hidden = !canManageAccountSecurity();
+    if (root) {
+        root.innerHTML = '';
+        root.setAttribute('aria-busy', 'false');
+    }
+}
+
+async function loadStaffAccountAccess(staffId) {
+    resetStaffAccountAccess();
+    const root = document.getElementById('staffAccountAccessContent');
+    const numericStaffId = Number(staffId);
+    if (!root || !canManageAccountSecurity()) return { success: true };
+    if (!isActiveStaffEditLoad(numericStaffId)) return { success: false, stale: true };
+    const requestSeq = staffAccountLoadRequestSeq;
+    const openSeq = staffEditOpenSeq;
+    const context = teamAccessContext();
+    root.setAttribute('aria-busy', 'true');
+    root.textContent = 'Завантаження доступу до CRM…';
+    const data = await crmApiFetch('/api/users').catch(() => ({ success: false }));
+    if (requestSeq !== staffAccountLoadRequestSeq || openSeq !== staffEditOpenSeq
+        || context !== teamAccessContext() || !isActiveStaffEditLoad(numericStaffId)) {
+        return { success: false, stale: true };
+    }
+    if (!canManageAccountSecurity()) {
+        resetStaffAccountAccess();
+        return { success: false, stale: true };
+    }
+    root.setAttribute('aria-busy', 'false');
+    const rows = Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : (Array.isArray(data?.data) ? data.data : null));
+    if (!rows) {
+        root.innerHTML = '<p role="alert">Не вдалося завантажити доступ до CRM.</p><button type="button" class="btn-secondary" onclick="loadStaffAccountAccess(activeEditStaffId())">Повторити</button>';
+        return { success: false, error: 'Не вдалося завантажити доступ до CRM.' };
+    }
+    staffAccountRows = rows.filter(user => Number(user.staff_id) === numericStaffId);
+    if (!staffAccountRows.length) {
+        root.textContent = 'CRM-акаунт не привʼязано до цього працівника.';
+        return { success: true };
+    }
+    root.innerHTML = staffAccountRows.map(user => {
+        const id = Number(user.id);
+        const canReset = currentAccountCanMutateTarget(user);
+        return `<article class="hr-account-detail-card">
+            <span>Логін</span><strong>${escapeHtml(user.username || '')}</strong>
+            <span>${user.is_active === false ? 'Акаунт деактивовано — вхід заборонено' : 'Акаунт активний'}</span>
+            <div class="hr-account-detail-actions">
+                <button type="button" class="btn-secondary" onclick="copyStaffAccountLogin(${id}, this)">Скопіювати логін</button>
+                <button type="button" class="btn-secondary" onclick="openStaffAccountPasswordModal(${id}, this)"${canReset ? '' : ' disabled'}>Новий пароль</button>
+            </div>
+            ${canReset ? '' : '<small>Зміна пароля цього акаунта недоступна для вашої ролі.</small>'}
+        </article>`;
+    }).join('');
+    return { success: true };
+}
+
+function currentStaffAccount(userId) {
+    if (!canManageAccountSecurity() || !isActiveStaffEditLoad(activeEditStaffId())) return null;
+    return staffAccountRows.find(user => Number(user.id) === Number(userId)
+        && Number(user.staff_id) === Number(activeEditStaffId())) || null;
+}
+
+async function copyStaffAccountLogin(userId, button) {
+    const user = currentStaffAccount(userId);
+    if (!user) return;
+    if (button) button.disabled = true;
+    try {
+        await navigator.clipboard.writeText(user.username || '');
+        showNotification('Логін скопійовано', 'success');
+    } catch {
+        showNotification('Не вдалося скопіювати логін. Виділіть його в картці.', 'warning');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function openStaffAccountPasswordModal(userId, button) {
+    const user = currentStaffAccount(userId);
+    if (!user) return;
+    const staffId = Number(activeEditStaffId());
+    const openSeq = staffEditOpenSeq;
+    const context = teamAccessContext();
+    const isCurrent = () => openSeq === staffEditOpenSeq && context === teamAccessContext()
+        && isActiveStaffEditLoad(staffId) && Boolean(currentStaffAccount(userId));
+    await openAccountPasswordModal(userId, button, {
+        user,
+        isCurrent,
+        onSuccess: () => isCurrent() ? loadStaffAccountAccess(staffId) : undefined
+    });
+}
+
 function accountCredentialPassword(credential) {
     return credential?.password || credential?.oneTimePassword || '';
 }
@@ -9434,12 +9531,12 @@ async function openAccountProfileModal(userId, button) {
     await loadAccountCenter({ resetFilters: true });
 }
 
-async function openAccountPasswordModal(userId, button) {
+async function openAccountPasswordModal(userId, button, options = {}) {
     if (!canManageAccountSecurity()) {
         showNotification('Зміна пароля доступна тільки creator/director', 'error');
         return;
     }
-    const user = accountUsers.find(item => Number(item.id) === Number(userId));
+    const user = options.user || accountUsers.find(item => Number(item.id) === Number(userId));
     if (!user) return;
     if (!currentAccountCanMutateTarget(user)) {
         showNotification('Пароль цього акаунта не можна змінити з поточного рівня доступу', 'error');
@@ -9458,7 +9555,7 @@ async function openAccountPasswordModal(userId, button) {
             key: 'activateOnReset',
             label: 'Статус акаунта після зміни',
             type: 'select',
-            defaultValue: 'activate',
+            defaultValue: 'keep',
             options: [
                 { value: 'activate', label: 'Активувати акаунт і дозволити вхід' },
                 { value: 'keep', label: 'Лишити вимкненим' }
@@ -9473,6 +9570,7 @@ async function openAccountPasswordModal(userId, button) {
         validate: values => values.mode === 'manual' ? validateAccountManualPassword(values, 'newPassword') : null
     });
     if (!result) return;
+    if (!canManageAccountSecurity() || (options.isCurrent && !options.isCurrent())) return;
     const issueOneTime = result.mode !== 'manual';
     const password = String(result.newPassword || '');
     if (!issueOneTime && password.length < 6) {
@@ -9483,13 +9581,20 @@ async function openAccountPasswordModal(userId, button) {
         showNotification('Паролі не збігаються', 'error');
         return;
     }
-    const activateOnReset = user.is_active === false && result.activateOnReset !== 'keep';
+    const activateOnReset = user.is_active === false && result.activateOnReset === 'activate';
     if (button) button.disabled = true;
-    const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/reset-password`, {
-        method: 'POST',
-        body: issueOneTime ? { issueOneTime: true, activateOnReset } : { newPassword: password, activateOnReset }
-    });
-    if (button) button.disabled = false;
+    let response;
+    try {
+        response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/reset-password`, {
+            method: 'POST',
+            body: issueOneTime ? { issueOneTime: true, activateOnReset } : { newPassword: password, activateOnReset }
+        });
+    } catch {
+        response = { success: false, error: 'Не вдалося змінити пароль. Перевірте зʼєднання й повторіть спробу.' };
+    } finally {
+        if (button) button.disabled = false;
+    }
+    if (!canManageAccountSecurity() || (options.isCurrent && !options.isCurrent())) return;
     if (!response?.success) {
         showNotification(response?.error || 'Не вдалося змінити пароль', 'error');
         return;
@@ -9500,7 +9605,8 @@ async function openAccountPasswordModal(userId, button) {
         showManualPasswordResetResult(response, user);
     }
     accountCenterLastUpdatedId = userId;
-    await loadAccountCenter({ resetFilters: true });
+    if (options.onSuccess) await options.onSuccess();
+    else await loadAccountCenter({ resetFilters: true });
 }
 
 async function openAccountAccessEditor(userId, button) {
@@ -11125,7 +11231,7 @@ function getStaffOffboardingPreview() {
     const date = document.getElementById('editOffboardingDate')?.value || '';
     const reason = document.getElementById('editOffboardingReason')?.value?.trim() || '';
     const poolStatus = document.getElementById('editOffboardingPoolStatus')?.value || 'reserve';
-    const accountAction = document.getElementById('editOffboardingAccountAction')?.value || 'review';
+    const accountAction = 'disable';
     const readiness = staffOffboardingReadiness && typeof staffOffboardingReadiness === 'object'
         ? staffOffboardingReadiness
         : null;
@@ -11152,13 +11258,9 @@ function getStaffOffboardingPreview() {
         blockers.push(`Спочатку врегулюйте payroll installments: ${outstandingPayroll} на суму ${outstandingPayrollAmount.toLocaleString('uk-UA')} ₴.`);
     }
 
-    const accountText = accountAction === 'disable'
-        ? activeAccounts > 0
-            ? `CRM-акаунтів для вимкнення: ${activeAccounts}.`
-            : 'Активних CRM-акаунтів немає — дію вимкнення буде пропущено.'
-        : accountAction === 'none'
-            ? 'CRM-акаунти не змінюються.'
-            : 'CRM-акаунти потребують ручної перевірки.';
+    const accountText = activeAccounts > 0
+        ? `CRM-акаунтів буде автоматично вимкнено: ${activeAccounts}. Їхні активні сесії буде завершено.`
+        : 'Активних CRM-акаунтів немає — дію вимкнення буде пропущено.';
     const consequences = [
         date
             ? `Профіль стане неактивним з ${formatStaffDateValue(date)}.`
@@ -13500,6 +13602,7 @@ function prepareStaffProfileDrawerLayout() {
 }
 
 function resetStaffProfileLazyState(staffId) {
+    resetStaffAccountAccess();
     const conditionsDate = document.getElementById('editPayrollConditionsDate');
     if (conditionsDate) conditionsDate.value = todayStr();
     staffProfileLoadedTabs = new Set();
@@ -13740,7 +13843,9 @@ async function loadStaffProfileTabData(tabId, options = {}) {
         let timeoutId;
         try {
             let requests = [];
-            if (tab === 'work') {
+            if (tab === 'main') {
+                requests = [loadStaffAccountAccess(staffId)];
+            } else if (tab === 'work') {
                 requests = [
                     loadStaffRoleAssignments(staffId),
                     loadStaffShiftPreferences(staffId, { force: Boolean(options.force) })
@@ -14070,7 +14175,7 @@ async function openStaffEdit(staffId, options = {}) {
     const offboardingPool = document.getElementById('editOffboardingPoolStatus');
     if (offboardingPool) offboardingPool.value = 'reserve';
     const offboardingAccount = document.getElementById('editOffboardingAccountAction');
-    if (offboardingAccount) offboardingAccount.value = 'review';
+    if (offboardingAccount) offboardingAccount.value = 'disable';
     staffOffboardingReadiness = null;
     staffOffboardingLifecycle = null;
     updateStaffOffboardingActionState();
@@ -17375,6 +17480,7 @@ async function closeHrEditableModal(id, force = false, message = 'Є незбе�
             staffEditOpenAbortController?.abort();
             staffEditOpenAbortController = null;
             staffProfileContextKey = '';
+            resetStaffAccountAccess();
             setStaffProfileHydrationState(modal, false);
         }
         const hide = target => {

@@ -453,6 +453,12 @@ function createFakePool() {
             };
         }
 
+        if (text === 'UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1') {
+            const row = state.refreshTokens.find(token => Number(token.id) === Number(params[0]));
+            if (row) row.revoked_at = databaseNow();
+            return { rows: [], rowCount: row ? 1 : 0 };
+        }
+
         if (/UPDATE refresh_tokens SET revoked_at = NOW\(\) WHERE token_hash = \$1/i.test(text)) {
             const row = state.refreshTokens.find(item => item.token_hash === params[0]);
             if (row) row.revoked_at = new Date();
@@ -850,6 +856,73 @@ test('login revalidates the locked account before issuing tokens after a concurr
         assert.equal(fakePool.state.refreshTokens.length, 0);
         assert.deepEqual(fakePool.state.transactionStatements.slice(-2), ['BEGIN', 'ROLLBACK']);
         assert.ok(fakePool.state.securityEvents.some(event => event.reason === 'password_changed'));
+    });
+});
+
+test('inactive accounts disclose the deactivation warning only after a correct password and cannot reuse sessions', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const user = fakePool.state.users[0];
+        user.username = 'dismissed.operator';
+        user.password_hash = await bcrypt.hash('known-password', 4);
+        const login = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: user.username,
+            password: 'known-password'
+        });
+        assert.equal(login.status, 200);
+        user.is_active = false;
+        const issuedTokenCount = fakePool.state.refreshTokens.length;
+
+        const wrongPassword = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: user.username,
+            password: 'incorrect-password'
+        });
+        const unknownUser = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'unknown.operator',
+            password: 'known-password'
+        });
+        assert.equal(wrongPassword.status, 401);
+        assert.deepEqual(wrongPassword.data, unknownUser.data);
+        assert.equal(wrongPassword.data.error, 'Невірний логін або пароль');
+
+        const inactiveLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: user.username,
+            password: 'known-password'
+        });
+        assert.equal(inactiveLogin.status, 401);
+        assert.deepEqual(inactiveLogin.data, {
+            error: 'Ваш акаунт деактивовано. Зверніться до адміністратора.',
+            code: 'auth_user_deactivated'
+        });
+        assert.equal(fakePool.state.refreshTokens.length, issuedTokenCount);
+
+        const protectedRequest = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, login.data.accessToken);
+        assert.equal(protectedRequest.status, 401);
+        assert.deepEqual(protectedRequest.data, inactiveLogin.data);
+
+        const refresh = await request(baseUrl, 'POST', '/api/auth/refresh', { refreshToken: login.data.refreshToken });
+        assert.equal(refresh.status, 401);
+        assert.equal(refresh.data.code, 'refresh_user_inactive');
+        assert.equal(refresh.data.error, inactiveLogin.data.error);
+        assert.ok(fakePool.state.refreshTokens.every(token => token.revoked_at));
+    });
+});
+
+test('login detects concurrent deactivation without issuing tokens', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const user = fakePool.state.users[0];
+        user.password_hash = await bcrypt.hash('known-password', 4);
+        fakePool.state.beforeLoginRevalidation = async () => { user.is_active = false; };
+
+        const login = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: user.username,
+            password: 'known-password'
+        });
+
+        assert.equal(login.status, 401);
+        assert.equal(login.data.code, 'auth_user_deactivated');
+        assert.equal(login.data.error, 'Ваш акаунт деактивовано. Зверніться до адміністратора.');
+        assert.equal(fakePool.state.refreshTokens.length, 0);
+        assert.deepEqual(fakePool.state.transactionStatements.slice(-2), ['BEGIN', 'ROLLBACK']);
     });
 });
 

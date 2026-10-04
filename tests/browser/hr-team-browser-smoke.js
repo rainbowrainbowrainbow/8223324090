@@ -650,6 +650,10 @@ const HARNESS_CODE = String.raw`
         workspaceOperations: () => workspaceOperations.slice(),
         downloads: () => downloads.slice(),
         offboardingSubmissions: () => offboardingSubmissions.map(item => ({ path: item.path, body: { ...item.body } })),
+        allowOffboardingAccountDisable() {
+            staffOffboardingReadiness = { ...staffOffboardingReadiness, disable_available: true, disable_blockers: [] };
+            updateStaffOffboardingActionState();
+        },
         notifications: () => window.__notifications.map(item => ({ ...item })),
         disableConfirmationImplementation() { confirmModal = undefined; },
         restoreConfirmationImplementation() { confirmModal = productionConfirmModal; },
@@ -1713,14 +1717,15 @@ async function assertOffboardingDangerFlow(page) {
     await page.fill('#editOffboardingReason', 'QA controlled offboarding');
     assert.equal(await complete.isDisabled(), true, 'reason alone does not unlock offboarding');
     await page.fill('#editOffboardingDate', '2026-08-15');
-    await page.waitForFunction(() => !document.getElementById('editOffboardingComplete')?.disabled);
+    assert.equal(await complete.isDisabled(), true, 'linked account permission blocker prevents completing dismissal');
     assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /неактивним/i, 'visible consequence summary explains the profile outcome');
     assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /майбутніх змін: 2/i, 'visible consequence summary includes future shifts');
-
-    await page.selectOption('#editOffboardingAccountAction', 'disable');
-    await page.waitForFunction(() => document.getElementById('editOffboardingComplete')?.disabled === true);
+    assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /автоматично вимкнено/i, 'account deactivation is an automatic consequence');
+    assert.equal(await page.locator('#editOffboardingAccountAction').inputValue(), 'disable');
+    assert.equal(await page.locator('#editOffboardingAccountAction').isDisabled(), true, 'account action cannot bypass required deactivation');
+    assert.equal(await page.locator('#editOffboardingAccountAction option').count(), 1);
     assert.match(await page.locator('#editOffboardingActionStatus').textContent(), /manage_accounts/i, 'account permission blocker explains why automatic disable is unavailable');
-    await page.selectOption('#editOffboardingAccountAction', 'review');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.allowOffboardingAccountDisable());
     await page.waitForFunction(() => !document.getElementById('editOffboardingComplete')?.disabled);
 
     await complete.click();
@@ -1728,6 +1733,8 @@ async function assertOffboardingDangerFlow(page) {
     const confirmationMessage = await page.locator('.confirm-overlay .confirm-message').textContent();
     assert.match(confirmationMessage, /Підтвердьте завершення співпраці/i, 'final submit shows an explicit confirmation summary');
     assert.match(confirmationMessage, /майбутніх змін: 2/i, 'final confirmation repeats the planned schedule cleanup');
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'offboarding-automatic-disable-mobile.png'), fullPage: true });
     await page.locator('.confirm-overlay .confirm-cancel').click();
     assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.offboardingSubmissions().length), 0, 'cancelled offboarding does not send a request');
     assert.equal(await page.locator('#staffEditModal').evaluate(el => el.style.display !== 'none'), true, 'cancelled final confirmation does not change the profile');
@@ -1741,7 +1748,7 @@ async function assertOffboardingDangerFlow(page) {
     assert.deepEqual(submissions[0].body, {
         effective_date: '2026-08-15',
         target_pool_status: 'reserve',
-        account_action: 'review',
+        account_action: 'disable',
         reason: 'QA controlled offboarding',
         notes: null
     }, 'confirmed offboarding preserves the reviewed consequence payload');
@@ -2026,6 +2033,65 @@ async function assertProfessionRateSafety(page) {
     await page.locator('#editCloseTop').click();
 }
 
+async function assertStaffAccountAccess(page) {
+    await installHarness(page, { dark: true });
+    await page.evaluate(() => {
+        window.__staffAccountCalls = [];
+        window.__staffAccountCopies = [];
+        window.canAccess = action => action !== 'manage_accounts' || ['creator', 'director'].includes(AppState.currentUser?.role);
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => window.__staffAccountCopies.push(value) } });
+        crmApiFetch = async (url, options = {}) => {
+            window.__staffAccountCalls.push({ url, body: options.body });
+            if (url === '/api/users') return [
+                { id: 101, staff_id: 1, username: 'qa.staff.access', role: 'animator', is_active: false, can_mutate: true },
+                { id: 102, staff_id: 2, username: 'qa.other.staff', role: 'animator', is_active: true, can_mutate: true }
+            ];
+            if (url === '/api/users/101/reset-password') return {
+                success: true, username: 'qa.staff.access', isActive: false, loginReady: false,
+                loginReadyReason: 'inactive_account', credential: { username: 'qa.staff.access', password: 'Synthetic234' }
+            };
+            throw new Error('Unexpected account API in staff-card browser smoke');
+        };
+    });
+    await openProfile(page, 1);
+    const section = page.locator('#staffAccountAccess');
+    await section.scrollIntoViewIfNeeded();
+    assert.equal(await section.isVisible(), true);
+    assert.match(await section.innerText(), /qa.staff.access/);
+    assert.doesNotMatch(await section.innerText(), /qa.other.staff/);
+    assert.match(await section.innerText(), /деактивовано/i);
+    await section.getByRole('button', { name: 'Скопіювати логін', exact: true }).click();
+    assert.deepEqual(await page.evaluate(() => window.__staffAccountCopies), ['qa.staff.access']);
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'staff-account-access-mobile-dark.png'), fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+
+    await section.getByRole('button', { name: 'Новий пароль', exact: true }).click();
+    const form = page.locator('.form-modal-overlay:not(.confirm-exit)');
+    await form.waitFor({ state: 'visible' });
+    assert.equal(await form.locator('[data-key="activateOnReset"]').inputValue(), 'keep');
+    await form.locator('.confirm-ok').click();
+    const receipt = page.locator('.confirm-overlay[data-confirm-kind="confirm"]:not(.confirm-exit)');
+    await receipt.waitFor({ state: 'visible' });
+    assert.match(await receipt.innerText(), /Synthetic234/);
+    assert.match(await receipt.innerText(), /акаунт вимкнений/);
+    const reset = await page.evaluate(() => window.__staffAccountCalls.find(call => call.url.endsWith('/reset-password')));
+    assert.deepEqual(reset.body, { issueOneTime: true, activateOnReset: false });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'staff-account-reset-mobile-redacted.png'), fullPage: true, mask: [receipt.locator('.confirm-message')] });
+    await receipt.locator('.confirm-cancel').click();
+    await receipt.waitFor({ state: 'detached' });
+    assert.doesNotMatch(await section.innerText(), /Synthetic234/);
+    await page.locator('#editCloseTop').click();
+    const before = await page.evaluate(() => {
+        AppState.currentUser = { ...AppState.currentUser, role: 'hr' };
+        return window.__staffAccountCalls.length;
+    });
+    await openProfile(page, 1);
+    assert.equal(await section.isVisible(), false, 'staff account section is hidden for HR without manage_accounts');
+    assert.equal(await page.evaluate(() => window.__staffAccountCalls.length), before, 'no account data is requested without management permission');
+    await page.locator('#editCloseTop').click();
+}
+
 async function run() {
     const playwright = requirePlaywright();
     const browser = await playwright.chromium.launch({ headless: HEADLESS });
@@ -2038,6 +2104,19 @@ async function run() {
         await runStep(page);
     };
     try {
+        if (process.env.HR_TEAM_OFFBOARDING_ONLY === 'true') {
+            await page.setViewportSize({ width: 390, height: 844 });
+            await installHarness(page, { dark: false });
+            await assertOffboardingDangerFlow(page);
+            console.log('HR automatic account offboarding browser smoke passed');
+            return;
+        }
+        if (process.env.HR_TEAM_ACCOUNT_ACCESS_ONLY === 'true') {
+            await page.setViewportSize({ width: 390, height: 844 });
+            await assertStaffAccountAccess(page);
+            console.log('HR staff account access browser smoke passed');
+            return;
+        }
         if (process.env.HR_TEAM_PAY_CONDITIONS_ONLY === 'true') {
             await page.setViewportSize({ width: 390, height: 844 });
             await assertPayrollConditions(page);
@@ -2081,6 +2160,9 @@ async function run() {
         const ratePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
         try { await assertProfessionRateSafety(ratePage); }
         finally { await ratePage.close(); }
+        const accountPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        try { await assertStaffAccountAccess(accountPage); }
+        finally { await accountPage.close(); }
         console.log('HR Team rate safety browser smoke passed');
         console.log('HR Team browser smoke passed');
     } catch (err) {
@@ -2095,5 +2177,5 @@ async function run() {
 }
 
 run()
-    .then(() => (process.env.HR_TEAM_RATE_SAFETY_ONLY === 'true' || process.env.HR_TEAM_PAY_CONDITIONS_ONLY === 'true') ? undefined : require('./hr-structure-tree-browser-smoke').run())
+    .then(() => (process.env.HR_TEAM_OFFBOARDING_ONLY === 'true' || process.env.HR_TEAM_ACCOUNT_ACCESS_ONLY === 'true' || process.env.HR_TEAM_RATE_SAFETY_ONLY === 'true' || process.env.HR_TEAM_PAY_CONDITIONS_ONLY === 'true') ? undefined : require('./hr-structure-tree-browser-smoke').run())
     .catch(err => fail(err?.stack || err?.message || String(err)));

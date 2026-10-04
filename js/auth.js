@@ -1343,6 +1343,7 @@ function rememberAuthSession(data = {}, options = {}) {
     try {
         if (options.loginIntent
             && localStorage.getItem(AUTH_LOGIN_INTENT_KEY) !== options.loginIntent) return false;
+        try { sessionStorage.removeItem('pzp_auth_deactivated_notice'); } catch {}
         clearImpersonationBackup({ revokeRefresh: true });
         if (typeof rotateApiAuthSessionGeneration === 'function') {
             rotateApiAuthSessionGeneration();
@@ -2364,9 +2365,23 @@ function clearPrivateClientCaches() {
 
 function showLoginScreen() {
     clearAuthSessionBootstrapError();
+    const noticeKey = 'pzp_auth_deactivated_notice';
+    const failure = typeof getApiAuthSessionFailure === 'function' ? getApiAuthSessionFailure() : null;
+    let accountDeactivated = failure?.kind === 'terminal'
+        && ['auth_user_deactivated', 'auth_user_inactive', 'refresh_user_inactive'].includes(failure.code);
+    try {
+        const noticeAt = Number(sessionStorage.getItem(noticeKey) || 0);
+        if (noticeAt > 0 && Date.now() - noticeAt >= 0 && Date.now() - noticeAt < 10 * 60 * 1000) {
+            accountDeactivated = true;
+        }
+        sessionStorage.removeItem(noticeKey);
+    } catch {}
     // v31.7.1: Redirect to canonical login page from sub-pages
     const path = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
     if (path !== '/' && path !== '/index') {
+        if (accountDeactivated) {
+            try { sessionStorage.setItem(noticeKey, String(Date.now())); } catch {}
+        }
         if (typeof shouldRememberAuthReturnRouteForAuthFailure === 'function'
             && shouldRememberAuthReturnRouteForAuthFailure()
             && typeof rememberAuthReturnRoute === 'function') {
@@ -2388,6 +2403,10 @@ function showLoginScreen() {
     document.body.classList.remove('authenticated-shell');
     document.getElementById('loginScreen')?.classList.remove('hidden');
     document.getElementById('mainApp')?.classList.add('hidden');
+    if (accountDeactivated) {
+        const loginError = document.getElementById('loginError');
+        if (loginError) loginError.textContent = 'Ваш акаунт деактивовано. Зверніться до адміністратора.';
+    }
     // Hide floating buttons that are outside mainApp
     const sidebarToggle = document.getElementById('sidebarToggle');
     if (sidebarToggle) sidebarToggle.classList.add('hidden');

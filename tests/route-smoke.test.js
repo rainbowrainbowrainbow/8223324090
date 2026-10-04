@@ -2637,7 +2637,7 @@ function createFakePool() {
             }
             if (/FROM employee_profiles ep JOIN users u ON u\.id = ep\.user_id WHERE ep\.staff_id = \$1/i.test(text) && !/FOR UPDATE OF ep, u/i.test(text)) {
                 const rows = (hrState.accountsByStaff.get(Number(params[0])) || [])
-                    .filter(row => row.is_active !== false && row.profile_active !== false)
+                    .filter(row => row.is_active !== false && (!/COALESCE\(ep\.is_active, true\) = true/i.test(text) || row.profile_active !== false))
                     .map(row => ({
                         id: row.id,
                         username: row.username,
@@ -2708,7 +2708,7 @@ function createFakePool() {
             }
             if (/FROM employee_profiles ep\s+JOIN users u ON u\.id = ep\.user_id\s+WHERE ep\.staff_id = \$1\s+AND ep\.user_id IS NOT NULL\s+AND COALESCE\(u\.is_active, true\) = true\s+FOR UPDATE OF ep, u/i.test(text)) {
                 const rows = (hrState.accountsByStaff.get(Number(params[0])) || [])
-                    .filter(row => row.is_active !== false && row.profile_active !== false)
+                    .filter(row => row.is_active !== false && (!/COALESCE\(ep\.is_active, true\) = true/i.test(text) || row.profile_active !== false))
                     .map(row => ({
                         id: row.id,
                         username: row.username,
@@ -5627,7 +5627,7 @@ describe('route-level API safety smoke', () => {
 
             assert.equal(res.status, 200, JSON.stringify(res.data));
             assert.equal(res.data.success, true);
-            assert.equal(res.data.data.account_action, scenario.accountAction);
+            assert.equal(res.data.data.account_action, 'disable');
             assert.equal(res.data.staff.is_active, false);
             assert.equal(res.data.staff.termination_reason, scenario.reason);
             assert.equal(res.data.disabled_accounts, 0);
@@ -5642,7 +5642,7 @@ describe('route-level API safety smoke', () => {
         const res = await request('POST', '/api/hr/staff/42/offboarding', {
             effective_date: '2099-06-06',
             target_pool_status: 'reserve',
-            account_action: 'disable',
+            account_action: 'none',
             reason: 'HR cannot disable CRM account directly'
         }, withAuth({}, 'hr'));
 
@@ -5652,11 +5652,10 @@ describe('route-level API safety smoke', () => {
         assert.equal(queries.some(q => /INSERT INTO staff_offboarding_events/i.test(q.text)), false);
     });
 
-    it('deactivates linked CRM account, profile, tokens, and audit when HR offboarding disables account', async () => {
+    it('automatically deactivates linked CRM account, profile, tokens, and audit when HR offboarding omits account action', async () => {
         const res = await request('POST', '/api/hr/staff/42/offboarding', {
             effective_date: '2099-06-06',
             target_pool_status: 'reserve',
-            account_action: 'disable',
             reason: 'Завершення тестової співпраці',
             notes: 'route smoke'
         }, withAuth());
@@ -5684,7 +5683,7 @@ describe('route-level API safety smoke', () => {
         const protectedCreator = await request('POST', '/api/hr/staff/43/offboarding', {
             effective_date: '2099-06-06',
             target_pool_status: 'reserve',
-            account_action: 'disable',
+            account_action: 'review',
             reason: 'Creator should stay protected'
         }, withAuth());
         assert.equal(protectedCreator.status, 409, JSON.stringify(protectedCreator.data));

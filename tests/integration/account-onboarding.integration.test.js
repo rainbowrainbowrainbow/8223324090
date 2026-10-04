@@ -7,6 +7,9 @@ const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { createAccountOnboarding } = require('../../services/accountOnboarding');
+const { syncLinkedStaffAccountDeactivation } = require('../../services/staffLifecycle');
+const { lockOrganizationOwnership } = require('../../services/organizationOwnership');
+const { authRequest, request } = require('../helpers');
 
 const enabled = process.env.RUN_ACCOUNT_ONBOARDING_INTEGRATION === 'true';
 const suffix = `${process.pid}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
@@ -469,5 +472,142 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
         assert.equal(staff.rows.length, 0, 'failed transaction leaves no staff');
         assert.equal(profiles.rows.length, 0, 'failed transaction leaves no account/staff link');
         assert.equal(audits.rows.length, 0, 'failed transaction leaves no committed security audit');
+    });
+
+    it('offboarding atomically disables the linked account and rejects its existing and new sessions', async () => {
+        const fixture = await createAccountOnboarding({
+            payload: onboardingPayload(`${usernamePrefix}.offboarding`, `${staffNamePrefix} Offboarding`),
+            actor,
+            dbPool: pool
+        });
+        const userId = Number(fixture.user.id);
+        const staffId = Number(fixture.staff.id);
+        const login = await request('POST', '/api/auth/login', fixture.credential);
+        assert.equal(login.status, 200, 'fixture credentials can log in before dismissal');
+        assert.ok(login.data.accessToken && login.data.refreshToken, 'login issues both session tokens');
+
+        const dismissed = await authRequest('POST', `/api/hr/staff/${staffId}/offboarding`, {
+            effective_date: new Date().toISOString().slice(0, 10),
+            reason: 'Disposable offboarding regression',
+            target_pool_status: 'reserve',
+            account_action: 'review'
+        });
+        assert.equal(dismissed.status, 200, `offboarding: ${dismissed.data?.error || dismissed.data?.code || ''}`);
+        assert.equal(dismissed.data.disabled_accounts, 1);
+        assert.equal(dismissed.data.data.account_action, 'disable', 'legacy review cannot retain account access');
+
+        const persisted = await pool.query(
+            `SELECT u.is_active AS account_active, u.session_revoked_at,
+                    ep.is_active AS profile_active, s.is_active AS staff_active,
+                    s.termination_date
+             FROM users u
+             JOIN employee_profiles ep ON ep.user_id = u.id
+             JOIN staff s ON s.id = ep.staff_id
+             WHERE u.id = $1 AND s.id = $2`,
+            [userId, staffId]
+        );
+        assert.equal(persisted.rows.length, 1);
+        const state = persisted.rows[0];
+        assert.equal(state.account_active, false);
+        assert.equal(state.profile_active, false);
+        assert.equal(state.staff_active, false);
+        assert.ok(state.session_revoked_at);
+        assert.ok(state.termination_date);
+        const tokens = await pool.query('SELECT revoked_at FROM refresh_tokens WHERE user_id = $1', [userId]);
+        assert.ok(tokens.rows.length > 0);
+        assert.ok(tokens.rows.every(row => row.revoked_at), 'every existing refresh session is revoked');
+        const audit = await pool.query(
+            `SELECT details FROM account_security_events
+             WHERE target_user_id = $1 AND event_type = 'account_deactivated'`,
+            [userId]
+        );
+        assert.equal(audit.rows.length, 1);
+        assert.equal(Number(audit.rows[0].details.staffId), staffId);
+        assert.equal(audit.rows[0].details.sessionsRevoked, true);
+        assert.equal(audit.rows[0].details.source, 'hr_staff_offboarding');
+        assert.equal(Number(audit.rows[0].details.offboardingEventId), Number(dismissed.data.data.id));
+        assert.deepEqual(findSensitiveAuditKeys(audit.rows), []);
+
+        const notice = 'Ваш акаунт деактивовано. Зверніться до адміністратора.';
+        const verified = await request('GET', '/api/auth/verify', undefined, login.data.accessToken);
+        assert.equal(verified.status, 401);
+        assert.equal(verified.data.code, 'auth_user_deactivated');
+        assert.equal(verified.data.error, notice);
+        const refreshed = await request('POST', '/api/auth/refresh', { refreshToken: login.data.refreshToken });
+        assert.equal(refreshed.status, 401);
+        assert.equal(refreshed.data.code, 'refresh_user_inactive');
+        assert.equal(refreshed.data.error, notice);
+        const relogin = await request('POST', '/api/auth/login', fixture.credential);
+        assert.equal(relogin.status, 401);
+        assert.equal(relogin.data.code, 'auth_user_deactivated');
+        assert.equal(relogin.data.error, notice);
+        const incorrect = await request('POST', '/api/auth/login', {
+            username: fixture.credential.username,
+            password: crypto.randomBytes(24).toString('base64url')
+        });
+        assert.equal(incorrect.status, 401);
+        assert.equal(incorrect.data.code, undefined, 'incorrect password cannot reveal disabled-account status');
+
+        const accounts = await authRequest('GET', '/api/users');
+        assert.equal(accounts.status, 200);
+        const account = accounts.data.find(row => Number(row.id) === userId);
+        assert.ok(account, 'disabled linked account remains available to the staff-card account lookup');
+        assert.equal(Number(account.staff_id), staffId);
+        assert.equal(account.is_active, false);
+        assert.equal(account.profile_active, false);
+    });
+
+    it('rolls staff, profile, account and token changes back on a real PostgreSQL security-audit failure', async () => {
+        const fixture = await createAccountOnboarding({
+            payload: onboardingPayload(`${usernamePrefix}.offboarding-rollback`, `${staffNamePrefix} Offboarding Rollback`),
+            actor,
+            dbPool: pool
+        });
+        const userId = Number(fixture.user.id);
+        const staffId = Number(fixture.staff.id);
+        const tokenHash = crypto.randomBytes(32).toString('hex');
+        await pool.query(
+            `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+             VALUES ($1, $2, NOW() + INTERVAL '1 day')`,
+            [userId, tokenHash]
+        );
+        const readState = async () => (await pool.query(
+            `SELECT u.is_active AS account_active, u.session_revoked_at,
+                    ep.is_active AS profile_active, s.is_active AS staff_active,
+                    rt.revoked_at,
+                    (SELECT COUNT(*)::int FROM account_security_events ase
+                     WHERE ase.target_user_id = u.id AND ase.event_type = 'account_deactivated') AS deactivation_audits
+             FROM users u
+             JOIN employee_profiles ep ON ep.user_id = u.id
+             JOIN staff s ON s.id = ep.staff_id
+             JOIN refresh_tokens rt ON rt.user_id = u.id AND rt.token_hash = $2
+             WHERE u.id = $1`,
+            [userId, tokenHash]
+        )).rows;
+        const before = await readState();
+        assert.equal(before.length, 1);
+        assert.equal(before[0].account_active, true);
+        assert.equal(before[0].revoked_at, null);
+        const missingActorId = -2147483648;
+        assert.equal((await pool.query('SELECT id FROM users WHERE id = $1', [missingActorId])).rowCount, 0);
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await lockOrganizationOwnership(client);
+            await client.query('UPDATE staff SET is_active = false WHERE id = $1', [staffId]);
+            // The real audit INSERT fails its actor foreign key after all lifecycle writes.
+            await assert.rejects(syncLinkedStaffAccountDeactivation(client, staffId, {
+                actor: { ...actor, id: missingActorId },
+                requireAllAccountsDisabled: true,
+                canDisableAccount: account => Number(account.id) === userId,
+                reason: 'disposable_offboarding_rollback',
+                source: 'postgres_regression'
+            }), error => error.code === '23503' && error.table === 'account_security_events');
+            await client.query('ROLLBACK');
+        } finally {
+            await client.query('ROLLBACK').catch(() => {});
+            client.release();
+        }
+        assert.deepEqual(await readState(), before, 'failed audit must leave no committed deactivation or session revocation');
     });
 });

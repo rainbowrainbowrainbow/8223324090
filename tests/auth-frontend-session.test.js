@@ -411,7 +411,7 @@ function createRecoveryElementHarness() {
     return { target, buttons, status };
 }
 
-function loadLogoutShellHarness(pathname = '/') {
+function loadLogoutShellHarness(pathname = '/', sessionStore = new Map()) {
     const calls = [];
     const bodyClasses = classListHarness(['authenticated-shell', 'shell-ready', 'shell-baseline', 'page-exiting']);
     const htmlClasses = classListHarness(['shell-ready']);
@@ -420,12 +420,18 @@ function loadLogoutShellHarness(pathname = '/') {
     const sidebarToggleClasses = classListHarness([]);
     const bodyAttrs = new Map([['aria-busy', 'true']]);
     const elements = {
+        loginError: { textContent: '' },
         loginScreen: { classList: loginClasses.classList },
         mainApp: { classList: mainClasses.classList },
         sidebarToggle: { classList: sidebarToggleClasses.classList }
     };
     const context = {
         console,
+        sessionStorage: {
+            getItem: key => sessionStore.get(key) || null,
+            setItem: (key, value) => sessionStore.set(key, String(value)),
+            removeItem: key => sessionStore.delete(key)
+        },
         AppState: { currentUser: { id: 1 } },
         ParkWS: { disconnect: () => calls.push(['ParkWS.disconnect']) },
         Sidebar: {
@@ -475,7 +481,7 @@ function loadLogoutShellHarness(pathname = '/') {
         extractAuthFunction('showLoginScreen'),
         extractAuthFunction('logout')
     ].join('\n'), context, { filename: 'js/auth.js' });
-    return { context, calls, bodyClasses, htmlClasses, loginClasses, mainClasses, bodyAttrs };
+    return { context, calls, bodyClasses, htmlClasses, loginClasses, mainClasses, bodyAttrs, elements, sessionStore };
 }
 
 function loadRefreshRevocationHarness(localEntries = [], sessionEntries = []) {
@@ -1391,6 +1397,40 @@ test('showLoginScreen redirects sub-pages without leaving a partially hidden she
     }
 });
 
+test('deactivation warning survives a subpage redirect once without storing account identity', () => {
+    const firstPage = loadLogoutShellHarness('/hr');
+    firstPage.context.getApiAuthSessionFailure = () => ({ kind: 'terminal', code: 'auth_user_deactivated' });
+    firstPage.context.showLoginScreen();
+    assert.deepEqual(firstPage.calls.filter(call => call[0] === 'location.replace'), [['location.replace', '/']]);
+    assert.equal(firstPage.sessionStore.size, 1);
+    assert.match(firstPage.sessionStore.get('pzp_auth_deactivated_notice'), /^\d+$/);
+
+    const loginPage = loadLogoutShellHarness('/', firstPage.sessionStore);
+    loginPage.context.showLoginScreen();
+    assert.equal(loginPage.elements.loginError.textContent, 'Ваш акаунт деактивовано. Зверніться до адміністратора.');
+    assert.equal(firstPage.sessionStore.size, 0);
+
+    const nextPage = loadLogoutShellHarness('/', firstPage.sessionStore);
+    nextPage.context.showLoginScreen();
+    assert.equal(nextPage.elements.loginError.textContent, '');
+});
+
+test('login screen distinguishes deactivation from other expired sessions and stale notices', () => {
+    for (const code of ['auth_user_deactivated', 'auth_user_inactive', 'refresh_user_inactive']) {
+        const page = loadLogoutShellHarness('/');
+        page.context.getApiAuthSessionFailure = () => ({ kind: 'terminal', code });
+        page.context.showLoginScreen();
+        assert.match(page.elements.loginError.textContent, /акаунт деактивовано/);
+    }
+    const expired = loadLogoutShellHarness('/', new Map([
+        ['pzp_auth_deactivated_notice', String(Date.now() - 11 * 60 * 1000)]
+    ]));
+    expired.context.getApiAuthSessionFailure = () => ({ kind: 'terminal', code: 'auth_session_revoked' });
+    expired.context.showLoginScreen();
+    assert.equal(expired.elements.loginError.textContent, '');
+    assert.equal(expired.sessionStore.size, 0);
+});
+
 test('logout clears session data and exits to a stable login visual state', () => {
     const { context, calls, bodyClasses, loginClasses, mainClasses, bodyAttrs } = loadLogoutShellHarness('/');
 
@@ -1510,6 +1550,7 @@ test('remembering a new login revokes an isolated creator refresh before replaci
         ['pzp_current_user', JSON.stringify({ id: 14, username: 'target.user' })]
     ]);
     const sessionStore = new Map([
+        ['pzp_auth_deactivated_notice', String(Date.now())],
         ['realSessionBackupVersion', '2'],
         ['impersonating', 'target.user'],
         ['realRefreshToken', 'creator-refresh']

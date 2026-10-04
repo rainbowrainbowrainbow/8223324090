@@ -171,6 +171,7 @@ function setApiAuthSessionFailure(kind, details = {}) {
 
 function clearApiAuthSessionFailure() {
     apiAuthSessionFailure = null;
+    try { sessionStorage.removeItem('pzp_auth_deactivated_notice'); } catch {}
 }
 
 function getApiAuthSessionFailure() {
@@ -2265,10 +2266,17 @@ async function apiFetchWithAuthRetry(url, opts = {}) {
         return response;
     }
     if (response && response.status === 401 && typeof handleAuthError === 'function') {
+        const failureData = await readApiResponseJsonForRetry(response);
+        if (getActiveApiAuthTransitionMarker()
+            || !isApiAuthSessionSnapshotCurrent(responseSessionSnapshot, requestUser)) {
+            markApiAuthSessionChanged('request');
+            return null;
+        }
         setApiAuthSessionFailure('terminal', {
             stage: 'request',
             status: response.status,
-            reason: 'unauthorized'
+            reason: 'unauthorized',
+            code: failureData?.code
         });
         if (handleAuthError(response, { refreshAttempted: true })) return null;
     }
@@ -4378,6 +4386,7 @@ async function performApiAuthTokenRefresh(refreshToken, expectedUser = null, ses
                 setApiAuthSessionFailure(failureKind, rateLimitFailure || {
                     stage: 'refresh',
                     status: response.status,
+                    code: data?.code,
                     reason: alreadyRotated
                         ? 'refresh-already-rotated'
                         : (response.ok ? 'malformed-response' : 'http')
@@ -4656,6 +4665,16 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             return null;
         }
         if (response.status === 401) {
+            if (API_AUTH_TERMINAL_UNAUTHORIZED_CODES.has(String(verifyResponseData?.code || '').toLowerCase())) {
+                setApiAuthSessionFailure('terminal', {
+                    stage: 'verify',
+                    status: response.status,
+                    reason: 'unauthorized',
+                    code: verifyResponseData.code
+                });
+                clearApiAuthSessionStorage('verify-terminal');
+                return null;
+            }
             const refreshResult = await apiRefreshAuthSession();
             if (!refreshResult.accessToken) {
                 if (refreshResult.outcome === 'superseded') {
@@ -4665,7 +4684,8 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
                     setApiAuthSessionFailure('terminal', {
                         stage: 'verify',
                         status: response.status,
-                        reason: 'unauthorized'
+                        reason: 'unauthorized',
+                        code: verifyResponseData?.code
                     });
                     clearApiAuthSessionStorage('verify-unauthorized');
                 }
@@ -4717,7 +4737,8 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             setApiAuthSessionFailure(failureKind, rateLimitFailure || {
                 stage: 'verify',
                 status: response.status,
-                reason: 'http'
+                reason: 'http',
+                code: verifyResponseData?.code
             });
             if (failureKind === 'terminal') clearApiAuthSessionStorage('verify-terminal');
             return null;

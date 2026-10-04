@@ -510,7 +510,6 @@ const STAFF_ROLE_ASSIGNMENT_STATUSES = new Set(['active', 'inactive', 'suspended
 const STAFF_ROLE_ADMISSION_STATUSES = new Set(['pending', 'approved', 'blocked']);
 const STAFF_ROLE_INTERNSHIP_STATUSES = new Set(['none', 'in_progress', 'completed']);
 const STAFF_OFFBOARDING_POOL_STATUSES = new Set(['core', 'reserve', 'blacklisted']);
-const STAFF_OFFBOARDING_ACCOUNT_ACTIONS = new Set(['none', 'review', 'disable']);
 
 function resumeFileExt(file) {
     return path.extname(file?.originalname || '').toLowerCase();
@@ -601,11 +600,6 @@ function normalizeStaffRoleInternshipStatus(value) {
 function normalizeStaffOffboardingPoolStatus(value) {
     const status = cleanStaffText(value, 32) || 'reserve';
     return STAFF_OFFBOARDING_POOL_STATUSES.has(status) ? status : 'reserve';
-}
-
-function normalizeStaffOffboardingAccountAction(value) {
-    const action = cleanStaffText(value, 32) || 'review';
-    return STAFF_OFFBOARDING_ACCOUNT_ACTIONS.has(action) ? action : 'review';
 }
 
 function numberOrNull(value) {
@@ -876,7 +870,6 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
          FROM employee_profiles ep
          JOIN users u ON u.id = ep.user_id
          WHERE ep.staff_id = $1
-           AND COALESCE(ep.is_active, true) = true
            AND COALESCE(u.is_active, true) = true
          ORDER BY u.id ASC`,
         [staffId]
@@ -917,9 +910,9 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
     const accounts = activeAccounts.rows.map(row => staffOffboardingAccountMeta(row, currentUserId));
     const openResourceCount = openResources.rows[0]?.total_count || 0;
     const documentAlertCount = documentAlerts.rows[0]?.total_count || 0;
-    const blockedAccounts = accounts
+    const blockedAccounts = activeAccounts.rows
         .map(account => ({
-            ...account,
+            ...staffOffboardingAccountMeta(account, currentUserId),
             block_reason: accountOffboardingBlockReason(actor, account)
         }))
         .filter(account => account.block_reason);
@@ -4589,7 +4582,8 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
         if (!reason) return res.status(400).json({ success: false, error: 'Причина завершення співпраці обовʼязкова' });
         const effectiveDate = cleanStaffDate(req.body.effective_date || req.body.effectiveDate) || todayKyiv();
         const targetPoolStatus = normalizeStaffOffboardingPoolStatus(req.body.target_pool_status || req.body.targetPoolStatus);
-        const accountAction = normalizeStaffOffboardingAccountAction(req.body.account_action || req.body.accountAction);
+        // Dismissal always disables linked accounts, including requests from older clients.
+        const accountAction = 'disable';
         const notes = cleanStaffText(req.body.notes, 2000);
 
         await client.query('BEGIN');
@@ -4664,8 +4658,9 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             req,
             reason: 'hr_offboarding',
             source: 'hr_staff_offboarding',
-            canDisableAccount: account => accountAction === 'disable' && actorCanDisableOffboardingAccount(req.user, account),
-            blockReason: account => accountAction === 'disable' ? accountOffboardingBlockReason(req.user, account) : null,
+            requireAllAccountsDisabled: true,
+            canDisableAccount: account => actorCanDisableOffboardingAccount(req.user, account),
+            blockReason: account => accountOffboardingBlockReason(req.user, account),
             accountMeta: account => staffOffboardingAccountMeta(account, req.user?.id),
             eventDetails: { offboardingEventId: event.rows[0].id },
             logger: log
@@ -4696,6 +4691,7 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/staff/:id/offboarding error', err);
+        if (err.code === 'account_deactivation_blocked') return res.status(err.statusCode).json({ success: false, error: staffOffboardingDisableError(err.blockers), code: err.code, blockers: err.blockers });
         if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -5029,6 +5025,7 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
                 req,
                 reason: 'hr_staff_deactivation',
                 source: 'hr_staff_status',
+                requireAllAccountsDisabled: true,
                 canDisableAccount: account => actorCanDisableOffboardingAccount(req.user, account),
                 blockReason: account => accountOffboardingBlockReason(req.user, account),
                 accountMeta: account => staffOffboardingAccountMeta(account, req.user?.id),
@@ -5121,6 +5118,7 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/staff/:id/status error', err);
+        if (err.code === 'account_deactivation_blocked') return res.status(err.statusCode).json({ success: false, error: staffOffboardingDisableError(err.blockers), code: err.code, blockers: err.blockers });
         if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {

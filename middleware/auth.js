@@ -210,7 +210,7 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
             throw authSessionError('User not found or deactivated', 'auth_user_missing');
         }
         if (sessionRow?.is_active === false) {
-            throw authSessionError('User not found or deactivated', 'auth_user_deactivated');
+            throw authSessionError('Ваш акаунт деактивовано. Зверніться до адміністратора.', 'auth_user_deactivated');
         }
         const revokedAtMs = sessionRow?.session_revoked_at
             ? new Date(sessionRow.session_revoked_at).getTime()
@@ -243,7 +243,7 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
             }
         }
         if (freshUser.is_active === false) {
-            throw authSessionError('User not found or deactivated', 'auth_user_deactivated');
+            throw authSessionError('Ваш акаунт деактивовано. Зверніться до адміністратора.', 'auth_user_deactivated');
         }
         const accessUser = user?.qaCreatorLeaseId
             ? await resolveActiveQaCreatorLease(freshUser, db, { expectedLeaseId: user.qaCreatorLeaseId })
@@ -572,7 +572,7 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress, reco
         if (!storedUser || !storedUser.is_active) {
             await client.query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1', [oldToken.id]);
             await client.query('COMMIT');
-            return { error: 'User not found or deactivated', code: 'refresh_user_inactive', status: 401 };
+            return { error: 'Ваш акаунт деактивовано. Зверніться до адміністратора.', code: 'refresh_user_inactive', status: 401 };
         }
 
         const revokedAtMs = storedUser.session_revoked_at

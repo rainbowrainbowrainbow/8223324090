@@ -47,8 +47,7 @@ async function main() {
         created = true;
         pool = new Pool({ ...connection, database: name, max: 5 });
         for (const migration of ['375_universal_costing_plan_foundation.sql', '376_costing_actual_provenance.sql',
-            '377_costing_group_composition_revisions.sql', '379_costing_execution_booking_identity.sql',
-            '380_costing_group_composition_initial_copy.sql']) {
+            '377_costing_group_composition_revisions.sql', '379_costing_execution_booking_identity.sql']) {
             await pool.query(fs.readFileSync(path.join(root, 'db/migrations', migration), 'utf8'));
         }
         await pool.query("CREATE TABLE bookings (id VARCHAR(50) PRIMARY KEY, business_context VARCHAR(64), price INTEGER, status TEXT)");

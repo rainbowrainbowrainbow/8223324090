@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const { Pool } = require('pg');
+const { assertCostingCompositionReady } = require('../../services/costingCompositionStartupGuard');
 
 test('actual provenance, correction, completion, business scope and group aggregate in disposable PostgreSQL', {
     skip: !process.env.COSTING_TEST_PG_PORT, timeout: 120000
@@ -41,25 +42,10 @@ test('actual provenance, correction, completion, business scope and group aggreg
              VALUES ('event_genix',$1,$2::uuid,'service','Legacy execution','2026-10-12','{}'::jsonb,'{}'::jsonb,10000,2000,8000,8000) RETURNING id`,
             [legacyVersion.rows[0].id, crypto.randomUUID()]
         );
-        const legacyGroup = await pool.query(
-            "INSERT INTO costing_execution_groups (business_context,kind,label) VALUES ('event_genix','course','Pre-377 group') RETURNING id"
-        );
-        await pool.query(`INSERT INTO costing_group_members
-            (group_id,plan_id,business_context,include_plan_revenue,include_plan_direct_cost)
-            VALUES ($1,$2,'event_genix',TRUE,FALSE)`, [legacyGroup.rows[0].id, legacyPlan.rows[0].id]);
         await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/377_costing_group_composition_revisions.sql'), 'utf8'));
         await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/379_costing_execution_booking_identity.sql'), 'utf8'));
-        await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/380_costing_group_composition_initial_copy.sql'), 'utf8'));
         assert.equal((await pool.query('SELECT booking_id FROM costing_plan_snapshots WHERE id=$1',
             [legacyPlan.rows[0].id])).rows[0].booking_id, null, 'older plans are not assigned a booking by migration');
-        const imported = await pool.query(
-            `SELECT r.revision_number, m.plan_id FROM costing_group_revisions r
-             JOIN costing_group_revision_members m ON m.revision_id=r.id
-             WHERE r.group_id=$1`, [legacyGroup.rows[0].id]
-        );
-        assert.equal(imported.rowCount, 1);
-        assert.equal(imported.rows[0].revision_number, 1);
-        assert.equal(String(imported.rows[0].plan_id), String(legacyPlan.rows[0].id));
         await pool.query(`
             CREATE TABLE bookings (id VARCHAR(50) PRIMARY KEY, business_context VARCHAR(64), price INTEGER, status TEXT);
             CREATE TABLE education_attendance (id BIGINT PRIMARY KEY, business_context VARCHAR(64), booking_id VARCHAR(50), status TEXT);
@@ -222,6 +208,7 @@ test('actual provenance, correction, completion, business scope and group aggreg
             { planId: agencyId, includePlanRevenue: false, includePlanDirectCost: true }
         ] });
         assert.equal(grouped.status, 201, JSON.stringify(grouped.body));
+        await assertCostingCompositionReady(pool);
         assert.equal((await request('POST', '/actual/groups', { kind: 'course', label: 'Repeated in request', members: [
             { planId: rentalId, includePlanRevenue: true, includePlanDirectCost: false },
             { planId: rentalId, includePlanRevenue: false, includePlanDirectCost: true }
@@ -288,6 +275,7 @@ test('actual provenance, correction, completion, business scope and group aggreg
         assert.deepEqual(competing.map(result => result.status).sort(), [201, 409]);
         const revised = await request('GET', groupPath);
         assert.equal(revised.body.revision, 2);
+        await assertCostingCompositionReady(pool);
         assert.deepEqual(revised.body.history.map(item => item.revision_number), [1, 2]);
         assert.deepEqual(revised.body.history[0].members.map(item => String(item.plan_id)), [String(rentalId), String(agencyId)]);
         assert.deepEqual(revised.body.members.map(item => String(item.planId)), [String(rentalId)]);

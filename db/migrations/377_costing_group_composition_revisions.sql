@@ -1,6 +1,19 @@
 -- MIGRATION_KIND: schema
--- SAFETY: Additive composition revision tables, indexes, and immutable-history triggers only; no existing rows are copied or changed. Migration 380 copies pre-existing group membership after the schema is ready.
--- ROLLBACK: Disable composition revision reads and retain the additive history tables for a reviewed forward recovery; do not rewrite group rows.
+-- SAFETY: Fresh-install-only additive schema. Lock and reject pre-existing costing groups or members before creating revision tables; no group data is copied or changed. Existing-group upgrades require a separate reviewed backfill.
+-- ROLLBACK: Disable composition revision reads and retain the additive tables for a reviewed forward recovery; do not rewrite group rows.
+
+-- The migration runner wraps this file in one transaction. SHARE locks block
+-- concurrent inserts until the empty-source check and DDL commit or roll back.
+LOCK TABLE costing_execution_groups, costing_group_members IN SHARE MODE;
+
+DO $fresh_only$
+BEGIN
+    IF EXISTS (SELECT 1 FROM costing_execution_groups LIMIT 1)
+        OR EXISTS (SELECT 1 FROM costing_group_members LIMIT 1) THEN
+        RAISE EXCEPTION 'COSTING_FRESH_ONLY_NONEMPTY_GROUPS: reviewed history backfill required';
+    END IF;
+END;
+$fresh_only$;
 
 CREATE TABLE IF NOT EXISTS costing_group_revisions (
     id BIGSERIAL PRIMARY KEY,

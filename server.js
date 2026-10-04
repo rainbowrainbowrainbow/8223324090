@@ -40,6 +40,7 @@ const { createLogger } = require('./utils/logger');
 const { validateEnv } = require('./utils/validateEnv');
 const { initWebSocket, getWSS } = require('./services/websocket');
 const { runMigrations } = require('./db/migrate');
+const { assertCostingCompositionReady } = require('./services/costingCompositionStartupGuard');
 const { apiAudit } = require('./middleware/apiAudit');
 const { guardScheduler } = require('./services/schedulerGuard');
 const { syncAgentActivities } = require('./services/agentTracker');
@@ -742,6 +743,7 @@ async function initializeDatabaseWithSchemaFence() {
         await initDatabase();
         await runMigrations(pool, { schemaLockAlreadyHeld: true });
         await initDatabase();
+        await assertCostingCompositionReady(pool);
     } finally {
         if (schemaLockHeld) await unlockSchemaMigrations(guardClient);
         guardClient.release();

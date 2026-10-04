@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.62",
+  "version": "0.82.63",
   "eventGenix": {
-    "releaseLabel": "Заняття: повний цикл і довідник викладачів"
+    "releaseLabel": "Таймлайн: додавання аніматора без Telegram"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

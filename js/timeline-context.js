@@ -161,7 +161,7 @@
             showAfisha: true,
             showProductSales: true,
             addLineLabel: 'Додати аніматора',
-            addLineTitle: 'Надіслати запит на додавання аніматора через Telegram',
+            addLineTitle: 'Одразу додати нову лінію аніматора',
             selectedLineLabel: 'Лінія:',
             lineTypeLabel: 'аніматор',
             bookingTitle: 'Нове бронювання',

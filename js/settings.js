@@ -377,6 +377,30 @@ async function addAnimatorLineLocallyAfterTelegramFallback(dateStr, note, result
     return true;
 }
 
+let _manualAnimatorLineAddPending = false;
+
+async function addManualAnimatorLineDirectly(dateStr) {
+    if (_manualAnimatorLineAddPending) return false;
+    _manualAnimatorLineAddPending = true;
+    const button = document.getElementById('addLineBtn');
+    if (button) button.disabled = true;
+    try {
+        const requestId = window.crypto?.randomUUID?.();
+        const result = await apiAddManualAnimatorLine(dateStr, requestId);
+        if (!result?.success) {
+            showNotification(result?.error || 'Не вдалося додати аніматора. Спробуйте ще раз.', 'error');
+            return false;
+        }
+        window.invalidateTimelineDateCache?.(dateStr, { bookings: false });
+        await renderTimeline();
+        showNotification('Нову лінію аніматора додано', 'success');
+        return true;
+    } finally {
+        _manualAnimatorLineAddPending = false;
+        if (button) button.disabled = false;
+    }
+}
+
 async function addNewLine() {
     const dateStr = formatDate(AppState.selectedDate);
     if (isRoomTimelineLineEditingBlocked()) {
@@ -427,6 +451,11 @@ async function addNewLine() {
         }
         await renderTimeline();
         showNotification('Лінію Майстерні долі додано', 'success');
+        return;
+    }
+
+    if (timelineContext?.key === 'event_genix' && mode === 'park') {
+        await addManualAnimatorLineDirectly(dateStr);
         return;
     }
 

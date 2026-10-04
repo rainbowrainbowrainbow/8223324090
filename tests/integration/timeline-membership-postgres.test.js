@@ -60,8 +60,15 @@ test('actual booking and timeline HTTP routes preserve membership context with P
             );
             CREATE TABLE employee_profiles (user_id INT REFERENCES users(id), staff_id INT,
                 is_active BOOLEAN DEFAULT true, last_activity_at TIMESTAMPTZ);
-            CREATE TABLE staff (id SERIAL PRIMARY KEY, name TEXT, telegram_username TEXT, telegram_id TEXT,
-                is_active BOOLEAN DEFAULT true);
+            CREATE TABLE staff (id SERIAL PRIMARY KEY, name TEXT, color TEXT, telegram_username TEXT, telegram_id TEXT,
+                is_active BOOLEAN DEFAULT true, hr_pool_status TEXT DEFAULT 'core',
+                is_freelance BOOLEAN DEFAULT false, termination_date DATE);
+            CREATE TABLE staff_schedule (staff_id INT, date TEXT, shift_start TEXT, shift_end TEXT, status TEXT);
+            CREATE TABLE hr_shifts (id SERIAL PRIMARY KEY, staff_id INT, shift_date DATE);
+            CREATE TABLE hr_shift_segments (id SERIAL PRIMARY KEY, hr_shift_id INT, planned_start TEXT,
+                planned_end TEXT, sort_order INT, profession_key TEXT);
+            CREATE TABLE hr_shift_segment_roles (segment_id INT, profession_key TEXT);
+            CREATE TABLE afisha (id SERIAL PRIMARY KEY, date TEXT, line_id TEXT);
             CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
             CREATE TABLE bookings (
                 id VARCHAR(50) PRIMARY KEY, business_context TEXT NOT NULL, date TEXT, time TEXT, line_id TEXT,
@@ -198,6 +205,59 @@ test('actual booking and timeline HTTP routes preserve membership context with P
             await pool.query("UPDATE business_memberships SET role = 'animator' WHERE user_id = $1 AND business_id = 2", [actor.id]);
             assert.equal((await request(actor, 'PUT', '/api/timeline/resources/shared-resource', { name: 'Revoked change' })).status, 403);
             assert.deepEqual(await dataSnapshot(), before);
+        });
+
+        await t.test('Park manager can append one manual animator line without roster replacement or Dar access', async () => {
+            const actor = await reset({ parkRole: 'manager' });
+            const route = '/api/lines/2026-09-12/manual?businessContext=event_genix&timelineView=animators';
+            const firstKey = '11111111-1111-4111-8111-111111111111';
+            const secondKey = '22222222-2222-4222-8222-222222222222';
+            const thirdKey = '33333333-3333-4333-8333-333333333333';
+            await pool.query(`INSERT INTO lines_by_date (business_context, date, line_id, name, color, from_sheet)
+                VALUES ('event_genix', '2026-09-12', 'existing-line', 'Аніматор 1', '#123456', false),
+                       ('dar', '2026-09-12', 'dar-line', 'Dar specialist', '#abcdef', false)`);
+            assert.equal((await request(actor, 'POST', '/api/lines/2026-09-12?businessContext=event_genix', [])).status, 403);
+            const before = await dataSnapshot();
+            const first = await request(actor, 'POST', route, { requestId: firstKey });
+            assert.equal(first.status, 201);
+            assert.equal(first.body.line.name, 'Аніматор 2');
+            const replay = await request(actor, 'POST', route, { requestId: firstKey });
+            assert.equal(replay.status, 200);
+            assert.equal(replay.body.created, false);
+            assert.equal(replay.body.line.id, first.body.line.id);
+            const concurrent = await Promise.all([
+                request(actor, 'POST', route, { requestId: secondKey }),
+                request(actor, 'POST', route, { requestId: thirdKey })
+            ]);
+            assert.deepEqual(concurrent.map(result => result.status), [201, 201]);
+            assert.deepEqual(concurrent.map(result => result.body.line.name).sort(), ['Аніматор 3', 'Аніматор 4']);
+            const reload = await request(actor, 'GET', '/api/lines/2026-09-12?businessContext=event_genix&timelineView=animators');
+            assert.equal(reload.status, 200);
+            assert.deepEqual(reload.body.map(line => line.name).sort(),
+                ['Аніматор 1', 'Аніматор 2', 'Аніматор 3', 'Аніматор 4']);
+            const after = await dataSnapshot();
+            assert.deepEqual(after.bookings, before.bookings);
+            assert.deepEqual(after.resources, before.resources);
+            assert.equal(after.lines.length, before.lines.length + 3);
+            assert.ok(after.lines.some(line => line.line_id === 'existing-line'));
+            assert.ok(after.lines.some(line => line.line_id === 'dar-line'));
+            assert.equal((await request(actor, 'POST', '/api/lines/2026-09-12/manual?businessContext=dar',
+                { requestId: '44444444-4444-4444-8444-444444444444' })).status, 409);
+            assert.equal((await request(actor, 'POST', '/api/lines/2026-09-12/manual?businessContext=event_genix&timelineView=rooms',
+                { requestId: '55555555-5555-4555-8555-555555555555' })).status, 409);
+            assert.equal((await request(actor, 'POST', route + '&businessScope=all',
+                { requestId: '66666666-6666-4666-8666-666666666666' })).status, 403);
+        });
+
+        await t.test('manual animator append denies non-manager and explicit create-booking denial', async () => {
+            const actor = await reset({ parkRole: 'animator' });
+            const route = '/api/lines/2026-09-12/manual?businessContext=event_genix&timelineView=animators';
+            assert.equal((await request(actor, 'POST', route, {})).status, 403);
+            await pool.query(`UPDATE business_memberships
+                SET role = 'manager', action_denylist = ARRAY['create_booking']
+                WHERE user_id = $1 AND business_id = 1`, [actor.id]);
+            assert.equal((await request(actor, 'POST', route, {})).status, 403);
+            assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM lines_by_date')).rows[0].count, 0);
         });
 
         await t.test('production aggregate middleware blocks all and multi mutations before domain writes', async () => {

@@ -2531,6 +2531,9 @@ function createTimelineAddActionHarness(options = {}) {
         notices: [],
         telegram: 0,
         localAnimatorFallback: 0,
+        manualAdds: [],
+        cacheInvalidations: [],
+        notePrompts: 0,
         cacheResets: 0,
         timelineRenders: 0,
         managerRenders: 0
@@ -2541,11 +2544,15 @@ function createTimelineAddActionHarness(options = {}) {
         resourceModel: options.resourceModel || 'animator',
         context: 'event_genix'
     };
+    const addLineButton = { disabled: false };
     const context = vm.createContext({
         console,
         Date,
+        document: { getElementById: id => id === 'addLineBtn' ? addLineButton : null },
         AppState: { selectedDate: new Date('2026-10-02T12:00:00Z') },
         window: {
+            crypto: { randomUUID: () => '11111111-1111-4111-8111-111111111111' },
+            invalidateTimelineDateCache: (date, settings) => events.cacheInvalidations.push({ date, settings }),
             TimelineBusinessContext: {
                 current: () => ({ key: options.context || 'event_genix' }),
                 presentation: () => presentation
@@ -2567,8 +2574,12 @@ function createTimelineAddActionHarness(options = {}) {
         resetTimelineResourceCaches: () => { events.cacheResets += 1; },
         renderTimeline: async () => { events.timelineRenders += 1; },
         renderTimelineResourcesManager: async () => { events.managerRenders += 1; },
-        showNoteModal: async () => 'shift request',
+        showNoteModal: async () => { events.notePrompts += 1; return 'shift request'; },
         cleanupPendingPoll() {},
+        apiAddManualAnimatorLine: async (date, requestId) => {
+            events.manualAdds.push({ date, requestId });
+            return options.manualAddResult || { success: true, created: true };
+        },
         apiTelegramAskAnimator: async () => {
             events.telegram += 1;
             return { success: false, reason: 'no_chat_id' };
@@ -2577,12 +2588,12 @@ function createTimelineAddActionHarness(options = {}) {
         addAnimatorLineLocallyAfterTelegramFallback: async () => { events.localAnimatorFallback += 1; }
     });
     const blocks = [
-        sourceBlock('async function addNewLine()', 'async function editLineModal('),
+        sourceBlock('let _manualAnimatorLineAddPending', 'async function editLineModal('),
         sourceBlock('function timelineResourceCopy(type)', 'function timelineDisplayPreviewText('),
         sourceBlock('async function addTimelineResource(type,', 'function normalizeTimelineResourceColorInput(')
     ];
     vm.runInContext(blocks.join('\n'), context);
-    return { context, events };
+    return { context, events, addLineButton };
 }
 
 for (const resourceModel of ['animator', 'specialist', 'online']) {
@@ -2635,7 +2646,7 @@ for (const businessContext of ['dar', 'maysternya_doli', 'custom_business']) {
     });
 }
 
-test('timeline add cancellation creates no resource and preserves the park Telegram flow', async () => {
+test('timeline add cancellation creates no resource and Park adds a manual line without Telegram or a note prompt', async () => {
     const cancelled = createTimelineAddActionHarness({
         mode: 'simple', resourceModel: 'animator', promptValues: [null]
     });
@@ -2647,9 +2658,45 @@ test('timeline add cancellation creates no resource and preserves the park Teleg
 
     const park = createTimelineAddActionHarness({ mode: 'park', resourceModel: 'auto' });
     await park.context.addNewLine();
-    assert.equal(park.events.telegram, 1);
-    assert.equal(park.events.localAnimatorFallback, 1);
+    assert.equal(park.events.telegram, 0);
+    assert.equal(park.events.localAnimatorFallback, 0);
+    assert.equal(park.events.notePrompts, 0);
+    assert.equal(park.events.manualAdds.length, 1);
+    assert.equal(park.events.manualAdds[0].date, '2026-10-02');
+    assert.equal(park.events.cacheInvalidations.length, 1);
+    assert.equal(park.events.timelineRenders, 1);
     assert.equal(park.events.saved.length, 0);
+});
+
+test('Park add button ignores a second click while the manual line request is pending', async () => {
+    let completeAdd;
+    const pending = new Promise(resolve => { completeAdd = resolve; });
+    const park = createTimelineAddActionHarness({
+        mode: 'park', resourceModel: 'auto', manualAddResult: pending
+    });
+    const first = park.context.addNewLine();
+    const second = park.context.addNewLine();
+    assert.equal(park.addLineButton.disabled, true);
+    await second;
+    assert.equal(park.events.manualAdds.length, 1);
+    completeAdd({ success: true, created: true });
+    await first;
+    assert.equal(park.addLineButton.disabled, false);
+    assert.equal(park.events.timelineRenders, 1);
+});
+
+test('Park manual line save failure leaves the button available for a retry', async () => {
+    const park = createTimelineAddActionHarness({
+        mode: 'park', resourceModel: 'auto',
+        manualAddResult: { success: false, error: 'No permission' }
+    });
+    await park.context.addNewLine();
+    await park.context.addNewLine();
+    assert.equal(park.events.manualAdds.length, 2);
+    assert.equal(park.events.timelineRenders, 0);
+    assert.equal(park.events.cacheInvalidations.length, 0);
+    assert.equal(park.addLineButton.disabled, false);
+    assert.deepEqual(park.events.notices.map(notice => notice.type), ['error', 'error']);
 });
 
 test('timeline add button saves the requested cabinet capacity through the resource API', async () => {

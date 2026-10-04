@@ -1,3 +1,16 @@
+# Current release handoff — EDU-READY-09, 2026-10-04
+
+- Continue at C:/Users/Plotva/.codex/worktrees/education-ready-release-20261004/EventGenix; branch codex/education-ready-release-20261004.
+- Fresh production base/rollback44a7d498c8bf4aabc2fac9eba05218473518696a (v0.82.61). Prepared version0.82.62.
+- Product4890e2b9aebe208e1637ddacb3af89153368091a; release hygiene0fbe975ee5acbf1dff9ee983839c912e1a7bd759. Final release SHA is the following acceptance documentation commit and is recorded in RELEASE_PROOF.md.
+- Software GO_WITH_OWNER_DEVICE_DEFERRAL: fresh19-suite gate, Chromium/WebKit continuous14-check journeys, F01–F06, teacher/date/isolation/concurrency/DST/Park, npm and measured contrast pass. Hardware42 NOT RUN/0 PASS remains owner follow-up.
+- Additive membership migration renumbered375→380 to avoid fresh production collision; SQL unchanged, no automatic backfill or seed.
+- Detailed current acceptance: docs/EDUCATION_READY_RELEASE_ACCEPTANCE_2026-10-04.md. Evidence output/education-ready/release-acceptance/release-acceptance.json; final CI/deploy/live/rollback record output/education-ready/release-acceptance/RELEASE_PROOF.md.
+- Retained manual/device databases39 bookings each remain unchanged. Original dirty checkout/package and1542 earlier evidence files preserved; original package handoff receives only a release pointer after delivery.
+- Production writes prohibited except approved additive migration through release startup. Owner device checks are not evidence of PASS until actually performed.
+- Next: exact-SHA green CI → explicit-project/branch release helper → read-only live smoke. Historical HOLD/NO-GO below is preserved, superseded only by this fresh software acceptance and recorded owner deferral.
+
+---
 # EDU-READY — спільний handoff пакета 01–09
 
 ## Робочий стан

@@ -1,3 +1,14 @@
+# Current release acceptance — 2026-10-04
+
+Conclusion: GO_WITH_OWNER_DEVICE_DEFERRAL for v0.82.62. All19 mandatory software suites pass on freshly integrated source; physical device checks remain BLOCKED_DEVICE /42 NOT RUN /0 PASS, deferred by the owner's latest release-and-self-test instruction.
+
+Current authoritative evidence and limits: docs/EDUCATION_READY_RELEASE_ACCEPTANCE_2026-10-04.md and output/education-ready/release-acceptance/release-acceptance.json.
+
+Release worktree: C:/Users/Plotva/.codex/worktrees/education-ready-release-20261004/EventGenix, base44a7d498c8bf4aabc2fac9eba05218473518696a. Final exact-SHA CI/deploy/live proof: output/education-ready/release-acceptance/RELEASE_PROOF.md (filled after deployment).
+
+The original NO-GO below is historical evidence. Its product blockers were fixed and freshly repeated; it is not silently relabelled PASS. Hardware remains unperformed.
+
+---
 # EDU-READY-08 — фінальний acceptance, 2026-10-04
 
 **Висновок: NO-GO.** На поточному коді є два відкриті FAIL: перекриття education editor боковим меню на844×390 та невдале видиме створення заняття у WebKit. Фізичні пристрої — **BLOCKED_DEVICE**, а не PASS. Історичні результати01–07 не використані замість нових прогонів.

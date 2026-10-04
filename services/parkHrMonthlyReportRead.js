@@ -103,7 +103,8 @@ async function loadParkHrMonthlyReport(pool, { dateFrom, dateTo }) {
                     WHEN tr.planned_start IS NOT NULL AND tr.planned_end IS NOT NULL THEN 'profession_card'
                     ELSE 'unscheduled' END AS plan_source
             FROM hr_time_records tr
-            WHERE tr.record_date BETWEEN $1::date AND $2::date AND tr.staff_id = ANY($3::int[])`, params),
+            WHERE tr.record_date BETWEEN $1::date AND $2::date
+                AND tr.business_context = 'event_genix' AND tr.staff_id = ANY($3::int[])`, params),
         pool.query(`SELECT ep.staff_id,
                 COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')})::int AS tasks_assigned,
                 COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')}

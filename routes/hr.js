@@ -6934,6 +6934,7 @@ router.get('/report/monthly', async (req, res) => {
              JOIN staff s ON s.id = tr.staff_id
              LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
              WHERE tr.record_date >= $1 AND tr.record_date <= $2
+                AND tr.business_context = 'event_genix'
                 AND tr.staff_id = ANY($3::int[])`,
             [dateFrom, dateTo, reportStaffIds]
         );

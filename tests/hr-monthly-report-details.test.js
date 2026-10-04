@@ -48,3 +48,18 @@ test('monthly attendance rate is unavailable without scheduled shifts', () => {
     assert.equal(stats.attendance_rate, null);
     assert.equal(stats.days_absent, 0);
 });
+
+test('overnight checkout remains attached to the shift start date', () => {
+    const stats = reportAttendanceByStaff(
+        [{ id: 9 }],
+        [{ id: 10, staff_id: 9, shift_date: '2026-09-10', planned_start: '22:00', planned_end: '06:00' }],
+        [{ id: 11, staff_id: 9, record_date: '2026-09-10',
+            clock_in: '2026-09-10T19:00:00Z', clock_out: '2026-09-11T03:00:00Z',
+            total_worked_minutes: 480, status: 'present' }]
+    ).get(9);
+    assert.equal(stats.days_scheduled, 1);
+    assert.equal(stats.planned_worked_count, 1);
+    assert.equal(stats.unplanned_worked_count, 0);
+    assert.equal(stats.attendance_details.planned_worked[0].date, '2026-09-10');
+    assert.equal(stats.attendance_details.planned_worked[0].clock_out, '2026-09-11T03:00:00Z');
+});

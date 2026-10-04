@@ -8,6 +8,8 @@ function dateText(value) {
 }
 
 function reportAttendanceByStaff(staffRows = [], shiftRows = [], recordRows = []) {
+    // Both HR tables have UNIQUE(staff_id, date). record_date is the shift's
+    // reporting date even when clock_out crosses midnight in Kyiv.
     const byStaff = new Map(staffRows.map(staff => [Number(staff.id), {
         days_scheduled: 0,
         planned_worked_count: 0,

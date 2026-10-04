@@ -26,6 +26,7 @@ async function withHrRouter(run) {
                     { id: 72, staff_id: 9701, shift_date: '2026-09-25', planned_start: '09:00', planned_end: '17:00' }
                 ];
             } else if (normalized.includes('FROM hr_time_records tr')) {
+                assert.match(normalized, /tr\.business_context = 'event_genix'/);
                 rows = [{ id: 81, staff_id: 9701, record_date: '2026-09-24', clock_in: '2026-09-24T08:00:00Z', status: 'present',
                     late_minutes: 7, early_leave_minutes: 0, overtime_minutes: 20,
                     total_worked_minutes: 480, plan_source: 'hr_shift' }];

@@ -476,7 +476,7 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
 
     it('offboarding atomically disables the linked account and rejects its existing and new sessions', async () => {
         const fixture = await createAccountOnboarding({
-            payload: onboardingPayload(`${usernamePrefix}.offboarding`, `${staffNamePrefix} Offboarding`),
+            payload: onboardingPayload(`${usernamePrefix}.off`, `${staffNamePrefix} Offboarding`),
             actor,
             dbPool: pool
         });
@@ -559,7 +559,7 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
 
     it('rolls staff, profile, account and token changes back on a real PostgreSQL security-audit failure', async () => {
         const fixture = await createAccountOnboarding({
-            payload: onboardingPayload(`${usernamePrefix}.offboarding-rollback`, `${staffNamePrefix} Offboarding Rollback`),
+            payload: onboardingPayload(`${usernamePrefix}.offrb`, `${staffNamePrefix} Offboarding Rollback`),
             actor,
             dbPool: pool
         });

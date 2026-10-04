@@ -31,6 +31,7 @@ const {
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
 const { parkMonthlyPeriod, loadParkHrMonthlyReport } = require('../services/parkHrMonthlyReportRead');
+const { reportAttendanceByStaff } = require('../services/hrMonthlyReportDetails');
 const {
     lockAttendanceWriteMaintenance,
     lockAttendanceWriteTarget,
@@ -6912,14 +6913,15 @@ router.get('/report/monthly', async (req, res) => {
         ]);
 
         const shifts = await pool.query(
-            'SELECT staff_id, COUNT(*) AS cnt FROM hr_shifts WHERE shift_date >= $1 AND shift_date <= $2 GROUP BY staff_id',
-            [dateFrom, dateTo]
+            `SELECT id, staff_id, shift_date::text AS shift_date, planned_start, planned_end,
+                    profession_key, shift_type
+             FROM hr_shifts WHERE shift_date >= $1 AND shift_date <= $2
+                AND staff_id = ANY($3::int[])`,
+            [dateFrom, dateTo, reportStaffIds]
         );
-        const shiftCounts = {};
-        for (const r of shifts.rows) shiftCounts[r.staff_id] = parseInt(r.cnt);
 
         const records = await pool.query(
-            `SELECT tr.staff_id, tr.record_date, tr.clock_in, tr.clock_out,
+            `SELECT tr.id, tr.staff_id, tr.record_date::text AS record_date, tr.clock_in, tr.clock_out,
                     tr.planned_start, tr.planned_end,
                     COALESCE(hs.profession_key, s.role_type) AS profession_key,
                     tr.status, tr.late_minutes, tr.early_leave_minutes, tr.overtime_minutes, tr.total_worked_minutes,
@@ -6931,8 +6933,9 @@ router.get('/report/monthly', async (req, res) => {
              FROM hr_time_records tr
              JOIN staff s ON s.id = tr.staff_id
              LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
-             WHERE tr.record_date >= $1 AND tr.record_date <= $2`,
-            [dateFrom, dateTo]
+             WHERE tr.record_date >= $1 AND tr.record_date <= $2
+                AND tr.staff_id = ANY($3::int[])`,
+            [dateFrom, dateTo, reportStaffIds]
         );
         const payrollAttendanceMetrics = await loadPayrollAttendanceMetrics({
             from: dateFrom,
@@ -6940,6 +6943,14 @@ router.get('/report/monthly', async (req, res) => {
             staffIds: staffList.rows.map(staff => staff.id)
         });
 
+        const taskDetailSql = `jsonb_build_object(
+            'id', t.id, 'title', t.title, 'status', t.status,
+            'source_type', t.source_type,
+            'created_at', t.created_at, 'deadline', t.deadline, 'completed_at', t.completed_at)`;
+        const taskOverdueSql = `${taskKpiEligibleSql('t')}
+            AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
+            AND t.deadline IS NOT NULL AND t.deadline < NOW()`;
+        let taskKpiUnavailable = false;
         const taskKpiRows = await pool.query(
             `SELECT ep.staff_id,
                     COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')})::int AS tasks_assigned,
@@ -6948,10 +6959,7 @@ router.get('/report/monthly', async (req, res) => {
                           AND COALESCE(t.status, 'todo') IN ('done', 'completed')
                     )::int AS tasks_done,
                     COUNT(t.id) FILTER (
-                        WHERE ${taskKpiEligibleSql('t')}
-                          AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
-                          AND t.deadline IS NOT NULL
-                          AND t.deadline < NOW()
+                         WHERE ${taskOverdueSql}
                     )::int AS tasks_overdue,
                     COUNT(t.id) FILTER (
                         WHERE ${taskKpiEligibleSql('t')}
@@ -6961,13 +6969,21 @@ router.get('/report/monthly', async (req, res) => {
                         WHERE NOT ${taskKpiEligibleSql('t')}
                           AND ${taskKpiMachineSignalSql('t')}
                     )::int AS tasks_machine_excluded,
-                    COUNT(t.id) FILTER (
-                        WHERE NOT ${taskKpiEligibleSql('t')}
-                          AND NOT ${taskKpiMachineSignalSql('t')}
+                     COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
+                         FILTER (WHERE ${taskKpiEligibleSql('t')}), '[]'::jsonb) AS tasks_assigned_details,
+                     COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
+                         FILTER (WHERE ${taskKpiEligibleSql('t')}
+                             AND COALESCE(t.status, 'todo') IN ('done', 'completed')), '[]'::jsonb) AS tasks_done_details,
+                     COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
+                         FILTER (WHERE ${taskOverdueSql}), '[]'::jsonb) AS tasks_overdue_details,
+                     COUNT(t.id) FILTER (
+                         WHERE NOT ${taskKpiEligibleSql('t')}
+                           AND NOT ${taskKpiMachineSignalSql('t')}
                     )::int AS tasks_ambiguous_excluded
              FROM tasks t
              JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active = true
              WHERE t.owner_user_id IS NOT NULL
+               AND t.business_context = 'event_genix'
                AND (
                     t.created_at::date BETWEEN $1::date AND $2::date
                     OR t.completed_at::date BETWEEN $1::date AND $2::date
@@ -6976,6 +6992,7 @@ router.get('/report/monthly', async (req, res) => {
             [dateFrom, dateTo]
         ).catch(err => {
             log.warn('Task KPI query failed:', err.message);
+            taskKpiUnavailable = true;
             return { rows: [] };
         });
 
@@ -6985,55 +7002,28 @@ router.get('/report/monthly', async (req, res) => {
                 tasks_assigned: parseInt(r.tasks_assigned) || 0,
                 tasks_done: parseInt(r.tasks_done) || 0,
                 tasks_overdue: parseInt(r.tasks_overdue) || 0,
+                tasks_assigned_details: r.tasks_assigned_details || [],
+                tasks_done_details: r.tasks_done_details || [],
+                tasks_overdue_details: r.tasks_overdue_details || [],
                 tasks_machine_accepted: parseInt(r.tasks_machine_accepted) || 0,
                 tasks_machine_excluded: parseInt(r.tasks_machine_excluded) || 0,
                 tasks_ambiguous_excluded: parseInt(r.tasks_ambiguous_excluded) || 0
             };
         }
 
-        const statsMap = {};
-        for (const r of records.rows) {
-            if (!statsMap[r.staff_id]) {
-                statsMap[r.staff_id] = {
-                    days_worked: 0, days_late: 0, days_early_leave: 0, days_absent: 0,
-                    days_sick: 0, days_vacation: 0,
-                    total_worked_minutes: 0, total_early_leave_minutes: 0, total_overtime_minutes: 0,
-                    profession_card_days: 0, unscheduled_days: 0,
-                    late_count: 0, total_late_minutes: 0
-                };
-            }
-            const s = statsMap[r.staff_id];
-            const facts = attendanceFactMinutes(r);
-            if (r.clock_in) {
-                s.days_worked++;
-                s.total_worked_minutes += r.total_worked_minutes || 0;
-                s.total_overtime_minutes += facts.overtimeMinutes;
-            }
-            if (facts.lateMinutes > 0) { s.days_late++; s.late_count++; s.total_late_minutes += facts.lateMinutes; }
-            if (facts.earlyLeaveMinutes > 0) {
-                s.days_early_leave++;
-                s.total_early_leave_minutes += facts.earlyLeaveMinutes;
-            }
-            if (r.plan_source === 'profession_card') s.profession_card_days++;
-            if (r.plan_source === 'unscheduled') s.unscheduled_days++;
-            if (r.status === 'absent' || r.status === 'no_show') s.days_absent++;
-            if (r.status === 'sick') s.days_sick++;
-            if (r.status === 'vacation') s.days_vacation++;
-        }
+        const statsMap = reportAttendanceByStaff(staffList.rows, shifts.rows, records.rows);
 
         const data = staffList.rows.map(st => {
-            const s = statsMap[st.id] || {
-                days_worked: 0, days_late: 0, days_early_leave: 0, days_absent: 0,
-                days_sick: 0, days_vacation: 0, total_worked_minutes: 0, total_early_leave_minutes: 0, total_overtime_minutes: 0,
-                profession_card_days: 0, unscheduled_days: 0,
-                late_count: 0, total_late_minutes: 0
-            };
-            const daysScheduled = shiftCounts[st.id] || 0;
-            const totalWorkedHours = Math.round(s.total_worked_minutes / 60 * 10) / 10;
-            const totalOvertimeHours = Math.round(s.total_overtime_minutes / 60 * 10) / 10;
+            const s = statsMap.get(Number(st.id));
+            const daysScheduled = s.days_scheduled;
+            const totalWorkedHours = s.total_worked_hours;
+            const totalOvertimeHours = s.total_overtime_hours;
             const rate = parseFloat(st.hourly_rate) || 0;
             const rateUnit = staffRateUnit(st);
-            const taskKpi = taskKpiMap[st.id] || { tasks_assigned: 0, tasks_done: 0, tasks_overdue: 0 };
+            const taskKpi = taskKpiUnavailable ? null : taskKpiMap[st.id] || {
+                tasks_assigned: 0, tasks_done: 0, tasks_overdue: 0,
+                tasks_assigned_details: [], tasks_done_details: [], tasks_overdue_details: []
+            };
             const payrollMetrics = payrollAttendanceMetrics.get(Number(st.id)) || {
                 totalMinutes: 0,
                 allocatedMinutes: 0,
@@ -7071,6 +7061,9 @@ router.get('/report/monthly', async (req, res) => {
                 rate_unit: payrollRateUnit,
                 days_scheduled: daysScheduled,
                 days_worked: s.days_worked,
+                planned_worked_count: s.planned_worked_count,
+                unplanned_worked_count: s.unplanned_worked_count,
+                attendance_details: s.attendance_details,
                 days_late: s.days_late,
                 days_early_leave: s.days_early_leave,
                 total_early_leave_minutes: s.total_early_leave_minutes,
@@ -7087,10 +7080,13 @@ router.get('/report/monthly', async (req, res) => {
                 allocation_issues: professionPay.allocationIssues,
                 reconciliation: professionPay.reconciliation,
                 late_count: s.late_count,
-                avg_late_minutes: s.late_count > 0 ? Math.round(s.total_late_minutes / s.late_count) : 0,
-                attendance_rate: daysScheduled > 0 ? Math.round(s.days_worked / daysScheduled * 100) : 0,
+                avg_late_minutes: s.avg_late_minutes,
+                attendance_rate: s.attendance_rate,
                 task_kpi: taskKpi,
-                task_completion_rate: taskKpi.tasks_assigned > 0 ? Math.round(taskKpi.tasks_done / taskKpi.tasks_assigned * 100) : 0
+                task_data_status: taskKpiUnavailable ? 'unavailable' : 'ready',
+                task_completion_rate: taskKpi
+                    ? (taskKpi.tasks_assigned > 0 ? Math.round(taskKpi.tasks_done / taskKpi.tasks_assigned * 100) : 0)
+                    : null
             };
         });
 

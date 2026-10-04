@@ -528,7 +528,7 @@
                         </div>
                         <div class="hr-reports-hero-metrics" aria-label="Ключові показники звіту" aria-live="polite">
                             <div class="hr-reports-metric-chip hr-reports-metric-chip--presence">
-                                <span class="hr-reports-metric-label">Присутність</span>
+                                <span class="hr-reports-metric-label">Заплановано змін</span>
                                 <strong id="reportHeroAttendance">—</strong>
                                 <small id="reportHeroAttendanceMeta">Завантаження звіту…</small>
                             </div>
@@ -543,7 +543,7 @@
                                 <small id="reportHeroAbsentMeta">дані ще не отримано</small>
                             </div>
                             <div class="hr-reports-metric-chip hr-reports-metric-chip--tasks">
-                                <span class="hr-reports-metric-label">Задачі</span>
+                                <span class="hr-reports-metric-label">Призначено задач</span>
                                 <strong id="reportHeroTasks">—</strong>
                                 <small id="reportHeroTasksMeta">дані ще не отримано</small>
                             </div>
@@ -555,14 +555,28 @@
                         <span>Період</span>
                         <select id="reportMonth" class="hr-team-select"></select>
                     </label>
+                    <label class="hr-report-control-field" for="reportSearch">
+                        <span>Пошук працівника</span>
+                        <input type="search" id="reportSearch" placeholder="ПІБ або професія" autocomplete="off">
+                    </label>
                     <button type="button" id="reportExport" class="btn-export btn-page-toolbar">Експорт CSV</button>
                 </div>
+                <p class="hr-report-scope-note">Відсутність — лише явно позначені записи; зміна без відмітки лишається запланованою. Задачі — створені або завершені за обраний місяць; статус і прострочення показані станом на зараз. Захищені та неоднозначні автоматичні задачі не входять до KPI.</p>
                 <div id="reportSummary" class="hr-report-summary" aria-live="polite"></div>
                 <div class="hr-report-table-wrap">
                     <table class="hr-report-table">
                         <thead id="reportHead"></thead>
                         <tbody id="reportBody"></tbody>
                     </table>
+                </div>
+                <div id="reportDetailsOverlay" class="hr-report-details-overlay" hidden>
+                    <section class="hr-report-details" role="dialog" aria-modal="true" aria-labelledby="reportDetailsTitle">
+                        <div class="hr-report-details-head">
+                            <div><h3 id="reportDetailsTitle"></h3><p id="reportDetailsSubtitle"></p></div>
+                            <button type="button" id="reportDetailsClose" aria-label="Закрити деталізацію">×</button>
+                        </div>
+                        <div id="reportDetailsBody" class="hr-report-details-body"></div>
+                    </section>
                 </div>
                 <section class="hr-role-report" aria-label="Звіт по ролях, допусках і стажуваннях">
                     <div class="hr-report-section-head">

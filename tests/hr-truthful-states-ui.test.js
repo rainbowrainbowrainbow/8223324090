@@ -159,9 +159,16 @@ test('HR reports failure uses unavailable state, clears stale rows and blocks cu
     const monthlySuccess = {
         success: true,
         data: [{
+            staff_id: 41,
             staff_name: 'QA Staff',
             days_scheduled: 2,
             days_worked: 1,
+            planned_worked_count: 1,
+            unplanned_worked_count: 0,
+            attendance_details: { scheduled: [{ date: '2026-09-20', planned_start: '09:00', planned_end: '17:00' },
+                { date: '2026-09-21', planned_start: '09:00', planned_end: '17:00' }],
+            planned_worked: [{ date: '2026-09-20', clock_in: '2026-09-20T06:07:00Z' }],
+            late: [{ date: '2026-09-20', late_minutes: 7 }] },
             late_count: 1,
             days_early_leave: 0,
             days_absent: 0,
@@ -191,8 +198,36 @@ test('HR reports failure uses unavailable state, clears stale rows and blocks cu
     });
     try {
         await win.loadReports();
-        assert.equal(win.document.getElementById('reportHeroAttendance').textContent, '50%');
+        assert.equal(win.document.getElementById('reportHeroAttendance').textContent, '2');
+        assert.match(win.document.getElementById('reportHeroAttendanceMeta').textContent, /1 з 2/);
         assert.match(win.document.getElementById('reportBody').textContent, /QA Staff/);
+        win.document.querySelector('[data-report-detail="late"][data-staff-id="41"]').click();
+        assert.equal(win.document.getElementById('reportDetailsOverlay').hidden, false);
+        assert.match(win.document.getElementById('reportDetailsBody').textContent, /2026-09-20/);
+        win.document.getElementById('reportDetailsClose').click();
+        assert.equal(win.document.getElementById('reportDetailsOverlay').hidden, true);
+        win.document.getElementById('reportSearch').value = 'missing person';
+        win.document.getElementById('reportSearch').dispatchEvent(new win.Event('input'));
+        assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /QA Staff/);
+        win.document.getElementById('reportSearch').value = 'QA';
+        win.document.getElementById('reportSearch').dispatchEvent(new win.Event('input'));
+        assert.match(win.document.getElementById('reportBody').textContent, /QA Staff/);
+        win.document.getElementById('reportSearch').value = '';
+        win.document.getElementById('reportSearch').dispatchEvent(new win.Event('input'));
+        win.renderReports({ data: [monthlySuccess.data[0], { staff_id: 42,
+            staff_name: 'Zulu Staff', days_scheduled: 0, days_worked: 2,
+            planned_worked_count: 0, unplanned_worked_count: 2,
+            task_data_status: 'unavailable', task_kpi: null,
+            attendance_details: { unplanned_worked: [{ date: '2026-09-22' }, { date: '2026-09-23' }] }
+        }] });
+        assert.equal(win.document.getElementById('reportHeroAttendance').textContent, '2');
+        assert.equal(win.document.getElementById('reportHeroTasks').textContent, '—');
+        assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /0\/0|224%/);
+        win.document.querySelector('[data-report-sort="staff_name"]').click();
+        assert.match(win.document.querySelector('#reportBody tr:first-child').textContent, /Zulu Staff/);
+        win.document.querySelector('[data-report-detail="unplanned_worked"][data-staff-id="42"]').click();
+        assert.equal(win.document.querySelectorAll('#reportDetailsBody li').length, 2);
+        win.document.getElementById('reportDetailsClose').click();
         assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /1000/);
         assert.doesNotMatch(win.document.getElementById('reportHead').textContent, /Сума/);
         assert.equal(win.document.getElementById('reportExport').disabled, false);

@@ -584,6 +584,9 @@ let professionCatalogAccess = null;
 let professionCatalogLoadState = 'idle';
 let professionCatalogLoadError = '';
 let reportRequestSeq = 0;
+let reportRows = [];
+let reportSort = { key: 'staff_name', direction: 1 };
+let reportDetailsOpener = null;
 let reportState = {
     loadState: 'idle',
     month: '',
@@ -17154,77 +17157,96 @@ function formatReportPlanWarnings(row = {}) {
 
 function reportHeaderMetricsFromRows(rows = []) {
     const safeRows = Array.isArray(rows) ? rows : [];
-    let totalPresent = 0;
-    let totalLate = 0;
-    let totalEarlyLeave = 0;
-    let totalAbsent = 0;
-    let totalOvertime = 0;
-    let totalScheduled = 0;
-    let totalTasksAssigned = 0;
-    let totalTasksDone = 0;
-    let totalTasksOverdue = 0;
-
-    for (const row of safeRows) {
-        totalPresent += reportMetricNumber(row.days_worked);
-        totalLate += reportMetricNumber(row.late_count);
-        totalEarlyLeave += reportMetricNumber(row.days_early_leave);
-        totalAbsent += reportMetricNumber(row.days_absent);
-        totalOvertime += reportMetricNumber(row.total_overtime_hours);
-        totalScheduled += reportMetricNumber(row.days_scheduled);
-        totalTasksAssigned += reportMetricNumber(row.task_kpi?.tasks_assigned);
-        totalTasksDone += reportMetricNumber(row.task_kpi?.tasks_done);
-        totalTasksOverdue += reportMetricNumber(row.task_kpi?.tasks_overdue);
-    }
-
-    const attendanceRate = totalScheduled > 0 ? Math.round(totalPresent / totalScheduled * 100) : 0;
-    const taskDoneRate = totalTasksAssigned > 0 ? Math.round(totalTasksDone / totalTasksAssigned * 100) : 0;
-
+    const sum = key => safeRows.reduce((total, row) => total + reportMetricNumber(row[key]), 0);
+    const totalScheduled = sum('days_scheduled');
+    const totalPlannedWorked = safeRows.reduce((total, row) => total
+        + reportMetricNumber(row.planned_worked_count ?? Math.min(row.days_worked || 0, row.days_scheduled || 0)), 0);
+    const taskAvailable = reportRows.every(row => row.task_data_status !== 'unavailable');
+    const taskSum = key => safeRows.reduce((total, row) => total + reportMetricNumber(row.task_kpi?.[key]), 0);
+    const totalTasksAssigned = taskSum('tasks_assigned');
+    const totalTasksDone = taskSum('tasks_done');
     return {
         staffCount: safeRows.length,
-        totalPresent,
-        totalLate,
-        totalEarlyLeave,
-        totalAbsent,
-        totalOvertime,
         totalScheduled,
+        totalPlannedWorked,
+        totalUnplannedWorked: sum('unplanned_worked_count'),
+        totalLate: sum('late_count'),
+        totalEarlyLeave: sum('days_early_leave'),
+        totalAbsent: sum('days_absent'),
+        totalOvertime: sum('total_overtime_hours'),
         totalTasksAssigned,
         totalTasksDone,
-        totalTasksOverdue,
-        attendanceRate,
-        taskDoneRate
+        totalTasksOverdue: taskSum('tasks_overdue'),
+        attendanceRate: totalScheduled ? Math.round(totalPlannedWorked / totalScheduled * 100) : null,
+        taskDoneRate: taskAvailable && totalTasksAssigned
+            ? Math.round(totalTasksDone / totalTasksAssigned * 100) : null,
+        taskAvailable
     };
 }
 
 function updateReportHeaderMetrics(metrics = {}) {
-    // Reports hero mirrors useful monthly row totals without duplicating CSV/KPI/risk placeholders.
-    const totalPresent = reportMetricNumber(metrics.totalPresent);
-    const totalScheduled = reportMetricNumber(metrics.totalScheduled);
-    const totalLate = reportMetricNumber(metrics.totalLate);
-    const totalAbsent = reportMetricNumber(metrics.totalAbsent);
-    const totalTasksDone = reportMetricNumber(metrics.totalTasksDone);
-    const totalTasksAssigned = reportMetricNumber(metrics.totalTasksAssigned);
-    const totalTasksOverdue = reportMetricNumber(metrics.totalTasksOverdue);
-    const attendanceRate = Math.max(0, Math.min(100, reportMetricNumber(metrics.attendanceRate)));
+    const scheduled = reportMetricNumber(metrics.totalScheduled);
+    const plannedWorked = reportMetricNumber(metrics.totalPlannedWorked);
+    const late = reportMetricNumber(metrics.totalLate);
+    const absent = reportMetricNumber(metrics.totalAbsent);
+    setReportHeaderMetricText('reportHeroAttendance', scheduled);
+    setReportHeaderMetricText('reportHeroAttendanceMeta', scheduled
+        ? `${plannedWorked} з ${scheduled} відмічено за графіком`
+        : 'Немає запланованих змін');
+    setReportHeaderMetricText('reportHeroLate', late);
+    setReportHeaderMetricText('reportHeroLateMeta', late ? 'Відкрийте перелік запізнень' : 'Без запізнень');
+    setReportHeaderMetricText('reportHeroAbsent', absent);
+    setReportHeaderMetricText('reportHeroAbsentMeta', absent ? 'Лише підтверджені відсутності' : 'Немає підтверджених відсутностей');
+    setReportHeaderMetricText('reportHeroTasks', metrics.taskAvailable ? metrics.totalTasksAssigned : '—');
+    setReportHeaderMetricText('reportHeroTasksMeta', metrics.taskAvailable
+        ? 'Поточний стан задач за період' : 'Дані задач недоступні');
+}
 
-    setReportHeaderMetricText('reportHeroAttendance', `${attendanceRate}%`);
-    setReportHeaderMetricText('reportHeroAttendanceMeta', totalScheduled > 0 ? `${totalPresent} з ${totalScheduled} змін` : 'немає змін');
-    setReportHeaderMetricText('reportHeroLate', totalLate);
-    setReportHeaderMetricText('reportHeroLateMeta', totalLate > 0 ? `${totalLate} за період` : 'без запізнень');
-    setReportHeaderMetricText('reportHeroAbsent', totalAbsent);
-    setReportHeaderMetricText('reportHeroAbsentMeta', totalAbsent > 0 ? `${totalAbsent} за період` : 'без відсутніх');
-    setReportHeaderMetricText('reportHeroTasks', `${totalTasksDone}/${totalTasksAssigned}`);
-    setReportHeaderMetricText('reportHeroTasksMeta', formatReportOverdueTasks(totalTasksOverdue));
+const REPORT_DETAIL_LABELS = {
+    scheduled: 'Заплановані зміни', planned_worked: 'Відмічені за графіком',
+    unplanned_worked: 'Позапланові відмітки', late: 'Запізнення',
+    early_leave: 'Ранні виходи', absent: 'Підтверджені відсутності',
+    overtime: 'Понаднормовий час', plan_warning: 'Поза графіком або з картки професії',
+    tasks_assigned: 'Призначені задачі', tasks_done: 'Виконані задачі',
+    tasks_overdue: 'Прострочені задачі'
+};
+
+function reportVisibleRows() {
+    const query = normalizeSearchText(document.getElementById('reportSearch')?.value || '');
+    const rows = reportRows.filter(row => !query || normalizeSearchText(
+        `${row.staff_name || ''} ${row.role_type || ''} ${row.role_type ? professionTitle(row.role_type) : ''}`).includes(query));
+    const { key, direction } = reportSort;
+    return rows.sort((left, right) => {
+        const value = row => key.startsWith('task_') ? row.task_kpi?.[key.slice(5)] : row[key];
+        const a = value(left), b = value(right);
+        const comparison = typeof a === 'string' || typeof b === 'string'
+            ? String(a || '').localeCompare(String(b || ''), 'uk')
+            : reportMetricNumber(a) - reportMetricNumber(b);
+        return direction * comparison || String(left.staff_name || '').localeCompare(String(right.staff_name || ''), 'uk');
+    });
+}
+
+function reportDetailButton(key, value, staffId = null, suffix = '') {
+    if (value === null || value === undefined) return '—';
+    const staffAttribute = staffId == null ? '' : ` data-staff-id="${escapeHtml(String(staffId))}"`;
+    return `<button type="button" class="hr-report-detail-trigger" data-report-detail="${key}"${staffAttribute}
+        aria-label="${escapeHtml(REPORT_DETAIL_LABELS[key])}: ${escapeHtml(String(value))}">${escapeHtml(String(value))}${suffix}</button>`;
+}
+
+function reportSortHeading(key, label) {
+    const active = reportSort.key === key;
+    return `<th scope="col" aria-sort="${active ? (reportSort.direction > 0 ? 'ascending' : 'descending') : 'none'}">
+        <button type="button" data-report-sort="${key}">${label}${active ? (reportSort.direction > 0 ? ' ↑' : ' ↓') : ''}</button></th>`;
 }
 
 function renderReportsUnavailable(message = 'Звіт недоступний для цього періоду', { retry = false } = {}) {
+    reportRows = [];
+    closeReportDetails();
     setReportHeaderMetricText('reportHeroAttendance', '—');
     setReportHeaderMetricText('reportHeroAttendanceMeta', message);
-    setReportHeaderMetricText('reportHeroLate', '—');
-    setReportHeaderMetricText('reportHeroLateMeta', 'дані не отримано');
-    setReportHeaderMetricText('reportHeroAbsent', '—');
-    setReportHeaderMetricText('reportHeroAbsentMeta', 'дані не отримано');
-    setReportHeaderMetricText('reportHeroTasks', '—');
-    setReportHeaderMetricText('reportHeroTasksMeta', 'дані не отримано');
+    for (const id of ['reportHeroLate', 'reportHeroAbsent', 'reportHeroTasks']) setReportHeaderMetricText(id, '—');
+    for (const id of ['reportHeroLateMeta', 'reportHeroAbsentMeta', 'reportHeroTasksMeta'])
+        setReportHeaderMetricText(id, 'Дані не отримано');
     const summary = document.getElementById('reportSummary');
     const head = document.getElementById('reportHead');
     const body = document.getElementById('reportBody');
@@ -17233,12 +17255,174 @@ function renderReportsUnavailable(message = 'Звіт недоступний д�
         summary.querySelector('[data-report-retry]')?.addEventListener('click', () => void loadReports());
     }
     if (head) head.innerHTML = '';
-    if (body) body.innerHTML = `<tr><td colspan="11">${escapeHtml(message)}</td></tr>`;
+    if (body) body.innerHTML = `<tr><td colspan="12">${escapeHtml(message)}</td></tr>`;
+}
+
+function formatReportDuration(value) {
+    const minutes = Math.round(reportMetricNumber(value));
+    if (minutes <= 0) return '—';
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return hours ? `${hours} год ${rest} хв` : `${rest} хв`;
+}
+
+function renderReportRows() {
+    const rows = reportVisibleRows();
+    const metrics = reportHeaderMetricsFromRows(rows);
+    updateReportHeaderMetrics(metrics);
+    const summary = document.getElementById('reportSummary');
+    const stat = (key, value, label, modifier = '') => `<div class="hr-report-stat ${modifier}">
+        <div class="stat-value">${reportDetailButton(key, value)}</div><div class="stat-label">${label}</div></div>`;
+    summary.innerHTML = [
+        stat('planned_worked', metrics.totalPlannedWorked, 'Відмічено за графіком', 'hr-report-stat--presence'),
+        stat('unplanned_worked', metrics.totalUnplannedWorked, 'Позапланові відмітки'),
+        stat('early_leave', metrics.totalEarlyLeave, 'Ранні виходи', 'hr-report-stat--late'),
+        stat('overtime', `${formatReportHours(metrics.totalOvertime)} год`, 'Понаднормово', 'hr-report-stat--overtime'),
+        metrics.taskAvailable ? stat('tasks_done', metrics.totalTasksDone, 'Виконано задач · поточний стан', 'hr-report-stat--tasks')
+            : '<div class="hr-report-stat hr-report-stat--overdue"><div class="stat-value">—</div><div class="stat-label">Дані задач недоступні</div></div>',
+        metrics.taskAvailable ? stat('tasks_overdue', metrics.totalTasksOverdue, 'Прострочено · поточний стан', 'hr-report-stat--overdue') : ''
+    ].join('');
+    const headings = [
+        ['staff_name', 'Працівник'], ['days_scheduled', 'Зміни'],
+        ['planned_worked_count', 'За графіком'], ['unplanned_worked_count', 'Поза графіком'],
+        ['late_count', 'Запізнення'], ['days_early_leave', 'Ранні виходи'],
+        ['days_absent', 'Відсутність'], ['total_overtime_hours', 'Понаднормово'],
+        ['avg_late_minutes', 'Середнє запізнення'], ['plan_warning_count', 'Джерело плану'],
+        ['total_worked_hours', 'Відпрацьовано'], ['task_tasks_done', 'Задачі']
+    ];
+    document.getElementById('reportHead').innerHTML = `<tr>${headings.map(([key, label]) => reportSortHeading(key, label)).join('')}</tr>`;
+    document.getElementById('reportBody').innerHTML = rows.length ? rows.map(row => {
+        const staffId = row.staff_id;
+        const plannedWorked = reportMetricNumber(row.planned_worked_count ?? Math.min(row.days_worked || 0, row.days_scheduled || 0));
+        const scheduled = reportMetricNumber(row.days_scheduled);
+        const rate = scheduled ? ` <small>(${Math.round(plannedWorked / scheduled * 100)}%)</small>` : '';
+        const task = row.task_data_status === 'unavailable' || row.task_kpi == null ? '—'
+            : `${reportDetailButton('tasks_done', row.task_kpi.tasks_done || 0, staffId)} / ${reportDetailButton('tasks_assigned', row.task_kpi.tasks_assigned || 0, staffId)}`
+                + (row.task_kpi.tasks_assigned ? ` <small>(${reportMetricNumber(row.task_completion_rate)}%)</small>` : '')
+                + (row.task_kpi.tasks_overdue ? ` · ${reportDetailButton('tasks_overdue', `${row.task_kpi.tasks_overdue} простр.`, staffId)}` : '');
+        return `<tr>
+            <td>${escapeHtml(row.staff_name || '')}${row.role_type ? `<small class="hr-report-staff-role">${escapeHtml(professionTitle(row.role_type))}</small>` : ''}</td>
+            <td class="num">${reportDetailButton('scheduled', scheduled, staffId)}</td>
+            <td class="num">${reportDetailButton('planned_worked', plannedWorked, staffId, rate)}</td>
+            <td class="num">${reportDetailButton('unplanned_worked', row.unplanned_worked_count || 0, staffId)}</td>
+            <td class="num">${reportDetailButton('late', row.late_count || 0, staffId)}</td>
+            <td class="num">${reportDetailButton('early_leave', row.days_early_leave || 0, staffId)}</td>
+            <td class="num">${reportDetailButton('absent', row.days_absent || 0, staffId)}</td>
+            <td class="num">${reportDetailButton('overtime', `${formatReportHours(row.total_overtime_hours)} год`, staffId)}</td>
+            <td class="num">${formatReportDuration(row.avg_late_minutes)}</td>
+            <td>${reportDetailButton('plan_warning', formatReportPlanWarnings(row), staffId)}</td>
+            <td class="num">${formatReportHours(row.total_worked_hours)} год</td>
+            <td class="num">${task}</td>
+        </tr>`;
+    }).join('') : '<tr><td colspan="12">За цим пошуком працівників немає.</td></tr>';
+}
+
+function reportClock(value) {
+    if (!value) return '—';
+    if (/^\d{2}:\d{2}/.test(String(value))) return String(value).slice(0, 5);
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat('uk-UA', {
+        timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit'
+    }).format(date);
+}
+
+function reportDetailItems(key, rows) {
+    return rows.flatMap(row => {
+        const entries = key.startsWith('tasks_') ? row.task_kpi?.[`${key}_details`]
+            : row.attendance_details?.[key];
+        return (Array.isArray(entries) ? entries : []).map(item => ({ ...item, staff_name: row.staff_name }));
+    });
+}
+
+function closeReportDetails() {
+    const overlay = document.getElementById('reportDetailsOverlay');
+    if (!overlay || overlay.hidden) return;
+    overlay.hidden = true;
+    reportDetailsOpener?.focus?.();
+    reportDetailsOpener = null;
+}
+
+function openReportDetails(key, staffId, opener) {
+    const selectedRows = staffId == null ? reportVisibleRows()
+        : reportVisibleRows().filter(row => String(row.staff_id) === String(staffId));
+    const items = reportDetailItems(key, selectedRows);
+    const overlay = document.getElementById('reportDetailsOverlay');
+    if (!overlay) return;
+    reportDetailsOpener = opener;
+    document.getElementById('reportDetailsTitle').textContent = REPORT_DETAIL_LABELS[key] || 'Деталі';
+    document.getElementById('reportDetailsSubtitle').textContent = `${selectedRows.length === 1 ? selectedRows[0].staff_name : `${selectedRows.length} працівників`} · ${document.getElementById('reportMonth')?.value || ''}`;
+    const taskDetail = key.startsWith('tasks_');
+    document.getElementById('reportDetailsBody').innerHTML = items.length ? `<ul class="hr-report-details-list">${items.map(item => {
+        const headline = taskDetail ? item.title || `Задача #${item.id}` : item.date || 'Дата не вказана';
+        const info = taskDetail
+            ? [item.status, item.deadline ? `Дедлайн: ${String(item.deadline).slice(0, 10)}` : ''].filter(Boolean).join(' · ')
+            : [item.planned_start ? `План ${reportClock(item.planned_start)}–${reportClock(item.planned_end)}` : '',
+                item.clock_in ? `Факт ${reportClock(item.clock_in)}–${reportClock(item.clock_out)}`
+                    : item.status === 'absent' || item.status === 'no_show' ? 'Підтверджена відсутність' : 'Без відмітки',
+                key === 'late' ? `Запізнення ${formatReportDuration(item.late_minutes)}` : '',
+                key === 'early_leave' ? `Ранній вихід ${formatReportDuration(item.early_leave_minutes)}` : '',
+                key === 'overtime' ? `Понаднормово ${formatReportDuration(item.overtime_minutes)}` : '',
+                key === 'plan_warning' ? (item.plan_source === 'profession_card' ? 'Картка професії' : 'Без плану') : ''
+            ].filter(Boolean).join(' · ');
+        return `<li><strong>${escapeHtml(headline)}</strong><span>${escapeHtml(item.staff_name || '')}</span><small>${escapeHtml(info)}</small></li>`;
+    }).join('')}</ul>` : '<p>Для цього показника записів немає.</p>';
+    overlay.hidden = false;
+    document.getElementById('reportDetailsClose')?.focus();
+}
+
+function bindReportControls() {
+    const root = document.getElementById('tab-reports');
+    if (!root || root.dataset.reportControlsBound === 'true') return;
+    root.dataset.reportControlsBound = 'true';
+    root.addEventListener('click', event => {
+        const sort = event.target.closest('[data-report-sort]');
+        if (sort && root.contains(sort)) {
+            const key = sort.dataset.reportSort;
+            reportSort = { key, direction: reportSort.key === key ? -reportSort.direction : 1 };
+            renderReportRows();
+            return;
+        }
+        const detail = event.target.closest('[data-report-detail]');
+        if (detail && root.contains(detail)) openReportDetails(detail.dataset.reportDetail, detail.dataset.staffId, detail);
+    });
+    root.querySelector('#reportSearch')?.addEventListener('input', () => {
+        if (reportState.loadState === 'ready' || reportState.loadState === 'empty') renderReportRows();
+    });
+    root.querySelector('#reportDetailsClose')?.addEventListener('click', closeReportDetails);
+    root.querySelector('#reportDetailsOverlay')?.addEventListener('click', event => {
+        if (event.target.id === 'reportDetailsOverlay') closeReportDetails();
+    });
+    root.addEventListener('keydown', event => {
+        const overlay = root.querySelector('#reportDetailsOverlay');
+        if (!overlay || overlay.hidden) return;
+        if (event.key === 'Escape') closeReportDetails();
+        if (event.key === 'Tab') {
+            event.preventDefault();
+            root.querySelector('#reportDetailsClose')?.focus();
+        }
+    });
+    for (const [id, key] of [['reportHeroAttendance', 'scheduled'], ['reportHeroLate', 'late'],
+        ['reportHeroAbsent', 'absent'], ['reportHeroTasks', 'tasks_assigned']]) {
+        const chip = root.querySelector(`#${id}`)?.closest('.hr-reports-metric-chip');
+        if (chip) {
+            chip.setAttribute('role', 'button');
+            chip.setAttribute('tabindex', '0');
+            chip.addEventListener('click', () => {
+                if ((reportState.loadState === 'ready' || reportState.loadState === 'empty')
+                    && (key !== 'tasks_assigned' || reportRows.every(row => row.task_data_status !== 'unavailable')))
+                    openReportDetails(key, null, chip);
+            });
+            chip.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chip.click(); }
+            });
+        }
+    }
 }
 
 async function loadReports() {
-    // Fill month selector
     const sel = document.getElementById('reportMonth');
+    if (!sel) return;
+    bindReportControls();
     if (sel.options.length === 0) {
         const now = new Date();
         for (let i = 0; i < 12; i++) {
@@ -17251,7 +17435,6 @@ async function loadReports() {
         const reportExport = document.getElementById('reportExport');
         if (reportExport) reportExport.addEventListener('click', exportCSV);
     }
-
     const month = sel.value;
     const requestSeq = ++reportRequestSeq;
     const context = teamAccessContext();
@@ -17268,8 +17451,7 @@ async function loadReports() {
         await loadRoleAssignmentsReport(requestSeq);
         return;
     }
-
-    const exportReady = data.reportAccess?.exportAllowed !== false && Array.isArray(data.data) && data.data.length > 0;
+    const exportReady = data.reportAccess?.exportAllowed !== false && data.data.length > 0;
     reportState = { loadState: data.data.length ? 'ready' : 'empty', month, error: '', exportReady };
     renderReports(data);
     setReportExportAvailability(exportReady);
@@ -17282,58 +17464,17 @@ for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged',
         if (reportState.loadState === 'idle') return;
         reportRequestSeq++;
         reportState = { loadState: 'error', month: '', error: 'Бізнес або доступ змінився. Повторіть запит.', exportReady: false };
+        const search = document.getElementById('reportSearch');
+        if (search) search.value = '';
         setReportExportAvailability(false);
         renderReportsUnavailable(reportState.error, { retry: true });
     });
 }
 
 function renderReports(data) {
-    // Summary
-    const rows = Array.isArray(data.data) ? data.data : [];
-    const metrics = reportHeaderMetricsFromRows(rows);
-    const {
-        totalLate,
-        totalEarlyLeave,
-        totalAbsent,
-        totalOvertime,
-        totalTasksAssigned,
-        totalTasksDone,
-        totalTasksOverdue,
-        attendanceRate,
-        taskDoneRate
-    } = metrics;
-    updateReportHeaderMetrics(metrics);
-
-    document.getElementById('reportSummary').innerHTML = `
-        <div class="hr-report-stat hr-report-stat--presence"><div class="stat-value">${attendanceRate}%</div><div class="stat-label">Присутність</div></div>
-        <div class="hr-report-stat hr-report-stat--late"><div class="stat-value">${totalLate}</div><div class="stat-label">Запізнень</div></div>
-        <div class="hr-report-stat hr-report-stat--late"><div class="stat-value">${totalEarlyLeave}</div><div class="stat-label">Ранні виходи</div></div>
-        <div class="hr-report-stat hr-report-stat--absence"><div class="stat-value">${totalAbsent}</div><div class="stat-label">Відсутностей</div></div>
-        <div class="hr-report-stat hr-report-stat--overtime"><div class="stat-value">${formatReportHours(totalOvertime)}г</div><div class="stat-label">Переробка</div></div>
-        <div class="hr-report-stat hr-report-stat--tasks"><div class="stat-value">${totalTasksDone}/${totalTasksAssigned}</div><div class="stat-label">Задачі виконано</div></div>
-        <div class="hr-report-stat hr-report-stat--kpi"><div class="stat-value">${taskDoneRate}%</div><div class="stat-label">KPI задач</div></div>
-        <div class="hr-report-stat hr-report-stat--overdue"><div class="stat-value">${totalTasksOverdue}</div><div class="stat-label">Прострочені</div></div>
-    `;
-
-    // Table
-    document.getElementById('reportHead').innerHTML = `<tr>
-        <th>ПІБ</th><th>Зміни</th><th>Відпрац.</th><th>Запізн.</th>
-        <th>Ранні виходи</th><th>Overtime</th><th>Сер. запізн.</th><th>План</th>
-        <th>Годин</th><th>Задачі</th><th>KPI</th></tr>`;
-
-    document.getElementById('reportBody').innerHTML = rows.length ? rows.map(r => `<tr>
-        <td>${escapeHtml(r.staff_name)}</td>
-        <td class="num">${r.days_scheduled}</td>
-        <td class="num">${r.days_worked}</td>
-        <td class="num">${r.late_count}</td>
-        <td class="num">${r.days_early_leave || 0}</td>
-        <td class="num">${formatReportHours(r.total_overtime_hours)}г</td>
-        <td class="num">${r.avg_late_minutes > 0 ? r.avg_late_minutes + 'хв' : '—'}</td>
-        <td>${escapeHtml(formatReportPlanWarnings(r))}</td>
-        <td class="num">${r.total_worked_hours}г</td>
-        <td class="num">${r.task_kpi?.tasks_done || 0}/${r.task_kpi?.tasks_assigned || 0}${r.task_kpi?.tasks_overdue ? ` · ${r.task_kpi.tasks_overdue} простр.` : ''}</td>
-        <td class="num">${r.task_completion_rate || 0}%</td>
-    </tr>`).join('') : '<tr><td colspan="11">За цей період немає даних.</td></tr>';
+    reportRows = Array.isArray(data.data) ? data.data : [];
+    closeReportDetails();
+    renderReportRows();
 }
 
 function roleReportPillClass(value = '') {

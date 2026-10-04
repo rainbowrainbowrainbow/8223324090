@@ -1632,7 +1632,7 @@
                         <h4>Додати джерело</h4>
                         <div class="cost-grid">
                             <label>ID джерела<input id="costSourceExternalId" maxlength="120" placeholder="Номер чека або акта"></label>
-                            <label>Роль витрати або надходження<input id="costSourceRole" maxlength="80" placeholder="Наприклад: оплата ведучому"></label>
+                            <label>Код економічної ролі<input id="costSourceRole" maxlength="80" pattern="[a-z0-9_]+" placeholder="service_cost" aria-describedby="costSourceRoleHelp" autocapitalize="off" spellcheck="false"><small id="costSourceRoleHelp" class="cost-field-help">Малі латинські літери, цифри й _. Наприклад: service_cost або service_revenue.</small></label>
                             <label>Категорія<select id="costSourceCategory"><option value="direct_cost">Пряма витрата</option><option value="revenue">Виручка</option></select></label>
                             <label>Сума, ₴<input id="costSourceAmount" inputmode="decimal" placeholder="0.00"></label>
                             <label>Підстава<select id="costSourceEvidence"><option value="estimate">Оцінка</option><option value="confirmed">Підтверджено вручну (без перевірки зарплати чи платежу)</option></select></label>

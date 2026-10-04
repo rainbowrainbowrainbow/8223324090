@@ -240,6 +240,7 @@ body.dark-mode .salary-payroll-movement small {
 .cost-card p { margin:0 0 14px; color:var(--gray-500); font-size:13px; }
 .cost-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; }
 .cost-grid label, .cost-line label { display:grid; min-width:0; gap:5px; font-size:13px; font-weight:700; color:var(--gray-700); }
+.cost-grid .cost-field-help { color:var(--gray-500); font-size:12px; font-weight:500; line-height:1.35; }
 .cost-grid input, .cost-grid select, .cost-line input, .cost-line select { width:100%; min-height:44px; box-sizing:border-box; border:1px solid var(--gray-300); border-radius:9px; padding:8px; color:var(--gray-900); background:var(--surface); font:inherit; }
 .cost-lines { display:grid; gap:10px; margin:12px 0; }
 .cost-line { display:grid; grid-template-columns:minmax(140px,2fr) minmax(125px,1fr) minmax(110px,1fr) minmax(155px,1fr) auto; gap:8px; align-items:end; }

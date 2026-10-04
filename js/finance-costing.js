@@ -394,7 +394,9 @@ window.CostingWorkspace = (() => {
         try {
             const planId = $('costActualPlan').value;
             if (!planId) throw new Error('Оберіть виконання');
-            const payload = { externalId: $('costSourceExternalId').value.trim(), economicRole: $('costSourceRole').value.trim(),
+            const economicRole = $('costSourceRole').value.trim();
+            if (!/^[a-z0-9_]{1,80}$/.test(economicRole)) throw new Error('Код економічної ролі: використовуйте малі латинські літери, цифри й _ (до 80 знаків).');
+            const payload = { externalId: $('costSourceExternalId').value.trim(), economicRole,
                 category: $('costSourceCategory').value, amountMinor: signedMinorFromUah($('costSourceAmount').value, 'Сума'),
                 evidenceState: $('costSourceEvidence').value, semantic: $('costSourceSemantic').value };
             const result = await apiRequest('POST', `/api/finance/costing/actual/plans/${encodeURIComponent(planId)}/sources`, payload);
@@ -752,6 +754,7 @@ window.CostingWorkspace = (() => {
             $('costManagementEvidence').addEventListener('change', updateAttendanceField);
             $('costSourceCategory').addEventListener('change', () => {
                 $('costSourceSemantic').value = $('costSourceCategory').value === 'direct_cost' ? 'cost' : 'charge';
+                $('costSourceRole').placeholder = $('costSourceCategory').value === 'direct_cost' ? 'service_cost' : 'service_revenue';
             });
             $('tabCosting').addEventListener('input', event => {
                 if (event.target.closest('#costLineQuantities') ||

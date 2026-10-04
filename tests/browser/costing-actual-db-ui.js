@@ -120,16 +120,22 @@ async function main() {
         await page.locator('#costActualSummary').getByText('Ще не визначено').waitFor();
         assert.equal((await pool.query('SELECT booking_id FROM costing_plan_snapshots WHERE id=1')).rows[0].booking_id, 'lesson-qa');
         for (const item of [
-            { id: 'sale-qa', role: 'lesson_sale', category: 'revenue', amount: '2160' },
-            { id: 'cost-qa', role: 'lesson_cost', category: 'direct_cost', amount: '1158' }
+            { id: 'sale-qa', role: 'service_revenue', category: 'revenue', amount: '2160' },
+            { id: 'cost-qa', role: 'service_cost', category: 'direct_cost', amount: '1158' }
         ]) {
             await page.locator('#costSourceExternalId').fill(item.id);
-            await page.locator('#costSourceRole').fill(item.role);
             await page.locator('#costSourceCategory').selectOption(item.category);
+            assert.equal(await page.locator('#costSourceRole').getAttribute('placeholder'), item.role);
+            await page.locator('#costSourceRole').fill(await page.locator('#costSourceRole').getAttribute('placeholder'));
             await page.locator('#costSourceAmount').fill(item.amount);
             await page.locator('#costSourceEvidence').selectOption('confirmed');
+            const sourceResponse = page.waitForResponse(response => response.url().includes('/sources') && response.request().method() === 'POST');
             await page.locator('#costAddSource').click();
+            const source = await sourceResponse;
+            assert.equal(source.status(), 201, await source.text());
+            await page.locator('#costActualHistory').getByText(item.id).waitFor();
         }
+        assert.deepEqual((await pool.query('SELECT economic_role FROM costing_actual_sources ORDER BY id')).rows.map(row => row.economic_role), ['service_revenue', 'service_cost']);
         for (const category of ['revenue', 'direct_cost']) {
             await page.locator('#costCompletionCategory').selectOption(category);
             await page.locator('#costCompletionReason').fill(category === 'revenue' ? 'Перевірено надходження за заняття' : 'Перевірено прямі витрати заняття');

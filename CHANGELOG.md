@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.60 - Фінанси: зрозумілий простір і собівартість послуг
+
+### Release / Versioning / (04.10.2026) [codex]
+- **Фінанси: зрозумілий простір і собівартість послуг** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.59 - Фінанси та точні розрахунки інтерфейсу
 
 ### Release / Versioning / (03.10.2026) [codex]

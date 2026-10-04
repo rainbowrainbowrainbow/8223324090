@@ -38,24 +38,34 @@
         return typeof canExportHrReports === 'function' && canExportHrReports()
             && typeof canUseHrCapability === 'function'
             && canUseHrCapability('hr.today.view')
-            && canUseHrCapability('hr.schedule.view');
+            && canUseHrCapability('hr.schedule.view')
+            && canUseHrCapability('hr.staff.view');
     }
 
     async function fetchEligibleRoster() {
-        if (typeof apiFetchWithAuthRetry !== 'function') throw new Error('Не вдалося завантажити допуски.');
-        const response = await apiFetchWithAuthRetry('/api/staff', { headers: { Accept: 'application/json' } });
-        const data = await response?.json().catch(() => null);
-        if (!response?.ok || data?.success !== true) {
-            throw new Error(data?.error || 'Не вдалося завантажити допуски.');
+        if (typeof hrFetch !== 'function') throw new Error('Не вдалося завантажити допуски.');
+        const catalog = await hrFetch('/professions');
+        if (catalog?.success !== true || !Array.isArray(catalog.data)) {
+            throw new Error(catalog?.error || 'Не вдалося завантажити допуски.');
         }
-        return data;
+        return catalog;
     }
 
-    function eligibleKeys(staff) {
-        const primary = String(staff?.role_type || '').trim();
-        const secondary = Array.isArray(staff?.secondary_professions)
-            ? staff.secondary_professions : [];
-        return [...new Set([primary, ...secondary].map(key => String(key || '').trim()).filter(Boolean))];
+    function eligibleByStaff(catalog) {
+        const byStaff = new Map();
+        for (const profession of catalog.data) {
+            const key = String(profession?.key || '').trim();
+            if (!key || profession.is_active === false || !Array.isArray(profession.people)) continue;
+            for (const person of profession.people) {
+                if (person?.isActive !== true || person.assignmentStatus !== 'active'
+                    || person.admissionStatus !== 'approved') continue;
+                const id = Number(person.id);
+                if (!Number.isSafeInteger(id) || id <= 0) continue;
+                if (!byStaff.has(id)) byStaff.set(id, new Set());
+                byStaff.get(id).add(key);
+            }
+        }
+        return byStaff;
     }
 
     function labelFor(key) {
@@ -66,32 +76,33 @@
         if (!shift || excludedShiftTypes.has(String(shift.shift_type || '').toLowerCase())) return [];
         if (Array.isArray(shift.segments) && shift.segments.length) return shift.segments.map(segment => ({
             profession: segment.professionKey || segment.profession_key || shift.primary_profession_key || fallbackProfession,
+            additional: [...new Set((Array.isArray(segment.additionalRoles) ? segment.additionalRoles
+                : (Array.isArray(segment.additional_roles) ? segment.additional_roles : []))
+                .map(role => String(role?.professionKey || role?.profession_key || '').trim()).filter(Boolean))],
             start: segment.shiftStart || segment.planned_start || '',
             end: segment.shiftEnd || segment.planned_end || ''
         }));
         if (!shift.planned_start && !shift.planned_end) return [];
         return [{ profession: shift.primary_profession_key || fallbackProfession,
-            start: shift.planned_start || '', end: shift.planned_end || '' }];
+            additional: [], start: shift.planned_start || '', end: shift.planned_end || '' }];
     }
 
-    function buildRows(today, staffResponse) {
-        if (today?.success !== true || staffResponse?.success !== true
-            || !Array.isArray(today.data) || !Array.isArray(staffResponse.data)
+    function buildRows(today, catalog) {
+        if (today?.success !== true || catalog?.success !== true
+            || !Array.isArray(today.data) || !Array.isArray(catalog.data)
             || !/^\d{4}-\d{2}-\d{2}$/.test(today.date || '')) {
             throw new Error('Не вдалося отримати повний графік і допуски. Спробуйте ще раз.');
         }
-        const staffById = new Map(staffResponse.data.map(person => [Number(person.id), person]));
+        const admitted = eligibleByStaff(catalog);
         const result = [];
         for (const person of today.data) {
             const segments = plannedSegments(person.shift, person.role_type || person.position || '');
             if (!segments.length) continue;
-            const staff = staffById.get(Number(person.staff_id));
-            if (!staff) throw new Error('Дані про допуски запланованої людини недоступні. Спробуйте ще раз.');
             result.push({
                 id: person.staff_id,
-                name: person.staff_name || staff.name || '',
+                name: person.staff_name || '',
                 segments,
-                eligible: eligibleKeys(staff)
+                eligible: [...(admitted.get(Number(person.staff_id)) || [])]
             });
         }
         return result.sort((a, b) => a.name.localeCompare(b.name, 'uk'));
@@ -102,12 +113,33 @@
         return match ? match[1] : '—';
     }
 
+    function businessLocalDate(now = new Date()) {
+        const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).formatToParts(now).map(part => [part.type, part.value]));
+        return `${parts.year}-${parts.month}-${parts.day}`;
+    }
+
+    function previewIsCurrent(date, now = new Date()) {
+        return date === businessLocalDate(now);
+    }
+
+    function markPreviewStale() {
+        frame.hidden = true;
+        printButton.disabled = true;
+        setStatus('Настав новий день за часом бізнесу. Оновіть дані та перевірте бланк перед друком.', 'error');
+    }
+
     function buildSheetHtml(date, roster, emptyRows) {
         const count = Math.max(0, Math.min(MAX_EMPTY_ROWS, Math.trunc(Number(emptyRows) || 0)));
         const dateLabel = new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
             .format(new Date(`${date}T12:00:00Z`));
         const bodyRows = roster.map((person, index) => {
-            const plan = person.segments.map(segment => `<div class="plan-line">${escapeHtml(labelFor(segment.profession) || 'Посаду не вказано')} · ${escapeHtml(formatTime(segment.start))}–${escapeHtml(formatTime(segment.end))}</div>`).join('');
+            const plan = person.segments.map(segment => {
+                const keys = [segment.profession, ...(segment.additional || [])].filter(Boolean);
+                const titles = [...new Set(keys)].map(labelFor).join(' + ') || 'Посаду не вказано';
+                return `<div class="plan-line">${escapeHtml(titles)} · ${escapeHtml(formatTime(segment.start))}–${escapeHtml(formatTime(segment.end))}</div>`;
+            }).join('');
             const roles = person.eligible.length
                 ? person.eligible.map(key => `<div class="role-line"><span class="paper-checkbox" aria-hidden="true"></span>${escapeHtml(labelFor(key))}</div>`).join('')
                 : '<span class="muted">Допуски не вказано</span>';
@@ -121,7 +153,7 @@
         let page = [];
         let units = 0;
         for (const row of bodyRows) {
-            if (page.length && units + row.units > 20) {
+            if (page.length && units + row.units > 16) {
                 pages.push(page);
                 page = [];
                 units = 0;
@@ -144,6 +176,10 @@
         const count = Math.trunc(Number(dialog.querySelector('#hrTodayPrintEmptyRows').value) || 0);
         printButton.disabled = true;
         if (!rows) return;
+        if (!previewIsCurrent(rosterDate)) {
+            markPreviewStale();
+            return;
+        }
         const hasRows = rows.length + count > 0;
         frame.hidden = !hasRows;
         if (!hasRows) {
@@ -151,7 +187,10 @@
             return;
         }
         setStatus(rows.length ? `${rows.length} людей за графіком · ${count} порожніх рядків` : `Немає людей за графіком · ${count} порожніх рядків`, rows.length ? 'ready' : 'empty');
-        frame.onload = () => { printButton.disabled = false; };
+        frame.onload = () => {
+            if (previewIsCurrent(rosterDate)) printButton.disabled = false;
+            else markPreviewStale();
+        };
         frame.srcdoc = buildSheetHtml(rosterDate, rows, count);
     }
 
@@ -217,6 +256,10 @@
         });
         printButton.addEventListener('click', () => {
             if (!rows || !canOpen() || currentScope() !== dialog.dataset.scope) return;
+            if (!previewIsCurrent(rosterDate)) {
+                markPreviewStale();
+                return;
+            }
             frame.contentWindow?.focus();
             frame.contentWindow?.print();
         });
@@ -233,7 +276,7 @@
         }
     }
 
-    window.HrTodayPrint = { buildRows, buildSheetHtml, plannedSegments, init };
+    window.HrTodayPrint = { buildRows, buildSheetHtml, plannedSegments, businessLocalDate, previewIsCurrent, init };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();
 })();

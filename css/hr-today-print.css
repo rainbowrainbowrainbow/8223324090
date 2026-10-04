@@ -11,6 +11,7 @@
     inset: 0;
     z-index: 12000;
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     place-items: center;
     padding: 20px;
     background: rgba(0, 0, 0, .7);
@@ -18,6 +19,8 @@
 
 .hr-today-print-modal {
     width: min(1100px, 100%);
+    min-width: 0;
+    box-sizing: border-box;
     max-height: min(94vh, 1200px);
     overflow: auto;
     border-radius: 16px;
@@ -36,6 +39,7 @@
 }
 
 .hr-today-print-modal header { justify-content: space-between; }
+.hr-today-print-modal header > div { min-width: 0; flex: 1 1 280px; }
 .hr-today-print-modal h2 { margin: 0 0 4px; font-size: 1.35rem; }
 .hr-today-print-modal p { margin: 0 0 14px; }
 .hr-today-print-modal header button { font-size: 1.8rem; min-width: 42px; }
@@ -109,17 +113,16 @@
 @media (max-width: 640px) {
     .hr-today-filter-row:has(.hr-today-print-trigger) { grid-template-columns: 1fr; }
     .hr-today-print-trigger { width: 100%; }
-    .hr-today-print-overlay { padding: 0; }
-    .hr-today-print-modal { max-height: 100vh; border-radius: 0; padding: 14px; }
+    .hr-today-print-overlay { display: block; padding: 0; }
+    .hr-today-print-modal { width: 100%; max-height: 100vh; border-radius: 0; padding: 14px; }
     #hrTodayPrintFrame { height: 60vh; }
 }
 
 @page { size: A4 portrait; margin: 12mm 10mm; }
 @media print {
     .hr-today-print-document { padding: 0; min-height: 0; max-width: none; }
-    .sheet-page { break-after: page; page-break-after: always; }
-    .sheet-page:last-child { break-after: auto; page-break-after: auto; }
-    .sheet-page + .sheet-page { margin-top: 0; }
+    .sheet-page { break-inside: avoid; page-break-inside: avoid; }
+    .sheet-page + .sheet-page { margin-top: 0; break-before: page; page-break-before: always; }
     .attendance-sheet thead { display: table-header-group; }
     .attendance-sheet .column-heading th { background: #eee !important; print-color-adjust: exact; }
 }

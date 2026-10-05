@@ -54,7 +54,16 @@ function fixture(options = {}) {
         calls.push(endpoint);
         return endpoint === '/today' ? today : catalog;
     };
+    if (options.scriptSrc !== null) {
+        const scriptUrl = new URL('js/hr-today-print.js', win.location.href);
+        scriptUrl.search = options.scriptQuery ?? 'v=1.2.3';
+        scriptUrl.hash = options.scriptHash || '';
+        Object.defineProperty(win.document, 'currentScript', {
+            configurable: true, value: { src: options.scriptSrc || scriptUrl.href }
+        });
+    }
     win.eval(script);
+    delete win.document.currentScript;
     win.HrTodayPrint.init();
     return { dom, win, calls, today, catalog };
 }
@@ -83,6 +92,39 @@ test('Today print uses scheduled staff and preserves every planned segment and e
         assert.equal((longSheet.match(/class="sheet-page"/g) || []).length, 3);
         assert.equal((longSheet.match(/Бланк відмічалки на сьогодні<\/strong>/g) || []).length, 3);
     } finally { dom.window.close(); }
+});
+
+test('Today print preserves the loaded script version after its execution ends', () => {
+    const expectedVersion = '1.2.3';
+    for (const scriptQuery of ['v=1.2.3', 'mode=preview&v=1.2.3&other=1', 'v=%31.2.3', 'v=1.2.3&v=9.8.7']) {
+        const { dom, win, today } = fixture({ scriptQuery, scriptHash: 'v=9.8.7' });
+        try {
+            assert.equal(win.document.currentScript, null);
+            const sheet = new JSDOM(win.HrTodayPrint.buildSheetHtml(today.date, [], 1));
+            try {
+                assert.equal(sheet.window.document.querySelector('link').getAttribute('href'), `/css/hr-today-print.css?v=${expectedVersion}`);
+            } finally { sheet.window.close(); }
+        } finally { dom.window.close(); }
+    }
+});
+
+test('Today print uses a local unversioned stylesheet when script metadata has no valid release version', () => {
+    const cases = [
+        { scriptSrc: null }, { scriptSrc: 'http://[' }, { scriptQuery: 'mode=preview' },
+        { scriptQuery: 'v=' }, { scriptQuery: 'v=1.2' }, { scriptQuery: 'v=1.2.3-rc1' },
+        { scriptQuery: 'v=%22%3E%3Cscript%3E' }, { scriptQuery: 'mode=preview', scriptHash: 'v=1.2.3' }
+    ];
+    for (const options of cases) {
+        const { dom, win, today } = fixture(options);
+        try {
+            const sheet = new JSDOM(win.HrTodayPrint.buildSheetHtml(today.date, [], 1));
+            try {
+                assert.equal(sheet.window.document.querySelector('link').getAttribute('href'), '/css/hr-today-print.css');
+                assert.equal(sheet.window.document.querySelectorAll('link').length, 1);
+                assert.equal(sheet.window.document.querySelectorAll('script').length, 0);
+            } finally { sheet.window.close(); }
+        } finally { dom.window.close(); }
+    }
 });
 
 test('Today print only performs scoped reads and handles empty, loading, and failed reads', async () => {

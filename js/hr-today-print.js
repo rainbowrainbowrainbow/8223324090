@@ -4,6 +4,7 @@
 
     const MAX_EMPTY_ROWS = 50;
     const DEFAULT_EMPTY_ROWS = 5;
+    const PRINT_STYLESHEET_HREF = printStylesheetHref();
     const excludedShiftTypes = new Set(['dayoff', 'day_off', 'vacation', 'sick']);
     let dialog;
     let frame;
@@ -13,6 +14,16 @@
     let rosterDate = '';
     let requestNumber = 0;
     let opener = null;
+
+    function printStylesheetHref() {
+        let version = '';
+        try {
+            const scriptSrc = document.currentScript?.src;
+            if (scriptSrc) version = new URL(scriptSrc, window.location.href).searchParams.get('v') || '';
+        } catch { /* Missing or malformed script metadata uses the local stylesheet. */ }
+        const suffix = /^\d+\.\d+\.\d+$/.test(version) ? `?v=${version}` : '';
+        return `/css/hr-today-print.css${suffix}`;
+    }
 
     function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -164,7 +175,7 @@
         if (page.length) pages.push(page);
         const heading = `<thead><tr class="sheet-heading"><th colspan="8"><strong>Бланк відмічалки на сьогодні</strong><span>Event Genix · ${escapeHtml(dateLabel)}</span></th></tr><tr class="column-heading"><th>№</th><th>ПІБ</th><th>Планова посада / зміна</th><th>Фактична посада (позначити)</th><th>Прихід</th><th>Вихід</th><th>Примітка</th><th>Підпис</th></tr></thead>`;
         const sheets = pages.map(rowsOnPage => `<section class="sheet-page"><table class="attendance-sheet">${heading}<tbody>${rowsOnPage.join('')}</tbody></table></section>`).join('');
-        return `<!doctype html><html lang="uk"><head><meta charset="utf-8"><title>Бланк виходу · ${escapeHtml(date)}</title><link rel="stylesheet" href="/css/hr-today-print.css?v=0.82.64"></head><body class="hr-today-print-document">${sheets}</body></html>`;
+        return `<!doctype html><html lang="uk"><head><meta charset="utf-8"><title>Бланк виходу · ${escapeHtml(date)}</title><link rel="stylesheet" href="${PRINT_STYLESHEET_HREF}"></head><body class="hr-today-print-document">${sheets}</body></html>`;
     }
 
     function setStatus(message, kind = '') {

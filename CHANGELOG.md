@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.68 - Сесії та ручні завдатки: надійне підтвердження
+
+### Release / Versioning / (06.10.2026) [codex]
+- **Сесії та ручні завдатки: надійне підтвердження** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.67 - Оновлення залежностей і стан чату
 
 ### Release / Versioning / (06.10.2026) [codex]

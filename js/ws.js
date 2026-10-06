@@ -352,7 +352,7 @@ var ParkWS = (function () {
                 _resubscribeDates();
                 if (wasReconnect) _reconcileTimelineAfterReconnect();
                 // Fetch chat unread badge
-                _updateChatBadge();
+                _updateChatBadge(true);
                 break;
 
             case 'error':
@@ -801,38 +801,105 @@ var ParkWS = (function () {
     /**
      * Fetch chat unread count and update the sidebar badge.
      */
-    function _updateChatBadge() {
-        var token = localStorage.getItem('pzp_token');
-        if (!token) return;
-        var businessContext = window.CrmBusinessContext?.current?.()
-            || window.TimelineBusinessContext?.current?.()?.key
-            || null;
-        if (!businessContext) return;
-        fetch('/api/chat/unread?businessContext=' + encodeURIComponent(businessContext), { headers: { 'Authorization': 'Bearer ' + token } })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (data) {
-                if (data) _setChatBadge(data.total || 0);
+    var _chatBadgeContext = null;
+    var _chatBadgeRequestSeq = 0;
+
+    function _chatBadgeContextKey() {
+        var business = window.getLegacyBusinessSurfaceContextKey?.('chat');
+        return business ? JSON.stringify([business, localStorage.getItem('pzp_auth_session_generation') || '']) : null;
+    }
+
+    function _chatBadgeAvailable() {
+        return window.getLegacyBusinessSurfaceAvailability?.('chat')?.available === true
+            && typeof canAccess === 'function' && canAccess('chat');
+    }
+
+    function _updateChatBadge(force) {
+        var availability = window.getLegacyBusinessSurfaceAvailability?.('chat');
+        var context = _chatBadgeContextKey();
+        if (!_chatBadgeAvailable() || !context || !localStorage.getItem('pzp_token')
+            || typeof getAuthHeaders !== 'function') {
+            _chatBadgeRequestSeq++;
+            _chatBadgeContext = null;
+            _setChatBadge(null, availability?.message || 'Лічильник чату недоступний.');
+            return;
+        }
+        if (!force && context === _chatBadgeContext) return;
+        _chatBadgeContext = context;
+        _setChatBadge(null, 'Завантаження лічильника чату…');
+        var sequence = ++_chatBadgeRequestSeq;
+        var businessContext = window.getLegacyBusinessSurfaceContextKey('chat');
+        var isCurrent = function () {
+            return _connected && sequence === _chatBadgeRequestSeq && context === _chatBadgeContextKey()
+                && _chatBadgeAvailable() && Boolean(localStorage.getItem('pzp_token'));
+        };
+        fetch('/api/chat/unread', { headers: getAuthHeaders(false) })
+            .then(async function (response) {
+                var data = await response.json();
+                if (!isCurrent()) return;
+                if (!response.ok) {
+                    if (data?.code === 'chat_not_migrated') {
+                        window.noteLegacyBusinessSurfaceUnavailable?.('chat', data, businessContext);
+                        _setChatBadge(null, data.message || data.error || 'Лічильник чату недоступний.');
+                        return;
+                    }
+                    throw new Error('Unread request failed');
+                }
+                if (!Number.isSafeInteger(data?.total) || data.total < 0) throw new Error('Invalid unread count');
+                _setChatBadge(data.total);
             })
-            .catch(function () {});
+            .catch(function () {
+                if (!isCurrent()) return;
+                _chatBadgeContext = null;
+                _setChatBadge(null, 'Не вдалося завантажити лічильник чату.');
+            });
     }
 
     function _incrementChatBadge() {
+        if (!_chatBadgeAvailable()) return;
         var badge = document.getElementById('chatUnreadBadge');
         if (!badge) return;
+        if (badge.dataset.loadState !== 'ready') {
+            _updateChatBadge(true);
+            return;
+        }
         var current = parseInt(badge.textContent || '0', 10);
         _setChatBadge(current + 1);
     }
 
-    function _setChatBadge(count) {
+    function _setChatBadge(count, unavailableMessage) {
         var badge = document.getElementById('chatUnreadBadge');
         if (!badge) return;
+        badge.dataset.loadState = count === null ? 'unavailable' : 'ready';
+        badge.title = unavailableMessage || '';
+        if (count === null) {
+            badge.textContent = '—';
+            badge.style.display = '';
+            badge.setAttribute('aria-label', unavailableMessage || 'Лічильник чату недоступний.');
+            return;
+        }
+        badge.removeAttribute('aria-label');
         if (count > 0) {
             badge.textContent = count > 99 ? '99+' : String(count);
             badge.style.display = '';
         } else {
+            badge.textContent = '';
             badge.style.display = 'none';
         }
     }
+
+    window.addEventListener('crmBusinessProfileChanged', function () { if (_connected) _updateChatBadge(); });
+    ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared'].forEach(function (name) {
+        window.addEventListener(name, function () {
+            _chatBadgeRequestSeq++;
+            _chatBadgeContext = null;
+            _setChatBadge(null, 'Доступ до лічильника чату ще не підтверджено.');
+            if (_connected && name !== 'crm:auth-cleared') _updateChatBadge();
+        });
+    });
+    window.addEventListener('legacyBusinessSurfaceUnavailable', function (event) {
+        if (event.detail?.surface === 'chat') _updateChatBadge();
+    });
 
     /**
      * Dispatch a custom event to notify UI about connection status changes.

@@ -1099,7 +1099,7 @@ function getLegacyBusinessSurfaceAvailability(surface = 'catalogs') {
     const labels = {
         catalogs: 'Спільні каталоги', booking_templates: 'Шаблони бронювань',
         recurring: 'Повторювані бронювання', finance_salary: 'Розрахунок зарплати',
-        staff: 'Спільні дані працівників',
+        staff: 'Спільні дані працівників', chat: 'Спільний чат',
         contractors_procurement: 'Спільні підрядники та закупівлі',
         certificates: 'Сертифікати', art: 'Art-матеріали'
     };

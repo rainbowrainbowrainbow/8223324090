@@ -643,7 +643,13 @@ const HARNESS_CODE = String.raw`
             window.__staffViewAllowed = staffView;
             window.__todayScopeMode = mode;
             todayData = recovery ? { todayAccess: { readOnly: true, businessContext: 'event_genix' } } : {};
+            window.getLegacyBusinessSurfaceAvailability = surface => ({ available: surface === 'staff'
+                && !recovery && mode === 'single' && context === 'event_genix' });
+            window.getLegacyBusinessSurfaceContextKey = surface => JSON.stringify([
+                surface, AppState.currentUser.id, AppState.currentUser.role, context, mode, recovery
+            ]);
             _staffLinkCache = linked ? [{ id: 1, user_id: 301 }] : [];
+            _staffLinkCacheContext = getStaffLinksContextKey();
             document.getElementById('todayActionFixture').innerHTML = renderTodayStaffProfileAction(1, 'QA Today Worker');
         },
         failNextProfileRead() { failNextProfileRead = true; },

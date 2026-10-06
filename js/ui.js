@@ -1149,26 +1149,104 @@ if (!window.CrmLayoutControls) {
 // STAFF ACCOUNT BADGE (v39.8.0)
 // ==========================================
 let _staffLinkCache = null;
-async function _loadStaffLinks() {
-    if (_staffLinkCache) return _staffLinkCache;
-    try {
-        const token = localStorage.getItem('pzp_token');
-        if (!token) return [];
-        const res = await fetch('/api/staff/link-status', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (!res.ok) return [];
-        const data = await res.json();
-        _staffLinkCache = Array.isArray(data) ? data : (data.data || []);
-        return _staffLinkCache;
-    } catch { return []; }
+let _staffLinkCacheContext = null;
+let _staffLinkRequestContext = null;
+let _staffLinkRequestSeq = 0;
+
+function clearStaffLinksCache() {
+    _staffLinkCache = null;
+    _staffLinkCacheContext = null;
+    _staffLinkRequestContext = null;
+    _staffLinkRequestSeq++;
 }
+
+function getStaffLinksContextKey() {
+    const business = window.getLegacyBusinessSurfaceContextKey?.('staff');
+    if (!business) return null;
+    let sessionGeneration = '';
+    try { sessionGeneration = localStorage.getItem('pzp_auth_session_generation') || ''; } catch {}
+    return JSON.stringify([business, sessionGeneration]);
+}
+
+function getStaffLinksForCurrentContext() {
+    const available = window.getLegacyBusinessSurfaceAvailability?.('staff')?.available === true;
+    const context = getStaffLinksContextKey();
+    if (!available || !context || context !== (_staffLinkRequestContext || _staffLinkCacheContext)) {
+        if (_staffLinkCache !== null || _staffLinkCacheContext !== null || _staffLinkRequestContext !== null) clearStaffLinksCache();
+        return null;
+    }
+    return _staffLinkCache;
+}
+
+function staffLinksLoadError(message, code, status) {
+    const error = new Error(message);
+    error.code = code;
+    if (status) error.status = status;
+    return error;
+}
+
+async function _loadStaffLinks() {
+    const availability = window.getLegacyBusinessSurfaceAvailability?.('staff');
+    const context = getStaffLinksContextKey();
+    if (!availability?.available || !context || typeof getAuthHeaders !== 'function') {
+        clearStaffLinksCache();
+        throw staffLinksLoadError(availability?.message || 'Доступ до зв’язків акаунтів ще не підтверджено.',
+            availability?.code || 'staff_links_unavailable');
+    }
+    const cached = getStaffLinksForCurrentContext();
+    if (cached) return cached;
+    const requestSeq = ++_staffLinkRequestSeq;
+    _staffLinkRequestContext = context;
+    const isCurrent = () => requestSeq === _staffLinkRequestSeq
+        && context === getStaffLinksContextKey()
+        && window.getLegacyBusinessSurfaceAvailability?.('staff')?.available === true;
+    try {
+        const res = await fetch('/api/staff/link-status', { headers: getAuthHeaders(false) });
+        const data = await res.json().catch(() => null);
+        if (!isCurrent()) throw staffLinksLoadError('Бізнес або доступ змінився.', 'staff_links_context_changed');
+        if (!res.ok) {
+            throw staffLinksLoadError(typeof data?.error === 'string' ? data.error : 'Не вдалося завантажити зв’язки акаунтів.',
+                data?.code || 'staff_links_load_failed', res.status);
+        }
+        const rows = Array.isArray(data) ? data : data?.data;
+        if (data?.success === false || !Array.isArray(rows)) {
+            throw staffLinksLoadError('Сервер повернув некоректні зв’язки акаунтів.', 'staff_links_invalid_response');
+        }
+        _staffLinkCache = rows;
+        _staffLinkCacheContext = context;
+        return _staffLinkCache;
+    } catch (error) {
+        if (!isCurrent()) throw staffLinksLoadError('Бізнес або доступ змінився.', 'staff_links_context_changed');
+        if (error?.code) throw error;
+        throw staffLinksLoadError('Не вдалося завантажити зв’язки акаунтів. Перевірте з’єднання та повторіть спробу.',
+            'staff_links_load_failed');
+    } finally {
+        if (requestSeq === _staffLinkRequestSeq) _staffLinkRequestContext = null;
+    }
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged',
+    'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
+    window.addEventListener(eventName, clearStaffLinksCache);
+}
+window.addEventListener('crmBusinessProfileChanged', () => {
+    const context = getStaffLinksContextKey();
+    if (window.getLegacyBusinessSurfaceAvailability?.('staff')?.available === true
+        && context && context === (_staffLinkRequestContext || _staffLinkCacheContext)) return;
+    clearStaffLinksCache();
+});
+window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
+    if (event.detail?.surface === 'staff') clearStaffLinksCache();
+});
 
 function staffAccountBadgeIconSvg() {
     return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>';
 }
 
 function staffAccountBadge(staffId, opts = {}) {
-    if (!_staffLinkCache) return '';
-    const link = _staffLinkCache.find(r => Number(r.id) === Number(staffId));
+    const links = getStaffLinksForCurrentContext();
+    if (!links) return '';
+    const link = links.find(r => Number(r.id) === Number(staffId));
     if (!link) return '';
     const { compact = false } = opts;
     if (link.user_id) {
@@ -1280,9 +1358,8 @@ function openStaffProfile(identifier) {
         openSafeNewTab('/profile?id=' + encodeURIComponent(String(userId)));
         return;
     }
-    const link = Array.isArray(_staffLinkCache)
-        ? _staffLinkCache.find(item => String(item.username || '').toLowerCase() === raw.toLowerCase())
-        : null;
+    const link = getStaffLinksForCurrentContext()
+        ?.find(item => String(item.username || '').toLowerCase() === raw.toLowerCase());
     const linkedUserId = Number(link?.user_id);
     if (Number.isInteger(linkedUserId) && linkedUserId > 0) {
         openSafeNewTab('/profile?id=' + encodeURIComponent(String(linkedUserId)));

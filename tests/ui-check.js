@@ -6862,7 +6862,12 @@ check('HR Pulse Reports has searchable, sortable metrics and record drilldowns',
     && hrPageCss.includes('body.dark-mode #tab-reports .hr-report-table'));
 check('HR Pulse Today moves arrived people to review bottom with color indication', hrCode.includes('const TODAY_ARRIVED_STATUSES') && hrCode.includes('function isTodayItemArrived') && hrCode.includes('function sortTodayItemsForReview') && hrCode.includes('return sortTodayItemsForReview(filtered);') && hrCode.includes('hr-staff-row--arrived') && hrCode.includes('data-attendance-state="${arrived ?') && htmlContains('hr.html', '.hr-staff-row--arrived') && htmlContains('hr.html', 'body.dark-mode .hr-staff-row.hr-staff-row--arrived'));
 check('HR Today quick actions open target profile and focused schedule with SVG controls',
-    hrCode.includes('await _loadStaffLinks().catch(() => [])')
+    hrCode.includes('await _loadStaffLinks();')
+    && hrCode.includes("getLegacyBusinessSurfaceAvailability('staff')")
+    && hrCode.includes('getStaffLinksForCurrentContext()')
+    && hrCode.includes('function renderTodayStaffLinksState(')
+    && hrCode.includes("state.setAttribute('role', error ? 'alert' : 'status')")
+    && !hrCode.includes('await _loadStaffLinks().catch(() => [])')
     && hrCode.includes('function renderTodayStaffProfileAction')
     && hrCode.includes('function renderTodayStaffScheduleAction')
     && hrCode.includes('function openTodayStaffSchedule')

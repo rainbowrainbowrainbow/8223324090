@@ -542,6 +542,7 @@ function peopleBucketTitle(bucketId) {
 
 let canManage = false;
 let todayData = null;
+let todayRequestSeq = 0;
 let todayFilters = { query: '', department: 'all' };
 let todayActiveMetric = null;
 let todayMetricFocusTimer = null;
@@ -584,6 +585,7 @@ let professionCatalogAccess = null;
 let professionCatalogLoadState = 'idle';
 let professionCatalogLoadError = '';
 let reportRequestSeq = 0;
+let reportContextKey = '';
 let reportRows = [];
 let reportSort = { key: 'staff_name', direction: 1 };
 let reportDetailsOpener = null;
@@ -3606,9 +3608,8 @@ function renderTodayStaffProfileAction(staffId, staffName) {
             || (user?.accessContext && user.accessContext.status !== 'ready')
             || todayData?.todayAccess?.businessContext !== 'event_genix') return '';
     }
-    const link = typeof _staffLinkCache !== 'undefined' && Array.isArray(_staffLinkCache)
-        ? _staffLinkCache.find(item => Number(item.id) === Number(staffId))
-        : null;
+    const links = typeof getStaffLinksForCurrentContext === 'function' ? getStaffLinksForCurrentContext() : null;
+    const link = Array.isArray(links) ? links.find(item => Number(item.id) === Number(staffId)) : null;
     const userId = Number(link?.user_id);
     if (!recoveryReadOnly && Number.isInteger(userId) && userId > 0 && typeof openStaffProfile === 'function') {
         const label = `Відкрити робочий профіль: ${staffName}`;
@@ -3640,8 +3641,30 @@ function isTodayRecoveryReadOnly(data = todayData) {
     return data?.todayAccess?.readOnly === true;
 }
 
+function renderTodayStaffLinksState(message = '', { error = false } = {}) {
+    let state = document.getElementById('todayStaffLinksStatus');
+    const list = document.getElementById('todayList');
+    if (!state && message && list) {
+        state = document.createElement('div');
+        state.id = 'todayStaffLinksStatus';
+        state.className = 'hr-staff-workspace-state';
+        state.setAttribute('aria-live', 'polite');
+        list.before(state);
+    }
+    if (!state) return;
+    state.textContent = message;
+    state.hidden = !message;
+    state.dataset.state = error ? 'error' : 'restricted';
+    state.setAttribute('role', error ? 'alert' : 'status');
+}
+
 async function loadToday() {
+    const requestSeq = ++todayRequestSeq;
+    const context = teamAccessContext();
+    renderTodayStaffLinksState();
     const data = await hrFetch('/today');
+    if (requestSeq !== todayRequestSeq) return;
+    if (context !== teamAccessContext()) return reloadTodayForCurrentContext(requestSeq);
     if (!data || !data.success) {
         todayData = null;
         todayActiveMetric = null;
@@ -3656,12 +3679,38 @@ async function loadToday() {
         document.getElementById('contextMenu')?.classList.remove('visible');
         return;
     }
+    let staffLinksMessage = '';
+    let staffLinksError = false;
+    if (!isTodayRecoveryReadOnly(data) && typeof _loadStaffLinks === 'function') {
+        const availability = typeof getLegacyBusinessSurfaceAvailability === 'function'
+            ? getLegacyBusinessSurfaceAvailability('staff')
+            : { available: false, message: 'Доступ до бізнесу ще не підтверджено. Дочекайтеся завантаження профілю або оновіть сторінку.' };
+        if (availability.available !== true) {
+            if (typeof clearStaffLinksCache === 'function') clearStaffLinksCache();
+            staffLinksMessage = availability.message || 'Робочі профілі недоступні в поточному бізнесі.';
+        } else {
+            try { await _loadStaffLinks(); }
+            catch (error) {
+                if (error?.code !== 'staff_links_context_changed') {
+                    staffLinksMessage = error?.message || 'Не вдалося завантажити робочі профілі.';
+                    staffLinksError = true;
+                }
+            }
+        }
+    }
+    if (requestSeq !== todayRequestSeq) return;
+    if (context !== teamAccessContext()) return reloadTodayForCurrentContext(requestSeq);
     setStaffDisplayGroupsContract(data.displayGroups || data.display_groups || staffDisplayGroupsContract);
     todayData = data;
-    if (!isTodayRecoveryReadOnly(data) && typeof _loadStaffLinks === 'function') {
-        await _loadStaffLinks().catch(() => []);
-    }
     renderToday(data);
+    renderTodayStaffLinksState(staffLinksMessage, { error: staffLinksError });
+}
+
+function reloadTodayForCurrentContext(requestSeq) {
+    if (requestSeq !== todayRequestSeq) return;
+    todayData = null;
+    if (getHrCurrentUser() && canViewHrTab('today')
+        && document.getElementById('tab-today')?.classList.contains('active')) return loadToday();
 }
 
 function renderToday(data) {
@@ -17448,9 +17497,11 @@ async function loadReports() {
     const month = sel.value;
     const requestSeq = ++reportRequestSeq;
     const context = teamAccessContext();
+    reportContextKey = context;
     reportState = { loadState: 'loading', month, error: '', exportReady: false };
     setReportExportAvailability(false);
     renderReportsUnavailable('Завантаження звіту…');
+    renderRoleReportUnavailable('Завантаження ролей…');
     const data = await hrFetch(`/report/monthly?month=${month}`).catch(() => null);
     if (requestSeq !== reportRequestSeq || context !== teamAccessContext()) return;
     if (!data || !data.success || !Array.isArray(data.data)) {
@@ -17472,12 +17523,17 @@ for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged',
     'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
     window.addEventListener(eventName, () => {
         if (reportState.loadState === 'idle') return;
+        if (eventName === 'crmBusinessProfileChanged' && reportContextKey === teamAccessContext()) return;
+        reportContextKey = '';
         reportRequestSeq++;
         reportState = { loadState: 'error', month: '', error: 'Бізнес або доступ змінився. Повторіть запит.', exportReady: false };
         const search = document.getElementById('reportSearch');
         if (search) search.value = '';
         setReportExportAvailability(false);
         renderReportsUnavailable(reportState.error, { retry: true });
+        renderRoleReportUnavailable(reportState.error);
+        if (eventName === 'crmBusinessProfileChanged' && getHrCurrentUser() && canViewHrTab('reports')
+            && document.getElementById('tab-reports')?.classList.contains('active')) void loadReports();
     });
 }
 
@@ -17494,18 +17550,33 @@ function roleReportPillClass(value = '') {
     return 'muted';
 }
 
+function renderRoleReportUnavailable(message, { error = false } = {}) {
+    const summary = document.getElementById('roleReportSummary');
+    if (summary) summary.innerHTML = `<div class="hr-report-stat hr-report-stat--overdue" role="${error ? 'alert' : 'status'}"><div class="stat-value">!</div><div class="stat-label">${escapeHtml(message)}</div></div>`;
+    document.getElementById('roleReportHead')?.replaceChildren();
+    document.getElementById('roleReportBody')?.replaceChildren();
+}
+
 async function loadRoleAssignmentsReport(expectedRequestSeq = reportRequestSeq) {
     const summaryRoot = document.getElementById('roleReportSummary');
     const head = document.getElementById('roleReportHead');
     const body = document.getElementById('roleReportBody');
     if (!summaryRoot || !head || !body) return;
+    const availability = typeof getLegacyBusinessSurfaceAvailability === 'function'
+        ? getLegacyBusinessSurfaceAvailability('staff')
+        : { available: false, message: 'Доступ до бізнесу ще не підтверджено. Дочекайтеся завантаження профілю або оновіть сторінку.' };
+    if (availability.available !== true) {
+        renderRoleReportUnavailable(availability.message || 'Рольові призначення недоступні в поточному бізнесі.');
+        return;
+    }
+    const context = teamAccessContext();
+    head.replaceChildren();
+    body.replaceChildren();
     summaryRoot.innerHTML = '<div class="hr-report-stat hr-report-stat--roles"><div class="stat-value">...</div><div class="stat-label">Ролі</div></div>';
     const data = await hrFetch('/role-assignments/report').catch(() => null);
-    if (expectedRequestSeq !== reportRequestSeq) return;
+    if (expectedRequestSeq !== reportRequestSeq || context !== teamAccessContext()) return;
     if (!data?.success) {
-        summaryRoot.innerHTML = `<div class="hr-report-stat hr-report-stat--overdue"><div class="stat-value">!</div><div class="stat-label">${escapeHtml(data?.error || 'Не вдалося завантажити ролі')}</div></div>`;
-        head.innerHTML = '';
-        body.innerHTML = '';
+        renderRoleReportUnavailable(data?.error || 'Не вдалося завантажити ролі', { error: true });
         return;
     }
     const s = data.summary || {};

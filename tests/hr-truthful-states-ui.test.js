@@ -40,13 +40,14 @@ function harness(markup, options = {}) {
     win.console = { warn() {}, log() {}, error() {} };
     win.AppState = { currentUser: { role: 'director', activeBusinessContext: 'event_genix' } };
     win.canAccess = action => options.canAccess ? options.canAccess(action) : true;
-    win.canUseAction = action => action === 'export_data';
+    win.canUseAction = action => options.canUseAction ? options.canUseAction(action) : action === 'export_data';
     win.showNotification = message => { win.__lastNotification = message; };
     win.openModal = () => {};
     win.closeModal = () => {};
     win.ModalLayer = { ensureTopLayer() {} };
     win.fetch = options.fetch || (async () => response(500, { success: false, error: 'Unexpected fetch' }));
     win.eval(`${hrPage}
+canManage = canUseHrCapability('hr.staff.manage');
 window.__hrTruthfulState = () => ({ reportState, professionCatalogAccess, professionCatalogLoadState });`);
     return { dom, win };
 }
@@ -335,6 +336,7 @@ test('late Park report response cannot restore people after business context cha
 test('payroll profiles do not turn denied staff into zero people and retry restores the catalog', async () => {
     let staffDenied = true;
     const { dom, win } = harness(elementOuterHtml('tab-profiles'), {
+        canUseAction: action => ['export_data', 'manage_payroll_rules'].includes(action),
         fetch: async url => {
             if (url.includes('/professions')) return response(200, { success: true, data: [] });
             if (url.includes('/payroll-profiles')) return response(200, { success: true, data: [{ id: 7, title: 'QA Profile', status: 'draft', professionKey: 'animator' }] });
@@ -358,6 +360,35 @@ test('payroll profiles do not turn denied staff into zero people and retry resto
         assert.equal(d.getElementById('btnNewPayrollProfile').disabled, false);
     } finally { dom.window.close(); }
 });
+
+for (const deniedPermission of ['manage_payroll_rules', 'hr.payroll.manage']) {
+    test(`loaded payroll profiles keep write controls disabled without ${deniedPermission}`, async () => {
+        let requests = 0;
+        let modalCount = 0;
+        const { dom, win } = harness(elementOuterHtml('tab-profiles'), {
+            canAccess: capability => capability !== deniedPermission,
+            canUseAction: action => action !== deniedPermission,
+            fetch: async url => {
+                requests += 1;
+                return response(200, { success: true, data: url.includes('/payroll-profiles')
+                    ? [{ id: 7, title: 'Read-only Profile', status: 'draft', professionKey: 'animator' }]
+                    : [] });
+            }
+        });
+        win.formModal = async () => { modalCount += 1; return null; };
+        try {
+            await win.loadPayrollProfilesCatalog();
+            const d = win.document;
+            assert.match(d.getElementById('payrollProfilesList').textContent, /Read-only Profile/);
+            assert.equal(d.getElementById('btnNewPayrollProfile').disabled, true);
+            assert.equal(d.getElementById('btnPayrollProfileBulk').disabled, true);
+            const requestsAfterRead = requests;
+            await win.createPayrollProfileFromCatalog();
+            assert.equal(requests, requestsAfterRead);
+            assert.equal(modalCount, 0);
+        } finally { dom.window.close(); }
+    });
+}
 
 test('late payroll profile response cannot restore another business catalog', async () => {
     let resolveStaff;
@@ -443,6 +474,7 @@ test('onboarding start explains denied dependency and retries without submitting
     let modalCount = 0;
     const { dom, win } = harness(elementOuterHtml('tab-onboarding'), {
         fetch: async url => {
+            if (url === '/api/hr/onboarding') return response(200, { success: true, data: [] });
             if (url.includes('/staff?')) return response(200, { success: true, data: [{ id: 4, name: 'QA Staff' }] });
             if (url.includes('/onboarding/templates')) return response(200, { success: true, data: [{ id: 3, name: 'QA Template' }] });
             if (url.includes('/onboarding/responsible-candidates')) return denied
@@ -453,6 +485,7 @@ test('onboarding start explains denied dependency and retries without submitting
     });
     win.formModal = async () => { modalCount += 1; return null; };
     try {
+        await win.loadOnboarding();
         await win.showStartOnboarding();
         assert.match(win.document.getElementById('onboardingStartState').textContent, /Немає доступу до відповідальних/);
         assert.equal(modalCount, 0);
@@ -471,6 +504,7 @@ test('onboarding start does not report success after a synthetic POST 403', asyn
                 posts += 1;
                 return response(403, { success: true, code: 'staff_not_migrated' });
             }
+            if (url === '/api/hr/onboarding') return response(200, { success: true, data: [] });
             if (url.includes('/staff?')) return response(200, { success: true, data: [{ id: 4, name: 'QA Staff' }] });
             if (url.includes('/onboarding/templates')) return response(200, { success: true, data: [{ id: 3, name: 'QA Template' }] });
             return response(200, { success: true, data: [{ id: 2, name: 'QA Manager' }] });
@@ -478,12 +512,38 @@ test('onboarding start does not report success after a synthetic POST 403', asyn
     });
     win.formModal = async () => ({ scope: 'general', staffId: '4', templateId: '3', responsibleUserId: '2' });
     try {
+        await win.loadOnboarding();
         await win.showStartOnboarding();
         assert.equal(posts, 1);
         assert.match(win.document.getElementById('onboardingStartState').textContent, /Немає доступу до запуску/);
         assert.doesNotMatch(win.__lastNotification, /запущено/);
     } finally { dom.window.close(); }
 });
+
+for (const restriction of ['missing capability', 'read-only projection']) {
+    test(`onboarding start sends no dependency or write requests with ${restriction}`, async () => {
+        let requests = 0;
+        let modalCount = 0;
+        const { dom, win } = harness(elementOuterHtml('tab-onboarding'), {
+            canAccess: capability => restriction !== 'missing capability' || capability !== 'hr.staff.manage',
+            fetch: async url => {
+                requests += 1;
+                assert.equal(url, '/api/hr/onboarding');
+                return response(200, { success: true, data: [],
+                    onboardingAccess: { readOnly: restriction === 'read-only projection' } });
+            }
+        });
+        win.formModal = async () => { modalCount += 1; return null; };
+        try {
+            await win.loadOnboarding();
+            assert.equal(win.document.getElementById('btnStartOnboarding').hidden, true);
+            await win.showStartOnboarding();
+            assert.equal(requests, 1);
+            assert.equal(modalCount, 0);
+            assert.match(win.__lastNotification, /запуск онбордингу недоступний/);
+        } finally { dom.window.close(); }
+    });
+}
 
 test('onboarding list distinguishes forbidden, offline and successful empty results', async () => {
     let mode = 'forbidden';
@@ -504,7 +564,7 @@ test('onboarding list distinguishes forbidden, offline and successful empty resu
         assert.match(win.document.getElementById('onboardingList').textContent, /Synthetic offline/);
         mode = 'empty';
         await win.loadOnboarding();
-        assert.match(win.document.getElementById('onboardingList').textContent, /Процесів онбордингу поки немає/);
+        assert.match(win.document.getElementById('onboardingList').textContent, /Доступних процесів онбордингу поки немає/);
         assert.equal(win.document.querySelector('#onboardingList [role="alert"]'), null);
     } finally { dom.window.close(); }
 });
@@ -528,11 +588,13 @@ test('onboarding start discards a dependency response after business context cha
     let resolveStaff;
     const pending = new Promise(resolve => { resolveStaff = resolve; });
     const { dom, win } = harness(elementOuterHtml('tab-onboarding'), {
-        fetch: async url => url.includes('/staff?') ? pending : response(200, { success: true, data: [{ id: 2, name: 'Fixture' }] })
+        fetch: async url => url === '/api/hr/onboarding' ? response(200, { success: true, data: [] })
+            : url.includes('/staff?') ? pending : response(200, { success: true, data: [{ id: 2, name: 'Fixture' }] })
     });
     let modalCount = 0;
     win.formModal = async () => { modalCount += 1; return null; };
     try {
+        await win.loadOnboarding();
         const request = win.showStartOnboarding();
         win.dispatchEvent(new win.Event('crmBusinessContextChanged'));
         resolveStaff(response(200, { success: true, data: [{ id: 4, name: 'Old Staff' }] }));

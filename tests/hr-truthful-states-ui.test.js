@@ -49,6 +49,7 @@ function harness(markup, options = {}) {
     win.eval(`${hrPage}
 canManage = canUseHrCapability('hr.staff.manage');
 window.__hrTruthfulState = () => ({ reportState, professionCatalogAccess, professionCatalogLoadState });`);
+    if (options.surfaceAvailable === true) win.getLegacyBusinessSurfaceAvailability = () => ({ available: true });
     return { dom, win };
 }
 
@@ -338,6 +339,7 @@ test('unchanged business profile preserves a pending monthly report and its scop
     const pending = new Promise(resolve => { finish = resolve; });
     let monthlyCalls = 0;
     const { dom, win } = harness(elementOuterHtml('tab-reports'), {
+        surfaceAvailable: true,
         fetch: async url => {
             if (!String(url).includes('/report/monthly')) return response(403, { success: false, error: 'Roles unavailable' });
             monthlyCalls++;
@@ -362,6 +364,7 @@ test('unchanged business profile preserves a pending monthly report and its scop
 
 test('unchanged business profile preserves a ready monthly report, search and export availability', async () => {
     const { dom, win } = harness(elementOuterHtml('tab-reports'), {
+        surfaceAvailable: true,
         fetch: async url => response(200, { success: true, data: String(url).includes('/report/monthly')
             ? [{ staff_id: 41, staff_name: 'Current QA Person', days_scheduled: 1, days_worked: 1 }] : [] })
     });
@@ -384,7 +387,8 @@ for (const change of ['business', 'role', 'access', 'session']) {
         let finish;
         let pending = false;
         const { dom, win } = harness(elementOuterHtml('tab-reports'), {
-            fetch: async url => {
+            surfaceAvailable: true,
+        fetch: async url => {
                 if (pending && String(url).includes('/report/monthly')) return new Promise(resolve => { finish = resolve; });
                 return response(200, { success: true, summary: { staff_count: 1, role_count: 1 },
                     data: [{ staff_id: 41, staff_name: 'Previous QA Person', days_scheduled: 1, days_worked: 1,
@@ -421,7 +425,8 @@ for (const event of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'ro
     test(`${event} still invalidates monthly and role data even before the context fingerprint changes`, async () => {
         let finishRoles;
         const { dom, win } = harness(elementOuterHtml('tab-reports'), {
-            fetch: async url => String(url).includes('/report/monthly')
+            surfaceAvailable: true,
+        fetch: async url => String(url).includes('/report/monthly')
                 ? response(200, { success: true, data: [{ staff_name: 'Previous QA Person' }] })
                 : new Promise(resolve => { finishRoles = resolve; })
         });
@@ -445,6 +450,7 @@ test('a late previous month cannot replace a newer monthly report after an uncha
     let finishOld;
     let monthlyCalls = 0;
     const { dom, win } = harness(elementOuterHtml('tab-reports'), {
+        surfaceAvailable: true,
         fetch: async url => {
             if (!String(url).includes('/report/monthly')) return response(200, { success: true, data: [] });
             monthlyCalls++;

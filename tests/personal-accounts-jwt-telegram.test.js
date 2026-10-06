@@ -76,11 +76,12 @@ function createFakePool() {
             const text = normalizeSql(sql);
             state.queries.push({ text, params });
 
-            if (/SELECT is_active, session_revoked_at FROM users WHERE id = \$1/i.test(text)) {
+            if (/SELECT is_active, session_revoked_at,/i.test(text)) {
                 return {
                     rows: [{
                         is_active: state.user.is_active,
-                        session_revoked_at: state.user.session_revoked_at
+                        session_revoked_at: state.user.session_revoked_at,
+                        session_revoked_at_ms: state.user.session_revoked_at ? new Date(state.user.session_revoked_at).getTime() : null
                     }]
                 };
             }

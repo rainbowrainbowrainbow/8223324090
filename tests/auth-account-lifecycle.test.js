@@ -125,9 +125,13 @@ function createFakePool() {
             return { rows: user ? [{ id: user.id, username: user.username }] : [] };
         }
 
-        if (/SELECT is_active, session_revoked_at FROM users WHERE id = \$1/i.test(text)) {
+        if (/SELECT is_active, session_revoked_at(?:,.*?)? FROM users WHERE id = \$1/i.test(text)) {
             const user = state.users.find(item => Number(item.id) === Number(params[0]));
-            return { rows: user ? [{ is_active: user.is_active, session_revoked_at: user.session_revoked_at }] : [] };
+            return { rows: user ? [{
+                is_active: user.is_active,
+                session_revoked_at: user.session_revoked_at,
+                session_revoked_at_ms: user.session_revoked_at_ms ?? (user.session_revoked_at ? new Date(user.session_revoked_at).getTime() : null)
+            }] : [] };
         }
 
         if (/SELECT qa_creator_lease_id::text AS qa_creator_lease_id, qa_creator_lease_expires_at FROM users/i.test(text)) {
@@ -256,13 +260,20 @@ function createFakePool() {
 
         if (/INSERT INTO refresh_tokens/i.test(text)) {
             const [userId, tokenHash, deviceInfo, ipAddress, expiresAt] = params;
+            const user = state.users.find(item => Number(item.id) === Number(userId));
+            const cutoffMs = user?.session_revoked_at_ms ?? (user?.session_revoked_at ? new Date(user.session_revoked_at).getTime() : 0);
+            const createdAtMs = /GREATEST\(clock_timestamp\(\), session_revoked_at/i.test(text)
+                ? Math.max(databaseNow().getTime(), cutoffMs + 0.001)
+                : databaseNow().getTime();
             const row = {
                 id: state.nextRefreshId++,
                 user_id: Number(userId),
                 token_hash: tokenHash,
                 device_info: deviceInfo,
                 ip_address: ipAddress,
-                created_at: databaseNow(),
+                created_at: new Date(createdAtMs + Number(state.timestampDecodeOffsetMs || 0)),
+                created_at_ms: createdAtMs,
+                session_revocation_cutoff_ms: cutoffMs,
                 expires_at: expiresAt,
                 revoked_at: null,
                 replaced_by: null
@@ -328,9 +339,13 @@ function createFakePool() {
             return { rows };
         }
 
-        if (/SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, name(?:, telegram_chat_id)?, is_active(?:, session_revoked_at)? FROM users WHERE id = \$1/i.test(text)) {
+        if (/SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, name(?:, telegram_chat_id)?, is_active(?:, session_revoked_at(?:,.*?)?)? FROM users WHERE id = \$1/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
-            return { rows: row ? [{ ...publicUser(row), session_revoked_at: row.session_revoked_at || null }] : [] };
+            return { rows: row ? [{
+                ...publicUser(row),
+                session_revoked_at: row.session_revoked_at || null,
+                session_revoked_at_ms: row.session_revoked_at_ms ?? (row.session_revoked_at ? new Date(row.session_revoked_at).getTime() : null)
+            }] : [] };
         }
 
         if (/SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context FROM users WHERE id = \$1/i.test(text)) {
@@ -1498,7 +1513,7 @@ test('personal security session revocation locks the account and revokes tokens 
         const commitIndex = fakePool.state.queryStatements.indexOf('COMMIT', beginIndex);
         const transactionSql = fakePool.state.queryStatements.slice(beginIndex, commitIndex + 1);
         assert.equal(transactionSql[0], 'BEGIN');
-        assert.match(transactionSql[1], /SELECT is_active, session_revoked_at FROM users WHERE id = \$1 FOR UPDATE/i);
+        assert.match(transactionSql[1], /SELECT is_active, session_revoked_at, .* AS session_revoked_at_ms FROM users WHERE id = \$1 FOR UPDATE/i);
         assert.equal(
             transactionSql.some(sql => /UPDATE users SET session_revoked_at = clock_timestamp\(\)/i.test(sql)),
             true
@@ -2120,6 +2135,88 @@ test('session revocation rejects legacy same-second tokens while allowing a newe
         const accepted = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, newerToken);
         assert.equal(accepted.status, 200);
     });
+});
+
+test('login uses the database epoch even when a naive timestamp is decoded in another timezone', async () => {
+    for (const offsetMs of [-10800000, 14400000]) {
+        await withAuthApp(async ({ baseUrl, fakePool }) => {
+            const user = fakePool.state.users[0];
+            user.password_hash = await bcrypt.hash('timezone-password', 4);
+            user.session_revoked_at = new Date(Date.now() - 1000);
+            fakePool.state.timestampDecodeOffsetMs = offsetMs;
+            const login = await request(baseUrl, 'POST', '/api/auth/login', {
+                username: user.username, password: 'timezone-password'
+            });
+            assert.equal(login.status, 200);
+            const row = fakePool.state.refreshTokens[0];
+            assert.equal(jwt.decode(login.data.accessToken).sessionIssuedAt, row.created_at_ms);
+            assert.equal(jwt.decode(login.data.token).sessionIssuedAt, row.created_at_ms);
+            const access = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, login.data.accessToken);
+            assert.equal(access.status, 200);
+            const refresh = await request(baseUrl, 'POST', '/api/auth/refresh', { refreshToken: login.data.refreshToken });
+            assert.equal(refresh.status, 200);
+        });
+    }
+});
+
+test('a corrected clock cannot keep newer login tokens alive after another revocation', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const user = fakePool.state.users[0];
+        user.password_hash = await bcrypt.hash('clock-correction-password', 4);
+        user.session_revoked_at = new Date(Date.now() + 5000);
+        const login = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: user.username, password: 'clock-correction-password'
+        });
+        assert.equal(login.status, 200);
+        for (const token of [login.data.token, login.data.accessToken]) {
+            assert.equal(jwt.decode(token).sessionRevocationCutoff, user.session_revoked_at.getTime());
+            assert.equal((await request(baseUrl, 'GET', '/api/protected-smoke', undefined, token)).status, 200);
+        }
+        user.session_revoked_at = new Date(Date.now());
+        for (const token of [login.data.token, login.data.accessToken]) {
+            const denied = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, token);
+            assert.equal(denied.status, 401);
+            assert.equal(denied.data.code, 'auth_session_revoked');
+        }
+    });
+});
+
+test('access revocation preserves database precision within a single millisecond', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const millisecond = Date.now() - 1000;
+        fakePool.state.users[0].session_revoked_at = new Date(millisecond);
+        fakePool.state.users[0].session_revoked_at_ms = millisecond + 0.5;
+        for (const [fraction, expectedStatus] of [[0.25, 401], [0.5, 401], [0.75, 200]]) {
+            const token = jwt.sign({
+                id: 1, username: 'creator', role: 'creator', sessionIssuedAt: millisecond + fraction
+            }, TEST_JWT_SECRET, { expiresIn: '1h' });
+            const access = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, token);
+            assert.equal(access.status, expectedStatus, `issuance fraction ${fraction}`);
+            if (expectedStatus === 401) assert.equal(access.data.code, 'auth_session_revoked');
+        }
+    });
+});
+
+test('refresh revocation preserves database precision before, at and after the cutoff', async () => {
+    for (const [fraction, expectedStatus] of [[0.25, 401], [0.5, 401], [0.75, 200]]) {
+        await withAuthApp(async ({ baseUrl, fakePool }) => {
+            const user = fakePool.state.users[0];
+            user.password_hash = await bcrypt.hash('precision-password', 4);
+            const login = await request(baseUrl, 'POST', '/api/auth/login', {
+                username: user.username, password: 'precision-password'
+            });
+            assert.equal(login.status, 200);
+            const millisecond = Date.now() - 1000;
+            user.session_revoked_at = new Date(millisecond);
+            user.session_revoked_at_ms = millisecond + 0.5;
+            const row = fakePool.state.refreshTokens[0];
+            row.created_at = new Date(millisecond);
+            row.created_at_ms = millisecond + fraction;
+            const refresh = await request(baseUrl, 'POST', '/api/auth/refresh', { refreshToken: login.data.refreshToken });
+            assert.equal(refresh.status, expectedStatus, `refresh issuance fraction ${fraction}`);
+            if (expectedStatus === 401) assert.equal(refresh.data.code, 'refresh_session_revoked');
+        });
+    }
 });
 
 test('auth limiters reserve concurrent login attempts and isolate accounts and refresh sessions on a shared IP', async () => {

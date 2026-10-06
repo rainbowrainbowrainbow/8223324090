@@ -252,7 +252,11 @@ function buildFakeAuthDb() {
                 replaced_by: null
             };
             tokens.push(row);
-            return { rows: [{ id: row.id, created_at: row.created_at }] };
+            const user = users.get(row.user_id);
+            return { rows: [{
+                id: row.id, created_at: row.created_at, created_at_ms: row.created_at.getTime(),
+                session_revocation_cutoff_ms: user.session_revoked_at ? new Date(user.session_revoked_at).getTime() : 0
+            }] };
         }
         if (normalized.startsWith('SELECT user_id FROM refresh_tokens WHERE token_hash = $1')) {
             const token = tokenByHash(params[0]);
@@ -260,12 +264,19 @@ function buildFakeAuthDb() {
         }
         if (normalized.includes('FROM users') && normalized.includes('FOR UPDATE')) {
             const user = users.get(Number(params[0]));
-            return { rows: user ? [{ ...user }] : [] };
+            return { rows: user ? [{
+                ...user,
+                session_revoked_at_ms: user.session_revoked_at ? new Date(user.session_revoked_at).getTime() : null
+            }] : [] };
         }
         if (normalized.includes('SELECT qa_creator_lease_id::text')) return { rows: [] };
         if (normalized.includes('FROM refresh_tokens') && normalized.includes('WHERE token_hash = $1') && normalized.includes('FOR UPDATE')) {
             const token = tokenByHash(params[0]);
-            return { rows: token ? [{ ...token, rotation_age_ms: token.revoked_at ? now().getTime() - new Date(token.revoked_at).getTime() : null }] : [] };
+            return { rows: token ? [{
+                ...token,
+                created_at_ms: token.created_at.getTime(),
+                rotation_age_ms: token.revoked_at ? now().getTime() - new Date(token.revoked_at).getTime() : null
+            }] : [] };
         }
         if (normalized.includes('FROM refresh_tokens') && normalized.includes('WHERE id = $1 AND user_id = $2')) {
             const token = tokenById(params[0]);

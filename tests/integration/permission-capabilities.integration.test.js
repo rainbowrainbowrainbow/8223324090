@@ -6,6 +6,7 @@
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const jwt = require('jsonwebtoken');
 const { describe, it, before, after } = require('node:test');
 const { Pool } = require('pg');
 const { BASE_URL, getToken, request, testDate } = require('../helpers');
@@ -40,18 +41,34 @@ function requireDisposableTarget() {
 }
 
 async function login(username, password) {
-    // Account access PATCH records a high-precision revocation timestamp,
-    // while JWT sessionIssuedAt is millisecond-precision.
-    await new Promise(resolve => setTimeout(resolve, 20));
     const response = await request('POST', '/api/auth/login', { username, password });
     assert.equal(response.status, 200, `login failed for ${username}: ${JSON.stringify(response.data)}`);
     assert.ok(response.data?.token, `token missing for ${username}`);
+    const claims = jwt.decode(response.data.token);
+    const clock = (await schemaPool.query(
+        `SELECT EXTRACT(EPOCH FROM session_revoked_at) * 1000 AS revoked_ms,
+                EXTRACT(EPOCH FROM clock_timestamp()) * 1000 AS now_ms
+         FROM users WHERE id = $1`, [claims.id]
+    )).rows[0];
+    assert.ok(clock?.revoked_ms == null || claims.sessionIssuedAt > Number(clock.revoked_ms),
+        `fresh login issuance=${claims.sessionIssuedAt} cutoff=${clock?.revoked_ms} now=${clock?.now_ms}`);
     return response.data.token;
 }
 
-async function permissions(token) {
+async function permissions(token, label = '') {
     const response = await request('GET', '/api/auth/permissions', null, token);
-    assert.equal(response.status, 200, JSON.stringify(response.data));
+    let clockDetails = '';
+    if (response.status === 401 && response.data?.code === 'auth_session_revoked') {
+        const ownFixtureClaims = jwt.decode(token);
+        const row = (await schemaPool.query(
+            `SELECT EXTRACT(EPOCH FROM u.session_revoked_at) * 1000 AS revoked_ms,
+                    EXTRACT(EPOCH FROM rt.created_at::timestamptz) * 1000 AS created_ms
+             FROM users u LEFT JOIN refresh_tokens rt ON rt.id = $2 AND rt.user_id = u.id WHERE u.id = $1`,
+            [ownFixtureClaims.id, ownFixtureClaims.sessionTokenId]
+        )).rows[0];
+        clockDetails = ` issued=${ownFixtureClaims.sessionIssuedAt} created=${row?.created_ms} revoked=${row?.revoked_ms}`;
+    }
+    assert.equal(response.status, 200, `${label}: ${JSON.stringify(response.data)}${clockDetails}`);
     return response.data;
 }
 
@@ -130,6 +147,38 @@ describe('disposable token-backed permission capability contract', { skip: !enab
 
     after(async () => {
         if (schemaPool) await schemaPool.end();
+    });
+
+    it('keeps a new password login valid after a future cutoff without reviving older sessions', async () => {
+        const account = accounts.matrix;
+        const original = await request('POST', '/api/auth/login', { username: account.username, password: account.password });
+        assert.equal(original.status, 200);
+        // Model a clock correction after revocation in the disposable database.
+        await schemaPool.query("UPDATE users SET session_revoked_at = clock_timestamp() + INTERVAL '5 seconds' WHERE id = $1", [account.id]);
+        for (const token of [original.data.token, original.data.accessToken]) {
+            const denied = await request('GET', '/api/auth/permissions', null, token);
+            assert.equal(denied.status, 401);
+            assert.equal(denied.data.code, 'auth_session_revoked');
+        }
+        const oldRefresh = await request('POST', '/api/auth/refresh', { refreshToken: original.data.refreshToken });
+        assert.equal(oldRefresh.status, 401);
+        assert.equal(oldRefresh.data.code, 'refresh_session_revoked');
+        const fresh = await request('POST', '/api/auth/login', { username: account.username, password: account.password });
+        assert.equal(fresh.status, 200);
+        for (const token of [fresh.data.token, fresh.data.accessToken]) await permissions(token, 'new login after future cutoff');
+        const rotated = await request('POST', '/api/auth/refresh', { refreshToken: fresh.data.refreshToken });
+        assert.equal(rotated.status, 200);
+        await permissions(rotated.data.accessToken, 'refresh after future cutoff');
+        const accessChange = await updateAccess(account, { actionDenylist: ['hr.reports.view'] }, await getToken());
+        assert.equal(accessChange.status, 200);
+        for (const token of [fresh.data.token, fresh.data.accessToken, rotated.data.accessToken]) {
+            const denied = await request('GET', '/api/auth/permissions', null, token);
+            assert.equal(denied.status, 401, 'a later access change must revoke a token issued ahead of the corrected clock');
+            assert.equal(denied.data.code, 'auth_session_revoked');
+        }
+        const revokedRefresh = await request('POST', '/api/auth/refresh', { refreshToken: rotated.data.refreshToken });
+        assert.equal(revokedRefresh.status, 401);
+        account.token = await login(account.username, account.password);
     });
 
     it('applies the additive page_denylist migration with the expected PostgreSQL contract', async () => {
@@ -215,7 +264,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
                 assert.equal(allow.status, 200, `${entry.key} allow: ${JSON.stringify(allow.data)}`);
                 assert.deepEqual(allow.data?.pageAllowlist, [entry.key], `${entry.key}: allowlist must canonicalize`);
                 account.token = await login(account.username, account.password);
-                const allowed = await permissions(account.token);
+                const allowed = await permissions(account.token, `${entry.key} page allow`);
                 assert.equal(allowed.pages[entry.key], true, `${entry.key}: explicit page allow must allow`);
                 assert.equal(allowed.capabilities[`page:${entry.key}`]?.source, 'explicit_allow', `${entry.key}: page allow source`);
             }
@@ -224,7 +273,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
             assert.equal(deny.status, 200, `${entry.key} deny: ${JSON.stringify(deny.data)}`);
             assert.deepEqual(deny.data?.pageDenylist, [entry.key], `${entry.key}: denylist must canonicalize`);
             account.token = await login(account.username, account.password);
-            const denied = await permissions(account.token);
+            const denied = await permissions(account.token, `${entry.key} page deny`);
             assert.equal(denied.pages[entry.key], false, `${entry.key}: explicit page deny must deny`);
             assert.equal(denied.capabilities[`page:${entry.key}`]?.source, 'explicit_deny', `${entry.key}: page deny source`);
         }
@@ -248,14 +297,14 @@ describe('disposable token-backed permission capability contract', { skip: !enab
                     );
                 }
                 account.token = await login(account.username, account.password);
-                const ignored = await permissions(account.token);
+                const ignored = await permissions(account.token, `${entry.key} explicit allow ignored`);
                 assert.equal(ignored.capabilities[`action:${entry.key}`]?.allowed, false, `${entry.key}: explicit allow must not grant non-delegable/disabled action`);
             } else {
                 const allow = await updateAccess(account, { actionAllowlist: [entry.aliases[0] || entry.key] }, creatorToken);
                 assert.equal(allow.status, 200, `${entry.key} allow: ${JSON.stringify(allow.data)}`);
                 assert.deepEqual(allow.data?.actionAllowlist, [entry.key], `${entry.key}: action allowlist must canonicalize`);
                 account.token = await login(account.username, account.password);
-                const allowed = await permissions(account.token);
+                const allowed = await permissions(account.token, `${entry.key} explicit allow`);
                 assert.equal(allowed.capabilities[`action:${entry.key}`]?.allowed, true, `${entry.key}: explicit action allow must allow`);
                 assert.equal(allowed.capabilities[`action:${entry.key}`]?.source, 'explicit_allow', `${entry.key}: action allow source`);
             }
@@ -264,7 +313,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
             assert.equal(deny.status, 200, `${entry.key} deny: ${JSON.stringify(deny.data)}`);
             assert.deepEqual(deny.data?.actionDenylist, [entry.key], `${entry.key}: denylist must store canonical key`);
             account.token = await login(account.username, account.password);
-            const denied = await permissions(account.token);
+            const denied = await permissions(account.token, `${entry.key} explicit deny`);
             assert.equal(denied.capabilities[`action:${entry.key}`]?.allowed, false, `${entry.key}: explicit action deny must deny`);
             assert.equal(denied.capabilities[`action:${entry.key}`]?.source, 'explicit_deny', `${entry.key}: action deny source`);
         }

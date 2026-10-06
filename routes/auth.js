@@ -326,7 +326,8 @@ router.post('/login', async (req, res) => {
             // Backward compat: also issue legacy long-lived token for existing clients.
             authUser = buildAuthUserPayload(user);
             token = jwt.sign(
-                { ...authUser, sessionIssuedAt: tokenPair.sessionIssuedAt, sessionTokenId: tokenPair.sessionTokenId },
+                { ...authUser, sessionIssuedAt: tokenPair.sessionIssuedAt,
+                    sessionRevocationCutoff: tokenPair.sessionRevocationCutoff, sessionTokenId: tokenPair.sessionTokenId },
                 JWT_SECRET,
                 { expiresIn: '24h' }
             );

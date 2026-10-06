@@ -89,7 +89,7 @@ test('legacy global-surface containment with actual HTTP, fresh membership auth 
     }
     function isAuthQuery(sql) {
         const text = String(typeof sql === 'string' ? sql : sql?.text).replace(/\s+/g, ' ').trim();
-        return /^SELECT is_active, session_revoked_at FROM users WHERE id = \$1$/.test(text)
+        return /^SELECT is_active, session_revoked_at, .* AS session_revoked_at_ms FROM users WHERE id = \$1$/.test(text)
             || /^SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, name, telegram_chat_id, is_active FROM users WHERE id = \$1$/.test(text)
             || /^SELECT staff_id FROM employee_profiles WHERE user_id = \$1 AND COALESCE\(is_active, true\) IS TRUE AND staff_id IS NOT NULL$/.test(text)
             || text.startsWith('SELECT om.organization_id, o.slug AS organization_slug,')

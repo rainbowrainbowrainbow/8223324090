@@ -120,9 +120,13 @@ function fakePool() {
             if (text.startsWith('UPDATE employee_profiles') || text.startsWith('UPDATE users SET last_seen_at')) {
                 return { rows: [], rowCount: 0 };
             }
-            if (text.startsWith('SELECT is_active, session_revoked_at FROM users WHERE id = $1')) {
+            if (text.startsWith('SELECT is_active, session_revoked_at,') && text.includes('FROM users WHERE id = $1')) {
                 const user = state.users.get(Number(params[0]));
-                return { rows: user ? [{ is_active: user.is_active, session_revoked_at: user.session_revoked_at }] : [], rowCount: user ? 1 : 0 };
+                return { rows: user ? [{
+                    is_active: user.is_active,
+                    session_revoked_at: user.session_revoked_at,
+                    session_revoked_at_ms: user.session_revoked_at ? new Date(user.session_revoked_at).getTime() : null
+                }] : [], rowCount: user ? 1 : 0 };
             }
             if (text.startsWith('SELECT id, username, role,') && text.includes('FROM users WHERE id = $1')) {
                 const user = state.users.get(Number(params[0]));

@@ -145,10 +145,14 @@ describe('WebSocket chat membership authorization', () => {
         const pool = {
             query: async (sql, params = []) => {
                 const userId = Number(params[0]);
-                if (/SELECT is_active, session_revoked_at FROM users/i.test(sql)) {
+                if (/SELECT is_active, session_revoked_at,/i.test(sql)) {
                     if (state.failSessionRead) throw Object.assign(new Error('Fixture database unavailable'), { code: '08006' });
                     const user = state.users.get(userId);
-                    return { rows: user ? [{ is_active: user.is_active, session_revoked_at: user.session_revoked_at || null }] : [], rowCount: user ? 1 : 0 };
+                    return { rows: user ? [{
+                        is_active: user.is_active,
+                        session_revoked_at: user.session_revoked_at || null,
+                        session_revoked_at_ms: user.session_revoked_at ? new Date(user.session_revoked_at).getTime() : null
+                    }] : [], rowCount: user ? 1 : 0 };
                 }
                 if (/FROM users WHERE id = \$1/i.test(sql)) {
                     const user = state.users.get(userId);

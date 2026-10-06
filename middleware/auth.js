@@ -202,7 +202,9 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
 
     try {
         const sessionState = await db.query(
-            `SELECT is_active, session_revoked_at FROM users WHERE id = $1${lockUser ? ' FOR UPDATE' : ''}`,
+            `SELECT is_active, session_revoked_at,
+                    EXTRACT(EPOCH FROM session_revoked_at) * 1000 AS session_revoked_at_ms
+             FROM users WHERE id = $1${lockUser ? ' FOR UPDATE' : ''}`,
             [userId]
         );
         const sessionRow = sessionState.rows[0];
@@ -212,16 +214,21 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
         if (sessionRow?.is_active === false) {
             throw authSessionError('Ваш акаунт деактивовано. Зверніться до адміністратора.', 'auth_user_deactivated');
         }
-        const revokedAtMs = sessionRow?.session_revoked_at
-            ? new Date(sessionRow.session_revoked_at).getTime()
+        const revokedAtMs = sessionRow?.session_revoked_at_ms != null
+            ? Number(sessionRow.session_revoked_at_ms)
             : NaN;
         const issuedAtMs = Number(user.sessionIssuedAt || user.session_issued_at || 0);
+        // A later revocation must also invalidate a session issued ahead of a
+        // corrected database clock. Bind new tokens to the cutoff seen while
+        // their user row was locked; retain the timestamp check for older JWTs.
+        const revocationCutoffChanged = Object.hasOwn(user, 'sessionRevocationCutoff')
+            && Number(user.sessionRevocationCutoff) !== (Number.isFinite(revokedAtMs) ? revokedAtMs : 0);
         const revokedUnix = Number.isFinite(revokedAtMs) ? Math.floor(revokedAtMs / 1000) : 0;
         const issuedBeforeCutoff = Number.isFinite(revokedAtMs)
             && (issuedAtMs > 0
                 ? issuedAtMs <= revokedAtMs
                 : Number(user.iat || 0) <= revokedUnix);
-        if (issuedBeforeCutoff) {
+        if (revocationCutoffChanged || issuedBeforeCutoff) {
             throw authSessionError('Session revoked. Please login again.', 'auth_session_revoked');
         }
 
@@ -501,21 +508,35 @@ async function createTokenPair(user, { deviceInfo, ipAddress } = {}, db = pool) 
 
     const insertResult = await db.query(
         `INSERT INTO refresh_tokens (user_id, token_hash, device_info, ip_address, expires_at, created_at)
-         VALUES ($1, $2, $3, $4, $5, clock_timestamp())
-         RETURNING id, created_at`,
+         VALUES ($1, $2, $3, $4, $5,
+                 (SELECT GREATEST(clock_timestamp(), session_revoked_at + INTERVAL '1 microsecond')
+                  FROM users WHERE id = $1))
+         RETURNING id, created_at,
+                   EXTRACT(EPOCH FROM created_at::timestamptz) * 1000 AS created_at_ms,
+                   (SELECT COALESCE(EXTRACT(EPOCH FROM session_revoked_at) * 1000, 0)
+                    FROM users WHERE id = $1) AS session_revocation_cutoff_ms`,
         [user.id, tokenHash, (deviceInfo || '').slice(0, 200), ipAddress || null, expiresAt]
     );
 
-    const databaseIssuedAt = new Date(insertResult.rows?.[0]?.created_at).getTime();
-    const sessionIssuedAt = Number.isFinite(databaseIssuedAt) ? databaseIssuedAt : Date.now();
+    // The caller holds the user lock, so fresh issuance stays after the last
+    // revocation even when the database clock moves backwards. Old sessions
+    // still have to pass their original cutoff before reaching this insert.
+    // PostgreSQL owns this clock. Reading a naive timestamp through pg's Date
+    // parser changes its timezone and drops precision at the revocation boundary.
+    const sessionIssuedAt = Number(insertResult.rows?.[0]?.created_at_ms);
+    const sessionRevocationCutoff = Number(insertResult.rows?.[0]?.session_revocation_cutoff_ms);
+    if (!Number.isFinite(sessionIssuedAt) || sessionIssuedAt <= 0
+        || !Number.isFinite(sessionRevocationCutoff) || sessionRevocationCutoff < 0) {
+        throw new Error('Database session issuance timestamp unavailable');
+    }
     const refreshTokenId = insertResult.rows?.[0]?.id || null;
     const accessToken = jwt.sign(
-        { ...authUser, sessionIssuedAt, sessionTokenId: refreshTokenId },
+        { ...authUser, sessionIssuedAt, sessionRevocationCutoff, sessionTokenId: refreshTokenId },
         JWT_SECRET,
         { expiresIn: ACCESS_TOKEN_EXPIRY }
     );
 
-    return { accessToken, refreshToken, expiresAt, sessionIssuedAt, sessionTokenId: refreshTokenId, refreshTokenId };
+    return { accessToken, refreshToken, expiresAt, sessionIssuedAt, sessionRevocationCutoff, sessionTokenId: refreshTokenId, refreshTokenId };
 }
 
 /**
@@ -546,7 +567,8 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress, reco
             `SELECT id, username, role, extra_roles, page_allowlist, page_denylist,
                     action_allowlist, action_denylist, business_contexts,
                     default_business_context, name, telegram_chat_id, is_active,
-                    session_revoked_at
+                    session_revoked_at,
+                    EXTRACT(EPOCH FROM session_revoked_at) * 1000 AS session_revoked_at_ms
              FROM users
              WHERE id = $1
              FOR UPDATE`,
@@ -554,6 +576,7 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress, reco
         );
         const result = await client.query(
             `SELECT id, user_id, device_info, ip_address, revoked_at, replaced_by, expires_at, created_at,
+                    EXTRACT(EPOCH FROM created_at::timestamptz) * 1000 AS created_at_ms,
                     EXTRACT(EPOCH FROM (clock_timestamp() - revoked_at)) * 1000 AS rotation_age_ms
              FROM refresh_tokens
              WHERE token_hash = $1
@@ -575,11 +598,11 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress, reco
             return { error: 'Ваш акаунт деактивовано. Зверніться до адміністратора.', code: 'refresh_user_inactive', status: 401 };
         }
 
-        const revokedAtMs = storedUser.session_revoked_at
-            ? new Date(storedUser.session_revoked_at).getTime()
+        const revokedAtMs = storedUser.session_revoked_at_ms != null
+            ? Number(storedUser.session_revoked_at_ms)
             : NaN;
-        const tokenCreatedAtMs = oldToken.created_at
-            ? new Date(oldToken.created_at).getTime()
+        const tokenCreatedAtMs = oldToken.created_at_ms != null
+            ? Number(oldToken.created_at_ms)
             : NaN;
         if (Number.isFinite(revokedAtMs)
             && (!Number.isFinite(tokenCreatedAtMs) || tokenCreatedAtMs <= revokedAtMs)) {

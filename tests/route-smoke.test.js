@@ -1849,7 +1849,7 @@ function createFakePool() {
             if (/SELECT COUNT\(\*\)::int as c FROM users/i.test(text)) {
                 return { rows: [{ c: 2 }] };
             }
-            if (/SELECT is_active, session_revoked_at FROM users WHERE id = \$1/i.test(text)) {
+            if (/SELECT is_active, session_revoked_at,/i.test(text)) {
                 return { rows: [{ is_active: true, session_revoked_at: null }] };
             }
             if (/SELECT id, username, name FROM users WHERE id = \$1 AND COALESCE\(is_active, true\) = true LIMIT 1/i.test(text)) {

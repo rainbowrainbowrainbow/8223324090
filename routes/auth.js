@@ -12,6 +12,7 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const crypto = require('crypto');
 const { pool } = require('../db');
+const { SESSION_REVOCATION_CUTOFF_SQL } = require('../services/sessionRevocation');
 const {
     JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
     createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens,
@@ -1605,7 +1606,7 @@ router.post('/security/revoke-sessions', authenticateToken, async (req, res) => 
             lockUser: true
         });
         await revokeClient.query(
-            'UPDATE users SET session_revoked_at = clock_timestamp() WHERE id = $1',
+            `UPDATE users SET session_revoked_at = ${SESSION_REVOCATION_CUTOFF_SQL} WHERE id = $1`,
             [user.id]
         );
         await revokeAllUserTokens(user.id, revokeClient);
@@ -1815,7 +1816,7 @@ router.post('/logout', async (req, res) => {
                     lockUser: true
                 });
                 await logoutClient.query(
-                    'UPDATE users SET session_revoked_at = clock_timestamp() WHERE id = $1',
+                    `UPDATE users SET session_revoked_at = ${SESSION_REVOCATION_CUTOFF_SQL} WHERE id = $1`,
                     [user.id]
                 );
                 await revokeAllUserTokens(user.id, logoutClient);

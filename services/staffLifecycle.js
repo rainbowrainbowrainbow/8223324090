@@ -1,6 +1,7 @@
 'use strict';
 
 const { recordAccountSecurityEvent } = require('./accountSecurity');
+const { SESSION_REVOCATION_CUTOFF_SQL } = require('./sessionRevocation');
 const { reconcileScheduledAnimatorLines } = require('./booking');
 const { lockOrganizationOwnership, assertCanDeactivateOrganizationOwners } = require('./organizationOwnership');
 
@@ -160,7 +161,7 @@ async function syncLinkedStaffAccountDeactivation(client, staffId, options = {})
         const disabled = await client.query(
             `UPDATE users
              SET is_active = false,
-                 session_revoked_at = clock_timestamp()
+                 session_revoked_at = ${SESSION_REVOCATION_CUTOFF_SQL}
              WHERE id = ANY($1::int[])
              RETURNING id, username, name, role`,
             [userIds]

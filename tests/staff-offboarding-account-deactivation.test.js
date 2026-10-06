@@ -33,6 +33,7 @@ function loadLifecycle(events) {
         module: { exports: {} },
         require(name) {
             if (name === './organizationOwnership') return ownerGuard;
+            if (name === './sessionRevocation') return require('../services/sessionRevocation');
             if (name === './accountSecurity') return { recordAccountSecurityEvent: async event => {
                 await security.recordAccountSecurityEvent(event);
                 events.push(event);
@@ -79,7 +80,7 @@ test('strict dismissal disables linked users and profiles, revokes sessions and 
     const result = await f.deactivate(f.client, 42, options);
     assert.equal(result.disabled_accounts, 1);
     assert.equal(result.account_deactivation_blocked, false);
-    assert.ok(f.calls.some(call => /session_revoked_at = clock_timestamp\(\)/.test(call.text)));
+    assert.ok(f.calls.some(call => call.text.includes(`session_revoked_at = ${require('../services/sessionRevocation').SESSION_REVOCATION_CUTOFF_SQL}`)));
     assert.ok(f.calls.some(call => call.text.startsWith('UPDATE refresh_tokens')));
     assert.equal(f.events[0].eventType, 'account_deactivated');
     assert.equal(f.events[0].details.sessionsRevoked, true);

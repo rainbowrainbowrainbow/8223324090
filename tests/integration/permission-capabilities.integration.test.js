@@ -181,6 +181,64 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         account.token = await login(account.username, account.password);
     });
 
+    it('never revives legacy JWTs after repeated revocations with a corrected database clock', async () => {
+        const account = accounts.matrix;
+        const original = await request('POST', '/api/auth/login', { username: account.username, password: account.password });
+        assert.equal(original.status, 200);
+        // This owned fixture cutoff represents a revocation before a clock rollback.
+        // Do not change the database or host clock globally.
+        const first = (await schemaPool.query(
+            `UPDATE users SET session_revoked_at = clock_timestamp() + INTERVAL '10 seconds'
+             WHERE id = $1 RETURNING EXTRACT(EPOCH FROM session_revoked_at) * 1000 AS cutoff`, [account.id]
+        )).rows[0];
+        const issuance = Number(first.cutoff) - 5000;
+        const legacyTokens = ['sessionIssuedAt', 'iat'].map(claim => jwt.sign({
+            id: account.id, username: account.username, role: account.role, iat: Math.floor(issuance / 1000),
+            ...(claim === 'sessionIssuedAt' ? { sessionIssuedAt: issuance } : {})
+        }, process.env.JWT_SECRET, { expiresIn: '1h' }));
+        const assertLegacyDenied = async () => {
+            for (const token of legacyTokens) {
+                assert.equal(Object.hasOwn(jwt.decode(token), 'sessionRevocationCutoff'), false);
+                const denied = await request('GET', '/api/auth/permissions', null, token);
+                assert.equal(denied.status, 401, 'a legacy JWT rejected by a future cutoff must stay rejected');
+                assert.equal(denied.data.code, 'auth_session_revoked');
+            }
+        };
+        await assertLegacyDenied();
+        let previous = Number(first.cutoff);
+        const actorToken = await getToken();
+        for (const revoke of [
+            token => updateAccess(account, { actionDenylist: [] }, actorToken),
+            token => request('POST', '/api/auth/security/revoke-sessions', {}, token),
+            token => request('POST', '/api/auth/logout', { allDevices: true }, token)
+        ]) {
+            const fresh = await request('POST', '/api/auth/login', { username: account.username, password: account.password });
+            assert.equal(fresh.status, 200);
+            for (const token of [fresh.data.token, fresh.data.accessToken]) await permissions(token, 'login before repeated revoke');
+            assert.equal((await revoke(fresh.data.accessToken)).status, 200);
+            const current = (await schemaPool.query(
+                'SELECT EXTRACT(EPOCH FROM session_revoked_at) * 1000 AS cutoff FROM users WHERE id = $1', [account.id]
+            )).rows[0];
+            assert.ok(Number(current.cutoff) > previous, `cutoff must strictly advance: ${previous} -> ${current.cutoff}`);
+            previous = Number(current.cutoff);
+            await assertLegacyDenied();
+            for (const token of [fresh.data.token, fresh.data.accessToken]) {
+                const denied = await request('GET', '/api/auth/permissions', null, token);
+                assert.equal(denied.status, 401);
+                assert.equal(denied.data.code, 'auth_session_revoked');
+            }
+            assert.equal((await request('POST', '/api/auth/refresh', { refreshToken: fresh.data.refreshToken })).status, 401);
+        }
+        const oldRefresh = (await schemaPool.query('SELECT revoked_at FROM refresh_tokens WHERE id = $1',
+            [jwt.decode(original.data.accessToken).sessionTokenId])).rows[0];
+        assert.ok(oldRefresh.revoked_at, 'the pre-revocation refresh row stays revoked');
+        const fresh = await request('POST', '/api/auth/login', { username: account.username, password: account.password });
+        assert.equal(fresh.status, 200);
+        for (const token of [fresh.data.token, fresh.data.accessToken]) await permissions(token, 'fresh login after monotonic revokes');
+        assert.equal((await request('POST', '/api/auth/refresh', { refreshToken: fresh.data.refreshToken })).status, 200);
+        account.token = fresh.data.token;
+    });
+
     it('applies the additive page_denylist migration with the expected PostgreSQL contract', async () => {
         const result = await schemaPool.query(
             `SELECT data_type, udt_name, is_nullable, column_default

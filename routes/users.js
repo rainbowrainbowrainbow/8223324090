@@ -6,6 +6,7 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
+const { SESSION_REVOCATION_CUTOFF_SQL } = require('../services/sessionRevocation');
 const {
     requireAction,
     authenticateToken,
@@ -990,7 +991,7 @@ async function updateAccountAccess(req, res) {
                  action_denylist = COALESCE($6::text[], action_denylist),
                  business_contexts = COALESCE($7::text[], business_contexts),
                  default_business_context = COALESCE($8::text, default_business_context),
-                 session_revoked_at = clock_timestamp()
+                 session_revoked_at = ${SESSION_REVOCATION_CUTOFF_SQL}
              WHERE id = $9
              RETURNING id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context`,
             [role, normalizedExtraRoles, normalizedPageAllowlist, normalizedPageDenylist, normalizedActionAllowlist, normalizedActionDenylist, normalizedBusinessContexts, normalizedDefaultBusinessContext, parseInt(id)]
@@ -1126,7 +1127,7 @@ router.post('/:id/reset-password', requireAction('manage_accounts'), async (req,
             `UPDATE users
              SET password_hash = $1,
                  password_changed_at = NOW(),
-                 session_revoked_at = clock_timestamp(),
+                 session_revoked_at = ${SESSION_REVOCATION_CUTOFF_SQL},
                  is_active = CASE WHEN $3::boolean THEN true ELSE is_active END
              WHERE id = $2
              RETURNING id, username, is_active, password_changed_at, session_revoked_at`,
@@ -1220,7 +1221,7 @@ router.patch('/:id/active', requireAction('manage_accounts'), async (req, res) =
         await client.query(
             `UPDATE users
              SET is_active = $1,
-                 session_revoked_at = CASE WHEN $1 = false THEN clock_timestamp() ELSE session_revoked_at END
+                 session_revoked_at = CASE WHEN $1 = false THEN ${SESSION_REVOCATION_CUTOFF_SQL} ELSE session_revoked_at END
              WHERE id = $2`,
             [!!isActive, parseInt(id)]
         );

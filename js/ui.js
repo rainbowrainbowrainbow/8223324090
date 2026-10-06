@@ -1790,7 +1790,7 @@ if (typeof document !== 'undefined') {
 
 var _customConfirmActiveClose = null;
 
-function customConfirm(message, title = 'Підтвердження') {
+function customConfirm(message, title = 'Підтвердження', confirmLabel = 'Підтвердити', cancelLabel = 'Скасувати') {
     return new Promise((resolve) => {
         if (typeof _customConfirmActiveClose === 'function') {
             _customConfirmActiveClose(false);
@@ -1803,6 +1803,8 @@ function customConfirm(message, title = 'Підтвердження') {
 
         titleEl.textContent = title;
         messageEl.textContent = message;
+        yesBtn.textContent = confirmLabel;
+        noBtn.textContent = cancelLabel;
 
         // Use openModal for focus trap (pushes onto stack for nested modal support)
         openModal(modal);

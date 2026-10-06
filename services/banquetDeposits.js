@@ -1,5 +1,6 @@
 'use strict';
 
+const { isDeepStrictEqual } = require('node:util');
 const { pool: defaultPool } = require('../db');
 const {
     DEFAULT_BUSINESS_CONTEXT,
@@ -1271,6 +1272,29 @@ async function confirmDeposit(input = {}, options = {}) {
             }
         };
         const hasBookingLink = Boolean(current.primaryBookingId);
+        const accountingNote = cleanText(input.accountingNote || input.accounting_note || input.note || input.comment, 1000);
+        const alreadyConfirmed = hasBookingLink
+            ? ['accountant_verified', 'corrected'].includes(current.status)
+            : current.status === 'needs_booking_link';
+        // The locked row is the source of truth for identical HTTP retries.
+        // Keep the original verification/correction history when nothing changed.
+        if (alreadyConfirmed
+            && current.accountingStatus === accountingStatusFromLegacyStatus('accountant_verified')
+            && current.amount === amount && current.paidAmount === amount
+            && current.paymentMethod === paymentMethod
+            && current.clientNameSnapshot === clientName && current.eventDate === eventDate
+            && current.banquetNumberSnapshot === banquetNumber
+            && (accountingNote === null || current.accountingNote === accountingNote)
+            && isDeepStrictEqual(current.sourcePayload.accountantConfirmation, sourcePayload.accountantConfirmation)
+            && isDeepStrictEqual(current.meta.accountantConfirmation, meta.accountantConfirmation)) {
+            return {
+                deposit: current,
+                projection: depositProjection(row, {
+                    businessContext, clientName, eventDate, banquetNumber,
+                    needsBookingLink: current.status === 'needs_booking_link'
+                })
+            };
+        }
         const changedAfterVerification = current.status === 'accountant_verified'
             || current.status === 'corrected';
         const nextStatus = hasBookingLink
@@ -1283,7 +1307,7 @@ async function confirmDeposit(input = {}, options = {}) {
                     paid_amount = $1,
                     expected_amount = COALESCE(expected_amount, $1),
                     payment_method = $2,
-                    status = $3,
+                    status = $3::varchar,
                     accounting_status = $13,
                     accounting_note = COALESCE($14, accounting_note),
                     client_name_snapshot = COALESCE($4, client_name_snapshot),
@@ -1313,7 +1337,7 @@ async function confirmDeposit(input = {}, options = {}) {
                 current.id,
                 businessContext,
                 'Підтверджено',
-                cleanText(input.accountingNote || input.accounting_note || input.note || input.comment, 1000)
+                accountingNote
             ]
         );
         const updated = result.rows[0];

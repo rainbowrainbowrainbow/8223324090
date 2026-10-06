@@ -333,6 +333,140 @@ test('late Park report response cannot restore people after business context cha
     } finally { dom.window.close(); }
 });
 
+test('unchanged business profile preserves a pending monthly report and its scoped export restriction', async () => {
+    let finish;
+    const pending = new Promise(resolve => { finish = resolve; });
+    let monthlyCalls = 0;
+    const { dom, win } = harness(elementOuterHtml('tab-reports'), {
+        fetch: async url => {
+            if (!String(url).includes('/report/monthly')) return response(403, { success: false, error: 'Roles unavailable' });
+            monthlyCalls++;
+            return pending;
+        }
+    });
+    try {
+        const load = win.loadReports();
+        win.dispatchEvent(new win.Event('crmBusinessProfileChanged'));
+        win.dispatchEvent(new win.Event('crmBusinessProfileChanged'));
+        assert.equal(win.__hrTruthfulState().reportState.loadState, 'loading');
+        finish(response(200, { success: true, data: [{ staff_id: 41, staff_name: 'Current QA Person', days_scheduled: 1,
+            days_worked: 1 }], reportAccess: { exportAllowed: false } }));
+        await load;
+        assert.equal(win.__hrTruthfulState().reportState.loadState, 'ready');
+        assert.match(win.document.getElementById('reportBody').textContent, /Current QA Person/);
+        assert.match(win.document.getElementById('roleReportSummary').textContent, /Roles unavailable/);
+        assert.equal(win.document.getElementById('reportExport').disabled, true);
+        assert.equal(monthlyCalls, 1);
+    } finally { dom.window.close(); }
+});
+
+test('unchanged business profile preserves a ready monthly report, search and export availability', async () => {
+    const { dom, win } = harness(elementOuterHtml('tab-reports'), {
+        fetch: async url => response(200, { success: true, data: String(url).includes('/report/monthly')
+            ? [{ staff_id: 41, staff_name: 'Current QA Person', days_scheduled: 1, days_worked: 1 }] : [] })
+    });
+    try {
+        await win.loadReports();
+        const search = win.document.getElementById('reportSearch');
+        search.value = 'Current QA';
+        search.dispatchEvent(new win.Event('input'));
+        win.dispatchEvent(new win.Event('crmBusinessProfileChanged'));
+        assert.equal(win.__hrTruthfulState().reportState.loadState, 'ready');
+        assert.equal(search.value, 'Current QA');
+        assert.match(win.document.getElementById('reportBody').textContent, /Current QA Person/);
+        assert.equal(win.document.getElementById('reportExport').disabled, false);
+    } finally { dom.window.close(); }
+});
+
+for (const change of ['business', 'role', 'access', 'session']) {
+    test(`changed ${change} in the profile context clears monthly and role data and rejects a pending response`, async () => {
+        let context = { business: 'park', role: 'director', access: 'reports-allowed', session: 'generation-1' };
+        let finish;
+        let pending = false;
+        const { dom, win } = harness(elementOuterHtml('tab-reports'), {
+            fetch: async url => {
+                if (pending && String(url).includes('/report/monthly')) return new Promise(resolve => { finish = resolve; });
+                return response(200, { success: true, summary: { staff_count: 1, role_count: 1 },
+                    data: [{ staff_id: 41, staff_name: 'Previous QA Person', days_scheduled: 1, days_worked: 1,
+                        profession_title: 'Previous QA Role' }] });
+            }
+        });
+        // Test the inactive-tab branch; active-tab automatic reload is covered by hr-report-initialization.test.js.
+        win.document.getElementById('tab-reports').classList.remove('active');
+        // The production context provider includes business, authorization and session fingerprints.
+        win.getLegacyBusinessSurfaceContextKey = () => JSON.stringify(context);
+        try {
+            await win.loadReports();
+            assert.match(win.document.getElementById('roleReportBody').textContent, /Previous QA Person/);
+            context = { ...context, [change]: 'changed' };
+            win.dispatchEvent(new win.Event('crmBusinessProfileChanged'));
+            assert.equal(win.__hrTruthfulState().reportState.loadState, 'error');
+            assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /Previous QA Person/);
+            assert.equal(win.document.getElementById('roleReportBody').textContent, '');
+            assert.doesNotMatch(win.document.getElementById('roleReportSummary').textContent, /Previous QA Person|Previous QA Role/);
+            assert.equal(win.document.getElementById('reportExport').disabled, true);
+            pending = true;
+            const load = win.loadReports();
+            context = { ...context, [change]: 'changed-again' };
+            win.dispatchEvent(new win.Event('crmBusinessProfileChanged'));
+            finish(response(200, { success: true, data: [{ staff_name: 'Late QA Person' }] }));
+            await load;
+            assert.equal(win.__hrTruthfulState().reportState.loadState, 'error');
+            assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /Late QA Person/);
+        } finally { dom.window.close(); }
+    });
+}
+
+for (const event of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
+    test(`${event} still invalidates monthly and role data even before the context fingerprint changes`, async () => {
+        let finishRoles;
+        const { dom, win } = harness(elementOuterHtml('tab-reports'), {
+            fetch: async url => String(url).includes('/report/monthly')
+                ? response(200, { success: true, data: [{ staff_name: 'Previous QA Person' }] })
+                : new Promise(resolve => { finishRoles = resolve; })
+        });
+        try {
+            const load = win.loadReports();
+            for (let i = 0; i < 30 && !finishRoles; i++) await new Promise(resolve => setTimeout(resolve, 5));
+            assert.ok(finishRoles, 'role report request started after monthly response');
+            win.document.getElementById('roleReportBody').textContent = 'Previously rendered QA Role';
+            win.dispatchEvent(new win.Event(event));
+            finishRoles(response(200, { success: true, data: [{ staff_name: 'Late QA Role' }] }));
+            await load;
+            assert.equal(win.__hrTruthfulState().reportState.loadState, 'error');
+            assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /Previous QA Person/);
+            assert.equal(win.document.getElementById('roleReportBody').textContent, '');
+            assert.equal(win.document.getElementById('reportExport').disabled, true);
+        } finally { dom.window.close(); }
+    });
+}
+
+test('a late previous month cannot replace a newer monthly report after an unchanged profile event', async () => {
+    let finishOld;
+    let monthlyCalls = 0;
+    const { dom, win } = harness(elementOuterHtml('tab-reports'), {
+        fetch: async url => {
+            if (!String(url).includes('/report/monthly')) return response(200, { success: true, data: [] });
+            monthlyCalls++;
+            return monthlyCalls === 1 ? new Promise(resolve => { finishOld = resolve; })
+                : response(200, { success: true, data: [{ staff_name: 'New Month QA Person' }] });
+        }
+    });
+    try {
+        const first = win.loadReports();
+        const month = win.document.getElementById('reportMonth');
+        month.selectedIndex = 1;
+        await win.loadReports();
+        win.dispatchEvent(new win.Event('crmBusinessProfileChanged'));
+        finishOld(response(200, { success: true, data: [{ staff_name: 'Old Month QA Person' }] }));
+        await first;
+        assert.equal(win.__hrTruthfulState().reportState.loadState, 'ready');
+        assert.equal(win.__hrTruthfulState().reportState.month, month.value);
+        assert.match(win.document.getElementById('reportBody').textContent, /New Month QA Person/);
+        assert.doesNotMatch(win.document.getElementById('reportBody').textContent, /Old Month QA Person/);
+    } finally { dom.window.close(); }
+});
+
 test('payroll profiles do not turn denied staff into zero people and retry restores the catalog', async () => {
     let staffDenied = true;
     const { dom, win } = harness(elementOuterHtml('tab-profiles'), {

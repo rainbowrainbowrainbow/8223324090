@@ -200,7 +200,7 @@ async function run(options) {
     const user = verified.user || verified;
     check(Number(user.id) === plan.testAccountId && /qa|test|codex|smoke|verifier/i.test(`${user.username || ''} ${user.name || ''}`), 'finance_qa_actor_mismatch');
     const permissions = await jsonFetch('/api/auth/permissions', { token: authToken });
-    check(permissions.capabilities?.['action:finance.manage'] === true, 'finance_qa_finance_access_missing');
+    check(permissions.capabilities?.['action:finance.manage']?.allowed === true, 'finance_qa_finance_access_missing');
     const workspace = await jsonFetch(`${BASE}?businessContext=${encodeURIComponent(plan.businessContext)}`, { token: authToken, qaToken: token });
     const qa = publicQaContext(workspace.qa, plan);
     check(workspace.available !== false && Array.isArray(workspace.accounts) && workspace.accounts.length === 0

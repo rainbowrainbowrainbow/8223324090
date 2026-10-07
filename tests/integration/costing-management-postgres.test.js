@@ -54,6 +54,9 @@ test('management P&L links performed revenue, explicit refund, and allocated lab
                 source TEXT, booking_id VARCHAR(50));
             CREATE TABLE bookings (id VARCHAR(50) PRIMARY KEY, business_context TEXT, price INTEGER,
                 date DATE, status TEXT, linked_to VARCHAR(50));
+            CREATE TABLE finance_money_qa_runs (run_id BIGINT PRIMARY KEY);
+            CREATE TABLE trusted_qa_run_entities (run_id BIGINT NOT NULL, entity_type VARCHAR(80) NOT NULL,
+                entity_id VARCHAR(120) NOT NULL, UNIQUE (run_id, entity_type, entity_id));
             CREATE TABLE education_attendance (id BIGINT PRIMARY KEY, business_context TEXT, booking_id VARCHAR(50),
                 status TEXT, lesson_date DATE);
             CREATE TABLE fiscal_profiles (id BIGINT PRIMARY KEY, crm_profile_key TEXT);
@@ -74,7 +77,10 @@ test('management P&L links performed revenue, explicit refund, and allocated lab
                 (4,'event_genix','income',1,50,'2026-10-05',NULL,'legacy',NULL),
                 (5,'dar','income',1,2160,'2026-10-01',NULL,'cashier',NULL);
             INSERT INTO bookings VALUES ('lesson-qa','event_genix',2160,'2026-10-12','confirmed',NULL),
-                ('other-lesson','event_genix',2160,'2026-10-12','confirmed',NULL);
+                ('other-lesson','event_genix',2160,'2026-10-12','confirmed',NULL),
+                ('finance-owned-qa','event_genix',9000,'2026-10-12','confirmed',NULL);
+            INSERT INTO finance_money_qa_runs VALUES (901);
+            INSERT INTO trusted_qa_run_entities VALUES (901,'booking','finance-owned-qa');
             INSERT INTO education_attendance VALUES (11,'event_genix','lesson-qa','present','2026-10-12');
             INSERT INTO fiscal_profiles VALUES (41,'event_genix'),(42,'dar');
             INSERT INTO payment_orders VALUES (51,41,'booking','lesson-qa',100000,'payment_recorded','recorded');
@@ -174,6 +180,7 @@ document.documentElement.setAttribute('data-theme','dark');
         assert.equal(legacyBefore.status, 200, JSON.stringify(legacyBefore.body));
         assert.equal(legacyBefore.body.summary.totalIncome, 2210);
         assert.equal(legacyBefore.body.summary.totalExpenses, 2158);
+        assert.equal(legacyBefore.body.bookingRevenue, 4320, 'registered finance QA booking value is excluded');
         assert.equal((await request('GET', reportPath)).body.summary.earnedRevenueMinor, '0');
         assert.equal((await request('GET', reportPath, undefined, 'event_genix', 'viewer')).status, 403);
         const wrongPlan = await request('POST', `${base}/plans`, { templateId: template.body.template.id,
@@ -389,6 +396,7 @@ document.documentElement.setAttribute('data-theme','dark');
         assert.equal((await request('GET', reportPath)).body.summary.earnedRevenueMinor, '186000');
         const legacyAfter = await request('GET', '/report/pnl?year=2026&month=10');
         assert.deepEqual(legacyAfter.body.summary, legacyBefore.body.summary, 'legacy P&L remains unchanged');
+        assert.equal(legacyAfter.body.bookingRevenue, 4320, 'costing reconciliation keeps finance QA bookings excluded');
         assert.equal((await request('POST', `${base}/actual/sources/${revenueId}/correct`, {
             amountMinor: '216000', evidenceState: 'confirmed', semantic: 'charge',
             reason: 'New evidence revision requires a new accounting link'

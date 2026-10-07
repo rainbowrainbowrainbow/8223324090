@@ -28,8 +28,8 @@ test('finance trusted QA uses durable ownership and exact isolated PostgreSQL wr
     const fixture = { requestId: randomUUID(), programId: productId, lineId, roomResourceId: roomId,
         room: 'Finance QA Fixture Room', date: '2099-06-15', time: '13:00', duration: 60, status: 'confirmed',
         programCode: 'FIN-QA', programName: 'Finance QA Program', label: 'Finance QA', category: 'animation', hosts: 1, pinataMode: 'none' };
-    await pool.query(`INSERT INTO products(id,code,label,name,category,duration,price,hosts,domain,business_context,is_active)
-        VALUES($1,'FIN-QA','Finance QA','Finance QA Program','animation',60,100,1,'program','event_genix',true)`, [productId]);
+    await pool.query(`INSERT INTO products(id,code,timeline_code,label,name,category,duration,price,hosts,domain,business_context,is_active)
+        VALUES($1,'FIN-QA','FQA','Finance QA','Finance QA Program','animation',60,100,1,'program','event_genix',true)`, [productId]);
     await pool.query(`INSERT INTO lines_by_date(business_context,date,line_id,name,color,from_sheet)
         VALUES('event_genix',$1,$2,'Finance QA Line','#6366f1',false)`, [fixture.date, lineId]);
     await pool.query(`INSERT INTO timeline_resources(business_context,resource_id,type,name,is_active)

@@ -17386,10 +17386,26 @@ function reportClock(value) {
 
 function reportDetailItems(key, rows) {
     return rows.flatMap(row => {
-        const entries = key.startsWith('tasks_') ? row.task_kpi?.[`${key}_details`]
+        const taskDetail = key.startsWith('tasks_');
+        const entries = taskDetail ? row.task_kpi?.[`${key}_details`]
             : row.attendance_details?.[key];
-        return (Array.isArray(entries) ? entries : []).map(item => ({ ...item, staff_name: row.staff_name }));
+        const overdue = row.task_kpi?.tasks_overdue_details;
+        return (Array.isArray(entries) ? entries : []).map(item => ({ ...item, staff_name: row.staff_name,
+            ...(taskDetail ? { report_overdue: Array.isArray(overdue)
+                ? overdue.some(task => String(task.id) === String(item.id)) : null } : {}) }));
     });
+}
+
+function reportTaskDetailInfo(item) {
+    const source = String(item.source_type || '').trim();
+    const labels = { manual: 'Ручна', auto: 'Автоматична', automation: 'Автоматична',
+        booking: 'Бронювання', recurring: 'Повторювана', kpi: 'KPI' };
+    const sourceLabel = source ? labels[source] ? `${labels[source]} (${source})` : source : 'Не вказано';
+    return [`Статус: ${item.status || 'Не вказано'}`, `Джерело: ${sourceLabel}`,
+        `Дедлайн: ${item.deadline ? String(item.deadline).slice(0, 10) : '—'}`,
+        `Виконано: ${item.completed_at ? String(item.completed_at).slice(0, 10) : '—'}`,
+        `Прострочення: ${item.report_overdue === true ? 'Так' : item.report_overdue === false ? 'Ні' : 'Немає даних'}`
+    ].join(' · ');
 }
 
 function closeReportDetails() {
@@ -17413,7 +17429,7 @@ function openReportDetails(key, staffId, opener) {
     document.getElementById('reportDetailsBody').innerHTML = items.length ? `<ul class="hr-report-details-list">${items.map(item => {
         const headline = taskDetail ? item.title || `Задача #${item.id}` : item.date || 'Дата не вказана';
         const info = taskDetail
-            ? [item.status, item.deadline ? `Дедлайн: ${String(item.deadline).slice(0, 10)}` : ''].filter(Boolean).join(' · ')
+            ? reportTaskDetailInfo(item)
             : [item.planned_start ? `План ${reportClock(item.planned_start)}–${reportClock(item.planned_end)}` : '',
                 item.clock_in ? `Факт ${reportClock(item.clock_in)}–${reportClock(item.clock_out)}`
                     : item.status === 'absent' || item.status === 'no_show' ? 'Підтверджена відсутність' : 'Без відмітки',

@@ -11,6 +11,39 @@ const code = file => fs.readFileSync(path.join(root, file), 'utf8');
 const hrHtml = code('hr.html');
 const hrPage = code('js/hr-page.js');
 
+test('monthly task drilldown exposes provenance, completion and server-reported overdue without deriving policy', () => {
+    const { dom, win } = harness(elementOuterHtml('tab-reports'));
+    try {
+        const tasks = [
+            { id: 801, title: 'Synthetic manual task', status: 'done', source_type: 'manual',
+                deadline: '2026-09-10T12:00:00Z', completed_at: '2026-09-05T12:00:00Z' },
+            { id: 802, title: 'Synthetic automatic task', status: 'todo', source_type: 'booking',
+                deadline: '2099-09-10T12:00:00Z', completed_at: null },
+            { id: 803, title: 'Synthetic KPI task', status: 'todo', source_type: 'kpi',
+                deadline: '2026-09-10T12:00:00Z', completed_at: null },
+            { id: 804, title: '<img src=x onerror=alert(1)>', status: 'todo', source_type: '<script>bad()</script>',
+                deadline: null, completed_at: null }
+        ];
+        win.renderReports({ success: true, data: [{ staff_id: 81, staff_name: 'Synthetic Alpha',
+            task_kpi: { tasks_assigned_details: tasks, tasks_overdue_details: [tasks[1]] } }] });
+        win.openReportDetails('tasks_assigned', 81, null);
+        const items = [...win.document.querySelectorAll('#reportDetailsBody li')];
+        assert.equal(items.length, 4);
+        assert.match(items[0].textContent, /Synthetic Alpha/);
+        assert.match(items[0].textContent, /Джерело:.*manual/);
+        assert.match(items[0].textContent, /Виконано:.*2026-09-05/);
+        assert.match(items[0].textContent, /Прострочення: Ні/);
+        assert.match(items[1].textContent, /Джерело:.*booking/);
+        assert.match(items[1].textContent, /Прострочення: Так/,
+            'The server overdue list is authoritative even when the visible deadline is in the future');
+        assert.match(items[2].textContent, /Джерело:.*KPI/i);
+        assert.match(items[2].textContent, /Прострочення: Ні/,
+            'The browser must not create a new overdue rule from a past deadline');
+        assert.match(items[3].textContent, /<script>bad\(\)<\/script>/);
+        assert.equal(win.document.querySelector('#reportDetailsBody img, #reportDetailsBody script'), null);
+    } finally { dom.window.close(); }
+});
+
 function elementOuterHtml(id) {
     const dom = new JSDOM(hrHtml);
     const html = dom.window.document.getElementById(id).outerHTML;

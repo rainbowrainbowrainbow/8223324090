@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { Pool } = require('pg');
+const { Client, Pool } = require('pg');
 const {
     assertSafeTestDatabaseUrl,
     assertSafeIsolatedTestUrl
@@ -18,12 +18,18 @@ const SHUTDOWN_TIMEOUT_MS = 20_000;
 const TEST_TIMEOUT_MS = Number(process.env.ISOLATED_TEST_TIMEOUT_MS) || 15 * 60_000;
 const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
+const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack']);
 const MODES = {
     api: ['tests/api.test.js'],
     finance: [
         'tests/integration/finance-transactions-pnl.integration.test.js',
+        'tests/integration/finance-money-movements.integration.test.js',
+        'tests/integration/finance-money-qa.integration.test.js',
+        'tests/finance-qa-report-scope.test.js',
         'tests/integration/costing-management-postgres.test.js'
     ],
+    'finance-money': ['tests/integration/finance-money-movements.integration.test.js', 'tests/integration/finance-money-qa.integration.test.js', 'tests/finance-qa-report-scope.test.js'],
+    'finance-money-browser': ['tests/browser/finance-money-actual-app-browser-smoke.js'],
     attendance: [
         'tests/integration/attendance-lock-concurrency.integration.test.js',
         'tests/integration/hr-scheduler-jobs.integration.test.js',
@@ -51,6 +57,9 @@ const MODES = {
         'tests/integration/payroll-installments.integration.test.js',
         'tests/integration/payroll-fullstack-settlement.integration.test.js',
         'tests/integration/finance-transactions-pnl.integration.test.js',
+        'tests/integration/finance-money-movements.integration.test.js',
+        'tests/integration/finance-money-qa.integration.test.js',
+        'tests/finance-qa-report-scope.test.js',
         'tests/integration/costing-management-postgres.test.js'
     ],
     'payroll-fullstack': [
@@ -140,7 +149,7 @@ const MODES = {
     ],
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
     'upload-backfill': ['tests/integration/legacy-upload-backfill.integration.test.js'],
-    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js'],
+    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js', 'tests/browser/finance-money-actual-app-browser-smoke.js'],
     qa: [
         'tests/integration/live-multi-segment-qa.integration.test.js',
         'tests/integration/live-multi-segment-runner.integration.test.js'
@@ -148,7 +157,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|education-modal-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|finance-money|finance-money-browser|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|education-modal-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
@@ -538,7 +547,24 @@ function runsAgainstDatabaseOnly(testFile) {
         || testFile.includes('legacy-upload-backfill.integration');
 }
 
+function assertLocalManualMoneyDatabase(testDb) {
+    // Validate the effective pg target without connecting: URL query parameters can
+    // override the hostname that the general disposable-URL check has inspected.
+    const parameters = new Client({ connectionString: testDb.url.toString() }).connectionParameters;
+    const hostname = String(parameters.host || '').replace(/^\[|\]$/g, '').toLowerCase();
+    if (!testDb.isLocal || !['localhost', '127.0.0.1', '::1'].includes(hostname)
+        || parameters.database !== testDb.databaseName) {
+        throw new Error('Manual finance QA requires an effective loopback disposable PostgreSQL target');
+    }
+}
+
 async function runSuite(testDb, testFile, suiteMode) {
+    if (testFile.includes('finance-money-movements.integration.test.js')
+        || testFile.includes('finance-money-qa.integration.test.js')
+        || testFile.includes('finance-qa-report-scope.test.js')
+        || testFile.includes('finance-money-actual-app-browser-smoke.js')) {
+        assertLocalManualMoneyDatabase(testDb);
+    }
     const port = await reservePort();
     const vitalinaTestCashier = testFile.includes('catalog-sale-vitalina-local-provider.integration');
     const catalogSaleLocalQa = testFile.includes('catalog-sale-local-provider.integration') || vitalinaTestCashier;
@@ -551,6 +577,15 @@ async function runSuite(testDb, testFile, suiteMode) {
         password: crypto.randomBytes(24).toString('base64url')
     };
     const serverEnv = buildServerEnvironment(testDb, port, credentials);
+    if (testFile.includes('finance-money-movements.integration.test.js')
+        || testFile.includes('finance-money-qa.integration.test.js')
+        || testFile.includes('finance-qa-report-scope.test.js')
+        || testFile.includes('finance-money-actual-app-browser-smoke.js')) {
+        serverEnv.REQUIRE_ISOLATED_TEST_TARGET = 'true';
+        serverEnv.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER = 'true';
+        serverEnv.PAYMENT_OUTBOX_WAKEUP_DISABLED = 'true';
+        serverEnv.BACKUP_OUTBOUND_HOLD = 'true';
+    }
     delete serverEnv.PAYROLL_INSTALLMENTS_ACTIVATION_MONTH;
     if (testFile.includes('payroll-')) {
         serverEnv.PAYROLL_INSTALLMENTS_ACTIVATION_MONTH = '2000-01';
@@ -814,6 +849,7 @@ async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
     if (mode !== 'all' && !Object.prototype.hasOwnProperty.call(MODES, mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
+    if (MANUAL_MONEY_MODES.has(mode)) assertLocalManualMoneyDatabase(testDb);
     const checkboxTestMode = mode === 'checkbox-ui-testmode-preflight'
         || mode === 'checkbox-ui-testmode'
         || mode === 'checkbox-ui-testmode-card-recovery'
@@ -893,6 +929,7 @@ if (require.main === module) {
 
 module.exports = {
     acquireIsolatedDatabaseLock,
+    assertLocalManualMoneyDatabase,
     assertExactCheckboxCardRecoveryState,
     assertExactCheckboxFinalDraftState,
     assertNoPreservedCheckboxMutationState,

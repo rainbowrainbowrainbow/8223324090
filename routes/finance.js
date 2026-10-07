@@ -2,7 +2,7 @@
  * routes/finance.js — Finance module API (v16.0)
  *
  * CRUD for transactions & categories, P&L summary, reports, CSV export.
- * All amounts in UAH (integer).
+ * Legacy amounts are integer UAH; manual-money commands use integer kopeck strings.
  */
 
 const router = require('express').Router();
@@ -13,6 +13,12 @@ const { requireRole, requireAction } = require('../middleware/auth');
 const { publish } = require('../services/eventBus');
 const { getSalaryReport } = require('../services/payroll');
 const { normalizeFinanceTransactionAmount } = require('../utils/financeAmounts');
+const { createFinanceMoneyService, isLocalManualMoneyEnabled,
+    assertLegacyAccountWritable, assertLegacyBookingWritable } = require('../services/financeMoneyMovements');
+const manualMoney = createFinanceMoneyService(pool);
+const { requestQaToken } = require('../services/trustedQaRuns');
+const { resolveFinanceQaAccess, createFinanceQaAccount, createFinanceQaCategory } = require('../services/financeMoneyQa');
+const { businessBookingSql } = require('../services/financeQaReadScope');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { classifyLegacyManualSalaryFinance } = require('../services/payrollSettlement');
 const {
@@ -33,6 +39,10 @@ router.use(requireFinanceRevenueView);
 const requireFinanceManagement = requireAction('finance.manage');
 router.use((req, res, next) => {
     if (!FINANCE_MUTATION_METHODS.has(req.method)) return next();
+    if (requestQaToken(req) && !(req.method === 'POST'
+        && ['/manual-money/commands', '/accounts', '/categories'].includes(req.path))) {
+        return res.status(403).json({ success: false, code: 'FINANCE_QA_ENDPOINT_DENIED', error: 'Ця дія не входить у фінансовий тестовий запуск.' });
+    }
     return requireFinanceManagement(req, res, next);
 });
 const BUSINESS_SQL_DEFAULT = `'${DEFAULT_BUSINESS_CONTEXT}'`;
@@ -120,6 +130,12 @@ function financeRecognitionDateSql(alias = 'ft') {
 }
 
 function sendFinanceError(res, err) {
+    if (err?.code === '23514' && /\bQA\b/.test(String(err.message))) {
+        return res.status(409).json({ success: false, code: 'FINANCE_QA_BOUNDARY',
+            error: 'Операція порушує межі тестового запуску. Зміни не збережено.' });
+    }
+    if (err?.statusCode) return res.status(err.statusCode).json({ success: false,
+        code: err.code || 'FINANCE_QA_DENIED', error: err.publicMessage || err.message });
     if (err?.code === 'PAYROLL_PAYMENT_MANAGED' || err?.code === '55000') {
         return res.status(409).json({
             success: false,
@@ -194,7 +210,7 @@ async function validateFinanceRelatedReferences(references, businessContext, use
     }
     if (!references.bookingId) return;
     const result = await queryable.query(
-        `SELECT id FROM bookings WHERE id = $1 AND ${businessScopeSql('', '$2')} LIMIT 1 FOR SHARE`,
+        `SELECT id FROM bookings WHERE ${businessBookingSql()} AND id = $1 AND ${businessScopeSql('', '$2')} LIMIT 1 FOR SHARE`,
         [references.bookingId, businessContext]
     );
     if (!result.rowCount) {
@@ -208,7 +224,7 @@ async function validateFinanceRelatedReferences(references, businessContext, use
 async function validateFinanceAccount(accountId, businessContext, queryable) {
     if (!accountId) return null;
     const result = await queryable.query(
-        `SELECT id, name FROM finance_accounts WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')} FOR SHARE`,
+        `SELECT id, name FROM finance_accounts WHERE id = $1 AND is_active = true AND finance_qa_run_id IS NULL AND ${businessScopeSql('', '$2')} FOR SHARE`,
         [accountId, businessContext]
     );
     if (!result.rowCount) {
@@ -224,7 +240,7 @@ async function validateFinanceCategory(categoryId, businessContext, expectedType
     const result = await queryable.query(
         `SELECT id, type
          FROM finance_categories
-         WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')} FOR SHARE`,
+         WHERE id = $1 AND is_active = true AND finance_qa_run_id IS NULL AND ${businessScopeSql('', '$2')} FOR SHARE`,
         [categoryId, businessContext]
     );
     if (!result.rowCount) {
@@ -240,6 +256,47 @@ async function validateFinanceCategory(categoryId, businessContext, expectedType
     return result.rows[0];
 }
 
+function manualMoneyContext(req, businessContext) {
+    return { businessContext, actor: req.user, qaToken: requestQaToken(req) };
+}
+
+// Production manual-money access requires a server-verified, bounded QA run.
+router.get('/manual-money', async (req, res) => {
+    try {
+        const businessContext = requestFinanceBusinessContext(req, res);
+        if (!businessContext) return;
+        if (!isLocalManualMoneyEnabled(pool) && !requestQaToken(req)) return res.json({ success: true, available: false,
+            reason: 'Ручний облік поки доступний лише в погодженому тестовому запуску.' });
+        res.json({ success: true, available: true, ...await manualMoney.getWorkspace(manualMoneyContext(req, businessContext)) });
+    } catch (error) {
+        log.error('GET /manual-money error', error);
+        sendFinanceError(res, error);
+    }
+});
+
+router.get('/manual-money/bookings/:bookingId', async (req, res) => {
+    try {
+        const businessContext = requestFinanceBusinessContext(req, res);
+        if (!businessContext) return;
+        res.json({ success: true, ...await manualMoney.getBookingSummary({ ...manualMoneyContext(req, businessContext), bookingId: req.params.bookingId }) });
+    } catch (error) {
+        log.error('GET /manual-money/bookings error', error);
+        sendFinanceError(res, error);
+    }
+});
+
+router.post('/manual-money/commands', async (req, res) => {
+    try {
+        const businessContext = requestFinanceBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await manualMoney.execute(manualMoneyContext(req, businessContext), req.body);
+        res.status(result.replayed ? 200 : 201).json(result);
+    } catch (error) {
+        log.error('POST /manual-money/commands error', error);
+        sendFinanceError(res, error);
+    }
+});
+
 // ==========================================
 // CATEGORIES
 // ==========================================
@@ -250,14 +307,21 @@ router.get('/categories', async (req, res) => {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;
         const { type } = req.query;
-        let sql = `SELECT * FROM finance_categories WHERE is_active = true AND ${businessScopeSql('', '$1')}`;
-        const params = [businessContext];
-        if (type && ['income', 'expense'].includes(type)) {
-            params.push(type);
-            sql += ` AND type = $${params.length}`;
-        }
-        sql += ' ORDER BY type, sort_order';
-        const result = await pool.query(sql, params);
+        const readCategories = async (client, runId = null) => {
+            let sql = `SELECT * FROM finance_categories WHERE is_active = true AND ${businessScopeSql('', '$1')}
+                AND finance_qa_run_id IS NOT DISTINCT FROM $2::bigint`;
+            const params = [businessContext, runId];
+            if (type && ['income', 'expense'].includes(type)) {
+                params.push(type);
+                sql += ` AND type = $${params.length}`;
+            }
+            return client.query(`${sql} ORDER BY type, sort_order`, params);
+        };
+        const result = requestQaToken(req) ? await withFinanceTransaction(async client => {
+            const qa = await resolveFinanceQaAccess(client, { ...manualMoneyContext(req, businessContext),
+                token: requestQaToken(req), endpoint: 'GET /api/finance/categories' });
+            return readCategories(client, qa.runId);
+        }) : await readCategories(pool);
         res.json(result.rows.map(r => ({
             id: r.id,
             name: r.name,
@@ -269,7 +333,7 @@ router.get('/categories', async (req, res) => {
         })));
     } catch (err) {
         log.error('GET /categories error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        sendFinanceError(res, err);
     }
 });
 
@@ -279,8 +343,17 @@ router.post('/categories', async (req, res) => {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;
         const { name, type, icon, color, sortOrder } = req.body;
-        if (!name || !type || !['income', 'expense'].includes(type)) {
+        if (typeof name !== 'string' || !name.trim() || !['income', 'expense'].includes(type)) {
             return res.status(400).json({ error: 'name and type (income|expense) required' });
+        }
+        if (requestQaToken(req)) {
+            const row = await withFinanceTransaction(async client => {
+                const qa = await resolveFinanceQaAccess(client, { actor: req.user, businessContext, token: requestQaToken(req),
+                    endpoint: 'POST /api/finance/categories', forUpdate: true });
+                return createFinanceQaCategory(client, qa, req.body);
+            });
+            return res.status(201).json({ id: row.id, name: row.name, type: row.type, icon: row.icon,
+                color: row.color, isSystem: row.is_system, sortOrder: row.sort_order });
         }
         const result = await pool.query(
             `INSERT INTO finance_categories (business_context, name, type, icon, color, sort_order)
@@ -291,7 +364,7 @@ router.post('/categories', async (req, res) => {
         res.status(201).json({ id: r.id, name: r.name, type: r.type, icon: r.icon, color: r.color, isSystem: r.is_system, sortOrder: r.sort_order });
     } catch (err) {
         log.error('POST /categories error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        sendFinanceError(res, err);
     }
 });
 
@@ -302,14 +375,21 @@ router.put('/categories/:id', async (req, res) => {
         if (!businessContext) return;
         const { id } = req.params;
         const { name, icon, color, sortOrder } = req.body;
-        // Cannot edit system categories' type
+        if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
+            return res.status(400).json({ error: 'Category name must be a nonempty string' });
+        }
+        const normalizedName = name === undefined ? null : name.trim();
+        // System category names are used by booking and payroll synchronization.
         const existing = await pool.query(`SELECT * FROM finance_categories WHERE id = $1 AND ${businessScopeSql('', '$2')}`, [id, businessContext]);
         if (existing.rows.length === 0) return res.status(404).json({ error: 'Category not found' });
+        if (existing.rows[0].is_system && normalizedName !== null && normalizedName !== existing.rows[0].name) {
+            return res.status(400).json({ error: 'Cannot rename system category' });
+        }
 
         await pool.query(
             `UPDATE finance_categories SET name = COALESCE($1, name), icon = COALESCE($2, icon),
              color = COALESCE($3, color), sort_order = COALESCE($4, sort_order) WHERE id = $5 AND ${businessScopeSql('', '$6')}`,
-            [name, icon, color, sortOrder, id, businessContext]
+            [normalizedName, icon, color, sortOrder, id, businessContext]
         );
         res.json({ success: true });
     } catch (err) {
@@ -430,7 +510,9 @@ router.post('/transactions', async (req, res) => {
             return res.status(400).json({ error: 'valid date (YYYY-MM-DD) required' });
         }
         const r = await withFinanceTransaction(async client => {
+            await assertLegacyBookingWritable(client, businessContext, bookingId);
             await validateFinanceRelatedReferences({ bookingId, staffId, certificateId }, businessContext, req.user, client);
+            await assertLegacyAccountWritable(client, businessContext, accountId);
             await validateFinanceCategory(categoryId, businessContext, type, client);
             const account = await validateFinanceAccount(accountId, businessContext, client);
             const accountName = account?.name || null;
@@ -487,8 +569,9 @@ router.put('/transactions/:id', async (req, res) => {
             // Booking edits lock booking -> finance. Keep that order here too;
             // reference errors are reported after the payroll ownership guard.
             if (initial.rows[0].booking_id) {
+                await assertLegacyBookingWritable(client, businessContext, initial.rows[0].booking_id);
                 await client.query(
-                    `SELECT id FROM bookings WHERE id = $1 AND ${businessScopeSql('', '$2')} LIMIT 1 FOR SHARE`,
+                    `SELECT id FROM bookings WHERE ${businessBookingSql()} AND id = $1 AND ${businessScopeSql('', '$2')} LIMIT 1 FOR SHARE`,
                     [initial.rows[0].booking_id, businessContext]
                 );
             }
@@ -505,6 +588,9 @@ router.put('/transactions/:id', async (req, res) => {
                 throw error;
             }
             await assertFinanceTransactionNotPayrollManaged(id, businessContext, client);
+            for (const relatedAccount of [...new Set([current.account_id, accountId].filter(Boolean))].sort((a, b) => Number(a) - Number(b))) {
+                await assertLegacyAccountWritable(client, businessContext, relatedAccount);
+            }
             const membershipMode = req.user?.businessMembershipAccess?.membershipEnabled === true;
             if (membershipMode) {
                 await validateFinanceRelatedReferences({ bookingId: current.booking_id,
@@ -547,14 +633,26 @@ router.delete('/transactions/:id', async (req, res) => {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;
         const { id } = req.params;
-        const existing = await pool.query(
-            `SELECT * FROM finance_transactions WHERE id = $1 AND ${businessScopeSql('', '$2')}`,
-            [id, businessContext]
-        );
-        if (existing.rows.length === 0) return res.status(404).json({ error: 'Transaction not found' });
-        await assertFinanceTransactionNotPayrollManaged(id, businessContext);
-
-        await pool.query(`DELETE FROM finance_transactions WHERE id = $1 AND ${businessScopeSql('', '$2')}`, [id, businessContext]);
+        const deleted = await withFinanceTransaction(async client => {
+            const initial = await client.query(
+                `SELECT * FROM finance_transactions WHERE id = $1 AND ${businessScopeSql('', '$2')}`, [id, businessContext]);
+            if (!initial.rowCount) return false;
+            await assertLegacyBookingWritable(client, businessContext, initial.rows[0].booking_id);
+            const existing = await client.query(
+                `SELECT * FROM finance_transactions WHERE id = $1 AND ${businessScopeSql('', '$2')} FOR UPDATE`, [id, businessContext]);
+            if (!existing.rowCount) return false;
+            if (String(existing.rows[0].booking_id || '') !== String(initial.rows[0].booking_id || '')) {
+                const error = new Error('Transaction booking changed; reload and retry');
+                error.status = 409;
+                error.code = 'finance_transaction_changed';
+                throw error;
+            }
+            await assertFinanceTransactionNotPayrollManaged(id, businessContext, client);
+            await assertLegacyAccountWritable(client, businessContext, existing.rows[0].account_id);
+            await client.query(`DELETE FROM finance_transactions WHERE id = $1 AND ${businessScopeSql('', '$2')}`, [id, businessContext]);
+            return true;
+        });
+        if (!deleted) return res.status(404).json({ error: 'Transaction not found' });
         res.json({ success: true });
     } catch (err) {
         log.error('DELETE /transactions/:id error', err);
@@ -601,17 +699,17 @@ router.get('/dashboard', async (req, res) => {
         const bookingRevenue = await pool.query(`
             SELECT COALESCE(SUM(price), 0)::int AS revenue, COUNT(*)::int AS count
             FROM bookings
-            WHERE date >= $1 AND date <= $2
+            WHERE ${businessBookingSql()} AND date >= $1 AND date <= $2
               AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3
               AND linked_to IS NULL AND status = 'confirmed'
         `, [from, to, businessContext]);
 
         // Income by category
         const incomeByCategory = await pool.query(`
-            SELECT fc.name, fc.icon, fc.color,
+            SELECT COALESCE(fc.name, 'Без категорії') AS name, fc.icon, fc.color,
                 COALESCE(SUM(ft.amount), 0)::int AS total
             FROM finance_transactions ft
-            JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
+            LEFT JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
             WHERE ft.type = 'income'
               AND ${financeRecognitionDateSql('ft')} >= $1::date
               AND ${financeRecognitionDateSql('ft')} <= $2::date
@@ -622,10 +720,10 @@ router.get('/dashboard', async (req, res) => {
 
         // Expense by category
         const expenseByCategory = await pool.query(`
-            SELECT fc.name, fc.icon, fc.color,
+            SELECT COALESCE(fc.name, 'Без категорії') AS name, fc.icon, fc.color,
                 COALESCE(SUM(ft.amount), 0)::int AS total
             FROM finance_transactions ft
-            JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
+            LEFT JOIN finance_categories fc ON ft.category_id = fc.id AND ${businessScopeSql('fc', '$3')}
             WHERE ft.type = 'expense'
               AND ${financeRecognitionDateSql('ft')} >= $1::date
               AND ${financeRecognitionDateSql('ft')} <= $2::date
@@ -636,13 +734,14 @@ router.get('/dashboard', async (req, res) => {
 
         // Daily breakdown
         const dailyResult = await pool.query(`
-            SELECT date,
+            SELECT ${financeRecognitionDateSql('')}::text AS date,
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS income,
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::int AS expense
             FROM finance_transactions
-            WHERE date >= $1 AND date <= $2
+            WHERE ${financeRecognitionDateSql('')} >= $1::date
+              AND ${financeRecognitionDateSql('')} <= $2::date
               AND ${businessScopeSql('', '$3')}
-            GROUP BY date ORDER BY date
+            GROUP BY ${financeRecognitionDateSql('')} ORDER BY ${financeRecognitionDateSql('')}
         `, [from, to, businessContext]);
 
         // Payment methods breakdown
@@ -873,43 +972,64 @@ router.get('/budget/comparison', async (req, res) => {
             ORDER BY fc.type, fc.sort_order
         `, [year, month, businessContext]);
 
-        // Get actual spending per category for this month
+        // Keep all actuals, including categories without a plan and uncategorized rows.
         const actuals = await pool.query(`
-            SELECT category_id,
-                COALESCE(SUM(amount), 0)::int AS actual_amount,
+            SELECT fc.id AS category_id, ft.type,
+                COALESCE(fc.name, 'Без категорії') AS name, fc.icon, fc.color,
+                COALESCE(SUM(ft.amount), 0)::int AS actual_amount,
                 COUNT(*)::int AS transaction_count
-            FROM finance_transactions
-            WHERE ${financeRecognitionDateSql('')} >= $1::date
-              AND ${financeRecognitionDateSql('')} <= $2::date
-              AND ${businessScopeSql('', '$3')}
-            GROUP BY category_id
+            FROM finance_transactions ft
+            LEFT JOIN finance_categories fc ON ft.category_id = fc.id
+              AND fc.type = ft.type AND ${businessScopeSql('fc', '$3')}
+            WHERE ${financeRecognitionDateSql('ft')} >= $1::date
+              AND ${financeRecognitionDateSql('ft')} <= $2::date
+              AND ${businessScopeSql('ft', '$3')}
+              AND ft.type IN ('income', 'expense')
+            GROUP BY fc.id, ft.type, fc.name, fc.icon, fc.color
+            ORDER BY ft.type, fc.name NULLS LAST, fc.id
         `, [range.from, range.to, businessContext]);
 
-        const actualMap = {};
-        for (const r of actuals.rows) {
-            actualMap[r.category_id] = { actual: r.actual_amount, count: r.transaction_count };
-        }
+        const categoryKey = (type, id) => `${type}:${id ?? 'uncategorized'}`;
+        const actualMap = new Map(actuals.rows.map(row => [categoryKey(row.type, row.category_id), row]));
 
         const MONTH_NAMES = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень',
                              'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
 
         const comparison = plans.rows.map(p => {
-            const act = actualMap[p.category_id] || { actual: 0, count: 0 };
-            const diff = act.actual - p.planned_amount;
-            const pct = p.planned_amount > 0 ? Math.round((act.actual / p.planned_amount) * 100) : 0;
+            const key = categoryKey(p.type, p.category_id);
+            const act = actualMap.get(key) || { actual_amount: 0, transaction_count: 0 };
+            actualMap.delete(key);
+            const diff = act.actual_amount - p.planned_amount;
+            const pct = p.planned_amount > 0 ? Math.round((act.actual_amount / p.planned_amount) * 100) : null;
             return {
                 categoryId: p.category_id,
                 categoryName: p.name,
                 categoryType: p.type,
                 categoryIcon: p.icon,
                 categoryColor: p.color,
+                hasPlan: true,
                 planned: p.planned_amount,
-                actual: act.actual,
+                actual: act.actual_amount,
                 diff,
                 percentUsed: pct,
-                transactionCount: act.count
+                transactionCount: act.transaction_count
             };
         });
+        for (const actual of actualMap.values()) {
+            comparison.push({
+                categoryId: actual.category_id,
+                categoryName: actual.name,
+                categoryType: actual.type,
+                categoryIcon: actual.icon,
+                categoryColor: actual.color,
+                hasPlan: false,
+                planned: 0,
+                actual: actual.actual_amount,
+                diff: actual.actual_amount,
+                percentUsed: null,
+                transactionCount: actual.transaction_count
+            });
+        }
 
         // Totals by type
         const incomePlanned = comparison.filter(c => c.categoryType === 'income').reduce((s, c) => s + c.planned, 0);
@@ -1072,7 +1192,7 @@ router.get('/shift/current', async (req, res) => {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;
         const result = await pool.query(
-            `SELECT * FROM cash_register_shifts WHERE status = 'open' AND ${businessScopeSql('', '$1')} ORDER BY opened_at DESC LIMIT 1`,
+            `SELECT * FROM cash_register_shifts WHERE status = 'open' AND account_id IS NULL AND ${businessScopeSql('', '$1')} ORDER BY opened_at DESC LIMIT 1`,
             [businessContext]
         );
         if (result.rows.length === 0) {
@@ -1115,7 +1235,7 @@ router.post('/shift/open', async (req, res) => {
         }
         // Check if shift already open
         const existing = await pool.query(
-            `SELECT id FROM cash_register_shifts WHERE status = 'open' AND ${businessScopeSql('', '$1')} LIMIT 1`,
+            `SELECT id FROM cash_register_shifts WHERE status = 'open' AND account_id IS NULL AND ${businessScopeSql('', '$1')} LIMIT 1`,
             [businessContext]
         );
         if (existing.rows.length > 0) {
@@ -1142,7 +1262,7 @@ router.post('/shift/close', async (req, res) => {
             return res.status(400).json({ error: 'closingCash (>=0) обовʼязковий' });
         }
         const current = await pool.query(
-            `SELECT * FROM cash_register_shifts WHERE status = 'open' AND ${businessScopeSql('', '$1')} ORDER BY opened_at DESC LIMIT 1`,
+            `SELECT * FROM cash_register_shifts WHERE status = 'open' AND account_id IS NULL AND ${businessScopeSql('', '$1')} ORDER BY opened_at DESC LIMIT 1`,
             [businessContext]
         );
         if (current.rows.length === 0) {
@@ -1165,7 +1285,7 @@ router.post('/shift/close', async (req, res) => {
         await pool.query(
             `UPDATE cash_register_shifts SET status = 'closed', closed_by = $1, closed_at = NOW(),
              closing_cash = $2, expected_cash = $3, cash_difference = $4, notes = COALESCE($5, notes)
-             WHERE id = $6 AND ${businessScopeSql('', '$7')}`,
+             WHERE id = $6 AND account_id IS NULL AND ${businessScopeSql('', '$7')}`,
             [req.user.id, parseInt(closingCash), expectedCash, cashDiff, notes, shift.id, businessContext]
         );
         res.json({
@@ -1196,7 +1316,7 @@ router.get('/shift/history', async (req, res) => {
              FROM cash_register_shifts s
              LEFT JOIN users u1 ON s.opened_by = u1.id
              LEFT JOIN users u2 ON s.closed_by = u2.id
-             WHERE ${businessScopeSql('s', '$1')}
+             WHERE s.account_id IS NULL AND ${businessScopeSql('s', '$1')}
              ORDER BY s.opened_at DESC LIMIT $2`, [businessContext, limit]
         );
         res.json({ shifts: result.rows });
@@ -1223,7 +1343,7 @@ router.get('/forecast', async (req, res) => {
             SELECT date, COUNT(*)::int AS booking_count,
                 COALESCE(SUM(price), 0)::int AS expected_revenue
             FROM bookings
-            WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL
+            WHERE ${businessBookingSql()} AND date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL
               AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3
             GROUP BY date ORDER BY date
         `, [today, endDate, businessContext]);
@@ -1234,7 +1354,7 @@ router.get('/forecast', async (req, res) => {
                 COUNT(*)::int AS booking_count,
                 COALESCE(SUM(price), 0)::int AS expected_revenue
             FROM bookings
-            WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL
+            WHERE ${businessBookingSql()} AND date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL
               AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3
             GROUP BY week_start ORDER BY week_start
         `, [today, endDate, businessContext]);
@@ -1247,7 +1367,7 @@ router.get('/forecast', async (req, res) => {
             FROM (
                 SELECT date, SUM(price) AS daily_revenue, COUNT(*) AS daily_count
                 FROM bookings
-                WHERE date::date >= (CURRENT_DATE - INTERVAL '90 days') AND date::date < CURRENT_DATE
+                WHERE ${businessBookingSql()} AND date::date >= (CURRENT_DATE - INTERVAL '90 days') AND date::date < CURRENT_DATE
                   AND status = 'confirmed' AND linked_to IS NULL
                   AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $1
                 GROUP BY date
@@ -1303,7 +1423,7 @@ router.get('/expense-allocation', async (req, res) => {
               AND ${financeRecognitionDateSql('ft')} >= $1::date
               AND ${financeRecognitionDateSql('ft')} <= $2::date
               AND ${businessScopeSql('ft', '$3')}
-            WHERE fc.type = 'expense' AND fc.is_active = true AND ${businessScopeSql('fc', '$3')}
+            WHERE fc.type = 'expense' AND fc.is_active = true AND fc.finance_qa_run_id IS NULL AND ${businessScopeSql('fc', '$3')}
             GROUP BY fc.id, fc.name, fc.icon, fc.color, fc.type
             ORDER BY total DESC
         `, [from, to, businessContext]);
@@ -1374,7 +1494,7 @@ router.get('/report/pnl', async (req, res) => {
         // Booking revenue (cross-reference)
         const bookingRev = await pool.query(`
             SELECT COALESCE(SUM(price), 0)::int AS total
-            FROM bookings WHERE date >= $1 AND date <= $2
+            FROM bookings WHERE ${businessBookingSql()} AND date >= $1 AND date <= $2
             AND status = 'confirmed' AND linked_to IS NULL
             AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3
         `, [from, to, businessContext]);
@@ -1443,7 +1563,7 @@ router.post('/receipt', async (req, res) => {
 
         if (bookingId) {
             const booking = await pool.query(
-                `SELECT id FROM bookings WHERE id = $1 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $2`,
+                `SELECT id FROM bookings WHERE ${businessBookingSql()} AND id = $1 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $2`,
                 [bookingId, businessContext]
             );
             if (!booking.rowCount) return res.status(404).json({ error: 'Booking not found in selected business' });
@@ -1533,21 +1653,25 @@ router.get('/debts', async (req, res) => {
             SELECT b.id, b.date, b.time, b.label, b.program_name, b.price,
                 b.payment_status, b.paid_amount, b.customer_id,
                 c.name AS customer_name, c.phone AS customer_phone,
-                (COALESCE(b.price, 0) - COALESCE(b.paid_amount, 0)) AS debt_amount
+                (COALESCE(b.price, 0) - COALESCE(b.paid_amount, 0)) AS debt_amount,
+                SUM(COALESCE(b.price, 0) - COALESCE(b.paid_amount, 0)) OVER () AS total_debt,
+                COUNT(*) OVER ()::int AS total_count
             FROM bookings b
             LEFT JOIN customers c ON b.customer_id = c.id
-            WHERE b.status = 'confirmed'
+            WHERE ${businessBookingSql('b')} AND b.status = 'confirmed'
               AND COALESCE(b.business_context, ${BUSINESS_SQL_DEFAULT}) = $1
               AND b.linked_to IS NULL
               AND b.price > 0
               AND (b.payment_status IS NULL OR b.payment_status != 'paid')
               AND COALESCE(b.paid_amount, 0) < COALESCE(b.price, 0)
               AND b.date::date <= CURRENT_DATE
-            ORDER BY b.date DESC
+            ORDER BY b.date DESC, b.id
             LIMIT 100
         `, [businessContext]);
 
-        const totalDebt = result.rows.reduce((s, r) => s + r.debt_amount, 0);
+        // Window totals cover the full eligible set before the displayed-row limit.
+        const totalDebt = Number(result.rows[0]?.total_debt || 0);
+        const count = result.rows[0]?.total_count || 0;
 
         res.json({
             debts: result.rows.map(r => ({
@@ -1561,7 +1685,9 @@ router.get('/debts', async (req, res) => {
                 customerPhone: r.customer_phone
             })),
             totalDebt,
-            count: result.rows.length
+            count,
+            returnedCount: result.rows.length,
+            hasMore: count > result.rows.length
         });
     } catch (err) {
         log.error('GET /debts error', err);
@@ -1576,23 +1702,26 @@ router.post('/debts/:bookingId/mark-paid', async (req, res) => {
         if (!businessContext) return;
         const { bookingId } = req.params;
         const { paidAmount } = req.body;
-        const booking = await pool.query(
-            `SELECT price FROM bookings WHERE id = $1 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $2`,
-            [bookingId, businessContext]
-        );
-        if (booking.rows.length === 0) return res.status(404).json({ error: 'Бронювання не знайдено' });
-
-        const amount = paidAmount ? parseInt(paidAmount) : booking.rows[0].price;
-        const status = amount >= booking.rows[0].price ? 'paid' : 'partial';
-
-        await pool.query(
-            `UPDATE bookings SET paid_amount = $1, payment_status = $2 WHERE id = $3 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $4`,
-            [amount, status, bookingId, businessContext]
-        );
-        res.json({ success: true, paymentStatus: status, paidAmount: amount });
+        const result = await withFinanceTransaction(async client => {
+            const booking = await client.query(
+                `SELECT price FROM bookings WHERE ${businessBookingSql()} AND id = $1 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $2 FOR UPDATE`,
+                [bookingId, businessContext]
+            );
+            if (!booking.rowCount) return null;
+            await assertLegacyBookingWritable(client, businessContext, bookingId);
+            const amount = paidAmount ? parseInt(paidAmount) : booking.rows[0].price;
+            const status = amount >= booking.rows[0].price ? 'paid' : 'partial';
+            await client.query(
+                `UPDATE bookings SET paid_amount = $1, payment_status = $2 WHERE id = $3 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $4`,
+                [amount, status, bookingId, businessContext]
+            );
+            return { success: true, paymentStatus: status, paidAmount: amount };
+        });
+        if (!result) return res.status(404).json({ error: 'Бронювання не знайдено' });
+        res.json(result);
     } catch (err) {
         log.error('POST /debts/:bookingId/mark-paid error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        sendFinanceError(res, err);
     }
 });
 
@@ -1629,7 +1758,7 @@ router.post('/currency/convert', async (req, res) => {
         const converted = Math.round(amount * rate);
         if (bookingId) {
             const booking = await pool.query(
-                `SELECT id FROM bookings WHERE id = $1 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $2`,
+                `SELECT id FROM bookings WHERE ${businessBookingSql()} AND id = $1 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $2`,
                 [bookingId, businessContext]
             );
             if (!booking.rowCount) return res.status(404).json({ error: 'Booking not found in selected business' });
@@ -1666,7 +1795,7 @@ router.get('/act/:bookingId', requireFinanceExport, async (req, res) => {
             SELECT b.*, c.name AS customer_name, c.phone AS customer_phone
             FROM bookings b
             LEFT JOIN customers c ON b.customer_id = c.id
-            WHERE b.id = $1 AND COALESCE(b.business_context, ${BUSINESS_SQL_DEFAULT}) = $2
+            WHERE ${businessBookingSql('b')} AND b.id = $1 AND COALESCE(b.business_context, ${BUSINESS_SQL_DEFAULT}) = $2
         `, [bookingId, businessContext]);
 
         if (booking.rows.length === 0) return res.status(404).json({ error: 'Бронювання не знайдено' });
@@ -1782,9 +1911,9 @@ router.get('/advanced-dashboard', async (req, res) => {
             SELECT
                 (SELECT COALESCE(SUM(amount), 0)::int FROM finance_transactions WHERE type = 'income' AND ${financeRecognitionDateSql('')} >= $1::date AND ${financeRecognitionDateSql('')} <= $2::date AND ${businessScopeSql('', '$3')}) AS month_income,
                 (SELECT COALESCE(SUM(amount), 0)::int FROM finance_transactions WHERE type = 'expense' AND ${financeRecognitionDateSql('')} >= $1::date AND ${financeRecognitionDateSql('')} <= $2::date AND ${businessScopeSql('', '$3')}) AS month_expense,
-                (SELECT COALESCE(SUM(price), 0)::int FROM bookings WHERE date >= $1::text AND date <= $2::text AND status = 'confirmed' AND linked_to IS NULL AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS month_bookings_revenue,
-                (SELECT COUNT(*)::int FROM bookings WHERE date >= $1::text AND date <= $2::text AND status = 'confirmed' AND linked_to IS NULL AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS month_bookings_count,
-                (SELECT COALESCE(AVG(price), 0)::int FROM bookings WHERE date >= $1::text AND date <= $2::text AND status = 'confirmed' AND linked_to IS NULL AND price > 0 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS avg_booking_price
+                (SELECT COALESCE(SUM(price), 0)::int FROM bookings WHERE ${businessBookingSql()} AND date >= $1::text AND date <= $2::text AND status = 'confirmed' AND linked_to IS NULL AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS month_bookings_revenue,
+                (SELECT COUNT(*)::int FROM bookings WHERE ${businessBookingSql()} AND date >= $1::text AND date <= $2::text AND status = 'confirmed' AND linked_to IS NULL AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS month_bookings_count,
+                (SELECT COALESCE(AVG(price), 0)::int FROM bookings WHERE ${businessBookingSql()} AND date >= $1::text AND date <= $2::text AND status = 'confirmed' AND linked_to IS NULL AND price > 0 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS avg_booking_price
         `, [range.from, range.to, businessContext]);
 
         // Debt summary
@@ -1792,7 +1921,7 @@ router.get('/advanced-dashboard', async (req, res) => {
             SELECT COUNT(*)::int AS count,
                 COALESCE(SUM(COALESCE(price, 0) - COALESCE(paid_amount, 0)), 0)::int AS total_debt
             FROM bookings
-            WHERE status = 'confirmed' AND linked_to IS NULL AND price > 0
+            WHERE ${businessBookingSql()} AND status = 'confirmed' AND linked_to IS NULL AND price > 0
               AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $1
               AND (payment_status IS NULL OR payment_status != 'paid')
               AND COALESCE(paid_amount, 0) < COALESCE(price, 0)
@@ -1836,14 +1965,18 @@ router.get('/accounts', async (req, res) => {
     try {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;
-        const result = await pool.query(
-            `SELECT * FROM finance_accounts WHERE is_active = true AND ${businessScopeSql('', '$1')} ORDER BY sort_order`,
-            [businessContext]
-        );
+        const readAccounts = (client, runId = null) => client.query(
+            `SELECT * FROM finance_accounts WHERE is_active = true AND ${businessScopeSql('', '$1')}
+                AND finance_qa_run_id IS NOT DISTINCT FROM $2::bigint ORDER BY sort_order`, [businessContext, runId]);
+        const result = requestQaToken(req) ? await withFinanceTransaction(async client => {
+            const qa = await resolveFinanceQaAccess(client, { actor: req.user, businessContext, token: requestQaToken(req),
+                endpoint: 'GET /api/finance/accounts' });
+            return readAccounts(client, qa.runId);
+        }) : await readAccounts(pool);
         res.json({ success: true, accounts: result.rows });
     } catch (err) {
         log.error('GET /accounts error', err);
-        res.status(500).json({ success: false, error: 'Database error' });
+        sendFinanceError(res, err);
     }
 });
 
@@ -1855,6 +1988,14 @@ router.post('/accounts', requireRole('admin', 'senior_manager'), async (req, res
         if (!name?.trim()) return res.status(400).json({ error: 'name required' });
         if (type && !ACCOUNT_TYPES.includes(type)) {
             return res.status(400).json({ error: 'Invalid type (cash|card|bank)' });
+        }
+        if (requestQaToken(req)) {
+            const account = await withFinanceTransaction(async client => {
+                const qa = await resolveFinanceQaAccess(client, { actor: req.user, businessContext, token: requestQaToken(req),
+                    endpoint: 'POST /api/finance/accounts', forUpdate: true });
+                return createFinanceQaAccount(client, qa, req.body);
+            });
+            return res.status(201).json({ success: true, account });
         }
         const personalFlag = isPersonal === true || isPersonal === 'true';
         const r = await pool.query(
@@ -1868,7 +2009,7 @@ router.post('/accounts', requireRole('admin', 'senior_manager'), async (req, res
         res.json({ success: true, account: r.rows[0] });
     } catch (err) {
         log.error('POST /accounts error', err);
-        res.status(500).json({ success: false, error: 'Database error' });
+        sendFinanceError(res, err);
     }
 });
 
@@ -1889,15 +2030,18 @@ router.patch('/accounts/:id', requireRole('admin', 'senior_manager'), async (req
         if (sortOrder !== undefined)   { sets.push(`sort_order = $${idx++}`);  vals.push(parseInt(sortOrder, 10) || 0); }
         if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
         vals.push(id, businessContext);
-        const r = await pool.query(
-            `UPDATE finance_accounts SET ${sets.join(', ')} WHERE id = $${idx} AND ${businessScopeSql('', `$${idx + 1}`)} RETURNING *`,
-            vals
-        );
+        const r = await withFinanceTransaction(async client => {
+            if (isActive !== undefined || isPersonal !== undefined) {
+                await assertLegacyAccountWritable(client, businessContext, id);
+            }
+            return client.query(
+                `UPDATE finance_accounts SET ${sets.join(', ')} WHERE id = $${idx} AND ${businessScopeSql('', `$${idx + 1}`)} RETURNING *`, vals);
+        });
         if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
         res.json({ success: true, account: r.rows[0] });
     } catch (err) {
         log.error('PATCH /accounts error', err);
-        res.status(500).json({ success: false, error: 'Database error' });
+        sendFinanceError(res, err);
     }
 });
 
@@ -1907,15 +2051,16 @@ router.delete('/accounts/:id', requireRole('admin'), async (req, res) => {
         if (!businessContext) return;
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ error: 'Invalid account ID' });
-        const r = await pool.query(
-            `UPDATE finance_accounts SET is_active = false WHERE id = $1 AND ${businessScopeSql('', '$2')}`,
-            [id, businessContext]
-        );
+        const r = await withFinanceTransaction(async client => {
+            await assertLegacyAccountWritable(client, businessContext, id);
+            return client.query(`UPDATE finance_accounts SET is_active = false WHERE id = $1 AND ${businessScopeSql('', '$2')}`,
+                [id, businessContext]);
+        });
         if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
         res.json({ success: true });
     } catch (err) {
         log.error('DELETE /accounts error', err);
-        res.status(500).json({ success: false, error: 'Database error' });
+        sendFinanceError(res, err);
     }
 });
 

@@ -684,7 +684,7 @@ body.dark-mode .form-section select,
 body.dark-mode .form-section input,
 body.dark-mode .form-group input,
 body.dark-mode .form-group select {
-    background: var(--gray-100);
+    background-color: var(--gray-100);
     border-color: var(--gray-300);
     color: #E2E8F0;
 }

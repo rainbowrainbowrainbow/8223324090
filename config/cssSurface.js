@@ -10,6 +10,13 @@ const CSS_APP_SHELL_PRECACHE = [
 
 const CSS_SURFACE = [
     {
+        file: 'css/finance-money.css',
+        owner: 'finance',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Manual account balances, operation forms, retry state, and responsive movement history.'
+    },
+    {
         file: 'css/omni-workspace.css',
         owner: 'omnichannel',
         category: 'page-scoped',

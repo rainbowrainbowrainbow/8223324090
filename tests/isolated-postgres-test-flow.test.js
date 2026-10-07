@@ -12,6 +12,7 @@ const {
 } = require('../scripts/test-db-safety');
 const {
     acquireIsolatedDatabaseLock,
+    assertLocalManualMoneyDatabase,
     assertNoPreservedCheckboxMutationState
 } = require('../scripts/run-isolated-postgres-tests');
 
@@ -23,6 +24,47 @@ function safeEnv(overrides = {}) {
 }
 
 describe('isolated PostgreSQL test flow safety', () => {
+    it('runs manual money and QA isolation in existing mandatory CI jobs with browser evidence', () => {
+        const runner = fs.readFileSync(path.resolve(__dirname, '../scripts/run-isolated-postgres-tests.js'), 'utf8');
+        const workflow = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/ci.yml'), 'utf8');
+        const browser = fs.readFileSync(path.resolve(__dirname, 'browser/finance-money-actual-app-browser-smoke.js'), 'utf8');
+        const payrollMode = runner.match(/payroll:\s*\[([\s\S]*?)\]/)[1];
+        for (const file of ['finance-money-movements.integration.test.js', 'finance-money-qa.integration.test.js', 'finance-qa-report-scope.test.js']) {
+            assert.ok(payrollMode.includes(file), `${file} must run in the mandatory PostgreSQL job`);
+        }
+        assert.match(runner, /fullstack:\s*\[[^\]]*finance-money-actual-app-browser-smoke\.js/);
+        assert.match(workflow, /test:integration:payroll-profiles:isolated/);
+        assert.match(workflow, /test:browser:hr-onboarding:fullstack:isolated/);
+        const artifactPath = workflow.match(/name: hr-pay-actual-app-browser\s+path: (\S+)/)[1];
+        assert.ok(browser.includes(`${artifactPath}/finance-money`), 'CI evidence must be inside the existing uploaded artifact');
+        assert.match(browser, /process\.env\.CI/);
+        assert.match(browser, /FINANCE_QA_PLAYWRIGHT/);
+        assert.match(browser, /path\.delimiter/);
+        assert.match(browser, /node_modules/);
+    });
+
+    it('manual finance rejects effective pg host overrides before connection or schema reset', () => {
+        const base = 'postgresql://fixture:fixture@127.0.0.1:5432/eventgenix_disposable_test';
+        for (const suffix of ['', '?host=localhost', '?host=127.0.0.1']) {
+            const database = assertSafeTestDatabaseUrl(base + suffix, safeEnv());
+            assert.doesNotThrow(() => assertLocalManualMoneyDatabase(database));
+        }
+        for (const suffix of ['?host=unreachable.example.invalid', '?host=primary-db', '?host=%2Fvar%2Frun%2Fpostgresql']) {
+            const database = assertSafeTestDatabaseUrl(base + suffix, safeEnv());
+            assert.equal(database.isLocal, true, 'URL hostname alone does not detect pg host overrides');
+            assert.throws(() => assertLocalManualMoneyDatabase(database), /effective loopback disposable/);
+        }
+        const remote = assertSafeTestDatabaseUrl(base.replace('127.0.0.1', 'unreachable.example.invalid'),
+            safeEnv({ TEST_DATABASE_ALLOW_REMOTE: REMOTE_CONFIRMATION }));
+        assert.throws(() => assertLocalManualMoneyDatabase(remote), /effective loopback disposable/);
+        const runner = fs.readFileSync(path.resolve(__dirname, '../scripts/run-isolated-postgres-tests.js'), 'utf8');
+        const main = runner.slice(runner.indexOf('async function main()'));
+        const guardIndex = main.indexOf('assertLocalManualMoneyDatabase(testDb)');
+        assert.ok(guardIndex >= 0 && guardIndex < main.indexOf('acquireIsolatedDatabaseLock(testDb)'),
+            'manual money modes must reject an unsafe effective target before any connection or reset');
+        assert.match(runner, /MANUAL_MONEY_MODES = new Set\(\['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack'\]\)/);
+    });
+
     it('holds one session advisory lock for the complete disposable database run', async () => {
         const queries = [];
         let clientReleaseCount = 0;
@@ -364,7 +406,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION/);
         assert.match(runner, /RUN_ZRS_PAYROLL_PERIOD_LOCK_INTEGRATION/);
         assert.match(runner, /RUN_PAYROLL_INSTALLMENTS_INTEGRATION/);
-        assert.match(runner, /payroll:\s*\[\s*'tests\/integration\/payroll-profiles\.integration\.test\.js',\s*'tests\/integration\/payroll-profiles-conditions\.integration\.test\.js',\s*'tests\/integration\/payroll-simultaneous-additional\.integration\.test\.js',\s*'tests\/integration\/zrs-payroll-period-lock\.integration\.test\.js',\s*'tests\/integration\/payroll-installments\.integration\.test\.js',\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js',\s*'tests\/integration\/finance-transactions-pnl\.integration\.test\.js',\s*'tests\/integration\/costing-management-postgres\.test\.js'\s*\]/);
+        assert.match(runner, /payroll:\s*\[\s*'tests\/integration\/payroll-profiles\.integration\.test\.js',\s*'tests\/integration\/payroll-profiles-conditions\.integration\.test\.js',\s*'tests\/integration\/payroll-simultaneous-additional\.integration\.test\.js',\s*'tests\/integration\/zrs-payroll-period-lock\.integration\.test\.js',\s*'tests\/integration\/payroll-installments\.integration\.test\.js',\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js',\s*'tests\/integration\/finance-transactions-pnl\.integration\.test\.js',\s*'tests\/integration\/finance-money-movements\.integration\.test\.js',\s*'tests\/integration\/finance-money-qa\.integration\.test\.js',\s*'tests\/finance-qa-report-scope\.test\.js',\s*'tests\/integration\/costing-management-postgres\.test\.js'\s*\]/);
         assert.match(runner, /COSTING_TEST_PG_REQUIRED:\s*testFile\.includes\('costing-management-postgres\.test'\)/);
         assert.match(runner, /'payroll-fullstack':\s*\[\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js'\s*\]/);
         assert.match(runner, /RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION/);
@@ -390,7 +432,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /backfill:\s*\[\s*'tests\/integration\/hr-legacy-hire-backfill\.integration\.test\.js'\s*\]/);
         assert.match(runner, /'upload-backfill':\s*\[\s*'tests\/integration\/legacy-upload-backfill\.integration\.test\.js'\s*\]/);
         assert.match(runner, /RUN_LEGACY_UPLOAD_BACKFILL_INTEGRATION/);
-        assert.match(runner, /fullstack:\s*\[\s*'tests\/browser\/hr-onboarding-fullstack-browser-smoke\.js',\s*'tests\/browser\/hr-pay-actual-app-browser-smoke\.js'\s*\]/);
+        assert.match(runner, /fullstack:\s*\[\s*'tests\/browser\/hr-onboarding-fullstack-browser-smoke\.js',\s*'tests\/browser\/hr-pay-actual-app-browser-smoke\.js',\s*'tests\/browser\/finance-money-actual-app-browser-smoke\.js'\s*\]/);
         assert.match(onboardingSuite, /RUN_HR_ONBOARDING_INTEGRATION/);
         assert.match(runner, /RUN_ACCOUNT_ONBOARDING_INTEGRATION/);
         assert.match(accountOnboardingSuite, /transactional account onboarding on isolated PostgreSQL/);

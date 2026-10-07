@@ -344,6 +344,29 @@ rejects even descendant SHA drift. Execute does not bump or commit another versi
 Only read-only production QA is permitted; synthetic mutation tests run in isolated
 PostgreSQL. See `docs/HR_PAY_PROTECTED_RELEASE.md` for remaining readiness gates.
 
+The `finance-manual-qa` protected workflow is limited to the exact reviewed finance
+inventory and the canonical-LF SHA-256 hashes of migrations 381 and 382 in
+`scripts/production-block-policy.js`. The generic migration classifier still marks
+381 Red because of its index replacement; this exception accepts only the reviewed
+SQL bytes. It does not authorize other SQL, auth, provider calls, CI settings,
+backfill or real account/booking changes. Prepare the version and release commit
+before the manifest; descendant SHAs, changed file inventory and SQL hash drift
+are rejected. Existing PostgreSQL and browser CI jobs include the money and QA
+isolation tests; skipped required jobs cannot satisfy the release gate.
+
+Optional finance QA scope signs `runId`, `testAccountId`, `businessContext`,
+`ttlMinutes`, an absolute local `planFile` and the complete normalized `planHash`.
+The fixed finance operator validates two cash accounts, one bank/card account,
+two categories, at most two synthetic bookings, operation/amount caps, and TTL
+of at most 30 minutes. Prepare and execution use its read-only `--mode plan`
+preflight; after exact live SHA/branch proof the controller rechecks the plan and
+returns `pending_manual`. It never calls finance `create` or `finish` itself.
+Any operator lease or protected permission change requires its own exact approval.
+Ending QA preserves immutable journal evidence and ownership markers. After manual
+records exist, rollback requires a compatible binary retaining source-write guards
+and legacy/manual shift separation; never deploy a pre381 binary or remove the
+journal/index safeguards. See `docs/FINANCE_PRODUCTION_QA_PLAN_2026-10-07.md`.
+
 Production GitHub auto-deploy is disabled. Deploy manually only after exact-SHA CI
 is green.
 

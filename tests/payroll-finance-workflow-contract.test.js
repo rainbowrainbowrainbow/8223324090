@@ -83,7 +83,10 @@ test('generic Finance PUT and DELETE return 409 for payroll-managed transactions
     const putBlock = financeRoute.match(/router\.put\('\/transactions\/:id'[\s\S]*?router\.delete\('\/transactions\/:id'/)?.[0] || '';
     assert.match(putBlock, /assertFinanceTransactionNotPayrollManaged\(id, businessContext, client\)/);
     const deleteBlock = financeRoute.match(/router\.delete\('\/transactions\/:id'[\s\S]*?\/\/ ==========================================/)?.[0] || '';
-    assert.match(deleteBlock, /assertFinanceTransactionNotPayrollManaged\(id, businessContext\)/);
+    assert.match(deleteBlock, /withFinanceTransaction\(async client =>/);
+    assert.match(deleteBlock, /assertFinanceTransactionNotPayrollManaged\(id, businessContext, client\)/);
+    assert.ok(deleteBlock.indexOf('assertFinanceTransactionNotPayrollManaged(id, businessContext, client)')
+        < deleteBlock.indexOf('DELETE FROM finance_transactions'), 'payroll ownership is checked in the same transaction before deletion');
 });
 
 test('P&L uses recognition date while cash-flow keeps actual transaction date', () => {

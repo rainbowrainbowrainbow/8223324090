@@ -257,8 +257,8 @@ function renderCharts(data) {
                     <div id="topProgramsChart"></div>
                 </div>
                 <div class="an-chart-container">
-                    <div class="an-chart-title">Навантаження по днях тижня</div>
-                    <div id="weekdayChart" class="an-bar-chart an-bar-chart--short"></div>
+                    <div class="an-chart-title">Кількість бронювань за днями тижня</div>
+                    <div id="weekdayChart" class="an-bar-chart an-bar-chart--weekday"></div>
                 </div>
             </div>
 
@@ -278,7 +278,7 @@ function renderCharts(data) {
     renderDailyBookingsChart(data.dailyBookings || []);
     renderDailyFinanceChart(data.dailyFinance || []);
     renderTopPrograms(data.topPrograms || []);
-    renderWeekdayChart(data.weekdayLoad || []);
+    renderWeekdayChart(data.weekdayLoad);
     renderFinCategories(data.financeCategories || []);
     renderSegments(data.customerSegments || {});
 }
@@ -351,25 +351,54 @@ function renderTopPrograms(programs) {
 
 function renderWeekdayChart(weekday) {
     const el = document.getElementById('weekdayChart');
-    if (!weekday.length) {
-        el.innerHTML = '<div class="an-empty-state an-empty-state--chart">Немає даних</div>';
-        renderChartReadout(el, 'weekdayLoad', []);
+    if (!el) return;
+    el.classList.add('an-bar-chart', 'an-bar-chart--weekday');
+    el.classList.remove('an-bar-chart--short');
+    el.closest('.an-chart-container')?.classList.add('an-chart-container--compact');
+    renderChartReadout(el, 'weekdayLoad', []);
+    const days = [
+        { dow: 1, name: 'Пн', fullName: 'Понеділок' },
+        { dow: 2, name: 'Вт', fullName: 'Вівторок' },
+        { dow: 3, name: 'Ср', fullName: 'Середа' },
+        { dow: 4, name: 'Чт', fullName: 'Четвер' },
+        { dow: 5, name: 'Пт', fullName: 'П’ятниця' },
+        { dow: 6, name: 'Сб', fullName: 'Субота' },
+        { dow: 0, name: 'Нд', fullName: 'Неділя' }
+    ].map(day => ({ ...day, count: 0 }));
+    let invalidData = !Array.isArray(weekday);
+    for (const row of Array.isArray(weekday) ? weekday : []) {
+        const name = String(row?.name || '').trim().toLocaleLowerCase('uk-UA').replace(/[’']/g, '');
+        const hasDow = row?.dow !== undefined && row?.dow !== null && row.dow !== '';
+        const day = hasDow
+            ? days.find(item => item.dow === Number(row.dow))
+            : days.find(item => [item.name, item.fullName].some(label => label.toLocaleLowerCase('uk-UA').replace(/[’']/g, '') === name));
+        const rawCount = row?.count;
+        const count = typeof rawCount === 'number' || (typeof rawCount === 'string' && rawCount.trim() !== '')
+            ? Number(rawCount) : NaN;
+        if (!day || !Number.isSafeInteger(count) || count < 0 || !Number.isSafeInteger(day.count + count)) {
+            invalidData = true;
+            break;
+        }
+        day.count += count;
+    }
+    if (invalidData) {
+        el.innerHTML = '<div class="an-empty-state an-empty-state--compact">Дані за днями тижня недоступні</div>';
         return;
     }
-    const maxCnt = Math.max(...weekday.map(w => w.count), 1);
-    el.innerHTML = weekday.map(w => {
-        const h = Math.max((w.count / maxCnt) * 100, 2);
-        return `<div class="an-bar-group">
-            <div class="an-bar-pair" style="height:100px">
-                <div class="an-bar purple" style="height:${h}px" title="${escapeHtml(w.name)}: ${w.count} бронювань, ${fmtMoney(w.revenue)}"></div>
+    const maxCnt = Math.max(...days.map(day => day.count), 1);
+    el.innerHTML = days.map(day => {
+        const height = day.count > 0 ? Math.max((day.count / maxCnt) * 100, 2) : 0;
+        return `<div class="an-bar-group" data-weekday="${day.dow}" role="group" aria-label="${day.fullName}: ${fmtNum(day.count)} бронювань">
+            <div class="an-weekday-count" aria-hidden="true">${fmtNum(day.count)}</div>
+            <div class="an-bar-pair" aria-hidden="true">
+                <div class="an-bar purple" style="height:${height}px"></div>
             </div>
-            <div class="an-bar-label">${escapeHtml(w.name)}</div>
+            <div class="an-bar-label" aria-hidden="true">${day.name}</div>
         </div>`;
     }).join('');
-    renderChartReadout(el, 'weekdayLoad', weekday.map(w => ({
-        label: w.name || `День ${w.dow}`,
-        value: `${fmtNum(w.count)} бр. / ${fmtCompactMoney(w.revenue)}`
-    })));
+    if (days.every(day => day.count === 0)) {
+        el.insertAdjacentHTML('beforeend', '<p class="an-weekday-note">За обраний період бронювань немає.</p>');
+    }
 }
 
 function renderFinCategories(cats) {
@@ -392,6 +421,8 @@ function renderFinCategories(cats) {
 
 function renderSegments(seg) {
     const el = document.getElementById('segmentsChart');
+    if (!el) return;
+    el.closest('.an-chart-container')?.classList.add('an-chart-container--compact');
     if (!seg || !seg.total) { el.innerHTML = '<div class="an-empty-state an-empty-state--compact">Немає даних</div>'; return; }
     el.innerHTML = `
         <div class="an-segments">
@@ -420,6 +451,7 @@ function renderDealsLifecycle(data) {
     const el = document.getElementById('dealsLifecycleContent');
     if (!el) return;
     if (!data) { el.innerHTML = ''; return; }
+    const snapshotOnly = data.meta?.reportability === 'snapshot-only' || data.meta?.stageTimestampTruth !== true;
     const maxVal = Math.max(...(data.trend || []).map(d => Math.max(d.accepted || 0, d.closed || 0)), 1);
     const bars = (data.trend || []).map(d => {
         const acceptedH = Math.max(((d.accepted || 0) / maxVal) * 120, d.accepted ? 2 : 0);
@@ -435,19 +467,19 @@ function renderDealsLifecycle(data) {
 
     el.innerHTML = `
         <div class="an-section">
-            <h3 class="an-section-title">Прийняті vs закриті угоди</h3>
+            <h3 class="an-section-title">${snapshotOnly ? 'Поточні статуси угод' : 'Прийняті та закриті угоди'}</h3>
             <div class="an-charts-row">
                 <div class="an-chart-container">
                     <div class="an-chart-title">${fmtDate(data.period?.from)} — ${fmtDate(data.period?.to)}</div>
                     <div class="an-kpi-grid an-kpi-grid--compact">
                         <div class="an-kpi-card blue"><div class="an-kpi-label">Прийнято</div><div class="an-kpi-value">${fmtNum(data.accepted)}</div></div>
                         <div class="an-kpi-card green"><div class="an-kpi-label">Закрито</div><div class="an-kpi-value">${fmtNum(data.closed)}</div></div>
-                        <div class="an-kpi-card teal"><div class="an-kpi-label">Конверсія</div><div class="an-kpi-value">${data.conversionRatio || 0}%</div></div>
                     </div>
-                    <div class="an-helper-text">Accepted: deposit_received/waiting. Closed: completed/closed.</div>
+                    <div class="an-helper-text">${snapshotOnly ? 'Показано поточні статуси угод. Історична конверсія поки недоступна.' : 'Події прийняття та закриття за обраний період.'}</div>
                 </div>
                 <div class="an-chart-container">
-                    <div class="an-chart-title">Динаміка за датами</div>
+                    <div class="an-chart-title">${snapshotOnly ? 'Поточні статуси за датою угоди' : 'Динаміка за датами'}</div>
+                    ${snapshotOnly ? '<p class="an-helper-text">Групування за датою угоди, не за часом переходу між статусами.</p>' : ''}
                     <div class="an-bar-chart an-bar-chart--deals">${bars || '<div class="an-empty-state an-empty-state--chart">Немає даних</div>'}</div>
                     ${(data.trend || []).length ? `<div class="an-chart-readout" data-chart="dealsLifecycle">${(data.trend || []).map(d => `
                         <span class="an-chart-readout-item">

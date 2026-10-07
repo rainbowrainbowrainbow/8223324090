@@ -10,17 +10,21 @@ const {
     classifyMigration,
     confirmationValue,
     manifestHash,
+    migrationSqlHash,
     sanitize,
     validateManifest,
+    validateQaScope,
     warningText
 } = require('../scripts/production-block-policy');
 const {
     applyReleaseNotes,
     assertHrPayrollProductionBase,
+    assertPreparedProductionBase,
     assertHrPayrollCiResult,
     selectHrPayrollCiRun,
     executeAction,
     findUnexpiredQaBlocker,
+    financeQaPreflight,
     parseOptions,
     isReleaseArtifact,
     prepareAction,
@@ -74,6 +78,7 @@ function dryRuntime(overrides = {}) {
                 descendsFromBase: true,
                 descendsFromInitial: true,
                 migrations: [...value.allowedMigrationFiles],
+                migrationHashes: Object.fromEntries(value.migrationClassifications.map(item => [item.file, item.sqlHash])),
                 changedPaths: [...value.changedPaths]
             };
         },
@@ -874,4 +879,201 @@ test('HR/payroll accepts the exact prepared release markers without admitting ad
         assert.throws(() => manifest(options, { ...scope, changedPaths: [...value.changedPaths, foreign] }),
             error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
     }
+});
+
+function financeQaScope(overrides = {}) {
+    return { enabled: true, kind: 'finance', runId: 'finance-qa-scoped-run', testAccountId: 48,
+        businessContext: 'event_genix', ttlMinutes: 15,
+        planFile: path.join(os.tmpdir(), 'finance-production-plan.json'), planHash: 'a'.repeat(64), ...overrides };
+}
+
+test('finance QA scope requires a full plan hash and exact local scope without arbitrary commands', () => {
+    const valid = financeQaScope();
+    assert.deepEqual(validateQaScope(valid), valid);
+    for (const override of [
+        { planFile: 'relative-plan.json' }, { planFile: '\\\\remote\\share\\plan.json' },
+        { planFile: '/tmp/plan.js' }, { planHash: '' }, { planHash: 'a'.repeat(63) },
+        { testAccountId: 0 }, { ttlMinutes: 31 }, { businessContext: 'foreign' },
+        { command: 'create' }, { fixtureLimit: 99 }, { date: '2026-10-08' }
+    ]) assert.throws(() => validateQaScope({ ...valid, ...override }),
+        error => error.code === 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+    assert.throws(() => manifest({ qaScope: valid }),
+        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+});
+
+test('finance read-only preflight uses a fixed planner and rejects scope or complete plan hash drift', () => {
+    const scope = financeQaScope();
+    const env = { TRUSTED_QA_OPERATOR_DATABASE_URL: 'fixture-only', DATABASE_URL: 'fixture-only' };
+    const report = { planHash: scope.planHash, plan: {
+        runId: scope.runId, testAccountId: scope.testAccountId,
+        businessContext: scope.businessContext, ttlMinutes: scope.ttlMinutes
+    }, readiness: { isolated: true, openFinanceRuns: 0 } };
+    let calls = 0;
+    const run = (command, args) => {
+        calls += 1;
+        assert.equal(command, process.execPath);
+        assert.equal(path.basename(args[0]), 'trusted-qa-finance-run.js');
+        assert.deepEqual(args.slice(1), ['--mode', 'plan', '--plan-file', scope.planFile]);
+        return JSON.stringify(report);
+    };
+    assert.equal(financeQaPreflight(scope, { env, commandResult: run }).planHash, scope.planHash);
+    assert.equal(calls, 1);
+    for (const invalid of [
+        { ...report, planHash: 'b'.repeat(64) },
+        { ...report, plan: { ...report.plan, testAccountId: 49 } },
+        { ...report, plan: { ...report.plan, businessContext: 'other' } },
+        { ...report, plan: { ...report.plan, ttlMinutes: 30 } },
+        { ...report, plan: { ...report.plan, runId: 'another-run' } },
+        { ...report, readiness: { isolated: false, openFinanceRuns: 0 } },
+        { ...report, readiness: { isolated: true, openFinanceRuns: 1 } }
+    ]) assert.throws(() => financeQaPreflight(scope, { env, commandResult: () => JSON.stringify(invalid) }),
+        error => error.code === 'PRODUCTION_BLOCK_QA_PREFLIGHT_FAILED');
+    assert.throws(() => financeQaPreflight(scope, { env: {}, commandResult: run }),
+        error => error.code === 'PRODUCTION_BLOCK_QA_OPERATOR_DATABASE_MISSING');
+    assert.throws(() => financeQaPreflight(scope, { env: { ...env, DATABASE_URL: 'other' }, commandResult: run }),
+        error => error.code === 'PRODUCTION_BLOCK_QA_OPERATOR_DATABASE_MISSING');
+    assert.equal(calls, 1, 'missing operator binding must not start the planner');
+});
+
+function financeFacts() {
+    const files = ['db/migrations/381_finance_manual_money.sql', 'db/migrations/382_finance_trusted_qa.sql'];
+    return { releaseVersion: '0.0.2', changedPaths: [
+        'routes/finance.js', 'services/financeMoneyMovements.js', 'services/financeMoneyQa.js',
+        'services/trustedQaRuns.js', 'scripts/trusted-qa-finance-run.js', 'scripts/run-isolated-postgres-tests.js',
+        'tests/integration/finance-money-movements.integration.test.js',
+        'tests/integration/finance-money-qa.integration.test.js', 'tests/browser/finance-money-actual-app-browser-smoke.js',
+        ...files
+    ], migrations: files.map(file => ({ file, sql: fs.readFileSync(path.join(__dirname, '..', file), 'utf8') })) };
+}
+
+test('finance gate binds exact reviewed SQL without weakening the generic destructive classifier', () => {
+    const scope = financeFacts();
+    const options = { protectedWorkflow: 'finance-manual-qa' };
+    for (const migration of scope.migrations) {
+        const executableSql = migration.sql.replace(/--.*$/gm, '').trim();
+        assert.match(executableSql, /^SET LOCAL lock_timeout = '5s';\s+SET LOCAL statement_timeout = '60s';\s+CREATE\b/,
+            'both exact migrations must establish transaction-local timeouts before any DDL');
+    }
+    assert.equal(classifyMigration(scope.migrations[0].file, scope.migrations[0].sql).red, true);
+    const value = manifest(options, scope);
+    assert.equal(value.preparedRelease.sha, HEAD_SHA);
+    assert.equal(value.migrationClassifications[0].red, true, 'index replacement stays visible as Red');
+    for (const item of value.migrationClassifications) {
+        assert.equal(item.sqlHash, migrationSqlHash(scope.migrations.find(source => source.file === item.file).sql));
+        assert.equal(item.protectedException, 'finance-manual-qa:reviewed-exact-sql');
+    }
+    assert.doesNotThrow(() => validateManifest(value));
+    assert.match(warningText(value), /pre381/);
+    assert.ok(releaseCommandPlan(value).includes('npm run check:version (prepared exact SHA)'));
+    assert.ok(!releaseCommandPlan(value).some(command => command.includes('version:bump')));
+    assert.throws(() => manifest({}, scope), error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    assert.throws(() => manifest({ protectedWorkflow: 'sys-mb-auth-cutover' }, scope),
+        error => error.code === 'PRODUCTION_BLOCK_RED_MIGRATION');
+    assert.doesNotThrow(() => manifest(options, { ...scope, migrations: scope.migrations.map(item => ({
+        ...item, sql: item.sql.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
+    })) }), 'canonical LF hashes must behave identically on Windows and CI');
+    for (let index = 0; index < scope.migrations.length; index += 1) {
+        assert.throws(() => manifest(options, { ...scope, migrations: scope.migrations.map((item, position) =>
+            position === index ? { ...item, sql: `${item.sql}\nSELECT 1;\n` } : item) }),
+        error => error.code === 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT');
+    }
+    assert.throws(() => manifest(options, { ...scope, migrations: [...scope.migrations,
+        { file: 'db/migrations/383_unreviewed.sql', sql: '-- MIGRATION_KIND: schema\nCREATE TABLE unauthorized(id int);' }] }),
+    error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    assert.throws(() => manifest(options, { ...scope, migrations: scope.migrations.slice(0, 1) }),
+        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+});
+
+test('finance gate rejects adjacent paths, other QA kinds, unprepared versions and forged SQL exceptions', () => {
+    const scope = financeFacts(), options = { protectedWorkflow: 'finance-manual-qa' };
+    for (const extra of ['middleware/auth.js', 'routes/payments.js', '.github/workflows/ci.yml', 'railway.json']) {
+        assert.throws(() => manifest(options, { ...scope, changedPaths: [...scope.changedPaths, extra] }),
+            error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    }
+    for (const extra of ['services/payroll.js', 'services/accountAccessPolicy.js', 'routes/leads.js',
+        'docs/unreviewed.md', 'future-page.html', 'scripts/unreviewed-release.js']) {
+        assert.throws(() => manifest(options, { ...scope, changedPaths: [...scope.changedPaths, extra] }),
+            error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
+    assert.throws(() => manifest(options, { ...scope, releaseVersion: '0.0.1' }),
+        error => error.code === 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    assert.throws(() => manifest({ ...options, qaScope: { enabled: true, kind: 'canary',
+        date: '2026-10-08', ttlMinutes: 15, animators: '1', fixtureLimit: 1 } }, scope),
+    error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    const value = manifest(options, scope);
+    for (const override of [{ sqlHash: 'b'.repeat(64) }, { protectedException: 'any-sql' }, { red: false },
+        { number: 382, kind: 'schema', red: false, destructive: false }]) {
+        const tampered = structuredClone(value);
+        Object.assign(tampered.migrationClassifications[0], override);
+        tampered.manifestHash = manifestHash(tampered);
+        assert.throws(() => validateManifest(tampered), error =>
+            ['PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID'].includes(error.code));
+    }
+});
+
+test('finance exact release rejects SHA, inventory and SQL drift before commands', async t => {
+    const value = manifest({ protectedWorkflow: 'finance-manual-qa' }, financeFacts());
+    const file = blockFile(t, value);
+    const options = { blockFile: file, confirmation: confirmationValue(value), dryRun: true };
+    await assert.doesNotReject(executeAction(options, dryRuntime()));
+    for (const [override, code] of [
+        [{ head: RELEASE_SHA, descendsFromInitial: true }, 'PRODUCTION_BLOCK_SHA_DRIFT'],
+        [{ changedPaths: [...value.changedPaths, 'routes/auth.js'] }, 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT'],
+        [{ migrationHashes: {} }, 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT'],
+        [{ migrations: [...value.allowedMigrationFiles, 'db/migrations/999_extra.sql'] }, 'PRODUCTION_BLOCK_MIGRATION_DRIFT']
+    ]) {
+        await assert.rejects(executeAction(options, dryRuntime({ async drift(current) {
+            return { ...(await dryRuntime().drift(current)), ...override };
+        } })), error => error.code === code);
+    }
+    const live = { commitSha: LIVE_SHA, sourceBranch: value.allowedBranch };
+    assert.doesNotThrow(() => assertPreparedProductionBase(value, live, LIVE_SHA));
+    assert.doesNotThrow(() => assertPreparedProductionBase(value, live, HEAD_SHA));
+    assert.throws(() => assertPreparedProductionBase(value, live, RELEASE_SHA), error => error.code === 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    assert.throws(() => assertPreparedProductionBase(value, { ...live, commitSha: RELEASE_SHA }, LIVE_SHA),
+        error => error.code === 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+});
+
+test('finance retains six-hour expiry, exact confirmation and the three-attempt hard limit', async t => {
+    const scope = financeFacts(), options = { protectedWorkflow: 'finance-manual-qa' };
+    const value = manifest({ ...options, validityMinutes: 360, maxReleaseAttempts: 3 }, scope);
+    assert.throws(() => manifest({ ...options, validityMinutes: 361 }, scope), error => error.code === 'PRODUCTION_BLOCK_VALIDITY_INVALID');
+    assert.throws(() => manifest({ ...options, maxReleaseAttempts: 4 }, scope), error => error.code === 'PRODUCTION_BLOCK_ATTEMPTS_INVALID');
+    const enlarged = structuredClone(value);
+    enlarged.maxReleaseAttempts = 4;
+    enlarged.manifestHash = manifestHash(enlarged);
+    assert.throws(() => validateManifest(enlarged), error => error.code === 'PRODUCTION_BLOCK_ATTEMPTS_INVALID');
+    const file = blockFile(t, value);
+    await assert.rejects(executeAction({ blockFile: file, confirmation: 'wrong', dryRun: true }, dryRuntime()),
+        error => error.code === 'PRODUCTION_BLOCK_CONFIRMATION_INVALID');
+    value.runtimeState.releaseAttempts = 3; writeBlockFile(file, value);
+    await assert.rejects(executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true }, dryRuntime()),
+        error => error.code === 'PRODUCTION_BLOCK_ATTEMPT_BUDGET_EXHAUSTED');
+    const expired = manifest({ ...options, now: new Date(Date.now() - 10 * 60_000), validityMinutes: 5 }, scope);
+    await assert.rejects(executeAction({ blockFile: blockFile(t, expired), confirmation: confirmationValue(expired), dryRun: true }, dryRuntime()),
+        error => error.code === 'PRODUCTION_BLOCK_EXPIRED');
+});
+
+test('finance QA after exact live proof stays manual and revalidates its signed plan', async () => {
+    const value = manifest({ protectedWorkflow: 'finance-manual-qa', qaScope: financeQaScope() }, financeFacts());
+    let preflightCalls = 0, writes = 0;
+    const dependencies = {
+        async liveVersion() { return { commitSha: HEAD_SHA, sourceBranch: value.allowedBranch }; },
+        async financeQaPreflight(scope) { preflightCalls += 1; assert.deepEqual(scope, value.allowedQaScope); },
+        async qaStatus() { throw new Error('finance must not enter the timeline QA flow'); },
+        async qaRun() { writes += 1; }
+    };
+    const result = await resumeAuthorizedQa(value, HEAD_SHA, dependencies);
+    assert.equal(result.status, 'pending_manual');
+    assert.equal(result.planHash, value.allowedQaScope.planHash);
+    assert.equal(preflightCalls, 1);
+    assert.equal(writes, 0);
+    await assert.rejects(resumeAuthorizedQa(value, HEAD_SHA, { ...dependencies,
+        async liveVersion() { return { commitSha: RELEASE_SHA, sourceBranch: value.allowedBranch }; }
+    }), error => error.code === 'PRODUCTION_BLOCK_QA_LIVE_DRIFT');
+    assert.equal(preflightCalls, 1, 'foreign live release must stop before planner invocation');
+    await assert.rejects(resumeAuthorizedQa(value, HEAD_SHA, { ...dependencies,
+        async financeQaPreflight() { throw Object.assign(new Error('plan changed'), { code: 'PRODUCTION_BLOCK_QA_PREFLIGHT_FAILED' }); }
+    }), error => error.code === 'PRODUCTION_BLOCK_QA_PREFLIGHT_FAILED');
+    assert.equal(writes, 0);
 });

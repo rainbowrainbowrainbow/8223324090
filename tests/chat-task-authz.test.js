@@ -284,7 +284,7 @@ describe('operations flow static contracts', () => {
         assert.match(analyticsRoute, /\/deals-lifecycle/);
         assert.match(analyticsRoute, /stageTimestampTruth: 'missing'/);
         assert.match(analyticsPage, /fetchDealsLifecycle/);
-        assert.match(analyticsPage, /Прийняті vs закриті угоди/);
+        assert.match(analyticsPage, /Поточні статуси угод/);
         assert.match(analyticsHtml, /\/finance\?mode=insights/);
         assert.match(financeHtml, /faWorkspace/);
     });

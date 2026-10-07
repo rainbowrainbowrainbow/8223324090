@@ -10,6 +10,7 @@ const TEST_REPORT_KEY = 'route-smoke-report-key';
 const TEST_REPORT_SECRET = 'route-smoke-report-secret';
 const TEST_TELEGRAM_SECRET = 'route-smoke-telegram-secret';
 const TEST_UNIVERSAL_WEBHOOK_TOKEN = 'route-smoke-universal-webhook-token';
+const FINANCE_QA_BOOKING_FILTER = "NOT EXISTS (SELECT 1 FROM trusted_qa_run_entities finance_qa_booking JOIN finance_money_qa_runs finance_qa_run ON finance_qa_run.run_id = finance_qa_booking.run_id WHERE finance_qa_booking.entity_type = 'booking' AND finance_qa_booking.entity_id = b.id::text)";
 
 let server;
 let baseUrl;
@@ -3985,7 +3986,9 @@ function createFakePool() {
                     ]
                 };
             }
-            if (/FROM bookings(?: b)? WHERE (?:b\.)?date::date >= \$1::date AND (?:b\.)?date::date <= \$2::date/i.test(text)) {
+            // Empty aggregate fixtures retain the exact QA exclusion in captured SQL.
+            const bookingAggregateText = text.replace(`WHERE ${FINANCE_QA_BOOKING_FILTER} AND `, 'WHERE ');
+            if (/FROM bookings(?: b)? WHERE (?:b\.)?date::date >= \$1::date AND (?:b\.)?date::date <= \$2::date/i.test(bookingAggregateText)) {
                 return {
                     rows: [{
                         revenue: 0,
@@ -4012,13 +4015,13 @@ function createFakePool() {
             if (/FROM hr_time_records WHERE record_date >= \$1 AND record_date <= \$2/i.test(text)) {
                 return { rows: [{ total_minutes: 0, active_staff: 0 }] };
             }
-            if (/SELECT COALESCE\(SUM\((?:b\.)?price\), 0\) as total FROM bookings(?: b)? WHERE (?:b\.)?date = \$1 AND (?:b\.)?status = 'confirmed'/i.test(text)) {
+            if (/SELECT COALESCE\(SUM\((?:b\.)?price\), 0\) as total FROM bookings(?: b)? WHERE (?:b\.)?date = \$1 AND (?:b\.)?status = 'confirmed'/i.test(bookingAggregateText)) {
                 return { rows: [{ total: 0 }] };
             }
             if (/SELECT COALESCE\(SUM\((?:ft\.)?amount\), 0\) as total FROM finance_transactions(?: ft)? WHERE (?:ft\.)?date = \$1 AND (?:ft\.)?type = 'expense'/i.test(text)) {
                 return { rows: [{ total: 0 }] };
             }
-            if (/SELECT COUNT\(\*\) as count FROM bookings(?: b)? WHERE (?:b\.)?date = \$1 AND (?:b\.)?status != 'cancelled'/i.test(text)) {
+            if (/SELECT COUNT\(\*\) as count FROM bookings(?: b)? WHERE (?:b\.)?date = \$1 AND (?:b\.)?status != 'cancelled'/i.test(bookingAggregateText)) {
                 return { rows: [{ count: 0 }] };
             }
             if (/FROM tasks t\s+WHERE COALESCE\(t\.status, 'todo'\) NOT IN \('done','archived','cancelled'\)\s+AND lower\(regexp_replace/i.test(text)) {
@@ -6562,6 +6565,7 @@ describe('route-level API safety smoke', () => {
         const manager = await request('GET', path, undefined, withAuth({}, 'manager'));
         assert.equal(manager.status, 200, JSON.stringify(manager.data));
         assert.ok(manager.data.bookings, 'manager should receive analytics data');
+        assert.ok(queries.some(q => q.text.includes(FINANCE_QA_BOOKING_FILTER) && q.text.includes('b.date::date >= $1::date')));
         assert.ok(manager.data.finance, 'manager should receive finance analytics section');
     });
 
@@ -6638,6 +6642,9 @@ describe('route-level API safety smoke', () => {
             bookingValue: 'ready', expenses: 'ready', bookings: 'ready'
         });
         assert.equal(accountantFinance.data.data.meta.partial, false);
+        const bookingAggregates = queries.filter(q => /FROM bookings b WHERE/.test(q.text));
+        assert.equal(bookingAggregates.length, 2);
+        assert.ok(bookingAggregates.every(q => q.text.includes(FINANCE_QA_BOOKING_FILTER)));
     });
 
     it('supports HR vacancy resume intake with pasted text, file upload, and download metadata', async () => {

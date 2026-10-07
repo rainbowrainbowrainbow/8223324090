@@ -10,6 +10,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { requireRole, requireAction } = require('../middleware/auth');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const { businessBookingSql } = require('../services/financeQaReadScope');
 const {
     resolveBusinessScope,
     requireBusinessScope,
@@ -237,7 +238,7 @@ router.get('/revenue', async (req, res) => {
                 COUNT(*) FILTER (WHERE b.status = 'preliminary')::int AS preliminary_count,
                 COALESCE(ROUND(AVG(b.price)), 0)::int AS avg_price
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL
               AND b.status != 'cancelled'
               AND ${totalsBusiness}
@@ -257,7 +258,7 @@ router.get('/revenue', async (req, res) => {
                 COUNT(*)::int AS total_count,
                 COALESCE(ROUND(AVG(b.price)), 0)::int AS avg_price
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL
               AND b.status != 'cancelled'
               AND ${prevBusiness}
@@ -275,7 +276,7 @@ router.get('/revenue', async (req, res) => {
                 COALESCE(SUM(b.price), 0)::int AS revenue,
                 COUNT(*)::int AS count
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL
               AND b.status != 'cancelled'
               AND ${dailyBusiness}
@@ -350,7 +351,7 @@ router.get('/programs', async (req, res) => {
                 COUNT(*)::int AS count,
                 COALESCE(SUM(b.price), 0)::int AS revenue
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL
               AND b.status = 'confirmed'
               AND ${byCountBusiness}
@@ -369,7 +370,7 @@ router.get('/programs', async (req, res) => {
                 COUNT(*)::int AS count,
                 COALESCE(SUM(b.price), 0)::int AS revenue
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL
               AND b.status = 'confirmed'
               AND ${byRevenueBusiness}
@@ -389,7 +390,7 @@ router.get('/programs', async (req, res) => {
                 COALESCE(SUM(b.price), 0)::int AS revenue,
                 ROUND(COUNT(*)::numeric / NULLIF(SUM(COUNT(*)) OVER(), 0) * 100, 1) AS pct
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL
               AND b.status = 'confirmed'
               AND ${byCategoryBusiness}
@@ -458,7 +459,7 @@ router.get('/load', async (req, res) => {
                 COUNT(*)::int AS count,
                 COALESCE(SUM(b.price), 0)::int AS revenue
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL AND b.status = 'confirmed'
               AND ${byDowBusiness}
               ${byDowScope.sql}
@@ -475,7 +476,7 @@ router.get('/load', async (req, res) => {
                 CAST(SUBSTRING(b.time FROM 1 FOR 2) AS INTEGER) AS hour,
                 COUNT(*)::int AS count
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL AND b.status = 'confirmed'
               AND ${byHourBusiness}
               ${byHourScope.sql}
@@ -492,7 +493,7 @@ router.get('/load', async (req, res) => {
                 COUNT(*)::int AS booking_count,
                 COALESCE(SUM(b.duration), 0)::int AS total_minutes
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL AND b.status = 'confirmed'
               AND b.room IS NOT NULL AND b.room != ''
               AND ${roomBusiness}
@@ -524,7 +525,7 @@ router.get('/load', async (req, res) => {
                 COALESCE(SUM(b.duration), 0)::int AS total_minutes
             FROM bookings b
             LEFT JOIN lines_by_date l ON b.line_id = l.line_id AND b.date = l.date AND COALESCE(l.business_context, 'event_genix') = COALESCE(b.business_context, 'event_genix')
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL AND b.status = 'confirmed'
               AND ${animatorBusiness}
               ${animatorScope.sql}
@@ -597,7 +598,7 @@ router.get('/trends', async (req, res) => {
                 COUNT(*)::int AS count,
                 COALESCE(ROUND(AVG(b.price)), 0)::int AS average
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL
               AND b.status != 'cancelled'
               AND ${currentBusiness}
@@ -614,7 +615,7 @@ router.get('/trends', async (req, res) => {
                 COUNT(*)::int AS count,
                 COALESCE(ROUND(AVG(b.price)), 0)::int AS average
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL
               AND b.status != 'cancelled'
               AND ${prevBusiness}
@@ -688,7 +689,7 @@ router.get('/forecast', async (req, res) => {
             FROM (
                 SELECT b.date, COUNT(*) AS day_count, COALESCE(SUM(b.price), 0) AS day_revenue
                 FROM bookings b
-                WHERE b.date >= $1 AND b.date < $2
+                WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date < $2
                   AND b.linked_to IS NULL AND b.status = 'confirmed'
                   AND ${dowBusiness}
                   ${dowScope.sql}
@@ -709,7 +710,7 @@ router.get('/forecast', async (req, res) => {
                 CAST(SUBSTRING(b.time FROM 1 FOR 2) AS INTEGER) AS hour,
                 ROUND(COUNT(*)::numeric / GREATEST(1, (SELECT COUNT(DISTINCT b2.date) FROM bookings b2 WHERE b2.date >= $1 AND b2.date < $2 AND b2.linked_to IS NULL AND b2.status = 'confirmed' AND ${hourSubBusiness} ${hourSubScope.sql})), 2)::float AS avg_per_day
             FROM bookings b
-            WHERE b.date >= $1 AND b.date < $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date < $2
               AND b.linked_to IS NULL AND b.status = 'confirmed'
               AND ${hourMainBusiness}
               ${hourMainScope.sql}
@@ -726,7 +727,7 @@ router.get('/forecast', async (req, res) => {
                 COUNT(*)::int AS bookings,
                 COALESCE(SUM(b.price), 0)::int AS revenue
             FROM bookings b
-            WHERE b.date >= $1 AND b.date < $2
+            WHERE ${businessBookingSql('b')} AND b.date >= $1 AND b.date < $2
               AND b.linked_to IS NULL AND b.status = 'confirmed'
               AND ${weeklyBusiness}
               ${weeklyScope.sql}

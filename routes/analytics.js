@@ -38,6 +38,7 @@ router.use(requireAction('view_revenue'));
 // CACHE (5-minute TTL)
 // ==========================================
 
+const { businessBookingSql } = require('../services/financeQaReadScope');
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
 
@@ -200,6 +201,7 @@ const PRODUCT_SALES_CATEGORY_SQL = "CASE WHEN b.pinata_mode = 'client' THEN 'cus
 function buildProductSalesWhere({ from, to, category, programId }, user, businessScope) {
     const params = [from, to];
     const where = [
+        businessBookingSql('b'),
         'b.date::date >= $1::date',
         'b.date::date <= $2::date',
         "b.status = 'confirmed'",
@@ -504,7 +506,7 @@ router.get('/overview', async (req, res) => {
                     COUNT(*) FILTER (WHERE b.status='confirmed')::int AS confirmed,
                     COUNT(*) FILTER (WHERE b.status='preliminary')::int AS preliminary,
                     COALESCE(ROUND(AVG(b.price)), 0)::int AS avg_check
-                FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                FROM bookings b WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.linked_to IS NULL AND b.status != 'cancelled'
                 AND ${bookingsCurrBusiness}
                 ${bookingsCurrScope.sql}
@@ -515,7 +517,7 @@ router.get('/overview', async (req, res) => {
                     COALESCE(SUM(CASE WHEN b.status='confirmed' THEN b.price ELSE 0 END), 0)::int AS revenue,
                     COUNT(*)::int AS total,
                     COALESCE(ROUND(AVG(b.price)), 0)::int AS avg_check
-                FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                FROM bookings b WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.linked_to IS NULL AND b.status != 'cancelled'
                 AND ${bookingsPrevBusiness}
                 ${bookingsPrevScope.sql}
@@ -635,7 +637,7 @@ router.get('/charts', async (req, res) => {
             // Daily bookings
             pool.query(`
                 SELECT date, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
-                FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                FROM bookings b WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.linked_to IS NULL AND b.status = 'confirmed'
                 AND ${dailyBookingsBusiness}
                 ${dailyBookingsScope.sql}
@@ -657,7 +659,7 @@ router.get('/charts', async (req, res) => {
                     CASE WHEN pinata_mode = 'client' THEN 'custom' ELSE category END AS category,
                     COUNT(*)::int AS count,
                     COALESCE(SUM(price), 0)::int AS revenue
-                FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                FROM bookings b WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.linked_to IS NULL AND b.status = 'confirmed'
                 AND ${topProgramsBusiness}
                 ${topProgramsScope.sql}
@@ -679,7 +681,7 @@ router.get('/charts', async (req, res) => {
             pool.query(`
                 SELECT EXTRACT(ISODOW FROM date::date)::int AS dow,
                     COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
-                FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                FROM bookings b WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.linked_to IS NULL AND b.status = 'confirmed'
                 AND ${weekdayLoadBusiness}
                 ${weekdayLoadScope.sql}
@@ -760,7 +762,7 @@ router.get('/comparison', async (req, res) => {
                 return pool.query(`
                     SELECT COALESCE(SUM(CASE WHEN b.status='confirmed' THEN b.price ELSE 0 END), 0)::int AS val
                     FROM bookings b
-                    WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                    WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                       AND b.linked_to IS NULL AND b.status != 'cancelled'
                       AND ${businessCondition}
                       ${visibility.sql}
@@ -772,7 +774,7 @@ router.get('/comparison', async (req, res) => {
                 return pool.query(`
                     SELECT COUNT(*)::int AS val
                     FROM bookings b
-                    WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                    WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                       AND b.linked_to IS NULL AND b.status != 'cancelled'
                       AND ${businessCondition}
                       ${visibility.sql}
@@ -882,7 +884,7 @@ router.get('/conversion', async (req, res) => {
                 COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.price ELSE 0 END), 0)::int AS revenue,
                 COALESCE(ROUND(AVG(CASE WHEN b.status = 'confirmed' THEN b.price END)), 0)::int AS avg_check
             FROM bookings b
-            WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+            WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
               AND b.created_by IS NOT NULL
               AND b.linked_to IS NULL
               AND b.status != 'cancelled'
@@ -1137,7 +1139,7 @@ router.get('/bookings', async (req, res) => {
                        ROUND(COALESCE(AVG(b.price), 0))::int AS avg_check,
                        COUNT(*) FILTER (WHERE b.status = 'confirmed')::int AS confirmed,
                        COUNT(*) FILTER (WHERE b.status = 'preliminary')::int AS preliminary
-                FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                FROM bookings b WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.status != 'cancelled' AND b.linked_to IS NULL
                 AND ${totalsBusiness}
                 ${totalsScope.sql}
@@ -1148,7 +1150,7 @@ router.get('/bookings', async (req, res) => {
                     CASE WHEN pinata_mode = 'client' THEN 'SERV' ELSE program_code END AS code,
                     CASE WHEN pinata_mode = 'client' THEN 'custom' ELSE category END AS category,
                        COUNT(*)::int AS count, COALESCE(SUM(b.price), 0)::int AS revenue
-                FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                FROM bookings b WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.status != 'cancelled' AND b.linked_to IS NULL
                 AND ${byProgramBusiness}
                 ${byProgramScope.sql}
@@ -1156,7 +1158,7 @@ router.get('/bookings', async (req, res) => {
             `, byProgramParams),
             pool.query(`
                 SELECT b.date, COUNT(*)::int AS count, COALESCE(SUM(b.price), 0)::int AS revenue
-                FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                FROM bookings b WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.status != 'cancelled' AND b.linked_to IS NULL
                 AND ${byDayBusiness}
                 ${byDayScope.sql}
@@ -1165,7 +1167,7 @@ router.get('/bookings', async (req, res) => {
             pool.query(`
                 SELECT CASE WHEN pinata_mode = 'client' THEN 'custom' ELSE category END AS category,
                        COUNT(*)::int AS count, COALESCE(SUM(b.price), 0)::int AS revenue
-                FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                FROM bookings b WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.status != 'cancelled' AND b.linked_to IS NULL AND b.category IS NOT NULL
                 AND ${byCategoryBusiness}
                 ${byCategoryScope.sql}
@@ -1174,7 +1176,7 @@ router.get('/bookings', async (req, res) => {
             pool.query(`
                 SELECT EXTRACT(ISODOW FROM b.date::date)::int AS dow, COUNT(*)::int AS count,
                        COALESCE(SUM(b.price), 0)::int AS revenue
-                FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                FROM bookings b WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.status != 'cancelled' AND b.linked_to IS NULL
                 AND ${byWeekdayBusiness}
                 ${byWeekdayScope.sql}

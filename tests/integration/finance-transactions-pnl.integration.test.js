@@ -85,9 +85,13 @@ test('finance amount and P&L regressions with migrated disposable PostgreSQL and
    assert.equal(journal.body.incomeByCategory.reduce((sum,row)=>sum+row.total,0),105);
    assert.equal(journal.body.expenseByCategory.reduce((sum,row)=>sum+row.total,0),62);
    assert.equal(journal.body.daily.reduce((sum,row)=>sum+row.income,0),105);
-   assert.equal(journal.body.daily.reduce((sum,row)=>sum+row.expense,0),62);
-   assert.equal(journal.body.daily.find(row=>row.date==='2099-01-25').expense,15);
-   assert.ok(!journal.body.daily.some(row=>row.date==='2099-01-10'));
+   assert.equal(journal.body.daily.reduce((sum,row)=>sum+row.expense,0),1046,'cash flow includes January payments regardless of recognition month');
+   assert.equal(journal.body.daily.find(row=>row.date==='2099-01-10').expense,999);
+   assert.ok(!journal.body.daily.some(row=>row.date==='2099-01-25'),'January accrual paid in February is excluded from January cash flow');
+   const februaryCash=await api('GET','/dashboard?from=2099-02-01&to=2099-02-28');
+   assert.equal(februaryCash.status,200);
+   assert.equal(februaryCash.body.daily.reduce((sum,row)=>sum+row.expense,0),570);
+   assert.equal(februaryCash.body.daily.find(row=>row.date==='2099-02-10').expense,15);
    const dar=await api('GET','/report/pnl?year=2099&month=1',undefined,'dar');assert.equal(dar.status,200);assert.equal(dar.body.summary.totalIncome,0);assert.equal(dar.body.summary.totalExpenses,777);
    const feb=await api('GET','/report/pnl?year=2099&month=2');assert.equal(feb.status,200);assert.equal(feb.body.summary.totalExpenses,1554);assert.equal(feb.body.summary.previousProfit,43);
    const annual=await api('GET','/report/pnl?year=2099');const invalidMonth=await api('GET','/report/pnl?year=2099&month=13');

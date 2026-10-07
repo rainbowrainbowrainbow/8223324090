@@ -31,6 +31,7 @@ const {
     qaResumeAction,
     qaRunArgs,
     readBlockFile,
+    runAuthorizedReleaseStage,
     releaseCommandPlan,
     resolveSpawnCommand,
     resumeAuthorizedQa,
@@ -77,6 +78,7 @@ function dryRuntime(overrides = {}) {
                 head: value.initialHeadSha,
                 descendsFromBase: true,
                 descendsFromInitial: true,
+                descendsFromRetry: true,
                 migrations: [...value.allowedMigrationFiles],
                 migrationHashes: Object.fromEntries(value.migrationClassifications.map(item => [item.file, item.sqlHash])),
                 changedPaths: [...value.changedPaths]
@@ -1076,4 +1078,181 @@ test('finance QA after exact live proof stays manual and revalidates its signed 
         async financeQaPreflight() { throw Object.assign(new Error('plan changed'), { code: 'PRODUCTION_BLOCK_QA_PREFLIGHT_FAILED' }); }
     }), error => error.code === 'PRODUCTION_BLOCK_QA_PREFLIGHT_FAILED');
     assert.equal(writes, 0);
+});
+
+function financeRetryFixture(t, overrides = {}) {
+    const previous = overrides.previous || manifest({ protectedWorkflow: 'finance-manual-qa', validityMinutes: 120 }, financeFacts());
+    previous.runtimeState = { releaseAttempts: 1, lastFailureCode: 'PRODUCTION_BLOCK_COMMAND_FAILED',
+        lastAttemptAt: new Date().toISOString(), ...overrides.runtimeState };
+    const previousFile = blockFile(t, previous);
+    const newFile = path.join(path.dirname(previousFile), 'retry.json');
+    const nextFacts = facts({ ...financeFacts(), head: RELEASE_SHA, ...overrides.facts });
+    const failedCi = { ...successfulHrPayrollCi(), headSha: previous.initialHeadSha,
+        conclusion: 'failure', jobs: [{ name: 'HR and payroll PostgreSQL integration', status: 'completed', conclusion: 'failure' }] };
+    const options = { blockFile: newFile, retryFrom: previousFile, retryCiRun: '37693198330',
+        protectedWorkflow: 'finance-manual-qa', releaseLabel: previous.releaseLabel,
+        validityMinutes: 360, maxReleaseAttempts: 3, ...overrides.options };
+    const runtime = { ...dryRuntime(),
+        async facts() { return nextFacts; },
+        async retryFacts(received, candidate, runId) {
+            assert.equal(received.manifestHash, previous.manifestHash);
+            assert.equal(candidate.head, nextFacts.head);
+            assert.equal(runId, '37693198330');
+            return { remoteSha: previous.initialHeadSha, descendsFromPrior: true, ciRun: failedCi, ...overrides.evidence };
+        }
+    };
+    return { previous, previousFile, newFile, nextFacts, failedCi, options, runtime };
+}
+
+test('finance retry parsing requires prepare with an exact prior manifest and failed CI ID', () => {
+    const parsed = parseOptions(['prepare', '--', '--retry-from', '/tmp/prior.json', '--retry-ci-run', '37693198330']);
+    assert.equal(parsed.retryFrom, path.resolve('/tmp/prior.json'));
+    assert.equal(parsed.retryCiRun, '37693198330');
+    for (const args of [['prepare', '--retry-from', '/tmp/prior.json'], ['prepare', '--retry-ci-run', '1'],
+        ['execute', '--block-file', '/tmp/current.json', '--retry-from', '/tmp/prior.json', '--retry-ci-run', '1']]) {
+        assert.throws(() => parseOptions(args), error => error.code === 'PRODUCTION_BLOCK_RETRY_BINDING_INVALID');
+    }
+});
+
+test('finance retry binds failed prior CI, preserves expiry and budget, and supersedes the old manifest', async t => {
+    const fixture = financeRetryFixture(t);
+    const prepared = await prepareAction(fixture.options, fixture.runtime);
+    const next = readBlockFile(fixture.newFile);
+    assert.equal(next.initialHeadSha, RELEASE_SHA);
+    assert.equal(next.validUntil, fixture.previous.validUntil, 'fresh prepare must not extend the original window');
+    assert.equal(next.runtimeState.releaseAttempts, 1, 'prior attempt must consume the aggregate budget');
+    assert.deepEqual(next.retryFrom, { blockFile: fixture.previousFile, blockId: fixture.previous.blockId,
+        manifestHash: fixture.previous.manifestHash, headSha: HEAD_SHA, ciRunId: '37693198330', attemptsUsed: 1 });
+    assert.notEqual(prepared.confirmation, confirmationValue(fixture.previous));
+    assert.equal(readBlockFile(fixture.previousFile).runtimeState.supersededBy.manifestHash, next.manifestHash);
+    const execute = { blockFile: fixture.newFile, confirmation: confirmationValue(next), dryRun: true };
+    await assert.doesNotReject(executeAction(execute, fixture.runtime));
+    await assert.rejects(executeAction({ ...execute, confirmation: confirmationValue(fixture.previous) }, fixture.runtime),
+        error => error.code === 'PRODUCTION_BLOCK_CONFIRMATION_INVALID');
+    await assert.rejects(executeAction({ blockFile: fixture.previousFile, confirmation: confirmationValue(fixture.previous), dryRun: true }, fixture.runtime),
+        error => error.code === 'PRODUCTION_BLOCK_RETRY_SUPERSEDED');
+    const live = { commitSha: LIVE_SHA, sourceBranch: next.allowedBranch };
+    assert.doesNotThrow(() => assertPreparedProductionBase(next, live, HEAD_SHA));
+    assert.throws(() => assertPreparedProductionBase(manifest({ protectedWorkflow: 'finance-manual-qa' },
+        { ...financeFacts(), head: RELEASE_SHA }), live, HEAD_SHA), error => error.code === 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    assert.throws(() => assertPreparedProductionBase(next, live, '4'.repeat(40)), error => error.code === 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    await assert.rejects(prepareAction({ ...fixture.options, blockFile: path.join(path.dirname(fixture.newFile), 'fork.json') }, fixture.runtime),
+        error => error.code === 'PRODUCTION_BLOCK_RETRY_SUPERSEDED');
+});
+
+test('finance retry rejects unrelated CI, scope, remote, ancestry, exhausted or successful prior attempts', async t => {
+    const failures = [
+        [{ runtimeState: { releaseAttempts: 0 } }, 'PRODUCTION_BLOCK_RETRY_STATE_INVALID'],
+        [{ runtimeState: { releaseAttempts: 3 } }, 'PRODUCTION_BLOCK_RETRY_STATE_INVALID'],
+        [{ runtimeState: { lastFailureCode: null } }, 'PRODUCTION_BLOCK_RETRY_STATE_INVALID'],
+        [{ runtimeState: { releaseSha: HEAD_SHA } }, 'PRODUCTION_BLOCK_RETRY_STATE_INVALID'],
+        [{ runtimeState: { releaseCompletedAt: new Date().toISOString() } }, 'PRODUCTION_BLOCK_RETRY_STATE_INVALID'],
+        [{ facts: { head: HEAD_SHA } }, 'PRODUCTION_BLOCK_RETRY_SHA_INVALID'],
+        [{ facts: { releaseVersion: '0.0.3' } }, 'PRODUCTION_BLOCK_RETRY_SCOPE_DRIFT'],
+        [{ facts: { changedPaths: [...financeFacts().changedPaths, 'tests/route-smoke.test.js'] } }, 'PRODUCTION_BLOCK_RETRY_SCOPE_DRIFT'],
+        [{ options: { qaScope: financeQaScope() } }, 'PRODUCTION_BLOCK_RETRY_SCOPE_DRIFT'],
+        [{ options: { maxReleaseAttempts: 2 } }, 'PRODUCTION_BLOCK_RETRY_SCOPE_DRIFT'],
+        [{ evidence: { remoteSha: LIVE_SHA } }, 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT'],
+        [{ evidence: { remoteSha: '4'.repeat(40) } }, 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT'],
+        [{ evidence: { descendsFromPrior: false } }, 'PRODUCTION_BLOCK_RETRY_SHA_INVALID']
+    ];
+    for (const [override, code] of failures) {
+        const fixture = financeRetryFixture(t, override);
+        await assert.rejects(prepareAction(fixture.options, fixture.runtime), error => error.code === code);
+        assert.equal(fs.existsSync(fixture.newFile), false);
+        assert.equal(readBlockFile(fixture.previousFile).runtimeState.supersededBy, undefined);
+    }
+    for (const override of [{ headSha: RELEASE_SHA }, { headBranch: 'foreign' }, { workflowName: 'Other' },
+        { event: 'pull_request' }, { conclusion: 'success' }, { conclusion: 'cancelled' }, { status: 'in_progress' }, { jobs: [] }]) {
+        const fixture = financeRetryFixture(t);
+        fixture.runtime.retryFacts = async () => ({ remoteSha: HEAD_SHA, descendsFromPrior: true, ciRun: { ...fixture.failedCi, ...override } });
+        await assert.rejects(prepareAction(fixture.options, fixture.runtime), error => error.code === 'PRODUCTION_BLOCK_RETRY_CI_INVALID');
+    }
+    const expired = financeRetryFixture(t, { previous: manifest({ protectedWorkflow: 'finance-manual-qa',
+        now: new Date(Date.now() - 10 * 60_000), validityMinutes: 5 }, financeFacts()) });
+    await assert.rejects(prepareAction(expired.options, expired.runtime), error => error.code === 'PRODUCTION_BLOCK_EXPIRED');
+});
+
+test('finance retry detects copied manifests, modified predecessor records, reset counts and changed expiry', async t => {
+    const fixture = financeRetryFixture(t);
+    await prepareAction(fixture.options, fixture.runtime);
+    const next = readBlockFile(fixture.newFile);
+    const copyFile = path.join(path.dirname(fixture.newFile), 'copy.json');
+    writeBlockFile(copyFile, next);
+    assert.throws(() => readBlockFile(copyFile), error => error.code === 'PRODUCTION_BLOCK_RETRY_SUPERSEDED');
+    for (const mutate of [
+        value => { value.runtimeState.releaseAttempts = 0; },
+        value => { value.validUntil = new Date(Date.parse(value.validUntil) + 60_000).toISOString(); },
+        value => { value.retryFrom.headSha = '4'.repeat(40); },
+        value => { value.retryFrom.attemptsUsed = 0; },
+        value => { value.retryFrom.command = 'arbitrary'; }
+    ]) {
+        const tampered = structuredClone(next); mutate(tampered); tampered.manifestHash = manifestHash(tampered);
+        writeBlockFile(fixture.newFile, tampered);
+        assert.throws(() => readBlockFile(fixture.newFile), error => error.code === 'PRODUCTION_BLOCK_RETRY_BINDING_INVALID');
+    }
+    writeBlockFile(fixture.newFile, next);
+    const predecessor = readBlockFile(fixture.previousFile);
+    predecessor.runtimeState.releaseAttempts = 2;
+    writeBlockFile(fixture.previousFile, predecessor);
+    assert.throws(() => readBlockFile(fixture.newFile), error => error.code === 'PRODUCTION_BLOCK_RETRY_BINDING_INVALID');
+});
+
+test('finance retry serializes attempts and carries the original budget into a final third attempt', async t => {
+    const fixture = financeRetryFixture(t);
+    await prepareAction(fixture.options, fixture.runtime);
+    const next = readBlockFile(fixture.newFile);
+    let releaseAttempt;
+    let signalStarted;
+    const started = new Promise(resolve => { signalStarted = resolve; });
+    const hold = new Promise(resolve => { releaseAttempt = resolve; });
+    const failingRuntime = { ...fixture.runtime, async execute() {
+        signalStarted(); await hold;
+        throw Object.assign(new Error('CI failed'), { code: 'PRODUCTION_BLOCK_COMMAND_FAILED' });
+    } };
+    const execute = { blockFile: fixture.newFile, confirmation: confirmationValue(next) };
+    const first = executeAction(execute, failingRuntime);
+    const firstAssertion = assert.rejects(first, error => error.code === 'PRODUCTION_BLOCK_COMMAND_FAILED');
+    await started;
+    await assert.rejects(executeAction(execute, failingRuntime), error => error.code === 'PRODUCTION_BLOCK_EXECUTION_IN_PROGRESS');
+    releaseAttempt(); await firstAssertion;
+    const failedSecond = readBlockFile(fixture.newFile);
+    assert.equal(failedSecond.runtimeState.releaseAttempts, 2);
+    const thirdFile = path.join(path.dirname(fixture.newFile), 'third.json');
+    const thirdOptions = { ...fixture.options, retryFrom: fixture.newFile, blockFile: thirdFile };
+    const thirdRuntime = { ...dryRuntime(),
+        async facts() { return facts({ ...financeFacts(), head: '4'.repeat(40) }); },
+        async retryFacts() { return { remoteSha: RELEASE_SHA, descendsFromPrior: true,
+            ciRun: { ...fixture.failedCi, headSha: RELEASE_SHA } }; },
+        async execute() { throw Object.assign(new Error('CI failed again'), { code: 'PRODUCTION_BLOCK_COMMAND_FAILED' }); }
+    };
+    await prepareAction(thirdOptions, thirdRuntime);
+    const third = readBlockFile(thirdFile);
+    assert.equal(third.runtimeState.releaseAttempts, 2);
+    assert.equal(third.validUntil, fixture.previous.validUntil);
+    await assert.rejects(executeAction({ blockFile: thirdFile, confirmation: confirmationValue(third) }, thirdRuntime),
+        error => error.code === 'PRODUCTION_BLOCK_COMMAND_FAILED');
+    assert.equal(readBlockFile(thirdFile).runtimeState.releaseAttempts, 3);
+    await assert.rejects(executeAction({ blockFile: thirdFile, confirmation: confirmationValue(third) }, thirdRuntime),
+        error => error.code === 'PRODUCTION_BLOCK_ATTEMPT_BUDGET_EXHAUSTED');
+    await assert.rejects(prepareAction({ ...thirdOptions, retryFrom: thirdFile,
+        blockFile: path.join(path.dirname(thirdFile), 'fourth.json') }, {
+        ...thirdRuntime, async facts() { return facts({ ...financeFacts(), head: '5'.repeat(40) }); }
+    }), error => error.code === 'PRODUCTION_BLOCK_RETRY_STATE_INVALID');
+});
+
+test('release stage revalidates expiry after tests and CI without executing an expired push or deploy', t => {
+    const value = manifest({ protectedWorkflow: 'finance-manual-qa' }, financeFacts());
+    const file = blockFile(t, value);
+    const calls = [];
+    const run = (command, args) => { calls.push([command, args]); return 'executed'; };
+    const validTime = new Date(Date.parse(value.validUntil) - 1);
+    const expiredTime = new Date(Date.parse(value.validUntil) + 1);
+    assert.equal(runAuthorizedReleaseStage(value, file, 'git', ['push'], {},
+        { now: validTime, commandResult: run }), 'executed');
+    assert.throws(() => runAuthorizedReleaseStage(value, file, 'npm', ['run', 'release:railway-up'], {},
+        { now: expiredTime, commandResult: run }), error => error.code === 'PRODUCTION_BLOCK_EXPIRED');
+    assert.throws(() => runAuthorizedReleaseStage(value, file, 'git', ['push'], {},
+        { now: expiredTime, commandResult: run }), error => error.code === 'PRODUCTION_BLOCK_EXPIRED');
+    assert.deepEqual(calls, [['git', ['push']]], 'no expired protected stage may invoke a subprocess');
 });

@@ -3820,6 +3820,18 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
+    const permissions = typeof hydrateActionPermissions === 'function'
+        ? await hydrateActionPermissions(user)
+        : null;
+    if (!permissions) {
+        if (typeof showAuthenticatedPageShell === 'function') {
+            showAuthenticatedPageShell({ markRuntimeReady: false });
+        }
+        if (typeof renderPermissionBootstrapError === 'function') {
+            renderPermissionBootstrapError({ overlay: true, retry: () => window.location.reload() });
+        }
+        return;
+    }
     const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name;
     initCustomerBusinessContext(user);
     const initialTab = applyInitialCustomerQueryParams();

@@ -47,3 +47,9 @@ The UI fetches this inspection only after an explicit click, never once per resu
 5. Prove transfer, concurrent writes, stale previews, rollback, business isolation, and audit behavior on disposable PostgreSQL before unlocking UI/API.
 
 This follow-up is not required to launch sales: duplicate lookup, opening both cards, and the original safety guard remain usable.
+
+## Customer page permission bootstrap
+
+The customer page waits for the existing hydrateActionPermissions helper before deciding RFM and revenue visibility. The server permission catalog stays authoritative, including explicit denies. A permission fetch failure stops customer data initialization and uses the existing recovery overlay with a full-page retry. No roles, overrides, sessions, or permission policy are changed.
+
+This fixes the reproduced case where the live permission API allowed view_revenue but the customer page never loaded its catalog, leaving RFM hidden. Customer section navigation tests cover deferred allow, deny, and failed bootstrap.

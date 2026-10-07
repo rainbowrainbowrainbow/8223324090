@@ -98,7 +98,8 @@ const MODES = {
         'tests/integration/lead-conversation-links-postgres.test.js',
         'tests/integration/customer-booking-metrics-postgres.test.js',
         'tests/integration/customer-birthday-segments-postgres.test.js',
-        'tests/integration/customer-lead-business-isolation-postgres.test.js'
+        'tests/integration/customer-lead-business-isolation-postgres.test.js',
+        'tests/integration/customer-merge-preview-postgres.test.js'
     ],
     'customer-birthdays': [
         'tests/integration/customer-birthday-segments-postgres.test.js'
@@ -537,6 +538,7 @@ function runsAgainstDatabaseOnly(testFile) {
         || testFile.includes('lead-conversation-links-postgres.test')
         || testFile.includes('costing-management-postgres.test')
         || testFile.includes('customer-birthday-segments-postgres.test')
+        || testFile.includes('customer-merge-preview-postgres.test')
         || testFile.includes('legacy-upload-backfill.integration');
 }
 
@@ -703,6 +705,9 @@ async function runSuite(testDb, testFile, suiteMode) {
             ? testDb.url.toString()
             : '',
         CUSTOMER_BIRTHDAYS_TEST_DATABASE_URL: testFile.includes('customer-birthday-segments-postgres.test')
+            ? testDb.url.toString()
+            : '',
+        CUSTOMER_MERGE_TEST_DATABASE_URL: testFile.includes('customer-merge-preview-postgres.test')
             ? testDb.url.toString()
             : '',
         CUSTOMER_METRICS_TEST_DATABASE_URL: testFile.includes('customer-booking-metrics-postgres.test')

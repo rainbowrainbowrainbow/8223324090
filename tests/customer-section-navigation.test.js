@@ -136,3 +136,122 @@ test('list lookup failure preserves filters/page, clears stale rows and offers e
     assert.equal(context.CrmState.customers[0].id, 12);
     assert.doesNotMatch(d.getElementById('customerTableBody').textContent, /Клієнтів не знайдено/);
 });
+
+function customerInitHarness(t) {
+    const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://crm.test/customers?tab=rfm' });
+    t.after(() => dom.window.close());
+    const context = dom.getInternalVMContext();
+    const calls = { permissions: [], data: [], decisions: [], shells: [], recoveries: [] };
+    const user = { id: 73, name: 'Fixture manager', role: 'senior_manager' };
+    let resolvePermissions;
+    const permissionResponse = new Promise(resolve => { resolvePermissions = resolve; });
+    let initialize;
+    const addEventListener = dom.window.document.addEventListener.bind(dom.window.document);
+    dom.window.document.addEventListener = (type, listener, options) => {
+        if (type === 'DOMContentLoaded') initialize = listener;
+        else addEventListener(type, listener, options);
+    };
+    vm.runInContext(source + '\nthis.customerInitState = CrmState;', context, { filename: 'js/customers-page.js' });
+    dom.window.document.addEventListener = addEventListener;
+    assert.equal(typeof initialize, 'function', 'The real customer page registers its initialization entrypoint');
+    Object.assign(context, {
+        AppState: { currentUser: null },
+        initDarkMode() {},
+        apiVerifyToken: async () => user,
+        async hydrateActionPermissions(verifiedUser) {
+            calls.permissions.push(verifiedUser);
+            const permissions = await permissionResponse;
+            context.AppState.authPermissions = permissions;
+            return permissions;
+        },
+        canAccess(action) {
+            calls.decisions.push({ action, permissions: context.AppState.authPermissions });
+            return context.AppState.authPermissions?.capabilities?.['action:' + action]?.allowed === true;
+        },
+        showAuthenticatedPageShell: options => calls.shells.push(options),
+        initCustomerBusinessContext() {},
+        reloadCustomers: async () => { calls.data.push('customers'); },
+        fetchStats: async () => { calls.data.push('stats'); },
+        fetchCustomerTags: async () => { calls.data.push('tags'); },
+        fetchRFM: async () => {
+            calls.data.push('rfm');
+            context.customerInitState.rfmData = { customers: [], segments: {} };
+        },
+        showNotification() {},
+        maybeOpenCustomerCreateFromUrl: () => false,
+        permissionFailureMessage: () => 'Fixture permission service unavailable',
+        _escHtml: value => String(value),
+        ensureAuthSessionRecoverySurface() {
+            let surface = dom.window.document.getElementById('fixture-permission-recovery');
+            if (!surface) {
+                surface = dom.window.document.createElement('div');
+                surface.id = 'fixture-permission-recovery';
+                dom.window.document.body.appendChild(surface);
+            }
+            return surface;
+        }
+    });
+    for (const name of [
+        'syncCustomerActionsMenu', 'syncCustomerReadOnlyUi', 'bindCustomerActionsMenu',
+        'bindCustomerFilterControls', 'renderCustomerFilterControls', 'bindChildrenReviewTools',
+        'bindCustomerIdentityTools', 'bindCustomerEditTagTools', 'bindCustomerEditChildrenTools',
+        'bindEntityModalSafeClose', 'bindCustomerEntityEscapeClose', 'renderTagFilters',
+        'renderStats', 'renderRFM', 'openCustomerDeepLink'
+    ]) context[name] = () => {};
+    const authSource = fs.readFileSync(path.join(root, 'js/auth.js'), 'utf8');
+    const recoveryStart = authSource.indexOf('function renderPermissionBootstrapError(');
+    const recoveryEnd = authSource.indexOf('async function hydrateActionPermissions(', recoveryStart);
+    assert.ok(recoveryStart >= 0 && recoveryEnd > recoveryStart);
+    vm.runInContext(authSource.slice(recoveryStart, recoveryEnd), context, { filename: 'js/auth.js' });
+    const renderRecovery = context.renderPermissionBootstrapError;
+    context.renderPermissionBootstrapError = options => {
+        calls.recoveries.push(options);
+        return renderRecovery(options);
+    };
+    return { dom, context, calls, user, initialize, resolvePermissions };
+}
+
+for (const allowed of [true, false]) {
+    test(`customer init waits for server revenue ${allowed ? 'allow' : 'deny'} before deciding the RFM deep link`, async t => {
+        const h = customerInitHarness(t);
+        const initialized = h.initialize();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(h.calls.permissions, [h.user], 'Permissions are loaded for the verified account');
+        assert.deepEqual(h.calls.decisions, [], 'Revenue visibility is not decided before server permissions arrive');
+        assert.deepEqual(h.calls.data, [], 'Customer data requests wait for permission bootstrap');
+        assert.deepEqual(h.calls.shells, [], 'The authenticated runtime is not marked ready while permissions are pending');
+        const permissions = { capabilities: { 'action:view_revenue': { allowed } } };
+        h.resolvePermissions(permissions);
+        await initialized;
+        await new Promise(resolve => setImmediate(resolve));
+        const d = h.dom.window.document;
+        assert.equal(d.querySelector('[data-tab="rfm"]').style.display, allowed ? '' : 'none');
+        assert.equal(d.getElementById('customerSpentHeader').style.display, allowed ? '' : 'none');
+        assert.equal(h.context.customerInitState.activeTab, allowed ? 'rfm' : 'list');
+        assert.deepEqual(h.calls.data, allowed ? ['customers', 'stats', 'tags', 'rfm'] : ['customers', 'stats', 'tags']);
+        assert.ok(h.calls.decisions.every(decision => decision.permissions === permissions));
+        assert.equal(h.calls.recoveries.length, 0);
+    });
+}
+
+test('customer init permission failure stops data requests and renders the existing retry recovery', async t => {
+    const h = customerInitHarness(t);
+    const initialized = h.initialize();
+    await new Promise(resolve => setImmediate(resolve));
+    h.resolvePermissions(null);
+    await initialized;
+    assert.deepEqual(h.calls.permissions, [h.user]);
+    assert.deepEqual(h.calls.decisions, [], 'Unavailable permissions must not masquerade as an authoritative deny');
+    assert.deepEqual(h.calls.data, []);
+    assert.equal(h.calls.shells.length, 1);
+    assert.equal(h.calls.shells[0].markRuntimeReady, false);
+    assert.equal(h.calls.recoveries.length, 1);
+    assert.equal(h.calls.recoveries[0].overlay, true);
+    assert.equal(typeof h.calls.recoveries[0].retry, 'function');
+    const recovery = h.dom.window.document.querySelector('[data-permission-state="error"]');
+    assert.ok(recovery);
+    assert.equal(recovery.getAttribute('role'), 'alert');
+    assert.match(recovery.textContent, /Fixture permission service unavailable/);
+    assert.ok(recovery.querySelector('[data-permission-retry]'));
+    assert.equal(h.context.customerInitState.activeTab, 'list');
+});

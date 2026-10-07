@@ -3000,6 +3000,7 @@ window.addTag = async function(customerId, tag, color, button) {
 
 let duplicatesRequestController = null;
 let duplicatesRequestSeq = 0;
+const duplicatePreviewControllers = new Set();
 
 function renderDuplicateCustomerCard(duplicate, side) {
     const id = Number(duplicate['id' + side]);
@@ -3018,6 +3019,8 @@ async function loadDuplicates() {
     const el = document.getElementById('tabDuplicates');
     if (!el) return false;
     duplicatesRequestController?.abort();
+    duplicatePreviewControllers.forEach(controller => controller.abort());
+    duplicatePreviewControllers.clear();
     const controller = new AbortController();
     duplicatesRequestController = controller;
     const requestSeq = ++duplicatesRequestSeq;
@@ -3053,6 +3056,13 @@ async function loadDuplicates() {
                         ${renderDuplicateCustomerCard(d, 2)}
                         <button type="button" class="btn-page-secondary" disabled aria-disabled="true"
                             title="Об’єднання недоступне до перевірки перенесення всіх зв’язків">Об’єднання недоступне</button>
+                        ${canManageCustomerActions() && customerBusinessScope().mode === 'single' ? `
+                            <button type="button" class="btn-page-secondary" data-duplicate-preview
+                                data-primary-id="${Number(d.id1)}" data-duplicate-id="${Number(d.id2)}"
+                                aria-expanded="false" aria-controls="duplicatePreview-${Number(d.id1)}-${Number(d.id2)}">Перевірити зв’язки</button>
+                            <div id="duplicatePreview-${Number(d.id1)}-${Number(d.id2)}" data-duplicate-preview-result
+                                style="width:100%;min-width:0;overflow-wrap:anywhere" hidden></div>
+                        ` : ''}
                     </div>
                 `).join('')}</div>`;
             el.querySelectorAll('[data-duplicate-customer-id]').forEach(button => {
@@ -3061,6 +3071,9 @@ async function loadDuplicates() {
                 });
             });
         }
+        el.querySelectorAll('[data-duplicate-preview]').forEach(button => {
+            button.addEventListener('click', () => loadDuplicatePreview(button, isCurrent));
+        });
         if (restoreFocus) el.querySelector('h4')?.focus();
         return true;
     } catch (err) {
@@ -3080,6 +3093,78 @@ async function loadDuplicates() {
             if (scopeKey !== JSON.stringify(customerBusinessScope())) {
                 el.innerHTML = '<div class="crm-empty" role="status"><div class="empty-text">Бізнес-контекст змінився. Повторіть пошук дублікатів.</div><button type="button" class="btn-page-secondary" data-duplicates-retry>Повторити пошук</button></div>';
                 el.querySelector('[data-duplicates-retry]').addEventListener('click', loadDuplicates);
+            }
+        }
+    }
+}
+
+async function loadDuplicatePreview(button, isCurrent) {
+    const result = document.getElementById(button.getAttribute('aria-controls'));
+    if (!result) return false;
+    if (!isCurrent()) {
+        result.hidden = true;
+        result.textContent = '';
+        button.setAttribute('aria-expanded', 'false');
+        return false;
+    }
+    if (button.disabled || !canManageCustomerActions()) return false;
+    const controller = new AbortController();
+    duplicatePreviewControllers.add(controller);
+    const restoreFocus = document.activeElement === button;
+    const scopeKey = JSON.stringify(customerBusinessScope());
+    const current = () => isCurrent() && button.isConnected && scopeKey === JSON.stringify(customerBusinessScope());
+    result.hidden = false;
+    result.setAttribute('aria-busy', 'true');
+    result.setAttribute('role', 'status');
+    result.textContent = 'Перевіряємо зв’язки без змін даних...';
+    button.disabled = true;
+    button.setAttribute('aria-expanded', 'true');
+    try {
+        const url = customerApiUrl('/api/customers/' + button.dataset.primaryId + '/merge-preview');
+        const separator = url.includes('?') ? '&' : '?';
+        const response = await fetch(url + separator + 'duplicateId=' + encodeURIComponent(button.dataset.duplicateId), {
+            headers: { Authorization: 'Bearer ' + localStorage.getItem('pzp_token') }, signal: controller.signal
+        });
+        const data = await response.json();
+        if (!current()) return false;
+        const preview = data.preview;
+        if (!response.ok || data.success !== true || !preview || preview.canMerge !== false
+            || preview.changesPerformed !== false
+            || Number(preview.primary?.id) !== Number(button.dataset.primaryId)
+            || Number(preview.duplicate?.id) !== Number(button.dataset.duplicateId)
+            || preview.businessContext !== customerBusinessScope().activeContext || !Array.isArray(preview.records) || !Array.isArray(preview.blockers)
+            || preview.records.some(row => !row || !Number.isSafeInteger(row.count) || row.count < 0 || typeof row.label !== 'string')
+            || preview.blockers.some(row => !row || typeof row.message !== 'string')) {
+            throw new Error('Invalid reference preview');
+        }
+        result.innerHTML = '<p><b>Зв’язки другої картки:</b></p><ul style="margin:8px 0;padding-left:20px">'
+            + preview.records.map(row => '<li>' + escapeHtml(row.label) + ': ' + row.count + '</li>').join('') + '</ul>'
+            + (preview.blockers.length ? '<p><b>Потребує уточнення:</b></p><ul style="margin:8px 0;padding-left:20px">'
+                + preview.blockers.map(row => '<li>' + escapeHtml(row.message) + '</li>').join('') + '</ul>'
+                : '<p>Конфліктів під час цієї перевірки не виявлено. Це не гарантує безпечного об’єднання.</p>')
+            + '<p class="customer-hub-note">Дані не змінено. Об’єднання залишається недоступним.</p>';
+        return true;
+    } catch (error) {
+        if (!current() || error?.name === 'AbortError') return false;
+        result.setAttribute('role', 'alert');
+        result.textContent = 'Не вдалося перевірити зв’язки. Це не означає, що конфліктів немає. Натисніть «Повторити перевірку».';
+        return false;
+    } finally {
+        duplicatePreviewControllers.delete(controller);
+        if (button.isConnected) button.disabled = false;
+        if (result.isConnected) {
+            result.setAttribute('aria-busy', 'false');
+            if (!current()) {
+                result.setAttribute('role', 'status');
+                result.textContent = 'Бізнес-контекст змінився. Повторіть пошук дублікатів.';
+                result.hidden = true;
+                button.setAttribute('aria-expanded', 'false');
+            }
+        }
+        if (current()) {
+            button.textContent = 'Повторити перевірку';
+            if (restoreFocus && (document.activeElement === document.body || document.activeElement === button)) {
+                button.focus({ preventScroll: true });
             }
         }
     }
@@ -3735,6 +3820,18 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
+    const permissions = typeof hydrateActionPermissions === 'function'
+        ? await hydrateActionPermissions(user)
+        : null;
+    if (!permissions) {
+        if (typeof showAuthenticatedPageShell === 'function') {
+            showAuthenticatedPageShell({ markRuntimeReady: false });
+        }
+        if (typeof renderPermissionBootstrapError === 'function') {
+            renderPermissionBootstrapError({ overlay: true, retry: () => window.location.reload() });
+        }
+        return;
+    }
     const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name;
     initCustomerBusinessContext(user);
     const initialTab = applyInitialCustomerQueryParams();

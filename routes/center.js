@@ -19,6 +19,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { canUseAction, requireAction, requireMinRole, authenticateToken } = require('../middleware/auth');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const { businessBookingSql } = require('../services/financeQaReadScope');
 const {
     businessContextFromRequest,
     requireBusinessContext
@@ -243,7 +244,7 @@ router.get('/overview', async (req, res) => {
                         COUNT(*) FILTER (WHERE b.status = 'confirmed')::int AS confirmed_bookings,
                         COUNT(*) FILTER (WHERE b.status = 'preliminary')::int AS preliminary_bookings
                     FROM bookings b
-                    WHERE b.date::date >= $1::date
+                    WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date
                       AND b.date::date <= $2::date
                       AND b.status != 'cancelled'
                       AND b.linked_to IS NULL
@@ -252,7 +253,7 @@ router.get('/overview', async (req, res) => {
                 pool.query(`
                     SELECT b.program_name, COUNT(*)::int AS cnt
                     FROM bookings b
-                    WHERE b.date::date >= $1::date
+                    WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date
                       AND b.date::date <= $2::date
                       AND b.status = 'confirmed'
                       AND b.linked_to IS NULL
@@ -939,7 +940,7 @@ router.get('/briefing', async (req, res) => {
                 SELECT b.date, b.time, b.program_name, b.category, b.price, b.status, b.room, b.kids_count, b.customer_id,
                        b.banquet_guests, b.banquet_adults, b.banquet_tables, b.banquet_menu
                 FROM bookings b
-                WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' AND b.linked_to IS NULL
+                WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' AND b.linked_to IS NULL
                 ${bookingsScope.sql}
                 ORDER BY b.date, b.time
             `, bookingsScope.params),
@@ -1405,7 +1406,7 @@ router.get('/reconciliation', requireCenterRevenue, async (req, res) => {
                     COUNT(*) FILTER (WHERE b.status = 'preliminary')::int AS preliminary,
                     COALESCE(SUM(CASE WHEN b.status = 'preliminary' THEN b.price ELSE 0 END), 0)::int AS preliminary_revenue
                 FROM bookings b
-                WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.linked_to IS NULL AND b.status != 'cancelled'
+                WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date AND b.linked_to IS NULL AND b.status != 'cancelled'
                 ${bookingsScope.sql}
             `, bookingsScope.params),
             pool.query(`
@@ -1458,7 +1459,7 @@ router.get('/heatmap', async (req, res) => {
                 COUNT(*)::int AS count,
                 COALESCE(SUM(b.price), 0)::int AS revenue
             FROM bookings b
-            WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' AND b.linked_to IS NULL
+            WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' AND b.linked_to IS NULL
             ${scoped.sql}
             GROUP BY b.date
             ORDER BY b.date
@@ -1497,7 +1498,7 @@ router.get('/program-performance', async (req, res) => {
                 COALESCE(ROUND(AVG(CASE WHEN b.status = 'confirmed' THEN b.price END)), 0)::int AS avg_price,
                 COALESCE(ROUND(AVG(b.kids_count)), 0)::int AS avg_kids
             FROM bookings b
-            WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.linked_to IS NULL AND b.status != 'cancelled'
+            WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date AND b.linked_to IS NULL AND b.status != 'cancelled'
             ${scoped.sql}
             GROUP BY b.program_id, b.program_name, b.category
             ORDER BY ${performanceOrder}
@@ -1534,7 +1535,7 @@ router.get('/cross-sell', async (req, res) => {
                 AND b1.customer_id = b2.customer_id
                 AND b1.id < b2.id
                 AND b1.linked_to IS NULL AND b2.linked_to IS NULL
-            WHERE b1.date::date >= $1::date AND b1.date::date <= $2::date
+            WHERE ${businessBookingSql('b1')} AND ${businessBookingSql('b2')} AND b1.date::date >= $1::date AND b1.date::date <= $2::date
                 AND b1.status != 'cancelled' AND b2.status != 'cancelled'
                 ${comboScopeB1.sql}
                 ${comboScopeB2.sql}
@@ -1549,7 +1550,7 @@ router.get('/cross-sell', async (req, res) => {
         const addons = await pool.query(`
             SELECT b.program_name, COUNT(*)::int AS count, COALESCE(SUM(b.price), 0)::int AS revenue
             FROM bookings b
-            WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.linked_to IS NOT NULL AND b.status != 'cancelled'
+            WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date AND b.linked_to IS NOT NULL AND b.status != 'cancelled'
             ${addonScope.sql}
             GROUP BY b.program_name
             ORDER BY count DESC

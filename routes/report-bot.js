@@ -486,7 +486,7 @@ router.get('/summary', requireBotApiKey, async (req, res) => {
 router.get('/accounts', requireBotApiKey, async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id, name, emoji, description, type, sort_order FROM finance_accounts WHERE is_active = true AND is_personal = false ORDER BY sort_order'
+            'SELECT id, name, emoji, description, type, sort_order FROM finance_accounts WHERE is_active = true AND is_personal = false AND finance_qa_run_id IS NULL ORDER BY sort_order'
         );
         res.json({ success: true, accounts: result.rows });
     } catch (err) {

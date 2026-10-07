@@ -310,6 +310,7 @@ router.get('/payment-options', requireAction('confirm_payroll_payment'), async (
                 `SELECT id, name, type, icon, color
                  FROM finance_categories
                  WHERE is_active = true
+                   AND finance_qa_run_id IS NULL
                    AND type IN ('expense', 'income')
                    AND COALESCE(business_context, 'event_genix') = $1
                  ORDER BY type, sort_order, name`,
@@ -319,6 +320,7 @@ router.get('/payment-options', requireAction('confirm_payroll_payment'), async (
                 `SELECT id, name, emoji, type
                  FROM finance_accounts
                  WHERE is_active = true
+                   AND finance_qa_run_id IS NULL
                    AND COALESCE(business_context, 'event_genix') = $1
                  ORDER BY sort_order, name`,
                 [businessContext]

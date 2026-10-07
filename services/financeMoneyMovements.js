@@ -3,9 +3,10 @@
 const crypto = require('node:crypto');
 const { Client } = require('pg');
 const { normalizeMinorUnits, uahDecimalToMinorUnits } = require('./payments/money');
+const { resolveFinanceQaAccess, assertFinanceQaCommand, assertFinanceQaEntity,
+    recordFinanceQaOperation } = require('./financeMoneyQa');
 
 const PG_MAX = 9223372036854775807n;
-const LOCAL_ONLY = 'Ручний облік поки доступний лише в ізольованому тестовому середовищі.';
 const COMMAND_FIELDS = {
     enroll: ['accountId', 'openingMinor', 'effectiveAt', 'reason'],
     open_shift: ['accountId'],
@@ -46,8 +47,10 @@ function isLocalManualMoneyEnabled(queryable) {
     }
 }
 
-function assertEnabled(pool) {
-    if (!isLocalManualMoneyEnabled(pool)) fail(403, 'MANUAL_MONEY_UNAVAILABLE', LOCAL_ONLY);
+function assertEnabled(pool, context = {}) {
+    if (!isLocalManualMoneyEnabled(pool) && !context.qaToken) {
+        fail(403, 'MANUAL_MONEY_UNAVAILABLE', 'Ручний облік доступний лише в погодженому тестовому запуску.');
+    }
 }
 
 function contextValue(value) {
@@ -122,14 +125,14 @@ function canonicalPayload(input) {
 function iso(value) { return value ? new Date(value).toISOString() : null; }
 
 async function assertLegacyAccountWritable(queryable, businessContext, accountId) {
-    if (!accountId || !isLocalManualMoneyEnabled(queryable)) return;
+    if (!accountId) return;
     await queryable.query('SELECT id FROM finance_accounts WHERE id = $1 AND business_context = $2 FOR UPDATE', [accountId, businessContext]);
     const result = await queryable.query('SELECT 1 FROM finance_manual_accounts WHERE account_id = $1 AND business_context = $2', [accountId, businessContext]);
     if (result.rowCount) fail(409, 'MANUAL_ACCOUNT_OWNED', 'Цей рахунок ведеться у ручному журналі. Використайте його операції.');
 }
 
 async function assertLegacyBookingWritable(queryable, businessContext, bookingId) {
-    if (!bookingId || !isLocalManualMoneyEnabled(queryable)) return;
+    if (!bookingId) return;
     await queryable.query('SELECT id FROM bookings WHERE id = $1 AND business_context = $2 FOR UPDATE', [bookingId, businessContext]);
     const result = await queryable.query('SELECT 1 FROM finance_manual_booking_scopes WHERE booking_id = $1 AND business_context = $2', [bookingId, businessContext]);
     if (result.rowCount) fail(409, 'MANUAL_BOOKING_OWNED', 'Оплати цього бронювання ведуться у ручному журналі.');
@@ -223,24 +226,29 @@ async function bookingSummary(client, businessContext, bookingId, knownBooking) 
 }
 
 function createFinanceMoneyService(pool) {
-    async function readSnapshot(read) {
-        assertEnabled(pool);
+    async function readSnapshot(context, endpoint, read) {
+        assertEnabled(pool, context);
         const client = await pool.connect();
         try {
             await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-            const result = await read(client);
+            const qa = await resolveFinanceQaAccess(client, { actor: context.actor, businessContext: context.businessContext,
+                token: context.qaToken, endpoint });
+            if (!qa && !isLocalManualMoneyEnabled(pool)) fail(403, 'MANUAL_MONEY_UNAVAILABLE', 'Потрібен чинний тестовий запуск.');
+            const result = await read(client, qa);
             await client.query('COMMIT');
             return result;
         } catch (error) { await client.query('ROLLBACK'); throw error; }
         finally { client.release(); }
     }
 
-    async function getWorkspace({ businessContext }) {
+    async function getWorkspace(context) {
+        const { businessContext } = context;
         contextValue(businessContext);
-        return readSnapshot(async client => {
+        return readSnapshot(context, 'GET /api/finance/manual-money', async (client, qa) => {
             const source = await client.query(`SELECT a.*, m.opening_minor, m.cutoff_at
                 FROM finance_accounts a LEFT JOIN finance_manual_accounts m ON m.account_id = a.id AND m.business_context = a.business_context
-                WHERE a.business_context = $1 ORDER BY a.sort_order, a.id`, [businessContext]);
+                WHERE a.business_context = $1 AND a.finance_qa_run_id IS NOT DISTINCT FROM $2::bigint
+                ORDER BY a.sort_order, a.id`, [businessContext, qa?.runId || null]);
             const accounts = [];
             for (const account of source.rows) {
                 const blockedReason = await accountBlockReason(client, account, businessContext);
@@ -253,7 +261,8 @@ function createFinanceMoneyService(pool) {
                     openShift: await shiftDto(client, shift.rows[0]) });
             }
             const history = await client.query(`SELECT * FROM finance_manual_operations WHERE business_context = $1
-                ORDER BY recorded_at DESC, id DESC LIMIT 101`, [businessContext]);
+                AND finance_qa_run_id IS NOT DISTINCT FROM $2::bigint
+                ORDER BY recorded_at DESC, id DESC LIMIT 101`, [businessContext, qa?.runId || null]);
             const operationIds = history.rows.slice(0, 100).map(row => row.id);
             const legs = operationIds.length ? (await client.query(`SELECT * FROM finance_manual_legs
                 WHERE business_context = $1 AND operation_id = ANY($2::bigint[]) ORDER BY id`, [businessContext, operationIds])).rows : [];
@@ -264,26 +273,33 @@ function createFinanceMoneyService(pool) {
                 description: row.description, reason: row.reason, actorId: row.actor_user_id,
                 legs: legs.filter(leg => String(leg.operation_id) === String(row.id)).map(leg => ({ accountId: leg.account_id, amountMinor: String(leg.amount_minor), shiftId: leg.shift_id })) }));
             const shiftRows = await client.query(`SELECT ${SHIFT_SELECT} FROM cash_register_shifts s WHERE s.business_context = $1
-                AND s.account_id IS NOT NULL ORDER BY s.opened_at DESC, s.id DESC LIMIT 101`, [businessContext]);
+                AND s.account_id IS NOT NULL AND s.finance_qa_run_id IS NOT DISTINCT FROM $2::bigint
+                ORDER BY s.opened_at DESC, s.id DESC LIMIT 101`, [businessContext, qa?.runId || null]);
             const shifts = [];
             for (const row of shiftRows.rows.slice(0, 100)) shifts.push(await shiftDto(client, row));
             return { success: true, available: true, businessContext, currency: 'UAH', coverage: 'manual-only', accounts, operations, shifts,
+                qa: qa ? { runId: qa.publicRunId, actorId: qa.actorId, businessContext, expiresAt: qa.expiresAt, counts: qa.counts } : null,
                 hasMoreOperations: history.rows.length > 100, hasMoreShifts: shiftRows.rows.length > 100,
-                limitations: ['Лише ізольована локальна перевірка; це не загальний баланс компанії.',
+                limitations: [qa ? 'Тестовий запуск: ці записи виключені з робочого обліку компанії.' : 'Лише ізольована локальна перевірка; це не загальний баланс компанії.',
                     'Початкові залишки та перекази не є доходом. Дані P&L і старі поля оплати не змінюються.',
                     'Різниця закриття зміни є спостереженням і не змінює обліковий залишок.',
                     'Фіскальні, зарплатні, банкетні та сертифікатні платежі ведуться окремими процесами.'] };
         });
     }
 
-    async function getBookingSummary({ businessContext, bookingId }) {
+    async function getBookingSummary(context) {
+        const { businessContext } = context;
         contextValue(businessContext);
-        bookingId = textValue(bookingId, 'bookingId', 50, true);
-        return readSnapshot(client => bookingSummary(client, businessContext, bookingId));
+        const bookingId = textValue(context.bookingId, 'bookingId', 50, true);
+        return readSnapshot(context, 'GET /api/finance/manual-money/bookings/:bookingId', async (client, qa) => {
+            if (qa) await assertFinanceQaEntity(client, qa, 'booking', bookingId);
+            return bookingSummary(client, businessContext, bookingId);
+        });
     }
 
-    async function execute({ businessContext, actor }, input) {
-        assertEnabled(pool);
+    async function execute(context, input) {
+        const { businessContext, actor } = context;
+        assertEnabled(pool, context);
         contextValue(businessContext);
         const actorId = positiveId(actor?.id, 'actor');
         const payload = canonicalPayload(input);
@@ -291,17 +307,24 @@ function createFinanceMoneyService(pool) {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            // All writers use: request identity -> booking -> account IDs ascending -> original/shift.
+            // Lock order: QA run -> request identity -> booking -> account IDs ascending -> original/shift.
+            const qa = await resolveFinanceQaAccess(client, { actor, businessContext, token: context.qaToken,
+                endpoint: 'POST /api/finance/manual-money/commands', forUpdate: true });
+            if (!qa && !isLocalManualMoneyEnabled(pool)) fail(403, 'MANUAL_MONEY_UNAVAILABLE', 'Потрібен чинний тестовий запуск.');
             await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
                 [JSON.stringify([businessContext, actorId, payload.command, payload.idempotencyKey])]);
-            const replay = await client.query(`SELECT request_fingerprint, result FROM finance_manual_operations
+            const replay = await client.query(`SELECT request_fingerprint, result, finance_qa_run_id FROM finance_manual_operations
                 WHERE business_context = $1 AND actor_user_id = $2 AND command = $3 AND idempotency_key = $4`,
             [businessContext, actorId, payload.command, payload.idempotencyKey]);
             if (replay.rows.length) {
+                if (String(replay.rows[0].finance_qa_run_id || '') !== String(qa?.runId || '')) {
+                    fail(409, 'IDEMPOTENCY_SCOPE_CONFLICT', 'Цей ключ належить іншому тестовому запуску.');
+                }
                 if (replay.rows[0].request_fingerprint !== fingerprint) fail(409, 'IDEMPOTENCY_CONFLICT', 'Цей ключ запиту вже використано з іншими даними.');
                 await client.query('COMMIT');
                 return { ...replay.rows[0].result, replayed: true };
             }
+            const quota = qa ? await assertFinanceQaCommand(client, qa, payload) : null;
 
             let original = null;
             let originalLegs = [];
@@ -373,14 +396,14 @@ function createFinanceMoneyService(pool) {
             let shiftId = null;
             let legs = [];
             if (payload.command === 'enroll') {
-                await client.query(`INSERT INTO finance_manual_accounts(account_id, business_context, opening_minor, cutoff_at, enrolled_by, reason)
-                    VALUES($1, $2, $3, $4, $5, $6)`, [payload.accountId, businessContext, payload.openingMinor, effectiveAt, actorId, payload.reason]);
+                await client.query(`INSERT INTO finance_manual_accounts(account_id, business_context, opening_minor, cutoff_at, enrolled_by, reason, finance_qa_run_id)
+                    VALUES($1, $2, $3, $4, $5, $6, $7)`, [payload.accountId, businessContext, payload.openingMinor, effectiveAt, actorId, payload.reason, qa?.runId || null]);
             } else if (payload.command === 'open_shift') {
                 if (openShifts.get(payload.accountId)) fail(409, 'SHIFT_ALREADY_OPEN', 'У цієї каси вже є відкрита зміна.');
                 const created = await client.query(`INSERT INTO cash_register_shifts
-                    (business_context, account_id, opened_by, opened_at, opening_cash, opening_minor, status)
-                    VALUES($1,$2,$3,$4::timestamptz AT TIME ZONE 'UTC',0,$5,'open') RETURNING id`,
-                [businessContext, payload.accountId, actorId, effectiveAt, balances.get(payload.accountId).toString()]);
+                    (business_context, account_id, opened_by, opened_at, opening_cash, opening_minor, status, finance_qa_run_id)
+                    VALUES($1,$2,$3,$4::timestamptz AT TIME ZONE 'UTC',0,$5,'open',$6) RETURNING id`,
+                [businessContext, payload.accountId, actorId, effectiveAt, balances.get(payload.accountId).toString(), qa?.runId || null]);
                 shiftId = created.rows[0].id;
             } else if (payload.command === 'close_shift') {
                 const shift = openShifts.get(payload.accountId);
@@ -403,8 +426,8 @@ function createFinanceMoneyService(pool) {
             } else if (payload.command === 'booking_receipt') {
                 const summary = await bookingSummary(client, businessContext, bookingId, booking);
                 if (BigInt(amount) > BigInt(summary.remainingMinor)) fail(409, 'BOOKING_OVERPAYMENT', 'Сума перевищує залишок до оплати бронювання.');
-                await client.query(`INSERT INTO finance_manual_booking_scopes(booking_id, business_context, enrolled_by)
-                    VALUES($1,$2,$3) ON CONFLICT (booking_id) DO NOTHING`, [bookingId, businessContext, actorId]);
+                await client.query(`INSERT INTO finance_manual_booking_scopes(booking_id, business_context, enrolled_by, finance_qa_run_id)
+                    VALUES($1,$2,$3,$4) ON CONFLICT (booking_id) DO NOTHING`, [bookingId, businessContext, actorId, qa?.runId || null]);
                 legs = [{ accountId: payload.accountId, amountMinor: BigInt(amount) }];
             } else if (payload.command === 'transfer') {
                 if (locked.rows.some(row => row.type !== 'cash')) fail(409, 'TRANSFER_CASH_ONLY', 'Перший ручний блок підтримує лише переказ між двома касами.');
@@ -430,20 +453,21 @@ function createFinanceMoneyService(pool) {
             }
             const operation = await client.query(`INSERT INTO finance_manual_operations
                 (business_context, command, actor_user_id, idempotency_key, request_fingerprint, amount_minor, category_id,
-                 booking_id, original_id, description, reason, effective_at)
-                VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+                 booking_id, original_id, description, reason, effective_at, finance_qa_run_id)
+                VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
             [businessContext, payload.command, actorId, payload.idempotencyKey, fingerprint, amount, categoryId, bookingId,
-                original?.id || null, payload.description || null, payload.reason || null, effectiveAt]);
+                original?.id || null, payload.description || null, payload.reason || null, effectiveAt, qa?.runId || null]);
             const operationId = String(operation.rows[0].id);
             for (const leg of legs) {
-                await client.query(`INSERT INTO finance_manual_legs(operation_id, account_id, business_context, shift_id, amount_minor)
-                    VALUES($1,$2,$3,$4,$5)`, [operationId, leg.accountId, businessContext, openShifts.get(leg.accountId)?.id || null, leg.amountMinor.toString()]);
+                await client.query(`INSERT INTO finance_manual_legs(operation_id, account_id, business_context, shift_id, amount_minor, finance_qa_run_id)
+                    VALUES($1,$2,$3,$4,$5,$6)`, [operationId, leg.accountId, businessContext, openShifts.get(leg.accountId)?.id || null, leg.amountMinor.toString(), qa?.runId || null]);
             }
             const result = { success: true, replayed: false, operationId };
             if (payload.accountId) result.accountId = payload.accountId;
             if (shiftId) result.shiftId = shiftId;
             if (booking) result.bookingSummary = await bookingSummary(client, businessContext, bookingId, booking);
             await client.query('UPDATE finance_manual_operations SET result = $1::jsonb WHERE id = $2', [JSON.stringify(result), operationId]);
+            if (qa) await recordFinanceQaOperation(client, qa, { operationId, shiftId, positiveMinor: quota.positiveMinor });
             await client.query('COMMIT');
             return result;
         } catch (error) {

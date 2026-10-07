@@ -48,19 +48,36 @@ test('manual money gate inspects effective pg configuration and requires every l
         delete process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER;
         assert.equal(isLocalManualMoneyEnabled({ options: LOCAL_OPTIONS }), false);
     });
-    await t.test('disabled reads, writes and compatibility helpers never reach a database', async () => {
+    await t.test('production reads and commands without QA authorization never reach a database', async () => {
         await withLocalEnvironment(async () => {
             process.env.NODE_ENV = 'production';
             const pool = { options: LOCAL_OPTIONS,
                 connect() { assert.fail('disabled manual service must not connect'); },
-                query() { assert.fail('disabled legacy helper must not query new tables'); } };
+                query() { assert.fail('unauthorized manual request must not query'); } };
             const service = createFinanceMoneyService(pool);
             const denied = error => error.status === 403 && error.code === 'MANUAL_MONEY_UNAVAILABLE';
             await assert.rejects(service.getWorkspace({ businessContext: 'event_genix' }), denied);
             await assert.rejects(service.getBookingSummary({ businessContext: 'event_genix', bookingId: 'synthetic' }), denied);
             await assert.rejects(service.execute({ businessContext: 'event_genix', actor: { id: 1 } }, {}), denied);
-            await assertLegacyAccountWritable(pool, 'event_genix', 1);
-            await assertLegacyBookingWritable(pool, 'event_genix', 'synthetic');
+        });
+    });
+    await t.test('ownership protection remains active when new manual commands are unavailable', async () => {
+        await withLocalEnvironment(async () => {
+            process.env.NODE_ENV = 'production';
+            const calls = [];
+            const client = { query: async (sql, params) => {
+                calls.push({ sql, params });
+                return { rowCount: sql.includes('finance_manual_') ? 1 : 0, rows: [] };
+            } };
+            await assert.rejects(assertLegacyAccountWritable(client, 'event_genix', 17),
+                error => error.code === 'MANUAL_ACCOUNT_OWNED');
+            await assert.rejects(assertLegacyBookingWritable(client, 'event_genix', 'synthetic'),
+                error => error.code === 'MANUAL_BOOKING_OWNED');
+            assert.equal(calls.length, 4);
+            assert.deepEqual(calls[0].params, [17, 'event_genix']);
+            assert.deepEqual(calls[2].params, ['synthetic', 'event_genix']);
+            await assertLegacyAccountWritable(client, 'event_genix', null);
+            assert.equal(calls.length, 4);
         });
     });
 });

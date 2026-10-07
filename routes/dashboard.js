@@ -14,6 +14,7 @@ const { normalizeSubtaskSummary } = require('../services/taskSubtasks');
 const { buildTaskOperationsSummary, deriveTaskIntelligence } = require('../services/taskIntelligence');
 const { getOnlineUserIds } = require('../services/websocket');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const { businessBookingSql } = require('../services/financeQaReadScope');
 const { buildWorkQueue } = require('../services/workQueue');
 const { getOmniAccountAlertsAsync } = require('../services/omni-accounts');
 const { TASK_ACTION_TYPES } = require('../services/taskActionHistory');
@@ -1691,11 +1692,11 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                 const coldLeadParams = [CLOSED_LEAD_STAGES];
                 const coldLeadBusinessCondition = appendDashboardBusinessScope(coldLeadParams, businessScope, 'l');
                 const [bookings, tasks, revenue, overdueQS, unconfirmedQS, lowStockQS, coldLeadsQS] = await Promise.all([
-                    pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql} ${bookingCountBusinessCondition}`, bookingCountParams),
+                    pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE ${businessBookingSql('b')} AND b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql} ${bookingCountBusinessCondition}`, bookingCountParams),
                     pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE t.status = 'in_progress' ${activeTaskVisibility} ${activeTaskBusinessCondition}`, activeTaskParams),
-                    pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql} ${revenueBusinessCondition}`, revenueParams),
+                    pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE ${businessBookingSql('b')} AND b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql} ${revenueBusinessCondition}`, revenueParams),
                     pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE ${taskKpiCanonicalOverdueSql('t', `${overdueTodayRef}::date`)} ${overdueTaskVisibility} ${overdueTaskBusinessCondition}`, overdueTaskParams),
-                    pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql} ${unconfirmedBusinessCondition}`, unconfirmedParams),
+                    pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE ${businessBookingSql('b')} AND b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql} ${unconfirmedBusinessCondition}`, unconfirmedParams),
                     pool.query(`SELECT COUNT(*) as count FROM warehouse_stock ws WHERE ws.quantity <= ws.min_quantity AND ws.is_active = true ${lowStockBusinessCondition}`, lowStockParams),
                     pool.query(`SELECT COUNT(*) as count FROM leads l WHERE COALESCE(l.pipeline_stage, 'new') <> ALL($1::text[]) AND ${SALES_LEAD_TYPE_FILTER} AND COALESCE(l.last_contact_at, l.created_at) < NOW() - INTERVAL '48 hours' ${coldLeadBusinessCondition}`, coldLeadParams)
                 ]);
@@ -1771,8 +1772,8 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                                   AND l.created_at < NOW() - INTERVAL '48 hours'
                                   ${coldLeadBusinessCondition}`, coldLeadParams),
                     pool.query(`SELECT
-                                  (SELECT COUNT(*) FROM cash_register_shifts cs WHERE cs.status = 'open' ${openShiftBusinessCondition}) AS open_shifts,
-                                  (SELECT COUNT(*) FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${shiftVisibility.sql} ${shiftBookingBusinessCondition}) AS today_bk`,
+                                  (SELECT COUNT(*) FROM cash_register_shifts cs WHERE cs.finance_qa_run_id IS NULL AND cs.status = 'open' ${openShiftBusinessCondition}) AS open_shifts,
+                                  (SELECT COUNT(*) FROM bookings b WHERE ${businessBookingSql('b')} AND b.date = $1 AND b.status = 'confirmed' ${shiftVisibility.sql} ${shiftBookingBusinessCondition}) AS today_bk`,
                                 shiftParams)
                 ]);
                 const alerts = [];
@@ -1892,9 +1893,9 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                 const expenseParams = [finToday];
                 const expenseBusinessCondition = appendDashboardBusinessScope(expenseParams, businessScope, 'ft');
                 const [revenue, expenses, bookingCount] = await Promise.all([
-                    dashboardSource(meta, 'bookingValue', `SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql} ${revenueBusinessCondition}`, revenueParams),
+                    dashboardSource(meta, 'bookingValue', `SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE ${businessBookingSql('b')} AND b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql} ${revenueBusinessCondition}`, revenueParams),
                     dashboardSource(meta, 'expenses', `SELECT COALESCE(SUM(ft.amount), 0) as total FROM finance_transactions ft WHERE ft.date = $1 AND ft.type = 'expense' ${expenseBusinessCondition}`, expenseParams),
-                    dashboardSource(meta, 'bookings', `SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql} ${bookingCountBusinessCondition}`, bookingCountParams)
+                    dashboardSource(meta, 'bookings', `SELECT COUNT(*) as count FROM bookings b WHERE ${businessBookingSql('b')} AND b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql} ${bookingCountBusinessCondition}`, bookingCountParams)
                 ]);
                 data = { bookingValue: dashboardNumber(revenue, 'total'), revenue: dashboardNumber(revenue, 'total'),
                     expenses: dashboardNumber(expenses, 'total'), bookings: dashboardNumber(bookingCount, 'count'), profit: null,
@@ -2190,7 +2191,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                            COUNT(*) FILTER (WHERE b.status = 'preliminary')::int AS pending,
                            COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.price ELSE 0 END), 0)::int AS revenue
                     FROM bookings b
-                    WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+                    WHERE ${businessBookingSql('b')} AND b.date::date >= $1::date AND b.date::date <= $2::date
                       AND b.linked_to IS NULL AND b.status != 'cancelled'
                       ${bookingVisibility.sql} ${bookingBusinessCondition}
                     GROUP BY b.date ORDER BY b.date
@@ -2279,7 +2280,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                     const expenseParams = [from, today];
                     const expenseBusinessCondition = appendDashboardBusinessScope(expenseParams, businessScope, 'ft');
                     const [bookings, expenses] = await Promise.all([
-                        dashboardSource(meta, `${key}BookingValue`, `SELECT COALESCE(SUM(b.price),0) AS total FROM bookings b WHERE b.date::date BETWEEN $1::date AND $2::date AND b.status = 'confirmed' AND b.linked_to IS NULL ${visibility.sql} ${businessCondition}`, params),
+                        dashboardSource(meta, `${key}BookingValue`, `SELECT COALESCE(SUM(b.price),0) AS total FROM bookings b WHERE ${businessBookingSql('b')} AND b.date::date BETWEEN $1::date AND $2::date AND b.status = 'confirmed' AND b.linked_to IS NULL ${visibility.sql} ${businessCondition}`, params),
                         dashboardSource(meta, `${key}Expenses`, `SELECT COALESCE(SUM(ft.amount),0) AS total FROM finance_transactions ft WHERE ft.date::date BETWEEN $1::date AND $2::date AND ft.type = 'expense' ${expenseBusinessCondition}`, expenseParams)
                     ]);
                     return { from, to: today, bookingValue: dashboardNumber(bookings, 'total'), revenue: dashboardNumber(bookings, 'total'),
@@ -2416,14 +2417,14 @@ router.get('/today', shapeDashboardRevenue, async (req, res) => {
         const newLeadBusinessCondition = appendDashboardBusinessScope(newLeadParams, businessScope, 'l');
 
         const [bookings, tasks, revenue, teamOnline, newLeads] = await Promise.all([
-            pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql} ${bookingCountBusinessCondition}`, bookingCountParams),
+            pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE ${businessBookingSql('b')} AND b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql} ${bookingCountBusinessCondition}`, bookingCountParams),
             pool.query(`SELECT COUNT(*) as count
                         FROM tasks t
                         WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'cancelled', 'archived')
                         ${taskVisibility}
                         ${ownTaskFilter}
                         ${taskBusinessCondition}`, taskParams),
-            pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql} ${revenueBusinessCondition}`, revenueParams),
+            pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE ${businessBookingSql('b')} AND b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql} ${revenueBusinessCondition}`, revenueParams),
             pool.query("SELECT COUNT(*) as count FROM users u LEFT JOIN employee_profiles ep ON ep.user_id = u.id WHERE u.is_active = true AND ep.last_activity_at > NOW() - INTERVAL '5 minutes'"),
             pool.query(`SELECT COUNT(*) as count FROM leads l WHERE COALESCE(l.pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} ${newLeadBusinessCondition}`, newLeadParams),
         ]);
@@ -2556,8 +2557,8 @@ router.get('/alerts', async (req, res) => {
             pool.query(`SELECT b.id, b.label, b.time FROM bookings b WHERE b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql} ${unconfirmedBusinessCondition} ORDER BY b.time LIMIT 5`, unconfirmedParams),
             pool.query(`SELECT ws.name, ws.quantity, ws.min_quantity, ws.unit FROM warehouse_stock ws WHERE ws.quantity <= ws.min_quantity AND ws.is_active = true ${lowStockBusinessCondition} LIMIT 3`, lowStockParams),
             pool.query(`SELECT COUNT(*) as c FROM leads l WHERE COALESCE(l.pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} AND l.created_at < NOW() - INTERVAL '48 hours' ${coldLeadBusinessCondition}`, coldLeadParams),
-            pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts cs WHERE cs.status='open' ${openShiftBusinessCondition}) AS open_shifts,
-                               (SELECT COUNT(*) FROM bookings b WHERE b.date=$1 AND b.status='confirmed' ${shiftVisibility.sql} ${shiftBookingBusinessCondition}) AS today_bk`, shiftParams)
+            pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts cs WHERE cs.finance_qa_run_id IS NULL AND cs.status='open' ${openShiftBusinessCondition}) AS open_shifts,
+                               (SELECT COUNT(*) FROM bookings b WHERE ${businessBookingSql('b')} AND b.date=$1 AND b.status='confirmed' ${shiftVisibility.sql} ${shiftBookingBusinessCondition}) AS today_bk`, shiftParams)
         ]);
         const alerts = [];
         alerts.push(...urgentAlerts);

@@ -8,6 +8,7 @@ const { canUseAction } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const { businessBookingSql } = require('../services/financeQaReadScope');
 const {
     resolveBusinessScope,
     requireBusinessScope,
@@ -43,7 +44,7 @@ router.get('/stats', async (req, res) => {
                 `SELECT COUNT(*)::int as total,
                     COUNT(*) FILTER (WHERE b.status = 'confirmed')::int as confirmed,
                     COUNT(*) FILTER (WHERE b.status = 'preliminary')::int as preliminary
-                 FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled'
+                 FROM bookings b WHERE ${businessBookingSql('b')} AND b.date = $1 AND b.status != 'cancelled'
                  AND ${bookingBusinessCondition}
                  ${bookingScope.sql}`, bookingParams
             ),
@@ -89,7 +90,7 @@ router.get('/stats', async (req, res) => {
             canViewRevenue ?
                 pool.query(
                     `SELECT COALESCE(SUM(b.price), 0)::int as revenue FROM bookings b
-                     WHERE b.date = $1 AND b.status != 'cancelled'
+                     WHERE ${businessBookingSql('b')} AND b.date = $1 AND b.status != 'cancelled'
                      AND ${revenueBusinessCondition}
                      ${revenueScope.sql}`, revenueParams
                 ) : Promise.resolve({ rows: [{ revenue: null }] })

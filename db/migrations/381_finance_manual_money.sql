@@ -1,7 +1,11 @@
 -- MIGRATION_KIND: schema
--- SAFETY: Additive manual-only account journal. No existing finance, booking, payment, payroll or fiscal rows are changed. Preserves the one-open legacy shift invariant while adding per-account manual shifts. Execution authorized only in isolated local QA by FIN-MONEY-01-LOCAL, 2026-10-07.
--- ROLLBACK: Keep all journal evidence; roll application back with manual routes disabled. Do not drop populated journal tables or restore the old business-wide shift index while multiple manual shifts are open. Local disposable QA databases may be recreated by the approved isolated test runner.
+-- SAFETY: Manual account journal with no mutation of existing finance, booking, payment, payroll or fiscal rows. Preserves one-open legacy shift invariant; replaces the business-wide index with separate legacy and per-account guards. FIN-MONEY-02-PROD-QA requires the exact reviewed SQL hash and bounded test-only release manifest before production execution.
+-- ROLLBACK: Keep journal evidence and use a compatible application retaining ownership guards and legacy/manual shift separation with new commands disabled. A pre381 binary is unsafe after manual records exist. Do not drop journal tables or restore the old business-wide index. Disposable local test databases may be recreated by the isolated runner.
 -- OPERATOR_APPROVAL: required
+
+-- Transaction-local limits: each lock wait is bounded; each DDL statement has its own deadline.
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '60s';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_finance_accounts_id_business_v381
     ON finance_accounts(id, business_context);

@@ -6,14 +6,28 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
-const { chromium } = require(process.env.FINANCE_QA_PLAYWRIGHT || 'playwright');
+const { chromium } = requirePlaywright();
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
+
+function requirePlaywright() {
+    if (process.env.FINANCE_QA_PLAYWRIGHT) return require(process.env.FINANCE_QA_PLAYWRIGHT);
+    try { return require('playwright'); } catch { /* npm exec exposes its package through PATH. */ }
+    for (const entry of String(process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+        const normalized = entry.replace(/[\\/]+$/, '');
+        if (!/node_modules[\\/]\.bin$/i.test(normalized)) continue;
+        const packageDirectory = path.join(path.dirname(normalized), 'playwright');
+        if (fs.existsSync(packageDirectory)) return require(packageDirectory);
+    }
+    throw new Error('Playwright unavailable; run through npm exec --package=playwright or set FINANCE_QA_PLAYWRIGHT.');
+}
 
 assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
 const database = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, { ...process.env, DATABASE_URL: '' });
 assert.equal(database.isLocal, true);
 const base = process.env.TEST_URL;
-const output = path.resolve(__dirname, '../../output/playwright/finance-money');
+const output = path.resolve(__dirname, process.env.CI
+    ? '../../output/playwright/hr-pay-actual-app/finance-money'
+    : '../../output/playwright/finance-money');
 
 (async () => {
     fs.mkdirSync(output, { recursive: true });

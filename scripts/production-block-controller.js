@@ -7,6 +7,8 @@ const path = require('node:path');
 const {
     ProductionBlockError,
     PROTECTED_WORKFLOWS,
+    isPreparedProtectedRelease,
+    migrationSqlHash,
     validateProtectedWorkflow,
     redChangedPaths,
     TARGET,
@@ -23,6 +25,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const TRUSTED_QA_CONTROLLER = path.join(ROOT, 'scripts', 'trusted-qa-timeline-controller.js');
 const CERTIFICATE_QA_OPERATOR = path.join(ROOT, 'scripts', 'trusted-qa-certificate-run.js');
+const FINANCE_QA_OPERATOR = path.join(ROOT, 'scripts', 'trusted-qa-finance-run.js');
 
 function fail(condition, message, code, details = {}) {
     if (!condition) throw new ProductionBlockError(message, code, details);
@@ -204,12 +207,12 @@ async function liveVersion(url = TARGET.liveUrl) {
     return body;
 }
 
-function assertHrPayrollProductionBase(manifest, live, remoteSha) {
-    if (manifest.allowedProtectedWorkflow?.kind !== PROTECTED_WORKFLOWS.HR_PAYROLL) return;
+function assertPreparedProductionBase(manifest, live, remoteSha) {
+    if (!isPreparedProtectedRelease(manifest)) return;
     fail(live.sourceBranch === TARGET.branch && live.commitSha === manifest.baseLiveSha,
-        'Live production changed after HR/payroll preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+        'Live production changed after exact release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
     fail(remoteSha === manifest.baseLiveSha || remoteSha === manifest.initialHeadSha,
-        'Production branch changed outside the exact HR/payroll release', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+        'Production branch changed outside the exact prepared release', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
 }
 
 function remoteProductionSha() {
@@ -246,6 +249,7 @@ function defaultRuntime() {
                 descendsFromBase: gitIsAncestor(manifest.baseLiveSha, head),
                 descendsFromInitial: gitIsAncestor(manifest.initialHeadSha, head),
                 migrations: loadMigrations(paths).map(item => item.file).sort(),
+                migrationHashes: Object.fromEntries(loadMigrations(paths).map(item => [item.file, migrationSqlHash(item.sql)])),
                 changedPaths: paths
             };
         },
@@ -253,27 +257,27 @@ function defaultRuntime() {
             return releaseCommandPlan(manifest);
         },
         async preflightExecution(manifest) {
-            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
-                assertHrPayrollProductionBase(manifest, await liveVersion(), remoteProductionSha());
+            if (isPreparedProtectedRelease(manifest)) {
+                assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
             }
+            if (manifest.allowedQaScope?.kind === 'finance') financeQaPreflight(manifest.allowedQaScope);
             resolveSpawnCommand('npm', ['test']);
         },
         async resumeQa(manifest, releaseSha) {
             return resumeAuthorizedQa(manifest, releaseSha);
         },
         async preflightQa(scope, live) {
-            return scope.kind === 'certificate'
-                ? certificateQaPreflight(scope)
-                : trustedQaPreflight(scope, live);
+            if (scope.kind === 'finance') return financeQaPreflight(scope);
+            return scope.kind === 'certificate' ? certificateQaPreflight(scope) : trustedQaPreflight(scope, live);
         },
         async execute(manifest, blockFile) {
             commandResult('npm', ['test'], { inherit: true });
-            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+            if (isPreparedProtectedRelease(manifest)) {
                 commandResult('npm', ['run', 'check:version'], { inherit: true });
                 fail(git(['rev-parse', 'HEAD']).toLowerCase() === manifest.initialHeadSha
                     && !git(['status', '--porcelain'])
                     && JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version === manifest.preparedRelease.version,
-                    'Prepared HR/payroll release drifted', 'PRODUCTION_BLOCK_RELEASE_SHA_DRIFT');
+                    'Prepared protected release drifted', 'PRODUCTION_BLOCK_RELEASE_SHA_DRIFT');
             } else {
                 commandResult('npm', ['run', 'version:bump', '--', 'patch', '--label', manifest.releaseLabel], { inherit: true });
                 applyReleaseNotes(manifest);
@@ -293,15 +297,15 @@ function defaultRuntime() {
             fail(JSON.stringify(migrationFiles) === JSON.stringify(manifest.allowedMigrationFiles),
                 'Migration set drifted after authorization', 'PRODUCTION_BLOCK_MIGRATION_DRIFT');
             commandResult('git', ['push', 'origin', `HEAD:refs/heads/${manifest.allowedBranch}`], { inherit: true });
-            const exact = findExactCiRun(releaseSha, { hrPayroll: manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL });
+            const exact = findExactCiRun(releaseSha, { strictProduction: isPreparedProtectedRelease(manifest) });
             fail(Boolean(exact), 'Exact-SHA GitHub CI run was not found', 'PRODUCTION_BLOCK_CI_NOT_FOUND');
             commandResult('gh', ['run', 'watch', String(exact.databaseId), '--exit-status'], { inherit: true });
-            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+            if (isPreparedProtectedRelease(manifest)) {
                 const ci = JSON.parse(commandResult('gh', ['run', 'view', String(exact.databaseId), '--json',
                     'headSha,headBranch,workflowName,event,status,conclusion,jobs']));
                 assertHrPayrollCiResult(ci, releaseSha);
                 // CI can take minutes; check foreign live/remote drift again immediately before upload.
-                assertHrPayrollProductionBase(manifest, await liveVersion(), remoteProductionSha());
+                assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
             }
             commandResult('npm', ['run', 'release:railway-up', '--',
                 '--branch', manifest.allowedBranch,
@@ -431,6 +435,31 @@ function certificateQaPreflight(scope) {
     }
 }
 
+function financeQaPreflight(scope, dependencies = {}) {
+    validateQaScope(scope);
+    fail(scope.kind === 'finance', 'Finance planner requires a finance scope', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+    const env = dependencies.env || process.env;
+    const run = dependencies.commandResult || commandResult;
+    fail(Boolean(env.TRUSTED_QA_OPERATOR_DATABASE_URL)
+        && env.DATABASE_URL === env.TRUSTED_QA_OPERATOR_DATABASE_URL,
+    'Finance QA preflight requires the exact process-local operator database URL',
+    'PRODUCTION_BLOCK_QA_OPERATOR_DATABASE_MISSING');
+    const report = parseControllerJson(run(process.execPath, [
+        FINANCE_QA_OPERATOR, '--mode', 'plan', '--plan-file', scope.planFile
+    ]), 'PRODUCTION_BLOCK_QA_PREFLIGHT_MALFORMED');
+    fail(report.planHash === scope.planHash
+        && report.plan?.runId === scope.runId
+        && report.plan?.testAccountId === scope.testAccountId
+        && report.plan?.businessContext === scope.businessContext
+        && report.plan?.ttlMinutes === scope.ttlMinutes
+        && report.readiness?.isolated === true
+        && report.readiness?.openFinanceRuns === 0,
+    'Finance QA read-only preflight did not confirm the full signed plan and isolated scope',
+    'PRODUCTION_BLOCK_QA_PREFLIGHT_FAILED');
+    return { success: true, action: 'preflight', collisionFree: true,
+        planHash: report.planHash, runId: scope.runId };
+}
+
 function findUnexpiredQaBlocker(status, now = new Date()) {
     return (status?.runs || []).find(run => run?.state === 'active'
         && Number.isFinite(Date.parse(String(run.expiresAt || '')))
@@ -481,6 +510,15 @@ async function resumeAuthorizedQa(manifest, releaseSha, dependencies = {}) {
     fail(String(live.commitSha || '').toLowerCase() === releaseSha
         && live.sourceBranch === manifest.allowedBranch,
     'Live release identity differs from the block release SHA/branch', 'PRODUCTION_BLOCK_QA_LIVE_DRIFT');
+    if (manifest.allowedQaScope.kind === 'finance') {
+        const preflight = dependencies.financeQaPreflight || financeQaPreflight;
+        await preflight(manifest.allowedQaScope);
+        return sanitize({ status: 'pending_manual', kind: 'finance',
+            runId: manifest.allowedQaScope.runId,
+            testAccountId: manifest.allowedQaScope.testAccountId,
+            ttlMinutes: manifest.allowedQaScope.ttlMinutes,
+            planHash: manifest.allowedQaScope.planHash });
+    }
     if (manifest.allowedQaScope.kind === 'certificate') {
         return sanitize({ status: 'pending_manual', kind: 'certificate',
             runId: manifest.allowedQaScope.runId,
@@ -521,26 +559,27 @@ function selectHrPayrollCiRun(runs, releaseSha) {
 function assertHrPayrollCiResult(run, releaseSha) {
     fail(run?.headSha === releaseSha && run.headBranch === TARGET.branch
         && run.workflowName === 'CI' && run.event === 'push',
-    'HR/payroll requires the production push CI for the exact release SHA', 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
+    'Prepared protected release requires production push CI for the exact SHA', 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
     fail(run.status === 'completed' && run.conclusion === 'success',
-        'HR/payroll production CI is not successful', 'PRODUCTION_BLOCK_CI_INCOMPLETE');
+        'Prepared protected release CI is not successful', 'PRODUCTION_BLOCK_CI_INCOMPLETE');
     const jobs = Array.isArray(run.jobs) ? run.jobs : [];
     fail(HR_PAYROLL_REQUIRED_CI_JOBS.every(name => {
         const matching = jobs.filter(job => job.name === name);
         return matching.length === 1 && matching[0].status === 'completed' && matching[0].conclusion === 'success';
-    }), 'HR/payroll required CI jobs are missing, skipped or unsuccessful', 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED');
+    }), 'Prepared protected release CI jobs are missing, skipped or unsuccessful', 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED');
 }
 
 function findExactCiRun(releaseSha, options = {}) {
+    const strictProduction = options.strictProduction === true || options.hrPayroll === true;
     const attempts = Number(options.attempts || 12);
     const delayMs = Number(options.delayMs || 5000);
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
         const runs = JSON.parse(commandResult('gh', [
             'run', 'list', '--commit', releaseSha, '--limit', '10',
-            ...(options.hrPayroll ? ['--workflow', 'ci.yml', '--branch', TARGET.branch, '--event', 'push'] : []),
+            ...(strictProduction ? ['--workflow', 'ci.yml', '--branch', TARGET.branch, '--event', 'push'] : []),
             '--json', 'databaseId,headSha,headBranch,workflowName,event,status,conclusion,url'
         ]));
-        const exact = options.hrPayroll ? selectHrPayrollCiRun(runs, releaseSha) : runs.find(run => run.headSha === releaseSha);
+        const exact = strictProduction ? selectHrPayrollCiRun(runs, releaseSha) : runs.find(run => run.headSha === releaseSha);
         if (exact) return exact;
         if (attempt < attempts) childProcess.spawnSync(process.execPath, ['-e', `setTimeout(() => {}, ${delayMs})`], {
             cwd: ROOT, windowsHide: true, stdio: 'ignore'
@@ -552,7 +591,7 @@ function findExactCiRun(releaseSha, options = {}) {
 function releaseCommandPlan(manifest) {
     return [
         'npm test',
-        ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL
+        ...(isPreparedProtectedRelease(manifest)
             ? ['npm run check:version (prepared exact SHA)']
             : [`npm run version:bump -- patch --label "${manifest.releaseLabel}"`]),
         `git push origin HEAD:refs/heads/${manifest.allowedBranch}`,
@@ -560,7 +599,9 @@ function releaseCommandPlan(manifest) {
         `npm run release:railway-up -- --branch ${manifest.allowedBranch} --project ${manifest.railwayProjectId} --environment ${manifest.railwayEnvironment} --service ${manifest.railwayServiceId}`,
         'npm run version:smoke -- <live-url>',
         'npm run release:timeline-proof -- <live-url>',
-        ...(manifest.allowedQaScope?.kind === 'certificate'
+        ...(manifest.allowedQaScope?.kind === 'finance'
+            ? ['Finance QA: fresh hash-bound plan preflight, then pending_manual; no automatic record creation']
+            : manifest.allowedQaScope?.kind === 'certificate'
             ? ['Certificate QA: one manual plan/create/finish run after exact live identity proof']
             : manifest.allowedQaScope?.enabled
                 ? ['npm run qa:timeline:controller -- --action run <authorized-scope>'] : [])
@@ -588,11 +629,16 @@ async function statusAction(options) {
 
 async function assertExecuteDrift(manifest, runtime) {
     const drift = await runtime.drift(manifest);
-    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
-        fail(drift.head === manifest.initialHeadSha, 'HR/payroll requires its exact prepared SHA', 'PRODUCTION_BLOCK_SHA_DRIFT');
+    if (isPreparedProtectedRelease(manifest)) {
+        fail(drift.head === manifest.initialHeadSha, 'Protected release requires its exact prepared SHA', 'PRODUCTION_BLOCK_SHA_DRIFT');
         fail(JSON.stringify([...(drift.changedPaths || [])].sort()) === JSON.stringify([...manifest.changedPaths].sort()),
-            'HR/payroll file inventory drifted', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
-        validateProtectedWorkflow(PROTECTED_WORKFLOWS.HR_PAYROLL, drift.changedPaths, redChangedPaths(drift.changedPaths));
+            'Protected release file inventory drifted', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+        validateProtectedWorkflow(manifest.allowedProtectedWorkflow.kind, drift.changedPaths, redChangedPaths(drift.changedPaths));
+    }
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
+        const expectedHashes = Object.fromEntries(manifest.migrationClassifications.map(item => [item.file, item.sqlHash]));
+        fail(stableJson(drift.migrationHashes || {}) === stableJson(expectedHashes),
+            'Finance migration SQL changed after exact authorization', 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT');
     }
     fail(drift.descendsFromBase === true && gitIsSafeDescendant(manifest.initialHeadSha, drift.head, drift),
         'Candidate SHA is outside the authorized descendant envelope', 'PRODUCTION_BLOCK_SHA_DRIFT');
@@ -726,7 +772,8 @@ if (require.main === module) {
 module.exports = {
     applyReleaseNotes,
     assertExecuteDrift,
-    assertHrPayrollProductionBase,
+    assertHrPayrollProductionBase: assertPreparedProductionBase,
+    assertPreparedProductionBase,
     assertHrPayrollCiResult,
     selectHrPayrollCiRun,
     defaultBlockFile,
@@ -735,6 +782,7 @@ module.exports = {
     executeAction,
     findExactCiRun,
     findUnexpiredQaBlocker,
+    financeQaPreflight,
     isReleaseArtifact,
     parseOptions,
     parseQaScope,

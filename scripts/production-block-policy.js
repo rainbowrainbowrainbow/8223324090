@@ -21,7 +21,8 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
     CERTIFICATE_CI_GATE: 'certificate-ci-gate',
     LEAD_UI_CI_GATE: 'lead-ui-ci-gate',
-    HR_PAYROLL: 'hr-payroll'
+    HR_PAYROLL: 'hr-payroll',
+    FINANCE_MANUAL_QA: 'finance-manual-qa'
 });
 const CERTIFICATE_QA_RED_PATHS = Object.freeze(['routes/auth.js', 'routes/finance.js']);
 const CERTIFICATE_QA_MIGRATION = 'db/migrations/371_trusted_qa_certificate_lookup.sql';
@@ -223,6 +224,60 @@ const RED_PATH_PATTERNS = Object.freeze([
     /^routes\/(?:auth|payments?|payroll|finance)\.js$/
 ]);
 
+// Exact finance implementation and release markers; no auth, provider, CI or settings paths.
+const FINANCE_MANUAL_RED_PATHS = Object.freeze(['routes/finance.js', 'routes/payroll.js']);
+const FINANCE_MANUAL_CHANGED_PATHS = Object.freeze([
+    'config/cssSurface.js', 'css/dark-mode.css', 'css/finance-money.css', 'css/finance-redesign.css',
+    'db/migrations/381_finance_manual_money.sql', 'db/migrations/382_finance_trusted_qa.sql',
+    'docs/CSS_SURFACE.md', 'docs/FINANCE_MONEY_FLOW_CONTRACT_DRAFT.md',
+    'docs/FINANCE_MONEY_LOCAL_STATUS_2026-10-07.md', 'docs/FINANCE_PRODUCTION_QA_PLAN_2026-10-07.md',
+    'docs/FINANCE_WORKFLOW_WAVE1_STATUS_2026-10-07.md', 'docs/CODEX_PRODUCTION_AUTONOMY.md',
+    'docs/FINANCE_PRODUCTION_QA_STATUS_2026-10-08.md', 'docs/FINANCE_PRODUCTION_QA_RELEASE_NOTES.json',
+    'js/analytics-page.js', 'js/finance-money.js', 'js/finance-page.js',
+    'routes/finance.js', 'routes/analytics.js', 'routes/payroll.js', 'routes/report-bot.js',
+    'routes/dashboard.js', 'routes/stats.js', 'routes/board.js', 'routes/center.js',
+    'services/financeMoneyMovements.js', 'services/financeMoneyQa.js', 'services/trustedQaRuns.js',
+    'services/financeQaReadScope.js',
+    'scripts/production-block-policy.js', 'scripts/production-block-controller.js',
+    'scripts/run-isolated-postgres-tests.js', 'scripts/trusted-qa-finance-run.js',
+    'tests/analytics-widgets-ui.test.js', 'tests/browser/finance-money-actual-app-browser-smoke.js',
+    'tests/browser/finance-money-production-qa.js', 'tests/finance-money-production-qa.test.js',
+    'tests/browser/finance-workflow-fixture.js', 'tests/chat-task-authz.test.js',
+    'tests/finance-money-service-boundaries.test.js', 'tests/finance-money-ui.test.js',
+    'tests/finance-money-qa-ui.test.js', 'tests/finance-money-qa.test.js',
+    'tests/finance-qa-read-scope.test.js', 'tests/finance-business-isolation.test.js',
+    'tests/finance-qa-report-scope.test.js',
+    'tests/finance-workflow-ui.test.js', 'tests/integration/finance-money-movements.integration.test.js',
+    'tests/integration/finance-money-qa.integration.test.js', 'tests/integration/finance-transactions-pnl.integration.test.js',
+    'tests/isolated-postgres-test-flow.test.js', 'tests/operational-business-context.test.js',
+    'tests/payroll-finance-workflow-contract.test.js', 'tests/production-block-controller.test.js', 'tests/route-smoke.test.js',
+    // Generated version/cache inventory is enumerated independently of other protected workflows.
+    'CHANGELOG.md', 'accounting-deposits.html', 'afisha.html', 'art-director.html', 'booking-summary.html',
+    'cashier-payments.html', 'center.html', 'certificates.html', 'chat-settings.html', 'chat.html',
+    'checkin.html', 'content.html', 'copilot.html', 'css/assistant-rail.css', 'css/pages-shell.css',
+    'css/pages.css', 'css/sidebar-aurora.css', 'customers.html', 'dashboard.html', 'data-deletion.html',
+    'demo.html', 'designer.html', 'designs.html', 'docs/integrations/checkbox/IMPLEMENTATION_STATUS.md',
+    'finance.html', 'game.html', 'graduation.html', 'guardian-ops.html', 'hermes-studio.html', 'hr.html',
+    'index.html', 'invite.html', 'js/designs-page.js', 'landing/index.html', 'leads.html', 'omni.html',
+    'package-lock.json', 'package.json', 'privacy-policy.html', 'profile.html', 'programs.html', 'quiz.html',
+    'report-agent.html', 'reports.html', 'room.html', 'server.js', 'shop.html', 'sound.html', 'staff.html',
+    'status.html', 'sw.js', 'tasks.html', 'terms-of-service.html', 'tests/ui-check.js',
+    'timeline-settings.html', 'training.html', 'warehouse.html'
+]);
+const FINANCE_MANUAL_REQUIRED_PATHS = Object.freeze([
+    'routes/finance.js', 'services/financeMoneyMovements.js', 'services/financeMoneyQa.js',
+    'services/trustedQaRuns.js', 'scripts/trusted-qa-finance-run.js', 'scripts/run-isolated-postgres-tests.js',
+    'db/migrations/381_finance_manual_money.sql', 'db/migrations/382_finance_trusted_qa.sql',
+    'tests/integration/finance-money-movements.integration.test.js',
+    'tests/integration/finance-money-qa.integration.test.js', 'tests/browser/finance-money-actual-app-browser-smoke.js'
+]);
+// Hash the exact reviewed SQL after CRLF -> LF only; preserve every other byte.
+const FINANCE_MANUAL_SQL_HASHES = Object.freeze({
+    'db/migrations/381_finance_manual_money.sql': '087fd042bc05ba204157757bedb8404f4eee826974a38615680a54abd97c39aa',
+    'db/migrations/382_finance_trusted_qa.sql': '019eb1422489f2f25c091bbe0b18b31a86a6b73db9d58b3538abe0511253ef05'
+});
+const FINANCE_SQL_EXCEPTION = 'finance-manual-qa:reviewed-exact-sql';
+
 class ProductionBlockError extends Error {
     constructor(message, code = 'PRODUCTION_BLOCK_FAILED', details = {}) {
         super(message);
@@ -277,6 +332,15 @@ function sanitize(value, key = '') {
 function migrationNumber(file) {
     const match = path.basename(file).match(/^(\d{3})_/);
     return match ? Number(match[1]) : null;
+}
+
+function migrationSqlHash(sql) {
+    return crypto.createHash('sha256').update(String(sql).replace(/\r\n/g, '\n'), 'utf8').digest('hex');
+}
+
+function isPreparedProtectedRelease(manifest) {
+    return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA]
+        .includes(manifest.allowedProtectedWorkflow?.kind);
 }
 
 function migrationHeader(sql, name) {
@@ -343,6 +407,16 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
+        const changed = normalizePathList(changedPaths);
+        fail(redPaths.includes('routes/finance.js') && redPaths.every(file => FINANCE_MANUAL_RED_PATHS.includes(file)),
+            'Finance permits only its finance route and payroll selector guard', 'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
+        fail(changed.every(file => FINANCE_MANUAL_CHANGED_PATHS.includes(file))
+            && FINANCE_MANUAL_REQUIRED_PATHS.every(file => changed.includes(file)),
+            'Finance requires the exact journal, QA isolation, migrations and actual PostgreSQL/browser regressions',
+            'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: [...redPaths] };
+    }
     if (workflow === PROTECTED_WORKFLOWS.HR_PAYROLL) {
         const changed = normalizePathList(changedPaths);
         fail(redPaths.includes('routes/payroll.js') && redPaths.every(file => HR_PAYROLL_RED_PATHS.includes(file)),
@@ -420,11 +494,27 @@ function validateQaScope(scope) {
         return value;
     }
     const allowedKeys = new Set(['enabled', 'kind', 'date', 'ttlMinutes', 'animators', 'fixtureLimit',
-        'runId', 'testAccountId', 'businessContext']);
+        'runId', 'testAccountId', 'businessContext', 'planFile', 'planHash']);
     fail(Object.keys(value).every(key => allowedKeys.has(key)),
         'QA scope contains unsupported options', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
-    fail(['timeline', 'canary', 'certificate'].includes(value.kind),
-        'QA kind must be timeline, canary, or certificate', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+    fail(['timeline', 'canary', 'certificate', 'finance'].includes(value.kind),
+        'QA kind must be timeline, canary, certificate, or finance', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+    if (value.kind === 'finance') {
+        fail(Object.keys(value).every(key => ['enabled', 'kind', 'runId', 'testAccountId',
+            'businessContext', 'ttlMinutes', 'planFile', 'planHash'].includes(key))
+            && /^[a-zA-Z0-9_-]{8,64}$/.test(String(value.runId || ''))
+            && Number.isSafeInteger(value.testAccountId) && value.testAccountId > 0
+            && value.businessContext === 'event_genix'
+            && Number.isInteger(value.ttlMinutes) && value.ttlMinutes >= 1 && value.ttlMinutes <= 30
+            && /^[a-f0-9]{64}$/.test(String(value.planHash || ''))
+            && typeof value.planFile === 'string' && value.planFile.length <= 2000
+            && value.planFile === value.planFile.trim() && !/[\u0000-\u001f]/.test(value.planFile)
+            && /\.json$/i.test(value.planFile)
+            && (/^[a-zA-Z]:[\\/]/.test(value.planFile) || /^\/(?!\/)/.test(value.planFile)),
+        'Finance QA requires one exact Park account, bounded run, 1-30 minute TTL and a local absolute hash-bound JSON plan',
+        'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+        return value;
+    }
     if (value.kind === 'certificate') {
         fail(Object.keys(value).every(key => ['enabled', 'kind', 'runId', 'testAccountId',
             'businessContext', 'ttlMinutes', 'fixtureLimit'].includes(key))
@@ -437,7 +527,7 @@ function validateQaScope(scope) {
         'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
         return value;
     }
-    fail(!Object.keys(value).some(key => ['runId', 'testAccountId', 'businessContext'].includes(key)),
+    fail(!Object.keys(value).some(key => ['runId', 'testAccountId', 'businessContext', 'planFile', 'planHash'].includes(key)),
         'Timeline QA does not accept certificate options', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
     fail(/^\d{4}-\d{2}-\d{2}$/.test(String(value.date || '')),
         'QA scope requires an exact YYYY-MM-DD date', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
@@ -488,6 +578,8 @@ function buildManifest(facts, options = {}) {
     const redPaths = redChangedPaths(changed);
     const protectedWorkflow = validateProtectedWorkflow(options.protectedWorkflow || 'none', changed, redPaths);
     const qaScope = validateQaScope(options.qaScope || { enabled: false });
+    fail(qaScope.kind !== 'finance' || protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
+        'Finance QA scope requires the dedicated finance workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE) {
         fail(qaScope.enabled === false && migrations.length === 0,
             'Certificate CI release cannot include migrations or QA records',
@@ -503,7 +595,17 @@ function buildManifest(facts, options = {}) {
         fail(isNewerVersion(facts.releaseVersion, facts.live?.version),
             'HR/payroll needs a prepared release commit newer than live', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
-    const redMigrations = migrations.filter(item => item.red);
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
+        migrations.forEach((item, index) => {
+            item.sqlHash = migrationSqlHash(facts.migrations[index].sql);
+            item.protectedException = FINANCE_SQL_EXCEPTION;
+        });
+        validateFinanceScope(qaScope, migrations);
+        fail(isNewerVersion(facts.releaseVersion, facts.live?.version),
+            'Finance needs a prepared release commit newer than live', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    }
+    const redMigrations = migrations.filter(item => item.red
+        && protectedWorkflow.kind !== PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA);
     fail(facts.descendsFromLive === true, 'Candidate HEAD is not a descendant of live SHA', 'PRODUCTION_BLOCK_NOT_DESCENDANT');
     fail(redMigrations.length === 0, 'Candidate includes a Red migration', 'PRODUCTION_BLOCK_RED_MIGRATION', {
         migrations: redMigrations.map(item => ({ file: item.file, reason: item.redReason }))
@@ -533,10 +635,12 @@ function buildManifest(facts, options = {}) {
         protectedContractMutationAllowed: false,
         rollbackReference: options.rollbackReference || {
             previousProductionSha: baseLiveSha,
+            ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
+                ? { compatibleBinaryRequired: true, pre381RollbackProhibited: true, preserveJournalEvidence: true } : {}),
             migrations: Object.fromEntries(migrations.map(item => [item.file, item.rollback || 'No automatic rollback documented']))
         },
         changedPaths: changed,
-        ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.HR_PAYROLL ? {
+        ...([PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA].includes(protectedWorkflow.kind) ? {
             preparedRelease: { sha: head, version: facts.releaseVersion, baseVersion: facts.live.version }
         } : {}),
         runtimeState: {
@@ -584,6 +688,8 @@ function validateManifest(manifest, options = {}) {
     validateReleaseNotes(manifest.releaseNotes);
     const changed = normalizePathList(manifest.changedPaths || []);
     const protectedWorkflow = manifest.allowedProtectedWorkflow || { enabled: false, kind: null, protectedChangedPaths: [] };
+    fail(qaScope.kind !== 'finance' || protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
+        'Finance QA scope requires the dedicated finance workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
     const validatedProtectedWorkflow = validateProtectedWorkflow(
         protectedWorkflow.enabled ? protectedWorkflow.kind : 'none',
         changed,
@@ -611,6 +717,16 @@ function validateManifest(manifest, options = {}) {
             && isNewerVersion(manifest.preparedRelease?.version, manifest.preparedRelease?.baseVersion),
             'HR/payroll requires an exact prepared release SHA', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
+        validateFinanceScope(qaScope, manifest.migrationClassifications);
+        fail(JSON.stringify(manifest.allowedMigrationFiles) === JSON.stringify(Object.keys(FINANCE_MANUAL_SQL_HASHES).sort()),
+            'Finance migration inventory differs', 'PRODUCTION_BLOCK_MIGRATION_DRIFT');
+        fail(manifest.preparedRelease?.sha === manifest.initialHeadSha
+            && isNewerVersion(manifest.preparedRelease?.version, manifest.preparedRelease?.baseVersion),
+            'Finance requires an exact prepared release SHA', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+        fail(Number.isInteger(manifest.maxReleaseAttempts) && manifest.maxReleaseAttempts >= 1 && manifest.maxReleaseAttempts <= 3,
+            'Finance release attempt budget must be 1-3', 'PRODUCTION_BLOCK_ATTEMPTS_INVALID');
+    }
     return manifest;
 }
 
@@ -627,6 +743,26 @@ function validateHrPayrollScope(qa, migrations) {
         'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
 }
 
+function validateFinanceScope(qa, migrations) {
+    const files = Object.keys(FINANCE_MANUAL_SQL_HASHES).sort();
+    fail((qa.enabled === false || qa.kind === 'finance') && Array.isArray(migrations)
+        && JSON.stringify(migrations.map(item => item.file).sort()) === JSON.stringify(files),
+    'Finance permits only the two exact reviewed migrations and optional bounded manual finance QA',
+    'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    for (const item of migrations) {
+        const isJournal = item.file === 'db/migrations/381_finance_manual_money.sql';
+        fail(item.sqlHash === FINANCE_MANUAL_SQL_HASHES[item.file],
+            'Finance migration SQL differs from the reviewed hash', 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT', { file: item.file });
+        fail(item.protectedException === FINANCE_SQL_EXCEPTION
+            && item.number === (isJournal ? 381 : 382)
+            && (isJournal
+                ? item.kind === 'cleanup' && item.red === true && item.destructive === true
+                : item.kind === 'schema' && item.red === false && item.destructive === false),
+        'Finance migration must retain its exact classification and explicit SQL exception',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
+}
+
 function confirmationValue(manifest) {
     validateManifest(manifest, { requireUnexpired: false });
     return `ALLOW_PRODUCTION_BLOCK:${manifest.blockId}:${manifest.manifestHash.slice(0, 12)}`;
@@ -634,7 +770,9 @@ function confirmationValue(manifest) {
 
 function warningText(manifest) {
     const migrations = manifest.allowedMigrationFiles.length ? manifest.allowedMigrationFiles.join(', ') : 'none';
-    const qa = manifest.allowedQaScope?.kind === 'certificate'
+    const qa = manifest.allowedQaScope?.kind === 'finance'
+        ? `finance: manual-only, run ${manifest.allowedQaScope.runId}, account ${manifest.allowedQaScope.testAccountId}, TTL ${manifest.allowedQaScope.ttlMinutes} хв; plan hash ${manifest.allowedQaScope.planHash}; controller не створює записи`
+        : manifest.allowedQaScope?.kind === 'certificate'
         ? `certificate: 1 запис, run ${manifest.allowedQaScope.runId}, account ${manifest.allowedQaScope.testAccountId}, TTL ${manifest.allowedQaScope.ttlMinutes} хв`
         : manifest.allowedQaScope?.enabled
             ? `${manifest.allowedQaScope.kind || 'trusted QA'}, TTL ${manifest.allowedQaScope.ttlMinutes || '?'} хв`
@@ -662,7 +800,9 @@ function warningText(manifest) {
             : []),
         '',
         'Межі: тільки зафіксовані branch/service/migrations/QA scope/protected workflow; прямі зміни реальних даних через controller, налаштувань і секретів заборонені.',
-        `Відкат: production SHA ${manifest.baseLiveSha}; migration mapping у block manifest; exact QA cleanup.`,
+        manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
+            ? 'Відкат фінансів: тільки сумісний binary зі збереженими журналом, ownership guards і поділом змін. Після записів відкат на pre381 SHA та видалення журналу заборонені; QA завершення зберігає evidence.'
+            : `Відкат: production SHA ${manifest.baseLiveSha}; migration mapping у block manifest; exact QA cleanup.`,
         `Потрібний дозвіл: «Дозволяю блок ${manifest.blockId}» або exact controller confirmation ${confirmationValue(manifest)}.`
     ].join('\n');
 }
@@ -679,6 +819,8 @@ module.exports = {
     classifyMigration,
     confirmationValue,
     manifestHash,
+    migrationSqlHash,
+    isPreparedProtectedRelease,
     isSysMbProtectedPath,
     redChangedPaths,
     sanitize,

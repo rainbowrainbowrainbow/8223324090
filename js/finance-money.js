@@ -33,10 +33,17 @@
         if (!container || typeof apiRequest !== 'function' || typeof getBusinessKey !== 'function') throw new Error('Manual money workspace requires a container, transport and scope.');
         let storage;
         try { storage = options.storage === undefined ? global.sessionStorage : options.storage; } catch (_) { storage = null; }
-        const state = { scope: null, data: null, busy: false, loading: false, pending: null, booking: null, bookingRef: '', generation: 0, bookingGeneration: 0, disposed: false, storageFailed: false };
+        const state = { scope: null, data: null, busy: false, loading: false, pending: null, booking: null, bookingRef: '', generation: 0, bookingGeneration: 0, disposed: false, storageFailed: false, qaVerified: false };
         const memory = new Map();
-        const key = () => String(getBusinessKey() ?? '');
-        const allowed = () => Boolean(typeof canManage === 'function' ? canManage() : canManage);
+        // Public context separates retry identities; only the server authorizes QA access.
+        const qaContext = () => global.FINANCE_QA_CONTEXT || null;
+        const key = () => {
+            const base = String(getBusinessKey() ?? '');
+            const qa = qaContext();
+            return qa ? JSON.stringify([base, 'finance-qa', String(qa.runId || ''), String(qa.actorId || ''), String(qa.businessContext || ''), String(qa.expiresAt || '')]) : base;
+        };
+        const qaCurrent = () => !qaContext() || (state.qaVerified && Date.parse(qaContext().expiresAt) > Date.now());
+        const allowed = () => qaCurrent() && Boolean(typeof canManage === 'function' ? canManage() : canManage);
         const el = id => container.querySelector(`#${id}`);
         const setText = (id, value) => { el(id).textContent = value || ''; };
         const currentAccount = () => state.data?.accounts?.find(account => String(account.id) === el('fmAccount').value);
@@ -52,6 +59,7 @@
             <section class="fm-card" aria-labelledby="fmTitle">
                 <h3 id="fmTitle">Ручні каси та фактичні кошти</h3>
                 <p class="fm-note">Тут враховуються лише операції підключених ручних рахунків. Бронювання саме по собі не є оплатою. Checkbox, зарплати та банкетні депозити ведуться окремо; цей залишок не є загальними коштами компанії або прибутком.</p>
+                <p id="fmQaNotice" class="fm-note" role="status" hidden></p>
                 <div class="fm-toolbar">
                     <label>Рахунок<select id="fmAccount"><option value="">Оберіть рахунок</option></select></label>
                     <button type="button" id="fmCreateAccount" class="btn-page-secondary">+ Новий рахунок</button>
@@ -222,6 +230,7 @@
             if (state.scope !== scope) {
                 state.scope = scope;
                 state.data = null;
+                state.qaVerified = false;
                 state.booking = null;
                 state.bookingRef = '';
                 state.pending = readPending();
@@ -241,6 +250,21 @@
                 const data = await apiRequest('GET', BASE);
                 if (!isCurrent(scope) || generation !== state.generation) return;
                 if (!data || data.success === false || (data.available !== false && !Array.isArray(data.accounts))) throw new Error(data?.error || 'Дані ручного обліку недоступні.');
+                const expectedQa = qaContext();
+                if (expectedQa || data.qa) {
+                    const actualQa = data.qa;
+                    state.qaVerified = Boolean(expectedQa && actualQa
+                        && typeof expectedQa.runId === 'string' && expectedQa.runId.length > 0
+                        && actualQa.runId === expectedQa.runId
+                        && Number.isSafeInteger(expectedQa.actorId) && expectedQa.actorId > 0
+                        && Number(actualQa.actorId) === expectedQa.actorId
+                        && typeof expectedQa.businessContext === 'string' && expectedQa.businessContext.length > 0
+                        && actualQa.businessContext === expectedQa.businessContext
+                        && Number.isFinite(Date.parse(expectedQa.expiresAt))
+                        && Date.parse(actualQa.expiresAt) === Date.parse(expectedQa.expiresAt)
+                        && Date.parse(expectedQa.expiresAt) > Date.now());
+                    if (!state.qaVerified) throw new Error('Тестовий запуск завершено або його контекст не збігається. Оновіть доступ до перевірки.');
+                }
                 state.data = data;
                 fillSelect('fmAccount', data.accounts || [], state.pending?.accountId || el('fmAccount').value, account => `${account.emoji || ''} ${account.name}${account.enrolled ? '' : ' · не підключено'}`, 'Оберіть рахунок');
                 setText('fmAvailability', data.available === false ? (data.reason || 'Ручний облік поки недоступний.') : (data.limitations || []).join(' '));
@@ -252,6 +276,10 @@
                 setText('fmAvailability', 'Залишки недоступні. Спробуйте оновити; помилка не означає нульовий залишок.');
             } finally {
                 if (isCurrent(scope) && generation === state.generation) {
+                    el('fmQaNotice').hidden = !qaContext() && !state.data?.qa;
+                    setText('fmQaNotice', state.qaVerified && qaCurrent()
+                        ? 'Тестовий режим: лише записи поточного перевірочного запуску. Вони не входять до робочих фінансових підсумків.'
+                        : 'Тестовий режим: доступ не підтверджено або строк перевірки минув. Нові операції недоступні.');
                     state.loading = false;
                     renderAccount();
                 }
@@ -365,7 +393,9 @@
                 setText('fmBookingSummary', result.bookingSummary ? `Оплату підтверджено. Залишок до сплати: ${formatMinor(result.bookingSummary.remainingMinor)}.` : '');
                 setText('fmCommandStatus', result.replayed ? 'Операція вже була записана. Дубль не створено.' : 'Операцію підтверджено.');
             } catch (error) {
-                if (error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429) {
+                if (error.status === 401 || error.status === 403) {
+                    if (isCurrent(scope)) setText('fmRetryError', 'Доступ до перевірки операції недоступний. Її попередній результат невідомий; ключ збережено. Відновіть доступ і повторіть перевірку цієї операції.');
+                } else if (error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429) {
                     retirePending(scope);
                     if (!isCurrent(scope)) return;
                     setText('fmCommandError', error.message || 'Операцію відхилено. Перевірте дані.');

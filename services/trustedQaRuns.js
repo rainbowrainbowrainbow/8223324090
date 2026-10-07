@@ -75,7 +75,11 @@ const TRUSTED_QA_ENTITY_TYPES = new Set([
     'banquet_membership',
     'booking_banquet_link',
     'product',
-    'certificate'
+    'certificate',
+    'finance_account',
+    'finance_category',
+    'finance_operation',
+    'finance_shift'
 ]);
 const TRUSTED_QA_CAPABILITY_STATUS = Object.freeze({
     READABLE: 'readable',
@@ -646,6 +650,11 @@ function assertRunMatchesRequest(run, req, booking, businessContext) {
         assertBookingMatchesTrustedQaFixture(booking, bookingFixture);
     }
     const expectedCustomer = cleanId(run.required_customer_id);
+    if (run.test_customer_marker === `${run.run_id}:finance:disposable`
+        && (cleanId(bookingConstraintValue(booking, 'customerId', 'customer_id'))
+            || cleanId(req?.body?.customerId) || cleanId(req?.body?.customer_id))) {
+        throw new TrustedQaRunError('Finance QA bookings cannot reference a customer', 'FINANCE_QA_CUSTOMER_DENIED', {}, 403);
+    }
     if (expectedCustomer && cleanId(bookingConstraintValue(booking, 'customerId', 'customer_id')) !== expectedCustomer) {
         throw new TrustedQaRunError('QA run customer mismatch', 'QA_RUN_CUSTOMER_MISMATCH', { entityType: 'booking' });
     }
@@ -1411,6 +1420,10 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
     const inventory = await loadTrustedQaCleanupInventory(queryable, runId, { forUpdate: options.forUpdate === true });
     const classified = classifyCleanupInventory(inventory);
     if (!inventory) return classified;
+    if (inventory.run.test_customer_marker === `${inventory.run.run_id}:finance:disposable`
+        && classified.status !== 'cleaned') {
+        await require('./financeMoneyQa').prepareFinanceQaCleanup(queryable, inventory);
+    }
     if (classified.status === 'cleaned') {
         await queryable.query(
             `UPDATE trusted_qa_runs

@@ -18,15 +18,17 @@ const SHUTDOWN_TIMEOUT_MS = 20_000;
 const TEST_TIMEOUT_MS = Number(process.env.ISOLATED_TEST_TIMEOUT_MS) || 15 * 60_000;
 const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
-const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser']);
+const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack']);
 const MODES = {
     api: ['tests/api.test.js'],
     finance: [
         'tests/integration/finance-transactions-pnl.integration.test.js',
         'tests/integration/finance-money-movements.integration.test.js',
+        'tests/integration/finance-money-qa.integration.test.js',
+        'tests/finance-qa-report-scope.test.js',
         'tests/integration/costing-management-postgres.test.js'
     ],
-    'finance-money': ['tests/integration/finance-money-movements.integration.test.js'],
+    'finance-money': ['tests/integration/finance-money-movements.integration.test.js', 'tests/integration/finance-money-qa.integration.test.js', 'tests/finance-qa-report-scope.test.js'],
     'finance-money-browser': ['tests/browser/finance-money-actual-app-browser-smoke.js'],
     attendance: [
         'tests/integration/attendance-lock-concurrency.integration.test.js',
@@ -55,6 +57,9 @@ const MODES = {
         'tests/integration/payroll-installments.integration.test.js',
         'tests/integration/payroll-fullstack-settlement.integration.test.js',
         'tests/integration/finance-transactions-pnl.integration.test.js',
+        'tests/integration/finance-money-movements.integration.test.js',
+        'tests/integration/finance-money-qa.integration.test.js',
+        'tests/finance-qa-report-scope.test.js',
         'tests/integration/costing-management-postgres.test.js'
     ],
     'payroll-fullstack': [
@@ -144,7 +149,7 @@ const MODES = {
     ],
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
     'upload-backfill': ['tests/integration/legacy-upload-backfill.integration.test.js'],
-    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js'],
+    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js', 'tests/browser/finance-money-actual-app-browser-smoke.js'],
     qa: [
         'tests/integration/live-multi-segment-qa.integration.test.js',
         'tests/integration/live-multi-segment-runner.integration.test.js'
@@ -152,7 +157,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|education-modal-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|finance-money|finance-money-browser|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|education-modal-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
@@ -555,6 +560,8 @@ function assertLocalManualMoneyDatabase(testDb) {
 
 async function runSuite(testDb, testFile, suiteMode) {
     if (testFile.includes('finance-money-movements.integration.test.js')
+        || testFile.includes('finance-money-qa.integration.test.js')
+        || testFile.includes('finance-qa-report-scope.test.js')
         || testFile.includes('finance-money-actual-app-browser-smoke.js')) {
         assertLocalManualMoneyDatabase(testDb);
     }
@@ -571,6 +578,8 @@ async function runSuite(testDb, testFile, suiteMode) {
     };
     const serverEnv = buildServerEnvironment(testDb, port, credentials);
     if (testFile.includes('finance-money-movements.integration.test.js')
+        || testFile.includes('finance-money-qa.integration.test.js')
+        || testFile.includes('finance-qa-report-scope.test.js')
         || testFile.includes('finance-money-actual-app-browser-smoke.js')) {
         serverEnv.REQUIRE_ISOLATED_TEST_TARGET = 'true';
         serverEnv.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER = 'true';
@@ -897,7 +906,7 @@ async function main() {
         }
     }
     const files = mode === 'all'
-        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, 'tests/integration/finance-money-movements.integration.test.js', ...MODES.admission, ...MODES['my-day'], ...MODES['my-day-browser'], ...MODES['cashier-smoke'], ...MODES['checkbox-config'], ...MODES['checkbox-ui-real'], ...MODES.onboarding, ...MODES.backfill, ...MODES['upload-backfill']]
+        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['my-day-browser'], ...MODES['cashier-smoke'], ...MODES['checkbox-config'], ...MODES['checkbox-ui-real'], ...MODES.onboarding, ...MODES.backfill, ...MODES['upload-backfill']]
         : MODES[mode];
 
     const databaseLock = await acquireIsolatedDatabaseLock(testDb);

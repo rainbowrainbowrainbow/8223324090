@@ -18,11 +18,15 @@ function principal(context = 'dar', membership = true) {
 }
 
 function fixture() {
-    const state = { accounts: [], transactions: [], insertedContexts: [], events: [], queries: [], qaCertificateIds: new Set() };
+    const state = { accounts: [], transactions: [], insertedContexts: [], events: [], queries: [], qaCertificateIds: new Set(), manualBookingIds: new Set() };
     const pool = { async query(sql, params = []) {
         state.queries.push({ sql, params });
         if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [], rowCount: 0 };
-        if (/FROM trusted_qa_run_entities/.test(sql)) {
+        if (/FROM finance_manual_booking_scopes/.test(sql)) {
+            const found = state.manualBookingIds.has(String(params[0]));
+            return { rows: found ? [{ exists: 1 }] : [], rowCount: found ? 1 : 0 };
+        }
+        if (/FROM trusted_qa_run_entities/.test(sql) && /entity_type = 'certificate'/.test(sql)) {
             const found = state.qaCertificateIds.has(String(params[0]));
             return { rows: found ? [{ exists: 1 }] : [], rowCount: found ? 1 : 0 };
         }
@@ -129,6 +133,17 @@ test('valid booking ownership preserves transaction success and existing respons
         assert.equal(state.events[0][1].businessContext, 'dar');
         assert.equal(state.events[0][1].amount, 100);
         assert.equal(state.events[0][2], `finance.income:dar:${result.body.id}`);
+    });
+});
+
+test('legacy HTTP payment cannot write into a booking owned by the manual journal', async () => {
+    await withRoute(principal(), async (request, state) => {
+        state.manualBookingIds.add('dar_booking');
+        const result = await request('/transactions', { ...transaction, bookingId: 'dar_booking' });
+        assert.equal(result.status, 409);
+        assert.equal(result.body.code, 'MANUAL_BOOKING_OWNED');
+        assert.deepEqual(state.transactions, []);
+        assert.deepEqual(state.events, []);
     });
 });
 

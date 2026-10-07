@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.70 - HR: завершені задачі та деталі звіту
+
+### Release / Versioning / (07.10.2026) [codex]
+- **HR: завершені задачі та деталі звіту** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.69 - Hermes: читання фактичних приходів
 
 ### Release / Versioning / (07.10.2026) [codex]

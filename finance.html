@@ -1197,6 +1197,7 @@
         }
     </style>
     <link rel="stylesheet" href="css/finance-redesign.css?v=0.82.70">
+    <link rel="stylesheet" href="css/finance-money.css?v=0.82.70">
 
 </head>
 <body data-page-group="mgmt">
@@ -1302,7 +1303,6 @@
                     <button type="button" class="fin-tab fa-operation-btn active" data-tab="transactions">Транзакції</button>
                     <button type="button" class="fin-tab fa-operation-btn" data-tab="shift">Каса</button>
                     <button type="button" class="fin-tab fa-operation-btn" data-tab="accounts">Рахунки</button>
-                    <button type="button" class="fin-tab fa-operation-btn" data-tab="personal">Особисті</button>
                     <button type="button" class="fin-tab fa-operation-btn" data-tab="debts">Борги</button>
                 </div></div>
                 <div class="fa-operation-group" data-finance-context="results"><div class="fa-operation-buttons">
@@ -1360,6 +1360,7 @@
                     <select id="categoryFilter" class="fin-filter-select">
                         <option value="">Всі категорії</option>
                     </select>
+                    <button type="button" id="manageCategoriesBtn" class="btn-page-secondary" data-finance-categories hidden>Категорії</button>
                     <select id="paymentFilter" class="fin-filter-select">
                         <option value="">Спосіб оплати</option>
                         <option value="cash">Готівка</option>
@@ -1441,6 +1442,10 @@
 
             <!-- v30.6: Cash Register Shift tab -->
             <div id="tabShift" style="display:none">
+                <div id="financeMoneyWorkspace"></div>
+                <details class="fm-legacy">
+                <summary>Попередній облік змін</summary>
+                <p>Ці зміни не розподілені між ручними рахунками. Їхні суми не входять до нового обліку вище.</p>
                 <div id="shiftStatus" style="margin-bottom:16px"></div>
                 <div class="fin-filters" style="gap:8px;margin-bottom:16px">
                     <input type="number" id="openingCashInput" min="0" placeholder="Готівка в касі, ₴" style="width:200px;padding:10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px">
@@ -1462,6 +1467,7 @@
                         <tbody id="shiftHistoryBody"></tbody>
                     </table>
                 </div>
+                </details>
             </div>
 
             <!-- v30.6: Revenue Forecast tab -->
@@ -1491,19 +1497,7 @@
                         <option value="9">Вересень</option><option value="10">Жовтень</option>
                         <option value="11">Листопад</option><option value="12">Грудень</option>
                     </select>
-                    <!-- Currency converter -->
-                    <span style="color:var(--gray-400);margin:0 4px">|</span>
-                    <input type="number" id="currencyAmount" min="1" placeholder="Сума" style="width:100px;padding:10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px">
-                    <select id="currencySelect" class="fin-filter-select" style="min-width:80px">
-                        <option value="EUR">EUR</option>
-                        <option value="USD">USD</option>
-                        <option value="GBP">GBP</option>
-                        <option value="PLN">PLN</option>
-                        <option value="CZK">CZK</option>
-                    </select>
-                    <button type="button" id="convertCurrencyBtn" class="btn-page-secondary">= UAH</button>
                 </div>
-                <div id="currencyResult" style="margin-bottom:16px"></div>
                 <div id="pnlContent"></div>
             </div>
 
@@ -1524,24 +1518,6 @@
                     <button type="button" class="btn-page-primary" onclick="openAddAccountModal()">+ Новий рахунок</button>
                 </div>
                 <div id="accountsList"></div>
-            </div>
-
-            <!-- Personal accounts tab (v37.9) -->
-            <div id="tabPersonal" style="display:none">
-                <div style="margin-bottom:16px;padding:12px 16px;background:rgba(139,92,246,.08);border-radius:12px;border:1px solid rgba(139,92,246,.2)">
-                    <p style="font-size:13px;color:var(--gray-600);margin:0">
-                        👤 <b>Особисті рахунки</b> — видимі тільки вам і людям з доступом.
-                        Не включаються в загальну аналітику компанії.
-                    </p>
-                </div>
-                <div id="personalAccountsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px"></div>
-                <button type="button" class="btn-page-secondary" onclick="openSafeNewTab('https://t.me/EGen_Park_Report_bot')" style="font-size:13px">
-                    ➕ Новий рахунок (через бота: /new_account)
-                </button>
-                <div id="personalTxSection" style="display:none;margin-top:24px">
-                    <h4 id="personalTxTitle" style="margin-bottom:12px;font-weight:800"></h4>
-                    <div id="personalTxList"></div>
-                </div>
             </div>
 
             <!-- Budget tab (v17.0) -->
@@ -1570,7 +1546,8 @@
                 <div style="margin-top:24px">
                     <h4 style="font-weight:800;margin-bottom:12px;">Встановити план</h4>
                     <div class="fin-filters" style="gap:8px">
-                        <select id="budgetCategorySelect" class="fin-filter-select"></select>
+                        <select id="budgetCategorySelect" class="fin-filter-select" aria-label="Категорія бюджету"></select>
+                        <button type="button" class="btn-page-secondary" data-finance-categories="budgetCategorySelect" hidden>+ Категорія</button>
                         <input type="number" id="budgetAmountInput" aria-label="Сума ₴" placeholder="Сума ₴" min="0" style="width:120px;padding:10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px;">
                         <button type="button" onclick="saveBudgetPlan()" class="btn-page-primary">Зберегти план</button>
                     </div>
@@ -1760,9 +1737,10 @@
                         </select>
                     </div>
                     <div>
-                        <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Категорія *</label>
+                        <label for="editCategory" style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Категорія</label>
                         <select id="editCategory" style="width:100%;min-width:0;max-width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;min-height:44px;box-sizing:border-box">
                         </select>
+                        <button type="button" class="btn-page-ghost" data-finance-categories="editCategory" hidden>+ Додати категорію</button>
                     </div>
                 </div>
                 <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px">
@@ -1814,16 +1792,24 @@
             <span class="modal-close">&times;</span>
             <h3>Новий рахунок</h3>
             <div class="form-group">
-                <label>Назва *</label>
+                <label for="accName">Назва *</label>
                 <input type="text" id="accName" placeholder="Каса, Privat...">
             </div>
-            <div style="display:flex;gap:12px">
+            <div class="fin-account-fields" style="display:flex;gap:12px">
                 <div class="form-group" style="flex:1">
-                    <label>Emoji</label>
-                    <input type="text" id="accEmoji" placeholder="💳" maxlength="4" value="💳" style="font-size:20px;width:60px;text-align:center">
+                    <label for="accEmoji">Іконка</label>
+                    <select id="accEmoji">
+                        <option value="💳">💳 Картка</option>
+                        <option value="💵">💵 Готівка</option>
+                        <option value="🏦">🏦 Банк</option>
+                        <option value="💼">💼 Каса</option>
+                        <option value="🪙">🪙 Монети</option>
+                        <option value="💰">💰 Кошти</option>
+                        <option value="🖤">🖤 Чорна картка</option>
+                    </select>
                 </div>
                 <div class="form-group" style="flex:2">
-                    <label>Тип</label>
+                    <label for="accType">Тип</label>
                     <select id="accType">
                         <option value="cash">Готівка</option>
                         <option value="card">Карта</option>
@@ -1832,21 +1818,56 @@
                 </div>
             </div>
             <div class="form-group">
-                <label>Опис</label>
+                <label for="accDescription">Опис</label>
                 <input type="text" id="accDescription" placeholder="Опціонально">
             </div>
-            <label class="fin-check-row">
-                <input type="checkbox" id="accIsPersonal" class="fin-check-input">
-                <span class="fin-check-box" aria-hidden="true"></span>
-                <span class="fin-check-copy">
-                    <span class="fin-check-title">Особистий рахунок</span>
-                    <span class="fin-check-hint">Не включати в загальну аналітику компанії та показувати як персональний рахунок.</span>
-                </span>
-            </label>
             <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
                 <button type="button" class="btn-page-secondary" onclick="closeAddAccountModal(false)">Скасувати</button>
                 <button type="button" class="btn-page-primary" onclick="saveAccount()">Зберегти</button>
             </div>
+        </div>
+    </div>
+
+    <div id="financeCategoryModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="financeCategoryTitle">
+        <div class="modal-content modal-medium">
+            <h3 id="financeCategoryTitle">Категорії доходів і витрат</h3>
+            <form id="financeCategoryForm">
+                <div class="form-group">
+                    <label for="financeCategoryRecord">Категорія</label>
+                    <select id="financeCategoryRecord"><option value="">Нова категорія</option></select>
+                </div>
+                <div class="fin-category-fields">
+                    <div class="form-group">
+                        <label for="financeCategoryType">Тип</label>
+                        <select id="financeCategoryType"><option value="expense">Витрата</option><option value="income">Дохід</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="financeCategoryName">Назва *</label>
+                        <input id="financeCategoryName" type="text" maxlength="100" required autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="financeCategoryIcon">Іконка</label>
+                        <select id="financeCategoryIcon">
+                            <option value="📁">📁 Категорія</option><option value="💰">💰 Дохід</option>
+                            <option value="🛒">🛒 Закупівлі</option><option value="🏠">🏠 Оренда</option>
+                            <option value="👥">👥 Команда</option><option value="🎉">🎉 Заходи</option>
+                            <option value="🍽️">🍽️ Кухня</option><option value="📣">📣 Реклама</option>
+                            <option value="🧰">🧰 Обслуговування</option><option value="💡">💡 Комунальні</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="financeCategoryColor">Колір</label>
+                        <input id="financeCategoryColor" type="color" value="#6366f1">
+                    </div>
+                </div>
+                <p id="financeCategoryNote" class="fin-category-note"></p>
+                <p id="financeCategoryError" class="fin-category-error" role="alert" hidden></p>
+                <div class="fin-category-actions">
+                    <button type="button" id="archiveFinanceCategoryBtn" class="btn-page-secondary" hidden>Архівувати</button>
+                    <button type="button" id="cancelFinanceCategoryBtn" class="btn-page-secondary">Скасувати</button>
+                    <button type="submit" id="saveFinanceCategoryBtn" class="btn-page-primary">Зберегти</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -1886,6 +1907,7 @@
     <script src="js/components/sidebar.js?v=0.82.70"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/analytics-page.js?v=0.82.70"></script>
+    <script src="js/finance-money.js?v=0.82.70"></script>
     <script src="js/finance-page.js?v=0.82.70"></script>
     <script src="js/finance-costing.js?v=0.82.70"></script>
 <script src="js/alerts.js?v=0.82.70"></script>

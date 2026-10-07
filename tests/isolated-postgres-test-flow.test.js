@@ -12,6 +12,7 @@ const {
 } = require('../scripts/test-db-safety');
 const {
     acquireIsolatedDatabaseLock,
+    assertLocalManualMoneyDatabase,
     assertNoPreservedCheckboxMutationState
 } = require('../scripts/run-isolated-postgres-tests');
 
@@ -23,6 +24,28 @@ function safeEnv(overrides = {}) {
 }
 
 describe('isolated PostgreSQL test flow safety', () => {
+    it('manual finance rejects effective pg host overrides before connection or schema reset', () => {
+        const base = 'postgresql://fixture:fixture@127.0.0.1:5432/eventgenix_disposable_test';
+        for (const suffix of ['', '?host=localhost', '?host=127.0.0.1']) {
+            const database = assertSafeTestDatabaseUrl(base + suffix, safeEnv());
+            assert.doesNotThrow(() => assertLocalManualMoneyDatabase(database));
+        }
+        for (const suffix of ['?host=unreachable.example.invalid', '?host=primary-db', '?host=%2Fvar%2Frun%2Fpostgresql']) {
+            const database = assertSafeTestDatabaseUrl(base + suffix, safeEnv());
+            assert.equal(database.isLocal, true, 'URL hostname alone does not detect pg host overrides');
+            assert.throws(() => assertLocalManualMoneyDatabase(database), /effective loopback disposable/);
+        }
+        const remote = assertSafeTestDatabaseUrl(base.replace('127.0.0.1', 'unreachable.example.invalid'),
+            safeEnv({ TEST_DATABASE_ALLOW_REMOTE: REMOTE_CONFIRMATION }));
+        assert.throws(() => assertLocalManualMoneyDatabase(remote), /effective loopback disposable/);
+        const runner = fs.readFileSync(path.resolve(__dirname, '../scripts/run-isolated-postgres-tests.js'), 'utf8');
+        const main = runner.slice(runner.indexOf('async function main()'));
+        const guardIndex = main.indexOf('assertLocalManualMoneyDatabase(testDb)');
+        assert.ok(guardIndex >= 0 && guardIndex < main.indexOf('acquireIsolatedDatabaseLock(testDb)'),
+            'manual money modes must reject an unsafe effective target before any connection or reset');
+        assert.match(runner, /MANUAL_MONEY_MODES = new Set\(\['all', 'finance', 'finance-money', 'finance-money-browser'\]\)/);
+    });
+
     it('holds one session advisory lock for the complete disposable database run', async () => {
         const queries = [];
         let clientReleaseCount = 0;

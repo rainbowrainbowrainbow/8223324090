@@ -26,7 +26,7 @@ test('warehouse and finance routes scope operational data by selected business c
     assert.match(finance, /requestFinanceBusinessContext/);
     assert.match(finance, /INSERT INTO finance_transactions \(business_context/);
     assert.match(finance, /ON CONFLICT \(business_context, year, month, category_id\)/);
-    assert.match(finance, /cash_register_shifts WHERE status = 'open' AND \$\{businessScopeSql/);
+    assert.match(finance, /cash_register_shifts WHERE status = 'open' AND account_id IS NULL AND \$\{businessScopeSql/);
     assert.match(finance, /SELECT \* FROM finance_accounts WHERE is_active = true AND \$\{businessScopeSql/);
     assert.match(finance, /COALESCE\(b\.business_context, \$\{BUSINESS_SQL_DEFAULT\}\) = \$1/);
 

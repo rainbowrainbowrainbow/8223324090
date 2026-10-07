@@ -20,6 +20,7 @@ async function apiRequest(method, url, body) {
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         const error = new Error(err.error || `HTTP ${res.status}`);
+        error.status = res.status;
         error.code = err.code;
         throw error;
     }
@@ -59,7 +60,8 @@ const FinState = {
     analyticsCharts: null,
     comparison: null,
     dealsLifecycle: null,
-    unifiedLoaded: false
+    unifiedLoaded: false,
+    unifiedErrors: []
 };
 
 const PAYMENT_LABELS = {
@@ -206,7 +208,7 @@ function getInitialFinanceTab() {
         advanced: 'advanced',
         costing: 'costing',
         accounts: 'accounts',
-        personal: 'personal'
+        personal: 'accounts'
     };
     return map[tab] || 'transactions';
 }
@@ -215,11 +217,30 @@ function getInitialFinanceTab() {
 // API CALLS
 // ==========================================
 
+let categoryRequestGeneration = 0;
+let categoryDataScope = '';
 async function fetchCategories() {
+    const generation = ++categoryRequestGeneration;
+    const business = financeActorBusinessKey();
+    if (categoryDataScope && categoryDataScope !== business) {
+        FinState.categories = [];
+        for (const id of ['editCategory', 'budgetCategorySelect', 'categoryFilter']) {
+            const select = document.getElementById(id);
+            if (select) select.value = '';
+        }
+        const record = document.getElementById('financeCategoryRecord');
+        record?.replaceChildren(new Option('Нова категорія', ''));
+        const modal = document.getElementById('financeCategoryModal');
+        if (modal && !modal.classList.contains('hidden')) setCategoryError('Бізнес або користувач змінився. Закрийте форму й відкрийте її заново.');
+        refreshCategorySelectors();
+    }
+    categoryDataScope = business;
     try {
         const res = await apiRequest('GET', '/api/finance/categories');
-        FinState.categories = res || [];
-        populateCategoryFilter();
+        if (generation !== categoryRequestGeneration || business !== financeActorBusinessKey()) return;
+        if (!Array.isArray(res)) throw new Error('Не вдалося завантажити категорії');
+        FinState.categories = res;
+        refreshCategorySelectors();
     } catch (err) {
         console.error('Failed to fetch categories', err);
     }
@@ -238,7 +259,17 @@ async function fetchDashboard() {
     }
 }
 
+let unifiedRequestGeneration = 0;
 async function fetchUnifiedOverview() {
+    const generation = ++unifiedRequestGeneration;
+    const business = financeBusinessKey();
+    FinState.unifiedLoaded = false;
+    if (FinState.mode !== 'operations') {
+        for (const id of ['faExecutiveZone', 'faActionRail', 'faWorkspace']) {
+            const container = document.getElementById(id);
+            if (container) container.innerHTML = '<p role="status">Завантаження показників…</p>';
+        }
+    }
     const { from, to } = getFilterDates();
     const analyticsParams = getAnalyticsParams();
     const [financeDashboard, analyticsOverview, analyticsCharts, comparison, lifecycle] = await Promise.allSettled([
@@ -249,16 +280,13 @@ async function fetchUnifiedOverview() {
         apiRequest('GET', `/api/analytics/deals-lifecycle?${analyticsParams}`)
     ]);
 
-    if (financeDashboard.status === 'fulfilled') FinState.dashboard = financeDashboard.value;
-    else console.error('[finance:unified] finance dashboard failed', financeDashboard.reason);
-    if (analyticsOverview.status === 'fulfilled') FinState.analyticsOverview = analyticsOverview.value;
-    else console.error('[finance:unified] analytics overview failed', analyticsOverview.reason);
-    if (analyticsCharts.status === 'fulfilled') FinState.analyticsCharts = analyticsCharts.value;
-    else console.error('[finance:unified] analytics charts failed', analyticsCharts.reason);
-    if (comparison.status === 'fulfilled') FinState.comparison = comparison.value;
-    else console.error('[finance:unified] comparison failed', comparison.reason);
-    if (lifecycle.status === 'fulfilled') FinState.dealsLifecycle = lifecycle.value;
-    else console.error('[finance:unified] deals lifecycle failed', lifecycle.reason);
+    if (generation !== unifiedRequestGeneration || business !== financeBusinessKey()) return;
+    FinState.unifiedErrors = [];
+    for (const [key, result] of [['dashboard', financeDashboard], ['analyticsOverview', analyticsOverview],
+        ['analyticsCharts', analyticsCharts], ['comparison', comparison], ['dealsLifecycle', lifecycle]]) {
+        FinState[key] = result.status === 'fulfilled' && result.value ? result.value : null;
+        if (!FinState[key]) FinState.unifiedErrors.push(key);
+    }
 
     FinState.unifiedLoaded = true;
     renderCurrentFinanceMode();
@@ -641,8 +669,8 @@ function renderInsightsWorkspace() {
             <h3 class="an-section-title">Операційні патерни</h3>
             <div class="fa-panel-grid">
                 <section class="an-chart-container">
-                    <h3 class="an-chart-title">Навантаження по днях тижня</h3>
-                    <div id="weekdayChart"></div>
+                    <h3 class="an-chart-title">Кількість бронювань за днями тижня</h3>
+                    <div id="weekdayChart" class="an-bar-chart an-bar-chart--weekday"></div>
                 </section>
                 <section class="an-chart-container">
                     <h3 class="an-chart-title">Сегменти клієнтів</h3>
@@ -659,12 +687,18 @@ function renderInsightsWorkspace() {
     widgets.renderComparison?.(FinState.comparison);
     if (FinState.dealsLifecycle && (Number.isFinite(Number(FinState.dealsLifecycle.accepted))
         || FinState.dealsLifecycle.trend?.length)) widgets.renderDealsLifecycle?.(FinState.dealsLifecycle);
-    widgets.renderWeekdayChart?.(charts.weekdayLoad || []);
+    widgets.renderWeekdayChart?.(charts.weekdayLoad);
     widgets.renderSegments?.(charts.customerSegments || {});
 }
 
 function renderCurrentFinanceMode() {
     if (FinState.mode === 'operations') return;
+    if (FinState.unifiedErrors.length) {
+        document.getElementById('faExecutiveZone')?.replaceChildren();
+        document.getElementById('faActionRail')?.replaceChildren();
+        showFinancePanelError(document.getElementById('faWorkspace'), fetchUnifiedOverview);
+        return;
+    }
     renderExecutiveCards();
     renderActionRail();
     if (FinState.mode === 'insights') renderInsightsWorkspace();
@@ -2152,6 +2186,7 @@ function renderSalaryReportTable(data) {
 
 let _transEditInitialState = '';
 let _accountModalInitialState = '';
+let accountEditor = { scope: '', busy: false };
 
 function getTransEditState() {
     const ids = ['editType', 'editCategory', 'editAmount', 'editDate', 'editPayment', 'editDescription'];
@@ -2166,7 +2201,7 @@ function isTransEditDirty() {
 }
 
 function getAccountModalState() {
-    const ids = ['accName', 'accEmoji', 'accType', 'accDescription', 'accIsPersonal'];
+    const ids = ['accName', 'accEmoji', 'accType', 'accDescription'];
     return ids.map(id => {
         const el = document.getElementById(id);
         if (el?.type === 'checkbox') return el.checked ? '1' : '0';
@@ -2192,7 +2227,7 @@ function openTransModal(id) {
         const tx = FinState.transactions.find(t => t.id === id);
         if (tx) {
             document.getElementById('editType').value = tx.type;
-            updateCategoryOptions(tx.type);
+            updateCategoryOptions(tx.type, tx.categoryId || '');
             document.getElementById('editCategory').value = tx.categoryId || '';
             document.getElementById('editAmount').value = tx.amount;
             document.getElementById('editDate').value = tx.date;
@@ -2236,11 +2271,212 @@ async function closeTransModal(force = false) {
     return true;
 }
 
-function updateCategoryOptions(type) {
+function updateCategoryOptions(type, selected = '') {
     const sel = document.getElementById('editCategory');
+    if (!sel) return;
+    const previousLabel = sel.selectedOptions[0]?.textContent;
     const filtered = FinState.categories.filter(c => c.type === type);
     sel.innerHTML = '<option value="">Без категорії</option>' +
         filtered.map(c => `<option value="${c.id}">${escapeHtml(c.icon) || ''} ${escapeHtml(c.name)}</option>`).join('');
+    const transaction = FinState.transactions.find(item => item.id === FinState.editingId);
+    if (selected && !filtered.some(item => String(item.id) === String(selected))) {
+        const original = transaction?.type === type && String(transaction.categoryId) === String(selected);
+        const label = original ? transaction.categoryName : previousLabel;
+        const option = new Option(`${(label || 'Категорія').replace(/ \(архівна\)$/, '')} (архівна)`, String(selected));
+        sel.add(option);
+    }
+    sel.value = String(selected);
+}
+
+// Category editing uses the existing finance.manage capability and CRUD API.
+let categoryEditor = { targetId: '', id: null, initial: '', busy: false, business: '' };
+
+function financeBusinessKey() {
+    const context = typeof getCrmBusinessContext === 'function' ? getCrmBusinessContext() : '';
+    const scope = typeof getCrmBusinessScope === 'function' ? getCrmBusinessScope() : null;
+    return JSON.stringify([context, scope?.mode || 'single', [...(scope?.selectedContexts || [])].sort()]);
+}
+
+function financeActorBusinessKey() {
+    const actorId = typeof AppState !== 'undefined' ? AppState.currentUser?.id : null;
+    return JSON.stringify([actorId ?? null, financeBusinessKey()]);
+}
+
+function invalidateFinanceCategoryContext() {
+    if (categoryDataScope && categoryDataScope !== financeActorBusinessKey()) void fetchCategories();
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessContextHydrated',
+    'crmBusinessProfileChanged', 'permissions:lifecycle', 'workingRoleChanged', 'rolePreviewChanged']) {
+    window.addEventListener(eventName, invalidateFinanceCategoryContext);
+}
+
+function refreshCategorySelectors() {
+    if (!categoryDataScope) categoryDataScope = financeActorBusinessKey();
+    populateCategoryFilter();
+    const transactionCategory = document.getElementById('editCategory');
+    updateCategoryOptions(document.getElementById('editType')?.value || 'income', transactionCategory?.value || '');
+    const budgetCategory = document.getElementById('budgetCategorySelect');
+    if (budgetCategory) {
+        const selected = budgetCategory.value;
+        const previousLabel = budgetCategory.selectedOptions[0]?.textContent;
+        budgetCategory.replaceChildren(...FinState.categories.map(category => new Option(
+            `${category.icon || ''} ${category.name} (${category.type === 'income' ? 'дохід' : 'витрата'})`, String(category.id))));
+        if (selected && !FinState.categories.some(category => String(category.id) === selected)) {
+            const option = new Option(`${(previousLabel || 'Категорія').replace(/ \(архівна\)$/, '')} (архівна)`, selected);
+            option.disabled = true;
+            budgetCategory.add(option);
+        }
+        budgetCategory.value = selected;
+    }
+    window.dispatchEvent(new CustomEvent('finance:categories-updated'));
+}
+
+function categoryEditorState() {
+    return JSON.stringify(['financeCategoryName', 'financeCategoryType', 'financeCategoryIcon', 'financeCategoryColor']
+        .map(id => document.getElementById(id)?.value || ''));
+}
+
+function setCategoryError(message = '') {
+    const error = document.getElementById('financeCategoryError');
+    error.textContent = message;
+    error.hidden = !message;
+}
+
+function populateCategoryEditor(id = '') {
+    const category = FinState.categories.find(item => String(item.id) === String(id));
+    categoryEditor.id = category?.id || null;
+    const type = document.getElementById('financeCategoryType');
+    type.value = category?.type || categoryEditor.forcedType || (categoryEditor.targetId === 'editCategory' ? document.getElementById('editType').value : 'expense');
+    type.disabled = Boolean(category) || Boolean(categoryEditor.forcedType) || categoryEditor.targetId === 'editCategory';
+    const name = document.getElementById('financeCategoryName');
+    name.value = category?.name || '';
+    name.disabled = category?.isSystem === true;
+    const icon = document.getElementById('financeCategoryIcon');
+    const value = category?.icon || '📁';
+    if (![...icon.options].some(option => option.value === value)) icon.add(new Option(value || 'Без іконки', value));
+    icon.value = value;
+    document.getElementById('financeCategoryColor').value = /^#[0-9a-f]{6}$/i.test(category?.color || '') ? category.color : '#6366f1';
+    document.getElementById('archiveFinanceCategoryBtn').hidden = !category || category.isSystem === true;
+    document.getElementById('financeCategoryNote').textContent = category?.isSystem
+        ? 'Системна назва використовується автоматичним обліком. Можна змінити іконку та колір.'
+        : 'Архівація прибирає категорію з нових операцій. Історія зберігається.';
+    setCategoryError();
+    categoryEditor.initial = categoryEditorState();
+    window.UnsafeDismissGuard?.remember(document.getElementById('financeCategoryModal'));
+}
+
+function openCategoryModal(targetId = '', trigger = document.activeElement, options = {}) {
+    if (!financeCanManageTransactions()) return;
+    const forcedType = ['income', 'expense'].includes(options.type) ? options.type : null;
+    categoryEditor = { targetId, forcedType, id: null, initial: '', busy: false, business: financeActorBusinessKey() };
+    const record = document.getElementById('financeCategoryRecord');
+    const type = forcedType || (targetId === 'editCategory' ? document.getElementById('editType').value : null);
+    record.replaceChildren(new Option('Нова категорія', ''), ...FinState.categories
+        .filter(category => !type || category.type === type)
+        .map(category => new Option(`${category.icon || ''} ${category.name} (${category.type === 'income' ? 'дохід' : 'витрата'})`, String(category.id))));
+    populateCategoryEditor();
+    const modal = document.getElementById('financeCategoryModal');
+    if (typeof openModal === 'function') openModal(modal, trigger, {
+        initialFocus: '#financeCategoryName', onRequestClose: () => closeCategoryModal()
+    });
+    else { modal.classList.remove('hidden'); document.getElementById('financeCategoryName').focus(); }
+    window.UnsafeDismissGuard?.remember(modal);
+}
+
+async function closeCategoryModal(force = false) {
+    if (categoryEditor.busy) return false;
+    const modal = document.getElementById('financeCategoryModal');
+    const close = () => {
+        if (typeof closeModal === 'function') closeModal(modal, { force: true });
+        else modal.classList.add('hidden');
+    };
+    if (window.UnsafeDismissGuard) return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, close, {
+        force, isDirty: () => categoryEditorState() !== categoryEditor.initial,
+        message: 'Закрити без збереження категорії?', okText: 'Закрити', cancelText: 'Повернутись'
+    });
+    if (!force && categoryEditorState() !== categoryEditor.initial && typeof confirmModal === 'function'
+        && !await confirmModal('Закрити без збереження категорії?', { type: 'warning' })) return false;
+    close();
+    return true;
+}
+
+function setCategoryBusy(busy) {
+    categoryEditor.busy = busy;
+    if (busy) {
+        categoryEditor.focusBeforeRequest = document.activeElement;
+        categoryEditor.disabledFields = [...document.querySelectorAll('#financeCategoryForm button, #financeCategoryForm input, #financeCategoryForm select')]
+            .map(control => [control, control.disabled]);
+        categoryEditor.disabledFields.forEach(([control]) => { control.disabled = true; });
+    } else {
+        categoryEditor.disabledFields?.forEach(([control, disabled]) => { control.disabled = disabled; });
+        categoryEditor.disabledFields = null;
+        const modal = document.getElementById('financeCategoryModal');
+        const focusTarget = categoryEditor.focusBeforeRequest;
+        if (!modal.contains(document.activeElement) && modal.contains(focusTarget) && !focusTarget.disabled) focusTarget.focus();
+        categoryEditor.focusBeforeRequest = null;
+    }
+}
+
+async function saveFinanceCategory(event) {
+    event?.preventDefault();
+    if (categoryEditor.busy || !financeCanManageTransactions()) return;
+    if (categoryEditor.business !== financeActorBusinessKey()) {
+        setCategoryError('Бізнес змінився. Закрийте форму й відкрийте її заново.'); return;
+    }
+    const editor = categoryEditor;
+    const name = document.getElementById('financeCategoryName').value.trim();
+    const type = document.getElementById('financeCategoryType').value;
+    if (!name) { setCategoryError('Вкажіть назву категорії.'); return; }
+    if (FinState.categories.some(category => category.id !== categoryEditor.id && category.type === type
+        && category.name.trim().toLocaleLowerCase('uk-UA') === name.toLocaleLowerCase('uk-UA'))) {
+        setCategoryError('Категорія з такою назвою вже є. Оберіть її зі списку.'); return;
+    }
+    const body = { name, type, icon: document.getElementById('financeCategoryIcon').value,
+        color: document.getElementById('financeCategoryColor').value };
+    const existing = FinState.categories.find(category => category.id === categoryEditor.id);
+    if (existing?.isSystem) delete body.name;
+    setCategoryBusy(true);
+    setCategoryError();
+    let saved = false;
+    try {
+        const result = await apiRequest(existing ? 'PUT' : 'POST', `/api/finance/categories${existing ? `/${existing.id}` : ''}`, body);
+        if (!result || (existing ? result.success !== true : !result.id)) throw new Error('Категорію не збережено. Повторіть спробу.');
+        if (editor !== categoryEditor) return;
+        if (editor.business !== financeActorBusinessKey()) { setCategoryError('Бізнес або користувач змінився. Оновіть категорії у вибраному бізнесі.'); return; }
+        const category = existing ? { ...existing, ...body } : result;
+        FinState.categories = existing ? FinState.categories.map(item => item.id === category.id ? category : item) : [...FinState.categories, category];
+        refreshCategorySelectors();
+        const target = document.getElementById(categoryEditor.targetId);
+        if (target) target.value = String(category.id);
+        saved = true;
+        showNotification('Категорію збережено');
+    } catch (error) { if (editor === categoryEditor) setCategoryError(error.message); }
+    finally { if (editor === categoryEditor) setCategoryBusy(false); }
+    if (saved) await closeCategoryModal(true);
+}
+
+async function archiveFinanceCategory() {
+    const editor = categoryEditor;
+    const category = FinState.categories.find(item => item.id === categoryEditor.id);
+    if (!category || category.isSystem || categoryEditor.busy || !financeCanManageTransactions()) return;
+    if (categoryEditor.business !== financeActorBusinessKey()) { setCategoryError('Бізнес або користувач змінився. Відкрийте форму заново.'); return; }
+    if (!await confirmModal(`Архівувати категорію «${category.name}»? Старі операції збережуться.`, { type: 'warning' })) return;
+    if (editor !== categoryEditor || editor.business !== financeActorBusinessKey() || !financeCanManageTransactions() || editor.busy) return;
+    setCategoryBusy(true);
+    let archived = false;
+    try {
+        const result = await apiRequest('DELETE', `/api/finance/categories/${category.id}`);
+        if (!result?.success) throw new Error('Не вдалося архівувати категорію.');
+        if (editor !== categoryEditor) return;
+        if (editor.business !== financeActorBusinessKey()) { setCategoryError('Бізнес або користувач змінився. Оновіть категорії у вибраному бізнесі.'); return; }
+        FinState.categories = FinState.categories.filter(item => item.id !== category.id);
+        refreshCategorySelectors();
+        archived = true;
+        showNotification('Категорію архівовано');
+    } catch (error) { if (editor === categoryEditor) setCategoryError(error.message); }
+    finally { if (editor === categoryEditor) setCategoryBusy(false); }
+    if (archived) await closeCategoryModal(true);
 }
 
 // Global functions for onclick
@@ -2265,8 +2501,14 @@ window.goToPage = function(page) {
 function populateCategoryFilter() {
     const sel = document.getElementById('categoryFilter');
     if (!sel) return;
+    const selected = sel.value;
+    const previousLabel = sel.selectedOptions[0]?.textContent;
     sel.innerHTML = '<option value="">Всі категорії</option>' +
         FinState.categories.map(c => `<option value="${c.id}">${escapeHtml(c.icon) || ''} ${escapeHtml(c.name)}</option>`).join('');
+    if (selected && !FinState.categories.some(category => String(category.id) === selected)) {
+        sel.add(new Option(`${(previousLabel || 'Категорія').replace(/ \(архівна\)$/, '')} (архівна)`, selected));
+    }
+    sel.value = selected;
 }
 
 function populateYearFilter() {
@@ -2292,7 +2534,7 @@ function updateFinancePeriodControls() {
 }
 
 const FINANCE_TAB_GROUPS = {
-    transactions: 'cash', shift: 'cash', accounts: 'cash', personal: 'cash', debts: 'cash',
+    transactions: 'cash', shift: 'cash', accounts: 'cash', debts: 'cash',
     pnl: 'results', monthly: 'results', dashboard: 'results', advanced: 'results',
     budget: 'planning', forecast: 'planning', costing: 'planning', salary: 'team'
 };
@@ -2391,6 +2633,7 @@ function setFinanceMode(mode, options = {}) {
 
 function switchTab(tabName, options = {}) {
     if (!tabName) tabName = 'transactions';
+    if (tabName === 'personal') tabName = 'accounts';
     FinState.currentTab = tabName;
     if (!options.preserveMode) setFinanceMode('operations', { switchTab: false, history: false });
     updateFinancePeriodControls();
@@ -2400,7 +2643,7 @@ function switchTab(tabName, options = {}) {
     });
 
     const tabs = ['tabDashboard','tabTransactions','tabMonthly','tabSalary','tabBudget','tabCosting',
-                  'tabShift','tabForecast','tabPnl','tabDebts','tabAdvanced','tabAccounts','tabPersonal'];
+                  'tabShift','tabForecast','tabPnl','tabDebts','tabAdvanced','tabAccounts'];
     tabs.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -2410,7 +2653,7 @@ function switchTab(tabName, options = {}) {
         monthly: 'tabMonthly', salary: 'tabSalary', budget: 'tabBudget',
         shift: 'tabShift', forecast: 'tabForecast', pnl: 'tabPnl',
         debts: 'tabDebts', advanced: 'tabAdvanced', accounts: 'tabAccounts',
-        personal: 'tabPersonal', costing: 'tabCosting'
+        costing: 'tabCosting'
     }[tabName]);
     if (activePanel) activePanel.style.display = tabName === 'costing' ? 'block' : '';
 
@@ -2426,7 +2669,6 @@ function switchTab(tabName, options = {}) {
     if (tabName === 'debts') loadDebts();
     if (tabName === 'advanced') loadAdvancedDashboard();
     if (tabName === 'accounts') loadAccounts();
-    if (tabName === 'personal') loadPersonalAccounts();
     updateFinanceViewChrome();
     if (options.history) writeFinanceUrl();
 }
@@ -2512,6 +2754,13 @@ async function exportXLSX() {
 // ==========================================
 
 let budgetInitialized = false;
+let budgetRequestGeneration = 0;
+
+function showFinancePanelError(container, retry) {
+    if (!container) return;
+    container.innerHTML = '<div class="fin-load-error" role="alert"><p>Не вдалося завантажити дані. Суми недоступні.</p><button type="button" class="btn-page-secondary">Спробувати ще раз</button></div>';
+    container.querySelector('button').addEventListener('click', retry);
+}
 
 function initBudgetTab() {
     if (!budgetInitialized) {
@@ -2549,13 +2798,18 @@ function initBudgetTab() {
 }
 
 async function loadBudgetComparison() {
+    const generation = ++budgetRequestGeneration;
+    const business = financeBusinessKey();
     const year = parseInt(document.getElementById('budgetYear')?.value) || new Date().getFullYear();
     const month = parseInt(document.getElementById('budgetMonth')?.value) || (new Date().getMonth() + 1);
-
-    const data = await apiGetBudgetComparison(year, month);
-    if (!data) return;
-
     const container = document.getElementById('budgetComparison');
+    if (!container) return;
+    container.innerHTML = '<p role="status">Завантаження бюджету…</p>';
+    const data = await apiGetBudgetComparison(year, month).catch(() => null);
+    if (generation !== budgetRequestGeneration || business !== financeBusinessKey()) return;
+    if (!data || !Array.isArray(data.comparison) || !data.totals) {
+        showFinancePanelError(container, loadBudgetComparison); return;
+    }
     if (data.comparison.length === 0) {
         container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--gray-400);">Бюджет на цей місяць ще не встановлено. Додайте план нижче.</div>';
         return;
@@ -2597,11 +2851,11 @@ async function loadBudgetComparison() {
             : (c.percentUsed >= 80 ? '#10B981' : '#F59E0B');
 
         html += `<tr>
-            <td style="text-align:left">${c.categoryIcon || ''} ${escapeHtml(c.categoryName)}</td>
-            <td>${formatMoney(c.planned)}</td>
+            <td style="text-align:left">${escapeHtml(c.categoryIcon || '')} ${escapeHtml(c.categoryName)}${c.hasPlan === false ? '<small class="fin-category-note"> · Поза планом</small>' : ''}</td>
+            <td>${c.hasPlan === false ? '—' : formatMoney(c.planned)}</td>
             <td>${formatMoney(c.actual)}</td>
             <td style="color:${diffColor};font-weight:700">${c.diff > 0 ? '+' : ''}${formatMoney(c.diff)}</td>
-            <td style="color:${pctColor};font-weight:700">${c.percentUsed}%</td>
+            <td style="color:${pctColor};font-weight:700">${c.percentUsed == null ? '—' : `${Number(c.percentUsed)}%`}</td>
         </tr>`;
     }
 
@@ -2617,6 +2871,11 @@ async function saveBudgetPlan() {
 
     if (!categoryId || isNaN(plannedAmount) || plannedAmount < 0) {
         showNotification('Вкажіть категорію та суму', 'error');
+        return;
+    }
+
+    if (!FinState.categories.some(category => Number(category.id) === categoryId)) {
+        showNotification('Категорію архівовано. Оберіть активну категорію для плану.', 'error');
         return;
     }
 
@@ -2679,6 +2938,7 @@ async function initFinancePage() {
         const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name || user.username;
 
         const canManageTransactions = financeCanManageTransactions();
+        document.querySelectorAll('[data-finance-categories]').forEach(button => { button.hidden = !canManageTransactions; });
         const addBtn = document.getElementById('addTransactionBtn');
         if (addBtn) addBtn.style.display = canManageTransactions ? '' : 'none';
         const addExpBtn = document.getElementById('addExpenseBtn');
@@ -2791,6 +3051,19 @@ async function initFinancePage() {
 
     // Add transaction button (income by default)
     document.getElementById('addTransactionBtn')?.addEventListener('click', () => openTransModal());
+    document.querySelectorAll('[data-finance-categories]').forEach(button => {
+        button.addEventListener('click', () => openCategoryModal(button.dataset.financeCategories || '', button));
+    });
+    document.getElementById('financeCategoryForm')?.addEventListener('submit', saveFinanceCategory);
+    document.getElementById('cancelFinanceCategoryBtn')?.addEventListener('click', () => closeCategoryModal());
+    document.getElementById('archiveFinanceCategoryBtn')?.addEventListener('click', archiveFinanceCategory);
+    document.getElementById('financeCategoryRecord')?.addEventListener('change', async event => {
+        const nextId = event.target.value;
+        if (categoryEditorState() !== categoryEditor.initial && !await confirmModal('Перейти до іншої категорії без збереження змін?', { type: 'warning' })) {
+            event.target.value = categoryEditor.id || ''; return;
+        }
+        populateCategoryEditor(nextId);
+    });
 
     // v33.3: Quick-add expense button
     document.getElementById('addExpenseBtn')?.addEventListener('click', () => {
@@ -2828,6 +3101,7 @@ async function initFinancePage() {
             if (e.target !== modal) return;
             if (modal.id === 'transEditModal') closeTransModal(false);
             else if (modal.id === 'addAccountModal') closeAddAccountModal(false);
+            else if (modal.id === 'financeCategoryModal') closeCategoryModal();
             else modal.classList.add('hidden');
         });
     });
@@ -2934,8 +3208,6 @@ async function initFinancePage() {
     document.getElementById('openShiftBtn')?.addEventListener('click', openShift);
     document.getElementById('closeShiftBtn')?.addEventListener('click', closeShift);
 
-    // v30.6: Currency converter
-    document.getElementById('convertCurrencyBtn')?.addEventListener('click', convertCurrency);
     document.getElementById('openCurrencyRatesBtn')?.addEventListener('click', () => openCurrencyRatesModal({ updateUrl: true }));
     document.getElementById('refreshCurrencyRatesBtn')?.addEventListener('click', () => loadCurrencyRatesModal({ force: true }));
     window.addEventListener('finance:open-currency-rates', () => openCurrencyRatesModal({ updateUrl: true }));
@@ -2958,7 +3230,28 @@ window.addEventListener('legacyBusinessSurfaceUnavailable', event => {
 // v30.6: CASH REGISTER SHIFTS
 // ==========================================
 
+let manualMoneyWorkspace = null;
+function refreshManualMoneyWorkspace() {
+    const container = document.getElementById('financeMoneyWorkspace');
+    if (!container || !window.FinanceMoneyWorkspace) return;
+    if (manualMoneyWorkspace) { void manualMoneyWorkspace.refresh(); return; }
+    manualMoneyWorkspace = window.FinanceMoneyWorkspace.mount({
+        container, apiRequest,
+        canManage: () => financeCanManageTransactions()
+            && (typeof canWriteCrmBusinessScope !== 'function' || canWriteCrmBusinessScope()),
+        getBusinessKey: () => JSON.stringify([AppState.currentUser?.id, financeBusinessKey()]),
+        getCategories: () => FinState.categories,
+        onCreateAccount: () => openAddAccountModal(),
+        onCreateCategory: ({ targetId, type }) => openCategoryModal(targetId, document.activeElement, { type })
+    });
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'permissions:lifecycle', 'workingRoleChanged', 'rolePreviewChanged']) {
+    window.addEventListener(eventName, () => { if (manualMoneyWorkspace) void manualMoneyWorkspace.refresh(); });
+}
+
 async function loadShiftData() {
+    refreshManualMoneyWorkspace();
     try {
         const data = await apiRequest('GET', '/api/finance/shift/current');
         const container = document.getElementById('shiftStatus');
@@ -3191,11 +3484,17 @@ async function loadPnlReport() {
 // v30.6: DEBTS
 // ==========================================
 
+let debtsRequestGeneration = 0;
 async function loadDebts() {
+    const generation = ++debtsRequestGeneration;
+    const business = financeBusinessKey();
+    const container = document.getElementById('debtsContent');
+    if (!container) return;
+    container.innerHTML = '<p role="status">Завантаження боргів…</p>';
     try {
         const data = await apiRequest('GET', '/api/finance/debts');
-        const container = document.getElementById('debtsContent');
-        if (!container) return;
+        if (generation !== debtsRequestGeneration || business !== financeBusinessKey()) return;
+        if (!data || !Array.isArray(data.debts)) throw new Error('Invalid debt response');
 
         let html = `<div class="fin-stats" style="margin-bottom:16px">
             <div class="fin-stat-card fin-stat-expense">
@@ -3206,7 +3505,9 @@ async function loadDebts() {
                 <div class="fin-stat-value" style="color:#F59E0B">${data.count}</div>
                 <div class="fin-stat-label">Неоплачених бронювань</div>
             </div>
-        </div>`;
+        </div><p class="fin-category-note">Підтверджені бронювання з датою заходу до сьогодні включно. Майбутні платежі сюди не входять.</p>`;
+
+        if (data.hasMore) html += `<p role="status">Показано ${data.debts.length} із ${Number(data.count)} бронювань. Загальний борг враховує всі ${Number(data.count)}.</p>`;
 
         if (data.debts.length > 0) {
             html += `<div class="fin-table-wrap"><table class="fin-table">
@@ -3214,7 +3515,7 @@ async function loadDebts() {
                 <tbody>${data.debts.map(d => `<tr>
                     <td>${formatDate(d.date)}</td>
                     <td>${escapeHtml(d.label || d.programName || d.bookingId)}</td>
-                    <td>${escapeHtml(d.customerName || '—')}<br><small>${d.customerPhone || ''}</small></td>
+                    <td>${escapeHtml(d.customerName || '—')}<br><small>${escapeHtml(d.customerPhone || '')}</small></td>
                     <td>${formatMoney(d.price)}</td>
                     <td>${formatMoney(d.paidAmount || 0)}</td>
                     <td class="fin-amount-expense">${formatMoney(d.debtAmount)}</td>
@@ -3228,6 +3529,7 @@ async function loadDebts() {
         container.innerHTML = html;
     } catch (err) {
         console.error('Failed to load debts', err);
+        if (generation === debtsRequestGeneration && business === financeBusinessKey()) showFinancePanelError(container, loadDebts);
     }
 }
 
@@ -3419,27 +3721,6 @@ function openCurrencyRatesModal(options = {}) {
     loadCurrencyRatesModal();
 }
 
-async function convertCurrency() {
-    const amount = parseFloat(document.getElementById('currencyAmount')?.value);
-    const currency = document.getElementById('currencySelect')?.value || 'EUR';
-    if (!amount || amount <= 0) {
-        showNotification('Вкажіть суму', 'error');
-        return;
-    }
-    try {
-        const result = await apiRequest('POST', '/api/finance/currency/convert', { amount, currency });
-        const el = document.getElementById('currencyResult');
-        if (el) {
-            el.innerHTML = `<div class="fin-stat-card" style="text-align:center;border-left:3px solid #10B981">
-                <div style="font-size:24px;font-weight:900;color:#10B981">${formatMoney(result.converted.amount)}</div>
-                <div style="font-size:13px;color:var(--gray-500)">${result.formatted} (курс: ${result.rate})</div>
-            </div>`;
-        }
-    } catch (err) {
-        showNotification(err.message || 'Помилка конвертації', 'error');
-    }
-}
-
 // ==========================================
 // FINANCE ACCOUNTS (v33.5)
 // ==========================================
@@ -3471,19 +3752,21 @@ async function loadAccounts() {
 }
 
 function openAddAccountModal() {
+    if (accountEditor.busy || !financeCanManageTransactions()
+        || (typeof canWriteCrmBusinessScope === 'function' && !canWriteCrmBusinessScope())) return;
+    accountEditor = { scope: financeActorBusinessKey(), busy: false };
     const modal = document.getElementById('addAccountModal');
     document.getElementById('accName').value = '';
     document.getElementById('accEmoji').value = '💳';
     document.getElementById('accType').value = 'cash';
     document.getElementById('accDescription').value = '';
-    const personalInput = document.getElementById('accIsPersonal');
-    if (personalInput) personalInput.checked = false;
     _accountModalInitialState = getAccountModalState();
     modal?.classList.remove('hidden');
     if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
 }
 
 async function closeAddAccountModal(force = false) {
+    if (accountEditor.busy) return false;
     const modal = document.getElementById('addAccountModal');
     if (!modal) return true;
 
@@ -3516,24 +3799,45 @@ async function closeAddAccountModal(force = false) {
 }
 
 async function saveAccount() {
+    if (accountEditor.busy || !financeCanManageTransactions()
+        || (typeof canWriteCrmBusinessScope === 'function' && !canWriteCrmBusinessScope())) return;
+    if (accountEditor.scope !== financeActorBusinessKey()) {
+        showNotification('Бізнес або користувач змінився. Закрийте форму й відкрийте її заново.', 'error'); return;
+    }
     const name = document.getElementById('accName')?.value?.trim();
     if (!name) { showNotification('Введи назву', 'error'); return; }
+    const editor = accountEditor;
+    const modal = document.getElementById('addAccountModal');
+    const focusBeforeRequest = document.activeElement;
+    const controls = [...modal.querySelectorAll('button, input, select')].map(control => [control, control.disabled]);
+    editor.busy = true;
+    controls.forEach(([control]) => { control.disabled = true; });
+    let saved = false;
     try {
-        const isPersonal = document.getElementById('accIsPersonal')?.checked === true;
-        await apiRequest('POST', '/api/finance/accounts', {
+        const result = await apiRequest('POST', '/api/finance/accounts', {
             name,
             emoji: document.getElementById('accEmoji')?.value || '💳',
             type: document.getElementById('accType')?.value,
-            description: document.getElementById('accDescription')?.value?.trim() || null,
-            isPersonal
+            description: document.getElementById('accDescription')?.value?.trim() || null
         });
-        const modal = document.getElementById('addAccountModal');
+        if (!result?.success || !result.account?.id) throw new Error('Сервер не підтвердив створення рахунку. Перевірте список рахунків перед повтором.');
+        if (editor !== accountEditor || editor.scope !== financeActorBusinessKey()) {
+            showNotification('Результат стосується попереднього бізнесу або користувача. Чернетку збережено.', 'error'); return;
+        }
         if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
+        saved = true;
+    } catch (err) {
+        showNotification(err.message || 'Помилка', 'error');
+    } finally {
+        editor.busy = false;
+        controls.forEach(([control, disabled]) => { control.disabled = disabled; });
+        if (!modal.contains(document.activeElement) && modal.contains(focusBeforeRequest) && !focusBeforeRequest.disabled) focusBeforeRequest.focus();
+    }
+    if (saved) {
         await closeAddAccountModal(true);
         showNotification('Рахунок додано!');
         loadAccounts();
-    } catch (err) {
-        showNotification(err.message || 'Помилка', 'error');
+        if (manualMoneyWorkspace) void manualMoneyWorkspace.refresh();
     }
 }
 

@@ -168,7 +168,7 @@ describe('chat upload route storage and safety', () => {
 
         const pool = {
             query: async (sql, params = []) => {
-                if (/SELECT\s+is_active,\s*session_revoked_at\s+FROM\s+users/i.test(String(sql))) {
+                if (/SELECT\s+is_active,\s*session_revoked_at,/i.test(String(sql))) {
                     const rows = Number(params[0]) === 1 ? [{ is_active: true, session_revoked_at: null }] : [];
                     return { rows, rowCount: rows.length };
                 }

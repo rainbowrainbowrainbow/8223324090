@@ -4610,6 +4610,47 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
     border: 1px solid var(--gray-100);
 }
 
+.staff-schedule-month-density {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 10px;
+}
+
+.staff-schedule-month-density[hidden] {
+    display: none;
+}
+
+.staff-schedule-month-density button {
+    min-height: 36px;
+    padding: 7px 12px;
+    border: 1px solid var(--gray-200);
+    border-radius: 9px;
+    background: var(--white);
+    color: var(--gray-700);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.staff-schedule-month-density button[aria-pressed="true"] {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: #fff;
+}
+
+.staff-schedule-month-density button:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.staff-schedule-month-density-hint {
+    color: var(--gray-600);
+    font-size: 12px;
+}
+
 .staff-schedule-table-caption {
     position: absolute;
     width: 1px;
@@ -4663,6 +4704,11 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
     overflow-y: visible;
     scrollbar-gutter: stable;
     isolation: isolate;
+}
+
+#scheduleWrapper.is-full-range:not(.is-compact-month) {
+    max-height: min(70vh, 720px);
+    overflow-y: auto;
 }
 
 .schedule-wrapper.is-long-range .schedule-table {
@@ -4731,14 +4777,14 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
     max-width: calc(var(--schedule-day-column-width, 116px) - 18px);
 }
 
-#scheduleWrapper.is-full-range .schedule-table .sch-cell {
+#scheduleWrapper.is-compact-month .schedule-table .sch-cell {
     min-height: 42px;
     gap: 1px;
     padding: 3px 1px;
     border-radius: 6px;
 }
 
-#scheduleWrapper.is-full-range .schedule-table .sch-time {
+#scheduleWrapper.is-compact-month .schedule-table .sch-time {
     display: block;
     max-width: 100%;
     overflow: hidden;
@@ -4749,18 +4795,18 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
     letter-spacing: 0;
 }
 
-#scheduleWrapper.is-full-range .schedule-table .sch-time::after {
+#scheduleWrapper.is-compact-month .schedule-table .sch-time::after {
     content: attr(data-schedule-compact-time);
     display: block;
     font-size: 8px;
     line-height: 1.15;
 }
 
-#scheduleWrapper.is-full-range .schedule-table .sch-profession {
+#scheduleWrapper.is-compact-month .schedule-table .sch-profession {
     display: none;
 }
 
-#scheduleWrapper.is-full-range .schedule-table .sch-label {
+#scheduleWrapper.is-compact-month .schedule-table .sch-label {
     max-width: calc(var(--schedule-day-column-width, 30px) - 4px);
     overflow: hidden;
     text-overflow: clip;
@@ -4771,18 +4817,22 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule
     background: transparent;
 }
 
-#scheduleWrapper.is-full-range .schedule-table .sch-label .sch-icon {
+#scheduleWrapper.is-compact-month .schedule-table .sch-label .sch-icon {
     margin: 0;
     font-size: 10px;
 }
 
-#scheduleWrapper.is-full-range .schedule-table .sch-note {
+#scheduleWrapper.is-compact-month .schedule-table .sch-note {
     display: none;
 }
 
-#scheduleWrapper.is-full-range .schedule-table .sch-replacement-badge,
-#scheduleWrapper.is-full-range .schedule-table .sch-replacement-from {
+#scheduleWrapper.is-compact-month .schedule-table .sch-replacement-badge,
+#scheduleWrapper.is-compact-month .schedule-table .sch-replacement-from {
     display: none;
+}
+
+#scheduleWrapper.is-full-range:not(.is-compact-month) .sch-cell {
+    min-height: 56px;
 }
 
 .schedule-table thead th {
@@ -5742,6 +5792,38 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     flex: 0 0 auto;
     color: inherit;
     text-decoration: underline;
+}
+
+.sch-pay-conditions-actions {
+    flex-wrap: wrap;
+}
+
+.sch-paid-rate-error.sch-pay-conditions-actions:not(.is-error) {
+    border-color: var(--border-color, rgba(100, 116, 139, 0.3));
+    background: transparent;
+    color: var(--text-secondary, #64748b);
+}
+
+.sch-pay-conditions-actions a {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.sch-pay-conditions-actions button {
+    min-height: 44px;
+    padding: 6px 12px;
+    border: 1px solid currentColor;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.sch-pay-conditions-actions button:disabled {
+    opacity: 0.6;
+    cursor: default;
 }
 
 .sch-field-error {
@@ -7557,3 +7639,15 @@ body.dark-mode .hr-shift-multi-guard__segments span,
         margin: 8mm;
     }
 }
+
+/* Dated pay controls reuse schedule form and theme tokens. */
+.sch-day-pay-panel { margin: 12px 0; padding: 14px; border: 1px solid var(--border-color, #64748b); border-radius: 12px; min-width: 0; }
+.sch-day-pay-panel > strong { display: block; margin-bottom: 8px; }
+.sch-day-pay-current { font-weight: 600; overflow-wrap: anywhere; }
+.sch-day-pay-panel small, .sch-day-pay-panel p { display: block; line-height: 1.5; overflow-wrap: anywhere; }
+.sch-day-pay-panel .form-group { margin-top: 10px; min-width: 0; }
+.sch-day-pay-panel input, .sch-day-pay-panel select { width: 100%; min-width: 0; box-sizing: border-box; }
+.sch-day-pay-panel button { margin: 8px 8px 0 0; white-space: normal; }
+.sch-day-pay-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sch-day-pay-error { color: var(--danger-color, #b91c1c); }
+@media (max-width: 600px) { .sch-day-pay-fields { grid-template-columns: 1fr; gap: 0; } .sch-day-pay-panel { padding: 10px; } }

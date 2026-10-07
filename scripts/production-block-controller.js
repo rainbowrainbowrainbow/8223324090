@@ -6,6 +6,9 @@ const os = require('node:os');
 const path = require('node:path');
 const {
     ProductionBlockError,
+    PROTECTED_WORKFLOWS,
+    validateProtectedWorkflow,
+    redChangedPaths,
     TARGET,
     buildManifest,
     confirmationValue,
@@ -201,6 +204,21 @@ async function liveVersion(url = TARGET.liveUrl) {
     return body;
 }
 
+function assertHrPayrollProductionBase(manifest, live, remoteSha) {
+    if (manifest.allowedProtectedWorkflow?.kind !== PROTECTED_WORKFLOWS.HR_PAYROLL) return;
+    fail(live.sourceBranch === TARGET.branch && live.commitSha === manifest.baseLiveSha,
+        'Live production changed after HR/payroll preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+    fail(remoteSha === manifest.baseLiveSha || remoteSha === manifest.initialHeadSha,
+        'Production branch changed outside the exact HR/payroll release', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+}
+
+function remoteProductionSha() {
+    const output = git(['ls-remote', '--heads', 'origin', 'refs/heads/' + TARGET.branch]);
+    const sha = output.split(/\s+/)[0].toLowerCase();
+    fail(SHA_PATTERN.test(sha), 'Cannot verify remote production SHA', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    return sha;
+}
+
 function defaultRuntime() {
     const runtime = {
         async facts() {
@@ -212,6 +230,7 @@ function defaultRuntime() {
             return {
                 head,
                 currentBranch,
+                releaseVersion: JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version,
                 live,
                 descendsFromLive: gitIsAncestor(live.commitSha, head),
                 changedPaths: paths,
@@ -233,7 +252,10 @@ function defaultRuntime() {
         plan(manifest) {
             return releaseCommandPlan(manifest);
         },
-        async preflightExecution() {
+        async preflightExecution(manifest) {
+            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+                assertHrPayrollProductionBase(manifest, await liveVersion(), remoteProductionSha());
+            }
             resolveSpawnCommand('npm', ['test']);
         },
         async resumeQa(manifest, releaseSha) {
@@ -246,16 +268,24 @@ function defaultRuntime() {
         },
         async execute(manifest, blockFile) {
             commandResult('npm', ['test'], { inherit: true });
-            commandResult('npm', ['run', 'version:bump', '--', 'patch', '--label', manifest.releaseLabel], { inherit: true });
-            applyReleaseNotes(manifest);
-            const releasePaths = git(['diff', '--name-only']).split(/\r?\n/).filter(Boolean);
-            fail(releasePaths.length > 0, 'Version bump did not produce release artifacts', 'PRODUCTION_BLOCK_RELEASE_ARTIFACTS_MISSING');
-            const invalidReleasePaths = releasePaths.filter(file => !isReleaseArtifact(file));
-            fail(invalidReleasePaths.length === 0, 'Version bump changed files outside the release artifact allowlist',
-                'PRODUCTION_BLOCK_RELEASE_ARTIFACT_DRIFT', { paths: invalidReleasePaths });
-            commandResult('git', ['add', '--', ...releasePaths]);
-            const versionStatus = git(['status', '--porcelain']);
-            if (versionStatus) commandResult('git', ['commit', '-m', `Release ${manifest.releaseLabel}`], { inherit: true });
+            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+                commandResult('npm', ['run', 'check:version'], { inherit: true });
+                fail(git(['rev-parse', 'HEAD']).toLowerCase() === manifest.initialHeadSha
+                    && !git(['status', '--porcelain'])
+                    && JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version === manifest.preparedRelease.version,
+                    'Prepared HR/payroll release drifted', 'PRODUCTION_BLOCK_RELEASE_SHA_DRIFT');
+            } else {
+                commandResult('npm', ['run', 'version:bump', '--', 'patch', '--label', manifest.releaseLabel], { inherit: true });
+                applyReleaseNotes(manifest);
+                const releasePaths = git(['diff', '--name-only']).split(/\r?\n/).filter(Boolean);
+                fail(releasePaths.length > 0, 'Version bump did not produce release artifacts', 'PRODUCTION_BLOCK_RELEASE_ARTIFACTS_MISSING');
+                const invalidReleasePaths = releasePaths.filter(file => !isReleaseArtifact(file));
+                fail(invalidReleasePaths.length === 0, 'Version bump changed files outside the release artifact allowlist',
+                    'PRODUCTION_BLOCK_RELEASE_ARTIFACT_DRIFT', { paths: invalidReleasePaths });
+                commandResult('git', ['add', '--', ...releasePaths]);
+                const versionStatus = git(['status', '--porcelain']);
+                if (versionStatus) commandResult('git', ['commit', '-m', `Release ${manifest.releaseLabel}`], { inherit: true });
+                }
             const releaseSha = git(['rev-parse', 'HEAD']).toLowerCase();
             fail(gitIsAncestor(manifest.initialHeadSha, releaseSha),
                 'Release commit is not a descendant of the authorized functional SHA', 'PRODUCTION_BLOCK_RELEASE_SHA_DRIFT');
@@ -263,9 +293,16 @@ function defaultRuntime() {
             fail(JSON.stringify(migrationFiles) === JSON.stringify(manifest.allowedMigrationFiles),
                 'Migration set drifted after authorization', 'PRODUCTION_BLOCK_MIGRATION_DRIFT');
             commandResult('git', ['push', 'origin', `HEAD:refs/heads/${manifest.allowedBranch}`], { inherit: true });
-            const exact = findExactCiRun(releaseSha);
+            const exact = findExactCiRun(releaseSha, { hrPayroll: manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL });
             fail(Boolean(exact), 'Exact-SHA GitHub CI run was not found', 'PRODUCTION_BLOCK_CI_NOT_FOUND');
             commandResult('gh', ['run', 'watch', String(exact.databaseId), '--exit-status'], { inherit: true });
+            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+                const ci = JSON.parse(commandResult('gh', ['run', 'view', String(exact.databaseId), '--json',
+                    'headSha,headBranch,workflowName,event,status,conclusion,jobs']));
+                assertHrPayrollCiResult(ci, releaseSha);
+                // CI can take minutes; check foreign live/remote drift again immediately before upload.
+                assertHrPayrollProductionBase(manifest, await liveVersion(), remoteProductionSha());
+            }
             commandResult('npm', ['run', 'release:railway-up', '--',
                 '--branch', manifest.allowedBranch,
                 '--commit', releaseSha,
@@ -464,15 +501,46 @@ async function resumeAuthorizedQa(manifest, releaseSha, dependencies = {}) {
     return executeQa(manifest, releaseSha);
 }
 
+const HR_PAYROLL_REQUIRED_CI_JOBS = Object.freeze([
+    'Fast baseline',
+    'Omni browser regression',
+    'Certificate redemption regression',
+    'Checkbox park PostgreSQL mock integration',
+    'HR Team browser smoke',
+    'HR and payroll PostgreSQL integration',
+    'My Day PostgreSQL integration',
+    'My Day browser interactions'
+]);
+
+function selectHrPayrollCiRun(runs, releaseSha) {
+    return runs.filter(run => run.headSha === releaseSha && run.headBranch === TARGET.branch
+        && run.workflowName === 'CI' && run.event === 'push')
+        .sort((left, right) => Number(right.databaseId) - Number(left.databaseId))[0] || null;
+}
+
+function assertHrPayrollCiResult(run, releaseSha) {
+    fail(run?.headSha === releaseSha && run.headBranch === TARGET.branch
+        && run.workflowName === 'CI' && run.event === 'push',
+    'HR/payroll requires the production push CI for the exact release SHA', 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
+    fail(run.status === 'completed' && run.conclusion === 'success',
+        'HR/payroll production CI is not successful', 'PRODUCTION_BLOCK_CI_INCOMPLETE');
+    const jobs = Array.isArray(run.jobs) ? run.jobs : [];
+    fail(HR_PAYROLL_REQUIRED_CI_JOBS.every(name => {
+        const matching = jobs.filter(job => job.name === name);
+        return matching.length === 1 && matching[0].status === 'completed' && matching[0].conclusion === 'success';
+    }), 'HR/payroll required CI jobs are missing, skipped or unsuccessful', 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED');
+}
+
 function findExactCiRun(releaseSha, options = {}) {
     const attempts = Number(options.attempts || 12);
     const delayMs = Number(options.delayMs || 5000);
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
         const runs = JSON.parse(commandResult('gh', [
             'run', 'list', '--commit', releaseSha, '--limit', '10',
-            '--json', 'databaseId,headSha,status,conclusion,url'
+            ...(options.hrPayroll ? ['--workflow', 'ci.yml', '--branch', TARGET.branch, '--event', 'push'] : []),
+            '--json', 'databaseId,headSha,headBranch,workflowName,event,status,conclusion,url'
         ]));
-        const exact = runs.find(run => run.headSha === releaseSha);
+        const exact = options.hrPayroll ? selectHrPayrollCiRun(runs, releaseSha) : runs.find(run => run.headSha === releaseSha);
         if (exact) return exact;
         if (attempt < attempts) childProcess.spawnSync(process.execPath, ['-e', `setTimeout(() => {}, ${delayMs})`], {
             cwd: ROOT, windowsHide: true, stdio: 'ignore'
@@ -484,7 +552,9 @@ function findExactCiRun(releaseSha, options = {}) {
 function releaseCommandPlan(manifest) {
     return [
         'npm test',
-        `npm run version:bump -- patch --label "${manifest.releaseLabel}"`,
+        ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL
+            ? ['npm run check:version (prepared exact SHA)']
+            : [`npm run version:bump -- patch --label "${manifest.releaseLabel}"`]),
         `git push origin HEAD:refs/heads/${manifest.allowedBranch}`,
         'gh run watch <exact-sha-run> --exit-status',
         `npm run release:railway-up -- --branch ${manifest.allowedBranch} --project ${manifest.railwayProjectId} --environment ${manifest.railwayEnvironment} --service ${manifest.railwayServiceId}`,
@@ -518,6 +588,12 @@ async function statusAction(options) {
 
 async function assertExecuteDrift(manifest, runtime) {
     const drift = await runtime.drift(manifest);
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
+        fail(drift.head === manifest.initialHeadSha, 'HR/payroll requires its exact prepared SHA', 'PRODUCTION_BLOCK_SHA_DRIFT');
+        fail(JSON.stringify([...(drift.changedPaths || [])].sort()) === JSON.stringify([...manifest.changedPaths].sort()),
+            'HR/payroll file inventory drifted', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+        validateProtectedWorkflow(PROTECTED_WORKFLOWS.HR_PAYROLL, drift.changedPaths, redChangedPaths(drift.changedPaths));
+    }
     fail(drift.descendsFromBase === true && gitIsSafeDescendant(manifest.initialHeadSha, drift.head, drift),
         'Candidate SHA is outside the authorized descendant envelope', 'PRODUCTION_BLOCK_SHA_DRIFT');
     fail(JSON.stringify(drift.migrations) === JSON.stringify(manifest.allowedMigrationFiles),
@@ -650,6 +726,9 @@ if (require.main === module) {
 module.exports = {
     applyReleaseNotes,
     assertExecuteDrift,
+    assertHrPayrollProductionBase,
+    assertHrPayrollCiResult,
+    selectHrPayrollCiRun,
     defaultBlockFile,
     decodeQaScope,
     execute,

@@ -65,11 +65,81 @@ async function transaction(work) {
     }
 }
 
-async function checkTeacher(db, teacherId) {
+async function listTeachers(context, db = pool, includeInactive = false) {
+    const result = await db.query(
+        `SELECT s.id, s.name, (s.is_active IS TRUE AND COALESCE(m.is_active, TRUE)) AS is_active
+         FROM staff s
+         LEFT JOIN education_teacher_memberships m ON m.staff_id = s.id AND m.business_context = $1
+         WHERE (m.staff_id IS NOT NULL OR EXISTS (
+             SELECT 1 FROM education_groups g WHERE g.business_context = $1 AND g.teacher_id = s.id))
+         AND ($2::boolean OR (s.is_active IS TRUE AND COALESCE(m.is_active, TRUE)))
+         ORDER BY s.name, s.id`, [context, includeInactive]
+    );
+    return result.rows;
+}
+
+async function createTeacher(context, input, actorId = null) {
+    const name = String(input.name || '').trim();
+    if (!name || name.length > 100) throw new EducationGroupError('Ім’я викладача: від 1 до 100 символів');
+    if (input.staffId != null || input.staff_id != null) throw new EducationGroupError('Створіть нового викладача; довільний staff ID не можна прив’язати');
+    return transaction(async db => {
+        const { getBusinessCabinetSettings } = require('./businessCabinet');
+        const cabinet = await getBusinessCabinetSettings(db, context);
+        if (cabinet.timelineMode !== 'education') throw new EducationGroupError('Викладачів можна додавати лише в навчальному бізнесі',409);
+        const person = (await db.query(
+            "INSERT INTO staff(name,department,position,is_active) VALUES ($1,'education','Викладач',true) RETURNING id,name,is_active", [name]
+        )).rows[0];
+        await db.query(`INSERT INTO education_teacher_memberships(business_context,staff_id,created_by,updated_by)
+            VALUES ($1,$2,$3,$3)`, [context, person.id, actorId]);
+        return person;
+    });
+}
+
+async function setTeacherActive(context, teacherId, input, actorId = null) {
+    if (typeof input.isActive !== 'boolean') throw new EducationGroupError('isActive must be boolean');
+    const id = positiveId(teacherId, 'teacherId');
+    return transaction(async db => {
+        const person = (await db.query(`SELECT s.id,s.name,s.is_active FROM staff s
+            WHERE s.id=$2 AND (EXISTS (SELECT 1 FROM education_teacher_memberships m WHERE m.business_context=$1 AND m.staff_id=s.id)
+                OR EXISTS (SELECT 1 FROM education_groups g WHERE g.business_context=$1 AND g.teacher_id=s.id)) FOR UPDATE`, [context,id])).rows[0];
+        if (!person) throw new EducationGroupError('Викладача не знайдено в цьому бізнесі',404);
+        if (input.isActive && person.is_active !== true) throw new EducationGroupError('Працівник неактивний; відновлення виконується в чинному HR workflow',409);
+        await db.query(`INSERT INTO education_teacher_memberships(business_context,staff_id,is_active,created_by,updated_by)
+            VALUES ($1,$2,$3,$4,$4) ON CONFLICT(business_context,staff_id) DO UPDATE
+            SET is_active=EXCLUDED.is_active, updated_by=EXCLUDED.updated_by, updated_at=NOW()`, [context,id,input.isActive,actorId]);
+        return {id:person.id,name:person.name,is_active:input.isActive && person.is_active===true};
+    });
+}
+
+async function assertLessonTeacher(db, context, lesson, previous = null) {
+    const id = String(lesson.teacherId || '').trim();
+    const oldId = String(previous?.teacherId || '').trim();
+    // Legacy snapshots remain editable; only new or changed assignments require eligibility.
+    if (previous && id === oldId) {
+        if (!id && String(lesson.teacherName || '') !== String(previous.teacherName || '')) {
+            throw new EducationGroupError('Оберіть викладача з довідника',400);
+        }
+        return { ...lesson, teacherName: previous.teacherName || '' };
+    }
+    if (!id) {
+        if (lesson.teacherName) throw new EducationGroupError('Оберіть викладача з довідника',400);
+        return lesson;
+    }
+    const teacherId = await checkTeacher(db,context,id);
+    // A row lock prevents a scoped deactivation racing a new assignment.
+    const staff = (await db.query('SELECT id,name,is_active FROM staff WHERE id=$1 FOR SHARE',[teacherId])).rows[0];
+    const membership = await db.query('SELECT is_active FROM education_teacher_memberships WHERE business_context=$1 AND staff_id=$2 FOR SHARE',[context,teacherId]);
+    if (!staff?.is_active || membership.rows[0]?.is_active === false) throw new EducationGroupError('Active teacher not found in this business',404);
+    return {...lesson,teacherId:String(teacherId),teacherName:staff.name};
+}
+
+async function checkTeacher(db, context, teacherId) {
     if (teacherId == null || teacherId === '') return null;
     const id = positiveId(teacherId, 'teacherId');
-    const result = await db.query('SELECT id FROM staff WHERE id = $1 AND is_active IS TRUE', [id]);
-    if (!result.rowCount) throw new EducationGroupError('Active teacher not found', 404);
+    await db.query('SELECT id FROM staff WHERE id=$1 FOR SHARE', [id]);
+    await db.query('SELECT staff_id FROM education_teacher_memberships WHERE business_context=$1 AND staff_id=$2 FOR SHARE', [context,id]);
+    const teachers = await listTeachers(context, db);
+    if (!teachers.some(teacher => Number(teacher.id) === id)) throw new EducationGroupError('Active teacher not found in this business', 404);
     return id;
 }
 
@@ -140,9 +210,12 @@ async function saveGroup(context, input, groupId = null) {
         if (!Number.isInteger(capacity) || capacity < 1 || capacity > 500) {
             throw new EducationGroupError('Capacity must be between 1 and 500');
         }
-        const teacherId = await checkTeacher(db, input.teacherId);
+        const group = groupId == null ? null : await lockedGroup(db, context, groupId);
+        const requestedTeacher = Object.hasOwn(input, 'teacherId') ? input.teacherId : group?.teacher_id;
+        // Preserve an existing assignment, including inactive teachers, on unrelated edits.
+        const teacherId = group && String(requestedTeacher ?? '') === String(group.teacher_id ?? '')
+            ? group.teacher_id : await checkTeacher(db, context, requestedTeacher);
         if (groupId != null) {
-            const group = await lockedGroup(db, context, groupId);
             if (group.status !== 'active') throw new EducationGroupError('Archived group cannot be edited', 409);
             const members = await db.query(
                 'SELECT start_date::text AS start_date, end_date::text AS end_date FROM education_group_members WHERE group_id = $1 AND business_context = $2',
@@ -229,6 +302,6 @@ async function endMembership(context, groupId, membershipId, endDate) {
 }
 
 module.exports = {
-    EducationGroupError, assertLessonGroup, listGroups, getGroup,
+    EducationGroupError, assertLessonGroup, assertLessonTeacher, listGroups, getGroup, listTeachers, createTeacher, setTeacherActive,
     saveGroup, archiveGroup, enrollChild, endMembership
 };

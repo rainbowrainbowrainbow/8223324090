@@ -42,6 +42,7 @@ function harness(options = {}) {
     })(win.document.addEventListener.bind(win.document));
     win.console = { warn() {}, log() {}, error() {} };
     const user = { id: 9701, role: 'director', activeBusinessContext: contextKey,
+        accessContext: { status: 'ready' },
         businessContextPolicy: { allowed: ['event_genix', 'park_restaurant'], defaultContext: 'event_genix' } };
     win.AppState = { currentUser: user };
     win.CONFIG = { STORAGE: { CURRENT_USER: 'pzp_current_user', SESSION: 'pzp_session' } };
@@ -57,6 +58,9 @@ function harness(options = {}) {
     win._loadStaffLinks = async () => { calls.push({ url: 'staff-link-helper', method: 'GET' }); return []; };
     win.showNotification = () => {};
     win.eval(code('js/api.js'));
+    win.captureApiAuthSessionSnapshot(user);
+    win.getCrmBusinessOperatingProfile = () => ({ activeBusinessId: contextKey,
+        membershipMode: options.recovery === false ? 'compatibility' : 'membership', accessContext: { status: 'ready' } });
     win.eval(code('js/hr-attendance-state.js'));
     win.eval(`${code('js/hr-page.js')}\ncanManage = true; window.__todayRecoveryTestState = () => ({ canManage, todayData });`);
     return { dom, win, calls };

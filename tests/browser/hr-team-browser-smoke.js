@@ -128,6 +128,7 @@ const HARNESS_CODE = String.raw`
     payrollProfiles[0].latest_version = payrollProfiles[0].current_version;
     payrollProfiles[0].latestVersion = payrollProfiles[0].current_version;
     payrollProfiles[0].versions = [payrollProfiles[0].current_version];
+    const payrollAssignments = [];
     let holdProfileLoads = false;
     let holdHistoryLoads = false;
     let holdLazyTabLoads = false;
@@ -208,6 +209,14 @@ const HARNESS_CODE = String.raw`
         const profile = staffProfiles.get(Number(id));
         if (!profile) return { success: false, error: 'missing profile' };
         const updated = { ...profile, ...body, id: Number(id) };
+        if (Array.isArray(body.profession_rates)) {
+            const rates = new Map((profile.profession_rates || []).map(row => [row.profession_key, row.hourly_rate]));
+            for (const row of body.profession_rates) {
+                if (row.remove === true) rates.delete(row.profession_key);
+                else rates.set(row.profession_key, row.hourly_rate);
+            }
+            updated.profession_rates = [...rates].map(([profession_key, hourly_rate]) => ({ profession_key, hourly_rate }));
+        }
         staffProfiles.set(Number(id), updated);
         return { success: true, data: updated };
     }
@@ -478,7 +487,7 @@ const HARNESS_CODE = String.raw`
         if (String(path).includes('/payroll-profiles?include_archived=true')) return { success: true, data: payrollProfiles.map(profile => ({ ...profile })) };
         if (String(path).includes('/payroll-profile-assignments?include_past=true')) {
             const staffId = Number(String(path).match(/\/staff\/(\d+)\/payroll-profile-assignments/)?.[1] || 0);
-            return { success: true, data: { staff: { id: staffId, name: staffProfiles.get(staffId)?.name || 'QA staff' }, assignments: [] } };
+            return { success: true, data: { staff: { id: staffId, name: staffProfiles.get(staffId)?.name || 'QA staff' }, assignments: payrollAssignments } };
         }
         if (String(path).includes('/payroll-scheme')) return { success: true, data: { fallback_hourly_rate: 100, fallback_rate_unit: 'hour' } };
         if (String(path).includes('/salary?')) {
@@ -634,13 +643,23 @@ const HARNESS_CODE = String.raw`
             window.__staffViewAllowed = staffView;
             window.__todayScopeMode = mode;
             todayData = recovery ? { todayAccess: { readOnly: true, businessContext: 'event_genix' } } : {};
+            window.getLegacyBusinessSurfaceAvailability = surface => ({ available: surface === 'staff'
+                && !recovery && mode === 'single' && context === 'event_genix' });
+            window.getLegacyBusinessSurfaceContextKey = surface => JSON.stringify([
+                surface, AppState.currentUser.id, AppState.currentUser.role, context, mode, recovery
+            ]);
             _staffLinkCache = linked ? [{ id: 1, user_id: 301 }] : [];
+            _staffLinkCacheContext = getStaffLinksContextKey();
             document.getElementById('todayActionFixture').innerHTML = renderTodayStaffProfileAction(1, 'QA Today Worker');
         },
         failNextProfileRead() { failNextProfileRead = true; },
         workspaceOperations: () => workspaceOperations.slice(),
         downloads: () => downloads.slice(),
         offboardingSubmissions: () => offboardingSubmissions.map(item => ({ path: item.path, body: { ...item.body } })),
+        allowOffboardingAccountDisable() {
+            staffOffboardingReadiness = { ...staffOffboardingReadiness, disable_available: true, disable_blockers: [] };
+            updateStaffOffboardingActionState();
+        },
         notifications: () => window.__notifications.map(item => ({ ...item })),
         disableConfirmationImplementation() { confirmModal = undefined; },
         restoreConfirmationImplementation() { confirmModal = productionConfirmModal; },
@@ -648,6 +667,27 @@ const HARNESS_CODE = String.raw`
             failNextWorkspaceRequest = String(fragment || '');
         },
         close: () => closeHrEditableModal('staffEditModal'),
+        seedPayrollConditions() {
+            const makeVersion = (id, unit, rate, from, to = null) => ({ id, versionNumber: 1, rateUnit: unit, defaultRate: rate, effectiveFrom: from, effectiveTo: to, dayRates: [] });
+            const makeProfile = (id, key, title, unit, rate) => ({ id, professionKey: key, title, profileKind: 'shared', status: 'active', isDefaultForProfession: true,
+                versions: [makeVersion(id * 10, unit, rate, '2026-01-01')] });
+            payrollProfiles.splice(0, payrollProfiles.length,
+                makeProfile(901, 'animator', 'QA Monthly Base', 'month', 30000),
+                makeProfile(902, 'barista', 'QA Hourly Addition', 'hour', 180),
+                makeProfile(903, 'waiter', 'QA Per Attendance', 'day', 1200),
+                { id: 904, professionKey: 'animator', title: 'QA Future Personal', profileKind: 'personal', ownerStaffId: 1, status: 'active',
+                    versions: [makeVersion(9040, 'month', 35000, '2026-12-01')] });
+            payrollAssignments.push({ id: 100, professionKey: 'animator', profileId: 904, assignmentKind: 'explicit', effectiveFrom: '2026-12-01', effectiveTo: null });
+            hrProfessions.push({ key: 'barista', title: 'Бариста', is_active: true }, { key: 'waiter', title: 'Офіціант', is_active: true });
+            Object.assign(staffProfiles.get(1), { role_type: 'animator', secondary_professions: ['barista', 'waiter'], hourly_rate: 30000, rate_unit: 'month' });
+        },
+        seedProfessionRates() {
+            const profile = staffProfiles.get(1);
+            hrProfessions.push({ key: 'barista', title: 'Бариста', is_active: true });
+            profile.secondary_professions = ['barista'];
+            profile.profession_rates = [{ profession_key: 'animator', hourly_rate: 180 }, { profession_key: 'barista', hourly_rate: 120 }];
+        },
+        savedProfessionRates: () => staffProfiles.get(1).profession_rates,
         staffUpdates: () => staffUpdates.map(item => ({ path: item.path, body: { ...item.body } })),
         enableStaffUpdateHold() { holdStaffUpdates = true; },
         failNextStaffUpdate() { failNextStaffUpdate = true; },
@@ -1205,7 +1245,7 @@ async function assertScopedSavesAndActionStates(page) {
     assert.match(payrollProfilePanel, /QA Animator Base/, 'staff payroll tab shows inherited default payroll profile');
     assert.match(payrollProfilePanel, /Будні/, 'staff payroll tab separates weekday rates');
     assert.match(payrollProfilePanel, /Вихідні/, 'staff payroll tab separates weekend rates');
-    assert.match(payrollProfilePanel, /legacy не використовується/, 'staff payroll tab makes profile-only base explicit');
+    assert.match(payrollProfilePanel, /Профіль має пріоритет/, 'staff payroll tab makes profile-only base explicit');
     assert.equal(await page.locator('#editPayrollProfileSimulator').isVisible(), true, 'staff payroll tab exposes the payroll profile simulator');
     await page.fill('#editHourlyRate', '145');
     const payrollSave = page.locator('#editPayrollSchemeSave');
@@ -1683,14 +1723,15 @@ async function assertOffboardingDangerFlow(page) {
     await page.fill('#editOffboardingReason', 'QA controlled offboarding');
     assert.equal(await complete.isDisabled(), true, 'reason alone does not unlock offboarding');
     await page.fill('#editOffboardingDate', '2026-08-15');
-    await page.waitForFunction(() => !document.getElementById('editOffboardingComplete')?.disabled);
+    assert.equal(await complete.isDisabled(), true, 'linked account permission blocker prevents completing dismissal');
     assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /неактивним/i, 'visible consequence summary explains the profile outcome');
     assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /майбутніх змін: 2/i, 'visible consequence summary includes future shifts');
-
-    await page.selectOption('#editOffboardingAccountAction', 'disable');
-    await page.waitForFunction(() => document.getElementById('editOffboardingComplete')?.disabled === true);
+    assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /автоматично вимкнено/i, 'account deactivation is an automatic consequence');
+    assert.equal(await page.locator('#editOffboardingAccountAction').inputValue(), 'disable');
+    assert.equal(await page.locator('#editOffboardingAccountAction').isDisabled(), true, 'account action cannot bypass required deactivation');
+    assert.equal(await page.locator('#editOffboardingAccountAction option').count(), 1);
     assert.match(await page.locator('#editOffboardingActionStatus').textContent(), /manage_accounts/i, 'account permission blocker explains why automatic disable is unavailable');
-    await page.selectOption('#editOffboardingAccountAction', 'review');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.allowOffboardingAccountDisable());
     await page.waitForFunction(() => !document.getElementById('editOffboardingComplete')?.disabled);
 
     await complete.click();
@@ -1698,6 +1739,8 @@ async function assertOffboardingDangerFlow(page) {
     const confirmationMessage = await page.locator('.confirm-overlay .confirm-message').textContent();
     assert.match(confirmationMessage, /Підтвердьте завершення співпраці/i, 'final submit shows an explicit confirmation summary');
     assert.match(confirmationMessage, /майбутніх змін: 2/i, 'final confirmation repeats the planned schedule cleanup');
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'offboarding-automatic-disable-mobile.png'), fullPage: true });
     await page.locator('.confirm-overlay .confirm-cancel').click();
     assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.offboardingSubmissions().length), 0, 'cancelled offboarding does not send a request');
     assert.equal(await page.locator('#staffEditModal').evaluate(el => el.style.display !== 'none'), true, 'cancelled final confirmation does not change the profile');
@@ -1711,7 +1754,7 @@ async function assertOffboardingDangerFlow(page) {
     assert.deepEqual(submissions[0].body, {
         effective_date: '2026-08-15',
         target_pool_status: 'reserve',
-        account_action: 'review',
+        account_action: 'disable',
         reason: 'QA controlled offboarding',
         notes: null
     }, 'confirmed offboarding preserves the reviewed consequence payload');
@@ -1883,6 +1926,178 @@ async function assertTodayRecoveryProfileAction(page) {
     assert.match(ordinaryAction, /openStaffProfile\(301\)/, `ordinary Today linked-account navigation is unchanged: ${ordinaryAction}`);
 }
 
+async function assertPayrollConditions(page) {
+    await installHarness(page, { dark: true });
+    await page.evaluate(async () => {
+        window.__hrTeamBrowserSmoke.seedPayrollConditions();
+        await openStaffEdit(1);
+    });
+    await page.locator('#staffProfileTabPayroll').click();
+    const date = page.locator('#editPayrollConditionsDate');
+    await date.fill('2026-10-03');
+    await date.dispatchEvent('change');
+    const card = key => page.locator('[data-staff-payroll-profession="' + key + '"]');
+    assert.match(await card('animator').innerText(), /30.?000/);
+    assert.match(await card('animator').innerText(), /місячний оклад/);
+    assert.match(await card('animator').innerText(), /Успадковано від професії/);
+    assert.match(await card('barista').innerText(), /180/);
+    assert.match(await card('barista').innerText(), /за годину/);
+    assert.match(await card('waiter').innerText(), /за вихід/);
+    assert.match(await card('animator').innerText(), /Заплановані зміни: 1/);
+    await card('animator').locator('details').evaluate(el => { el.open = true; });
+    assert.match(await card('animator').innerText(), /2026-12-01/);
+    await date.fill('2026-12-01');
+    await date.dispatchEvent('change');
+    assert.match(await card('animator').innerText(), /35.?000/);
+    assert.match(await card('animator').innerText(), /Вибрані умови працівника/);
+    assert.match(await card('animator').innerText(), /Персональні/i);
+    await page.evaluate(() => { hrCanUsePayrollAction = () => false; renderStaffPayrollProfiles(); });
+    assert.equal(await card('animator').locator('[data-staff-payroll-profile-action="change"]').isDisabled(), true);
+    assert.equal(await card('animator').locator('[data-staff-payroll-profile-action="history"]').isDisabled(), false);
+    await card('animator').scrollIntoViewIfNeeded();
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'pay-conditions-mobile-dark.png'), fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+    await page.locator('#editCloseTop').click();
+}
+
+
+async function assertPayrollConditionsDeepLink(page) {
+    await page.route('http://hr-pay-qa.test/**', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>HR QA</title>' }));
+    await page.goto('http://hr-pay-qa.test/hr?employee=1&profileTab=payroll&profession=barista&payDate=2026-12-01&scheduleDraft=qa-token');
+    await installHarness(page, { dark: true });
+    await page.evaluate(async () => {
+        window.__hrTeamBrowserSmoke.seedPayrollConditions();
+        sessionStorage.setItem('pzp_schedule_hr_draft_v1', JSON.stringify({ token: 'qa-token', owner: hrScheduleDraftContext(),
+            staffId: 1, createdAt: Date.now(), returnUrl: '/staff?scheduleDraft=qa-token' }));
+        await openStaffEditFromLocation();
+    });
+    await page.waitForFunction(() => document.activeElement?.dataset.staffPayrollProfession === 'barista');
+    assert.equal(await page.locator('#staffProfileTabPayroll').getAttribute('aria-selected'), 'true');
+    assert.equal(await page.locator('#editPayrollConditionsDate').inputValue(), '2026-12-01');
+    assert.match(await page.locator('[data-staff-payroll-profession="animator"]').innerText(), /35.?000/);
+    assert.equal(await page.locator('#staffScheduleReturnLink').getAttribute('href'), '/staff?scheduleDraft=qa-token');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'pay-conditions-deep-link-mobile.png'), fullPage: true });
+    await page.locator('#editCloseTop').click();
+}
+
+async function assertProfessionRateSafety(page) {
+    await installHarness(page, { dark: true });
+    await page.evaluate(async () => {
+        window.__hrTeamBrowserSmoke.seedProfessionRates();
+        await openStaffEdit(1);
+    });
+    await page.waitForFunction(() => document.getElementById('staffEditModal')?.dataset.cardState === 'ready');
+    await page.locator('#staffProfileTabPayroll').click();
+    const primary = page.locator('[data-profession-rate="animator"]');
+    const secondary = page.locator('[data-profession-rate="barista"]');
+    assert.equal(await primary.inputValue(), '180', 'previously hidden primary override is editable');
+    await page.fill('#editHourlyRate', '145');
+    await page.locator('#editPayrollSchemeSave').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.staffUpdates().length === 1);
+    assert.deepEqual(await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates()[0].body.profession_rates), [], 'unchanged overrides are not resent');
+    assert.equal(await primary.inputValue(), '180');
+    await secondary.fill('');
+    await page.locator('#editPayrollSchemeSave').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.staffUpdates().length === 2);
+    assert.deepEqual(await page.evaluate(() => window.__hrTeamBrowserSmoke.savedProfessionRates()), [{profession_key:'animator',hourly_rate:180},{profession_key:'barista',hourly_rate:120}], 'blank input never deletes a saved rate');
+    await secondary.fill('155');
+    const remove = page.locator('[data-remove-profession-rate="barista"]');
+    await remove.click();
+    assert.equal(await secondary.isDisabled(), true);
+    await remove.click();
+    assert.equal(await secondary.inputValue(), '155', 'undo restores the edited value');
+    await remove.click();
+    await page.locator('#editPayrollSchemeSave').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.staffUpdates().length === 3);
+    assert.deepEqual(await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body.profession_rates), [{profession_key:'barista',remove:true}]);
+    assert.deepEqual(await page.evaluate(() => window.__hrTeamBrowserSmoke.savedProfessionRates()), [{profession_key:'animator',hourly_rate:180}], 'explicit delete preserves primary override');
+    await page.locator('#editCloseTop').click();
+    await page.evaluate(() => openStaffEdit(1));
+    await page.waitForFunction(() => document.getElementById('staffEditModal')?.dataset.cardState === 'ready');
+    await page.locator('#staffProfileTabPayroll').click();
+    assert.equal(await primary.inputValue(), '180', 'override survives reopening');
+    assert.equal(await page.locator('#editHourlyRate').inputValue(), '145', 'reopening keeps the base rate separate from the primary override');
+    await primary.fill('190');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.enableStaffUpdateHold());
+    await page.locator('#editPayrollSchemeSave').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.staffUpdates().length === 4);
+    await primary.fill('200');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveStaffUpdates());
+    await page.waitForFunction(() => document.getElementById('editPayrollSchemeSave')?.dataset.actionState === 'success');
+    assert.equal(await primary.inputValue(), '200', 'in-flight edits survive the save response');
+    assert.equal(await page.locator('#staffProfileTabPayroll').evaluate(el => el.classList.contains('is-dirty')), true, 'in-flight rate edit remains dirty');
+    await page.locator('#editPayrollSchemeSave').click();
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.staffUpdates().length === 5);
+    assert.deepEqual(await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body.profession_rates), [{profession_key:'animator',hourly_rate:200}], 'next save sends the remaining edit only');
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    await primary.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'rate-safety-mobile-dark.png'), fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true, '390px layout has no page overflow');
+    await page.locator('#editCloseTop').click();
+}
+
+async function assertStaffAccountAccess(page) {
+    await installHarness(page, { dark: true });
+    await page.evaluate(() => {
+        window.__staffAccountCalls = [];
+        window.__staffAccountCopies = [];
+        window.canAccess = action => action !== 'manage_accounts' || ['creator', 'director'].includes(AppState.currentUser?.role);
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => window.__staffAccountCopies.push(value) } });
+        crmApiFetch = async (url, options = {}) => {
+            window.__staffAccountCalls.push({ url, body: options.body });
+            if (url === '/api/users') return [
+                { id: 101, staff_id: 1, username: 'qa.staff.access', role: 'animator', is_active: false, can_mutate: true },
+                { id: 102, staff_id: 2, username: 'qa.other.staff', role: 'animator', is_active: true, can_mutate: true }
+            ];
+            if (url === '/api/users/101/reset-password') return {
+                success: true, username: 'qa.staff.access', isActive: false, loginReady: false,
+                loginReadyReason: 'inactive_account', credential: { username: 'qa.staff.access', password: 'Synthetic234' }
+            };
+            throw new Error('Unexpected account API in staff-card browser smoke');
+        };
+    });
+    await openProfile(page, 1);
+    const section = page.locator('#staffAccountAccess');
+    await section.scrollIntoViewIfNeeded();
+    assert.equal(await section.isVisible(), true);
+    assert.match(await section.innerText(), /qa.staff.access/);
+    assert.doesNotMatch(await section.innerText(), /qa.other.staff/);
+    assert.match(await section.innerText(), /деактивовано/i);
+    await section.getByRole('button', { name: 'Скопіювати логін', exact: true }).click();
+    assert.deepEqual(await page.evaluate(() => window.__staffAccountCopies), ['qa.staff.access']);
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'staff-account-access-mobile-dark.png'), fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+
+    await section.getByRole('button', { name: 'Новий пароль', exact: true }).click();
+    const form = page.locator('.form-modal-overlay:not(.confirm-exit)');
+    await form.waitFor({ state: 'visible' });
+    assert.equal(await form.locator('[data-key="activateOnReset"]').inputValue(), 'keep');
+    await form.locator('.confirm-ok').click();
+    const receipt = page.locator('.confirm-overlay[data-confirm-kind="confirm"]:not(.confirm-exit)');
+    await receipt.waitFor({ state: 'visible' });
+    assert.match(await receipt.innerText(), /Synthetic234/);
+    assert.match(await receipt.innerText(), /акаунт вимкнений/);
+    const reset = await page.evaluate(() => window.__staffAccountCalls.find(call => call.url.endsWith('/reset-password')));
+    assert.deepEqual(reset.body, { issueOneTime: true, activateOnReset: false });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'staff-account-reset-mobile-redacted.png'), fullPage: true, mask: [receipt.locator('.confirm-message')] });
+    await receipt.locator('.confirm-cancel').click();
+    await receipt.waitFor({ state: 'detached' });
+    assert.doesNotMatch(await section.innerText(), /Synthetic234/);
+    await page.locator('#editCloseTop').click();
+    const before = await page.evaluate(() => {
+        AppState.currentUser = { ...AppState.currentUser, role: 'hr' };
+        return window.__staffAccountCalls.length;
+    });
+    await openProfile(page, 1);
+    assert.equal(await section.isVisible(), false, 'staff account section is hidden for HR without manage_accounts');
+    assert.equal(await page.evaluate(() => window.__staffAccountCalls.length), before, 'no account data is requested without management permission');
+    await page.locator('#editCloseTop').click();
+}
+
 async function run() {
     const playwright = requirePlaywright();
     const browser = await playwright.chromium.launch({ headless: HEADLESS });
@@ -1895,6 +2110,32 @@ async function run() {
         await runStep(page);
     };
     try {
+        if (process.env.HR_TEAM_OFFBOARDING_ONLY === 'true') {
+            await page.setViewportSize({ width: 390, height: 844 });
+            await installHarness(page, { dark: false });
+            await assertOffboardingDangerFlow(page);
+            console.log('HR automatic account offboarding browser smoke passed');
+            return;
+        }
+        if (process.env.HR_TEAM_ACCOUNT_ACCESS_ONLY === 'true') {
+            await page.setViewportSize({ width: 390, height: 844 });
+            await assertStaffAccountAccess(page);
+            console.log('HR staff account access browser smoke passed');
+            return;
+        }
+        if (process.env.HR_TEAM_PAY_CONDITIONS_ONLY === 'true') {
+            await page.setViewportSize({ width: 390, height: 844 });
+            await assertPayrollConditions(page);
+            await assertPayrollConditionsDeepLink(page);
+            console.log('HR payroll conditions browser smoke passed');
+            return;
+        }
+        if (process.env.HR_TEAM_RATE_SAFETY_ONLY === 'true') {
+            await page.setViewportSize({ width: 390, height: 844 });
+            await assertProfessionRateSafety(page);
+            console.log('HR Team rate safety browser smoke passed');
+            return;
+        }
         await assertRealTeamLoaderStates(loaderPage);
         console.log('HR Team real loader states passed');
         await loaderPage.close();
@@ -1918,6 +2159,17 @@ async function run() {
         await step('offboarding', assertOffboardingDangerFlow);
         await step('focus trap', assertFocusTrap);
         await step('mobile and theme', assertMobileAndTheme);
+        const conditionsPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        try { await assertPayrollConditions(conditionsPage); await assertPayrollConditionsDeepLink(conditionsPage); }
+        finally { await conditionsPage.close(); }
+        console.log('HR payroll conditions browser smoke passed');
+        const ratePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        try { await assertProfessionRateSafety(ratePage); }
+        finally { await ratePage.close(); }
+        const accountPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        try { await assertStaffAccountAccess(accountPage); }
+        finally { await accountPage.close(); }
+        console.log('HR Team rate safety browser smoke passed');
         console.log('HR Team browser smoke passed');
     } catch (err) {
         fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -1931,5 +2183,5 @@ async function run() {
 }
 
 run()
-    .then(() => require('./hr-structure-tree-browser-smoke').run())
+    .then(() => (process.env.HR_TEAM_OFFBOARDING_ONLY === 'true' || process.env.HR_TEAM_ACCOUNT_ACCESS_ONLY === 'true' || process.env.HR_TEAM_RATE_SAFETY_ONLY === 'true' || process.env.HR_TEAM_PAY_CONDITIONS_ONLY === 'true') ? undefined : require('./hr-structure-tree-browser-smoke').run())
     .catch(err => fail(err?.stack || err?.message || String(err)));

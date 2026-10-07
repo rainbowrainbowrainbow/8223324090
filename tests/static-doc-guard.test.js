@@ -37,6 +37,9 @@ describe('static documentation exposure guard', () => {
 
         for (const blockedPath of [
             '/README.md',
+            '/EDUCATION_READY_PACK_HANDOFF.md',
+            '/EDUCATION_READY_FINAL_ACCEPTANCE.md',
+            '/EDUCATION_READY_RELEASE_HOLD.md',
             '/docs/archive/CLAUDE.md',
             '/docs/archive/SNAPSHOT.md',
             '/sound-module-proof.txt'
@@ -109,6 +112,10 @@ describe('static documentation exposure guard', () => {
             'AGENTS.md',
             'CHANGELOG.md',
             'DB_MIGRATION_GOVERNANCE.md',
+            // Explicit owner-required operating handoff for the sequential EDU-READY package.
+            'EDUCATION_READY_PACK_HANDOFF.md',
+            'EDUCATION_READY_FINAL_ACCEPTANCE.md',
+            'EDUCATION_READY_RELEASE_HOLD.md',
             'README.md'
         ]);
 

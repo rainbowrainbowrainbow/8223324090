@@ -512,8 +512,9 @@ const Sidebar = (() => {
     function _isSidebarItemActive(item, currentPath, currentHash) {
         if (!item || item.noActive || item.isHashLink) return false;
         const educationSchedule = new URLSearchParams(window.location.search || '').get('educationSchedule');
-        if (item.educationWorkspace) return currentPath === '/' && ['today', 'schedule'].includes(educationSchedule);
-        if (item.href === '/' && educationSchedule) return false;
+        const educationView = ['today', 'schedule', 'groups', 'attendance', 'reports'].includes(educationSchedule);
+        if (item.educationWorkspace) return currentPath === '/' && educationView;
+        if (item.href === '/' && educationView) return false;
         const href = String(item.href || '');
         if (href === '/certificates' && (currentPath === href || currentPath.startsWith(href + '/'))) return true;
         const itemPathWithSearch = href.split('#')[0];
@@ -706,9 +707,13 @@ const Sidebar = (() => {
 
     function _getExtraMenuItems(role, includeHidden = false) {
         const byHref = new Map(_getSelectableExtraMenuItems(role).map(item => [item.href, item]));
-        return _getSelectedExtraMenuHrefs(role)
+        const selected = _getSelectedExtraMenuHrefs(role)
             .map(href => byHref.get(href))
             .filter(item => item && (includeHidden || !item.hidden));
+        const educationItem = [...byHref.values()].find(item => item.educationWorkspace);
+        return educationItem
+            ? [educationItem, ...selected.filter(item => !item.educationWorkspace)]
+            : selected;
     }
 
     function _getSelectableProductivityItems(role) {
@@ -1704,7 +1709,8 @@ const Sidebar = (() => {
         if (item.educationWorkspace) {
             const context = api?.current?.(user);
             const profile = context ? _sidebarBusinessProfileForContext(context) : null;
-            return Boolean(profile?.timeline?.mode === 'education' && profile?.timeline?.timelineEnabled !== false);
+            return Boolean(context && api?.canAccess?.(user, context) !== false
+                && profile?.timeline?.mode === 'education' && profile?.timeline?.timelineEnabled !== false);
         }
         if (_isMaysternyaSidebarContext(user) && !_isMaysternyaSidebarHrefAllowed(item)) return false;
         if (!moduleId || !api?.current || !api?.hasModule) return true;
@@ -1732,6 +1738,7 @@ const Sidebar = (() => {
     }
 
     function _isSidebarTimelineItem(item = {}) {
+        if (item.educationWorkspace) return false;
         const href = String(item.href || '').split(/[?#]/)[0].replace(/\.html$/i, '') || '/';
         return _businessModuleForItem(item) === 'timeline'
             && (href === '/' || href === '/maysternya-doli');
@@ -3223,7 +3230,7 @@ const Sidebar = (() => {
         const selectableExtraItems = _getSelectableExtraMenuItems(role);
         const timelineExtraItem = selectableExtraItems.find(item => _isSidebarTimelineItem(item)) || null;
         const extraItems = selectedExtraItems.filter(item => !_isSidebarTimelineItem(item));
-        const editableExtraItems = selectableExtraItems.filter(item => !_isSidebarTimelineItem(item));
+        const editableExtraItems = selectableExtraItems.filter(item => !_isSidebarTimelineItem(item) && !item.educationWorkspace);
         const selectedExtraHrefs = _getSelectedExtraMenuHrefs(role);
         const extraEditorOpen = _isExtraMenuEditorOpen();
         const extraCollapsed = _isExtraMenuCollapsed();

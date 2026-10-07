@@ -2531,6 +2531,9 @@ function createTimelineAddActionHarness(options = {}) {
         notices: [],
         telegram: 0,
         localAnimatorFallback: 0,
+        manualAdds: [],
+        cacheInvalidations: [],
+        notePrompts: 0,
         cacheResets: 0,
         timelineRenders: 0,
         managerRenders: 0
@@ -2541,17 +2544,28 @@ function createTimelineAddActionHarness(options = {}) {
         resourceModel: options.resourceModel || 'animator',
         context: 'event_genix'
     };
+    const addLineButton = { disabled: false };
+    const requestIds = options.requestIds || ['11111111-1111-4111-8111-111111111111'];
+    const storage = options.storage || new Map();
     const context = vm.createContext({
         console,
         Date,
+        document: { getElementById: id => id === 'addLineBtn' ? addLineButton : null },
         AppState: { selectedDate: new Date('2026-10-02T12:00:00Z') },
         window: {
+            crypto: { randomUUID: () => requestIds.shift() || '99999999-9999-4999-8999-999999999999' },
+            sessionStorage: {
+                getItem: key => storage.get(key) || null,
+                setItem: (key, value) => storage.set(key, value),
+                removeItem: key => storage.delete(key)
+            },
+            invalidateTimelineDateCache: (date, settings) => events.cacheInvalidations.push({ date, settings }),
             TimelineBusinessContext: {
                 current: () => ({ key: options.context || 'event_genix' }),
                 presentation: () => presentation
             }
         },
-        formatDate: () => '2026-10-02',
+        formatDate: () => options.date || '2026-10-02',
         isRoomTimelineLineEditingBlocked: () => false,
         timelineResourceTypeForMode: (_mode, settings) => settings.resourceModel,
         promptModal: async (message, config) => {
@@ -2567,8 +2581,14 @@ function createTimelineAddActionHarness(options = {}) {
         resetTimelineResourceCaches: () => { events.cacheResets += 1; },
         renderTimeline: async () => { events.timelineRenders += 1; },
         renderTimelineResourcesManager: async () => { events.managerRenders += 1; },
-        showNoteModal: async () => 'shift request',
+        showNoteModal: async () => { events.notePrompts += 1; return 'shift request'; },
         cleanupPendingPoll() {},
+        apiAddManualAnimatorLine: async (date, requestId) => {
+            events.manualAdds.push({ date, requestId });
+            return typeof options.manualAddResult === 'function'
+                ? options.manualAddResult(date, requestId)
+                : options.manualAddResult || { success: true, created: true };
+        },
         apiTelegramAskAnimator: async () => {
             events.telegram += 1;
             return { success: false, reason: 'no_chat_id' };
@@ -2577,12 +2597,12 @@ function createTimelineAddActionHarness(options = {}) {
         addAnimatorLineLocallyAfterTelegramFallback: async () => { events.localAnimatorFallback += 1; }
     });
     const blocks = [
-        sourceBlock('async function addNewLine()', 'async function editLineModal('),
+        sourceBlock('let _manualAnimatorLineAddPending', 'async function editLineModal('),
         sourceBlock('function timelineResourceCopy(type)', 'function timelineDisplayPreviewText('),
         sourceBlock('async function addTimelineResource(type,', 'function normalizeTimelineResourceColorInput(')
     ];
     vm.runInContext(blocks.join('\n'), context);
-    return { context, events };
+    return { context, events, addLineButton, storage };
 }
 
 for (const resourceModel of ['animator', 'specialist', 'online']) {
@@ -2635,7 +2655,7 @@ for (const businessContext of ['dar', 'maysternya_doli', 'custom_business']) {
     });
 }
 
-test('timeline add cancellation creates no resource and preserves the park Telegram flow', async () => {
+test('timeline add cancellation creates no resource and Park adds a manual line without Telegram or a note prompt', async () => {
     const cancelled = createTimelineAddActionHarness({
         mode: 'simple', resourceModel: 'animator', promptValues: [null]
     });
@@ -2647,9 +2667,129 @@ test('timeline add cancellation creates no resource and preserves the park Teleg
 
     const park = createTimelineAddActionHarness({ mode: 'park', resourceModel: 'auto' });
     await park.context.addNewLine();
-    assert.equal(park.events.telegram, 1);
-    assert.equal(park.events.localAnimatorFallback, 1);
+    assert.equal(park.events.telegram, 0);
+    assert.equal(park.events.localAnimatorFallback, 0);
+    assert.equal(park.events.notePrompts, 0);
+    assert.equal(park.events.manualAdds.length, 1);
+    assert.equal(park.events.manualAdds[0].date, '2026-10-02');
+    assert.equal(park.events.cacheInvalidations.length, 1);
+    assert.equal(park.events.timelineRenders, 1);
     assert.equal(park.events.saved.length, 0);
+});
+
+test('Park add button ignores a second click while the manual line request is pending', async () => {
+    let completeAdd;
+    const pending = new Promise(resolve => { completeAdd = resolve; });
+    const park = createTimelineAddActionHarness({
+        mode: 'park', resourceModel: 'auto', manualAddResult: pending
+    });
+    const first = park.context.addNewLine();
+    const second = park.context.addNewLine();
+    assert.equal(park.addLineButton.disabled, true);
+    await second;
+    assert.equal(park.events.manualAdds.length, 1);
+    completeAdd({ success: true, created: true });
+    await first;
+    assert.equal(park.addLineButton.disabled, false);
+    assert.equal(park.events.timelineRenders, 1);
+});
+
+test('Park manual line save failure leaves the button available for a retry', async () => {
+    const park = createTimelineAddActionHarness({
+        mode: 'park', resourceModel: 'auto',
+        manualAddResult: { success: false, error: 'No permission' }
+    });
+    await park.context.addNewLine();
+    await park.context.addNewLine();
+    assert.equal(park.events.manualAdds.length, 2);
+    assert.equal(park.events.timelineRenders, 0);
+    assert.equal(park.events.cacheInvalidations.length, 0);
+    assert.equal(park.addLineButton.disabled, false);
+    assert.deepEqual(park.events.notices.map(notice => notice.type), ['error', 'error']);
+});
+
+test('lost manual-line response reuses the ID; confirmed replay makes the next click distinct', async () => {
+    const options = {
+        mode: 'park', resourceModel: 'auto',
+        requestIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
+        manualAddResult: (() => {
+            let attempts = 0;
+            return () => (++attempts === 1
+                ? { success: false, offline: true, error: 'response lost' }
+                : { success: true, created: attempts > 2 });
+        })()
+    };
+    const park = createTimelineAddActionHarness(options);
+    await park.context.addNewLine();
+    assert.equal(park.storage.size, 1);
+    await park.context.addNewLine();
+    assert.equal(park.events.manualAdds[1].requestId, park.events.manualAdds[0].requestId);
+    assert.equal(park.storage.size, 0);
+    await park.context.addNewLine();
+    assert.equal(park.events.manualAdds[2].requestId, '22222222-2222-4222-8222-222222222222');
+});
+
+test('committed manual-line operation returning 500 replays its ID after reload', async () => {
+    const storage = new Map();
+    const options = {
+        mode: 'park', resourceModel: 'auto', storage,
+        requestIds: ['11111111-1111-4111-8111-111111111111'],
+        manualAddResult: { success: false, status: 500, error: 'commit response failed' }
+    };
+    const first = createTimelineAddActionHarness(options);
+    await first.context.addNewLine();
+    assert.equal(storage.size, 1);
+    assert.equal(first.events.timelineRenders, 0);
+
+    options.requestIds = ['22222222-2222-4222-8222-222222222222'];
+    options.manualAddResult = { success: true, created: false };
+    const reloaded = createTimelineAddActionHarness(options);
+    await reloaded.context.addNewLine();
+    assert.equal(reloaded.events.manualAdds[0].requestId, first.events.manualAdds[0].requestId);
+    assert.equal(storage.size, 0);
+    await reloaded.context.addNewLine();
+    assert.equal(reloaded.events.manualAdds[1].requestId, '22222222-2222-4222-8222-222222222222');
+});
+
+test('definitive 403 clears a rejected manual-line operation; timeout remains retryable', async () => {
+    const options = {
+        mode: 'park', resourceModel: 'auto',
+        requestIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
+        manualAddResult: { success: false, status: 403, error: 'No permission' }
+    };
+    const park = createTimelineAddActionHarness(options);
+    await park.context.addNewLine();
+    assert.equal(park.storage.size, 0);
+    options.manualAddResult = { success: false, status: 408, error: 'Timeout' };
+    await park.context.addNewLine();
+    assert.equal(park.events.manualAdds[1].requestId, '22222222-2222-4222-8222-222222222222');
+    assert.equal(park.storage.size, 1);
+    await park.context.addNewLine();
+    assert.equal(park.events.manualAdds[2].requestId, park.events.manualAdds[1].requestId);
+});
+
+test('uncertain manual-line operation survives reload and stays scoped to business and date', async () => {
+    const storage = new Map();
+    const options = {
+        mode: 'park', resourceModel: 'auto', storage,
+        requestIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222',
+            '33333333-3333-4333-8333-333333333333'],
+        manualAddResult: { success: false, offline: true, error: 'response lost' }
+    };
+    const first = createTimelineAddActionHarness(options);
+    await first.context.addNewLine();
+    options.date = '2026-10-03';
+    await first.context.addNewLine();
+    options.date = '2026-10-02';
+    options.context = 'dar';
+    await first.context.addManualAnimatorLineDirectly('2026-10-02');
+    assert.equal(new Set(first.events.manualAdds.map(add => add.requestId)).size, 3);
+    options.context = 'event_genix';
+    options.requestIds = ['44444444-4444-4444-8444-444444444444'];
+    const reloaded = createTimelineAddActionHarness(options);
+    await reloaded.context.addNewLine();
+    assert.equal(reloaded.events.manualAdds[0].requestId, first.events.manualAdds[0].requestId);
+    assert.equal(storage.size, 3);
 });
 
 test('timeline add button saves the requested cabinet capacity through the resource API', async () => {
@@ -4941,8 +5081,8 @@ test('room timeline banquet activity blocks keep full booking modal click owners
     );
     assert.doesNotMatch(openDetailsFunction, /showBookingDetails\(\s*renderBooking\.(?:linkedTo|linked_to)\s*\)/);
     assert.doesNotMatch(timeline, /showBookingDetails\(\s*booking\.(?:linkedTo|linked_to)\s*\)/);
-    assert.match(linkedClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/);
-    assert.match(ownClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/);
+    assert.match(linkedClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking, block\)/);
+    assert.match(ownClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking, block\)/);
 });
 
 test('timeline block click open helper calls booking details with expected ids and fallback behavior', async () => {
@@ -4950,6 +5090,9 @@ test('timeline block click open helper calls booking details with expected ids a
     const helperStart = timeline.indexOf('function timelineBookingDetailModalIsOpen');
     const openStart = timeline.indexOf('async function openTimelineBookingDetailsFromBlock');
     const openEnd = timeline.indexOf('document.addEventListener', openStart);
+    assert.match(timeline.slice(openStart, openEnd), /triggerEl/);
+    assert.match(timeline, /openTimelineBookingDetailsFromBlock\(renderBooking, block\)/);
+    assert.match(timeline, /showBookingDetails\(bookingId, \{ triggerEl: item \}\)/);
     assert.ok(helperStart >= 0 && helperStart < openStart, 'timeline block open helper dependencies exist');
     assert.ok(openStart >= 0 && openEnd > openStart, 'timeline block open helper source exists');
 
@@ -5109,12 +5252,20 @@ test('timeline block click opens the canonical booking.js details modal', async 
         <!doctype html>
         <html>
             <body>
+                <button id="detailTrigger" type="button">Open booking</button>
                 <div id="bookingModal" class="modal hidden" aria-hidden="true">
-                    <div id="bookingDetails"></div>
+                    <div class="modal-content">
+                        <button class="modal-close" type="button">Close</button>
+                        <div id="bookingDetails"></div>
+                    </div>
                 </div>
+                <div id="nestedModal" class="modal hidden"><div class="modal-content"><button type="button">Nested close</button></div></div>
             </body>
         </html>
     `, { url: 'https://crm.example.test/' });
+    Object.defineProperty(dom.window.HTMLElement.prototype, 'offsetParent', {
+        get() { return this.closest('.hidden') ? null : dom.window.document.body; }
+    });
     const warnings = [];
     const notifications = [];
     const detailBooking = {
@@ -5138,6 +5289,7 @@ test('timeline block click opens the canonical booking.js details modal', async 
         },
         window: dom.window,
         document: dom.window.document,
+        requestAnimationFrame: callback => callback(),
         navigator: dom.window.navigator,
         Date,
         URLSearchParams,
@@ -5271,12 +5423,20 @@ test('timeline block click opens the canonical booking.js details modal', async 
         current: () => ({ apiValue: 'event_genix' })
     };
     vm.createContext(context);
+    const ui = read('js/ui.js');
+    vm.runInContext(`
+        const FOCUSABLE_SELECTOR = 'button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        const _focusTrapStack = [];
+        ${ui.slice(ui.indexOf('function resolveModalLifecycleTarget'), ui.indexOf('function closeModalFromControl'))}
+    `, context, { filename: 'booking-modal-lifecycle.vm.js' });
     vm.runInContext(`
         ${booking.slice(resolverStart, resolverEnd)}
         ${timeline.slice(helperStart, openEnd)}
         this.__openTimelineBookingDetailsFromBlock = openTimelineBookingDetailsFromBlock;
     `, context, { filename: 'timeline-booking-details-canonical.vm.js' });
 
+    const trigger = dom.window.document.getElementById('detailTrigger');
+    trigger.focus();
     const opened = await context.__openTimelineBookingDetailsFromBlock({ id: detailBooking.id });
     const modal = dom.window.document.getElementById('bookingModal');
     const detailsHtml = dom.window.document.getElementById('bookingDetails').innerHTML;
@@ -5287,6 +5447,26 @@ test('timeline block click opens the canonical booking.js details modal', async 
         detailsHtml
     }, null, 2));
     assert.equal(modal.classList.contains('hidden'), false, 'canonical modal is visible');
+    assert.equal(modal.contains(dom.window.document.activeElement), true, 'canonical detail takes focus');
+    const focusable = Array.from(modal.querySelectorAll('button'))
+        .filter(button => !button.closest('details:not([open])'));
+    focusable.at(-1).focus();
+    focusable.at(-1).dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.equal(dom.window.document.activeElement, focusable[0], 'Tab wraps inside canonical detail');
+    focusable[0].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+    assert.equal(dom.window.document.activeElement, focusable.at(-1), 'Shift+Tab wraps inside canonical detail');
+    const nested = dom.window.document.getElementById('nestedModal');
+    context.openModal(nested);
+    nested.querySelector('button').dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(nested.classList.contains('hidden'), true, 'Escape closes only the top nested dialog');
+    assert.equal(modal.classList.contains('hidden'), false, 'canonical detail remains open under nested dialog');
+    modal.querySelector('.modal-close').dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(modal.classList.contains('hidden'), true, 'Escape closes canonical detail');
+    assert.equal(dom.window.document.activeElement, trigger, 'Escape returns focus to the opener');
+    trigger.focus();
+    await context.__openTimelineBookingDetailsFromBlock({ id: detailBooking.id });
+    context.closeModal(modal);
+    assert.equal(dom.window.document.activeElement, trigger, 'close control lifecycle returns focus');
     assert.equal(notifications.length, 0, 'canonical open does not show a failure toast');
     assert.match(detailsHtml, /booking-detail-header booking-detail-header--compact/);
     assert.match(detailsHtml, /event-card-image--booking/);

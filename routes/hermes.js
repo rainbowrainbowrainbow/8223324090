@@ -167,6 +167,7 @@ const SUPPORTED_ACTIONS = [
     'staff_schedule.read',
     'staff_schedule.preview',
     'staff_schedule.apply',
+    'attendance.read',
     'attendance.preview',
     'attendance.apply'
 ];
@@ -2048,6 +2049,10 @@ function buildCapabilitiesPayload(env = process.env, options = {}) {
                 applyRequiredCapability: 'hermes.schedule.manage'
             },
             attendance: {
+                list: 'GET /api/hermes/attendance',
+                maxDateRangeDays: 31,
+                timeZone: 'Europe/Kyiv',
+                readRequiredCapability: 'hr.today.view',
                 preview: 'POST /api/hermes/attendance/preview',
                 apply: 'POST /api/hermes/attendance/apply',
                 businessContext: 'event_genix',

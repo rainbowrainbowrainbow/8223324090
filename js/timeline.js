@@ -842,7 +842,7 @@ async function getLinesForDate(date, options = {}) {
     return lines;
 }
 
-async function saveLinesForDate(date, lines) {
+async function saveLinesForDate(date, lines, baseLines = []) {
     const dateStr = timelineDateKey(date);
     if (typeof isRoomTimelineView === 'function' && isRoomTimelineView()) {
         console.warn('[Timeline] Blocked legacy line save from room timeline view', { date: dateStr });
@@ -852,10 +852,12 @@ async function saveLinesForDate(date, lines) {
         return false;
     }
     // v5.2: Оновлювати кеш ТІЛЬКИ після успішного збереження на сервер
-    const result = await apiSaveLines(dateStr, lines);
+    const result = await apiSaveLines(dateStr, lines, baseLines);
     if (result && result.success === false) {
         console.error('[saveLinesForDate] API save failed, NOT updating cache');
-        showNotification('Помилка збереження ліній. Спробуйте ще раз.', 'error');
+        showNotification(result.code === 'stale_manual_line_roster'
+            ? 'Лінії змінилися. Оновіть таймлайн перед збереженням.'
+            : 'Помилка збереження ліній. Спробуйте ще раз.', 'error');
         return false;
     }
     setTimelineCacheEntry(AppState.cachedLines, dateStr, lines);
@@ -3766,7 +3768,7 @@ async function timelineProbeBookingOpenDiagnostic(bookingId, phase = 'detail_pro
     }
 }
 
-async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
+async function openTimelineBookingDetailsFromBlock(renderBooking = {}, triggerEl = null) {
     if (typeof showBookingDetails !== 'function') return false;
     const ownId = String(renderBooking?.id || '').trim();
     const linkedId = String(renderBooking?.linkedTo || renderBooking?.linked_to || '').trim();
@@ -3785,7 +3787,8 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
     }
     const ownDetailsOptions = {
         source: 'timeline_block_click',
-        fallbackBooking: renderBooking
+        fallbackBooking: renderBooking,
+        ...(triggerEl ? { triggerEl } : {})
     };
     const detailMisses = [];
     const collectDetailMiss = phase => diagnostic => {
@@ -3828,6 +3831,7 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
             opened = await showBookingDetails(linkedId, {
                 silentMissing: true,
                 source: 'timeline_block_click_parent_fallback',
+                ...(triggerEl ? { triggerEl } : {}),
                 onMissing: collectDetailMiss('linked_parent')
             });
         } catch (err) {
@@ -5079,7 +5083,7 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
                 return;
             }
             if (showTimelineBanquetPreviewFromBlock(e, block)) return;
-            void openTimelineBookingDetailsFromBlock(renderBooking);
+            void openTimelineBookingDetailsFromBlock(renderBooking, block);
         });
     } else {
         block.addEventListener('click', (e) => {
@@ -5093,7 +5097,7 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
                 return;
             }
             if (showTimelineBanquetPreviewFromBlock(e, block)) return;
-            void openTimelineBookingDetailsFromBlock(renderBooking);
+            void openTimelineBookingDetailsFromBlock(renderBooking, block);
         });
     }
     block.addEventListener('mouseenter', (e) => {
@@ -7632,7 +7636,7 @@ function attachMultiDayListeners() {
                 const timelineDateInput = document.getElementById('timelineDate');
                 if (timelineDateInput) timelineDateInput.value = dateStr;
                 setTimelineDateInUrl(dateStr);
-                showBookingDetails(bookingId);
+                showBookingDetails(bookingId, { triggerEl: item });
             }
         });
     });

@@ -300,8 +300,8 @@ test('Park schedule ownership through the actual Express staff and HR routers', 
             }
         });
 
-        await t.test('unrelated staff or HR endpoints remain closed before DB access', async () => {
-            state.actor = {};
+        await t.test('schedule-only principal cannot use payroll or unrelated HR routes', async () => {
+            state.actor = { deny: ['hr.payroll.view'] };
             const denied = [
                 ['POST', '/api/staff'], ['DELETE', '/api/staff/9701'],
                 ['GET', '/api/staff/face-descriptors'], ['GET', '/api/staff/payroll'],

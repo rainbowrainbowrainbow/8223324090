@@ -212,6 +212,7 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.deepEqual(catalog.items.find(item => item.key === 'host').checklist, ['Сценарій']);
         assert.equal(catalog.items.find(item => item.key === 'host').checklistTemplate.source, 'hr_profession_checklist_items');
         assert.equal(catalog.items.find(item => item.key === 'animator').people[0].rateSource, 'staff.hourly_rate');
+        assert.equal(catalog.items.find(item => item.key === 'animator').people[0].paidRoleEligibility.blocker, 'rate_check_pending');
         assert.equal(catalog.items.find(item => item.key === 'animator').people[1].assignmentStatus, 'inactive');
         assert.equal(catalog.items.find(item => item.key === 'animator').staffCount, 2);
         assert.equal(catalog.items.find(item => item.key === 'animator').checklistProgress.completed, 1);

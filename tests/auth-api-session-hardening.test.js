@@ -1457,6 +1457,50 @@ test('terminal auth-boundary 401 skips refresh and clears the session', async ()
     assert.deepEqual(calls, ['/api/private']);
     assert.equal(store.size, 0);
     assert.equal(context.getApiAuthSessionFailure().kind, 'terminal');
+    assert.equal(context.getApiAuthSessionFailure().code, 'auth_user_deactivated');
+});
+
+test('verification preserves deactivation code and skips refresh for a disabled account', async () => {
+    const calls = [];
+    const { context, store } = loadApi(async url => {
+        calls.push(url);
+        return response(401, { code: 'auth_user_deactivated' });
+    }, { pzp_access_token: 'access', pzp_refresh_token: 'refresh' });
+
+    assert.equal(await context.apiVerifyToken(), null);
+    assert.deepEqual(calls, ['/api/auth/verify']);
+    assert.equal(store.size, 0);
+    assert.equal(context.getApiAuthSessionFailure().code, 'auth_user_deactivated');
+});
+
+test('refresh preserves deactivation code after clearing the expired session', async () => {
+    const { context, store } = loadApi(async () => response(401, {
+        code: 'refresh_user_inactive'
+    }), { pzp_refresh_token: 'refresh' });
+
+    const result = await context.apiRefreshAuthSession();
+    assert.equal(result.outcome, 'terminal');
+    assert.equal(store.size, 0);
+    assert.equal(context.getApiAuthSessionFailure().code, 'refresh_user_inactive');
+});
+
+test('successful login, verification, and refresh clear a previous account deactivation notice', async () => {
+    for (const operation of ['login', 'verify', 'refresh']) {
+        const sessionStore = new Map([['pzp_auth_deactivated_notice', String(Date.now())], ['unrelated', 'kept']]);
+        const user = { id: 7, username: 'new.operator', role: 'manager' };
+        const { context } = loadApi(async () => response(200, {
+            accessToken: 'new-access', refreshToken: 'new-refresh', user
+        }), {
+            pzp_access_token: 'access', pzp_refresh_token: 'refresh', pzp_current_user: JSON.stringify(user)
+        }, {
+            sessionStorage: { removeItem: key => sessionStore.delete(key) }
+        });
+        if (operation === 'login') await context.apiLogin('new.operator', 'password');
+        else if (operation === 'verify') await context.apiVerifyToken();
+        else await context.apiRefreshAuthSession();
+        assert.equal(sessionStore.has('pzp_auth_deactivated_notice'), false, operation);
+        assert.equal(sessionStore.get('unrelated'), 'kept', operation);
+    }
 });
 
 test('transient auth failure returns retryable messaging instead of a logout message', () => {

@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { pool: defaultPool } = require('../db');
+const { SESSION_REVOCATION_CUTOFF_SQL } = require('./sessionRevocation');
 const { canUseAction } = require('../middleware/auth');
 const {
     actorCanManageTarget,
@@ -771,7 +772,7 @@ async function reissueOneTimeLoginForExistingAccount(client, user, { actor = {},
         `UPDATE users
          SET password_hash = $1,
              password_changed_at = NOW(),
-             session_revoked_at = clock_timestamp(),
+             session_revoked_at = ${SESSION_REVOCATION_CUTOFF_SQL},
              is_active = true
          WHERE id = $2
          RETURNING id, username, name, role, extra_roles, is_active, password_changed_at, session_revoked_at`,

@@ -694,8 +694,11 @@ function estimateMenuCostFromIngredients(ingredients = [], warehouseItems = []) 
     for (const row of ingredients) {
         const item = byId.get(Number(row.stockId));
         const unitPrice = Number(item?.purchase_unit_price || item?.last_order_price || 0);
-        if (!item || !unitPrice || normalizeProductIdentity(item.unit) !== normalizeProductIdentity(row.unit)) continue;
-        total += Number(row.quantity || 0) * unitPrice;
+        const quantity = Number(row.quantity);
+        if (!item || !Number.isFinite(unitPrice) || unitPrice <= 0
+            || !Number.isInteger(quantity) || quantity <= 0
+            || normalizeProductIdentity(item.unit) !== normalizeProductIdentity(row.unit)) continue;
+        total += quantity * unitPrice;
         covered += 1;
     }
     return {
@@ -716,11 +719,23 @@ function buildMenuAiDraftFromRaw(raw = {}, context = {}) {
     const ingredientsRaw = Array.isArray(rawBlocks.ingredients?.ingredients)
         ? rawBlocks.ingredients.ingredients
         : (Array.isArray(raw.ingredients) ? raw.ingredients : []);
-    const normalizedIngredients = ingredientsRaw
-        .map((row, index) => normalizeMenuAiIngredient(row, index, warehouseItems))
-        .filter(row => row.label || row.stockId);
-    const costEstimate = estimateMenuCostFromIngredients(normalizedIngredients, warehouseItems);
+    const ingredientRows = ingredientsRaw
+        .map((row, index) => ({
+            ingredient: normalizeMenuAiIngredient(row, index, warehouseItems),
+            // Editor defaults are not evidence for an invalid supplied quantity.
+            costingQuantity: toPositiveInt(row.quantityPerUnit ?? row.quantity_per_unit
+                ?? row.quantity ?? row.grams ?? row.amount ?? 1)
+        }))
+        .filter(row => row.ingredient.label || row.ingredient.stockId);
+    const normalizedIngredients = ingredientRows.map(row => row.ingredient);
+    const costEstimate = estimateMenuCostFromIngredients(ingredientRows.map(row => ({
+        ...row.ingredient, quantity: row.costingQuantity
+    })), warehouseItems);
     const priceCostRaw = safeJsonObject(rawBlocks.priceCost || raw.priceCost);
+    const estimatedCostValue = priceCostRaw.estimatedCost;
+    const hasEstimatedCost = (typeof estimatedCostValue === 'number'
+        || (typeof estimatedCostValue === 'string' && estimatedCostValue.trim() !== ''))
+        && Number.isFinite(Number(estimatedCostValue)) && Number(estimatedCostValue) >= 0;
     const fallbackAllergens = inferAllergensFromText([
         currentCard.name,
         currentCard.description,
@@ -766,7 +781,7 @@ function buildMenuAiDraftFromRaw(raw = {}, context = {}) {
                 status: 'draft',
                 proposal: {
                     suggestedPrice: toPositiveInt(priceCostRaw.suggestedPrice || priceCostRaw.price || currentCard.price) || null,
-                    estimatedCost: Number.isFinite(Number(priceCostRaw.estimatedCost)) ? Math.round(Number(priceCostRaw.estimatedCost)) : costEstimate.estimatedCost,
+                    estimatedCost: hasEstimatedCost ? Math.round(Number(estimatedCostValue)) : costEstimate.estimatedCost,
                     confidence: cleanNullableString(priceCostRaw.confidence, 30) || costEstimate.confidence,
                     priceVariantNote: cleanNullableString(priceCostRaw.priceVariantNote || priceCostRaw.price_variant_note || currentCard.priceVariantNote, 2000) || '',
                     note: cleanNullableString(priceCostRaw.note || costEstimate.note, 600) || costEstimate.note

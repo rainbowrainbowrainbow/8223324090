@@ -1,3 +1,38 @@
+#categoryTabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0;
+}
+
+#categoryTabs .category-tab {
+    min-height: 48px;
+    padding: 10px 16px;
+    border: 1px solid var(--border-color, var(--gray-200));
+    border-radius: var(--radius-sm, 10px);
+    background: var(--card-bg, var(--white));
+    color: var(--text-primary, var(--gray-700));
+    font: inherit;
+    font-size: var(--font-sm, 14px);
+    font-weight: 700;
+    cursor: pointer;
+}
+
+#categoryTabs .category-tab:hover {
+    border-color: var(--primary);
+}
+
+#categoryTabs .category-tab.active {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: #fff;
+    border-color: transparent;
+}
+
+#categoryTabs .category-tab:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
+}
+
 .product-overview {
     display: flex;
     flex: 0 0 100%;

@@ -15,6 +15,27 @@ const GENERIC_API_ROUTE_MOUNTS = [
 
 const NESTED_API_ROUTE_MOUNTS = [
     {
+        mount: '/api/finance/costing/management',
+        routeFile: 'routes/finance-costing-management.js',
+        parentRouteFile: 'routes/finance-costing.js',
+        owner: 'finance-costing-management',
+        reason: 'Performance and economic reconciliation inherit the costing and finance access guards.'
+    },
+    {
+        mount: '/api/finance/costing/actual',
+        routeFile: 'routes/finance-costing-actual.js',
+        parentRouteFile: 'routes/finance-costing.js',
+        owner: 'finance-costing-actual',
+        reason: 'Append-only plan/actual evidence inherits the costing and finance access guards.'
+    },
+    {
+        mount: '/api/finance/costing',
+        routeFile: 'routes/finance-costing.js',
+        parentRouteFile: 'routes/finance.js',
+        owner: 'finance-costing',
+        reason: 'Versioned service costing inherits the existing finance role and action guards.'
+    },
+    {
         mount: '/api/hermes',
         routeFile: 'routes/hermes-schedule.js',
         parentRouteFile: 'routes/hermes.js',

@@ -146,6 +146,7 @@ function projectProfessionCatalogRow(row, { includePayroll = false } = {}) {
     projected.people = mapRows(row.people, person => ({
         ...pick(person, ['id', 'isActive', 'isPrimary', 'assignmentStatus', 'admissionStatus', 'internshipStatus']),
         hasExplicitHourlyRate: hasExplicitHourlyRate(person),
+        ...(person.paidRoleEligibility ? { paidRoleEligibility: person.paidRoleEligibility } : {}),
         ...(includePayroll ? pick(person, ['explicitRate', 'rateUnit', 'rateSource']) : {})
     }));
     return projected;

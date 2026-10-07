@@ -313,7 +313,7 @@ function createCabinetFakePool(options = {}) {
                 return { rows: [], rowCount: 0 };
             }
 
-            if (/SELECT is_active, session_revoked_at FROM users WHERE id = \$1/i.test(compact)) {
+            if (/SELECT is_active, session_revoked_at, .* AS session_revoked_at_ms FROM users WHERE id = \$1/i.test(compact)) {
                 return owner ? { rows: [{ is_active: owner.is_active, session_revoked_at: null }] } : { rows: [] };
             }
 

@@ -25,9 +25,17 @@ html[data-theme="dark"] .education-groups-layout input, html[data-theme="dark"] 
 .education-schedule-tab { display: flex; align-items: center; gap: 12px; min-height: 66px; padding: 12px 16px; border: 1px solid var(--gray-200); border-radius: var(--radius-lg, 16px); background: var(--gray-50); color: var(--gray-700); text-align: left; cursor: pointer; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
 .education-schedule-tab > span:first-child { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: rgba(14,165,134,.12); color: #0EA586; font-size: 22px; }
 .education-schedule-tab strong, .education-schedule-tab small { display: block; }
+.education-schedule-tab, .education-lesson-card { font-family: var(--font-primary, Inter, sans-serif); }
+
+.education-teacher-manager { margin-block: 16px; padding: 16px; border: 1px solid #64748b; border-radius: 12px; }
+.education-teacher-manager summary { cursor: pointer; font-weight: 600; padding-block: 12px; }
+.education-teacher-manager .education-member-list { padding: 0; }
+#educationTeacherManagerStatus[data-state="error"] { color: #b91c1c; }
+[data-theme="dark"] #educationTeacherManagerStatus[data-state="error"] { color: #fca5a5; }
 .education-schedule-tab strong { font-size: 15px; }
 .education-schedule-tab small { margin-top: 3px; color: var(--gray-500); font-size: 12px; }
-.education-schedule-tab:hover, .education-schedule-tab:focus-visible { border-color: #0EA586; outline: none; }
+.education-schedule-tab:hover, .education-schedule-tab:focus-visible { border-color: #0EA586; }
+.education-schedule-tab:focus-visible { outline: 2px solid #0EA586; outline-offset: 2px; }
 .education-schedule-tab.active { border-color: #0EA586; background: rgba(14,165,134,.08); box-shadow: 0 5px 18px rgba(14,165,134,.10); }
 .education-today-panel { padding: clamp(14px, 2.2vw, 22px); border: 1px solid var(--gray-200); border-radius: var(--radius-lg, 16px); background: var(--surface, var(--white, #fff)); }
 .education-today-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
@@ -48,7 +56,7 @@ html[data-theme="dark"] .education-groups-layout input, html[data-theme="dark"] 
 .education-lesson-copy small { margin-top: 4px; color: var(--gray-500); font-size: 12px; }
 .education-lesson-count { padding: 6px 9px; border-radius: 999px; background: rgba(14,165,134,.1); color: #08745F; font-size: 11px; font-weight: 800; white-space: nowrap; }
 .education-today-empty { padding: 28px 16px; border: 1px dashed var(--gray-300); border-radius: 12px; color: var(--gray-500); text-align: center; }
-body.dark-mode .education-schedule-tab, html[data-theme="dark"] .education-schedule-tab { background: rgba(24,29,45,.88); color: var(--gray-200); }
+body.dark-mode .education-schedule-tab, html[data-theme="dark"] .education-schedule-tab { background: rgba(24,29,45,.88); color: var(--text-primary, #F8FAFC); }
 body.dark-mode .education-today-panel, html[data-theme="dark"] .education-today-panel, body.dark-mode .education-lesson-card, html[data-theme="dark"] .education-lesson-card { background: rgba(17,24,39,.88); }
 body.dark-mode .education-schedule-filters select, html[data-theme="dark"] .education-schedule-filters select,
 body.dark-mode .education-schedule-filters input, html[data-theme="dark"] .education-schedule-filters input,
@@ -67,3 +75,298 @@ body.education-schedule-today .timeline-container { display: none !important; }
   .education-lesson-count { grid-column: 2; justify-self: start; margin-top: -3px; }
 }
 @media (max-width: 420px) { .education-schedule-tabs { gap: 8px; } .education-schedule-tab { gap: 8px; min-height: 60px; padding: 9px; } .education-schedule-tab > span:first-child { width: 32px; height: 32px; } }
+
+/* Local presentation tokens: do not alter shared Park forms or actions. */
+:is(.education-schedule-workspace, #educationSeriesModal, body.timeline-mode-education #bookingPanel,
+    #bookingDetails:has(.booking-lesson-detail), body.timeline-mode-education #settingsTimelineDisplaySection,
+    body[data-education-settings="true"] .timeline-settings-page) {
+  --edu-text: #1e293b;
+  --edu-muted: #475569;
+  --edu-surface: #fff;
+  --edu-soft: #f1f5f9;
+  --edu-border: #cbd5e1;
+  --edu-accent: #047857;
+  --edu-danger: #b91c1c;
+  color: var(--edu-text);
+}
+html[data-theme="dark"] :is(.education-schedule-workspace, #educationSeriesModal, body.timeline-mode-education #bookingPanel,
+    #bookingDetails:has(.booking-lesson-detail), body.timeline-mode-education #settingsTimelineDisplaySection,
+    body[data-education-settings="true"] .timeline-settings-page) {
+  --edu-text: #f1f5f9;
+  --edu-muted: #cbd5e1;
+  --edu-surface: #111827;
+  --edu-soft: #1e293b;
+  --edu-border: #64748b;
+  --edu-accent: #5eead4;
+  --edu-danger: #fca5a5;
+}
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel,
+    #bookingDetails:has(.booking-lesson-detail), body.timeline-mode-education #settingsTimelineDisplaySection) button:is(.education-action, .btn-secondary),
+body.timeline-mode-education #settingsTimelineDisplaySection button,
+#bookingDetails:has(.booking-lesson-detail) :is(button, .booking-detail-action, summary) {
+  min-height: 40px;
+  padding: 10px 14px;
+  border: 1px solid var(--edu-border);
+  border-radius: var(--radius-sm, 10px);
+  background: var(--edu-soft);
+  color: var(--edu-text);
+  font: 700 14px/1.4 var(--font-primary, Inter, sans-serif);
+  cursor: pointer;
+  text-align: center;
+  white-space: normal;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel) .btn-submit,
+body.timeline-mode-education #settingsSaveTimelineDisplayBtn,
+#bookingDetails:has(.booking-lesson-detail) .booking-detail-action--primary,
+body[data-education-settings="true"] .timeline-settings-primary {
+  width: auto;
+  min-height: 44px;
+  padding: 11px 18px;
+  border: 1px solid #047857;
+  border-radius: var(--radius-sm, 10px);
+  background: #047857;
+  color: #fff;
+  font: 800 14px/1.4 var(--font-primary, Inter, sans-serif);
+}
+body.timeline-mode-education #bookingSubmitBtn,
+body.timeline-mode-education #settingsSaveTimelineDisplayBtn { width: 100%; }
+.education-schedule-workspace .education-action--danger,
+#bookingDetails:has(.booking-lesson-detail) .booking-cancellation-action {
+  color: var(--edu-danger);
+  border-color: var(--edu-danger);
+  background: var(--edu-surface);
+}
+.education-schedule-workspace button:not(:disabled):hover,
+body.timeline-mode-education #bookingPanel button:not(:disabled):hover,
+body.timeline-mode-education #settingsTimelineDisplaySection button:not(:disabled):hover,
+#bookingDetails:has(.booking-lesson-detail) :is(button, summary, a):hover { border-color: var(--edu-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--edu-accent) 20%, transparent); }
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel,
+    body.timeline-mode-education #settingsTimelineDisplaySection, #bookingDetails:has(.booking-lesson-detail),
+    body[data-education-settings="true"] .timeline-settings-page) :is(button, input, select, textarea, a, summary):focus-visible {
+  outline: 2px solid var(--edu-accent); outline-offset: 3px;
+}
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel) button:active:not(:disabled) { transform: translateY(1px); }
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel) button:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; transform: none; }
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel) [aria-busy="true"] { cursor: progress; }
+.education-action-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.education-schedule-workspace :is(h2,h3,strong,label,.education-lesson-copy strong),
+body.timeline-mode-education #educationLessonSection label { color: var(--edu-text); }
+.education-schedule-workspace :is(small,.education-today-status,.education-today-empty,.education-attendance-history,.education-schedule-filters label),
+body.timeline-mode-education #bookingPanel :is(small,.form-hint) { color: var(--edu-muted); }
+.education-schedule-workspace :is(.education-schedule-eyebrow,.education-lesson-time,.education-lesson-count),
+.education-schedule-workspace .education-schedule-tab > span:first-child { color: var(--edu-accent); }
+.education-schedule-workspace :is(.education-today-panel,.education-lesson-card,.education-schedule-tab) { background: var(--edu-surface); border-color: var(--edu-border); }
+.education-schedule-workspace .education-schedule-tab.active { background: var(--edu-soft); border-color: var(--edu-accent); }
+.education-schedule-workspace :is(input,select),
+body.timeline-mode-education #bookingPanel :is(input:not([type="checkbox"]):not([type="radio"]),select,textarea) {
+  min-width: 0; width: 100%; min-height: 42px; padding: 9px 12px;
+  border: 1px solid var(--edu-border); border-radius: 10px;
+  background: var(--edu-surface); color: var(--edu-text); font: inherit;
+}
+.education-schedule-workspace :is(input,select)::placeholder,
+body.timeline-mode-education #bookingPanel input::placeholder { color: var(--edu-muted); opacity: 1; }
+.education-schedule-filters { align-items: end; }
+.education-schedule-filters label { gap: 7px; font-size: 13px; }
+.education-schedule-filters select { max-width: 280px; font-size: 14px; }
+.education-schedule-workspace :is(h2,h3,p,li,td,th,small,.education-lesson-copy) { overflow-wrap: anywhere; }
+.education-lesson-copy strong, .education-lesson-copy small { white-space: normal; overflow: visible; text-overflow: clip; }
+.education-lesson-copy small { line-height: 1.7; }
+.education-lesson-count { color: var(--edu-accent); background: var(--edu-soft); }
+.education-member-list { list-style: none; padding: 0; display: grid; gap: 10px; }
+.education-member-list li { margin: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--edu-border); border-radius: 10px; }
+.education-member-copy { min-width: 0; display: grid; gap: 4px; }
+.education-member-copy small { display: block; line-height: 1.5; }
+.education-attendance-row { background: var(--edu-surface); border-color: var(--edu-border); align-items: start; }
+.education-attendance-row label { display: grid; gap: 7px; font-size: 13px; }
+.education-attendance-history { padding-left: 18px; margin-top: 9px; line-height: 1.6; }
+.education-attendance-history li { margin: 6px 0; }
+.education-report-summary span { color: var(--edu-text); background: var(--edu-soft); line-height: 1.5; }
+.education-report-table :is(td,th) { color: var(--edu-text); border-color: var(--edu-border); vertical-align: top; line-height: 1.5; }
+.education-report-table th { background: var(--edu-soft); }
+.education-schedule-workspace [role="status"]:not(:empty) { padding: 10px 12px; border-left: 3px solid var(--edu-accent); border-radius: 6px; background: var(--edu-soft); color: var(--edu-text); font-size: 13px; line-height: 1.6; }
+.education-schedule-workspace [role="status"]:empty { display: none; }
+body.education-schedule-today :is(.legend,#minimapContainer) { display: none !important; }
+body.timeline-mode-education .legend .dot.custom { background: linear-gradient(135deg,#0f766e,#2563eb); }
+body.timeline-mode-education .legend { color: var(--gray-900); }
+body.timeline-mode-education #educationLessonSection { background: var(--edu-soft); border-color: var(--edu-border); }
+body.timeline-mode-education .education-lesson-heading { color: var(--edu-accent); }
+body.timeline-mode-education #bookingPanel :is(.education-lesson-grid label,.booking-section-heading strong) { color: var(--edu-text); }
+#bookingDetails:has(.booking-lesson-detail) { display: flex; flex-direction: column; gap: 8px; }
+#bookingDetails:has(.booking-lesson-detail) > * { order: 3; }
+#bookingDetails:has(.booking-lesson-detail) > .booking-detail-header { order: 0; }
+#bookingDetails:has(.booking-lesson-detail) > .booking-lesson-detail { order: 1; }
+#bookingDetails:has(.booking-lesson-detail) > .event-card-visual { order: 2; height: 88px; max-height: 88px; margin: 4px 0; }
+#bookingDetails:has(.booking-lesson-detail) > .event-card-visual img { height: 88px; max-height: 88px; width: 100%; object-fit: contain; }
+#bookingDetails:has(.booking-lesson-detail) > .booking-actions { order: 5; }
+#bookingModal #bookingDetails:has(.booking-lesson-detail):not(:has(.booking-banquet-full-detail)) .booking-summary-action { display: none; }
+#bookingDetails:has(.booking-lesson-detail) :is(.label,.booking-detail-meta-item) { color: var(--edu-muted); }
+#bookingDetails:has(.booking-lesson-detail) :is(.value,h3,.booking-detail-title,.booking-lesson-detail-title) { color: var(--edu-text); overflow-wrap: anywhere; }
+#bookingDetails .booking-lesson-detail { background: var(--edu-soft); border: 1px solid var(--edu-border); border-radius: 12px; padding: 16px; }
+#bookingDetails .booking-lesson-detail-title { font-size: 17px; font-weight: 800; margin: 0 0 10px; }
+#bookingDetails .booking-lesson-detail .booking-detail-row { display: grid; grid-template-columns: 130px minmax(0,1fr); gap: 12px; padding: 7px 0; align-items: start; }
+#bookingDetails .booking-lesson-detail .education-action-row { margin-top: 14px; }
+body.timeline-mode-education #settingsTimelineDisplaySection :is(strong,label,h4) { color: var(--edu-text); }
+body.timeline-mode-education #settingsTimelineDisplaySection :is(small,p,.digest-hint,.timeline-control-block-head span,.timeline-profile-contract span) { color: var(--edu-muted); }
+body[data-education-settings="true"] .timeline-settings-page :is(strong,h1,h2,h3,label,button) { color: var(--edu-text); }
+body[data-education-settings="true"] .timeline-settings-page :is(small,p,.timeline-settings-eyebrow,.timeline-settings-meta-card span,.timeline-settings-context-btn span) { color: var(--edu-muted); }
+body[data-education-settings="true"] .timeline-settings-page .timeline-settings-primary { color: #fff; }
+body[data-education-settings="true"] .timeline-settings-field[hidden] { display: none; }
+body[data-education-settings="true"] .timeline-settings-page button { min-height: 36px; border-radius: 10px; }
+body[data-education-settings="true"] .timeline-settings-page .timeline-settings-badge { color: var(--edu-text); background: var(--edu-soft); }
+@media (max-width: 720px) {
+  .education-schedule-filters { grid-template-columns: 1fr; }
+  .education-schedule-filters select { max-width: none; }
+  .education-member-list li { flex-wrap: wrap; }
+  #bookingDetails .booking-lesson-detail .booking-detail-row { grid-template-columns: 1fr; gap: 4px; }
+}
+
+/* Match the specificity of existing modal/footer and local action rules. */
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel,
+    body.timeline-mode-education #settingsTimelineDisplaySection) button.btn-submit,
+#bookingModal #bookingDetails:has(.booking-lesson-detail) .booking-detail-action--primary {
+  background: #047857; border-color: #047857; color: #fff;
+}
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel) button.education-action--danger,
+body.timeline-mode-education #bookingPanel #maysternyaCloseSlotBtn,
+#bookingModal #bookingDetails:has(.booking-lesson-detail) .booking-detail-danger-action {
+  background: var(--edu-surface); border-color: var(--edu-danger); color: var(--edu-danger);
+}
+#bookingModal #bookingDetails:has(.booking-lesson-detail) :is(button,.booking-detail-action,summary) {
+  min-height: 40px; border-radius: 10px; color: var(--edu-text); background: var(--edu-soft);
+}
+#bookingModal #bookingDetails:has(.booking-lesson-detail) .booking-detail-action--primary { background: #047857; color: #fff; }
+#bookingModal #bookingDetails:has(.booking-lesson-detail) .booking-detail-danger-action { color: var(--edu-danger); border-color: var(--edu-danger); }
+body.timeline-mode-education #bookingPanel :is(.booking-selected-customer__child,.customer-info-child,.customer-child-card) { background: var(--edu-soft); }
+body.timeline-mode-education #bookingPanel :is(strong,span,small,.required-mark) { color: var(--edu-text); }
+body.timeline-mode-education #bookingPanel :is(small,.form-hint,.booking-selected-customer__child small) { color: var(--edu-muted); }
+body.timeline-mode-education #bookingPanel :is(.program-category-chip,.booking-activity-promo-action) { min-height: 36px; color: var(--edu-text); background: var(--edu-soft); border-color: var(--edu-border); }
+body.timeline-mode-education #bookingPanel .program-category-chip.is-active { border-color: var(--edu-accent); }
+body.timeline-mode-education #settingsTimelineDisplaySection #settingsTimelineControlState { background: var(--edu-soft); color: var(--edu-accent); }
+body.timeline-mode-education #settingsTimelineDisplaySection button:is(.active,.is-active,[aria-pressed="true"]) { border-color: var(--edu-accent); box-shadow: inset 0 0 0 1px var(--edu-accent); }
+.education-schedule-workspace [role="status"][data-state="error"] { border-color: var(--edu-danger); color: var(--edu-danger); }
+#bookingModal #bookingDetails:has(.booking-lesson-detail) .line-switch-buttons button { color: var(--edu-text) !important; }
+#bookingModal #bookingDetails:has(.booking-lesson-detail) .btn-invite-open { background: #047857; color: #fff; border-radius: 10px; padding: 10px 14px; }
+body.timeline-mode-education #bookingPanel .booking-selected-customer__kitchen-row { background: var(--edu-soft); }
+#educationSeriesModal .education-series-row { background: var(--edu-soft); color: var(--edu-text); border-color: var(--edu-border); opacity: 1; }
+#educationSeriesModal :is(h3,strong) { color: var(--edu-text); overflow-wrap: anywhere; }
+#educationSeriesModal :is(small,p) { color: var(--edu-muted); overflow-wrap: anywhere; }
+#educationSeriesModal .education-action { min-height: 40px; padding: 10px 14px; border: 1px solid var(--edu-border); border-radius: 10px; background: var(--edu-soft); color: var(--edu-text); font: 700 14px/1.4 var(--font-primary,Inter,sans-serif); }
+#educationSeriesModal .education-action--danger, #educationSeriesModal .status-badge--cancelled { color: var(--edu-danger); background: var(--edu-surface); border: 1px solid var(--edu-danger); }
+#educationSeriesModal button:focus-visible { outline: 2px solid var(--edu-accent); outline-offset: 3px; }
+#educationSeriesModal button:hover:not(:disabled) { border-color: var(--edu-accent); }
+#educationSeriesModal .education-series-manager-actions, #educationSeriesModal .education-series-manager-actions > span { display: flex; flex-wrap: wrap; gap: 10px; }
+#educationSeriesModal .status-badge:not(.status-badge--cancelled) { background: var(--edu-soft); color: var(--edu-accent); }
+#bookingModal #bookingDetails:has(.booking-lesson-detail) .booking-detail-header { background: var(--edu-surface); }
+#bookingModal #bookingDetails:has(.booking-lesson-detail) .booking-detail-meta-item { background: var(--edu-soft); color: var(--edu-text); }
+#bookingModal #bookingDetails:has(.booking-lesson-detail) :is(.customer-crm-link,.customer-link--crm) { color: var(--edu-accent); }
+#bookingModal #bookingDetails:has(.booking-lesson-detail) :is(.booking-detail-advanced-actions__hint,.booking-detail-danger-zone__label) { color: var(--edu-muted); }
+body.timeline-mode-education #bookingPanel :is(label,.info-label,.status-radio-label) { color: var(--edu-text); }
+body.timeline-mode-education #bookingPanel .status-radio-label.confirmed { background: var(--edu-soft); color: var(--edu-text); border-color: var(--edu-accent); }
+body.timeline-mode-education #settingsTimelineDisplaySection select { background: var(--edu-surface); color: var(--edu-text); border-color: var(--edu-border); }
+body.timeline-mode-education #settingsTimelineDisplaySection .timeline-control-kicker { color: var(--edu-muted); }
+body[data-education-settings="true"] .timeline-settings-page :is(.timeline-settings-rail,.timeline-settings-workspace,.timeline-settings-inspector,.timeline-settings-detail-card,.timeline-settings-preset,.timeline-settings-meta-card) { background: var(--edu-surface); color: var(--edu-text); }
+body[data-education-settings="true"] .timeline-settings-page .timeline-settings-preview-block { background: var(--edu-soft); color: var(--edu-text); opacity: 1; }
+body[data-education-settings="true"] .timeline-settings-page .timeline-settings-preview-block.is-hidden { text-decoration: line-through; border-style: dashed; }
+body[data-education-settings="true"] .timeline-settings-page .timeline-settings-preset span { color: var(--edu-muted); }
+body[data-education-settings="true"] .timeline-settings-page p { opacity: 1; }
+#bookingModal #bookingDetails:has(.booking-lesson-detail) .booking-detail-title { color: var(--edu-text) !important; }
+body[data-education-settings="true"] .timeline-settings-hero { background: var(--edu-surface); border: 1px solid var(--edu-border); border-radius: 16px; padding: 20px; }
+body[data-education-settings="true"] .timeline-settings-hero-copy p { color: var(--edu-muted); }
+body[data-education-settings="true"] .timeline-settings-block-group-title { color: var(--edu-accent); }
+body.timeline-mode-education #bookingPanel .category-header { color: var(--edu-text); }
+body[data-education-settings="true"] .timeline-settings-preview-title { color: var(--edu-muted); }
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel,
+    body[data-education-settings="true"] .timeline-settings-page) :is(input,textarea)::placeholder { color: var(--edu-muted); opacity: 1; }
+
+/* EDU-READY-07: reflow and touch sizing stay inside education surfaces. */
+/* The tablet drawer overlaps the persistent sidebar; keep its whole surface
+   above navigation and below canonical dialogs without changing Park layers. */
+body.timeline-mode-education #bookingPanel { z-index: calc(var(--z-sidebar-overlay, 950) + 2); }
+body.timeline-mode-education .panel-backdrop { z-index: calc(var(--z-sidebar-overlay, 950) + 1); }
+:is(.education-schedule-workspace, #educationSeriesModal, body.timeline-mode-education #bookingPanel,
+    #bookingDetails:has(.booking-lesson-detail), body.timeline-mode-education #settingsTimelineDisplaySection,
+    body[data-education-settings="true"] .timeline-settings-page) :is(button, a[href], summary) {
+  min-width: 44px;
+  min-height: 44px;
+}
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel,
+    body.timeline-mode-education #settingsTimelineDisplaySection,
+    body[data-education-settings="true"] .timeline-settings-page) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  min-height: 44px;
+  font-size: 16px;
+}
+body.timeline-mode-education #bookingPanel .education-lesson-grid select { min-height: 44px; }
+#bookingModal #bookingDetails:has(.booking-lesson-detail) :is(button, a[href], summary) { min-height: 44px; }
+#bookingDetails:has(.booking-lesson-detail) a[href] { display: inline-flex; align-items: center; flex-wrap: wrap; }
+.education-report-table-wrap { max-width: 100%; min-width: 0; overscroll-behavior-x: contain; }
+.education-report-table { min-width: 640px; }
+.education-report-table caption { color: var(--edu-muted); text-align: left; padding: 12px 9px; }
+.education-report-table-wrap:focus-visible { outline: 2px solid var(--edu-accent); outline-offset: 3px; }
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel,
+    body.timeline-mode-education #settingsTimelineDisplaySection,
+    body[data-education-settings="true"] .timeline-settings-page) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { border-color: #64748b; }
+body.timeline-mode-education.timeline-dashboard-page .schedule-command-center input[type="date"] {
+  border: 1px solid #64748b !important; background: #fff !important; color: #1e293b !important;
+}
+html[data-theme="dark"] body.timeline-mode-education.timeline-dashboard-page .schedule-command-center input[type="date"] {
+  background: #111827 !important; color: #f1f5f9 !important;
+}
+#bookingModal:has(.booking-lesson-detail) :is(button,a,[role="button"],[tabindex],summary):focus-visible,
+body.timeline-mode-education #bookingPanel :is([role="button"],[tabindex]):focus-visible {
+  outline: 2px solid #047857; outline-offset: 3px;
+}
+html[data-theme="dark"] #bookingModal:has(.booking-lesson-detail) :is(button,a,[role="button"],[tabindex],summary):focus-visible { outline-color: #5eead4; }
+body.timeline-mode-education .multi-day-container { min-width: 0; max-width: 100%; overflow-x: auto; }
+#educationSeriesModal .modal-content { max-height: calc(100dvh - 32px); overflow-y: auto; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+#educationSeriesModal .modal-close { min-width: 44px; min-height: 44px; }
+body.timeline-mode-education #bookingPanel .panel-header { padding-top: calc(16px + env(safe-area-inset-top, 0px)); }
+body.timeline-mode-education #bookingPanel :is(.booking-panel-close,.booking-panel-edge-close) { min-width: 44px; min-height: 44px; }
+body.timeline-mode-education .booking-block.education-lesson .booking-banquet-link-handle { display: none; }
+@media (max-width: 1100px) {
+  body.timeline-mode-education.timeline-dashboard-page .schedule-command-center .schedule-command-zone--date {
+    overflow: visible !important;
+    flex-wrap: wrap !important;
+  }
+  body.timeline-mode-education.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility .date-navigation-cluster {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  body.timeline-mode-education.timeline-dashboard-page .schedule-command-center :is(button,input[type="date"],.date-button-shell) {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    height: auto !important;
+  }
+  body.timeline-mode-education.timeline-dashboard-page .schedule-command-center input[type="date"] { font-size: 16px !important; }
+  body.timeline-mode-education .education-schedule-tabs { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+  body.timeline-mode-education .education-schedule-tab > span:last-child { min-width: 0; overflow-wrap: normal; }
+  body.timeline-mode-education .education-schedule-tab > span:first-child { flex-shrink: 0; }
+}
+@media (max-width: 420px) {
+  body.timeline-mode-education .education-schedule-tabs { grid-template-columns: 1fr; }
+  .education-schedule-tab { min-height: 60px; }
+  body.timeline-mode-education #bookingPanel .booking-panel-edge-close { display: none; }
+  #educationSeriesModal .education-series-row { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.timeline-mode-education :is(.education-schedule-tab,.education-lesson-card,#bookingPanel),
+  #educationSeriesModal { animation: none; transition: none; }
+}
+
+/* The shared dashboard suppresses outlines with !important; retain a solid
+   education focus indicator in addition to its existing soft shadow. */
+:is(.education-schedule-workspace, #educationSeriesModal, body.timeline-mode-education #bookingPanel,
+    #bookingModal:has(.booking-lesson-detail), body.timeline-mode-education #settingsTimelineDisplaySection,
+    body[data-education-settings="true"] .timeline-settings-page) :is(button,input,select,textarea,a,summary,[role="button"],[tabindex]):focus-visible,
+body.timeline-mode-education #main-content .schedule-command-center :is(button,input):focus-visible {
+  outline: 2px solid #047857 !important;
+  outline-offset: 3px;
+}
+html[data-theme="dark"] :is(.education-schedule-workspace, #educationSeriesModal, body.timeline-mode-education #bookingPanel,
+    #bookingModal:has(.booking-lesson-detail), body.timeline-mode-education #settingsTimelineDisplaySection,
+    body[data-education-settings="true"] .timeline-settings-page) :is(button,input,select,textarea,a,summary,[role="button"],[tabindex]):focus-visible,
+html[data-theme="dark"] body.timeline-mode-education #main-content .schedule-command-center :is(button,input):focus-visible {
+  outline-color: #5eead4 !important;
+}

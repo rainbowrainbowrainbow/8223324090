@@ -29,7 +29,9 @@ const {
     resolveBusinessScope
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
 const { parkMonthlyPeriod, loadParkHrMonthlyReport } = require('../services/parkHrMonthlyReportRead');
+const { reportAttendanceByStaff } = require('../services/hrMonthlyReportDetails');
 const {
     lockAttendanceWriteMaintenance,
     lockAttendanceWriteTarget,
@@ -74,6 +76,8 @@ const {
 } = require('../services/hrOnboarding');
 const {
     parseTextList,
+    normalizeStaffProfessionRateChanges,
+    applyStaffProfessionRateChanges,
     normalizeProfessionKey,
     normalizeSecondaryProfessions,
     normalizeProfessionCatalogRow,
@@ -378,6 +382,7 @@ const HR_PAYROLL_RESPONSE_FIELDS = new Set([
     'hourly_rate', 'hourlyRate', 'rate_unit', 'rateUnit', 'estimated_salary', 'estimatedSalary',
     'salary', 'base_salary', 'baseSalary', 'total_salary', 'totalSalary',
     'profession_rates', 'professionRates', 'profession_rate_summary', 'professionRateSummary',
+    'compensation_snapshot', 'compensationSnapshot', 'conditions',
     'allocation_issues', 'allocationIssues', 'reconciliation', 'totalFOP', 'zrs', 'zrsAmount'
 ]);
 
@@ -415,10 +420,10 @@ function shapeHrStaffList(rows, capability, user) {
     return shapeHrPayrollFields(rows, user);
 }
 router.use(requireHrCapabilityContract);
-router.use(requireLegacyBusinessSurface('staff', {
+router.use(requireParkHrPayrollAccess('hr', requireLegacyBusinessSurface('staff', {
     parkScheduleRouter: 'hr', parkHrStaffCardRead: true, parkHrMonthlyReportRead: true,
     parkHrOnboardingRead: true, parkHrCompanyStructureRead: true
-}));
+}), pool));
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 
@@ -506,7 +511,6 @@ const STAFF_ROLE_ASSIGNMENT_STATUSES = new Set(['active', 'inactive', 'suspended
 const STAFF_ROLE_ADMISSION_STATUSES = new Set(['pending', 'approved', 'blocked']);
 const STAFF_ROLE_INTERNSHIP_STATUSES = new Set(['none', 'in_progress', 'completed']);
 const STAFF_OFFBOARDING_POOL_STATUSES = new Set(['core', 'reserve', 'blacklisted']);
-const STAFF_OFFBOARDING_ACCOUNT_ACTIONS = new Set(['none', 'review', 'disable']);
 
 function resumeFileExt(file) {
     return path.extname(file?.originalname || '').toLowerCase();
@@ -597,11 +601,6 @@ function normalizeStaffRoleInternshipStatus(value) {
 function normalizeStaffOffboardingPoolStatus(value) {
     const status = cleanStaffText(value, 32) || 'reserve';
     return STAFF_OFFBOARDING_POOL_STATUSES.has(status) ? status : 'reserve';
-}
-
-function normalizeStaffOffboardingAccountAction(value) {
-    const action = cleanStaffText(value, 32) || 'review';
-    return STAFF_OFFBOARDING_ACCOUNT_ACTIONS.has(action) ? action : 'review';
 }
 
 function numberOrNull(value) {
@@ -872,7 +871,6 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
          FROM employee_profiles ep
          JOIN users u ON u.id = ep.user_id
          WHERE ep.staff_id = $1
-           AND COALESCE(ep.is_active, true) = true
            AND COALESCE(u.is_active, true) = true
          ORDER BY u.id ASC`,
         [staffId]
@@ -913,9 +911,9 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
     const accounts = activeAccounts.rows.map(row => staffOffboardingAccountMeta(row, currentUserId));
     const openResourceCount = openResources.rows[0]?.total_count || 0;
     const documentAlertCount = documentAlerts.rows[0]?.total_count || 0;
-    const blockedAccounts = accounts
+    const blockedAccounts = activeAccounts.rows
         .map(account => ({
-            ...account,
+            ...staffOffboardingAccountMeta(account, currentUserId),
             block_reason: accountOffboardingBlockReason(actor, account)
         }))
         .filter(account => account.block_reason);
@@ -4308,6 +4306,27 @@ router.put('/payroll-profiles/:id/archive', requirePayrollRules, async (req, res
     }
 });
 
+// Salary permissions and business-scope middleware are inherited from the HR router.
+router.get('/staff/:id/payroll-conditions', requirePayrollView, async (req, res) => {
+    try {
+        const { getPayrollDayConditions } = require('../services/hrPayrollConditions');
+        if (!['additional', 'base_replacement'].includes(req.query.purpose || 'base_replacement')) {
+            return res.status(400).json({ success: false, code: 'PAYROLL_CONDITIONS_PURPOSE_INVALID', error: 'Невірне призначення оплати' });
+        }
+        const date = require('../services/attendanceWriteLock').normalizeAttendanceWriteDate(req.query.date);
+        const data = await getPayrollDayConditions(pool, Number(req.params.id), req.query.professionKey, date, req.query.purpose || 'base_replacement');
+        res.json({ success: true, data });
+    } catch (error) { sendPayrollProfileFailure(res, error, 'GET /hr/staff/:id/payroll-conditions error'); }
+});
+
+router.put('/staff/:id/payroll-day-exception', requirePayrollView, requirePayrollRules, async (req, res) => {
+    try {
+        const { savePayrollDayException } = require('../services/hrPayrollConditions');
+        const result = await savePayrollDayException(pool, { ...req.body, staffId: req.params.id }, req.user);
+        res.json({ success: true, data: result });
+    } catch (error) { sendPayrollProfileFailure(res, error, 'PUT /hr/staff/:id/payroll-day-exception error'); }
+});
+
 router.get('/staff/:id/payroll-profile-assignments', requirePayrollView, async (req, res) => {
     try {
         const data = await listStaffPayrollProfileAssignments(req.params.id, {
@@ -4493,7 +4512,7 @@ router.put('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
         const rateRows = rows
             .filter(row => row.hourly_rate !== null && Number(row.hourly_rate) > 0)
             .map(row => ({ profession_key: row.profession_key, hourly_rate: row.hourly_rate }));
-        await replaceStaffProfessionRates(client, req.params.id, rateRows);
+        await applyStaffProfessionRateChanges(client, req.params.id, rateRows);
         await client.query('COMMIT');
         await auditLog('staff_role_assignments_update', parseInt(req.params.id), req.user?.username, {
             primary_role: primaryRole,
@@ -4564,7 +4583,8 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
         if (!reason) return res.status(400).json({ success: false, error: 'Причина завершення співпраці обовʼязкова' });
         const effectiveDate = cleanStaffDate(req.body.effective_date || req.body.effectiveDate) || todayKyiv();
         const targetPoolStatus = normalizeStaffOffboardingPoolStatus(req.body.target_pool_status || req.body.targetPoolStatus);
-        const accountAction = normalizeStaffOffboardingAccountAction(req.body.account_action || req.body.accountAction);
+        // Dismissal always disables linked accounts, including requests from older clients.
+        const accountAction = 'disable';
         const notes = cleanStaffText(req.body.notes, 2000);
 
         await client.query('BEGIN');
@@ -4639,8 +4659,9 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             req,
             reason: 'hr_offboarding',
             source: 'hr_staff_offboarding',
-            canDisableAccount: account => accountAction === 'disable' && actorCanDisableOffboardingAccount(req.user, account),
-            blockReason: account => accountAction === 'disable' ? accountOffboardingBlockReason(req.user, account) : null,
+            requireAllAccountsDisabled: true,
+            canDisableAccount: account => actorCanDisableOffboardingAccount(req.user, account),
+            blockReason: account => accountOffboardingBlockReason(req.user, account),
             accountMeta: account => staffOffboardingAccountMeta(account, req.user?.id),
             eventDetails: { offboardingEventId: event.rows[0].id },
             logger: log
@@ -4671,6 +4692,7 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/staff/:id/offboarding error', err);
+        if (err.code === 'account_deactivation_blocked') return res.status(err.statusCode).json({ success: false, error: staffOffboardingDisableError(err.blockers), code: err.code, blockers: err.blockers });
         if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -4743,7 +4765,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             secondary_professions: hasSecondaryProfessions ? professionValidation.secondaryProfessions : beforeStaff.secondary_professions
         });
         const normalizedProfessionRates = hasProfessionRates
-            ? normalizeStaffProfessionRates(professionRateInput, effectiveProfessionKeys)
+            ? normalizeStaffProfessionRateChanges(professionRateInput, effectiveProfessionKeys)
             : [];
         const beforeRateRows = hasProfessionRates
             ? (await pool.query(
@@ -4840,7 +4862,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
                 return res.status(404).json({ success: false, error: 'Не знайдено' });
             }
             if (hasProfessionRates) {
-                afterRateRows = await replaceStaffProfessionRates(client, req.params.id, normalizedProfessionRates);
+                afterRateRows = await applyStaffProfessionRateChanges(client, req.params.id, normalizedProfessionRates);
                 result.rows[0].profession_rates = afterRateRows;
             }
             if (fieldPresence.hr_pool_status && ['blacklisted', 'reserve'].includes(requestedPoolStatus)) {
@@ -4891,7 +4913,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         res.json({ success: true, data: result.rows[0], schedule_cleanup: scheduleCleanup });
     } catch (err) {
         log.error('PUT /hr/staff/:id error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode === 400 ? 'Перевірте професію та додатну ставку. Видалення ставки потрібно обрати явно.' : 'Помилка сервера' });
     }
 });
 
@@ -5004,6 +5026,7 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
                 req,
                 reason: 'hr_staff_deactivation',
                 source: 'hr_staff_status',
+                requireAllAccountsDisabled: true,
                 canDisableAccount: account => actorCanDisableOffboardingAccount(req.user, account),
                 blockReason: account => accountOffboardingBlockReason(req.user, account),
                 accountMeta: account => staffOffboardingAccountMeta(account, req.user?.id),
@@ -5096,6 +5119,7 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/staff/:id/status error', err);
+        if (err.code === 'account_deactivation_blocked') return res.status(err.statusCode).json({ success: false, error: staffOffboardingDisableError(err.blockers), code: err.code, blockers: err.blockers });
         if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -6889,14 +6913,15 @@ router.get('/report/monthly', async (req, res) => {
         ]);
 
         const shifts = await pool.query(
-            'SELECT staff_id, COUNT(*) AS cnt FROM hr_shifts WHERE shift_date >= $1 AND shift_date <= $2 GROUP BY staff_id',
-            [dateFrom, dateTo]
+            `SELECT id, staff_id, shift_date::text AS shift_date, planned_start, planned_end,
+                    profession_key, shift_type
+             FROM hr_shifts WHERE shift_date >= $1 AND shift_date <= $2
+                AND staff_id = ANY($3::int[])`,
+            [dateFrom, dateTo, reportStaffIds]
         );
-        const shiftCounts = {};
-        for (const r of shifts.rows) shiftCounts[r.staff_id] = parseInt(r.cnt);
 
         const records = await pool.query(
-            `SELECT tr.staff_id, tr.record_date, tr.clock_in, tr.clock_out,
+            `SELECT tr.id, tr.staff_id, tr.record_date::text AS record_date, tr.clock_in, tr.clock_out,
                     tr.planned_start, tr.planned_end,
                     COALESCE(hs.profession_key, s.role_type) AS profession_key,
                     tr.status, tr.late_minutes, tr.early_leave_minutes, tr.overtime_minutes, tr.total_worked_minutes,
@@ -6908,8 +6933,10 @@ router.get('/report/monthly', async (req, res) => {
              FROM hr_time_records tr
              JOIN staff s ON s.id = tr.staff_id
              LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
-             WHERE tr.record_date >= $1 AND tr.record_date <= $2`,
-            [dateFrom, dateTo]
+             WHERE tr.record_date >= $1 AND tr.record_date <= $2
+                AND tr.business_context = 'event_genix'
+                AND tr.staff_id = ANY($3::int[])`,
+            [dateFrom, dateTo, reportStaffIds]
         );
         const payrollAttendanceMetrics = await loadPayrollAttendanceMetrics({
             from: dateFrom,
@@ -6917,18 +6944,23 @@ router.get('/report/monthly', async (req, res) => {
             staffIds: staffList.rows.map(staff => staff.id)
         });
 
+        const taskDetailSql = `jsonb_build_object(
+            'id', t.id, 'title', t.title, 'status', t.status,
+            'source_type', t.source_type,
+            'created_at', t.created_at, 'deadline', t.deadline, 'completed_at', t.completed_at)`;
+        const taskOverdueSql = `${taskKpiEligibleSql('t')}
+            AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'complete', 'archived', 'cancelled')
+            AND t.deadline IS NOT NULL AND t.deadline < NOW()`;
+        let taskKpiUnavailable = false;
         const taskKpiRows = await pool.query(
             `SELECT ep.staff_id,
                     COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')})::int AS tasks_assigned,
                     COUNT(t.id) FILTER (
                         WHERE ${taskKpiEligibleSql('t')}
-                          AND COALESCE(t.status, 'todo') IN ('done', 'completed')
+                          AND COALESCE(t.status, 'todo') IN ('done', 'completed', 'complete')
                     )::int AS tasks_done,
                     COUNT(t.id) FILTER (
-                        WHERE ${taskKpiEligibleSql('t')}
-                          AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
-                          AND t.deadline IS NOT NULL
-                          AND t.deadline < NOW()
+                         WHERE ${taskOverdueSql}
                     )::int AS tasks_overdue,
                     COUNT(t.id) FILTER (
                         WHERE ${taskKpiEligibleSql('t')}
@@ -6938,13 +6970,21 @@ router.get('/report/monthly', async (req, res) => {
                         WHERE NOT ${taskKpiEligibleSql('t')}
                           AND ${taskKpiMachineSignalSql('t')}
                     )::int AS tasks_machine_excluded,
-                    COUNT(t.id) FILTER (
-                        WHERE NOT ${taskKpiEligibleSql('t')}
-                          AND NOT ${taskKpiMachineSignalSql('t')}
+                     COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
+                         FILTER (WHERE ${taskKpiEligibleSql('t')}), '[]'::jsonb) AS tasks_assigned_details,
+                     COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
+                         FILTER (WHERE ${taskKpiEligibleSql('t')}
+                             AND COALESCE(t.status, 'todo') IN ('done', 'completed', 'complete')), '[]'::jsonb) AS tasks_done_details,
+                     COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
+                         FILTER (WHERE ${taskOverdueSql}), '[]'::jsonb) AS tasks_overdue_details,
+                     COUNT(t.id) FILTER (
+                         WHERE NOT ${taskKpiEligibleSql('t')}
+                           AND NOT ${taskKpiMachineSignalSql('t')}
                     )::int AS tasks_ambiguous_excluded
              FROM tasks t
              JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active = true
              WHERE t.owner_user_id IS NOT NULL
+               AND t.business_context = 'event_genix'
                AND (
                     t.created_at::date BETWEEN $1::date AND $2::date
                     OR t.completed_at::date BETWEEN $1::date AND $2::date
@@ -6953,6 +6993,7 @@ router.get('/report/monthly', async (req, res) => {
             [dateFrom, dateTo]
         ).catch(err => {
             log.warn('Task KPI query failed:', err.message);
+            taskKpiUnavailable = true;
             return { rows: [] };
         });
 
@@ -6962,55 +7003,28 @@ router.get('/report/monthly', async (req, res) => {
                 tasks_assigned: parseInt(r.tasks_assigned) || 0,
                 tasks_done: parseInt(r.tasks_done) || 0,
                 tasks_overdue: parseInt(r.tasks_overdue) || 0,
+                tasks_assigned_details: r.tasks_assigned_details || [],
+                tasks_done_details: r.tasks_done_details || [],
+                tasks_overdue_details: r.tasks_overdue_details || [],
                 tasks_machine_accepted: parseInt(r.tasks_machine_accepted) || 0,
                 tasks_machine_excluded: parseInt(r.tasks_machine_excluded) || 0,
                 tasks_ambiguous_excluded: parseInt(r.tasks_ambiguous_excluded) || 0
             };
         }
 
-        const statsMap = {};
-        for (const r of records.rows) {
-            if (!statsMap[r.staff_id]) {
-                statsMap[r.staff_id] = {
-                    days_worked: 0, days_late: 0, days_early_leave: 0, days_absent: 0,
-                    days_sick: 0, days_vacation: 0,
-                    total_worked_minutes: 0, total_early_leave_minutes: 0, total_overtime_minutes: 0,
-                    profession_card_days: 0, unscheduled_days: 0,
-                    late_count: 0, total_late_minutes: 0
-                };
-            }
-            const s = statsMap[r.staff_id];
-            const facts = attendanceFactMinutes(r);
-            if (r.clock_in) {
-                s.days_worked++;
-                s.total_worked_minutes += r.total_worked_minutes || 0;
-                s.total_overtime_minutes += facts.overtimeMinutes;
-            }
-            if (facts.lateMinutes > 0) { s.days_late++; s.late_count++; s.total_late_minutes += facts.lateMinutes; }
-            if (facts.earlyLeaveMinutes > 0) {
-                s.days_early_leave++;
-                s.total_early_leave_minutes += facts.earlyLeaveMinutes;
-            }
-            if (r.plan_source === 'profession_card') s.profession_card_days++;
-            if (r.plan_source === 'unscheduled') s.unscheduled_days++;
-            if (r.status === 'absent' || r.status === 'no_show') s.days_absent++;
-            if (r.status === 'sick') s.days_sick++;
-            if (r.status === 'vacation') s.days_vacation++;
-        }
+        const statsMap = reportAttendanceByStaff(staffList.rows, shifts.rows, records.rows);
 
         const data = staffList.rows.map(st => {
-            const s = statsMap[st.id] || {
-                days_worked: 0, days_late: 0, days_early_leave: 0, days_absent: 0,
-                days_sick: 0, days_vacation: 0, total_worked_minutes: 0, total_early_leave_minutes: 0, total_overtime_minutes: 0,
-                profession_card_days: 0, unscheduled_days: 0,
-                late_count: 0, total_late_minutes: 0
-            };
-            const daysScheduled = shiftCounts[st.id] || 0;
-            const totalWorkedHours = Math.round(s.total_worked_minutes / 60 * 10) / 10;
-            const totalOvertimeHours = Math.round(s.total_overtime_minutes / 60 * 10) / 10;
+            const s = statsMap.get(Number(st.id));
+            const daysScheduled = s.days_scheduled;
+            const totalWorkedHours = s.total_worked_hours;
+            const totalOvertimeHours = s.total_overtime_hours;
             const rate = parseFloat(st.hourly_rate) || 0;
             const rateUnit = staffRateUnit(st);
-            const taskKpi = taskKpiMap[st.id] || { tasks_assigned: 0, tasks_done: 0, tasks_overdue: 0 };
+            const taskKpi = taskKpiUnavailable ? null : taskKpiMap[st.id] || {
+                tasks_assigned: 0, tasks_done: 0, tasks_overdue: 0,
+                tasks_assigned_details: [], tasks_done_details: [], tasks_overdue_details: []
+            };
             const payrollMetrics = payrollAttendanceMetrics.get(Number(st.id)) || {
                 totalMinutes: 0,
                 allocatedMinutes: 0,
@@ -7048,6 +7062,9 @@ router.get('/report/monthly', async (req, res) => {
                 rate_unit: payrollRateUnit,
                 days_scheduled: daysScheduled,
                 days_worked: s.days_worked,
+                planned_worked_count: s.planned_worked_count,
+                unplanned_worked_count: s.unplanned_worked_count,
+                attendance_details: s.attendance_details,
                 days_late: s.days_late,
                 days_early_leave: s.days_early_leave,
                 total_early_leave_minutes: s.total_early_leave_minutes,
@@ -7056,6 +7073,7 @@ router.get('/report/monthly', async (req, res) => {
                 days_vacation: s.days_vacation,
                 total_worked_hours: totalWorkedHours,
                 total_overtime_hours: totalOvertimeHours,
+                total_overtime_minutes: s.total_overtime_minutes,
                 profession_card_days: s.profession_card_days,
                 unscheduled_days: s.unscheduled_days,
                 plan_warning_count: s.profession_card_days + s.unscheduled_days,
@@ -7064,10 +7082,13 @@ router.get('/report/monthly', async (req, res) => {
                 allocation_issues: professionPay.allocationIssues,
                 reconciliation: professionPay.reconciliation,
                 late_count: s.late_count,
-                avg_late_minutes: s.late_count > 0 ? Math.round(s.total_late_minutes / s.late_count) : 0,
-                attendance_rate: daysScheduled > 0 ? Math.round(s.days_worked / daysScheduled * 100) : 0,
+                avg_late_minutes: s.avg_late_minutes,
+                attendance_rate: s.attendance_rate,
                 task_kpi: taskKpi,
-                task_completion_rate: taskKpi.tasks_assigned > 0 ? Math.round(taskKpi.tasks_done / taskKpi.tasks_assigned * 100) : 0
+                task_data_status: taskKpiUnavailable ? 'unavailable' : 'ready',
+                task_completion_rate: taskKpi
+                    ? (taskKpi.tasks_assigned > 0 ? Math.round(taskKpi.tasks_done / taskKpi.tasks_assigned * 100) : 0)
+                    : null
             };
         });
 

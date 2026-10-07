@@ -30,12 +30,17 @@ function renderSidebar(t, role, options = {}) {
             businessModuleCatalog(context).map(({ key }) => [key,
                 configuredBusinessModuleEnabled({ contextKey: context, modules }, key)])
         ) },
-        timeline: { mode: context === 'event_genix' ? 'park' : 'simple', roomTimelineEnabled: true }
+        timeline: { mode: options.education ? 'education' : (context === 'event_genix' ? 'park' : 'simple'), roomTimelineEnabled: true }
     } : null;
-    const dom = new JSDOM('<!doctype html><div id="sidebarLinks" class="sidebar-links"></div>', {
+    const dom = new JSDOM(options.withShell
+        ? '<!doctype html><aside id="sidebarNav"><div id="sidebarLinks" class="sidebar-links"></div></aside>'
+        : '<!doctype html><div id="sidebarLinks" class="sidebar-links"></div>', {
         url: options.url || 'https://sidebar.test/', runScripts: 'outside-only'
     });
-    t.after(() => dom.window.close());
+    t.after(async () => {
+        if (options.withShell) await new Promise(resolve => setTimeout(resolve, 350));
+        dom.window.close();
+    });
     const window = dom.window;
     window.AppState = { currentUser: user };
     window.RolePreview = {
@@ -44,6 +49,7 @@ function renderSidebar(t, role, options = {}) {
     };
     window.CrmBusinessContext = {
         current: () => context,
+        canAccess: () => options.businessAllowed !== false,
         hasModule: (_context, moduleId) => profile?.modules.enabled[moduleId] === true,
         activeProfile: () => profile,
         profileFor: target => target === context ? profile : null
@@ -52,6 +58,7 @@ function renderSidebar(t, role, options = {}) {
         ? { role: options.previewRole, roles: [options.previewRole] } : user, page, { type: 'page' }).allowed);
     window.requestAnimationFrame = () => 0;
     window.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
+    if (options.savedExtras) window.localStorage.setItem('eg_sidebar_extra_menu_items_v3', JSON.stringify(options.savedExtras));
     vm.runInContext(SIDEBAR, dom.getInternalVMContext(), { filename: 'js/components/sidebar.js' });
     vm.runInContext("Sidebar.render('#sidebarLinks', { refreshOperational: false })", dom.getInternalVMContext());
     const links = selector => [...window.document.querySelectorAll(selector)].map(link => link.getAttribute('href')).sort();
@@ -60,9 +67,43 @@ function renderSidebar(t, role, options = {}) {
         system: links('[data-group-key="system"] a.nav-link'),
         hr: links('[data-group-key="team"] a.nav-link'),
         groups: [...window.document.querySelectorAll('#sidebarLinks [data-group-key]')].map(group => group.dataset.groupKey).sort(),
-        user, profile, document: window.document
+        user, profile, document: window.document, window
     };
 }
+
+test('education entry stays visible in default and saved menus only for an allowed education business', t => {
+    for (const savedExtras of [null, [{ href: '/chat', label: 'Чат' }]]) {
+        const options = { context: 'dar', education: true, withShell: true, savedExtras };
+        const rendered = renderSidebar(t, 'creator', options);
+        const educationLinks = [...rendered.document.querySelectorAll('#sidebarDesignExtras a.sidebar-design-extra-link')]
+            .filter(link => link.textContent.includes('Заняття'));
+        assert.equal(educationLinks.length, 1);
+        assert.equal(educationLinks[0].getAttribute('href'), '/?businessContext=dar&educationSchedule=today');
+        assert.equal(rendered.window.localStorage.getItem('eg_sidebar_extra_menu_items_v3'),
+            savedExtras ? JSON.stringify(savedExtras) : null, 'menu preferences remain untouched');
+        assert.ok(rendered.document.querySelector('#sidebarMiniRail [aria-label="Заняття"]'));
+        assert.ok(rendered.all.includes('/training'), 'HR Training stays in its own menu');
+    }
+    for (const options of [
+        { context: 'event_genix', withShell: true },
+        { context: 'dar', education: true, withShell: true, businessAllowed: false },
+        { context: 'dar', withShell: true }
+    ]) {
+        const rendered = renderSidebar(t, 'creator', options);
+        assert.equal(rendered.document.querySelectorAll('#sidebarDesignExtras a[href*="educationSchedule"]').length, 0);
+    }
+});
+
+test('education entry is active for all five tabs, including direct links without date', t => {
+    for (const tab of ['today', 'schedule', 'groups', 'attendance', 'reports']) {
+        const rendered = renderSidebar(t, 'creator', {
+            context: 'dar', education: true, withShell: true,
+            url: `https://sidebar.test/?businessContext=dar&educationSchedule=${tab}`
+        });
+        const link = rendered.document.querySelector('#sidebarDesignExtras a[href*="educationSchedule"]');
+        assert.equal(link?.classList.contains('active'), true, tab);
+    }
+});
 
 test('primary director renders the same complete business menu as creator after membership cutover', t => {
     const creator = renderSidebar(t, 'creator');

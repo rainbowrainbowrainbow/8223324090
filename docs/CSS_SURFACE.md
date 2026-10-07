@@ -68,6 +68,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/graduation.css` | graduation | `page-scoped-large` | active-large | Graduation event builder and embedded view styles. |
 | `css/hermes-studio.css` | hermes-studio | `page-scoped` | active | Hermes Studio creative job queue, brief form, asset review, and decision controls. |
 | `css/hr-page.css` | hr | `page-scoped-large` | active-large | HR workspace styles extracted from `hr.html`; large-file consolidation candidate. |
+| `css/hr-today-print.css` | hr | `page-scoped` | active | Read-only Today attendance print dialog and A4 sheet. |
 | `css/omni-workspace.css` | omnichannel | `page-scoped` | active | Pulse-aligned Omni controls, surfaces, spacing, and responsive states. |
 | `css/kleshnya-widget.css` | kleshnya | `feature-shared` | active | Root shell Kleshnya widget styles. |
 | `css/layout.css` | shared-ui | `shared-large` | active-large | Shared layout, sidebar, and content frame styles. |
@@ -90,6 +91,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/pages-afisha.css` | shared-ui | `shared` | active | Afisha event workspace, material folder, event card, and dark-mode styles imported by `pages.css`. |
 | `css/pages-analytics-vacancy.css` | shared-ui | `shared` | active | Analytics chart readout, HR vacancy workspace, and salary period picker styles imported by `pages.css`. |
 | `css/pages-finance.css` | finance | `page-scoped` | active | Finance payroll transparency, role-hour breakdown, and simultaneous additional-pay styles. |
+| `css/finance-redesign.css` | finance | `page-scoped` | active | Finance workspace navigation, compact overview, responsive layouts, and light/dark interaction states. |
 | `css/cashier-payments.css` | payments | `page-scoped` | active | Checkbox park pilot cashier page layout, payment confirmation panels, receipt links, and accessibility states. |
 | `css/pages-art.css` | shared-ui | `shared` | active | Art standalone shell, tabs, boards, kanban, recent work, and responsive styles imported by `pages.css`. |
 | `css/pages-cabinet.css` | shared-ui | `shared-large` | active-large | Personal cabinet task composer, quick metrics, completion strips, task cards, subtasks, and dark-mode styles imported by `pages.css`. |

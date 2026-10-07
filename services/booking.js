@@ -275,6 +275,19 @@ function bookingRoomResourceId(booking = {}) {
     return String(booking.roomResourceId || booking.room_resource_id || '').trim();
 }
 
+function addEducationTeacherConflictLockKeys(keys, booking, context, date) {
+    const extra = safeBookingExtraData(booking.extraData ?? booking.extra_data);
+    const lesson = extra.educationLesson || extra.education_lesson || extra.bookingWorkspace?.lesson;
+    if (!lesson || typeof lesson !== 'object') return;
+
+    // The teacher conflict query matches either identity. Lock both so legacy
+    // name-only lessons and ID-backed lessons serialize on the same date.
+    for (const [kind, value] of [['id', lesson.teacherId], ['name', lesson.teacherName]]) {
+        const identity = bookingConflictLockPart(value);
+        if (identity) keys.add(`teacher:${context}:${date}:${kind}:${identity}`);
+    }
+}
+
 function addBookingConflictLockKeys(keys, booking = {}, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     const context = normalizeTimelineContext(booking.businessContext || booking.business_context || businessContext);
     const date = bookingConflictLockPart(booking.date);
@@ -290,6 +303,8 @@ function addBookingConflictLockKeys(keys, booking = {}, businessContext = DEFAUL
 
     const room = bookingConflictLockPart(booking.room);
     if (isRoomConflictBlockingRoom(room)) keys.add(`room:${context}:${date}:${room}`);
+
+    addEducationTeacherConflictLockKeys(keys, booking, context, date);
 
     return keys;
 }

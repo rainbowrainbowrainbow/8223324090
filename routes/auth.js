@@ -12,6 +12,7 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const crypto = require('crypto');
 const { pool } = require('../db');
+const { SESSION_REVOCATION_CUTOFF_SQL } = require('../services/sessionRevocation');
 const {
     JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
     createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens,
@@ -251,18 +252,26 @@ router.post('/login', async (req, res) => {
             && !req.reserveCanonicalLoginAttempt({ id: user.id, username: user.username })) {
             return;
         }
-        const passwordMatches = user && user.is_active !== false
-            ? await credentials.passwordCandidates.reduce(async (matchedPromise, candidate) => {
+        // Verify the password before revealing a disabled account's status.
+        let passwordMatches = false;
+        if (user) {
+            passwordMatches = await credentials.passwordCandidates.reduce(async (matchedPromise, candidate) => {
                 if (await matchedPromise) return true;
                 return bcrypt.compare(candidate, user.password_hash || '').catch(() => false);
-            }, Promise.resolve(false))
-            : false;
+            }, Promise.resolve(false));
+        }
         const valid = user && user.is_active !== false && passwordMatches;
 
         if (!valid) {
             const reason = !user ? 'user_not_found' : (user.is_active === false ? 'inactive_account' : 'password_mismatch');
             await recordLoginFailure({ user, loginIdentifier, reason, credentials, req });
             log.warn(`Login failed for "${loginIdentifier}" (${reason}${credentials.parsedCredentialBlock ? ', parsed_credential_block' : ''})`);
+            if (user?.is_active === false && passwordMatches) {
+                return res.status(401).json({
+                    error: 'Ваш акаунт деактивовано. Зверніться до адміністратора.',
+                    code: 'auth_user_deactivated'
+                });
+            }
             return res.status(401).json({ error: 'Невірний логін або пароль' });
         }
 
@@ -301,6 +310,14 @@ router.post('/login', async (req, res) => {
                     : (lockedUser.is_active === false ? 'inactive_account' : 'password_changed');
                 await recordLoginFailure({ user: lockedUser || user, loginIdentifier, reason, credentials, req });
                 log.warn(`Login failed for "${loginIdentifier}" (${reason})`);
+                if (lockedUser?.is_active === false
+                    && Number(lockedUser.id) === Number(user.id)
+                    && lockedUser.password_hash === user.password_hash) {
+                    return res.status(401).json({
+                        error: 'Ваш акаунт деактивовано. Зверніться до адміністратора.',
+                        code: 'auth_user_deactivated'
+                    });
+                }
                 return res.status(401).json({ error: 'Невірний логін або пароль' });
             }
 
@@ -310,7 +327,8 @@ router.post('/login', async (req, res) => {
             // Backward compat: also issue legacy long-lived token for existing clients.
             authUser = buildAuthUserPayload(user);
             token = jwt.sign(
-                { ...authUser, sessionIssuedAt: tokenPair.sessionIssuedAt, sessionTokenId: tokenPair.sessionTokenId },
+                { ...authUser, sessionIssuedAt: tokenPair.sessionIssuedAt,
+                    sessionRevocationCutoff: tokenPair.sessionRevocationCutoff, sessionTokenId: tokenPair.sessionTokenId },
                 JWT_SECRET,
                 { expiresIn: '24h' }
             );
@@ -371,7 +389,7 @@ router.get('/verify', authenticateToken, async (req, res) => {
         );
         if (result.rows.length === 0) {
             return res.status(401).json({
-                error: 'User not found or deactivated',
+                error: 'Ваш акаунт деактивовано. Зверніться до адміністратора.',
                 code: 'auth_user_inactive'
             });
         }
@@ -1588,7 +1606,7 @@ router.post('/security/revoke-sessions', authenticateToken, async (req, res) => 
             lockUser: true
         });
         await revokeClient.query(
-            'UPDATE users SET session_revoked_at = clock_timestamp() WHERE id = $1',
+            `UPDATE users SET session_revoked_at = ${SESSION_REVOCATION_CUTOFF_SQL} WHERE id = $1`,
             [user.id]
         );
         await revokeAllUserTokens(user.id, revokeClient);
@@ -1798,7 +1816,7 @@ router.post('/logout', async (req, res) => {
                     lockUser: true
                 });
                 await logoutClient.query(
-                    'UPDATE users SET session_revoked_at = clock_timestamp() WHERE id = $1',
+                    `UPDATE users SET session_revoked_at = ${SESSION_REVOCATION_CUTOFF_SQL} WHERE id = $1`,
                     [user.id]
                 );
                 await revokeAllUserTokens(user.id, logoutClient);

@@ -2,6 +2,10 @@
     'use strict';
 
     const state = { activeView: 'today', date: '', bookings: [], loading: false, error: null };
+    let generation = 0;
+    let activeRequest = null;
+    let activationVersion = 0;
+    const business = () => global.TimelineBusinessContext?.current?.()?.apiValue || 'event_genix';
 
     function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -100,7 +104,7 @@
         }
         if (state.error) {
             status.textContent = 'Не вдалося завантажити список.';
-            list.innerHTML = '<button type="button" class="education-today-empty" data-education-retry>Повторити завантаження</button>';
+            list.innerHTML = '<button type="button" class="btn-secondary education-action education-today-empty" data-education-retry>Повторити завантаження</button>';
             return;
         }
         const lessons = currentLessons();
@@ -113,7 +117,7 @@
         }
         list.innerHTML = filtered.map(booking => {
             const fields = lessonFields(booking);
-            const count = fields.students > 0 ? `<span class="education-lesson-count">${fields.students} учн. у занятті</span>` : '';
+            const count = fields.students > 0 ? `<span class="education-lesson-count">Учнів: ${fields.students}</span>` : '';
             const meta = [fields.teacher && `Викладач: ${fields.teacher}`, fields.group && `Група: ${fields.group}`, fields.cabinet && `Кабінет: ${fields.cabinet}`].filter(Boolean).join(' · ');
             return `<button type="button" class="education-lesson-card" data-education-booking-id="${escapeHtml(booking.id)}" aria-label="Відкрити заняття ${escapeHtml(fields.title)}, ${escapeHtml(booking.time || '')}">
                 <span class="education-lesson-time">${escapeHtml(booking.time || '—')}</span>
@@ -122,27 +126,37 @@
         }).join('');
     }
 
-    async function load(date = dateKey()) {
+    async function load(date = dateKey(), options = {}) {
         if (!isEducationMode() || !date || typeof global.getBookingsForDate !== 'function') return;
-        if (state.loading && state.date === date) return;
+        if (activeRequest?.date === date && activeRequest.business === business() && activeRequest.generation === generation) return activeRequest.promise;
+        const request = { date, business: business(), generation };
+        activeRequest = request;
+        const current = () => activeRequest === request && request.generation === generation && request.business === business() && isEducationMode();
         state.date = date;
         state.loading = true;
         state.error = null;
         render();
+        const controller = new global.AbortController();
+        const timeout = global.setTimeout(() => controller.abort(), 20000);
+        request.promise = (async () => {
         try {
-            const bookings = await global.getBookingsForDate(date, { throwOnError: true });
-            if (state.date !== date) return;
+            const bookings = await global.getBookingsForDate(date, { throwOnError: true, force: options.force === true, signal: controller.signal });
+            if (!current()) return;
             state.bookings = Array.isArray(bookings) ? bookings : [];
         } catch (error) {
-            if (state.date !== date) return;
-            state.error = error;
+            if (!current()) return;
+            state.error = error.name === 'AbortError' ? new Error('Час очікування вичерпано. Спробуйте знову.') : error;
             state.bookings = [];
         } finally {
-            if (state.date === date) {
+            global.clearTimeout(timeout);
+            if (current()) {
+                activeRequest = null;
                 state.loading = false;
                 render();
             }
         }
+        })();
+        return request.promise;
     }
 
     function setView(view, updateUrl = true) {
@@ -167,16 +181,33 @@
             url.searchParams.set('educationSchedule', state.activeView);
             global.history.replaceState(global.history.state, '', url);
         }
-        if (today) void load();
-        if (state.activeView === 'groups') void global.EducationGroups?.load();
-        if (state.activeView === 'attendance') void global.EducationAttendance?.loadLessons();
-        if (state.activeView === 'reports') void global.EducationAttendance?.runReport();
+        const viewGeneration = generation;
+        const activeView = state.activeView;
+        const activation = ++activationVersion;
+        // Context listeners must finish resetting their state before starting a new request.
+        void Promise.resolve().then(async () => {
+            if (activation !== activationVersion || viewGeneration !== generation || activeView !== state.activeView || !isEducationMode()) return;
+            if (today) void load();
+            if (activeView === 'groups') void global.EducationGroups?.load();
+            if (activeView === 'attendance') void global.EducationAttendance?.loadLessons();
+            if (activeView === 'reports') {
+                void global.EducationAttendance?.runReport();
+                await global.EducationGroups?.load();
+                if (activation === activationVersion && viewGeneration === generation && activeView === state.activeView && isEducationMode()
+                    && new URLSearchParams(global.location.search).get('educationReportGroup')
+                    && !document.getElementById('educationReportGroup')?.value) void global.EducationAttendance?.runReport();
+            }
+        });
     }
 
     function syncWorkspace() {
         const workspace = document.getElementById('educationScheduleWorkspace');
         if (!workspace) return;
         const enabled = isEducationMode();
+        document.querySelectorAll('[data-education-copy]').forEach(element => {
+            if (!Object.hasOwn(element.dataset, 'originalCopy')) element.dataset.originalCopy = element.textContent;
+            element.textContent = enabled ? element.dataset.educationCopy : element.dataset.originalCopy;
+        });
         workspace.classList.toggle('hidden', !enabled);
         if (!enabled) {
             document.body.classList.remove('education-schedule-today');
@@ -188,20 +219,27 @@
     document.addEventListener('click', event => {
         const tab = event.target.closest('[data-education-schedule-tab]');
         if (tab) setView(tab.dataset.educationScheduleTab);
-        if (event.target.closest('[data-education-retry]')) void load(state.date || dateKey());
+        if (event.target.closest('[data-education-retry]')) void load(state.date || dateKey(), { force: true });
         const card = event.target.closest('[data-education-booking-id]');
         if (card && typeof global.showBookingDetails === 'function') {
-            void global.showBookingDetails(card.dataset.educationBookingId, { source: 'education-today-list' });
+            void global.showBookingDetails(card.dataset.educationBookingId, { source: 'education-today-list', triggerEl: card });
         }
     });
     document.getElementById('educationScheduleTeacherFilter')?.addEventListener('change', render);
     document.getElementById('educationScheduleCabinetFilter')?.addEventListener('change', render);
     document.getElementById('educationScheduleGroupFilter')?.addEventListener('change', render);
     global.addEventListener('timeline:summary-changed', event => {
-        if (event.detail?.date) state.date = event.detail.date;
-        if (state.activeView === 'today') void load(state.date || dateKey());
+        if (state.activeView === 'today') void load(event.detail?.date || dateKey());
     });
-    global.addEventListener('timeline:business-context-changed', syncWorkspace);
+    global.addEventListener('timeline:business-context-changed', () => {
+        generation += 1;
+        activeRequest = null;
+        state.bookings = [];
+        state.loading = false;
+        state.error = null;
+        syncWorkspace();
+    });
+    global.addEventListener('popstate', syncWorkspace);
     global.addEventListener('crmBusinessProfileChanged', syncWorkspace);
     global.addEventListener('crm:authenticated-runtime-ready', syncWorkspace);
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', syncWorkspace, { once: true });

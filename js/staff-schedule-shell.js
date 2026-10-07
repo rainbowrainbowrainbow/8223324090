@@ -81,6 +81,11 @@
                     </table>
                 </div>
 
+                <div id="scheduleMonthDensity" class="staff-schedule-month-density" role="group" aria-label="Вигляд графіка за місяць" hidden>
+                    <button type="button" data-schedule-month-density="compact" aria-pressed="true">Місяць компактно</button>
+                    <button type="button" data-schedule-month-density="detailed" aria-pressed="false">Місяць детально</button>
+                    <span class="staff-schedule-month-density-hint">Натисніть зміну для повних деталей</span>
+                </div>
                 <div id="scheduleWrapper" class="schedule-wrapper">
                     <table class="schedule-table">
                         <caption class="staff-schedule-table-caption">Графік роботи співробітників за вибраний період</caption>

@@ -61,6 +61,9 @@ function paidRoleContextDb({ rate = 180, policy = true } = {}) {
                     }]
                 };
             }
+            if (text.startsWith('SELECT * FROM staff WHERE')) return { rows: [{ id: 17, role_type: 'wardrobe', hourly_rate: 100, rate_unit: 'hour', is_active: true }] };
+            if (text.includes('FROM staff_payroll_profile_assignments') || text.includes('FROM payroll_profiles')
+                || text.includes('FROM payroll_day_exceptions') || text.includes('FROM payroll_schemes')) return { rows: [] };
             throw new Error(`Unexpected SQL: ${text}`);
         }
     };
@@ -279,8 +282,8 @@ test('compensation allocations keep 540 physical minutes and add 510 simultaneou
             rateSource: allocation.rateSource
         })),
         [
-            { type: 'base', profession: 'wardrobe', actual: 30, rate: null, rateSource: 'base_payroll_contract' },
-            { type: 'base', profession: 'wardrobe', actual: 510, rate: null, rateSource: 'base_payroll_contract' },
+            { type: 'base', profession: 'wardrobe', actual: 30, rate: 100, rateSource: 'staff.hourly_rate' },
+            { type: 'base', profession: 'wardrobe', actual: 510, rate: 100, rateSource: 'staff.hourly_rate' },
             {
                 type: 'simultaneous_additional',
                 profession: 'hallkeeper',
@@ -355,8 +358,8 @@ test('missing policy or explicit rate marks compensation for manual review witho
         assert.equal(snapshot.manualReview, true);
         assert.equal(snapshot.state, 'manual_review');
         if (options.rate === null) {
-            assert.equal(additional.rate, null);
-            assert.equal(additional.rateSource, null);
+            assert.equal(additional.rate, 0);
+            assert.equal(additional.rateSource, 'staff.hourly_rate');
             assert.ok(snapshot.issues.some(issue => issue.code === 'ATTENDANCE_COMPENSATION_RATE_REQUIRED'));
         } else {
             assert.ok(snapshot.issues.some(issue => issue.code === 'ATTENDANCE_COMPENSATION_POLICY_REQUIRED'));
@@ -539,4 +542,18 @@ test('attendance correction uses Kyiv local times and the same independent fact 
     assert.match(hrPage, /body\.clock_in_time = clockIn/);
     assert.match(hrPage, /body\.clock_out_time = clockOut/);
     assert.doesNotMatch(hrPage, /T\$\{clockIn\}:00\+02:00/);
+});
+
+test('night shifts across Kyiv timezone transitions require review instead of guessing paid hours', () => {
+    for (const [recordDate, clockIn, clockOut] of [
+        ['2026-10-24', '2026-10-24T19:00:00.000Z', '2026-10-25T04:00:00.000Z'],
+        ['2026-03-28', '2026-03-28T20:00:00.000Z', '2026-03-29T03:00:00.000Z']
+    ]) {
+        const segments = [segment('reception', '22:00', '06:00', 30)];
+        const physical = allocate({ recordDate, clockIn, clockOut, segments });
+        const legacy = buildLegacyAttendanceCompensationSnapshot({ staffId: 17, recordDate, plan: { segments, primaryProfessionKey: 'reception' } });
+        const snapshot = finalizeAttendanceCompensationSnapshot(legacy, physical);
+        assert.equal(snapshot.manualReview, true);
+        assert.ok(snapshot.issues.some(issue => issue.code === 'ATTENDANCE_TIMEZONE_TRANSITION_REVIEW_REQUIRED'));
+    }
 });

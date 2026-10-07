@@ -955,19 +955,26 @@
     }
 
     function calcPackageTotals(pkg) {
-        let totalPerChild = 0;
+        const kids = getKidsCount();
+        let perChildSubtotal = 0;
+        let entryFlat = 0;
         let totalDuration = 0;
         const rows = [];
         for (const item of pkg.services) {
             const svc = services.find(s => s.id === item.serviceId);
             if (svc) {
                 const price = Number(item.overridePrice || getEffectivePrice(svc));
-                totalPerChild += price;
+                if (svc.entryRule) {
+                    entryFlat += price * calcEntryCount(kids, svc.entryRule);
+                } else {
+                    perChildSubtotal += price;
+                }
                 totalDuration += svc.durationMin || 0;
                 rows.push({ name: svc.name, price, duration: svc.durationMin || 0, icon: getServiceIcon(svc), description: svc.description || '' });
             }
         }
-        return { totalPerChild, totalDuration, rows };
+        const totalAll = perChildSubtotal * kids + entryFlat;
+        return { totalPerChild: Math.round(totalAll / kids), totalAll, totalDuration, rows };
     }
 
     function renderPackages(container) {
@@ -991,8 +998,7 @@
         <div class="grad-packages-grid">`;
 
         for (const pkg of packages) {
-            const { totalPerChild, totalDuration, rows } = calcPackageTotals(pkg);
-            const totalAll = totalPerChild * kids;
+            const { totalPerChild, totalAll, totalDuration, rows } = calcPackageTotals(pkg);
             const isComparing = comparePackageSlugs.has(pkg.slug);
             const gradient = PACKAGE_GRADIENTS[pkg.slug] || 'linear-gradient(135deg, #C9A84C, #B8942F)';
             const borderColor = PACKAGE_BORDER_COLORS[pkg.slug] || '#C9A84C';
@@ -1318,11 +1324,7 @@
 
         // Totals row
         const totalCells = pkgs.map(pkg => {
-            let total = 0;
-            for (const item of pkg.services) {
-                const svc = services.find(s => s.id === item.serviceId);
-                if (svc) total += Number(item.overridePrice || getEffectivePrice(svc));
-            }
+            const total = calcPackageTotals(pkg).totalPerChild;
             return `<td style="text-align:center;font-weight:800;color:#C9A84C">${formatPrice(total)}/дит</td>`;
         });
 

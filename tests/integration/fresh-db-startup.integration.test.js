@@ -17,7 +17,8 @@ const enabled = process.env.RUN_FRESH_DB_STARTUP_INTEGRATION === 'true';
 const root = path.resolve(__dirname, '..', '..');
 
 function uniqueId(prefix) {
-    return `${prefix}_${process.pid}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    // Keep prefixed fixture IDs below varchar(50), including larger Windows PIDs.
+    return `${prefix}_${process.pid.toString(36)}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`;
 }
 
 async function runSchemaFencedStartup() {

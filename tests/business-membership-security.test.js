@@ -72,7 +72,10 @@ function fixture(t, overrides = {}) {
     const pool = {
         async query(sql, params = []) {
             const text = String(sql).replace(/\s+/g, ' ').trim();
-            if (/^SELECT is_active, session_revoked_at FROM users/.test(text)) return { rows: [state.user] };
+            if (/^SELECT is_active, session_revoked_at,/.test(text)) return { rows: [{
+                ...state.user,
+                session_revoked_at_ms: state.user.session_revoked_at ? new Date(state.user.session_revoked_at).getTime() : null
+            }] };
             if (/^SELECT id, username, role,/.test(text) && /FROM users WHERE id/.test(text)) return { rows: [state.user] };
             if (/FROM organization_memberships om/.test(text)) {
                 state.memberReads += 1;

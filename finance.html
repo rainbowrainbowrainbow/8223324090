@@ -12,15 +12,15 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.82.56">
-    <link rel="stylesheet" href="css/layout.css?v=0.82.56">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.82.56">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.82.56">
-    <link rel="stylesheet" href="css/pages-analytics-vacancy.css?v=0.82.56">
-    <link rel="stylesheet" href="css/pages-finance.css?v=0.82.56">
-    <link rel="stylesheet" href="css/modals.css?v=0.82.56">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.82.56">
-    <link rel="stylesheet" href="css/responsive.css?v=0.82.56">
+    <link rel="stylesheet" href="css/base.css?v=0.82.70">
+    <link rel="stylesheet" href="css/layout.css?v=0.82.70">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.82.70">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.82.70">
+    <link rel="stylesheet" href="css/pages-analytics-vacancy.css?v=0.82.70">
+    <link rel="stylesheet" href="css/pages-finance.css?v=0.82.70">
+    <link rel="stylesheet" href="css/modals.css?v=0.82.70">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.82.70">
+    <link rel="stylesheet" href="css/responsive.css?v=0.82.70">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1036,6 +1036,12 @@
         .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
 
         .fa-shell { display: grid; gap: 18px; margin-bottom: 18px; }
+        .fa-period-controls { margin: 0; }
+        .fa-period-controls label { display: grid; gap: 4px; color: var(--gray-600); font-size: var(--font-sm); }
+        .fin-load-error { color: var(--gray-800); }
+        .dark-mode .fin-load-error { color: #e2e8f0; }
+        .fin-load-retry { min-height: 44px; margin-top: 12px; padding: 8px 16px; border: 0; border-radius: var(--radius-sm); background: #065f46; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+        .fin-load-retry:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
         .fa-hero {
             display: flex;
             justify-content: space-between;
@@ -1091,7 +1097,7 @@
         .fa-action-card:hover, .fa-action-card:focus-visible { border-color: #10B981; transform: translateY(-1px); outline: none; }
         .fa-action-title { font-size: 14px; font-weight: 900; }
         .fa-action-meta { color: var(--gray-500); font-size: 12px; font-weight: 700; }
-        .fa-workspace { display: grid; gap: 16px; }
+        .fa-workspace { display: grid; grid-template-columns:minmax(0,1fr); gap: 16px; }
         .fa-panel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
         .fa-operations-nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
         .fa-operation-group { background: var(--white); border: 1px solid var(--gray-200); border-radius: 18px; padding: 12px; box-shadow: var(--shadow-sm); }
@@ -1190,6 +1196,8 @@
             .an-segments { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
+    <link rel="stylesheet" href="css/finance-redesign.css?v=0.82.70">
+
 </head>
 <body data-page-group="mgmt">
     <script>
@@ -1243,75 +1251,79 @@
         </header>
 
         <main id="main-content" class="page-container">
-            <div class="page-header">
-                <h2>Фінанси та аналітика</h2>
-                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <div class="page-header fa-page-actions">
+                <span class="fa-location">Фінанси / <span id="financeCurrentLocation">Огляд</span></span>
+                <div class="fa-header-actions">
+                    <button type="button" id="addTransactionBtn" class="btn-page-primary" style="display:none">+ Дохід</button>
+                    <details class="fa-tools"><summary>Додаткові інструменти</summary><div class="fa-tools-menu">
+                    <button type="button" id="addExpenseBtn" class="btn-page-secondary" style="display:none">+ Витрата</button>
                     <a href="/reports" class="btn-page-secondary" style="text-decoration:none">📋 Звіти</a>
                     <a href="/center" class="btn-page-secondary" style="text-decoration:none">💲 Центр цін</a>
                     <button type="button" id="openCurrencyRatesBtn" class="btn-page-secondary">Курси валют</button>
                     <button type="button" id="exportXlsxBtn" class="btn-page-secondary" title="Excel">Excel</button>
                     <button type="button" id="exportCsvBtn" class="btn-page-secondary">CSV</button>
-                    <button type="button" id="addTransactionBtn" class="btn-page-primary" style="display:none">+ Дохід</button>
-                    <button type="button" id="addExpenseBtn" class="btn-page-primary" style="display:none;background:#EF4444">💸 Витрата</button>
+                    </div></details>
                 </div>
             </div>
 
             <section class="fa-shell" aria-label="Фінанси та аналітика">
                 <header class="fa-hero">
                     <div>
-                        <div class="fa-kicker">Control Tower</div>
+                        <div class="fa-kicker">Робочий простір</div>
                         <h1>Фінанси та аналітика</h1>
-                        <p>Один екран для грошей, бронювань, маржі, ризиків і операційних дій.</p>
-                    </div>
-                    <div class="fa-mode-switch" role="tablist" aria-label="Режими фінансового модуля">
-                        <button type="button" class="fa-mode-btn active" data-mode="overview" role="tab" aria-selected="true">Огляд</button>
-                        <button type="button" class="fa-mode-btn" data-mode="operations" role="tab" aria-selected="false">Операції</button>
-                        <button type="button" class="fa-mode-btn" data-mode="insights" role="tab" aria-selected="false">Інсайти</button>
+                        <p id="financeViewDescription">Ключові показники й питання, які потребують уваги.</p>
                     </div>
                 </header>
+                <nav class="fa-mode-switch" aria-label="Розділи фінансів">
+                    <button type="button" class="fa-mode-btn active" data-mode="overview" data-finance-group="overview" aria-current="page">Огляд</button>
+                    <button type="button" class="fa-mode-btn" data-mode="operations" data-finance-group="cash">Рух коштів</button>
+                    <button type="button" class="fa-mode-btn" data-mode="insights" data-finance-group="results">Результати й аналітика</button>
+                    <button type="button" class="fa-primary-btn" data-finance-group="planning">Планування</button>
+                    <button type="button" class="fa-primary-btn" data-finance-group="team">Команда</button>
+                </nav>
+                <p id="financeScopeNote" class="fa-scope-note">Період нижче впливає на показники огляду.</p>
+                <div id="financePeriodControls" class="fin-filters fa-period-controls" role="group" aria-label="Період фінансової аналітики">
+                    <label for="dateFromFilter">Від
+                        <input type="date" id="dateFromFilter" class="fin-filter-date" title="Від">
+                    </label>
+                    <label for="dateToFilter">До
+                        <input type="date" id="dateToFilter" class="fin-filter-date" title="До">
+                    </label>
+                </div>
                 <div id="faExecutiveZone" class="fa-executive-grid" aria-live="polite"></div>
                 <div id="faActionRail" class="fa-action-rail" aria-label="Швидкі фінансові дії"></div>
-                <div id="faWorkspace" class="fa-workspace" aria-live="polite"></div>
             </section>
 
             <!-- Legacy KPI host kept for backwards-compatible render helpers; unified overview owns visible KPI cards. -->
             <div id="finStats" class="fin-stats" style="display:none"></div>
 
-            <section id="financeOperationsNav" class="fa-operations-nav" aria-label="Операційні розділи фінансів" style="display:none">
-                <div class="fa-operation-group">
-                    <h3 class="fa-operation-group-title">Рух коштів</h3>
-                    <div class="fa-operation-buttons">
-                        <button type="button" class="fin-tab fa-operation-btn active" data-tab="transactions">Транзакції</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="shift">Каса</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="accounts">Рахунки</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="personal">Особисті</button>
-                    </div>
-                </div>
-                <div class="fa-operation-group">
-                    <h3 class="fa-operation-group-title">Контроль</h3>
-                    <div class="fa-operation-buttons">
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="debts">Борги</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="budget">Бюджет</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="pnl">P&L</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="advanced">Фін. панель</button>
-                    </div>
-                </div>
-                <div class="fa-operation-group">
-                    <h3 class="fa-operation-group-title">Команда</h3>
-                    <div class="fa-operation-buttons">
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="salary">Зарплати</button>
-                    </div>
-                </div>
-                <div class="fa-operation-group">
-                    <h3 class="fa-operation-group-title">Планування</h3>
-                    <div class="fa-operation-buttons">
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="forecast">Прогноз</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="monthly">Місяці</button>
-                        <button type="button" class="fin-tab fa-operation-btn" data-tab="dashboard">Фін. дашборд</button>
-                    </div>
-                </div>
+            <section id="financeOperationsNav" class="fa-operations-nav" aria-label="Сторінки вибраного розділу" style="display:none">
+                <div class="fa-operation-group" data-finance-context="cash"><div class="fa-operation-buttons">
+                    <button type="button" class="fin-tab fa-operation-btn active" data-tab="transactions">Транзакції</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="shift">Каса</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="accounts">Рахунки</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="personal">Особисті</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="debts">Борги</button>
+                </div></div>
+                <div class="fa-operation-group" data-finance-context="results"><div class="fa-operation-buttons">
+                    <button type="button" class="fa-context-mode" data-mode="insights">Інсайти</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="pnl">P&L</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="monthly">Місяці</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="dashboard">Доходи та витрати</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="advanced">Розширена панель</button>
+                </div></div>
+                <div class="fa-operation-group" data-finance-context="planning"><div class="fa-operation-buttons">
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="budget">Бюджет</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="forecast">Прогноз</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="costing">Собівартість послуг</button>
+                </div></div>
+                <div class="fa-operation-group" data-finance-context="team"><div class="fa-operation-buttons">
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="salary">Зарплати</button>
+                </div></div>
             </section>
 
+            <div id="faWorkspace" class="fa-workspace" aria-live="polite"></div>
+            <div id="financeTabHeading" class="fa-tab-heading" hidden></div>
             <section id="financeOperationalWorkspace" class="fa-operational-workspace" style="display:none">
 
             <!-- Dashboard tab -->
@@ -1355,8 +1367,6 @@
                         <option value="transfer">Переказ</option>
                         <option value="mixed">Змішаний</option>
                     </select>
-                    <input type="date" id="dateFromFilter" class="fin-filter-date" title="Від">
-                    <input type="date" id="dateToFilter" class="fin-filter-date" title="До">
                 </div>
 
                 <!-- Table -->
@@ -1566,6 +1576,171 @@
                     </div>
                 </div>
             </div>
+            <div id="tabCosting">
+                <nav class="cost-workspace-nav" aria-label="Етапи роботи із собівартістю">
+                    <button type="button" data-cost-nav="actual">Виконання і звірка</button>
+                    <button type="button" data-cost-nav="plan">Новий план</button>
+                    <button type="button" data-cost-nav="template">Шаблони</button>
+                    <button type="button" data-cost-nav="group">Групи</button>
+                    <button type="button" data-cost-nav="management">Управлінський P&amp;L</button>
+                </nav>
+                <div id="costWorkspaceSummary" class="cost-workspace-summary" role="status" aria-live="polite">Оберіть шаблон і створіть план виконання послуги.</div>
+                <div class="cost-shell">
+                    <section class="cost-card" data-cost-section="template" aria-labelledby="costTemplateHeading">
+                        <h3 id="costTemplateHeading">Шаблон собівартості</h3>
+                        <p>Спільний шаблон для заняття, сеансу, оренди або замовлення. Нова версія не змінює раніше збережені плани.</p>
+                        <div class="cost-grid">
+                            <label>Шаблон<select id="costTemplateSelect"><option value="">Новий шаблон</option></select></label>
+                            <label>Назва<input id="costTemplateName" maxlength="160" placeholder="Наприклад: Груповий урок"></label>
+                            <label>Тип<select id="costTemplateKind"><option value="lesson">Заняття</option><option value="session">Сеанс</option><option value="rental">Оренда</option><option value="service">Послуга</option><option value="agency_order">Агентське замовлення</option><option value="admission_day">День парку</option></select></label>
+                            <label>Діє з<input id="costEffectiveFrom" type="date"></label>
+                            <label>Ціна, ₴<input id="costRevenueRate" inputmode="decimal" placeholder="300.00"></label>
+                            <label>Ціна за<select id="costRevenueBasis"><option value="execution">проведення</option><option value="hour">годину</option><option value="participant">платного учасника</option><option value="unit">одиницю</option></select></label>
+                        </div>
+                        <h4>Прямі витрати</h4>
+                        <div id="costLines" class="cost-lines"></div>
+                        <div class="cost-actions"><button type="button" id="costAddLine" class="btn-page-secondary">+ Рядок витрат</button><button type="button" id="costSaveTemplate" class="btn-page-primary">Зберегти шаблон</button></div>
+                    </section>
+                    <section class="cost-card" data-cost-section="plan" aria-labelledby="costPlanHeading">
+                        <h3 id="costPlanHeading">План конкретного виконання</h3>
+                        <p>Це плановий внесок після прямих витрат, не чистий прибуток і не фактичний P&amp;L.</p>
+                        <div class="cost-grid">
+                            <label>Назва виконання<input id="costExecutionLabel" maxlength="200" placeholder="Урок 12 жовтня"></label>
+                            <label>Дата<input id="costExecutionDate" type="date"></label>
+                            <label>ID бронювання для звірки виручки, якщо є<input id="costExecutionBookingId" maxlength="50" placeholder="Точний ID бронювання"></label>
+                            <label>Учасники / споживачі<input id="costParticipants" type="number" min="0" step="1" value="0"></label>
+                            <label>Платні учасники<input id="costPaidParticipants" type="number" min="0" step="1" value="0"></label>
+                            <label>Тривалість, год<input id="costHours" inputmode="decimal" value="1"></label>
+                            <label>Одиниць продажу<input id="costUnits" type="number" min="0" step="1" value="1"></label>
+                            <label>Знижка, %<input id="costDiscountPercent" inputmode="decimal" value="0"></label>
+                            <label>Додаткова знижка, ₴<input id="costDiscountMoney" inputmode="decimal" value="0"></label>
+                        </div>
+                        <div id="costLineQuantities" class="cost-grid"></div>
+                        <div class="cost-actions"><button type="button" id="costPreview" class="btn-page-secondary">Розрахувати</button><button type="button" id="costSavePlan" class="btn-page-primary" disabled>Зберегти план</button></div>
+                        <div id="costPreviewResult" class="cost-result" hidden></div>
+                        <div id="costStatus" class="cost-status" role="status" hidden></div>
+                    </section>
+                    <section class="cost-card cost-execution-list" data-cost-section="actual" aria-labelledby="costSavedHeading"><h3 id="costSavedHeading">Виконання послуг</h3><p>Оберіть виконання для перегляду плану, факту й стану звірки. Планові ставки збережено в знімку.</p><div id="costPlanList" class="cost-plan-list"></div></section>
+                    <section class="cost-card" data-cost-section="actual" aria-labelledby="costActualHeading">
+                        <h3 id="costActualHeading">План / факт виконання</h3>
+                        <p>Факт підтверджується окремими джерелами. Поки виручка і прямі витрати не звірені, фактичний внесок та різниця не показуються.</p>
+                        <div class="cost-grid"><label>Виконання<select id="costActualPlan"></select></label></div>
+                        <div id="costActualSummary" class="cost-actual-summary" role="status">Виберіть збережений план.</div>
+                        <div class="cost-next-action"><span id="costNextActionText">Оберіть виконання зі списку.</span><button type="button" id="costNextAction" class="btn-page-primary">Створити план</button></div>
+                        <details id="costSourceTools" class="cost-tool-disclosure"><summary>Додати факт або оцінку</summary>
+                        <h4>Додати джерело</h4>
+                        <div class="cost-grid">
+                            <label>ID джерела<input id="costSourceExternalId" maxlength="120" placeholder="Номер чека або акта"></label>
+                            <label>Код економічної ролі<input id="costSourceRole" maxlength="80" pattern="[a-z0-9_]+" placeholder="service_cost" aria-describedby="costSourceRoleHelp" autocapitalize="off" spellcheck="false"><small id="costSourceRoleHelp" class="cost-field-help">Малі латинські літери, цифри й _. Наприклад: service_cost або service_revenue.</small></label>
+                            <label>Категорія<select id="costSourceCategory"><option value="direct_cost">Пряма витрата</option><option value="revenue">Виручка</option></select></label>
+                            <label>Сума, ₴<input id="costSourceAmount" inputmode="decimal" placeholder="0.00"></label>
+                            <label>Підстава<select id="costSourceEvidence"><option value="estimate">Оцінка</option><option value="confirmed">Підтверджено вручну (без перевірки зарплати чи платежу)</option></select></label>
+                            <label>Семантика<select id="costSourceSemantic"><option value="cost">Витрата</option><option value="charge">Нарахування виручки</option><option value="refund">Повернення</option><option value="adjustment">Коригування виручки</option></select></label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costAddSource" class="btn-page-secondary">Додати факт / оцінку</button></div>
+                        </details>
+                        <details id="costLinkTools" class="cost-tool-disclosure"><summary>Перевірити джерело за ID</summary>
+                        <h4>Перевірити посилання на джерело</h4>
+                        <p>Лише читання канонічного запису. Перевірка ID, бізнесу й суми не додає факту та не проводить його в P&amp;L.</p>
+                        <div class="cost-grid">
+                            <label>Система<select id="costLinkType"><option value="booking">Бронювання</option><option value="education_attendance">Відвідування заняття</option><option value="payroll_installment">Зарплатна виплата</option><option value="payment_order">Платіжне замовлення</option><option value="payment_refund">Повернення</option></select></label>
+                            <label>ID запису<input id="costLinkId" maxlength="120" placeholder="Канонічний ID"></label>
+                            <label>Очікувана сума, ₴<input id="costLinkAmount" inputmode="decimal" placeholder="0.00"></label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costPreviewLink" class="btn-page-secondary">Перевірити джерело</button></div>
+                        <div id="costLinkResult" class="cost-actual-summary" role="status" hidden></div>
+                        </details>
+                        <details id="costCorrectionTools" class="cost-tool-disclosure"><summary>Виправити запис</summary>
+                        <h4>Виправити джерело без втрати історії</h4>
+                        <div class="cost-grid">
+                            <label>Джерело<select id="costCorrectionSource"></select></label>
+                            <label>Нова сума, ₴<input id="costCorrectionAmount" inputmode="decimal" placeholder="0.00"></label>
+                            <label>Підстава<select id="costCorrectionEvidence"><option value="estimate">Оцінка</option><option value="confirmed">Підтверджено вручну</option></select></label>
+                            <label>Семантика<select id="costCorrectionSemantic"><option value="cost">Витрата</option><option value="charge">Нарахування виручки</option><option value="refund">Повернення</option><option value="adjustment">Коригування виручки</option></select></label>
+                            <label class="cost-wide">Причина виправлення<input id="costCorrectionReason" maxlength="300" placeholder="Що змінилося у джерелі"></label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costCorrectSource" class="btn-page-secondary">Записати виправлення</button></div>
+                        </details>
+                        <details id="costReconcileTools" class="cost-tool-disclosure"><summary>Звірити повноту</summary>
+                        <h4>Звірка повноти</h4>
+                        <div class="cost-grid">
+                            <label>Категорія<select id="costCompletionCategory"><option value="revenue">Виручка</option><option value="direct_cost">Прямі витрати</option></select></label>
+                            <label class="cost-wide">Підстава звірки<input id="costCompletionReason" maxlength="300" placeholder="Які джерела перевірено"></label>
+                            <label class="cost-check"><input id="costCompletionConfirmed" type="checkbox"> Усі фактичні записи цієї категорії внесено; відсутні суми справді дорівнюють нулю.</label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costCompleteCategory" class="btn-page-secondary">Зберегти стан звірки</button></div>
+                        </details>
+                        <details id="costHistoryTools" class="cost-tool-disclosure"><summary>Історія джерел і виправлень</summary>
+                        <div id="costActualHistory" class="cost-actual-history"></div>
+                        </details>
+                        <div id="costActualStatus" class="cost-status" role="status" hidden></div>
+                    </section>
+                    <section class="cost-card" data-cost-section="group" aria-labelledby="costGroupHeading">
+                        <h3 id="costGroupHeading">Групи виконань</h3>
+                        <p>Зберіть курс, сеанс або день із планів одного бізнесу. Для кожного плану явно виберіть виручку та прямі витрати. Виправлення складу створює нову незмінну ревізію і скасовує попередню звірку групи.</p>
+                        <div class="cost-grid">
+                            <label>Тип групи<select id="costGroupKind"><option value="course">Курс</option><option value="session">Сеанс</option><option value="day">День</option></select></label>
+                            <label>Назва групи<input id="costGroupLabel" maxlength="200" placeholder="Курс жовтня"></label>
+                        </div>
+                        <div id="costGroupMembers" class="cost-group-members"></div>
+                        <div class="cost-actions"><button type="button" id="costCreateGroup" class="btn-page-secondary">Зберегти склад групи</button></div>
+                        <div class="cost-grid"><label>Збережена група<select id="costGroupSelect"></select></label></div>
+                        <div id="costGroupSummary" class="cost-actual-summary" role="status">Груп ще немає.</div>
+                        <h4>Виправити склад групи</h4>
+                        <p>Оберіть збережену групу, змініть склад і вкажіть причину. Попередні ревізії залишаться в історії.</p>
+                        <div id="costGroupEditMembers" class="cost-group-members"></div>
+                        <div class="cost-grid"><label class="cost-wide">Причина виправлення<input id="costGroupRevisionReason" maxlength="240" placeholder="Що змінилося у складі"></label></div>
+                        <div class="cost-actions"><button type="button" id="costSaveGroupRevision" class="btn-page-secondary">Зберегти нову ревізію</button></div>
+                        <details class="cost-tool-disclosure"><summary>Історія змін складу</summary><div id="costGroupHistory" class="cost-actual-history"></div></details>
+                        <div id="costGroupStatus" class="cost-status" role="status" hidden></div>
+                    </section>
+                    <section class="cost-card" data-cost-section="management" aria-labelledby="costManagementHeading">
+                        <h3 id="costManagementHeading">Управлінський P&amp;L · звірені операції</h3>
+                        <p>Окремий звіт за підтвердженим виконанням послуги і явними зв’язками з фінансовим журналом. Оплати й завдатки до виконання, незв’язані старі транзакції та оцінки залишаються поза підсумком. Чинний P&amp;L не змінюється.</p>
+                        <h4>Факт виконання</h4>
+                        <div class="cost-grid">
+                            <label>План<select id="costManagementPlan"></select></label>
+                            <label>Дата виконання<input id="costManagementPerformedOn" type="date"></label>
+                            <label>Підстава<select id="costManagementEvidence"><option value="operator">Підтвердження оператора</option><option value="attendance">Підтверджена присутність на занятті</option></select></label>
+                            <label id="costManagementAttendanceField" hidden>ID запису присутності<input id="costManagementAttendanceId" inputmode="numeric" placeholder="Лише для заняття"></label>
+                            <label class="cost-wide">Причина / перевірка<input id="costManagementPerformanceReason" maxlength="300" placeholder="Що підтверджує виконання"></label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costManagementPerform" class="btn-page-secondary">Підтвердити виконання</button></div>
+                        <div id="costManagementPerformanceStatus" class="cost-status" role="status" hidden></div>
+                        <h4>Зв’язати підтверджений факт</h4>
+                        <p>Для виручки й прямих витрат потрібна точна фінансова операція. Відрядна та погодинна праця додатково потребують затвердженої зарплатної виплати; повернення — окремого від’ємного факту та посилання на первинну операцію.</p>
+                        <div class="cost-grid">
+                            <label>Фактичне джерело<select id="costManagementSource"></select></label>
+                            <label>Ефект<select id="costManagementKind"><option value="earned_revenue">Зароблена виручка</option><option value="direct_cost">Пряма витрата</option><option value="piecework">Відрядна праця</option><option value="hourly">Погодинна праця</option><option value="revenue_correction">Коригування виручки</option><option value="unresolved">Зняти зі звірки</option></select></label>
+                            <label>Дата ефекту<input id="costManagementEffectOn" type="date"></label>
+                            <label class="cost-wide">Причина зв’язку<input id="costManagementLinkReason" maxlength="300" placeholder="Підстава економічного ефекту"></label>
+                        </div>
+                        <details class="cost-technical" id="costManagementTechnical" open>
+                            <summary>Посилання на облікові записи</summary>
+                            <p>Вкажіть лише записи, що відповідають обраному ефекту. Історія та вимоги звірки зберігаються.</p>
+                            <div class="cost-grid">
+                                <label data-cost-management-for="earned_revenue direct_cost piecework hourly">ID фінансової операції<input id="costManagementFinanceId" inputmode="numeric"></label>
+                                <label data-cost-management-for="earned_revenue">ID платіжного замовлення, якщо є<input id="costManagementPaymentOrderId" inputmode="numeric"></label>
+                                <label data-cost-management-for="revenue_correction">ID повернення, якщо є<input id="costManagementRefundId" inputmode="numeric"></label>
+                                <label data-cost-management-for="revenue_correction">ID первинного зв’язку<input id="costManagementOriginalLinkId" inputmode="numeric"></label>
+                                <label data-cost-management-for="piecework hourly">ID затвердженої зарплатної виплати<input id="costManagementPayrollId" inputmode="numeric"></label>
+                                <label data-cost-management-for="hourly">ID запису робочого часу<input id="costManagementTimeId" inputmode="numeric"></label>
+                                <label data-cost-management-for="hourly">Підтверджені хвилини<input id="costManagementMinutes" inputmode="numeric"></label>
+                                <label data-cost-management-for="hourly">Погодинна ставка, ₴<input id="costManagementHourlyRate" inputmode="decimal"></label>
+                            </div>
+                        </details>
+                        <div class="cost-actions"><button type="button" id="costManagementLink" class="btn-page-secondary">Зберегти зв’язок</button></div>
+                        <div id="costManagementLinkStatus" class="cost-status" role="status" hidden></div>
+                        <h4>Перегляд звіту</h4>
+                        <div class="cost-grid">
+                            <label>Від<input id="costManagementFrom" type="date"></label>
+                            <label>До<input id="costManagementTo" type="date"></label>
+                        </div>
+                        <div class="cost-actions"><button type="button" id="costManagementRefresh" class="btn-page-secondary">Оновити управлінський P&amp;L</button></div>
+                        <div id="costManagementSummary" class="cost-actual-summary" role="status">Оберіть період для звіту.</div>
+                    </section>
+                </div>
+            </div>
             </section>
         </main>
     </div>
@@ -1703,15 +1878,16 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/ui.js?v=0.82.56"></script>
-    <script src="js/config.js?v=0.82.56"></script>
-    <script src="js/notification.js?v=0.82.56"></script>
-    <script src="js/api.js?v=0.82.56"></script>
-    <script src="js/auth.js?v=0.82.56"></script>
-    <script src="js/components/sidebar.js?v=0.82.56"></script>
+    <script src="js/ui.js?v=0.82.70"></script>
+    <script src="js/config.js?v=0.82.70"></script>
+    <script src="js/notification.js?v=0.82.70"></script>
+    <script src="js/api.js?v=0.82.70"></script>
+    <script src="js/auth.js?v=0.82.70"></script>
+    <script src="js/components/sidebar.js?v=0.82.70"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/analytics-page.js?v=0.82.56"></script>
-    <script src="js/finance-page.js?v=0.82.56"></script>
-<script src="js/alerts.js?v=0.82.56"></script>
+    <script src="js/analytics-page.js?v=0.82.70"></script>
+    <script src="js/finance-page.js?v=0.82.70"></script>
+    <script src="js/finance-costing.js?v=0.82.70"></script>
+<script src="js/alerts.js?v=0.82.70"></script>
 </body>
 </html>

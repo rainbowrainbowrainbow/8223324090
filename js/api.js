@@ -171,6 +171,7 @@ function setApiAuthSessionFailure(kind, details = {}) {
 
 function clearApiAuthSessionFailure() {
     apiAuthSessionFailure = null;
+    try { sessionStorage.removeItem('pzp_auth_deactivated_notice'); } catch {}
 }
 
 function getApiAuthSessionFailure() {
@@ -1098,6 +1099,7 @@ function getLegacyBusinessSurfaceAvailability(surface = 'catalogs') {
     const labels = {
         catalogs: 'Спільні каталоги', booking_templates: 'Шаблони бронювань',
         recurring: 'Повторювані бронювання', finance_salary: 'Розрахунок зарплати',
+        staff: 'Спільні дані працівників', chat: 'Спільний чат',
         contractors_procurement: 'Спільні підрядники та закупівлі',
         certificates: 'Сертифікати', art: 'Art-матеріали'
     };
@@ -1617,6 +1619,18 @@ function crmBusinessHasTimelineDateHandoff(url, context) {
         || normalizeCrmBusinessContext(requestedContext) === normalizeCrmBusinessContext(context);
 }
 
+function crmBusinessHasEducationScheduleHandoff(url, context) {
+    const params = url?.searchParams;
+    const view = params?.get('educationSchedule');
+    if (!['today', 'schedule', 'groups', 'attendance', 'reports'].includes(view)) return false;
+    const requestedContext = params.get('businessContext');
+    if (requestedContext && normalizeCrmBusinessContext(requestedContext) !== normalizeCrmBusinessContext(context)) return false;
+    const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    if (!userCanAccessCrmBusinessContext(user, context)) return false;
+    const profile = getCrmBusinessProfileForContext(context);
+    return profile?.timeline?.mode === 'education' && profile.timeline.timelineEnabled !== false;
+}
+
 function crmBusinessDefaultTimelineRouteForUser(user) {
     const policy = resolveCrmBusinessPolicy(user);
     const defaultContext = policy.defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
@@ -1639,12 +1653,22 @@ function navigateCrmBusinessDestination(context, page = currentCrmBusinessScoped
     if (!destination) return false;
     const target = new URL(destination, window.location.origin);
     const current = new URL(window.location.href);
+    if (current.searchParams.has('educationSchedule') && !crmBusinessHasEducationScheduleHandoff(current, context)) {
+        current.searchParams.delete('educationSchedule');
+        window.history.replaceState(window.history.state, '', current);
+    }
     if (target.pathname === current.pathname && target.search === current.search) return false;
+    if (page?.id === 'timeline'
+        && current.pathname === '/'
+        && crmBusinessHasEducationScheduleHandoff(current, context)) {
+        return false;
+    }
     if (page?.id === 'timeline'
         && target.pathname === current.pathname
         && (crmBusinessHasLeadBookingHandoff(current)
             || crmBusinessHasTimelineViewHandoff(current, context)
-            || crmBusinessHasTimelineDateHandoff(current, context))) {
+            || crmBusinessHasTimelineDateHandoff(current, context)
+            || crmBusinessHasEducationScheduleHandoff(current, context))) {
         return false;
     }
     window.__crmBusinessNavigationPending = true;
@@ -2248,10 +2272,17 @@ async function apiFetchWithAuthRetry(url, opts = {}) {
         return response;
     }
     if (response && response.status === 401 && typeof handleAuthError === 'function') {
+        const failureData = await readApiResponseJsonForRetry(response);
+        if (getActiveApiAuthTransitionMarker()
+            || !isApiAuthSessionSnapshotCurrent(responseSessionSnapshot, requestUser)) {
+            markApiAuthSessionChanged('request');
+            return null;
+        }
         setApiAuthSessionFailure('terminal', {
             stage: 'request',
             status: response.status,
-            reason: 'unauthorized'
+            reason: 'unauthorized',
+            code: failureData?.code
         });
         if (handleAuthError(response, { refreshAttempted: true })) return null;
     }
@@ -3169,7 +3200,7 @@ async function apiGetLines(date, options = {}) {
     }
 }
 
-async function apiSaveLines(date, lines) {
+async function apiSaveLines(date, lines, baseLines = []) {
     try {
         if (typeof window !== 'undefined' && window.TimelineView?.isRooms?.()) {
             return {
@@ -3178,17 +3209,46 @@ async function apiSaveLines(date, lines) {
                 code: 'room_timeline_legacy_line_save_blocked'
             };
         }
+        const headers = getTimelineAuthHeaders();
+        headers['X-Timeline-Manual-Line-Base'] = JSON.stringify((baseLines || []).map(line => line.id)
+            .filter(id => /^manual_animator_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)));
         const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrlWithView(`/lines/${date}`)}`, {
             method: 'POST',
-            headers: getTimelineAuthHeaders(),
+            headers,
             body: JSON.stringify((lines || []).map(line => timelineApiPayload(line)))
         });
         if (handleAuthError(response)) return { success: false };
-        if (!response.ok) throw new Error('API error');
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            return { success: false, status: response.status, code: payload.code, error: payload.error || 'API error' };
+        }
         return await response.json();
     } catch (err) {
         console.error('API saveLines error:', err);
         return { success: false, error: err.message, offline: true };
+    }
+}
+
+async function apiAddManualAnimatorLine(date, requestId) {
+    try {
+        const response = await apiNetworkFetch(
+            `${API_BASE}${timelineApiUrlWithView(`/lines/${encodeURIComponent(date)}/manual`)}`,
+            {
+                method: 'POST',
+                headers: getTimelineAuthHeaders(),
+                body: JSON.stringify({ requestId })
+            }
+        );
+        if (handleAuthError(response)) return { success: false, error: 'Сесію завершено. Увійдіть знову.' };
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return { success: false, error: payload.error || 'Не вдалося додати аніматора',
+                code: payload.code || null, status: response.status };
+        }
+        return payload;
+    } catch (error) {
+        console.error('API addManualAnimatorLine error:', error);
+        return { success: false, error: 'Не вдалося додати аніматора. Спробуйте ще раз.' };
     }
 }
 
@@ -4361,6 +4421,7 @@ async function performApiAuthTokenRefresh(refreshToken, expectedUser = null, ses
                 setApiAuthSessionFailure(failureKind, rateLimitFailure || {
                     stage: 'refresh',
                     status: response.status,
+                    code: data?.code,
                     reason: alreadyRotated
                         ? 'refresh-already-rotated'
                         : (response.ok ? 'malformed-response' : 'http')
@@ -4639,6 +4700,16 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             return null;
         }
         if (response.status === 401) {
+            if (API_AUTH_TERMINAL_UNAUTHORIZED_CODES.has(String(verifyResponseData?.code || '').toLowerCase())) {
+                setApiAuthSessionFailure('terminal', {
+                    stage: 'verify',
+                    status: response.status,
+                    reason: 'unauthorized',
+                    code: verifyResponseData.code
+                });
+                clearApiAuthSessionStorage('verify-terminal');
+                return null;
+            }
             const refreshResult = await apiRefreshAuthSession();
             if (!refreshResult.accessToken) {
                 if (refreshResult.outcome === 'superseded') {
@@ -4648,7 +4719,8 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
                     setApiAuthSessionFailure('terminal', {
                         stage: 'verify',
                         status: response.status,
-                        reason: 'unauthorized'
+                        reason: 'unauthorized',
+                        code: verifyResponseData?.code
                     });
                     clearApiAuthSessionStorage('verify-unauthorized');
                 }
@@ -4700,7 +4772,8 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             setApiAuthSessionFailure(failureKind, rateLimitFailure || {
                 stage: 'verify',
                 status: response.status,
-                reason: 'http'
+                reason: 'http',
+                code: verifyResponseData?.code
             });
             if (failureKind === 'terminal') clearApiAuthSessionStorage('verify-terminal');
             return null;

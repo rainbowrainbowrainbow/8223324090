@@ -100,7 +100,7 @@ describe('auth quick task status route', () => {
                 const sql = String(text).replace(/\s+/g, ' ').trim();
                 calls.push({ text: sql, params });
 
-                if (/SELECT is_active, session_revoked_at FROM users WHERE id = \$1/i.test(sql)) {
+                if (/SELECT is_active, session_revoked_at, .* AS session_revoked_at_ms FROM users WHERE id = \$1/i.test(sql)) {
                     return { rows: [{ is_active: true, session_revoked_at: null }] };
                 }
                 if (/SELECT id, username, role, extra_roles/i.test(sql)) {

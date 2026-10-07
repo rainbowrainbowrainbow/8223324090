@@ -32,6 +32,7 @@ test('Hermes staff schedule capabilities expose the complete public worker contr
     assert.ok(capabilities.supportedActions.includes('staff_schedule.read'));
     assert.ok(capabilities.supportedActions.includes('staff_schedule.preview'));
     assert.ok(capabilities.supportedActions.includes('staff_schedule.apply'));
+    assert.ok(capabilities.supportedActions.includes('attendance.read'));
     assert.ok(capabilities.supportedActions.includes('attendance.preview'));
     assert.ok(capabilities.supportedActions.includes('attendance.apply'));
     assert.deepEqual(capabilities.endpoints.staff, {
@@ -69,6 +70,10 @@ test('Hermes staff schedule capabilities expose the complete public worker contr
         applyRequiredCapability: 'hermes.schedule.manage'
     });
     assert.deepEqual(capabilities.endpoints.attendance, {
+        list: 'GET /api/hermes/attendance',
+        maxDateRangeDays: 31,
+        timeZone: 'Europe/Kyiv',
+        readRequiredCapability: 'hr.today.view',
         preview: 'POST /api/hermes/attendance/preview',
         apply: 'POST /api/hermes/attendance/apply',
         businessContext: 'event_genix',

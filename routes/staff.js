@@ -133,6 +133,21 @@ const log = createLogger('Staff');
 // v39.8: Security — require authentication for all staff endpoints
 router.use(authenticateToken);
 router.use(requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'staff', parkCheckinJournalRead: true }));
+// Compensation snapshots now include base wages; keep the existing payroll-view boundary.
+function redactAttendanceCompensation(value) {
+    if (Array.isArray(value)) return value.map(redactAttendanceCompensation);
+    if (!value || typeof value !== 'object' || value instanceof Date) return value;
+    return Object.fromEntries(Object.entries(value)
+        .filter(([key]) => !['compensation_snapshot', 'compensationSnapshot', 'conditions'].includes(key))
+        .map(([key, nested]) => [key, redactAttendanceCompensation(nested)]));
+}
+router.use((req, res, next) => {
+    if (!canUseAction(req.user, 'hr.payroll.view')) {
+        const json = res.json.bind(res);
+        res.json = value => json(redactAttendanceCompensation(value));
+    }
+    next();
+});
 
 const ACCOUNT_MANAGER_PRIMARY_ROLES = new Set(['creator', 'director']);
 const STAFF_COPY_WEEK_RAW_DEPARTMENT_ALLOWLIST = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);
@@ -250,6 +265,7 @@ function ensureActorCanManageAccount(actor, account) {
 
 function canDisableLinkedStaffAccount(actor, account) {
     return !isProtectedSystemAccount(account)
+        && !normalizeAccountRoleSet([account?.role], account?.extra_roles || []).includes('creator')
         && Number(account?.id) !== Number(actor?.id)
         && canActorManageAccount(actor, account);
 }
@@ -257,7 +273,8 @@ function canDisableLinkedStaffAccount(actor, account) {
 function linkedStaffAccountBlockReason(actor, account = {}) {
     if (isProtectedSystemAccount(account)) return 'protected_system_account';
     if (Number(account.id) === Number(actor?.id)) return 'current_user';
-    if (!actor || !ACCOUNT_MANAGER_PRIMARY_ROLES.has(actor.role)) return 'requires_manage_accounts';
+    if (normalizeAccountRoleSet([account.role], account.extra_roles || []).includes('creator')) return 'protected_role';
+    if (!actor || !canUseAction(actor, 'manage_accounts') || !ACCOUNT_MANAGER_PRIMARY_ROLES.has(actor.role)) return 'requires_manage_accounts';
     if (!canActorManageAccount(actor, account)) return 'protected_role';
     return null;
 }
@@ -2184,6 +2201,7 @@ router.put('/:id', requireAction('hr.staff.manage'), async (req, res) => {
                 req,
                 reason: 'staff_deactivation',
                 source: 'staff_update',
+                requireAllAccountsDisabled: true,
                 canDisableAccount: account => canDisableLinkedStaffAccount(req.user, account),
                 blockReason: account => linkedStaffAccountBlockReason(req.user, account),
                 accountMeta: account => linkedStaffAccountMeta(account, req.user?.id),
@@ -2195,6 +2213,7 @@ router.put('/:id', requireAction('hr.staff.manage'), async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /staff error', err);
+        if (err.code === 'account_deactivation_blocked') return res.status(err.statusCode).json({ success: false, error: err.message, code: err.code, blockers: err.blockers });
         if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
@@ -2239,6 +2258,7 @@ router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
             req,
             reason: 'staff_archive',
             source: 'staff_delete_legacy',
+            requireAllAccountsDisabled: true,
             canDisableAccount: account => canDisableLinkedStaffAccount(req.user, account),
             blockReason: account => linkedStaffAccountBlockReason(req.user, account),
             accountMeta: account => linkedStaffAccountMeta(account, req.user?.id),
@@ -2255,6 +2275,7 @@ router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('DELETE /staff error', err);
+        if (err.code === 'account_deactivation_blocked') return res.status(err.statusCode).json({ success: false, error: err.message, code: err.code, blockers: err.blockers });
         if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {

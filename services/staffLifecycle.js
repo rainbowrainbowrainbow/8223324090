@@ -1,6 +1,7 @@
 'use strict';
 
 const { recordAccountSecurityEvent } = require('./accountSecurity');
+const { SESSION_REVOCATION_CUTOFF_SQL } = require('./sessionRevocation');
 const { reconcileScheduledAnimatorLines } = require('./booking');
 const { lockOrganizationOwnership, assertCanDeactivateOrganizationOwners } = require('./organizationOwnership');
 
@@ -92,6 +93,7 @@ async function syncLinkedStaffAccountDeactivation(client, staffId, options = {})
         ? options.accountMeta
         : row => defaultAccountMeta(row, actor?.id);
     const logger = options.logger || null;
+    const requireAllAccountsDisabled = options.requireAllAccountsDisabled === true;
 
     if (!Number.isFinite(id) || id <= 0) {
         return {
@@ -114,9 +116,30 @@ async function syncLinkedStaffAccountDeactivation(client, staffId, options = {})
          FOR UPDATE OF ep, u`,
         [id]
     ).catch(err => {
+        if (requireAllAccountsDisabled) throw err;
         if (logger?.warn) logger.warn(`Linked staff account lookup skipped: ${err.message}`);
         return { rows: [] };
     });
+
+    const allowedAccounts = linkedAccounts.rows.filter(row => canDisableAccount(row));
+    const blockers = linkedAccounts.rows
+        .filter(row => !canDisableAccount(row))
+        .map(row => {
+            const reasonCode = blockReason(row);
+            return reasonCode || requireAllAccountsDisabled
+                ? { ...accountMeta(row), block_reason: reasonCode || 'account_deactivation_not_allowed' }
+                : null;
+        })
+        .filter(Boolean);
+
+    if (requireAllAccountsDisabled && blockers.length) {
+        const permissionBlocked = blockers.some(account => account.block_reason === 'requires_manage_accounts');
+        const error = new Error('Не вдалося вимкнути всі CRM-акаунти працівника. Зверніться до адміністратора.');
+        error.code = 'account_deactivation_blocked';
+        error.statusCode = permissionBlocked ? 403 : 409;
+        error.blockers = blockers;
+        throw error;
+    }
 
     const profiles = await client.query(
         `UPDATE employee_profiles
@@ -126,18 +149,10 @@ async function syncLinkedStaffAccountDeactivation(client, staffId, options = {})
          RETURNING id, user_id`,
         [id]
     ).catch(err => {
+        if (requireAllAccountsDisabled) throw err;
         if (logger?.warn) logger.warn(`Linked staff profile deactivation skipped: ${err.message}`);
         return { rowCount: 0, rows: [] };
     });
-
-    const allowedAccounts = linkedAccounts.rows.filter(row => canDisableAccount(row));
-    const blockers = linkedAccounts.rows
-        .filter(row => !canDisableAccount(row))
-        .map(row => {
-            const reasonCode = blockReason(row);
-            return reasonCode ? { ...accountMeta(row), block_reason: reasonCode } : null;
-        })
-        .filter(Boolean);
 
     const userIds = allowedAccounts.map(row => Number(row.id)).filter(Number.isFinite);
     let disabledRows = [];
@@ -146,7 +161,7 @@ async function syncLinkedStaffAccountDeactivation(client, staffId, options = {})
         const disabled = await client.query(
             `UPDATE users
              SET is_active = false,
-                 session_revoked_at = clock_timestamp()
+                 session_revoked_at = ${SESSION_REVOCATION_CUTOFF_SQL}
              WHERE id = ANY($1::int[])
              RETURNING id, username, name, role`,
             [userIds]
@@ -160,6 +175,7 @@ async function syncLinkedStaffAccountDeactivation(client, staffId, options = {})
                  WHERE user_id = ANY($1::int[]) AND revoked_at IS NULL`,
                 [disabledUserIds]
             ).catch(err => {
+                if (requireAllAccountsDisabled) throw err;
                 if (logger?.warn) logger.warn(`Linked staff token revoke skipped: ${err.message}`);
             });
             for (const target of disabledRows) {
@@ -175,7 +191,8 @@ async function syncLinkedStaffAccountDeactivation(client, staffId, options = {})
                         ...(options.eventDetails || {})
                     },
                     req,
-                    client
+                    client,
+                    strict: requireAllAccountsDisabled
                 });
             }
         }

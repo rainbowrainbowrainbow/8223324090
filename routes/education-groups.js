@@ -48,6 +48,30 @@ router.get('/children/search', async (req, res) => {
     } catch (error) { handle(res, error); }
 });
 
+router.get('/teachers', async (req, res) => {
+    const business = context(req, res);
+    if (!business) return;
+    try {
+        res.json({ success: true, teachers: await groups.listTeachers(business, pool, req.query.includeInactive === 'true') });
+    } catch (error) { handle(res, error); }
+});
+
+router.post('/teachers', requireAction('create_booking'), async (req, res) => {
+    const business = context(req, res, 'create');
+    if (!business) return;
+    try {
+        res.status(201).json({ success: true, teacher: await groups.createTeacher(business, req.body || {}, req.user.id || null) });
+    } catch (error) { handle(res, error); }
+});
+
+router.put('/teachers/:teacherId', requireAction('edit_booking'), async (req, res) => {
+    const business = context(req, res, 'edit');
+    if (!business) return;
+    try {
+        res.json({ success: true, teacher: await groups.setTeacherActive(business, req.params.teacherId, req.body || {}, req.user.id || null) });
+    } catch (error) { handle(res, error); }
+});
+
 router.get('/:id', async (req, res) => {
     const business = context(req, res);
     if (!business) return;

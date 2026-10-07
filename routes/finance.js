@@ -1776,14 +1776,15 @@ router.get('/advanced-dashboard', async (req, res) => {
             GROUP BY payment_method ORDER BY total DESC
         `, [range.from, range.to, businessContext]);
 
-        // Key metrics
+        // Shared bounds are inferred as DATE by recognition metrics. Bookings
+        // store ISO dates as VARCHAR, so preserve their text comparisons explicitly.
         const metrics = await pool.query(`
             SELECT
                 (SELECT COALESCE(SUM(amount), 0)::int FROM finance_transactions WHERE type = 'income' AND ${financeRecognitionDateSql('')} >= $1::date AND ${financeRecognitionDateSql('')} <= $2::date AND ${businessScopeSql('', '$3')}) AS month_income,
                 (SELECT COALESCE(SUM(amount), 0)::int FROM finance_transactions WHERE type = 'expense' AND ${financeRecognitionDateSql('')} >= $1::date AND ${financeRecognitionDateSql('')} <= $2::date AND ${businessScopeSql('', '$3')}) AS month_expense,
-                (SELECT COALESCE(SUM(price), 0)::int FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS month_bookings_revenue,
-                (SELECT COUNT(*)::int FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS month_bookings_count,
-                (SELECT COALESCE(AVG(price), 0)::int FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL AND price > 0 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS avg_booking_price
+                (SELECT COALESCE(SUM(price), 0)::int FROM bookings WHERE date >= $1::text AND date <= $2::text AND status = 'confirmed' AND linked_to IS NULL AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS month_bookings_revenue,
+                (SELECT COUNT(*)::int FROM bookings WHERE date >= $1::text AND date <= $2::text AND status = 'confirmed' AND linked_to IS NULL AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS month_bookings_count,
+                (SELECT COALESCE(AVG(price), 0)::int FROM bookings WHERE date >= $1::text AND date <= $2::text AND status = 'confirmed' AND linked_to IS NULL AND price > 0 AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3) AS avg_booking_price
         `, [range.from, range.to, businessContext]);
 
         // Debt summary
@@ -1917,5 +1918,7 @@ router.delete('/accounts/:id', requireRole('admin'), async (req, res) => {
         res.status(500).json({ success: false, error: 'Database error' });
     }
 });
+
+router.use('/costing', require('./finance-costing'));
 
 module.exports = router;

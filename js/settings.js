@@ -366,7 +366,7 @@ async function addAnimatorLineLocallyAfterTelegramFallback(dateStr, note, result
     const nextLine = getNextTimelineAnimatorLine(lines, dateStr);
     if (note) nextLine.note = note;
 
-    const saved = await saveLinesForDate(AppState.selectedDate, [...lines, nextLine]);
+    const saved = await saveLinesForDate(AppState.selectedDate, [...lines, nextLine], lines);
     if (!saved) {
         showNotification('Telegram недоступний, і локально аніматора теж не вдалося додати.', 'error');
         return false;
@@ -375,6 +375,62 @@ async function addAnimatorLineLocallyAfterTelegramFallback(dateStr, note, result
     await renderTimeline();
     showNotification(getAnimatorTelegramFallbackMessage(result), 'warning');
     return true;
+}
+
+let _manualAnimatorLineAddPending = false;
+const _manualAnimatorLineRequestIds = new Map();
+
+function manualAnimatorLineRequestKey(dateStr) {
+    const businessContext = window.TimelineBusinessContext?.current?.()?.key || 'event_genix';
+    return `timeline:manual-animator-add:${businessContext}:${dateStr}`;
+}
+
+function manualAnimatorLineRequestId(key) {
+    let stored = _manualAnimatorLineRequestIds.get(key);
+    try { stored = window.sessionStorage?.getItem(key) || stored; } catch (_) { /* in-memory fallback */ }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stored || '')) {
+        stored = window.crypto?.randomUUID?.();
+    }
+    if (!stored) throw new Error('Cannot create a manual line request ID');
+    _manualAnimatorLineRequestIds.set(key, stored);
+    try { window.sessionStorage?.setItem(key, stored); } catch (_) { /* in-memory fallback */ }
+    return stored;
+}
+
+function clearManualAnimatorLineRequestId(key) {
+    _manualAnimatorLineRequestIds.delete(key);
+    try { window.sessionStorage?.removeItem(key); } catch (_) { /* in-memory fallback */ }
+}
+
+function manualAnimatorLineResultIsDefinitive(result) {
+    if (result?.success === true) return true;
+    // A 5xx or timeout may arrive after COMMIT. Reuse the ID until a replay
+    // confirms the result; only explicit client rejections prove no insert.
+    return !result?.offline && [400, 401, 403, 404, 409, 422].includes(result?.status);
+}
+
+async function addManualAnimatorLineDirectly(dateStr) {
+    if (_manualAnimatorLineAddPending) return false;
+    _manualAnimatorLineAddPending = true;
+    const button = document.getElementById('addLineBtn');
+    if (button) button.disabled = true;
+    try {
+        const key = manualAnimatorLineRequestKey(dateStr);
+        const requestId = manualAnimatorLineRequestId(key);
+        const result = await apiAddManualAnimatorLine(dateStr, requestId);
+        if (manualAnimatorLineResultIsDefinitive(result)) clearManualAnimatorLineRequestId(key);
+        if (!result?.success) {
+            showNotification(result?.error || 'Не вдалося додати аніматора. Спробуйте ще раз.', 'error');
+            return false;
+        }
+        window.invalidateTimelineDateCache?.(dateStr, { bookings: false });
+        await renderTimeline();
+        showNotification('Нову лінію аніматора додано', 'success');
+        return true;
+    } finally {
+        _manualAnimatorLineAddPending = false;
+        if (button) button.disabled = false;
+    }
 }
 
 async function addNewLine() {
@@ -420,13 +476,18 @@ async function addNewLine() {
             color: '#0EA586',
             fromSheet: false
         };
-        const saved = await saveLinesForDate(dateStr, [...lines, line]);
+        const saved = await saveLinesForDate(dateStr, [...lines, line], lines);
         if (!saved) {
             showNotification('Не вдалося додати лінію Майстерні долі', 'error');
             return;
         }
         await renderTimeline();
         showNotification('Лінію Майстерні долі додано', 'success');
+        return;
+    }
+
+    if (timelineContext?.key === 'event_genix' && mode === 'park') {
+        await addManualAnimatorLineDirectly(dateStr);
         return;
     }
 
@@ -633,7 +694,8 @@ async function handleEditLine(e) {
         }
         lines[index].name = newName;
         lines[index].color = document.getElementById('editLineColor')?.value || lines[index].color;
-        await saveLinesForDate(AppState.selectedDate, lines);
+        const saved = await saveLinesForDate(AppState.selectedDate, lines, lines);
+        if (!saved) return;
 
         closeAllModals();
         await renderTimeline();
@@ -658,7 +720,8 @@ async function deleteLine() {
     if (!confirmed) return;
 
     const newLines = lines.filter(l => l.id !== lineId);
-    await saveLinesForDate(AppState.selectedDate, newLines);
+    const saved = await saveLinesForDate(AppState.selectedDate, newLines, lines);
+    if (!saved) return;
 
     closeAllModals();
     await renderTimeline();
@@ -1250,7 +1313,7 @@ function renderBusinessCabinetGuardrails(settings, modules) {
         : collectBusinessCabinetGuardrails(settings || {}, modules || collectBusinessCabinetModules());
     controls.businessGuardrails.innerHTML = warnings.length
         ? warnings.map(item => `<span>${escapeHtml(String(item))}</span>`).join('')
-        : '<span class="is-ok">Стан валідний: shell, модулі й стартова сторінка не конфліктують.</span>';
+        : `<span class="is-ok">${settings.mode === 'education' ? 'Розділи й стартова сторінка узгоджені.' : 'Стан валідний: shell, модулі й стартова сторінка не конфліктують.'}</span>`;
 }
 
 const timelineSavedDisplaySettings = new Map();
@@ -1280,8 +1343,8 @@ function applyTimelineSettingsToControls(settings = {}) {
             .filter(([, enabled]) => enabled)
             .map(([key]) => key);
         controls.profileContract.innerHTML = `
-            <strong>Business profile</strong>
-            <span>Старт: ${escapeHtml(activeProfile?.startPagePath || normalized.startPage)} · type: ${escapeHtml(activeProfile?.type || normalized.mode)} · модулі: ${escapeHtml(modules.slice(0, 8).join(', ') || 'немає')}</span>
+            <strong>${normalized.mode === 'education' ? 'Навчальний центр' : 'Business profile'}</strong>
+            <span>${normalized.mode === 'education' ? 'Заняття, групи, викладачі та журнали працюють у межах вибраного бізнесу.' : `Старт: ${escapeHtml(activeProfile?.startPagePath || normalized.startPage)} · type: ${escapeHtml(activeProfile?.type || normalized.mode)} · модулі: ${escapeHtml(modules.slice(0, 8).join(', ') || 'немає')}`}</span>
         `;
     }
     const moduleState = settings.modules?.enabled
@@ -1443,6 +1506,7 @@ function timelineDisplayPreviewText(modeOrSettings, kitchenMode) {
             : 'Парк з кухнею: поточний rich park mode з афішею, квестами і кухонним блоком.',
         education: 'Навчальний заклад: лінії читаються як кабінети, записи — як заняття.'
     };
+    if (mode === 'education') return 'Кабінети задають рядки розкладу. Заняття зберігають тему, тривалість, викладача й групу. Склад учнів та відвідування доступні у вкладках «Групи» й «Відвідування».';
     const source = window.TimelineBusinessContext?.rowSource?.(settings, settings.context)?.text || '';
     return `${map[mode] || map.park} ${source} Старт: ${settings.startPage}. Модулі: ${enabledModules || 'немає'}. Фічі: ${enabledFeatures || 'немає'}.`;
 }

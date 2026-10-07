@@ -1,5 +1,32 @@
+require('./helpers/forbid-real-db');
+
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+// Report-bot credential resolution reads provider configuration before rejecting a key.
+// Model an empty synthetic provider store; all other persistence remains forbidden.
+const databaseCalls = [];
+function assertProviderLookup(call) {
+    assert.match(call.sql, /^SELECT \* FROM omni_provider_connections WHERE channel = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 LIMIT 1$/);
+    assert.deepEqual(call.params, ['report_bot', 'event_genix']);
+}
+const dbId = require.resolve('../db');
+require.cache[dbId] = {
+    id: dbId, filename: dbId, loaded: true,
+    exports: { pool: {
+        async query(sql, params) {
+            const call = { sql: String(sql).replace(/\s+/g, ' ').trim(), params };
+            databaseCalls.push(call);
+            assertProviderLookup(call);
+            return { rows: [] };
+        },
+        connect() {
+            databaseCalls.push({ sql: 'forbidden connect' });
+            throw new Error('REAL_DATABASE_ACCESS_BLOCKED: default connect');
+        }
+    } }
+};
+after(() => databaseCalls.forEach(assertProviderLookup));
+
 const express = require('express');
 const { apiAuthBoundary, isPublicApiRequest, isQueryTokenAuthAllowed } = require('../middleware/apiAuthBoundary');
 const { createHermesRouter } = require('../routes/hermes');
@@ -297,6 +324,7 @@ describe('API auth boundary middleware', () => {
             'staff_schedule.read',
             'staff_schedule.preview',
             'staff_schedule.apply',
+            'attendance.read',
             'attendance.preview',
             'attendance.apply'
         ]);

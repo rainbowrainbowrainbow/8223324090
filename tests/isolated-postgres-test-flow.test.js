@@ -329,7 +329,8 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /PostgreSQL startup errors detected/);
         assert.match(runner, /--test-concurrency=1/);
         assert.match(runner, /ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true'/);
-        assert.match(runner, /permissions:\s*\['tests\/integration\/permission-capabilities\.integration\.test\.js'\]/);
+        assert.match(runner, /permissions:\s*\[\s*'tests\/integration\/permission-capabilities\.integration\.test\.js',\s*'tests\/integration\/timeline-membership-postgres\.test\.js'\s*\]/);
+        assert.match(runner, /BUSINESS_MEMBERSHIP_TEST_DATABASE_URL:[\s\S]*testFile\.includes\('timeline-membership-postgres\.test'\)/);
         assert.match(runner, /RUN_PERMISSION_CAPABILITIES_INTEGRATION/);
         assert.match(permissionSuite, /RUN_PERMISSION_CAPABILITIES_INTEGRATION/);
         assert.match(permissionSuite, /REQUIRE_ISOLATED_TEST_TARGET/);
@@ -363,7 +364,8 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION/);
         assert.match(runner, /RUN_ZRS_PAYROLL_PERIOD_LOCK_INTEGRATION/);
         assert.match(runner, /RUN_PAYROLL_INSTALLMENTS_INTEGRATION/);
-        assert.match(runner, /payroll:\s*\[\s*'tests\/integration\/payroll-profiles\.integration\.test\.js',\s*'tests\/integration\/payroll-simultaneous-additional\.integration\.test\.js',\s*'tests\/integration\/zrs-payroll-period-lock\.integration\.test\.js',\s*'tests\/integration\/payroll-installments\.integration\.test\.js',\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js',\s*'tests\/integration\/finance-transactions-pnl\.integration\.test\.js'\s*\]/);
+        assert.match(runner, /payroll:\s*\[\s*'tests\/integration\/payroll-profiles\.integration\.test\.js',\s*'tests\/integration\/payroll-profiles-conditions\.integration\.test\.js',\s*'tests\/integration\/payroll-simultaneous-additional\.integration\.test\.js',\s*'tests\/integration\/zrs-payroll-period-lock\.integration\.test\.js',\s*'tests\/integration\/payroll-installments\.integration\.test\.js',\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js',\s*'tests\/integration\/finance-transactions-pnl\.integration\.test\.js',\s*'tests\/integration\/costing-management-postgres\.test\.js'\s*\]/);
+        assert.match(runner, /COSTING_TEST_PG_REQUIRED:\s*testFile\.includes\('costing-management-postgres\.test'\)/);
         assert.match(runner, /'payroll-fullstack':\s*\[\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js'\s*\]/);
         assert.match(runner, /RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION/);
         assert.match(runner, /PAYROLL_FULLSTACK_TEST_NOW/);
@@ -388,7 +390,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /backfill:\s*\[\s*'tests\/integration\/hr-legacy-hire-backfill\.integration\.test\.js'\s*\]/);
         assert.match(runner, /'upload-backfill':\s*\[\s*'tests\/integration\/legacy-upload-backfill\.integration\.test\.js'\s*\]/);
         assert.match(runner, /RUN_LEGACY_UPLOAD_BACKFILL_INTEGRATION/);
-        assert.match(runner, /fullstack:\s*\[\s*'tests\/browser\/hr-onboarding-fullstack-browser-smoke\.js'\s*\]/);
+        assert.match(runner, /fullstack:\s*\[\s*'tests\/browser\/hr-onboarding-fullstack-browser-smoke\.js',\s*'tests\/browser\/hr-pay-actual-app-browser-smoke\.js'\s*\]/);
         assert.match(onboardingSuite, /RUN_HR_ONBOARDING_INTEGRATION/);
         assert.match(runner, /RUN_ACCOUNT_ONBOARDING_INTEGRATION/);
         assert.match(accountOnboardingSuite, /transactional account onboarding on isolated PostgreSQL/);

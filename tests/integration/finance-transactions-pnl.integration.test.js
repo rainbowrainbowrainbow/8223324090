@@ -21,6 +21,41 @@ test('finance amount and P&L regressions with migrated disposable PostgreSQL and
   const category=(await pool.query("INSERT INTO finance_categories(name,type,business_context,is_active) VALUES('Synthetic finance income','income','event_genix',true) RETURNING id")).rows[0].id;
   const otherCategory=(await pool.query("INSERT INTO finance_categories(name,type,business_context,is_active) VALUES('Synthetic DAR private category','expense','dar',true) RETURNING id")).rows[0].id;
   let expenseId;
+  await t.test('advanced dashboard uses typed dates without losing company, recognition or booking scope',async()=>{
+   const empty=await api('GET','/advanced-dashboard');
+   assert.equal(empty.status,200,JSON.stringify(empty.body));
+   const now=new Date();
+   const day=now.toISOString().slice(0,10);
+   const prior=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-1,15)).toISOString().slice(0,10);
+   const next=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,15)).toISOString().slice(0,10);
+   await pool.query(`INSERT INTO finance_transactions(business_context,type,amount,date,recognition_date) VALUES
+    ('event_genix','income',1000,$1,NULL),('event_genix','expense',20,$1,NULL),
+    ('event_genix','income',80,$2,$1::date),('event_genix','expense',40,$1,$2::date),
+    ('dar','income',700,$1,NULL),('event_genix','income',900,$3,NULL)`,[day,prior,next]);
+   await pool.query(`INSERT INTO bookings(id,date,time,line_id,status,price,linked_to,business_context,room,room_resource_id) VALUES
+    ('advanced-own',$1,'10:00','fixture','confirmed',200,NULL,'event_genix','Fixture room','fixture-room'),
+    ('advanced-zero',$1,'11:00','fixture','confirmed',0,NULL,'event_genix','Fixture room','fixture-room'),
+    ('advanced-dar',$1,'12:00','fixture','confirmed',700,NULL,'dar','Fixture room','fixture-room'),
+    ('advanced-prior',$2,'13:00','fixture','confirmed',800,NULL,'event_genix','Fixture room','fixture-room'),
+    ('advanced-next',$3,'14:00','fixture','confirmed',900,NULL,'event_genix','Fixture room','fixture-room'),
+    ('advanced-linked',$1,'15:00','fixture','confirmed',300,'advanced-own','event_genix','Fixture room','fixture-room'),
+    ('advanced-cancelled',$1,'16:00','fixture','cancelled',400,NULL,'event_genix','Fixture room','fixture-room')`,[day,prior,next]);
+   const own=await api('GET','/advanced-dashboard');
+   assert.equal(own.status,200,JSON.stringify(own.body));
+   assert.deepEqual(own.body.metrics,{monthIncome:1080,monthExpense:20,monthProfit:1060,bookingsRevenue:200,bookingsCount:2,avgBookingPrice:200,margin:98});
+   const dar=await api('GET','/advanced-dashboard',undefined,'dar');
+   assert.equal(dar.status,200);assert.equal(dar.body.metrics.monthIncome,700);
+   assert.equal(dar.body.metrics.bookingsRevenue,700);assert.equal(dar.body.metrics.bookingsCount,1);
+   const malformed=(await pool.query("INSERT INTO finance_transactions(business_context,type,amount,date) VALUES('event_genix','income',1,'fixture-invalid-date') RETURNING id")).rows[0].id;
+   const failure=await api('GET','/advanced-dashboard');
+   assert.equal(failure.status,500);assert.equal(failure.body.error,'Internal server error');
+   assert.equal(failure.body.success,false);assert.equal(typeof failure.body.requestId,'string');
+   assert.ok(!JSON.stringify(failure.body).includes('fixture-invalid-date'));
+   await pool.query('DELETE FROM finance_transactions WHERE id=$1',[malformed]);
+   assert.equal((await api('GET','/advanced-dashboard')).status,200,'retry recovers after the fixture database error');
+   await pool.query('DELETE FROM bookings WHERE id LIKE $1',['advanced-%']);
+   await pool.query('DELETE FROM finance_transactions');
+  });
   await t.test('uncategorized expense is permitted and P&L matches journal: 100 minus 40 equals 60',async()=>{
    const inc=await api('POST','/transactions',{type:'income',categoryId:category,amount:100,date:'2099-01-15'});assert.equal(inc.status,201,JSON.stringify(inc.body));
    const exp=await api('POST','/transactions',{type:'expense',amount:40,date:'2099-01-15'});assert.equal(exp.status,201,JSON.stringify(exp.body));expenseId=exp.body.id;

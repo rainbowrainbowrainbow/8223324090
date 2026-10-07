@@ -20,7 +20,10 @@ const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
 const MODES = {
     api: ['tests/api.test.js'],
-    finance: ['tests/integration/finance-transactions-pnl.integration.test.js'],
+    finance: [
+        'tests/integration/finance-transactions-pnl.integration.test.js',
+        'tests/integration/costing-management-postgres.test.js'
+    ],
     attendance: [
         'tests/integration/attendance-lock-concurrency.integration.test.js',
         'tests/integration/hr-scheduler-jobs.integration.test.js',
@@ -36,14 +39,19 @@ const MODES = {
     recovery: ['tests/integration/full-backup-recovery.integration.test.js'],
     'banquet-recovery': ['tests/integration/banquet-production-recovery.integration.test.js'],
     hr: ['tests/integration/hr-disposable.integration.test.js'],
-    permissions: ['tests/integration/permission-capabilities.integration.test.js'],
+    permissions: [
+        'tests/integration/permission-capabilities.integration.test.js',
+        'tests/integration/timeline-membership-postgres.test.js'
+    ],
     payroll: [
         'tests/integration/payroll-profiles.integration.test.js',
+        'tests/integration/payroll-profiles-conditions.integration.test.js',
         'tests/integration/payroll-simultaneous-additional.integration.test.js',
         'tests/integration/zrs-payroll-period-lock.integration.test.js',
         'tests/integration/payroll-installments.integration.test.js',
         'tests/integration/payroll-fullstack-settlement.integration.test.js',
-        'tests/integration/finance-transactions-pnl.integration.test.js'
+        'tests/integration/finance-transactions-pnl.integration.test.js',
+        'tests/integration/costing-management-postgres.test.js'
     ],
     'payroll-fullstack': [
         'tests/integration/payroll-fullstack-settlement.integration.test.js'
@@ -52,7 +60,20 @@ const MODES = {
         'tests/integration/admission-tickets.integration.test.js'
     ],
     'education-series': [
-        'tests/integration/education-series.integration.test.js'
+        'tests/integration/education-series.integration.test.js',
+        'tests/integration/education-series.integration-acceptance.test.js'
+    ],
+    'education-context-browser': [
+        'tests/browser/education-context-actual-app-browser-smoke.js'
+    ],
+    'education-navigation-browser': [
+        'tests/browser/education-navigation-actual-app-browser-smoke.js'
+    ],
+    'education-group-submit-browser': [
+        'tests/browser/education-group-submit-actual-app-browser-smoke.js'
+    ],
+    'education-modal-browser': [
+        'tests/browser/education-modal-actual-app-browser-smoke.js'
     ],
     'catalog-sale': [
         'tests/integration/catalog-sale-migrations.integration.test.js'
@@ -119,7 +140,7 @@ const MODES = {
     ],
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
     'upload-backfill': ['tests/integration/legacy-upload-backfill.integration.test.js'],
-    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js'],
+    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js'],
     qa: [
         'tests/integration/live-multi-segment-qa.integration.test.js',
         'tests/integration/live-multi-segment-runner.integration.test.js'
@@ -127,7 +148,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|education-modal-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
@@ -511,6 +532,7 @@ function runsAgainstDatabaseOnly(testFile) {
         || testFile.includes('checkbox-park-config.integration')
         || testFile.includes('checkbox-x-report-lifecycle.integration')
         || testFile.includes('lead-conversation-links-postgres.test')
+        || testFile.includes('costing-management-postgres.test')
         || testFile.includes('customer-birthday-segments-postgres.test')
         || testFile.includes('customer-merge-preview-postgres.test')
         || testFile.includes('legacy-upload-backfill.integration');
@@ -642,6 +664,7 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_ZRS_PAYROLL_PERIOD_LOCK_INTEGRATION: testFile.includes('zrs-payroll-period-lock') ? 'true' : 'false',
         RUN_PAYROLL_INSTALLMENTS_INTEGRATION: testFile.includes('payroll-installments') ? 'true' : 'false',
         RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION: testFile.includes('payroll-fullstack-settlement') ? 'true' : 'false',
+        COSTING_TEST_PG_REQUIRED: testFile.includes('costing-management-postgres.test') ? 'true' : 'false',
         RUN_ADMISSION_TICKETS_INTEGRATION: testFile.includes('admission-tickets') ? 'true' : 'false',
         RUN_EDUCATION_SERIES_INTEGRATION: testFile.includes('education-series.integration') ? 'true' : 'false',
         RUN_CATALOG_SALE_MIGRATIONS_INTEGRATION: testFile.includes('catalog-sale-migrations') ? 'true' : 'false',
@@ -664,7 +687,8 @@ async function runSuite(testDb, testFile, suiteMode) {
         CUSTOMER_METRICS_TEST_DATABASE_URL: testFile.includes('customer-booking-metrics-postgres.test')
             ? testDb.url.toString()
             : '',
-        BUSINESS_MEMBERSHIP_TEST_DATABASE_URL: testFile.includes('customer-lead-business-isolation-postgres.test')
+        BUSINESS_MEMBERSHIP_TEST_DATABASE_URL: (testFile.includes('customer-lead-business-isolation-postgres.test')
+            || testFile.includes('timeline-membership-postgres.test'))
             ? testDb.url.toString()
             : '',
         RUN_REDIRECT_AUTH_POSTGRES_BROWSER: testFile.includes('redirect-auth-postgres-browser-smoke') ? 'true' : 'false',
@@ -676,6 +700,7 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_ACCOUNT_ONBOARDING_INTEGRATION: testFile.includes('account-onboarding.integration') ? 'true' : 'false',
         RUN_HR_LEGACY_BACKFILL_INTEGRATION: testFile.includes('hr-legacy-hire-backfill') ? 'true' : 'false',
         RUN_LEGACY_UPLOAD_BACKFILL_INTEGRATION: testFile.includes('legacy-upload-backfill.integration') ? 'true' : 'false',
+        RUN_HR_PAY_ACTUAL_APP_BROWSER: testFile.includes('hr-pay-actual-app-browser-smoke') ? 'true' : 'false',
         RUN_HR_ONBOARDING_FULLSTACK_BROWSER: testFile.includes('hr-onboarding-fullstack-browser-smoke') ? 'true' : 'false',
         RUN_FRESH_DB_STARTUP_INTEGRATION: testFile.includes('fresh-db-startup') ? 'true' : 'false',
         RUN_LIVE_MULTI_SEGMENT_QA_INTEGRATION: testFile.includes('live-multi-segment') ? 'true' : 'false'

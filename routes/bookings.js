@@ -107,7 +107,8 @@ const {
     resolveAdmissionTicketQuote
 } = require('../services/admissionTickets');
 const { scheduleableStaffWhere } = require('../services/staffOperationalFilters');
-const { assertLessonGroup, EducationGroupError } = require('../services/educationGroups');
+const { assertLessonGroup, assertLessonTeacher, EducationGroupError } = require('../services/educationGroups');
+const { applyEducationSeriesTeacher } = require('../services/educationSeriesTeacher');
 const { normalizeCustomerSource } = require('../services/customerSource');
 const {
     listCustomerChildren,
@@ -2408,11 +2409,22 @@ function educationLessonFromPayload(payload = {}) {
     };
 }
 
+function educationDurationError(payload) {
+    if (!educationLessonFromPayload(payload)) return null;
+    const raw = payload.duration;
+    const duration = typeof raw === 'number' || (typeof raw === 'string' && raw.trim()) ? Number(raw) : NaN;
+    return Number.isInteger(duration) && duration > 0 && duration <= 1440
+        ? null : 'Тривалість заняття: ціле число від 1 до 1440 хвилин';
+}
+
 async function educationGroupWriteError(db, payload, businessContext, oldRow = null) {
     const lesson = educationLessonFromPayload(payload);
-    if (!lesson || lesson.groupId == null || lesson.groupId === '') return null;
+    if (!lesson) return null;
     const previous = oldRow ? educationLessonFromPayload({ extraData: oldRow.extra_data }) : null;
     try {
+        const validated = await assertLessonTeacher(db, businessContext, lesson, previous);
+        setEducationLessonExtra(payload, validated);
+        if (lesson.groupId == null || lesson.groupId === '') return null;
         const group = await assertLessonGroup(db, businessContext, lesson.groupId, {
             allowArchived: previous?.groupId != null && String(previous.groupId) === String(lesson.groupId)
         });
@@ -3652,6 +3664,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     if (b.label && b.label.length > 200) { return res.status(400).json({ error: 'Назва: макс. 200 символів' }); }
     if (b.room && b.room.length > 100) { return res.status(400).json({ error: 'Кімната: макс. 100 символів' }); }
     if (b.groupName && b.groupName.length > 200) { return res.status(400).json({ error: 'Група: макс. 200 символів' }); }
+    const lessonDurationError = educationDurationError(b);
+    if (lessonDurationError) return res.status(400).json({ error: lessonDurationError });
     const dur = parseInt(b.duration) || 0;
     if (dur < 0 || dur > 1440) { return res.status(400).json({ error: 'Тривалість: 0-1440 хвилин' }); }
     if (b.time && dur > 0) {
@@ -4317,6 +4331,8 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
     if (!validateTime(main.time)) return res.status(400).json({ success: false, error: 'Invalid time format' });
 
     const lesson = educationLessonFromPayload(main);
+    const lessonDurationError = educationDurationError(main);
+    if (lessonDurationError) return res.status(400).json({ success: false, error: lessonDurationError });
     const requestedSize = parseInt(lesson?.seriesSize, 10) || 1;
     if (!lesson || requestedSize < 2) {
         return res.status(400).json({ success: false, error: 'Серія навчальних занять потребує щонайменше 2 заняття' });
@@ -4365,6 +4381,9 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
             await client.query('ROLLBACK');
             return res.status(educationGroupError.status).json(educationGroupError.body);
         }
+        if (lesson.mode === 'education_lesson') {
+            applyEducationSeriesTeacher(candidates, educationLessonFromPayload(main), educationLessonFromPayload, setEducationLessonExtra);
+        }
         if (lesson.groupId) {
             const canonicalName = educationLessonFromPayload(main).groupName;
             for (const candidate of candidates) {
@@ -4376,12 +4395,14 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
         const customerId = await resolveBookingCustomerId(client, main, businessContext);
         const insertedRows = [];
         const generatedIds = [];
+        // Single lessons acquire conflict locks before reserving a booking number.
+        // Keep the same order here so a racing series cannot deadlock with one.
+        await lockBookingConflictResources(client, candidates, businessContext);
         for (const candidate of candidates) {
             candidate.id = await generateBookingNumber(client);
             generatedIds.push(candidate.id);
         }
         const rootBookingId = generatedIds[0];
-        await lockBookingConflictResources(client, candidates, businessContext);
 
         for (let index = 0; index < candidates.length; index += 1) {
             const candidate = candidates[index];
@@ -6317,6 +6338,10 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     if (roomError) { return res.status(400).json({ error: roomError }); }
     const capacityError = await validateBookingTimelineResourceCapacity(pool, b, businessContext);
     if (capacityError) { return res.status(409).json({ success: false, error: capacityError.error, resource: capacityError.resource }); }
+    const lessonDurationError = educationDurationError(b);
+    if (lessonDurationError) return res.status(400).json({ error: lessonDurationError });
+    const existingLessonDurationError = educationDurationError({ ...b, extraData: old.extra_data });
+    if (existingLessonDurationError) return res.status(400).json({ error: existingLessonDurationError });
     const workingHoursDuration = parseInt(b.duration, 10) || 0;
     if (workingHoursDuration < 0 || workingHoursDuration > 1440) {
         return res.status(400).json({ error: 'Duration must be between 0 and 1440 minutes' });

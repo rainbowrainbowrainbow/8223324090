@@ -346,6 +346,13 @@ const CSS_SURFACE = [
         reason: 'HR workspace styles extracted from hr.html; large-file consolidation candidate.'
     },
     {
+        file: 'css/hr-today-print.css',
+        owner: 'hr',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Read-only Today attendance print dialog and A4 sheet.'
+    },
+    {
         file: 'css/kleshnya-widget.css',
         owner: 'kleshnya',
         category: 'feature-shared',
@@ -491,6 +498,13 @@ const CSS_SURFACE = [
         category: 'page-scoped',
         status: 'active',
         reason: 'Finance payroll transparency, role-hour breakdown, and simultaneous additional-pay styles.'
+    },
+    {
+        file: 'css/finance-redesign.css',
+        owner: 'finance',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Finance workspace navigation, compact overview, responsive layouts, and light/dark interaction states.'
     },
     {
         file: 'css/cashier-payments.css',

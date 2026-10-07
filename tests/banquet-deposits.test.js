@@ -404,6 +404,69 @@ test('confirmDeposit rejects unsupported payment method before update', async ()
     );
 });
 
+function confirmedRetryRow(status = 'accountant_verified') {
+    const receivedDate = '2099-06-01';
+    const verifiedAt = '2099-06-01T00:00:00.000Z';
+    return depositRow({ status, paid_amount: 1000, accounting_status: 'Підтверджено',
+        corrected_at: status === 'corrected' ? '2099-06-02T00:00:00.000Z' : null,
+        corrected_by: status === 'corrected' ? 11 : null,
+        source_payload: { accountantConfirmation: {
+            source: 'banquetDeposits.confirmDeposit', receivedDate, verifiedAt,
+            sourcePayload: { receipt: 'LOCAL-ONLY' }
+        } },
+        meta: { accountantConfirmation: { receivedDate, verifiedAt, note: null } }
+    });
+}
+
+for (const status of ['accountant_verified', 'corrected', 'needs_booking_link']) {
+    test(`confirmDeposit identical ${status} retry preserves history without an UPDATE`, async () => {
+        const row = confirmedRetryRow(status);
+        if (status === 'needs_booking_link') row.primary_booking_id = null;
+        const fixture = fakeDb(async text => {
+            if (/FROM banquet_deposits/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [row] };
+            throw new Error('An identical confirmation must not write a correction');
+        });
+        const result = await confirmDeposit({ depositId: 10, businessContext: 'event_genix', amount: '1000',
+            paymentMethod: 'cash', receivedDate: '2099-06-01', actor: { id: 12 },
+            sourcePayload: { receipt: 'LOCAL-ONLY' } }, { pool: fixture.pool });
+        assert.equal(result.deposit.status, status);
+        assert.equal(result.deposit.verifiedBy, 9);
+        assert.equal(result.deposit.correctedAt, row.corrected_at);
+        assert.equal(result.deposit.updatedAt, row.updated_at);
+        assert.equal(fixture.queries.some(query => /UPDATE/i.test(query.text) && !/FOR UPDATE/i.test(query.text)), false);
+    });
+}
+
+for (const change of [{ amount: 1500 }, { paymentMethod: 'card' }, { note: 'Actual correction' },
+    { sourcePayload: { receipt: 'DIFFERENT-LOCAL-RECEIPT' } }, { receivedDate: '2099-06-02' }]) {
+    test(`confirmDeposit retains genuine correction for changed ${Object.keys(change)[0]}`, async () => {
+        let updated = false;
+        const fixture = fakeDb(async (text, params) => {
+            if (/FROM banquet_deposits/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [confirmedRetryRow()] };
+            if (/UPDATE banquet_deposits/i.test(text)) {
+                updated = true;
+                assert.equal(params[2], 'corrected');
+                return { rows: [depositRow({ status: params[2], amount: params[0], paid_amount: params[0] })] };
+            }
+            throw new Error('Unexpected query');
+        });
+        await confirmDeposit({ depositId: 10, businessContext: 'event_genix', amount: 1000,
+            paymentMethod: 'cash', receivedDate: '2099-06-01', actor: { id: 12 },
+            sourcePayload: { receipt: 'LOCAL-ONLY' }, ...change }, { pool: fixture.pool });
+        assert.equal(updated, true);
+    });
+}
+
+test('confirmDeposit validates an already verified replay before accepting it', async () => {
+    const fixture = fakeDb(async text => {
+        if (/FROM banquet_deposits/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [confirmedRetryRow()] };
+        throw new Error('Invalid replay must not update');
+    });
+    await assert.rejects(() => confirmDeposit({ depositId: 10, businessContext: 'event_genix', amount: 0,
+        paymentMethod: 'cash', receivedDate: '2099-06-01', sourcePayload: { receipt: 'LOCAL-ONLY' } },
+    { pool: fixture.pool }), error => error instanceof BanquetDepositError);
+});
+
 test('attachAccountantTask links task id without marking accountant correction', async () => {
     let updateParams = null;
     const fixture = fakeDb(async (text, params) => {

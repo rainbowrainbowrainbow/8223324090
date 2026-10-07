@@ -36,13 +36,15 @@ test('warehouse intake references and product fallback with actual disposable Po
     assert.match(database, /^eventgenix_membership_test_[a-f0-9]{32}$/);
     const admin = new Pool({ ...connection, max: 1, connectionTimeoutMillis: 5000 });
     const ids = ['../../db', '../../services/telegram', '../../middleware/auth',
-        '../../services/warehousePhotoIntake', '../../routes/products'].map(require.resolve);
+        '../../services/warehousePhotoIntake', '../../routes/products', '../../middleware/rateLimit'].map(require.resolve);
     const previous = new Map(ids.map(id => [id, require.cache[id]]));
     let pool;
     let server;
     let created = false;
     const forbiddenProvider = () => { throw new Error('External provider access is forbidden in this fixture'); };
     const originalFetch = global.fetch;
+    const priorAiEnv = { key: process.env.OPENAI_API_KEY, base: process.env.OPENAI_API_BASE };
+    let aiRaw;
     global.fetch = async (url, options) => {
         assert.equal(new URL(url).hostname, '127.0.0.1', 'Only the loopback fixture HTTP server may be accessed');
         return originalFetch(url, options);
@@ -80,10 +82,15 @@ test('warehouse intake references and product fallback with actual disposable Po
         install(ids[1], { downloadTelegramFileById: forbiddenProvider, getTelegramBotConfigStatus: forbiddenProvider });
         install(ids[2], { authenticateToken: (req, res, next) => next(),
             requireRole: () => (req, res, next) => next(), requireAction: () => (req, res, next) => next() });
+        // This database/costing fixture uses deterministic auth and no rate budget;
+        // rate-limit behavior is covered by its dedicated middleware tests.
+        install(ids[5], { createWriteRateLimiter: () => (req, res, next) => next() });
         delete require.cache[ids[3]];
         delete require.cache[ids[4]];
         const intake = require(ids[3]);
         const app = express();
+        app.use(express.json());
+        app.post('/v1/responses', (req, res) => res.json({ output_text: JSON.stringify(aiRaw) }));
         app.use((req, res, next) => {
             req.user = { id: 42, username: 'fixture_member', role: 'creator', business_contexts: ['event_genix'], default_business_context: 'event_genix' };
             next();
@@ -91,6 +98,8 @@ test('warehouse intake references and product fallback with actual disposable Po
         app.use('/api/products', require(ids[4]));
         server = await new Promise(resolve => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); });
         const base = `http://127.0.0.1:${server.address().port}`;
+        process.env.OPENAI_API_KEY = 'synthetic-loopback-fixture';
+        process.env.OPENAI_API_BASE = base + '/v1';
         await pool.query("INSERT INTO warehouse_locations (id,business_context) VALUES (11,'event_genix'),(12,'dar')");
         await pool.query("INSERT INTO warehouse_stock (id,business_context,name,category,unit,quantity,location_id) VALUES (11,'event_genix','Fixture Park','craft','шт',10,11),(12,'dar','Fixture Dar','craft','шт',20,12)");
 
@@ -164,8 +173,41 @@ test('warehouse intake references and product fallback with actual disposable Po
             assert.equal(payload.catalogs[0].pageCount, 1);
             assert.equal(payload.catalogs[0].itemCount, 1);
         });
+        await t.test('menu costing uses PostgreSQL prices, preserves zero/null and rejects fabricated quantities', async () => {
+            await pool.query(`ALTER TABLE warehouse_locations ADD COLUMN name TEXT;
+                ALTER TABLE warehouse_stock ADD COLUMN preferred_contractor_id INT;
+                CREATE TABLE contractors(id INT PRIMARY KEY,last_order_price NUMERIC);
+                UPDATE warehouse_stock SET purchase_unit_price=10 WHERE id=11;
+                UPDATE warehouse_stock SET purchase_unit_price=999 WHERE id=12`);
+            async function cost(quantity, estimatedCost, stockId=11, unit='шт') {
+                aiRaw = { ingredients: [{ stockId, label: 'Fixture ingredient', quantity, unit }], priceCost: { estimatedCost } };
+                const response = await fetch(base + '/api/products/menu-ai-draft', { method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Business-Context': 'event_genix' },
+                    body: JSON.stringify({ currentCard: {} }) });
+                assert.equal(response.status,200);
+                const payload = await response.json();
+                assert.equal(payload.source,'ai');
+                assert.ok(payload.warehouseCandidates.every(row => row.stockId !== 12));
+                return payload.draft.blocks.priceCost.proposal;
+            }
+            for (const value of [undefined,null,'',' ']) assert.equal((await cost(2,value)).estimatedCost,20);
+            for (const value of [0,'0']) assert.equal((await cost(2,value)).estimatedCost,0);
+            for (const quantity of [-2,0,0.5,1.5,'bad']) {
+                const result=await cost(quantity,null);
+                assert.equal(result.estimatedCost,null);assert.equal(result.confidence,'unknown');
+            }
+            assert.equal((await cost('3',null)).estimatedCost,30);
+            assert.equal((await cost(2,null,12)).estimatedCost,null,'foreign-company price cannot enter costing');
+            assert.equal((await cost(2,null,11,'кг')).estimatedCost,null,'units are not silently converted');
+            await pool.query('UPDATE warehouse_stock SET purchase_unit_price=NULL WHERE id=11');
+            assert.equal((await cost(2,null)).estimatedCost,null);
+            assert.equal((await pool.query('SELECT quantity FROM warehouse_stock WHERE id=11')).rows[0].quantity,13,'draft generation never writes off stock');
+        });
     } finally {
         global.fetch = originalFetch;
+        for (const [key,value] of [['OPENAI_API_KEY',priorAiEnv.key],['OPENAI_API_BASE',priorAiEnv.base]]) {
+            if (value === undefined) delete process.env[key]; else process.env[key]=value;
+        }
         if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
         for (const [id, entry] of previous) {
             if (entry) require.cache[id] = entry;

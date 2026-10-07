@@ -92,6 +92,7 @@ function createPage({ canManage, cabinet, businessContext = 'dar', confirmations
     const documentListeners = {};
     const document = {
         readyState: 'complete',
+        body: { dataset: {} },
         getElementById: getElement,
         querySelectorAll() { return []; },
         addEventListener(name, handler) { documentListeners[name] = handler; }

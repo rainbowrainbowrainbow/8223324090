@@ -18,18 +18,25 @@ async function withHrRouter(run) {
             assert.doesNotMatch(normalized, /hourly_rate|rate_unit|estimated_salary|payroll|profession_rate|salary/i);
             if (state.failQuery) throw new Error('Synthetic database failure');
             let rows = [];
-            if (normalized.startsWith('SELECT s.id, s.name FROM staff s')) {
-                rows = [{ id: 9701, name: 'Synthetic Park Worker', hourly_rate: 12345, account_secret: 'PRIVATE' }];
+            if (normalized.startsWith('SELECT s.id, s.name, s.role_type FROM staff s')) {
+                rows = [{ id: 9701, name: 'Synthetic Park Worker', role_type: 'animator',
+                    hourly_rate: 12345, account_secret: 'PRIVATE' }];
             } else if (normalized.includes('FROM hr_shifts WHERE')) {
-                rows = [{ staff_id: 9701, days_scheduled: 2 }];
+                rows = [
+                    { id: 71, staff_id: 9701, shift_date: '2026-09-24', planned_start: '09:00', planned_end: '17:00' },
+                    { id: 72, staff_id: 9701, shift_date: '2026-09-25', planned_start: '09:00', planned_end: '17:00' }
+                ];
             } else if (normalized.includes('FROM hr_time_records tr')) {
-                rows = [{ staff_id: 9701, clock_in: '2026-09-24T08:00:00Z', status: 'present',
+                assert.match(normalized, /tr\.business_context = 'event_genix'/);
+                rows = [{ id: 81, staff_id: 9701, record_date: '2026-09-24', clock_in: '2026-09-24T08:00:00Z', status: 'present',
                     late_minutes: 7, early_leave_minutes: 0, overtime_minutes: 20,
                     total_worked_minutes: 480, plan_source: 'hr_shift' }];
             } else if (normalized.includes('FROM tasks t')) {
                 assert.match(normalized, /t\.business_context = 'event_genix'/);
                 assert.match(normalized, /JOIN employee_profiles ep/);
                 rows = [{ staff_id: 9701, tasks_assigned: 2, tasks_done: 1, tasks_overdue: 0,
+                    tasks_assigned_details: [{ id: 91, title: 'Synthetic task', compensation: 'PRIVATE' }],
+                    tasks_done_details: [{ id: 91, title: 'Synthetic task' }],
                     compensation: { estimated_salary: 12345 } }];
             }
             return { rows: structuredClone(rows), rowCount: rows.length };
@@ -119,8 +126,18 @@ test('Park monthly report uses exact GET, current membership and non-payroll pro
             assert.deepEqual(response.body.reportAccess, { readOnly: true, exportAllowed: false, businessContext: 'event_genix' });
             assert.equal(response.body.data.length, 1);
             assert.equal(response.body.data[0].staff_name, 'Synthetic Park Worker');
+            assert.equal(response.body.data[0].role_type, 'animator');
             assert.equal(response.body.data[0].total_worked_hours, 8);
-            assert.deepEqual(response.body.data[0].task_kpi, { tasks_assigned: 2, tasks_done: 1, tasks_overdue: 0 });
+            assert.equal(response.body.data[0].total_overtime_minutes, 20);
+            assert.equal(response.body.data[0].days_scheduled, 2);
+            assert.equal(response.body.data[0].planned_worked_count, 1);
+            assert.equal(response.body.data[0].attendance_rate, 50);
+            assert.equal(response.body.data[0].attendance_details.scheduled.length, 2);
+            assert.deepEqual(response.body.data[0].task_kpi, {
+                tasks_assigned: 2, tasks_done: 1, tasks_overdue: 0,
+                tasks_assigned_details: [{ id: 91, title: 'Synthetic task' }],
+                tasks_done_details: [{ id: 91, title: 'Synthetic task' }], tasks_overdue_details: []
+            });
             assert.doesNotMatch(response.text, /hourly_rate|rate_unit|estimated_salary|profession_rate|PRIVATE|compensation/i);
             assert.equal(calls.length, 4);
             state.actor = {};

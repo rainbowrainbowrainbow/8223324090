@@ -20,21 +20,21 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.82.56">
-    <link rel="stylesheet" href="css/auth.css?v=0.82.56">
-    <link rel="stylesheet" href="css/layout.css?v=0.82.56">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.82.56">
-    <link rel="stylesheet" href="css/timeline.css?v=0.82.56">
-    <link rel="stylesheet" href="css/panel.css?v=0.82.56">
-    <link rel="stylesheet" href="css/modals.css?v=0.82.56">
-    <link rel="stylesheet" href="css/controls.css?v=0.82.56">
-    <link rel="stylesheet" href="css/features.css?v=0.82.56">
-    <link rel="stylesheet" href="css/certificate-image-export.css?v=0.82.56">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.82.56">
-    <link rel="stylesheet" href="css/responsive.css?v=0.82.56">
-    <link rel="stylesheet" href="css/education-schedule.css?v=0.82.56">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.82.56">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.82.56">
+    <link rel="stylesheet" href="css/base.css?v=0.82.70">
+    <link rel="stylesheet" href="css/auth.css?v=0.82.70">
+    <link rel="stylesheet" href="css/layout.css?v=0.82.70">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.82.70">
+    <link rel="stylesheet" href="css/timeline.css?v=0.82.70">
+    <link rel="stylesheet" href="css/panel.css?v=0.82.70">
+    <link rel="stylesheet" href="css/modals.css?v=0.82.70">
+    <link rel="stylesheet" href="css/controls.css?v=0.82.70">
+    <link rel="stylesheet" href="css/features.css?v=0.82.70">
+    <link rel="stylesheet" href="css/certificate-image-export.css?v=0.82.70">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.82.70">
+    <link rel="stylesheet" href="css/responsive.css?v=0.82.70">
+    <link rel="stylesheet" href="css/education-schedule.css?v=0.82.70">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.82.70">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.82.70">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -54,11 +54,11 @@
                     <span class="login-signal-message login-signal-hello" aria-hidden="true">Привіт!</span>
                     <span class="login-signal-message login-signal-reply" aria-hidden="true">На зв’язку ✨</span>
                 </button>
-                <div class="login-release-badge" aria-label="Поточний реліз 0.82.56">✨ 0.82.56</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.82.70">✨ 0.82.70</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.82.56 — Клієнти: достовірні дані та безпечні дії</p>
+                <p class="tagline">AI First CRM v0.82.70 — HR: завершені задачі та деталі звіту</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.82.56</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.82.70</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -215,24 +215,38 @@
                 <section class="education-today-panel" id="educationGroupsPanel" hidden aria-label="Групи занять">
                     <div class="education-today-heading"><div><p class="education-schedule-eyebrow">СКЛАД ДІТЕЙ</p><h2>Групи</h2></div></div>
                     <p id="educationGroupsStatus" role="status" aria-live="polite"></p>
+                    <button type="button" id="educationGroupRetry" class="btn-secondary education-action" hidden>Повторити завантаження групи</button>
+                    <details id="educationTeacherManager" class="education-teacher-manager">
+                        <summary>Викладачі навчального центру</summary>
+                        <p>Додайте викладача до цього бізнесу перед першим призначенням групі або заняттю.</p>
+                        <form id="educationTeacherCreateForm" class="education-group-form">
+                            <label>Ім’я та прізвище<input id="educationTeacherName" maxlength="100" required autocomplete="off"></label>
+                            <button type="submit" class="btn-submit education-action">Додати викладача</button>
+                        </form>
+                        <p id="educationTeacherManagerStatus" role="status" aria-live="polite"></p>
+                        <button id="educationTeacherManagerRefresh" type="button" class="btn-secondary education-action">Оновити викладачів</button>
+                        <ul id="educationTeacherManagerList" class="education-member-list"></ul>
+                    </details>
                     <div class="education-groups-layout">
                         <div><label for="educationGroupsList">Група</label><select id="educationGroupsList"><option value="">Нова група</option></select>
                             <form id="educationGroupForm" class="education-group-form">
                                 <label>Назва<input id="educationGroupName" maxlength="120" required></label>
                                 <label>Викладач<select id="educationGroupTeacher"><option value="">Без викладача</option></select></label>
+                                <p id="educationGroupTeacherStatus" role="status" aria-live="polite"></p>
+                                <button type="button" id="educationTeachersRetry" class="btn-secondary education-action" hidden>Повторити завантаження викладачів</button>
                                 <label>Місткість<input id="educationGroupCapacity" type="number" min="1" max="500" value="12" required></label>
-                                <div><button type="submit" class="btn-primary">Зберегти групу</button> <button type="button" id="educationGroupArchive" class="btn-secondary" hidden>Архівувати</button></div>
+                                <div class="education-action-row"><button type="submit" class="btn-submit education-action">Зберегти групу</button><button type="button" id="educationGroupArchive" class="btn-secondary education-action education-action--danger" hidden>Архівувати</button></div>
                             </form>
                         </div>
                         <div id="educationGroupRoster" hidden>
                             <h3>Склад і наповнення</h3><p id="educationGroupOccupancy"></p>
                             <form id="educationGroupEnrollForm" class="education-group-form">
                                 <label>Пошук дитини<input id="educationChildSearch" type="search" minlength="2" placeholder="Імʼя дитини або батьків"></label>
-                                <button type="button" id="educationChildFind" class="btn-secondary">Знайти</button>
+                                <button type="button" id="educationChildFind" class="btn-secondary education-action">Знайти</button>
                                 <label>Дитина<select id="educationChildSelect" required><option value="">Оберіть дитину</option></select></label>
                                 <label>Дата початку<input id="educationMemberStart" type="date" required></label>
                                 <label>Дата завершення (необовʼязково)<input id="educationMemberEnd" type="date"></label>
-                                <button type="submit" class="btn-primary">Зарахувати</button>
+                                <button type="submit" class="btn-submit education-action">Зарахувати</button>
                             </form>
                             <div id="educationGroupMembers"></div>
                         </div>
@@ -243,11 +257,11 @@
                     <div class="education-schedule-filters">
                         <label>Дата<input id="educationAttendanceDate" type="date"></label>
                         <label>Заняття<select id="educationAttendanceLesson"><option value="">Оберіть заняття</option></select></label>
-                        <button type="button" id="educationAttendanceReload" class="btn-secondary">Оновити</button>
+                        <button type="button" id="educationAttendanceReload" class="btn-secondary education-action">Оновити</button>
                     </div>
                     <p id="educationAttendanceStatus" role="status" aria-live="polite"></p>
                     <div id="educationAttendanceJournal"></div>
-                    <button type="button" id="educationAttendanceSave" class="btn-primary" hidden>Зберегти журнал</button>
+                    <button type="button" id="educationAttendanceSave" class="btn-submit education-action" hidden>Зберегти журнал</button>
                 </section>
                 <section class="education-today-panel" id="educationReportsPanel" hidden aria-label="Звіт відвідування">
                     <div class="education-today-heading"><div><p class="education-schedule-eyebrow">ЗВІТ ЗА ПЕРІОД</p><h2>Заняття і відвідування</h2></div></div>
@@ -255,7 +269,7 @@
                         <label>Від<input id="educationReportFrom" type="date"></label>
                         <label>До<input id="educationReportTo" type="date"></label>
                         <label>Група<select id="educationReportGroup"><option value="">Усі групи</option></select></label>
-                        <button type="button" id="educationReportRun" class="btn-secondary">Показати</button>
+                        <button type="button" id="educationReportRun" class="btn-secondary education-action">Показати</button>
                     </div>
                     <p id="educationReportStatus" role="status" aria-live="polite"></p>
                     <div id="educationReportResult"></div>
@@ -354,7 +368,7 @@
                     <div class="time-scale" id="timeScale"></div>
                     <div class="timeline-lines" id="timelineLines"></div>
                     <!-- Кнопка додати лінію -->
-                    <button id="addLineBtn" class="btn-add-line-big" title="Надіслати запит на додавання аніматора через Telegram">
+                    <button id="addLineBtn" class="btn-add-line-big" title="Одразу додати нову лінію аніматора">
                         <span>+</span>
                         <span>Додати аніматора</span>
                     </button>
@@ -389,7 +403,7 @@
                 <span aria-hidden="true">✕</span>
             </button>
             <div class="panel-header">
-                <h3>Нове бронювання</h3>
+                <h3 id="bookingPanelHeading">Нове бронювання</h3>
                 <button id="closePanel" class="btn-close booking-panel-close" type="button" title="Закрити панель бронювання" aria-label="Закрити панель бронювання" data-booking-panel-close>
                     <span aria-hidden="true">✕</span>
                     <span class="booking-panel-close-label">Закрити</span>
@@ -459,6 +473,68 @@
                         </select>
                     </label>
                     <button type="button" id="maysternyaCloseSlotBtn" class="maysternya-close-slot-btn">Закрити слот</button>
+                </div>
+
+                <div id="educationLessonSection" class="education-lesson-section hidden" aria-live="polite">
+                    <div class="education-lesson-heading">
+                        <span>Навчальне заняття</span>
+                        <small>Кабінет, група і викладач зберігаються разом із записом</small>
+                    </div>
+                    <div class="education-lesson-grid">
+                        <label>
+                            Тема заняття
+                            <input type="text" id="educationLessonTitle" maxlength="160" placeholder="Напр: Англійська A2">
+                        </label>
+                        <label>
+                            Викладач
+                            <select id="educationLessonTeacher">
+                                <option value="">Без викладача</option>
+                            </select>
+                            <span id="educationLessonTeacherStatus" role="status" aria-live="polite"></span>
+                            <button type="button" id="educationLessonTeachersRetry" class="btn-secondary" hidden>Повторити завантаження викладачів</button>
+                        </label>
+                        <label>
+                            Назва для відображення
+                            <input type="text" id="educationLessonGroup" maxlength="120" placeholder="Напр: 5-Б, група A2">
+                            <small>Назва зберігається в занятті. Склад дітей визначає повʼязана група нижче.</small>
+                        </label>
+                        <label>Група учнів<select id="educationLessonGroupId"><option value="">Без повʼязаної групи</option></select><small>Вибір групи заповнює назву й визначає склад дітей. Окрема назва не зараховує учнів.</small></label>
+                        <label for="educationLessonDate">Дата заняття
+                            <input type="date" id="educationLessonDate" min="0001-01-01" max="9999-12-31" disabled aria-describedby="educationLessonDateHint">
+                            <small id="educationLessonDateHint">Для серії це дата першого заняття. Дати вказано за київським часом.</small>
+                        </label>
+                        <label for="educationLessonDuration">Тривалість заняття (хвилини)
+                            <input type="number" id="educationLessonDuration" min="1" max="1440" step="1" value="60" required aria-describedby="educationLessonDurationHint">
+                            <small id="educationLessonDurationHint">Цілі хвилини, наприклад 30, 45, 60 або 90.</small>
+                        </label>
+                        <label>
+                            Курс / серія
+                            <input type="text" id="educationLessonCourse" maxlength="120" placeholder="Напр: Весняний курс">
+                        </label>
+                    </div>
+                    <div class="education-lesson-grid education-lesson-grid--compact">
+                        <label>
+                            Занять у серії
+                            <input type="number" id="educationLessonSeriesSize" min="1" max="120" placeholder="1">
+                        </label>
+                        <label>
+                            Повторення
+                            <select id="educationLessonRepeatEvery">
+                                <option value="weekly">Щотижня</option>
+                                <option value="daily">Щодня</option>
+                                <option value="biweekly">Раз на два тижні</option>
+                            </select>
+                        </label>
+                        <label>
+                            Тип заняття
+                            <select id="educationLessonType">
+                                <option value="lesson">Заняття</option>
+                                <option value="consultation">Консультація</option>
+                                <option value="exam">Контроль / іспит</option>
+                                <option value="workshop">Практикум</option>
+                            </select>
+                        </label>
+                    </div>
                 </div>
 
                 <section class="booking-section booking-room-first-section">
@@ -586,57 +662,6 @@
                 </div>
                 </section>
 
-                <div id="educationLessonSection" class="education-lesson-section hidden" aria-live="polite">
-                    <div class="education-lesson-heading">
-                        <span>Навчальне заняття</span>
-                        <small>Кабінет, група і викладач зберігаються разом із записом</small>
-                    </div>
-                    <div class="education-lesson-grid">
-                        <label>
-                            Тема заняття
-                            <input type="text" id="educationLessonTitle" maxlength="160" placeholder="Напр: Англійська A2">
-                        </label>
-                        <label>
-                            Викладач
-                            <select id="educationLessonTeacher">
-                                <option value="">Без викладача</option>
-                            </select>
-                        </label>
-                        <label>
-                            Група / клас
-                            <input type="text" id="educationLessonGroup" maxlength="120" placeholder="Напр: 5-Б, група A2">
-                        </label>
-                        <label>Група зі складом дітей<select id="educationLessonGroupId"><option value="">Без повʼязаної групи</option></select></label>
-                        <label>
-                            Курс / серія
-                            <input type="text" id="educationLessonCourse" maxlength="120" placeholder="Напр: Весняний курс">
-                        </label>
-                    </div>
-                    <div class="education-lesson-grid education-lesson-grid--compact">
-                        <label>
-                            Занять у серії
-                            <input type="number" id="educationLessonSeriesSize" min="1" max="120" placeholder="1">
-                        </label>
-                        <label>
-                            Повторення
-                            <select id="educationLessonRepeatEvery">
-                                <option value="weekly">Щотижня</option>
-                                <option value="daily">Щодня</option>
-                                <option value="biweekly">Раз на два тижні</option>
-                            </select>
-                        </label>
-                        <label>
-                            Тип заняття
-                            <select id="educationLessonType">
-                                <option value="lesson">Заняття</option>
-                                <option value="consultation">Консультація</option>
-                                <option value="exam">Контроль / іспит</option>
-                                <option value="workshop">Практикум</option>
-                            </select>
-                        </label>
-                    </div>
-                </div>
-
                 <div id="bookingEventFields" class="booking-event-fields hidden">
                 <section class="booking-section booking-event-section">
                 <div class="booking-section-heading">
@@ -694,7 +719,7 @@
                 <div class="form-section">
                     <label>Програма</label>
                     <div class="program-search-wrap">
-                        <input type="text" id="programSearch" class="program-search-input" placeholder="Пошук програми..." autocomplete="off">
+                        <input type="text" id="programSearch" class="program-search-input" aria-label="Пошук програми" placeholder="Пошук програми..." autocomplete="off">
                     </div>
                     <div id="programCategoryChips" class="program-category-chips" aria-label="Категорії програм"></div>
                     <div class="programs-icons" id="programsIcons">
@@ -1153,7 +1178,7 @@
     <!-- Модальне вікно деталей бронювання -->
     <div id="bookingModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Деталі бронювання">
         <div class="modal-content booking-detail-modal-content">
-            <span class="modal-close">&times;</span>
+            <button type="button" class="modal-close" aria-label="Закрити деталі бронювання">&times;</button>
             <div id="bookingDetails"></div>
         </div>
     </div>
@@ -1207,8 +1232,8 @@
             <div class="settings-sections">
                 <!-- Режим таймлайну -->
                 <div class="settings-section" id="settingsTimelineDisplaySection">
-                    <h4>🧭 Бізнес-кабінет таймлайну</h4>
-                    <p class="digest-hint">Кнопками оберіть, чи потрібен бізнесу таймлайн, який саме сценарій показувати, які модулі й дії лишити видимими.</p>
+                    <h4 data-education-copy="Налаштування занять">🧭 Бізнес-кабінет таймлайну</h4>
+                    <p class="digest-hint" data-education-copy="Налаштуйте розклад, кабінети й доступні розділи навчального центру.">Кнопками оберіть, чи потрібен бізнесу таймлайн, який саме сценарій показувати, які модулі й дії лишити видимими.</p>
                     <div class="form-group timeline-native-selects">
                         <label for="settingsTimelineDisplayMode">Тип відображення:</label>
                         <select id="settingsTimelineDisplayMode">
@@ -1255,8 +1280,8 @@
 
                         <div class="timeline-control-block business-cabinet-shell-block">
                             <div class="timeline-control-block-head">
-                                <strong>Shell-модулі бізнесу</strong>
-                                <span>Це керує тим, які основні входи CRM видно для активного бізнесу. Дашборд і налаштування лишаються як безпечний fallback.</span>
+                                <strong data-education-copy="Розділи навчального центру">Shell-модулі бізнесу</strong>
+                                <span data-education-copy="Оберіть розділи в меню цього бізнесу. Панель огляду й налаштування залишаються доступними.">Це керує тим, які основні входи CRM видно для активного бізнесу. Дашборд і налаштування лишаються як безпечний fallback.</span>
                             </div>
                             <div id="settingsBusinessModuleGrid" class="timeline-toggle-grid business-module-grid" role="group" aria-label="Shell-модулі бізнесу"></div>
                             <div id="settingsBusinessGuardrails" class="business-cabinet-guardrails" aria-live="polite"></div>
@@ -1265,7 +1290,7 @@
                         <div class="timeline-control-block">
                             <div class="timeline-control-block-head">
                                 <strong>Сценарій таймлайну</strong>
-                                <span>Це змінює реальну presentation-логіку, а не тільки назву.</span>
+                                <span data-education-copy="Оберіть спосіб ведення розкладу для цього бізнесу.">Це змінює реальну presentation-логіку, а не тільки назву.</span>
                             </div>
                             <div class="timeline-control-grid" role="group" aria-label="Сценарій таймлайну">
                                 <button type="button" class="timeline-preset-button" data-timeline-preset="disabled" data-mode="disabled">Без таймлайну<small>Для бізнесів без розкладу</small></button>
@@ -1343,7 +1368,7 @@
                                 <button type="button" class="timeline-toggle-button" data-timeline-feature="afisha">Афіша</button>
                                 <button type="button" class="timeline-toggle-button" data-timeline-feature="kitchen">Кухня</button>
                                 <button type="button" class="timeline-toggle-button" data-timeline-feature="compactBlocks">Компактні блоки</button>
-                                <button type="button" class="timeline-toggle-button" data-timeline-feature="seriesBadge">Маркер #1/N</button>
+                                <button type="button" class="timeline-toggle-button" data-timeline-feature="seriesBadge" data-education-copy="Номер заняття в серії">Маркер #1/N</button>
                                 <button type="button" class="timeline-toggle-button" data-timeline-feature="teacherConflict">Конфлікт викладача</button>
                                 <button type="button" class="timeline-toggle-button" data-timeline-feature="resourceCapacity">Місткість кабінету</button>
                             </div>
@@ -1364,7 +1389,7 @@
                         </div>
                     </div>
                     <div id="settingsTimelineDisplayPreview" class="digest-hint"></div>
-                    <button type="button" id="settingsSaveTimelineDisplayBtn" class="btn-submit">Зберегти кабінет таймлайну</button>
+                    <button type="button" id="settingsSaveTimelineDisplayBtn" class="btn-submit" data-education-copy="Зберегти налаштування занять">Зберегти кабінет таймлайну</button>
                     <div id="settingsTimelineResourcesCard" class="timeline-resources-card hidden" aria-live="polite">
                         <div class="timeline-resources-head">
                             <div>
@@ -1914,7 +1939,112 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                <div class="changelog-section">
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                <div class="changelog-section">
+                    <h4>v0.82.70 — HR: завершені задачі та деталі звіту</h4>
+                    <ul>
+                        <li><b>HR: завершені задачі та деталі звіту</b> — release marker, cache tags and visible version metadata were prepared automatically.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.69 — Hermes: читання фактичних приходів</h4>
+                    <ul>
+                        <li><b>Фактичні приходи</b> — Hermes отримує записи приходів за день або період до 31 дня з часом Europe/Kyiv; плановий графік і зарплати не підміняють фактичні дані.</li>
+                        <li><b>Захищене читання</b> — Чинна машинна авторизація, права та ізоляція бізнесу збережені. Порожні результати повертаються без створення записів; некоректні фільтри відхиляються.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.68 — Сесії та ручні завдатки: надійне підтвердження</h4>
+                    <ul>
+                        <li><b>Сесії та ручні завдатки: надійне підтвердження</b> — release marker, cache tags and visible version metadata were prepared automatically.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.67 — Оновлення залежностей і стан чату</h4>
+                    <ul>
+                        <li><b>Оновлення залежностей</b> — Оновлено наявні бібліотеки завантаження файлів та допоміжні залежності; актуальний аудит більше не знаходить раніше виявлених вразливостей.</li>
+                        <li><b>Лічильник чату</b> — Лічильник не надсилає зайвих запитів до недоступного чату та відкидає відповіді попереднього бізнесу або сесії. Чинні обмеження доступу збережено.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.66 — HR: стабільне завантаження звітів</h4>
+                    <ul>
+                        <li><b>Відкриття HR-звіту</b> — Місячний звіт завантажується після підтвердження бізнесу без ручного повторного запиту.</li>
+                        <li><b>Допоміжні дані HR</b> — Зв’язки акаунтів і звіт за ролями показують зрозумілий стан доступності для вибраного бізнесу; основний звіт і бланк «Сьогодні» залишаються доступними за чинними правами.</li>
+                        <li><b>Перемикання бізнесу</b> — Запізнілі відповіді не повертають дані попереднього бізнесу у звіт або список працівників.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.65 — HR: друк, графік, ставки та звіти</h4>
+                    <ul>
+                        <li><b>Місячний графік</b> — Повний місяць має компактний і детальний перегляд. Експорт зберігає вибраний період.</li>
+                        <li><b>Ставки додаткових професій</b> — Ставка перевіряється для дати зміни, а її джерело видно лише тим, хто має право перегляду оплати.</li>
+                        <li><b>Місячні HR-звіти</b> — Роботу за графіком і поза ним показано окремо. Додано пошук, сортування та деталізацію показників.</li>
+                        <li><b>Бланк на сьогодні</b> — Друкований бланк показує заплановані зміни та схвалені професії без сум оплати й запису в CRM.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.64 — Фінанси: коректний розподіл часу й періодів</h4>
+                    <ul>
+                        <li><b>Підтверджений робочий час</b> — Сумарний розподіл хвилин одного HR-запису обмежено підтвердженим часом, з урахуванням одночасних запитів і повторних виправлень.</li>
+                        <li><b>Незвірені операції P&amp;L</b> — Незвірені операції відображаються у відповідному періоді; повторні виправлення зберігають період початкового погодинного впливу.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.63 — Таймлайн: додавання аніматора без Telegram</h4>
+                    <ul>
+                        <li><b>Лінія аніматора без Telegram</b> — Менеджер із правом створення бронювань може одразу додати одну аніматорську лінію на таймлайні свого активного бізнесу EventGenix.</li>
+                        <li><b>Збереження наявних ліній</b> — Додавання не перезаписує розклад; повторний запит не створює дубль, а одночасні запити отримують окремі лінії.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.62 — Заняття: повний цикл і довідник викладачів</h4>
+                    <ul>
+                        <li><b>Викладачі й групи</b> — перше призначення нового викладача, ізоляція бізнесу та безпечне перемикання груп.</li>
+                        <li><b>Заняття</b> — видима дата й тривалість, редагування без втрати даних, керування серіями.</li>
+                        <li><b>Журнал і звіти</b> — актуальне оновлення, контроль незбережених відміток і захист від запізнілих відповідей.</li>
+                        <li><b>Інтерфейс</b> — узгоджені кнопки й форми, контраст, адаптивність та виправлений submit у WebKit.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.61 — Персонал: доступ і деактивація акаунтів</h4>
+                    <ul>
+                        <li><b>Доступ у картці працівника</b> — Креатор і директор бачать логін, стан акаунта та можуть видати новий пароль у межах своїх прав. Новий пароль показується один раз.</li>
+                        <li><b>Автоматичне вимкнення при звільненні</b> — Повʼязані CRM-акаунти деактивуються, а їхні сесії завершуються. Помилка закриття доступу скасовує звільнення.</li>
+                        <li><b>Зрозуміле повідомлення</b> — Деактивований працівник бачить: «Ваш акаунт деактивовано. Зверніться до адміністратора».</li>
+                        <li><b>Контроль повторного доступу</b> — Скидання пароля за замовчуванням не активує вимкнений акаунт.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.60 — Фінанси: зрозумілий простір і собівартість послуг</h4>
+                    <ul>
+                        <li><b>Фінанси: зрозумілий простір і собівартість послуг</b> — release marker, cache tags and visible version metadata were prepared automatically.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.59 — Фінанси та точні розрахунки інтерфейсу</h4>
+                    <ul>
+                        <li><b>Фінанси та точні розрахунки інтерфейсу</b> — release marker, cache tags and visible version metadata were prepared automatically.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.58 — Заняття: стабільний розклад і журнал</h4>
+                    <ul>
+                        <li><b>Викладач без накладок</b> — Одночасні заняття не призначать його на два кабінети; конфлікт серії не створить частковий розклад.</li>
+                        <li><b>Дані свого бізнесу</b> — Запізнілі відповіді груп, журналу й звітів не переносять дані між бізнесами.</li>
+                        <li><b>Заняття під рукою</b> — Пункт меню доступний для навчального бізнесу, а вкладка зберігається після оновлення та повернення.</li>
+                        <li><b>Зручна форма й картка</b> — Подвійний клік не дублює групу; Escape закриває картку з поверненням фокусу, темні вкладки читабельні.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v0.82.57 — HR: ставки та додаткові професії</h4>
+                    <ul>
+                        <li><b>Ставки професій</b> — Повторне редагування зберігає наявні ставки. Причини недоступності додаткової професії показуються окремо.</li>
+                        <li><b>Оплата в графіку</b> — Для дати можна обрати налаштований варіант або разову ставку з причиною. Перехід у HR повертає до потрібних умов і зберігає чернетку зміни.</li>
+                        <li><b>Погодинна, денна та місячна оплата</b> — Основна оплата й додаткова професія рахуються окремо. Перерви враховуються, місячний оклад не множиться на кількість змін.</li>
+                        <li><b>Історія та доступ до сум</b> — Зафіксовані умови нарахування зберігаються. Разова ставка не переноситься при копіюванні на іншу дату, а зарплатні суми доступні лише за чинними правами.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
                     <h4>v0.82.56 — Клієнти: достовірні дані та безпечні дії</h4>
                     <ul>
                         <li><b>Чесна підготовка повідомлень</b> — Preview показує текст і повний сегмент без надсилання та записів про успішну доставку.</li>
@@ -6217,7 +6347,7 @@
                         <li><b>Контрольована write-QA</b> — «Зберегти основне» перевіряється на QA-працівнику з автоматичним відкатом значення.</li>
                     </ul>
                 </div>
-                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.82.56" aria-live="polite">
+                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.82.70" aria-live="polite">
                     <div class="center-state"><strong>Повна історія завантажиться за потреби</strong><small>Відкрийте цей журнал, щоб переглянути попередні релізи.</small></div>
                 </div>
             </div>
@@ -6520,51 +6650,51 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.82.56"></script>
-    <script src="js/timeline-visibility.js?v=0.82.56"></script>
-    <script src="js/kitchen-menu-images.js?v=0.82.56"></script>
-    <script src="js/config.js?v=0.82.56"></script>
-    <script src="js/api.js?v=0.82.56"></script>
-    <script src="js/ui.js?v=0.82.56"></script>
-    <script src="js/auth.js?v=0.82.56"></script>
-    <script src="js/crm-create-handoff.js?v=0.82.56"></script>
-    <script src="js/timeline-interaction-model.js?v=0.82.56"></script>
-    <script src="js/timeline-presentation.js?v=0.82.56"></script>
-    <script src="js/timeline-cache.js?v=0.82.56"></script>
-    <script src="js/timeline-resource-identity.js?v=0.82.56"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.82.56"></script>
-    <script src="js/event-cards.js?v=0.82.56"></script>
-    <script src="js/invite-config.js?v=0.82.56"></script>
-    <script src="js/invite-share.js?v=0.82.56"></script>
-    <script src="js/timeline.js?v=0.82.56"></script>
-    <script src="js/booking-drawer-state.js?v=0.82.56"></script>
-    <script src="js/booking-banquet-selector.js?v=0.82.56"></script>
-    <script src="js/booking-save-path.js?v=0.82.56"></script>
-    <script src="js/booking-package-renderer.js?v=0.82.56"></script>
-    <script src="js/booking-tickets.js?v=0.82.56"></script>
-    <script src="js/booking-banquet-detail.js?v=0.82.56"></script>
-    <script src="js/booking-activity-schedule.js?v=0.82.56"></script>
-    <script src="js/booking.js?v=0.82.56"></script>
-    <script src="js/certificate-preview.js?v=0.82.56"></script>
-    <script src="js/certificate-image-export.js?v=0.82.56"></script>
-    <script src="js/settings.js?v=0.82.56"></script>
-    <script src="js/booking-form.js?v=0.82.56"></script>
-    <script src="js/booking-linked.js?v=0.82.56"></script>
-    <script src="js/settings-dashboard.js?v=0.82.56"></script>
-    <script src="js/settings-history.js?v=0.82.56"></script>
-    <script src="js/settings-afisha.js?v=0.82.56"></script>
-    <script src="js/settings-certificates.js?v=0.82.56"></script>
-    <script src="js/offline.js?v=0.82.56"></script>
-    <script src="js/crm-feature-registry.js?v=0.82.56"></script>
-    <script src="js/search.js?v=0.82.56"></script>
-    <script src="js/ws.js?v=0.82.56"></script>
-    <script src="js/app.js?v=0.82.56"></script>
-    <script src="js/kleshnya-widget.js?v=0.82.56"></script>
-    <script src="js/components/sidebar.js?v=0.82.56"></script>
+    <script src="js/timeline-context.js?v=0.82.70"></script>
+    <script src="js/timeline-visibility.js?v=0.82.70"></script>
+    <script src="js/kitchen-menu-images.js?v=0.82.70"></script>
+    <script src="js/config.js?v=0.82.70"></script>
+    <script src="js/api.js?v=0.82.70"></script>
+    <script src="js/ui.js?v=0.82.70"></script>
+    <script src="js/auth.js?v=0.82.70"></script>
+    <script src="js/crm-create-handoff.js?v=0.82.70"></script>
+    <script src="js/timeline-interaction-model.js?v=0.82.70"></script>
+    <script src="js/timeline-presentation.js?v=0.82.70"></script>
+    <script src="js/timeline-cache.js?v=0.82.70"></script>
+    <script src="js/timeline-resource-identity.js?v=0.82.70"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.82.70"></script>
+    <script src="js/event-cards.js?v=0.82.70"></script>
+    <script src="js/invite-config.js?v=0.82.70"></script>
+    <script src="js/invite-share.js?v=0.82.70"></script>
+    <script src="js/timeline.js?v=0.82.70"></script>
+    <script src="js/booking-drawer-state.js?v=0.82.70"></script>
+    <script src="js/booking-banquet-selector.js?v=0.82.70"></script>
+    <script src="js/booking-save-path.js?v=0.82.70"></script>
+    <script src="js/booking-package-renderer.js?v=0.82.70"></script>
+    <script src="js/booking-tickets.js?v=0.82.70"></script>
+    <script src="js/booking-banquet-detail.js?v=0.82.70"></script>
+    <script src="js/booking-activity-schedule.js?v=0.82.70"></script>
+    <script src="js/booking.js?v=0.82.70"></script>
+    <script src="js/certificate-preview.js?v=0.82.70"></script>
+    <script src="js/certificate-image-export.js?v=0.82.70"></script>
+    <script src="js/settings.js?v=0.82.70"></script>
+    <script src="js/booking-form.js?v=0.82.70"></script>
+    <script src="js/booking-linked.js?v=0.82.70"></script>
+    <script src="js/settings-dashboard.js?v=0.82.70"></script>
+    <script src="js/settings-history.js?v=0.82.70"></script>
+    <script src="js/settings-afisha.js?v=0.82.70"></script>
+    <script src="js/settings-certificates.js?v=0.82.70"></script>
+    <script src="js/offline.js?v=0.82.70"></script>
+    <script src="js/crm-feature-registry.js?v=0.82.70"></script>
+    <script src="js/search.js?v=0.82.70"></script>
+    <script src="js/ws.js?v=0.82.70"></script>
+    <script src="js/app.js?v=0.82.70"></script>
+    <script src="js/kleshnya-widget.js?v=0.82.70"></script>
+    <script src="js/components/sidebar.js?v=0.82.70"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=0.82.56"></script>
-    <script src="js/education-schedule.js?v=0.82.56"></script>
-    <script src="js/education-groups.js?v=0.82.56"></script>
-    <script src="js/education-attendance.js?v=0.82.56"></script>
+    <script src="js/alerts.js?v=0.82.70"></script>
+    <script src="js/education-schedule.js?v=0.82.70"></script>
+    <script src="js/education-groups.js?v=0.82.70"></script>
+    <script src="js/education-attendance.js?v=0.82.70"></script>
 </body>
 </html>

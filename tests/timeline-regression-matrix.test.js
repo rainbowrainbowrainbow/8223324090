@@ -417,7 +417,7 @@ test('timeline view switch isolation keeps room rows out of animator render and 
     assert.match(timeline, /function normalizeTimelineLinesForContext[\s\S]*!isTimelineBanquetServicePseudoLine\(line\) && !isTimelineRoomOnlyLine\(line\)/);
     assert.match(timeline, /lineHeader\?\.addEventListener\('click', event => \{[\s\S]*if \(isRoomTimelineView\(\)\) return;[\s\S]*editLineModal\(line\.id\)/);
 
-    assert.match(api, /async function apiSaveLines\(date, lines\) \{[\s\S]*window\.TimelineView\?\.isRooms\?\.\(\)[\s\S]*success: false[\s\S]*room_timeline_legacy_line_save_blocked[\s\S]*timelineApiUrlWithView\(`\/lines\/\$\{date\}`\)/);
+    assert.match(api, /async function apiSaveLines\(date, lines, baseLines = \[\]\) \{[\s\S]*window\.TimelineView\?\.isRooms\?\.\(\)[\s\S]*success: false[\s\S]*room_timeline_legacy_line_save_blocked[\s\S]*timelineApiUrlWithView\(`\/lines\/\$\{date\}`\)/);
     assert.match(api, /function timelineApiUrlWithView[\s\S]*timelineView=\$\{encodeURIComponent\(String\(view\)\)\}/);
 });
 

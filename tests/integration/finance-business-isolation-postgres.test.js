@@ -96,6 +96,7 @@ test('finance account and transaction ownership with actual membership auth, HTT
             END $$;
             CREATE TRIGGER fixture_transaction_insert BEFORE INSERT ON finance_transactions FOR EACH ROW EXECUTE FUNCTION fixture_transaction_insert();
         `);
+        await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/333_trusted_qa_runs.sql'), 'utf8'));
         await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/357_organizations_business_memberships.sql'), 'utf8'));
         await pool.query(`
             INSERT INTO organizations(id,slug,name) VALUES (1,'fixture-finance-own','Fixture Own'),(2,'fixture-finance-other','Fixture Other');

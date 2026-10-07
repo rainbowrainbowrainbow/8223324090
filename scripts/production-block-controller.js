@@ -13,6 +13,7 @@ const {
     redChangedPaths,
     TARGET,
     buildManifest,
+    manifestHash,
     confirmationValue,
     sanitize,
     stableJson,
@@ -80,7 +81,78 @@ function writeBlockFile(file, manifest) {
 function readBlockFile(file, options = {}) {
     fail(Boolean(file) && fs.existsSync(file), 'Production block file is unavailable', 'PRODUCTION_BLOCK_FILE_MISSING');
     const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return validateManifest(manifest, options);
+    validateManifest(manifest, options);
+    if (manifest.retryFrom) validateFinanceRetryBinding(manifest, { ...options, blockFile: path.resolve(file) });
+    return manifest;
+}
+
+const FINANCE_RETRY_SCOPE_FIELDS = Object.freeze([
+    'baseLiveSha', 'allowedBranch', 'railwayProjectId', 'railwayEnvironment', 'railwayServiceId', 'liveUrl',
+    'allowedMigrationFiles', 'migrationClassifications', 'allowedQaScope', 'allowedProtectedWorkflow',
+    'changedPaths', 'releaseLabel', 'releaseNotes', 'rollbackReference', 'maxReleaseAttempts'
+]);
+
+function assertFinanceRetryScope(previous, candidate) {
+    fail(previous.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
+        && candidate.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
+        && previous.allowedQaScope?.enabled === false && candidate.allowedQaScope?.enabled === false
+        && FINANCE_RETRY_SCOPE_FIELDS.every(field => stableJson(previous[field]) === stableJson(candidate[field]))
+        && previous.preparedRelease.version === candidate.preparedRelease.version
+        && previous.preparedRelease.baseVersion === candidate.preparedRelease.baseVersion,
+    'Finance retry must preserve the exact prior release scope, version, SQL and target', 'PRODUCTION_BLOCK_RETRY_SCOPE_DRIFT');
+    const attempts = previous.runtimeState?.releaseAttempts;
+    fail(Number.isInteger(attempts) && attempts >= 1 && attempts < previous.maxReleaseAttempts
+        && ['PRODUCTION_BLOCK_COMMAND_FAILED', 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED', 'PRODUCTION_BLOCK_CI_INCOMPLETE']
+            .includes(previous.runtimeState?.lastFailureCode)
+        && !previous.runtimeState.releaseSha && !previous.runtimeState.releaseCompletedAt,
+    'Finance retry requires a recorded failed pre-deploy attempt with remaining budget', 'PRODUCTION_BLOCK_RETRY_STATE_INVALID');
+    fail(candidate.initialHeadSha !== previous.initialHeadSha,
+        'Finance retry requires a new exact candidate; unchanged SHA uses the existing block', 'PRODUCTION_BLOCK_RETRY_SHA_INVALID');
+    return attempts;
+}
+
+function assertFailedFinanceRetryCi(previous, run) {
+    fail(run?.headSha === previous.initialHeadSha && run.headBranch === previous.allowedBranch
+        && run.workflowName === 'CI' && run.event === 'push'
+        && run.status === 'completed' && run.conclusion === 'failure'
+        && Array.isArray(run.jobs) && run.jobs.some(job => job.conclusion === 'failure'),
+    'Finance retry requires failed completed production-push CI for the exact prior SHA', 'PRODUCTION_BLOCK_RETRY_CI_INVALID');
+}
+
+async function withBlockFileLock(file, action) {
+    const lockFile = `${path.resolve(file)}.executing`;
+    let descriptor;
+    try { descriptor = fs.openSync(lockFile, 'wx', 0o600); } catch (error) {
+        if (error.code === 'EEXIST') throw new ProductionBlockError(
+            'This finance block already has an in-flight execution or retry preparation; reconcile a stale lock explicitly',
+            'PRODUCTION_BLOCK_EXECUTION_IN_PROGRESS');
+        throw error;
+    }
+    try { return await action(); } finally { fs.closeSync(descriptor); fs.unlinkSync(lockFile); }
+}
+
+function validateFinanceRetryBinding(manifest, options = {}) {
+    const binding = manifest.retryFrom;
+    const depth = Number(options.retryDepth || 0);
+    fail(depth < 2 && binding && typeof binding === 'object' && !Array.isArray(binding)
+        && Object.keys(binding).sort().join(',') === 'attemptsUsed,blockFile,blockId,ciRunId,headSha,manifestHash'
+        && path.isAbsolute(binding.blockFile || '') && /^\d+$/.test(String(binding.ciRunId || '')),
+    'Finance retry binding is malformed or exceeds the three-attempt chain', 'PRODUCTION_BLOCK_RETRY_BINDING_INVALID');
+    const previous = readBlockFile(binding.blockFile, { ...options, retryDepth: depth + 1 });
+    const attempts = assertFinanceRetryScope(previous, manifest);
+    fail(binding.blockId === previous.blockId && binding.manifestHash === previous.manifestHash
+        && binding.headSha === previous.initialHeadSha && binding.attemptsUsed === attempts
+        && manifest.validUntil === previous.validUntil
+        && Date.parse(manifest.createdAt) >= Date.parse(previous.createdAt)
+        && Number.isInteger(manifest.runtimeState?.releaseAttempts)
+        && manifest.runtimeState.releaseAttempts >= attempts
+        && manifest.runtimeState.releaseAttempts <= manifest.maxReleaseAttempts,
+    'Finance retry changed the prior identity, expiry or aggregate attempt budget', 'PRODUCTION_BLOCK_RETRY_BINDING_INVALID');
+    const successor = previous.runtimeState.supersededBy;
+    fail(successor?.blockId === manifest.blockId && successor.manifestHash === manifest.manifestHash
+        && path.resolve(successor.blockFile || '') === options.blockFile,
+    'Finance retry is not the sole recorded continuation of its prior block', 'PRODUCTION_BLOCK_RETRY_SUPERSEDED');
+    return previous;
 }
 
 function releaseNotesFromFile(file) {
@@ -211,7 +283,9 @@ function assertPreparedProductionBase(manifest, live, remoteSha) {
     if (!isPreparedProtectedRelease(manifest)) return;
     fail(live.sourceBranch === TARGET.branch && live.commitSha === manifest.baseLiveSha,
         'Live production changed after exact release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
-    fail(remoteSha === manifest.baseLiveSha || remoteSha === manifest.initialHeadSha,
+    fail(remoteSha === manifest.baseLiveSha || remoteSha === manifest.initialHeadSha
+        || (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
+            && manifest.retryFrom && remoteSha === manifest.retryFrom.headSha),
         'Production branch changed outside the exact prepared release', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
 }
 
@@ -220,6 +294,12 @@ function remoteProductionSha() {
     const sha = output.split(/\s+/)[0].toLowerCase();
     fail(SHA_PATTERN.test(sha), 'Cannot verify remote production SHA', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
     return sha;
+}
+
+function runAuthorizedReleaseStage(manifest, blockFile, command, args, options = {}, dependencies = {}) {
+    validateManifest(manifest, { now: dependencies.now });
+    if (manifest.retryFrom) readBlockFile(blockFile, { now: dependencies.now });
+    return (dependencies.commandResult || commandResult)(command, args, options);
 }
 
 function defaultRuntime() {
@@ -248,6 +328,7 @@ function defaultRuntime() {
                 head,
                 descendsFromBase: gitIsAncestor(manifest.baseLiveSha, head),
                 descendsFromInitial: gitIsAncestor(manifest.initialHeadSha, head),
+                descendsFromRetry: !manifest.retryFrom || gitIsAncestor(manifest.retryFrom.headSha, head),
                 migrations: loadMigrations(paths).map(item => item.file).sort(),
                 migrationHashes: Object.fromEntries(loadMigrations(paths).map(item => [item.file, migrationSqlHash(item.sql)])),
                 changedPaths: paths
@@ -256,9 +337,23 @@ function defaultRuntime() {
         plan(manifest) {
             return releaseCommandPlan(manifest);
         },
+        async retryFacts(previous, facts, ciRunId) {
+            return {
+                remoteSha: remoteProductionSha(),
+                descendsFromPrior: gitIsAncestor(previous.initialHeadSha, facts.head),
+                ciRun: JSON.parse(commandResult('gh', ['run', 'view', ciRunId, '--json',
+                    'headSha,headBranch,workflowName,event,status,conclusion,jobs']))
+            };
+        },
         async preflightExecution(manifest) {
             if (isPreparedProtectedRelease(manifest)) {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
+            }
+            if (manifest.retryFrom) {
+                const previous = readBlockFile(manifest.retryFrom.blockFile);
+                const run = JSON.parse(commandResult('gh', ['run', 'view', manifest.retryFrom.ciRunId, '--json',
+                    'headSha,headBranch,workflowName,event,status,conclusion,jobs']));
+                assertFailedFinanceRetryCi(previous, run);
             }
             if (manifest.allowedQaScope?.kind === 'finance') financeQaPreflight(manifest.allowedQaScope);
             resolveSpawnCommand('npm', ['test']);
@@ -296,7 +391,8 @@ function defaultRuntime() {
             const migrationFiles = loadMigrations(changedPaths(manifest.baseLiveSha, releaseSha)).map(item => item.file).sort();
             fail(JSON.stringify(migrationFiles) === JSON.stringify(manifest.allowedMigrationFiles),
                 'Migration set drifted after authorization', 'PRODUCTION_BLOCK_MIGRATION_DRIFT');
-            commandResult('git', ['push', 'origin', `HEAD:refs/heads/${manifest.allowedBranch}`], { inherit: true });
+            runAuthorizedReleaseStage(manifest, blockFile,
+                'git', ['push', 'origin', `HEAD:refs/heads/${manifest.allowedBranch}`], { inherit: true });
             const exact = findExactCiRun(releaseSha, { strictProduction: isPreparedProtectedRelease(manifest) });
             fail(Boolean(exact), 'Exact-SHA GitHub CI run was not found', 'PRODUCTION_BLOCK_CI_NOT_FOUND');
             commandResult('gh', ['run', 'watch', String(exact.databaseId), '--exit-status'], { inherit: true });
@@ -307,7 +403,7 @@ function defaultRuntime() {
                 // CI can take minutes; check foreign live/remote drift again immediately before upload.
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
             }
-            commandResult('npm', ['run', 'release:railway-up', '--',
+            runAuthorizedReleaseStage(manifest, blockFile, 'npm', ['run', 'release:railway-up', '--',
                 '--branch', manifest.allowedBranch,
                 '--commit', releaseSha,
                 '--project', manifest.railwayProjectId,
@@ -614,11 +710,43 @@ async function prepareAction(options, runtime) {
         ...options,
         releaseNotes: options.releaseNotes || releaseNotesFromFile(options.releaseNotesFile)
     });
-    if (manifest.allowedQaScope?.enabled === true) {
-        const qaPreflight = await runtime.preflightQa(manifest.allowedQaScope, facts.live);
-        manifest.runtimeState.qaPreflight = sanitize(qaPreflight);
+    const targetFile = path.resolve(options.blockFile || defaultBlockFile(manifest.blockId));
+    let blockFile;
+    if (options.retryFrom) {
+        blockFile = await withBlockFileLock(options.retryFrom, async () => {
+        const previous = readBlockFile(options.retryFrom);
+        fail(!previous.runtimeState?.supersededBy && !fs.existsSync(targetFile)
+            && targetFile !== path.resolve(options.retryFrom),
+        'Prior finance block already has a continuation or the new output exists', 'PRODUCTION_BLOCK_RETRY_SUPERSEDED');
+        const attempts = assertFinanceRetryScope(previous, manifest);
+        fail(/^\d+$/.test(String(options.retryCiRun || '')) && typeof runtime.retryFacts === 'function',
+            'Finance retry requires one exact failed CI run ID', 'PRODUCTION_BLOCK_RETRY_CI_INVALID');
+        const evidence = await runtime.retryFacts(previous, facts, String(options.retryCiRun));
+        fail(evidence.descendsFromPrior === true, 'Finance retry candidate is not a descendant of the prior exact SHA',
+            'PRODUCTION_BLOCK_RETRY_SHA_INVALID');
+        fail(evidence.remoteSha === previous.initialHeadSha,
+            'Remote production branch is not the exact failed prior candidate', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+        assertFailedFinanceRetryCi(previous, evidence.ciRun);
+        manifest.retryFrom = { blockFile: path.resolve(options.retryFrom), blockId: previous.blockId,
+            manifestHash: previous.manifestHash, headSha: previous.initialHeadSha,
+            ciRunId: String(options.retryCiRun), attemptsUsed: attempts };
+        manifest.validUntil = previous.validUntil;
+        manifest.runtimeState.releaseAttempts = attempts;
+        manifest.manifestHash = manifestHash(manifest);
+        validateManifest(manifest);
+        const newFile = writeBlockFile(targetFile, manifest);
+        previous.runtimeState.supersededBy = { blockId: manifest.blockId, manifestHash: manifest.manifestHash, blockFile: newFile };
+        writeBlockFile(options.retryFrom, previous);
+        readBlockFile(newFile);
+        return newFile;
+        });
+    } else {
+        if (manifest.allowedQaScope?.enabled === true) {
+            const qaPreflight = await runtime.preflightQa(manifest.allowedQaScope, facts.live);
+            manifest.runtimeState.qaPreflight = sanitize(qaPreflight);
+        }
+        blockFile = writeBlockFile(targetFile, manifest);
     }
-    const blockFile = writeBlockFile(options.blockFile || defaultBlockFile(manifest.blockId), manifest);
     return sanitize({ success: true, action: 'prepare', blockFile, manifest, confirmation: confirmationValue(manifest), warning: warningText(manifest) });
 }
 
@@ -640,6 +768,8 @@ async function assertExecuteDrift(manifest, runtime) {
         fail(stableJson(drift.migrationHashes || {}) === stableJson(expectedHashes),
             'Finance migration SQL changed after exact authorization', 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT');
     }
+    if (manifest.retryFrom) fail(drift.descendsFromRetry === true,
+        'Finance retry no longer descends from its exact prior candidate', 'PRODUCTION_BLOCK_RETRY_SHA_INVALID');
     fail(drift.descendsFromBase === true && gitIsSafeDescendant(manifest.initialHeadSha, drift.head, drift),
         'Candidate SHA is outside the authorized descendant envelope', 'PRODUCTION_BLOCK_SHA_DRIFT');
     fail(JSON.stringify(drift.migrations) === JSON.stringify(manifest.allowedMigrationFiles),
@@ -657,6 +787,15 @@ function gitIsSafeDescendant(initialHead, currentHead, drift) {
 
 async function executeAction(options, runtime) {
     const manifest = readBlockFile(options.blockFile);
+    return manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
+        ? withBlockFileLock(options.blockFile, () => executeBlockAction(options, runtime))
+        : executeBlockAction(options, runtime);
+}
+
+async function executeBlockAction(options, runtime) {
+    const manifest = readBlockFile(options.blockFile);
+    fail(!manifest.runtimeState?.supersededBy, 'Production block has been superseded by its exact continuation',
+        'PRODUCTION_BLOCK_RETRY_SUPERSEDED');
     fail(options.confirmation === confirmationValue(manifest),
         'Execute requires the exact block confirmation', 'PRODUCTION_BLOCK_CONFIRMATION_INVALID');
     const attempts = Number(manifest.runtimeState?.releaseAttempts || 0);
@@ -721,6 +860,8 @@ function parseOptions(argv) {
         '--max-release-attempts',
         '--release-label',
         '--release-notes-file',
+        '--retry-from',
+        '--retry-ci-run',
         '--protected-workflow',
         '--qa-scope',
         '--qa-scope-base64'
@@ -731,6 +872,10 @@ function parseOptions(argv) {
     if (action !== 'prepare') fail(Boolean(blockFileValue), `${action} requires --block-file`, 'PRODUCTION_BLOCK_FILE_REQUIRED');
     const qaScopeBase64 = argValue(args, '--qa-scope-base64');
     const qaScopeValue = qaScopeBase64 ? decodeQaScope(qaScopeBase64) : argValue(args, '--qa-scope', 'none');
+    const retryFrom = argValue(args, '--retry-from');
+    const retryCiRun = argValue(args, '--retry-ci-run');
+    fail((!retryFrom && !retryCiRun) || (action === 'prepare' && retryFrom && retryCiRun),
+        'Finance retry flags require prepare and both prior manifest and CI run', 'PRODUCTION_BLOCK_RETRY_BINDING_INVALID');
     return {
         action,
         blockFile: blockFileValue ? path.resolve(blockFileValue) : null,
@@ -739,6 +884,8 @@ function parseOptions(argv) {
         maxReleaseAttempts: Number(argValue(args, '--max-release-attempts', '3')),
         releaseLabel: cleanText(argValue(args, '--release-label', 'Autonomy Hardening'), 120),
         releaseNotesFile: argValue(args, '--release-notes-file'),
+        retryFrom: retryFrom ? path.resolve(retryFrom) : null,
+        retryCiRun,
         protectedWorkflow: cleanText(argValue(args, '--protected-workflow', 'none'), 80),
         qaScope: parseQaScope(qaScopeValue),
         dryRun: argPresent(args, '--dry-run')
@@ -774,6 +921,7 @@ module.exports = {
     assertExecuteDrift,
     assertHrPayrollProductionBase: assertPreparedProductionBase,
     assertPreparedProductionBase,
+    assertFailedFinanceRetryCi,
     assertHrPayrollCiResult,
     selectHrPayrollCiRun,
     defaultBlockFile,
@@ -791,6 +939,7 @@ module.exports = {
     qaResumeAction,
     qaRunArgs,
     readBlockFile,
+    runAuthorizedReleaseStage,
     releaseCommandPlan,
     resolveSpawnCommand,
     resumeAuthorizedQa,

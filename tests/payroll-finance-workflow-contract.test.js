@@ -90,6 +90,11 @@ test('generic Finance PUT and DELETE return 409 for payroll-managed transactions
 });
 
 test('P&L uses recognition date while cash-flow keeps actual transaction date', () => {
+    const daily = financeRoute.slice(financeRoute.indexOf('const dailyResult ='), financeRoute.indexOf('// Payment methods breakdown'));
+    assert.match(daily, /SELECT date,/);
+    assert.match(daily, /WHERE date >= \$1 AND date <= \$2/);
+    assert.match(daily, /GROUP BY date ORDER BY date/);
+    assert.doesNotMatch(daily, /financeRecognitionDateSql/);
     assert.match(financeRoute, /function financeRecognitionDateSql/);
     assert.match(financeRoute, /EXTRACT\(MONTH FROM \$\{financeRecognitionDateSql\('finance_transactions'\)\}\)/);
     assert.match(financeRoute, /WHERE ft\.type = 'expense'\s+AND \$\{financeRecognitionDateSql\('ft'\)\} >= \$1::date/);

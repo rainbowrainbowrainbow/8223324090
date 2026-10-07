@@ -732,16 +732,15 @@ router.get('/dashboard', async (req, res) => {
             ORDER BY total DESC
         `, [from, to, businessContext]);
 
-        // Daily breakdown
+        // Daily cash flow uses payment dates; P&L totals above use recognition dates.
         const dailyResult = await pool.query(`
-            SELECT ${financeRecognitionDateSql('')}::text AS date,
+            SELECT date,
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS income,
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::int AS expense
             FROM finance_transactions
-            WHERE ${financeRecognitionDateSql('')} >= $1::date
-              AND ${financeRecognitionDateSql('')} <= $2::date
+            WHERE date >= $1 AND date <= $2
               AND ${businessScopeSql('', '$3')}
-            GROUP BY ${financeRecognitionDateSql('')} ORDER BY ${financeRecognitionDateSql('')}
+            GROUP BY date ORDER BY date
         `, [from, to, businessContext]);
 
         // Payment methods breakdown

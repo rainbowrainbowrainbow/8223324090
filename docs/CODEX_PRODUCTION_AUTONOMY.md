@@ -367,6 +367,23 @@ records exist, rollback requires a compatible binary retaining source-write guar
 and legacy/manual shift separation; never deploy a pre381 binary or remove the
 journal/index safeguards. See `docs/FINANCE_PRODUCTION_QA_PLAN_2026-10-07.md`.
 
+For a finance candidate pushed by this controller whose exact production-push CI
+failed before deploy, prepare a corrected descendant using `prepare --
+--retry-from <prior-manifest-path> --retry-ci-run <exact-failed-run-id>` with the
+same finance options. This creates a fresh hash-bound exact-SHA manifest while
+preserving the prior target, version, file inventory, SQL hashes, disabled QA
+scope, original expiry and aggregate attempt budget. The remote branch must
+still equal the failed prior candidate, and live must still equal the original
+base. The prior manifest is marked superseded; it cannot execute or spawn a
+second continuation. Use the new manifest's exact technical confirmation only
+within the still-valid human authorization. No CI/deploy bypass is provided.
+
+Finance execution and retry preparation use a per-manifest exclusive local lock;
+an unexpected stale lock requires explicit state reconciliation, not automatic
+removal. The controller revalidates expiry immediately before each push and
+Railway upload, including after long tests or CI waits. A corrected candidate
+does not reset the original three-attempt limit or extend the original window.
+
 Production GitHub auto-deploy is disabled. Deploy manually only after exact-SHA CI
 is green.
 

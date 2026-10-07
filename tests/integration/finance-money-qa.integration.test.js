@@ -118,19 +118,19 @@ test('finance trusted QA uses durable ownership and exact isolated PostgreSQL wr
             try {
                 await client.query('BEGIN');
                 const active = await access(client);
-                await client.query(`INSERT INTO bookings(id,date,time,line_id,status,price,business_context,skip_notification,extra_data)
-                    VALUES($1,'2099-06-15','10:00','qa-fixture','confirmed',100,'event_genix',true,$2::jsonb)`,
+                await client.query(`INSERT INTO bookings(id,date,time,line_id,status,price,business_context,skip_notification,extra_data,room,room_resource_id)
+                    VALUES($1,'2099-06-15','10:00','qa-fixture','confirmed',100,'event_genix',true,$2::jsonb,$3,$4)`,
                 [bookingId, JSON.stringify({ disposableQa: { runId: plan.runId, source: 'trusted_qa',
-                    testCustomerMarker: `${plan.runId}:finance:disposable`, kind: 'booking', createdAt: new Date().toISOString(), cleanupExpected: true } })]);
+                    testCustomerMarker: `${plan.runId}:finance:disposable`, kind: 'booking', createdAt: new Date().toISOString(), cleanupExpected: true } }), fixture.room, roomId]);
                 await registerQaEntity(client, { trusted: true, run: active.run }, 'booking', bookingId, { businessContext: 'event_genix' });
-                for (const [sql, args] of [
-                    ['UPDATE bookings SET price=1 WHERE id=$1', [bookingId]],
-                    ["INSERT INTO bookings(id,date,time,line_id,status,price,business_context,linked_to) VALUES($1,'2099-06-15','10:00','qa-fixture','confirmed',100,'event_genix',$2)", [`finance-child-${randomUUID().slice(0, 18)}`, bookingId]],
-                    ["INSERT INTO finance_transactions(type,amount,date,booking_id,business_context) VALUES('income',1,'2099-06-15',$1,'event_genix')", [bookingId]],
-                    ['DELETE FROM trusted_qa_run_entities WHERE run_id=$1 AND entity_id=$2', [scope.runId, bookingId]]
+                for (const [sql, args, message] of [
+                    ['UPDATE bookings SET price=1 WHERE id=$1', [bookingId], 'Registered finance QA bookings are immutable outside exact finish cancellation'],
+                    ["INSERT INTO bookings(id,date,time,line_id,status,price,business_context,linked_to,room,room_resource_id) VALUES($1,'2099-06-15','10:00','qa-fixture','confirmed',100,'event_genix',$2,$3,$4)", [`finance-child-${randomUUID().slice(0, 18)}`, bookingId, fixture.room, roomId], 'Foreign writers cannot reference finance QA bookings'],
+                    ["INSERT INTO finance_transactions(type,amount,date,booking_id,business_context) VALUES('income',1,'2099-06-15',$1,'event_genix')", [bookingId], 'Foreign writers cannot reference finance QA bookings'],
+                    ['DELETE FROM trusted_qa_run_entities WHERE run_id=$1 AND entity_id=$2', [scope.runId, bookingId], 'Finance QA registry ownership is permanent']
                 ]) {
                     await client.query('SAVEPOINT forbidden_writer');
-                    await assert.rejects(async () => { await client.query(sql, args); await client.query('SET CONSTRAINTS ALL IMMEDIATE'); }, { code: '23514' });
+                    await assert.rejects(async () => { await client.query(sql, args); await client.query('SET CONSTRAINTS ALL IMMEDIATE'); }, { code: '23514', message });
                     await client.query('ROLLBACK TO SAVEPOINT forbidden_writer');
                 }
             } finally { await client.query('ROLLBACK'); client.release(); }
@@ -161,9 +161,10 @@ test('finance trusted QA uses durable ownership and exact isolated PostgreSQL wr
             await command('refund', { originalId: receipt.operationId, amountMinor: '1000', reason: 'Synthetic partial refund' });
             await command('close_shift', { accountId: first.id, shiftId: shift.shiftId, actualMinor: '14000' });
             assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM finance_transactions WHERE booking_id=$1', [canonicalBookingId])).rows[0].count, 0);
-            await assert.rejects(transaction(client => client.query(`INSERT INTO bookings(id,date,time,line_id,status,price,business_context,linked_to)
-                VALUES($1,'2099-06-15','15:00',$2,'confirmed',100,'event_genix',$3)`,
-            [`finance-child-${randomUUID().slice(0, 18)}`, lineId, canonicalBookingId])), { code: '23514' });
+            await assert.rejects(transaction(client => client.query(`INSERT INTO bookings(id,date,time,line_id,status,price,business_context,linked_to,room,room_resource_id)
+                VALUES($1,'2099-06-15','15:00',$2,'confirmed',100,'event_genix',$3,$4,$5)`,
+            [`finance-child-${randomUUID().slice(0, 18)}`, lineId, canonicalBookingId, fixture.room, roomId])),
+            { code: '23514', message: 'Foreign writers cannot reference finance QA bookings' });
         });
         await t.test('migration 382 reruns without losing ownership and finish preserves journal evidence', async () => {
             await pool.query(readFileSync(path.join(__dirname, '../../db/migrations/382_finance_trusted_qa.sql'), 'utf8'));

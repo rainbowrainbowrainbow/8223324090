@@ -88,7 +88,7 @@ async function loadParkHrMonthlyReport(pool, { dateFrom, dateTo }) {
         'source_type', t.source_type,
         'created_at', t.created_at, 'deadline', t.deadline, 'completed_at', t.completed_at)`;
     const taskOverdueSql = `${taskKpiEligibleSql('t')}
-        AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
+        AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'complete', 'archived', 'cancelled')
         AND t.deadline IS NOT NULL AND t.deadline < NOW()`;
     const [shifts, records, tasks] = await Promise.all([
         pool.query(`SELECT id, staff_id, shift_date::text AS shift_date, planned_start,
@@ -108,13 +108,13 @@ async function loadParkHrMonthlyReport(pool, { dateFrom, dateTo }) {
         pool.query(`SELECT ep.staff_id,
                 COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')})::int AS tasks_assigned,
                 COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')}
-                    AND COALESCE(t.status, 'todo') IN ('done', 'completed'))::int AS tasks_done,
+                    AND COALESCE(t.status, 'todo') IN ('done', 'completed', 'complete'))::int AS tasks_done,
                 COUNT(t.id) FILTER (WHERE ${taskOverdueSql})::int AS tasks_overdue,
                 COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
                     FILTER (WHERE ${taskKpiEligibleSql('t')}), '[]'::jsonb) AS tasks_assigned_details,
                 COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
                     FILTER (WHERE ${taskKpiEligibleSql('t')}
-                        AND COALESCE(t.status, 'todo') IN ('done', 'completed')), '[]'::jsonb) AS tasks_done_details,
+                        AND COALESCE(t.status, 'todo') IN ('done', 'completed', 'complete')), '[]'::jsonb) AS tasks_done_details,
                 COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
                     FILTER (WHERE ${taskOverdueSql}), '[]'::jsonb) AS tasks_overdue_details
             FROM tasks t

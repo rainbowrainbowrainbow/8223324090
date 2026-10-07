@@ -6949,7 +6949,7 @@ router.get('/report/monthly', async (req, res) => {
             'source_type', t.source_type,
             'created_at', t.created_at, 'deadline', t.deadline, 'completed_at', t.completed_at)`;
         const taskOverdueSql = `${taskKpiEligibleSql('t')}
-            AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
+            AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'complete', 'archived', 'cancelled')
             AND t.deadline IS NOT NULL AND t.deadline < NOW()`;
         let taskKpiUnavailable = false;
         const taskKpiRows = await pool.query(
@@ -6957,7 +6957,7 @@ router.get('/report/monthly', async (req, res) => {
                     COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')})::int AS tasks_assigned,
                     COUNT(t.id) FILTER (
                         WHERE ${taskKpiEligibleSql('t')}
-                          AND COALESCE(t.status, 'todo') IN ('done', 'completed')
+                          AND COALESCE(t.status, 'todo') IN ('done', 'completed', 'complete')
                     )::int AS tasks_done,
                     COUNT(t.id) FILTER (
                          WHERE ${taskOverdueSql}
@@ -6974,7 +6974,7 @@ router.get('/report/monthly', async (req, res) => {
                          FILTER (WHERE ${taskKpiEligibleSql('t')}), '[]'::jsonb) AS tasks_assigned_details,
                      COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
                          FILTER (WHERE ${taskKpiEligibleSql('t')}
-                             AND COALESCE(t.status, 'todo') IN ('done', 'completed')), '[]'::jsonb) AS tasks_done_details,
+                             AND COALESCE(t.status, 'todo') IN ('done', 'completed', 'complete')), '[]'::jsonb) AS tasks_done_details,
                      COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
                          FILTER (WHERE ${taskOverdueSql}), '[]'::jsonb) AS tasks_overdue_details,
                      COUNT(t.id) FILTER (

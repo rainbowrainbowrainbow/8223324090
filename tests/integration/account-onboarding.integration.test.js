@@ -6,7 +6,8 @@ const assert = require('node:assert/strict');
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
-const { createAccountOnboarding } = require('../../services/accountOnboarding');
+const { createAccountOnboarding, resolveAccountBusinessAccess } = require('../../services/accountOnboarding');
+const { loadMembershipAccess } = require('../../services/businessMembership');
 const { syncLinkedStaffAccountDeactivation } = require('../../services/staffLifecycle');
 const { lockOrganizationOwnership } = require('../../services/organizationOwnership');
 const { authRequest, request } = require('../helpers');
@@ -21,7 +22,8 @@ const usernames = {
     occupiedAttempt: `${usernamePrefix}.occupied`,
     aliasHolder: `${usernamePrefix}.holder`,
     aliasCollision: `${usernamePrefix}.alias`,
-    rollback: `${usernamePrefix}.rollback`
+    rollback: `${usernamePrefix}.rollback`,
+    lookupFailure: `${usernamePrefix}.lookup`
 };
 
 let pool = null;
@@ -76,6 +78,11 @@ function faultingPool(realPool, predicate) {
             };
         },
         query(sql, params) {
+            if (predicate(String(sql))) {
+                const error = new Error('forced_account_onboarding_integration_failure');
+                error.code = 'XX000';
+                throw error;
+            }
             return realPool.query(sql, params);
         }
     };
@@ -96,6 +103,7 @@ function tracingPool(realPool, statements) {
             };
         },
         query(sql, params) {
+            statements.push(String(sql).replace(/\s+/g, ' ').trim());
             return realPool.query(sql, params);
         }
     };
@@ -196,6 +204,111 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
         }
     });
 
+    it('projects real registry and membership states without writing access or trusting legacy contexts', async t => {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const fixtureKey = 'qa_read_' + crypto.randomBytes(8).toString('hex');
+            const organization = await client.query(
+                'INSERT INTO organizations (slug, name) VALUES ($1, $2), ($3, $4) RETURNING id',
+                [fixtureKey, 'Disposable readiness organization', fixtureKey + '_other', 'Disposable foreign organization']
+            );
+            const [organizationId, foreignOrganizationId] = organization.rows.map(row => Number(row.id));
+            const businesses = await client.query(
+                `INSERT INTO businesses (organization_id, context_key, label, short_label, access_mode)
+                 VALUES ($1, $3, 'Readiness target', 'Target', 'membership'),
+                        ($1, $4, 'Different business', 'Other', 'membership'),
+                        ($2, $5, 'Foreign business', 'Foreign', 'membership') RETURNING id`,
+                [organizationId, foreignOrganizationId, fixtureKey, fixtureKey + '_other', fixtureKey + '_foreign']
+            );
+            const [businessId, otherBusinessId, foreignBusinessId] = businesses.rows.map(row => Number(row.id));
+            const users = await client.query(
+                `INSERT INTO users (username, password_hash, name, role, is_active, business_contexts, default_business_context)
+                 VALUES ($1, 'unusable-test-hash', 'Readiness fixture', 'animator', true, ARRAY[$3], $3),
+                        ($2, 'unusable-test-hash', 'Other readiness fixture', 'animator', true, ARRAY[$3], $3)
+                 RETURNING id`,
+                [fixtureKey, fixtureKey + '_other', fixtureKey]
+            );
+            const [userId, otherUserId] = users.rows.map(row => Number(row.id));
+            await client.query(
+                'INSERT INTO organization_memberships (organization_id, user_id) VALUES ($1, $3), ($2, $3)',
+                [organizationId, foreignOrganizationId, userId]
+            );
+            await client.query(
+                `INSERT INTO business_memberships (business_id, organization_id, user_id, role)
+                 VALUES ($1, $2, $3, 'animator'), ($4, $5, $3, 'animator')`,
+                [businessId, organizationId, userId, foreignBusinessId, foreignOrganizationId]
+            );
+            const cases = [
+                ['active selected business with multiple organizations', 'active', null, [], true],
+                ['missing business membership despite legacy profile contexts', 'pending_membership',
+                    'DELETE FROM business_memberships WHERE business_id = $1 AND user_id = $2', [businessId, userId], false],
+                ['missing organization membership', 'pending_membership',
+                    'DELETE FROM organization_memberships WHERE organization_id = $1 AND user_id = $2', [organizationId, userId], false],
+                ['revoked business membership', 'pending_membership',
+                    'UPDATE business_memberships SET is_active = false WHERE business_id = $1 AND user_id = $2', [businessId, userId], false],
+                ['revoked organization membership', 'pending_membership',
+                    'UPDATE organization_memberships SET is_active = false WHERE organization_id = $1 AND user_id = $2', [organizationId, userId], false],
+                ['different business membership is not target access', 'pending_membership',
+                    'UPDATE business_memberships SET business_id = $1 WHERE business_id = $2 AND user_id = $3', [otherBusinessId, businessId, userId], false],
+                ['another account membership is not target access', 'pending_membership',
+                    'UPDATE business_memberships SET user_id = $1 WHERE business_id = $2 AND user_id = $3', [otherUserId, businessId, userId], false],
+                ['membership organization disagrees with registry', 'unknown',
+                    'UPDATE businesses SET organization_id = $1 WHERE id = $2', [foreignOrganizationId, businessId], null],
+                ['inactive business', 'unknown',
+                    "UPDATE businesses SET status = 'inactive' WHERE id = $1", [businessId], false],
+                ['inactive organization', 'unknown',
+                    "UPDATE organizations SET status = 'inactive' WHERE id = $1", [organizationId], false],
+                ['inactive account', 'unknown',
+                    'UPDATE users SET is_active = false WHERE id = $1', [userId], null],
+                ['compatibility business is not membership proof', 'unknown',
+                    "UPDATE businesses SET access_mode = 'compatibility' WHERE id = $1", [businessId], null],
+                ['business creator without platform creator', 'unknown',
+                    "UPDATE business_memberships SET role = 'creator' WHERE business_id = $1 AND user_id = $2", [businessId, userId], false],
+                ['valid platform creator', 'active',
+                    "UPDATE users SET role = 'creator' WHERE id = $1", [userId], true]
+            ];
+            for (const [name, expectedState, mutation, params, canonicalReady] of cases) {
+                await t.test(name, async () => {
+                    await client.query('SAVEPOINT readiness_case');
+                    try {
+                        if (mutation) await client.query(mutation, params);
+                        if (name === 'valid platform creator') {
+                            await client.query("UPDATE business_memberships SET role = 'creator' WHERE business_id = $1 AND user_id = $2", [businessId, userId]);
+                        }
+                        const statements = [];
+                        const result = await resolveAccountBusinessAccess({
+                            query(sql, values) {
+                                statements.push(String(sql));
+                                return client.query(sql, values);
+                            }
+                        }, userId, fixtureKey);
+                        assert.deepEqual(result, { businessAccessReady: expectedState === 'active', accessState: expectedState });
+                        assert.equal(statements.length, 1, 'status uses one database snapshot');
+                        assert.ok(statements.every(sql => /^\s*SELECT\b/i.test(sql)), 'status issues only reads');
+                        if (canonicalReady !== null) {
+                            const account = await client.query('SELECT id, role FROM users WHERE id = $1', [userId]);
+                            const access = await loadMembershipAccess(client, account.rows[0], fixtureKey);
+                            assert.equal(access.membershipEnabled && !access.invalid && Boolean(access.activeMembership), canonicalReady);
+                            assert.equal(result.businessAccessReady, canonicalReady, 'projection follows the canonical membership decision');
+                        }
+                    } finally {
+                        await client.query('ROLLBACK TO SAVEPOINT readiness_case');
+                        await client.query('RELEASE SAVEPOINT readiness_case');
+                    }
+                });
+            }
+            assert.deepEqual(await resolveAccountBusinessAccess(client, userId, fixtureKey + '_missing'), {
+                businessAccessReady: false, accessState: 'unknown'
+            });
+            assert.deepEqual(await resolveAccountBusinessAccess(client, 0, fixtureKey), {
+                businessAccessReady: false, accessState: 'unknown'
+            });
+        } finally {
+            try { await client.query('ROLLBACK'); } finally { client.release(); }
+        }
+    });
+
     it('atomically creates a new staff profile, account, profession assignment and canonical link', async () => {
         const name = `${staffNamePrefix} New`;
         const payload = onboardingPayload(usernames.newStaff, name);
@@ -208,13 +321,22 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
                 { dayType: 'weekend', startTime: '10:00', endTime: '16:00' }
             ]
         }];
+        const statements = [];
+        const dbPool = tracingPool(pool, statements);
         const result = await createAccountOnboarding({
             payload,
             actor,
-            dbPool: pool
+            dbPool
         });
 
         assert.equal(result.loginReady, true);
+        assert.equal(typeof result.businessAccessReady, 'boolean');
+        assert.ok(['active', 'pending_membership', 'unknown'].includes(result.accessState));
+        assert.equal(result.receipt.access.businessAccessReady, result.businessAccessReady);
+        assert.equal(result.receipt.access.accessState, result.accessState);
+        assert.equal(statements.some(statement => /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(organization_memberships|business_memberships)/i.test(statement)), false);
+        const businessReadIndex = statements.findIndex(statement => /FROM users u LEFT JOIN businesses b/.test(statement));
+        assert.ok(businessReadIndex > statements.indexOf('COMMIT'), 'readiness is checked after account COMMIT');
         assert.equal(result.receipt.staff.created, true);
         assert.equal(result.receipt.staff.linked, true);
         assert.equal(result.receipt.professions.length, 1);
@@ -251,6 +373,26 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
         assert.equal(Number(persisted.rows[0].linked_staff_id), Number(persisted.rows[0].staff_id));
         assert.equal(persisted.rows[0].profession_key, 'animator');
         assert.equal(persisted.rows[0].is_primary, true);
+
+        const memberships = await pool.query(
+            `SELECT
+                (SELECT COUNT(*)::int FROM organization_memberships WHERE user_id = $1) AS organization_count,
+                (SELECT COUNT(*)::int FROM business_memberships WHERE user_id = $1) AS business_count`,
+            [persisted.rows[0].user_id]
+        );
+        assert.equal(memberships.rows[0].organization_count, 0);
+        assert.equal(memberships.rows[0].business_count, 0);
+        const registry = await pool.query(
+            `SELECT b.status AS business_status, b.access_mode, o.status AS organization_status
+             FROM businesses b
+             JOIN organizations o ON o.id = b.organization_id
+             WHERE b.context_key = $1`,
+            [result.receipt.access.defaultBusinessContext]
+        );
+        const targetIsMembershipBusiness = registry.rows[0]?.business_status === 'active'
+            && registry.rows[0]?.organization_status === 'active'
+            && registry.rows[0]?.access_mode === 'membership';
+        assert.equal(result.accessState, targetIsMembershipBusiness ? 'pending_membership' : 'unknown');
 
         const conditions = await pool.query(
             `SELECT rate.hourly_rate,
@@ -293,6 +435,21 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
         const auditPayload = { security: audit.rows, hr: hrAudit.rows };
         assert.equal(JSON.stringify(auditPayload).includes(result.credential.password), false);
         assert.deepEqual(findSensitiveAuditKeys(auditPayload), []);
+    });
+
+    it('preserves the committed credential when the post-commit registry lookup fails', async () => {
+        const result = await createAccountOnboarding({
+            payload: onboardingPayload(usernames.lookupFailure, `${staffNamePrefix} Lookup Failure`),
+            actor,
+            dbPool: faultingPool(pool, sql => /FROM\s+users\s+u\s+LEFT\s+JOIN\s+businesses\s+b\s+ON\s+b\.context_key\s*=\s*\$2/i.test(sql))
+        });
+        assert.equal(result.loginReady, true);
+        assert.equal(result.businessAccessReady, false);
+        assert.equal(result.accessState, 'unknown');
+        assert.ok(result.credential.password);
+        assert.ok(result.receipt.warnings.some(item => item.code === 'BUSINESS_ACCESS_STATUS_UNKNOWN'));
+        const persisted = await pool.query('SELECT id FROM users WHERE username = $1', [usernames.lookupFailure]);
+        assert.equal(persisted.rows.length, 1);
     });
 
     it('links an existing staff row while preserving its prior profession assignment', async () => {
@@ -440,7 +597,8 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
 
     it('rolls the entire transaction back when a later account write fails', async () => {
         const name = `${staffNamePrefix} Rollback`;
-        const dbPool = faultingPool(pool, sql => /INSERT\s+INTO\s+users\s*\(/i.test(sql));
+        const statements = [];
+        const dbPool = tracingPool(faultingPool(pool, sql => /INSERT\s+INTO\s+users\s*\(/i.test(sql)), statements);
         await assert.rejects(
             createAccountOnboarding({
                 payload: onboardingPayload(usernames.rollback, name),
@@ -449,6 +607,10 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
             }),
             /forced_account_onboarding_integration_failure/
         );
+        assert.ok(statements.includes('ROLLBACK'));
+        assert.equal(statements.includes('COMMIT'), false);
+        assert.equal(statements.some(sql => /FROM users u LEFT JOIN businesses b/.test(sql)), false, 'rollback skips post-commit readiness');
+        assert.equal(statements.some(sql => /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(organization_memberships|business_memberships)/i.test(sql)), false);
 
         const [users, staff, profiles, audits] = await Promise.all([
             pool.query('SELECT id FROM users WHERE username = $1', [usernames.rollback]),

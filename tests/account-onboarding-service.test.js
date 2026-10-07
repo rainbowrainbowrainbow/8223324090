@@ -8,6 +8,7 @@ const {
     isProtectedSystemAccount,
     professionToAccountRole,
     assertLastActiveCreatorInvariant,
+    resolveAccountBusinessAccess,
     normalizeAccountOnboardingPayload,
     mergeExistingProfessionAssignments,
     legacySecondaryProfessionKeys,
@@ -127,9 +128,27 @@ function createOnboardingHarness(options = {}) {
     };
     const dbPool = {
         async connect() { return client; },
-        async query(sql) {
+        async query(sql, params = []) {
             postCommitQueries += 1;
             const text = normalizeSql(sql);
+            calls.push({ text, params });
+            assert.ok(calls.some(call => call.text === 'COMMIT'), 'pool work must run after COMMIT');
+            if (/FROM users u LEFT JOIN businesses b ON b\.context_key = \$2/i.test(text)) {
+                if (options.failBusinessAccessLookup) throw new Error('forced_business_access_lookup_failure');
+                return { rows: [options.businessAccessRow || {
+                    user_is_active: true,
+                    user_role: 'animator',
+                    context_key: 'event_genix',
+                    business_id: 44,
+                    organization_id: 7,
+                    business_status: 'active',
+                    access_mode: 'membership',
+                    organization_status: 'active',
+                    membership_organization_id: null,
+                    business_membership_is_active: null,
+                    organization_membership_is_active: null
+                }] };
+            }
             if (/SELECT id FROM chat_channels WHERE is_default = true/i.test(text)) {
                 if (options.failPostCommit) throw new Error('forced_chat_failure');
                 return { rows: [] };
@@ -258,11 +277,147 @@ test('post-commit chat failure returns a warning without exposing credentials to
     });
     assert.equal(result.loginReady, true);
     assert.equal(result.receipt.warnings[0]?.code, 'DEFAULT_CHAT_SETUP_FAILED');
+    assert.equal(result.businessAccessReady, false);
+    assert.equal(result.accessState, 'pending_membership');
+    assert.equal(result.receipt.access.businessAccessReady, result.businessAccessReady);
+    assert.equal(result.receipt.access.accessState, result.accessState);
     assert.match(result.credential.password, /^[A-Z][A-Za-z]+-[A-Z][A-Za-z]+-\d{2}$/);
     assert.ok(harness.calls.some(call => call.text === 'COMMIT'));
     const auditText = JSON.stringify(harness.auditParams);
     assert.doesNotMatch(auditText, new RegExp(result.credential.password));
     assert.doesNotMatch(auditText, /password/i);
+});
+
+test('account business access is active only for matching active registry and memberships', async () => {
+    const row = {
+        user_is_active: true,
+        user_role: 'animator',
+        membership_role: 'animator',
+        context_key: 'event_genix',
+        business_id: 44,
+        organization_id: 7,
+        business_status: 'active',
+        access_mode: 'membership',
+        organization_status: 'active',
+        membership_organization_id: 7,
+        business_membership_is_active: true,
+        organization_membership_is_active: true
+    };
+    const result = await resolveAccountBusinessAccess({
+        async query(sql, params) {
+            assert.match(normalizeSql(sql), /FROM users u LEFT JOIN businesses b/);
+            assert.deepEqual(params, [91, 'event_genix']);
+            return { rows: [row] };
+        }
+    }, 91, 'event_genix');
+    assert.deepEqual(result, { businessAccessReady: true, accessState: 'active' });
+});
+
+test('business creator readiness requires the freshly read platform creator role', async () => {
+    const row = {
+        user_is_active: true, user_role: 'creator', membership_role: 'creator',
+        business_id: 44, context_key: 'event_genix', organization_id: 7,
+        business_status: 'active', access_mode: 'membership', organization_status: 'active',
+        membership_organization_id: 7, business_membership_is_active: true,
+        organization_membership_is_active: true
+    };
+    const db = { async query() { return { rows: [row] }; } };
+    assert.deepEqual(await resolveAccountBusinessAccess(db, 91, 'event_genix'), {
+        businessAccessReady: true, accessState: 'active'
+    });
+    row.user_role = 'animator';
+    assert.deepEqual(await resolveAccountBusinessAccess(db, 91, 'event_genix'), {
+        businessAccessReady: false, accessState: 'unknown'
+    });
+});
+
+test('account business access is pending for missing, revoked, or organization-revoked membership', async t => {
+    const registry = {
+        user_is_active: true,
+        business_id: 44,
+        organization_id: 7,
+        business_status: 'active',
+        access_mode: 'membership',
+        organization_status: 'active'
+    };
+    const cases = [
+        ['missing business membership', { ...registry, membership_organization_id: null }],
+        ['revoked business membership', { ...registry, membership_organization_id: 7, business_membership_is_active: false, organization_membership_is_active: true }],
+        ['revoked organization membership', { ...registry, membership_organization_id: 7, business_membership_is_active: true, organization_membership_is_active: false }]
+    ];
+    for (const [name, row] of cases) {
+        await t.test(name, async () => {
+            const result = await resolveAccountBusinessAccess({ async query() { return { rows: [row] }; } }, 91, 'event_genix');
+            assert.deepEqual(result, { businessAccessReady: false, accessState: 'pending_membership' });
+        });
+    }
+});
+
+test('account business access is unknown for unresolved, inactive, compatibility, or foreign registry state', async t => {
+    const active = {
+        user_is_active: true,
+        user_role: 'animator',
+        membership_role: 'animator',
+        context_key: 'event_genix',
+        business_id: 44,
+        organization_id: 7,
+        business_status: 'active',
+        access_mode: 'membership',
+        organization_status: 'active',
+        membership_organization_id: 7,
+        business_membership_is_active: true,
+        organization_membership_is_active: true
+    };
+    const cases = [
+        ['missing registry', null],
+        ['inactive user', { ...active, user_is_active: false }],
+        ['inactive business', { ...active, business_status: 'inactive' }],
+        ['inactive organization', { ...active, organization_status: 'inactive' }],
+        ['compatibility business', { ...active, access_mode: 'compatibility' }],
+        ['foreign membership organization', { ...active, membership_organization_id: 8 }],
+        ['business creator without platform creator', { ...active, membership_role: 'creator' }]
+    ];
+    for (const [name, row] of cases) {
+        await t.test(name, async () => {
+            const result = await resolveAccountBusinessAccess({ async query() { return { rows: row ? [row] : [] }; } }, 91, 'event_genix');
+            assert.deepEqual(result, { businessAccessReady: false, accessState: 'unknown' });
+        });
+    }
+});
+
+test('membership lookup failure after commit preserves loginReady and the one-time credential', async () => {
+    const harness = createOnboardingHarness({ failBusinessAccessLookup: true });
+    const result = await createAccountOnboarding({
+        payload: onboardingPayload('membership.lookup.failure'),
+        actor: { id: 1, username: 'creator', role: 'creator', action_denylist: [] },
+        dbPool: harness.dbPool
+    });
+    assert.equal(result.loginReady, true);
+    assert.equal(result.businessAccessReady, false);
+    assert.equal(result.accessState, 'unknown');
+    assert.ok(result.credential.password);
+    assert.ok(result.receipt.warnings.some(item => item.code === 'BUSINESS_ACCESS_STATUS_UNKNOWN'));
+    assert.equal(result.receipt.access.businessAccessReady, false);
+    assert.equal(result.receipt.access.accessState, 'unknown');
+    assert.ok(harness.calls.some(call => call.text === 'COMMIT'));
+    assert.equal(harness.calls.some(call => /(?:INSERT INTO|UPDATE|DELETE FROM) (organization_memberships|business_memberships)/i.test(call.text)), false);
+    assert.equal(JSON.stringify(harness.auditParams).includes(result.credential.password), false);
+});
+
+test('an unverifiable registry warns after commit without losing the account credential', async () => {
+    const harness = createOnboardingHarness({ businessAccessRow: { user_is_active: true, business_id: null } });
+    const result = await createAccountOnboarding({
+        payload: onboardingPayload(),
+        actor: { id: 1, username: 'creator', role: 'creator', action_denylist: [] },
+        dbPool: harness.dbPool
+    });
+    assert.equal(result.loginReady, true);
+    assert.equal(result.businessAccessReady, false);
+    assert.equal(result.accessState, 'unknown');
+    assert.ok(result.credential.password);
+    assert.deepEqual(result.receipt.warnings.map(item => item.code), ['BUSINESS_ACCESS_STATUS_UNKNOWN']);
+    assert.ok(harness.calls.some(call => call.text === 'COMMIT'));
+    assert.equal(harness.calls.some(call => call.text === 'ROLLBACK'), false);
 });
 
 test('onboarding rejects role-fenced Finance explicit allows', () => {

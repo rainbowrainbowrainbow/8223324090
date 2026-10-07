@@ -26,6 +26,7 @@ const {
     linkUserToStaffProfile
 } = require('./accountLinking');
 const { recordAccountSecurityEvent } = require('./accountSecurity');
+const { buildMembershipAccess } = require('./businessMembership');
 const {
     normalizeProfessionKey,
     normalizeProfessionKeyArray,
@@ -824,6 +825,60 @@ async function insertStrictHrAudit(client, actor, staffId, details, req) {
     );
 }
 
+async function resolveAccountBusinessAccess(dbPool, userId, businessContext) {
+    const result = await dbPool.query(
+        `SELECT u.is_active AS user_is_active, u.role AS user_role,
+                b.id AS business_id, b.context_key,
+                b.organization_id,
+                b.status AS business_status,
+                b.access_mode,
+                o.status AS organization_status,
+                bm.organization_id AS membership_organization_id,
+                bm.role AS membership_role,
+                bm.is_active AS business_membership_is_active,
+                om.is_active AS organization_membership_is_active
+         FROM users u
+         LEFT JOIN businesses b ON b.context_key = $2
+         LEFT JOIN organizations o ON o.id = b.organization_id
+         LEFT JOIN business_memberships bm ON bm.user_id = u.id AND bm.business_id = b.id
+         LEFT JOIN organization_memberships om
+           ON om.user_id = u.id AND om.organization_id = b.organization_id
+         WHERE u.id = $1
+         LIMIT 1`,
+        [userId, businessContext]
+    );
+    const row = result.rows?.[0];
+    if (!row || row.user_is_active !== true || row.business_id == null
+        || row.business_status !== 'active' || row.organization_status !== 'active'
+        || row.access_mode !== 'membership') {
+        return { businessAccessReady: false, accessState: 'unknown' };
+    }
+
+    const businessOrganizationId = Number(row.organization_id);
+    const membershipOrganizationId = row.membership_organization_id == null
+        ? null
+        : Number(row.membership_organization_id);
+    if (!Number.isInteger(businessOrganizationId) || businessOrganizationId <= 0
+        || (membershipOrganizationId != null && membershipOrganizationId !== businessOrganizationId)) {
+        return { businessAccessReady: false, accessState: 'unknown' };
+    }
+
+    if (row.business_membership_is_active !== true || row.organization_membership_is_active !== true) {
+        return { businessAccessReady: false, accessState: 'pending_membership' };
+    }
+
+    // Reuse the request-time decision, including the platform creator role guard.
+    // This projects access to the explicitly selected business; it grants nothing.
+    const access = buildMembershipAccess(
+        { role: row.user_role },
+        [{ ...row, role: row.membership_role }],
+        businessContext,
+        [row]
+    );
+    const ready = access.membershipEnabled && !access.invalid && Boolean(access.activeMembership);
+    return { businessAccessReady: ready, accessState: ready ? 'active' : 'unknown' };
+}
+
 async function addDefaultChatMemberships(dbPool, userId) {
     const channels = await dbPool.query('SELECT id FROM chat_channels WHERE is_default = true ORDER BY id');
     for (const channel of channels.rows) {
@@ -1026,6 +1081,25 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
 
     const warnings = [];
     let defaultChatMemberships = 0;
+    let businessAccess = { businessAccessReady: false, accessState: 'unknown' };
+    try {
+        businessAccess = await resolveAccountBusinessAccess(
+            dbPool,
+            user.id,
+            normalized.access.defaultBusinessContext
+        );
+        if (businessAccess.accessState === 'unknown') {
+            warnings.push({
+                code: 'BUSINESS_ACCESS_STATUS_UNKNOWN',
+                message: 'Не вдалося підтвердити доступ до вибраного бізнесу. Перевірте членство окремо.'
+            });
+        }
+    } catch {
+        warnings.push({
+            code: 'BUSINESS_ACCESS_STATUS_UNKNOWN',
+            message: 'Не вдалося перевірити членство після створення акаунта. Перевірте доступ окремо.'
+        });
+    }
     try {
         defaultChatMemberships = await addDefaultChatMemberships(dbPool, user.id);
     } catch {
@@ -1065,7 +1139,9 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             role: normalized.access.role,
             extraRoles: normalized.access.extraRoles,
             businessContexts: normalized.access.businessContexts,
-            defaultBusinessContext: normalized.access.defaultBusinessContext
+            defaultBusinessContext: normalized.access.defaultBusinessContext,
+            businessAccessReady: businessAccess.businessAccessReady,
+            accessState: businessAccess.accessState
         },
         postCommit: { defaultChatMemberships },
         warnings,
@@ -1083,6 +1159,8 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
         receipt,
         loginReady: loginCheck.loginReady,
         loginReadyReason: loginCheck.reason,
+        businessAccessReady: businessAccess.businessAccessReady,
+        accessState: businessAccess.accessState,
         credential: oneTimeCredential(user.username, temporaryPassword, 'account_onboarding')
     };
 }
@@ -1097,6 +1175,7 @@ module.exports = {
     actorCanManageRoleSet,
     actorCanManageTarget,
     canToggleAccount,
+    resolveAccountBusinessAccess,
     professionToAccountRole,
     assertLastActiveCreatorInvariant,
     normalizeAccountOnboardingPayload,

@@ -2110,6 +2110,10 @@ async function run() {
         await runStep(page);
     };
     try {
+        if (process.env.HR_TEAM_ACCOUNT_RECEIPT_ONLY === 'true') {
+            await require('./hr-account-onboarding-receipt-smoke').run(browser);
+            return;
+        }
         if (process.env.HR_TEAM_OFFBOARDING_ONLY === 'true') {
             await page.setViewportSize({ width: 390, height: 844 });
             await installHarness(page, { dark: false });
@@ -2136,6 +2140,7 @@ async function run() {
             console.log('HR Team rate safety browser smoke passed');
             return;
         }
+        await require('./hr-account-onboarding-receipt-smoke').run(browser);
         await assertRealTeamLoaderStates(loaderPage);
         console.log('HR Team real loader states passed');
         await loaderPage.close();
@@ -2183,5 +2188,5 @@ async function run() {
 }
 
 run()
-    .then(() => (process.env.HR_TEAM_OFFBOARDING_ONLY === 'true' || process.env.HR_TEAM_ACCOUNT_ACCESS_ONLY === 'true' || process.env.HR_TEAM_RATE_SAFETY_ONLY === 'true' || process.env.HR_TEAM_PAY_CONDITIONS_ONLY === 'true') ? undefined : require('./hr-structure-tree-browser-smoke').run())
+    .then(() => (process.env.HR_TEAM_ACCOUNT_RECEIPT_ONLY === 'true' || process.env.HR_TEAM_OFFBOARDING_ONLY === 'true' || process.env.HR_TEAM_ACCOUNT_ACCESS_ONLY === 'true' || process.env.HR_TEAM_RATE_SAFETY_ONLY === 'true' || process.env.HR_TEAM_PAY_CONDITIONS_ONLY === 'true') ? undefined : require('./hr-structure-tree-browser-smoke').run())
     .catch(err => fail(err?.stack || err?.message || String(err)));

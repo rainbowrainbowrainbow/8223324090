@@ -9151,7 +9151,8 @@ function renderAccountOnboardingReview() {
         ['Структура', structure?.title || 'Без вузла'],
         ['Професії', professionTitles],
         ['Ставка / час', conditionText],
-        ['Доступ', `${ROLE_LABELS[payload.access.role] || payload.access.role} · ${payload.access.businessContexts.join(', ')}`],
+        ['Роль профілю', `${ROLE_LABELS[payload.access.role] || payload.access.role} · ${payload.access.businessContexts.join(', ')}`],
+        ['Членство бізнесу', 'Цей крок не надає членства; доступ активується окремо'],
         ['Overrides', `${payload.access.extraRoles.length} дод. ролей · ${payload.access.pageAllowlist.length} сторінок · ${payload.access.actionAllowlist.length}/${payload.access.actionDenylist.length} allow/deny`]
     ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('');
 }
@@ -9182,6 +9183,21 @@ function renderAccountOnboardingReceipt(response) {
     const staffId = Number(receipt.staff?.id || response?.staff?.id || 0);
     const professionKey = receipt.professions?.find(item => item.isPrimary)?.key || accountOnboardingState.payload?.professions?.find(item => item.isPrimary)?.key || '';
     const warnings = Array.isArray(receipt.warnings) ? receipt.warnings : [];
+    const accessState = response?.accessState || receipt.access?.accessState || 'unknown';
+    const businessAccessReady = typeof response?.businessAccessReady === 'boolean'
+        ? response.businessAccessReady
+        : receipt.access?.businessAccessReady === true;
+    const businessKey = receipt.access?.defaultBusinessContext || receipt.account?.defaultBusinessContext || accountOnboardingState.payload?.access?.defaultBusinessContext || '';
+    const businessLabel = getAccountBusinessCatalog().find(item => item.key === businessKey)?.label || businessKey || 'Не вказано';
+    const loginMessage = response?.loginReady === true
+        ? 'Пароль готовий до входу.'
+        : 'Готовність пароля до входу не підтверджено.';
+    const businessAccessStatusMessage = accessState === 'active' && businessAccessReady
+        ? 'Доступ до вибраного бізнесу активний.'
+        : accessState === 'pending_membership' && !businessAccessReady
+            ? 'Доступ до вибраного бізнесу очікує членства.'
+            : 'Стан доступу до вибраного бізнесу не вдалося підтвердити; перевірте членство окремо.';
+    const businessAccessMessage = `${loginMessage} ${businessAccessStatusMessage}`;
     const conditionSummary = (receipt.conditions || []).map(condition => {
         const after = condition.after || condition;
         const rate = after.rateMode === 'explicit'
@@ -9198,13 +9214,14 @@ function renderAccountOnboardingReceipt(response) {
         ['Staff', `${receipt.staff?.name || response?.staff?.name || ''} · ${receipt.staff?.created ? 'створено' : 'привʼязано'}`],
         ['Професії', (receipt.professions || []).map(item => `${item.key}${item.isPrimary ? ' · основна' : ''}`).join(', ')],
         ['Ставка / типовий час', conditionSummary || 'Не змінювалися'],
-        ['Доступ', receipt.access?.role || receipt.account?.role || '']
-    ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('')}</div>${credential ? `<div class="hr-account-credential"><strong>Тимчасовий пароль, показується один раз</strong><code>Username: ${escapeHtml(credential.username || '')}</code><code>Password: ${escapeHtml(credential.password || '')}</code><button type="button" class="hr-account-toggle" data-account-onboarding-copy>Скопіювати логін і пароль</button></div>` : ''}${warnings.length ? `<div class="hr-account-receipt-warnings"><strong>Створено з попередженнями:</strong><ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || '')}</li>`).join('')}</ul></div>` : ''}<div class="hr-account-detail-actions">${staffId ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-staff="${staffId}">Відкрити staff card</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-documents="${staffId}">Додати документи</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-resources="${staffId}">Видати ресурси</button>` : ''}${professionKey ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-checklist="${escapeHtml(professionKey)}">Відкрити checklist</button>` : ''}<button type="button" class="hr-account-primary" data-account-onboarding-finish>Готово</button></div>`;
+        ['Роль профілю', receipt.access?.role || receipt.account?.role || ''],
+        ['Вибраний бізнес', businessLabel]
+    ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('')}</div><p class="hr-account-receipt-access" role="status" aria-live="polite">${escapeHtml(businessAccessMessage)}</p>${credential ? `<div class="hr-account-credential"><strong>Тимчасовий пароль, показується один раз</strong><code>Username: ${escapeHtml(credential.username || '')}</code><code>Password: ${escapeHtml(credential.password || '')}</code><button type="button" class="hr-account-toggle" data-account-onboarding-copy>Скопіювати логін і пароль</button></div>` : ''}${warnings.length ? `<div class="hr-account-receipt-warnings"><strong>Створено з попередженнями:</strong><ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || '')}</li>`).join('')}</ul></div>` : ''}<div class="hr-account-detail-actions">${staffId ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-staff="${staffId}">Відкрити staff card</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-documents="${staffId}">Додати документи</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-resources="${staffId}">Видати ресурси</button>` : ''}${professionKey ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-checklist="${escapeHtml(professionKey)}">Відкрити checklist</button>` : ''}<button type="button" class="hr-account-primary" data-account-onboarding-finish>Готово</button></div>`;
     root.classList.remove('hidden');
     accountOnboardingEl('accountOnboardingForm')?.classList.add('hidden');
     accountOnboardingEl('accountOnboardingSteps')?.classList.add('hidden');
     accountOnboardingEl('accountOnboardingActions')?.classList.add('hidden');
-    setAccountOnboardingStatus(warnings.length ? 'Основні дані створено. Перевірте post-commit попередження нижче.' : '', warnings.length ? 'warning' : 'success');
+    setAccountOnboardingStatus(warnings.length ? 'Основні дані створено. Перевірте попередження у квитанції.' : '', warnings.length ? 'warning' : 'success');
     root.focus({ preventScroll: true });
 }
 

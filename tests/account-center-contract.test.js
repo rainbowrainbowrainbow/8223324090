@@ -111,6 +111,66 @@ test('account creation uses the seven-step atomic onboarding workspace', () => {
     assert.match(UI_CODE, /disabled \? ' disabled aria-disabled="true"'/);
 });
 
+function renderReceiptFixture(payload) {
+    const root = { innerHTML: '', classList: { add() {}, remove() {} }, setAttribute() {}, focus() {} };
+    const context = {
+        accountOnboardingState: { payload: { access: { defaultBusinessContext: 'dar' } } },
+        accountOnboardingEl: () => root,
+        getAccountBusinessCatalog: () => [{ key: 'dar', label: 'Дар' }, { key: 'event_genix', label: 'Парк Закревського' }],
+        escapeHtml: value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+        setAccountOnboardingStatus() {}
+    };
+    vm.createContext(context);
+    vm.runInContext(between(HR_PAGE_CODE, 'function renderAccountOnboardingReceipt(response)', 'async function submitAccountOnboarding()'), context);
+    context.renderAccountOnboardingReceipt(payload);
+    return { html: root.innerHTML, state: context.accountOnboardingState };
+}
+
+test('account receipt separates password readiness, profile context, and business membership', () => {
+    for (const [accessState, businessAccessReady, expected] of [
+        ['active', true, /Доступ до вибраного бізнесу активний/],
+        ['pending_membership', false, /Доступ до вибраного бізнесу очікує членства/],
+        ['unknown', false, /Стан доступу до вибраного бізнесу не вдалося підтвердити/]
+    ]) {
+        const { html } = renderReceiptFixture({ loginReady: true, accessState, businessAccessReady, receipt: { access: { role: 'director', defaultBusinessContext: 'dar' } } });
+        assert.match(html, expected);
+        assert.match(html, /Пароль готовий до входу/);
+        assert.match(html, /Вибраний бізнес<\/span><strong>Дар<\/strong>/);
+        assert.doesNotMatch(html, /Парк Закревського/);
+        assert.match(html, /role="status" aria-live="polite"/);
+    }
+    assert.match(HR_HTML, /Бізнеси профілю/);
+    assert.match(HR_HTML, /Вибір бізнесу задає контекст профілю, але сам по собі не створює членство/);
+    assert.match(HR_PAGE_CODE, /Членство бізнесу/);
+});
+
+test('receipt fallback is cautious and preserves credentials and post-commit warnings', () => {
+    const credential = { username: 'synthetic.receipt', password: 'SyntheticReceipt234' };
+    const warning = { code: 'BUSINESS_ACCESS_STATUS_UNKNOWN', message: 'Статус членства не підтверджено.' };
+    const fallback = renderReceiptFixture({ loginReady: true, credential, receipt: { warnings: [warning] } });
+    assert.equal(fallback.state.credential, credential);
+    assert.match(fallback.html, /SyntheticReceipt234/);
+    assert.match(fallback.html, /Статус членства не підтверджено/);
+    assert.match(fallback.html, /Стан доступу до вибраного бізнесу не вдалося підтвердити/);
+
+    const nested = renderReceiptFixture({ loginReady: true, receipt: { access: { accessState: 'active', businessAccessReady: true } } });
+    assert.match(nested.html, /Доступ до вибраного бізнесу активний/);
+    for (const response of [
+        { accessState: 'active', businessAccessReady: false },
+        { accessState: 'pending_membership', businessAccessReady: true },
+        { accessState: 'unexpected', businessAccessReady: true }
+    ]) {
+        assert.match(renderReceiptFixture(response).html, /Стан доступу до вибраного бізнесу не вдалося підтвердити/);
+    }
+    const topLevel = renderReceiptFixture({ accessState: 'unknown', businessAccessReady: false, receipt: { access: { accessState: 'active', businessAccessReady: true } } });
+    assert.match(topLevel.html, /Стан доступу до вибраного бізнесу не вдалося підтвердити/);
+    for (const loginReady of [false, undefined]) {
+        const { html } = renderReceiptFixture({ loginReady, accessState: 'active', businessAccessReady: true });
+        assert.match(html, /Готовність пароля до входу не підтверджено/);
+        assert.doesNotMatch(html, /Пароль готовий до входу/);
+    }
+});
+
 test('account onboarding commits async definitions and restores focus only through current visible targets', () => {
     const optionsSource = between(
         HR_PAGE_CODE,

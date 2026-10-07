@@ -5630,10 +5630,25 @@ button.hr-team-onboarding-compact:focus-visible {
     margin: 0 auto;
     padding: 22px 24px 28px;
 }
+.hr-account-onboarding:has(> .hr-account-receipt:not(.hidden)) {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+}
 .hr-account-receipt h4 {
     margin: 0;
     color: #047857;
     font-size: 20px;
+}
+.hr-account-receipt-access,
+.hr-account-field-note {
+    margin: 8px 0 0;
+    color: var(--text-muted, #64748b);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.hr-account-receipt-access {
+    border-left: 3px solid rgba(14, 165, 233, 0.55);
+    padding: 8px 10px;
+    background: rgba(14, 165, 233, 0.06);
 }
 .hr-account-receipt-grid {
     display: grid;

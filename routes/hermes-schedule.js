@@ -1051,6 +1051,80 @@ function createHermesScheduleRouter(options = {}) {
         }
     });
 
+    router.get('/attendance', requireHermesScheduleAccess, async (req, res) => {
+        if (!canUseAction(req.user, 'hr.today.view')) {
+            return sendHermesScheduleError(
+                res, 403, 'HERMES_CAPABILITY_REQUIRED',
+                'Hermes actor does not have the required attendance read capability'
+            );
+        }
+        try {
+            // Reject ambiguous query shapes before parsing; never turn invalid IDs into no filter.
+            for (const key of ['businessContext', 'business_context', 'dateFrom', 'dateTo', 'staffIds', 'staff_ids']) {
+                if (req.query[key] !== undefined && typeof req.query[key] !== 'string') {
+                    throw hermesScheduleError(400, 'HERMES_INVALID_FILTER', key + ' must be a single string');
+                }
+            }
+            if ((req.query.businessContext !== undefined && req.query.business_context !== undefined)
+                || (req.query.staffIds !== undefined && req.query.staff_ids !== undefined)) {
+                throw hermesScheduleError(400, 'HERMES_INVALID_FILTER', 'Use only one spelling of each filter');
+            }
+            const range = parseScheduleDateRange(req.query);
+            if (range.dateFrom.startsWith('0000-') || range.dateTo.startsWith('0000-')) {
+                throw hermesScheduleError(400, 'HERMES_INVALID_DATE_RANGE', 'Dates must have a year between 0001 and 9999');
+            }
+            const staffIds = parseStaffIds(req.query.staffIds ?? req.query.staff_ids);
+            if (staffIds.some(id => id > 2147483647)) {
+                throw hermesScheduleError(400, 'HERMES_INVALID_FILTER', 'staffIds must fit positive PostgreSQL integer IDs');
+            }
+            const params = [range.dateFrom, range.dateTo, HERMES_SCHEDULE_BUSINESS_CONTEXT];
+            const where = [
+                'tr.record_date >= $1::date',
+                'tr.record_date <= $2::date',
+                'tr.business_context = $3'
+            ];
+            if (staffIds.length) {
+                params.push(staffIds);
+                where.push('tr.staff_id = ANY($4::int[])');
+            }
+            // Actual records retain their business/date even when the staff roster or plan changes.
+            const result = await db.query(
+                `SELECT tr.staff_id, tr.record_date::text AS date,
+                        to_char(tr.clock_in AT TIME ZONE 'Europe/Kyiv', 'HH24:MI') AS arrival_time,
+                        tr.status
+                 FROM hr_time_records tr
+                 WHERE ${where.join('\n                   AND ')}
+                 ORDER BY tr.record_date ASC, tr.staff_id ASC`,
+                params
+            );
+            return res.json({
+                success: true,
+                items: result.rows.map(row => ({
+                    staffId: Number(row.staff_id),
+                    date: row.date,
+                    arrivalTime: row.arrival_time ?? null,
+                    status: row.status ?? null
+                })),
+                meta: {
+                    businessContext: HERMES_SCHEDULE_BUSINESS_CONTEXT,
+                    dateFrom: range.dateFrom,
+                    dateTo: range.dateTo,
+                    days: range.days,
+                    staffIds,
+                    timeZone: 'Europe/Kyiv',
+                    sanitized: true,
+                    readOnly: true
+                }
+            });
+        } catch (error) {
+            if (error.statusCode && error.statusCode < 500) {
+                return sendHermesScheduleError(res, error.statusCode, error.code, error.message, error.details);
+            }
+            log.error('GET /api/hermes/attendance failed', error);
+            return sendHermesScheduleError(res, 500, 'HERMES_INTERNAL_ERROR', 'Failed to read Hermes attendance');
+        }
+    });
+
     router.post(
         '/attendance/preview',
         requireHermesScheduleAccess,

@@ -488,8 +488,8 @@ const PAGE_PERMISSIONS = Object.freeze([
 const ACTION_PERMISSIONS = Object.freeze([
     action({
         key: 'hr.today.view', label: 'Перегляд HR: Сьогодні', group: 'hr', defaultRoles: HR_PAGE_ACCESS, risk: 'high',
-        backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
-        frontendConsumers: [source('js/hr-page.js', "'hr.today.view'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/today', null, 'Enforced by requireHrCapabilityContract.')]
+        backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true }), source('routes/hermes-schedule.js', "canUseAction(req.user, 'hr.today.view')", { enforces: true })],
+        frontendConsumers: [source('js/hr-page.js', "'hr.today.view'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/today', null, 'Enforced by requireHrCapabilityContract.'), api('routes/hermes-schedule.js', '/api/hermes/attendance', null, 'GET: machine auth and hr.today.view capability.')]
     }),
     action({
         key: 'hr.schedule.view', label: 'Перегляд HR-графіка', group: 'hr', defaultRoles: ALL_STAFF, risk: 'high',

@@ -249,6 +249,7 @@ const FINANCE_MANUAL_CHANGED_PATHS = Object.freeze([
     'tests/finance-qa-report-scope.test.js',
     'tests/finance-workflow-ui.test.js', 'tests/integration/finance-money-movements.integration.test.js',
     'tests/integration/finance-money-qa.integration.test.js', 'tests/integration/finance-transactions-pnl.integration.test.js',
+    'tests/integration/costing-management-postgres.test.js',
     'tests/isolated-postgres-test-flow.test.js', 'tests/operational-business-context.test.js',
     'tests/payroll-finance-workflow-contract.test.js', 'tests/production-block-controller.test.js', 'tests/route-smoke.test.js',
     // Generated version/cache inventory is enumerated independently of other protected workflows.
@@ -795,6 +796,9 @@ function warningText(manifest) {
         `5. Disposable QA: ${qa}.`,
         `6. Protected workflow: ${protectedWorkflow}.`,
         `7. Release notes: ${manifest.releaseNotes.length} підписаних пунктів.`,
+        ...(manifest.renewalFrom
+            ? [`8. Окремо погоджений ${manifest.renewalFrom.humanBlockId}: одна нова спроба до ${manifest.validUntil}; історія ${manifest.renewalFrom.attemptsUsed} попередніх спроб збережена.`]
+            : []),
         ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE
             ? ['8. Окремий Red-ефект після deploy: scheduler може перевести лише active із valid_until < поточної київської дати в expired (до 1000 записів); потрібні свіжий read-only підрахунок і прямий дозвіл власника.']
             : []),

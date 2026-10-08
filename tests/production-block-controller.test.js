@@ -79,6 +79,7 @@ function dryRuntime(overrides = {}) {
                 descendsFromBase: true,
                 descendsFromInitial: true,
                 descendsFromRetry: true,
+                descendsFromRenewal: true,
                 migrations: [...value.allowedMigrationFiles],
                 migrationHashes: Object.fromEntries(value.migrationClassifications.map(item => [item.file, item.sqlHash])),
                 changedPaths: [...value.changedPaths]
@@ -1255,4 +1256,245 @@ test('release stage revalidates expiry after tests and CI without executing an e
     assert.throws(() => runAuthorizedReleaseStage(value, file, 'git', ['push'], {},
         { now: expiredTime, commandResult: run }), error => error.code === 'PRODUCTION_BLOCK_EXPIRED');
     assert.deepEqual(calls, [['git', ['push']]], 'no expired protected stage may invoke a subprocess');
+});
+
+const COSTING_FIXTURE_PATH = 'tests/integration/costing-management-postgres.test.js';
+
+function financeRenewalFixture(t, overrides = {}) {
+    const previous = overrides.previous || manifest({ protectedWorkflow: 'finance-manual-qa',
+        now: new Date(Date.now() - 8 * 60 * 60_000), validityMinutes: 360 }, financeFacts());
+    previous.runtimeState = { releaseAttempts: 3, lastFailureCode: 'PRODUCTION_BLOCK_COMMAND_FAILED',
+        lastAttemptAt: previous.createdAt, ...overrides.runtimeState };
+    const previousFile = blockFile(t, previous);
+    const newFile = path.join(path.dirname(previousFile), 'renewal.json');
+    const nextFacts = facts({ ...financeFacts(), head: RELEASE_SHA,
+        changedPaths: [...financeFacts().changedPaths, COSTING_FIXTURE_PATH], ...overrides.facts });
+    const failedCi = { ...successfulHrPayrollCi(), headSha: previous.initialHeadSha,
+        conclusion: 'failure', jobs: [{ name: 'HR and payroll PostgreSQL integration', status: 'completed', conclusion: 'failure' }] };
+    const options = { blockFile: newFile, renewalFrom: previousFile, renewalCiRun: '37699444465',
+        renewalBlock: 'FIN-MONEY-03-RELEASE', renewalApprovedAt: new Date(Date.now() - 60_000).toISOString(),
+        protectedWorkflow: 'finance-manual-qa', releaseLabel: previous.releaseLabel,
+        validityMinutes: 360, maxReleaseAttempts: 1, ...overrides.options };
+    const runtime = { ...dryRuntime(),
+        async facts() { return nextFacts; },
+        async retryFacts(received, candidate, runId) {
+            assert.equal(received.manifestHash, previous.manifestHash);
+            assert.equal(candidate.head, nextFacts.head);
+            assert.equal(runId, '37699444465');
+            return { remoteSha: previous.initialHeadSha, descendsFromPrior: true, ciRun: failedCi, ...overrides.evidence };
+        }
+    };
+    return { previous, previousFile, newFile, nextFacts, failedCi, options, runtime };
+}
+
+test('finance renewal parsing requires all separate approval fields and cannot mix with retry', () => {
+    const complete = ['--renewal-from', '/tmp/prior.json', '--renewal-ci-run', '37699444465',
+        '--renewal-block', 'FIN-MONEY-03-RELEASE', '--renewal-approved-at', '2026-10-08T08:49:00.000Z'];
+    const parsed = parseOptions(['prepare', '--', ...complete, '--max-release-attempts', '1']);
+    assert.equal(parsed.renewalFrom, path.resolve('/tmp/prior.json'));
+    assert.equal(parsed.renewalBlock, 'FIN-MONEY-03-RELEASE');
+    assert.equal(parsed.maxReleaseAttempts, 1);
+    for (let index = 0; index < complete.length; index += 2) {
+        assert.throws(() => parseOptions(['prepare', ...complete.slice(0, index), ...complete.slice(index + 2)]),
+            error => error.code === 'PRODUCTION_BLOCK_RENEWAL_BINDING_INVALID');
+    }
+    for (const args of [
+        ['execute', '--block-file', '/tmp/current.json', ...complete],
+        ['prepare', ...complete, '--retry-from', '/tmp/old.json', '--retry-ci-run', '1']
+    ]) assert.throws(() => parseOptions(args), error => error.code === 'PRODUCTION_BLOCK_RENEWAL_BINDING_INVALID');
+});
+
+test('finance renewal preserves exhausted history and binds one separately approved attempt to its approval clock', async t => {
+    const fixture = financeRenewalFixture(t);
+    const original = structuredClone(fixture.previous);
+    const prepared = await prepareAction(fixture.options, fixture.runtime);
+    const next = readBlockFile(fixture.newFile);
+    assert.equal(next.maxReleaseAttempts, 1);
+    assert.equal(next.runtimeState.releaseAttempts, 0);
+    assert.equal(next.validUntil, new Date(Date.parse(fixture.options.renewalApprovedAt) + 6 * 60 * 60_000).toISOString());
+    assert.deepEqual(next.renewalFrom, { blockFile: fixture.previousFile, blockId: original.blockId,
+        manifestHash: original.manifestHash, headSha: original.initialHeadSha, ciRunId: '37699444465', attemptsUsed: 3,
+        humanBlockId: 'FIN-MONEY-03-RELEASE', approvedAt: fixture.options.renewalApprovedAt });
+    assert.match(prepared.warning, /FIN-MONEY-03-RELEASE.*одна нова спроба/);
+    const old = readBlockFile(fixture.previousFile, { requireUnexpired: false });
+    assert.equal(old.runtimeState.releaseAttempts, 3);
+    assert.equal(old.validUntil, original.validUntil);
+    assert.equal(old.manifestHash, original.manifestHash);
+    assert.deepEqual(old.runtimeState.supersededBy,
+        { blockId: next.blockId, manifestHash: next.manifestHash, blockFile: fixture.newFile });
+    assert.throws(() => readBlockFile(fixture.previousFile), error => error.code === 'PRODUCTION_BLOCK_EXPIRED');
+    await assert.doesNotReject(executeAction({ blockFile: fixture.newFile, confirmation: prepared.confirmation, dryRun: true }, fixture.runtime));
+    await assert.rejects(executeAction({ blockFile: fixture.newFile, confirmation: confirmationValue(original), dryRun: true }, fixture.runtime),
+        error => error.code === 'PRODUCTION_BLOCK_CONFIRMATION_INVALID');
+    const live = { commitSha: LIVE_SHA, sourceBranch: next.allowedBranch };
+    assert.doesNotThrow(() => assertPreparedProductionBase(next, live, HEAD_SHA));
+    assert.doesNotThrow(() => assertPreparedProductionBase(next, live, RELEASE_SHA));
+    for (const remote of [LIVE_SHA, '4'.repeat(40)]) assert.throws(() => assertPreparedProductionBase(next, live, remote),
+        error => error.code === 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    assert.throws(() => assertPreparedProductionBase(next, { ...live, commitSha: '4'.repeat(40) }, HEAD_SHA),
+        error => error.code === 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+});
+
+test('finance renewal can read all three expired retry manifests as evidence without reviving them', async t => {
+    const fixture = financeRenewalFixture(t);
+    const directory = path.dirname(fixture.previousFile);
+    const historical = [];
+    const historicalExpiry = new Date(Date.now() - 5 * 60 * 60_000).toISOString();
+    for (let index = 0; index < 3; index += 1) {
+        const value = manifest({ protectedWorkflow: 'finance-manual-qa', now: new Date(Date.now() - (10 - index) * 60 * 60_000),
+            validityMinutes: 360 }, { ...financeFacts(), head: String(index + 2).repeat(40) });
+        value.validUntil = historicalExpiry;
+        value.runtimeState = { releaseAttempts: index + 1, lastFailureCode: 'PRODUCTION_BLOCK_COMMAND_FAILED' };
+        const file = index === 2 ? fixture.previousFile : path.join(directory, `history-${index}.json`);
+        if (index > 0) {
+            const prior = historical[index - 1];
+            value.retryFrom = { attemptsUsed: index, blockFile: prior.file, blockId: prior.value.blockId,
+                ciRunId: String(100 + index), headSha: prior.value.initialHeadSha, manifestHash: prior.value.manifestHash };
+        }
+        value.manifestHash = manifestHash(value);
+        historical.push({ file, value });
+    }
+    for (let index = 0; index < historical.length; index += 1) {
+        const current = historical[index], successor = historical[index + 1];
+        if (successor) current.value.runtimeState.supersededBy = { blockId: successor.value.blockId,
+            manifestHash: successor.value.manifestHash, blockFile: successor.file };
+        writeBlockFile(current.file, current.value);
+    }
+    const predecessor = historical[2].value;
+    const runtime = { ...fixture.runtime,
+        async facts() { return { ...fixture.nextFacts, head: '5'.repeat(40) }; },
+        async retryFacts() { return { remoteSha: predecessor.initialHeadSha, descendsFromPrior: true,
+            ciRun: { ...fixture.failedCi, headSha: predecessor.initialHeadSha } }; }
+    };
+    await prepareAction(fixture.options, runtime);
+    assert.equal(readBlockFile(fixture.newFile).renewalFrom.attemptsUsed, 3);
+    for (const item of historical) {
+        assert.throws(() => readBlockFile(item.file), error => error.code === 'PRODUCTION_BLOCK_EXPIRED');
+        assert.equal(readBlockFile(item.file, { requireUnexpired: false }).runtimeState.releaseAttempts, item.value.runtimeState.releaseAttempts);
+    }
+});
+
+test('finance renewal refuses expanded scopes, budgets, missing approval, ineligible history and unrelated CI', async t => {
+    const failures = [
+        [{ runtimeState: { releaseAttempts: 2 } }, 'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID'],
+        [{ runtimeState: { lastFailureCode: null } }, 'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID'],
+        [{ runtimeState: { releaseSha: HEAD_SHA } }, 'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID'],
+        [{ runtimeState: { releaseCompletedAt: new Date().toISOString() } }, 'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID'],
+        [{ options: { maxReleaseAttempts: 2 } }, 'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID'],
+        [{ options: { renewalBlock: 'some-new-permission' } }, 'PRODUCTION_BLOCK_RENEWAL_BINDING_INVALID'],
+        [{ options: { renewalBlock: null } }, 'PRODUCTION_BLOCK_RENEWAL_BINDING_INVALID'],
+        [{ options: { renewalApprovedAt: 'invalid' } }, 'PRODUCTION_BLOCK_RENEWAL_VALIDITY_INVALID'],
+        [{ options: { renewalApprovedAt: new Date(Date.now() + 60_000).toISOString() } }, 'PRODUCTION_BLOCK_RENEWAL_VALIDITY_INVALID'],
+        [{ options: { renewalApprovedAt: new Date(Date.now() - 7 * 60 * 60_000).toISOString() } }, 'PRODUCTION_BLOCK_RENEWAL_VALIDITY_INVALID'],
+        [{ options: { releaseLabel: 'changed' } }, 'PRODUCTION_BLOCK_RENEWAL_SCOPE_DRIFT'],
+        [{ options: { releaseNotes: [{ title: 'changed', text: 'changed' }] } }, 'PRODUCTION_BLOCK_RENEWAL_SCOPE_DRIFT'],
+        [{ options: { qaScope: financeQaScope() } }, 'PRODUCTION_BLOCK_RENEWAL_SCOPE_DRIFT'],
+        [{ facts: { releaseVersion: '0.0.3' } }, 'PRODUCTION_BLOCK_RENEWAL_SCOPE_DRIFT'],
+        [{ facts: { head: HEAD_SHA } }, 'PRODUCTION_BLOCK_RENEWAL_SHA_INVALID'],
+        [{ facts: { changedPaths: financeFacts().changedPaths } }, 'PRODUCTION_BLOCK_RENEWAL_SCOPE_DRIFT'],
+        [{ facts: { changedPaths: [...financeFacts().changedPaths, COSTING_FIXTURE_PATH, 'tests/route-smoke.test.js'] } }, 'PRODUCTION_BLOCK_RENEWAL_SCOPE_DRIFT'],
+        [{ evidence: { remoteSha: LIVE_SHA } }, 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT'],
+        [{ evidence: { descendsFromPrior: false } }, 'PRODUCTION_BLOCK_RENEWAL_SHA_INVALID']
+    ];
+    for (const [override, code] of failures) {
+        const fixture = financeRenewalFixture(t, override);
+        await assert.rejects(prepareAction(fixture.options, fixture.runtime), error => error.code === code);
+        assert.equal(fs.existsSync(fixture.newFile), false);
+        assert.equal(readBlockFile(fixture.previousFile, { requireUnexpired: false }).runtimeState.supersededBy, undefined);
+    }
+    for (const override of [{ headSha: RELEASE_SHA }, { headBranch: 'foreign' }, { workflowName: 'Other' }, { event: 'pull_request' },
+        { conclusion: 'success' }, { conclusion: 'cancelled' }, { status: 'in_progress' }, { jobs: [] }]) {
+        const fixture = financeRenewalFixture(t);
+        fixture.runtime.retryFacts = async () => ({ remoteSha: HEAD_SHA, descendsFromPrior: true, ciRun: { ...fixture.failedCi, ...override } });
+        await assert.rejects(prepareAction(fixture.options, fixture.runtime), error => error.code === 'PRODUCTION_BLOCK_RETRY_CI_INVALID');
+    }
+    for (const extra of ['services/costingManagement.js', 'routes/costing.js', 'tests/integration/costing-unreviewed.test.js']) {
+        assert.throws(() => manifest({ protectedWorkflow: 'finance-manual-qa' }, {
+            ...financeFacts(), changedPaths: [...financeFacts().changedPaths, COSTING_FIXTURE_PATH, extra]
+        }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
+});
+
+test('finance renewal rejects copied manifests, predecessor tampering and modified approval binding', async t => {
+    const fixture = financeRenewalFixture(t);
+    await prepareAction(fixture.options, fixture.runtime);
+    const next = readBlockFile(fixture.newFile);
+    const copy = path.join(path.dirname(fixture.newFile), 'copy.json');
+    writeBlockFile(copy, next);
+    assert.throws(() => readBlockFile(copy), error => error.code === 'PRODUCTION_BLOCK_RENEWAL_SUPERSEDED');
+    for (const mutate of [
+        value => { value.renewalFrom.headSha = '4'.repeat(40); },
+        value => { value.renewalFrom.manifestHash = 'a'.repeat(64); },
+        value => { value.renewalFrom.attemptsUsed = 0; },
+        value => { value.renewalFrom.humanBlockId = 'other'; },
+        value => { value.renewalFrom.command = 'arbitrary'; },
+        value => { value.renewalFrom.approvedAt = new Date(Date.now() + 60_000).toISOString(); },
+        value => { value.validUntil = new Date(Date.parse(value.validUntil) + 1_000).toISOString(); },
+        value => { value.runtimeState.releaseAttempts = -1; },
+        value => { value.maxReleaseAttempts = 2; }
+    ]) {
+        const changed = structuredClone(next); mutate(changed); changed.manifestHash = manifestHash(changed);
+        writeBlockFile(fixture.newFile, changed);
+        assert.throws(() => readBlockFile(fixture.newFile), error => error.code.startsWith('PRODUCTION_BLOCK_RENEWAL_'));
+    }
+    writeBlockFile(fixture.newFile, next);
+    const previous = readBlockFile(fixture.previousFile, { requireUnexpired: false });
+    previous.runtimeState.releaseAttempts = 2; writeBlockFile(fixture.previousFile, previous);
+    assert.throws(() => readBlockFile(fixture.newFile), error => error.code === 'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID');
+});
+
+test('finance renewal has one successor, one attempt and no recursive renewal or original retry', async t => {
+    const fixture = financeRenewalFixture(t);
+    let releasePreparation, signalStarted;
+    const started = new Promise(resolve => { signalStarted = resolve; });
+    const hold = new Promise(resolve => { releasePreparation = resolve; });
+    const originalRead = fixture.runtime.retryFacts;
+    fixture.runtime.retryFacts = async (...args) => { signalStarted(); await hold; return originalRead(...args); };
+    const prepare = prepareAction(fixture.options, fixture.runtime);
+    await started;
+    await assert.rejects(prepareAction({ ...fixture.options, blockFile: path.join(path.dirname(fixture.newFile), 'competing.json') }, fixture.runtime),
+        error => error.code === 'PRODUCTION_BLOCK_EXECUTION_IN_PROGRESS');
+    releasePreparation(); await prepare;
+    await assert.rejects(prepareAction({ ...fixture.options, blockFile: path.join(path.dirname(fixture.newFile), 'fork.json') }, fixture.runtime),
+        error => error.code === 'PRODUCTION_BLOCK_RENEWAL_SUPERSEDED');
+    const value = readBlockFile(fixture.newFile);
+    const execute = { blockFile: fixture.newFile, confirmation: confirmationValue(value) };
+    let executions = 0;
+    const failing = { ...fixture.runtime, async execute() {
+        executions += 1; throw Object.assign(new Error('required CI failed'), { code: 'PRODUCTION_BLOCK_COMMAND_FAILED' });
+    } };
+    await assert.rejects(executeAction(execute, failing), error => error.code === 'PRODUCTION_BLOCK_COMMAND_FAILED');
+    await assert.rejects(executeAction(execute, failing), error => error.code === 'PRODUCTION_BLOCK_ATTEMPT_BUDGET_EXHAUSTED');
+    assert.equal(executions, 1);
+    assert.equal(readBlockFile(fixture.newFile).runtimeState.releaseAttempts, 1);
+    const another = path.join(path.dirname(fixture.newFile), 'another.json');
+    await assert.rejects(prepareAction({ ...fixture.options, blockFile: another, renewalFrom: fixture.newFile }, fixture.runtime),
+        error => ['PRODUCTION_BLOCK_RENEWAL_SCOPE_DRIFT', 'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID'].includes(error.code));
+    const retryOptions = { ...fixture.options, blockFile: another, renewalFrom: null, retryFrom: fixture.newFile, retryCiRun: '37699444465' };
+    await assert.rejects(prepareAction(retryOptions, fixture.runtime), error => error.code === 'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID');
+});
+
+test('finance renewal rechecks exact candidate, predecessor and new expiry immediately before protected stages', async t => {
+    const fixture = financeRenewalFixture(t);
+    await prepareAction(fixture.options, fixture.runtime);
+    const value = readBlockFile(fixture.newFile);
+    const options = { blockFile: fixture.newFile, confirmation: confirmationValue(value), dryRun: true };
+    for (const override of [{ head: '4'.repeat(40) }, { descendsFromRenewal: false }]) {
+        await assert.rejects(executeAction(options, { ...fixture.runtime, async drift(current) {
+            return { ...(await dryRuntime().drift(current)), ...override };
+        } }), error => ['PRODUCTION_BLOCK_SHA_DRIFT', 'PRODUCTION_BLOCK_RENEWAL_SHA_INVALID'].includes(error.code));
+    }
+    const calls = [], commandResult = (command, args) => { calls.push([command, args]); };
+    const validTime = new Date(Date.parse(value.validUntil) - 1);
+    runAuthorizedReleaseStage(value, fixture.newFile, 'git', ['push'], {}, { now: validTime, commandResult });
+    for (const [command, args] of [['git', ['push']], ['npm', ['run', 'release:railway-up']]]) {
+        assert.throws(() => runAuthorizedReleaseStage(value, fixture.newFile, command, args, {}, {
+            now: new Date(Date.parse(value.validUntil) + 1), commandResult
+        }), error => error.code === 'PRODUCTION_BLOCK_EXPIRED');
+    }
+    const prior = readBlockFile(fixture.previousFile, { requireUnexpired: false });
+    prior.runtimeState.releaseAttempts = 2; writeBlockFile(fixture.previousFile, prior);
+    assert.throws(() => runAuthorizedReleaseStage(value, fixture.newFile, 'npm', ['run', 'release:railway-up'], {}, { now: validTime, commandResult }),
+        error => error.code === 'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID');
+    assert.equal(calls.length, 1, 'expired or altered renewal cannot start another protected subprocess');
 });

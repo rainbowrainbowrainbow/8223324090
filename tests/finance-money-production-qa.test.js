@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
+const { buildCapabilitySnapshot } = require('../services/accountAccessPolicy');
 const { ORIGIN, BASE, CONFIRM, validatePlan, publicQaContext, bookingPayload, decimal, createRequestPolicy, sha256, cli } = require('./browser/finance-money-production-qa');
 
 const plan = () => ({ runId: 'finance-qa-run', testAccountId: 47, businessContext: 'event_genix', ttlMinutes: 30,
@@ -155,6 +156,7 @@ function preflightFixture() {
         writeFileSync(file, value) { writes.push({ file, value }); }
     };
     const release = { commitSha: options.expectedSha, sourceBranch: 'codex/eventgenix-production', version: 'test' };
+    const permissions = { capabilities: buildCapabilitySnapshot({ id: approved.testAccountId, role: 'creator' }).decisions };
     const workspace = { success: true, available: true, accounts: [], qa: {
         runId: approved.runId, actorId: approved.testAccountId, businessContext: approved.businessContext,
         expiresAt: expires(), counts: { operations: 0 }
@@ -176,14 +178,14 @@ function preflightFixture() {
                 '/api/version': release,
                 '/api/auth/login': { token: 'synthetic-session' },
                 '/api/auth/verify': { user: { id: approved.testAccountId, username: 'qa_fixture' } },
-                '/api/auth/permissions': { capabilities: { 'action:finance.manage': true } },
+                '/api/auth/permissions': permissions,
                 [BASE]: workspace
             };
             assert.ok(Object.hasOwn(responses, pathname), 'unexpected preflight request');
             return { ok: true, json: async () => responses[pathname] };
         }, Buffer, URL, AbortSignal, Date, console, process
     }, { filename });
-    return { run: module.exports.run, approved, token, planFile, tokenFile, reads, writes, requests, release, workspace,
+    return { run: module.exports.run, approved, token, planFile, tokenFile, reads, writes, requests, release, permissions, workspace,
         memory: { ...options, plan: approved, qaToken: token },
         files: { ...options, planFile, tokenFile, planFileSha256: sha256(planBytes) } };
 }
@@ -203,6 +205,33 @@ test('memory and file inputs share release, identity and readiness checks withou
         if (mode === 'memory') {
             assert.ok(!f.reads.includes(f.planFile));
             assert.ok(!f.reads.includes(f.tokenFile));
+        }
+    }
+});
+
+test('denied, missing or malformed finance decisions stop before any finance request', async t => {
+    const cases = [
+        ['denied', { 'action:finance.manage': { allowed: false, source: 'explicit_deny' } }],
+        ['missing capabilities', undefined],
+        ['missing decision', {}],
+        ['null decision', { 'action:finance.manage': null }],
+        ['legacy boolean decision', { 'action:finance.manage': true }],
+        ['empty decision', { 'action:finance.manage': {} }],
+        ['string allowed flag', { 'action:finance.manage': { allowed: 'true' } }],
+        ['numeric allowed flag', { 'action:finance.manage': { allowed: 1 } }]
+    ];
+    for (const mode of ['memory', 'files']) {
+        for (const [name, capabilities] of cases) {
+            await t.test(`${mode}: ${name}`, async () => {
+                const f = preflightFixture();
+                f.permissions.capabilities = capabilities;
+                await assert.rejects(f.run(f[mode]), { code: 'finance_qa_finance_access_missing' });
+                assert.deepEqual(f.requests.map(row => row.pathname), [
+                    '/api/version', '/api/auth/login', '/api/auth/verify', '/api/auth/permissions'
+                ]);
+                assert.ok(f.requests.every(row => !row.options.headers['X-QA-Run-Token']));
+                assert.equal(f.writes.length, 0, 'rejected preflight cannot create browser artifacts');
+            });
         }
     }
 });

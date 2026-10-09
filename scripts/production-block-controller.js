@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {
     ProductionBlockError,
+    MAX_VALIDITY_MS,
     PROTECTED_WORKFLOWS,
     isPreparedProtectedRelease,
     migrationSqlHash,
@@ -83,6 +84,7 @@ function readBlockFile(file, options = {}) {
     const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
     validateManifest(manifest, options);
     if (manifest.retryFrom) validateFinanceRetryBinding(manifest, { ...options, blockFile: path.resolve(file) });
+    if (manifest.renewalFrom) validateFinanceRenewalBinding(manifest, { ...options, blockFile: path.resolve(file) });
     return manifest;
 }
 
@@ -93,6 +95,8 @@ const FINANCE_RETRY_SCOPE_FIELDS = Object.freeze([
 ]);
 
 function assertFinanceRetryScope(previous, candidate) {
+    fail(!previous.renewalFrom && !candidate.renewalFrom,
+        'A separately renewed finance release cannot reuse the original retry budget', 'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID');
     fail(previous.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
         && candidate.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
         && previous.allowedQaScope?.enabled === false && candidate.allowedQaScope?.enabled === false
@@ -152,6 +156,64 @@ function validateFinanceRetryBinding(manifest, options = {}) {
     fail(successor?.blockId === manifest.blockId && successor.manifestHash === manifest.manifestHash
         && path.resolve(successor.blockFile || '') === options.blockFile,
     'Finance retry is not the sole recorded continuation of its prior block', 'PRODUCTION_BLOCK_RETRY_SUPERSEDED');
+    return previous;
+}
+
+const FINANCE_RENEWAL_BLOCK = 'FIN-MONEY-03-RELEASE';
+const FINANCE_RENEWAL_ADDED_PATH = 'tests/integration/costing-management-postgres.test.js';
+
+function assertFinanceRenewalScope(previous, candidate) {
+    const sameFields = FINANCE_RETRY_SCOPE_FIELDS.filter(field => !['maxReleaseAttempts', 'changedPaths'].includes(field));
+    fail(previous.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
+        && candidate.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
+        && previous.allowedQaScope?.enabled === false && candidate.allowedQaScope?.enabled === false
+        && sameFields.every(field => stableJson(previous[field]) === stableJson(candidate[field]))
+        && previous.preparedRelease.version === candidate.preparedRelease.version
+        && previous.preparedRelease.baseVersion === candidate.preparedRelease.baseVersion
+        && !previous.changedPaths.includes(FINANCE_RENEWAL_ADDED_PATH)
+        && stableJson([...candidate.changedPaths].sort())
+            === stableJson([...previous.changedPaths, FINANCE_RENEWAL_ADDED_PATH].sort()),
+    'Renewed finance release must preserve the reviewed scope and add only the costing integration fixture',
+    'PRODUCTION_BLOCK_RENEWAL_SCOPE_DRIFT');
+    fail(!previous.renewalFrom && !candidate.retryFrom
+        && previous.maxReleaseAttempts === 3 && previous.runtimeState?.releaseAttempts === 3
+        && candidate.maxReleaseAttempts === 1
+        && ['PRODUCTION_BLOCK_COMMAND_FAILED', 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED', 'PRODUCTION_BLOCK_CI_INCOMPLETE']
+            .includes(previous.runtimeState?.lastFailureCode)
+        && !previous.runtimeState.releaseSha && !previous.runtimeState.releaseCompletedAt,
+    'Renewal requires an exhausted original three-attempt pre-deploy block and exactly one new attempt',
+    'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID');
+    fail(candidate.initialHeadSha !== previous.initialHeadSha,
+        'Renewal requires a corrected exact candidate', 'PRODUCTION_BLOCK_RENEWAL_SHA_INVALID');
+}
+
+function validateFinanceRenewalBinding(manifest, options = {}) {
+    const binding = manifest.renewalFrom;
+    const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
+    fail(!options.renewalDepth && !manifest.retryFrom && binding && typeof binding === 'object' && !Array.isArray(binding)
+        && Object.keys(binding).sort().join(',')
+            === 'approvedAt,attemptsUsed,blockFile,blockId,ciRunId,headSha,humanBlockId,manifestHash'
+        && path.isAbsolute(binding.blockFile || '') && /^\d+$/.test(String(binding.ciRunId || ''))
+        && binding.humanBlockId === FINANCE_RENEWAL_BLOCK,
+    'Finance renewal requires its exact separately approved block and predecessor binding', 'PRODUCTION_BLOCK_RENEWAL_BINDING_INVALID');
+    const approvedAt = new Date(binding.approvedAt);
+    fail(Number.isFinite(approvedAt.valueOf()) && approvedAt.toISOString() === binding.approvedAt
+        && approvedAt <= now && approvedAt <= new Date(manifest.createdAt)
+        && Date.parse(manifest.validUntil) <= approvedAt.valueOf() + MAX_VALIDITY_MS,
+    'Finance renewal must expire within six hours of its separate human approval', 'PRODUCTION_BLOCK_RENEWAL_VALIDITY_INVALID');
+    // Expired predecessors are evidence only. The new manifest still requires its own live authorization window.
+    const previous = readBlockFile(binding.blockFile, { ...options, requireUnexpired: false, renewalDepth: 1 });
+    assertFinanceRenewalScope(previous, manifest);
+    fail(binding.blockId === previous.blockId && binding.manifestHash === previous.manifestHash
+        && binding.headSha === previous.initialHeadSha && binding.attemptsUsed === previous.runtimeState.releaseAttempts
+        && Date.parse(manifest.createdAt) >= Date.parse(previous.createdAt)
+        && Number.isInteger(manifest.runtimeState?.releaseAttempts)
+        && manifest.runtimeState.releaseAttempts >= 0 && manifest.runtimeState.releaseAttempts <= 1,
+    'Finance renewal changed its predecessor identity or one-attempt budget', 'PRODUCTION_BLOCK_RENEWAL_BINDING_INVALID');
+    const successor = previous.runtimeState.supersededBy;
+    fail(successor?.blockId === manifest.blockId && successor.manifestHash === manifest.manifestHash
+        && path.resolve(successor.blockFile || '') === options.blockFile,
+    'Finance renewal is not the sole recorded successor of its exhausted block', 'PRODUCTION_BLOCK_RENEWAL_SUPERSEDED');
     return previous;
 }
 
@@ -283,6 +345,11 @@ function assertPreparedProductionBase(manifest, live, remoteSha) {
     if (!isPreparedProtectedRelease(manifest)) return;
     fail(live.sourceBranch === TARGET.branch && live.commitSha === manifest.baseLiveSha,
         'Live production changed after exact release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+    if (manifest.renewalFrom) {
+        fail(remoteSha === manifest.renewalFrom.headSha || remoteSha === manifest.initialHeadSha,
+            'Renewed production branch differs from its exact failed or corrected candidate', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+        return;
+    }
     fail(remoteSha === manifest.baseLiveSha || remoteSha === manifest.initialHeadSha
         || (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
             && manifest.retryFrom && remoteSha === manifest.retryFrom.headSha),
@@ -298,7 +365,7 @@ function remoteProductionSha() {
 
 function runAuthorizedReleaseStage(manifest, blockFile, command, args, options = {}, dependencies = {}) {
     validateManifest(manifest, { now: dependencies.now });
-    if (manifest.retryFrom) readBlockFile(blockFile, { now: dependencies.now });
+    if (manifest.retryFrom || manifest.renewalFrom) readBlockFile(blockFile, { now: dependencies.now });
     return (dependencies.commandResult || commandResult)(command, args, options);
 }
 
@@ -329,6 +396,7 @@ function defaultRuntime() {
                 descendsFromBase: gitIsAncestor(manifest.baseLiveSha, head),
                 descendsFromInitial: gitIsAncestor(manifest.initialHeadSha, head),
                 descendsFromRetry: !manifest.retryFrom || gitIsAncestor(manifest.retryFrom.headSha, head),
+                descendsFromRenewal: !manifest.renewalFrom || gitIsAncestor(manifest.renewalFrom.headSha, head),
                 migrations: loadMigrations(paths).map(item => item.file).sort(),
                 migrationHashes: Object.fromEntries(loadMigrations(paths).map(item => [item.file, migrationSqlHash(item.sql)])),
                 changedPaths: paths
@@ -349,9 +417,10 @@ function defaultRuntime() {
             if (isPreparedProtectedRelease(manifest)) {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
             }
-            if (manifest.retryFrom) {
-                const previous = readBlockFile(manifest.retryFrom.blockFile);
-                const run = JSON.parse(commandResult('gh', ['run', 'view', manifest.retryFrom.ciRunId, '--json',
+            const previousBinding = manifest.retryFrom || manifest.renewalFrom;
+            if (previousBinding) {
+                const previous = readBlockFile(previousBinding.blockFile, { requireUnexpired: !manifest.renewalFrom });
+                const run = JSON.parse(commandResult('gh', ['run', 'view', previousBinding.ciRunId, '--json',
                     'headSha,headBranch,workflowName,event,status,conclusion,jobs']));
                 assertFailedFinanceRetryCi(previous, run);
             }
@@ -705,6 +774,8 @@ function releaseCommandPlan(manifest) {
 }
 
 async function prepareAction(options, runtime) {
+    fail(!(options.retryFrom && options.renewalFrom),
+        'Retry and separately approved renewal are mutually exclusive', 'PRODUCTION_BLOCK_RENEWAL_BINDING_INVALID');
     const facts = await runtime.facts();
     const manifest = buildManifest(facts, {
         ...options,
@@ -712,7 +783,41 @@ async function prepareAction(options, runtime) {
     });
     const targetFile = path.resolve(options.blockFile || defaultBlockFile(manifest.blockId));
     let blockFile;
-    if (options.retryFrom) {
+    if (options.renewalFrom) {
+        blockFile = await withBlockFileLock(options.renewalFrom, async () => {
+            const previous = readBlockFile(options.renewalFrom, { requireUnexpired: false });
+            fail(!previous.runtimeState?.supersededBy && !fs.existsSync(targetFile)
+                && targetFile !== path.resolve(options.renewalFrom),
+            'Exhausted finance block already has a successor or the new output exists', 'PRODUCTION_BLOCK_RENEWAL_SUPERSEDED');
+            assertFinanceRenewalScope(previous, manifest);
+            fail(options.renewalBlock === FINANCE_RENEWAL_BLOCK
+                && /^\d+$/.test(String(options.renewalCiRun || '')) && typeof runtime.retryFacts === 'function',
+            'Renewal requires the separately approved finance block and exact failed CI', 'PRODUCTION_BLOCK_RENEWAL_BINDING_INVALID');
+            const approvedAt = new Date(options.renewalApprovedAt);
+            fail(Number.isFinite(approvedAt.valueOf()) && approvedAt.toISOString() === options.renewalApprovedAt
+                && approvedAt <= new Date(manifest.createdAt) && approvedAt <= new Date()
+                && Date.parse(manifest.createdAt) < approvedAt.valueOf() + MAX_VALIDITY_MS,
+            'Renewal needs the recorded human approval time within its six-hour window', 'PRODUCTION_BLOCK_RENEWAL_VALIDITY_INVALID');
+            const evidence = await runtime.retryFacts(previous, facts, String(options.renewalCiRun));
+            fail(evidence.descendsFromPrior === true,
+                'Renewed candidate is not a descendant of the exact failed candidate', 'PRODUCTION_BLOCK_RENEWAL_SHA_INVALID');
+            fail(evidence.remoteSha === previous.initialHeadSha,
+                'Remote production is not the exact failed predecessor', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+            assertFailedFinanceRetryCi(previous, evidence.ciRun);
+            manifest.renewalFrom = { blockFile: path.resolve(options.renewalFrom), blockId: previous.blockId,
+                manifestHash: previous.manifestHash, headSha: previous.initialHeadSha,
+                ciRunId: String(options.renewalCiRun), attemptsUsed: previous.runtimeState.releaseAttempts,
+                humanBlockId: options.renewalBlock, approvedAt: approvedAt.toISOString() };
+            manifest.validUntil = new Date(Math.min(Date.parse(manifest.validUntil), approvedAt.valueOf() + MAX_VALIDITY_MS)).toISOString();
+            manifest.manifestHash = manifestHash(manifest);
+            validateManifest(manifest);
+            const newFile = writeBlockFile(targetFile, manifest);
+            previous.runtimeState.supersededBy = { blockId: manifest.blockId, manifestHash: manifest.manifestHash, blockFile: newFile };
+            writeBlockFile(options.renewalFrom, previous);
+            readBlockFile(newFile);
+            return newFile;
+        });
+    } else if (options.retryFrom) {
         blockFile = await withBlockFileLock(options.retryFrom, async () => {
         const previous = readBlockFile(options.retryFrom);
         fail(!previous.runtimeState?.supersededBy && !fs.existsSync(targetFile)
@@ -770,6 +875,8 @@ async function assertExecuteDrift(manifest, runtime) {
     }
     if (manifest.retryFrom) fail(drift.descendsFromRetry === true,
         'Finance retry no longer descends from its exact prior candidate', 'PRODUCTION_BLOCK_RETRY_SHA_INVALID');
+    if (manifest.renewalFrom) fail(drift.descendsFromRenewal === true,
+        'Finance renewal no longer descends from its exact failed candidate', 'PRODUCTION_BLOCK_RENEWAL_SHA_INVALID');
     fail(drift.descendsFromBase === true && gitIsSafeDescendant(manifest.initialHeadSha, drift.head, drift),
         'Candidate SHA is outside the authorized descendant envelope', 'PRODUCTION_BLOCK_SHA_DRIFT');
     fail(JSON.stringify(drift.migrations) === JSON.stringify(manifest.allowedMigrationFiles),
@@ -862,6 +969,10 @@ function parseOptions(argv) {
         '--release-notes-file',
         '--retry-from',
         '--retry-ci-run',
+        '--renewal-from',
+        '--renewal-ci-run',
+        '--renewal-block',
+        '--renewal-approved-at',
         '--protected-workflow',
         '--qa-scope',
         '--qa-scope-base64'
@@ -874,8 +985,15 @@ function parseOptions(argv) {
     const qaScopeValue = qaScopeBase64 ? decodeQaScope(qaScopeBase64) : argValue(args, '--qa-scope', 'none');
     const retryFrom = argValue(args, '--retry-from');
     const retryCiRun = argValue(args, '--retry-ci-run');
+    const renewalFrom = argValue(args, '--renewal-from');
+    const renewalCiRun = argValue(args, '--renewal-ci-run');
+    const renewalBlock = argValue(args, '--renewal-block');
+    const renewalApprovedAt = argValue(args, '--renewal-approved-at');
     fail((!retryFrom && !retryCiRun) || (action === 'prepare' && retryFrom && retryCiRun),
         'Finance retry flags require prepare and both prior manifest and CI run', 'PRODUCTION_BLOCK_RETRY_BINDING_INVALID');
+    const renewalFields = [renewalFrom, renewalCiRun, renewalBlock, renewalApprovedAt];
+    fail(renewalFields.every(value => !value) || (action === 'prepare' && renewalFields.every(Boolean) && !retryFrom && !retryCiRun),
+        'Finance renewal requires prepare, all four exact renewal fields and no retry flags', 'PRODUCTION_BLOCK_RENEWAL_BINDING_INVALID');
     return {
         action,
         blockFile: blockFileValue ? path.resolve(blockFileValue) : null,
@@ -886,6 +1004,10 @@ function parseOptions(argv) {
         releaseNotesFile: argValue(args, '--release-notes-file'),
         retryFrom: retryFrom ? path.resolve(retryFrom) : null,
         retryCiRun,
+        renewalFrom: renewalFrom ? path.resolve(renewalFrom) : null,
+        renewalCiRun,
+        renewalBlock,
+        renewalApprovedAt,
         protectedWorkflow: cleanText(argValue(args, '--protected-workflow', 'none'), 80),
         qaScope: parseQaScope(qaScopeValue),
         dryRun: argPresent(args, '--dry-run')

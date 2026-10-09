@@ -384,6 +384,26 @@ removal. The controller revalidates expiry immediately before each push and
 Railway upload, including after long tests or CI waits. A corrected candidate
 does not reset the original three-attempt limit or extend the original window.
 
+The separately approved `FIN-MONEY-03-RELEASE` is a one-time renewal after the
+original three failed pre-deploy finance attempts. It must not use `--retry-from`
+or rewrite that exhausted history. Prepare it with `--renewal-from <last-manifest>`,
+`--renewal-ci-run <exact-failed-run-id>`, `--renewal-block FIN-MONEY-03-RELEASE`,
+`--renewal-approved-at <recorded-human-approval-UTC-ISO-time>` and
+`--max-release-attempts 1`. The approval time must be at or before preparation;
+the new deadline is capped at six hours after that approval, never after it.
+This is technical binding for an already supplied human approval, not permission
+to create a renewal without one.
+
+The renewal retains the exact failed predecessor SHA/manifest/CI and all three
+historical attempts, the original live base, service, release version, SQL pins,
+notes, disabled QA scope and rollback restrictions. Its only additional file is
+the reviewed `tests/integration/costing-management-postgres.test.js` fixture.
+The old chain may be expired when read as historical evidence; it remains
+exhausted and cannot execute. The successor is locked to one exact corrected SHA,
+one new attempt, and one recorded continuation. A renewal cannot be renewed or
+enter the old retry flow. Any further failure requires stopping again. All CI,
+new expiry, scope, migration and live/remote identity checks remain mandatory.
+
 Production GitHub auto-deploy is disabled. Deploy manually only after exact-SHA CI
 is green.
 

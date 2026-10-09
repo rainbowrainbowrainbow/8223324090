@@ -13,6 +13,8 @@ const { requireRole, requireAction } = require('../middleware/auth');
 const { publish } = require('../services/eventBus');
 const { getSalaryReport } = require('../services/payroll');
 const { normalizeFinanceTransactionAmount } = require('../utils/financeAmounts');
+const { shiftCalendarDate, getForecastPeriod, buildForecastSummary,
+    buildHistoricalAverage } = require('../utils/financeReporting');
 const { createFinanceMoneyService, isLocalManualMoneyEnabled,
     assertLegacyAccountWritable, assertLegacyBookingWritable } = require('../services/financeMoneyMovements');
 const manualMoney = createFinanceMoneyService(pool);
@@ -1333,60 +1335,48 @@ router.get('/forecast', async (req, res) => {
     try {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;
-        const days = parseInt(req.query.days) || 30;
-        const today = new Date().toISOString().split('T')[0];
-        const endDate = new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+        const period = getForecastPeriod(req.query.days);
+        const historicalPeriod = { from: shiftCalendarDate(period.from, -90),
+            to: shiftCalendarDate(period.from, -1), days: 90 };
+        // Keep booking value distinct from the legacy recorded payment balance.
+        // A paid status remains settled even when older rows lack paid_amount.
+        const outstandingSql = `CASE WHEN payment_status = 'paid' THEN 0
+            ELSE GREATEST(COALESCE(price, 0) - COALESCE(paid_amount, 0), 0) END`;
 
-        // Confirmed bookings revenue
         const bookings = await pool.query(`
             SELECT date, COUNT(*)::int AS booking_count,
-                COALESCE(SUM(price), 0)::int AS expected_revenue
+                COALESCE(SUM(price), 0)::int AS expected_revenue,
+                COALESCE(SUM(paid_amount), 0)::int AS recorded_paid,
+                COALESCE(SUM(${outstandingSql}), 0)::int AS expected_outstanding,
+                COUNT(*) FILTER (WHERE (${outstandingSql}) > 0)::int AS unpaid_booking_count
             FROM bookings
             WHERE ${businessBookingSql()} AND date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL
               AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3
             GROUP BY date ORDER BY date
-        `, [today, endDate, businessContext]);
+        `, [period.from, period.to, businessContext]);
 
-        // Weekly aggregate
-        const weekly = await pool.query(`
-            SELECT DATE_TRUNC('week', date::date)::date AS week_start,
+        const history = await pool.query(`
+            SELECT date,
                 COUNT(*)::int AS booking_count,
                 COALESCE(SUM(price), 0)::int AS expected_revenue
             FROM bookings
             WHERE ${businessBookingSql()} AND date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL
               AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $3
-            GROUP BY week_start ORDER BY week_start
-        `, [today, endDate, businessContext]);
-
-        // Historical average (last 3 months same weekday pattern)
-        const histAvg = await pool.query(`
-            SELECT EXTRACT(DOW FROM date::date)::int AS dow,
-                ROUND(AVG(daily_revenue))::int AS avg_revenue,
-                ROUND(AVG(daily_count))::int AS avg_count
-            FROM (
-                SELECT date, SUM(price) AS daily_revenue, COUNT(*) AS daily_count
-                FROM bookings
-                WHERE ${businessBookingSql()} AND date::date >= (CURRENT_DATE - INTERVAL '90 days') AND date::date < CURRENT_DATE
-                  AND status = 'confirmed' AND linked_to IS NULL
-                  AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $1
-                GROUP BY date
-            ) sub
-            GROUP BY dow ORDER BY dow
-        `, [businessContext]);
-
-        const totalForecast = bookings.rows.reduce((s, r) => s + r.expected_revenue, 0);
-        const totalBookings = bookings.rows.reduce((s, r) => s + r.booking_count, 0);
+            GROUP BY date ORDER BY date
+        `, [historicalPeriod.from, historicalPeriod.to, businessContext]);
 
         res.json({
-            period: { from: today, to: endDate, days },
-            daily: bookings.rows,
-            weekly: weekly.rows,
-            historicalAverage: histAvg.rows,
-            totals: { expectedRevenue: totalForecast, bookingCount: totalBookings }
+            period,
+            ...buildForecastSummary(bookings.rows, period),
+            historicalPeriod,
+            historicalAverage: buildHistoricalAverage(history.rows, historicalPeriod),
+            basis: { bookingValue: 'confirmed_primary_booking_price',
+                expectedOutstanding: 'legacy_booking_balance', recordedPaid: 'legacy_booking_paid_amount',
+                date: 'booking_date', history: 'calendar_days_including_zero', timeZone: 'Europe/Kyiv' }
         });
     } catch (err) {
         log.error('GET /forecast error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        sendFinanceError(res, err);
     }
 });
 
@@ -1407,23 +1397,17 @@ router.get('/expense-allocation', async (req, res) => {
         }
 
         const result = await pool.query(`
-            SELECT fc.name, fc.icon, fc.color, fc.type,
+            SELECT COALESCE(fc.name, 'Без категорії') AS name, fc.icon, fc.color,
                 COALESCE(SUM(ft.amount), 0)::int AS total,
-                COUNT(ft.id)::int AS count,
-                ROUND(COALESCE(SUM(ft.amount), 0) * 100.0 /
-                    NULLIF((SELECT SUM(amount) FROM finance_transactions
-                            WHERE type = 'expense'
-                              AND ${financeRecognitionDateSql('')} >= $1::date
-                              AND ${financeRecognitionDateSql('')} <= $2::date
-                              AND ${businessScopeSql('', '$3')}), 0)
-                )::int AS percentage
-            FROM finance_categories fc
-            LEFT JOIN finance_transactions ft ON ft.category_id = fc.id
+                COUNT(ft.id)::int AS count
+            FROM finance_transactions ft
+            LEFT JOIN finance_categories fc ON ft.category_id = fc.id
+              AND fc.finance_qa_run_id IS NULL AND ${businessScopeSql('fc', '$3')}
+            WHERE ft.type = 'expense'
               AND ${financeRecognitionDateSql('ft')} >= $1::date
               AND ${financeRecognitionDateSql('ft')} <= $2::date
               AND ${businessScopeSql('ft', '$3')}
-            WHERE fc.type = 'expense' AND fc.is_active = true AND fc.finance_qa_run_id IS NULL AND ${businessScopeSql('fc', '$3')}
-            GROUP BY fc.id, fc.name, fc.icon, fc.color, fc.type
+            GROUP BY fc.id, fc.name, fc.icon, fc.color
             ORDER BY total DESC
         `, [from, to, businessContext]);
 
@@ -1434,7 +1418,7 @@ router.get('/expense-allocation', async (req, res) => {
             allocation: result.rows.map(r => ({
                 category: r.name, icon: r.icon, color: r.color,
                 total: r.total, count: r.count,
-                percentage: r.percentage || 0
+                percentage: totalExpenses > 0 ? Math.round(r.total / totalExpenses * 100) : 0
             })),
             totalExpenses
         });
@@ -1530,6 +1514,10 @@ router.get('/report/pnl', async (req, res) => {
 
         res.json({
             period: { from, to, year, month: month || null },
+            previousPeriod: { from: prevFrom, to: prevTo },
+            basis: { income: 'finance_transactions', expenses: 'finance_transactions',
+                date: 'recognition_date_or_payment_date', bookingRevenue: 'confirmed_primary_booking_price',
+                bookingDate: 'booking_date', profit: 'recorded_income_minus_recorded_expenses' },
             revenue: income.rows,
             expenses: expenses.rows,
             bookingRevenue: bookingRev.rows[0].total,

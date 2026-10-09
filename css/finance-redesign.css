@@ -34,6 +34,10 @@
         .fa-attention span { color:var(--gray-600); font-size:13px; }
         .fa-panel-grid { gap:16px; }
         .an-chart-container--compact { align-self:start; }
+        .an-bar-chart--deals { max-width:100%; height:auto; min-height:160px; gap:8px; padding-bottom:10px; overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; }
+        .an-bar-chart--deals .an-bar-group { flex:0 0 64px; min-width:64px; }
+        .an-bar-chart--deals .an-bar { min-height:0; }
+        .an-bar-chart--deals .an-bar-label { white-space:nowrap; font-variant-numeric:tabular-nums; }
         .an-bar-chart--weekday { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); align-items:end; gap:8px; height:auto; padding-top:8px; }
         .an-bar-chart--weekday .an-bar-group { min-width:0; gap:6px; }
         .an-bar-chart--weekday .an-bar-pair { height:100px; justify-content:center; border-bottom:1px solid var(--gray-300); }
@@ -69,6 +73,13 @@
         .fin-category-actions > button { min-height:44px; }
         .fin-category-error { color:var(--danger); font-size:14px; line-height:1.5; }
         .fin-category-note { color:var(--text-secondary); font-size:13px; line-height:1.5; }
+        #addFinanceAccountBtn[hidden], #financeAccountNote[hidden] { display:none; }
+        .fin-account-card { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
+        .fin-account-icon { font-size:24px; }
+        .fin-account-details { flex:1; min-width:120px; overflow-wrap:anywhere; }
+        .fin-account-details p { margin:4px 0 0; }
+        .fin-account-actions { display:flex; flex-wrap:wrap; gap:8px; }
+        .fin-account-actions button { min-height:44px; }
         .fin-inline-category { display:flex; align-items:center; gap:8px; }
         .fin-inline-category > select { flex:1; min-width:0; }
         .fin-inline-category > button { flex:0 0 auto; min-height:44px; }

@@ -74,6 +74,22 @@ function createFixtureServer() {
     const monthMatch = currentMonth.match(/(\d{4})\D(\d{2})/);
     const month = monthMatch ? `${monthMatch[1]}-${monthMatch[2]}` : `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
     const date = day => `${month}-${String(day).padStart(2, '0')}`;
+    const iso = value => value.toISOString().slice(0, 10);
+    const shiftDate = (value, days) => iso(new Date(Date.parse(`${value}T00:00:00Z`) + days * 86400000));
+    const calendarMonth = (year, number) => ({
+        from: iso(new Date(Date.UTC(year, number - 1, 1))),
+        to: iso(new Date(Date.UTC(year, number, 0)))
+    });
+    function previousRange(range) {
+        const first = new Date(`${range.from}T00:00:00Z`);
+        const last = new Date(`${range.to}T00:00:00Z`);
+        const fullMonths = first.getUTCDate() === 1
+            && range.to === calendarMonth(last.getUTCFullYear(), last.getUTCMonth() + 1).to;
+        const days = Math.round((last - first) / 86400000) + 1;
+        const months = (last.getUTCFullYear() - first.getUTCFullYear()) * 12 + last.getUTCMonth() - first.getUTCMonth() + 1;
+        return { from: fullMonths ? calendarMonth(first.getUTCFullYear(), first.getUTCMonth() + 1 - months).from
+            : shiftDate(range.from, -days), to: shiftDate(range.from, -1), basis: fullMonths ? 'calendar-months' : 'equal-days' };
+    }
     const totals = { income: 11600, expense: 2100, profit: 9500 };
     const transactions = [
         { id: 1, date: date(3), type: 'income', categoryId: 1, description: 'Заняття QA', amount: 11600, paymentMethod: 'card', createdBy: 'Synthetic QA' },
@@ -147,13 +163,24 @@ function createFixtureServer() {
             categories.push(created);
             return json(res, 201, created);
         }
-        if (url.pathname === '/api/finance/accounts') {
-            if (req.method === 'GET') return json(res, 200, { success: true, accounts });
+        const accountMatch = url.pathname.match(/^\/api\/finance\/accounts(?:\/(\d+))?$/);
+        if (accountMatch) {
+            if (req.method === 'GET') return json(res, 200, { success: true, accounts: accounts.filter(account => account.is_active !== false) });
             if (req.method === 'POST') {
                 const body = await readBody(req);
                 if (!String(body.name || '').trim()) return json(res, 400, { error: 'Назва обов’язкова' });
                 const account = { id: accountId++, name: body.name.trim(), type: body.type || 'cash', emoji: body.emoji || '💳', description: body.description || null };
                 accounts.push(account);
+                return json(res, 200, { success: true, account });
+            }
+            if (req.method === 'PATCH' && accountMatch[1]) {
+                const account = accounts.find(item => item.id === Number(accountMatch[1]));
+                if (!account) return json(res, 404, { error: 'Synthetic account not found' });
+                const body = await readBody(req);
+                for (const field of ['name', 'emoji', 'description']) {
+                    if (Object.hasOwn(body, field)) account[field] = body[field];
+                }
+                if (Object.hasOwn(body, 'isActive')) account.is_active = body.isActive === true;
                 return json(res, 200, { success: true, account });
             }
         }
@@ -165,6 +192,24 @@ function createFixtureServer() {
         if (req.method !== 'GET') return json(res, 405, { error: 'This local fixture only mutates categories, accounts and budget plans' });
         const selectedMonth = (url.searchParams.get('from') || date(1)).slice(0, 7);
         const dated = day => `${selectedMonth}-${String(day).padStart(2, '0')}`;
+        const analyticsPeriod = { from: url.searchParams.get('from') || date(1),
+            to: url.searchParams.get('to') || calendarMonth(Number(month.slice(0, 4)), Number(month.slice(5))).to };
+        const recordedDays = Math.round((Date.parse(`${analyticsPeriod.to}T00:00:00Z`) - Date.parse(`${analyticsPeriod.from}T00:00:00Z`)) / 86400000) + 1;
+        const recordedTrend = Array.from({ length: recordedDays }, (_, index) => ({
+            date: shiftDate(analyticsPeriod.from, index), accepted: index === 2 ? 3 : 0, closed: index === 2 ? 2 : 0
+        }));
+        const pnlYear = Number(url.searchParams.get('year')) || Number(month.slice(0, 4));
+        const pnlMonth = Number(url.searchParams.get('month'));
+        const pnlPeriod = pnlMonth >= 1 && pnlMonth <= 12 ? calendarMonth(pnlYear, pnlMonth)
+            : { from: `${pnlYear}-01-01`, to: `${pnlYear}-12-31` };
+        const previousPnlPeriod = pnlMonth >= 1 && pnlMonth <= 12 ? calendarMonth(pnlYear, pnlMonth - 1)
+            : { from: `${pnlYear - 1}-01-01`, to: `${pnlYear - 1}-12-31` };
+        const forecastDays = Number(url.searchParams.get('days')) || 30;
+        const todayParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+        const todayPart = type => todayParts.find(part => part.type === type).value;
+        const today = `${todayPart('year')}-${todayPart('month')}-${todayPart('day')}`;
+        const forecastPeriod = { from: today, to: shiftDate(today, forecastDays - 1), days: forecastDays };
+        const forecastWeekStart = shiftDate(today, 1 - (new Date(`${today}T00:00:00Z`).getUTCDay() || 7));
         const daily = [{ date: dated(3), income: 2800, expense: 900 }, { date: dated(10), income: 4100, expense: 1200 }];
         const data = {
             '/api/finance/dashboard': { totals, bookingRevenue: { revenue: 11600, count: 6 }, daily,
@@ -175,18 +220,19 @@ function createFixtureServer() {
                 financeCategories: [{ name: 'Бронювання', total: 11600, color: '#10b981' }],
                 weekdayLoad: [{ name: 'Пн', count: 2 }, { name: 'Вт', count: 0 }, { name: 'Ср', count: 1 }, { name: 'Чт', count: 6 }, { name: 'Пт', count: 4 }, { name: 'Сб', count: 12 }, { name: 'Нд', count: 8 }],
                 customerSegments: { total: 6, champions: 1, loyal: 2, potential: 3 } },
-            '/api/analytics/comparison': { current: { from: dated(1), to: dated(28) }, previous: { from: '2026-09-01', to: '2026-09-28' }, metrics: [{ key: 'finIncome', label: 'Доходи', current: 11600, previous: 9800, growth: 18.4 }] },
-            '/api/analytics/deals-lifecycle': { accepted: 5, closed: 4, conversionRatio: 80, dataMode: 'snapshot-only', stageTimestampTruth: 'missing', trend: [{ date: dated(3), accepted: 2, closed: 1 }, { date: dated(10), accepted: 3, closed: 3 }] },
+            '/api/analytics/comparison': { current: analyticsPeriod, previous: previousRange(analyticsPeriod), metrics: [{ key: 'finIncome', label: 'Доходи', current: 11600, previous: 9800, growth: 18.4 }] },
+            '/api/analytics/deals-lifecycle': { period: analyticsPeriod, accepted: 5, closed: 4, conversionRatio: 80, dataMode: 'snapshot-only', stageTimestampTruth: 'missing', trend: [{ date: dated(3), accepted: 2, closed: 1 }, { date: dated(10), accepted: 3, closed: 3 }], recordedEvents: { period: analyticsPeriod, accepted: 3, closed: 2, trend: recordedTrend, meta: { coverage: 'recorded-transitions-only', conversionAvailable: false } } },
             '/api/finance/transactions': { transactions: transactions.filter(tx => (!url.searchParams.get('type') || tx.type === url.searchParams.get('type')) && (!url.searchParams.get('categoryId') || tx.categoryId === Number(url.searchParams.get('categoryId')))).map(transactionView), totalPages: 1, total: transactions.length },
             '/api/finance/report/monthly': { months: [{ monthName: 'Місяць QA', month, ...totals }], totals },
-            '/api/finance/report/pnl': { summary: { totalIncome: 11600, totalExpenses: 2100, grossProfit: 9500, margin: 82, incomeChange: 0, expenseChange: 0, previousIncome: 0, previousExpenses: 0, previousProfit: 0 }, bookingRevenue: 11600, revenue: [], expenses: [] },
+            '/api/finance/report/pnl': { period: pnlPeriod, previousPeriod: previousPnlPeriod, summary: { totalIncome: 11600, totalExpenses: 2100, grossProfit: 9500, margin: 82, incomeChange: 0, expenseChange: 0, previousIncome: 0, previousExpenses: 0, previousProfit: 0 }, bookingRevenue: 11600, revenue: [], expenses: [] },
             '/api/finance/shift/current': { isOpen: true, shift: { id: 1, openedAt: `${date(1)}T09:00:00Z`, openingCash: 5000, cashIncome: 0, cashExpense: 2100, expectedCash: 2900 } },
             '/api/finance/shift/history': { shifts: [{ opened_at: `${date(1)}T09:00:00Z`, closed_at: null, opening_cash: 5000, closing_cash: null, expected_cash: null, cash_difference: null, status: 'open' }] },
             '/api/finance/debts': { totalDebt: 70700, count: 101, returnedCount: 2, hasMore: true, debts: [1, 2].map(id => ({ date: date(id), label: `Оренда QA ${id}`, customerName: `Синтетичний клієнт ${id}`, price: 1700, paidAmount: 1000, debtAmount: 700, bookingId: `synthetic-${id}` })) },
             '/api/finance/budget/comparison': budgetData(),
-            '/api/finance/forecast': { totals: { expectedRevenue: 8700, bookingCount: 5 }, weekly: [{ week_start: date(7), booking_count: 5, expected_revenue: 8700 }], historicalAverage: [] },
+            '/api/finance/forecast': { period: forecastPeriod, totals: { expectedRevenue: 8700, bookingCount: 5, expectedOutstanding: 5700, recordedPaid: 3000, unpaidBookingCount: 3 }, weekly: [{ week_start: forecastWeekStart, booking_count: 5, expected_revenue: 8700, expected_outstanding: 5700 }], historicalAverage: [] },
             '/api/finance/advanced-dashboard': { metrics: { monthIncome: 11600, monthExpense: 2100, monthProfit: 9500, avgBookingPrice: 1933, bookingsCount: 6, margin: 82 }, revenueTrend: [], topExpenses: [] },
             '/api/finance/currency/rates': { base: 'UAH', rates: {}, updatedAt: null, source: 'synthetic-fixture-unavailable', stale: true },
+            '/api/dashboard/widgets/currency': { base: 'UAH', rates: { USD: 42.1234, EUR: 45.1234 }, date: '08.10.2026' },
             '/api/finance/report/salary': { staff: [], totals: { net: 0, paid: 0, balance: 0, base: 0, additional: 0, bonuses: 0, deductions: 0, advances: 0 } },
             '/api/payroll/schemes': { staff: [], schemes: [], totals: {} },
             '/api/payroll/payment-options': { success: true, businessContext: 'event_genix', accounts, paymentMethods: ['cash', 'card', 'transfer', 'mixed'], categories: { expense: categories.filter(c => c.type === 'expense' && !c.archived), income: categories.filter(c => c.type === 'income' && !c.archived) } },

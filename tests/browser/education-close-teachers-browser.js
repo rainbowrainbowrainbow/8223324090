@@ -36,10 +36,10 @@ async function waitTeacherRuntimeReads(page) {
     await page.waitForLoadState('networkidle');
     const snapshot=await page.waitForFunction(()=>{
         const timer=window.GlobalTaskTimer?.state;
-        if(!timer?.hydrated||timer.loading||timer.pendingHydrate)return false;
-        return {page:location.pathname+location.search,timer:{hydrated:timer.hydrated,loading:timer.loading,pending:timer.pendingHydrate},educationLoading:window.EducationScheduleWorkspace?.state.loading};
+        if(!timer?.hydrated||timer.loading||timer.pendingHydrate||window.EducationScheduleWorkspace?.state.loading)return false;
+        return {page:location.pathname+location.search,timer:{hydrated:timer.hydrated,loading:timer.loading,pending:timer.pendingHydrate},educationLoading:window.EducationScheduleWorkspace?.state.loading,educationError:window.EducationScheduleWorkspace?.state.error?.message||null};
     });
-    evidence.runtimeReadSettles ||= [];evidence.runtimeReadSettles.push(await snapshot.jsonValue());await snapshot.dispose();
+    evidence.runtimeReadSettles ||= [];const settled=await snapshot.jsonValue();assert.equal(settled.educationError,null,'Education workspace must complete without error before navigation');evidence.runtimeReadSettles.push(settled);await snapshot.dispose();
     await page.waitForLoadState('networkidle');
 }
 async function pageFor(action, business='dar', width=1440) {
@@ -51,7 +51,7 @@ async function pageFor(action, business='dar', width=1440) {
         await page.locator('#loginForm button[type="submit"]').click();await page.locator('#mainApp').waitFor({state:'visible',timeout:45000});await waitTeacherRuntimeReads(page);
         await page.goto(`${base}/?businessContext=${business}&educationSchedule=groups&date=${manifest.anchorDate}`,{waitUntil:'domcontentloaded'});
         await page.waitForFunction(()=>window.EducationGroups?.state.teacherStatus==='ready'&&window.EducationGroups?.state.listStatus==='ready');
-        return await action(page);
+        const result=await action(page);await waitTeacherRuntimeReads(page);return result;
     } finally {await context.close();}
 }
 async function shot(page,name) {await page.screenshot({path:path.join(out,`${name}.png`)});evidence.screenshots.push(`${name}.png`);}

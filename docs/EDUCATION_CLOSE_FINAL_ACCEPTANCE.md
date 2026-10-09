@@ -1,5 +1,17 @@
 # EDU-CLOSE — поточне приймання і випуск
 
+## Останній кандидат — CI retry3
+
+Final native rerun ci-third-terminal-navigation: hrLink WebKit/Chromium PASS, strict page-errors0. Additional harness fix awaits EducationScheduleWorkspace loading/error terminal state before navigation and normal teardown. The earlier ci-third-final-navigation WebKit FAIL remains preserved; no error filter/API repair. Final component/doc checks21 PASS.
+
+
+CI attempt2 run37919884737:22/23 jobs PASS; hrLink WebKit FAIL лише через3 native unload fetch errors від sidebar optional GETs. HR assignment і first group UI/API/SQL пройшли. Baseline FAIL збережено. Scope fix: keepalive для read-only summary/task GETs; stale scope/sequence/page-exiting completion не оновлює UI. Звичайна background вкладка з чинним scope отримує ready/counts, без вічного placeholder. Жодних змін URLs, auth headers, NAV_ITEMS, SIDEBAR_ACCESS або прав. Нові source-component regressions виконуються у npm test; native hrLink Chromium/WebKit повторюються.
+
+Production досі0.82.74/72cb330...; candidate0.82.75. Deploy заборонений, доки всі23 exact-SHA jobs не green і15 fresh artifact inventories/logs/required IDs не валідовано проти exact Git archive. Попередні15/15 proofs після нових файлів/edits — STALE, не final acceptance. Historical install jobs attempt1 повільно встановлювали Ubuntu browser dependencies; це не production failure і не виконані сценарії. Попередню фразу «зависли» слід читати лише як тодішній diagnostic опис, не доведений deadlock.
+
+Чинні факти, exactSHA, CI/deploy/live hashes і GO/HOLD записуються окремо в output/education-ready/close07-integrated-20261009/EDUCATION_CLOSE_RELEASE_RESULT.md та release-result.json.42 device cases залишаються BLOCKED_DEVICE/0PASS/owner-deferred.
+
+
 
 ## CI attempt1 та scoped retry — поточний стан
 

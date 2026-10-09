@@ -2508,13 +2508,17 @@ const Sidebar = (() => {
         }
         _setSidebarTimelineSummary({ date: model.date, viewMode: model.viewMode, businessContext: model.businessContext, timelineView: mode, status: 'loading' });
         const url = _sidebarTimelineSummaryModeUrl(model, mode);
-        const request = fetch(url, { headers: _sidebarAuthHeaders() })
+        const requestScope = _sidebarRequestScopeKey(url);
+        const isCurrentRead = () => seq === _state.timelineSummaryRequestSeq
+            && requestScope === _sidebarRequestScopeKey(url)
+            && !document.body?.classList.contains('page-exiting');
+        const request = fetch(url, { headers: _sidebarAuthHeaders(), keepalive: true })
             .then(response => {
                 if (!response.ok) throw new Error(`bookings summary ${response.status}`);
                 return response.json();
             })
             .then(payload => {
-                if (seq !== _state.timelineSummaryRequestSeq) return null;
+                if (!isCurrentRead()) return null;
                 return _setSidebarTimelineSummary({
                     date: model.date,
                     viewMode: model.viewMode,
@@ -2525,7 +2529,7 @@ const Sidebar = (() => {
                 });
             })
             .catch(error => {
-                if (seq !== _state.timelineSummaryRequestSeq) return null;
+                if (!isCurrentRead()) return null;
                 console.warn('[Sidebar] Timeline summary failed', error);
                 return _setSidebarTimelineSummary({ date: model.date, viewMode: model.viewMode, businessContext: model.businessContext, timelineView: mode, status: 'error' });
             })
@@ -4035,6 +4039,8 @@ const Sidebar = (() => {
             return;
         }
         const requestScope = _sidebarRequestScopeKey('task-widget');
+        const isCurrentRead = () => requestScope === _sidebarRequestScopeKey('task-widget')
+            && !document.body?.classList.contains('page-exiting');
         try {
             const authHeaders = typeof getAuthHeaders === 'function'
                 ? getAuthHeaders(false)
@@ -4042,9 +4048,9 @@ const Sidebar = (() => {
             const scopedApiUrl = window.CrmBusinessContext?.apiUrl || (url => url);
             const cabinetUrl = scopedApiUrl('/api/tasks/my-cabinet');
             const cabinet = await _coalesceSidebarRequest('task-cabinet', cabinetUrl, () => fetch(cabinetUrl, {
-                headers: authHeaders
+                headers: authHeaders, keepalive: true
             }).then(r => r.ok ? r.json() : null), options);
-            if (requestScope !== _sidebarRequestScopeKey('task-widget')) return;
+            if (!isCurrentRead()) return;
             let completedCount = 0;
             let activeCount = 0;
             let overdueCount = 0;
@@ -4055,8 +4061,9 @@ const Sidebar = (() => {
                 overdueCount = quick.overdue;
             } else {
                 const rows = await fetch(scopedApiUrl('/api/tasks?limit=200'), {
-                    headers: authHeaders
+                    headers: authHeaders, keepalive: true
                 }).then(r => r.ok ? r.json() : []).catch(() => []);
+                if (!isCurrentRead()) return;
                 const user = _getCurrentSidebarUser();
                 const userId = Number(user?.id || user?.userId || 0);
                 const tokens = new Set([user?.username, user?.name].map(v => String(v || '').trim()).filter(Boolean));
@@ -4092,7 +4099,7 @@ const Sidebar = (() => {
             widget.classList.toggle('has-overdue', overdueCount > 0);
             _setFocusChipOperationalState(widget, activeCount, { kind: 'tasks', critical: overdueCount > 0 });
         } catch {}
-        _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
+        if (isCurrentRead()) _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
     }
 
     async function _refreshFunnelWidget(options = {}) {

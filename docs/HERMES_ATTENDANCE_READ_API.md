@@ -22,7 +22,7 @@ GET /api/hermes/attendance?businessContext=event_genix&dateFrom=2026-09-29&dateT
 {
   "success": true,
   "items": [
-    { "staffId": 11, "date": "2026-09-29", "arrivalTime": "09:07", "status": "present" }
+    { "staffId": 11, "staffName": "Synthetic Display 11", "date": "2026-09-29", "arrivalTime": "09:07", "status": "present" }
   ],
   "meta": {
     "businessContext": "event_genix",
@@ -37,11 +37,11 @@ GET /api/hermes/attendance?businessContext=event_genix&dateFrom=2026-09-29&dateT
 }
 ```
 
-The example is synthetic. `items` contains only stored `hr_time_records` rows, scoped by their own `business_context` and `record_date`. `arrivalTime` formats actual `clock_in` in `Europe/Kyiv` as `HH:mm`; `date` remains the stored work date. `status` is returned as stored. Missing arrival/status values remain JSON `null`. No records means HTTP 200 with `items: []`.
+The example is synthetic. `items` contains only stored `hr_time_records` rows, scoped by their own `business_context` and `record_date`. `staffName` is an additive display convenience from the current global `staff.id`: trimmed nonempty `display_name`, otherwise trimmed nonempty `name`, otherwise JSON `null`. Missing staff rows do not hide attendance rows. `arrivalTime` formats actual `clock_in` in `Europe/Kyiv` as `HH:mm`; `date` remains the stored work date. `status` is returned as stored. Missing arrival/status values remain JSON `null`. No records means HTTP 200 with `items: []`.
 
-No schedule, payroll, personal contact fields, or compensation snapshots are read or returned. Current roster/scheduleability filters are not applied to historical facts. GET does not create preview/import/idempotency records, mutate attendance/schedule/payroll/outbox, broadcast, or send messages. Only the existing machine-actor SELECT and the attendance SELECT are needed.
+No schedule, payroll, personal contact fields, or compensation snapshots are read or returned. The only staff enrichment is a `LEFT JOIN staff ON staff.id = hr_time_records.staff_id`; staff business/context, active-state, scheduleability, HR pool, freelance and termination filters are not applied to historical facts. GET does not create preview/import/idempotency records, mutate attendance/schedule/payroll/outbox, broadcast, or send messages. Only the existing machine-actor SELECT and the attendance SELECT are needed.
 
-The inspected Hermes client's `_first_list` accepts `items`, and `_compact_attendance_cell` consumes these four fields. The client currently displays the first 50 cells while counting the complete result. The API does not silently truncate the list. No Hermes client change is required for this contract.
+The inspected Hermes client's `_first_list` accepts `items`, and `_compact_attendance_cell` consumes the attendance fields plus additive `staffName` when present. The client currently displays the first 50 cells while counting the complete result. The API does not silently truncate the list. No Hermes client change is required for this contract.
 
 ## Errors and discovery
 

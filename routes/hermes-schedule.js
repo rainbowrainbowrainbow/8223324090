@@ -1088,11 +1088,13 @@ function createHermesScheduleRouter(options = {}) {
                 where.push('tr.staff_id = ANY($4::int[])');
             }
             // Actual records retain their business/date even when the staff roster or plan changes.
+            // Staff IDs are global; the business boundary remains on attendance records.
             const result = await db.query(
                 `SELECT tr.staff_id, tr.record_date::text AS date,
                         to_char(tr.clock_in AT TIME ZONE 'Europe/Kyiv', 'HH24:MI') AS arrival_time,
-                        tr.status
+                        tr.status, s.display_name, s.name
                  FROM hr_time_records tr
+                 LEFT JOIN staff s ON s.id = tr.staff_id
                  WHERE ${where.join('\n                   AND ')}
                  ORDER BY tr.record_date ASC, tr.staff_id ASC`,
                 params
@@ -1101,6 +1103,7 @@ function createHermesScheduleRouter(options = {}) {
                 success: true,
                 items: result.rows.map(row => ({
                     staffId: Number(row.staff_id),
+                    staffName: row.display_name?.trim() || row.name?.trim() || null,
                     date: row.date,
                     arrivalTime: row.arrival_time ?? null,
                     status: row.status ?? null

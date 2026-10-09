@@ -53,6 +53,12 @@ const FIXTURES = [
     { staff_id: 11, date: '2026-09-30', clock_in: '2026-09-30T06:00:00Z', status: 'present', business_context: 'event_genix' },
     { staff_id: 14, date: '2026-01-15', clock_in: '2026-01-15T07:15:00Z', status: 'present', business_context: 'event_genix' }
 ];
+const STAFF_DIRECTORY = new Map([
+    [11, { display_name: '  Synthetic Display 11  ', name: 'Synthetic Legal 11' }],
+    [12, { display_name: ' \t\n ', name: '  Synthetic Fallback 12  ' }],
+    [13, { display_name: 'Synthetic Inactive 13', name: 'Synthetic Legal 13' }],
+    [14, { display_name: ' \t\n ', name: ' \t\n ' }]
+]);
 
 function actorRow(overrides = {}) {
     return {
@@ -78,12 +84,13 @@ function createPool(options = {}) {
                 return { rows: [actorRow(options.actor)] };
             }
             assert.match(sql, /FROM hr_time_records\s+tr\b/i, 'read actual attendance only');
+            assert.match(sql, /LEFT JOIN staff\s+s\s+ON\s+s\.id\s*=\s*tr\.staff_id/i);
             assert.match(sql, /tr\.record_date\s*>=\s*\$1/);
             assert.match(sql, /tr\.record_date\s*<=\s*\$2/);
             assert.match(sql, /tr\.business_context\s*=\s*\$3/);
             assert.match(sql, /tr\.record_date::text\s+AS\s+date/i);
             assert.match(sql, /to_char\(tr\.clock_in AT TIME ZONE 'Europe\/Kyiv',\s*'HH24:MI'\)/i);
-            assert.doesNotMatch(sql, /staff_schedule|hr_shifts|payroll|outbox|preview|import/i);
+            assert.doesNotMatch(sql, /staff_schedule|hr_shifts|payroll|outbox|preview|import|phone|hourly_rate/i);
             assert.equal(params[2], 'event_genix');
             const [dateFrom, dateTo, businessContext, ids] = params;
             if (ids) assert.match(sql, /tr\.staff_id\s*=\s*ANY\(\$4::int\[\]\)/i);
@@ -98,6 +105,8 @@ function createPool(options = {}) {
                         arrival_time: row.clock_in === null ? null : new Intl.DateTimeFormat('en-GB', {
                             timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
                         }).format(new Date(row.clock_in)),
+                        display_name: STAFF_DIRECTORY.get(row.staff_id)?.display_name ?? null,
+                        name: STAFF_DIRECTORY.get(row.staff_id)?.name ?? null,
                         // Deliberate unexpected fields catch accidental row spreading.
                         phone: 'private-synthetic-phone', hourly_rate: 999, clock_out: 'private-synthetic-out'
                     }))
@@ -179,9 +188,9 @@ describe('Hermes attendance GET registration and real auth boundary', () => {
             assert.equal(response.status, 200, JSON.stringify(response.data));
             assert.equal(response.data.success, true);
             assert.deepEqual(response.data.items, [
-                { staffId: 11, date: '2026-09-29', arrivalTime: '09:07', status: 'present' },
-                { staffId: 12, date: '2026-09-29', arrivalTime: null, status: null },
-                { staffId: 13, date: '2026-09-29', arrivalTime: '01:10', status: 'late' }
+                { staffId: 11, staffName: 'Synthetic Display 11', date: '2026-09-29', arrivalTime: '09:07', status: 'present' },
+                { staffId: 12, staffName: 'Synthetic Fallback 12', date: '2026-09-29', arrivalTime: null, status: null },
+                { staffId: 13, staffName: 'Synthetic Inactive 13', date: '2026-09-29', arrivalTime: '01:10', status: 'late' }
             ]);
             assert.equal(response.data.meta.timeZone, 'Europe/Kyiv');
             assert.equal(response.data.meta.businessContext, 'event_genix');
@@ -256,7 +265,7 @@ describe('Hermes attendance GET read contract', () => {
         await withApp({}, async ({ get }) => {
             const response = await get(DAY_QUERY.replaceAll('2026-09-29', '2026-01-15'));
             assert.equal(response.status, 200, JSON.stringify(response.data));
-            assert.deepEqual(response.data.items, [{ staffId: 14, date: '2026-01-15', arrivalTime: '09:15', status: 'present' }]);
+            assert.deepEqual(response.data.items, [{ staffId: 14, staffName: null, date: '2026-01-15', arrivalTime: '09:15', status: 'present' }]);
         });
     });
 
@@ -300,8 +309,9 @@ describe('Hermes attendance GET read contract', () => {
             // _first_list prefers items; _compact_attendance_cell reads these exact aliases.
             assert.ok(Array.isArray(response.data.items));
             for (const row of response.data.items) {
-                assert.deepEqual(Object.keys(row).sort(), ['arrivalTime', 'date', 'staffId', 'status']);
+                assert.deepEqual(Object.keys(row).sort(), ['arrivalTime', 'date', 'staffId', 'staffName', 'status']);
                 assert.equal(typeof row.staffId, 'number');
+                assert.ok(row.staffName === null || typeof row.staffName === 'string');
                 assert.match(row.date, /^\d{4}-\d{2}-\d{2}$/);
                 assert.ok(row.arrivalTime === null || /^\d{2}:\d{2}$/.test(row.arrivalTime));
             }

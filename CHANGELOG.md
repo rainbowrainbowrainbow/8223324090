@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.77 - HR у меню Парку
+
+### Release / Versioning / (09.10.2026) [codex]
+- **HR у меню Парку** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.76 - Відвідуваність Hermes: імена співробітників
 
 ### Release / Versioning / (09.10.2026) [codex]

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.76",
+  "version": "0.82.77",
   "eventGenix": {
-    "releaseLabel": "Відвідуваність Hermes: імена співробітників"
+    "releaseLabel": "HR у меню Парку"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

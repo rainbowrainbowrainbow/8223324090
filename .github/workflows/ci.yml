@@ -568,3 +568,66 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_checkbox_ci_test
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:integration:checkbox-ui-real:isolated
+
+  education-regressions:
+    name: Education ${{ matrix.suite }} (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { suite: teachers, engine: chromium }
+          - { suite: hrLink, engine: chromium }
+          - { suite: hrLink, engine: webkit }
+          - { suite: groups, engine: chromium }
+          - { suite: lifecycle, engine: chromium }
+          - { suite: date, engine: chromium }
+          - { suite: async, engine: chromium }
+          - { suite: journal, engine: chromium }
+          - { suite: attendance, engine: chromium }
+          - { suite: series, engine: chromium }
+          - { suite: acceptance, engine: chromium }
+          - { suite: journey, engine: chromium }
+          - { suite: journey, engine: webkit }
+          - { suite: responsive, engine: chromium }
+          - { suite: responsive, engine: webkit }
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: eventgenix_education_ready_fixture_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Align npm baseline
+        run: npm install -g npm@10.9.8
+      - name: Install dependencies
+        run: npm ci
+      - name: Install browsers through existing ephemeral Playwright pattern
+        run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium webkit"
+      - name: Run source-bound actual-app education suite
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_education_ready_fixture_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+          EDU_CLOSE_OUTPUT: output/education-ready/close04/ci-${{ matrix.suite }}-${{ matrix.engine }}
+        run: npm exec --yes --package=playwright -c "node tests/integration/run-education-close-ci.js ${{ matrix.suite }} ${{ matrix.engine }}"
+      - name: Preserve exact attempt evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: education-${{ matrix.suite }}-${{ matrix.engine }}-${{ github.sha }}
+          path: output/education-ready/close04/ci-*
+          if-no-files-found: error

@@ -829,12 +829,16 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         assert.equal(preview.body.journal.members.length, 2);
         assert.ok(preview.body.journal.members.every(member => member.status === null));
 
-        const firstMark = { marks: [{ childId: children.rows[0].id, status: 'present' }] };
+        const firstMark = { revision: preview.body.journal.revision, marks: [{ childId: children.rows[0].id, status: 'present' }] };
         const simultaneous = await Promise.all([
             request('PUT', endpoint, token, firstMark), request('PUT', endpoint, token, firstMark)
         ]);
-        assert.deepEqual(simultaneous.map(result => result.status), [200, 200]);
-        assert.deepEqual(simultaneous.map(result => result.body.changes).sort(), [0, 1]);
+        assert.deepEqual(simultaneous.map(result => result.status).sort(), [200, 409]);
+        assert.equal(simultaneous.find(result => result.status === 200).body.changes, 1);
+        assert.equal(simultaneous.find(result => result.status === 409).body.code, 'EDUCATION_JOURNAL_STALE');
+        const oldRetry = await request('PUT', endpoint, token, firstMark);
+        assert.equal(oldRetry.status, 409);
+        firstMark.revision = (await request('GET', endpoint, token)).body.journal.revision;
         const repeated = await request('PUT', endpoint, token, firstMark);
         assert.equal(repeated.status, 200, JSON.stringify(repeated.body));
         assert.equal(repeated.body.changes, 0);
@@ -856,11 +860,11 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         assert.deepEqual(journal.members.map(member => Number(member.child_id)).sort(),
             children.rows.slice(0, 2).map(child => Number(child.id)).sort());
         const newMember = await request('PUT', endpoint, token, {
-            marks: [{ childId: children.rows[2].id, status: 'present' }]
+            revision: journal.revision, marks: [{ childId: children.rows[2].id, status: 'present' }]
         });
         assert.equal(newMember.status, 404);
         const corrected = await request('PUT', endpoint, token, {
-            marks: [{ childId: children.rows[0].id, status: 'absent' }]
+            revision: journal.revision, marks: [{ childId: children.rows[0].id, status: 'absent' }]
         });
         assert.equal(corrected.status, 200, JSON.stringify(corrected.body));
         assert.equal(corrected.body.changes, 1);

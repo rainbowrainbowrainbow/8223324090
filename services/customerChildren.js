@@ -178,7 +178,14 @@ function customerChildHasData(child = {}) {
 
 function dateOnlyFromRow(value) {
     if (!value) return null;
-    if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+    if (value instanceof Date) {
+        if (Number.isNaN(value.getTime())) return null;
+        // pg parses DATE at local midnight; preserve its civil date, not UTC.
+        const year = String(value.getFullYear()).padStart(4, '0');
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const day = String(value.getDate()).padStart(2, '0');
+        return year + '-' + month + '-' + day;
+    }
     const text = String(value).trim();
     return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : null;
 }

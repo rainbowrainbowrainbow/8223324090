@@ -34,11 +34,11 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'js/booking.js',
         start: "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",
         end: 'function selectedBanquetCandidateRole(bookingId)',
-        sha256: '83e482b5a8f4776e770bd86df7effd7485ea5e7a3eb1fa1284349bb10b7aaf0d',
+        sha256: '676cdf33e483eafe1ec19eb55b0da62823eb8b72ba9f549a76b477b37671055e',
         approval: {
-            approvedBy: 'Product owner (explicit EDU-FIX-04 approval)',
-            approvedOn: '2026-10-03',
-            reason: 'Canonical booking detail opens through the shared modal focus and Escape lifecycle, while retaining booking identity, API sources, and renderer ownership.'
+            approvedBy: 'Product owner (explicit EDU-CARD-PRESENTATION approval)',
+            approvedOn: '2026-10-09',
+            reason: 'Education-only canonical presentation removes duplicate core fields and empty package content; identity, sources, Park and nonempty paid data remain unchanged.'
         },
         requiredNeedles: [
             "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",

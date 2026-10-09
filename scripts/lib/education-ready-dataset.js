@@ -6,7 +6,7 @@ const OWNER = 'EDU-READY-02-v1';
 const OWNER_KEY = 'education_ready:dataset:v1';
 const FIXED_ANCHOR = '2026-10-03';
 const DATABASES = Object.freeze({ demo: 'eventgenix_education_ready_manual', fixed: 'eventgenix_education_ready_fixture_test',
-    devices: 'eventgenix_education_ready_devices' });
+    devices: 'eventgenix_education_ready_devices', closeDevices: 'eventgenix_education_close_devices' });
 const TEACHERS = [
     ['Олена Ковальчук', 'Англійська мова'], ['Максим Левченко', 'Робототехніка'],
     ['Ірина Бондар', 'Творчість'], ['Софія Мельник', 'Підготовка до школи']
@@ -41,16 +41,23 @@ function kyivDate(now = new Date()) {
     return `${values.year}-${values.month}-${values.day}`;
 }
 function assertLocalTarget(mode, env = process.env) {
-    assert.ok(DATABASES[mode], 'Mode must be demo, fixed or devices');
+    assert.ok(DATABASES[mode], 'Mode must be an explicitly owned dataset');
     assert.equal(env.EDU_READY_LOCAL_CONFIRM, 'SEED_OWNED_LOCAL_EDUCATION', 'Explicit local fixture boundary required');
     assert.notEqual(env.NODE_ENV, 'production');
     for (const key of ['RAILWAY_ENVIRONMENT', 'RAILWAY_PROJECT_ID', 'RAILWAY_SERVICE_ID', 'DATABASE_URL', 'PRODUCTION_DATABASE_URL', 'LIVE_DATABASE_URL'])
         assert.ok(!env[key], `${key} must be unset`);
     assert.ok(['127.0.0.1', 'localhost', '::1'].includes(env.PGHOST), 'PostgreSQL must be loopback');
     assert.equal(env.PGDATABASE, DATABASES[mode], 'Exact database allowlist mismatch');
-    assert.equal(Number(env.PGPORT), 55469, 'This dataset owns only PostgreSQL port55469');
+    if (mode === 'fixed' && env.EDU_CLOSE_PORTABLE === 'OWNED_DISPOSABLE_EDUCATION_CI') {
+        const target = require('../test-db-safety').assertSafeTestDatabaseUrl(env.TEST_DATABASE_URL, env);
+        assert.ok(target.isLocal, 'Education CI requires loopback PostgreSQL');
+        assert.equal(target.databaseName, DATABASES.fixed);
+        assert.equal(target.hostname, env.PGHOST);
+        assert.equal(Number(target.url.port || 5432), Number(env.PGPORT), 'CI port must match verified target');
+    } else assert.equal(Number(env.PGPORT), 55469, 'Retained/local dataset owns only PostgreSQL port55469');
     if (mode === 'fixed') assert.equal(env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
-    if (mode === 'devices') assert.equal(env.EDU_READY_DEVICE_LOCAL_CONFIRM, 'OWNED_DEVICE_PREVIEW_08C');
+    if (mode === 'devices') assert.equal(env.EDU_READY_DEVICE_LOCAL_CONFIRM, 'OWNED_DEVICE_PREVIEW_08C', 'Device preview requires its separate local ownership confirmation');
+    if (mode === 'closeDevices') assert.equal(env.EDU_CLOSE_DEVICE_CONFIRM, 'OWNED_CLOSE_DEVICE_PREVIEW_05');
     return { host: env.PGHOST, port: Number(env.PGPORT), database: env.PGDATABASE };
 }
 function roster(plan, groupKey, date) {

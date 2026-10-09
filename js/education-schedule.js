@@ -163,10 +163,22 @@
         state.activeView = ['schedule', 'groups', 'attendance', 'reports'].includes(view) ? view : 'today';
         const today = state.activeView === 'today';
         document.body.classList.toggle('education-schedule-today', state.activeView !== 'schedule' && isEducationMode());
+        // The shared height may have been measured while education hid the grid.
+        if (state.activeView === 'schedule' && isEducationMode()) global.scheduleTimelineViewHeightSync?.('education-schedule-reveal');
         document.querySelectorAll('[data-education-schedule-tab]').forEach(button => {
             const active = button.dataset.educationScheduleTab === state.activeView;
             button.classList.toggle('active', active);
             button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        // Keep direct-URL selections within the horizontal strip without moving the page.
+        global.requestAnimationFrame(() => {
+            const tabs = document.querySelector('.education-schedule-tabs');
+            const active = tabs?.querySelector('.education-schedule-tab.active');
+            if (!active || tabs.scrollWidth <= tabs.clientWidth) return;
+            const viewport = tabs.getBoundingClientRect();
+            const button = active.getBoundingClientRect();
+            if (button.left < viewport.left + 4) tabs.scrollLeft += button.left - viewport.left - 4;
+            else if (button.right > viewport.right - 4) tabs.scrollLeft += button.right - viewport.right + 4;
         });
         const panel = document.getElementById('educationTodayPanel');
         if (panel) panel.hidden = !today;

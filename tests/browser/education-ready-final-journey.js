@@ -13,8 +13,8 @@ assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
 const base = process.env.TEST_URL; assert.match(base, /^http:\/\/127\.0\.0\.1:\d+$/);
 const out = path.resolve(process.env.EDU_READY_OUTPUT, `attempt-${new Date().toISOString().replace(/[:.]/g, '-')}`);
 fs.mkdirSync(out, { recursive: true });
-const pool = new Pool({ host:'127.0.0.1', port:55469, user:'postgres', database:DATABASES.fixed, ssl:false });
-const results = createResults(), evidence = { classification:'ONE_CONTINUOUS_VISIBLE_UI_JOURNEY', engine, checks:results.results, steps:[], screenshots:[], pageErrors:[] };
+const pool = new Pool({ host: process.env.PGHOST || '127.0.0.1', port: Number(process.env.PGPORT || 55469), user: process.env.PGUSER || 'postgres', password: process.env.PGPASSWORD, database: process.env.PGDATABASE || DATABASES.fixed, ssl: false });
+const results = createResults(), evidence = { attemptId: process.env.EDU_CLOSE_ATTEMPT_ID, suite: process.env.EDU_CLOSE_SUITE, classification:'ONE_CONTINUOUS_VISIBLE_UI_JOURNEY', engine, checks:results.results, steps:[], screenshots:[], pageErrors:[] };
 const pendingRequests=new Set();let token, manifest, browser, context, page, teacher, group, lesson, previous, date = '2030-01-10';
 function flush() { let text = JSON.stringify(evidence,null,2); for (const value of [token,process.env.TEST_USER,process.env.TEST_PASS].filter(Boolean)) text=text.split(value).join('[REDACTED]'); fs.writeFileSync(path.join(out,'verification.json'),text); }
 async function step(id, action) {

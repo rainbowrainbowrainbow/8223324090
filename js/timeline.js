@@ -1022,10 +1022,25 @@ function getTimeRange(date) {
     const dayOfWeek = d.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
-    return {
+    const range = {
         start: isWeekend ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START,
         end: isWeekend ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END
     };
+    if (window.TimelineBusinessContext?.presentation?.().mode === 'education'
+        && typeof getTimelineCacheEntry === 'function') {
+        // Expand only the displayed axis around this business/date's real lessons.
+        // Persisted times, timeline identity and Park opening hours are unchanged.
+        const entry = getTimelineCacheEntry(AppState.cachedBookings, d);
+        for (const lesson of Array.isArray(entry?.data) ? entry.data : []) {
+            if (lesson.status === 'cancelled' || !/^\d{2}:\d{2}$/.test(String(lesson.time || ''))) continue;
+            const minute = timeToMinutes(lesson.time);
+            const duration = Number(lesson.duration);
+            if (!Number.isFinite(minute) || !Number.isFinite(duration) || duration <= 0) continue;
+            range.start = Math.min(range.start, Math.max(0, Math.floor(minute / 60)));
+            range.end = Math.max(range.end, Math.min(24, Math.ceil((minute + duration) / 60)));
+        }
+    }
+    return range;
 }
 
 function getTimelineCellWidth(anchor) {
@@ -4242,6 +4257,8 @@ async function renderTimeline() {
         }, 2000);
     }
 
+    // The education axis uses the freshly loaded, scoped booking cache.
+    if (window.TimelineBusinessContext?.presentation?.().mode === 'education') renderTimeScale(selectedDate);
     const { start } = getTimeRange(selectedDate);
 
     const lineIds = lines.map(l => l.id);
@@ -7502,16 +7519,16 @@ function buildMultiDayDates() {
 async function renderDaySectionHtml(date, options = {}) {
     const dayOfWeek = date.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const start = isWeekend ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START;
-    const end = isWeekend ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END;
     const cellWidth = 30;
     const hourWidth = cellWidth * 4;
-    const gridWidth = Math.max(hourWidth, (end - start) * hourWidth);
 
     const rawLines = await getLinesForDate(date, { requestToken: options.requestToken });
     const rawBookings = await getBookingsForDate(date, { requestToken: options.requestToken });
     const lines = normalizeTimelineLinesForContext(Array.isArray(rawLines) ? rawLines : []);
     const bookings = normalizeTimelineBookingsForContext(Array.isArray(rawBookings) ? rawBookings : []);
+    // Match the day education axis after the scoped booking cache has loaded.
+    const { start, end } = getTimeRange(date);
+    const gridWidth = Math.max(hourWidth, (end - start) * hourWidth);
     const dateStr = formatDate(date);
     AppState.linesByDate = AppState.linesByDate || {};
     AppState.linesByDate[dateStr] = lines;
@@ -7522,7 +7539,7 @@ async function renderDaySectionHtml(date, options = {}) {
         <div class="day-section" data-date="${dateStr}">
             <div class="day-section-header">
                 <span>${DAYS[dayOfWeek]}</span>
-                <span class="date-label">${date.getDate()} ${MONTHS_SHORT_UKR[date.getMonth()]} (${isWeekend ? '10:00-20:00' : '12:00-20:00'})</span>
+                <span class="date-label">${date.getDate()} ${MONTHS_SHORT_UKR[date.getMonth()]} (${String(start).padStart(2, '0')}:00-${String(end).padStart(2, '0')}:00)</span>
             </div>
             <div class="day-section-content">
                 ${timeScaleHtml}
@@ -7586,6 +7603,10 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
             boundaryStatus.overrun ? 'booking-block--time-overrun' : ''
         ].filter(Boolean).map(escapeHtml).join(' ');
 
+        const educationLesson = b.extraData?.educationLesson || b.extraData?.education_lesson || {};
+        const isEducationMini = window.TimelineBusinessContext?.presentation?.().mode === 'education'
+            && (educationLesson.mode === 'education_lesson' || Boolean(educationLesson.teacherId || educationLesson.teacherName || educationLesson.groupName || educationLesson.courseCode));
+        const educationMiniTitle = isEducationMini ? (educationLesson.title || b.programName || b.label || 'Заняття') : '';
         const bookingIdentity = timelineBookingResourceIdentity(b);
         const costumeLabel = bookingCostumeLabel(b);
         const miniCostumeText = costumeLabel ? `<span class="mini-booking-costume">${escapeHtml(costumeLabel)}</span>` : '';
@@ -7597,12 +7618,14 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
         const miniLabelHtml = miniPresentationMetrics.segments
             .map(part => `<span class="timeline-code-token">${escapeHtml(part)}</span>`)
             .join(' ');
-        const miniTitleParts = [b.time, miniPresentation.fullTitle, b.duration > 0 ? `${b.duration} хв` : '', b.room, miniPresentation.pinataDetail].filter(Boolean);
+        const miniTitleParts = [b.time, educationMiniTitle || miniPresentation.fullTitle, b.duration > 0 ? `${b.duration} хв` : '', b.room, miniPresentation.pinataDetail].filter(Boolean);
+        if (isEducationMini) miniTitleParts.push(educationLesson.teacherName, educationLesson.groupName || b.groupName);
         if (costumeLabel) miniTitleParts.push(costumeLabel);
         if (boundaryStatus.overrun) miniTitleParts.push(boundaryStatus.message);
-        const miniAccessibilityLabel = miniTitleParts.join(' · ');
+        const miniAccessibilityLabel = miniTitleParts.filter(Boolean).join(' · ');
         html += `
-            <div class="${classes} mini-booking-block--${escapeHtml(miniDensity)}"
+            <div class="${classes} mini-booking-block--${escapeHtml(miniDensity)}${isEducationMini ? ' education-lesson' : ''}"
+                 ${isEducationMini ? 'role="button" tabindex="0"' : ''}
                  style="left: ${left}px; width: ${width}px;"
                  data-booking-id="${escapeHtml(b.id)}"
                  data-resource-id="${escapeHtml(bookingIdentity.resourceId)}"
@@ -7615,7 +7638,7 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
                  data-timeline-boundary-message="${boundaryStatus.overrun ? escapeHtml(boundaryStatus.message || '') : ''}"
                  title="${escapeHtml(miniAccessibilityLabel)}"
                  aria-label="${escapeHtml(miniAccessibilityLabel)}">
-                <span class="mini-booking-text" data-code-length="${escapeHtml(String(miniPresentationMetrics.characterCount))}" data-token-count="${escapeHtml(String(miniPresentationMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(miniPresentationMetrics.maxTokenLength))}" data-layout="${escapeHtml(miniPresentationMetrics.layout)}">${miniLabelHtml}</span>
+                <span class="mini-booking-text" data-code-length="${escapeHtml(String(miniPresentationMetrics.characterCount))}" data-token-count="${escapeHtml(String(miniPresentationMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(miniPresentationMetrics.maxTokenLength))}" data-layout="${escapeHtml(miniPresentationMetrics.layout)}">${isEducationMini ? `<span class="mini-education-topic">${escapeHtml(educationMiniTitle)}</span>` : miniLabelHtml}</span>
                 ${miniCostumeText}
             </div>
         `;
@@ -7627,6 +7650,11 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
 
 function attachMultiDayListeners() {
     document.querySelectorAll('.mini-booking-block').forEach(item => {
+        if (item.classList.contains('education-lesson')) item.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            item.click();
+        });
         item.addEventListener('click', () => {
             const bookingId = item.dataset.bookingId;
             const daySection = item.closest('.day-section');

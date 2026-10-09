@@ -691,7 +691,7 @@
         host.innerHTML = PRESETS.map(preset => `
             <button type="button" class="timeline-settings-preset" data-timeline-settings-preset="${escapeHtml(preset.key)}">
                 <strong>${escapeHtml(preset.label)}</strong>
-                <span>${escapeHtml(preset.description)}</span>
+                <span>${escapeHtml(state.displaySettings.mode === 'education' && preset.key === 'operator_daily' ? 'Лишає дату, статуси, сітку, створення занять і базові дії.' : preset.description)}</span>
                 <small>${preset.hidden ? `${preset.hidden.length} прихованих блоків` : 'Базова видимість'}</small>
             </button>
         `).join('');
@@ -705,7 +705,7 @@
         const features = display.timelineFeatures || {};
         const moduleRows = Object.entries(MODULE_LABELS).map(([key, label]) => `
             <label class="timeline-settings-field timeline-settings-field--switch">
-                <span>${escapeHtml(label)}</span>
+                <span>${escapeHtml(display.mode === 'education' && key === 'bookings' ? 'Заняття' : label)}</span>
                 <span class="timeline-settings-switch">
                     <input type="checkbox" data-timeline-settings-module="${escapeHtml(key)}" ${modules[key] === false ? '' : 'checked'}>
                     <span aria-hidden="true"></span>

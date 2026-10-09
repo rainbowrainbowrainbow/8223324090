@@ -3752,7 +3752,7 @@ test('timeline activity blocks use catalog timeline codes without truncated name
     assert.match(timeline, /const roomActivityMainLabel = !isCompactActivityBlock && bookingTitleTail && !roomActivityCodeRepeatsTitle[\s\S]*roomActivityCodeRepeatsTitle && !isCompactActivityBlock \? '' : roomActivityDisplayLabel/);
     assert.match(timeline, /const roomActivityCanShowDetail = bookingBlockDensity !== 'micro' && bookingBlockDensity !== 'tiny';[\s\S]*const roomActivityDetailLabel = roomActivityCodeRepeatsTitle && isCompactActivityBlock \? '' : bookingTitleTail;[\s\S]*const roomActivityDetailParts = roomActivityCanShowDetail[\s\S]*\? \[roomActivityDetailLabel, costumeLabel\]\.filter\(Boolean\)[\s\S]*: \[\];/);
     assert.match(timeline, /roomActivityMainLabel \? `<span class="timeline-room-activity-title"[\s\S]*data-token-count="\$\{escapeHtml\(String\(roomActivityLabelMetrics\.tokenCount\)\)\}"[\s\S]*data-max-token-length="\$\{escapeHtml\(String\(roomActivityLabelMetrics\.maxTokenLength\)\)\}"[\s\S]*data-layout="\$\{escapeHtml\(roomActivityLabelMetrics\.layout\)\}"[\s\S]*>\$\{roomActivityLabelHtml\}<\/span>` : ''/);
-    assert.match(timeline, /const miniAccessibilityLabel = miniTitleParts\.join\(' · '\);/);
+    assert.match(timeline, /const miniAccessibilityLabel = miniTitleParts\.filter\(Boolean\)\.join\(' · '\);/);
     assert.match(timeline, /title="\$\{escapeHtml\(miniAccessibilityLabel\)\}"\s*aria-label="\$\{escapeHtml\(miniAccessibilityLabel\)\}"/);
     assert.match(timeline, /block\.setAttribute\('title', fullBookingLabel\);/);
     assert.match(timeline, /<div class="timeline-micro-booking-code"[\s\S]*data-token-count="\$\{escapeHtml\(String\(microLabelMetrics\.tokenCount\)\)\}"[\s\S]*data-max-token-length="\$\{escapeHtml\(String\(microLabelMetrics\.maxTokenLength\)\)\}"[\s\S]*data-layout="\$\{escapeHtml\(microLabelMetrics\.layout\)\}">\$\{microLabelHtml\}<\/div>/);
@@ -6160,4 +6160,73 @@ test('business cabinet is the persistent control surface for shell modules and t
     assert.equal(timeline.mode, 'simple');
     assert.equal(timeline.startPage, 'timeline');
     assert.equal(timeline.context, 'maysternya_doli');
+});
+
+
+// Scoped component barriers; these are not browser journeys.
+function closeMinimapFixture() {
+    const source=fs.readFileSync(path.join(__dirname,'../js/ui.js'),'utf8');
+    const block=source.slice(source.indexOf('let _minimapHash = null;'),source.indexOf('// ЗМІНА СТАТУСУ БРОНЮВАННЯ'));
+    const draws=[],warnings=[],canvas={width:300,height:50,getContext:()=>({fillRect:(...args)=>draws.push(args),beginPath(){},moveTo(){},lineTo(){},stroke(){}})};
+    const container={clientWidth:300,dataset:{},classList:{add(){},remove(){}},querySelector:()=>canvas};
+    const context=vm.createContext({window:{TimelineBusinessContext:{current:()=>({apiValue:'dar'})}},document:{body:{},getElementById:()=>container},AppState:{selectedDate:'2026-10-03',multiDayMode:false,darkMode:false},console:{warn:(...args)=>warnings.push(args)},Date,JSON,Promise,Math,getComputedStyle:()=>({getPropertyValue:()=>''}),normalizeTimelineExportBookings:x=>x,normalizeTimelineExportLines:x=>x,getBookingsForDate:async()=>[],getLinesForDate:async()=>[{id:'one'}],getTimeRange:()=>({start:9,end:18}),timeToMinutes:()=>600,CATEGORY_COLORS:{},getTimelineExportLineBookings:()=>[],formatDate:x=>String(x)});
+    vm.runInContext(block,context);return{context,draws,warnings,canvas,container};
+}
+function closeBarrier(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return{promise,resolve,reject};}
+test('CLOSE minimap latest render wins under a delayed older booking response',async()=>{
+    const f=closeMinimapFixture(),gate=closeBarrier();f.context.getBookingsForDate=date=>date==='2026-10-03'?gate.promise:Promise.resolve([]);
+    const older=f.context.renderMinimap('2026-10-03');assert.equal(typeof older?.then,'function','Render caller owns terminal promise');
+    f.context.AppState.selectedDate='2026-10-04';await f.context.renderMinimap('2026-10-04');const count=f.draws.length;gate.resolve([]);await older;assert.equal(f.draws.length,count,'Stale render must not paint');
+});
+test('CLOSE minimap catches stale rejection and current read failure, then retries',async()=>{
+    const f=closeMinimapFixture();f.context.getLinesForDate=async()=>{const e=Error('Stale');e.code='timeline_stale_request';throw e;};
+    await f.context.renderMinimap('2026-10-03');assert.equal(f.warnings.length,0);
+    f.context.getLinesForDate=async()=>{throw Error('Controlled read failure');};await f.context.renderMinimap('2026-10-03');assert.equal(f.warnings.length,1);assert.equal(f.container.dataset.state,'error');
+    f.context.getLinesForDate=async()=>[{id:'one'}];await f.context.renderMinimap('2026-10-03');assert.equal(f.container.dataset.state,'ready');
+});
+test('CLOSE minimap identical render preserves drawn canvas',async()=>{const f=closeMinimapFixture();await f.context.renderMinimap('2026-10-03');const count=f.draws.length;await f.context.renderMinimap('2026-10-03');assert.equal(f.draws.length,count);});
+
+
+test('CLOSE education time axis includes early and late lessons without changing Park hours',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../js/timeline.js'),'utf8');const block=source.slice(source.indexOf('function getTimeRange(date)'),source.indexOf('function getTimelineCellWidth(anchor)'));
+ let mode='education';const cached={data:[{time:'09:30',duration:45,status:'confirmed'},{time:'21:30',duration:45,status:'confirmed'}]};
+ const context=vm.createContext({Date,Math,Number,Array,window:{TimelineBusinessContext:{presentation:()=>({mode})}},AppState:{selectedDate:new Date(2026,9,3),cachedBookings:{}},CONFIG:{TIMELINE:{WEEKDAY_START:12,WEEKDAY_END:20,WEEKEND_START:10,WEEKEND_END:20}},getTimelineCacheEntry:()=>cached,timeToMinutes:value=>{const [h,m]=String(value).split(':').map(Number);return h*60+m;}});
+ vm.runInContext(block,context);let result=context.getTimeRange();assert.equal(result.start,9);assert.equal(result.end,23);
+ mode='park';result=context.getTimeRange();assert.equal(result.start,10);assert.equal(result.end,20);
+ mode='education';cached.data=[{time:'00:15',duration:30,status:'confirmed'},{time:'23:15',duration:45,status:'confirmed'}];result=context.getTimeRange();assert.equal(result.start,0);assert.equal(result.end,24);
+});
+
+
+function closeVisibilityFixture(fetch) {
+ const source=fs.readFileSync(path.join(__dirname,'../js/timeline-visibility.js'),'utf8');const block=source.slice(source.indexOf('    async function loadServerSettings()'),source.indexOf('    function mergeServerRegistry('));
+ let business='dar';const writes=[],warnings=[],state={serverLoadPromise:null,serverLoadKey:null,serverSettings:new Map()};
+ const context=vm.createContext({document:{visibilityState:'visible'},Promise,AbortController,state,fetch,hasAuthenticatedTimelineUser:()=>true,visibilityScopeKey:()=>business,storageKey:()=>business+'_visibility',apiUrl:()=>'/api/settings/timeline-visibility?businessContext='+business,authHeaders:()=>({}),mergeServerRegistry:()=>{},normalizeSettings:x=>x,JSON,console:{warn:(...x)=>warnings.push(x)},localStorage:{setItem:(key,value)=>writes.push({key,value})},setSaveStatus:()=>{}});vm.runInContext(block,context);return{context,state,writes,warnings,switchBusiness:value=>{business=value;}};
+}
+test('CLOSE visibility catches a synchronous native fetch failure',async()=>{const f=closeVisibilityFixture(()=>{throw new TypeError('Fetch access control failure');});assert.equal(await f.context.loadServerSettings(),null);assert.equal(f.warnings.length,1);assert.equal(f.state.serverLoadPromise,null);});
+test('CLOSE visibility stale A response cannot write B storage or clear B pending read',async()=>{
+ const a=closeBarrier(),b=closeBarrier();const f=closeVisibilityFixture(url=>url.endsWith('dar')?a.promise:b.promise);
+ const old=f.context.loadServerSettings();await Promise.resolve();f.switchBusiness('maysternya_doli');const current=f.context.loadServerSettings();await Promise.resolve();const pending=f.state.serverLoadPromise;
+ a.resolve({ok:true,json:async()=>({registry:[],name:'A'})});await old;assert.equal(f.writes.length,0,'Stale A must be ignored');assert.equal(f.state.serverLoadPromise,pending,'A finally cannot clear B');
+ b.resolve({ok:true,json:async()=>({registry:[],name:'B'})});await current;assert.equal(f.writes.length,1);assert.equal(f.writes[0].key,'maysternya_doli_visibility');assert.equal(JSON.parse(f.writes[0].value).name,'B');assert.equal(f.state.serverLoadPromise,null);
+});
+
+
+test('CLOSE visibility skips queued read after pagehide and permits pageshow retry',async()=>{
+ let calls=0;const f=closeVisibilityFixture(async()=>{calls++;return{ok:true,json:async()=>({registry:[],name:'Current'})};});
+ const queued=f.context.loadServerSettings();f.state.pageExiting=true;assert.equal(await queued,null);assert.equal(calls,0);assert.equal(f.writes.length,0);assert.equal(f.state.serverLoadPromise,null);
+ assert.equal(await f.context.loadServerSettings(),null);assert.equal(calls,0);
+ f.state.pageExiting=false;await f.context.loadServerSettings();assert.equal(calls,1);assert.equal(f.writes.length,1);
+});
+
+
+test('CLOSE hidden document cannot start a queued optional visibility read',async()=>{
+ let calls=0;const f=closeVisibilityFixture(async()=>{calls++;return{ok:true,json:async()=>({registry:[],name:'Current'})};});
+ const pending=f.context.loadServerSettings();f.context.document.visibilityState='hidden';assert.equal(await pending,null);assert.equal(calls,0);assert.equal(f.writes.length,0);
+ f.context.document.visibilityState='visible';await f.context.loadServerSettings();assert.equal(calls,1);assert.equal(f.writes.length,1);
+});
+
+test('CLOSE visibility makes no request without an authenticated timeline user',async()=>{
+ let calls=0;const f=closeVisibilityFixture(async()=>{calls++;return{ok:true,json:async()=>({registry:[],name:'Current'})};});
+ f.context.hasAuthenticatedTimelineUser=()=>false;assert.equal(await f.context.loadServerSettings(),null);assert.equal(calls,0);assert.equal(f.writes.length,0);assert.equal(f.state.serverLoadPromise,null);
+ f.context.hasAuthenticatedTimelineUser=()=>true;await f.context.loadServerSettings();assert.equal(calls,1);assert.equal(f.writes.length,1);
 });

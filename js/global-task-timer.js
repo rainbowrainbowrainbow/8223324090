@@ -13,6 +13,7 @@
     const state = {
         timer: null,
         hydrated: false,
+        pageExiting: false,
         loading: false,
         mounted: false,
         inFlight: false,
@@ -345,10 +346,11 @@
     }
 
     async function hydrate(options = {}) {
-        if (!hasRuntimeSession()) return state.timer;
+        if (state.pageExiting || document.visibilityState === 'hidden' || !hasRuntimeSession()) return state.timer;
         if (state.loading) {
             state.pendingHydrate = true;
-            return activeHydratePromise || state.timer;
+            // Concurrent callers must share the handled optional read, not leak its rejection.
+            return activeHydratePromise ? activeHydratePromise.catch(() => state.timer) : state.timer;
         }
         state.loading = true;
         activeRequest?.abort?.();
@@ -493,6 +495,11 @@
     function bindGlobalEvents() {
         if (document.documentElement.dataset.globalTaskTimerEventsBound === 'true') return;
         document.documentElement.dataset.globalTaskTimerEventsBound = 'true';
+        window.addEventListener('pagehide', () => { state.pageExiting = true; stopTickers(); });
+        window.addEventListener('pageshow', event => {
+            state.pageExiting = false;
+            if (event.persisted) void hydrate({ reason: 'pageshow' });
+        });
         window.addEventListener('focus', () => void hydrate({ reason: 'focus' }));
         window.addEventListener('online', () => void hydrate({ reason: 'online' }));
         document.addEventListener('visibilitychange', () => {

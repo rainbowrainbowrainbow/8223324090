@@ -3277,39 +3277,53 @@ function setupSwipe() {
 // ==========================================
 
 let _minimapHash = null;
+let _minimapRenderGeneration = 0;
 
 function renderMinimap(snapshotDate) {
+    const generation = ++_minimapRenderGeneration;
     const minimap = document.getElementById('minimapContainer');
     if (!minimap || AppState.multiDayMode) {
         if (minimap) minimap.classList.add('hidden');
         return;
     }
     minimap.classList.remove('hidden');
-    renderMinimapAsync(minimap, snapshotDate);
+    return renderMinimapAsync(minimap, snapshotDate, generation).catch(error => {
+        if (generation !== _minimapRenderGeneration || error?.code === 'timeline_stale_request'
+            || error?.name === 'TimelineStaleRequestError' || error?.name === 'AbortError') return;
+        minimap.dataset.state = 'error';
+        console.warn('[Minimap] Read unavailable; next timeline refresh will retry', error);
+    });
 }
 
-async function renderMinimapAsync(container, snapshotDate) {
-    // v7.0.1: Use snapshot date to avoid reading stale AppState.selectedDate
+async function renderMinimapAsync(container, snapshotDate, generation = ++_minimapRenderGeneration) {
     const date = snapshotDate || AppState.selectedDate;
+    const business = window.TimelineBusinessContext?.current?.()?.apiValue || '';
     const canvas = container.querySelector('canvas');
     if (!canvas) return;
-    canvas.width = container.clientWidth || 300;
-    canvas.height = 50;
-    const ctx = canvas.getContext('2d');
+    const isCurrent = () => generation === _minimapRenderGeneration && !AppState.multiDayMode
+        && formatDate(date) === formatDate(AppState.selectedDate)
+        && business === (window.TimelineBusinessContext?.current?.()?.apiValue || '');
+    const bookings = normalizeTimelineExportBookings(await getBookingsForDate(date));
+    if (!isCurrent()) return;
+    const lines = normalizeTimelineExportLines(await getLinesForDate(date));
+    if (!isCurrent()) return;
+    const width = container.clientWidth || 300;
     const computed = getComputedStyle(document.body);
     const minimapBg = computed.getPropertyValue('--eg-scrubber-track').trim() || (AppState.darkMode ? '#1B1B31' : '#F3F6FA');
     const nowLineColor = computed.getPropertyValue('--eg-danger').trim() || '#E54868';
-
-    ctx.fillStyle = minimapBg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    const bookings = normalizeTimelineExportBookings(await getBookingsForDate(date));
-    const lines = normalizeTimelineExportLines(await getLinesForDate(date));
-
-    // Memoize: skip redraw if data hasn't changed
-    const hash = date + ':' + bookings.length + ':' + bookings.map(b => b.id + b.status).join(',');
+    const hash = JSON.stringify([formatDate(date), business, width, minimapBg, nowLineColor,
+        lines.map(line => line.id), bookings.map(b => [b.id, b.status, b.time, b.duration, b.category, b.lineId, b.resourceId, b.room])]);
+    container.dataset.state = 'ready';
+    container.dataset.date = formatDate(date);
+    container.dataset.business = business;
+    // Setting canvas dimensions clears it; only do this when repainting.
     if (hash === _minimapHash) return;
     _minimapHash = hash;
+    canvas.width = width;
+    canvas.height = 50;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = minimapBg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const { start, end } = getTimeRange(date);
     const totalMin = (end - start) * 60;

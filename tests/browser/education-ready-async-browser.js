@@ -14,9 +14,9 @@ const base = process.env.TEST_URL; assert.match(base, /^http:\/\/127\.0\.0\.1:\d
 const out = path.resolve(process.env.EDU_READY_OUTPUT || 'output/education-ready/05', `attempt-${new Date().toISOString().replace(/[:.]/g, '-')}`);
 fs.mkdirSync(out, { recursive: true });
 const results = createResults();
-const evidence = { phase: process.env.EDU_ASYNC_PHASE || 'postfix', viewport, coverage: 'FULL', checks: results.results, proofs: {}, screenshots: [], pageErrors: [],
+const evidence = { attemptId: process.env.EDU_CLOSE_ATTEMPT_ID, suite: process.env.EDU_CLOSE_SUITE, phase: process.env.EDU_ASYNC_PHASE || 'postfix', viewport, coverage: 'FULL', checks: results.results, proofs: {}, screenshots: [], pageErrors: [],
     reportClock: process.env.EDU_READY_REPORT_NOW, boundary: 'Actual UI/Express/disposable PG; no API repair; held real responses' };
-const pool = new Pool({ host: '127.0.0.1', port: 55469, user: 'postgres', database: DATABASES.fixed, ssl: false });
+const pool = new Pool({ host: process.env.PGHOST || '127.0.0.1', port: Number(process.env.PGPORT || 55469), user: process.env.PGUSER || 'postgres', password: process.env.PGPASSWORD, database: process.env.PGDATABASE || DATABASES.fixed, ssl: false });
 let browser, token, manifest, plan, second;
 function flush() {
     let data = JSON.stringify(evidence, null, 2);
@@ -51,8 +51,8 @@ async function pageFor(action, credentials) {
         const page = pages[0];
         if (page) {
             evidence.lastFailure = await page.evaluate(() => ({ date: document.getElementById('timelineDate')?.value, today: window.EducationScheduleWorkspace?.state,
-                attendance: document.getElementById('educationAttendanceStatus')?.textContent, report: document.getElementById('educationReportStatus')?.textContent }));
-            await shot(page, `failure-${evidence.checks.length}`);
+                attendance: document.getElementById('educationAttendanceStatus')?.textContent, report: document.getElementById('educationReportStatus')?.textContent })).catch(diagnosticError=>({originalError:error.message,diagnosticError:diagnosticError.message,url:page.url()}));
+            await shot(page, `failure-${evidence.checks.length}`).catch(diagnosticError=>{evidence.failureScreenshotError=diagnosticError.message;});
         }
         throw error;
     } finally { for (const page of pages) await page.context().close(); }
@@ -86,10 +86,10 @@ async function saveJournal(page, id) {
     await page.waitForFunction(() => !document.getElementById('educationAttendanceSave').disabled); return response.json();
 }
 async function journalReady(page) {
-    await page.waitForFunction(() => window.EducationAttendance.state.journal && !window.EducationAttendance.state.journalLoading && !window.EducationAttendance.state.loading && !window.EducationAttendance.state.saving);
+    await page.waitForFunction(() => window.EducationAttendance?.state.journal && !window.EducationAttendance.state.journalLoading && !window.EducationAttendance.state.loading && !window.EducationAttendance.state.saving);
 }
 async function reportReady(page) {
-    await page.waitForFunction(() => !window.EducationAttendance.state.reportLoading && document.querySelector('.education-report-summary'));
+    await page.waitForFunction(() => window.EducationAttendance?.state && !window.EducationAttendance.state.reportLoading && document.querySelector('.education-report-summary'));
     await page.locator('#mainApp').waitFor({ state: 'visible', timeout: 45000 });
     await page.locator('.education-report-summary').waitFor({ state: 'visible' });
 }
@@ -177,6 +177,50 @@ async function main() {
         evidence.proofs.F04={from,to,expected,api:control.report.summary,direct,reload,successfulResponses:received.length}; flush();
         assert.deepEqual(direct,Object.values(expected).map(String)); assert.deepEqual(reload,Object.values(expected).map(String));
     }));
+    await check('minimap-native-stale-read-visible-date-navigation', () => pageFor(async page => {
+        await go(page, 'schedule', '2026-10-01');
+        await page.waitForFunction(() => document.getElementById('minimapContainer')?.dataset.date === '2026-10-01');
+        // Force a real minimap read past the cache so its native request token
+        // crosses the visible date change. No fabricated response or write repair.
+        await page.evaluate(() => {
+            const nativeRead = window.getLinesForDate;
+            window.__minimapNativeFailures = [];
+            window.getLinesForDate = function(date, options = {}) {
+                const minimap = new Error().stack.includes('renderMinimapAsync');
+                return nativeRead(date, minimap ? { ...options, force: true } : options).catch(error => {
+                    if (minimap) window.__minimapNativeFailures.push({ code: error.code, name: error.name });
+                    throw error;
+                });
+            };
+        });
+        const entered = deferred(), release = deferred(), delivered = deferred(), routeErrors = [];
+        const pattern = url => url.pathname === '/api/lines/2026-10-02' && url.searchParams.has('_fresh');
+        await page.route(pattern, async route => {
+            try {
+                const response = await route.fetch();
+                assert.equal(response.status(), 200, 'Held real lines read');
+                entered.resolve(); await release.promise; await route.fulfill({ response });
+            } catch (error) { routeErrors.push(error.message); entered.resolve(); }
+            finally { delivered.resolve(); }
+        });
+        try {
+            await page.locator('#nextDay').click(); await bounded(entered.promise, 'Minimap A real lines response');
+            assert.deepEqual(routeErrors, []);
+            const newest = page.waitForResponse(response => new URL(response.url()).pathname === '/api/bookings/2026-10-03');
+            await page.locator('#nextDay').click(); const response = await newest; assert.equal(response.status(), 200); await response.finished();
+            release.resolve(); await bounded(delivered.promise, 'Stale lines delivered');
+            await page.waitForFunction(() => window.__minimapNativeFailures.some(error => error.code === 'timeline_stale_request')
+                && document.getElementById('minimapContainer')?.dataset.date === '2026-10-03'
+                && document.getElementById('minimapContainer')?.dataset.state === 'ready');
+            const state = await page.evaluate(() => ({ date: document.getElementById('timelineDate').value,
+                minimap: { ...document.getElementById('minimapContainer').dataset }, failures: window.__minimapNativeFailures,
+                ids: [...new Set([...document.querySelectorAll('.booking-block[data-booking-id]')].map(el => el.dataset.bookingId))].sort() }));
+            const sql = (await pool.query("SELECT id FROM bookings WHERE business_context='dar' AND date='2026-10-03' AND status <> 'cancelled' ORDER BY id")).rows.map(row => row.id).sort();
+            assert.equal(state.date, '2026-10-03'); assert.equal(state.minimap.business, 'dar'); assert.deepEqual(state.ids, sql); assert.deepEqual(routeErrors, []);
+            evidence.proofs.minimap = { ...state, sql, barrier: 'Real HTTP200 lines response released after visible nextDay; native stale token observed', classification: 'VISIBLE_UI_READ_NAVIGATION_API_SQL_WITH_CACHE_BYPASS_BARRIER' };
+            await shot(page, 'minimap-native-stale-navigation');
+        } finally { release.resolve(); await bounded(delivered.promise, 'Minimap route cleanup'); await page.unroute(pattern); }
+    }));
     await check('F06-today-date-race', () => pageFor(async page => {
         const arrived=deferred(),release=deferred(),deliveries=[];
         await page.route('**/api/bookings/2026-10-02?*',async route=>{
@@ -262,8 +306,12 @@ async function main() {
             await page.locator('#educationReportFrom').fill(from);await page.locator('#educationReportFrom').press('Tab');
             await page.locator('#educationReportTo').fill(to);await page.locator('#educationReportTo').press('Tab');
             await page.locator('#educationReportGroup').selectOption(group?String(manifest.ids.groups[group]):'');
-            const reply=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/education/reports');await page.locator('#educationReportRun').click();const response=await reply;await response.finished();await reportReady(page);
+            const reply=page.waitForResponse(r=>{ const url=new URL(r.url()); return url.pathname==='/api/education/reports'
+                && url.searchParams.get('businessContext')==='dar' && url.searchParams.get('from')===from && url.searchParams.get('to')===to
+                && (url.searchParams.get('groupId')||'')===(group?String(manifest.ids.groups[group]):''); });await page.locator('#educationReportRun').click();const response=await reply;await response.finished();await reportReady(page);
             const expected=await independentReport(from,to,group), actual=(await response.json()).report.summary;
+            assert.equal(response.status(),200);
+            await page.waitForFunction(values=>!window.EducationAttendance.state.reportLoading && [...document.querySelectorAll('.education-report-summary strong')].map(el=>el.textContent).join('|')===values.join('|'),Object.values(expected).map(String));
             assert.deepEqual(actual,expected);assert.deepEqual(await page.locator('.education-report-summary strong').allTextContents(),Object.values(expected).map(String));checked.push({from,to,group,expected});
             if(group==='english'){
                 await page.reload({waitUntil:'domcontentloaded'});await reportReady(page);
@@ -349,7 +397,7 @@ async function main() {
         fail=false;await page.locator('[data-education-retry]').click();await page.waitForFunction(()=>!window.EducationScheduleWorkspace.state.loading&&!window.EducationScheduleWorkspace.state.error);
         assert.match(await page.locator('#educationTodayList').innerText(),/немає|не знайдено/i);
     }));
-    await check('draft-restores-only-edited-child',()=>pageFor(async(page,create)=>{
+    await check('draft-restores-with-stale-revision',()=>pageFor(async(page,create)=>{
         const id=manifest.ids.bookings['english-3'],edited=manifest.ids.children['child-1'],other=manifest.ids.children['child-3'];
         await openJournal(page,id);await journalReady(page);await page.locator(`[data-attendance-child-id="${edited}"]`).selectOption('excused');
         const operator=await create(second);await openJournal(operator,id);await journalReady(operator);
@@ -359,7 +407,9 @@ async function main() {
         assert.equal(await page.locator(`[data-attendance-child-id="${edited}"]`).inputValue(),'excused');
         assert.equal(await page.locator(`[data-attendance-child-id="${other}"]`).inputValue(),'absent');
         assert.equal((await pool.query('SELECT status FROM education_attendance WHERE booking_id=$1 AND child_id=$2',[id,edited])).rows[0].status,'absent');
-        evidence.proofs.draftMerge={unsavedEditedChild:'excused',durableEditedChild:'absent',freshOtherChild:'absent'};
+        assert.equal(await page.locator('#educationAttendanceSave').isDisabled(),true);
+        assert.match(await page.locator('#educationAttendanceStatus').innerText(),/застаріла/);
+        evidence.proofs.draftConflict={unsavedEditedChild:'excused',durableEditedChild:'absent',freshOtherChild:'absent',saveDisabled:true};
     }));
     }
     await check('page-errors',async()=>assert.deepEqual(evidence.pageErrors,[]));

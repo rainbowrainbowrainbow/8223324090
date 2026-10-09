@@ -13,10 +13,10 @@ assert.match(base, /^http:\/\/127\.0\.0\.1:\d+$/);
 const out = path.resolve(process.env.EDU_READY_OUTPUT || 'output/education-ready/04', `attempt-${new Date().toISOString().replace(/[:.]/g, '-')}`);
 fs.mkdirSync(out, { recursive: true });
 const results = createResults();
-const evidence = { phase: process.env.EDU_LIFECYCLE_PHASE || 'postfix', viewport, checks: results.results, proofs: {}, pageErrors: [], screenshots: [] };
+const evidence = { attemptId: process.env.EDU_CLOSE_ATTEMPT_ID, suite: process.env.EDU_CLOSE_SUITE, phase: process.env.EDU_LIFECYCLE_PHASE || 'postfix', viewport, checks: results.results, proofs: {}, pageErrors: [], screenshots: [] };
 const focused = (process.env.EDU_LIFECYCLE_ONLY || '').split(',').filter(Boolean);
 evidence.coverage = focused.length ? { mode: 'FOCUSED', selected: focused } : { mode: 'FULL' };
-const pool = new Pool({ host: '127.0.0.1', port: 55469, database: DATABASES.fixed, user: 'postgres', ssl: false });
+const pool = new Pool({ host: process.env.PGHOST || '127.0.0.1', port: Number(process.env.PGPORT || 55469), user: process.env.PGUSER || 'postgres', password: process.env.PGPASSWORD, database: process.env.PGDATABASE || DATABASES.fixed, ssl: false });
 let token, manifest, browser;
 function flush() {
     let text = JSON.stringify(evidence, null, 2);
@@ -45,8 +45,8 @@ async function pageFor(action) {
         await page.locator('#loginForm button[type="submit"]').click(); await page.locator('#mainApp').waitFor({ state: 'visible', timeout: 45000 });
         await action(page);
     } catch (error) {
-        evidence.lastFailure = await page.evaluate(() => ({ view: window.EducationScheduleWorkspace?.state, groups: window.EducationGroups?.state.listStatus, date: document.getElementById('timelineDate')?.value, panel: document.getElementById('bookingPanel')?.className, hint: document.getElementById('bookingSubmitHint')?.textContent, room: document.getElementById('roomSelect')?.value, rooms: [...(document.getElementById('roomSelect')?.options || [])].map(o => ({ value: o.value, type: o.dataset.resourceType, id: o.dataset.resourceId })), duration: document.getElementById('educationLessonDuration')?.value }));
-        await shot(page, `failure-${evidence.checks.length}`); flush(); throw error;
+        evidence.lastFailure = await page.evaluate(() => ({ view: window.EducationScheduleWorkspace?.state, groups: window.EducationGroups?.state.listStatus, date: document.getElementById('timelineDate')?.value, panel: document.getElementById('bookingPanel')?.className, hint: document.getElementById('bookingSubmitHint')?.textContent, room: document.getElementById('roomSelect')?.value, rooms: [...(document.getElementById('roomSelect')?.options || [])].map(o => ({ value: o.value, type: o.dataset.resourceType, id: o.dataset.resourceId })), duration: document.getElementById('educationLessonDuration')?.value })).catch(diagnosticError => ({ diagnosticError: diagnosticError.message }));
+        await shot(page, `failure-${evidence.checks.length}`).catch(diagnosticError => { evidence.screenshotError = diagnosticError.message; }); flush(); throw error;
     } finally { await context.close(); }
 }
 async function go(page, view, date = manifest.anchorDate) {

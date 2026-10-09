@@ -18,13 +18,15 @@ async function api(method, path, token, body) {
     return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 
+// Component-only mocked response queue: event-driven, no elapsed-time polling.
 async function waitForRequest(requests, from, predicate) {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-        const found = requests.slice(from).find(predicate);
-        if (found) return found;
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    throw new Error('Expected delayed education request was not sent');
+    const existing=requests.slice(from).find(predicate);if(existing)return existing;
+    const original=requests.push;
+    let timer;
+    try {return await new Promise((resolve,reject)=>{
+        timer=setTimeout(()=>reject(new Error('Expected held request was not observed')),10000);
+        requests.push=function(...rows){const length=original.apply(this,rows);const found=requests.slice(from).find(predicate);if(found)resolve(found);return length;};
+    });}finally{clearTimeout(timer);requests.push=original;}
 }
 
 const group = (id, name) => ({ id, name, status: 'active', capacity: 3, members: [] });

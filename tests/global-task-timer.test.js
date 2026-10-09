@@ -207,3 +207,44 @@ test('sidebar shell exposes a stable remount signal for the global timer', () =>
     assert.match(sidebar, /crm:sidebar-shell-changed/);
     assert.match(sidebar, /_setSidebarCollapsed[\s\S]*_notifyGlobalTaskTimerShellChanged\(\)/);
 });
+
+
+test('concurrent timer hydration handles a failed optional read and permits retry', async () => {
+    let rejectRead;
+    let calls = 0;
+    const { api, context } = loadGlobalTimer({
+        fetch: () => {
+            calls++;
+            if (calls === 1) return new Promise((resolve, reject) => { rejectRead = reject; });
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true, timer: null }) });
+        }
+    });
+    context.window.isAuthenticatedRuntimeReady = () => true;
+    const first = api.hydrate({ reason: 'init' });
+    const concurrent = api.hydrate({ reason: 'refresh' });
+    assert.equal(calls, 1, 'Concurrent hydrate must not duplicate HTTP reads');
+    rejectRead(new TypeError('Controlled optional read failure'));
+    const settled = await Promise.allSettled([first, concurrent]);
+    assert.deepEqual(settled.map(result => result.status), ['fulfilled', 'fulfilled']);
+    assert.equal(api.state.loading, false);
+    assert.equal(api.state.timer, null);
+    await api.hydrate({ reason: 'retry' });
+    assert.equal(calls, 2);
+    assert.equal(api.state.hydrated, true);
+    assert.equal(api.state.loading, false);
+});
+
+
+test('timer optional hydration stops on pagehide and resumes on persisted pageshow',async()=>{
+ let calls=0;const {api,context,listeners}=loadGlobalTimer({fetch:async()=>{calls++;return{ok:true,status:200,json:async()=>({success:true,timer:null})};}});
+ context.window.isAuthenticatedRuntimeReady=()=>true;api.init();await api.hydrate();
+ const before=calls;listeners.find(item=>item[0]==='window'&&item[1]==='pagehide')[2]();await api.hydrate({reason:'late-focus'});assert.equal(calls,before);
+ listeners.find(item=>item[0]==='window'&&item[1]==='pageshow')[2]({persisted:true});await api.hydrate();assert.ok(calls>before);assert.equal(api.state.pageExiting,false);
+});
+
+
+test('timer optional read defers while hidden and can refetch on foreground',async()=>{
+ let calls=0;const {api,context}=loadGlobalTimer({fetch:async()=>{calls++;return{ok:true,status:200,json:async()=>({success:true,timer:null})};}});
+ context.window.isAuthenticatedRuntimeReady=()=>true;context.document.visibilityState='hidden';await api.hydrate();assert.equal(calls,0);
+ context.document.visibilityState='visible';await api.hydrate();assert.equal(calls,1);assert.equal(api.state.hydrated,true);
+});

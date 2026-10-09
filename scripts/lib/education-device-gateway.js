@@ -30,22 +30,23 @@ function allowedWrite(method, pathname) {
     if (/^\/api\/timeline\/resources(\/[^/]+)?$/.test(pathname)) return ['POST','PUT','PATCH','DELETE'].includes(method);
     return false;
 }
-function createGateway({ host, prefix = 24, stats = {} }) {
+function createGateway({ host, prefix = 24, stats = {}, appPort = APP_PORT, lanPort = LAN_PORT, writePolicy = allowedWrite }) {
     assert.ok(privateAddress(host), 'An explicit RFC1918 IPv4 interface is required');
     assert.ok(Number.isInteger(prefix) && prefix >= 16 && prefix <= 30);
-    const origin = `http://${host}:${LAN_PORT}`;
+    assert.ok([appPort, lanPort].every(port => Number.isInteger(port) && port > 1024 && port < 65536));
+    const origin = `http://${host}:${lanPort}`;
     const reject = (res, status, message) => { stats.blocked = (stats.blocked || 0) + 1;res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({error:message})); };
     const server = http.createServer((req,res)=>{
-        if (!sameSubnet(req.socket.remoteAddress,host,prefix) || req.headers.host !== `${host}:${LAN_PORT}`)
+        if (!sameSubnet(req.socket.remoteAddress,host,prefix) || req.headers.host !== `${host}:${lanPort}`)
             return reject(res,403,'Owned local device preview only');
         if (req.headers.origin && req.headers.origin !== origin) return reject(res,403,'Unexpected request origin');
         if (!req.url?.startsWith('/') || req.url.startsWith('//')) return reject(res,400,'Relative paths only');
         let pathname;try { pathname = decodeURIComponent(new URL(req.url,origin).pathname); } catch { return reject(res,400,'Invalid path'); }
-        if (!allowedWrite(req.method,pathname)) return reject(res,403,'Outside education device QA scope');
-        const headers = {...req.headers,host:`127.0.0.1:${APP_PORT}`};
+        if (!writePolicy(req.method,pathname)) return reject(res,403,'Outside education device QA scope');
+        const headers = {...req.headers,host:`127.0.0.1:${appPort}`};
         for (const key of ['forwarded','x-forwarded-host','x-forwarded-for','x-forwarded-proto']) delete headers[key];
         // This is always the separately owned loopback app; no caller-supplied target.
-        const upstream = http.request({host:'127.0.0.1',port:APP_PORT,path:req.url,method:req.method,headers},response=>{
+        const upstream = http.request({host:'127.0.0.1',port:appPort,path:req.url,method:req.method,headers},response=>{
             const outgoing = {...response.headers,'cache-control':'no-store'};
             res.writeHead(response.statusCode,outgoing);response.pipe(res);
         });

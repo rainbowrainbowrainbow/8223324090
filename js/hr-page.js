@@ -14183,6 +14183,7 @@ async function openStaffEdit(staffId, options = {}) {
     const editStaffName = document.getElementById('editStaffName');
     if (editStaffName) editStaffName.value = s.name || '';
     syncStaffProfileHeaderName(s.name || '', s);
+    void loadStaffEducationTargets(numericStaffId, openSeq);
     populateStaffProfessionControlsPending(s);
     document.getElementById('editPhone').value = s.phone || '';
     const editPhotoUrl = document.getElementById('editPhotoUrl');
@@ -22901,3 +22902,48 @@ document.getElementById('btnAddVacancy')?.addEventListener('click', async () => 
 // ==========================================
 
 document.addEventListener('DOMContentLoaded', initPage);
+
+// This panel uses the HR source context; the target is an explicit, separately authorized business.
+let staffEducationRequestSeq = 0;
+async function loadStaffEducationTargets(staffId, openSeq = staffEditOpenSeq) {
+    const root = document.getElementById('staffEducationAssignment');
+    if (!root) return;
+    const canAssign = canUseHrCapability('hr.staff.manage', getHrCurrentUser());
+    root.hidden = !canAssign;
+    if (!canAssign) return;
+    const seq = ++staffEducationRequestSeq, context = teamAccessContext();
+    const current = () => seq === staffEducationRequestSeq && openSeq === staffEditOpenSeq && context === teamAccessContext()
+        && Number(activeEditStaffId()) === Number(staffId) && document.getElementById('staffEditModal').style.display !== 'none';
+    const select = document.getElementById('staffEducationBusiness'), button = document.getElementById('staffEducationAssign');
+    const confirm = document.getElementById('staffEducationConfirm'), status = document.getElementById('staffEducationStatus'), retry = document.getElementById('staffEducationRetry');
+    select.disabled = true; button.disabled = true; confirm.checked = false; confirm.disabled = false; retry.hidden = true;
+    select.innerHTML = ''; status.textContent = 'Завантаження навчальних бізнесів…';
+    const synchronize = () => { button.disabled = select.disabled || !confirm.checked || !select.value || select.selectedOptions[0]?.dataset.linked === 'true'; };
+    retry.onclick = () => { void loadStaffEducationTargets(staffId, openSeq); };
+    try {
+        const response = await hrFetch('/staff/' + staffId + '/education-businesses');
+        if (!current()) return;
+        if (!response?.success) throw new Error(response?.error || 'Не вдалося завантажити бізнеси.');
+        const data = response.data;
+        select.innerHTML = '<option value="">Оберіть навчальний бізнес</option>' + data.targets.map(target =>
+            '<option value="' + escapeHtml(target.context) + '" data-linked="' + String(target.linked) + '">' + escapeHtml(target.label) + (target.linked ? ' — уже призначено' : '') + '</option>').join('');
+        select.disabled = data.staff.is_active !== true || data.targets.length === 0;
+        status.textContent = data.staff.is_active !== true ? 'Неактивного працівника не можна призначити.' : data.targets.length ? 'Оберіть бізнес і підтвердьте призначення.' : 'Немає доступних навчальних бізнесів із правом призначення.';
+        select.onchange = () => { confirm.checked = false; synchronize(); };
+        confirm.onchange = synchronize;
+        button.onclick = async () => {
+            if (!current() || button.disabled) return;
+            const target = select.value; button.disabled = true; select.disabled = true; confirm.disabled = true;
+            status.textContent = 'Збереження призначення…';
+            try {
+                const saved = await hrFetch('/staff/' + staffId + '/education-memberships', { method: 'POST', body: { educationBusinessContext: target, confirmAssignment: true } });
+                if (!current()) return;
+                if (!saved?.success) throw new Error(saved?.error || 'Не вдалося зберегти призначення.');
+                select.selectedOptions[0].dataset.linked = 'true';
+                status.textContent = 'Працівника призначено викладачем. Він доступний у довіднику цього навчального бізнесу.';
+                confirm.checked = false;
+            } catch (error) { if (current()) status.textContent = error.message + ' Підтвердження збережено; повторіть потрібне призначення.'; }
+            finally { if (current()) { select.disabled = false; confirm.disabled = false; synchronize(); } }
+        };
+    } catch (error) { if (current()) { status.textContent = error.message; retry.hidden = false; } }
+}

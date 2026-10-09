@@ -1306,3 +1306,18 @@ body.dark-mode .hr-resource-detail-grid dd { color: #F8FAFC; }
         grid-column: auto;
     }
 }
+/* Explicit education assignment in the existing HR profile. */
+#staffEducationAssignment[hidden],
+#staffEducationRetry[hidden] { display: none !important; }
+#staffEducationAssignment .hr-education-confirm {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    margin: 12px 0;
+    overflow-wrap: anywhere;
+}
+#staffEducationAssignment .hr-education-confirm input { flex: 0 0 auto; width: 20px; height: 20px; }
+#staffEducationStatus { margin: 12px 0 0; overflow-wrap: anywhere; }
+
+#staffEducationBusiness { min-height: 44px; }

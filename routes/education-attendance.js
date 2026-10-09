@@ -19,7 +19,8 @@ function context(req, res, action = 'view') {
 function failure(res, error) {
     if (!(error instanceof attendance.EducationAttendanceError)) log.error('Education attendance request failed', error);
     return res.status(error.status || 500).json({
-        success: false, error: error.status ? error.message : 'Internal server error'
+        success: false, error: error.status ? error.message : 'Internal server error',
+        ...(error instanceof attendance.EducationAttendanceError && error.code ? { code: error.code } : {})
     });
 }
 

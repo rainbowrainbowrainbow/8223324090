@@ -3077,6 +3077,24 @@ function prepareEducationLessonPanel(options = {}) {
     if (date) { date.disabled = !enabled; date.required = enabled; }
     const dateHint = document.getElementById('educationLessonDateHint');
     if (dateHint) dateHint.textContent = 'Для серії це дата першого заняття. Дати вказано за київським часом.';
+    const timeLabel = document.querySelector('label[for="bookingTime"]');
+    if (timeLabel) timeLabel.textContent = enabled ? 'Початок заняття:' : 'Старт активності:';
+    const time = document.getElementById('bookingTime');
+    if (time) time.setAttribute('aria-label', enabled ? 'Початок заняття' : 'Старт активності');
+    [['bookingTimeStepBack', 'раніше'], ['bookingTimeStepForward', 'пізніше']].forEach(([id, direction]) => {
+        document.getElementById(id)?.setAttribute('aria-label', (enabled ? 'Змінити початок заняття на 15 хвилин ' : 'Змінити старт активності на 15 хвилин ') + direction);
+    });
+    const customerLabel = document.getElementById('selectedCustomerDisplay')?.parentElement.querySelector('.info-label');
+    if (customerLabel) customerLabel.textContent = enabled ? 'Представник:' : 'Клієнт:';
+    const countLabel = document.getElementById('selectedGuestsDisplay')?.parentElement.querySelector('.info-label');
+    if (countLabel) countLabel.textContent = enabled ? 'Учнів:' : 'Діти:';
+    const pickerLabel = document.getElementById('programSearch')?.closest('.form-section')?.querySelector('label');
+    if (pickerLabel) pickerLabel.textContent = enabled ? 'Заняття з каталогу (необов’язково)' : 'Програма';
+    const search = document.getElementById('programSearch');
+    if (search) {
+        search.placeholder = enabled ? 'Пошук заняття...' : 'Пошук програми...';
+        search.setAttribute('aria-label', enabled ? 'Пошук заняття' : 'Пошук програми');
+    }
     if (!enabled) return;
 
     const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'Кабінет';
@@ -6723,7 +6741,7 @@ function updateBookingSubmitState() {
         hint.textContent = validation.warnings[0];
         return;
     }
-    hint.textContent = 'Можна створювати бронювання.';
+    hint.textContent = isEducationTimelineBookingMode() ? 'Заняття можна зберегти.' : 'Можна створювати бронювання.';
 }
 
 function bookingSummaryActivityName(program = {}, index = 0, total = 1) {
@@ -6849,14 +6867,14 @@ function renderBookingSummaryActivityRows(programs = []) {
     const scheduleRows = getSelectedActivityScheduleRows(list);
     const rowsById = new Map(scheduleRows.map(row => [String(row.programId || row.program?.id || ''), row]));
     return [
-        '<div class="booking-summary-section-title">Активності</div>',
+        isEducationTimelineBookingMode() ? '<div class="booking-summary-section-title">Обране заняття</div>' : '<div class="booking-summary-section-title">Активності</div>',
         ...list.map((program, index) => {
             const row = rowsById.get(String(program.id || '')) || { program };
             const meta = [
                 ...bookingSummaryActivityMeta(program, row),
                 ...bookingSummaryPinataDetails(program)
             ];
-            const promoAction = renderBookingActivityPromoAction(program, 'summary');
+            const promoAction = isEducationTimelineBookingMode() ? '' : renderBookingActivityPromoAction(program, 'summary');
             return `
                 <div class="booking-summary-row booking-summary-row--item booking-summary-row--activity">
                     <span class="booking-summary-row-main">
@@ -6956,7 +6974,9 @@ function renderBookingPackageSummary() {
     const programLabel = program
         ? `${program.code || program.shortLabel || 'ПРО'} · ${program.duration ? `${program.duration} хв` : 'без тривалості'}`
         : (roomFirst ? (menuCount ? `${menuCount} позицій меню / тортів` : 'додайте їжу або торт') : (hasEvent ? 'не вибрано' : 'вимкнено'));
-    const programRowLabel = roomFirst ? 'Кухня / меню' : 'Програма';
+    const education = isEducationTimelineBookingMode();
+    const lessonTitle = document.getElementById('educationLessonTitle')?.value?.trim();
+    const programRowLabel = education ? 'Тема' : (roomFirst ? 'Кухня / меню' : 'Програма');
     const entryCharge = totals.entryCharge || (entrySubtotal > 0 ? { title: 'Квитки', subtotal: entrySubtotal } : null);
     const shouldShowValidationChecklist = !validation.canSubmit || BookingDrawerState.validationAttempted;
     const preflightWarning = renderSelectedActivityPreflightWarning();
@@ -6989,9 +7009,10 @@ function renderBookingPackageSummary() {
         return;
     }
     container.innerHTML = `
-        <div class="booking-summary-row"><span>Кімната</span><strong>${escapeHtml(roomLabel)}</strong></div>
-        <div class="booking-summary-row"><span>Клієнт</span><strong>${escapeHtml(resolvedCustomerName)}</strong></div>
-        ${activityRows || menuRows ? '' : `<div class="booking-summary-row"><span>${escapeHtml(programRowLabel)}</span><strong>${escapeHtml(programLabel)}</strong></div>`}
+        <div class="booking-summary-row"><span>${education ? 'Кабінет' : 'Кімната'}</span><strong>${escapeHtml(roomLabel)}</strong></div>
+        <div class="booking-summary-row"><span>${education ? 'Представник' : 'Клієнт'}</span><strong>${escapeHtml(resolvedCustomerName)}</strong></div>
+        ${activityRows || menuRows ? '' : `<div class="booking-summary-row"><span>${escapeHtml(programRowLabel)}</span><strong>${escapeHtml(education ? (lessonTitle || program?.name || 'Вкажіть тему заняття') : programLabel)}</strong></div>`}
+        ${education && educationLessonDurationMinutes() ? `<div class="booking-summary-row"><span>Тривалість</span><strong>${educationLessonDurationMinutes()} хвилин</strong></div>` : ''}
         ${activityRows}
         ${activityPrograms.length > 1 && activityDuration > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Сума тривалостей активностей</span><strong>${escapeHtml(`${activityDuration} хв`)}</strong></div>` : ''}
         ${programSubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>${escapeHtml(activityPrograms.length > 1 ? 'Активності' : 'Програма / активність')}</span><strong>${escapeHtml(formatPrice(programSubtotal))}</strong></div>` : ''}
@@ -7002,7 +7023,7 @@ function renderBookingPackageSummary() {
         ${kitchenEnabled && deposit?.provided ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Залишок після завдатку</span><strong>${escapeHtml(formatPrice(remainingAfterDeposit))}</strong></div>` : ''}
         ${ticketComparison ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Попередня загальна сума</span><strong>${escapeHtml(formatPrice(previousFinalTotal))}</strong></div>` : ''}
         ${ticketComparison ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Зміна загальної суми</span><strong>${escapeHtml(totalDeltaLabel)}</strong></div>` : ''}
-        <div class="booking-summary-row booking-summary-total"><span>${escapeHtml(bookingSummaryTotalLabel)}</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
+        ${!education || finalTotal !== 0 ? `<div class="booking-summary-row booking-summary-total"><span>${escapeHtml(bookingSummaryTotalLabel)}</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>` : ''}
         ${shouldShowValidationChecklist ? renderBookingValidationIssues(validation) : ''}
         ${preflightWarning}
         ${customCakeDecorationWarning ? `<div class="booking-summary-note booking-summary-note--warning">${escapeHtml(customCakeDecorationWarning)}</div>` : ''}
@@ -7318,14 +7339,14 @@ function bookingDetailActivityScenarioLabel(booking = {}, workspace = null) {
     return explicitLabel || productLabel || categoryLabel || 'Активність';
 }
 
-function renderBookingWorkspaceDetail(booking) {
+function renderBookingWorkspaceDetail(booking, options = {}) {
     const workspace = getBookingWorkspaceFromBooking(booking);
     const activityScenarioLabel = bookingDetailActivityScenarioLabel(booking, workspace);
     if (!workspace && booking?.programId && !activityScenarioLabel) return '';
     const scenario = workspace?.scenario || (booking?.programId ? 'event' : 'lead_only');
     const meta = getBookingWorkspaceScenarioMeta(scenario);
     const scenarioLabel = activityScenarioLabel || meta.label;
-    const scenarioRowHtml = shouldHideBookingWorkspaceScenarioDetail(booking)
+    const scenarioRowHtml = options.hideScenario === true || shouldHideBookingWorkspaceScenarioDetail(booking)
         ? ''
         : `<div class="booking-detail-row"><span class="label">Сценарій:</span><span class="value">${escapeHtml(scenarioLabel)}</span></div>`;
     const lead = workspace?.leadDetails || {};
@@ -10136,7 +10157,8 @@ function renderBookingActivityPromoPanel(activity = {}, source = resolveBookingA
     if (!source) return;
     const panel = ensureBookingActivityPromoPanel();
     const title = source.title || bookingActivityPromoTitle(activity);
-    const text = source.text || 'Промо-опис для цієї активності ще не заповнений.';
+    const education = isEducationTimelineBookingMode();
+    const text = source.text || (education ? 'Опис цього заняття ще не заповнений.' : 'Промо-опис для цієї активності ще не заповнений.');
     const visual = source.imageUrl
         ? `<img src="${escapeHtml(source.imageUrl)}" alt="" loading="lazy" decoding="async">`
         : `<span aria-hidden="true">${escapeHtml(source.icon || activity.icon || '🎯')}</span>`;
@@ -10145,10 +10167,10 @@ function renderBookingActivityPromoPanel(activity = {}, source = resolveBookingA
         <section class="booking-activity-promo-card" role="dialog" aria-modal="false" aria-labelledby="bookingActivityPromoTitle">
             <div class="booking-activity-promo-head">
                 <div>
-                    <span>Промо</span>
+                    <span>${education ? 'Опис заняття' : 'Промо'}</span>
                     <strong id="bookingActivityPromoTitle">${escapeHtml(title)}</strong>
                 </div>
-                <button type="button" data-booking-activity-promo-close aria-label="Закрити промо">×</button>
+                <button type="button" data-booking-activity-promo-close aria-label="${education ? 'Закрити опис заняття' : 'Закрити промо'}">×</button>
             </div>
             <div class="booking-activity-promo-body">
                 <div class="booking-activity-promo-visual">${visual}</div>
@@ -11895,6 +11917,10 @@ function renderSelectedProgramSummary(program = null) {
     const list = document.getElementById('selectedActivitiesList');
     if (!details) return;
     const programs = getSelectedActivityPrograms();
+    const education = isEducationTimelineBookingMode();
+    details.classList.toggle('hidden', education && programs.length === 0);
+    const heading = details.querySelector('.program-details-title');
+    if (heading) heading.textContent = education ? 'Обране заняття' : 'Обрані активності';
     if (programs.length === 0) {
         if (empty) empty.classList.remove('hidden');
         if (list) list.innerHTML = '';
@@ -11914,7 +11940,7 @@ function renderSelectedProgramSummary(program = null) {
             const issueText = selectedActivityScheduleIssueText(item.id);
             const pinataSubflow = renderSelectedActivityPinataSubflow(row);
             const secondHostSubflow = renderSelectedActivitySecondAnimatorSubflow(row);
-            const promoAction = renderBookingActivityPromoAction(item, 'selected-activity');
+            const promoAction = isEducationTimelineBookingMode() ? '' : renderBookingActivityPromoAction(item, 'selected-activity');
             const activityDuration = bookingSummaryActivityDuration(item);
             return `
             <div class="selected-activity-item${issueText ? ' has-conflict' : ''}" data-selected-activity-id="${escapeHtml(String(item.id))}">
@@ -12076,8 +12102,8 @@ async function renderProgramIcons() {
                 promoButton.type = 'button';
                 promoButton.className = 'booking-activity-promo-action booking-activity-promo-action--program-list';
                 promoButton.dataset.bookingActivityPromo = String(p.id);
-                promoButton.setAttribute('aria-label', `Відкрити промо: ${bookingActivityPromoTitle(p)}`);
-                promoButton.textContent = 'Промо';
+                promoButton.setAttribute('aria-label', `${isEducationTimelineBookingMode() ? 'Опис заняття' : 'Відкрити промо'}: ${bookingActivityPromoTitle(p)}`);
+                promoButton.textContent = isEducationTimelineBookingMode() ? 'Опис' : 'Промо';
                 promoButton.addEventListener('click', event => openBookingActivityPromo(p, event));
                 shell.appendChild(promoButton);
             }
@@ -16434,11 +16460,20 @@ function fullBanquetDetailCommentItems({ anchorBooking = {}, primaryMembers = []
     return items;
 }
 
-function renderEducationLessonDetail(booking) {
+function educationBookingPackageHasContent(booking) {
+    const snapshot = getBookingPackageFromBooking(booking);
+    return Boolean(booking.banquetMenu || Number(booking.price) || snapshot?.menuPositions?.length
+        || snapshot?.serviceEvents?.length || snapshot?.programId || snapshot?.notes || snapshot?.discount
+        || Number(snapshot?.programBasePrice) || Number(snapshot?.positionsSubtotal)
+        || Number(snapshot?.finalTotal) || window.BookingPackageRenderer?.bookingPackageTicketLines(snapshot)?.length
+        || window.BookingPackageRenderer?.bookingPackageEntryChargeFromPackage(snapshot));
+}
+
+function renderEducationLessonDetail(booking, options = {}) {
     const lesson = educationLessonDetailsFromBooking(booking);
     if (!lesson || Object.keys(lesson).length === 0) return '';
     const rows = [
-        lesson.title ? ['Тема', lesson.title] : null,
+        lesson.title && options.includeTopic !== false ? ['Тема', lesson.title] : null,
         booking.date ? ['Дата', booking.date] : null,
         booking.time ? ['Початок', booking.time] : null,
         Number.isFinite(Number(booking.duration)) && Number(booking.duration) > 0 ? ['Тривалість', `${Number(booking.duration)} хвилин`] : null,
@@ -16953,15 +16988,17 @@ async function showBookingDetails(bookingId, options = {}) {
 
     const bookingDetailIdLabel = booking.id ? String(booking.id) : '----';
     const bookingDetailTimeRange = `${booking.time} - ${endTime}`;
-    const bookingDetailTitle = bookingDetailModalTitle(booking, roomFirstServiceBooking ? 'Кімнатна бронь' : 'Бронювання');
+    const bookingDetailTitle = isEducationBooking && lesson.title
+        ? String(lesson.title)
+        : bookingDetailModalTitle(booking, roomFirstServiceBooking ? 'Кімнатна бронь' : 'Бронювання');
     const bookingChildrenCount = bookingKitchenChildrenCountFromBooking(booking);
-    const lineDetailHtml = roomFirstServiceBooking ? '' : `
+    const lineDetailHtml = roomFirstServiceBooking || (isEducationBooking && (lesson.resourceName || booking.room)) ? '' : `
         <div class="booking-detail-row">
             <span class="label">${lineRoleLabel}:</span>
             <span class="value">${escapeHtml(lineDetailValue)}</span>
         </div>
     `;
-    const hostsDetailHtml = roomFirstServiceBooking || isActivityDetailBooking ? '' : `
+    const hostsDetailHtml = roomFirstServiceBooking || isActivityDetailBooking || (isEducationBooking && lesson.teacherName) ? '' : `
         <div class="booking-detail-row">
             <span class="label">Ведучих:</span>
             <span class="value">${escapeHtml(String(booking.hosts))}${booking.secondAnimator ? ` (+ ${escapeHtml(booking.secondAnimator)})` : ''}</span>
@@ -16993,10 +17030,11 @@ async function showBookingDetails(bookingId, options = {}) {
         : '';
     const priorityCustomerBlockHtml = hasBanquetOverview ? customerBlockHtml : '';
     const standardCustomerBlockHtml = hasBanquetOverview ? '' : customerBlockHtml;
-    const packageDetailHtml = hasBanquetOverview ? '' : bookingDetailSafeRender('package-detail', booking, () => renderBookingPackageDetail(booking));
-    const eventCardImageHtml = bookingDetailSafeRender('event-card-image', booking, () => window.EventCards.renderEventCardImage(bookingEventCardRecord, { modifier: 'booking' }));
-    const educationDetailHtml = bookingDetailSafeRender('education-detail', booking, () => renderEducationLessonDetail(booking));
-    const workspaceDetailHtml = bookingDetailSafeRender('workspace-detail', booking, () => renderBookingWorkspaceDetail(booking));
+    const packageDetailHtml = hasBanquetOverview || (isEducationBooking && !educationBookingPackageHasContent(booking))
+        ? '' : bookingDetailSafeRender('package-detail', booking, () => renderBookingPackageDetail(booking));
+    const eventCardImageHtml = isEducationBooking ? '' : bookingDetailSafeRender('event-card-image', booking, () => window.EventCards.renderEventCardImage(bookingEventCardRecord, { modifier: 'booking' }));
+    const educationDetailHtml = bookingDetailSafeRender('education-detail', booking, () => renderEducationLessonDetail(booking, { includeTopic: !isEducationBooking }));
+    const workspaceDetailHtml = bookingDetailSafeRender('workspace-detail', booking, () => renderBookingWorkspaceDetail(booking, { hideScenario: isEducationBooking }));
     const commentDetailHtml = bookingDetailSafeRender('comment-detail', booking, () => renderBookingCommentDetailRow(booking));
 
     document.getElementById('bookingDetails').innerHTML = `
@@ -17004,10 +17042,10 @@ async function showBookingDetails(bookingId, options = {}) {
             <div class="booking-detail-heading">
                 <div class="booking-detail-title-group">
                     <h3 class="booking-detail-title">${escapeHtml(bookingDetailTitle)}</h3>
-                    <div class="booking-detail-meta" aria-label="Деталі бронювання">
-                        <span class="booking-detail-meta-item">${escapeHtml(booking.room || '-')}</span>
+                    <div class="booking-detail-meta" aria-label="${isEducationBooking ? 'Деталі заняття' : 'Деталі бронювання'}">
+                        ${isEducationBooking ? '' : `<span class="booking-detail-meta-item">${escapeHtml(booking.room || '-')}</span>
                         <span class="booking-detail-meta-item">${escapeHtml(booking.date || '-')}</span>
-                        ${headerTimeMetaHtml}
+                        ${headerTimeMetaHtml}`}
                         <span class="booking-detail-meta-item">#${escapeHtml(bookingDetailIdLabel)}</span>
                     </div>
                     ${useBanquetHeaderSchedule ? headerScheduleHtml : ''}
@@ -17016,7 +17054,7 @@ async function showBookingDetails(bookingId, options = {}) {
         </div>
         ${eventCardImageHtml}
         ${priorityCustomerBlockHtml}
-        <div class="booking-detail-row">
+        ${isEducationBooking ? '' : `        <div class="booking-detail-row">
             <span class="label">${escapeHtml(bookingDetailDateLabel)}:</span>
             <span class="value">${escapeHtml(bookingDetailDateValue)}</span>
         </div>
@@ -17024,6 +17062,7 @@ async function showBookingDetails(bookingId, options = {}) {
             <span class="label">${escapeHtml(bookingDetailTimeLabel)}:</span>
             <span class="value">${escapeHtml(bookingDetailTimeValue)}</span>
         </div>
+`}
         ${lineDetailHtml}
         ${hostsDetailHtml}
         ${animationExtrasHtml}
@@ -17037,7 +17076,7 @@ async function showBookingDetails(bookingId, options = {}) {
             <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
         </div>
         ${commentDetailHtml}
-        ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">${escapeHtml(booking.groupName)}</span></div>` : ''}
+        ${booking.groupName && !(isEducationBooking && (lesson.groupName || booking.groupName)) ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">${escapeHtml(booking.groupName)}</span></div>` : ''}
         ${fullBanquetDetailHtml}
         ${renderLegacyBanquetEditIntegrityGuard(banquetEditIntegrityIssue)}
         ${standardCustomerBlockHtml}
@@ -17973,7 +18012,7 @@ async function editBooking(bookingId, options = {}) {
     // Змінити заголовок і кнопку
     const editH3 = document.querySelector('#bookingPanel .panel-header h3');
     const editBtn = document.querySelector('#bookingForm .btn-submit');
-    if (editH3) editH3.textContent = 'Редагувати бронювання';
+    if (editH3) editH3.textContent = isEducationTimelineBookingMode() ? 'Редагувати заняття' : 'Редагувати бронювання';
     if (editBtn) {
         editBtn.textContent = 'Зберегти зміни';
         editBtn.dataset.readyText = editBtn.textContent;

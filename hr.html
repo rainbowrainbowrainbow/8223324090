@@ -1122,6 +1122,20 @@
                     </div>
                 </div>
             </div>
+            <section id="staffEducationAssignment" class="hr-staff-foundation-panel" aria-labelledby="staffEducationAssignmentTitle" hidden>
+                <h3 id="staffEducationAssignmentTitle">Викладач навчального центру</h3>
+                <p class="form-hint">Явне призначення наявного HR-працівника. Права на інші бізнеси не змінюються.</p>
+                <div class="form-group">
+                    <label for="staffEducationBusiness">Навчальний бізнес</label>
+                    <select id="staffEducationBusiness" aria-describedby="staffEducationStatus"></select>
+                </div>
+                <label class="hr-education-confirm"><input type="checkbox" id="staffEducationConfirm"> <span>Я підтверджую призначення цього працівника викладачем у вибраному бізнесі.</span></label>
+                <div class="hr-staff-foundation-actions">
+                    <button type="button" id="staffEducationAssign" class="btn-primary" disabled>Призначити викладачем</button>
+                    <button type="button" id="staffEducationRetry" class="btn-secondary" hidden>Повторити завантаження</button>
+                </div>
+                <p id="staffEducationStatus" role="status" aria-live="polite"></p>
+            </section>
             <section id="staffAccountAccess" class="hr-staff-foundation-panel" aria-labelledby="staffAccountAccessTitle" hidden>
                 <h3 id="staffAccountAccessTitle">Доступ до CRM</h3>
                 <p class="form-hint">Збережений пароль неможливо переглянути. Якщо його забули, згенеруйте новий: він зʼявиться один раз, а попередній пароль і сесії перестануть діяти.</p>

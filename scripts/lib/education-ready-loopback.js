@@ -4,10 +4,11 @@
 const net = require('node:net');
 const http = require('node:http');
 const https = require('node:https');
-const { DATABASES } = require('./education-ready-dataset');
+const { DATABASES, assertLocalTarget } = require('./education-ready-dataset');
+assertLocalTarget(Object.keys(DATABASES).find(mode => DATABASES[mode] === process.env.PGDATABASE));
 if (process.env.EDU_READY_LOCAL_CONFIRM !== 'SEED_OWNED_LOCAL_EDUCATION'
     || !Object.values(DATABASES).includes(process.env.PGDATABASE)
-    || process.env.PGHOST !== '127.0.0.1' || process.env.PGPORT !== '55469'
+    || process.env.PGHOST !== '127.0.0.1'
     || process.env.NODE_ENV !== 'test' || process.env.DATABASE_URL)
     throw new Error('Local preview network boundary requires the exact owned environment');
 if (process.env.PGDATABASE === DATABASES.devices

@@ -806,3 +806,10 @@ test('replaceCustomerChildren can scope lead celebrant replacement to one lead',
     assert.equal(newChild.leadId, 34);
     assert.deepEqual(newChild.sourcePayload.lead_celebrants, [{ name: 'New Lead Child' }]);
 });
+
+
+test('CLOSE child DATE preserves driver-parsed civil days across runtime timezones', () => {
+    const {spawnSync}=require('node:child_process');
+    const program=`const assert=require('node:assert/strict');const {mapCustomerChildRow,buildLegacyChildSnapshot}=require('./services/customerChildren');const parse=require('pg-types').getTypeParser(1082,'text');for(const day of ['2020-05-14','2024-02-29','2026-03-29','2026-10-25','2026-12-31','2027-01-01']){const birthday=parse(day);const row=mapCustomerChildRow({id:1,customer_id:2,name:'Synthetic child',birthday});assert.equal(row.birthday,day);assert.equal(buildLegacyChildSnapshot([row]).childBirthday,day);}`;
+    for(const TZ of ['Europe/Kyiv','UTC','America/New_York']){const r=spawnSync(process.execPath,['-e',program],{cwd:ROOT,env:{...process.env,TZ},encoding:'utf8',windowsHide:true});assert.equal(r.status,0,TZ+': '+r.stderr);}
+});

@@ -2429,7 +2429,7 @@ async function educationGroupWriteError(db, payload, businessContext, oldRow = n
             allowArchived: previous?.groupId != null && String(previous.groupId) === String(lesson.groupId)
         });
         if (!previous || String(previous.groupId || '') !== String(lesson.groupId)) {
-            setEducationLessonExtra(payload, { ...lesson, groupName: group.name });
+            setEducationLessonExtra(payload, { ...validated, groupName: group.name });
             payload.groupName = group.name;
         }
         return null;
@@ -2479,7 +2479,11 @@ async function validateEducationLessonTeacherConflict(queryable, payload, busine
     }
     if (lesson.teacherName) {
         params.push(lesson.teacherName.toLowerCase());
-        filters.push(`LOWER(COALESCE(extra_data->'educationLesson'->>'teacherName', extra_data->'education_lesson'->>'teacherName', extra_data->'bookingWorkspace'->'lesson'->>'teacherName', '')) = $${params.length}`);
+        // Stable IDs distinguish namesakes; name fallback is only for a missing ID.
+        const legacyOnly = lesson.teacherId
+            ? `NULLIF(BTRIM(COALESCE(extra_data->'educationLesson'->>'teacherId', extra_data->'education_lesson'->>'teacherId', extra_data->'bookingWorkspace'->'lesson'->>'teacherId')), '') IS NULL AND `
+            : '';
+        filters.push(`(${legacyOnly}LOWER(COALESCE(extra_data->'educationLesson'->>'teacherName', extra_data->'education_lesson'->>'teacherName', extra_data->'bookingWorkspace'->'lesson'->>'teacherName', '')) = $${params.length})`);
     }
     if (!filters.length) return null;
     const result = await queryable.query(

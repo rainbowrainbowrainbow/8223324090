@@ -196,8 +196,7 @@ body.timeline-mode-education #bookingPanel :is(.education-lesson-grid label,.boo
 #bookingDetails:has(.booking-lesson-detail) > * { order: 3; }
 #bookingDetails:has(.booking-lesson-detail) > .booking-detail-header { order: 0; }
 #bookingDetails:has(.booking-lesson-detail) > .booking-lesson-detail { order: 1; }
-#bookingDetails:has(.booking-lesson-detail) > .event-card-visual { order: 2; height: 88px; max-height: 88px; margin: 4px 0; }
-#bookingDetails:has(.booking-lesson-detail) > .event-card-visual img { height: 88px; max-height: 88px; width: 100%; object-fit: contain; }
+#bookingDetails:has(.booking-lesson-detail) > .event-card-visual { display: none; }
 #bookingDetails:has(.booking-lesson-detail) > .booking-actions { order: 5; }
 #bookingModal #bookingDetails:has(.booking-lesson-detail):not(:has(.booking-banquet-full-detail)) .booking-summary-action { display: none; }
 #bookingDetails:has(.booking-lesson-detail) :is(.label,.booking-detail-meta-item) { color: var(--edu-muted); }
@@ -370,3 +369,63 @@ html[data-theme="dark"] :is(.education-schedule-workspace, #educationSeriesModal
 html[data-theme="dark"] body.timeline-mode-education #main-content .schedule-command-center :is(button,input):focus-visible {
   outline-color: #5eead4 !important;
 }
+
+/* EDU-CLOSE-03: compact navigation retains native button focus and touch scrolling. */
+@media (max-width: 1100px) {
+  body.timeline-mode-education .education-schedule-tabs {
+    display: flex; gap: 8px; overflow-x: auto; max-width: 100%;
+    padding: 4px 4px 8px; margin-bottom: 12px; scroll-padding-inline: 4px;
+    overscroll-behavior-x: contain; scrollbar-width: thin;
+  }
+  body.timeline-mode-education .education-schedule-tab { flex: 0 0 auto; min-height: 52px; gap: 8px; padding: 10px 12px; }
+  body.timeline-mode-education .education-schedule-tab small { display: none; }
+  body.timeline-mode-education .education-schedule-tab > span:first-child { width: 28px; height: 28px; font-size: 20px; }
+  body.timeline-mode-education .education-schedule-tab strong { font-size: 15px; white-space: nowrap; }
+}
+@media (max-width: 720px) {
+  body.timeline-mode-education .education-schedule-filters { gap: 8px; }
+  body.timeline-mode-education .education-schedule-filters label { gap: 4px; }
+  body.timeline-mode-education .education-today-heading { gap: 12px; margin-bottom: 12px; }
+}
+
+@media (max-width: 720px) {
+  body.timeline-mode-education #educationTodayPanel .education-schedule-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body.timeline-mode-education #educationTodayPanel .education-schedule-filters label:last-child { grid-column: 1 / -1; }
+}
+
+/* Cabinet names retain their full text; decoration must not split short words. */
+body.timeline-mode-education .timeline-line--education .line-header { padding-inline: 8px; }
+body.timeline-mode-education .timeline-line--education .line-header--title-only .line-name::before { display: none; }
+
+/* Hidden education tabs can leave a stale shared content-height snapshot.
+   Keep the real rows' natural height within the existing viewport cap. */
+body.timeline-mode-education.timeline-view-animators .timeline-container[data-timeline-height-ready="true"] {
+  max-height: var(--timeline-shell-max-height) !important;
+}
+
+/* Short Ukrainian cabinet words must fit without shrinking the CRM font.
+   The existing scrollable timeline and measured scale gutter share this variable. */
+@media (max-width: 480px) {
+  body.timeline-mode-education { --timeline-line-header-w: 104px; }
+}
+
+/* Education topic and time keep their line boxes when narrow subtitles wrap.
+   Full text, notes and canonical details remain in the existing renderer. */
+body.timeline-mode-education .booking-block.education-lesson :is(.title, .subtitle) {
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.timeline-mode-education .booking-block.education-lesson .subtitle { line-height: 1.2; }
+
+/* Education week topics use the existing mini renderer, with full accessible labels. */
+body.timeline-mode-education .mini-booking-block.education-lesson .mini-education-topic { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.timeline-mode-education .mini-booking-block.education-lesson:focus-visible { outline: 3px solid var(--edu-accent, #047857); outline-offset: 2px; }
+
+html[data-theme="dark"] body.timeline-mode-education .mini-booking-block.education-lesson:focus-visible { outline-color: #5eead4; }
+
+/* Education week actions retain full touch targets, including phone landscape. */
+body.timeline-dashboard-page.timeline-mode-education .mini-timeline-line,
+body.timeline-dashboard-page.timeline-mode-education .mini-line-grid { min-height: 54px !important; }
+body.timeline-dashboard-page.timeline-mode-education .mini-booking-block.education-lesson { min-height: 44px !important; }

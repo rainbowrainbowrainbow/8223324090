@@ -420,6 +420,21 @@ function shapeHrStaffList(rows, capability, user) {
     return shapeHrPayrollFields(rows, user);
 }
 router.use(requireHrCapabilityContract);
+// Owner-approved narrow assignment lane; other legacy HR routes retain their guards.
+const educationHrMembership = require('../services/educationHrMembership');
+router.get('/staff/:id/education-businesses', async (req, res) => {
+    try {
+        if (!(await educationHrMembership.requireSourceManager(req, res))) return;
+        res.json({ success: true, data: await educationHrMembership.listTargets(req.user, req.params.id) });
+    } catch (error) { res.status(error.status || 500).json({ success: false, error: error.status ? error.message : 'Не вдалося завантажити навчальні бізнеси.' }); }
+});
+router.post('/staff/:id/education-memberships', requireAction('hr.staff.manage'), async (req, res) => {
+    try {
+        if (!(await educationHrMembership.requireSourceManager(req, res))) return;
+        const data = await educationHrMembership.assign(req.user, req.params.id, req.body || {}, req.ip);
+        res.status(data.alreadyAssigned ? 200 : 201).json({ success: true, data });
+    } catch (error) { res.status(error.status || 500).json({ success: false, error: error.status ? error.message : 'Не вдалося призначити викладача. Повторіть спробу.' }); }
+});
 router.use(requireParkHrPayrollAccess('hr', requireLegacyBusinessSurface('staff', {
     parkScheduleRouter: 'hr', parkHrStaffCardRead: true, parkHrMonthlyReportRead: true,
     parkHrOnboardingRead: true, parkHrCompanyStructureRead: true

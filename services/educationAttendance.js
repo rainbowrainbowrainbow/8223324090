@@ -1,11 +1,13 @@
 'use strict';
 
 const { pool } = require('../db');
+const { createHash } = require('node:crypto');
 
 class EducationAttendanceError extends Error {
-    constructor(message, status = 400) {
+    constructor(message, status = 400, code) {
         super(message);
         this.status = status;
+        this.code = code;
     }
 }
 
@@ -45,7 +47,7 @@ function cancelled(row) {
 async function scopedLesson(db, context, bookingId, lock = false) {
     const result = await db.query(
         `SELECT id, date, time, duration, status, program_name, extra_data
-         FROM bookings WHERE id = $1 AND business_context = $2${lock ? ' FOR UPDATE' : ''}`,
+         FROM bookings WHERE id = $1 AND business_context = $2${lock === 'share' ? ' FOR SHARE' : lock ? ' FOR UPDATE' : ''}`,
         [bookingIdValue(bookingId), context]
     );
     if (!result.rowCount) throw new EducationAttendanceError('Lesson not found in this business', 404);
@@ -98,12 +100,12 @@ async function historyForRows(db, context, rows) {
     return result.rows;
 }
 
-async function readJournal(context, bookingId) {
-    const { booking, lesson, group } = await scopedLesson(pool, context, bookingId);
-    const saved = await storedRows(pool, context, booking.id);
+async function journalOn(db, context, bookingId, lock) {
+    const { booking, lesson, group } = await scopedLesson(db, context, bookingId, lock);
+    const saved = await storedRows(db, context, booking.id);
     const frozen = saved.length > 0;
-    const preview = frozen ? [] : await rosterAtDate(pool, context, lesson.groupId, booking.date);
-    const history = await historyForRows(pool, context, saved);
+    const preview = frozen ? [] : await rosterAtDate(db, context, lesson.groupId, booking.date);
+    const history = await historyForRows(db, context, saved);
     const byAttendance = new Map();
     for (const event of history) {
         const key = String(event.attendance_id);
@@ -113,7 +115,7 @@ async function readJournal(context, bookingId) {
     const members = frozen
         ? saved.map(row => ({ ...row, history: byAttendance.get(String(row.id)) || [] }))
         : preview.map(row => ({ ...row, status: null, marked_by: null, marked_at: null, history: [] }));
-    return {
+    const journal = {
         booking: {
             id: booking.id, date: booking.date, time: booking.time, duration: booking.duration,
             status: booking.status, title: lesson.title || booking.program_name || 'Заняття',
@@ -121,6 +123,22 @@ async function readJournal(context, bookingId) {
         },
         frozen, cancelled: cancelled(booking), members
     };
+    // Durable history IDs invalidate revisions even when marks return to their old values.
+    journal.revision = createHash('sha256').update(JSON.stringify({ context, ...journal })).digest('hex');
+    return journal;
+}
+
+async function readJournal(context, bookingId) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const journal = await journalOn(client, context, bookingId, 'share');
+        await client.query('COMMIT');
+        return journal;
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+    } finally { client.release(); }
 }
 
 function normalizedMarks(input) {
@@ -148,6 +166,13 @@ async function saveJournal(context, bookingId, input, actor) {
         await client.query('BEGIN');
         const { booking, lesson } = await scopedLesson(client, context, bookingId, true);
         if (cancelled(booking)) throw new EducationAttendanceError('Cancelled lesson cannot be marked', 409);
+        if (typeof input?.revision !== 'string' || !/^[a-f0-9]{64}$/.test(input.revision)) {
+            throw new EducationAttendanceError('Journal revision is required; reload the journal');
+        }
+        const current = await journalOn(client, context, booking.id, true);
+        if (input.revision !== current.revision) {
+            throw new EducationAttendanceError('Journal changed; reload before saving', 409, 'EDUCATION_JOURNAL_STALE');
+        }
         let rows = await storedRows(client, context, booking.id, true);
         if (!rows.length) {
             const roster = await rosterAtDate(client, context, lesson.groupId, booking.date);
@@ -186,8 +211,9 @@ async function saveJournal(context, bookingId, input, actor) {
             );
             changes += 1;
         }
+        const journal = await journalOn(client, context, booking.id, true);
         await client.query('COMMIT');
-        return { changes, journal: await readJournal(context, booking.id) };
+        return { changes, journal };
     } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
         throw error;
@@ -225,9 +251,18 @@ async function report(context, options = {}) {
     const bookings = await pool.query(
         `SELECT id, date, time, duration, status, program_name, extra_data
          FROM bookings
+         CROSS JOIN LATERAL (
+             SELECT CASE
+                 WHEN extra_data->'educationLesson' NOT IN ('null'::jsonb, 'false'::jsonb, '0'::jsonb, '\"\"'::jsonb)
+                     THEN extra_data->'educationLesson'
+                 WHEN extra_data->'education_lesson' NOT IN ('null'::jsonb, 'false'::jsonb, '0'::jsonb, '\"\"'::jsonb)
+                     THEN extra_data->'education_lesson'
+                 ELSE extra_data->'bookingWorkspace'->'lesson'
+             END AS lesson_metadata
+         ) metadata
          WHERE business_context = $1 AND date >= $2 AND date <= $3
-           AND extra_data->'educationLesson'->>'groupId' IS NOT NULL
-           AND ($4::text IS NULL OR extra_data->'educationLesson'->>'groupId' = $4::text)
+           AND NULLIF(lesson_metadata->>'groupId', '') IS NOT NULL
+           AND ($4::text IS NULL OR lesson_metadata->>'groupId' = $4::text)
          ORDER BY date, time, id LIMIT 5001`,
         [context, from, to, groupId == null ? null : String(groupId)]
     );

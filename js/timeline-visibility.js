@@ -124,6 +124,7 @@
 
     const state = {
         initialized: false,
+        pageExiting: false,
         constructorActive: false,
         selectedBlockId: TIMELINE_VISIBILITY_ELEMENTS[0]?.id || null,
         panel: null,
@@ -132,6 +133,7 @@
         serverSettings: new Map(),
         serverLoadPromise: null,
         serverLoadKey: null,
+        serverLoadController: null,
         serverSaveTimer: null,
         saveStatus: 'idle',
         saveMessage: 'Зміни зберігаються автоматично для цього timeline.'
@@ -341,33 +343,54 @@
     }
 
     async function loadServerSettings() {
-        if (!hasAuthenticatedTimelineUser()) return null;
+        const exiting = () => state.pageExiting || (typeof document !== 'undefined' && document.visibilityState === 'hidden');
+        if (exiting() || !hasAuthenticatedTimelineUser()) return null;
         const contextKey = visibilityScopeKey();
         if (state.serverLoadPromise && state.serverLoadKey === contextKey) return state.serverLoadPromise;
-        state.serverLoadKey = contextKey;
-        state.serverLoadPromise = fetch(apiUrl('/settings/timeline-visibility'), {
-            headers: authHeaders(false)
-        })
-            .then(response => response.ok ? response.json() : null)
+        const targetStorageKey = storageKey();
+        const url = apiUrl('/settings/timeline-visibility');
+        const headers = authHeaders(false);
+        const controller = new AbortController();
+        state.serverLoadController?.abort();
+        const request = Promise.resolve()
+            // Native fetch may also throw synchronously during document teardown.
+            .then(() => exiting() || controller.signal.aborted ? null : fetch(url, { headers, signal: controller.signal, keepalive: true }))
+            .then(response => response?.ok ? response.json() : null)
             .then(data => {
+                if (exiting() || state.serverLoadPromise !== request || visibilityScopeKey() !== contextKey
+                    || !hasAuthenticatedTimelineUser()) return null;
                 if (data) {
                     mergeServerRegistry(data.registry);
                     const normalized = normalizeSettings(data);
                     state.serverSettings.set(contextKey, normalized);
-                    localStorage.setItem(storageKey(), JSON.stringify(normalized));
+                    localStorage.setItem(targetStorageKey, JSON.stringify(normalized));
                     setSaveStatus('saved', 'Серверні налаштування завантажено.');
                 }
                 return data;
             })
             .catch(error => {
-                console.warn('[TimelineVisibility] Server visual settings unavailable', error);
+                if (controller.signal.aborted) return null;
+                if (state.serverLoadPromise === request && visibilityScopeKey() === contextKey) {
+                    console.warn('[TimelineVisibility] Server visual settings unavailable', error);
+                    setSaveStatus('error', 'Серверні налаштування недоступні; використовуються локальні.');
+                }
                 return null;
             })
             .finally(() => {
-                state.serverLoadPromise = null;
-                state.serverLoadKey = null;
+                if (state.serverLoadPromise === request) {
+                    state.serverLoadPromise = null;
+                    state.serverLoadKey = null;
+                    if (state.serverLoadController === controller) state.serverLoadController = null;
+                }
             });
-        return state.serverLoadPromise;
+        state.serverLoadController = controller;
+        state.serverLoadKey = contextKey;
+        state.serverLoadPromise = request;
+        return request;
+    }
+
+    function abortServerRead() {
+        state.serverLoadController?.abort();
     }
 
     function mergeServerRegistry(registry) {
@@ -1018,6 +1041,8 @@
         }
         if (!allowed && state.constructorActive) toggleConstructorMode(false);
         if (!authenticated) {
+            abortServerRead();
+            state.serverLoadController = null;
             state.serverSettings = new Map();
             state.serverLoadPromise = null;
             state.serverLoadKey = null;
@@ -1074,6 +1099,18 @@
             state.accessTimer = null;
         }, 500);
     }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') refreshAccess();
+
+    });
+
+    // Only this optional GET survives unload; hidden/exiting documents cannot apply its response.
+    window.addEventListener('pagehide', () => { state.pageExiting = true; });
+    window.addEventListener('pageshow', event => {
+        state.pageExiting = false;
+        if (event.persisted) refreshAccess();
+    });
 
     window.TimelineVisibility = {
         init,

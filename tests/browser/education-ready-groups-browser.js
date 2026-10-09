@@ -13,8 +13,8 @@ assert.match(base, /^http:\/\/127\.0\.0\.1:\d+$/);
 const out = path.resolve(process.env.EDU_READY_OUTPUT || 'output/education-ready/03', `attempt-${new Date().toISOString().replace(/[:.]/g, '-')}`);
 fs.mkdirSync(out, { recursive: true });
 const results = createResults();
-const evidence = { phase: process.env.EDU_GROUPS_PHASE || 'postfix', viewport, checks: results.results, proofs: {}, pageErrors: [], requests: [], screenshots: [] };
-const pool = new Pool({ host: '127.0.0.1', port: 55469, database: DATABASES.fixed, user: 'postgres', ssl: false });
+const evidence = { attemptId: process.env.EDU_CLOSE_ATTEMPT_ID, suite: process.env.EDU_CLOSE_SUITE, phase: process.env.EDU_GROUPS_PHASE || 'postfix', viewport, checks: results.results, proofs: {}, pageErrors: [], requests: [], screenshots: [] };
+const pool = new Pool({ host: process.env.PGHOST || '127.0.0.1', port: Number(process.env.PGPORT || 55469), user: process.env.PGUSER || 'postgres', password: process.env.PGPASSWORD, database: process.env.PGDATABASE || DATABASES.fixed, ssl: false });
 let token, manifest, browser, createdId, foreignTeacher;
 function flush() {
     let text = JSON.stringify(evidence, null, 2);

@@ -18,13 +18,6 @@ async function api(method, route, token, body) {
     return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 
-async function waitFor(predicate, message) {
-    for (let attempt = 0; attempt < 80; attempt += 1) {
-        if (await predicate()) return;
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    throw new Error(message);
-}
 
 (async () => {
     const pool = new Pool();
@@ -66,7 +59,6 @@ async function waitFor(predicate, message) {
             await page.locator('#educationGroupCapacity').fill('3');
         };
         const assertOneSaved = async (name, expectedPostCount) => {
-            await waitFor(() => countRows(name).then(count => count === 1), 'Expected one saved SQL row');
             await page.waitForFunction(() => !document.getElementById('educationGroupForm').hasAttribute('aria-busy')
                 && document.getElementById('educationGroupsStatus').textContent === 'Групу збережено.');
             assert.equal(await countRows(name), 1, 'one form action must create one SQL row');
@@ -80,6 +72,8 @@ async function waitFor(predicate, message) {
         await beginNew(doubleName);
         let doublePosts = 0;
         let releaseDouble;
+        const observedDouble=page.waitForRequest(r=>r.method()==='POST'&&postPath.test(r.url()),{timeout:15000});
+        const doubleResponse=page.waitForResponse(r=>r.request().method()==='POST'&&postPath.test(r.url()));
         const doubleBarrier = new Promise(resolve => { releaseDouble = resolve; });
         await page.route(postPath, async route => {
             if (route.request().method() !== 'POST') return route.continue();
@@ -88,8 +82,9 @@ async function waitFor(predicate, message) {
             await route.continue();
         });
         await submit.dblclick({ delay: 60 });
-        await waitFor(async () => doublePosts > 0, 'Double-click POST must reach barrier');
+        await observedDouble;
         releaseDouble();
+        assert.equal((await doubleResponse).status(),201);
         await assertOneSaved(doubleName, () => doublePosts);
         await page.unroute(postPath);
 
@@ -97,6 +92,8 @@ async function waitFor(predicate, message) {
         await beginNew(enterName);
         let enterPosts = 0;
         let releaseEnter;
+        const observedEnter=page.waitForRequest(r=>r.method()==='POST'&&postPath.test(r.url()),{timeout:15000});
+        const enterResponse=page.waitForResponse(r=>r.request().method()==='POST'&&postPath.test(r.url()));
         const enterBarrier = new Promise(resolve => { releaseEnter = resolve; });
         await page.route(postPath, async route => {
             if (route.request().method() !== 'POST') return route.continue();
@@ -106,8 +103,9 @@ async function waitFor(predicate, message) {
         });
         await nameField.press('Enter');
         await nameField.press('Enter');
-        await waitFor(async () => enterPosts > 0, 'Enter POST must reach barrier');
+        await observedEnter;
         releaseEnter();
+        assert.equal((await enterResponse).status(),201);
         await assertOneSaved(enterName, () => enterPosts);
         await page.unroute(postPath);
 
@@ -120,9 +118,12 @@ async function waitFor(predicate, message) {
                 failedPosts += 1;
                 await route.fulfill({ status: code, json: { error: `Synthetic ${code}` } });
             });
+            const response=page.waitForResponse(r=>r.request().method()==='POST'&&postPath.test(r.url()));
             await submit.click();
-            await waitFor(async () => (await page.locator('#educationGroupsStatus').innerText()).includes(`Synthetic ${code}`),
-                `Expected ${code} error status`);
+            assert.equal((await response).status(),code);
+            await page.waitForFunction(code => document.getElementById('educationGroupsStatus').textContent.includes(`Synthetic ${code}`)
+                && !document.getElementById('educationGroupForm').hasAttribute('aria-busy')
+                && !document.querySelector('#educationGroupForm button[type="submit"]').disabled, code);
             assert.equal(failedPosts, 1);
             assert.equal(await nameField.inputValue(), name, `${code}: draft preserved`);
             assert.equal(await submit.isEnabled(), true, `${code}: submit restored`);
@@ -133,7 +134,9 @@ async function waitFor(predicate, message) {
                 if (route.request().method() === 'POST') retryPosts += 1;
                 await route.continue();
             });
+            const retryResponse=page.waitForResponse(r=>r.request().method()==='POST'&&postPath.test(r.url()));
             await submit.click();
+            assert.equal((await retryResponse).status(),201);
             await assertOneSaved(name, () => retryPosts);
             await page.unroute(postPath);
         }

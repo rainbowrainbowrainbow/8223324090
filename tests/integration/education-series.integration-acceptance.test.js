@@ -1,4 +1,5 @@
 'use strict';
+// Classification: mixed component/internal/API/PostgreSQL/browser fault-injection checks. Not a continuous UI journey.
 const { before, after, test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -65,7 +66,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
     const created = await booking(b); assert.equal(created.status,200);
     const endpoint = `/api/education/attendance/${created.data.booking.id}?businessContext=dar`;
     assert.equal((await request('GET',endpoint)).data.journal.members.length,0);
-    assert.equal((await request('PUT',endpoint,{marks:[]})).status,409);
+    assert.equal((await request('PUT',endpoint,{revision:(await request('GET',endpoint)).data.journal.revision,marks:[]})).status,409);
     const over = lesson('2026-12-03'); over.kidsCount=9;
     assert.equal((await booking(over)).status,409,'cabinet 1 capacity 8');
     const foreign = await request('GET',`/api/education/attendance/${created.data.booking.id}?businessContext=event_genix`);
@@ -111,22 +112,25 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
     const created=await booking(lesson('2026-12-10','11:00',2)); assert.equal(created.status,200); lessonId=created.data.booking.id;
     const ep=`/api/education/attendance/${lessonId}?businessContext=dar`;
     const marks=childIds.map((childId,i)=>({childId,status:['present','absent','excused'][i]}));
-    const saved=await request('PUT',ep,{marks}); assert.equal(saved.status,200); assert.equal(saved.data.changes,3);
-    assert.equal((await request('PUT',ep,{marks})).data.changes,0);
-    const race=await Promise.all(['absent','excused'].map(status=>request('PUT',ep,{marks:[{childId:childIds[0],status}]})));
-    assert.ok(race.every(r=>r.status===200));
+    let revision=(await request('GET',ep)).data.journal.revision;
+    const saved=await request('PUT',ep,{revision,marks}); assert.equal(saved.status,200); assert.equal(saved.data.changes,3);
+    assert.equal((await request('PUT',ep,{revision,marks})).status,409);
+    revision=saved.data.journal.revision;
+    assert.equal((await request('PUT',ep,{revision,marks})).data.changes,0);
+    const race=await Promise.all(['absent','excused'].map(status=>request('PUT',ep,{revision,marks:[{childId:childIds[0],status}]})));
+    assert.deepEqual(race.map(r=>r.status).sort(),[200,409]);
     const journal=(await request('GET',ep)).data.journal;
     const a=journal.members.find(m=>Number(m.child_id)===childIds[0]);
-    assert.equal(a.history.length,3); assert.ok(a.history.every(h=>h.changed_by && h.changed_at));
+    assert.equal(a.history.length,2); assert.ok(a.history.every(h=>h.changed_by && h.changed_at));
     const dbHistory=await pool.query(`SELECT previous_status,new_status FROM education_attendance_history WHERE attendance_id=$1 ORDER BY id`,[a.id]);
     for(let i=1;i<dbHistory.rows.length;i++) assert.equal(dbHistory.rows[i].previous_status,dbHistory.rows[i-1].new_status);
-    await request('PUT',ep,{marks:[{childId:childIds[0],status:'present'}]});
+    assert.equal((await request('PUT',ep,{revision:journal.revision,marks:[{childId:childIds[0],status:'present'}]})).status,200);
     // Disposable-only clock fixture: keep the frozen journal's date consistent.
     await pool.query(`UPDATE bookings SET date='2026-09-28' WHERE id=$1`,[lessonId]);
     await pool.query(`UPDATE education_attendance SET lesson_date='2026-09-28' WHERE booking_id=$1`,[lessonId]);
     const report=(await request('GET',`/api/education/reports?businessContext=dar&groupId=${groupId}&from=2026-09-28&to=2026-09-28`)).data.report;
     assert.deepEqual(report.summary,{held:1,cancelled:0,scheduled:0,journalsNotStarted:0,present:1,absent:1,excused:1,unmarked:0});
-    assert.equal((await request('PUT',ep,{marks:[{childId:childIds[1],status:null}]})).status,200);
+    assert.equal((await request('PUT',ep,{revision:(await request('GET',ep)).data.journal.revision,marks:[{childId:childIds[1],status:null}]})).status,200);
     const cleared=(await request('GET',ep)).data.journal.members.find(m=>Number(m.child_id)===childIds[1]);
     assert.equal(cleared.status,null); assert.equal(cleared.history.length,2);
   });
@@ -164,9 +168,9 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       await page.goto(process.env.TEST_URL+'/',{waitUntil:'domcontentloaded'});
       await page.locator('#username').fill(process.env.TEST_USER); await page.locator('#password').fill(process.env.TEST_PASS); await page.locator('#loginForm button[type="submit"]').click();
       await page.locator('#mainApp').waitFor({state:'visible',timeout:45000});
-      await page.goto(process.env.TEST_URL+'/?businessContext=dar&educationSchedule=groups',{waitUntil:'domcontentloaded'}); await page.waitForTimeout(2000);
+      await page.goto(process.env.TEST_URL+'/?businessContext=dar&educationSchedule=groups',{waitUntil:'domcontentloaded'}); await page.locator('#educationGroupsPanel').waitFor({state:'visible'}); await page.waitForFunction(()=>window.EducationGroups.state.listStatus==='ready');
       check('direct groups route',await page.locator('#educationGroupsPanel').isVisible(),new URL(page.url()).search);
-      await page.locator('[data-education-schedule-tab="groups"]').click(); await page.waitForTimeout(500);
+      await page.locator('[data-education-schedule-tab="groups"]').click(); await page.waitForFunction(()=>window.EducationGroups.state.listStatus==='ready');
       await page.locator('#educationGroupName').fill('QA UI synthetic group'); await page.locator('#educationGroupCapacity').fill('3');
       await page.locator('#educationGroupForm button[type="submit"]').click();
       await page.waitForFunction(()=>document.getElementById('educationGroupsStatus').textContent.includes('збережено'));
@@ -174,7 +178,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       await page.locator('#educationChildSearch').fill('QA Child A'); await page.locator('#educationChildFind').click();
       await page.waitForFunction(()=>document.getElementById('educationChildSelect').options.length>1);
       await page.locator('#educationChildSelect').selectOption(String(childIds[0])); await page.locator('#educationMemberStart').fill('2026-01-01');
-      await page.locator('#educationGroupEnrollForm button[type="submit"]').click(); await page.waitForTimeout(600);
+      await page.locator('#educationGroupEnrollForm button[type="submit"]').click(); await page.waitForFunction(()=>document.getElementById('educationGroupsStatus').textContent==='Дитину зараховано.');
       check('child enrolled through UI',(await request('GET',`/api/education/groups/${uiGroupId}?businessContext=dar`)).data.group.members.length===1);
       const b=lesson('2026-12-15','12:00',1,teacherIds[1]); b.extraData.educationLesson.groupId=Number(uiGroupId);
       const created=await booking(b); assert.equal(created.status,200); const id=created.data.booking.id;
@@ -186,7 +190,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       await card.click(); await page.locator('#bookingModal').waitFor({state:'visible'});
       const detail=await page.locator('#bookingDetails').textContent();
       check('canonical lesson details match API',detail.includes(b.extraData.educationLesson.title) && detail.includes('12:00') && detail.includes('45') && detail.includes('QA UI synthetic group') && detail.includes('Кабінет 1'),{title:true,time:detail.includes('12:00'),duration:detail.includes('45'),group:detail.includes('QA UI synthetic group'),cabinet:detail.includes('Кабінет 1')});
-      await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+      await page.keyboard.press('Escape'); await page.locator('#bookingModal').waitFor({state:'hidden'});
       check('canonical modal Escape closes',!await page.locator('#bookingModal').isVisible());
       if(await page.locator('#bookingModal').isVisible()) await page.locator('#bookingModal .modal-close').click();
       await page.locator('[data-education-schedule-tab="schedule"]').click();
@@ -198,7 +202,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
         await page.locator('#bookingModal .modal-close').click();
         await page.locator('#timelineViewPanelToggle').click();
         await page.locator('[data-schedule-view-mode="week"]').click();
-        await page.waitForTimeout(1000);
+        await page.locator(`[data-booking-id="${id}"]`).filter({visible:true}).first().waitFor({state:'visible'});
         check('week mode selected',await page.locator('[data-schedule-view-mode="week"]').getAttribute('aria-pressed')==='true');
         const weekCard=page.locator(`[data-booking-id="${id}"]`).filter({visible:true}).first();
         await weekCard.click({timeout:5000});
@@ -228,14 +232,14 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       await page.locator(`[data-attendance-child-id="${childIds[0]}"]`).selectOption('present'); await page.locator('#educationAttendanceSave').click();
       await page.waitForFunction(()=>document.getElementById('educationAttendanceStatus').textContent.includes('змінено'));
       check('journal saved through UI',(await request('GET',`/api/education/attendance/${id}?businessContext=dar`)).data.journal.members[0].status==='present');
-      await page.locator('[data-education-schedule-tab="reports"]').click(); await page.locator('#educationReportFrom').fill('2026-09-28'); await page.locator('#educationReportTo').fill('2026-09-28'); await page.locator('#educationReportGroup').selectOption(String(groupId)); await page.locator('#educationReportRun').click(); await page.waitForTimeout(600);
+      await page.locator('[data-education-schedule-tab="reports"]').click(); await page.locator('#educationReportFrom').fill('2026-09-28'); await page.locator('#educationReportTo').fill('2026-09-28'); await page.locator('#educationReportGroup').selectOption(String(groupId)); await page.locator('#educationReportRun').click(); await page.waitForFunction(()=>!window.EducationAttendance.state.reportLoading&&document.querySelector('.education-report-summary'));
       check('report API totals in UI',(await page.locator('#educationReportResult').textContent()).includes('Проведено: 1'));
       for(const [width,height] of [[1440,1000],[390,844]]) {
         await page.setViewportSize({width,height});
         for(const theme of ['light','dark']) {
           await page.evaluate(theme=>{document.documentElement.setAttribute('data-theme',theme);document.body.setAttribute('data-theme',theme);document.body.classList.toggle('dark-mode',theme==='dark');},theme);
           for(const tab of ['today','schedule','groups','attendance','reports']) {
-            await page.locator(`[data-education-schedule-tab="${tab}"]`).click(); await page.waitForTimeout(100);
+            await page.locator(`[data-education-schedule-tab="${tab}"]`).click(); await page.waitForFunction(tab=>window.EducationScheduleWorkspace.state.activeView===tab,tab); await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
             check(`${width} ${theme} ${tab} width`,await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),await page.evaluate(()=>({width:document.documentElement.scrollWidth,viewport:innerWidth})));
           }
         }
@@ -244,7 +248,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       await page.locator('#educationGroupName').fill('QA retained draft');
       evidence.formBeforeErrors=await page.evaluate(()=>({currentGroup:window.EducationGroups.state.current?.id,valid:document.getElementById('educationGroupForm').checkValidity(),invalid:[...document.getElementById('educationGroupForm').elements].filter(e=>e.willValidate&&!e.validity.valid).map(e=>({id:e.id,message:e.validationMessage})),status:document.getElementById('educationGroupsStatus').textContent}));
       // Fault injection at the browser fetch boundary; count every injected response.
-      await page.evaluate(()=>{window.__eduQaNativeFetch=window.fetch;window.__eduQaFault={status:0,delay:0,count:0};window.fetch=async function(input,init){const fault=window.__eduQaFault;const method=init?.method||'GET';if(['POST','PUT'].includes(method)&&new URL(String(input),location.origin).pathname.startsWith('/api/education/groups')){fault.count++;if(fault.status)return new Response(JSON.stringify({error:`QA ${fault.status}`}),{status:fault.status,headers:{'Content-Type':'application/json'}});if(fault.delay)await new Promise(resolve=>setTimeout(resolve,fault.delay));}return window.__eduQaNativeFetch.call(window,input,init);};});
+      await page.evaluate(()=>{window.__eduQaNativeFetch=window.fetch;window.__eduQaFault={status:0,count:0};window.fetch=async function(input,init){const fault=window.__eduQaFault;const method=init?.method||'GET';if(['POST','PUT'].includes(method)&&new URL(String(input),location.origin).pathname.startsWith('/api/education/groups')){fault.count++;if(fault.status)return new Response(JSON.stringify({error:`QA ${fault.status}`}),{status:fault.status,headers:{'Content-Type':'application/json'}});}return window.__eduQaNativeFetch.call(window,input,init);};});
       for(const status of [403,409,500]) {
         await page.evaluate(status=>{window.__eduQaFault.status=status;window.__eduQaFault.count=0;},status);
         await page.locator('#educationGroupForm button[type="submit"]').click();
@@ -253,17 +257,23 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
         check(`group form retains draft on ${status}`,intercepted===1 && await page.locator('#educationGroupName').inputValue()==='QA retained draft',{intercepted});
       }
       await page.evaluate(()=>{window.fetch=window.__eduQaNativeFetch;});
-      await page.locator('#educationGroupForm button[type="submit"]').click(); await page.waitForTimeout(500); check('group retry succeeds',await page.locator('#educationGroupsStatus').textContent()==='Групу збережено.');
-      await page.reload({waitUntil:'domcontentloaded'}); await page.waitForTimeout(1200); check('selected groups tab survives reload',await page.locator('#educationGroupsPanel').isVisible(),new URL(page.url()).search);
+      await page.locator('#educationGroupForm button[type="submit"]').click(); await page.waitForFunction(()=>document.getElementById('educationGroupsStatus').textContent==='Групу збережено.'); check('group retry succeeds',await page.locator('#educationGroupsStatus').textContent()==='Групу збережено.');
+      await page.reload({waitUntil:'domcontentloaded'}); await page.locator('#educationGroupsPanel').waitFor({state:'visible'}); await page.waitForFunction(()=>window.EducationGroups.state.listStatus==='ready'); check('selected groups tab survives reload',await page.locator('#educationGroupsPanel').isVisible(),new URL(page.url()).search);
       // Capture only synthetic education panel, never credentials or the identity rail.
       await page.locator('[data-education-schedule-tab="groups"]').click(); await page.locator('#educationScheduleWorkspace').screenshot({path:path.join(output,'synthetic-groups-desktop.png')});
       await page.setViewportSize({width:390,height:844}); await page.locator('#educationScheduleWorkspace').screenshot({path:path.join(output,'synthetic-groups-mobile.png')});
       await page.keyboard.press('Tab'); check('keyboard reaches a control',await page.evaluate(()=>document.activeElement!==document.body));
       await page.setViewportSize({width:1440,height:1000});
       await page.locator('#educationGroupsList').selectOption(''); await page.locator('#educationGroupName').fill('QA actual double click');
-      await page.evaluate(()=>{window.__eduQaSubmitCount=0;const nativeFetch=window.fetch;window.fetch=async function(input,init){if(init?.method==='POST'&&new URL(String(input),location.origin).pathname.startsWith('/api/education/groups')){window.__eduQaSubmitCount++;await new Promise(resolve=>setTimeout(resolve,500));}return nativeFetch.call(window,input,init);};});
-      await page.locator('#educationGroupForm button[type="submit"]').dblclick(); await page.waitForTimeout(1800);
-      const submitCount=await page.evaluate(()=>window.__eduQaSubmitCount);
+      const doublePostPath=/\/api\/education\/groups\/?(?:\?|$)/;
+      let reached,release,barrierTimer; const held=new Promise(resolve=>{reached=resolve;}),barrier=new Promise(resolve=>{release=resolve;});
+      let submitCount=0;
+      await page.route(doublePostPath,async route=>{if(route.request().method()!=='POST')return route.continue();submitCount++;reached();await barrier;await route.continue();});
+      const saved=page.waitForResponse(r=>r.request().method()==='POST'&&/^\/api\/education\/groups\/?$/.test(new URL(r.url()).pathname));
+      try {await page.locator('#educationGroupForm button[type="submit"]').dblclick();await Promise.race([held,new Promise((_,reject)=>{barrierTimer=setTimeout(()=>reject(new Error('Double-submit POST did not reach controlled barrier')),15000);})]);} finally {clearTimeout(barrierTimer);release();}
+      assert.equal((await saved).status(),201);await page.waitForFunction(()=>document.getElementById('educationGroupsStatus').textContent==='Групу збережено.');
+      await page.unroute(doublePostPath);
+
       const duplicates=(await pool.query(`SELECT count(*)::int n FROM education_groups WHERE business_context='dar' AND name='QA actual double click'`)).rows[0].n;
       check('double click under slow network creates one group',duplicates===1,{submitCount,rows:duplicates});
     } finally { await browser.close(); fs.writeFileSync(path.join(output,'synthetic-browser.json'),JSON.stringify(evidence,null,2)); }

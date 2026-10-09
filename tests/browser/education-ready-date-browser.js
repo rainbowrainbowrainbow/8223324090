@@ -12,10 +12,10 @@ const base=process.env.TEST_URL;assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/)
 const phase=process.env.EDU_DATE_PHASE||'postfix';
 const out=path.resolve(process.env.EDU_READY_OUTPUT,`attempt-${new Date().toISOString().replace(/[:.]/g,'-')}`);fs.mkdirSync(out,{recursive:true});
 const results=createResults();
-const evidence={phase,checks:results.results,proofs:{},screenshots:[],pageErrors:[],sourceHashes:{}};
+const evidence = { attemptId: process.env.EDU_CLOSE_ATTEMPT_ID, suite: process.env.EDU_CLOSE_SUITE,phase,checks:results.results,proofs:{},screenshots:[],pageErrors:[],sourceHashes:{}};
 for(const file of ['index.html','js/booking.js','js/booking-form.js'])evidence.sourceHashes[file]=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 evidence.harnessHash=crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex');
-const pool=new Pool({host:'127.0.0.1',port:55469,user:'postgres',database:DATABASES.fixed,ssl:false});
+const pool=new Pool({ host: process.env.PGHOST || '127.0.0.1', port: Number(process.env.PGPORT || 55469), user: process.env.PGUSER || 'postgres', password: process.env.PGPASSWORD, database: process.env.PGDATABASE || DATABASES.fixed, ssl: false });
 let browser,token,manifest;
 function flush(){let json=JSON.stringify(evidence,null,2);for(const value of [token,process.env.TEST_USER,process.env.TEST_PASS].filter(Boolean))json=json.split(value).join('[REDACTED]');fs.writeFileSync(path.join(out,'verification.json'),json);}
 async function check(id,action){await results.check(id,id,action,id==='fixtures'?{}:{dependsOn:['fixtures']});flush();console.log(`${results.results.at(-1).status} ${id}`);}

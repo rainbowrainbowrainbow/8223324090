@@ -1053,6 +1053,7 @@ function createBookingActivityPromoHarness(products = []) {
         console,
         document: dom.window.document,
         window: dom.window,
+        isEducationTimelineBookingMode: () => false,
         __products: products,
         __openedPromoUrls: openedPromoUrls,
         escapeHtml: value => String(value ?? '')
@@ -7332,4 +7333,23 @@ test('Customers create deep link uses canonical modal and customer handoff contr
     assert.ok(customersJs.includes("'reception'"));
     assert.ok(customersJs.includes("document.getElementById('exportCsvBtn').style.display = canManage && canExportCustomerData(true) ? '' : 'none';"));
     assert.ok(customersJs.includes("document.getElementById('exportVcfBtn').style.display = canManage && canExportCustomerData() ? '' : 'none';"));
+});
+
+test('education catalog description preserves its content and activity selection', () => {
+    const hooks = createBookingActivityPromoHarness([{ id: 'lesson', name: 'Creative lesson', description: 'Paper and colour', imageUrl: '/uploads/lesson.png' }]);
+    hooks.context.isEducationTimelineBookingMode = () => true;
+    const parent = hooks.document.createElement('div');
+    parent.innerHTML = '<button type="button" data-booking-activity-promo="lesson">Description</button>';
+    hooks.document.getElementById('bookingPanel').appendChild(parent);
+    let selections = 0;
+    parent.addEventListener('click', () => selections++);
+    hooks.bindBookingActivityPromoActions(parent);
+    parent.querySelector('button').dispatchEvent(new hooks.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    const panel = hooks.document.getElementById('bookingActivityPromoPanel');
+    assert.equal(panel.hidden, false);
+    assert.match(panel.textContent, /Опис заняття/);
+    assert.match(panel.textContent, /Paper and colour/);
+    assert.equal(panel.querySelector('img').getAttribute('src'), '/uploads/lesson.png');
+    assert.equal(selections, 0);
+    assert.equal(panel.querySelector('button[data-booking-activity-promo-close]').getAttribute('aria-label'), 'Закрити опис заняття');
 });

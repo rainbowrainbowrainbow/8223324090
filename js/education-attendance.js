@@ -7,7 +7,7 @@
     })[char]);
     const context = () => global.TimelineBusinessContext?.current?.()?.apiValue || 'event_genix';
     const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
-    const state = { journal: null, lessons: [], loading: false, loadVersion: 0, journalLoading: false, saving: false, reportLoading: false, business: null };
+    const state = { journal: null, stale: false, draftRevision: null, lessons: [], loading: false, loadVersion: 0, journalLoading: false, saving: false, reportLoading: false, business: null };
     let generation = 0;
     let journalVersion = 0;
     let reportVersion = 0;
@@ -39,7 +39,7 @@
         if (!state.journal || state.saving) return;
         const key = draftKey(state.journal.booking.id);
         const changed = marksFromForm().filter(mark => state.journal.members.find(member => Number(member.child_id) === mark.childId)?.status !== mark.status);
-        const marks = changed.length ? changed : null;
+        const marks = changed.length || state.stale ? { marks: changed, revision: state.draftRevision } : null;
         if (marks) drafts.set(key, marks); else drafts.delete(key);
         try { if (marks) global.sessionStorage.setItem(key, JSON.stringify(marks)); else global.sessionStorage.removeItem(key); } catch { draftStorageAvailable = false; }
     }
@@ -53,14 +53,18 @@
     function restoreDraft() {
         if (!state.journal || state.journal.cancelled) return false;
         const key = draftKey(state.journal.booking.id);
-        let marks = drafts.get(key);
-        try { marks ||= JSON.parse(global.sessionStorage.getItem(key) || 'null'); } catch { marks = null; }
+        let draft = drafts.get(key);
+        try { draft ||= JSON.parse(global.sessionStorage.getItem(key) || 'null'); } catch { draft = null; }
+        const marks = Array.isArray(draft) ? draft : draft?.marks;
         if (!Array.isArray(marks)) return false;
+        // Never silently adopt a fresh revision for an older draft.
+        state.draftRevision = draft.revision || null;
+        state.stale = !state.draftRevision || state.draftRevision !== state.journal.revision;
         for (const select of byId('educationAttendanceJournal').querySelectorAll('[data-attendance-child-id]')) {
             const mark = marks.find(item => item.childId === Number(select.dataset.attendanceChildId));
             if (mark && [null, 'present', 'absent', 'excused'].includes(mark.status)) select.value = mark.status || '';
         }
-        return isDirty();
+        return isDirty() || state.stale;
     }
 
     function syncControls() {
@@ -68,6 +72,7 @@
         for (const id of ['educationAttendanceSave', 'educationAttendanceReload', 'educationAttendanceDate', 'educationAttendanceLesson']) {
             if (byId(id)) byId(id).disabled = busy;
         }
+        if (byId('educationAttendanceSave')) byId('educationAttendanceSave').disabled = busy || state.stale;
         byId('educationAttendanceJournal')?.querySelectorAll('[data-attendance-child-id]').forEach(select => { select.disabled = busy || state.journal?.cancelled === true; });
     }
 
@@ -103,7 +108,12 @@
             })
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        if (!response.ok) {
+            const error = new Error(data.error || 'HTTP ' + response.status);
+            error.status = response.status;
+            error.code = data.code;
+            throw error;
+        }
         return data;
         } catch (error) {
             if (error.name === 'AbortError') throw new Error('Час очікування вичерпано. Спробуйте знову.');
@@ -222,11 +232,14 @@
             if (!isCurrent(requestState) || version !== journalVersion) return;
             if (options.refresh) clearDraft(bookingId, requestState.business);
             state.journal = journal;
+            state.stale = false;
+            state.draftRevision = journal.revision;
             journalBusiness = requestState.business;
             byId('educationAttendanceDate').value = journal.booking.date;
             renderJournal();
             const restored = restoreDraft();
-            status(restored ? 'Відновлено незбережені відмітки. Збережіть їх або натисніть «Оновити», щоб відкинути.' : journal.frozen ? 'Журнал збережено.' : 'Журнал ще не розпочато.');
+            status(state.stale ? 'Журнал змінив інший оператор. Чернетка відновлена, але застаріла. Натисніть «Оновити», перечитайте журнал і явно повторіть потрібні зміни.'
+                : restored ? 'Відновлено незбережені відмітки. Збережіть їх або натисніть «Оновити», щоб відкинути.' : journal.frozen ? 'Журнал збережено.' : 'Журнал ще не розпочато.', 'educationAttendanceStatus', state.stale ? 'error' : 'info');
             updateUrl({ educationJournal: bookingId, educationAttendanceDate: journal.booking.date });
             if (!state.lessons.some(booking => String(booking.id) === String(bookingId))) await loadLessons(journal.booking.date);
             if (!isCurrent(requestState) || version !== journalVersion) return;
@@ -254,7 +267,7 @@
         const requestState = capture();
         const version = journalVersion;
         const bookingId = state.journal?.booking.id;
-        if (isDirty()) {
+        if (isDirty() || state.stale) {
             const confirmed = await global.confirmModal?.('Відкинути незбережені відмітки та завантажити журнал знову?', { okText: 'Відкинути й оновити', cancelText: 'Залишити відмітки' });
             if (!confirmed || !isCurrent(requestState) || version !== journalVersion) return;
         }
@@ -264,7 +277,7 @@
 
     async function saveJournal() {
         const bookingId = state.journal?.booking?.id;
-        if (!bookingId || state.journal.cancelled || state.saving || state.journalLoading) return;
+        if (!bookingId || state.journal.cancelled || state.stale || state.saving || state.journalLoading) return;
         const requestState = capture();
         const version = journalVersion;
         const marks = marksFromForm();
@@ -273,16 +286,27 @@
         syncControls();
         try {
             const result = await api(`/attendance/${encodeURIComponent(bookingId)}`, {
-                method: 'PUT', body: { marks }
+                method: 'PUT', body: { marks, revision: state.draftRevision }
             });
             if (!isCurrent(requestState) || version !== journalVersion) return;
             clearDraft(bookingId, requestState.business);
             state.journal = result.journal;
+            state.draftRevision = result.journal.revision;
+            state.stale = false;
             renderJournal();
             status(result.changes ? `${result.changes} відміток змінено.` : 'Без змін; повторний запис не створено.');
         } catch (error) {
             if (isCurrent(requestState) && version === journalVersion) {
-                status(`Не вдалося зберегти журнал: ${error.message}`, 'educationAttendanceStatus', 'error');
+                if (error.code === 'EDUCATION_JOURNAL_STALE') {
+                    state.stale = true;
+                    status('Журнал змінив інший оператор. Ваші відмітки залишилися в чернетці. Натисніть «Оновити», перечитайте журнал і явно повторіть потрібні зміни.', 'educationAttendanceStatus', 'error');
+                    const message = byId('educationAttendanceStatus');
+                    if (message) {
+                        message.tabIndex = -1;
+                        message.focus({ preventScroll: true });
+                        message.scrollIntoView?.({ block: 'center' });
+                    }
+                } else status('Не вдалося зберегти журнал: ' + error.message, 'educationAttendanceStatus', 'error');
             }
         } finally {
             if (isCurrent(requestState) && version === journalVersion) { state.saving = false; syncControls(); }
@@ -418,6 +442,8 @@
         journalVersion += 1;
         reportVersion += 1;
         state.journal = null;
+        state.stale = false;
+        state.draftRevision = null;
         state.lessons = [];
         state.loadVersion += 1;
         state.loading = false;

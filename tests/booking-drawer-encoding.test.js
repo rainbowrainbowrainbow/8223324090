@@ -619,7 +619,7 @@ test('booking details can open from current visible timeline block when cache an
         });
 });
 
-test('booking detail scenario row is hidden only for kitchen bookings', () => {
+test('booking detail scenario row preserves kitchen policy and explicit education presentation option', () => {
     const bookingJs = read('js', 'booking.js');
     const helperStart = bookingJs.indexOf('function shouldHideBookingWorkspaceScenarioDetail');
     const helperEnd = bookingJs.indexOf('function renderBookingWorkspaceDetail', helperStart);
@@ -635,7 +635,7 @@ test('booking detail scenario row is hidden only for kitchen bookings', () => {
     const renderBlock = bookingJs.slice(helperEnd, renderEnd);
     assert.match(renderBlock, /const activityScenarioLabel = bookingDetailActivityScenarioLabel\(booking, workspace\);/);
     assert.match(renderBlock, /const scenarioLabel = activityScenarioLabel \|\| meta\.label;/);
-    assert.match(renderBlock, /const scenarioRowHtml = shouldHideBookingWorkspaceScenarioDetail\(booking\)\s*\?\s*''\s*:/);
+    assert.match(renderBlock, /const scenarioRowHtml = options\.hideScenario === true \|\| shouldHideBookingWorkspaceScenarioDetail\(booking\)\s*\?\s*''\s*:/);
     assert.match(renderBlock, /<span class="label">Сценарій:<\/span><span class="value">\$\{escapeHtml\(scenarioLabel\)\}<\/span>/);
     assert.match(renderBlock, /\$\{scenarioRowHtml\}/);
 });
@@ -658,7 +658,7 @@ test('booking detail title removes redundant kitchen prefix only for kitchen boo
     const modalEnd = bookingJs.indexOf('const bookingChildrenCount', modalStart);
     assert.ok(modalStart >= 0 && modalEnd > modalStart, 'booking detail modal title block exists');
     const modalBlock = bookingJs.slice(modalStart, modalEnd);
-    assert.match(modalBlock, /const bookingDetailTitle = bookingDetailModalTitle\(booking, roomFirstServiceBooking \? 'Кімнатна бронь' : 'Бронювання'\);/);
+    assert.match(modalBlock, /const bookingDetailTitle = isEducationBooking && lesson\.title\s*\? String\(lesson\.title\)\s*:\s*bookingDetailModalTitle\(booking, roomFirstServiceBooking \? 'Кімнатна бронь' : 'Бронювання'\);/);
     assert.doesNotMatch(modalBlock, /const bookingDetailTitle = \[booking\.label \|\| booking\.programCode, booking\.programName\]/);
 });
 

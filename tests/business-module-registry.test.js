@@ -42,6 +42,22 @@ test('unknown/unsupported module configuration cannot grant runtime access, pres
     assert.deepEqual(registry.validateBusinessModules(['tasks', 'tasks'], { contextKey: 'fixture_studio' }), ['tasks']);
 });
 
+test('HR module is configurable only for the Park and still requires explicit business enablement', () => {
+    const parkHr = registry.businessModuleCatalog('event_genix').find(module => module.key === 'hr');
+    assert.equal(parkHr.canEnable, true);
+    assert.equal(parkHr.status, 'limited');
+    assert.deepEqual(registry.validateBusinessModules(['hr'], { contextKey: 'event_genix' }), ['hr']);
+    assert.equal(registry.userBusinessModuleState(actor(['hr'], 'event_genix'), 'event_genix', 'hr').available, true);
+    assert.equal(registry.userBusinessModuleState(actor([], 'event_genix'), 'event_genix', 'hr').available, false);
+
+    for (const context of ['dar', 'fixture_studio']) {
+        const hr = registry.businessModuleCatalog(context).find(module => module.key === 'hr');
+        assert.equal(hr.canEnable, false);
+        assert.throws(() => registry.validateBusinessModules(['hr'], { contextKey: context }), { code: 'business_module_not_supported' });
+        assert.equal(registry.userBusinessModuleState(actor(['hr'], context), context, 'hr').available, false);
+    }
+});
+
 test('module capability does not grant an employee settings permission or bypass revoked membership', () => {
     const user = actor(['timeline'], 'fixture_studio', 'animator');
     assert.equal(registry.userBusinessModuleState(user, 'fixture_studio', 'timeline').available, true);

@@ -432,13 +432,15 @@ async function trap(selector, name) {
             await page.locator('#bookingModal .btn-edit-booking').click();
             await page.waitForFunction(()=>document.querySelector('#bookingPanel .panel-header h3')?.textContent==='Редагувати бронювання');
             await page.waitForLoadState('networkidle');
+            await page.locator('#bookingPackageSummary .booking-summary-total').waitFor({state:'visible'});
+            evidence.parkEditPresentation=await page.evaluate(()=>({activityVisible:Boolean(document.getElementById('programDetails')?.getClientRects().length),educationVisible:Boolean(document.getElementById('educationLessonSection')?.getClientRects().length),timeLabel:document.getElementById('bookingTime')?.getAttribute('aria-label'),priceVisible:Boolean(document.querySelector('#bookingPackageSummary .booking-summary-total')?.getClientRects().length)}));
             await check('park-form-price-activities',async()=>{
                 assert.equal(await page.locator('#bookingPanel .panel-header h3').innerText(),'Редагувати бронювання');
-                assert.equal(await page.locator('#programDetails').isVisible(),true);
+                assert.equal(await page.locator('#programDetails').isVisible(),true,'Park activity panel is visible');
                 assert.equal(await page.locator('#programDetails .program-details-title').innerText(),'Обрані активності');
-                assert.equal(await page.locator('#educationLessonSection').isVisible(),false);
+                assert.equal(await page.locator('#educationLessonSection').isVisible(),false,'Education controls remain hidden in Park');
                 assert.equal(await page.locator('#bookingTime').getAttribute('aria-label'),'Старт активності');
-                assert.equal(await page.locator('#bookingPackageSummary .booking-summary-total').isVisible(),true);
+                assert.equal(await page.locator('#bookingPackageSummary .booking-summary-total').isVisible(),true,'Park price total is visible');
             });
             await page.locator('#bookingSubmitBtn').scrollIntoViewIfNeeded(); await parkScreenshot('park-edit-'+engine);
         }

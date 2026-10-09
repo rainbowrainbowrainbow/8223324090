@@ -512,9 +512,19 @@ async function closeChecks(){
         }
         await page.setViewportSize({width:1440,height:1000});await shot(page,'existing-hr-staff-explicit-education-assignment');
         await page.locator('#editCloseTop').click();await page.locator('#staffEditModal').waitFor({state:'hidden'});
-        await Promise.all([page.waitForURL(url=>url.searchParams.get('businessContext')==='dar',{waitUntil:'domcontentloaded'}),page.locator('#sidebarBusinessContextSelect').selectOption('dar')]);await waitTeacherRuntimeReads(page);
-        await page.goto(base+'/?businessContext=dar&educationSchedule=groups&date='+manifest.anchorDate,{waitUntil:'domcontentloaded'});
-        await page.waitForFunction(()=>window.EducationGroups?.state.teacherStatus==='ready');
+        // Leave the HR surface through its visible timeline launcher before changing timeline business.
+        await page.locator('[data-sidebar-timeline-mode="animators"]').filter({visible:true}).first().click();
+        await page.waitForURL(url=>url.pathname==='/',{waitUntil:'domcontentloaded'});
+        await page.locator('#mainApp').waitFor({state:'visible'});
+        await waitTeacherRuntimeReads(page);
+        await page.locator('#sidebarBusinessContextSelect').selectOption('dar');
+        await page.locator('#educationScheduleWorkspace').waitFor({state:'visible'});
+        await page.waitForFunction(()=>window.CrmBusinessContext?.current?.()==='dar'&&window.TimelineBusinessContext?.current?.().apiValue==='dar'&&!window.EducationScheduleWorkspace?.state.loading&&!document.getElementById('sidebarBusinessContextSelect')?.disabled);
+        await waitTeacherRuntimeReads(page);
+        await page.locator('[data-education-schedule-tab="groups"]').click();
+        await page.locator('#educationGroupsPanel').waitFor({state:'visible'});
+        await page.waitForFunction(()=>window.EducationGroups?.state.teacherStatus==='ready'&&window.EducationGroups?.state.listStatus==='ready');
+        evidence.proofs.hrReturnNavigation={visibleTimelineLauncher:true,visibleBusinessSelector:true,terminalEducationDestination:true,visibleGroupsTab:true,noCompetingGoto:true};
         await page.locator('#educationGroupsList').selectOption('');await page.locator('#educationGroupName').fill('Музика: перші ритми');await page.locator('#educationGroupTeacher').selectOption(String(candidate));
         const assignedGroup=await saveGroupUI(page);assert.equal((await pool.query('SELECT teacher_id FROM education_groups WHERE id=$1',[assignedGroup])).rows[0].teacher_id,candidate);
     }));

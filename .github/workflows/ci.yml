@@ -616,8 +616,9 @@ jobs:
         run: npm install -g npm@10.9.8
       - name: Install dependencies
         run: npm ci
-      - name: Install browsers through existing ephemeral Playwright pattern
-        run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium webkit"
+      - name: Install required browser through existing ephemeral Playwright pattern
+        if: matrix.suite != 'attendance' && matrix.suite != 'series'
+        run: npm exec --yes --package=playwright -c "playwright install --with-deps ${{ matrix.engine }}"
       - name: Run source-bound actual-app education suite
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_education_ready_fixture_test

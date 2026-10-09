@@ -1,6 +1,16 @@
 # EDU-CLOSE — поточне приймання і випуск
 
 
+## CI attempt1 та scoped retry — поточний стан
+
+Production branch отримала c059c4d3a1b081606e10d0b9c71367d81418b4f2 (product472485dcb5603ee5514dbc0540643cfad6e7c37f + release markers). CI run37917735145 НЕ green:18 jobs PASS, hrLink Chromium FAIL (конкуруючий harness goto), responsive WebKit FAIL (education cabinet layout та Park assertion до фінального render).3 jobs не почали scenarios і зависли на browser installation; obsolete run зупинено після збереження status, попередні FAIL не приховано. Deploy не виконано.
+
+Виправлено видимий шлях HR→timeline launcher→Dar→Groups без goto; actual-app/SQL hrLink Chromium і WebKit локально повторно PASS. Education-only CSS:120px cabinet gutter на narrow/tablet, normal word wrapping; resource actions переходять у власний рядок, profile info вертикальне на narrow. Park price assertion чекає visible total, не змінюючи очікування або product Park. CI install завантажує лише engine потрібної job; attendance/series HTTP/SQL suites виконуються без browser binaries.15 required jobs/IDs/assertions залишено.
+
+Попередні local15/15 hashes стали STALE після scoped CSS/harness/CI змін і НЕ є fresh retry acceptance. Потрібні всі15 нові exact-SHA CI artifacts та повна hash-bound validation. Native local responsive WebKit1069 probes пройшов післяCSS, але outer collector чесно відхилив proof через паралельну CI-harness зміну; це diagnostic PASS, не final matrix reference. Поточні release facts дивись output/education-ready/close07-integrated-20261009/release-result.json і EDUCATION_CLOSE_RELEASE_RESULT.md (записуються за фактичними CI/deploy/live результатами). Owner device deferral42 BLOCKED/0PASS залишається чинним.
+
+
+
 ## Чинне рішення власника і стан релізу — 2026-10-09
 
 Власник прямо доручив продовжити випуск, відклавши фізичні пристрої: «пофіг на пристрої, просто працюй сам, щоб максимально».42 кейси залишаються BLOCKED_DEVICE,0 PASS; це owner-deferred обмеження, а не повністю закритий кейс. Програмне приймання:15/15 PASS на незмінному final source. **GO_WITH_OWNER_DEVICE_DEFERRAL**, з обов’язковим exact-SHA green CI перед deploy.

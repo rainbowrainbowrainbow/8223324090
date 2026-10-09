@@ -429,3 +429,26 @@ html[data-theme="dark"] body.timeline-mode-education .mini-booking-block.educati
 body.timeline-dashboard-page.timeline-mode-education .mini-timeline-line,
 body.timeline-dashboard-page.timeline-mode-education .mini-line-grid { min-height: 54px !important; }
 body.timeline-dashboard-page.timeline-mode-education .mini-booking-block.education-lesson { min-height: 44px !important; }
+
+/* Preserve cabinet word boxes across native WebKit font metrics and tablet widths. */
+@media (max-width: 1100px) {
+  body.timeline-mode-education { --timeline-line-header-w: 120px; }
+}
+body.timeline-mode-education .timeline-line--education .line-header--title-only .line-name {
+  word-break: normal; overflow-wrap: break-word; hyphens: none;
+}
+/* Native button widths must wrap inside the education settings card. */
+@media (max-width: 720px) {
+  body.timeline-mode-education #settingsTimelineDisplaySection .timeline-resource-row {
+    min-width: 0; grid-template-columns: 16px minmax(0, 1fr);
+  }
+  body.timeline-mode-education #settingsTimelineDisplaySection .timeline-resource-actions {
+    grid-column: 1 / -1; min-width: 0; flex-wrap: wrap;
+  }
+  body.timeline-mode-education #settingsTimelineDisplaySection .timeline-resource-actions button {
+    max-width: 100%; white-space: normal; overflow-wrap: anywhere;
+  }
+  body.timeline-mode-education #settingsTimelineDisplaySection .timeline-profile-contract {
+    flex-direction: column; align-items: flex-start;
+  }
+}

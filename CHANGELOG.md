@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.79 - HR у меню Парку
+
+### Release / Versioning / (09.10.2026) [codex]
+- **HR у меню Парку** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.78 - HR у меню Парку
 
 ### Release / Versioning / (09.10.2026) [codex]

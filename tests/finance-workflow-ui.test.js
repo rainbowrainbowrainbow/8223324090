@@ -487,3 +487,139 @@ test('confirmed account creation closes its editor and refreshes accounts only a
     assert.ok(f.el('accountsList').textContent.includes('New cash till'));
     assert.equal(f.el('accName').disabled, false);
 });
+
+test('inline selection reuses a category without a metadata write and preserves the budget draft', async t => {
+    const f = fixture(t);
+    f.el('budgetCategorySelect').value = '1';
+    f.el('budgetAmountInput').value = '987';
+    f.window.openCategoryModal('budgetCategorySelect');
+    f.window.populateCategoryEditor('2');
+    await f.window.useFinanceCategory();
+    assert.equal(f.el('budgetCategorySelect').value, '2');
+    assert.equal(f.el('budgetAmountInput').value, '987');
+    assert.equal(f.requests.length, 0);
+    assert.ok(f.el('financeCategoryModal').classList.contains('hidden'));
+});
+
+test('duplicate category offers the existing selection and cannot apply after business changes during confirmation', async t => {
+    const f = fixture(t);
+    f.el('budgetCategorySelect').value = '2';
+    f.window.openCategoryModal('budgetCategorySelect');
+    f.el('financeCategoryName').value = ' rent a ';
+    await f.window.saveFinanceCategory();
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.el('useFinanceCategoryBtn').hidden, false);
+    const confirmation = deferred();
+    f.confirm(() => confirmation.promise);
+    const using = f.window.useFinanceCategory();
+    f.business('synthetic-business-b');
+    confirmation.resolve(true);
+    await using;
+    assert.equal(f.el('budgetCategorySelect').value, '2');
+});
+
+test('account metadata edit keeps type and sends only supported metadata fields', async t => {
+    const f = fixture(t);
+    const account = { id: 42, name: 'Till A', type: 'cash', emoji: '🧾', description: 'Original' };
+    f.transport(async request => response(request.method === 'GET'
+        ? { accounts: [account] } : { success: true, account: { ...account, ...request.body } }));
+    await f.window.loadAccounts();
+    f.window.openEditAccountModal(42);
+    assert.equal(f.el('accEmoji').value, '🧾', 'legacy custom emoji survives');
+    assert.equal(f.el('accType').disabled, true);
+    f.el('accName').value = 'Till B';
+    f.el('accDescription').value = 'Updated';
+    await f.window.saveAccount();
+    const write = f.requests.find(request => request.method === 'PATCH');
+    assert.equal(write.url, '/api/finance/accounts/42');
+    assert.deepEqual(write.body, { name: 'Till B', emoji: '🧾', description: 'Updated' });
+    f.window.openAddAccountModal();
+    assert.equal(f.el('accType').disabled, false);
+});
+
+test('late accounts reads cannot render data belonging to another business or actor', async t => {
+    for (const change of ['business', 'actor']) {
+        const f = fixture(t);
+        const pending = deferred(); f.transport(() => pending.promise);
+        const loading = f.window.loadAccounts();
+        if (change === 'business') f.business('synthetic-business-b'); else f.window.AppState.currentUser = { id: 2 };
+        pending.resolve(response({ accounts: [{ id: 1, name: 'Prior scope private account', type: 'cash' }] }));
+        await loading;
+        assert.doesNotMatch(f.el('accountsList').textContent, /Prior scope/);
+    }
+});
+
+test('account actions use the current permission and recheck context after archive confirmation', async t => {
+    const f = fixture(t);
+    f.transport(async () => response({ accounts: [{ id: 42, name: 'Till A', type: 'cash' }] }));
+    await f.window.loadAccounts();
+    const confirmation = deferred(); f.confirm(() => confirmation.promise);
+    const archiving = f.window.toggleAccount(42, false);
+    f.business('synthetic-business-b');
+    confirmation.resolve(true); await archiving;
+    assert.equal(f.requests.filter(request => request.method === 'PATCH').length, 0);
+    f.permission(false);
+    await f.window.loadAccounts();
+    assert.equal(f.el('accountsList').querySelectorAll('button').length, 0);
+    assert.equal(f.el('addFinanceAccountBtn').hidden, true);
+    await f.window.toggleAccount(42, false);
+    f.window.openEditAccountModal(42);
+    assert.ok(f.el('addAccountModal').classList.contains('hidden'));
+    assert.equal(f.requests.filter(request => request.method === 'PATCH').length, 0);
+});
+
+test('account archive reports an unconfirmed response as failure instead of removing the account', async t => {
+    const f = fixture(t);
+    f.transport(async request => response(request.method === 'GET'
+        ? { accounts: [{ id: 42, name: 'Till A', type: 'cash' }] } : { success: false }));
+    await f.window.loadAccounts();
+    await f.window.toggleAccount(42, false);
+    assert.match(f.el('accountsList').textContent, /Till A/);
+    assert.equal(f.requests.filter(request => request.method === 'GET').length, 1);
+    assert.doesNotMatch(f.el('toastContainer').textContent, /Рахунок деактивовано/);
+    assert.match(f.el('toastContainer').textContent, /не підтвердив/);
+});
+
+test('account edit response cannot close or refresh another business after a successful metadata save', async t => {
+    const f = fixture(t);
+    f.transport(async () => response({ accounts: [{ id: 42, name: 'Till A', type: 'cash' }] }));
+    await f.window.loadAccounts();
+    f.window.openEditAccountModal(42);
+    f.el('accName').value = 'Unsaved new name';
+    const pending = deferred(); f.transport(() => pending.promise);
+    const saving = f.window.saveAccount();
+    f.window.AppState.currentUser = { id: 2 };
+    pending.resolve(response({ success: true, account: { id: 42 } }));
+    await saving;
+    assert.equal(f.requests.length, 2, 'no reload after stale metadata response');
+    assert.equal(f.el('accName').value, 'Unsaved new name');
+    assert.ok(!f.el('addAccountModal').classList.contains('hidden'));
+});
+
+test('account archive sends only one pending write and keeps a failed refresh visibly unavailable', async t => {
+    const f = fixture(t);
+    f.transport(async () => response({ accounts: [{ id: 42, name: 'Till A', type: 'cash' }] }));
+    await f.window.loadAccounts();
+    const pending = deferred();
+    f.transport(request => request.method === 'PATCH' ? pending.promise : Promise.resolve(response({ error: 'Unavailable' }, 503)));
+    const archiving = f.window.toggleAccount(42, false);
+    await new Promise(resolve => setImmediate(resolve));
+    await f.window.toggleAccount(42, false);
+    assert.equal(f.requests.filter(request => request.method === 'PATCH').length, 1);
+    pending.resolve(response({ success: true, account: { id: 42, is_active: false } }));
+    await archiving;
+    assert.ok(f.el('accountsList').querySelector('[role="alert"]'));
+    assert.doesNotMatch(f.el('accountsList').textContent, /Рахунків ще немає/);
+});
+
+test('permission lifecycle invalidates pending account reads even when actor and business are unchanged', async t => {
+    const f = fixture(t);
+    const pending = deferred(); f.transport(() => pending.promise);
+    const loading = f.window.loadAccounts();
+    f.permission(false);
+    f.window.dispatchEvent(new f.window.Event('permissions:lifecycle'));
+    pending.resolve(response({ accounts: [{ id: 42, name: 'Stale permission snapshot', type: 'cash' }] }));
+    await loading;
+    assert.doesNotMatch(f.el('accountsList').textContent, /Stale permission snapshot/);
+    assert.equal(f.el('addFinanceAccountBtn').hidden, true);
+});

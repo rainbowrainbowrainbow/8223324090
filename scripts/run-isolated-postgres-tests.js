@@ -22,6 +22,8 @@ const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-
 const MODES = {
     api: ['tests/api.test.js'],
     finance: [
+        'tests/integration/analytics-reporting-postgres.test.js',
+        'tests/integration/finance-reporting-local.integration.test.js',
         'tests/integration/finance-transactions-pnl.integration.test.js',
         'tests/integration/finance-money-movements.integration.test.js',
         'tests/integration/finance-money-qa.integration.test.js',
@@ -56,6 +58,8 @@ const MODES = {
         'tests/integration/zrs-payroll-period-lock.integration.test.js',
         'tests/integration/payroll-installments.integration.test.js',
         'tests/integration/payroll-fullstack-settlement.integration.test.js',
+        'tests/integration/analytics-reporting-postgres.test.js',
+        'tests/integration/finance-reporting-local.integration.test.js',
         'tests/integration/finance-transactions-pnl.integration.test.js',
         'tests/integration/finance-money-movements.integration.test.js',
         'tests/integration/finance-money-qa.integration.test.js',

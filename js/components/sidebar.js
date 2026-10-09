@@ -3710,17 +3710,6 @@ const Sidebar = (() => {
         return response.json();
     }
 
-    async function _fetchSidebarCurrencyFallback() {
-        if (!_isAuthenticatedSidebarRuntimeReady()) return null;
-        if (!_canUseSidebarFinanceCurrencyFallback()) return null;
-        const token = localStorage.getItem('pzp_token');
-        const response = await fetch('/api/finance/currency/rates', {
-            headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
-        if (!response.ok) throw new Error('sidebar currency fallback failed');
-        return response.json();
-    }
-
     function _normalizeSidebarCurrencyRates(source) {
         const rates = source?.rates && typeof source.rates === 'object'
             ? { ...source.rates }
@@ -3738,33 +3727,6 @@ const Sidebar = (() => {
         };
     }
 
-    function _mergeSidebarCurrencyRates(primary, fallback) {
-        const first = _normalizeSidebarCurrencyRates(primary || {});
-        const second = _normalizeSidebarCurrencyRates(fallback || {});
-        return {
-            base: first.base || second.base || 'UAH',
-            date: first.date || second.date || '',
-            rates: { ...second.rates, ...first.rates }
-        };
-    }
-
-    function _hasSidebarCurrencyRates(source) {
-        const normalized = _normalizeSidebarCurrencyRates(source || {});
-        return Object.values(normalized.rates || {}).some(value => Number.isFinite(Number(value)) && Number(value) > 0);
-    }
-
-    function _canUseSidebarFinanceCurrencyFallback(user = _getCurrentSidebarUser()) {
-        const role = _getSidebarActiveRole(user);
-        const financeItem = { href: '/finance', access: 'finance' };
-        const canManageFinance = typeof window.canUseAction === 'function'
-            ? window.canUseAction('finance.manage')
-            : (typeof canUseAction === 'function' && canUseAction('finance.manage'));
-        return canManageFinance
-            && hasAccess(financeItem, role)
-            && _businessAllowsSidebarItem(financeItem, user)
-            && _isNavItemVisible(financeItem, user, role);
-    }
-
     async function _loadSidebarIdentityMeta(force = false) {
         if (!_isAuthenticatedSidebarRuntimeReady()) return;
         if (!_isSidebarCurrencySignalEnabled()) {
@@ -3777,29 +3739,21 @@ const Sidebar = (() => {
         _state.identityMetaLoading = true;
         try {
             let dashboardCurrency = null;
-            let fallbackCurrency = null;
             try {
                 const result = await _fetchSidebarWidget('currency');
                 dashboardCurrency = result && !result.error ? result : null;
             } catch {
                 dashboardCurrency = null;
             }
-            if (!_hasSidebarCurrencyRates(dashboardCurrency)) {
-                if (_canUseSidebarFinanceCurrencyFallback()) {
-                    try {
-                        fallbackCurrency = await _fetchSidebarCurrencyFallback();
-                    } catch {
-                        fallbackCurrency = null;
-                    }
-                }
-            }
-            const currencyDetails = _mergeSidebarCurrencyRates(dashboardCurrency, fallbackCurrency);
+            // The legacy finance converter contains fixed reference rates, not a
+            // live fallback. Only the existing NBU dashboard source is displayed.
+            const currencyDetails = _normalizeSidebarCurrencyRates(dashboardCurrency);
             const usdRate = Number(currencyDetails.rates?.USD || currencyDetails.usd || 0);
             _state.identityMetaDetails.currency = currencyDetails;
             _setSidebarIdentityMetaValue(
                 'sidebarIdentityCurrency',
                 _formatSidebarMoney(usdRate),
-                Number.isFinite(usdRate) && usdRate > 0 ? 'live' : 'limited'
+                Number.isFinite(usdRate) && usdRate > 0 ? 'reference' : 'limited'
             );
         } catch (err) {
             _state.identityMetaDetails.currency = null;
@@ -3841,7 +3795,7 @@ const Sidebar = (() => {
                 </div>
                 <div class="sidebar-identity-detail-body">
                     ${rows || '<span class="sidebar-identity-detail-muted">Курси тимчасово недоступні.</span>'}
-                    <span class="sidebar-identity-detail-muted">База: ${_escHtml(details.base || 'UAH')}${details.date ? ` · ${_escHtml(details.date)}` : ''}</span>
+                    <span class="sidebar-identity-detail-muted">НБУ · База: ${_escHtml(details.base || 'UAH')}${details.date ? ` · Дата курсу: ${_escHtml(details.date)}` : ' · Дату курсу не вказано'}</span>
                 </div>
                 <a class="sidebar-identity-detail-link" href="/finance?currency=rates">Відкрити фінанси ›</a>`;
         }

@@ -2187,6 +2187,10 @@ function renderSalaryReportTable(data) {
 let _transEditInitialState = '';
 let _accountModalInitialState = '';
 let accountEditor = { scope: '', busy: false };
+let accountDataScope = '';
+let accountRequestGeneration = 0;
+let financeAccounts = [];
+const pendingAccountChanges = new Set();
 
 function getTransEditState() {
     const ids = ['editType', 'editCategory', 'editAmount', 'editDate', 'editPayment', 'editDescription'];
@@ -2358,6 +2362,7 @@ function populateCategoryEditor(id = '') {
     icon.value = value;
     document.getElementById('financeCategoryColor').value = /^#[0-9a-f]{6}$/i.test(category?.color || '') ? category.color : '#6366f1';
     document.getElementById('archiveFinanceCategoryBtn').hidden = !category || category.isSystem === true;
+    document.getElementById('useFinanceCategoryBtn').hidden = !category || !categoryEditor.targetId;
     document.getElementById('financeCategoryNote').textContent = category?.isSystem
         ? 'Системна назва використовується автоматичним обліком. Можна змінити іконку та колір.'
         : 'Архівація прибирає категорію з нових операцій. Історія зберігається.';
@@ -2430,6 +2435,7 @@ async function saveFinanceCategory(event) {
     if (!name) { setCategoryError('Вкажіть назву категорії.'); return; }
     if (FinState.categories.some(category => category.id !== categoryEditor.id && category.type === type
         && category.name.trim().toLocaleLowerCase('uk-UA') === name.toLocaleLowerCase('uk-UA'))) {
+        document.getElementById('useFinanceCategoryBtn').hidden = !categoryEditor.targetId || Boolean(categoryEditor.id);
         setCategoryError('Категорія з такою назвою вже є. Оберіть її зі списку.'); return;
     }
     const body = { name, type, icon: document.getElementById('financeCategoryIcon').value,
@@ -2454,6 +2460,26 @@ async function saveFinanceCategory(event) {
     } catch (error) { if (editor === categoryEditor) setCategoryError(error.message); }
     finally { if (editor === categoryEditor) setCategoryBusy(false); }
     if (saved) await closeCategoryModal(true);
+}
+
+async function useFinanceCategory() {
+    const editor = categoryEditor;
+    if (editor.busy || !editor.targetId || !financeCanManageTransactions()
+        || editor.business !== financeActorBusinessKey()) return;
+    const name = document.getElementById('financeCategoryName').value.trim().toLocaleLowerCase('uk-UA');
+    const type = document.getElementById('financeCategoryType').value;
+    const category = editor.id
+        ? FinState.categories.find(item => item.id === editor.id)
+        : FinState.categories.find(item => item.type === type && item.name.trim().toLocaleLowerCase('uk-UA') === name);
+    if (!category) { setCategoryError('Оберіть наявну категорію зі списку.'); return; }
+    if (!await closeCategoryModal()) return;
+    if (editor !== categoryEditor || editor.business !== financeActorBusinessKey() || !financeCanManageTransactions()
+        || !FinState.categories.some(item => item.id === category.id)) return;
+    const target = document.getElementById(editor.targetId);
+    if (target && [...target.options].some(option => option.value === String(category.id) && !option.disabled)) {
+        target.value = String(category.id);
+        target.dispatchEvent(new Event('change', { bubbles: true }));
+    }
 }
 
 async function archiveFinanceCategory() {
@@ -3057,6 +3083,7 @@ async function initFinancePage() {
     document.getElementById('financeCategoryForm')?.addEventListener('submit', saveFinanceCategory);
     document.getElementById('cancelFinanceCategoryBtn')?.addEventListener('click', () => closeCategoryModal());
     document.getElementById('archiveFinanceCategoryBtn')?.addEventListener('click', archiveFinanceCategory);
+    document.getElementById('useFinanceCategoryBtn')?.addEventListener('click', useFinanceCategory);
     document.getElementById('financeCategoryRecord')?.addEventListener('change', async event => {
         const nextId = event.target.value;
         if (categoryEditorState() !== categoryEditor.initial && !await confirmModal('Перейти до іншої категорії без збереження змін?', { type: 'warning' })) {
@@ -3345,36 +3372,47 @@ async function closeShift() {
 // v30.6: REVENUE FORECAST
 // ==========================================
 
+let forecastRequestGeneration = 0;
 async function loadForecast() {
+    const generation = ++forecastRequestGeneration;
+    const business = financeActorBusinessKey();
+    const container = document.getElementById('forecastContent');
+    if (!container) return;
+    container.innerHTML = '<p role="status">Завантаження прогнозу…</p>';
+    const current = () => generation === forecastRequestGeneration && business === financeActorBusinessKey();
     try {
         const days = document.getElementById('forecastDays')?.value || 30;
         const data = await apiRequest('GET', `/api/finance/forecast?days=${days}`);
-        const container = document.getElementById('forecastContent');
-        if (!container) return;
+        if (!current()) return;
+        if (!data?.totals || !['expectedOutstanding', 'expectedRevenue', 'bookingCount'].every(key =>
+            data.totals[key] != null && Number.isFinite(Number(data.totals[key])))
+            || !Array.isArray(data.weekly) || !Array.isArray(data.historicalAverage)) throw new Error('Invalid forecast response');
 
         let html = `<div class="fin-stats" style="margin-bottom:16px">
             <div class="fin-stat-card fin-stat-income">
-                <div class="fin-stat-value">${formatMoney(data.totals.expectedRevenue)}</div>
-                <div class="fin-stat-label">Прогноз доходу (${days} дн.)</div>
+                <div class="fin-stat-value">${formatMoney(data.totals.expectedOutstanding)}</div>
+                <div class="fin-stat-label">Залишок до сплати (${Number(days)} дн.)</div>
             </div>
             <div class="fin-stat-card fin-stat-bookings">
-                <div class="fin-stat-value">${data.totals.bookingCount}</div>
+                <div class="fin-stat-value">${Number(data.totals.bookingCount)}</div>
                 <div class="fin-stat-label">Підтверджених бронювань</div>
             </div>
             <div class="fin-stat-card fin-stat-profit">
-                <div class="fin-stat-value">${data.totals.bookingCount > 0 ? formatMoney(Math.round(data.totals.expectedRevenue / data.totals.bookingCount)) : '0 ₴'}</div>
-                <div class="fin-stat-label">Середній чек</div>
+                <div class="fin-stat-value">${formatMoney(data.totals.expectedRevenue)}</div>
+                <div class="fin-stat-label">Вартість підтверджених бронювань</div>
             </div>
-        </div>`;
+        </div><p class="fin-category-note">${escapeHtml(formatDate(data.period?.from))} — ${escapeHtml(formatDate(data.period?.to))}.
+            Залишок розрахований із ціни та позначеної оплати в бронюваннях; повністю оплачені бронювання мають нульовий залишок.
+            Дата заходу не є гарантованою датою оплати. Це оцінка за записами бронювань, а не звірка всіх платіжних систем.</p>`;
 
         // Weekly breakdown
         if (data.weekly && data.weekly.length > 0) {
             html += `<div class="fin-table-wrap"><table class="fin-monthly-table">
-                <thead><tr><th style="text-align:left">Тиждень</th><th>Бронювань</th><th>Прогноз ₴</th></tr></thead>
+                <thead><tr><th style="text-align:left">Тиждень від</th><th>Бронювань</th><th>Залишок до сплати</th></tr></thead>
                 <tbody>${data.weekly.map(w => `<tr>
-                    <td style="text-align:left">${formatDate(w.week_start)}</td>
-                    <td>${w.booking_count}</td>
-                    <td class="fin-amount-income">${formatMoney(w.expected_revenue)}</td>
+                    <td style="text-align:left">${escapeHtml(formatDate(w.week_start))}</td>
+                    <td>${Number(w.booking_count)}</td>
+                    <td class="fin-amount-income">${w.expected_outstanding == null ? 'Недоступно' : formatMoney(w.expected_outstanding)}</td>
                 </tr>`).join('')}</tbody>
             </table></div>`;
         }
@@ -3382,13 +3420,14 @@ async function loadForecast() {
         // Historical pattern
         if (data.historicalAverage && data.historicalAverage.length > 0) {
             const DOW = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-            html += `<div style="margin-top:16px"><h4 style="font-weight:800;margin-bottom:8px">Середній дохід по днях тижня (останні 90 днів)</h4>
+            html += `<div style="margin-top:16px"><h4 style="font-weight:800;margin-bottom:8px">Середня вартість бронювань за днями тижня (останні 90 днів)</h4>
+                <p class="fin-category-note">Враховано всі календарні дні, зокрема дні без бронювань. Відсутність запису не підтверджує, що заклад працював без продажів. Це вартість бронювань, а не фактично отримані гроші.</p>
                 <div class="fin-table-wrap"><table class="fin-monthly-table">
-                <thead><tr><th style="text-align:left">День</th><th>Середній дохід</th><th>Середня к-сть</th></tr></thead>
+                <thead><tr><th style="text-align:left">День</th><th>Середня вартість</th><th>Середня к-сть</th></tr></thead>
                 <tbody>${data.historicalAverage.map(h => `<tr>
-                    <td style="text-align:left">${DOW[h.dow] || h.dow}</td>
+                    <td style="text-align:left">${DOW[Number(h.dow)] || '—'}</td>
                     <td class="fin-amount-income">${formatMoney(h.avg_revenue)}</td>
-                    <td>${h.avg_count}</td>
+                    <td>${Number(h.avg_count).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}</td>
                 </tr>`).join('')}</tbody>
             </table></div></div>`;
         }
@@ -3396,6 +3435,7 @@ async function loadForecast() {
         container.innerHTML = html;
     } catch (err) {
         console.error('Failed to load forecast', err);
+        if (current()) showFinancePanelError(container, loadForecast);
     }
 }
 
@@ -3403,7 +3443,14 @@ async function loadForecast() {
 // v30.6: ENHANCED P&L REPORT
 // ==========================================
 
+let pnlRequestGeneration = 0;
 async function loadPnlReport() {
+    const generation = ++pnlRequestGeneration;
+    const business = financeActorBusinessKey();
+    const container = document.getElementById('pnlContent');
+    if (!container) return;
+    container.innerHTML = '<p role="status">Завантаження P&L…</p>';
+    const current = () => generation === pnlRequestGeneration && business === financeActorBusinessKey();
     try {
         const year = document.getElementById('pnlYear')?.value || new Date().getFullYear();
         const month = document.getElementById('pnlMonth')?.value || '';
@@ -3411,17 +3458,20 @@ async function loadPnlReport() {
         if (month) url += `&month=${month}`;
 
         const data = await apiRequest('GET', url);
-        const container = document.getElementById('pnlContent');
-        if (!container) return;
+        if (!current()) return;
+        if (!data?.summary || !['totalIncome', 'totalExpenses', 'grossProfit', 'margin', 'previousIncome', 'previousExpenses', 'previousProfit'].every(key =>
+            data.summary[key] != null && Number.isFinite(Number(data.summary[key])))
+            || data.bookingRevenue == null || !Number.isFinite(Number(data.bookingRevenue))
+            || !Array.isArray(data.revenue) || !Array.isArray(data.expenses)) throw new Error('Invalid P&L response');
 
         const s = data.summary;
-        const incChange = s.incomeChange;
-        const expChange = s.expenseChange;
+        const incChange = Number(s.incomeChange) || 0;
+        const expChange = Number(s.expenseChange) || 0;
 
         let html = `<div class="fin-stats">
             <div class="fin-stat-card fin-stat-income">
                 <div class="fin-stat-value">${formatMoney(s.totalIncome)}</div>
-                <div class="fin-stat-label">Виручка ${incChange !== 0 ? `<span style="color:${incChange >= 0 ? '#10B981' : '#EF4444'}">(${incChange >= 0 ? '+' : ''}${incChange}%)</span>` : ''}</div>
+                <div class="fin-stat-label">Доходи за обліком ${incChange !== 0 ? `<span style="color:${incChange >= 0 ? '#10B981' : '#EF4444'}">(${incChange >= 0 ? '+' : ''}${incChange}%)</span>` : ''}</div>
             </div>
             <div class="fin-stat-card fin-stat-expense">
                 <div class="fin-stat-value">${formatMoney(s.totalExpenses)}</div>
@@ -3429,12 +3479,18 @@ async function loadPnlReport() {
             </div>
             <div class="fin-stat-card fin-stat-profit">
                 <div class="fin-stat-value">${formatMoney(s.grossProfit)}</div>
-                <div class="fin-stat-label">Чистий прибуток (маржа ${s.margin}%)</div>
+                <div class="fin-stat-label">Результат за обліком (маржа ${Number(s.margin)}%)</div>
             </div>
             <div class="fin-stat-card fin-stat-bookings">
                 <div class="fin-stat-value">${formatMoney(data.bookingRevenue)}</div>
-                <div class="fin-stat-label">Виручка з бронювань</div>
+                <div class="fin-stat-label">Вартість підтверджених бронювань</div>
             </div>
+        </div><div class="fin-category-note">
+            <p><strong>${formatMoney(s.totalIncome)} − ${formatMoney(s.totalExpenses)} = ${formatMoney(s.grossProfit)}</strong> — доходи мінус витрати фінансового журналу.</p>
+            <p>Період обліку: ${escapeHtml(formatDate(data.period?.from))} — ${escapeHtml(formatDate(data.period?.to))}; основа — дата визнання операції, а за її відсутності дата платежу.
+            Результат включає лише внесені доходи й витрати та не підтверджує повноту всіх витрат бізнесу.</p>
+            <p>Вартість бронювань — довідкова повна ціна підтверджених основних бронювань за датою заходу.
+            Різниця з доходами журналу не є боргом або автоматичним доказом помилки; потрібна звірка окремих записів.</p>
         </div>`;
 
         // Revenue breakdown
@@ -3467,6 +3523,8 @@ async function loadPnlReport() {
 
         // Previous period comparison
         html += `<div class="fin-chart"><h4>Порівняння з попереднім періодом</h4>
+            <p class="fin-category-note">${escapeHtml(formatDate(data.previousPeriod?.from))} — ${escapeHtml(formatDate(data.previousPeriod?.to))}.
+                Порівнюються повні календарні місяці або роки. Поточний незавершений період містить лише вже внесені операції.</p>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center">
                 <div><div style="font-size:12px;color:var(--gray-500)">Попередній дохід</div><div style="font-weight:800">${formatMoney(s.previousIncome)}</div></div>
                 <div><div style="font-size:12px;color:var(--gray-500)">Попередні витрати</div><div style="font-weight:800">${formatMoney(s.previousExpenses)}</div></div>
@@ -3477,6 +3535,7 @@ async function loadPnlReport() {
         container.innerHTML = html;
     } catch (err) {
         console.error('Failed to load P&L', err);
+        if (current()) showFinancePanelError(container, loadPnlReport);
     }
 }
 
@@ -3672,6 +3731,7 @@ function formatCurrencyRate(value) {
 
 function formatCurrencyUpdatedAt(value) {
     if (!value) return 'оновлення не вказано';
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(String(value))) return String(value);
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return String(value);
     return parsed.toLocaleString('uk-UA', {
@@ -3683,15 +3743,23 @@ function formatCurrencyUpdatedAt(value) {
     });
 }
 
+let currencyRatesRequestGeneration = 0;
 async function loadCurrencyRatesModal() {
+    const generation = ++currencyRatesRequestGeneration;
+    const business = financeActorBusinessKey();
+    const current = () => generation === currencyRatesRequestGeneration && business === financeActorBusinessKey();
     const grid = document.getElementById('currencyRatesGrid');
     const meta = document.getElementById('currencyRatesMeta');
     if (grid) grid.innerHTML = '<div class="currency-rates-note" style="grid-column:1/-1">Завантажую курси...</div>';
     if (meta) meta.textContent = 'Оновлюю курси...';
     try {
-        const data = await apiRequest('GET', '/api/finance/currency/rates');
+        const data = await apiRequest('GET', '/api/dashboard/widgets/currency');
+        if (!current()) return;
+        if (!data || data.error) throw new Error('Курси НБУ тимчасово недоступні');
         const rates = data?.rates || {};
-        const cards = FINANCE_CURRENCY_ORDER.map(code => {
+        const available = FINANCE_CURRENCY_ORDER.filter(code => rates[code] != null && Number.isFinite(Number(rates[code])) && Number(rates[code]) > 0);
+        if (!available.length) throw new Error('Курси НБУ тимчасово недоступні');
+        const cards = available.map(code => {
             const value = rates[code];
             return `<article class="currency-rate-card">
                 <div class="currency-rate-code">${escapeHtml(code)}</div>
@@ -3700,11 +3768,36 @@ async function loadCurrencyRatesModal() {
             </article>`;
         }).join('');
         if (grid) grid.innerHTML = cards || '<div class="currency-rates-error" style="grid-column:1/-1">Курси тимчасово недоступні.</div>';
-        if (meta) meta.textContent = `База: ${escapeHtml(data?.base || 'UAH')} · ${formatCurrencyUpdatedAt(data?.updatedAt || data?.date)}`;
+        if (meta) meta.textContent = `НБУ · База: ${data?.base || 'UAH'} · Дата курсу: ${formatCurrencyUpdatedAt(data?.date)}`;
     } catch (err) {
+        if (!current()) return;
         if (grid) grid.innerHTML = `<div class="currency-rates-error" style="grid-column:1/-1">${escapeHtml(err.message || 'Не вдалося завантажити курси валют')}</div>`;
         if (meta) meta.textContent = 'Курси тимчасово недоступні';
     }
+}
+
+function invalidateFinanceReportingContext() {
+    // A permission lifecycle event can invalidate data without changing actor ID.
+    forecastRequestGeneration++;
+    pnlRequestGeneration++;
+    currencyRatesRequestGeneration++;
+    for (const [id, reload] of [['forecastContent', loadForecast], ['pnlContent', loadPnlReport]]) {
+        const container = document.getElementById(id);
+        if (!container) continue;
+        container.innerHTML = '<p role="status">Дані потрібно оновити після зміни бізнесу або доступу.</p>'
+            + '<button type="button" class="fin-load-retry">Оновити дані</button>';
+        container.querySelector('button').addEventListener('click', reload);
+    }
+    const grid = document.getElementById('currencyRatesGrid');
+    if (grid) grid.innerHTML = '<div class="currency-rates-note" role="status" style="grid-column:1/-1">'
+        + 'Бізнес або доступ змінився. Натисніть «Оновити», щоб завантажити курси.</div>';
+    const meta = document.getElementById('currencyRatesMeta');
+    if (meta) meta.textContent = 'Курси потребують оновлення';
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessContextHydrated',
+    'crmBusinessProfileChanged', 'permissions:lifecycle', 'workingRoleChanged', 'rolePreviewChanged']) {
+    window.addEventListener(eventName, invalidateFinanceReportingContext);
 }
 
 function openCurrencyRatesModal(options = {}) {
@@ -3725,44 +3818,109 @@ function openCurrencyRatesModal(options = {}) {
 // FINANCE ACCOUNTS (v33.5)
 // ==========================================
 
+function canEditFinanceAccounts() {
+    return financeCanManageTransactions()
+        && (typeof canWriteCrmBusinessScope !== 'function' || canWriteCrmBusinessScope());
+}
+
+function renderFinanceAccounts() {
+    const container = document.getElementById('accountsList');
+    if (!container) return;
+    const canEdit = canEditFinanceAccounts();
+    const addButton = document.getElementById('addFinanceAccountBtn');
+    if (addButton) addButton.hidden = !canEdit;
+    if (accountDataScope !== financeActorBusinessKey()) {
+        container.replaceChildren();
+        return;
+    }
+    if (!financeAccounts.length) {
+        container.innerHTML = '<p class="fin-category-note" role="status">Рахунків ще немає</p>';
+        return;
+    }
+    container.innerHTML = financeAccounts.map(account => {
+        const id = Number(account.id);
+        const typeLabel = { cash: 'Готівка', card: 'Карта', bank: 'Банк', personal: 'Особистий' }[account.type] || account.type;
+        const disabled = pendingAccountChanges.has(`${accountDataScope}:${id}`) ? ' disabled' : '';
+        return `<article class="fin-stat-card fin-account-card">
+            <span class="fin-account-icon" aria-hidden="true">${escapeHtml(account.emoji || '💳')}</span>
+            <div class="fin-account-details">
+                <strong>${escapeHtml(account.name)}</strong>
+                <p class="fin-category-note">${escapeHtml(typeLabel)}${account.description ? ' · ' + escapeHtml(account.description) : ''}</p>
+            </div>
+            ${canEdit && Number.isSafeInteger(id) ? `<div class="fin-account-actions">
+                <button type="button" class="btn-page-ghost" onclick="openEditAccountModal(${id})" aria-label="Редагувати рахунок ${escapeHtml(account.name)}"${disabled}>Редагувати</button>
+                <button type="button" class="btn-page-ghost" onclick="toggleAccount(${id}, false)" aria-label="Архівувати рахунок ${escapeHtml(account.name)}"${disabled}>Архівувати</button>
+            </div>` : ''}
+        </article>`;
+    }).join('');
+}
+
+function invalidateFinanceAccountContext() {
+    // Permission lifecycle changes can invalidate reads without changing actor ID.
+    financeAccounts = [];
+    accountDataScope = '';
+    accountRequestGeneration++;
+    renderFinanceAccounts();
+    if (FinState.currentTab === 'accounts') void loadAccounts();
+}
+
+for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessContextHydrated',
+    'crmBusinessProfileChanged', 'permissions:lifecycle', 'workingRoleChanged', 'rolePreviewChanged']) {
+    window.addEventListener(eventName, invalidateFinanceAccountContext);
+}
+
 async function loadAccounts() {
     const container = document.getElementById('accountsList');
     if (!container) return;
+    const generation = ++accountRequestGeneration;
+    const scope = financeActorBusinessKey();
+    accountDataScope = scope;
+    financeAccounts = [];
+    renderFinanceAccounts();
+    container.innerHTML = '<p class="fin-category-note" role="status">Завантаження рахунків…</p>';
     try {
         const data = await apiRequest('GET', '/api/finance/accounts');
-        const accounts = data.accounts || [];
-        if (!accounts.length) {
-            container.innerHTML = '<p style="color:var(--gray-400);text-align:center;padding:24px">Рахунків ще немає</p>';
-            return;
-        }
-        container.innerHTML = accounts.map(a => {
-            const typeLabel = { cash: 'Готівка', card: 'Карта', bank: 'Банк', personal: 'Особистий' }[a.type] || a.type;
-            return `<div class="fin-stat-card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;border-left:3px solid ${a.type === 'cash' ? '#10B981' : a.type === 'card' ? '#6366F1' : '#F59E0B'}">
-                <span style="font-size:24px">${escapeHtml(a.emoji)}</span>
-                <div style="flex:1">
-                    <div style="font-weight:700">${escapeHtml(a.name)}</div>
-                    <div style="font-size:12px;color:var(--gray-400)">${typeLabel}${a.description ? ' · ' + escapeHtml(a.description) : ''}</div>
-                </div>
-                <button class="btn-page-ghost" onclick="toggleAccount(${parseInt(a.id, 10)}, false)" title="Деактивувати" style="font-size:16px">🗑️</button>
-            </div>`;
-        }).join('');
+        if (generation !== accountRequestGeneration || scope !== financeActorBusinessKey()) return;
+        if (!Array.isArray(data?.accounts)) throw new Error('Invalid account list');
+        financeAccounts = data.accounts;
+        renderFinanceAccounts();
     } catch (err) {
-        container.innerHTML = '<p style="color:#EF4444;text-align:center">Помилка завантаження</p>';
+        if (generation !== accountRequestGeneration || scope !== financeActorBusinessKey()) return;
+        container.innerHTML = '<p class="fin-category-error" role="alert">Не вдалося завантажити рахунки. <button type="button" class="btn-page-ghost" onclick="loadAccounts()">Спробувати ще раз</button></p>';
     }
 }
 
-function openAddAccountModal() {
-    if (accountEditor.busy || !financeCanManageTransactions()
-        || (typeof canWriteCrmBusinessScope === 'function' && !canWriteCrmBusinessScope())) return;
-    accountEditor = { scope: financeActorBusinessKey(), busy: false };
+function openAddAccountModal(id = null) {
+    if (accountEditor.busy || !canEditFinanceAccounts()) return;
+    const scope = financeActorBusinessKey();
+    const account = id === null ? null : financeAccounts.find(item => Number(item.id) === Number(id));
+    if (id !== null && (!account || accountDataScope !== scope || pendingAccountChanges.has(`${scope}:${Number(id)}`))) return;
+    accountEditor = { scope, busy: false, id: account?.id || null };
     const modal = document.getElementById('addAccountModal');
-    document.getElementById('accName').value = '';
-    document.getElementById('accEmoji').value = '💳';
-    document.getElementById('accType').value = 'cash';
-    document.getElementById('accDescription').value = '';
+    document.getElementById('financeAccountTitle').textContent = account ? 'Редагувати рахунок' : 'Новий рахунок';
+    document.getElementById('financeAccountNote').hidden = !account;
+    document.getElementById('accName').value = account?.name || '';
+    const emojiSelect = document.getElementById('accEmoji');
+    const emoji = account?.emoji || '💳';
+    if (![...emojiSelect.options].some(option => option.value === emoji)) emojiSelect.add(new Option(emoji, emoji));
+    emojiSelect.value = emoji;
+    const typeSelect = document.getElementById('accType');
+    [...typeSelect.options].filter(option => !['cash', 'card', 'bank'].includes(option.value)).forEach(option => option.remove());
+    const type = account?.type || 'cash';
+    if (![...typeSelect.options].some(option => option.value === type)) typeSelect.add(new Option(type, type));
+    typeSelect.value = type;
+    typeSelect.disabled = Boolean(account);
+    document.getElementById('accDescription').value = account?.description || '';
     _accountModalInitialState = getAccountModalState();
-    modal?.classList.remove('hidden');
+    if (typeof openModal === 'function') openModal(modal, document.activeElement, {
+        initialFocus: '#accName', onRequestClose: () => closeAddAccountModal(false)
+    });
+    else { modal?.classList.remove('hidden'); document.getElementById('accName').focus(); }
     if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+}
+
+function openEditAccountModal(id) {
+    openAddAccountModal(id);
 }
 
 async function closeAddAccountModal(force = false) {
@@ -3771,7 +3929,8 @@ async function closeAddAccountModal(force = false) {
     if (!modal) return true;
 
     const closeNow = () => {
-        modal.classList.add('hidden');
+        if (typeof closeModal === 'function') closeModal(modal, { force: true });
+        else modal.classList.add('hidden');
         _accountModalInitialState = getAccountModalState();
     };
 
@@ -3799,8 +3958,7 @@ async function closeAddAccountModal(force = false) {
 }
 
 async function saveAccount() {
-    if (accountEditor.busy || !financeCanManageTransactions()
-        || (typeof canWriteCrmBusinessScope === 'function' && !canWriteCrmBusinessScope())) return;
+    if (accountEditor.busy || !canEditFinanceAccounts()) return;
     if (accountEditor.scope !== financeActorBusinessKey()) {
         showNotification('Бізнес або користувач змінився. Закрийте форму й відкрийте її заново.', 'error'); return;
     }
@@ -3814,13 +3972,16 @@ async function saveAccount() {
     controls.forEach(([control]) => { control.disabled = true; });
     let saved = false;
     try {
-        const result = await apiRequest('POST', '/api/finance/accounts', {
+        const body = {
             name,
             emoji: document.getElementById('accEmoji')?.value || '💳',
-            type: document.getElementById('accType')?.value,
             description: document.getElementById('accDescription')?.value?.trim() || null
-        });
-        if (!result?.success || !result.account?.id) throw new Error('Сервер не підтвердив створення рахунку. Перевірте список рахунків перед повтором.');
+        };
+        if (!editor.id) body.type = document.getElementById('accType')?.value;
+        const result = await apiRequest(editor.id ? 'PATCH' : 'POST', `/api/finance/accounts${editor.id ? `/${editor.id}` : ''}`, body);
+        if (!result?.success || !result.account?.id || (editor.id && Number(result.account.id) !== Number(editor.id))) {
+            throw new Error('Сервер не підтвердив збереження рахунку. Перевірте список рахунків перед повтором.');
+        }
         if (editor !== accountEditor || editor.scope !== financeActorBusinessKey()) {
             showNotification('Результат стосується попереднього бізнесу або користувача. Чернетку збережено.', 'error'); return;
         }
@@ -3835,20 +3996,33 @@ async function saveAccount() {
     }
     if (saved) {
         await closeAddAccountModal(true);
-        showNotification('Рахунок додано!');
+        showNotification(editor.id ? 'Рахунок оновлено' : 'Рахунок додано!');
         loadAccounts();
         if (manualMoneyWorkspace) void manualMoneyWorkspace.refresh();
     }
 }
 
 async function toggleAccount(id, active) {
+    const scope = financeActorBusinessKey();
+    const account = financeAccounts.find(item => Number(item.id) === Number(id));
+    const pendingKey = `${scope}:${Number(id)}`;
+    if (!account || accountDataScope !== scope || !canEditFinanceAccounts() || pendingAccountChanges.has(pendingKey)) return;
+    pendingAccountChanges.add(pendingKey);
+    renderFinanceAccounts();
     try {
-        if (!active && !await confirmModal('Деактивувати рахунок?', { type: 'danger' })) return;
-        await apiRequest('PATCH', `/api/finance/accounts/${id}`, { isActive: active });
+        if (!active && !await confirmModal(`Архівувати рахунок «${account.name}»? Історія операцій збережеться.`, { type: 'warning' })) return;
+        if (scope !== financeActorBusinessKey() || accountDataScope !== scope || !canEditFinanceAccounts()) return;
+        const result = await apiRequest('PATCH', `/api/finance/accounts/${Number(id)}`, { isActive: active });
+        if (!result?.success || Number(result.account?.id) !== Number(id)) throw new Error('Сервер не підтвердив зміну рахунку. Оновіть список перед повтором.');
+        if (scope !== financeActorBusinessKey()) return;
         showNotification(active ? 'Рахунок активовано' : 'Рахунок деактивовано');
-        loadAccounts();
+        await loadAccounts();
+        if (manualMoneyWorkspace) void manualMoneyWorkspace.refresh();
     } catch (err) {
-        showNotification(err.message || 'Помилка', 'error');
+        if (scope === financeActorBusinessKey()) showNotification(err.message || 'Помилка', 'error');
+    } finally {
+        pendingAccountChanges.delete(pendingKey);
+        if (scope === financeActorBusinessKey() && financeAccounts.length) renderFinanceAccounts();
     }
 }
 

@@ -451,9 +451,20 @@ function renderDealsLifecycle(data) {
     const el = document.getElementById('dealsLifecycleContent');
     if (!el) return;
     if (!data) { el.innerHTML = ''; return; }
-    const snapshotOnly = data.meta?.reportability === 'snapshot-only' || data.meta?.stageTimestampTruth !== true;
-    const maxVal = Math.max(...(data.trend || []).map(d => Math.max(d.accepted || 0, d.closed || 0)), 1);
-    const bars = (data.trend || []).map(d => {
+    const recordedEvents = data.recordedEvents?.meta?.coverage === 'recorded-transitions-only'
+        && Array.isArray(data.recordedEvents.trend) ? data.recordedEvents : null;
+    const report = recordedEvents || data;
+    const snapshotOnly = !recordedEvents && (data.meta?.reportability === 'snapshot-only' || data.meta?.stageTimestampTruth !== true);
+    const monthly = (report.trend || []).length > 62;
+    const trend = monthly ? Object.values((report.trend || []).reduce((groups, row) => {
+        const month = String(row.date || '').slice(0, 7);
+        if (!groups[month]) groups[month] = { date: month, accepted: 0, closed: 0 };
+        groups[month].accepted += Number(row.accepted) || 0;
+        groups[month].closed += Number(row.closed) || 0;
+        return groups;
+    }, {})) : (report.trend || []);
+    const maxVal = Math.max(...trend.map(d => Math.max(d.accepted || 0, d.closed || 0)), 1);
+    const bars = trend.map(d => {
         const acceptedH = Math.max(((d.accepted || 0) / maxVal) * 120, d.accepted ? 2 : 0);
         const closedH = Math.max(((d.closed || 0) / maxVal) * 120, d.closed ? 2 : 0);
         return `<div class="an-bar-group">
@@ -461,29 +472,31 @@ function renderDealsLifecycle(data) {
                 <div class="an-bar blue" style="height:${acceptedH}px" title="Прийнято: ${d.accepted || 0}"></div>
                 <div class="an-bar green" style="height:${closedH}px" title="Закрито: ${d.closed || 0}"></div>
             </div>
-            <div class="an-bar-label">${String(d.date || '').substring(8)}</div>
+            <div class="an-bar-label">${escapeHtml(monthly ? d.date : String(d.date || '').slice(5))}</div>
         </div>`;
     }).join('');
 
     el.innerHTML = `
         <div class="an-section">
-            <h3 class="an-section-title">${snapshotOnly ? 'Поточні статуси угод' : 'Прийняті та закриті угоди'}</h3>
+            <h3 class="an-section-title">${recordedEvents ? 'Зафіксовані переходи угод' : snapshotOnly ? 'Поточні статуси угод' : 'Прийняті та закриті угоди'}</h3>
             <div class="an-charts-row">
                 <div class="an-chart-container">
                     <div class="an-chart-title">${fmtDate(data.period?.from)} — ${fmtDate(data.period?.to)}</div>
                     <div class="an-kpi-grid an-kpi-grid--compact">
-                        <div class="an-kpi-card blue"><div class="an-kpi-label">Прийнято</div><div class="an-kpi-value">${fmtNum(data.accepted)}</div></div>
-                        <div class="an-kpi-card green"><div class="an-kpi-label">Закрито</div><div class="an-kpi-value">${fmtNum(data.closed)}</div></div>
+                        <div class="an-kpi-card blue"><div class="an-kpi-label">${recordedEvents ? 'Вперше зафіксовано прийняття' : 'Прийнято'}</div><div class="an-kpi-value">${fmtNum(report.accepted)}</div></div>
+                        <div class="an-kpi-card green"><div class="an-kpi-label">${recordedEvents ? 'Вперше зафіксовано закриття' : 'Закрито'}</div><div class="an-kpi-value">${fmtNum(report.closed)}</div></div>
                     </div>
-                    <div class="an-helper-text">${snapshotOnly ? 'Показано поточні статуси угод. Історична конверсія поки недоступна.' : 'Події прийняття та закриття за обраний період.'}</div>
+                    <div class="an-helper-text">${recordedEvents ? 'Кожну угоду враховано один раз за першим записаним переходом відповідного типу. Журнал переходів неповний; відсутні події не відновлюємо з поточного статусу. Історична конверсія поки недоступна.' : snapshotOnly ? 'Показано поточні статуси угод. Історична конверсія поки недоступна.' : 'Події прийняття та закриття за обраний період.'}</div>
+                    ${recordedEvents ? `<p class="an-helper-text">Поточні статуси угод за датою угоди: ${fmtNum(data.accepted)} прийнято / ${fmtNum(data.closed)} закрито. Це окремий зріз, він може відрізнятися від журналу переходів.</p>` : ''}
                 </div>
                 <div class="an-chart-container">
-                    <div class="an-chart-title">${snapshotOnly ? 'Поточні статуси за датою угоди' : 'Динаміка за датами'}</div>
+                    <div class="an-chart-title">${snapshotOnly ? 'Поточні статуси за датою угоди' : recordedEvents ? 'Переходи за датою запису журналу' : 'Динаміка за датами'}${monthly ? ' · за місяцями' : ''}</div>
                     ${snapshotOnly ? '<p class="an-helper-text">Групування за датою угоди, не за часом переходу між статусами.</p>' : ''}
+                    ${recordedEvents ? '<p class="an-helper-text">Дата збережена в журналі без часового поясу. Нуль означає відсутність зафіксованих переходів, а не доведену відсутність угод.</p>' : ''}
                     <div class="an-bar-chart an-bar-chart--deals">${bars || '<div class="an-empty-state an-empty-state--chart">Немає даних</div>'}</div>
-                    ${(data.trend || []).length ? `<div class="an-chart-readout" data-chart="dealsLifecycle">${(data.trend || []).map(d => `
+                    ${trend.length ? `<div class="an-chart-readout" data-chart="dealsLifecycle">${trend.map(d => `
                         <span class="an-chart-readout-item">
-                            <b>${escapeHtml(String(d.date || '').substring(5, 10))}</b>
+                            <b>${escapeHtml(d.date)}</b>
                             <span>${fmtNum(d.accepted || 0)} прийнято / ${fmtNum(d.closed || 0)} закрито</span>
                         </span>
                     `).join('')}</div>` : ''}
@@ -503,6 +516,7 @@ function renderDealsLifecycle(data) {
 
 function renderComparison(data) {
     const el = document.getElementById('comparisonContent');
+    if (!el) return;
     if (!data || !data.metrics) { el.innerHTML = ''; return; }
 
     const fmtPeriod = (p) => `${fmtDate(p.from)} — ${fmtDate(p.to)}`;
@@ -514,6 +528,7 @@ function renderComparison(data) {
                 <div class="an-chart-title an-chart-title--spaced">
                     Поточний: ${fmtPeriod(data.current)} &nbsp;vs&nbsp; Попередній: ${fmtPeriod(data.previous)}
                 </div>
+                ${data.comparisonBasis ? `<p class="an-helper-text">${data.comparisonBasis === 'calendar-months' ? 'Повні календарні місяці порівнюються з такою самою кількістю попередніх календарних місяців.' : 'Обраний діапазон порівнюється з попереднім діапазоном такої самої тривалості у днях.'}</p>` : ''}
                 <table class="an-comp-table">
                     <thead>
                         <tr>

@@ -1516,7 +1516,7 @@
             <div id="tabAccounts" style="display:none">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
                     <h3 style="font-weight:800;margin:0">Рахунки</h3>
-                    <button type="button" class="btn-page-primary" onclick="openAddAccountModal()">+ Новий рахунок</button>
+                    <button type="button" id="addFinanceAccountBtn" class="btn-page-primary" onclick="openAddAccountModal()" hidden>+ Новий рахунок</button>
                 </div>
                 <div id="accountsList"></div>
             </div>
@@ -1788,10 +1788,10 @@
     </div>
 
     <!-- Account modal (v33.5) -->
-    <div id="addAccountModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Новий рахунок">
+    <div id="addAccountModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="financeAccountTitle">
         <div class="modal-content modal-medium" role="dialog" aria-modal="true">
             <span class="modal-close">&times;</span>
-            <h3>Новий рахунок</h3>
+            <h3 id="financeAccountTitle">Новий рахунок</h3>
             <div class="form-group">
                 <label for="accName">Назва *</label>
                 <input type="text" id="accName" placeholder="Каса, Privat...">
@@ -1822,6 +1822,7 @@
                 <label for="accDescription">Опис</label>
                 <input type="text" id="accDescription" placeholder="Опціонально">
             </div>
+            <p id="financeAccountNote" class="fin-category-note" hidden>Тип існуючого рахунку зберігається. Назва, іконка й опис оновляться у довіднику.</p>
             <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
                 <button type="button" class="btn-page-secondary" onclick="closeAddAccountModal(false)">Скасувати</button>
                 <button type="button" class="btn-page-primary" onclick="saveAccount()">Зберегти</button>
@@ -1866,6 +1867,7 @@
                 <div class="fin-category-actions">
                     <button type="button" id="archiveFinanceCategoryBtn" class="btn-page-secondary" hidden>Архівувати</button>
                     <button type="button" id="cancelFinanceCategoryBtn" class="btn-page-secondary">Скасувати</button>
+                    <button type="button" id="useFinanceCategoryBtn" class="btn-page-secondary" hidden>Використати категорію</button>
                     <button type="submit" id="saveFinanceCategoryBtn" class="btn-page-primary">Зберегти</button>
                 </div>
             </form>

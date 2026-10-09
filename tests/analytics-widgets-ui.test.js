@@ -13,6 +13,7 @@ function fixture(t) {
         <section class="an-chart-container"><div id="weekdayChart"></div></section>
         <section class="an-chart-container"><div id="segmentsChart"></div></section>
         <div id="dealsLifecycleContent"></div>
+        <div id="comparisonContent"></div>
     </body></html>`, { runScripts: 'outside-only', url: 'http://localhost/finance' });
     t.after(() => dom.window.close());
     dom.window.eval(source);
@@ -119,4 +120,48 @@ test('shared weekday and segment renderers tolerate unmounted host elements', t 
     document.getElementById('segmentsChart').remove();
     assert.doesNotThrow(() => widgets.renderWeekdayChart([]));
     assert.doesNotThrow(() => widgets.renderSegments({ total: 0 }));
+});
+
+test('recorded transitions render separately from current deal statuses without inventing conversion', t => {
+    const { document, widgets } = fixture(t);
+    widgets.renderDealsLifecycle({
+        accepted: 0, closed: 9, conversionRatio: 900, meta: { reportability: 'snapshot-only' },
+        period: { from: '2026-10-01', to: '2026-10-31' },
+        trend: [{ date: '2026-10-09', accepted: 0, closed: 9 }],
+        recordedEvents: { accepted: 3, closed: 2,
+            trend: [{ date: '2026-10-02', accepted: 3, closed: 2 }],
+            meta: { coverage: 'recorded-transitions-only', conversionAvailable: false } }
+    });
+    const chart = document.getElementById('dealsLifecycleContent');
+    assert.deepEqual([...chart.querySelectorAll('.an-kpi-value')].map(el => el.textContent), ['3', '2']);
+    assert.match(chart.textContent, /Зафіксовані переходи угод/);
+    assert.match(chart.textContent, /Журнал переходів неповний/);
+    assert.match(chart.textContent, /без часового поясу/);
+    assert.match(chart.textContent, /0 прийнято \/ 9 закрито/);
+    assert.match(chart.textContent, /2026-10-02/);
+    assert.doesNotMatch(chart.textContent, /900%|2026-10-09/);
+});
+
+test('long deal periods aggregate recorded counts by month with distinct full date labels', t => {
+    const { document, widgets } = fixture(t);
+    const trend = Array.from({ length: 90 }, (_, day) => ({ date: new Date(Date.UTC(2026, 0, day + 1)).toISOString().slice(0, 10), accepted: 1, closed: 0 }));
+    widgets.renderDealsLifecycle({ accepted: 0, closed: 0,
+        period: { from: '2026-01-01', to: '2026-03-31' },
+        recordedEvents: { accepted: 90, closed: 0, trend, meta: { coverage: 'recorded-transitions-only' } } });
+    const chart = document.getElementById('dealsLifecycleContent');
+    assert.equal(chart.querySelectorAll('.an-bar-group').length, 3);
+    assert.deepEqual([...chart.querySelectorAll('.an-bar-label')].map(el => el.textContent), ['2026-01', '2026-02', '2026-03']);
+    assert.match(chart.textContent, /за місяцями/);
+    assert.match(chart.querySelector('[data-chart="dealsLifecycle"]').textContent, /28 прийнято/);
+});
+
+test('comparison explains calendar versus equal-day ranges and tolerates unmounted content', t => {
+    const { document, widgets } = fixture(t);
+    const data = { current: { from: '2026-10-01', to: '2026-10-31' }, previous: { from: '2026-09-01', to: '2026-09-30' }, metrics: [] };
+    widgets.renderComparison({ ...data, comparisonBasis: 'calendar-months' });
+    assert.match(document.getElementById('comparisonContent').textContent, /попередніх календарних місяців/);
+    widgets.renderComparison({ ...data, comparisonBasis: 'equal-days' });
+    assert.match(document.getElementById('comparisonContent').textContent, /такої самої тривалості у днях/);
+    document.getElementById('comparisonContent').remove();
+    assert.doesNotThrow(() => widgets.renderComparison(data));
 });

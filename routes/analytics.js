@@ -11,6 +11,7 @@ const { createLogger } = require('../utils/logger');
 
 const { requireRole, requireAction } = require('../middleware/auth');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const { LEAD_PIPELINE_STAGE_ORDER } = require('../services/leadStageTransition');
 const {
     resolveBusinessScope,
     requireBusinessScope,
@@ -102,7 +103,15 @@ function businessScopeMeta(scope) {
 // HELPERS
 // ==========================================
 
-function isValidDate(str) { return /^\d{4}-\d{2}-\d{2}$/.test(str); }
+// Bound daily series and cached response size for every shared analytics range.
+const ANALYTICS_MAX_RANGE_DAYS = 3660;
+
+function isValidDate(str) {
+    if (typeof str !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+    if (Number(str.slice(0, 4)) < 1) return false;
+    const date = new Date(str + 'T00:00:00Z');
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === str;
+}
 
 function getDateRange(period) {
     // Use Intl to get Kyiv date parts without locale-dependent string parsing
@@ -129,20 +138,44 @@ function getDateRange(period) {
 }
 
 function getRequestDateRange(query = {}) {
-    let from = query.from, to = query.to;
-    if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
-        const range = getDateRange(query.period || 'month');
-        from = range.from; to = range.to;
+    const { from, to } = query;
+    if (from === undefined && to === undefined) return getDateRange(query.period || 'month');
+    if (!isValidDate(from) || !isValidDate(to) || from > to) {
+        const error = new Error('Оберіть коректні дати: початок періоду має бути не пізніше кінця.');
+        error.statusCode = 400;
+        throw error;
+    }
+    const days = (Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000 + 1;
+    if (days > ANALYTICS_MAX_RANGE_DAYS) {
+        const error = new Error('Період аналітики не може перевищувати 3660 днів. Оберіть коротший діапазон.');
+        error.statusCode = 400;
+        throw error;
     }
     return { from, to };
 }
 
 function getPrevRange(from, to) {
-    const f = new Date(from + 'T00:00:00'), t = new Date(to + 'T00:00:00');
-    const days = Math.round((t - f) / 86400000) + 1;
-    const pt = new Date(f); pt.setDate(pt.getDate() - 1);
-    const pf = new Date(pt); pf.setDate(pf.getDate() - days + 1);
-    return { from: pf.toISOString().split('T')[0], to: pt.toISOString().split('T')[0] };
+    const f = new Date(from + 'T00:00:00Z'), t = new Date(to + 'T00:00:00Z');
+    const endOfMonth = new Date(t);
+    endOfMonth.setUTCMonth(t.getUTCMonth() + 1, 0);
+    const pt = new Date(f.getTime() - 86400000);
+    let pf;
+    let basis = 'equal-days';
+    if (f.getUTCDate() === 1 && t.getUTCDate() === endOfMonth.getUTCDate()) {
+        const months = (t.getUTCFullYear() - f.getUTCFullYear()) * 12 + t.getUTCMonth() - f.getUTCMonth() + 1;
+        pf = new Date(f);
+        pf.setUTCMonth(f.getUTCMonth() - months);
+        basis = 'calendar-months';
+    } else {
+        const days = Math.round((t - f) / 86400000) + 1;
+        pf = new Date(f.getTime() - days * 86400000);
+    }
+    if (pf.getUTCFullYear() < 1) {
+        const error = new Error('Попередній період виходить за межі календаря. Оберіть пізнішу початкову дату.');
+        error.statusCode = 400;
+        throw error;
+    }
+    return { from: pf.toISOString().slice(0, 10), to: pt.toISOString().slice(0, 10), basis };
 }
 
 function growthPct(curr, prev) {
@@ -469,12 +502,7 @@ router.get('/overview', async (req, res) => {
     try {
         const businessScope = analyticsBusinessScope(req, res);
         if (!businessScope) return;
-        const period = req.query.period || 'month';
-        let from = req.query.from, to = req.query.to;
-        if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
-            const range = getDateRange(period);
-            from = range.from; to = range.to;
-        }
+        const { from, to } = getRequestDateRange(req.query);
         const prev = getPrevRange(from, to);
 
         const cacheKey = scopedAnalyticsCacheKey(req, 'overview', businessScope, from, to);
@@ -568,7 +596,7 @@ router.get('/overview', async (req, res) => {
         const hr = hrCurr.rows[0];
 
         const data = {
-            period: { from, to, prev: { from: prev.from, to: prev.to } },
+            period: { from, to, prev: { from: prev.from, to: prev.to }, comparisonBasis: prev.basis },
             businessScope: businessScopeMeta(businessScope),
             bookings: {
                 revenue: bc.revenue, total: bc.total, confirmed: bc.confirmed,
@@ -600,6 +628,7 @@ router.get('/overview', async (req, res) => {
         setCache(cacheKey, data);
         res.json(data);
     } catch (err) {
+        if (err.statusCode === 400) return res.status(400).json({ success: false, error: err.message });
         log.error('GET /overview error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -613,11 +642,7 @@ router.get('/charts', async (req, res) => {
     try {
         const businessScope = analyticsBusinessScope(req, res);
         if (!businessScope) return;
-        let from = req.query.from, to = req.query.to;
-        if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
-            const range = getDateRange(req.query.period || 'month');
-            from = range.from; to = range.to;
-        }
+        const { from, to } = getRequestDateRange(req.query);
 
         const cacheKey = scopedAnalyticsCacheKey(req, 'charts', businessScope, from, to);
         const cached = getCached(cacheKey);
@@ -722,6 +747,7 @@ router.get('/charts', async (req, res) => {
         setCache(cacheKey, data);
         res.json(data);
     } catch (err) {
+        if (err.statusCode === 400) return res.status(400).json({ success: false, error: err.message });
         log.error('GET /charts error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -735,11 +761,7 @@ router.get('/comparison', async (req, res) => {
     try {
         const businessScope = analyticsBusinessScope(req, res);
         if (!businessScope) return;
-        let from = req.query.from, to = req.query.to;
-        if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
-            const range = getDateRange(req.query.period || 'month');
-            from = range.from; to = range.to;
-        }
+        const { from, to } = getRequestDateRange(req.query);
         const prev = getPrevRange(from, to);
 
         const cacheKey = scopedAnalyticsCacheKey(req, 'comparison', businessScope, from, to);
@@ -834,6 +856,7 @@ router.get('/comparison', async (req, res) => {
         const data = {
             current: { from, to },
             previous: { from: prev.from, to: prev.to },
+            comparisonBasis: prev.basis,
             businessScope: businessScopeMeta(businessScope),
             metrics: comparison
         };
@@ -841,6 +864,7 @@ router.get('/comparison', async (req, res) => {
         setCache(cacheKey, data);
         res.json(data);
     } catch (err) {
+        if (err.statusCode === 400) return res.status(400).json({ success: false, error: err.message });
         log.error('GET /comparison error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -938,6 +962,59 @@ router.get('/conversion', async (req, res) => {
 });
 
 // GET /api/analytics/deals-lifecycle — accepted vs closed leads for selected range
+// Keep current-state snapshots separate from the partial durable transition log.
+async function loadRecordedDealEvents(businessScope, from, to) {
+    const { params, businessCondition } = scopedParams(businessScope, 'l', [from, to]);
+    const validStages = LEAD_PIPELINE_STAGE_ORDER.map(stage => `'${stage}'`).join(', ');
+    const result = await pool.query(`
+        WITH eligible_transitions AS (
+            SELECT l.id AS lead_id, li.created_at,
+                CASE WHEN li.details->>'newStage' IN ('deposit_received', 'waiting')
+                    THEN 'accepted' ELSE 'closed' END AS event_kind
+            FROM leads l
+            JOIN lead_interactions li ON li.lead_id = l.id
+            WHERE ${businessCondition}
+              AND ${SALES_LEAD_TYPE_SQL}
+              AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.id = l.booking_id AND NOT (${businessBookingSql('b')}))
+              AND li.type = 'status_change'
+              AND li.created_at IS NOT NULL
+              AND li.details->>'oldStage' IN (${validStages})
+              AND li.details->>'newStage' IN (${validStages})
+              AND (
+                  (li.details->>'newStage' IN ('deposit_received', 'waiting')
+                   AND li.details->>'oldStage' NOT IN ('deposit_received', 'waiting'))
+                  OR (li.details->>'newStage' IN ('completed', 'closed')
+                      AND li.details->>'oldStage' NOT IN ('completed', 'closed'))
+              )
+        ), first_events AS (
+            SELECT lead_id, event_kind, MIN(created_at)::date AS day
+            FROM eligible_transitions
+            GROUP BY lead_id, event_kind
+        ), days AS (
+            SELECT generate_series($1::date, $2::date, interval '1 day')::date AS day
+        )
+        SELECT days.day::text AS date,
+            COUNT(first_events.lead_id) FILTER (WHERE event_kind = 'accepted')::int AS accepted,
+            COUNT(first_events.lead_id) FILTER (WHERE event_kind = 'closed')::int AS closed
+        FROM days LEFT JOIN first_events ON first_events.day = days.day
+        GROUP BY days.day ORDER BY days.day
+    `, params);
+    return {
+        accepted: result.rows.reduce((sum, row) => sum + row.accepted, 0),
+        closed: result.rows.reduce((sum, row) => sum + row.closed, 0),
+        trend: result.rows,
+        meta: {
+            source: 'lead_interactions.status_change',
+            coverage: 'recorded-transitions-only',
+            dateBasis: 'lead_interactions.created_at::date',
+            timestampTimezone: 'not-recorded',
+            duplicateProtection: 'first-recorded-transition-per-lead-and-kind',
+            leadTypeBasis: 'current-quality-leads',
+            conversionAvailable: false
+        }
+    };
+}
+
 router.get('/deals-lifecycle', async (req, res) => {
     try {
         const businessScope = analyticsBusinessScope(req, res);
@@ -950,6 +1027,7 @@ router.get('/deals-lifecycle', async (req, res) => {
         const acceptedPredicate = `(COALESCE(l.pipeline_stage, '') IN ('deposit_received', 'waiting') OR COALESCE(l.status, '') = 'booked')`;
         const closedPredicate = `(COALESCE(l.pipeline_stage, '') IN ('completed', 'closed') OR COALESCE(l.status, '') = 'completed')`;
         const dateExpr = `COALESCE(l.booked_at::date, l.event_date::date, l.created_at::date)`;
+        const ordinaryLead = `NOT EXISTS (SELECT 1 FROM bookings b WHERE b.id = l.booking_id AND NOT (${businessBookingSql('b')}))`;
 
         const { params: totalsParams, businessCondition: totalsBusiness } = scopedParams(businessScope, 'l', [from, to]);
         const totals = await pool.query(`
@@ -963,6 +1041,7 @@ router.get('/deals-lifecycle', async (req, res) => {
               AND ${dateExpr} <= $2::date
               AND ${SALES_LEAD_TYPE_SQL}
               AND ${totalsBusiness}
+              AND ${ordinaryLead}
         `, totalsParams);
 
         const { params: trendParams, businessCondition: trendBusiness } = scopedParams(businessScope, 'l', [from, to]);
@@ -981,6 +1060,7 @@ router.get('/deals-lifecycle', async (req, res) => {
                   AND ${dateExpr} <= $2::date
                   AND ${SALES_LEAD_TYPE_SQL}
                   AND ${trendBusiness}
+                  AND ${ordinaryLead}
             )
             SELECT
                 days.day::text AS date,
@@ -1000,6 +1080,7 @@ router.get('/deals-lifecycle', async (req, res) => {
             WHERE ${dateExpr} >= $1::date
               AND ${dateExpr} <= $2::date
               AND ${classificationBusiness}
+              AND ${ordinaryLead}
             GROUP BY COALESCE(NULLIF(l.lead_type, ''), 'quality')
         `, classificationParams);
 
@@ -1024,6 +1105,7 @@ router.get('/deals-lifecycle', async (req, res) => {
             },
             conversionRatio: accepted > 0 ? Math.round((closed / accepted) * 1000) / 10 : 0,
             trend: trend.rows,
+            recordedEvents: await loadRecordedDealEvents(businessScope, from, to),
             meta: {
                 salesLeadType: 'quality',
                 excludedLeadTypes: ['spam', 'collaboration', 'informational', 'low_quality'],
@@ -1039,6 +1121,7 @@ router.get('/deals-lifecycle', async (req, res) => {
         setCache(cacheKey, data);
         res.json(data);
     } catch (err) {
+        if (err.statusCode === 400) return res.status(400).json({ success: false, error: err.message });
         log.error('GET /deals-lifecycle error', err);
         res.status(500).json({ success: false, error: 'Помилка звіту accepted-vs-closed' });
     }
@@ -1112,11 +1195,7 @@ router.get('/bookings', async (req, res) => {
     try {
         const businessScope = analyticsBusinessScope(req, res);
         if (!businessScope) return;
-        let from = req.query.from, to = req.query.to;
-        if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
-            const range = getDateRange(req.query.period || 'month');
-            from = range.from; to = range.to;
-        }
+        const { from, to } = getRequestDateRange(req.query);
         const cacheKey = scopedAnalyticsCacheKey(req, 'bookings', businessScope, from, to);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
@@ -1197,6 +1276,7 @@ router.get('/bookings', async (req, res) => {
         setCache(cacheKey, data);
         res.json(data);
     } catch (err) {
+        if (err.statusCode === 400) return res.status(400).json({ success: false, error: err.message });
         log.error('GET /bookings error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -1210,11 +1290,7 @@ router.get('/revenue', async (req, res) => {
     try {
         const businessScope = analyticsBusinessScope(req, res);
         if (!businessScope) return;
-        let from = req.query.from, to = req.query.to;
-        if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
-            const range = getDateRange(req.query.period || 'month');
-            from = range.from; to = range.to;
-        }
+        const { from, to } = getRequestDateRange(req.query);
         const cacheKey = scopedAnalyticsCacheKey(req, 'revenue', businessScope, from, to);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
@@ -1259,6 +1335,7 @@ router.get('/revenue', async (req, res) => {
         setCache(cacheKey, data);
         res.json(data);
     } catch (err) {
+        if (err.statusCode === 400) return res.status(400).json({ success: false, error: err.message });
         log.error('GET /revenue error', err);
         res.status(500).json({ error: 'Internal server error' });
     }

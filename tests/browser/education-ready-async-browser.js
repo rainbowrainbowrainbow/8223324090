@@ -330,6 +330,8 @@ async function main() {
     }));
     for(const lateError of [false,true]) await check(`reports-A-B-A-late-${lateError?'error':'success'}`,()=>pageFor(async page=>{
         await go(page,'reports');await reportReady(page);
+        // Keep the browser's real today() separate from the fixed disposable fixture clock.
+        await page.locator('#educationReportTo').fill('2026-10-03');await page.locator('#educationReportTo').press('Tab');await reportReady(page);
         const held=await holdOne(page,'**/api/education/reports?*',lateError);
         try{
             await page.locator('#educationReportRun').click();await held.arrived();

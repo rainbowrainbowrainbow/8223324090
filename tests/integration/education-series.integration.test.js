@@ -380,7 +380,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
     test('single lesson can be created, opened in canonical details, and edited', async () => {
         const title = `EDU single ${suffix}`;
         const created = await request('POST', '/api/bookings?businessContext=dar', token, {
-            date: utcDateAfter(9),
+            date: utcDateAfter(21),
             time: '14:05',
             duration: 45,
             lineId: 'edu-cabinet-1',
@@ -434,7 +434,7 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
     test('weekly series creates occurrences, preserves a single edit, opens details, and cancels future entries', async () => {
         const label = `EDU integration ${suffix}`;
         const booking = {
-            date: utcDateAfter(10),
+            date: utcDateAfter(22),
             time: '15:10',
             duration: 45,
             lineId: 'edu-cabinet-1',

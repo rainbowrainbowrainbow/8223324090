@@ -3549,8 +3549,13 @@ function showMainApp() {
     document.querySelectorAll('.sidebar-no-viewer').forEach(el => {
         el.classList.toggle('hidden', isViewer());
     });
-    // Permission visibility is separate from the visual constructor state.
-    setTimelinePermissionHidden('addLineBtn', !canAccess('create_booking'));
+    // Any Event Genix timeline user may request a Park animator through group approval.
+    const timelineContext = window.TimelineBusinessContext?.current?.();
+    const timelinePresentation = window.TimelineBusinessContext?.presentation?.();
+    const canRequestParkAnimator = timelineContext?.key === 'event_genix'
+        && timelinePresentation?.mode === 'park'
+        && !window.TimelineView?.isRooms?.();
+    setTimelinePermissionHidden('addLineBtn', !canAccess('create_booking') && !canRequestParkAnimator);
     // Timeline print and image export are available to every authenticated user.
     setTimelinePermissionHidden('exportTimelineBtn', false);
     setTimelinePermissionHidden('exportPdfBtn', false);

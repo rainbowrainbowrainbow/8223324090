@@ -114,7 +114,7 @@ test('invalid request ID fails before obtaining a database client', async () => 
     await assert.rejects(appendManualAnimatorLine(pool, date, 'bad-id'), error => error.statusCode === 400);
 });
 
-test('manual line route keeps role, booking capability, context and room-view guards', async () => {
+test('direct manual-line route is retired in favor of ParkRozvag approval', async () => {
     const router = require('../routes/lines');
     const handler = router.stack.find(layer => layer.route?.path === '/:date/manual').route.stack[0].handle;
     async function statusFor(user, { context = 'event_genix', view = 'animators', requestDate = date } = {}) {
@@ -129,8 +129,6 @@ test('manual line route keeps role, booking capability, context and room-view gu
         return res.statusCode;
     }
     assert.equal(await statusFor({ role: 'manager' }, { requestDate: 'invalid' }), 400);
-    assert.equal(await statusFor({ role: 'manager' }, { context: 'dar' }), 403);
-    assert.equal(await statusFor({ role: 'manager' }, { view: 'rooms' }), 409);
-    assert.equal(await statusFor({ role: 'animator' }), 403);
-    assert.equal(await statusFor({ role: 'manager', action_denylist: ['create_booking'] }), 403);
+    assert.equal(await statusFor({ role: 'manager' }), 410);
+    assert.equal(await statusFor({ role: 'animator' }), 410);
 });

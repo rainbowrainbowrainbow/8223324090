@@ -11,18 +11,15 @@ const {
 const { broadcastLineEvent } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
-const { resolveCapability } = require('../services/accountAccessPolicy');
-const { appendManualAnimatorLine, DIRECT_MANUAL_LINE_ID_PATTERN } = require('../services/manualAnimatorLine');
+const { DIRECT_MANUAL_LINE_ID_PATTERN } = require('../services/manualAnimatorLine');
 const {
     DEFAULT_TIMELINE_CONTEXT,
     timelineContextFromRequest,
     requireTimelineContext,
-    requireTimelineAction,
-    canUseTimelineAction
+    requireTimelineAction
 } = require('../services/timelineContext');
 const {
     getTimelineDisplaySettings,
-    normalizeTimelineDisplaySettings,
     listTimelineResources,
     resourceToLine,
     resourceTypeForDisplayMode,
@@ -180,46 +177,12 @@ router.use(authenticateToken);
 // Append one manual Park animator line. The legacy POST /:date remains settings-only
 // because it replaces the complete date roster.
 router.post('/:date/manual', async (req, res) => {
-    try {
-        const { date } = req.params;
-        if (!validateDate(date)) return res.status(400).json({ success: false, error: 'Invalid date format' });
-        const businessContext = timelineContextFromRequest(req);
-        if (!requireTimelineContext(req, res, businessContext)) return;
-        if (businessContext !== DEFAULT_TIMELINE_CONTEXT
-            || normalizeTimelineView(req.query.timelineView) === 'rooms') {
-            return res.status(409).json({ success: false, code: 'manual_animator_line_unavailable',
-                error: 'Manual animator lines are available only in the Event Genix animator timeline' });
-        }
-        const activeMembership = req.user?.activeBusinessMembership;
-        if (req.user?.businessMembershipAccess?.membershipEnabled
-            && activeMembership?.businessContext !== businessContext) {
-            return res.status(403).json({ success: false, error: 'Active business membership is required' });
-        }
-        const canCreateBooking = resolveCapability(req.user, 'create_booking', { type: 'action' }).allowed;
-        const canAddManualLine = req.user?.role === 'manager'
-            || canUseTimelineAction(req.user, businessContext, 'settings');
-        if (!canCreateBooking || !canAddManualLine) {
-            return res.status(403).json({ success: false, error: 'Manual animator line creation is not available for this user' });
-        }
-        // A mutation must fail closed if display settings cannot be read.
-        const displaySettings = await pool.query('SELECT value FROM settings WHERE key = $1',
-            [`timeline_display:${businessContext}`]);
-        const savedDisplay = displaySettings.rows[0]?.value;
-        const display = normalizeTimelineDisplaySettings(savedDisplay ? JSON.parse(savedDisplay) : {}, businessContext);
-        if (display.mode !== 'park') {
-            return res.status(409).json({ success: false, code: 'manual_animator_line_unavailable',
-                error: 'Manual animator lines are available only in Park mode' });
-        }
-        const { created, line } = await appendManualAnimatorLine(pool, date, req.body?.requestId);
-        if (created) broadcastLineEvent('line:updated', { date, businessContext }, req.user?.id?.toString());
-        return res.status(created ? 201 : 200).json({ success: true, created, line });
-    } catch (error) {
-        log.error('Error adding manual animator line', error);
-        return res.status(error.statusCode || 500).json({
-            success: false,
-            error: error.statusCode ? error.message : 'Internal server error'
-        });
-    }
+    if (!validateDate(req.params.date)) return res.status(400).json({ success: false, error: 'Invalid date format' });
+    return res.status(410).json({
+        success: false,
+        code: 'animator_approval_required',
+        error: 'Animator additions require approval in the ParkRozvag Telegram group'
+    });
 });
 
 router.get('/:date', async (req, res) => {
@@ -386,6 +349,14 @@ router.post('/:date', async (req, res) => {
                 `SELECT line_id FROM lines_by_date WHERE date = $1 AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2`,
                 [date, businessContext]
             );
+            const visibleLines = await getAnimatorTimelineLines(date, client);
+            const visibleLineIds = new Set(visibleLines.map(line => String(line.id)));
+            const addedLines = lines.filter(line => !visibleLineIds.has(String(line?.id || '')));
+            if (addedLines.length) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, code: 'animator_approval_required',
+                    error: 'Animator additions require approval in the ParkRozvag Telegram group' });
+            }
             const currentIds = new Set(current.rows.map(row => row.line_id).filter(id => DIRECT_MANUAL_LINE_ID_PATTERN.test(id)));
             const expectedIds = new Set(baseIds);
             if (currentIds.size !== expectedIds.size || [...currentIds].some(id => !expectedIds.has(id))) {

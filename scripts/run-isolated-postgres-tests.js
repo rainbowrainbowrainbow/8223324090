@@ -581,13 +581,22 @@ async function runSuite(testDb, testFile, suiteMode) {
         password: crypto.randomBytes(24).toString('base64url')
     };
     const serverEnv = buildServerEnvironment(testDb, port, credentials);
-    if (suiteMode === 'education-series'
+    const educationSeriesDirect = suiteMode === 'education-series'
         && ['tests/integration/education-series.integration.test.js',
-            'tests/integration/education-series.integration-acceptance.test.js'].includes(testFile)) {
+            'tests/integration/education-series.integration-acceptance.test.js'].includes(testFile);
+    const educationSeriesCi = suiteMode === 'education-close-series'
+        && testFile === 'tests/browser/education-close-pg-wrapper.js'
+        && process.env.EDU_CLOSE_PG_FILE === 'tests/integration/education-series.integration.test.js';
+    if (educationSeriesDirect || educationSeriesCi) {
         serverEnv.TZ = 'UTC';
         serverEnv.EDUCATION_SERIES_TEST_NOW = '2026-10-13T10:00:00.000Z';
+        // The CI wrapper inherits a report-only clock; series app/tests need one shared clock.
+        const nodeOptions = (serverEnv.NODE_OPTIONS || '').replace(
+            /(?:^|\s)--require=(?:"[^"]*education-ready-report-clock\.js"|[^\s"]*education-ready-report-clock\.js)(?=\s|$)/g,
+            ' '
+        ).trim();
         serverEnv.NODE_OPTIONS = [
-            serverEnv.NODE_OPTIONS || '',
+            nodeOptions,
             '--require=./tests/helpers/education-series-test-clock.js'
         ].filter(Boolean).join(' ');
     }

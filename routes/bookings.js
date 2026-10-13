@@ -4363,9 +4363,9 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
             return res.status(400).json({ success: false, error: 'Заняття не може переходити через опівніч' });
         }
         if (rejectBookingOutsideWorkingHours(res, candidate, { businessContext })) return;
-        const bookingDateTime = new Date(`${candidate.date}T${candidate.time}:00`);
-        if (bookingDateTime < new Date()) {
-            return res.status(400).json({ success: false, error: 'Неможливо створити заняття в минулому.' });
+        const pastValidationError = bookingPastValidationError(candidate);
+        if (pastValidationError) {
+            return res.status(400).json({ success: false, error: pastValidationError });
         }
         await hydrateBookingRoomFromTimelineResource(pool, candidate, businessContext);
         const roomResourceError = await validateBookingRoomResourceForWrite(pool, candidate, businessContext);

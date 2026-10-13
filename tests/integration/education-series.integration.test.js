@@ -26,7 +26,7 @@ function isolatedDatabase() {
 }
 
 function utcDateAfter(days) {
-    const date = new Date('2026-10-03T00:00:00Z');
+    const date = new Date();
     date.setUTCHours(0, 0, 0, 0);
     date.setUTCDate(date.getUTCDate() + days);
     return date.toISOString().slice(0, 10);
@@ -98,6 +98,45 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
 
     after(async () => {
         await pool?.end();
+    });
+
+    test('series past-time validation uses Kyiv wall time under a UTC Express process', async () => {
+        assert.equal(new Date().toISOString(), '2026-10-13T10:00:00.000Z',
+            'the isolated runner must provide the deterministic education-series test clock');
+        assert.equal(process.env.TZ, 'UTC', 'the actual-app regression must run in UTC');
+        assert.equal(new Date('2026-10-13T12:30:00').toISOString(), '2026-10-13T12:30:00.000Z',
+            'the UTC process must reproduce the legacy local-time parse');
+
+        const teacherId = await scopedTeacher(`past-time-${suffix}`, `Past-time teacher ${suffix}`);
+        const title = `EDU timezone past ${suffix}`;
+        const single = {
+            date: '2026-10-13', time: '12:30', duration: 30,
+            lineId: 'edu-cabinet-1', room: 'Кабінет 1',
+            label: title, category: 'education', skipNotification: true,
+            extraData: { educationLesson: {
+                mode: 'education_lesson', title, teacherId, teacherName: `Past-time teacher ${suffix}`
+            } }
+        };
+        const singleResponse = await request('POST', '/api/bookings?businessContext=dar', token, single);
+        const seriesResponse = await createBooking(token, {
+            ...single,
+            extraData: { educationLesson: {
+                ...single.extraData.educationLesson, seriesSize: 2, repeatEvery: 'daily'
+            } }
+        });
+        const persisted = await pool.query(
+            `SELECT id FROM bookings
+             WHERE business_context = 'dar'
+               AND extra_data->'educationLesson'->>'title' = $1`,
+            [title]
+        );
+
+        assert.equal(singleResponse.status, 400, JSON.stringify(singleResponse.body));
+        assert.match(singleResponse.body.error || '', /в минулому/i);
+        assert.equal(seriesResponse.status, 400,
+            `series status=${seriesResponse.status}; error=${seriesResponse.body.error}; persisted=${persisted.rows.length}`);
+        assert.match(seriesResponse.body.error || '', /в минулому/i);
+        assert.equal(persisted.rows.length, 0, 'a past series request must not persist any occurrence');
     });
 
     test('fixed calendar series cross month/year and Kyiv DST without shifting wall-clock time', async () => {

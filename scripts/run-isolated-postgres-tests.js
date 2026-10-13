@@ -581,6 +581,16 @@ async function runSuite(testDb, testFile, suiteMode) {
         password: crypto.randomBytes(24).toString('base64url')
     };
     const serverEnv = buildServerEnvironment(testDb, port, credentials);
+    if (suiteMode === 'education-series'
+        && ['tests/integration/education-series.integration.test.js',
+            'tests/integration/education-series.integration-acceptance.test.js'].includes(testFile)) {
+        serverEnv.TZ = 'UTC';
+        serverEnv.EDUCATION_SERIES_TEST_NOW = '2026-10-13T10:00:00.000Z';
+        serverEnv.NODE_OPTIONS = [
+            serverEnv.NODE_OPTIONS || '',
+            '--require=./tests/helpers/education-series-test-clock.js'
+        ].filter(Boolean).join(' ');
+    }
     if (testFile.includes('finance-money-movements.integration.test.js')
         || testFile.includes('finance-money-qa.integration.test.js')
         || testFile.includes('finance-qa-report-scope.test.js')

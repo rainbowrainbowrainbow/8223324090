@@ -2384,7 +2384,8 @@ async function apiGetBookings(date, options = {}) {
         }
         const response = await apiNetworkFetch(`${API_BASE}${path}`, {
             headers: getTimelineAuthHeaders(false),
-            signal: options.signal
+            signal: options.signal,
+            keepalive: options.keepalive === true
         });
         if (handleAuthError(response)) return null;
         if (!response.ok) {

@@ -140,7 +140,7 @@
         const timeout = global.setTimeout(() => controller.abort(), 20000);
         request.promise = (async () => {
         try {
-            const bookings = await global.getBookingsForDate(date, { throwOnError: true, force: options.force === true, signal: controller.signal });
+            const bookings = await global.getBookingsForDate(date, { throwOnError: true, force: options.force === true, signal: controller.signal, keepalive: true });
             if (!current()) return;
             state.bookings = Array.isArray(bookings) ? bookings : [];
         } catch (error) {

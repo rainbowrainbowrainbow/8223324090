@@ -7803,7 +7803,8 @@ async function getBookingsForDate(date, options = {}) {
         throwOnError: true,
         businessContext: requestToken.businessContext,
         timelineView: requestToken.timelineView,
-        signal: requestToken.signal
+        signal: requestToken.signal,
+        keepalive: options.keepalive === true
     });
     if (!timelineRequestTokenIsCurrent(requestToken)) throw timelineStaleRequestError(requestToken);
     // v7.0.1: If API errored (null), preserve cached data instead of caching empty

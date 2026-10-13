@@ -21,7 +21,6 @@ const {
     pushDefaultTimelineBusinessContext
 } = require('../services/timelineBusinessScope');
 const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
-const { canAccessTimelineContext, timelineContextFromRequest } = require('../services/timelineContext');
 
 const log = createLogger('TelegramRoute');
 
@@ -355,6 +354,10 @@ router.get('/reminder/:date', authenticateToken, async (req, res) => {
 
 router.post('/ask-animator', authenticateToken, async (req, res) => {
     try {
+        // Keep this route dependency lazy: webhook callbacks and task actions do not
+        // need timeline context, and several isolated route consumers mock only
+        // DEFAULT_BUSINESS_CONTEXT from businessContext.
+        const { canAccessTimelineContext, timelineContextFromRequest } = require('../services/timelineContext');
         const businessContext = timelineContextFromRequest(req);
         if (businessContext !== DEFAULT_TIMELINE_CONTEXT) {
             return res.status(409).json({ success: false, reason: 'unsupported_business_context', error: 'Animator requests are available only for Event Genix' });

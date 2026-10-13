@@ -468,13 +468,14 @@ describe('Telegram callback single-use hardening', () => {
         assert.equal(dbMock.state.animators.get(1).status, 'pending');
         assert.equal(dbMock.state.lineInserts, 0);
         assert.equal(callsByMethod(telegram.calls, 'answerCallbackQuery').at(-1).body.show_alert, true);
-        assert.ok(hasClearedKeyboard(telegram.calls));
+        assert.ok(hasClearedKeyboard(telegram.calls, otherGroup.message_id));
 
         const rejected = await postWebhook(baseUrl, 'no_anim:1', { id: 'anim-wrong-chat-reject', message: otherGroup });
         assert.equal(rejected.status, 200);
         assert.equal(dbMock.state.animators.get(1).status, 'pending');
         assert.equal(dbMock.state.lineInserts, 0);
         assert.equal(callsByMethod(telegram.calls, 'answerCallbackQuery').at(-1).body.show_alert, true);
+        assert.ok(hasClearedKeyboard(telegram.calls, otherGroup.message_id));
     });
 
     it('uses expected task status tokens to reject stale task choices from older keyboards', async () => {

@@ -54,8 +54,12 @@
       "close01-existing-HR-staff-link-boundary-no-duplicate",
       "close01-legacy-no-ID-name-fallback-HTTP-SQL",
       "fixtures",
+      "astra-inactive-current-teacher-labels-preserve-assignment",
       "page-errors",
-      "close-card-nonempty-package-preserved-visible-UI-SQL"
+      "close-card-nonempty-package-preserved-visible-UI-SQL",
+      "astra-distinct-teacher-labels-and-action-names",
+      "astra-lesson-teacher-visible-label-preserves-canonical-name",
+      "astra-today-same-name-teacher-filter-visible-choice"
     ]
   },
   "groups": {
@@ -77,7 +81,8 @@
       "lesson-teacher-source-failure-and-retry",
       "inactive-assigned-teacher-and-omitted-field",
       "successful-create-list-failure-retry-retains-identity",
-      "page-errors"
+      "page-errors",
+      "astra-capacity-error-explains-recovery-in-Ukrainian"
     ]
   },
   "lifecycle": {
@@ -244,7 +249,21 @@
       "tablet-landscape-dark-week-topic-keyboard-canonical",
       "tablet-landscape-dark-canonical-core-without-duplicates",
       "reflow-200-light-week-topic-keyboard-canonical",
-      "reflow-200-light-canonical-core-without-duplicates"
+      "reflow-200-light-canonical-core-without-duplicates",
+      "desktop-1440-light-editor-time-controls-contained",
+      "desktop-1440-dark-editor-time-controls-contained",
+      "phone-320-light-editor-time-controls-contained",
+      "phone-320-dark-editor-time-controls-contained",
+      "iphone-390-light-editor-time-controls-contained",
+      "iphone-390-dark-editor-time-controls-contained",
+      "phone-landscape-light-editor-time-controls-contained",
+      "phone-landscape-dark-editor-time-controls-contained",
+      "tablet-768-light-editor-time-controls-contained",
+      "tablet-768-dark-editor-time-controls-contained",
+      "tablet-landscape-light-editor-time-controls-contained",
+      "tablet-landscape-dark-editor-time-controls-contained",
+      "reflow-200-light-editor-time-controls-contained",
+      "reflow-200-dark-editor-time-controls-contained"
     ],
     "profiles": [
       "desktop-1440",
@@ -320,6 +339,29 @@
     "requiredIds": [
       "fixtures",
       "close01-existing-HR-staff-link-boundary-no-duplicate",
+      "page-errors"
+    ]
+  },
+  "astraLayout": {
+    "classification": "VISIBLE_UI_BROWSER_EMULATION_GEOMETRY",
+    "suite": "astraLayout",
+    "file": "tests/browser/education-astra-layout-browser.js",
+    "requiredIds": [
+      "fixtures",
+      "desktop-1440-light-time-controls-contained",
+      "desktop-1440-dark-time-controls-contained",
+      "phone-320-light-time-controls-contained",
+      "phone-320-dark-time-controls-contained",
+      "phone-390-light-time-controls-contained",
+      "phone-390-dark-time-controls-contained",
+      "phone-landscape-light-time-controls-contained",
+      "phone-landscape-dark-time-controls-contained",
+      "tablet-768-light-time-controls-contained",
+      "tablet-768-dark-time-controls-contained",
+      "tablet-landscape-light-time-controls-contained",
+      "tablet-landscape-dark-time-controls-contained",
+      "reflow-200-light-time-controls-contained",
+      "reflow-200-dark-time-controls-contained",
       "page-errors"
     ]
   }

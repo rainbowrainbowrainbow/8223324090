@@ -221,7 +221,7 @@ async function saveGroup(context, input, groupId = null) {
                 'SELECT start_date::text AS start_date, end_date::text AS end_date FROM education_group_members WHERE group_id = $1 AND business_context = $2',
                 [group.id, context]
             );
-            if (maxConcurrent(members.rows) > capacity) throw new EducationGroupError('Capacity is below existing membership', 409);
+            if (maxConcurrent(members.rows) > capacity) throw new EducationGroupError('Місткість менша за кількість зарахованих дітей. Збільште місткість або завершіть участь дітей.', 409);
             const result = await db.query(
                 `UPDATE education_groups SET name = $3, teacher_id = $4, capacity = $5, updated_at = NOW()
                  WHERE id = $1 AND business_context = $2 RETURNING *`,
@@ -274,7 +274,7 @@ async function enrollChild(context, groupId, input) {
             && (!row.end_date || day(row.end_date) >= start));
         if (overlaps) throw new EducationGroupError('Child already belongs to this group during these dates', 409);
         if (maxConcurrent([...existing.rows, { start_date: start, end_date: end }]) > group.capacity) {
-            throw new EducationGroupError('Group capacity exceeded', 409);
+            throw new EducationGroupError('У групі немає вільних місць на ці дати. Змініть дати або збільште місткість.', 409);
         }
         const result = await db.query(
             `INSERT INTO education_group_members (business_context, group_id, child_id, start_date, end_date)

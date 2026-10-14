@@ -32,6 +32,7 @@ const profiles = [
 ].filter(p => !process.env.EDU_MOBILE_PROFILE || p.name === process.env.EDU_MOBILE_PROFILE);
 evidence.profiles = profiles;
 evidence.completedProfiles = [];
+evidence.completedProfileThemes = [];
 evidence.visibilityReads = [];
 let browser, context, page;
 async function proof() {
@@ -95,8 +96,19 @@ async function capture(name, rootSelector) {
             const key = el => el.id ? '#' + el.id : el.className || el.tagName;
             const overflow = [], controls = [], missingNames = [], tinyTextInputs = [], inputBoundaries = [];
             const canvas = document.createElement('canvas'), pixel = canvas.getContext('2d');
-            const rgb = color => { pixel.clearRect(0, 0, 1, 1); pixel.fillStyle = color; pixel.fillRect(0, 0, 1, 1); return [...pixel.getImageData(0, 0, 1, 1).data].slice(0, 3); };
-            const luminance = c => c.map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }).reduce((s, v, i) => s + v * [.2126, .7152, .0722][i], 0);
+            const rgb = color => { pixel.clearRect(0, 0, 1, 1); pixel.fillStyle = color; pixel.fillRect(0, 0, 1, 1); const c=[...pixel.getImageData(0, 0, 1, 1).data];return [c[0],c[1],c[2],c[3]/255]; };
+            const luminance = c => c.slice(0,3).map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }).reduce((s, v, i) => s + v * [.2126, .7152, .0722][i], 0);
+            const mix=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*(fg[3]??1)+bg[i]*(1-(fg[3]??1)));
+            const backgroundCache=new WeakMap();
+            function backgrounds(el){
+                if(!el)return [[255,255,255]];
+                if(backgroundCache.has(el))return backgroundCache.get(el);
+                const style=getComputedStyle(el);let colors=backgrounds(el.parentElement).map(bg=>mix(rgb(style.backgroundColor),bg));
+                const stops=[...style.backgroundImage.matchAll(/(?:rgba?|hsla?|color|oklab|oklch|lab|lch)\([^)]*\)|\btransparent\b|#[0-9a-f]{3,8}\b/gi)].map(m=>rgb(m[0]));
+                if(stops.length>1){const samples=[];for(let i=1;i<stops.length;i++)for(let step=0;step<=20;step++)samples.push(stops[i-1].map((v,j)=>v+(stops[i][j]-v)*step/20));colors=colors.flatMap(bg=>samples.map(fg=>mix(fg,bg)));}
+                colors=[...new Map(colors.map(c=>[c.join(','),c])).values()];backgroundCache.set(el,colors);return colors;
+            }
+            const ratio=(a,b)=>{const x=luminance(a),y=luminance(b);return(Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
             const named = el => Boolean(el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.labels?.length || el.textContent.trim() || el.getAttribute('title'));
             for (const root of roots) for (const el of [root, ...root.querySelectorAll('*')]) {
                 if (!visible(el)) continue;
@@ -110,8 +122,11 @@ async function capture(name, rootSelector) {
                     if (!named(el)) missingNames.push(key(el));
                     if (el.matches('input:not([type="checkbox"]):not([type="radio"]),select,textarea') && parseFloat(getComputedStyle(el).fontSize) < 16) tinyTextInputs.push(key(el));
                     if (el.matches('input:not([type="checkbox"]):not([type="radio"]),select,textarea')) {
-                        const style = getComputedStyle(el), a = luminance(rgb(style.borderTopColor)), b = luminance(rgb(style.backgroundColor));
-                        inputBoundaries.push({ selector: key(el), ratio: +((Math.max(a, b) + .05) / (Math.min(a, b) + .05)).toFixed(2) });
+                        const style=getComputedStyle(el),inside=backgrounds(el),outside=backgrounds(el.parentElement),border=rgb(style.borderTopColor);
+                        const under=style.backgroundClip.split(',')[0].trim()==='border-box'?inside:outside;
+                        const rendered=under.map(bg=>mix(border,bg));
+                        const measured=Math.min(...rendered.flatMap(edge=>[...inside,...outside].map(bg=>ratio(edge,bg))));
+                        inputBoundaries.push({selector:key(el),ratio:+measured.toFixed(2),border:style.borderTopColor,background:style.backgroundColor,backgroundClip:style.backgroundClip,rendered,inside,outside});
                     }
                 }
             }
@@ -183,7 +198,7 @@ async function trap(selector, name) {
     evidence.sourceHashes = hashes();
     browser = await playwright[engine].launch({ headless: true });
     evidence.browserVersion = browser.version();
-    for (const profile of profiles) {
+    for (const profile of profiles.flatMap(profile => ['light','dark'].map(theme => ({ ...profile, theme })))) {
         const deviceName = profile.name.startsWith('tablet') ? (engine === 'webkit' ? 'iPad Pro 11' : 'Galaxy Tab S4') : (engine === 'webkit' ? 'iPhone 13' : 'Pixel 5');
         const userAgent = profile.touch ? playwright.devices[deviceName].userAgent : undefined;
         context = await browser.newContext({ viewport: { width: profile.width, height: profile.height }, hasTouch: profile.touch, isMobile: profile.touch,
@@ -231,7 +246,7 @@ async function trap(selector, name) {
         await page.locator('#mainApp').waitFor({ state: 'visible', timeout: 45000 });
         await page.waitForFunction(date => document.getElementById('timelineDate')?.value === date && window.isAuthenticatedRuntimeReady?.()
             && document.querySelectorAll('[data-education-booking-id]').length === 4 && !window.EducationScheduleWorkspace.state.loading, m.anchorDate, { timeout: 45000 });
-        const theme = profile.name === 'iphone-390' || profile.name === 'tablet-landscape' ? 'dark' : 'light';
+        const theme = profile.theme;
         if (await page.evaluate(() => document.documentElement.dataset.theme) !== theme) await page.locator('#headerThemeToggle').click();
         await page.waitForFunction(theme => document.documentElement.dataset.theme === theme && document.body.classList.contains('dark-mode') === (theme === 'dark'), theme);
         const label = screen => profile.name + '-' + theme + '-' + screen;
@@ -368,6 +383,16 @@ async function trap(selector, name) {
         await check(label('card-focus-return'), async () => assert.equal(await card.evaluate(el => el === document.activeElement), true));
         await activate(card); await activate(page.locator('#bookingModal .btn-edit-booking'));
         await page.waitForFunction(() => document.getElementById('educationLessonDuration').value === '45' && !document.getElementById('bookingForm').inert);
+        await check(label('editor-time-controls-contained'),async()=>{
+            await page.locator('#bookingPanel').evaluate(el=>Promise.all(el.getAnimations({subtree:true}).filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{}))));
+            await page.locator('.booking-context-card').scrollIntoViewIfNeeded();
+            const geometry=await page.locator('.info-item--booking-time').evaluate(item=>{
+                const box=item.getBoundingClientRect();
+                return {left:box.left,right:box.right,controls:[...item.querySelectorAll('button,select')].map(el=>{const r=el.getBoundingClientRect();return {id:el.id,left:r.left,right:r.right,width:r.width,height:r.height};})};
+            });
+            for(const control of geometry.controls){assert.ok(control.left>=geometry.left-1&&control.right<=geometry.right+1,control.id+' must stay inside its column');assert.ok(control.width>=44&&control.height>=44,control.id+' keeps44px targets');}
+            return geometry;
+        });
         if (process.env.EDU_READY_STAGE === '08') {
             await page.locator('#educationLessonDate').scrollIntoViewIfNeeded();
             await check(label('visible-date-hydrated'), async () => {
@@ -421,7 +446,7 @@ async function trap(selector, name) {
             await activate(page.locator('[data-education-retry]')); await page.locator('.education-today-empty:not(button)').waitFor({ state: 'visible' });
         }
         await page.waitForLoadState('networkidle');
-        await page.unrouteAll({ behavior: 'wait' }); if (profile.name === 'desktop-1440') {
+        await page.unrouteAll({ behavior: 'wait' }); if (profile.name === 'desktop-1440' && theme === 'light') {
             await page.goto(base+'/?businessContext=event_genix&timelineView=animators&date='+m.anchorDate,{waitUntil:'domcontentloaded'});
             await page.locator('#mainApp').waitFor({state:'visible'});
             await page.waitForFunction(()=>window.TimelineBusinessContext?.presentation?.().mode==='park');
@@ -445,7 +470,8 @@ async function trap(selector, name) {
             await page.locator('#bookingSubmitBtn').scrollIntoViewIfNeeded(); await parkScreenshot('park-edit-'+engine);
         }
         await context.close();
-        evidence.completedProfiles.push(profile.name);
+        if (!evidence.completedProfiles.includes(profile.name)) evidence.completedProfiles.push(profile.name);
+        evidence.completedProfileThemes.push(profile.name + '-' + theme);
     }
     assert.deepEqual(await proof(), before, 'Read-only test mutated retained dataset');
     evidence.datasetUnchanged = true; evidence.preflight = before.preflight;

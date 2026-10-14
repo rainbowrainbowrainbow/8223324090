@@ -3002,15 +3002,22 @@ function setEducationTeacherOptions(teachers = []) {
     const current = select.value;
     const currentOption = select.selectedOptions[0]?.cloneNode(true);
     select.innerHTML = '<option value="">Без викладача</option>';
+    const teacherName = staff => staff.name || staff.fullName || staff.username || '';
+    const nameKey = staff => teacherName(staff).trim().toLocaleLowerCase('uk-UA');
+    const nameCounts = new Map();
+    for (const staff of teachers) nameCounts.set(nameKey(staff), (nameCounts.get(nameKey(staff)) || 0) + 1);
     teachers.forEach(staff => {
         const option = document.createElement('option');
         option.value = String(staff.id || staff.userId || staff.username || staff.name || '');
-        option.textContent = staff.name || staff.fullName || staff.username || `ID ${option.value}`;
-        option.dataset.staffName = option.textContent;
+        option.dataset.staffName = teacherName(staff) || `ID ${option.value}`;
+        option.textContent = option.dataset.staffName + (nameCounts.get(nameKey(staff)) > 1 ? ` · ID ${option.value}` : '');
         select.appendChild(option);
     });
     if (current) {
-        if (!Array.from(select.options).some(opt => opt.value === current) && currentOption) select.appendChild(currentOption);
+        if (!Array.from(select.options).some(opt => opt.value === current) && currentOption) {
+            currentOption.textContent = `${currentOption.dataset.staffName || currentOption.textContent} · ID ${current}`;
+            select.appendChild(currentOption);
+        }
         select.value = current;
     }
 }
@@ -3223,8 +3230,8 @@ function hydrateEducationLessonFields(booking = {}) {
             if (!Array.from(teacher.options).some(opt => opt.value === String(lesson.teacherId))) {
                 const opt = document.createElement('option');
                 opt.value = String(lesson.teacherId);
-                opt.textContent = lesson.teacherName || String(lesson.teacherId);
-                opt.dataset.staffName = opt.textContent;
+                opt.dataset.staffName = lesson.teacherName || String(lesson.teacherId);
+                opt.textContent = `${opt.dataset.staffName} · ID ${opt.value}`;
                 teacher.appendChild(opt);
             }
             teacher.value = String(lesson.teacherId);

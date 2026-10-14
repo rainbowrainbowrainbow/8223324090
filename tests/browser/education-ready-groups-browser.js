@@ -5,7 +5,7 @@ const path = require('node:path');
 const { Pool } = require('pg');
 const { chromium } = require(process.env.EDU_QA_PLAYWRIGHT);
 const viewport = process.env.EDU_READY_PHONE === 'true' ? { width: 390, height: 844 } : { width: 1440, height: 1000 };
-const { DATABASES, assertLocalTarget, seedDataset } = require('../../scripts/lib/education-ready-dataset');
+const { DATABASES, assertLocalTarget, seedDataset, preflight } = require('../../scripts/lib/education-ready-dataset');
 const { createResults } = require('../helpers/education-ready-results');
 assertLocalTarget('fixed');
 const base = process.env.TEST_URL;
@@ -82,6 +82,7 @@ async function main() {
         const auth = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: process.env.TEST_USER, password: process.env.TEST_PASS }) });
         assert.equal(auth.status, 200); const payload = await auth.json(); token = payload.accessToken || payload.token;
         manifest = (await seedDataset(pool, 'fixed')).manifest;
+        evidence.fixture={manifest,preflight:await preflight(pool,manifest)};
         for (const businessContext of ['dar', 'maysternya_doli']) await api(`/api/business/cabinet?businessContext=${businessContext}`, 200, 'PUT', { businessType: 'education', timelineMode: 'education', resourceModel: 'cabinet' });
         evidence.anchor = manifest.anchorDate; evidence.ids = manifest.ids;
     });
@@ -228,7 +229,7 @@ async function main() {
             assert.equal(member.length, 1); assert.equal(member[0].child_id, manifest.ids.children['child-0']);
             await search(page, 'Романюк'); await page.locator('#educationChildSelect').selectOption(String(manifest.ids.children['child-1']));
             await page.locator('#educationMemberStart').fill(manifest.anchorDate); await page.locator('#educationGroupEnrollForm button[type="submit"]').click();
-            await page.waitForFunction(() => document.getElementById('educationGroupsStatus').textContent === 'Group capacity exceeded');
+            await page.waitForFunction(() => document.getElementById('educationGroupsStatus').textContent === 'У групі немає вільних місць на ці дати. Змініть дати або збільште місткість.');
             assert.equal((await pool.query('SELECT count(*)::int n FROM education_group_members WHERE group_id=$1', [createdId])).rows[0].n, 1);
             assert.equal(await page.locator('#educationChildSelect').inputValue(), String(manifest.ids.children['child-1']));
             const end = new Date(`${manifest.anchorDate}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + 1); const endDate = end.toISOString().slice(0, 10);
@@ -243,10 +244,24 @@ async function main() {
             assert.deepEqual(await groupsSql([manifest.ids.groups.english]), unchanged);
             assert.equal(await page.locator('#educationGroupForm button[type="submit"]').isDisabled(), true); await shot(page, 'membership-archive');
         }), ['create-double-submit-and-retry']);
+        await check('astra-capacity-error-explains-recovery-in-Ukrainian', () => pageFor(async page => {
+            const id=manifest.ids.groups.english; await select(page,id);
+            const before=await groupsSql([id]);
+            await page.locator('#educationGroupCapacity').fill('5');
+            const response=page.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname==='/api/education/groups/'+id);
+            await page.locator('#educationGroupForm button[type="submit"]').click();
+            assert.equal((await response).status(),409);
+            await page.waitForFunction(()=>document.getElementById('educationGroupsStatus').dataset.state==='error');
+            const message=await page.locator('#educationGroupsStatus').innerText();
+            evidence.proofs.astraCapacity={message,unchanged:await groupsSql([id]),draft:await page.locator('#educationGroupCapacity').inputValue()};
+            await page.locator('#educationGroupsStatus').scrollIntoViewIfNeeded(); await shot(page,'astra-capacity-error');
+            assert.deepEqual(await groupsSql([id]),before); assert.equal(await page.locator('#educationGroupCapacity').inputValue(),'5');
+            assert.equal(message,'Місткість менша за кількість зарахованих дітей. Збільште місткість або завершіть участь дітей.');
+        }));
         await check('capacity-edit-rejects-too-small-keeps-draft', () => pageFor(async page => {
             await select(page, manifest.ids.groups.english); const before = await groupsSql([manifest.ids.groups.english]);
             await page.locator('#educationGroupCapacity').fill('5'); await page.locator('#educationGroupForm button[type="submit"]').click();
-            await page.waitForFunction(() => document.getElementById('educationGroupsStatus').textContent === 'Capacity is below existing membership');
+            await page.waitForFunction(() => document.getElementById('educationGroupsStatus').textContent === 'Місткість менша за кількість зарахованих дітей. Збільште місткість або завершіть участь дітей.');
             assert.equal(await page.locator('#educationGroupCapacity').inputValue(), '5'); assert.deepEqual(await groupsSql([manifest.ids.groups.english]), before);
             await page.locator('#educationGroupCapacity').fill('6'); await save(page); assert.deepEqual(await groupsSql([manifest.ids.groups.english]), before);
         }));

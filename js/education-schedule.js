@@ -56,14 +56,17 @@
         return state.bookings.filter(booking => Boolean(lessonFromBooking(booking)));
     }
 
-    function ensureFilterOptions(select, values, defaultLabel) {
+    function ensureFilterOptions(select, values, defaultLabel, distinguishIds = false) {
         if (!select) return;
         const selected = select.value;
         const unique = new Map();
         values.filter(item => item.value && item.label).forEach(item => unique.set(item.value, item.label));
+        const nameKey = label => label.trim().toLocaleLowerCase('uk-UA');
+        const nameCounts = new Map();
+        for (const label of unique.values()) nameCounts.set(nameKey(label), (nameCounts.get(nameKey(label)) || 0) + 1);
         select.innerHTML = `<option value="">${escapeHtml(defaultLabel)}</option>` + [...unique.entries()]
             .sort((a, b) => a[1].localeCompare(b[1], 'uk'))
-            .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join('');
+            .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}${distinguishIds && nameCounts.get(nameKey(label)) > 1 ? ` · ID ${escapeHtml(value)}` : ''}</option>`).join('');
         if ([...unique.keys()].includes(selected)) select.value = selected;
     }
 
@@ -83,7 +86,7 @@
         ensureFilterOptions(document.getElementById('educationScheduleTeacherFilter'), lessons.map(booking => {
             const fields = lessonFields(booking);
             return { value: fields.teacherId, label: fields.teacher || fields.teacherId };
-        }), 'Усі викладачі');
+        }), 'Усі викладачі', true);
         ensureFilterOptions(document.getElementById('educationScheduleCabinetFilter'), lessons.map(booking => {
             const fields = lessonFields(booking);
             return { value: fields.cabinet, label: fields.cabinet };

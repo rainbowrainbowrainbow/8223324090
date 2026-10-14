@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const { Pool } = require('pg');
 const engine = process.env.EDU_MOBILE_ENGINE || 'chromium';
 const browserType = require(process.env.EDU_QA_PLAYWRIGHT)[engine];
-const { DATABASES, assertLocalTarget, seedDataset } = require('../../scripts/lib/education-ready-dataset');
+const { DATABASES, assertLocalTarget, seedDataset, preflight } = require('../../scripts/lib/education-ready-dataset');
 const { createResults } = require('../helpers/education-ready-results');
 assertLocalTarget('fixed');
 const base = process.env.TEST_URL;
@@ -36,7 +36,7 @@ async function waitTeacherRuntimeReads(page) {
     await page.waitForLoadState('networkidle');
     const snapshot=await page.waitForFunction(()=>{
         const timer=window.GlobalTaskTimer?.state;
-        if(!timer?.hydrated||timer.loading||timer.pendingHydrate||window.EducationScheduleWorkspace?.state.loading)return false;
+        if(!timer?.hydrated||timer.loading||timer.pendingHydrate||window.EducationScheduleWorkspace?.state.loading||(typeof bookingTimePreflightState==='function'&&bookingTimePreflightState().status==='checking'))return false;
         return {page:location.pathname+location.search,timer:{hydrated:timer.hydrated,loading:timer.loading,pending:timer.pendingHydrate},educationLoading:window.EducationScheduleWorkspace?.state.loading,educationError:window.EducationScheduleWorkspace?.state.error?.message||null};
     });
     evidence.runtimeReadSettles ||= [];const settled=await snapshot.jsonValue();assert.equal(settled.educationError,null,'Education workspace must complete without error before navigation');evidence.runtimeReadSettles.push(settled);await snapshot.dispose();
@@ -51,7 +51,12 @@ async function pageFor(action, business='dar', width=1440) {
         await page.locator('#loginForm button[type="submit"]').click();await page.locator('#mainApp').waitFor({state:'visible',timeout:45000});await waitTeacherRuntimeReads(page);
         await page.goto(`${base}/?businessContext=${business}&educationSchedule=groups&date=${manifest.anchorDate}`,{waitUntil:'domcontentloaded'});
         await page.waitForFunction(()=>window.EducationGroups?.state.teacherStatus==='ready'&&window.EducationGroups?.state.listStatus==='ready');
+        await waitTeacherRuntimeReads(page);
         const result=await action(page);await waitTeacherRuntimeReads(page);return result;
+    } catch(error) {
+        evidence.failureDiagnostics ||= [];
+        evidence.failureDiagnostics.push(await page.evaluate(()=>({url:location.pathname+location.search,invalid:[...document.querySelectorAll('#bookingForm input,#bookingForm select')].filter(el=>!el.validity.valid).map(el=>({id:el.id,value:el.value,message:el.validationMessage})),submit:{disabled:document.getElementById('bookingSubmitBtn')?.disabled,text:document.getElementById('bookingSubmitBtn')?.textContent},messages:[...document.querySelectorAll('[role="alert"],.notification')].map(el=>el.textContent)})).catch(()=>({unavailable:true})));
+        flush();throw error;
     } finally {await context.close();}
 }
 async function shot(page,name) {await page.screenshot({path:path.join(out,`${name}.png`)});evidence.screenshots.push(`${name}.png`);}
@@ -88,10 +93,24 @@ async function manager(page) {
     await page.locator('#educationTeacherName').waitFor({state:'visible'});
     await page.waitForFunction(()=>!document.getElementById('educationTeacherManagerStatus').textContent.includes('Завантаження'));
 }
+async function clickResponse(page,predicate,selector) {
+    await waitTeacherRuntimeReads(page);
+    if(selector==='#bookingSubmitBtn') {
+        // Scroll like a user before actionability checks: WebKit can jitter an offscreen focused form by 1px.
+        const button=page.locator(selector),before=await button.boundingBox(),viewport=page.viewportSize();
+        if(before && (before.y<0 || before.y+before.height>viewport.height)) {
+            const form=page.locator('#bookingForm');await form.hover();
+            await page.mouse.wheel(0,await form.evaluate(el=>el.scrollHeight));
+            await page.waitForFunction(()=>{const rect=document.getElementById('bookingSubmitBtn').getBoundingClientRect();return rect.top>=0&&rect.bottom<=innerHeight;});
+            evidence.visibleSubmitScrolls ||= [];evidence.visibleSubmitScrolls.push({method:'real-mouse-wheel',before,after:await button.boundingBox()});
+        }
+    }
+    const [response]=await Promise.all([page.waitForResponse(predicate),page.locator(selector).click()]);
+    return response;
+}
 async function createTeacherUI(page,name) {
     await manager(page);await page.locator('#educationTeacherName').fill(name);
-    const response=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/api/education/groups/teachers');
-    await page.locator('#educationTeacherCreateForm button[type="submit"]').click();const result=await response;
+    const result=await clickResponse(page,r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/api/education/groups/teachers','#educationTeacherCreateForm button[type="submit"]');
     assert.equal(result.status(),201,JSON.stringify(await result.json()));
     await page.waitForFunction(()=>document.getElementById('educationTeacherManagerStatus').textContent==='Викладача додано.'&&!document.getElementById('educationTeacherCreateForm').hasAttribute('aria-busy'));
     return (await result.json()).teacher.id;
@@ -101,13 +120,13 @@ async function selectGroup(page,id) {
     await page.waitForFunction(id=>String(window.EducationGroups.state.current?.id)===String(id),id);
 }
 async function saveGroupUI(page) {
-    const response=page.waitForResponse(r=>['POST','PUT'].includes(r.request().method())&&/^\/api\/education\/groups(?:\/\d+)?\/?$/.test(new URL(r.url()).pathname));
-    await page.locator('#educationGroupForm button[type="submit"]').click();const saved=await response;
+    const saved=await clickResponse(page,r=>['POST','PUT'].includes(r.request().method())&&/^\/api\/education\/groups(?:\/\d+)?\/?$/.test(new URL(r.url()).pathname),'#educationGroupForm button[type="submit"]');
     assert.ok([200,201].includes(saved.status()),JSON.stringify(await saved.json()));
     await page.waitForFunction(()=>document.getElementById('educationGroupsStatus').textContent==='Групу збережено.'&&!document.getElementById('educationGroupForm').hasAttribute('aria-busy'));
     return (await saved.json()).group.id;
 }
 async function openLesson(page,id,date=manifest.anchorDate) {
+    await waitTeacherRuntimeReads(page);
     await page.goto(`${base}/?businessContext=dar&educationSchedule=today&date=${date}`,{waitUntil:'domcontentloaded'});
     await page.locator(`[data-education-booking-id="${id}"]`).click();await page.locator('#bookingModal').waitFor({state:'visible'});
 }
@@ -117,8 +136,7 @@ async function editLesson(page,id,date=manifest.anchorDate) {
     await page.waitForFunction(()=>!document.getElementById('bookingForm').inert&&!document.getElementById('educationLessonTeacher').disabled);
 }
 async function saveLessonUI(page,id) {
-    const response=page.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname===`/api/bookings/${id}`);
-    await page.locator('#bookingSubmitBtn').click();const saved=await response;assert.equal(saved.status(),200,JSON.stringify(await saved.json()));
+    const saved=await clickResponse(page,r=>r.request().method()==='PUT'&&new URL(r.url()).pathname===`/api/bookings/${id}`,'#bookingSubmitBtn');assert.equal(saved.status(),200,JSON.stringify(await saved.json()));
     await page.locator('#bookingPanel').waitFor({state:'hidden'});return saved.request().postDataJSON();
 }
 async function lessonRow(id) {return (await pool.query('SELECT id,date::text,time,duration,extra_data FROM bookings WHERE id=$1',[id])).rows[0];}
@@ -169,10 +187,11 @@ async function finalChecks() {
         await page.locator('#customerSearch').fill('Наталія Романюк');await page.locator(`.customer-search-item[data-id="${manifest.ids.parents['parent-0']}"]`).click();
         await page.locator('#educationLessonTitle').fill('Музика дощу та вітру');await page.locator('#educationLessonGroupId').selectOption(String(groupId));
         await page.locator('#educationLessonTeacher').selectOption(String(newTeacher));await page.locator('#educationLessonDuration').fill('45');
-        const created=page.waitForResponse(r=>r.request().method()==='POST'&&/^\/api\/bookings(?:\/full)?$/.test(new URL(r.url()).pathname));
-        await page.locator('#bookingSubmitBtn').click();const response=await created;assert.equal(response.status(),200,JSON.stringify(await response.json()));
+        const response=await clickResponse(page,r=>r.request().method()==='POST'&&/^\/api\/bookings(?:\/full)?$/.test(new URL(r.url()).pathname),'#bookingSubmitBtn');
+        assert.equal(response.status(),200,JSON.stringify(await response.json()));
         const rows=(await pool.query("SELECT id,extra_data,duration FROM bookings WHERE program_name='Музика дощу та вітру' AND business_context='dar'")).rows;
         assert.equal(rows.length,1);lessonId=rows[0].id;assert.equal(String(rows[0].extra_data.educationLesson.teacherId),String(newTeacher));assert.equal(rows[0].duration,45);
+        await page.locator('#bookingPanel').waitFor({state:'hidden'});await waitTeacherRuntimeReads(page);
         await openLesson(page,lessonId,'2030-01-10');assert.match(await page.locator('#bookingDetails').innerText(),/Вікторія Дем’яненко/);await shot(page,'created-lesson-canonical');
     }));
     await check('teacher-failed-write-preserves-draft-and-retry',()=>pageFor(async page=>{
@@ -308,6 +327,7 @@ async function finalChecks() {
     });
 }
 async function createCloseLesson(page, teacherId, date, time, cabinet, title, options = {}) {
+    await waitTeacherRuntimeReads(page);
     await page.goto(`${base}/?businessContext=dar&educationSchedule=groups&date=${date}`,{waitUntil:'domcontentloaded'});
     await page.waitForFunction(()=>window.EducationGroups?.state.listStatus==='ready');
     await page.locator('[data-education-schedule-tab="schedule"]').click();
@@ -335,12 +355,11 @@ async function createCloseLesson(page, teacherId, date, time, cabinet, title, op
         payload.extraData.educationLesson.teacherName='Неправильне вхідне ім’я';injected=true;
         return route.continue({postData:JSON.stringify(body)});
     });
-    const response=page.waitForResponse(r=>r.request().method()==='POST'&&/^\/api\/bookings(?:\/full|\/education-series)?$/.test(new URL(r.url()).pathname));
-    await page.locator('#bookingSubmitBtn').click();const saved=await response,body=await saved.json();
+    const saved=await clickResponse(page,r=>r.request().method()==='POST'&&/^\/api\/bookings(?:\/full|\/education-series)?$/.test(new URL(r.url()).pathname),'#bookingSubmitBtn'),body=await saved.json();
     if(options.wrongName)assert.equal(injected,true);
     assert.equal(saved.status(),options.status||200,JSON.stringify(body));
     if((options.status||200)!==200)return null;
-    await page.locator('#bookingPanel').waitFor({state:'hidden'});
+    await page.locator('#bookingPanel').waitFor({state:'hidden'});await waitTeacherRuntimeReads(page);
     const rows=(await pool.query('SELECT id,date::text,time,duration,extra_data FROM bookings WHERE program_name=$1 AND business_context=$2 ORDER BY date',[title,'dar'])).rows;
     assert.equal(rows.length,options.series?3:1); assert.equal(rows[0].date,date); assert.equal(rows[0].time,time); assert.ok(rows.every(r=>String(r.extra_data.educationLesson.teacherId)===String(teacherId))); evidence.proofs[title]=rows; return rows;
 }
@@ -353,6 +372,40 @@ async function closeChecks(){
         const rows=(await pool.query("SELECT s.id,m.business_context FROM staff s JOIN education_teacher_memberships m ON m.staff_id=s.id WHERE s.name=$1",['марія п’ятницька'])).rows;
         assert.equal(rows.length,2);assert.ok(rows.every(r=>r.business_context==='dar'));
         evidence.proofs.sameNameIds=[closeTeacherA,closeTeacherB];
+    }));
+    await check('astra-distinct-teacher-labels-and-action-names',()=>pageFor(async page=>{
+        assert.ok(closeTeacherA && closeTeacherB);
+        const directoryResponse=page.waitForResponse(r=>r.request().method()==='GET'&&new URL(r.url()).pathname==='/api/education/groups/teachers'&&new URL(r.url()).searchParams.get('includeInactive')==='true');
+        await manager(page); assert.equal((await directoryResponse).status(),200);
+        await page.locator('[data-teacher-active="'+closeTeacherB+'"]').waitFor({state:'visible'});
+        const ids=[String(closeTeacherA),String(closeTeacherB)];
+        const options=await page.locator('#educationGroupTeacher option').evaluateAll((nodes,ids)=>nodes.filter(n=>ids.includes(n.value)).map(n=>({id:n.value,label:n.textContent})),ids);
+        const rows=await page.locator('#educationTeacherManagerList li').evaluateAll((nodes,ids)=>nodes.filter(n=>ids.includes(n.querySelector('button')?.dataset.teacherActive)).map(n=>({text:n.innerText,name:n.querySelector('button').getAttribute('aria-label')})),ids);
+        evidence.proofs.astraGroupTeacherLabels={options,rows};
+        await page.locator('#educationTeacherManagerList').screenshot({path:path.join(out,'astra-teacher-manager.png')}); evidence.screenshots.push('astra-teacher-manager.png');
+        assert.equal(options.length,2);
+        assert.equal(new Set(options.map(o=>o.label)).size,2,'Same-name teachers must have distinct visible option labels');
+        assert.equal(rows.length,2,'Both teacher rows must finish loading');
+        assert.equal(new Set(rows.map(r=>r.text)).size,2,'Same-name teacher rows must expose a visible identifier');
+        for(const id of ids)assert.ok(rows.some(r=>r.name?.includes(id)&&r.name.includes('марія п’ятницька')),'Teacher action must name its target');
+    },'dar',390));
+    await check('astra-lesson-teacher-visible-label-preserves-canonical-name',()=>pageFor(async page=>{
+        await editLesson(page,manifest.ids.bookings['robots-4']);
+        const ids=[String(closeTeacherA),String(closeTeacherB)];
+        const options=await page.locator('#educationLessonTeacher option').evaluateAll((nodes,ids)=>nodes.filter(n=>ids.includes(n.value)).map(n=>({id:n.value,label:n.textContent,name:n.dataset.staffName})),ids);
+        evidence.proofs.astraLessonTeacherLabels=options;
+        await page.locator('#educationLessonTeacher').selectOption(String(closeTeacherB));
+        await page.locator('#bookingPanel').evaluate(el=>Promise.all(el.getAnimations({subtree:true}).filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{}))));
+        evidence.proofs.astraEditorBounds=await page.locator('#bookingPanel').evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,viewport:innerWidth}));
+        assert.ok(evidence.proofs.astraEditorBounds.right<=evidence.proofs.astraEditorBounds.viewport+1,'Terminal editor must fit viewport');
+        await shot(page,'astra-lesson-teacher-selected');
+        assert.equal(options.length,2);
+        assert.equal(new Set(options.map(o=>o.label)).size,2,'Canonical lesson teacher choices must be visually distinguishable');
+        assert.ok(options.every(o=>o.name==='марія п’ятницька'),'Display identifier must not contaminate canonical teacherName');
+        await saveLessonUI(page,manifest.ids.bookings['robots-4']);
+        const saved=await lessonRow(manifest.ids.bookings['robots-4']);
+        assert.equal(String(saved.extra_data.educationLesson.teacherId),String(closeTeacherB));
+        assert.equal(saved.extra_data.educationLesson.teacherName,'марія п’ятницька');
     }));
     await check('close01-create-linked-group-canonical-name-visible-UI',()=>pageFor(async page=>{
         const rows=await createCloseLesson(page,closeTeacherA,'2036-01-10','15:00',1,'Звуки зимового лісу',{groupId,wrongName:true});
@@ -370,6 +423,17 @@ async function closeChecks(){
         assert.equal(rows[0].extra_data.educationLesson.teacherName,'марія п’ятницька');
         await openLesson(page,rows[0].id,'2036-01-11');assert.match(await page.locator('#bookingDetails').innerText(),/марія п’ятницька/);
         await shot(page,'close01-distinct-teacher-simultaneous');
+    }));
+    await check('astra-today-same-name-teacher-filter-visible-choice',()=>pageFor(async page=>{
+        await page.goto(base+'/?businessContext=dar&educationSchedule=today&date=2036-01-11',{waitUntil:'domcontentloaded'});
+        await page.waitForFunction(()=>window.EducationScheduleWorkspace?.state.activeView==='today'&&!window.EducationScheduleWorkspace.state.loading&&document.querySelectorAll('[data-education-booking-id]').length>=2);
+        const ids=[String(closeTeacherA),String(closeTeacherB)];
+        const options=await page.locator('#educationScheduleTeacherFilter option').evaluateAll((nodes,ids)=>nodes.filter(n=>ids.includes(n.value)).map(n=>({id:n.value,label:n.textContent})),ids);
+        evidence.proofs.astraTodayTeacherLabels=options; await shot(page,'astra-today-teachers');
+        assert.equal(options.length,2); assert.equal(new Set(options.map(o=>o.label)).size,2,'Today teacher filter must distinguish same-name people');
+        await page.locator('#educationScheduleTeacherFilter').selectOption({label:options.find(o=>o.id===String(closeTeacherB)).label});
+        assert.equal(await page.locator('[data-education-booking-id]').count(),1);
+        assert.match(await page.locator('[data-education-booking-id]').innerText(),/Звуки зимового міста/);
     }));
     await check('close01-same-ID-overlap-rejected-no-partial-visible-UI',()=>pageFor(async page=>{
         const before=(await pool.query('SELECT count(*)::int n FROM bookings')).rows[0].n;
@@ -546,6 +610,37 @@ async function closeChecks(){
         await api('/api/bookings?businessContext=dar','POST',{...source,id:undefined,lineId:'edu-cabinet-3',room:'Кабінет 3',extraData:{...source.extraData,educationLesson:{...source.extraData.educationLesson,teacherId:String(closeTeacherB),teacherName:'марія п’ятницька'}}},409);
         assert.equal((await pool.query('SELECT count(*)::int n FROM bookings')).rows[0].n,before);
     });
+
+    await check('astra-inactive-current-teacher-labels-preserve-assignment',()=>pageFor(async page=>{
+        assert.ok(closeTeacherA&&closeTeacherB);
+        await page.locator('#educationGroupsList').selectOption('');
+        await page.locator('#educationGroupName').fill('Однойменні викладачі — збережене призначення');
+        await page.locator('#educationGroupTeacher').selectOption(String(closeTeacherB));
+        const assignedGroup=await saveGroupUI(page),lesson=manifest.ids.bookings['robots-4'];
+        await editLesson(page,lesson);await page.locator('#educationLessonTeacher').selectOption(String(closeTeacherB));await saveLessonUI(page,lesson);
+        await waitTeacherRuntimeReads(page);await page.goto(base+'/?businessContext=dar&educationSchedule=groups&date='+manifest.anchorDate,{waitUntil:'domcontentloaded'});
+        await page.waitForFunction(()=>window.EducationGroups?.state.teacherStatus==='ready'&&window.EducationGroups?.state.listStatus==='ready');
+        await manager(page);
+        const changed=await clickResponse(page,r=>r.request().method()==='PUT'&&new URL(r.url()).pathname==='/api/education/groups/teachers/'+closeTeacherB,'[data-teacher-active="'+closeTeacherB+'"]');
+        assert.equal(changed.status(),200);
+        await page.waitForFunction(()=>document.getElementById('educationTeacherManagerStatus').textContent==='Роботу викладача завершено.'&&window.EducationGroups.state.teacherStatus==='ready');
+        await selectGroup(page,assignedGroup);
+        const ids=[String(closeTeacherA),String(closeTeacherB)];
+        const groupChoices=await page.locator('#educationGroupTeacher option').evaluateAll((nodes,ids)=>nodes.filter(n=>ids.includes(n.value)).map(n=>({id:n.value,label:n.textContent})),ids);
+        await shot(page,'astra-inactive-group-teacher');
+        await editLesson(page,lesson);
+        const lessonChoices=await page.locator('#educationLessonTeacher option').evaluateAll((nodes,ids)=>nodes.filter(n=>ids.includes(n.value)).map(n=>({id:n.value,label:n.textContent,name:n.dataset.staffName})),ids);
+        await page.locator('#bookingPanel').evaluate(el=>Promise.all(el.getAnimations({subtree:true}).filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{}))));
+        await shot(page,'astra-inactive-lesson-teacher');
+        evidence.proofs.inactiveNamesakes={groupChoices,lessonChoices,assignedGroup,lesson};
+        for(const choices of [groupChoices,lessonChoices]){assert.equal(choices.length,2);assert.equal(new Set(choices.map(c=>c.label)).size,2,'Inactive current teacher must differ visibly from active namesake');}
+        assert.equal(await page.locator('#educationLessonTeacher').inputValue(),String(closeTeacherB));
+        const before=await lessonRow(lesson);await saveLessonUI(page,lesson);const after=await lessonRow(lesson);
+        assert.equal(after.extra_data.educationLesson.teacherName,'марія п’ятницька');assert.equal(String(after.extra_data.educationLesson.teacherId),String(closeTeacherB));
+        for(const field of ['date','time','duration'])assert.deepEqual(after[field],before[field]);
+        assert.equal((await pool.query('SELECT teacher_id FROM education_groups WHERE id=$1',[assignedGroup])).rows[0].teacher_id,closeTeacherB);
+    }));
+
 }
 
 (async()=>{
@@ -557,6 +652,7 @@ async function closeChecks(){
             evidence.proofs.emptyMigrationTable=true; evidence.proofs.databaseLocale=(await pool.query("SELECT datcollate,datctype FROM pg_database WHERE datname=current_database()")).rows[0];
         }
         manifest=(await seedDataset(pool,'fixed')).manifest;
+        evidence.fixture={manifest,preflight:await preflight(pool,manifest)};
         for(const businessContext of ['dar','maysternya_doli'])await api(`/api/business/cabinet?businessContext=${businessContext}`,'PUT',{businessType:'education',timelineMode:'education',resourceModel:'cabinet'});
         candidate=(await pool.query("INSERT INTO staff(name,department,position,is_active) VALUES ('Наталія Олійник','education','Музика',true) RETURNING id")).rows[0].id;
         evidence.proofs.candidate={id:candidate,name:'Наталія Олійник',groupCount:(await pool.query('SELECT count(*)::int n FROM education_groups WHERE teacher_id=$1',[candidate])).rows[0].n};

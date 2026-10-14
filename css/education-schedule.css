@@ -452,3 +452,18 @@ body.timeline-mode-education .timeline-line--education .line-header--title-only 
     flex-direction: column; align-items: flex-start;
   }
 }
+
+/* Keep the 196px time controls inside their column at every panel width. */
+body.timeline-mode-education #bookingPanel .booking-context-card {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+/* Global date-control rules use translucent important borders; preserve the education boundary contrast. */
+:is(.education-schedule-workspace, body.timeline-mode-education #bookingPanel,
+    body.timeline-mode-education #settingsTimelineDisplaySection,
+    body[data-education-settings="true"] .timeline-settings-page) input[type="date"] {
+  border-color: #64748b !important;
+}
+html[data-theme="dark"] body.timeline-mode-education #bookingPanel #bookingTime {
+  border-color: #94a3b8;
+}

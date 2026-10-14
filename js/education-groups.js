@@ -63,7 +63,7 @@
             const data = await request(`/teachers?businessContext=${encodeURIComponent(target.business)}&includeInactive=true`);
             if (!isCurrent(target) || version !== teacherManagerVersion) return false;
             if (!Array.isArray(data.teachers)) throw new Error('Некоректний довідник викладачів');
-            byId('educationTeacherManagerList').innerHTML = data.teachers.map(person => `<li><div class="education-member-copy"><strong>${escape(person.name)}</strong><small>${person.is_active ? 'Працює в цьому центрі' : 'Неактивний у цьому центрі'}</small></div><button type="button" class="btn-secondary education-action${person.is_active ? ' education-action--danger' : ''}" data-teacher-active="${person.id}" data-next-active="${!person.is_active}">${person.is_active ? 'Завершити роботу' : 'Відновити роботу'}</button></li>`).join('');
+            byId('educationTeacherManagerList').innerHTML = data.teachers.map(person => `<li><div class="education-member-copy"><strong>${escape(person.name)}</strong><small>ID ${Number(person.id)} · ${person.is_active ? 'Працює в цьому центрі' : 'Неактивний у цьому центрі'}</small></div><button type="button" class="btn-secondary education-action${person.is_active ? ' education-action--danger' : ''}" aria-label="${person.is_active ? 'Завершити роботу' : 'Відновити роботу'}: ${escape(person.name)} (ID ${Number(person.id)})" data-teacher-active="${person.id}" data-next-active="${!person.is_active}">${person.is_active ? 'Завершити роботу' : 'Відновити роботу'}</button></li>`).join('');
             managerStatus(data.teachers.length ? `${data.teachers.length} викладачів` : 'Викладачів ще немає. Додайте першого.');
             teacherManagerControls(); return true;
         } catch (error) {
@@ -91,11 +91,14 @@
     function teacherOptions(value = byId('educationGroupTeacher')?.value || '') {
         const select = byId('educationGroupTeacher');
         if (!select) return;
+        const nameKey = name => String(name || '').trim().toLocaleLowerCase('uk-UA');
+        const nameCounts = new Map();
+        for (const person of state.teachers) nameCounts.set(nameKey(person.name), (nameCounts.get(nameKey(person.name)) || 0) + 1);
         select.innerHTML = '<option value="">Без викладача</option>' + state.teachers
-            .map(person => `<option value="${Number(person.id)}">${escape(person.name)}</option>`).join('');
+            .map(person => `<option value="${Number(person.id)}">${escape(person.name)}${nameCounts.get(nameKey(person.name)) > 1 ? ` · ID ${Number(person.id)}` : ''}</option>`).join('');
         if (value && !Array.from(select.options).some(option => option.value === String(value))) {
             const option = document.createElement('option');
-            option.value = String(value); option.textContent = state.current?.teacher_name || `Призначений викладач (${value})`;
+            option.value = String(value); option.textContent = `${state.current?.teacher_name || 'Призначений викладач'} · ID ${value}`;
             select.appendChild(option);
         }
         select.value = value;

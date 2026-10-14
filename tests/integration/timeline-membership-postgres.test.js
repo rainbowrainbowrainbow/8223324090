@@ -207,44 +207,21 @@ test('actual booking and timeline HTTP routes preserve membership context with P
             assert.deepEqual(await dataSnapshot(), before);
         });
 
-        await t.test('Park manager can append one manual animator line without roster replacement or Dar access', async () => {
+        await t.test('Park manager cannot append a manual animator line without ParkRozvag approval', async () => {
             const actor = await reset({ parkRole: 'manager' });
             const route = '/api/lines/2026-09-12/manual?businessContext=event_genix&timelineView=animators';
-            const firstKey = '11111111-1111-4111-8111-111111111111';
-            const secondKey = '22222222-2222-4222-8222-222222222222';
-            const thirdKey = '33333333-3333-4333-8333-333333333333';
             await pool.query(`INSERT INTO lines_by_date (business_context, date, line_id, name, color, from_sheet)
                 VALUES ('event_genix', '2026-09-12', 'existing-line', 'Аніматор 1', '#123456', false),
                        ('dar', '2026-09-12', 'dar-line', 'Dar specialist', '#abcdef', false)`);
             assert.equal((await request(actor, 'POST', '/api/lines/2026-09-12?businessContext=event_genix', [])).status, 403);
             const before = await dataSnapshot();
-            const first = await request(actor, 'POST', route, { requestId: firstKey });
-            assert.equal(first.status, 201);
-            assert.equal(first.body.line.name, 'Аніматор 2');
-            const replay = await request(actor, 'POST', route, { requestId: firstKey });
-            assert.equal(replay.status, 200);
-            assert.equal(replay.body.created, false);
-            assert.equal(replay.body.line.id, first.body.line.id);
-            const concurrent = await Promise.all([
-                request(actor, 'POST', route, { requestId: secondKey }),
-                request(actor, 'POST', route, { requestId: thirdKey })
-            ]);
-            assert.deepEqual(concurrent.map(result => result.status), [201, 201]);
-            assert.deepEqual(concurrent.map(result => result.body.line.name).sort(), ['Аніматор 3', 'Аніматор 4']);
-            const reload = await request(actor, 'GET', '/api/lines/2026-09-12?businessContext=event_genix&timelineView=animators');
-            assert.equal(reload.status, 200);
-            assert.deepEqual(reload.body.map(line => line.name).sort(),
-                ['Аніматор 1', 'Аніматор 2', 'Аніматор 3', 'Аніматор 4']);
+            const directAdd = await request(actor, 'POST', route, { requestId: '11111111-1111-4111-8111-111111111111' });
+            assert.equal(directAdd.status, 410);
+            assert.equal(directAdd.body.code, 'animator_approval_required');
             const after = await dataSnapshot();
-            assert.deepEqual(after.bookings, before.bookings);
-            assert.deepEqual(after.resources, before.resources);
-            assert.equal(after.lines.length, before.lines.length + 3);
+            assert.deepEqual(after, before);
             assert.ok(after.lines.some(line => line.line_id === 'existing-line'));
             assert.ok(after.lines.some(line => line.line_id === 'dar-line'));
-            assert.equal((await request(actor, 'POST', '/api/lines/2026-09-12/manual?businessContext=dar',
-                { requestId: '44444444-4444-4444-8444-444444444444' })).status, 409);
-            assert.equal((await request(actor, 'POST', '/api/lines/2026-09-12/manual?businessContext=event_genix&timelineView=rooms',
-                { requestId: '55555555-5555-4555-8555-555555555555' })).status, 409);
             assert.equal((await request(actor, 'POST', route + '&businessScope=all',
                 { requestId: '66666666-6666-4666-8666-666666666666' })).status, 403);
         });

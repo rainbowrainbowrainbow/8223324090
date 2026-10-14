@@ -171,13 +171,13 @@ async function trap(selector, name) {
         assert.equal(login.status, 200); const auth = await login.json();
         const response = await fetch(base + '/api/business/cabinet?businessContext=dar', { method: 'PUT', headers: { Authorization: `Bearer ${auth.accessToken || auth.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ businessType: 'education', timelineMode: 'education', resourceModel: 'cabinet' }) });
         assert.equal(response.status, 200, 'Disposable business prerequisite');
-        const manual = await fetch(base+'/api/lines/2026-10-03/manual?businessContext=event_genix&timelineView=animators', {method:'POST',headers:{Authorization:'Bearer '+(auth.accessToken||auth.token),'Content-Type':'application/json'},body:JSON.stringify({requestId:'81a31461-1e2a-4270-9a5b-852bfb6a9321'})});
-        assert.equal(manual.status,201,'BLOCKED_FIXTURE: owned Park manual line prerequisite');
-        const manualLine = (await manual.json()).line;
+        const manualLineId = 'manual_animator_81a31461-1e2a-4270-9a5b-852bfb6a9321';
+        await pool.query(`INSERT INTO lines_by_date (business_context, date, line_id, name, color, from_sheet)
+            VALUES ('event_genix', '2026-10-03', $1, 'Аніматор 2', '#2B6CB0', false)`, [manualLineId]);
         const manifest = JSON.parse((await pool.query('SELECT value FROM settings WHERE key=$1',[OWNER_KEY])).rows[0].value);
-        await pool.query("UPDATE bookings SET line_id=$1 WHERE id=$2 AND business_context='event_genix'",[manualLine.id,manifest.ids.controlBooking]);
-        evidence.fixturePreparation = 'Owned fixed seed, education profile and valid Park manual line/control association prepared before ALL UI steps in a fresh disposable attempt; no failed UI repair';
-        evidence.parkFixtureLine = manualLine.id;
+        await pool.query("UPDATE bookings SET line_id=$1 WHERE id=$2 AND business_context='event_genix'",[manualLineId,manifest.ids.controlBooking]);
+        evidence.fixturePreparation = 'Owned fixed seed, education profile and a disposable seeded Park line/control association prepared before ALL UI steps in a fresh disposable attempt; no failed UI repair';
+        evidence.parkFixtureLine = manualLineId;
     }
     const before = await proof(), m = before.manifest;
     evidence.sourceHashes = hashes();

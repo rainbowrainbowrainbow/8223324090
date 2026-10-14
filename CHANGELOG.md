@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.84 - Заняття: київський час серій
+
+### Release / Versioning / (14.10.2026) [codex]
+- **Заняття: київський час серій** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.83 - Заняття: київський час серій
 
 ### Release / Versioning / (13.10.2026) [codex]

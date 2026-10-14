@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { LEGACY_STAFF_PROBE_QUERY, isExplicitLegacyStaffProbe, classifyLiveFailure } = require('../helpers/education-live-readonly-diagnostics');
 const { chromium } = require(process.env.EDU_QA_PLAYWRIGHT);
 const base = 'https://8223324090-production.up.railway.app';
 const requestedDate = process.env.EDU_READY_LIVE_DATE || '';
@@ -16,7 +17,7 @@ const out = path.resolve(process.env.EDU_READY_LIVE_OUTPUT || 'output/education-
 const result = { policy: 'All business writes intercepted before login; auth login/refresh/verify only; no PII screenshots or response bodies',
     startedAt: new Date().toISOString(), requests: [], blockedWrites: [], snapshots: [], pageErrors: [], diagnostics: [], consoleFailures: [], blockedFixtures: [], failedChecks: [] };
 const observerHash=()=>crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex');
-result.observerHarnessHash=observerHash();result.attemptId='live-'+result.startedAt.replace(/[:.]/g,'-');
+result.observerHarnessHash=observerHash();result.diagnosticsHarnessHash=crypto.createHash('sha256').update(fs.readFileSync(require.resolve('../helpers/education-live-readonly-diagnostics'))).digest('hex');result.attemptId='live-'+result.startedAt.replace(/[:.]/g,'-');
 result.observedDate = requestedDate || new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
 let browser, stage = 'before-login';
 const pending = new Set();
@@ -41,24 +42,14 @@ async function main() {
     });
     if (context.routeWebSocket) await context.routeWebSocket('**/*', socket => socket.close());
     const page = await context.newPage(); page.setDefaultTimeout(20000);
-    const classify=(kind,item,text='')=>{
-        const held=result.blockedWrites.some(row=>row.path===item.path&&row.stage===stage);
-        let classification='UNCLASSIFIED_FAILURE',cause='Needs investigation',impact='Cannot certify affected surface';
-        if(held){classification='POLICY_WRITE_HOLD';cause='Business write blocked by this read-only harness';impact='No production failure or synchronization PASS inferred';}
-        else if(['http','console'].includes(kind)&&item.status===429){classification='SERVER_RATE_LIMIT_REJECTION';cause='Server request budget rejected this read';impact='Attempt fails; mandatory read not certified; respect Retry-After before a fresh attempt';if(kind==='http')result.failedChecks.push({id:'live-rate-limit-rejection',status:'FAIL',stage,path:item.path,retryAfterSeconds:item.retryAfterSeconds});}
-        else if(['http','console'].includes(kind)&&item.path==='/api/staff'&&item.status===403&&stage==='dar-groups'){classification='EXPECTED_ACCESS_DENIAL';cause='Explicit legacy staff probe denied in education';impact='Education picker uses scoped teacher endpoint';}
-        else if(kind==='request'&&item.error==='net::ERR_ABORTED'){classification='NAVIGATION_ABORT';cause='Read-only navigation cancelled pending request';impact='Terminal surface asserted separately';}
-        else if(['request','console'].includes(kind)&&item.external){classification='POLICY_OUTBOUND_HOLD';cause='Cross-origin request blocked by harness';impact='Not production failure or sync proof';}
-        else if(kind==='console'&&/websocket|reconnect|socket/i.test(text)){classification='POLICY_SOCKET_HOLD';cause='Read-only harness closes sockets';impact='No live synchronization claim';}
-        result.diagnostics.push({stage,kind,...item,role:result.role||'unknown',business:stage.startsWith('park')?'event_genix':stage.startsWith('dar-')?'dar':'unknown',classification,cause,impact});
-    };
+    const classify=(kind,item,text='')=>classifyLiveFailure(result,stage,kind,item,text);
     page.on('pageerror', error => { result.pageErrors.push({stage,type:error.name});classify('pageerror',{type:error.name}); });
-    page.on('console',message=>{if(message.type()!=='error')return;const value=message.text();const location=message.location().url;let url;try{url=new URL(location);}catch{}const item={type:'error',path:url?.pathname,external:Boolean(url&&url.origin!==base),status:/\b403\b/.test(value)?403:/\b429\b/.test(value)?429:undefined,messageHash:crypto.createHash('sha256').update(value).digest('hex')};result.consoleFailures.push({stage,...item});classify('console',item,value);});
+    page.on('console',message=>{if(message.type()!=='error')return;const value=message.text();const location=message.location().url;let url;try{url=new URL(location);}catch{}const item={type:'error',path:url?.pathname,external:Boolean(url&&url.origin!==base),explicitLegacyStaffProbe:isExplicitLegacyStaffProbe(url,base),status:/\b403\b/.test(value)?403:/\b429\b/.test(value)?429:undefined,messageHash:crypto.createHash('sha256').update(value).digest('hex')};result.consoleFailures.push({stage,...item});classify('console',item,value);});
     page.on('requestfailed',request=>{const url=new URL(request.url());classify('request',{method:request.method(),path:url.pathname,error:request.failure()?.errorText,external:url.origin!==base});});
     page.on('response', response => {
         const request = response.request(), url = new URL(response.url());
         if (!url.pathname.startsWith('/api/')) return;
-        if(response.status()>=400)classify('http',{method:request.method(),path:url.pathname,status:response.status(),retryAfterSeconds:response.status()===429?Number(response.headers()['retry-after'])||null:undefined});
+        if(response.status()>=400)classify('http',{method:request.method(),path:url.pathname,status:response.status(),explicitLegacyStaffProbe:isExplicitLegacyStaffProbe(url,base),retryAfterSeconds:response.status()===429?Number(response.headers()['retry-after'])||null:undefined});
         result.requests.push({ stage, method: request.method(), path: url.pathname, status: response.status(), business: url.searchParams.get('businessContext') });
     });
     await page.goto(base, { waitUntil: 'domcontentloaded' });
@@ -96,16 +87,16 @@ async function main() {
     await page.goto(base + '/?businessContext=dar' + dateQuery + '&educationSchedule=groups', { waitUntil: 'domcontentloaded' });
     await page.locator('#educationGroupsPanel').waitFor({ state: 'visible' });
     // Read-only explicit probes resolve with real responses and persist metadata only.
-    result.probes = await page.evaluate(async () => {
+    result.probes = await page.evaluate(async probeQuery => {
         const records = [];
-        for (const route of ['/api/staff?active=true', '/api/education/groups?businessContext=dar&includeArchived=true']) {
+        for (const route of ['/api/staff?active=true&' + probeQuery, '/api/education/groups?businessContext=dar&includeArchived=true']) {
             const response = await fetch(route, { headers: getAuthHeaders() }); const body = await response.json();
             records.push({ path: route.split('?')[0], status: response.status,
                 code: /^[a-zA-Z0-9_:-]{1,100}$/.test(body.code || '') ? body.code : null,
                 count: Array.isArray(body) ? body.length : Array.isArray(body.groups) ? body.groups.length : null });
         }
         return records;
-    });
+    }, LEGACY_STAFF_PROBE_QUERY);
     await snapshot(stage);
     stage = 'dar-reports-direct';
     let responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === '/api/education/reports');

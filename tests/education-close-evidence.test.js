@@ -72,3 +72,59 @@ test('TAP exit0 without executed required scenarios cannot PASS',()=>{
     assert.throws(()=>parseTap(good.replace('# pass 1','# pass 0'),c),/Incomplete TAP/);
 });
 
+
+const { LEGACY_STAFF_PROBE_QUERY, isExplicitLegacyStaffProbe, classifyLiveFailure } = require('./helpers/education-live-readonly-diagnostics');
+
+function liveDiagnostic(kind, item, stage = 'dar-groups', text = '') {
+    const result = { blockedWrites: [], failedChecks: [], diagnostics: [] };
+    return { result, diagnostic: classifyLiveFailure(result, stage, kind, item, text) };
+}
+
+test('live observer does not whitelist an unmarked UI staff 403', () => {
+    for (const kind of ['http', 'console']) {
+        const { diagnostic } = liveDiagnostic(kind, { method: 'GET', path: '/api/staff', status: 403 });
+        assert.equal(diagnostic.classification, 'UNCLASSIFIED_FAILURE');
+    }
+});
+
+test('legacy access probe marker is bound to the exact origin and staff endpoint', () => {
+    const origin = 'https://owned-preview.invalid';
+    assert.equal(isExplicitLegacyStaffProbe(new URL(origin + '/api/staff?active=true&' + LEGACY_STAFF_PROBE_QUERY), origin), true);
+    for (const route of [origin + '/api/staff?active=true', origin + '/api/staff?educationQaProbe=other',
+        origin + '/api/education/teachers?' + LEGACY_STAFF_PROBE_QUERY, 'https://foreign.invalid/api/staff?' + LEGACY_STAFF_PROBE_QUERY]) {
+        assert.equal(isExplicitLegacyStaffProbe(new URL(route), origin), false);
+    }
+    assert.equal(isExplicitLegacyStaffProbe(undefined, origin), false);
+});
+
+test('only the explicit GET probe denial in its intended stage is expected', () => {
+    const marked = { method: 'GET', path: '/api/staff', status: 403, explicitLegacyStaffProbe: true };
+    for (const kind of ['http', 'console']) assert.equal(liveDiagnostic(kind, marked).diagnostic.classification, 'EXPECTED_ACCESS_DENIAL');
+    for (const [item, stage] of [[{ ...marked, method: 'POST' }, 'dar-groups'], [{ ...marked, status: 500 }, 'dar-groups'],
+        [marked, 'park-schedule'], [{ ...marked, path: '/api/education/teachers' }, 'dar-groups']]) {
+        assert.equal(liveDiagnostic('http', item, stage).diagnostic.classification, 'UNCLASSIFIED_FAILURE');
+    }
+});
+
+test('mandatory rate-limited reads remain FAIL even if a probe marker is present', () => {
+    const { result, diagnostic } = liveDiagnostic('http', { method: 'GET', path: '/api/staff', status: 429,
+        retryAfterSeconds: 60, explicitLegacyStaffProbe: true });
+    assert.equal(diagnostic.classification, 'SERVER_RATE_LIMIT_REJECTION');
+    assert.equal(result.failedChecks.length, 1);
+    assert.equal(result.failedChecks[0].status, 'FAIL');
+    assert.equal(result.failedChecks[0].retryAfterSeconds, 60);
+});
+
+test('unexpected education HTTP errors remain unclassified failures', () => {
+    for (const status of [401, 403, 500, 503]) assert.equal(liveDiagnostic('http', {
+        method: 'GET', path: '/api/education/reports', status }).diagnostic.classification, 'UNCLASSIFIED_FAILURE');
+});
+
+test('outbound and socket holds are classified without a synchronization claim', () => {
+    const outbound = liveDiagnostic('request', { path: '/provider', external: true }).diagnostic;
+    assert.equal(outbound.classification, 'POLICY_OUTBOUND_HOLD');
+    assert.match(outbound.impact, /Not production failure or sync proof/);
+    const socket = liveDiagnostic('console', { path: '/socket' }, 'dar-groups', 'WebSocket reconnect disabled').diagnostic;
+    assert.equal(socket.classification, 'POLICY_SOCKET_HOLD');
+    assert.equal(socket.impact, 'No live synchronization claim');
+});

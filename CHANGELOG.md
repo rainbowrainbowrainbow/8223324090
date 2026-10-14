@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.85 - Заняття та аніматори
+
+### Release / Versioning / (14.10.2026) [codex]
+- **Заняття та аніматори** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.84 - Заняття: київський час серій
 
 ### Release / Versioning / (14.10.2026) [codex]

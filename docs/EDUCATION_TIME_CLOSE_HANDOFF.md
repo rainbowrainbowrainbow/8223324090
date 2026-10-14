@@ -52,7 +52,7 @@
 | EDU-TIME-01 | Kyiv-time validation for lesson-series writes; focused regression and disposable PostgreSQL proof | PASS. Actual-app → Express → disposable PostgreSQL regression passed under `TZ=UTC`; single lesson and series both reject the same past Kyiv time, and SQL confirms zero inserted occurrences. |
 | EDU-TIME-02 | Replace aging fixed future dates in education-series tests with stable fixtures | PASS. Both education-series integration files use the fixed `2026-10-13T10:00:00.000Z` clock; relative fixtures no longer age against the old `2026-10-03` hard-coded date. |
 | EDU-TIME-03 | Recheck date-only, DST, series boundaries, and business isolation after the timezone fix | PASS. 18/18 series integration cases, 11/11 actual-app/API acceptance cases, and all 13 date-runner checks passed on disposable PostgreSQL; see evidence below. |
-| EDU-TIME-04 | Final local acceptance and release readiness; release only with a fresh user authorization envelope | Local verification PASS. Release preflight blockers are resolved; the product commit and signed controller manifest are being prepared. Production push/deploy require the exact bounded controller authorization. |
+| EDU-TIME-04 | Final local acceptance and release readiness; release only with a fresh user authorization envelope | HOLD_REMOTE_DRIFT. The authorized controller passed its local baseline and prepared 0.82.84, but push was rejected after a parallel release advanced production. The scoped mandatory-inventory supplement is isolated on the verified remote base; a fresh envelope is required after convergence. |
 
 ### EDU-TIME-03 coverage review
 
@@ -142,3 +142,20 @@ Use the prepared controller manifest for one bounded release authorization, then
 - Tightened series inventory: the real captured CI TAP passes all 18 required IDs, including the UTC past-time regression. Removing only that regression's successful TAP line is rejected by the parser.
 - `node --test tests/education-close-evidence.test.js tests/static-doc-guard.test.js`: PASS, 27 checks, zero skips. These are validator/documentation checks, not education UI journeys.
 - Runtime/product source is unchanged from the green 0.82.83 SHA; the mandatory inventory and handoff are the only new local changes. Fresh final-source CI remains required after the canonical controller generates the next patch's release artifacts.
+## Authorized release collision — 2026-10-14
+
+- Block `EG-20261014T072408Z-88337973` was explicitly approved. The controller completed `npm test`, generated version/cache/changelog commit `65f8236a2105f80a4e2a019895a7b2bdfcf8b219` (`0.82.84`), then exited 1 when Git rejected its push as non-fast-forward. It did not reach CI or Railway upload.
+- During that baseline, a separate active controller for block `EG-20261014T072844Z-d968d1b6` advanced remote production to `bff441a4c6ee37db77bdcbaf88f086d2831dfab2`. The latter is a release-artifact-only descendant of `d968d1b619f6d20673063c962aa5177733c9bf78`; it includes the Kyiv runtime fix and wrapper clock correction, but retains the old 17-ID mandatory series inventory.
+- Live at the collision audit still reported `0.82.81` / `db9485256740bf1d1b8f90ddda4e5b2069ead03e`. Parallel CI `38530709841` was in progress; its result and deployment must be checked separately. A pending parallel CI run is not accepted deployment proof.
+- No force-push, reset, cleanup, controller interruption, settings change, or production business write was used. The main dirty checkout and both original controller logs/manifest histories are preserved.
+- Current continuation worktree: `C:/Users/Plotva/.codex/worktrees/education-time-close-finalize-20261014/EventGenix`; branch `codex/education-time-close-finalize-20261014`; base `bff441a4c6ee37db77bdcbaf88f086d2831dfab2`. Commit `8ff5391b5` cherry-picks only the mandatory UTC inventory and its evidence notes. Functional source remains identical to the parallel candidate.
+- Next step: finish the local negative inventory checks, observe the active parallel controller read-only until terminal state, re-confirm live/remote/target, then prepare one fresh bounded release block for the supplement. The old block explicitly stops on external production drift and will not be reused.
+- Physical devices remain `BLOCKED_DEVICE` under the owner's explicit deferral. Chromium/WebKit results cannot change that status.
+
+### Scoped supplement local verification
+
+- `npm ci --no-audit --no-fund`: PASS with the exact lockfile; no dependency or lockfile changes.
+- Node 22.23.1 / npm 10.9.8 and `npm run check:version`: PASS for current base 0.82.84.
+- `node --test tests/education-close-evidence.test.js tests/static-doc-guard.test.js`: 27/27 PASS, zero skips. These are validator/documentation checks, not journeys.
+- Fresh parallel-CI series TAP has all 18 real PASS cases, but its historical record still lists 17 mandatory checks. The tightened parser accepts the complete TAP and rejects removal of the successful UTC case. Probe: `output/education-time-close/mandatory-utc-finalize-probe.json`. This probe is not a substitute for the supplement's future exact-SHA CI.
+- Supplement release notes now describe only the strengthened verification inventory. No runtime source, protected manifest, SQL, auth, permission, dependency, or workflow file differs from the remote base.

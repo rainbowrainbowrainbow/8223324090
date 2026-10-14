@@ -54,3 +54,5 @@ Full baseline log SHA256: `69ec439676095278eebaf3aa576f088534a8978269272606d586a
 Поточний безпечний binary rollback reference: **5fb80ba781c9b416888bd945381fe1a129ea4542**. Немає дозволу на автоматичний rollback, destructive SQL, production seed, повідомлення, платежі чи зміни реальних клієнтів/занять.
 
 Висновок: **готово до нового bounded release process; case не названо повністю доставленим**. Потрібні final exact-SHA CI, deployment/version proof та fresh post-deploy observer. Загальні unit/assertion counts не є education journey counts.
+
+На момент підготовки нового дозволу активний наступний animator writer `EG-20261014T161038Z-834e1998`. Пакет ставиться в чергу: виконання лише після завершення інших writers, фактичного deploy/CI convergence та перевірки вже доставленої бази. Невипущений чужий код не включається. Номер patch — наступний вільний після цієї перевірки; фіксований 0.82.92 не обіцяється. Власний code/harness уже пройшов наведений baseline; після інтеграції та final markers потрібні повторні належні gates.

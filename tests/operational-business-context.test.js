@@ -380,6 +380,7 @@ test('background booking notifications and legacy bot reads stay inside a timeli
     const scheduler = read('services/scheduler.js');
     const bot = read('services/bot.js');
     const telegramRoute = read('routes/telegram.js');
+    const animatorApproval = read('services/animator-telegram-approval.js');
     const afisha = read('routes/afisha.js');
     const kleshnyaChat = read('services/kleshnya-chat.js');
     const kleshnyaGreeting = read('services/kleshnya-greeting.js');
@@ -409,7 +410,7 @@ test('background booking notifications and legacy bot reads stay inside a timeli
     assert.match(bot, /FROM bookings WHERE date >= \$1 AND date <= \$2 AND \$\{businessScope\}/);
 
     assert.match(telegramRoute, /SELECT name FROM lines_by_date WHERE date = \$1 AND \$\{lineScope\}/);
-    assert.match(telegramRoute, /INSERT INTO lines_by_date \(business_context, date, line_id, name, color\)/);
+    assert.match(animatorApproval, /INSERT INTO lines_by_date \(business_context, date, line_id, name, color\)/);
     assert.match(afisha, /SELECT \* FROM bookings WHERE date = \$1 AND status != 'cancelled' AND \$\{bookingScope\}/);
 
     assert.match(kleshnyaChat, /function scopedBookingVisibility/);

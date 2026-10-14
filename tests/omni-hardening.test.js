@@ -188,6 +188,31 @@ test('failed durable Telegram processing returns a retryable response',async t=>
   assert.equal(r.status,503);assert.equal(JSON.parse(r.text).ok,false);
 });
 
+test('Omni Telegram webhook routes animator approval callbacks to the shared handler', async t => {
+  const received = [];
+  mock('../services/animator-telegram-approval', {
+    handleAnimatorApprovalCallback: async update => {
+      received.push(update);
+      return update.callback_query?.data?.startsWith('add_anim:') === true;
+    },
+  });
+  const routes = router({ processInboundMessage: async () => assert.fail('Callback queries are not inbox messages') });
+  const payload = { callback_query: {
+    id: 'fixture-callback',
+    data: 'add_anim:41',
+    message: { message_id: 12, chat: { id: '-1000000000041', type: 'supergroup' } },
+  } };
+  const raw = JSON.stringify(payload);
+  const response = await request(t, routes, '/webhook/telegram', {
+    raw,
+    headers: { 'x-telegram-bot-api-secret-token': 'fixture-telegram' },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(JSON.parse(response.text), { ok: true, animatorApproval: true });
+  assert.deepEqual(received, [payload]);
+});
+
 test('signed Meta comments, postbacks and quick replies are processed while unknown events remain diagnostic', async t => {
   const calls = []; const diagnostics = [];
   const routes = router({ processInboundMessage: async (...args) => calls.push(args) }, { ...config, facebook: { ...config.facebook, pageId: '12' } });

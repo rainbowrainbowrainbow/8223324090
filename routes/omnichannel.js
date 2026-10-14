@@ -46,6 +46,7 @@ const {
     providerDefinition,
 } = require('../services/omni-accounts');
 const { createBinotelJournal } = require('../services/binotel-journal');
+const { handleAnimatorApprovalCallback } = require('../services/animator-telegram-approval');
 
 const log = createLogger('OmniRoutes');
 const omniLeadPreviewLimiter = createWriteRateLimiter('omni-lead-preview', { windowMs: 60_000, max: 12, methods: ['POST'] });
@@ -243,6 +244,10 @@ router.post('/webhook/telegram', async (req, res) => {
             });
             log.warn('Telegram webhook secret verification failed');
             return res.status(403).json({ ok: false, error: 'invalid secret' });
+        }
+        if (await handleAnimatorApprovalCallback(req.body)) {
+            req.omniEventProcessed = true;
+            return res.json({ ok: true, animatorApproval: true });
         }
         if (req.body?.event_type === 'bot_milestone' || req.body?.direction === 'bot_outbound') {
             const normalized = getNormalizer().normalizeTelegramBotMilestone(req.body);

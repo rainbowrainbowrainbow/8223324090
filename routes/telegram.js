@@ -16,6 +16,11 @@ const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
 const { authenticateToken } = require('../middleware/auth');
 const warehousePhotoIntake = require('../services/warehousePhotoIntake');
+const { resolveOmniRuntimeConfig } = require('../services/omni-accounts');
+const {
+    handleAnimatorApprovalCallback,
+    resolveAnimatorAskTelegramTarget
+} = require('../services/animator-telegram-approval');
 const {
     DEFAULT_TIMELINE_CONTEXT,
     pushDefaultTimelineBusinessContext
@@ -42,72 +47,34 @@ function publicTelegramTarget(target = {}) {
     };
 }
 
-async function getSettingValue(key) {
+function isExpectedOmniTelegramWebhook(webhookUrl, runtime, appUrl) {
+    if (!runtime?.webhookSecret || !webhookUrl) return false;
     try {
-        const result = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
-        return result.rows[0]?.value || null;
-    } catch (err) {
-        log.warn(`Telegram setting lookup failed for ${key}`, { message: err.message });
-        return null;
+        const actual = new URL(webhookUrl);
+        const expected = new URL('/api/omni/webhook/telegram', appUrl);
+        const businessContext = actual.searchParams.get('business_context')
+            || actual.searchParams.get('businessContext')
+            || DEFAULT_BUSINESS_CONTEXT;
+        return actual.protocol === 'https:'
+            && actual.origin === expected.origin
+            && actual.pathname === expected.pathname
+            && businessContext === DEFAULT_BUSINESS_CONTEXT;
+    } catch {
+        return false;
     }
 }
 
-async function findKnownTelegramChatId() {
+async function isOmniTelegramWebhookReady(req) {
     try {
-        const result = await pool.query(
-            `SELECT chat_id, title, type
-               FROM telegram_known_chats
-              WHERE type IN ('group', 'supergroup')
-                AND LOWER(REGEXP_REPLACE(COALESCE(title, ''), '[^[:alnum:]]', '', 'g')) = ANY($1::text[])
-              ORDER BY updated_at DESC
-              LIMIT 1`,
-            [['parkrozvag', 'паркрозваг']]
-        );
-        return result.rows[0]?.chat_id ? String(result.rows[0].chat_id) : null;
+        const runtime = await resolveOmniRuntimeConfig('telegram', { businessContext: DEFAULT_BUSINESS_CONTEXT });
+        if (!runtime?.botToken || !runtime?.webhookSecret) return false;
+        const info = await telegramRequest('getWebhookInfo', null, { businessContext: DEFAULT_BUSINESS_CONTEXT });
+        return info?.ok === true
+            && isExpectedOmniTelegramWebhook(info.result?.url, runtime, getPublicAppUrl(req));
     } catch (err) {
-        log.warn('Known Telegram chat lookup failed', { message: err.message });
-        return null;
+        log.warn('Unable to verify Omni-owned Telegram webhook for animator request', { message: err.message });
+        return false;
     }
-}
-
-async function findKnownTelegramThreadId(chatId) {
-    if (!chatId) return null;
-    try {
-        const result = await pool.query(
-            `SELECT thread_id, title
-               FROM telegram_known_threads
-              WHERE chat_id = $1
-                AND (LOWER(COALESCE(title, '')) LIKE '%anim%'
-                    OR LOWER(COALESCE(title, '')) LIKE '%анім%'
-                    OR LOWER(COALESCE(title, '')) LIKE '%аним%')
-              ORDER BY updated_at DESC
-              LIMIT 1`,
-            [chatId]
-        );
-        return result.rows[0]?.thread_id ? parseInt(result.rows[0].thread_id) || null : null;
-    } catch (err) {
-        log.warn('Known Telegram thread lookup failed', { message: err.message });
-        return null;
-    }
-}
-
-async function resolveAnimatorAskTelegramTarget() {
-    const explicitChatId =
-        await getSettingValue('telegram_animator_chat_id')
-        || process.env.TELEGRAM_ANIMATOR_CHAT_ID;
-    const chatId = explicitChatId || await findKnownTelegramChatId();
-    if (!chatId) return { chatId: null, threadId: null, source: 'missing' };
-
-    const configuredThreadId = await getSettingValue('telegram_animator_thread_id')
-        || process.env.TELEGRAM_ANIMATOR_THREAD_ID;
-    const threadId = (parseInt(configuredThreadId, 10) || null)
-        || await findKnownTelegramThreadId(chatId);
-
-    return {
-        chatId,
-        threadId: threadId || null,
-        source: explicitChatId ? 'animator_config' : 'known_parkrozvag_group'
-    };
 }
 
 // v10.0.1: Safe parseInt for callback data — returns null if invalid
@@ -386,7 +353,10 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
         const isHttps = req.get('x-forwarded-proto') === 'https' || req.protocol === 'https';
         const appUrl = `${isHttps ? 'https' : 'http'}://${req.get('host')}`;
         const webhookResult = await ensureWebhook(appUrl);
-        if (webhookResult?.ok === false) {
+        const omniWebhookReady = webhookResult?.ok === false
+            && String(webhookResult.reason || webhookResult.description || '').toLowerCase().includes('webhook is owned by omni inbox')
+            && await isOmniTelegramWebhookReady(req);
+        if (webhookResult?.ok === false && !omniWebhookReady) {
             log.warn('Ask animator blocked because Telegram webhook is not ready', {
                 ...publicTarget,
                 webhookReason: webhookResult.reason || webhookResult.description || 'unknown'
@@ -591,6 +561,10 @@ router.post('/webhook', async (req, res) => {
             return res.sendStatus(200);
         }
 
+        if (update.callback_query && await handleAnimatorApprovalCallback(update)) {
+            return res.sendStatus(200);
+        }
+
         if (update.callback_query) {
             const { id, data, message } = update.callback_query;
             const chatId = message.chat.id;
@@ -640,60 +614,6 @@ router.post('/webhook', async (req, res) => {
                 await answerCallback(id, 'Скасовано');
                 await editCallbackMessageFinal(message, `❌ <b>Скасовано</b> (${actor})`, 'warehouse intake cancel');
                 return res.sendStatus(200);
-
-            } else if (data.startsWith('add_anim:')) {
-                const requestId = safeParseInt(data.split(':')[1]);
-                if (!requestId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
-                const target = await resolveAnimatorAskTelegramTarget();
-                if (!target.chatId || String(chatId) !== String(target.chatId)) {
-                    await answerCallback(id, 'Ця кнопка доступна лише в групі ParkRozvag', { show_alert: true });
-                    await clearInlineKeyboard(message, 'add_anim');
-                    return res.sendStatus(200);
-                }
-                log.info('Animator approval callback received', {
-                    requestId,
-                    chatId: String(chatId),
-                    messageId: message?.message_id || null
-                });
-
-                const pending = await pool.query(
-                    'UPDATE pending_animators SET status = $1 WHERE id = $2 AND status = $3 RETURNING *',
-                    ['approved', requestId, 'pending']
-                );
-                if (pending.rows.length === 0) {
-                    await answerStaleCallback(id, message, 'Запит вже оброблено');
-                    return res.sendStatus(200);
-                }
-
-                const date = pending.rows[0].date;
-                await ensureDefaultLines(date);
-
-                const lineParams = [date];
-                const lineScope = pushDefaultTimelineBusinessContext(lineParams);
-                const linesResult = await pool.query(
-                    `SELECT * FROM lines_by_date WHERE date = $1 AND ${lineScope} ORDER BY id`,
-                    lineParams
-                );
-                const existingNumbers = linesResult.rows
-                    .map(row => { const m = String(row.name || '').match(/^(?:Ручний аніматор|Manual animator) (\d+)$/); return m ? parseInt(m[1]) : 0; })
-                    .filter(n => n > 0);
-                let nextNum = 1;
-                while (existingNumbers.includes(nextNum)) nextNum++;
-
-                const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
-                const newLineId = `manual_animator_${Date.now()}_${date}`;
-                const newName = `Ручний аніматор ${nextNum}`;
-
-                await pool.query(
-                    `INSERT INTO lines_by_date (business_context, date, line_id, name, color)
-                     VALUES ($1, $2, $3, $4, $5)
-                     ON CONFLICT (business_context, date, line_id) DO NOTHING`,
-                    [DEFAULT_TIMELINE_CONTEXT, date, newLineId, newName, colors[linesResult.rows.length % colors.length]]
-                );
-
-                await answerCallback(id, 'Аніматора додано!');
-                await editCallbackMessageFinal(message, `✅ <b>Додано: ${newName}</b>`, 'add_anim');
-                log.info('Animator request approved and line added', { requestId, date, lineId: newLineId, lineName: newName });
 
             } else if (data.startsWith('cert_use:')) {
                 // Old Telegram messages can still contain this button. It must never redeem a certificate.
@@ -852,34 +772,6 @@ router.post('/webhook', async (req, res) => {
                 await handleContractorCallback(action, bookingId, contractorId, id, chatId, message.message_id);
                 return res.sendStatus(200);
 
-            } else if (data.startsWith('no_anim:')) {
-                const requestId = safeParseInt(data.split(':')[1]);
-                if (!requestId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
-                const target = await resolveAnimatorAskTelegramTarget();
-                if (!target.chatId || String(chatId) !== String(target.chatId)) {
-                    await answerCallback(id, 'Ця кнопка доступна лише в групі ParkRozvag', { show_alert: true });
-                    await clearInlineKeyboard(message, 'no_anim');
-                    return res.sendStatus(200);
-                }
-                log.info('Animator reject callback received', {
-                    requestId,
-                    chatId: String(chatId),
-                    messageId: message?.message_id || null
-                });
-
-                const rejected = await pool.query(
-                    'UPDATE pending_animators SET status = $1 WHERE id = $2 AND status = $3 RETURNING *',
-                    ['rejected', requestId, 'pending']
-                );
-                if (rejected.rows.length === 0) {
-                    await answerStaleCallback(id, message, 'Запит вже оброблено');
-                    return res.sendStatus(200);
-                }
-
-                await answerCallback(id, 'Відхилено');
-                await editCallbackMessageFinal(message, '❌ <b>Відхилено</b>', 'no_anim');
-                log.info('Animator request rejected', { requestId });
-            // v20.4.0: Training approve/reject callbacks
             } else if (data.startsWith('training_approve_') || data.startsWith('training_reject_')) {
                 try {
                     const inputId = safeParseInt(data.split('_')[2]);

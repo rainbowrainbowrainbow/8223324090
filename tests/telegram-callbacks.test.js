@@ -284,6 +284,9 @@ function installRouteDependencyMocks(dbState) {
         installModuleMock('../services/leadNotifier', {
             notifyNewLead: async () => null
         }),
+        installModuleMock('../services/omni-accounts', {
+            resolveOmniRuntimeConfig: async () => ({ botToken: 'unit-token', webhookSecret: 'unit-omni-secret' })
+        }),
         installModuleMock('../middleware/auth', {
             authenticateToken: (req, res, next) => {
                 req.user = { id: 1, username: 'unit', role: 'creator' };
@@ -303,6 +306,7 @@ function installRouteDependencyMocks(dbState) {
 }
 
 function loadTelegramRoute() {
+    delete require.cache[require.resolve('../services/animator-telegram-approval')];
     delete require.cache[require.resolve('../routes/telegram')];
     return require('../routes/telegram');
 }
@@ -381,6 +385,7 @@ describe('Telegram callback single-use hardening', () => {
     afterEach(async () => {
         await close(server);
         delete require.cache[require.resolve('../routes/telegram')];
+        delete require.cache[require.resolve('../services/animator-telegram-approval')];
         restoreDeps();
         dbMock.restore();
         telegram.restore();
@@ -418,6 +423,36 @@ describe('Telegram callback single-use hardening', () => {
         assert.equal(data.target.threadId, 1);
         assert.equal(callsByMethod(telegram.calls, 'sendMessage').length, 0);
         assert.equal(dbMock.state.animators.has(2), false);
+    });
+
+    it('uses the existing Omni-owned webhook when it is verified to target the Omni Telegram route', async () => {
+        const appUrl = process.env.APP_URL?.replace(/\/$/, '')
+            || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : baseUrl.replace(/^http:/, 'https:'));
+        telegram.behavior.ensureWebhook = async () => ({
+            ok: false,
+            reason: 'Telegram webhook is owned by Omni inbox'
+        });
+        telegram.behavior.telegramRequest = async (method, body) => {
+            telegram.calls.push({ method, body });
+            if (method === 'getWebhookInfo') {
+                return { ok: true, result: { url: `${appUrl}/api/omni/webhook/telegram` } };
+            }
+            return { ok: true, result: method === 'sendMessage' ? { message_id: 9002 } : true };
+        };
+
+        const res = await fetch(`${baseUrl}/api/telegram/ask-animator`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Forwarded-Proto': 'https' },
+            body: JSON.stringify({ date: '2099-01-01', note: 'unit Omni webhook owner' })
+        });
+        const data = await res.json();
+        const sendCall = callsByMethod(telegram.calls, 'sendMessage').at(-1);
+
+        assert.equal(res.status, 200);
+        assert.equal(data.success, true);
+        assert.equal(sendCall.body.chat_id, '-1001805304620');
+        assert.equal(sendCall.body.message_thread_id, 1);
+        assert.equal(dbMock.state.animators.get(data.requestId).status, 'pending');
     });
 
     it('sends ask-animator approval buttons after webhook setup is ready', async () => {

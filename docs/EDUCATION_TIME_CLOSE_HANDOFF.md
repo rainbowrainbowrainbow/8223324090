@@ -122,3 +122,23 @@ Use the prepared controller manifest for one bounded release authorization, then
 - Direct `node scripts/run-isolated-postgres-tests.js education-series`: PASS, 18/18 series checks and 11/11 acceptance cases, zero skipped. Captured output: `output/education-time-close/local-direct-series-retry-2.log`. The acceptance suite includes actual-app Chromium and the Park canonical-card scenario; it is not represented as eleven UI journeys.
 - These checks used only the newly owned PostgreSQL 16 RAM cluster `/dev/shm/edu-time-close-20261013-attempt2`, loopback port 55469, database `eventgenix_education_ready_fixture_test`. Its disposable public tables were verified empty and the exact cluster was stopped. The retained manual dataset and existing main PostgreSQL cluster were not opened or modified.
 - The correction changes only the already approved isolated-runner file and this handoff. The same bounded production block has two remaining release attempts, with its original expiry unchanged. Attempt 2 will run a fresh full baseline and exact-SHA CI before any deploy.
+## Resume audit — 2026-10-14
+
+- Exact release SHA `d968d1b619f6d20673063c962aa5177733c9bf78` / version `0.82.83` has green push CI run `38446914114`: 23/23 jobs PASS, including all 15 education jobs and the previously failed series wrapper.
+- The controller process/session ended before deployment. Its redacted log ends in CI watch output; no completed-release SHA is recorded. Fresh live and Railway read-only checks confirm the previous `0.82.81` / `db9485256740bf1d1b8f90ddda4e5b2069ead03e`, deployment `5bc994e6-753c-4945-889a-b5c9111c4e2a`, still SUCCESS. No release controller/deploy-helper Node process remained active. No new Railway upload is claimed.
+- Old block `EG-20261013T174949Z-d3e53319` expired at `2026-10-13T23:49:49.073Z` (02:49 Kyiv on October 14). It must not be extended or reused. Production readiness/schema health are OK with zero pending data migrations. Remote production still equals the owned `d968d1b619f6d20673063c962aa5177733c9bf78`; no foreign drift was observed.
+- Completed CI result: `output/education-time-close/ci-attempt-2-result.json`. Passing series artifact: `output/education-time-close/ci-attempt-2-series-proof/ci-series-chromium/attempt-2026-10-13T18-28-18-255Z-series-chromium-f31735/`; its proof hash is `b13eabb0255b792f919f45dcad5e04d459b4140349e21a3541b3c82ad35d4cd1`, log hash `86ef111770d8bd7d8930af27de2f421a2168629573d5181ac316869e3349e03f`.
+
+### Mandatory inventory gap — before edit
+
+- Symptom: captured TAP executes 18 series cases with zero failures/skips, but the proof contract lists only 17 mandatory IDs; the new UTC past-time regression is absent from `tests/helpers/education-close-contracts.json`.
+- Expected: fresh evidence is rejected if that exact new regression is not executed, in addition to the existing mandatory cases.
+- Root cause: the regression was added to the integration source without updating the explicit series scenario inventory. The current successful execution is real; the future fail-closed requirement is incomplete.
+- Narrow fix: add the exact existing regression title to the series `requiredIds`. No product, workflow, dependency, schema, permission, or protected changes.
+- Verification: parse the preserved passing TAP with the new contract (18 required cases), remove only the new regression's successful TAP line and require rejection, then run the existing evidence-validator tests. The old 17-ID record remains historical and is not relabeled as fresh evidence after the harness change.
+- A renewed production envelope will sign the prepared descendant and the next free patch `0.82.84`; the canonical controller will obtain fresh exact-SHA CI after version/cache changes, then perform the manual helper deploy and read-only QA. Physical-device checks remain BLOCKED_DEVICE.
+### Resume preparation verification
+
+- Tightened series inventory: the real captured CI TAP passes all 18 required IDs, including the UTC past-time regression. Removing only that regression's successful TAP line is rejected by the parser.
+- `node --test tests/education-close-evidence.test.js tests/static-doc-guard.test.js`: PASS, 27 checks, zero skips. These are validator/documentation checks, not education UI journeys.
+- Runtime/product source is unchanged from the green 0.82.83 SHA; the mandatory inventory and handoff are the only new local changes. Fresh final-source CI remains required after the canonical controller generates the next patch's release artifacts.

@@ -275,6 +275,7 @@
     "file": "tests/integration/education-series.integration.test.js",
     "classification": "HTTP_POSTGRESQL",
     "requiredIds": [
+      "series past-time validation uses Kyiv wall time under a UTC Express process",
       "fixed calendar series cross month/year and Kyiv DST without shifting wall-clock time",
       "controlled DB barriers serialize create/create, create/edit and create/series atomically",
       "invalid education duration is rejected for create, edit and series before SQL writes",

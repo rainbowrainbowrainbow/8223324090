@@ -1702,7 +1702,9 @@ async function run() {
             fiscalRefund: false
         }, 'art director receives thin payment capabilities without finance or Cashier PRO mutation rights');
         assert.equal(await artDirectorPage.isHidden('#cashierReadinessDetails'), true, 'art director cannot see fiscal configuration diagnostics');
-        assert.equal(await artDirectorPage.locator('a[href="/cashier-payments"]').filter({ hasText: 'Оплата та чек' }).count(), 1, 'art director sees the thin payment navigation entry');
+        const artDirectorPaymentsNav = artDirectorPage.locator('a[href="/cashier-payments"]').filter({ hasText: 'Оплата та чек' });
+        await artDirectorPaymentsNav.waitFor({ state: 'visible' });
+        assert.equal(await artDirectorPaymentsNav.count(), 1, 'art director sees the thin payment navigation entry');
         await captureVisualArtifact(artDirectorPage, '06-light-art-director-ready.png');
         await artDirectorContext.close();
 

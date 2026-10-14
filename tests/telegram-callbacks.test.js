@@ -83,11 +83,16 @@ function installDbMock() {
     db.pool.query = async (sql, params = []) => {
         const text = String(sql).replace(/\s+/g, ' ');
 
-        if (/telegram_known_chats|telegram_known_threads/i.test(text)) {
-            return { rows: [], rowCount: 1 };
+        if (/telegram_known_chats/i.test(text)) {
+            return { rows: [{ chat_id: '-1001805304620', title: 'ParkRozvag', type: 'supergroup' }], rowCount: 1 };
+        }
+        if (/telegram_known_threads/i.test(text)) {
+            return { rows: [], rowCount: 0 };
         }
 
         if (/SELECT value FROM settings WHERE key/i.test(text)) {
+            if (params[0] === 'telegram_animator_chat_id') return { rows: [{ value: '-1001805304620' }], rowCount: 1 };
+            if (params[0] === 'telegram_animator_thread_id') return { rows: [{ value: '1' }], rowCount: 1 };
             return { rows: [], rowCount: 0 };
         }
 
@@ -326,7 +331,7 @@ async function postWebhook(baseUrl, callbackData, overrides = {}) {
             message: overrides.message || {
                 message_id: 8800,
                 text: 'Original inline message',
-                chat: { id: 7700, type: 'group', title: 'Unit Chat' }
+                chat: { id: '-1001805304620', type: 'supergroup', title: 'ParkRozvag' }
             }
         }
     };
@@ -410,7 +415,6 @@ describe('Telegram callback single-use hardening', () => {
         assert.equal(res.status, 200);
         assert.equal(data.success, false);
         assert.equal(data.reason, 'webhook_unavailable');
-        assert.equal(data.fallback, 'manual_line');
         assert.equal(data.target.threadId, 1);
         assert.equal(callsByMethod(telegram.calls, 'sendMessage').length, 0);
         assert.equal(dbMock.state.animators.has(2), false);
@@ -451,6 +455,27 @@ describe('Telegram callback single-use hardening', () => {
         assert.equal(dbMock.state.lineInserts, 1);
         assert.equal(callsByMethod(telegram.calls, 'answerCallbackQuery').at(-1).body.callback_query_id, 'anim-stale');
         assert.ok(hasClearedKeyboard(telegram.calls));
+    });
+
+    it('rejects animator approval and rejection callbacks outside ParkRozvag', async () => {
+        const otherGroup = {
+            message_id: 8801,
+            text: 'Approval request',
+            chat: { id: '-1009999999999', type: 'supergroup', title: 'Other Group' }
+        };
+        const approved = await postWebhook(baseUrl, 'add_anim:1', { id: 'anim-wrong-chat-approve', message: otherGroup });
+        assert.equal(approved.status, 200);
+        assert.equal(dbMock.state.animators.get(1).status, 'pending');
+        assert.equal(dbMock.state.lineInserts, 0);
+        assert.equal(callsByMethod(telegram.calls, 'answerCallbackQuery').at(-1).body.show_alert, true);
+        assert.ok(hasClearedKeyboard(telegram.calls, otherGroup.message_id));
+
+        const rejected = await postWebhook(baseUrl, 'no_anim:1', { id: 'anim-wrong-chat-reject', message: otherGroup });
+        assert.equal(rejected.status, 200);
+        assert.equal(dbMock.state.animators.get(1).status, 'pending');
+        assert.equal(dbMock.state.lineInserts, 0);
+        assert.equal(callsByMethod(telegram.calls, 'answerCallbackQuery').at(-1).body.show_alert, true);
+        assert.ok(hasClearedKeyboard(telegram.calls, otherGroup.message_id));
     });
 
     it('uses expected task status tokens to reject stale task choices from older keyboards', async () => {

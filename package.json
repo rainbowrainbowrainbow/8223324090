@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.84",
+  "version": "0.82.87",
   "eventGenix": {
-    "releaseLabel": "Заняття: київський час серій"
+    "releaseLabel": "Заняття та аніматори"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

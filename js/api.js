@@ -3230,29 +3230,6 @@ async function apiSaveLines(date, lines, baseLines = []) {
     }
 }
 
-async function apiAddManualAnimatorLine(date, requestId) {
-    try {
-        const response = await apiNetworkFetch(
-            `${API_BASE}${timelineApiUrlWithView(`/lines/${encodeURIComponent(date)}/manual`)}`,
-            {
-                method: 'POST',
-                headers: getTimelineAuthHeaders(),
-                body: JSON.stringify({ requestId })
-            }
-        );
-        if (handleAuthError(response)) return { success: false, error: 'Сесію завершено. Увійдіть знову.' };
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            return { success: false, error: payload.error || 'Не вдалося додати аніматора',
-                code: payload.code || null, status: response.status };
-        }
-        return payload;
-    } catch (error) {
-        console.error('API addManualAnimatorLine error:', error);
-        return { success: false, error: 'Не вдалося додати аніматора. Спробуйте ще раз.' };
-    }
-}
-
 async function apiGetTimelineResources(type = null, options = {}) {
     try {
         const params = new URLSearchParams();
@@ -3470,12 +3447,12 @@ async function apiTelegramNotify(text) {
     }
 }
 
-async function apiTelegramAskAnimator(date, note) {
+async function apiTelegramAskAnimator(date, note, businessContext = 'event_genix') {
     try {
         const response = await apiNetworkFetch(`${API_BASE}/telegram/ask-animator`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify({ date, note })
+            body: JSON.stringify({ date, note, businessContext })
         });
         if (handleAuthError(response)) return { success: false, reason: 'auth_error' };
         let payload = null;

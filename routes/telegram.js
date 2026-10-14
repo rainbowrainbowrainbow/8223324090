@@ -6,8 +6,7 @@ const { pool } = require('../db');
 const {
     TELEGRAM_BOT_TOKEN, WEBHOOK_SECRET,
     telegramRequest, sendTelegramMessage,
-    getConfiguredChatId, getConfiguredThreadId,
-    getTelegramChatId, ensureWebhook
+    getConfiguredChatId, getTelegramChatId, ensureWebhook
 } = require('../services/telegram');
 const { ensureDefaultLines, validateDate } = require('../services/booking');
 const { buildAndSendDigest, sendTomorrowReminder } = require('../services/scheduler');
@@ -58,18 +57,11 @@ async function findKnownTelegramChatId() {
         const result = await pool.query(
             `SELECT chat_id, title, type
                FROM telegram_known_chats
-              WHERE type IN ('group', 'supergroup', 'channel')
-              ORDER BY
-                CASE
-                    WHEN LOWER(COALESCE(title, '')) LIKE '%anim%' THEN 0
-                    WHEN LOWER(COALESCE(title, '')) LIKE '%анім%' THEN 0
-                    WHEN LOWER(COALESCE(title, '')) LIKE '%аним%' THEN 0
-                    WHEN LOWER(COALESCE(title, '')) LIKE '%сповіщ%' THEN 1
-                    WHEN LOWER(COALESCE(title, '')) LIKE '%event%' THEN 2
-                    ELSE 3
-                END,
-                updated_at DESC
-              LIMIT 1`
+              WHERE type IN ('group', 'supergroup')
+                AND LOWER(REGEXP_REPLACE(COALESCE(title, ''), '[^[:alnum:]]', '', 'g')) = ANY($1::text[])
+              ORDER BY updated_at DESC
+              LIMIT 1`,
+            [['parkrozvag', 'паркрозваг']]
         );
         return result.rows[0]?.chat_id ? String(result.rows[0].chat_id) : null;
     } catch (err) {
@@ -85,17 +77,10 @@ async function findKnownTelegramThreadId(chatId) {
             `SELECT thread_id, title
                FROM telegram_known_threads
               WHERE chat_id = $1
-              ORDER BY
-                CASE
-                    WHEN LOWER(COALESCE(title, '')) LIKE '%anim%' THEN 0
-                    WHEN LOWER(COALESCE(title, '')) LIKE '%анім%' THEN 0
-                    WHEN LOWER(COALESCE(title, '')) LIKE '%аним%' THEN 0
-                    WHEN LOWER(COALESCE(title, '')) LIKE '%сповіщ%' THEN 1
-                    WHEN LOWER(COALESCE(title, '')) LIKE '%notification%' THEN 1
-                    WHEN LOWER(COALESCE(title, '')) LIKE '%alert%' THEN 1
-                    ELSE 3
-                END,
-                updated_at DESC
+                AND (LOWER(COALESCE(title, '')) LIKE '%anim%'
+                    OR LOWER(COALESCE(title, '')) LIKE '%анім%'
+                    OR LOWER(COALESCE(title, '')) LIKE '%аним%')
+              ORDER BY updated_at DESC
               LIMIT 1`,
             [chatId]
         );
@@ -109,20 +94,19 @@ async function findKnownTelegramThreadId(chatId) {
 async function resolveAnimatorAskTelegramTarget() {
     const explicitChatId =
         await getSettingValue('telegram_animator_chat_id')
-        || process.env.TELEGRAM_ANIMATOR_CHAT_ID
-        || await getSettingValue('telegram_notifications_chat_id')
-        || process.env.TELEGRAM_NOTIFICATIONS_CHAT_ID;
-    const chatId = explicitChatId || await getConfiguredChatId() || await findKnownTelegramChatId();
+        || process.env.TELEGRAM_ANIMATOR_CHAT_ID;
+    const chatId = explicitChatId || await findKnownTelegramChatId();
     if (!chatId) return { chatId: null, threadId: null, source: 'missing' };
 
-    const threadId =
-        await getConfiguredThreadId(['telegram_animator_thread_id', 'telegram_notifications_thread_id', 'telegram_thread_id'])
+    const configuredThreadId = await getSettingValue('telegram_animator_thread_id')
+        || process.env.TELEGRAM_ANIMATOR_THREAD_ID;
+    const threadId = (parseInt(configuredThreadId, 10) || null)
         || await findKnownTelegramThreadId(chatId);
 
     return {
         chatId,
         threadId: threadId || null,
-        source: explicitChatId ? 'animator_config' : 'telegram_config'
+        source: explicitChatId ? 'animator_config' : 'known_parkrozvag_group'
     };
 }
 
@@ -370,6 +354,22 @@ router.get('/reminder/:date', authenticateToken, async (req, res) => {
 
 router.post('/ask-animator', authenticateToken, async (req, res) => {
     try {
+        // Keep this route dependency lazy: webhook callbacks and task actions do not
+        // need timeline context, and several isolated route consumers mock only
+        // DEFAULT_BUSINESS_CONTEXT from businessContext.
+        const { canAccessTimelineContext, timelineContextFromRequest } = require('../services/timelineContext');
+        const businessContext = timelineContextFromRequest(req);
+        if (businessContext !== DEFAULT_TIMELINE_CONTEXT) {
+            return res.status(409).json({ success: false, reason: 'unsupported_business_context', error: 'Animator requests are available only for Event Genix' });
+        }
+        if (!canAccessTimelineContext(req.user, businessContext)) {
+            return res.status(403).json({ success: false, reason: 'timeline_unavailable', error: 'Timeline is not available for this user' });
+        }
+        const activeMembership = req.user?.activeBusinessMembership;
+        if (req.user?.businessMembershipAccess?.membershipEnabled
+            && activeMembership?.businessContext !== businessContext) {
+            return res.status(403).json({ success: false, reason: 'active_business_required', error: 'Active Event Genix business access is required' });
+        }
         const { date, note } = req.body;
         if (!validateDate(date)) {
             return res.status(400).json({ success: false, reason: 'invalid_date', error: 'Invalid date format' });
@@ -378,7 +378,7 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
         const target = await resolveAnimatorAskTelegramTarget();
         const chatId = target.chatId;
         if (!chatId) {
-            return res.json({ success: false, reason: 'no_chat_id', fallback: 'manual_line' });
+            return res.json({ success: false, reason: 'no_chat_id' });
         }
         const publicTarget = publicTelegramTarget(target);
         log.info('Ask animator target resolved', publicTarget);
@@ -395,7 +395,6 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
                 success: false,
                 reason: 'webhook_unavailable',
                 webhookReason: webhookResult.reason || webhookResult.description || null,
-                fallback: 'manual_line',
                 target: { threadId: publicTarget.threadId, source: publicTarget.source }
             });
         }
@@ -435,7 +434,7 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
         const threadId = target.threadId;
         const askPayload = {
             chat_id: chatId,
-            text: text,
+            text,
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [[
@@ -454,8 +453,7 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
             return res.json({
                 success: false,
                 requestId,
-                reason: classifyTelegramAskFailure(null, sendErr),
-                fallback: 'manual_line'
+                reason: classifyTelegramAskFailure(null, sendErr)
             });
         }
 
@@ -465,8 +463,7 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
                 success: false,
                 requestId,
                 reason: classifyTelegramAskFailure(result),
-                description: result?.description || null,
-                fallback: 'manual_line'
+                description: result?.description || null
             });
         }
 
@@ -647,6 +644,12 @@ router.post('/webhook', async (req, res) => {
             } else if (data.startsWith('add_anim:')) {
                 const requestId = safeParseInt(data.split(':')[1]);
                 if (!requestId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
+                const target = await resolveAnimatorAskTelegramTarget();
+                if (!target.chatId || String(chatId) !== String(target.chatId)) {
+                    await answerCallback(id, 'Ця кнопка доступна лише в групі ParkRozvag', { show_alert: true });
+                    await clearInlineKeyboard(message, 'add_anim');
+                    return res.sendStatus(200);
+                }
                 log.info('Animator approval callback received', {
                     requestId,
                     chatId: String(chatId),
@@ -852,6 +855,12 @@ router.post('/webhook', async (req, res) => {
             } else if (data.startsWith('no_anim:')) {
                 const requestId = safeParseInt(data.split(':')[1]);
                 if (!requestId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
+                const target = await resolveAnimatorAskTelegramTarget();
+                if (!target.chatId || String(chatId) !== String(target.chatId)) {
+                    await answerCallback(id, 'Ця кнопка доступна лише в групі ParkRozvag', { show_alert: true });
+                    await clearInlineKeyboard(message, 'no_anim');
+                    return res.sendStatus(200);
+                }
                 log.info('Animator reject callback received', {
                     requestId,
                     chatId: String(chatId),

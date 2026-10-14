@@ -316,34 +316,13 @@ function cleanupPendingPoll() {
     }
 }
 
-function getNextTimelineAnimatorLine(lines, dateStr) {
-    const existingNumbers = (Array.isArray(lines) ? lines : [])
-        .map(line => {
-            const match = String(line?.name || '').match(/^Аніматор\s+(\d+)$/i);
-            return match ? Number(match[1]) : 0;
-        })
-        .filter(Boolean);
-
-    let nextNum = 1;
-    while (existingNumbers.includes(nextNum)) nextNum++;
-
-    const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
-    return {
-        id: `manual_animator_${Date.now()}_${dateStr}`,
-        name: `Аніматор ${nextNum}`,
-        color: colors[(Array.isArray(lines) ? lines.length : 0) % colors.length],
-        fromSheet: false,
-        source: 'manual'
-    };
-}
-
 function getAnimatorTelegramFallbackMessage(result) {
     const reason = result?.reason || result?.error || 'telegram_send_failed';
-    if (reason === 'no_chat_id') return 'Telegram Chat ID не налаштовано — аніматора додано в CRM вручну.';
-    if (reason === 'no_bot_token') return 'Telegram-бот не налаштований — аніматора додано в CRM вручну.';
-    if (reason === 'telegram_circuit_open') return 'Telegram тимчасово заблокував відправку — аніматора додано в CRM вручну.';
+    if (reason === 'no_chat_id') return 'Групу Telegram не налаштовано. Запит не надіслано, аніматора не додано.';
+    if (reason === 'no_bot_token') return 'Telegram-бот не налаштований. Запит не надіслано, аніматора не додано.';
+    if (reason === 'telegram_circuit_open') return 'Telegram тимчасово заблокував відправку. Запит не надіслано, аніматора не додано.';
     if (reason === 'auth_error') return 'Сесія CRM завершилась. Увійдіть ще раз і повторіть додавання.';
-    return 'Telegram зараз недоступний — аніматора додано в CRM вручну.';
+    return 'Telegram зараз недоступний. Запит не надіслано, аніматора не додано.';
 }
 
 function isRoomTimelineLineEditingBlocked() {
@@ -356,82 +335,7 @@ function notifyRoomTimelineLineEditingBlocked() {
     }
 }
 
-async function addAnimatorLineLocallyAfterTelegramFallback(dateStr, note, result) {
-    if (result?.reason === 'auth_error') {
-        showNotification(getAnimatorTelegramFallbackMessage(result), 'error');
-        return false;
-    }
-
-    const lines = await getLinesForDate(AppState.selectedDate);
-    const nextLine = getNextTimelineAnimatorLine(lines, dateStr);
-    if (note) nextLine.note = note;
-
-    const saved = await saveLinesForDate(AppState.selectedDate, [...lines, nextLine], lines);
-    if (!saved) {
-        showNotification('Telegram недоступний, і локально аніматора теж не вдалося додати.', 'error');
-        return false;
-    }
-
-    await renderTimeline();
-    showNotification(getAnimatorTelegramFallbackMessage(result), 'warning');
-    return true;
-}
-
-let _manualAnimatorLineAddPending = false;
-const _manualAnimatorLineRequestIds = new Map();
-
-function manualAnimatorLineRequestKey(dateStr) {
-    const businessContext = window.TimelineBusinessContext?.current?.()?.key || 'event_genix';
-    return `timeline:manual-animator-add:${businessContext}:${dateStr}`;
-}
-
-function manualAnimatorLineRequestId(key) {
-    let stored = _manualAnimatorLineRequestIds.get(key);
-    try { stored = window.sessionStorage?.getItem(key) || stored; } catch (_) { /* in-memory fallback */ }
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stored || '')) {
-        stored = window.crypto?.randomUUID?.();
-    }
-    if (!stored) throw new Error('Cannot create a manual line request ID');
-    _manualAnimatorLineRequestIds.set(key, stored);
-    try { window.sessionStorage?.setItem(key, stored); } catch (_) { /* in-memory fallback */ }
-    return stored;
-}
-
-function clearManualAnimatorLineRequestId(key) {
-    _manualAnimatorLineRequestIds.delete(key);
-    try { window.sessionStorage?.removeItem(key); } catch (_) { /* in-memory fallback */ }
-}
-
-function manualAnimatorLineResultIsDefinitive(result) {
-    if (result?.success === true) return true;
-    // A 5xx or timeout may arrive after COMMIT. Reuse the ID until a replay
-    // confirms the result; only explicit client rejections prove no insert.
-    return !result?.offline && [400, 401, 403, 404, 409, 422].includes(result?.status);
-}
-
-async function addManualAnimatorLineDirectly(dateStr) {
-    if (_manualAnimatorLineAddPending) return false;
-    _manualAnimatorLineAddPending = true;
-    const button = document.getElementById('addLineBtn');
-    if (button) button.disabled = true;
-    try {
-        const key = manualAnimatorLineRequestKey(dateStr);
-        const requestId = manualAnimatorLineRequestId(key);
-        const result = await apiAddManualAnimatorLine(dateStr, requestId);
-        if (manualAnimatorLineResultIsDefinitive(result)) clearManualAnimatorLineRequestId(key);
-        if (!result?.success) {
-            showNotification(result?.error || 'Не вдалося додати аніматора. Спробуйте ще раз.', 'error');
-            return false;
-        }
-        window.invalidateTimelineDateCache?.(dateStr, { bookings: false });
-        await renderTimeline();
-        showNotification('Нову лінію аніматора додано', 'success');
-        return true;
-    } finally {
-        _manualAnimatorLineAddPending = false;
-        if (button) button.disabled = false;
-    }
-}
+let _animatorRequestPending = false;
 
 async function addNewLine() {
     const dateStr = formatDate(AppState.selectedDate);
@@ -486,11 +390,6 @@ async function addNewLine() {
         return;
     }
 
-    if (timelineContext?.key === 'event_genix' && mode === 'park') {
-        await addManualAnimatorLineDirectly(dateStr);
-        return;
-    }
-
     // v3.9: Modal instead of prompt()
     const note = await showNoteModal();
     if (note === null) return; // Скасовано
@@ -498,13 +397,27 @@ async function addNewLine() {
     // v3.9: Cleanup any existing poll
     cleanupPendingPoll();
 
+    if (_animatorRequestPending) return;
+    _animatorRequestPending = true;
+    const addButton = document.getElementById('addLineBtn');
+    if (addButton) addButton.disabled = true;
     showNotification('Надсилаю запит у Telegram...', 'info');
 
-    // Надіслати запит в Telegram
-    const result = await apiTelegramAskAnimator(dateStr, note.trim());
+    // Park animator additions are created only after group approval.
+    let result;
+    try {
+        result = await apiTelegramAskAnimator(dateStr, note.trim(), timelineContext?.key || 'event_genix');
+    } finally {
+        _animatorRequestPending = false;
+        if (addButton) addButton.disabled = false;
+    }
     if (!result || !result.success || !result.requestId) {
         removePendingLine();
-        await addAnimatorLineLocallyAfterTelegramFallback(dateStr, note.trim(), result || { reason: 'telegram_send_failed' });
+        if (timelineContext?.key === 'event_genix') {
+            showNotification('Запит не надіслано в ParkRozvag. Аніматора не додано; перевірте підключення й повторіть.', 'error');
+        } else {
+            showNotification(getAnimatorTelegramFallbackMessage(result || { reason: 'telegram_send_failed' }), 'error');
+        }
         return;
     }
 

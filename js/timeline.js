@@ -4152,7 +4152,11 @@ async function renderTimeline() {
         clearTimelineBanquetRoomPreviews();
 
     const addLineBtn = document.getElementById('addLineBtn');
-    if (addLineBtn) addLineBtn.style.display = (isViewer() || isRoomTimelineView()) ? 'none' : '';
+    const canRequestParkAnimator = isParkAnimatorTimelineView();
+    if (canRequestParkAnimator && typeof setTimelinePermissionHidden === 'function') {
+        setTimelinePermissionHidden(addLineBtn, false);
+    }
+    if (addLineBtn) addLineBtn.style.display = (isRoomTimelineView() || (isViewer() && !canRequestParkAnimator)) ? 'none' : '';
 
     // Режим декількох днів
     if (AppState.multiDayMode) {

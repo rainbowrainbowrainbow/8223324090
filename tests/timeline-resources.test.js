@@ -1122,7 +1122,8 @@ test('park manual animator lines are not deleted as legacy default lines', () =>
     const settings = read('js/settings.js');
     assert.match(bookingService, /l\.line_id IN \('line1', 'line2', 'line1_' \|\| \$1, 'line2_' \|\| \$1\)/);
     assert.doesNotMatch(bookingService, /\^line\[0-9\]/);
-    assert.match(settings, /id:\s*`manual_animator_\$\{Date\.now\(\)\}_\$\{dateStr\}`/);
+    assert.match(settings, /Park animator additions are created only after group approval/);
+    assert.doesNotMatch(settings, /manual_animator_\$\{Date\.now\(\)\}_\$\{dateStr\}/);
 });
 
 test('lines route switches resource-backed modes away from animator sync', () => {
@@ -1728,7 +1729,7 @@ test('room timeline rows cannot be saved through legacy animator lines endpoint'
     assert.match(linesRoute, /Room timeline rows cannot be saved through legacy animator lines endpoint/);
 
     assert.match(timeline, /Blocked legacy line save from room timeline view/);
-    assert.match(timeline, /isViewer\(\) \|\| isRoomTimelineView\(\)/);
+    assert.match(timeline, /isRoomTimelineView\(\) \|\| \(isViewer\(\) && !canRequestParkAnimator\)/);
     assert.match(timeline, /if \(isRoomTimelineView\(\)\) return;[\s\S]*editLineModal\(line\.id\)/);
     assert.ok(api.includes('window.TimelineView?.isRooms?.()'));
     assert.ok(api.includes('timelineApiUrlWithView(`/lines/${date}`)'));
@@ -2589,19 +2590,25 @@ function createTimelineAddActionHarness(options = {}) {
                 ? options.manualAddResult(date, requestId)
                 : options.manualAddResult || { success: true, created: true };
         },
-        apiTelegramAskAnimator: async () => {
+        apiTelegramAskAnimator: async (date, note, businessContext) => {
             events.telegram += 1;
-            return { success: false, reason: 'no_chat_id' };
+            events.telegramRequest = { date, note, businessContext };
+            if (typeof options.telegramResult === 'function') return options.telegramResult(date, note, businessContext);
+            return options.telegramResult || { success: false, reason: 'no_chat_id' };
         },
         removePendingLine() {},
         addAnimatorLineLocallyAfterTelegramFallback: async () => { events.localAnimatorFallback += 1; }
     });
     const blocks = [
-        sourceBlock('let _manualAnimatorLineAddPending', 'async function editLineModal('),
+        sourceBlock('let _animatorRequestPending', 'async function editLineModal('),
         sourceBlock('function timelineResourceCopy(type)', 'function timelineDisplayPreviewText('),
         sourceBlock('async function addTimelineResource(type,', 'function normalizeTimelineResourceColorInput(')
     ];
     vm.runInContext(blocks.join('\n'), context);
+    context.showNoteModal = async () => {
+        events.notePrompts += 1;
+        return promptValues.length ? promptValues.shift() : 'shift request';
+    };
     return { context, events, addLineButton, storage };
 }
 
@@ -2655,7 +2662,7 @@ for (const businessContext of ['dar', 'maysternya_doli', 'custom_business']) {
     });
 }
 
-test('timeline add cancellation creates no resource and Park adds a manual line without Telegram or a note prompt', async () => {
+test('timeline add cancellation creates no resource; Park sends the request for group approval', async () => {
     const cancelled = createTimelineAddActionHarness({
         mode: 'simple', resourceModel: 'animator', promptValues: [null]
     });
@@ -2667,129 +2674,51 @@ test('timeline add cancellation creates no resource and Park adds a manual line 
 
     const park = createTimelineAddActionHarness({ mode: 'park', resourceModel: 'auto' });
     await park.context.addNewLine();
-    assert.equal(park.events.telegram, 0);
+    assert.equal(park.events.telegram, 1);
     assert.equal(park.events.localAnimatorFallback, 0);
-    assert.equal(park.events.notePrompts, 0);
-    assert.equal(park.events.manualAdds.length, 1);
-    assert.equal(park.events.manualAdds[0].date, '2026-10-02');
-    assert.equal(park.events.cacheInvalidations.length, 1);
-    assert.equal(park.events.timelineRenders, 1);
+    assert.equal(park.events.notePrompts, 1);
+    assert.equal(park.events.telegramRequest.date, '2026-10-02');
+    assert.equal(park.events.telegramRequest.businessContext, 'event_genix');
+    assert.equal(park.events.manualAdds.length, 0);
+    assert.equal(park.events.cacheInvalidations.length, 0);
+    assert.equal(park.events.timelineRenders, 0);
     assert.equal(park.events.saved.length, 0);
+    assert.equal(park.events.notices.at(-1).type, 'error');
+    assert.match(park.events.notices.at(-1).message, /Аніматора не додано/);
 });
 
-test('Park add button ignores a second click while the manual line request is pending', async () => {
-    let completeAdd;
-    const pending = new Promise(resolve => { completeAdd = resolve; });
+test('Park add button ignores a second click while the Telegram group request is pending', async () => {
+    let completeRequest;
+    const pending = new Promise(resolve => { completeRequest = resolve; });
     const park = createTimelineAddActionHarness({
-        mode: 'park', resourceModel: 'auto', manualAddResult: pending
+        mode: 'park', resourceModel: 'auto', telegramResult: () => pending
     });
     const first = park.context.addNewLine();
     const second = park.context.addNewLine();
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(park.addLineButton.disabled, true);
     await second;
-    assert.equal(park.events.manualAdds.length, 1);
-    completeAdd({ success: true, created: true });
+    assert.equal(park.events.telegram, 1);
+    completeRequest({ success: false, reason: 'no_chat_id' });
     await first;
     assert.equal(park.addLineButton.disabled, false);
-    assert.equal(park.events.timelineRenders, 1);
+    assert.equal(park.events.timelineRenders, 0);
 });
 
-test('Park manual line save failure leaves the button available for a retry', async () => {
+test('Park Telegram failure leaves the button available and never adds locally', async () => {
     const park = createTimelineAddActionHarness({
         mode: 'park', resourceModel: 'auto',
-        manualAddResult: { success: false, error: 'No permission' }
+        telegramResult: { success: false, reason: 'no_chat_id' }
     });
     await park.context.addNewLine();
     await park.context.addNewLine();
-    assert.equal(park.events.manualAdds.length, 2);
+    assert.equal(park.events.telegram, 2);
+    assert.equal(park.events.manualAdds.length, 0);
     assert.equal(park.events.timelineRenders, 0);
     assert.equal(park.events.cacheInvalidations.length, 0);
     assert.equal(park.addLineButton.disabled, false);
-    assert.deepEqual(park.events.notices.map(notice => notice.type), ['error', 'error']);
-});
-
-test('lost manual-line response reuses the ID; confirmed replay makes the next click distinct', async () => {
-    const options = {
-        mode: 'park', resourceModel: 'auto',
-        requestIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
-        manualAddResult: (() => {
-            let attempts = 0;
-            return () => (++attempts === 1
-                ? { success: false, offline: true, error: 'response lost' }
-                : { success: true, created: attempts > 2 });
-        })()
-    };
-    const park = createTimelineAddActionHarness(options);
-    await park.context.addNewLine();
-    assert.equal(park.storage.size, 1);
-    await park.context.addNewLine();
-    assert.equal(park.events.manualAdds[1].requestId, park.events.manualAdds[0].requestId);
-    assert.equal(park.storage.size, 0);
-    await park.context.addNewLine();
-    assert.equal(park.events.manualAdds[2].requestId, '22222222-2222-4222-8222-222222222222');
-});
-
-test('committed manual-line operation returning 500 replays its ID after reload', async () => {
-    const storage = new Map();
-    const options = {
-        mode: 'park', resourceModel: 'auto', storage,
-        requestIds: ['11111111-1111-4111-8111-111111111111'],
-        manualAddResult: { success: false, status: 500, error: 'commit response failed' }
-    };
-    const first = createTimelineAddActionHarness(options);
-    await first.context.addNewLine();
-    assert.equal(storage.size, 1);
-    assert.equal(first.events.timelineRenders, 0);
-
-    options.requestIds = ['22222222-2222-4222-8222-222222222222'];
-    options.manualAddResult = { success: true, created: false };
-    const reloaded = createTimelineAddActionHarness(options);
-    await reloaded.context.addNewLine();
-    assert.equal(reloaded.events.manualAdds[0].requestId, first.events.manualAdds[0].requestId);
-    assert.equal(storage.size, 0);
-    await reloaded.context.addNewLine();
-    assert.equal(reloaded.events.manualAdds[1].requestId, '22222222-2222-4222-8222-222222222222');
-});
-
-test('definitive 403 clears a rejected manual-line operation; timeout remains retryable', async () => {
-    const options = {
-        mode: 'park', resourceModel: 'auto',
-        requestIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
-        manualAddResult: { success: false, status: 403, error: 'No permission' }
-    };
-    const park = createTimelineAddActionHarness(options);
-    await park.context.addNewLine();
-    assert.equal(park.storage.size, 0);
-    options.manualAddResult = { success: false, status: 408, error: 'Timeout' };
-    await park.context.addNewLine();
-    assert.equal(park.events.manualAdds[1].requestId, '22222222-2222-4222-8222-222222222222');
-    assert.equal(park.storage.size, 1);
-    await park.context.addNewLine();
-    assert.equal(park.events.manualAdds[2].requestId, park.events.manualAdds[1].requestId);
-});
-
-test('uncertain manual-line operation survives reload and stays scoped to business and date', async () => {
-    const storage = new Map();
-    const options = {
-        mode: 'park', resourceModel: 'auto', storage,
-        requestIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222',
-            '33333333-3333-4333-8333-333333333333'],
-        manualAddResult: { success: false, offline: true, error: 'response lost' }
-    };
-    const first = createTimelineAddActionHarness(options);
-    await first.context.addNewLine();
-    options.date = '2026-10-03';
-    await first.context.addNewLine();
-    options.date = '2026-10-02';
-    options.context = 'dar';
-    await first.context.addManualAnimatorLineDirectly('2026-10-02');
-    assert.equal(new Set(first.events.manualAdds.map(add => add.requestId)).size, 3);
-    options.context = 'event_genix';
-    options.requestIds = ['44444444-4444-4444-8444-444444444444'];
-    const reloaded = createTimelineAddActionHarness(options);
-    await reloaded.context.addNewLine();
-    assert.equal(reloaded.events.manualAdds[0].requestId, first.events.manualAdds[0].requestId);
-    assert.equal(storage.size, 3);
+    assert.deepEqual(park.events.notices.map(notice => notice.type), ['info', 'error', 'info', 'error']);
+    assert.ok(park.events.notices.every(notice => !notice.message.includes('аніматора додано')));
 });
 
 test('timeline add button saves the requested cabinet capacity through the resource API', async () => {

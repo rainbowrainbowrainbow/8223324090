@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.92 - Аніматори: автор заявки в Telegram
+
+### Release / Versioning / (14.10.2026) [codex]
+- **Аніматори: автор заявки в Telegram** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.91 - Аніматори: правильний бот погодження
 
 ### Release / Versioning / (14.10.2026) [codex]

@@ -229,28 +229,22 @@ test('actual booking and timeline HTTP routes preserve membership context with P
         await t.test('whole-roster save cannot erase a concurrent manual addition', async () => {
             const actor = await reset({ parkRole: 'director' });
             const date = '2026-09-12';
-            const manual = `/api/lines/${date}/manual?businessContext=event_genix&timelineView=animators`;
             const replace = `/api/lines/${date}?businessContext=event_genix`;
-            const key1 = '77777777-7777-4777-8777-777777777777';
-            const key2 = '88888888-8888-4888-8888-888888888888';
-            const first = await request(actor, 'POST', manual, { requestId: key1 });
-            assert.equal(first.status, 201);
-            const stale = await request(actor, 'POST', replace, [], { 'X-Timeline-Manual-Line-Base': '[]' });
+            const firstId = 'manual_animator_77777777-7777-4777-8777-777777777777';
+            const secondId = 'manual_animator_88888888-8888-4888-8888-888888888888';
+            await pool.query(`INSERT INTO lines_by_date (business_context, date, line_id, name, color, from_sheet)
+                VALUES ('event_genix', $1, $2, 'Аніматор 1', '#123456', false)`, [date, firstId]);
+            const staleBaseIds = [firstId];
+            // Simulate a successful group approval arriving after a manager loaded the roster.
+            await pool.query(`INSERT INTO lines_by_date (business_context, date, line_id, name, color, from_sheet)
+                VALUES ('event_genix', $1, $2, 'Аніматор 2', '#abcdef', false)`, [date, secondId]);
+            const beforeStaleSave = await dataSnapshot();
+            const stale = await request(actor, 'POST', replace, [], { 'X-Timeline-Manual-Line-Base': JSON.stringify(staleBaseIds) });
             assert.equal(stale.status, 409);
             assert.equal(stale.body.code, 'stale_manual_line_roster');
             assert.equal((await request(actor, 'POST', replace, [])).status, 409);
-            assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM lines_by_date WHERE line_id = $1',
-                [first.body.line.id])).rows[0].count, 1);
-
-            const [append, save] = await Promise.all([
-                request(actor, 'POST', manual, { requestId: key2 }),
-                request(actor, 'POST', replace, [], { 'X-Timeline-Manual-Line-Base': JSON.stringify([first.body.line.id]) })
-            ]);
-            assert.equal(append.status, 201);
-            assert.ok([200, 409].includes(save.status));
-            const persisted = (await pool.query('SELECT line_id FROM lines_by_date WHERE business_context = $1 AND date = $2',
-                ['event_genix', date])).rows.map(row => row.line_id);
-            assert.ok(persisted.includes(append.body.line.id));
+            assert.deepEqual(await dataSnapshot(), beforeStaleSave);
+            const persisted = [firstId, secondId];
             const intentional = await request(actor, 'POST', replace, [], {
                 'X-Timeline-Manual-Line-Base': JSON.stringify(persisted)
             });
@@ -261,14 +255,18 @@ test('actual booking and timeline HTTP routes preserve membership context with P
                 ['dar'])).rows[0].count, 0);
         });
 
-        await t.test('manual animator append denies non-manager and explicit create-booking denial', async () => {
+        await t.test('legacy direct animator append never writes without ParkRozvag approval', async () => {
             const actor = await reset({ parkRole: 'animator' });
             const route = '/api/lines/2026-09-12/manual?businessContext=event_genix&timelineView=animators';
-            assert.equal((await request(actor, 'POST', route, {})).status, 403);
+            const nonManager = await request(actor, 'POST', route, {});
+            assert.equal(nonManager.status, 410);
+            assert.equal(nonManager.body.code, 'animator_approval_required');
             await pool.query(`UPDATE business_memberships
                 SET role = 'manager', action_denylist = ARRAY['create_booking']
                 WHERE user_id = $1 AND business_id = 1`, [actor.id]);
-            assert.equal((await request(actor, 'POST', route, {})).status, 403);
+            const deniedManager = await request(actor, 'POST', route, {});
+            assert.equal(deniedManager.status, 410);
+            assert.equal(deniedManager.body.code, 'animator_approval_required');
             assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM lines_by_date')).rows[0].count, 0);
         });
 

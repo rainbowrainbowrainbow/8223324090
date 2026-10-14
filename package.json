@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.90",
+  "version": "0.82.91",
   "eventGenix": {
-    "releaseLabel": "Заняття та аніматори"
+    "releaseLabel": "Аніматори: правильний бот погодження"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

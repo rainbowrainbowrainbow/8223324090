@@ -6,7 +6,7 @@ const { pool } = require('../db');
 const {
     TELEGRAM_BOT_TOKEN, WEBHOOK_SECRET,
     telegramRequest, sendTelegramMessage,
-    getConfiguredChatId, getTelegramChatId, ensureWebhook
+    getConfiguredChatId, getTelegramChatId
 } = require('../services/telegram');
 const { ensureDefaultLines, validateDate } = require('../services/booking');
 const { buildAndSendDigest, sendTomorrowReminder } = require('../services/scheduler');
@@ -16,8 +16,8 @@ const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
 const { authenticateToken } = require('../middleware/auth');
 const warehousePhotoIntake = require('../services/warehousePhotoIntake');
-const { resolveOmniRuntimeConfig } = require('../services/omni-accounts');
 const {
+    animatorTelegramRequest,
     handleAnimatorApprovalCallback,
     resolveAnimatorAskTelegramTarget
 } = require('../services/animator-telegram-approval');
@@ -47,33 +47,30 @@ function publicTelegramTarget(target = {}) {
     };
 }
 
-function isExpectedOmniTelegramWebhook(webhookUrl, runtime, appUrl) {
-    if (!runtime?.webhookSecret || !webhookUrl) return false;
+function isExpectedAnimatorTelegramWebhook(webhookUrl, appUrl) {
+    if (!webhookUrl) return false;
     try {
         const actual = new URL(webhookUrl);
-        const expected = new URL('/api/omni/webhook/telegram', appUrl);
-        const businessContext = actual.searchParams.get('business_context')
-            || actual.searchParams.get('businessContext')
-            || DEFAULT_BUSINESS_CONTEXT;
-        return actual.protocol === 'https:'
-            && actual.origin === expected.origin
-            && actual.pathname === expected.pathname
-            && businessContext === DEFAULT_BUSINESS_CONTEXT;
+        const expected = new URL('/api/telegram/webhook', appUrl);
+        return actual.origin === expected.origin && actual.pathname === expected.pathname;
     } catch {
         return false;
     }
 }
 
-async function isOmniTelegramWebhookReady(req) {
+async function getAnimatorTelegramWebhookStatus(req) {
     try {
-        const runtime = await resolveOmniRuntimeConfig('telegram', { businessContext: DEFAULT_BUSINESS_CONTEXT });
-        if (!runtime?.botToken || !runtime?.webhookSecret) return false;
-        const info = await telegramRequest('getWebhookInfo', null, { businessContext: DEFAULT_BUSINESS_CONTEXT });
-        return info?.ok === true
-            && isExpectedOmniTelegramWebhook(info.result?.url, runtime, getPublicAppUrl(req));
+        const info = await animatorTelegramRequest('getWebhookInfo');
+        if (!info?.ok) return { ok: false, reason: classifyTelegramAskFailure(info) };
+        const updates = info.result?.allowed_updates;
+        const callbacksEnabled = !Array.isArray(updates) || updates.length === 0 || updates.includes('callback_query');
+        return {
+            ok: callbacksEnabled && isExpectedAnimatorTelegramWebhook(info.result?.url, getPublicAppUrl(req)),
+            reason: callbacksEnabled ? 'unexpected_webhook_target' : 'webhook_callbacks_disabled'
+        };
     } catch (err) {
-        log.warn('Unable to verify Omni-owned Telegram webhook for animator request', { message: err.message });
-        return false;
+        log.warn('Unable to verify operational Telegram webhook for animator request', { code: err.code || 'request_failed' });
+        return { ok: false, reason: classifyTelegramAskFailure(null, err) };
     }
 }
 
@@ -350,21 +347,16 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
         const publicTarget = publicTelegramTarget(target);
         log.info('Ask animator target resolved', publicTarget);
 
-        const isHttps = req.get('x-forwarded-proto') === 'https' || req.protocol === 'https';
-        const appUrl = `${isHttps ? 'https' : 'http'}://${req.get('host')}`;
-        const webhookResult = await ensureWebhook(appUrl);
-        const omniWebhookReady = webhookResult?.ok === false
-            && String(webhookResult.reason || webhookResult.description || '').toLowerCase().includes('webhook is owned by omni inbox')
-            && await isOmniTelegramWebhookReady(req);
-        if (webhookResult?.ok === false && !omniWebhookReady) {
+        const webhookResult = await getAnimatorTelegramWebhookStatus(req);
+        if (!webhookResult.ok) {
             log.warn('Ask animator blocked because Telegram webhook is not ready', {
                 ...publicTarget,
-                webhookReason: webhookResult.reason || webhookResult.description || 'unknown'
+                webhookReason: webhookResult.reason
             });
             return res.json({
                 success: false,
-                reason: 'webhook_unavailable',
-                webhookReason: webhookResult.reason || webhookResult.description || null,
+                reason: webhookResult.reason === 'no_bot_token' ? 'no_bot_token' : 'webhook_unavailable',
+                webhookReason: webhookResult.reason,
                 target: { threadId: publicTarget.threadId, source: publicTarget.source }
             });
         }
@@ -416,7 +408,7 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
         if (threadId) askPayload.message_thread_id = threadId;
         let result;
         try {
-            result = await telegramRequest('sendMessage', askPayload);
+            result = await animatorTelegramRequest('sendMessage', askPayload);
         } catch (sendErr) {
             log.warn('Ask animator Telegram send failed', { requestId, message: sendErr.message });
             await pool.query('UPDATE pending_animators SET status = $1 WHERE id = $2', ['failed', requestId]).catch(() => {});
@@ -428,6 +420,12 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
         }
 
         if (!result?.ok) {
+            log.warn('Ask animator Telegram API rejected message', {
+                requestId,
+                botSource: 'operational_telegram',
+                errorCode: result?.error_code || null,
+                reason: classifyTelegramAskFailure(result)
+            });
             await pool.query('UPDATE pending_animators SET status = $1 WHERE id = $2', ['failed', requestId]).catch(() => {});
             return res.json({
                 success: false,
@@ -561,7 +559,7 @@ router.post('/webhook', async (req, res) => {
             return res.sendStatus(200);
         }
 
-        if (update.callback_query && await handleAnimatorApprovalCallback(update)) {
+        if (update.callback_query && await handleAnimatorApprovalCallback(update, { telegramRequest: animatorTelegramRequest })) {
             return res.sendStatus(200);
         }
 

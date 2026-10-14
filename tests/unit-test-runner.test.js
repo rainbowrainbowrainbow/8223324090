@@ -102,8 +102,10 @@ for (const failure of [false, true]) {
 }
 
 
-test('CI unit inventory keeps education evidence negative checks registered exactly once', () => {
+test('CI unit inventory keeps required evidence and source checks registered exactly once', () => {
     const files = getConfiguredUnitTestArgs();
-    assert.equal(files.filter(file => file === 'tests/education-close-evidence.test.js').length, 1,
-        'Required education evidence tests must execute in npm test and CI');
+    for (const required of ['tests/education-close-evidence.test.js', 'tests/js-syntax-check.test.js']) {
+        assert.equal(files.filter(file => file === required).length, 1,
+            'Required CI unit gate must execute exactly once: ' + required);
+    }
 });

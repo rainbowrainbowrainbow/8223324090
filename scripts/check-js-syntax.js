@@ -31,6 +31,8 @@ function walk(dir) {
     }
     for (const entry of entries) {
         if (entry.isDirectory()) {
+            // Root output contains generated QA evidence and historical source copies.
+            if (dir === ROOT && entry.name === 'output') continue;
             if (!SKIP_DIRS.has(entry.name)) walk(path.join(dir, entry.name));
             continue;
         }

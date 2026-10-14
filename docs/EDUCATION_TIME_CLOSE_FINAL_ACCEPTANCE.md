@@ -13,14 +13,14 @@
 | Production база | PASS: точні live/remote/CI/Railway metadata вище |
 | Інтеграція бази | PASS: clean isolated merge без конфліктів; початковий погоджений SHA лишився ancestor |
 | Runtime/version consistency | PASS: Node 22.23.1 / npm 10.9.8; усі markers 0.82.90 узгоджені до майбутнього bump |
-| Focused validator/docs/classifier/CI runner | PASS: 43/43, zero skips; component/document checks, не journeys. Явний CI inventory містить evidence-файл рівно один раз; вилучення в temporary fixture дає child exit 1 |
+| Focused validator/docs/classifier/CI runner | PASS: 44/44, zero skips; component/document checks, не journeys. Явний CI inventory містить evidence-файл рівно один раз; вилучення в temporary fixture дає child exit 1 |
 | Mandatory series UTC | Реєстр містить 18 required IDs; parser приймає всі 18 реальних історичних TAP cases і відхиляє missing UTC / old 17-check proof. Новий execution потрібний у final CI |
 | Report lifecycle observer | PASS на live 0.82.87: terminal report summary на direct URL/reload, явна дата, card, UI tabs; старі timeout/rate-limit FAIL збережено |
 | Explicit access-probe identity | Первинний component FAIL збережено. Після fix непозначений UI staff 403 лишається failure; явний same-origin GET probe розпізнається окремо; HTTP 429 завжди FAIL |
 | Останній actual read-only observer | PASS на 0.82.87 / даті 07.10: card/reports, source/profile/cabinet незмінні, unclassified 0. Це pre-release harness evidence, не post-deploy supplement proof |
 | Поточна дата без картки | BLOCKED_FIXTURE у попередніх окремих спробах; не перейменовано у PASS. Для card observation явно використано наявну дату 07.10 |
 | Full local npm test | PASS на попередньому d9d8c3a4… до додаткового probe fix. Final merged-source baseline повторює controller; старий PASS не підставляється |
-| Final version/cache release SHA | PENDING: наступний вільний patch на момент preflight — 0.82.91 |
+| Final version/cache release SHA | PENDING: наступний вільний patch після перевірки завершення паралельного 0.82.91 |
 | Final exact-SHA CI / 15 education artifacts | PENDING, обов’язкові до deploy; включають fresh UI/Express/disposable-PG journeys, isolation, date/duration, groups, journal concurrency/reports, series/DST/atomicity, Chromium/WebKit/responsive/Park |
 | Final deployment/version/read-only QA | PENDING, потрібні exact metadata та actual observer після deploy |
 | Physical iPhone/iPad/Android | BLOCKED_DEVICE; власник явно відклав. Emulation не є фізичним доказом |
@@ -30,6 +30,10 @@ Authorization: `EG-20261014T082143Z-ee79e625`, initial SHA `ee79e625cdcd049f00c0
 
 Безпечний поточний binary rollback reference: `5482b665394db0427b8340b41bbf77463a4175dd`. Старий signed manifest містить історичний rollback reference; його не змінено й автоматичного rollback не заплановано.
 
-Докази й hashes: `output/education-time-close/` цього worktree; повні команди та історія — `docs/EDUCATION_TIME_CLOSE_HANDOFF.md`. Останні focused checks: `ci-inventory-focused.redacted.log`; negative CI guard: `ci-inventory-removal-negative.json`. Primary FAIL probe: `unmarked-staff-denial-baseline.json`. Actual live proof: `live-v08287-explicit-probe-historical.json`. Старі QA/CI FAIL/blocked attempts збережені.
+Докази й hashes: `output/education-time-close/` цього worktree; повні команди та історія — `docs/EDUCATION_TIME_CLOSE_HANDOFF.md`. Останні focused checks: `ci-source-evidence-focused.redacted.log`; negative CI guard: `ci-inventory-removal-negative.json`. Primary FAIL probe: `unmarked-staff-denial-baseline.json`. Actual live proof: `live-v08287-explicit-probe-historical.json`. Старі QA/CI FAIL/blocked attempts збережені.
 
 Після завершення gated release цей документ і окремий release proof мають містити фактичний SHA/CI/deployment/live outcome. Зараз повного фізичного або фінального supplement acceptance немає. Загальні unit/probe/responsive assertion counts не названо education journeys.
+
+Оновлення передстартового gate: спроба 2 не запущена через іншого активного writer блока `EG-20261014T120907Z-70fb0b94`. Remote 0.82.91 / 5fb80ba7… ще потребував власного deploy; невипущений source не включено до education. Статус доставки supplement — HOLD_WAITING_OTHER_RELEASE, 1/3 attempts used.
+
+Parser тепер виключає лише кореневий generated `output/` із збереженими старими QA-копіями. Tracked source там немає; актуальний код і вкладений `services/output/` залишаються під перевіркою, що доведено subprocess regressions з exit1 для помилок. Жодних QA-доказів не очищено. Обидва required CI-файли включено рівно один раз; їх вилучення у temporary fixture відхиляється.

@@ -162,6 +162,32 @@
         return request.promise;
     }
 
+    let tabResizeObserver = null;
+    let observedTabs = null;
+    let tabVisibilityFrame = null;
+
+    function scheduleActiveTabVisibility() {
+        const tabs = document.querySelector('.education-schedule-tabs');
+        if (!tabs) return;
+        if (tabs !== observedTabs && typeof global.ResizeObserver === 'function') {
+            tabResizeObserver?.disconnect();
+            observedTabs = tabs;
+            // Loading a taller view can add a scrollbar after the initial activation.
+            tabResizeObserver = new global.ResizeObserver(scheduleActiveTabVisibility);
+            tabResizeObserver.observe(tabs);
+        }
+        if (tabVisibilityFrame !== null) return;
+        tabVisibilityFrame = global.requestAnimationFrame(() => {
+            tabVisibilityFrame = null;
+            const active = tabs.querySelector('.education-schedule-tab.active');
+            if (!isEducationMode() || !active || !tabs.clientWidth || tabs.scrollWidth <= tabs.clientWidth) return;
+            const viewport = tabs.getBoundingClientRect();
+            const button = active.getBoundingClientRect();
+            if (button.left < viewport.left + 4) tabs.scrollLeft += button.left - viewport.left - 4;
+            else if (button.right > viewport.right - 4) tabs.scrollLeft += button.right - viewport.right + 4;
+        });
+    }
+
     function setView(view, updateUrl = true) {
         state.activeView = ['schedule', 'groups', 'attendance', 'reports'].includes(view) ? view : 'today';
         const today = state.activeView === 'today';
@@ -173,16 +199,7 @@
             button.classList.toggle('active', active);
             button.setAttribute('aria-pressed', active ? 'true' : 'false');
         });
-        // Keep direct-URL selections within the horizontal strip without moving the page.
-        global.requestAnimationFrame(() => {
-            const tabs = document.querySelector('.education-schedule-tabs');
-            const active = tabs?.querySelector('.education-schedule-tab.active');
-            if (!active || tabs.scrollWidth <= tabs.clientWidth) return;
-            const viewport = tabs.getBoundingClientRect();
-            const button = active.getBoundingClientRect();
-            if (button.left < viewport.left + 4) tabs.scrollLeft += button.left - viewport.left - 4;
-            else if (button.right > viewport.right - 4) tabs.scrollLeft += button.right - viewport.right + 4;
-        });
+        scheduleActiveTabVisibility();
         const panel = document.getElementById('educationTodayPanel');
         if (panel) panel.hidden = !today;
         const groups = document.getElementById('educationGroupsPanel');

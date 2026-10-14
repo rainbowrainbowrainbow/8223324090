@@ -1,3 +1,5 @@
+> Historical audit snapshot below. The owner subsequently authorized EDU-ASTRA-RELEASE (2026-10-14T21:43:58Z). Release validation, ASTRA-05, CI/deployment receipts and current disposition are tracked separately in output/education-ready/astra-release. Physical-device deferral is not a PASS.
+
 # EDU-ASTRA — фінальне функціональне й візуальне приймання
 
 Локальний програмний аудит завершено. Виправлено 4 підтверджені P2 UX/accessibility дефекти та недоліки тестового стенда. **SOFTWARE_MATRIX_PASS** на точних фінальних source/harness hashes. Фізичне приймання: **42 BLOCKED_DEVICE /0 виконано /0 PASS**.

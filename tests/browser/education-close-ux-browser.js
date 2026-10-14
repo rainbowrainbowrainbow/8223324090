@@ -271,6 +271,15 @@ async function trap(selector, name) {
                 await buttons.nth(i).press('Enter');
                 await page.waitForFunction(index => document.querySelectorAll('[data-education-schedule-tab]')[index].getAttribute('aria-pressed') === 'true', i);
                 await page.waitForFunction(index => { const tabs=document.querySelector('.education-schedule-tabs'), button=tabs.querySelectorAll('button')[index], t=tabs.getBoundingClientRect(), b=button.getBoundingClientRect(); return b.left>=t.left-1 && b.right<=t.right+1; }, i).catch(async error => { throw Error('Tab index '+i+' outside strip: '+JSON.stringify(await tabs.evaluate(el => ({left:el.scrollLeft,width:el.clientWidth,buttons:[...el.querySelectorAll("button")].map(b=>({name:b.textContent.trim(),left:b.getBoundingClientRect().left,right:b.getBoundingClientRect().right}))})))+'; '+error.message); });
+                if (i === 4 && profile.name === 'reflow-200') {
+                    // Reproduce a late width reduction after focus/activation has settled.
+                    await page.setViewportSize({width:profile.width-6,height:profile.height});
+                    await page.waitForFunction(width=>innerWidth===width,profile.width-6);
+                    await page.waitForFunction(()=>{const tabs=document.querySelector('.education-schedule-tabs'),button=tabs.querySelector('button.active'),t=tabs.getBoundingClientRect(),b=button.getBoundingClientRect();return b.left>=t.left-1&&b.right<=t.right+1;});
+                    assert.equal(await buttons.nth(i).evaluate(el=>el===document.activeElement),true,'Resize retains keyboard focus');
+                    await page.setViewportSize({width:profile.width,height:profile.height});
+                    await page.waitForFunction(width=>innerWidth===width,profile.width);
+                }
                 const focus = await buttons.nth(i).evaluate(el => ({ focused:el===document.activeElement,outline:parseFloat(getComputedStyle(el).outlineWidth) }));
                 assert.equal(focus.focused,true); assert.ok(focus.outline>=2);
             }

@@ -5,11 +5,19 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { chromium } = require(process.env.EDU_QA_PLAYWRIGHT);
 const base = 'https://8223324090-production.up.railway.app';
+const requestedDate = process.env.EDU_READY_LIVE_DATE || '';
+if (requestedDate && (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+    || !Number.isFinite(Date.parse(requestedDate + 'T12:00:00Z'))
+    || new Date(requestedDate + 'T12:00:00Z').toISOString().slice(0, 10) !== requestedDate)) {
+    throw new Error('Invalid explicit observation date');
+}
+const dateQuery = requestedDate ? '&date=' + encodeURIComponent(requestedDate) : '';
 const out = path.resolve(process.env.EDU_READY_LIVE_OUTPUT || 'output/education-ready/2026-10-03/live-readonly.json');
 const result = { policy: 'All business writes intercepted before login; auth login/refresh/verify only; no PII screenshots or response bodies',
     startedAt: new Date().toISOString(), requests: [], blockedWrites: [], snapshots: [], pageErrors: [], diagnostics: [], consoleFailures: [], blockedFixtures: [], failedChecks: [] };
 const observerHash=()=>crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex');
 result.observerHarnessHash=observerHash();result.attemptId='live-'+result.startedAt.replace(/[:.]/g,'-');
+result.observedDate = requestedDate || new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
 let browser, stage = 'before-login';
 const pending = new Set();
 async function main() {
@@ -37,6 +45,7 @@ async function main() {
         const held=result.blockedWrites.some(row=>row.path===item.path&&row.stage===stage);
         let classification='UNCLASSIFIED_FAILURE',cause='Needs investigation',impact='Cannot certify affected surface';
         if(held){classification='POLICY_WRITE_HOLD';cause='Business write blocked by this read-only harness';impact='No production failure or synchronization PASS inferred';}
+        else if(['http','console'].includes(kind)&&item.status===429){classification='SERVER_RATE_LIMIT_REJECTION';cause='Server request budget rejected this read';impact='Attempt fails; mandatory read not certified; respect Retry-After before a fresh attempt';if(kind==='http')result.failedChecks.push({id:'live-rate-limit-rejection',status:'FAIL',stage,path:item.path,retryAfterSeconds:item.retryAfterSeconds});}
         else if(['http','console'].includes(kind)&&item.path==='/api/staff'&&item.status===403&&stage==='dar-groups'){classification='EXPECTED_ACCESS_DENIAL';cause='Explicit legacy staff probe denied in education';impact='Education picker uses scoped teacher endpoint';}
         else if(kind==='request'&&item.error==='net::ERR_ABORTED'){classification='NAVIGATION_ABORT';cause='Read-only navigation cancelled pending request';impact='Terminal surface asserted separately';}
         else if(['request','console'].includes(kind)&&item.external){classification='POLICY_OUTBOUND_HOLD';cause='Cross-origin request blocked by harness';impact='Not production failure or sync proof';}
@@ -44,12 +53,12 @@ async function main() {
         result.diagnostics.push({stage,kind,...item,role:result.role||'unknown',business:stage.startsWith('park')?'event_genix':stage.startsWith('dar-')?'dar':'unknown',classification,cause,impact});
     };
     page.on('pageerror', error => { result.pageErrors.push({stage,type:error.name});classify('pageerror',{type:error.name}); });
-    page.on('console',message=>{if(message.type()!=='error')return;const value=message.text();const location=message.location().url;let url;try{url=new URL(location);}catch{}const item={type:'error',path:url?.pathname,external:Boolean(url&&url.origin!==base),status:/\b403\b/.test(value)?403:undefined,messageHash:crypto.createHash('sha256').update(value).digest('hex')};result.consoleFailures.push({stage,...item});classify('console',item,value);});
+    page.on('console',message=>{if(message.type()!=='error')return;const value=message.text();const location=message.location().url;let url;try{url=new URL(location);}catch{}const item={type:'error',path:url?.pathname,external:Boolean(url&&url.origin!==base),status:/\b403\b/.test(value)?403:/\b429\b/.test(value)?429:undefined,messageHash:crypto.createHash('sha256').update(value).digest('hex')};result.consoleFailures.push({stage,...item});classify('console',item,value);});
     page.on('requestfailed',request=>{const url=new URL(request.url());classify('request',{method:request.method(),path:url.pathname,error:request.failure()?.errorText,external:url.origin!==base});});
     page.on('response', response => {
         const request = response.request(), url = new URL(response.url());
         if (!url.pathname.startsWith('/api/')) return;
-        if(response.status()>=400)classify('http',{method:request.method(),path:url.pathname,status:response.status()});
+        if(response.status()>=400)classify('http',{method:request.method(),path:url.pathname,status:response.status(),retryAfterSeconds:response.status()===429?Number(response.headers()['retry-after'])||null:undefined});
         result.requests.push({ stage, method: request.method(), path: url.pathname, status: response.status(), business: url.searchParams.get('businessContext') });
     });
     await page.goto(base, { waitUntil: 'domcontentloaded' });
@@ -78,9 +87,13 @@ async function main() {
             reportStatusPresent: Boolean(document.getElementById('educationReportStatus')?.textContent),
             reportDatesSet: Boolean(document.getElementById('educationReportFrom')?.value && document.getElementById('educationReportTo')?.value)
         }), label));
+        if (label.startsWith('dar-reports-')) {
+            assert.equal(result.snapshots.at(-1).reportRendered, true, 'Required report summary not rendered');
+            assert.equal(result.snapshots.at(-1).reportDatesSet, true, 'Required report date filters missing');
+        }
     }
     stage = 'dar-groups';
-    await page.goto(base + '/?businessContext=dar&educationSchedule=groups', { waitUntil: 'domcontentloaded' });
+    await page.goto(base + '/?businessContext=dar' + dateQuery + '&educationSchedule=groups', { waitUntil: 'domcontentloaded' });
     await page.locator('#educationGroupsPanel').waitFor({ state: 'visible' });
     // Read-only explicit probes resolve with real responses and persist metadata only.
     result.probes = await page.evaluate(async () => {
@@ -96,19 +109,21 @@ async function main() {
     await snapshot(stage);
     stage = 'dar-reports-direct';
     let responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === '/api/education/reports');
-    await page.goto(base + '/?businessContext=dar&educationSchedule=reports', { waitUntil: 'domcontentloaded' });
+    await page.goto(base + '/?businessContext=dar' + dateQuery + '&educationSchedule=reports', { waitUntil: 'domcontentloaded' });
     let response = await responsePromise; await response.finished();
     await page.locator('#educationReportsPanel').waitFor({ state: 'visible' });
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.waitForFunction(() => window.EducationAttendance?.state.reportLoading === false
+        && Boolean(document.querySelector('#educationReportResult .education-report-summary')), null, { timeout: 20000 });
     await snapshot(stage);
     stage = 'dar-reports-reload';
     responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === '/api/education/reports');
     await page.reload({ waitUntil: 'domcontentloaded' }); response = await responsePromise; await response.finished();
     await page.locator('#educationReportsPanel').waitFor({ state: 'visible' });
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.waitForFunction(() => window.EducationAttendance?.state.reportLoading === false
+        && Boolean(document.querySelector('#educationReportResult .education-report-summary')), null, { timeout: 20000 });
     await snapshot(stage);
     for(const view of ['today','attendance','schedule']){
-        stage='dar-'+view;await page.goto(base+'/?businessContext=dar&educationSchedule='+view,{waitUntil:'domcontentloaded'});
+        stage='dar-'+view;await page.locator('[data-education-schedule-tab="'+view+'"]').click();
         await page.locator('[data-education-schedule-tab="'+view+'"]').waitFor({state:'visible'});
         await page.waitForFunction(view=>window.EducationScheduleWorkspace?.state.activeView===view&&!window.EducationScheduleWorkspace.state.loading,view);
         await snapshot(stage);
@@ -131,8 +146,13 @@ async function main() {
     }
     stage='park-schedule';await page.goto(base+'/?businessContext=event_genix',{waitUntil:'domcontentloaded'});await page.locator('#mainApp').waitFor({state:'visible'});await page.locator('.timeline-container').waitFor({state:'visible'});await page.waitForFunction(()=>window.TimelineBusinessContext?.current()?.apiValue==='event_genix');result.parkSurfaceVisible=true;
     result.afterFingerprint = await fingerprint(); result.profileAndCabinetUnchanged = result.beforeFingerprint === result.afterFingerprint;
+    const finalIdentity = await (await fetch(base + '/api/version')).json();
+    result.finalIdentity = { version: finalIdentity.version, commitSha: finalIdentity.commitSha, sourceBranch: finalIdentity.sourceBranch };
+    result.sourceUnchanged = result.finalIdentity.version === result.identity.version
+        && result.finalIdentity.commitSha === result.identity.commitSha
+        && result.finalIdentity.sourceBranch === result.identity.sourceBranch;
     const unresolved=result.diagnostics.filter(row=>row.classification==='UNCLASSIFIED_FAILURE');
-    result.status = !result.profileAndCabinetUnchanged||result.pageErrors.length||unresolved.length||result.failedChecks.length ? 'FAIL' : result.blockedFixtures.length ? 'BLOCKED_FIXTURE' : 'READONLY_OBSERVATION_COMPLETE';
+    result.status = !result.sourceUnchanged||!result.profileAndCabinetUnchanged||result.pageErrors.length||unresolved.length||result.failedChecks.length ? 'FAIL' : result.blockedFixtures.length ? 'BLOCKED_FIXTURE' : 'READONLY_OBSERVATION_COMPLETE';
     if (result.status !== 'READONLY_OBSERVATION_COMPLETE') process.exitCode = 1;
 }
 main().catch(error => { result.status = 'FAIL_OR_BLOCKED_ENV'; result.errorType = error.name; result.failureStage=stage; process.exitCode = 1; }).finally(async () => {

@@ -1,39 +1,34 @@
-# EDUCATION TIME CLOSE — поточне приймання, 2026-10-14
+# EDUCATION TIME CLOSE — актуальне приймання, 2026-10-14
 
-Висновок: **HOLD_PENDING_AUTHORIZATION_AND_FINAL_RELEASE**. Випуск не завершено: live лишається на v0.82.81. Ні green CI, ні локальний release commit не названі production deploy.
+**Runtime доставлений: v0.82.87 / c6739eeda0da8bd502ac23e9e259235855e35f75.** Education software-матриця й read-only live на наявній даті перевірені. Власне harness-доповнення локально готове; його push/exact-SHA CI/deploy ще не виконані.
 
-## Перевірені refs і межі
+Production impact: indirect для поточного доповнення. Net diff від production: mandatory UTC registry, read-only observer та документація. Backend, schema/auth/permissions, dependencies/lockfile, protected manifest та business records не змінюються.
 
-- Live: `0.82.81`, SHA `db9485256740bf1d1b8f90ddda4e5b2069ead03e`, branch `codex/eventgenix-production`, повні manifest metadata без warnings.
-- Remote: `bff441a4c6ee37db77bdcbaf88f086d2831dfab2`, підготовлений `0.82.84`.
-- Ізольована інтеграція: `C:/Users/Plotva/.codex/worktrees/education-time-close-finalize-20261014/EventGenix`, branch `codex/education-time-close-finalize-20261014`, base remote SHA вище.
-- Railway: `fortunate-appreciation / production / 8223324090`, project `bc28b46c-d4bc-491c-893a-d8401c633668`, service UUID `3fb62d4c-2dc2-4701-8e2b-09ce16e188ee`.
-- Активний deploy: `5bc994e6-753c-4945-889a-b5c9111c4e2a`, попередній реліз v0.82.81. Активних controller/deploy-helper Node процесів немає.
-- Жодних міграцій, production fixtures, business writes, schema/auth/permissions/settings/dependency/protected-manifest змін. Dirty main checkout, попередні докази та retained manual dataset не змінені.
-
-## Фактичні результати
-
-| Перевірка | Статус | Доказ / межі |
+| Перевірка | Фактичний результат | Доказ |
 | --- | --- | --- |
-| Київський runtime fix + wrapper clock | PASS на точному remote source | Fresh push CI `38530709841`: 23/23 required jobs, 15 education jobs. Це не deployment proof. |
-| Прив’язка всіх 15 education artifacts до source/harness | PASS для `bff441a4…` | `output/education-time-close/ci-parallel-v08284-validated-matrix.json`: inventory, attempt, log/proof hashes, marker, required IDs, skips. |
-| Реальна UTC-регресія серій | PASS, HTTP/PostgreSQL | Fresh TAP виконав 18 кейсів без skips/failures; старий proof contract містить лише 17 mandatory IDs. |
-| Посилений mandatory inventory | PASS локально | 18 mandatory IDs; вилучення успішного UTC-кейсу відхиляється. `mandatory-utc-finalize-probe.json`. Новий exact-SHA CI ще потрібен. |
-| Validator/documentation checks | PASS, 27/27 | `node --test tests/education-close-evidence.test.js tests/static-doc-guard.test.js`; zero skips. Це не education journeys. |
-| Runtime/version | PASS локально | Node 22.23.1, npm 10.9.8, exact lockfile install, version references 0.82.84 узгоджені. |
-| Continuous visible UI journey | PASS для remote CI source | Окремо Chromium і WebKit: новий teacher → group → новий child → member → lesson → journal/conflict/report/cancel. |
-| Responsive | PASS emulation для remote CI source | 1069 assertions на engine; не 1069 journeys. Особисто переглянуто три свіжі synthetic кадри, не весь архів. |
-| Випуск дозволеного блоку `EG-20261014T072408Z-88337973` | HOLD_REMOTE_DRIFT | Локальний baseline пройшов; commit `65f8236a…`; non-fast-forward push повернув exit1. CI/deploy цього SHA не виконувалися. |
-| Deploy нового пакета та exact live proof | NOT RUN | Паралельний CI green, але live/Railway не оновилися. `convergence-audit-20261014.json`. |
-| Post-deploy Dar/Park read-only QA | NOT RUN | Запуск лише після підтвердження фінального live SHA; writes блокуються до login. |
-| iPhone/iPad/Android фізично | BLOCKED_DEVICE | Пристроїв немає; власник явно відклав перевірку. Emulation не замінює physical evidence. |
+| Поточний live/remote/CI source | PASS, exact SHA вище | CI 38539500536: 23/23 required jobs; deployment 5a6b9d6b-942e-4284-85e4-af66799ae84a SUCCESS; повні manifest metadata |
+| Поточна education CI-матриця | PASS для c6739eeda… | 15 artifacts перевірені за повною рівністю inventory, log/proof hashes, attempt, marker, required IDs/skips; ci-animator-v08287-validated-matrix.json |
+| Continuous UI journey | PASS окремо Chromium/WebKit | Teacher → group → новий representative/child → member → lesson/card/edits → journal/correction/conflict → report/cancel |
+| Series UTC | PASS, 18 реальних TAP cases, zero skips | Поточний production registry має 17 mandatory IDs; додано 18-й локально, старі records не перейменовано |
+| Посилений registry | PASS локально, новий CI PENDING | Повний TAP приймається, відсутній UTC кейс відхиляється; старий record не є свіжим доказом нового harness |
+| Validator/docs/runtime | PASS | 27/27 checks, zero skips; Node 22.23.1/npm 10.9.8; syntax/diff checks |
+| Read-only API Dar/Park | PASS на v0.82.87 | version/health/ready/schema/bookings/lines/leads; збережено лише counts |
+| Оригінальна дата сьогодні | BLOCKED_FIXTURE, exit1 | 14.10 немає картки; live-v08287-browser-current-date.json |
+| Rate-limited observer attempt | FAIL, не прихований | live-v08287-strengthened-today.json; HTTP429 класифіковано як відмову читання; жодних settings/limit змін |
+| Фінальний observer сьогодні | BLOCKED_FIXTURE, exit1 | live-v08287-ui-navigation-today.json: звіти/direct+reload, source/profile незмінні, unclassified0, картки немає |
+| Фінальний observer 07.10 | READONLY_OBSERVATION_COMPLETE, exit0 | live-v08287-ui-navigation-historical.json: наявна картка, п’ять вкладок, звіти/direct+reload, Park surface, source/profile незмінні |
+| Live sync/provider actions | NOT RUN | Sockets/outbound/business writes held до login; це не sync PASS |
+| iPhone/iPad/Android фізично | BLOCKED_DEVICE | Власник явно відклав; emulation не названа фізичним доказом |
+| Власний final release SHA | PENDING | Після version/cache changes потрібні fresh exact-SHA CI, helper deploy й read-only QA |
 
-CI: https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/38530709841
+CI: https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/38539500536
 
-Докази зберігаються під `output/education-time-close/` у поточному worktree. Попередній worktree з відхиленим push та всі його докази залишені окремо.
+Докази: `output/education-time-close/` у `C:/Users/Plotva/.codex/worktrees/education-time-close-finalize-20261014/EventGenix`, branch `codex/education-time-close-finalize-20261014`.
 
-## Доставлення, яке залишилося
+1069 responsive assertions на engine не названі 1069 journeys. API/SQL/component/mock/emulation/physical результати розділені. Попередні CI FAIL, blocked fixtures та rate-limit FAIL збережено.
 
-Production impact: yes. Підготувати свіжий bounded block для наступного вільного patch v0.82.85, потім final source/version commit → push → усі required exact-SHA CI jobs → чинний Railway helper з explicit target → live version/SHA/branch → read-only Dar/Park QA. При зміні refs/target, expiry, FAIL або необхідності protected дії — HOLD.
+Висновок: **GO_SOFTWARE_FOR_CURRENT_RUNTIME; LOCAL_READY_HARNESS_SUPPLEMENT_PENDING_FINAL_RELEASE**. Повного фізичного приймання немає. Новий реєстр і observer потребують власного exact-SHA CI перед доставленням.
 
-Rollback reference: попередній live SHA `db9485256740bf1d1b8f90ddda4e5b2069ead03e`; без destructive SQL, backfill або force-push. Фізичні сценарії лишаються відкритими; реліз не означатиме повного фізичного приймання.
+Наступний крок: перевірити чинний авторизований descendant envelope після інтеграції; за дійсних меж — controller → version/cache commit → push → required CI → explicit Railway helper → live proof і read-only QA. При провалі меж/CI/live — HOLD. Без production seed чи business writes.
+
+Поточний безпечний binary rollback reference: `c6739eeda0da8bd502ac23e9e259235855e35f75`. Старий signed manifest містить історичний db948525…; автоматичного rollback чи втручання у доставлений іншим потоком код немає.

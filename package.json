@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.92",
+  "version": "0.82.93",
   "eventGenix": {
-    "releaseLabel": "Аніматори: автор заявки в Telegram"
+    "releaseLabel": "Заняття: достовірні перевірки"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

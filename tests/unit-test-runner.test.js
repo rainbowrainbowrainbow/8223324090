@@ -100,3 +100,10 @@ for (const failure of [false, true]) {
         }
     });
 }
+
+
+test('CI unit inventory keeps education evidence negative checks registered exactly once', () => {
+    const files = getConfiguredUnitTestArgs();
+    assert.equal(files.filter(file => file === 'tests/education-close-evidence.test.js').length, 1,
+        'Required education evidence tests must execute in npm test and CI');
+});

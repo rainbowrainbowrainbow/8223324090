@@ -13,7 +13,7 @@
 | Production база | PASS: точні live/remote/CI/Railway metadata вище |
 | Інтеграція бази | PASS: clean isolated merge без конфліктів; початковий погоджений SHA лишився ancestor |
 | Runtime/version consistency | PASS: Node 22.23.1 / npm 10.9.8; усі markers 0.82.90 узгоджені до майбутнього bump |
-| Focused validator/docs/classifier | PASS: 33/33, zero skips, після інтеграції; component/document checks, не journeys |
+| Focused validator/docs/classifier/CI runner | PASS: 43/43, zero skips; component/document checks, не journeys. Явний CI inventory містить evidence-файл рівно один раз; вилучення в temporary fixture дає child exit 1 |
 | Mandatory series UTC | Реєстр містить 18 required IDs; parser приймає всі 18 реальних історичних TAP cases і відхиляє missing UTC / old 17-check proof. Новий execution потрібний у final CI |
 | Report lifecycle observer | PASS на live 0.82.87: terminal report summary на direct URL/reload, явна дата, card, UI tabs; старі timeout/rate-limit FAIL збережено |
 | Explicit access-probe identity | Первинний component FAIL збережено. Після fix непозначений UI staff 403 лишається failure; явний same-origin GET probe розпізнається окремо; HTTP 429 завжди FAIL |
@@ -26,10 +26,10 @@
 | Physical iPhone/iPad/Android | BLOCKED_DEVICE; власник явно відклав. Emulation не є фізичним доказом |
 | Live synchronization/provider/business writes | NOT RUN; outbound/sockets/business writes held. Це не synchronization PASS |
 
-Authorization: `EG-20261014T082143Z-ee79e625`, initial SHA `ee79e625cdcd049f00c04f0ae4e3de694e401886`; valid until `2026-10-14T14:21:43.582Z`, 0/3 attempts before execution. Target branch/service/data boundaries збережено. Перед запуском потрібен успішний controller dry-run; при scope/expiry/CI/deploy/live failure — HOLD. Міграцій та production business writes не дозволено.
+Authorization: `EG-20261014T082143Z-ee79e625`, initial SHA `ee79e625cdcd049f00c04f0ae4e3de694e401886`; valid until `2026-10-14T14:21:43.582Z`, 1/3 attempts used; першу зупинено до push/deploy через виявлену CI inventory gap. Target branch/service/data boundaries збережено. Перед запуском потрібен успішний controller dry-run; при scope/expiry/CI/deploy/live failure — HOLD. Міграцій та production business writes не дозволено.
 
 Безпечний поточний binary rollback reference: `5482b665394db0427b8340b41bbf77463a4175dd`. Старий signed manifest містить історичний rollback reference; його не змінено й автоматичного rollback не заплановано.
 
-Докази й hashes: `output/education-time-close/` цього worktree; повні команди та історія — `docs/EDUCATION_TIME_CLOSE_HANDOFF.md`. Останні focused checks: `integrated-v08290-focused.redacted.log`. Primary FAIL probe: `unmarked-staff-denial-baseline.json`. Actual live proof: `live-v08287-explicit-probe-historical.json`. Старі QA/CI FAIL/blocked attempts збережені.
+Докази й hashes: `output/education-time-close/` цього worktree; повні команди та історія — `docs/EDUCATION_TIME_CLOSE_HANDOFF.md`. Останні focused checks: `ci-inventory-focused.redacted.log`; negative CI guard: `ci-inventory-removal-negative.json`. Primary FAIL probe: `unmarked-staff-denial-baseline.json`. Actual live proof: `live-v08287-explicit-probe-historical.json`. Старі QA/CI FAIL/blocked attempts збережені.
 
 Після завершення gated release цей документ і окремий release proof мають містити фактичний SHA/CI/deployment/live outcome. Зараз повного фізичного або фінального supplement acceptance немає. Загальні unit/probe/responsive assertion counts не названо education journeys.

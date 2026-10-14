@@ -29,6 +29,10 @@ const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
 
 const log = createLogger('TelegramRoute');
 
+function escapeTelegramHtml(value) {
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function classifyTelegramAskFailure(result, err) {
     const description = String(result?.description || err?.message || result?.error || '').toLowerCase();
     if (description.includes('no bot token') || description.includes('token')) return 'no_bot_token';
@@ -381,6 +385,12 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
         const dateFormatted = `${parts[2]}.${parts[1]}.${parts[0]}`;
 
         let text = `🎭 <b>Запит на додавання аніматора</b>\n\n`;
+        const requesterName = String(req.user.name || '').trim();
+        const requesterLogin = String(req.user.username || '').trim();
+        const requesterLabel = requesterName || requesterLogin || `Користувач CRM #${req.user.id}`;
+        text += `👤 Запит від: <b>${escapeTelegramHtml(requesterLabel)}</b>`;
+        if (requesterName && requesterLogin) text += ` (CRM: <code>${escapeTelegramHtml(requesterLogin)}</code>)`;
+        text += '\n';
         text += `📅 Дата: <b>${dateFormatted}</b>\n`;
         text += `👥 Зараз на зміні:\n`;
         if (animatorNames.length > 0) {

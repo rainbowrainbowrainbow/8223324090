@@ -291,7 +291,7 @@ function installRouteDependencyMocks(dbState) {
         }),
         installModuleMock('../middleware/auth', {
             authenticateToken: (req, res, next) => {
-                req.user = { id: 1, username: 'unit', role: 'creator' };
+                req.user = dbState.authenticatedUser || { id: 1, username: 'unit', role: 'creator' };
                 next();
             }
         }),
@@ -531,9 +531,23 @@ describe('Telegram callback single-use hardening', () => {
         assert.equal(data.target.threadId, 1);
         assert.equal(sendCall.body.chat_id, '-1001805304620');
         assert.equal(sendCall.body.message_thread_id, 1);
+        assert.ok(sendCall.body.text.includes('👤 Запит від: <b>unit</b>\n'));
         assert.equal(sendCall.body.reply_markup.inline_keyboard[0][0].callback_data, 'add_anim:2');
         assert.equal(sendCall.body.reply_markup.inline_keyboard[0][1].callback_data, 'no_anim:2');
         assert.equal(dbMock.state.animators.get(2).status, 'pending');
+    });
+
+    it('identifies the authenticated requester and escapes their name instead of trusting form identity', async () => {
+        dbMock.state.authenticatedUser = { id: 15, name: 'Віталіна <&>', username: 'vitalina<&>', role: 'manager' };
+        const res = await fetch(`${baseUrl}/api/telegram/ask-animator`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: '2099-01-01', name: 'Spoofed User', username: 'spoofed', requesterName: 'Spoofed Requester' })
+        });
+        assert.equal((await res.json()).success, true);
+        const text = callsByMethod(telegram.calls, 'sendMessage').at(-1).body.text;
+        assert.ok(text.includes('👤 Запит від: <b>Віталіна &lt;&amp;&gt;</b> (CRM: <code>vitalina&lt;&amp;&gt;</code>)'));
+        assert.equal(text.includes('Spoofed'), false);
+        assert.equal(text.includes('spoofed'), false);
     });
 
     it('processes animator approval once and clears stale animator buttons', async () => {

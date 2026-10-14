@@ -9,6 +9,14 @@ function telegramRequest(...args) {
   return require('./telegram').telegramRequest(...args);
 }
 
+function animatorTelegramRequest(method, body) {
+  const { TELEGRAM_BOT_TOKEN, telegramRequest: request } = require('./telegram');
+  // Park approvals belong to the operational bot already installed in the group.
+  // The saved Omni inbox token may identify a different bot with no group access.
+  if (!TELEGRAM_BOT_TOKEN) return Promise.resolve({ ok: false, reason: 'no_bot_token', description: 'No bot token configured' });
+  return request(method, body, { ownedToken: TELEGRAM_BOT_TOKEN });
+}
+
 function pushDefaultTimelineBusinessContext(...args) {
   return require('./timelineBusinessScope').pushDefaultTimelineBusinessContext(...args);
 }
@@ -90,19 +98,19 @@ function callbackMessageTarget(message) {
   return { chat_id: message.chat.id, message_id: message.message_id };
 }
 
-async function answerCallback(callbackQueryId, text, options = {}) {
-  return telegramRequest('answerCallbackQuery', {
+async function answerCallback(request, callbackQueryId, text, options = {}) {
+  return request('answerCallbackQuery', {
     callback_query_id: callbackQueryId,
     text,
     ...options,
   });
 }
 
-async function clearInlineKeyboard(message, context) {
+async function clearInlineKeyboard(request, message, context) {
   const target = callbackMessageTarget(message);
   if (!target) return;
   try {
-    await telegramRequest('editMessageReplyMarkup', {
+    await request('editMessageReplyMarkup', {
       ...target,
       reply_markup: { inline_keyboard: [] },
     });
@@ -111,13 +119,13 @@ async function clearInlineKeyboard(message, context) {
   }
 }
 
-async function editCallbackMessageFinal(message, finalText, context) {
+async function editCallbackMessageFinal(request, message, finalText, context) {
   const target = callbackMessageTarget(message);
   if (!target) return;
   const baseText = message.text || message.caption || '';
   const text = baseText ? `${baseText}\n\n${finalText}` : finalText;
   try {
-    await telegramRequest('editMessageText', {
+    await request('editMessageText', {
       ...target,
       text,
       parse_mode: 'HTML',
@@ -125,24 +133,25 @@ async function editCallbackMessageFinal(message, finalText, context) {
     });
   } catch (err) {
     log.warn(`${context} final message edit failed: ${err.message}`);
-    await clearInlineKeyboard(message, context);
+    await clearInlineKeyboard(request, message, context);
   }
 }
 
-async function answerStaleCallback(callbackQueryId, message) {
-  await answerCallback(callbackQueryId, 'Запит вже оброблено');
-  await clearInlineKeyboard(message, 'stale animator callback');
+async function answerStaleCallback(request, callbackQueryId, message) {
+  await answerCallback(request, callbackQueryId, 'Запит вже оброблено');
+  await clearInlineKeyboard(request, message, 'stale animator callback');
 }
 
-async function handleAnimatorApprovalCallback(update) {
+async function handleAnimatorApprovalCallback(update, options = {}) {
   const callback = update?.callback_query;
   const data = String(callback?.data || '');
   if (!data.startsWith('add_anim:') && !data.startsWith('no_anim:')) return false;
+  const request = options.telegramRequest || telegramRequest;
 
   const [, action, rawId] = data.match(/^(add_anim|no_anim):(.*)$/) || [];
   const requestId = safeRequestId(rawId);
   if (!requestId) {
-    await answerCallback(callback.id, 'Невалідний запит');
+    await answerCallback(request, callback.id, 'Невалідний запит');
     return true;
   }
 
@@ -150,8 +159,8 @@ async function handleAnimatorApprovalCallback(update) {
   const chatId = message?.chat?.id;
   const target = await resolveAnimatorAskTelegramTarget();
   if (!target.chatId || String(chatId) !== String(target.chatId)) {
-    await answerCallback(callback.id, 'Ця кнопка доступна лише в групі ParkRozvag', { show_alert: true });
-    await clearInlineKeyboard(message, action);
+    await answerCallback(request, callback.id, 'Ця кнопка доступна лише в групі ParkRozvag', { show_alert: true });
+    await clearInlineKeyboard(request, message, action);
     return true;
   }
 
@@ -162,13 +171,13 @@ async function handleAnimatorApprovalCallback(update) {
     [status, requestId, 'pending']
   );
   if (pending.rows.length === 0) {
-    await answerStaleCallback(callback.id, message);
+    await answerStaleCallback(request, callback.id, message);
     return true;
   }
 
   if (!isApproval) {
-    await answerCallback(callback.id, 'Відхилено');
-    await editCallbackMessageFinal(message, '❌ <b>Відхилено</b>', 'no_anim');
+    await answerCallback(request, callback.id, 'Відхилено');
+    await editCallbackMessageFinal(request, message, '❌ <b>Відхилено</b>', 'no_anim');
     log.info('Animator request rejected', { requestId });
     return true;
   }
@@ -201,13 +210,14 @@ async function handleAnimatorApprovalCallback(update) {
     ['event_genix', date, lineId, lineName, colors[linesResult.rows.length % colors.length]]
   );
 
-  await answerCallback(callback.id, 'Аніматора додано!');
-  await editCallbackMessageFinal(message, `✅ <b>Додано: ${lineName}</b>`, 'add_anim');
+  await answerCallback(request, callback.id, 'Аніматора додано!');
+  await editCallbackMessageFinal(request, message, `✅ <b>Додано: ${lineName}</b>`, 'add_anim');
   log.info('Animator request approved and line added', { requestId, date, lineId, lineName });
   return true;
 }
 
 module.exports = {
+  animatorTelegramRequest,
   handleAnimatorApprovalCallback,
   resolveAnimatorAskTelegramTarget,
 };

@@ -22,8 +22,10 @@ function installModuleMock(modulePath, exports) {
 function installTelegramMock() {
     const calls = [];
     const behavior = {
-        telegramRequest: async (method, body) => {
-            calls.push({ method, body });
+        botToken: 'unit-token',
+        telegramRequest: async (method, body, options) => {
+            calls.push({ method, body, options });
+            if (method === 'getWebhookInfo') return { ok: true, result: { url: behavior.webhookUrl } };
             return { ok: true, result: method === 'sendMessage' ? { message_id: 9001 } : true };
         },
         sendTelegramMessage: async (chatId, text, options) => {
@@ -36,7 +38,7 @@ function installTelegramMock() {
         ensureWebhook: async () => ({ ok: true })
     };
     const restore = installModuleMock('../services/telegram', {
-        TELEGRAM_BOT_TOKEN: 'unit-token',
+        get TELEGRAM_BOT_TOKEN() { return behavior.botToken; },
         WEBHOOK_SECRET: 'unit-secret',
         telegramRequest: (...args) => behavior.telegramRequest(...args),
         sendTelegramMessage: (...args) => behavior.sendTelegramMessage(...args),
@@ -105,7 +107,7 @@ function installDbMock() {
         if (/UPDATE pending_animators SET status/i.test(text)) {
             const [newStatus, id, expected] = params;
             const row = state.animators.get(id);
-            if (row?.status === expected) {
+            if (row && (!expected || row.status === expected)) {
                 row.status = newStatus;
                 return { rows: [{ id, status: newStatus, date: row.date }], rowCount: 1 };
             }
@@ -380,6 +382,8 @@ describe('Telegram callback single-use hardening', () => {
         app.use(express.json());
         app.use('/api/telegram', loadTelegramRoute());
         ({ server, baseUrl } = await listen(app));
+        telegram.behavior.webhookUrl = `${process.env.APP_URL?.replace(/\/$/, '')
+            || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : baseUrl)}/api/telegram/webhook`;
     });
 
     afterEach(async () => {
@@ -401,7 +405,7 @@ describe('Telegram callback single-use hardening', () => {
         assert.equal(hasClearedKeyboard(telegram.calls), true);
     });
 
-    it('does not send ask-animator buttons when webhook setup is not ready', async () => {
+    it('does not send ask-animator buttons when the operational bot webhook targets another route', async () => {
         telegram.behavior.getConfiguredChatId = async () => '-1001805304620';
         telegram.behavior.getConfiguredThreadId = async () => 1;
         telegram.behavior.ensureWebhook = async () => ({
@@ -409,6 +413,7 @@ describe('Telegram callback single-use hardening', () => {
             reason: 'setWebhook_failed',
             description: 'bad webhook'
         });
+        telegram.behavior.webhookUrl = 'https://other-crm.test/api/telegram/webhook';
 
         const res = await fetch(`${baseUrl}/api/telegram/ask-animator`, {
             method: 'POST',
@@ -425,18 +430,22 @@ describe('Telegram callback single-use hardening', () => {
         assert.equal(dbMock.state.animators.has(2), false);
     });
 
-    it('uses the existing Omni-owned webhook when it is verified to target the Omni Telegram route', async () => {
+    it('keeps ParkRozvag requests on the operational bot when Omni has a different bot', async () => {
         const appUrl = process.env.APP_URL?.replace(/\/$/, '')
             || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : baseUrl.replace(/^http:/, 'https:'));
         telegram.behavior.ensureWebhook = async () => ({
             ok: false,
             reason: 'Telegram webhook is owned by Omni inbox'
         });
-        telegram.behavior.telegramRequest = async (method, body) => {
-            telegram.calls.push({ method, body });
+        telegram.behavior.telegramRequest = async (method, body, options) => {
+            telegram.calls.push({ method, body, options });
             if (method === 'getWebhookInfo') {
+                if (options?.ownedToken === 'unit-token') {
+                    return { ok: true, result: { url: `${appUrl}/api/telegram/webhook` } };
+                }
                 return { ok: true, result: { url: `${appUrl}/api/omni/webhook/telegram` } };
             }
+            if (options?.ownedToken !== 'unit-token') return { ok: false, error_code: 400, description: 'Bad Request: chat not found' };
             return { ok: true, result: method === 'sendMessage' ? { message_id: 9002 } : true };
         };
 
@@ -450,9 +459,57 @@ describe('Telegram callback single-use hardening', () => {
 
         assert.equal(res.status, 200);
         assert.equal(data.success, true);
+        assert.equal(sendCall.options.ownedToken, 'unit-token');
         assert.equal(sendCall.body.chat_id, '-1001805304620');
         assert.equal(sendCall.body.message_thread_id, 1);
         assert.equal(dbMock.state.animators.get(data.requestId).status, 'pending');
+        assert.equal(telegram.calls.some(call => ['setWebhook', 'deleteWebhook'].includes(call.method)), false);
+    });
+
+    it('does not fall back to the inbox bot when the operational bot is missing', async () => {
+        telegram.behavior.botToken = '';
+        const res = await fetch(`${baseUrl}/api/telegram/ask-animator`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: '2099-01-01' })
+        });
+        const data = await res.json();
+        assert.equal(data.success, false);
+        assert.equal(data.reason, 'no_bot_token');
+        assert.equal(telegram.calls.length, 0);
+        assert.equal(dbMock.state.animators.has(2), false);
+    });
+
+    it('does not create approval requests when webhook callbacks are disabled', async () => {
+        telegram.behavior.telegramRequest = async (method, body, options) => {
+            telegram.calls.push({ method, body, options });
+            return { ok: true, result: { url: telegram.behavior.webhookUrl, allowed_updates: ['message'] } };
+        };
+        const res = await fetch(`${baseUrl}/api/telegram/ask-animator`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: '2099-01-01' })
+        });
+        const data = await res.json();
+        assert.equal(data.success, false);
+        assert.equal(data.webhookReason, 'webhook_callbacks_disabled');
+        assert.equal(callsByMethod(telegram.calls, 'sendMessage').length, 0);
+        assert.equal(dbMock.state.animators.has(2), false);
+    });
+
+    it('marks a rejected Telegram send as failed instead of leaving a pending approval', async () => {
+        telegram.behavior.telegramRequest = async (method, body, options) => {
+            telegram.calls.push({ method, body, options });
+            if (method === 'getWebhookInfo') return { ok: true, result: { url: telegram.behavior.webhookUrl } };
+            return { ok: false, error_code: 400, description: 'Bad Request: chat not found' };
+        };
+        const res = await fetch(`${baseUrl}/api/telegram/ask-animator`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: '2099-01-01' })
+        });
+        const data = await res.json();
+        assert.equal(data.success, false);
+        assert.equal(data.reason, 'no_chat_id');
+        assert.equal(dbMock.state.animators.get(data.requestId).status, 'failed');
+        assert.equal(dbMock.state.lineInserts, 0);
     });
 
     it('sends ask-animator approval buttons after webhook setup is ready', async () => {
@@ -484,6 +541,9 @@ describe('Telegram callback single-use hardening', () => {
         assert.equal(first.status, 200);
         assert.equal(dbMock.state.lineInserts, 1);
         assert.ok(hasClearedKeyboard(telegram.calls));
+        for (const call of telegram.calls.filter(call => ['answerCallbackQuery', 'editMessageText', 'editMessageReplyMarkup'].includes(call.method))) {
+            assert.equal(call.options?.ownedToken, 'unit-token', 'callback replies must use the same operational bot that sent the request');
+        }
 
         const stale = await postWebhook(baseUrl, 'no_anim:1', { id: 'anim-stale' });
         assert.equal(stale.status, 200);

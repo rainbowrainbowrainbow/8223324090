@@ -427,4 +427,5 @@ async function run() {
     }
     console.log(JSON.stringify({ checks: results.checks.length, passed: results.checks.filter(r => r.status === 'PASS').length, defects: results.checks.filter(r => r.status === 'DEFECT').length, output: OUT }));
 }
-run().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = { install, requirePlaywright };
+if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });

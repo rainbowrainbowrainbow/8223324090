@@ -420,6 +420,7 @@ function shapeHrStaffList(rows, capability, user) {
     return shapeHrPayrollFields(rows, user);
 }
 router.use(requireHrCapabilityContract);
+router.use(require('../services/parkHrProfessionRead').requireParkProfessionReads(pool));
 // Owner-approved narrow assignment lane; other legacy HR routes retain their guards.
 const educationHrMembership = require('../services/educationHrMembership');
 router.get('/staff/:id/education-businesses', async (req, res) => {

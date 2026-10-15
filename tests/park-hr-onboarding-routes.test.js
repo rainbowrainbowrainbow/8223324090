@@ -181,13 +181,14 @@ test('Park onboarding uses three exact GET reads and leaves adjacent HR/account 
                 }
             }
         });
-        await t.test('profession and staff-specific joins stay held; no other method inherits the exception', async () => {
+        // Authorized GET detail is covered by park-hr-profession-read-routes.test.js.
+        await t.test('general profession feed remains held; staff detail HEAD and all writes remain closed', async () => {
             state.actor = {};
             for (const [method, path] of [
                 ['GET', '/api/hr/onboarding?scope=profession'],
-                ['GET', `/api/hr/staff/${STAFF_ID}/onboarding-assignment`],
-                ['GET', `/api/hr/staff/${STAFF_ID}/onboarding-processes`],
-                ['GET', '/api/hr/staff/999999/onboarding-processes'],
+                ['HEAD', `/api/hr/staff/${STAFF_ID}/onboarding-assignment`],
+                ['HEAD', `/api/hr/staff/${STAFF_ID}/onboarding-processes`],
+                ['HEAD', '/api/hr/staff/999999/onboarding-processes'],
                 ['PUT', `/api/hr/staff/${STAFF_ID}/onboarding-assignment`],
                 ['POST', '/api/hr/onboarding/start'], ['POST', '/api/hr/onboarding/templates'],
                 ['PUT', '/api/hr/onboarding/41/check'], ['HEAD', '/api/hr/onboarding']

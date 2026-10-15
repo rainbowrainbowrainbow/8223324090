@@ -300,7 +300,7 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
                 ['HEAD', '/api/hr/company-structure'], ['PUT', '/api/hr/company-structure'],
                 ['GET', '/api/hr/company-structure/'], ['GET', '/api/hr/company-structure/extra'],
                 ['GET', '/api/hr/pool?status=reserve'],
-                ['GET', '/api/hr/checklists/dashboard']
+                ['HEAD', '/api/hr/checklists/dashboard']
             ]) {
                 const count = calls.length;
                 const response = await request(path, { method });

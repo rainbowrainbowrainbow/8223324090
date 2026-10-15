@@ -142,7 +142,7 @@ test('network failure in salary load offers retry instead of empty payroll', asy
     } finally { dom.window.close(); }
 });
 
-test('partial Park profession catalog shows unknown counts and disables unsupported workspace actions', async () => {
+test('schedule-only partial Park catalog keeps unknown counts and cannot open staff workspace', async () => {
     const markup = [
         elementOuterHtml('tab-professions'),
         elementOuterHtml('professionWorkspaceOverlay')
@@ -162,6 +162,7 @@ test('partial Park profession catalog shows unknown counts and disables unsuppor
         }
     };
     const { dom, win } = harness(markup, {
+        canAccess: action => action !== 'hr.staff.view',
         fetch: async url => {
             assert.equal(url, '/api/hr/professions');
             return response(200, partialPayload);

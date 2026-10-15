@@ -1404,14 +1404,13 @@ function renderStaffOnboardingAssignment(staff = {}) {
     const taskText = assignment
         ? `${assignment.taskSummary.active}/${assignment.taskSummary.total} активних задач`
         : 'задачі не створені';
-    const action = hasResponsible ? 'Змінити' : 'Призначити';
     return `<div class="hr-team-onboarding-assignment ${tone}">
         <div class="hr-team-onboarding-assignment-head">
             <div>
                 <b>Корпоративний онбординг</b>
                 <span>${escapeHtml(responsible)}</span>
             </div>
-            ${canManage ? `<button type="button" onclick="openStaffOnboardingAssignment(${Number(staff.id)})">${action}</button>` : ''}
+            ${typeof canAccess === 'function' && canAccess('hr.staff.view') ? `<button type="button" onclick="openStaffOnboardingAssignment(${Number(staff.id)})">Переглянути</button>` : ''}
         </div>
         <div class="hr-team-onboarding-meta">
             <span>${escapeHtml(status)}</span>
@@ -1424,6 +1423,7 @@ function renderStaffOnboardingAssignment(staff = {}) {
 
 let staffOnboardingDialogState = null;
 let staffOnboardingReturnFocus = null;
+let staffOnboardingRequestSeq = 0;
 
 function onboardingAdmissionLabel(value) {
     const labels = {
@@ -1469,7 +1469,7 @@ function renderStaffOnboardingScopeCard(staff, assignment = null, process = null
         }
         : (process?.readiness || staffProfessionChecklistReadiness(staff, professionKey));
     const percent = Math.max(0, Math.min(100, Number(readiness.percent || 0)));
-    const responsible = process?.responsible_name || process?.responsible_username || 'Відповідального не призначено';
+    const responsible = process?.responsible_name || process?.responsible_username || (process?.responsible_restricted ? 'Дані обмежені' : 'Відповідального не призначено');
     const tasks = process?.task_summary || {};
     const status = process ? onboardingStatusLabel(process.training_status || process.status) : 'не стартував';
     const completed = process?.status === 'completed' || process?.training_status === 'completed';
@@ -1479,7 +1479,7 @@ function renderStaffOnboardingScopeCard(staff, assignment = null, process = null
         : (assignment?.profession_title || process?.profession_title || professionTitle(professionKey));
     const roleType = isGeneral ? 'Корпоративний setup' : (assignment?.is_primary ? 'Основна професія' : 'Додаткова професія');
     const actionLabel = completed ? 'Процес завершено' : (process ? 'Змінити відповідального' : (isGeneral ? 'Запустити загальний онбординг' : 'Запустити онбординг професії'));
-    const canAct = assignmentActive && !completed;
+    const canAct = canManage && !staffOnboardingDialogState?.readOnly && assignmentActive && !completed;
     const professionArg = professionKey ? `'${escapeJsString(professionKey)}'` : "''";
     return `<article class="hr-onboarding-scope-card ${completed ? 'is-completed' : ''} ${process ? 'is-active' : 'is-empty'}">
         <div class="hr-onboarding-scope-head">
@@ -1505,6 +1505,7 @@ function renderStaffOnboardingScopeCard(staff, assignment = null, process = null
 }
 
 function closeStaffOnboardingDialog() {
+    staffOnboardingRequestSeq += 1;
     document.getElementById('staffOnboardingScopeOverlay')?.remove();
     const focusTarget = staffOnboardingReturnFocus;
     staffOnboardingDialogState = null;
@@ -1521,7 +1522,7 @@ function renderStaffOnboardingDialog() {
     root.setAttribute('aria-busy', 'false');
     root.innerHTML = `
         <div class="hr-onboarding-scope-explainer" role="note">
-            Корпоративний setup не впливає на професійний допуск. Кожна професія має власний чекліст, відповідального і статус готовності.
+            ${state.readOnly ? 'Лише перегляд. Зміна відповідальних і запуск процесів недоступні. ' : ''}Корпоративний setup не впливає на професійний допуск. Кожна професія має власний чекліст, відповідального і статус готовності.
         </div>
         <div class="hr-onboarding-scope-grid">
             ${renderStaffOnboardingScopeCard(staff, null, processes.general || processes.history?.[0] || null)}
@@ -1532,17 +1533,20 @@ function renderStaffOnboardingDialog() {
 }
 
 async function refreshStaffOnboardingDialog(staffId) {
+    const sequence = ++staffOnboardingRequestSeq;
+    const context = salaryAccessContext();
     const root = document.getElementById('staffOnboardingScopeBody');
     if (root) {
         root.setAttribute('aria-busy', 'true');
         root.innerHTML = '<div class="hr-onboarding-scope-empty">Завантаження процесів онбордингу...</div>';
     }
-    const [processesResult, assignmentsResult] = await Promise.allSettled([
-        hrFetch(`/staff/${staffId}/onboarding-processes`),
-        hrFetch(`/staff/${staffId}/role-assignments`)
-    ]);
-    const processesResponse = processesResult.status === 'fulfilled' ? processesResult.value : { success: false, error: processesResult.reason?.message };
-    const assignmentsResponse = assignmentsResult.status === 'fulfilled' ? assignmentsResult.value : { success: false, error: assignmentsResult.reason?.message };
+    const processesResponse = await hrFetch(`/staff/${staffId}/onboarding-processes`).catch(() => null);
+    if (sequence !== staffOnboardingRequestSeq || context !== salaryAccessContext() || !root?.isConnected) return;
+    const assignmentsResponse = Array.isArray(processesResponse?.assignments)
+        ? { success: true, data: processesResponse.assignments }
+        : processesResponse?.success
+            ? await hrFetch(`/staff/${staffId}/role-assignments`).catch(() => null) : null;
+    if (sequence !== staffOnboardingRequestSeq || context !== salaryAccessContext() || !root?.isConnected) return;
     if (!processesResponse?.success || !assignmentsResponse?.success) {
         if (root) {
             root.setAttribute('aria-busy', 'false');
@@ -1556,6 +1560,7 @@ async function refreshStaffOnboardingDialog(staffId) {
     const staff = teamStaff.find(item => Number(item.id) === Number(staffId)) || processesResponse.staff || { id: staffId };
     staffOnboardingDialogState = {
         staff,
+        readOnly: processesResponse.onboardingAccess?.readOnly === true,
         processes: processesResponse.data || { general: null, professions: [] },
         assignments: Array.isArray(assignmentsResponse.data) ? assignmentsResponse.data : []
     };
@@ -1596,7 +1601,7 @@ function responsibleCandidateOptions(currentId = null) {
 }
 
 window.openStaffOnboardingAssignment = async function(staffId) {
-    if (!canManage) {
+    if (typeof canAccess !== 'function' || !canAccess('hr.staff.view')) {
         showNotification('Призначати відповідальних можуть тільки HR/керівники', 'error');
         return;
     }
@@ -1625,7 +1630,7 @@ window.openStaffOnboardingAssignment = async function(staffId) {
     overlay.addEventListener('keydown', event => { if (event.key === 'Escape') closeStaffOnboardingDialog(); });
     overlay.querySelector('.candidate-detail-close')?.focus();
     try {
-        await Promise.all([ensureOnboardingResponsibleCandidates(true), refreshStaffOnboardingDialog(id)]);
+        await refreshStaffOnboardingDialog(id);
     } catch (error) {
         console.error('Onboarding dialog error', error);
         const root = document.getElementById('staffOnboardingScopeBody');
@@ -1637,6 +1642,7 @@ window.closeStaffOnboardingDialog = closeStaffOnboardingDialog;
 window.refreshStaffOnboardingDialog = refreshStaffOnboardingDialog;
 
 window.editStaffOnboardingScope = async function(staffId, professionKey = '', button = null) {
+    if (!canManage || staffOnboardingDialogState?.readOnly) return;
     const state = staffOnboardingDialogState;
     const key = normalizeProfessionKey(professionKey);
     const process = key
@@ -4493,6 +4499,7 @@ function isProfessionCatalogPartial() {
 }
 
 function isProfessionWorkspaceUnsupported() {
+    if (typeof canAccess === 'function' && canAccess('hr.staff.view')) return false;
     return isProfessionCatalogPartial()
         && Array.isArray(professionCatalogAccess.unsupportedFields)
         && professionCatalogAccess.unsupportedFields.includes('workspace');
@@ -5105,7 +5112,7 @@ function renderProfessionChecklists() {
     }
     if (summaryRoot) {
         summaryRoot.innerHTML = ['without_template', 'not_started', 'in_progress', 'completed', 'archived', 'orphaned']
-            .map(status => `<button type="button" class="hr-checklist-dashboard-summary-card${professionChecklistDashboardFilters.status === status ? ' is-active' : ''}" data-checklist-dashboard-status="${status}"><strong>${Number(summary[status] || 0)}</strong><span>${escapeHtml(professionChecklistStatusLabel(status))}</span></button>`)
+            .map(status => `<button type="button" class="hr-checklist-dashboard-summary-card${professionChecklistDashboardFilters.status === status ? ' is-active' : ''}" data-checklist-dashboard-status="${status}"><strong>${summary[status] == null ? '—' : Number(summary[status])}</strong><span>${escapeHtml(professionChecklistStatusLabel(status))}</span></button>`)
             .join('');
     }
     const rows = (data.professionsWithoutTemplate || []).map(item => professionChecklistDashboardRowHtml({ ...item, status: 'without_template' }, 'without_template'));
@@ -5135,6 +5142,8 @@ function renderProfessionChecklists() {
 
 for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
     window.addEventListener(eventName, () => {
+        if (professionWorkspaceState.open) closeProfessionWorkspaceUi();
+        if (staffOnboardingDialogState || document.getElementById('staffOnboardingScopeOverlay')) closeStaffOnboardingDialog();
         if (professionChecklistDashboardState.loadState === 'idle') return;
         professionChecklistDashboardRequestSeq += 1;
         professionChecklistDashboardState = {
@@ -5298,6 +5307,14 @@ function professionRateUnitLabel(unit = 'hour') {
 }
 
 function renderProfessionWorkspacePeople(people = []) {
+    if (professionWorkspaceState.data?.access?.partial) {
+        const root = document.getElementById('professionWorkspacePeople');
+        const summary = document.getElementById('professionWorkspacePeopleSummary');
+        if (summary) summary.textContent = 'Лише перегляд професії та готовності. Умови й компенсації недоступні.';
+        const filtered = people.filter(professionPersonMatchesWorkspaceFilter);
+        if (root) root.innerHTML = filtered.length ? filtered.map(person => `<article class="hr-account-empty"><strong>${escapeHtml(person.name || '')}</strong><span> · ${Number(person.readiness?.completed || 0)}/${Number(person.readiness?.total || 0)}</span></article>`).join('') : '<div class="hr-account-empty">За цими фільтрами працівників немає.</div>';
+        return;
+    }
     const summary = document.getElementById('professionWorkspacePeopleSummary');
     const root = document.getElementById('professionWorkspacePeople');
     const editable = canManageProfessionConditions();
@@ -5847,8 +5864,8 @@ function renderProfessionWorkspaceUsage(data = {}) {
         [progress.activeStaffWithProgress ?? progress.staffWithProgress ?? 0, 'Працівників з активним progress'],
         [`${progress.activeCompleted ?? progress.completed ?? 0}/${progress.activeRecords ?? progress.records ?? 0}`, 'Активна готовність'],
         [`${progress.historicalCompleted ?? progress.completed ?? 0}/${progress.historicalRecords ?? progress.records ?? 0}`, 'Історичний progress'],
-        [training.activeCourses || 0, 'Активних навчальних курсів'],
-        [data.structureNode?.title || 'Без вузла', 'Використання у структурі'],
+        [data.access?.partial ? '—' : training.activeCourses || 0, 'Активних навчальних курсів'],
+        [data.access?.partial ? '—' : data.structureNode?.title || 'Без вузла', 'Використання у структурі'],
         [profession.source === 'system' ? 'System' : 'DB', 'Джерело професії']
     ].map(([value, label]) => `<div class="hr-profession-usage-card"><strong>${escapeHtml(String(value))}</strong><span>${escapeHtml(label)}</span></div>`).join('');
 }
@@ -5906,6 +5923,10 @@ function renderProfessionWorkspace() {
         content.classList.add('hidden');
         actions.classList.add('hidden');
         setProfessionWorkspaceBanner(professionWorkspaceState.error || 'Не вдалося завантажити картку професії', 'error');
+        const retry = document.createElement('button');
+        retry.type = 'button'; retry.className = 'btn-secondary'; retry.textContent = 'Повторити';
+        retry.onclick = () => openProfessionWorkspace({ ...professionWorkspaceState.retry, historyMode: 'none' });
+        document.getElementById('professionWorkspaceState')?.appendChild(retry);
         return;
     }
     const data = professionWorkspaceState.data || {};
@@ -5916,7 +5937,7 @@ function renderProfessionWorkspace() {
     workspace.classList.toggle('is-read-only', readOnly);
     content.classList.remove('hidden');
     actions.classList.toggle('hidden', readOnly);
-    setProfessionWorkspaceBanner(readOnly ? 'Режим лише для перегляду' : (!active && !isNew ? 'Професія архівна. Її можна відновити кнопкою нижче.' : ''), readOnly ? 'readonly' : (!active ? 'archived' : ''));
+    setProfessionWorkspaceBanner(readOnly ? (data.access?.partial ? 'Скорочений перегляд: умови, компенсації та навчальні курси недоступні.' : 'Режим лише для перегляду') : (!active && !isNew ? 'Професія архівна. Її можна відновити кнопкою нижче.' : ''), readOnly ? 'readonly' : (!active ? 'archived' : ''));
     document.getElementById('professionWorkspaceTitle').textContent = isNew ? 'Нова професія' : (profession.title || profession.key || 'Картка професії');
     document.getElementById('professionWorkspaceSubtitle').textContent = isNew ? 'Створення DB profession' : `${profession.department || 'Без напряму'} · ${active ? 'активна' : 'архівна'}`;
     const source = document.getElementById('professionWorkspaceSource');
@@ -6030,10 +6051,12 @@ async function openProfessionWorkspace({ id = null, key = null, initialTab = 'ma
         return professionWorkspaceState.data;
     }
     const identity = id || key;
+    const accessContext = salaryAccessContext();
     const response = await hrFetch(`/professions/workspace/${encodeURIComponent(identity)}`).catch(() => null);
-    if (requestSeq !== professionWorkspaceRequestSeq) return null;
+    if (requestSeq !== professionWorkspaceRequestSeq || accessContext !== salaryAccessContext()) return null;
     if (!response?.success) {
         professionWorkspaceState.loadState = 'error';
+        professionWorkspaceState.retry = { id, key, initialTab, returnContext };
         professionWorkspaceState.error = response?.error || 'Не вдалося завантажити картку професії';
         renderProfessionWorkspace();
         return null;
@@ -7284,7 +7307,7 @@ function renderTeamOnboardingCompact(staff = {}) {
     const percent = assignment ? assignment.percent : 0;
     const professionLabel = activeProfessionOnboardingLabel(professionSummary.activeCount);
     const content = `<span>Корпоративний онбординг</span><b>${escapeHtml(label)}</b><small>${escapeHtml(status)}</small><small class="hr-team-onboarding-profession-count">${escapeHtml(professionLabel)}</small><i aria-hidden="true"><em style="width:${percent}%"></em></i>`;
-    if (!canManage) return `<div class="hr-team-onboarding-compact">${content}</div>`;
+    if (typeof canAccess !== 'function' || !canAccess('hr.staff.view')) return `<div class="hr-team-onboarding-compact">${content}</div>`;
     return `<button type="button" class="hr-team-onboarding-compact" onclick="openStaffOnboardingAssignment(${Number(staff.id)})" aria-label="Корпоративний онбординг ${escapeHtml(staff.name || '')}: ${escapeHtml(label)}; ${escapeHtml(professionLabel)}">${content}</button>`;
 }
 
@@ -11506,7 +11529,7 @@ function lifecycleActionNode(action, staffId, item = {}) {
     if (action === 'profile') return button('Профіль', "activateStaffProfileTab('main').then(() => document.getElementById('editStaffName')?.focus())");
     if (action === 'documents') return button('Документи', 'focusStaffDocumentsPanel()');
     if (action === 'training') return button('Готовність навчання', `openStaffTrainingReadiness(${id})`);
-    if (action === 'onboarding' && canManage) return button('Онбординг', `openStaffOnboardingAssignment(${id})`);
+    if (action === 'onboarding' && canAccess('hr.staff.view')) return button('Онбординг', `openStaffOnboardingAssignment(${id})`);
     if (action === 'account' && canLinkAccounts()) {
         const handler = item.key === 'account_linked'
             ? `openAccountLinkForStaff(${id}, this)`

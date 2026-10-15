@@ -36,7 +36,10 @@ const { install, requirePlaywright } = require('./hr-checklists-async-browser-sm
                 return original(path, options);
             };
         });
+        await page.evaluate(() => window.dispatchEvent(new Event('crmBusinessContextChanged')));
         await page.evaluate(() => qaOpen('qa_a'));
+        await page.evaluate(() => window.dispatchEvent(new Event('permissions:lifecycle')));
+        assert.equal(await page.locator('#professionWorkspaceOverlay').isVisible(), true);
         assert.equal(await page.locator('#professionWorkspaceTitle').innerText(), 'park profession');
         assert.ok((await page.locator('#professionWorkspacePeople').innerText()).includes('park person'));
         assert.equal(await page.locator('#professionWorkspacePeople [data-condition-rate-mode]').count(), 0);

@@ -583,6 +583,8 @@ let professionCatalogStructureNodes = [];
 let professionCatalogInventory = null;
 let professionCatalogAccess = null;
 let professionCatalogLoadState = 'idle';
+let professionCatalogRequestSeq = 0;
+let professionReadContext = null;
 let professionCatalogLoadError = '';
 let reportRequestSeq = 0;
 let reportContextKey = '';
@@ -1535,6 +1537,7 @@ function renderStaffOnboardingDialog() {
 async function refreshStaffOnboardingDialog(staffId) {
     const sequence = ++staffOnboardingRequestSeq;
     const context = salaryAccessContext();
+    if (professionReadContext === null) professionReadContext = context;
     const root = document.getElementById('staffOnboardingScopeBody');
     if (root) {
         root.setAttribute('aria-busy', 'true');
@@ -4727,12 +4730,19 @@ function bindProfessionWorkspaceControls() {
 }
 
 async function ensureProfessionsLoaded(options = {}) {
-    if (hrProfessions.length && professionCatalogLoadState === 'ready' && !options.force) return hrProfessions;
+    const context = salaryAccessContext();
+    if (hrProfessions.length && professionReadContext === context && professionCatalogLoadState === 'ready' && !options.force) return hrProfessions;
+    if (professionReadContext === null) professionReadContext = context;
+    const requestSeq = ++professionCatalogRequestSeq;
+    hrProfessions = [];
+    professionCatalogStructureNodes = [];
+    professionCatalogInventory = null;
     professionCatalogLoadState = 'loading';
     professionCatalogLoadError = '';
     professionCatalogAccess = null;
     if (!options.silent) renderProfessions();
     const data = await hrFetch('/professions').catch(() => null);
+    if (requestSeq !== professionCatalogRequestSeq || context !== salaryAccessContext()) return [];
     if (!data?.success) {
         professionCatalogLoadState = 'error';
         professionCatalogLoadError = data?.error || 'Не вдалося завантажити професії';
@@ -5142,6 +5152,17 @@ function renderProfessionChecklists() {
 
 for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
     window.addEventListener(eventName, () => {
+        const context = salaryAccessContext();
+        if (professionReadContext === context) return;
+        professionReadContext = context;
+        professionCatalogRequestSeq += 1;
+        hrProfessions = [];
+        professionCatalogAccess = null;
+        professionCatalogStructureNodes = [];
+        professionCatalogInventory = null;
+        professionCatalogLoadState = 'error';
+        professionCatalogLoadError = 'Бізнес або доступ змінився. Оновіть професії.';
+        if (document.getElementById('professionCatalogList')) renderProfessions();
         if (professionWorkspaceState.open) closeProfessionWorkspaceUi();
         if (staffOnboardingDialogState || document.getElementById('staffOnboardingScopeOverlay')) closeStaffOnboardingDialog();
         if (professionChecklistDashboardState.loadState === 'idle') return;
@@ -6052,6 +6073,7 @@ async function openProfessionWorkspace({ id = null, key = null, initialTab = 'ma
     }
     const identity = id || key;
     const accessContext = salaryAccessContext();
+    if (professionReadContext === null) professionReadContext = accessContext;
     const response = await hrFetch(`/professions/workspace/${encodeURIComponent(identity)}`).catch(() => null);
     if (requestSeq !== professionWorkspaceRequestSeq || accessContext !== salaryAccessContext()) return null;
     if (!response?.success) {

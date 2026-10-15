@@ -81,3 +81,12 @@ behavior and the partial professions catalog remain unchanged.
 - Mobile read-only workspace inspected at 390 px; no compensation controls.
 - Production remains unchanged. Final release needs fresh base/ownership checks,
   exact-SHA CI and separately authorized deployment followed by test-account GET QA.
+
+## Final dependency regression
+
+The profession catalog cache is also bound to account/business/access context.
+A late catalog response cannot repopulate cleared data after switching context.
+An unchanged permissions lifecycle event preserves the open workspace. The focused
+UI state suite passed 38/38; the controlled browser verifies both late directions
+and waits for actual request completion rather than a timer.
+

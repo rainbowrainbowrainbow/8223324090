@@ -81,7 +81,7 @@ function harness(markup, options = {}) {
     win.fetch = options.fetch || (async () => response(500, { success: false, error: 'Unexpected fetch' }));
     win.eval(`${hrPage}
 canManage = canUseHrCapability('hr.staff.manage');
-window.__hrTruthfulState = () => ({ reportState, professionCatalogAccess, professionCatalogLoadState });`);
+window.__hrTruthfulState = () => ({ reportState, professionCatalogAccess, professionCatalogLoadState, hrProfessions });`);
     if (options.surfaceAvailable === true) win.getLegacyBusinessSurfaceAvailability = () => ({ available: true });
     return { dom, win };
 }
@@ -591,6 +591,7 @@ test('checklist dashboard keeps a context-change error instead of a late staff f
     try {
         const request = win.loadProfessionChecklists();
         for (let i = 0; i < 20 && win.document.getElementById('professionChecklistDashboardState').dataset.state !== 'loading'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+        win.AppState.currentUser.activeBusinessContext = 'dar';
         win.dispatchEvent(new win.Event('crmBusinessContextChanged'));
         resolveDashboard(response(200, { success: true, data: { assignments: [{ staffName: 'Old Staff' }] } }));
         await request;
@@ -813,3 +814,23 @@ test('account onboarding payroll hint distinguishes denial from missing default 
         assert.match(hint.textContent, /ще немає/);
     } finally { dom.window.close(); }
 });
+
+for (const [from, to] of [['event_genix', 'dar'], ['dar', 'event_genix']]) {
+    test('profession catalog rejects late ' + from + ' response after ' + to, async () => {
+        let finish;
+        const { dom, win } = harness(elementOuterHtml('tab-professions'), {
+            fetch: () => new Promise(resolve => { finish = resolve; })
+        });
+        try {
+            win.AppState.currentUser.activeBusinessContext = from;
+            const pending = win.loadProfessions();
+            win.AppState.currentUser.activeBusinessContext = to;
+            win.dispatchEvent(new win.Event('crmBusinessContextChanged'));
+            finish(response(200, { success: true, data: [{ id: 4, key: 'old', title: 'Old profession' }] }));
+            await pending;
+            assert.equal(win.__hrTruthfulState().hrProfessions.length, 0);
+            assert.equal(win.__hrTruthfulState().professionCatalogLoadState, 'error');
+            assert.doesNotMatch(win.document.getElementById('professionCatalogList').textContent, /Old profession/);
+        } finally { dom.window.close(); }
+    });
+}

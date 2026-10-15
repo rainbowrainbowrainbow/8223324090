@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.95",
+  "version": "0.82.96",
   "eventGenix": {
-    "releaseLabel": "Заняття: збереження назви кабінету"
+    "releaseLabel": "Освіта: фокус картки заняття"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

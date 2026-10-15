@@ -93,3 +93,16 @@ and waits for actual request completion rather than a timer.
 The dashboard supplies minimal profession/staff filter options, so a staff-only
 viewer does not depend on the separately protected schedule catalog. The combined
 final route/UI-state focused suite passed 46/46.
+## CI integration correction
+
+Run 38808913785 identified two catalog initialization regressions in the real
+PostgreSQL/browser suites: an empty profession select after profile hydration and
+staff-card catalog readiness waiting on competing catalog GETs. Current-context
+callers now share one pending catalog GET. Checklist initialization retries once
+when profile hydration invalidates its initial context. A changed business still
+rejects the old response. No assertions or permission checks were removed.
+
+The focused Team/catalog suites passed 97/97 and checklist browser quality passed
+94/94 plus the new read-only browser matrix. Local disposable PostgreSQL could not
+run because the Docker daemon is unavailable; the exact-SHA CI PostgreSQL jobs
+remain mandatory. Production connections were never used for mutation tests.

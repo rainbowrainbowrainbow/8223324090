@@ -584,6 +584,7 @@ let professionCatalogInventory = null;
 let professionCatalogAccess = null;
 let professionCatalogLoadState = 'idle';
 let professionCatalogRequestSeq = 0;
+let professionCatalogPending = null;
 let professionReadContext = null;
 let professionCatalogLoadError = '';
 let reportRequestSeq = 0;
@@ -4731,6 +4732,15 @@ function bindProfessionWorkspaceControls() {
 
 async function ensureProfessionsLoaded(options = {}) {
     const context = salaryAccessContext();
+    if (professionCatalogPending?.context === context) return professionCatalogPending.promise;
+    const promise = loadProfessionCatalog(options);
+    professionCatalogPending = { context, promise };
+    try { return await promise; }
+    finally { if (professionCatalogPending?.promise === promise) professionCatalogPending = null; }
+}
+
+async function loadProfessionCatalog(options = {}) {
+    const context = salaryAccessContext();
     if (hrProfessions.length && professionReadContext === context && professionCatalogLoadState === 'ready' && !options.force) return hrProfessions;
     if (professionReadContext === null) professionReadContext = context;
     const requestSeq = ++professionCatalogRequestSeq;
@@ -5008,11 +5018,18 @@ async function loadProfessionChecklists(options = {}) {
     const previousData = professionChecklistDashboardState.data;
     bindProfessionWorkspaceControls();
     bindProfessionChecklistDashboardControls();
+    const catalogContext = salaryAccessContext();
     await ensureProfessionsLoaded({
         force: options.preserveCatalog !== true,
         silent: true
     });
     if (requestSeq !== professionChecklistDashboardRequestSeq) return;
+    if (catalogContext !== salaryAccessContext()) {
+        // Initial profile hydration invalidates the first catalog response.
+        // Retry once in the settled context, without retaining the stale catalog.
+        await ensureProfessionsLoaded({ force: true, silent: true });
+        if (requestSeq !== professionChecklistDashboardRequestSeq) return;
+    }
     renderProfessionChecklistDashboardFilterOptions();
     // Account/business profile hydration may finish while the catalog loads.
     // Bind the dashboard request to the context that actually issues it.

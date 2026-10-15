@@ -604,9 +604,11 @@ test('checklist dashboard loads after business profile settles during catalog hy
     let resolveCatalog;
     const catalog = new Promise(resolve => { resolveCatalog = resolve; });
     let dashboardRequests = 0;
+    let catalogRequests = 0;
     const { dom, win } = harness(elementOuterHtml('tab-checklists'), {
         fetch: async url => {
-            if (url.includes('/professions')) return catalog;
+            if (url.includes('/professions')) return ++catalogRequests === 1 ? catalog
+                : response(200, { success: true, data: [{ id: 1, key: 'current', title: 'Current profession' }] });
             dashboardRequests += 1;
             return response(200, { success: true, data: {
                 assignments: [{ staffId: 4, staffName: 'QA Staff', professionKey: 'animator' }]
@@ -621,6 +623,8 @@ test('checklist dashboard loads after business profile settles during catalog hy
         resolveCatalog(response(200, { success: true, data: [] }));
         await request;
         assert.equal(dashboardRequests, 1);
+        assert.equal(catalogRequests, 2, 'one bounded hydration retry');
+        assert.match(win.document.getElementById('professionChecklistDashboardProfession').textContent, /Current profession/);
         assert.match(win.document.getElementById('professionChecklistList').textContent, /QA Staff/);
     } finally { dom.window.close(); }
 });
@@ -847,5 +851,22 @@ test('staff-only checklist filters use the allowed dashboard rather than a denie
         assert.match(win.document.getElementById('professionChecklistDashboardProfession').textContent, /Host/);
         assert.match(win.document.getElementById('professionChecklistDashboardStaff').textContent, /Synthetic Person/);
         assert.equal(win.document.getElementById('professionChecklistDashboardState').dataset.state, '');
+    } finally { dom.window.close(); }
+});
+
+test('simultaneous Team and staff-card catalog readers share the same current-context GET', async () => {
+    let finish;
+    let requests = 0;
+    const { dom, win } = harness(elementOuterHtml('tab-professions'), {
+        fetch: () => { requests++; return new Promise(resolve => { finish = resolve; }); }
+    });
+    try {
+        const first = win.loadProfessions();
+        const second = win.loadProfessions();
+        assert.equal(requests, 1);
+        finish(response(200, { success: true, data: [{ id: 1, key: 'host', title: 'Current Host' }] }));
+        await Promise.all([first, second]);
+        assert.equal(win.__hrTruthfulState().professionCatalogLoadState, 'ready');
+        assert.equal(win.__hrTruthfulState().hrProfessions.length, 1);
     } finally { dom.window.close(); }
 });

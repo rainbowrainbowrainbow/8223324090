@@ -4949,7 +4949,8 @@ function renderProfessionChecklistDashboardFilterOptions() {
     const professionSelect = document.getElementById('professionChecklistDashboardProfession');
     const departmentSelect = document.getElementById('professionChecklistDashboardDepartment');
     const staffSelect = document.getElementById('professionChecklistDashboardStaff');
-    const databaseProfessions = hrProfessions.filter(item => item.source !== 'system' && item.isVirtual !== true);
+    const filterOptions = professionChecklistDashboardState.data?.filterOptions;
+    const databaseProfessions = (filterOptions?.professions || hrProfessions).filter(item => item.source !== 'system' && item.isVirtual !== true);
     if (professionSelect) {
         professionSelect.innerHTML = '<option value="">Усі професії</option>' + databaseProfessions
             .map(item => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.title || item.key)}</option>`)
@@ -4971,7 +4972,7 @@ function renderProfessionChecklistDashboardFilterOptions() {
         professionChecklistDashboardFilters.department = departmentSelect.value;
     }
     if (staffSelect) {
-        const peopleById = new Map();
+        const peopleById = new Map((filterOptions?.staff || []).map(person => [Number(person.id), person]));
         databaseProfessions.forEach(profession => (profession.people || []).forEach(person => {
             if (Number(person.id) > 0 && !peopleById.has(Number(person.id))) peopleById.set(Number(person.id), person);
         }));
@@ -5051,6 +5052,7 @@ async function loadProfessionChecklists(options = {}) {
         pagination: { ...previousData.pagination, [feed]: response.data?.pagination?.[feed] }
     } : response.data || {};
     professionChecklistDashboardState = { loadState: 'ready', data, error: '' };
+    renderProfessionChecklistDashboardFilterOptions();
     renderProfessionChecklists();
     if (feed) document.querySelector(`[data-checklist-feed="${feed}"]`)?.focus({ preventScroll: true });
 }

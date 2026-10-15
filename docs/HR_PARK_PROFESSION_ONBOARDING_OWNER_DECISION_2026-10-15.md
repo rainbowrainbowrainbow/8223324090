@@ -90,3 +90,6 @@ An unchanged permissions lifecycle event preserves the open workspace. The focus
 UI state suite passed 38/38; the controlled browser verifies both late directions
 and waits for actual request completion rather than a timer.
 
+The dashboard supplies minimal profession/staff filter options, so a staff-only
+viewer does not depend on the separately protected schedule catalog. The combined
+final route/UI-state focused suite passed 46/46.

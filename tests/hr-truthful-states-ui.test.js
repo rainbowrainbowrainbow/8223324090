@@ -834,3 +834,18 @@ for (const [from, to] of [['event_genix', 'dar'], ['dar', 'event_genix']]) {
         } finally { dom.window.close(); }
     });
 }
+
+test('staff-only checklist filters use the allowed dashboard rather than a denied schedule catalog', async () => {
+    const { dom, win } = harness(elementOuterHtml('tab-checklists'), {
+        fetch: async url => url.includes('/professions') ? response(403, { success: false })
+            : response(200, { success: true, data: { summary: {}, assignments: [],
+                filterOptions: { professions: [{ id: 1, key: 'host', title: 'Host', department: 'Show' }],
+                    staff: [{ id: 4, name: 'Synthetic Person' }] } } })
+    });
+    try {
+        await win.loadProfessionChecklists();
+        assert.match(win.document.getElementById('professionChecklistDashboardProfession').textContent, /Host/);
+        assert.match(win.document.getElementById('professionChecklistDashboardStaff').textContent, /Synthetic Person/);
+        assert.equal(win.document.getElementById('professionChecklistDashboardState').dataset.state, '');
+    } finally { dom.window.close(); }
+});

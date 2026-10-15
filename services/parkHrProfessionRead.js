@@ -98,7 +98,10 @@ function dashboard(catalog, query) {
         not_started: 0, in_progress: 0, completed: 0, archived: null, orphaned: null };
     for (const row of rows) if (row.status !== 'without_template') summary[row.status]++;
     const selected = rows.filter(row => !filters.statuses.length || filters.statuses.includes(row.status));
+    const staffOptions = [...new Map(catalog.assignments.map(row => [row.staff_id,
+        { id: row.staff_id, name: row.name, isActive: row.is_active }])).values()];
     return { filters, summary, professions,
+        filterOptions: { professions: catalog.professions.map(row => pick(row, ['id', 'key', 'title', 'department'])), staff: staffOptions },
         professionsWithoutTemplate: filters.statuses.length && !filters.statuses.includes('without_template') ? [] : professions.filter(p => !p.activeItems),
         assignments: selected.slice(filters.offset, filters.offset + filters.limit),
         pagination: { assignments: { limit: filters.limit, offset: filters.offset, total: selected.length,

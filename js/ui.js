@@ -1431,6 +1431,7 @@ const FOCUSABLE_SELECTOR = [
     'input:not([disabled]):not([type="hidden"])',
     'select:not([disabled])',
     'textarea:not([disabled])',
+    'summary',
     '[tabindex]:not([tabindex="-1"])'
 ].join(', ');
 
@@ -1573,9 +1574,16 @@ function resolveModalLifecycleTarget(target, modalEl) {
 }
 
 function isVisibleModalFocusTarget(el) {
-    if (el.offsetParent === null) return false;
-    const closedDetails = el.closest('details:not([open])');
-    return !closedDetails || Boolean(closedDetails.querySelector('summary')?.contains(el));
+    if (!el || el.offsetParent === null) return false;
+    if (el.tagName === 'SUMMARY' && (el.parentElement?.tagName !== 'DETAILS'
+        || el !== Array.from(el.parentElement.children).find(child => child.tagName === 'SUMMARY'))) return false;
+    // Closed details can retain an offsetParent while their content cannot focus.
+    for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+        if (parent.tagName !== 'DETAILS' || parent.open) continue;
+        const summary = Array.from(parent.children).find(child => child.tagName === 'SUMMARY');
+        if (!summary || !summary.contains(el)) return false;
+    }
+    return true;
 }
 
 function openModal(modalEl, triggerEl, options = {}) {
@@ -1613,7 +1621,7 @@ function openModal(modalEl, triggerEl, options = {}) {
         // Respect focus explicitly placed inside the dialog since it opened.
         if (modalEl.contains(document.activeElement) && document.activeElement !== trapState.trigger) return;
         const preferred = resolveModalLifecycleTarget(options.initialFocus, modalEl);
-        if (preferred && !preferred.disabled && preferred.offsetParent !== null && typeof preferred.focus === 'function') {
+        if (preferred && !preferred.disabled && isVisibleModalFocusTarget(preferred) && typeof preferred.focus === 'function') {
             preferred.focus();
             return;
         }
@@ -1639,7 +1647,10 @@ function openModal(modalEl, triggerEl, options = {}) {
                 modalEl.querySelectorAll(FOCUSABLE_SELECTOR)
             ).filter(isVisibleModalFocusTarget);
 
-            if (focusable.length === 0) return;
+            if (focusable.length === 0) {
+                e.preventDefault();
+                return;
+            }
 
             const firstEl = focusable[0];
             const lastEl = focusable[focusable.length - 1];

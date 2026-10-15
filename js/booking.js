@@ -13581,6 +13581,7 @@ function buildBookingObject(formData, program) {
             studentCount: kidsCount || formData.educationLesson.studentCount || null,
             resourceName: formData.educationLesson.resourceName || obj.room || null
         };
+        obj.extraData.timelineIdentity.resourceName = lesson.resourceName;
         obj.extraData.educationLesson = lesson;
         obj.extraData.bookingWorkspace.lesson = lesson;
         obj.label = lesson.lessonType === 'exam' ? 'Контроль' : 'Заняття';

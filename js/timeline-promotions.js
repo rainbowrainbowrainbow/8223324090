@@ -117,8 +117,8 @@
         const { dates } = view;
         const writable = canWrite();
         panel.innerHTML = `<div class="timeline-promotions-toolbar"><strong>Акції</strong><span class="timeline-promotions-status" aria-live="polite">${items.length ? `${items.length} у видимому періоді` : 'Немає акцій'}</span>${writable ? '<button type="button" class="btn-secondary" data-add>Додати акцію</button><button type="button" class="btn-secondary" data-select aria-pressed="false">Виділити дати</button>' : ''}</div>
-            <div class="timeline-promotion-dates" style="--promotion-days:${dates.length}">${dates.map((date, index) => `<button type="button" class="timeline-promotion-date" data-date-index="${index}" aria-label="${date}">${date.slice(8)}.${date.slice(5, 7)}</button>`).join('')}</div>
-            <div class="timeline-promotion-bands"></div>`;
+            <div class="timeline-promotion-scroll"><div class="timeline-promotion-dates" style="--promotion-days:${dates.length}">${dates.map((date, index) => `<button type="button" class="timeline-promotion-date" data-date-index="${index}" aria-label="${date}">${date.slice(8)}.${date.slice(5, 7)}</button>`).join('')}</div>
+            <div class="timeline-promotion-bands"></div></div>`;
         panel.querySelector('[data-add]')?.addEventListener('click', e => edit(null, dates[0], dates[dates.length - 1], e.currentTarget));
         panel.querySelector('[data-select]')?.addEventListener('click', e => {
             selecting = !selecting; keyStart = null;

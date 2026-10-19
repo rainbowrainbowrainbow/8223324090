@@ -184,6 +184,16 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         assert.equal(await page.evaluate(() => document.activeElement.classList.contains('promotion-label')), true);
         const touch = await context.newCDPSession(page);
         await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+        await page.setViewportSize({ width: 320, height: 844 });
+        assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true);
+        const smallTargets = await page.locator('.timeline-promotions button').evaluateAll(buttons => buttons.map(button => {
+            const rect = button.getBoundingClientRect();
+            return { text: button.textContent, width: rect.width, height: rect.height };
+        }).filter(rect => rect.width < 44 || rect.height < 44));
+        assert.deepEqual(smallTargets, [], 'promotion touch controls remain at least 44px at 320px');
+        const scrollBox = await page.locator('.timeline-promotion-scroll').boundingBox();
+        assert.ok(scrollBox.x >= 0 && scrollBox.x + scrollBox.width <= 320, 'date strip scrolls inside the viewport');
+        await page.setViewportSize({ width: 390, height: 844 });
         const touchFlag = page.locator('.afisha-flag[data-afisha-id="1"]');
         await touchFlag.scrollIntoViewIfNeeded();
         const touchBox = await touchFlag.boundingBox();

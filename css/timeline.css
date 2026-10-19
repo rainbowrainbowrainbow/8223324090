@@ -5454,6 +5454,7 @@ body.timeline-constructor-active::after {
 .timeline-promotions { padding: 10px 14px; border-bottom: 1px solid var(--gray-200); color: var(--gray-800); background: var(--gray-50); }
 .timeline-promotions-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; }
 .timeline-promotions-status { flex: 1; color: var(--gray-600); font-size: 12px; }
+.timeline-promotion-scroll { overflow-x: auto; }
 .timeline-promotion-dates, .timeline-promotion-row { display: grid; grid-template-columns: repeat(var(--promotion-days), minmax(0, 1fr)); gap: 2px; }
 .timeline-promotion-dates { touch-action: none; }
 .timeline-promotion-date { font: inherit; font-size: 12px; padding: 5px 0; border: 0; background: transparent; color: var(--gray-600); cursor: crosshair; }
@@ -5478,6 +5479,9 @@ body.timeline-constructor-active::after {
     .timeline-marketing-dialog { padding: 16px; }
 }
 @media (pointer: coarse) {
-    .promotion-handle { flex-basis: 26px; }
-    .timeline-promotion-date, .promotion-label, .timeline-marketing-actions button { min-height: 44px; }
+    .timeline-promotion-dates, .timeline-promotion-row { min-width: calc(var(--promotion-days) * 134px - 2px); }
+    .promotion-handle { flex: 0 0 44px; }
+    .timeline-promotions button, .timeline-promotions .btn-secondary,
+    .timeline-marketing-modal button, .timeline-marketing-modal :is(.btn-primary, .btn-secondary) { min-height: 44px; min-width: 44px; }
+    .timeline-marketing-modal [data-close] { flex-basis: 44px; }
 }

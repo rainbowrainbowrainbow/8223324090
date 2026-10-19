@@ -24,7 +24,7 @@ focused route tests in the same pack.
 | Mount | Route File | Owner |
 | --- | --- | --- |
 | `/api/achievements` | `routes/achievements.js` | achievements |
-| `/api/afisha` | `routes/afisha.js` | afisha |
+| `/api/afisha` | `routes/afisha.js` | afisha, atomic schedule changes |
 | `/api/agents` | `routes/agents.js` | agents |
 | `/api/analytics` | `routes/analytics.js` | analytics |
 | `/api/art-director` | `routes/art-director.js` | art-director |
@@ -110,7 +110,7 @@ focused route tests in the same pack.
 | `/api/tasks` | `routes/tasks.js` | tasks |
 | `/api/task-templates` | `routes/task-templates.js` | task-templates |
 | `/api/telegram` | `routes/telegram.js` | telegram |
-| `/api/timeline` | `routes/timeline-resources.js` | timeline resources |
+| `/api/timeline` | `routes/timeline-resources.js` | timeline resources and informational promotion periods |
 | `/api/training` | `routes/training.js` | training |
 | `/api/users` | `routes/users.js` | users |
 | `/api/wallet` | `routes/wallet.js` | wallet |

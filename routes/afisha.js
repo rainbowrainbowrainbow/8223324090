@@ -12,11 +12,35 @@ const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
 const { pushDefaultTimelineBusinessContext } = require('../services/timelineBusinessScope');
 const { insertHistory } = require('../services/historyLog');
+const { moveAfishaSchedule } = require('../services/afishaSchedule');
+const { DEFAULT_TIMELINE_CONTEXT, timelineContextFromRequest, requireTimelineAction } = require('../services/timelineContext');
+const { resolveCapability } = require('../services/accountAccessPolicy');
+const { businessScopeWriteGuard } = require('../middleware/businessScopeGuard');
 
 function getKleshnya() { return require('../services/kleshnya'); }
 
 // All afisha routes require authentication
 router.use(authenticateToken);
+
+// Afisha is a legacy Park-owned entity, without a business_context column.
+// Never allow another cabinet to mutate these rows through the timeline bridge.
+router.patch('/:id/schedule', businessScopeWriteGuard, async (req, res) => {
+    const context = timelineContextFromRequest(req);
+    if (context !== DEFAULT_TIMELINE_CONTEXT) {
+        return res.status(403).json({ error: 'Афіша недоступна в цьому бізнесі' });
+    }
+    if (!requireTimelineAction(req, res, context, 'edit')) return;
+    if (!resolveCapability(req.user, 'edit_booking', { type: 'action' }).allowed) {
+        return res.status(403).json({ error: 'Немає права змінювати розклад' });
+    }
+    try {
+        const item = await moveAfishaSchedule(pool, req.params.id, req.body || {}, req.user.username, context);
+        res.json({ success: true, item });
+    } catch (error) {
+        if (!error.statusCode) log.error('Afisha schedule error', error);
+        res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося зберегти розклад' });
+    }
+});
 
 /**
  * Check if a recurring template should create an event for a given date.

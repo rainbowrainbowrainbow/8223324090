@@ -4129,6 +4129,8 @@ function dispatchTimelineSummaryChanged(detail = {}) {
     }));
 }
 async function renderTimeline() {
+    window.TimelineAfisha?.cancel();
+    window.TimelinePromotions?.beginRender();
     if (typeof window.isAuthenticatedRuntimeReady === 'function' && !window.isAuthenticatedRuntimeReady()) {
         queueTimelineRenderAfterAuthenticatedRuntimeReady();
         return false;
@@ -4287,9 +4289,10 @@ async function renderTimeline() {
 
     // v0.61.56: contexts without Afisha must not render stale assigned Afisha blocks on staff lines.
     const allAfisha = showAfisha ? (afishaEvents || []) : [];
-    const unassignedAfisha = allAfisha.filter(ev => !ev.line_id);
+    const afishaLineIds = new Set(lines.map(line => String(line.id)));
+    const unassignedAfisha = allAfisha.filter(ev => !ev.line_id || isRoomTimelineView() || !afishaLineIds.has(String(ev.line_id)));
     const assignedAfishaMap = {};
-    allAfisha.filter(ev => ev.line_id).forEach(ev => {
+    allAfisha.filter(ev => ev.line_id && !isRoomTimelineView() && afishaLineIds.has(String(ev.line_id))).forEach(ev => {
         if (!assignedAfishaMap[ev.line_id]) assignedAfishaMap[ev.line_id] = [];
         assignedAfishaMap[ev.line_id].push(ev);
     });
@@ -4416,6 +4419,8 @@ async function renderTimeline() {
     });
 
     syncTimelineContentWidth(selectedDate, container.querySelector('.line-grid[data-line-id]'));
+    container.querySelectorAll('.line-grid').forEach(grid => window.TimelineAfisha?.layout(grid));
+    window.TimelinePromotions?.mount(container, [selectedDate], renderRequestToken);
 
     _debugRender(`RENDERED gen=${thisGen} blocks=${container.querySelectorAll('.booking-block').length}`);
 
@@ -5538,6 +5543,9 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
 }
 
 function createAfishaBlock(event, startHour, anchor) {
+    if (window.TimelineAfisha && event.type !== 'birthday') {
+        return window.TimelineAfisha.create(event, startHour, anchor);
+    }
     const startMin = timeToMinutes(event.time) - startHour * 60;
     if (startMin < 0) return null;
 
@@ -5582,8 +5590,14 @@ function createAfishaBlock(event, startHour, anchor) {
     // Drag-to-move for non-birthday blocks (birthday has synthetic 14:00/18:00 blocks)
     if (!isViewer() && event.type !== 'birthday') {
         initAfishaDrag(block, event, startHour);
-    } else if (!isViewer()) {
-        block.addEventListener('click', () => editAfishaItem(event.id));
+    } else {
+        block.setAttribute('role', 'button');
+        block.tabIndex = 0;
+        const openAfisha = () => window.TimelineAfisha?.details(event, block);
+        block.addEventListener('click', openAfisha);
+        block.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAfisha(); }
+        });
     }
 
     // v20.8.0: Context menu for moving afisha between lines
@@ -5667,6 +5681,9 @@ let _timelineInteractionSaveInFlight = false;
 
 function timelineTooltipSuppressed() {
     return Boolean(
+        window.TimelineAfisha?.dragging()
+        || window.TimelinePromotions?.dragging()
+        ||
         _bookingDragState
         || _resizeState
         || _graduationSegmentDragState
@@ -5745,6 +5762,8 @@ function cancelActiveTimelineInteractions(reason = 'unknown') {
         _cancelAfishaDragVisuals();
         cancelled = true;
     }
+    if (window.TimelineAfisha?.cancel()) cancelled = true;
+    if (window.TimelinePromotions?.cancel()) cancelled = true;
     document.body.classList.remove('dragging-active');
     return cancelled;
 }
@@ -7714,6 +7733,9 @@ async function renderMultiDayTimeline(requestToken = captureTimelineRequestToken
 
     linesContainer.innerHTML = multiDayHtml;
     attachMultiDayListeners();
+    await window.TimelineAfisha?.mountWeek(linesContainer, dates, requestToken);
+    if (!timelineRequestTokenIsCurrent(requestToken)) return;
+    window.TimelinePromotions?.mount(linesContainer, dates, requestToken);
     if (typeof scheduleTimelineViewHeightSync === 'function') {
         scheduleTimelineViewHeightSync('multi-day-render');
     }

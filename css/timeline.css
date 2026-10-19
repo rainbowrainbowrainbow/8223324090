@@ -5393,3 +5393,91 @@ body.timeline-constructor-active::after {
     font-weight: 800;
     cursor: pointer;
 }
+
+/* Informational timeline annotations: separate from booking status and geometry. */
+.afisha-flag {
+    position: absolute;
+    z-index: 12;
+    top: 5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    width: 170px;
+    height: 28px;
+    padding: 3px 8px;
+    border: 1px solid var(--gray-300);
+    border-left: 3px solid #8b5cf6;
+    border-radius: 4px;
+    background: var(--gray-50);
+    color: var(--gray-800);
+    font: 600 12px/1.2 var(--font-family, system-ui, sans-serif);
+    cursor: grab;
+    touch-action: none;
+    text-align: left;
+}
+.afisha-flag-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.afisha-flag-time { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.afisha-flag.dragging { z-index: 40; cursor: grabbing; box-shadow: 0 3px 10px rgba(0, 0, 0, .2); }
+.afisha-flag:disabled { opacity: .6; cursor: wait; }
+.afisha-date-target { outline: 2px solid #8b5cf6; outline-offset: -2px; }
+.has-afisha-flags { height: auto !important; align-items: stretch; }
+.has-afisha-flags .afisha-neighbor-booking {
+    height: var(--afisha-neighbor-height) !important; top: var(--afisha-neighbor-top) !important;
+    bottom: auto !important; margin-top: 0 !important;
+}
+.has-afisha-flags .afisha-neighbor-booking.afisha-type-birthday {
+    transform: none !important; background: #b45309 !important; color: #fffbeb !important;
+    border-color: #f59e0b !important;
+}
+.timeline-marketing-dialog { width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow-y: auto; padding: 22px; }
+.timeline-marketing-heading, .timeline-marketing-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.timeline-marketing-heading h3 { margin: 0; }
+.timeline-marketing-heading h3 { overflow-wrap: anywhere; min-width: 0; flex: 1; }
+.timeline-marketing-modal :is(.btn-primary, .btn-secondary), .timeline-promotions .btn-secondary {
+    min-height: 36px; padding: 8px 12px; border: 1px solid var(--gray-300); border-radius: 8px;
+    background: var(--gray-50); color: var(--gray-800); font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1.3; cursor: pointer; text-decoration: none;
+}
+.timeline-marketing-modal .btn-primary { background: var(--primary); border-color: var(--primary); color: white; }
+.timeline-marketing-modal [data-close] { flex: 0 0 36px; font-size: 20px; }
+.timeline-marketing-modal button:disabled, .timeline-promotions button:disabled { opacity: .6; cursor: wait; }
+.timeline-marketing-description { white-space: pre-wrap; overflow-wrap: anywhere; }
+.timeline-marketing-form { display: grid; gap: 12px; margin-top: 16px; }
+.timeline-marketing-form[hidden] { display: none; }
+.timeline-marketing-form label { display: grid; gap: 5px; min-width: 0; color: var(--gray-700); }
+.timeline-marketing-form input, .timeline-marketing-form textarea, .timeline-marketing-form select {
+    width: 100%; box-sizing: border-box; min-width: 0; padding: 9px;
+    border: 1px solid var(--gray-300); border-radius: 6px;
+    background: var(--gray-50); color: var(--gray-800); font: inherit;
+}
+.timeline-marketing-form [role="alert"] { color: var(--danger, #dc2626); }
+.timeline-marketing-date-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.timeline-promotions { padding: 10px 14px; border-bottom: 1px solid var(--gray-200); color: var(--gray-800); background: var(--gray-50); }
+.timeline-promotions-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; }
+.timeline-promotions-status { flex: 1; color: var(--gray-600); font-size: 12px; }
+.timeline-promotion-dates, .timeline-promotion-row { display: grid; grid-template-columns: repeat(var(--promotion-days), minmax(0, 1fr)); gap: 2px; }
+.timeline-promotion-dates { touch-action: none; }
+.timeline-promotion-date { font: inherit; font-size: 12px; padding: 5px 0; border: 0; background: transparent; color: var(--gray-600); cursor: crosshair; }
+.timeline-promotion-row { margin-top: 4px; }
+.timeline-promotion-band { display: flex; position: relative; min-width: 0; border-radius: 5px; background: color-mix(in srgb, var(--promotion-color) 20%, var(--gray-50)); }
+[data-color="amber"], [data-promotion-color="amber"] { --promotion-color: #d59b28; }
+[data-color="violet"], [data-promotion-color="violet"] { --promotion-color: #9773e6; }
+[data-color="green"], [data-promotion-color="green"] { --promotion-color: #32a881; }
+[data-color="blue"], [data-promotion-color="blue"] { --promotion-color: #4595d2; }
+[data-promotion-color="overlap"] { --promotion-color: #8995a7; }
+.promotion-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font: inherit; font-size: 12px; padding: 6px 8px; border: 0; background: transparent; color: var(--gray-800); cursor: grab; touch-action: none; }
+.promotion-label span { display: block; font-size: 10px; color: var(--gray-600); overflow: hidden; text-overflow: ellipsis; }
+.promotion-handle { flex: 0 0 20px; border: 0; border-radius: 4px; background: transparent; color: var(--gray-700); cursor: ew-resize; touch-action: none; }
+.promotion-preview { outline: 2px solid var(--primary); outline-offset: -2px; }
+.line-grid[data-promotion-color]::before, .mini-line-grid[data-promotion-color]::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: var(--promotion-color); opacity: .09; }
+@media (max-width: 600px) {
+    .timeline-promotions { padding: 8px; }
+    .timeline-promotions-toolbar { gap: 6px; }
+    .timeline-promotions-status { min-width: 100px; }
+    .timeline-marketing-date-pair { grid-template-columns: 1fr; }
+    .timeline-marketing-form input, .timeline-marketing-form textarea, .timeline-marketing-form select { font-size: 16px; }
+    .timeline-marketing-dialog { padding: 16px; }
+}
+@media (pointer: coarse) {
+    .promotion-handle { flex-basis: 26px; }
+    .timeline-promotion-date, .promotion-label, .timeline-marketing-actions button { min-height: 44px; }
+}

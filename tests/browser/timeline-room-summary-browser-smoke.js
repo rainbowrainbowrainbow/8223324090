@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const { buildCapabilitySnapshot } = require('../../services/accountAccessPolicy');
 
 const ROOT = path.join(__dirname, '..', '..');
 const HEADLESS = process.env.TIMELINE_ROOM_SUMMARY_BROWSER_SMOKE_HEADLESS !== 'false';
@@ -224,13 +225,12 @@ async function routeMockedApi(page) {
         if (pathname === '/api/auth/verify') {
             body = { user: SMOKE_USER };
         } else if (pathname === '/api/auth/permissions') {
+            const snapshot = buildCapabilitySnapshot(SMOKE_USER);
             body = {
-                actions: {
-                    create_booking: true,
-                    edit_booking: true,
-                    export_data: true,
-                    manage_settings: true
-                },
+                pages: snapshot.pages,
+                actions: snapshot.actions,
+                capabilities: snapshot.decisions,
+                capabilityCatalog: snapshot.catalog,
                 actionAllowlist: SMOKE_USER.actionAllowlist,
                 actionDenylist: []
             };
@@ -426,7 +426,7 @@ async function verifyRoomSummarySmoke(page) {
     assert.equal(roomRow.text.includes('+1'), false, 'summary room row excludes day booking count hint');
 }
 
-(async () => {
+if (require.main === module) (async () => {
     let playwright;
     try {
         playwright = requirePlaywright();
@@ -451,3 +451,5 @@ async function verifyRoomSummarySmoke(page) {
 })().catch(error => {
     fail(error?.stack || error?.message || String(error));
 });
+
+module.exports = { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER };

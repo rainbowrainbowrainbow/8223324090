@@ -20,10 +20,39 @@ const {
     timelineResourceAvailability
 } = require('../services/timelineResources');
 const { validateDate, validateTime } = require('../services/booking');
+const { listPromotions, savePromotion } = require('../services/timelinePromotions');
+const { businessScopeWriteGuard } = require('../middleware/businessScopeGuard');
 
 const log = createLogger('TimelineResources');
 
 router.use(authenticateToken);
+
+router.get('/promotions', async (req, res) => {
+    const context = timelineContextFromRequest(req);
+    if (!requireTimelineContext(req, res, context)) return;
+    try {
+        const promotions = await listPromotions(pool, context, req.query.from, req.query.to);
+        res.json({ context, promotions });
+    } catch (error) {
+        if (!error.statusCode) log.error('List promotions error', error);
+        res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося завантажити акції' });
+    }
+});
+
+async function handlePromotionWrite(req, res) {
+    const context = timelineContextFromRequest(req);
+    if (!requireTimelineAction(req, res, context, 'settings')) return;
+    try {
+        const item = await savePromotion(pool, context, req.params.id, req.body || {}, req.user.username);
+        res.status(req.params.id ? 200 : 201).json({ success: true, item });
+    } catch (error) {
+        if (!error.statusCode) log.error('Save promotion error', error);
+        res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося зберегти акцію' });
+    }
+}
+
+router.post('/promotions', businessScopeWriteGuard, handlePromotionWrite);
+router.patch('/promotions/:id', businessScopeWriteGuard, handlePromotionWrite);
 
 router.get('/resources', async (req, res) => {
     try {

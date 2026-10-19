@@ -1,0 +1,162 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { JSDOM } = require('jsdom');
+const flush = () => new Promise(resolve => setImmediate(resolve));
+const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+const response = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
+
+function fixture() {
+    const dom = new JSDOM('<main><div id="timelineScroll"><div id="timelineLines"><div class="line-grid"></div></div></div></main>', { url: 'http://localhost', runScripts: 'outside-only' });
+    const w = dom.window;
+    const state = { context: 'event_genix', token: 1, renders: 0, writes: [], notices: [] };
+    w.TimelineBusinessContext = { current: () => ({ key: state.context }) };
+    w.getCrmBusinessState = () => ({ businessScopeReadOnly: false });
+    w.canAccess = () => true;
+    w.CONFIG = { TIMELINE: { CELL_MINUTES: 15 } };
+    w.getTimelineCellWidth = () => 30;
+    w.getAuthHeaders = () => ({});
+    w.apiFetchWithAuthRetry = async () => response({ promotions: [] });
+    w.formatDate = date => typeof date === 'string' ? date : date.toISOString().slice(0, 10);
+    w.invalidateTimelineDateCache = date => state.writes.push(date);
+    w.timelineRequestTokenIsCurrent = token => token === state.token;
+    w.renderTimeline = async () => { state.renders++; };
+    w.showNotification = text => state.notices.push(text);
+    w.hideTooltip = () => {};
+    w.AppState = { selectedDate: new Date('2026-10-19T12:00:00Z') };
+    w.openModal = element => element.classList.remove('hidden');
+    w.closeModal = element => element.remove();
+    w.HTMLElement.prototype.setPointerCapture = () => {};
+    w.document.elementFromPoint = () => null;
+    for (const name of ['timeline-marketing', 'timeline-afisha', 'timeline-promotions']) {
+        w.eval(fs.readFileSync(path.join(__dirname, '../js', `${name}.js`), 'utf8'));
+    }
+    return { w, state, close: () => dom.window.close() };
+}
+const event = { id: 1, title: '<img src=x onerror=alert(1)>', date: '2026-10-19', time: '14:00', duration: 60, type: 'event', original_time: '14:00' };
+
+test('overlapping flags receive distinct lanes below bookings and text cannot inject HTML', () => {
+    const f = fixture();
+    try {
+        const grid = f.w.document.querySelector('.line-grid');
+        const booking = f.w.document.createElement('div'); booking.className = 'booking-block';
+        booking.getBoundingClientRect = () => ({ bottom: 80 }); grid.appendChild(booking);
+        const first = f.w.TimelineAfisha.create(event, 12, grid);
+        const second = f.w.TimelineAfisha.create({ ...event, id: 2, time: '14:05' }, 12, grid);
+        grid.append(first, second); f.w.TimelineAfisha.layout(grid);
+        assert.equal(grid.querySelector('img'), null);
+        assert.equal(first.textContent.includes(event.title), true);
+        assert.equal(first.style.top, '85px');
+        assert.equal(second.style.top, '119px');
+        assert.equal(grid.style.minHeight, '158px');
+    } finally { f.close(); }
+});
+test('a pending move blocks another save of the same event and failure releases the lock', async () => {
+    const f = fixture();
+    try {
+        const wait = deferred(); f.w.apiFetchWithAuthRetry = () => wait.promise;
+        const save = f.w.TimelineAfisha.save({ ...event }, event.date, '14:05', 'event_genix');
+        await assert.rejects(f.w.TimelineAfisha.save({ ...event }, event.date, '14:10', 'event_genix'), /ще триває/);
+        wait.resolve(response({ error: 'Server failure' }, 500));
+        await assert.rejects(save, /Server failure/);
+        f.w.apiFetchWithAuthRetry = async () => response({ item: { ...event, time: '14:10' } });
+        const item = await f.w.TimelineAfisha.save({ ...event }, event.date, '14:10', 'event_genix');
+        assert.equal(item.time, '14:10');
+    } finally { f.close(); }
+});
+test('conflict refreshes the current view but a stale business cannot start a mutation', async () => {
+    const f = fixture();
+    try {
+        f.w.apiFetchWithAuthRetry = async () => response({ error: 'Conflict' }, 409);
+        await assert.rejects(f.w.TimelineAfisha.save({ ...event }, event.date, '14:05', 'event_genix'), /Conflict/);
+        assert.equal(f.state.renders, 1);
+        f.state.context = 'dar';
+        await assert.rejects(f.w.TimelineAfisha.save({ ...event }, event.date, '14:05', 'event_genix'), /контекст/);
+    } finally { f.close(); }
+});
+test('pointer cancellation restores the position without saving or opening a dialog', () => {
+    const f = fixture();
+    try {
+        const grid = f.w.document.querySelector('.line-grid');
+        const block = f.w.TimelineAfisha.create(event, 12, grid); grid.appendChild(block);
+        const initial = block.style.left;
+        block.dispatchEvent(new f.w.MouseEvent('pointerdown', { button: 0, clientX: 100, clientY: 10 }));
+        block.dispatchEvent(new f.w.MouseEvent('pointermove', { clientX: 160, clientY: 10 }));
+        assert.notEqual(block.style.left, initial);
+        block.dispatchEvent(new f.w.MouseEvent('pointercancel'));
+        assert.equal(block.style.left, initial);
+        assert.equal(f.w.TimelineAfisha.dragging(), false);
+        assert.equal(f.w.document.querySelector('.timeline-marketing-modal'), null);
+    } finally { f.close(); }
+});
+test('stale promotion responses cannot replace a newer date range', async () => {
+    const f = fixture();
+    try {
+        const first = deferred(); const second = deferred(); let n = 0;
+        f.w.apiFetchWithAuthRetry = () => (++n === 1 ? first : second).promise;
+        const container = f.w.document.getElementById('timelineLines');
+        f.w.TimelinePromotions.mount(container, ['2026-10-19'], 1);
+        f.state.token = 2; f.w.TimelinePromotions.beginRender();
+        f.w.TimelinePromotions.mount(container, ['2026-10-26'], 2);
+        second.resolve(response({ promotions: [] })); await flush();
+        first.resolve(response({ promotions: [{ id: 1, title: 'Old', color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-19' }] })); await flush();
+        assert.equal(f.w.document.querySelector('.timeline-promotions').textContent.includes('Old'), false);
+        assert.equal(f.w.document.querySelector('.timeline-promotion-date').textContent, '26.10');
+    } finally { f.close(); }
+});
+test('a promotion failure preserves booking content and retries independently', async () => {
+    const f = fixture();
+    try {
+        const container = f.w.document.getElementById('timelineLines');
+        container.querySelector('.line-grid').textContent = 'Booking remains';
+        f.w.apiFetchWithAuthRetry = async () => response({ error: 'Unavailable' }, 500);
+        f.w.TimelinePromotions.mount(container, ['2026-10-19'], 1); await flush();
+        assert.equal(container.textContent, 'Booking remains');
+        assert.ok(f.w.document.querySelector('.timeline-promotions [role="alert"]'));
+        f.w.apiFetchWithAuthRetry = async () => response({ promotions: [] });
+        f.w.document.querySelector('.timeline-promotions button').click(); await flush();
+        assert.ok(f.w.document.querySelector('[data-add]'));
+    } finally { f.close(); }
+});
+
+test('read-only viewers can open Afisha and promotions without mutation controls', async () => {
+    const f = fixture();
+    try {
+        f.w.canAccess = () => false;
+        const grid = f.w.document.querySelector('.line-grid');
+        const flag = f.w.TimelineAfisha.create(event, 12, grid); grid.appendChild(flag); flag.click();
+        assert.ok(f.w.document.querySelector('.timeline-marketing-modal a'));
+        assert.equal(f.w.document.querySelector('[data-move]'), null);
+        f.w.closeModal(f.w.document.querySelector('.timeline-marketing-modal'));
+        f.w.apiFetchWithAuthRetry = async () => response({ promotions: [{ id: 1, title: 'Read me', description: '',
+            color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-19', version: 1 }] });
+        f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1); await flush();
+        assert.equal(f.w.document.querySelector('[data-add]'), null);
+        f.w.document.querySelector('.promotion-label').click();
+        assert.equal(f.w.document.querySelector('.timeline-marketing-modal input[name="title"]').readOnly, true);
+        assert.equal(f.w.document.querySelector('.timeline-marketing-modal button[type="submit"]'), null);
+    } finally { f.close(); }
+});
+
+test('promotion conflict retains a draft and offers the fresh server version', async () => {
+    const f = fixture();
+    try {
+        let version = 1;
+        f.w.apiFetchWithAuthRetry = async (url, options) => {
+            if (options.method === 'PATCH') { version = 2; return response({ error: 'Conflict' }, 409); }
+            return response({ promotions: [{ id: 1, title: version === 1 ? 'Original' : 'Server title', description: '',
+                color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-19', version }] });
+        };
+        f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1); await flush();
+        f.w.document.querySelector('.promotion-label').click();
+        const form = f.w.document.querySelector('.timeline-marketing-form');
+        form.elements.title.value = 'My draft';
+        form.dispatchEvent(new f.w.Event('submit', { cancelable: true })); await flush(); await flush();
+        assert.equal(form.elements.title.value, 'My draft');
+        assert.equal(f.w.document.querySelector('.promotion-label').textContent.includes('Server title'), true);
+        f.w.document.querySelector('[data-error] button').click();
+        assert.equal(f.w.document.querySelector('input[name="title"]').value, 'Server title');
+    } finally { f.close(); }
+});

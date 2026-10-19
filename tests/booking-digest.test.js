@@ -734,6 +734,11 @@ test('banquet terms renderer builds standard terms from price rules', () => {
     assert.equal(rendered.title, 'Умови банкету');
     assert.deepEqual(rendered.missingCodes, []);
     assert.deepEqual(rendered.items, [
+        'Передоплата для бронювання — 1 000 ₴. Вона зараховується в загальну вартість банкету. Бронювання підтверджується після надходження передоплати.',
+        'Скасування банкету: якщо повідомити менеджера не пізніше ніж за 5 календарних днів до початку, передоплата повертається повністю. При пізнішому скасуванні повертається залишок за вирахуванням фактично понесених, документально підтверджених і попередньо погоджених із клієнтом витрат на підготовку цього банкету, у межах суми передоплати.',
+        'Перенесення банкету: повідомте менеджера не пізніше ніж за 5 діб до початку. За наявності вільної дати передоплата повністю зараховується на нову дату. Якщо нову дату не погоджено, діють умови скасування.',
+        'Якщо банкет скасовує заклад, передоплата повертається повністю.',
+        'Для скасування або перенесення надішліть менеджеру повідомлення із номером бронювання. Повернення коштів здійснюється протягом 5 робочих днів після отримання запиту та необхідних реквізитів.',
         'Заборонено приносити їжу та напої. Свій торт дозволено за 500 грн. Cork Fee - 100 грн.',
         'Корегування меню здійснюється максимум за 3 доби. Зміна дати за 5 діб.',
         'Винагорода офіціантів вітається, але завжди залишається на ваш розсуд.'
@@ -759,7 +764,7 @@ test('banquet terms defaults load required numeric values from price_rules', asy
         'banquet_menu_correction_deadline_days',
         'banquet_own_cake_fee'
     ]);
-    assert.equal(defaults.items.length, 3);
+    assert.equal(defaults.items.length, 8);
     assert.deepEqual(defaults.missingCodes, []);
 });
 
@@ -786,7 +791,7 @@ test('banquet terms snapshot is captured for new kitchen booking payloads', asyn
     assert.equal(result.applied, true);
     assert.equal(bookingNeedsBanquetTermsSnapshot(booking), false);
     assert.equal(Array.isArray(booking.extraData.banquetTerms), true);
-    assert.equal(booking.extraData.banquetTerms.length, 3);
+    assert.equal(booking.extraData.banquetTerms.length, 8);
     assert.equal(booking.extraData.banquetTerms.some(item => item.includes('500 грн') && item.includes('100 грн')), true);
     assert.equal(booking.extraData.banquetTerms.some(item => item.includes('їжу/напої/торт')), false);
     assert.equal(booking.extraData.banquetTermsSnapshot.source, 'price_rules');

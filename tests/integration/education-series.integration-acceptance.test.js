@@ -96,11 +96,23 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
     assert.ok(trials.every(r=>r.statuses.join(',')==='200,409'&&r.rows===1),'concurrent teacher conflicts: '+JSON.stringify(trials));
   });
   test('series retain wall clock across month/year and both Kyiv DST boundaries', async () => {
+    const year = new Date().getUTCFullYear() + 1;
+    const acrossLastSunday = month => {
+      const boundary = new Date(Date.UTC(year, month, 0));
+      boundary.setUTCDate(boundary.getUTCDate() - boundary.getUTCDay());
+      return [-7, 0, 7].map(offset => {
+        const date = new Date(boundary);
+        date.setUTCDate(date.getUTCDate() + offset);
+        return date.toISOString().slice(0, 10);
+      });
+    };
+    const spring = acrossLastSunday(3);
+    const autumn = acrossLastSunday(10);
     for (const [date,repeatEvery,expected] of [
-      ['2026-12-31','daily',['2026-12-31','2027-01-01','2027-01-02']],
-      ['2027-03-21','weekly',['2027-03-21','2027-03-28','2027-04-04']],
-      ['2026-10-18','weekly',['2026-10-18','2026-10-25','2026-11-01']],
-      ['2026-12-25','biweekly',['2026-12-25','2027-01-08','2027-01-22']]
+      [`${year}-12-31`,'daily',[`${year}-12-31`,`${year + 1}-01-01`,`${year + 1}-01-02`]],
+      [spring[0],'weekly',spring],
+      [autumn[0],'weekly',autumn],
+      [`${year}-12-25`,'biweekly',[`${year}-12-25`,`${year + 1}-01-08`,`${year + 1}-01-22`]]
     ]) {
       const b=lesson(date,'14:15',3); Object.assign(b.extraData.educationLesson,{seriesSize:3,repeatEvery});
       const created=await request('POST','/api/bookings/education-series?businessContext=dar',{booking:b});

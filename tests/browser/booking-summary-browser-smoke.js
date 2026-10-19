@@ -5,6 +5,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const { renderBanquetTermsFromPriceRules } = require('../../services/banquetTerms');
+const { buildBanquetSummaryPdfBuffer } = require('../../services/banquetSummaryPdf');
 
 const ROOT = path.join(__dirname, '..', '..');
 const HEADLESS = process.env.BOOKING_SUMMARY_BROWSER_SMOKE_HEADLESS !== 'false';
@@ -33,6 +35,12 @@ const SMOKE_SUMMARY = {
         hasRealProgram: true,
         manager: 'Smoke QA',
         createdAt: '2026-06-20T10:00:00.000Z'
+    },
+    arrival: {
+        date: '2026-06-25',
+        time: '15:00',
+        room: 'Поні',
+        source: 'banquet_group'
     },
     customer: {
         name: 'Тестовий клієнт',
@@ -94,13 +102,12 @@ const SMOKE_SUMMARY = {
         orderTotal: 7800,
         bookingPrice: 7800
     },
-    terms: {
-        title: 'Умови банкету',
-        items: [
-            'Корегування меню здійснюється заздалегідь.',
-            'Деталі можна уточнити у менеджера.'
-        ]
-    },
+    terms: renderBanquetTermsFromPriceRules([
+        { code: 'banquet_own_cake_fee', value: 500 },
+        { code: 'banquet_cork_fee', value: 100 },
+        { code: 'banquet_menu_correction_deadline_days', value: 3 },
+        { code: 'banquet_date_change_deadline_days', value: 5 }
+    ]),
     warnings: []
 };
 
@@ -205,6 +212,7 @@ async function assertNoHorizontalOverflow(page) {
 }
 
 async function routeBookingSummaryApi(page) {
+    const pdfBuffer = await buildBanquetSummaryPdfBuffer(SMOKE_SUMMARY, { mode: 'client' });
     await page.route('**/api/**', route => route.fulfill({
         status: 200,
         contentType: 'application/json; charset=utf-8',
@@ -220,7 +228,7 @@ async function routeBookingSummaryApi(page) {
                 headers: {
                     'content-disposition': 'attachment; filename="booking-summary-smoke.pdf"'
                 },
-                body: Buffer.from('%PDF-1.4\n% booking summary smoke\n%%EOF\n', 'utf8')
+                body: pdfBuffer
             });
         }
         return route.fulfill({
@@ -286,6 +294,10 @@ async function assertPrintCssPaginationPolicy(page) {
 async function verifyBookingSummary(page, baseUrl) {
     await page.addInitScript(() => {
         window.localStorage.setItem('pzp_token', 'booking-summary-browser-smoke-token');
+        window.AppState = {
+            currentUser: { id: 1, username: 'smoke-qa', role: 'manager' },
+            authPermissions: { actions: { view_revenue: true, export_data: true, edit_booking: false } }
+        };
     });
     await routeBookingSummaryApi(page);
 
@@ -313,6 +325,20 @@ async function verifyBookingSummary(page, baseUrl) {
     await assertTextIncludes(document, 'Паперове Неон-шоу', 'program row');
     await assertTextIncludes(document, 'Овочева тарілка', 'menu row');
     await assertTextIncludes(document, 'Без гострого', 'menu row note');
+    for (const term of SMOKE_SUMMARY.terms.items) {
+        await assertTextIncludes(document, term, 'complete banquet terms');
+    }
+
+    const outputDir = path.join(ROOT, 'output', 'playwright');
+    fs.mkdirSync(outputDir, { recursive: true });
+    await document.screenshot({ path: path.join(outputDir, 'banquet-prepayment-desktop.png') });
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator('#bookingSummaryClientPdf').click();
+    const download = await downloadPromise;
+    assert.equal(await download.failure(), null, 'client PDF downloads successfully');
+    const pdfPath = path.join(outputDir, 'banquet-prepayment.pdf');
+    await download.saveAs(pdfPath);
+    assert.equal(fs.readFileSync(pdfPath).subarray(0, 4).toString(), '%PDF', 'download is a server PDF');
 
     await assertPrintCssHidesToolbar(page);
     await assertPrintCssPaginationPolicy(page);
@@ -320,6 +346,7 @@ async function verifyBookingSummary(page, baseUrl) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(100);
     await assertNoHorizontalOverflow(page);
+    await document.screenshot({ path: path.join(outputDir, 'banquet-prepayment-mobile.png') });
 }
 
 (async () => {

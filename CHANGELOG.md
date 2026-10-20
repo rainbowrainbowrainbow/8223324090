@@ -4,6 +4,13 @@
 
 ---
 
+## v0.82.102 - Акції: компактна панель та мобільна форма
+
+### Release / Versioning / (20.10.2026) [codex]
+- **Акції: компактна панель та мобільна форма** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.82.101 - Акції: компактна панель та мобільна форма
 
 ### Release / Versioning / (20.10.2026) [codex]

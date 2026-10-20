@@ -9,6 +9,7 @@
     let selecting = false;
     let keyStart = null;
     let sequence = 0;
+    let expanded = false;
     const pending = new Set();
 
     function clearShading() {
@@ -26,7 +27,7 @@
         return active;
     }
     function beginRender() {
-        cancel(); sequence++; view = null; selecting = false; keyStart = null;
+        cancel(); sequence++; view = null; selecting = false; keyStart = null; expanded = false;
         panel?.remove(); panel = null; clearShading();
     }
     function canWrite() { return M.writable('manage_settings'); }
@@ -116,44 +117,52 @@
     function render(items) {
         const { dates } = view;
         const writable = canWrite();
-        panel.innerHTML = `<div class="timeline-promotions-toolbar"><strong>Акції</strong><span class="timeline-promotions-status" aria-live="polite">${items.length ? `${items.length} у видимому періоді` : 'Немає акцій'}</span>${writable ? '<button type="button" class="btn-secondary" data-add>Додати акцію</button><button type="button" class="btn-secondary" data-select aria-pressed="false">Виділити дати</button>' : ''}</div>
-            <div class="timeline-promotion-scroll"><div class="timeline-promotion-dates" style="--promotion-days:${dates.length}">${dates.map((date, index) => `<button type="button" class="timeline-promotion-date" data-date-index="${index}" aria-label="${date}">${date.slice(8)}.${date.slice(5, 7)}</button>`).join('')}</div>
+        const visibleItems = expanded ? items : items.slice(0, 2);
+        const moreCount = items.length - visibleItems.length;
+        panel.dataset.visibleFrom = dates[0];
+        panel.dataset.visibleTo = dates[dates.length - 1];
+        panel.innerHTML = `<div class="timeline-promotions-toolbar"><strong>Акції</strong><span class="timeline-promotions-status" aria-live="polite">${items.length ? `${items.length} у видимому періоді` : 'Немає акцій'}</span>${moreCount > 0 ? `<button type="button" class="btn-secondary" data-more aria-expanded="false">Ще ${moreCount}</button>` : ''}${expanded && items.length > 2 ? '<button type="button" class="btn-secondary" data-less aria-expanded="true">Згорнути</button>' : ''}${writable ? '<button type="button" class="btn-secondary" data-add>Додати акцію</button>' : ''}${writable && dates.length > 1 ? '<button type="button" class="btn-secondary" data-select aria-pressed="false">Виділити дати</button>' : ''}</div>
+            <div class="timeline-promotion-scroll">${dates.length > 1 ? `<div class="timeline-promotion-dates" style="--promotion-days:${dates.length}">${dates.map((date, index) => `<button type="button" class="timeline-promotion-date" data-date-index="${index}" aria-label="${date}">${date.slice(8)}.${date.slice(5, 7)}</button>`).join('')}</div>` : ''}
             <div class="timeline-promotion-bands"></div></div>`;
         panel.querySelector('[data-add]')?.addEventListener('click', e => edit(null, dates[0], dates[dates.length - 1], e.currentTarget));
+        panel.querySelector('[data-more]')?.addEventListener('click', () => { expanded = true; render(items); panel.querySelector('[data-less]')?.focus(); });
+        panel.querySelector('[data-less]')?.addEventListener('click', () => { expanded = false; render(items); panel.querySelector('[data-more]')?.focus(); });
         panel.querySelector('[data-select]')?.addEventListener('click', e => {
             selecting = !selecting; keyStart = null;
             e.currentTarget.setAttribute('aria-pressed', String(selecting));
             panel.querySelector('.timeline-promotions-status').textContent = selecting ? 'Виділіть дати або натисніть початок і кінець' : `${items.length} у видимому періоді`;
         });
         const header = panel.querySelector('.timeline-promotion-dates');
-        const dayAt = x => Math.max(0, Math.min(dates.length - 1, Math.floor((x - header.getBoundingClientRect().left) / (header.getBoundingClientRect().width / dates.length))));
-        header.addEventListener('pointerdown', e => {
-            if (!selecting || e.button !== 0) return;
-            const index = dayAt(e.clientX);
-            gesture = { type: 'select', from: index, to: index };
-            header.setPointerCapture(e.pointerId);
-        });
-        header.addEventListener('pointermove', e => {
-            if (gesture?.type !== 'select') return;
-            gesture.to = dayAt(e.clientX);
-            header.querySelectorAll('button').forEach((button, i) => button.classList.toggle('promotion-preview', i >= Math.min(gesture.from, gesture.to) && i <= Math.max(gesture.from, gesture.to)));
-        });
         function choose(from, to, trigger) {
             selecting = false; keyStart = null; cancel();
             panel.querySelector('[data-select]')?.setAttribute('aria-pressed', 'false');
             edit(null, dates[Math.min(from, to)], dates[Math.max(from, to)], trigger);
         }
-        header.addEventListener('pointerup', () => {
-            if (gesture?.type === 'select') choose(gesture.from, gesture.to, panel.querySelector('[data-select]'));
-        });
-        header.addEventListener('pointercancel', cancel);
-        header.addEventListener('lostpointercapture', () => { if (gesture?.type === 'select') cancel(); });
-        header.querySelectorAll('button').forEach((button, index) => button.addEventListener('click', e => {
-            if (!selecting || e.detail !== 0) return;
-            if (keyStart === null) { keyStart = index; button.classList.add('promotion-preview'); }
-            else choose(keyStart, index, button);
-        }));
-        for (const item of items) {
+        if (header) {
+            const dayAt = x => Math.max(0, Math.min(dates.length - 1, Math.floor((x - header.getBoundingClientRect().left) / (header.getBoundingClientRect().width / dates.length))));
+            header.addEventListener('pointerdown', e => {
+                if (!selecting || e.button !== 0) return;
+                const index = dayAt(e.clientX);
+                gesture = { type: 'select', from: index, to: index };
+                header.setPointerCapture(e.pointerId);
+            });
+            header.addEventListener('pointermove', e => {
+                if (gesture?.type !== 'select') return;
+                gesture.to = dayAt(e.clientX);
+                header.querySelectorAll('button').forEach((button, i) => button.classList.toggle('promotion-preview', i >= Math.min(gesture.from, gesture.to) && i <= Math.max(gesture.from, gesture.to)));
+            });
+            header.addEventListener('pointerup', () => {
+                if (gesture?.type === 'select') choose(gesture.from, gesture.to, panel.querySelector('[data-select]'));
+            });
+            header.addEventListener('pointercancel', cancel);
+            header.addEventListener('lostpointercapture', () => { if (gesture?.type === 'select') cancel(); });
+            header.querySelectorAll('button').forEach((button, index) => button.addEventListener('click', e => {
+                if (!selecting || e.detail !== 0) return;
+                if (keyStart === null) { keyStart = index; button.classList.add('promotion-preview'); }
+                else choose(keyStart, index, button);
+            }));
+        }
+        for (const item of visibleItems) {
             const row = document.createElement('div');
             row.className = 'timeline-promotion-row';
             row.dataset.promotionId = item.id;
@@ -251,7 +260,7 @@
         panel.setAttribute('aria-label', 'Акційні періоди');
         panel.innerHTML = '<div class="timeline-promotions-toolbar" role="status">Завантаження акцій…</div>';
         const scroll = document.getElementById('timelineScroll');
-        scroll.parentNode.insertBefore(panel, scroll);
+        scroll.insertBefore(panel, document.getElementById('timeScale'));
         view = { container, dates: dates.map(formatDate), token, business: M.context(), items: [] };
         refresh();
     }

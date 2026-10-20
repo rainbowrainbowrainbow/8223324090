@@ -2995,6 +2995,7 @@ function syncTimelineViewHeight(reason = 'manual', options = {}) {
     const addLineBtn = document.getElementById('addLineBtn');
     const contentHeight = Math.ceil(
         verticalPadding
+        + timelineOuterHeight(scroll.querySelector('.timeline-promotions'))
         + timelineOuterHeight(timeScale)
         + timelineOuterHeight(lines)
         + timelineOuterHeight(addLineBtn)

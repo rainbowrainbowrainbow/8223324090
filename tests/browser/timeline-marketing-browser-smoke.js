@@ -127,6 +127,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         await verifyFlagGeometry();
         assert.equal(await page.locator('.day-section').count(), 7);
         assert.equal(await page.locator('.afisha-flag[data-afisha-id="1"]').count(), 1);
+        await page.locator('#timelineScroll').evaluate(el => { el.scrollLeft = 0; });
         const source = await page.locator('.afisha-flag[data-afisha-id="1"]').boundingBox();
         const target = await page.locator('.day-section[data-date="2026-10-20"] .day-section-header').boundingBox();
         await page.mouse.move(source.x + 20, source.y + 12);

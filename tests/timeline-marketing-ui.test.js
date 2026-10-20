@@ -103,7 +103,7 @@ test('stale promotion responses cannot replace a newer date range', async () => 
         second.resolve(response({ promotions: [] })); await flush();
         first.resolve(response({ promotions: [{ id: 1, title: 'Old', color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-19' }] })); await flush();
         assert.equal(f.w.document.querySelector('.timeline-promotions').textContent.includes('Old'), false);
-        assert.equal(f.w.document.querySelector('.timeline-promotion-date').textContent, '26.10');
+        assert.equal(f.w.document.querySelector('.timeline-promotions').dataset.visibleFrom, '2026-10-26');
     } finally { f.close(); }
 });
 test('a promotion failure preserves booking content and retries independently', async () => {
@@ -118,6 +118,25 @@ test('a promotion failure preserves booking content and retries independently', 
         f.w.apiFetchWithAuthRetry = async () => response({ promotions: [] });
         f.w.document.querySelector('.timeline-promotions button').click(); await flush();
         assert.ok(f.w.document.querySelector('[data-add]'));
+    } finally { f.close(); }
+});
+
+test('promotion periods stay compact and can be expanded and collapsed', async () => {
+    const f = fixture();
+    try {
+        f.w.apiFetchWithAuthRetry = async () => response({ promotions: Array.from({ length: 5 }, (_, index) => ({
+            id: index + 1, title: `Promotion ${index + 1}`, description: '', color_key: 'amber',
+            starts_on: '2026-10-19', ends_on: '2026-10-25', version: 1
+        })) });
+        f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), Array.from({ length: 7 }, (_, index) => `2026-10-${String(19 + index).padStart(2, '0')}`), 1);
+        await flush();
+        const panel = f.w.document.querySelector('.timeline-promotions');
+        assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 2);
+        assert.equal(panel.querySelector('[data-more]').textContent, 'Ще 3');
+        panel.querySelector('[data-more]').click();
+        assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 5);
+        panel.querySelector('[data-less]').click();
+        assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 2);
     } finally { f.close(); }
 });
 

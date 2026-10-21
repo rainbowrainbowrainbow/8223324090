@@ -39,7 +39,14 @@ async function createFixture() {
         await pool.query(`CREATE TABLE history (id SERIAL PRIMARY KEY, business_context TEXT, action TEXT, username TEXT, data JSONB);
             CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
             CREATE TABLE afisha (id SERIAL PRIMARY KEY, date VARCHAR(10), time VARCHAR(10), title TEXT, duration INT,
-                type VARCHAR(20), description TEXT, template_id INT, original_time VARCHAR(10), line_id INT);
+                type VARCHAR(20), description TEXT, template_id INT, original_time VARCHAR(10), line_id VARCHAR(100));
+            CREATE TABLE lines_by_date (id SERIAL PRIMARY KEY, date VARCHAR(10), line_id VARCHAR(100), name TEXT, business_context TEXT);
+            CREATE TABLE bookings (id SERIAL PRIMARY KEY, date VARCHAR(10), time VARCHAR(10), duration INT,
+                line_id VARCHAR(100), status TEXT, business_context TEXT);
+            INSERT INTO lines_by_date (date,line_id,name,business_context) VALUES
+                ('2026-10-19','1','Аніматор 1','event_genix'), ('2026-10-19','2','Аніматор 2','event_genix'),
+                ('2026-10-20','1','Аніматор 1','event_genix'), ('2026-10-20','2','Аніматор 2','event_genix'),
+                ('2026-10-21','1','Аніматор 1','event_genix'), ('2026-10-21','2','Аніматор 2','event_genix');
             CREATE TABLE afisha_templates (id SERIAL PRIMARY KEY, is_active BOOLEAN, date_from TEXT, date_to TEXT,
                 recurrence_pattern TEXT, recurrence_days TEXT, title TEXT, time TEXT, duration INT, type TEXT, description TEXT);
             INSERT INTO afisha (date,time,title,duration,type,description,original_time,line_id) VALUES
@@ -49,6 +56,9 @@ async function createFixture() {
         const migration = fs.readFileSync(path.join(__dirname, '../../db/migrations/383_timeline_promotions.sql'), 'utf8');
         await pool.query(migration);
         await pool.query(migration);
+        const afishaMigration = fs.readFileSync(path.join(__dirname, '../../db/migrations/384_afisha_promotion_and_second_line.sql'), 'utf8');
+        await pool.query(afishaMigration);
+        await pool.query(afishaMigration);
         require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { pool } };
         auth = require('../../middleware/auth');
         originalAuthenticate = auth.authenticateToken;

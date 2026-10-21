@@ -39,14 +39,27 @@ async function moveAfishaSchedule(pool, id, input, actor, businessContext) {
         const event = found.rows[0];
         if (!event) throw scheduleError(404, 'Подію не знайдено');
         validateSchedule(event, input);
+        if (event.promotion_id != null && input.date !== event.date) {
+            const linked = await client.query(
+                `SELECT to_char(starts_on, 'YYYY-MM-DD') AS starts_on,
+                    to_char(ends_on, 'YYYY-MM-DD') AS ends_on
+                 FROM timeline_promotions WHERE id = $1 FOR SHARE`, [event.promotion_id]
+            );
+            const promotion = linked.rows[0];
+            if (promotion && (input.date < String(promotion.starts_on).slice(0, 10)
+                || input.date > String(promotion.ends_on).slice(0, 10))) {
+                throw scheduleError(400, 'Спочатку відв’яжіть захід від акції або змініть дати акції');
+            }
+        }
         const result = await client.query(
             `UPDATE afisha SET date = $2::text, time = $3,
-                line_id = CASE WHEN date::text <> $2::text THEN NULL ELSE line_id END
+                line_id = CASE WHEN date::text <> $2::text THEN NULL ELSE line_id END,
+                second_line_id = CASE WHEN date::text <> $2::text THEN NULL ELSE second_line_id END
              WHERE id = $1 RETURNING *`, [id, input.date, input.time]
         );
         await insertHistory(client, { businessContext, action: 'afisha_move', username: actor,
-            data: { id: event.id, from: { date: event.date, time: event.time, line_id: event.line_id },
-                to: { date: input.date, time: input.time, line_id: result.rows[0].line_id } } });
+            data: { id: event.id, from: { date: event.date, time: event.time, line_id: event.line_id, second_line_id: event.second_line_id },
+                to: { date: input.date, time: input.time, line_id: result.rows[0].line_id, second_line_id: result.rows[0].second_line_id } } });
         await client.query('COMMIT');
         return result.rows[0];
     } catch (error) {

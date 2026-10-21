@@ -47,6 +47,13 @@ async function savePromotion(pool, context, id, input, actor) {
         // Explicit whitelist: request bodies cannot move records to another business or change ownership.
         const value = validatePromotion(Object.fromEntries(['title', 'description', 'color_key', 'starts_on', 'ends_on', 'is_active']
             .map(key => [key, input[key] ?? previous?.[key] ?? ({ description: '', color_key: 'amber', is_active: true })[key]])));
+        if (previous && value.is_active) {
+            const outside = await client.query(
+                `SELECT id FROM afisha WHERE promotion_id = $1 AND (date < $2 OR date > $3) LIMIT 1`,
+                [id, value.starts_on, value.ends_on]
+            );
+            if (outside.rowCount) throw fail(400, 'Спочатку відв’яжіть афішні заходи поза новими датами акції');
+        }
         const args = [value.title, value.description, value.color_key, value.starts_on, value.ends_on, value.is_active];
         const result = previous
             ? await client.query(`UPDATE timeline_promotions SET title=$1, description=$2, color_key=$3,

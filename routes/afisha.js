@@ -13,6 +13,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { pushDefaultTimelineBusinessContext } = require('../services/timelineBusinessScope');
 const { insertHistory } = require('../services/historyLog');
 const { moveAfishaSchedule } = require('../services/afishaSchedule');
+const { createTimelineAfisha, updateTimelineAfisha } = require('../services/afishaTimeline');
 const { DEFAULT_TIMELINE_CONTEXT, timelineContextFromRequest, requireTimelineAction } = require('../services/timelineContext');
 const { resolveCapability } = require('../services/accountAccessPolicy');
 const { businessScopeWriteGuard } = require('../middleware/businessScopeGuard');
@@ -21,6 +22,42 @@ function getKleshnya() { return require('../services/kleshnya'); }
 
 // All afisha routes require authentication
 router.use(authenticateToken);
+
+function requireAfishaTimelineEdit(req, res) {
+    const context = timelineContextFromRequest(req);
+    if (context !== DEFAULT_TIMELINE_CONTEXT) {
+        res.status(403).json({ error: 'Афіша недоступна в цьому бізнесі' });
+        return false;
+    }
+    if (!requireTimelineAction(req, res, context, 'edit')) return false;
+    if (!resolveCapability(req.user, 'edit_booking', { type: 'action' }).allowed) {
+        res.status(403).json({ error: 'Немає права змінювати розклад' });
+        return false;
+    }
+    return true;
+}
+
+router.post('/timeline', businessScopeWriteGuard, async (req, res) => {
+    if (!requireAfishaTimelineEdit(req, res)) return;
+    try {
+        const item = await createTimelineAfisha(pool, req.body || {}, req.user.username);
+        res.status(201).json({ success: true, item });
+    } catch (error) {
+        if (!error.statusCode) log.error('Timeline Afisha create error', error);
+        res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося створити захід' });
+    }
+});
+
+router.patch('/:id/timeline', businessScopeWriteGuard, async (req, res) => {
+    if (!requireAfishaTimelineEdit(req, res)) return;
+    try {
+        const item = await updateTimelineAfisha(pool, req.params.id, req.body || {}, req.user.username);
+        res.json({ success: true, item });
+    } catch (error) {
+        if (!error.statusCode) log.error('Timeline Afisha update error', error);
+        res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося змінити захід' });
+    }
+});
 
 // Afisha is a legacy Park-owned entity, without a business_context column.
 // Never allow another cabinet to mutate these rows through the timeline bridge.
@@ -257,7 +294,7 @@ router.get('/distribute/:date', async (req, res) => {
 
         // Get afisha events (non-birthday) for the date
         const events = await pool.query(
-            "SELECT * FROM afisha WHERE date = $1 AND type != 'birthday' ORDER BY time",
+            "SELECT * FROM afisha WHERE date = $1 AND type != 'birthday' AND line_id IS NULL AND second_line_id IS NULL ORDER BY time",
             [date]
         );
         // Get lines (animators) for the date
@@ -332,7 +369,7 @@ async function distributeAfishaForDate(date) {
         await client.query('BEGIN');
 
         const events = (await client.query(
-            "SELECT * FROM afisha WHERE date = $1 AND type != 'birthday' ORDER BY time", [date]
+            "SELECT * FROM afisha WHERE date = $1 AND type != 'birthday' AND line_id IS NULL AND second_line_id IS NULL ORDER BY time", [date]
         )).rows;
         const lineParams = [date];
         const lineScope = pushDefaultTimelineBusinessContext(lineParams);
@@ -365,6 +402,17 @@ async function distributeAfishaForDate(date) {
             if (occupiedSlots[bk.line_id]) {
                 occupiedSlots[bk.line_id].push({ start: timeToMinutes(bk.time), end: timeToMinutes(bk.time) + (bk.duration || 0) });
                 loadMap[bk.line_id]++;
+            }
+        });
+        const assigned = (await client.query(
+            `SELECT line_id, second_line_id, time, duration FROM afisha
+             WHERE date = $1 AND (line_id IS NOT NULL OR second_line_id IS NOT NULL)`, [date]
+        )).rows;
+        assigned.forEach(ev => {
+            for (const id of [ev.line_id, ev.second_line_id]) {
+                if (!id || !occupiedSlots[id]) continue;
+                occupiedSlots[id].push({ start: timeToMinutes(ev.time), end: timeToMinutes(ev.time) + (ev.duration || 60) });
+                loadMap[id]++;
             }
         });
 
@@ -416,10 +464,13 @@ async function distributeAfishaForDate(date) {
             }
 
             const newTime = minutesToTime(assignedMin);
-            await client.query(
-                'UPDATE afisha SET line_id = $1, time = $2 WHERE id = $3',
-                [assignedAnim.id, newTime, ev.id]
+            const updated = await client.query(
+                `UPDATE afisha SET line_id = $1, time = $2 WHERE id = $3
+                 AND date = $4 AND time = $5 AND line_id IS NULL AND second_line_id IS NULL
+                 RETURNING id`,
+                [assignedAnim.id, newTime, ev.id, date, ev.time]
             );
+            if (!updated.rowCount) continue;
 
             occupiedSlots[assignedAnim.id].push({ start: assignedMin, end: assignedMin + dur });
             loadMap[assignedAnim.id]++;
@@ -465,8 +516,8 @@ router.post('/undistribute/:date', async (req, res) => {
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
 
         const result = await pool.query(
-            `UPDATE afisha SET line_id = NULL, time = COALESCE(original_time, time)
-             WHERE date = $1 AND line_id IS NOT NULL RETURNING id`,
+            `UPDATE afisha SET line_id = NULL, second_line_id = NULL, time = COALESCE(original_time, time)
+             WHERE date = $1 AND (line_id IS NOT NULL OR second_line_id IS NOT NULL) RETURNING id`,
             [date]
         );
 
@@ -649,6 +700,7 @@ router.post('/', async (req, res) => {
     try {
         const { date, time, title, duration, type, description } = req.body;
         if (!date || !time || !title) return res.status(400).json({ error: 'date, time, title required' });
+        if (!validateDate(date) || !validateTime(time)) return res.status(400).json({ error: 'Invalid date or time' });
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
         if (!validateTime(time)) return res.status(400).json({ error: 'Invalid time' });
         const validTypes = ['event', 'birthday', 'regular'];
@@ -674,35 +726,61 @@ router.post('/', async (req, res) => {
 });
 
 router.put('/:id', async (req, res) => {
+    let client;
     try {
         const { id } = req.params;
         const { date, time, title, duration, type, description } = req.body;
         if (!date || !time || !title) return res.status(400).json({ error: 'date, time, title required' });
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const existing = await client.query('SELECT promotion_id FROM afisha WHERE id = $1 FOR UPDATE', [id]);
+        if (!existing.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Not found' });
+        }
+        if (existing.rows[0].promotion_id != null) {
+            const linked = await client.query(
+                `SELECT to_char(starts_on, 'YYYY-MM-DD') AS starts_on,
+                    to_char(ends_on, 'YYYY-MM-DD') AS ends_on
+                 FROM timeline_promotions WHERE id = $1 FOR SHARE`, [existing.rows[0].promotion_id]
+            );
+            const promotion = linked.rows[0];
+            if (promotion && (date < promotion.starts_on || date > promotion.ends_on)) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Спочатку відв’яжіть захід від акції або змініть дати акції' });
+            }
+        }
         const validTypes = ['event', 'birthday', 'regular'];
         const eventType = validTypes.includes(type) ? type : undefined;
         if (eventType) {
-            await pool.query(
-                'UPDATE afisha SET date=$1, time=$2, title=$3, duration=$4, type=$5, description=$6 WHERE id=$7',
+            await client.query(
+                `UPDATE afisha SET date=$1::text, time=$2, title=$3, duration=$4, type=$5, description=$6,
+                    line_id=CASE WHEN date::text <> $1::text THEN NULL ELSE line_id END,
+                    second_line_id=CASE WHEN date::text <> $1::text THEN NULL ELSE second_line_id END WHERE id=$7`,
                 [date, time, title, duration || 60, eventType, description !== undefined ? description : null, id]
             );
         } else {
-            await pool.query(
-                'UPDATE afisha SET date=$1, time=$2, title=$3, duration=$4, description=$5 WHERE id=$6',
+            await client.query(
+                `UPDATE afisha SET date=$1::text, time=$2, title=$3, duration=$4, description=$5,
+                    line_id=CASE WHEN date::text <> $1::text THEN NULL ELSE line_id END,
+                    second_line_id=CASE WHEN date::text <> $1::text THEN NULL ELSE second_line_id END WHERE id=$6`,
                 [date, time, title, duration || 60, description !== undefined ? description : null, id]
             );
         }
         // v8.1: Log to history
         const username = req.user?.username || 'system';
-        await insertHistory(pool, {
+        await insertHistory(client, {
             action: 'afisha_edit',
             username,
             data: { id, title, date, time, type: eventType, duration: duration || 60 }
-        }).catch(err => log.error('History log error', err));
+        });
+        await client.query('COMMIT');
         res.json({ success: true });
     } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
         log.error('Update error', err);
         res.status(500).json({ error: 'Internal server error' });
-    }
+    } finally { client?.release(); }
 });
 
 // v7.6: Generate tasks for afisha event
@@ -801,7 +879,7 @@ router.patch('/:id/line', async (req, res) => {
         // Allow null to unassign from line
         const newLineId = line_id != null ? parseInt(line_id) : null;
 
-        await pool.query('UPDATE afisha SET line_id = $1 WHERE id = $2', [newLineId, id]);
+        await pool.query('UPDATE afisha SET line_id = $1, second_line_id = NULL WHERE id = $2', [newLineId, id]);
 
         const username = req.user?.username || 'system';
         await insertHistory(pool, {

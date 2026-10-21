@@ -452,4 +452,4 @@ if (require.main === module) (async () => {
     fail(error?.stack || error?.message || String(error));
 });
 
-module.exports = { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER };
+module.exports = { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticServer, SMOKE_USER };

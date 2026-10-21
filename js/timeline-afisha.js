@@ -9,6 +9,27 @@
     const canMove = event => event.type !== 'birthday' && M.context() === 'event_genix' && M.writable('edit_booking');
     const crossDay = event => event.type === 'event' && !event.template_id;
     const ratio = grid => grid.classList.contains('mini-line-grid') ? 2 : getTimelineCellWidth(grid) / CONFIG.TIMELINE.CELL_MINUTES;
+    const lineIds = event => [event.line_id, event.second_line_id].filter(Boolean).map(String);
+    const linesFor = date => (typeof isRoomTimelineView === 'function' && isRoomTimelineView() ? [] :
+        (AppState.linesByDate?.[date] || AppState.lines || []))
+        .filter(line => line.assignmentAllowed !== false && line.isUnavailable !== true && line.resourceType !== 'room');
+    const promotionsFor = date => (window.TimelinePromotions?.currentPromotions() || [])
+        .filter(item => item.starts_on <= date && item.ends_on >= date);
+
+    async function savePlacement(event, ids, promotionId, business = M.context()) {
+        if (pending.has(String(event.id))) throw new Error('Збереження цієї події ще триває');
+        if (business !== M.context()) throw new Error('Бізнес-контекст змінився. Повторіть дію.');
+        pending.add(String(event.id));
+        try {
+            const result = await M.request(`/afisha/${encodeURIComponent(event.id)}/timeline`, 'PATCH', {
+                lineIds: ids, expectedLineIds: lineIds(event),
+                promotionId, expectedPromotionId: event.promotion_id ?? null
+            }, business);
+            Object.assign(event, result.item);
+            invalidateTimelineDateCache(event.date, { businessContext: business });
+            return result.item;
+        } finally { pending.delete(String(event.id)); }
+    }
 
     function layout(grid) {
         const flags = [...grid.querySelectorAll('.afisha-flag')].sort((a, b) => parseFloat(a.style.left) - parseFloat(b.style.left));
@@ -76,6 +97,10 @@
     function details(event, trigger) {
         hideTooltip();
         const business = M.context();
+        const availableLines = typeof isRoomTimelineView === 'function' && isRoomTimelineView() ? [] : linesFor(event.date);
+        const availablePromotions = promotionsFor(event.date);
+        const currentPromotion = event.promotion_id && !availablePromotions.some(item => item.id === event.promotion_id)
+            ? `<option value="${Number(event.promotion_id)}" selected>Архівована або поза видимим періодом</option>` : '';
         const modal = M.dialog(event.title, `<p>${M.esc(event.date)} · ${M.esc(event.time)} · ${Number(event.duration || 60)} хв</p>
             <p class="timeline-marketing-description">${M.esc(event.description || 'Без опису')}</p>
             <div class="timeline-marketing-actions"><a class="btn-secondary" href="/afisha?event=${encodeURIComponent(event.id)}&date=${encodeURIComponent(event.date)}">Відкрити в афіші</a>
@@ -85,12 +110,20 @@
                 <label>Час<input name="time" type="time" value="${M.esc(event.time)}" step="300" required></label>
                 <p>Крок — 5 хв. Межі — ±${event.template_id ? 90 : 120} хв від ${M.esc(event.original_time || event.time)}.${crossDay(event) ? ' На іншій даті лінію потрібно призначити знову.' : ' Регулярна подія: лише поточний день.'}</p>
                 <div role="alert" data-error></div><button type="submit" class="btn-primary">Зберегти</button>
-            </form>`, trigger);
+            </form>
+            ${canMove(event) ? `<form data-assign-form class="timeline-marketing-form">
+                <strong>Акція та аніматори</strong>
+                <label>Акція<select name="promotion"><option value="">Без акції</option>${currentPromotion}${availablePromotions.map(item =>
+                    `<option value="${item.id}" ${event.promotion_id === item.id ? 'selected' : ''}>${M.esc(item.title)}</option>`).join('')}</select></label>
+                <div class="afisha-assignment-options">${availableLines.map(line => `<label><input type="checkbox" value="${M.esc(line.id)}"
+                    ${lineIds(event).includes(String(line.id)) ? 'checked' : ''}>${M.esc(line.name || line.id)}</label>`).join('')}</div>
+                <div role="alert" data-assign-error></div><button type="submit" class="btn-primary">Зберегти призначення</button>
+            </form>` : ''}`, trigger);
         modal.querySelector('[data-move]')?.addEventListener('click', () => {
-            modal.querySelector('form').hidden = false;
+            modal.querySelector('[data-move-form]').hidden = false;
             modal.querySelector('input[name="time"]').focus();
         });
-        modal.querySelector('form').addEventListener('submit', async e => {
+        modal.querySelector('[data-move-form]').addEventListener('submit', async e => {
             e.preventDefault();
             const form = e.currentTarget;
             const submit = form.querySelector('[type="submit"]');
@@ -103,6 +136,70 @@
             } catch (error) {
                 modal.querySelector('[data-error]').textContent = error.message;
             } finally { submit.disabled = false; }
+        });
+        modal.querySelector('[data-assign-form]')?.addEventListener('submit', async e => {
+            e.preventDefault();
+            const form = e.currentTarget;
+            const ids = [...form.querySelectorAll('input[type="checkbox"]:checked')].map(el => el.value);
+            const submit = form.querySelector('[type="submit"]');
+            if (ids.length > 2) { form.querySelector('[data-assign-error]').textContent = 'Оберіть не більше двох аніматорів'; return; }
+            submit.disabled = true;
+            try {
+                await savePlacement(event, ids, form.elements.promotion.value ? Number(form.elements.promotion.value) : null, business);
+                closeModal(modal);
+                if (M.context() === business) await renderTimeline();
+            } catch (error) {
+                form.querySelector('[data-assign-error]').textContent = error.message;
+                if (error.status === 409) await renderTimeline();
+            } finally { submit.disabled = false; }
+        });
+    }
+
+    function quickCreate(dates, trigger) {
+        if (M.context() !== 'event_genix' || !M.writable('edit_booking')) return;
+        const business = M.context();
+        const initialDate = dates.includes(formatDate(AppState.selectedDate)) ? formatDate(AppState.selectedDate) : dates[0];
+        const modal = M.dialog('Додати афішний захід', `<form data-create-form class="timeline-marketing-form">
+            <label>Назва<input name="title" maxlength="180" required autofocus></label>
+            <div class="timeline-marketing-date-pair"><label>Дата<input name="date" type="date" min="${dates[0]}" max="${dates[dates.length - 1]}" value="${initialDate}" required></label>
+            <label>Час<input name="time" type="time" value="14:00" step="300" required></label></div>
+            <div class="timeline-marketing-date-pair"><label>Тривалість, хв<select name="duration">${[15, 30, 45, 60, 90, 120, 180, 240].map(n =>
+                `<option value="${n}" ${n === 60 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+            <label>Тип<select name="type"><option value="event">Захід</option><option value="regular">Регулярний</option></select></label></div>
+            <label>Опис<textarea name="description" maxlength="4000" rows="2"></textarea></label>
+            <label>Акція<select name="promotion"></select></label>
+            <strong>Аніматори (до двох)</strong><div class="afisha-assignment-options" data-lines></div>
+            <div role="alert" data-error></div><button type="submit" class="btn-primary">Додати захід</button>
+        </form>`, trigger);
+        const form = modal.querySelector('[data-create-form]');
+        function updateChoices() {
+            const date = form.elements.date.value;
+            form.elements.promotion.innerHTML = `<option value="">Без акції</option>${promotionsFor(date).map(item =>
+                `<option value="${item.id}">${M.esc(item.title)}</option>`).join('')}`;
+            form.querySelector('[data-lines]').innerHTML = linesFor(date).map(line =>
+                `<label><input type="checkbox" value="${M.esc(line.id)}">${M.esc(line.name || line.id)}</label>`).join('');
+        }
+        updateChoices();
+        form.elements.date.addEventListener('change', updateChoices);
+        form.addEventListener('submit', async e => {
+            e.preventDefault();
+            const ids = [...form.querySelectorAll('[data-lines] input:checked')].map(el => el.value);
+            if (ids.length > 2) { form.querySelector('[data-error]').textContent = 'Оберіть не більше двох аніматорів'; return; }
+            const submit = form.querySelector('[type="submit"]');
+            submit.disabled = true;
+            try {
+                await M.request('/afisha/timeline', 'POST', {
+                    title: form.elements.title.value, date: form.elements.date.value, time: form.elements.time.value,
+                    duration: Number(form.elements.duration.value), type: form.elements.type.value,
+                    description: form.elements.description.value, lineIds: ids,
+                    promotionId: form.elements.promotion.value ? Number(form.elements.promotion.value) : null
+                }, business);
+                invalidateTimelineDateCache(form.elements.date.value, { businessContext: business });
+                closeModal(modal);
+                if (M.context() === business) await renderTimeline();
+                showNotification('Афішний захід додано');
+            } catch (error) { form.querySelector('[data-error]').textContent = error.message; }
+            finally { submit.disabled = false; }
         });
     }
 
@@ -125,8 +222,7 @@
         block.addEventListener('contextmenu', e => {
             if (!canMove(item)) return;
             e.preventDefault();
-            if (grid.classList.contains('mini-line-grid')) { details(item, block); return; }
-            _showAfishaLineMenu(e, item);
+            details(item, block);
         });
         block.addEventListener('pointerdown', e => {
             if (e.button !== 0 || !canMove(item) || pending.has(String(item.id))) return;
@@ -134,7 +230,8 @@
             cancel();
             suppressClick = false;
             activeDrag = { block, event: item, grid, startHour, x: e.clientX, y: e.clientY,
-                left: block.style.left, date: item.date, time: item.time, moved: false, business: M.context() };
+                left: block.style.left, date: item.date, time: item.time, moved: false, business: M.context(),
+                sourceLineId: grid.dataset.lineId, targetLineId: grid.dataset.lineId };
             block.setPointerCapture(e.pointerId);
         });
         block.addEventListener('pointermove', e => {
@@ -145,12 +242,19 @@
             block.classList.add('dragging');
             hideTooltip();
             const section = document.elementFromPoint(e.clientX, e.clientY)?.closest('.day-section');
+            const targetGrid = document.elementFromPoint(e.clientX, e.clientY)?.closest('.line-grid, .mini-line-grid');
+            s.targetLineId = targetGrid?.dataset.lineId || s.sourceLineId;
             document.querySelectorAll('.afisha-date-target').forEach(el => el.classList.remove('afisha-date-target'));
             s.date = section?.dataset.date || item.date;
             if (s.date !== item.date) {
                 section.classList.add('afisha-date-target');
                 s.time = item.time;
                 block.querySelector('.afisha-flag-time').textContent = s.date;
+                return;
+            }
+            if (s.targetLineId !== s.sourceLineId) {
+                s.time = item.time;
+                block.querySelector('.afisha-flag-time').textContent = s.targetLineId === 'afisha' ? 'Без аніматора' : 'Призначити';
                 return;
             }
             const original = minutes(item.original_time || item.time);
@@ -168,7 +272,29 @@
             if (!s || s.block !== block) return;
             suppressClick = s.moved;
             cancel();
-            if (!s.moved || (s.date === item.date && s.time === item.time)) return;
+            if (!s.moved) return;
+            if (s.date === item.date && s.targetLineId !== s.sourceLineId) {
+                const ids = lineIds(item);
+                const from = String(s.sourceLineId);
+                const to = String(s.targetLineId);
+                let next = [...ids];
+                if (from !== 'afisha') next = next.filter(id => id !== from);
+                if (to !== 'afisha' && !next.includes(to)) next.push(to);
+                if (next.length > 2) {
+                    showNotification('У заході вже два аніматори. Перемістіть одну з їхніх копій.', 'error');
+                    return;
+                }
+                try {
+                    await savePlacement(item, next, item.promotion_id ?? null, s.business);
+                    if (s.business === M.context()) await renderTimeline();
+                    showNotification('Призначення афіші збережено');
+                } catch (error) {
+                    showNotification(error.message, 'error');
+                    if (error.status === 409) await renderTimeline();
+                }
+                return;
+            }
+            if (s.date === item.date && s.time === item.time) return;
             if (s.date !== item.date && !crossDay(item)) {
                 showNotification('Регулярну подію можна рухати лише в межах дня', 'error');
                 return;
@@ -185,9 +311,9 @@
     }
 
     async function mountWeek(container, dates, token) {
-        if (!timelineShouldRenderAfisha()) return;
+        if (!timelineShouldRenderAfisha()) return [];
         const results = await Promise.all(dates.map(date => apiGetAfishaByDate(formatDate(date))));
-        if (!timelineRequestTokenIsCurrent(token)) return;
+        if (!timelineRequestTokenIsCurrent(token)) return [];
         dates.forEach((date, index) => {
             const dateStr = formatDate(date);
             const section = container.querySelector(`.day-section[data-date="${dateStr}"]`);
@@ -203,18 +329,22 @@
             body.prepend(row);
             const general = row.querySelector('.mini-line-grid');
             (Array.isArray(results[index]) ? results[index] : []).forEach(event => {
-                // Room projections do not own animator assignments; show each event once on the Afisha row.
-                const assigned = event.line_id && !isRoomTimelineView()
-                    ? [...body.querySelectorAll('.mini-line-grid')].find(el => el.dataset.lineId === String(event.line_id)) : null;
-                const grid = assigned || general;
+                const assigned = isRoomTimelineView() ? [] : [event.line_id, event.second_line_id]
+                    .filter(Boolean).map(id => [...body.querySelectorAll('.mini-line-grid')]
+                        .find(el => el.dataset.lineId === String(id))).filter(Boolean);
                 const events = event.type === 'birthday' ? ['14:00', '18:00'].map(time => ({ ...event, time, duration: 15 })) : [event];
                 events.forEach(value => {
-                    const flag = create({ ...value, date: dateStr }, start, grid);
-                    if (flag) grid.appendChild(flag);
+                    for (const grid of [general, ...assigned]) {
+                        const flag = create({ ...value, date: dateStr }, start, grid);
+                        if (flag) grid.appendChild(flag);
+                    }
                 });
             });
             body.querySelectorAll('.mini-line-grid').forEach(layout);
         });
+        return results.flatMap((items, index) => (Array.isArray(items) ? items : []).map(item => ({
+            ...item, date: formatDate(dates[index])
+        })));
     }
 
     document.addEventListener('keydown', e => { if (e.key === 'Escape') cancel(); });
@@ -223,5 +353,5 @@
         cancel();
         document.querySelectorAll('.timeline-marketing-modal').forEach(modal => closeModal(modal));
     });
-    window.TimelineAfisha = { create, layout, details, save, mountWeek, cancel, dragging: () => Boolean(activeDrag) };
+    window.TimelineAfisha = { create, layout, details, save, savePlacement, quickCreate, mountWeek, cancel, dragging: () => Boolean(activeDrag) };
 })();

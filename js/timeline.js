@@ -4290,18 +4290,20 @@ async function renderTimeline() {
     // v0.61.56: contexts without Afisha must not render stale assigned Afisha blocks on staff lines.
     const allAfisha = showAfisha ? (afishaEvents || []) : [];
     const afishaLineIds = new Set(lines.map(line => String(line.id)));
-    const unassignedAfisha = allAfisha.filter(ev => !ev.line_id || isRoomTimelineView() || !afishaLineIds.has(String(ev.line_id)));
     const assignedAfishaMap = {};
-    allAfisha.filter(ev => ev.line_id && !isRoomTimelineView() && afishaLineIds.has(String(ev.line_id))).forEach(ev => {
-        if (!assignedAfishaMap[ev.line_id]) assignedAfishaMap[ev.line_id] = [];
-        assignedAfishaMap[ev.line_id].push(ev);
+    allAfisha.filter(ev => !isRoomTimelineView()).forEach(ev => {
+        for (const id of [ev.line_id, ev.second_line_id]) {
+            if (!id || !afishaLineIds.has(String(id))) continue;
+            if (!assignedAfishaMap[id]) assignedAfishaMap[id] = [];
+            assignedAfishaMap[id].push(ev);
+        }
     });
 
-    // v7.9.3: Render afisha line at the top (only unassigned events)
+    // The Afisha row remains the canonical visual anchor even when staff are assigned.
     if (showAfisha) {
         try {
-            const hasAssigned = allAfisha.some(ev => ev.line_id);
-            renderAfishaLine(container, unassignedAfisha, start, selectedDate, hasAssigned);
+            const hasAssigned = allAfisha.some(ev => ev.line_id || ev.second_line_id);
+            renderAfishaLine(container, allAfisha, start, selectedDate, hasAssigned);
         } catch (e) { console.error('[Timeline] renderAfishaLine error:', e); }
     }
 
@@ -4420,7 +4422,7 @@ async function renderTimeline() {
 
     syncTimelineContentWidth(selectedDate, container.querySelector('.line-grid[data-line-id]'));
     container.querySelectorAll('.line-grid').forEach(grid => window.TimelineAfisha?.layout(grid));
-    window.TimelinePromotions?.mount(container, [selectedDate], renderRequestToken);
+    window.TimelinePromotions?.mount(container, [selectedDate], renderRequestToken, allAfisha);
 
     _debugRender(`RENDERED gen=${thisGen} blocks=${container.querySelectorAll('.booking-block').length}`);
 
@@ -7733,9 +7735,9 @@ async function renderMultiDayTimeline(requestToken = captureTimelineRequestToken
 
     linesContainer.innerHTML = multiDayHtml;
     attachMultiDayListeners();
-    await window.TimelineAfisha?.mountWeek(linesContainer, dates, requestToken);
+    const weekAfisha = await window.TimelineAfisha?.mountWeek(linesContainer, dates, requestToken);
     if (!timelineRequestTokenIsCurrent(requestToken)) return;
-    window.TimelinePromotions?.mount(linesContainer, dates, requestToken);
+    window.TimelinePromotions?.mount(linesContainer, dates, requestToken, weekAfisha || []);
     if (typeof scheduleTimelineViewHeightSync === 'function') {
         scheduleTimelineViewHeightSync('multi-day-render');
     }

@@ -31,6 +31,28 @@
         panel?.remove(); panel = null; clearShading();
     }
     function canWrite() { return M.writable('manage_settings'); }
+    function showAfisha() { return view?.business === 'event_genix'
+        && (typeof timelineShouldRenderAfisha !== 'function' || timelineShouldRenderAfisha()); }
+
+    function renderAfishaSection() {
+        if (!showAfisha()) return;
+        const events = (view.afishaEvents || []).filter(item => item.type !== 'birthday');
+        const section = document.createElement('section');
+        section.className = 'timeline-afisha-summary';
+        section.setAttribute('aria-label', 'Афіша');
+        section.innerHTML = `<div class="timeline-promotions-toolbar"><strong>Афіша</strong><span class="timeline-promotions-status">${events.length} у видимому періоді</span>
+            ${M.writable('edit_booking') ? '<button type="button" class="btn-secondary" data-add-afisha>Додати захід</button>' : ''}</div>
+            <div class="timeline-afisha-summary-list">${events.map(item => `<button type="button" class="timeline-afisha-summary-event"
+                data-afisha-id="${Number(item.id)}" aria-label="${M.esc(`${item.title}, ${String(item.date).slice(0, 10)}, ${item.time}`)}">
+                <span>${M.esc(String(item.date).slice(5, 10))} · ${M.esc(String(item.time).slice(0, 5))}</span><strong>${M.esc(item.title)}</strong>
+                ${item.line_id || item.second_line_id ? `<small>${[item.line_id, item.second_line_id].filter(Boolean).length} ан.</small>` : ''}</button>`).join('')}</div>`;
+        panel.appendChild(section);
+        section.querySelector('[data-add-afisha]')?.addEventListener('click', e => window.TimelineAfisha?.quickCreate(view.dates, e.currentTarget));
+        section.querySelectorAll('[data-afisha-id]').forEach(button => button.addEventListener('click', () => {
+            const item = events.find(event => Number(event.id) === Number(button.dataset.afishaId));
+            if (item) window.TimelineAfisha?.details(item, button);
+        }));
+    }
 
     async function save(item, values, business) {
         const key = String(item?.id || 'new');
@@ -169,11 +191,17 @@
             row.style.setProperty('--promotion-days', dates.length);
             const first = Math.max(0, M.daysBetween(dates[0], item.starts_on));
             const last = Math.min(dates.length - 1, M.daysBetween(dates[0], item.ends_on));
+            const linked = (view.afishaEvents || []).filter(event => Number(event.promotion_id) === Number(item.id));
             row.innerHTML = `<div class="timeline-promotion-band" data-color="${M.esc(item.color_key)}" style="grid-column:${first + 1}/${last + 2}">
                 ${writable && dates.length > 1 && item.starts_on >= dates[0] ? '<button type="button" class="promotion-handle" data-edge="start" aria-label="Змінити початок акції">⋮</button>' : ''}
                 <button type="button" class="promotion-label" aria-label="${M.esc(`${item.title}, ${item.starts_on}–${item.ends_on}`)}">${M.esc(item.title)}<span>${M.esc(item.starts_on)}–${M.esc(item.ends_on)}</span></button>
+                ${linked.length ? `<span class="promotion-afisha-links">${linked.map(event => `<button type="button" data-linked-afisha="${Number(event.id)}">⚑ ${M.esc(event.title)}</button>`).join('')}</span>` : ''}
                 ${writable && dates.length > 1 && item.ends_on <= dates[dates.length - 1] ? '<button type="button" class="promotion-handle" data-edge="end" aria-label="Змінити кінець акції">⋮</button>' : ''}</div>`;
             panel.querySelector('.timeline-promotion-bands').appendChild(row);
+            row.querySelectorAll('[data-linked-afisha]').forEach(button => button.addEventListener('click', () => {
+                const event = linked.find(value => Number(value.id) === Number(button.dataset.linkedAfisha));
+                if (event) window.TimelineAfisha?.details(event, button);
+            }));
             const label = row.querySelector('.promotion-label');
             let suppress = false;
             label.addEventListener('click', () => { if (!suppress) edit(item, item.starts_on, item.ends_on, label); suppress = false; });
@@ -195,7 +223,7 @@
                 }
                 catch (error) { showNotification(error.message, 'error'); if (error.status === 409) await refresh(); }
             }
-            row.querySelectorAll('button').forEach(button => {
+            row.querySelectorAll('.promotion-label, .promotion-handle').forEach(button => {
                 button.addEventListener('pointerdown', e => {
                     if (e.button !== 0 || dates.length === 1 || pending.has(String(item.id))) return;
                     const band = row.querySelector('.timeline-promotion-band');
@@ -232,6 +260,7 @@
             });
         }
         shade(items);
+        renderAfishaSection();
     }
 
     async function refresh() {
@@ -249,10 +278,11 @@
             clearShading();
             panel.innerHTML = `<div class="timeline-promotions-toolbar"><span role="alert">Не вдалося завантажити акції</span><button type="button" class="btn-secondary">Повторити</button></div>`;
             panel.querySelector('button').addEventListener('click', refresh);
+            renderAfishaSection();
         } finally { if (view === current) panel?.removeAttribute('aria-busy'); }
     }
 
-    function mount(container, dates, token) {
+    function mount(container, dates, token, afishaEvents = []) {
         if (!timelineRequestTokenIsCurrent(token)) return;
         panel?.remove();
         panel = document.createElement('section');
@@ -261,12 +291,12 @@
         panel.innerHTML = '<div class="timeline-promotions-toolbar" role="status">Завантаження акцій…</div>';
         const scroll = document.getElementById('timelineScroll');
         scroll.insertBefore(panel, document.getElementById('timeScale'));
-        view = { container, dates: dates.map(formatDate), token, business: M.context(), items: [] };
+        view = { container, dates: dates.map(formatDate), token, business: M.context(), items: [], afishaEvents };
         refresh();
     }
     document.addEventListener('keydown', e => { if (e.key === 'Escape') cancel(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) cancel(); });
     window.addEventListener('blur', cancel);
     window.addEventListener('timeline:business-context-changed', beginRender);
-    window.TimelinePromotions = { mount, cancel, beginRender, dragging: () => Boolean(gesture) };
+    window.TimelinePromotions = { mount, cancel, beginRender, currentPromotions: () => view?.items || [], dragging: () => Boolean(gesture) };
 })();

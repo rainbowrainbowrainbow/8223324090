@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { validateSchedule } = require('../services/afishaSchedule');
 const { validatePromotion } = require('../services/timelinePromotions');
+const { createTimelineAfisha, updateTimelineAfisha, normalizeLineIds } = require('../services/afishaTimeline');
 const { addDays, daysBetween, weekOf, esc } = require('../js/timeline-marketing');
 
 const event = { date: '2026-10-24', time: '14:00', original_time: '14:00', type: 'event', duration: 60, line_id: 12 };
@@ -53,4 +54,44 @@ test('promotion fields reject inverted dates, arbitrary colors and oversized con
 });
 test('annotation text is escaped for HTML and attribute contexts', () => {
     assert.equal(esc('<img src=x onerror="x">'), '&lt;img src=x onerror=&quot;x&quot;&gt;');
+});
+
+test('timeline Afisha rejects duplicate animator assignments', () => {
+    assert.deepEqual(normalizeLineIds([' 1 ', '2']), ['1', '2']);
+    assert.throws(() => normalizeLineIds(['1', '1']), { statusCode: 400 });
+    assert.throws(() => normalizeLineIds(['1', '2', '3']), { statusCode: 400 });
+});
+
+test('timeline Afisha create validates targets and writes event plus history in one transaction', async () => {
+    const queries = [];
+    const client = { release() {}, async query(sql, params = []) {
+        queries.push(sql);
+        if (sql.includes('FROM lines_by_date')) return { rows: params[1].map(line_id => ({ line_id })) };
+        if (sql.includes('FROM timeline_promotions')) return { rows: [{ id: 7, is_active: true,
+            starts_on: '2026-10-19', ends_on: '2026-10-25' }] };
+        if (sql.includes('INSERT INTO afisha')) return { rows: [{ id: 9, line_id: '1', second_line_id: '2', promotion_id: 7 }] };
+        return { rows: [] };
+    } };
+    const pool = { connect: async () => client };
+    const item = await createTimelineAfisha(pool, { title: 'Подія', date: '2026-10-19', time: '14:00',
+        lineIds: ['1', '2'], promotionId: 7 }, 'fixture');
+    assert.equal(item.id, 9);
+    assert.equal(queries[0], 'BEGIN');
+    assert.ok(queries.some(sql => sql.includes('INSERT INTO history')));
+    assert.equal(queries.at(-1), 'COMMIT');
+});
+
+test('timeline Afisha update rejects stale assignment sets before writing', async () => {
+    const queries = [];
+    const client = { release() {}, async query(sql) {
+        queries.push(sql);
+        if (sql.startsWith('SELECT * FROM afisha')) return { rows: [{ id: 9, date: '2026-10-19', type: 'event',
+            line_id: '1', second_line_id: null, promotion_id: null }] };
+        return { rows: [] };
+    } };
+    await assert.rejects(updateTimelineAfisha({ connect: async () => client }, 9, {
+        expectedLineIds: [], lineIds: ['2'], expectedPromotionId: null, promotionId: null
+    }, 'fixture'), { statusCode: 409 });
+    assert.ok(queries.includes('ROLLBACK'));
+    assert.equal(queries.some(sql => sql.startsWith('UPDATE afisha')), false);
 });

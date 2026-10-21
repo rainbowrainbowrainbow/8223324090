@@ -1,7 +1,46 @@
 # Timeline Afisha flags and promotion periods
 
+## Afisha follow-up (local implementation)
+
+Migration `384_afisha_promotion_and_second_line.sql` adds nullable `promotion_id`
+and `second_line_id` to the existing Afisha record. The original `line_id` remains
+the first animator assignment. One Afisha record is rendered in the upper Afisha
+summary, on the persistent Afisha time row, and on each of up to two animator
+rows. Linked records also appear inside their promotion band. Archiving a
+promotion keeps its Afisha records visible.
+
+`POST /api/afisha/timeline` creates a one-off or regular event with optional
+`promotionId` and `lineIds` (zero to two). `PATCH /api/afisha/:id/timeline`
+changes the promotion and assignments using `expectedPromotionId` and
+`expectedLineIds` for conflict detection. Both operations validate Park context,
+existing date-specific animator lines, and an active promotion covering the
+event date; the record and history write share one transaction. A linked event
+cannot move outside its promotion dates until it is unlinked or the promotion
+dates change. Automatic distribution retains manual assignments and adds only
+one animator to unassigned events; reset clears both assignment fields.
+
+This follow-up has not been released to production. PostgreSQL integration
+requires the disposable local database fixture described below. The separate
+`tests/browser/timeline-afisha-dual-browser-smoke.js` uses mock API responses to
+check real desktop, week, and mobile rendering without a database.
+
+Follow-up verification on 2026-10-21: the PostgreSQL integration suite passed
+all 8 subtests against a fresh UTF-8 PostgreSQL 18.6 cluster bound to
+`127.0.0.1`; the fixture applied migration 384 twice and removed its test
+database. The existing timeline marketing browser smoke also passed against
+real local routes and that isolated PostgreSQL cluster using Chrome, covering
+day/week layouts, mouse/touch drag, promotion edits, and mobile layout. The
+cluster was stopped and its temporary files removed after the run. The new
+Afisha dual-row browser smoke passed separately with mocked API responses.
+The final integration pass also checked that legacy date edits clear both
+animator assignments and automatic distribution preserves two manual ones.
+The repository's full `npm test` passed after the final legacy-route and
+auto-distribution safeguards. Targeted tests, real PostgreSQL/browser smoke,
+the migration check, and the protected-surface check also passed.
+No production database or deployment was touched.
+
 Local implementation on `codex/timeline-afisha-promotions`, based on
-`origin/codex/eventgenix-production` at `6aa01c6e76a4129492c2d85aa1847416aeb2e083`.
+`origin/codex/eventgenix-production` at `35e520584cde0fa73796f8f0b7b6d6a4df8db563`.
 Production impact: yes. The initial implementation was local-only. On 2026-10-19
 the owner subsequently authorized commit, push and deployment of this feature.
 Release preparation follows `docs/CODEX_PRODUCTION_AUTONOMY.md`; production QA is
@@ -67,7 +106,7 @@ never change booking prices, payments or reservation availability.
 Runtime: Node 22.23.1 / npm 10.9.8. Dependencies come from the unchanged lockfile.
 
 The PostgreSQL fixture refuses production and non-loopback servers, creates a
-random owned database, applies migration 383 twice, tests the real routers and
+random owned database, applies migrations 383 and 384 twice, tests the real routers and
 SQL, then drops that database. It supplies a test authenticated principal while
 retaining the real capability and business guards. The browser loads the actual
 application HTML/CSS/JS; only unrelated APIs are mocked. New feature requests

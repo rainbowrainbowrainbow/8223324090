@@ -179,3 +179,123 @@ test('promotion conflict retains a draft and offers the fresh server version', a
         assert.equal(f.w.document.querySelector('input[name="title"]').value, 'Server title');
     } finally { f.close(); }
 });
+
+test('upper panel shows Afisha independently and repeats linked events inside their promotion', async () => {
+    const f = fixture();
+    try {
+        f.w.apiFetchWithAuthRetry = async () => response({ promotions: [{ id: 7, title: 'Акція', description: '',
+            color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-19', version: 1 }] });
+        f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1,
+            [{ ...event, promotion_id: 7 }, { ...event, id: 2, title: 'Окрема подія' }]);
+        await flush();
+        const panel = f.w.document.querySelector('.timeline-promotions');
+        assert.match(panel.textContent, /Акції/);
+        assert.match(panel.textContent, /Афіша/);
+        assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event').length, 2);
+        assert.equal(panel.querySelectorAll('[data-linked-afisha]').length, 1);
+        assert.equal(panel.querySelector('[data-linked-afisha]').textContent.includes('Окрема подія'), false);
+    } finally { f.close(); }
+});
+
+test('quick create sends one Afisha event with optional promotion and two animator IDs', async () => {
+    const f = fixture();
+    try {
+        f.w.AppState.linesByDate = { '2026-10-19': [{ id: '1', name: 'Перший' }, { id: '2', name: 'Другий' }] };
+        const calls = [];
+        f.w.apiFetchWithAuthRetry = async (url, options) => {
+            if (options.method === 'POST') { calls.push(JSON.parse(options.body)); return response({ item: { id: 8 } }, 201); }
+            return response({ promotions: [{ id: 7, title: 'Акція', description: '', color_key: 'amber',
+                starts_on: '2026-10-19', ends_on: '2026-10-19', version: 1 }] });
+        };
+        f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1, []);
+        await flush();
+        f.w.document.querySelector('[data-add-afisha]').click();
+        const form = f.w.document.querySelector('[data-create-form]');
+        form.elements.title.value = 'Новий захід';
+        form.elements.promotion.value = '7';
+        form.querySelectorAll('[data-lines] input').forEach(input => { input.checked = true; });
+        form.dispatchEvent(new f.w.Event('submit', { cancelable: true }));
+        await flush();
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0].promotionId, 7);
+        assert.deepEqual(calls[0].lineIds, ['1', '2']);
+        assert.equal(f.state.renders, 1);
+    } finally { f.close(); }
+});
+
+test('dragging a general Afisha flag to an animator adds a linked assignment', async () => {
+    const f = fixture();
+    try {
+        const general = f.w.document.querySelector('.line-grid');
+        general.dataset.lineId = 'afisha';
+        const target = f.w.document.createElement('div');
+        target.className = 'line-grid'; target.dataset.lineId = '1';
+        f.w.document.getElementById('timelineLines').appendChild(target);
+        f.w.document.elementFromPoint = () => target;
+        let payload;
+        f.w.apiFetchWithAuthRetry = async (url, options) => {
+            payload = JSON.parse(options.body);
+            return response({ item: { ...event, line_id: '1', second_line_id: null, promotion_id: null } });
+        };
+        const flag = f.w.TimelineAfisha.create(event, 12, general);
+        general.appendChild(flag);
+        flag.dispatchEvent(new f.w.MouseEvent('pointerdown', { button: 0, clientX: 100, clientY: 10 }));
+        flag.dispatchEvent(new f.w.MouseEvent('pointermove', { clientX: 100, clientY: 100 }));
+        flag.dispatchEvent(new f.w.MouseEvent('pointerup', { clientX: 100, clientY: 100 }));
+        await flush();
+        assert.deepEqual(payload.lineIds, ['1']);
+        assert.deepEqual(payload.expectedLineIds, []);
+        assert.equal(f.state.renders, 1);
+    } finally { f.close(); }
+});
+
+test('dragging an animator copy moves or removes only that assignment', async () => {
+    for (const { targetId, expected } of [
+        { targetId: '3', expected: ['2', '3'] }, { targetId: 'afisha', expected: ['2'] }
+    ]) {
+        const f = fixture();
+        try {
+            const source = f.w.document.querySelector('.line-grid');
+            source.dataset.lineId = '1';
+            const target = f.w.document.createElement('div');
+            target.className = 'line-grid'; target.dataset.lineId = targetId;
+            f.w.document.getElementById('timelineLines').appendChild(target);
+            f.w.document.elementFromPoint = () => target;
+            const item = { ...event, line_id: '1', second_line_id: '2', promotion_id: null };
+            let payload;
+            f.w.apiFetchWithAuthRetry = async (url, options) => {
+                payload = JSON.parse(options.body);
+                return response({ item: { ...item, line_id: expected[0], second_line_id: expected[1] || null } });
+            };
+            const flag = f.w.TimelineAfisha.create(item, 12, source);
+            source.appendChild(flag);
+            flag.dispatchEvent(new f.w.MouseEvent('pointerdown', { button: 0, clientX: 100, clientY: 10 }));
+            flag.dispatchEvent(new f.w.MouseEvent('pointermove', { clientX: 100, clientY: 100 }));
+            flag.dispatchEvent(new f.w.MouseEvent('pointerup', { clientX: 100, clientY: 100 }));
+            await flush();
+            assert.deepEqual(payload.lineIds, expected);
+            assert.deepEqual(payload.expectedLineIds, ['1', '2']);
+        } finally { f.close(); }
+    }
+});
+
+test('week view keeps the Afisha anchor and both animator copies', async () => {
+    const f = fixture();
+    try {
+        f.w.CONFIG.TIMELINE.WEEKDAY_START = 12;
+        f.w.CONFIG.TIMELINE.WEEKDAY_END = 20;
+        f.w.timelineShouldRenderAfisha = () => true;
+        f.w.isRoomTimelineView = () => false;
+        f.w.apiGetAfishaByDate = async () => [{ ...event, line_id: '1', second_line_id: '2' }];
+        const container = f.w.document.getElementById('timelineLines');
+        container.innerHTML = '<section class="day-section" data-date="2026-10-19"><div class="mini-timeline-lines">'
+            + '<div class="mini-timeline-line"><div class="mini-line-grid" data-line-id="1"></div></div>'
+            + '<div class="mini-timeline-line"><div class="mini-line-grid" data-line-id="2"></div></div>'
+            + '</div></section>';
+        const items = await f.w.TimelineAfisha.mountWeek(container, [new Date('2026-10-19T12:00:00Z')], 1);
+        assert.equal(items.length, 1);
+        assert.equal(container.querySelectorAll('.mini-line-grid[data-line-id="afisha"] .afisha-flag').length, 1);
+        assert.equal(container.querySelectorAll('.mini-line-grid[data-line-id="1"] .afisha-flag').length, 1);
+        assert.equal(container.querySelectorAll('.mini-line-grid[data-line-id="2"] .afisha-flag').length, 1);
+    } finally { f.close(); }
+});

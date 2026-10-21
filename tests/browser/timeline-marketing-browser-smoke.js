@@ -7,7 +7,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
 
 (async () => {
     const fixture = await createFixture();
-    const browser = await requirePlaywright().chromium.launch({ headless: true });
+    let browser;
     const output = path.join(__dirname, '../../output/playwright');
     fs.mkdirSync(output, { recursive: true });
     const errors = [];
@@ -15,6 +15,10 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
     let context;
     let page;
     try {
+        browser = await requirePlaywright().chromium.launch({
+            headless: true,
+            ...(process.env.EVENTGENIX_BROWSER_CHANNEL ? { channel: process.env.EVENTGENIX_BROWSER_CHANNEL } : {})
+        });
         context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' });
         await context.addInitScript(user => {
             localStorage.setItem('pzp_token', 'fixture');
@@ -70,7 +74,15 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
                     const gridRect = grid.getBoundingClientRect();
                     grid.querySelectorAll('.afisha-type-birthday').forEach(birthday => {
                         const greeting = birthday.getBoundingClientRect();
-                        if (greeting.top < gridRect.top || greeting.bottom > gridRect.bottom) failures.push('birthday-outside-grid');
+                        if (greeting.top < gridRect.top || greeting.bottom > gridRect.bottom) failures.push({
+                            kind: 'birthday-outside-grid', grid: [gridRect.top, gridRect.bottom],
+                            greeting: [greeting.top, greeting.bottom], top: getComputedStyle(birthday).top,
+                            transform: getComputedStyle(birthday).transform,
+                            birthdayClass: birthday.className,
+                            parent: birthday.parentElement?.className,
+                            row: grid.closest('.timeline-line, .mini-timeline-line')?.className,
+                            flags: grid.querySelectorAll('.afisha-flag').length
+                        });
                     });
                     const flags = [...grid.querySelectorAll('.afisha-flag')];
                     flags.forEach((flag, index) => {
@@ -93,26 +105,32 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         await verifyFlagGeometry();
         await page.locator('.afisha-type-birthday').first().click();
         assert.equal(await page.locator('[data-move]').count(), 0, 'birthday cannot be moved');
+        await page.waitForFunction(() => !!document.activeElement.closest('.timeline-marketing-modal'));
         await page.keyboard.press('Escape');
+        await page.locator('.timeline-marketing-modal').waitFor({ state: 'detached' });
         assert.equal(await page.evaluate(() => document.activeElement.classList.contains('afisha-type-birthday')), true);
-        await page.locator('.afisha-flag[data-afisha-id="1"]').waitFor();
-        assert.equal(await page.locator('.afisha-flag[data-afisha-id="1"]').count(), 1);
-        const flag = page.locator('.afisha-flag[data-afisha-id="1"]');
+        const afishaFlag = '.afisha-line-grid .afisha-flag[data-afisha-id="1"]';
+        await page.locator(afishaFlag).waitFor();
+        assert.equal(await page.locator(afishaFlag).count(), 1);
+        assert.equal(await page.locator('.afisha-on-line[data-afisha-id="1"]').count(), 1);
+        const flag = page.locator(afishaFlag);
         await flag.click();
         await page.getByRole('button', { name: 'Перенести', exact: true }).click();
         await page.locator('.timeline-marketing-modal input[name="time"]').fill('14:15');
-        await page.locator('.timeline-marketing-modal button[type="submit"]').click();
+        await page.locator('.timeline-marketing-modal [data-move-form] button[type="submit"]').click();
         await page.waitForFunction(() => !document.querySelector('.timeline-marketing-modal'));
         assert.equal((await fixture.pool.query('SELECT time FROM afisha WHERE id=1')).rows[0].time, '14:15');
-        await page.locator('.afisha-flag[data-afisha-id="1"]').waitFor();
-        const box = await page.locator('.afisha-flag[data-afisha-id="1"]').boundingBox();
+        await page.locator(afishaFlag).waitFor();
+        const box = await page.locator(afishaFlag).boundingBox();
+        const dragSave = page.waitForResponse(response => response.url().includes('/afisha/1/schedule') && response.ok());
         await page.mouse.move(box.x + 20, box.y + 14);
         await page.mouse.down();
         await page.mouse.move(box.x + 55, box.y + 14, { steps: 5 });
         await page.mouse.up();
-        await page.waitForTimeout(350);
+        const dragResponse = await dragSave;
         assert.equal(await page.locator('.timeline-marketing-modal').count(), 0, 'drag must not open details');
-        assert.notEqual((await fixture.pool.query('SELECT time FROM afisha WHERE id=1')).rows[0].time, '14:15');
+        assert.notEqual((await fixture.pool.query('SELECT time FROM afisha WHERE id=1')).rows[0].time, '14:15',
+            JSON.stringify(dragResponse.request().postDataJSON()));
         await page.locator('[data-add]').click();
         await page.locator('input[name="title"]').fill('Осінні канікули <тест>');
         await page.locator('textarea[name="description"]').fill('Інформаційна акція — ціни не змінюються');
@@ -126,9 +144,11 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         await display(true);
         await verifyFlagGeometry();
         assert.equal(await page.locator('.day-section').count(), 7);
-        assert.equal(await page.locator('.afisha-flag[data-afisha-id="1"]').count(), 1);
+        const weekAfishaFlag = '.mini-line-grid[data-line-id="afisha"] .afisha-flag[data-afisha-id="1"]';
+        assert.equal(await page.locator(weekAfishaFlag).count(), 1);
+        assert.equal(await page.locator('.mini-line-grid[data-line-id="1"] .afisha-flag[data-afisha-id="1"]').count(), 1);
         await page.locator('#timelineScroll').evaluate(el => { el.scrollLeft = 0; });
-        const source = await page.locator('.afisha-flag[data-afisha-id="1"]').boundingBox();
+        const source = await page.locator(weekAfishaFlag).boundingBox();
         const target = await page.locator('.day-section[data-date="2026-10-20"] .day-section-header').boundingBox();
         await page.mouse.move(source.x + 20, source.y + 12);
         await page.mouse.down();
@@ -138,7 +158,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         const moved = (await fixture.pool.query('SELECT date,line_id FROM afisha WHERE id=1')).rows[0];
         assert.equal(moved.date, '2026-10-20');
         assert.equal(moved.line_id, null);
-        await page.locator('.day-section[data-date="2026-10-20"] .afisha-flag[data-afisha-id="1"]').waitFor();
+        await page.locator('.day-section[data-date="2026-10-20"] ' + weekAfishaFlag).waitFor();
         // Keyboard is the deterministic alternative to resizing with a mouse.
         await page.locator('.promotion-handle[data-edge="end"]').focus();
         await page.keyboard.press('ArrowLeft');
@@ -195,7 +215,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         const scrollBox = await page.locator('.timeline-promotion-scroll').boundingBox();
         assert.ok(scrollBox.x >= 0 && scrollBox.x + scrollBox.width <= 320, 'date strip scrolls inside the viewport');
         await page.setViewportSize({ width: 390, height: 844 });
-        const touchFlag = page.locator('.afisha-flag[data-afisha-id="1"]');
+        const touchFlag = page.locator(weekAfishaFlag);
         await touchFlag.scrollIntoViewIfNeeded();
         const touchBox = await touchFlag.boundingBox();
         const beforeTouch = (await fixture.pool.query('SELECT time FROM afisha WHERE id=1')).rows[0].time;
@@ -232,7 +252,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         throw error;
     } finally {
         await context?.close();
-        await browser.close();
+        await browser?.close();
         await fixture.close();
     }
 })().catch(error => { console.error(error.stack); process.exitCode = 1; });

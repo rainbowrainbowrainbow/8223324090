@@ -21,8 +21,8 @@
         gesture = null;
         panel?.querySelectorAll('.promotion-preview').forEach(el => el.classList.remove('promotion-preview'));
         if (panel && view) {
-            const status = panel.querySelector('.timeline-promotions-status');
-            if (status) status.textContent = `${view.items.length} у видимому періоді`;
+            const status = panel.querySelector(':scope > .timeline-promotions-toolbar .timeline-promotions-status');
+            if (status) status.textContent = `${Array.isArray(view.items) ? view.items.length : 0} у видимому періоді`;
         }
         return active;
     }
@@ -271,8 +271,9 @@
         try {
             const result = await M.request(`/timeline/promotions?from=${current.dates[0]}&to=${current.dates[current.dates.length - 1]}`, 'GET', null, current.business);
             if (sequence !== requestSequence || view !== current || !timelineRequestTokenIsCurrent(current.token)) return;
+            if (!Array.isArray(result.promotions)) throw new Error('Invalid promotions response');
             view.items = result.promotions;
-            render(result.promotions);
+            render(view.items);
         } catch (error) {
             if (sequence !== requestSequence || view !== current || !timelineRequestTokenIsCurrent(current.token)) return;
             clearShading();

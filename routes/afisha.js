@@ -8,6 +8,7 @@ const { pool } = require('../db');
 const { validateDate, validateTime, timeToMinutes, minutesToTime, getKyivDateStr, getKyivDate } = require('../services/booking');
 const { generateTasksForEvent } = require('../services/taskTemplates');
 const { ensureRecurringAfishaForDate } = require('../services/scheduler');
+const { assertAfishaLinesFree } = require('../services/afishaConflicts');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
 const { pushDefaultTimelineBusinessContext } = require('../services/timelineBusinessScope');
@@ -187,15 +188,25 @@ async function loadAfishaEvent(id) {
     return event.rows[0] || null;
 }
 
+const afishaReadColumns = `a.*, p.title AS promotion_title, p.is_active AS promotion_active,
+    (SELECT l.name FROM lines_by_date l WHERE l.date = a.date AND l.line_id = a.line_id
+        AND COALESCE(l.business_context, 'event_genix') = 'event_genix' ORDER BY l.id DESC LIMIT 1) AS line_name,
+    (SELECT l.name FROM lines_by_date l WHERE l.date = a.date AND l.line_id = a.second_line_id
+        AND COALESCE(l.business_context, 'event_genix') = 'event_genix' ORDER BY l.id DESC LIMIT 1) AS second_line_name`;
+
 router.get('/', async (req, res) => {
     try {
         const { type } = req.query;
         const validTypes = ['event', 'birthday', 'regular'];
         if (type && validTypes.includes(type)) {
-            const result = await pool.query('SELECT * FROM afisha WHERE type = $1 ORDER BY date, time LIMIT 1000', [type]);
+            const result = await pool.query(`SELECT ${afishaReadColumns}
+                FROM afisha a LEFT JOIN timeline_promotions p ON p.id = a.promotion_id
+                WHERE a.type = $1 ORDER BY a.date, a.time LIMIT 1000`, [type]);
             return res.json(result.rows);
         }
-        const result = await pool.query('SELECT * FROM afisha ORDER BY date, time LIMIT 1000');
+        const result = await pool.query(`SELECT ${afishaReadColumns}
+            FROM afisha a LEFT JOIN timeline_promotions p ON p.id = a.promotion_id
+            ORDER BY a.date, a.time LIMIT 1000`);
         res.json(result.rows);
     } catch (err) {
         log.error('Get error', err);
@@ -440,6 +451,7 @@ async function distributeAfishaForDate(date) {
         }
 
         const distribution = [];
+        let unassigned = 0;
         for (const ev of events) {
             const baseMin = timeToMinutes(ev.original_time || ev.time);
             const dur = ev.duration || 60;
@@ -459,8 +471,8 @@ async function distributeAfishaForDate(date) {
             }
 
             if (!assignedAnim) {
-                assignedAnim = sorted[0];
-                assignedMin = baseMin;
+                unassigned++;
+                continue;
             }
 
             const newTime = minutesToTime(assignedMin);
@@ -487,7 +499,7 @@ async function distributeAfishaForDate(date) {
         }
 
         await client.query('COMMIT');
-        return { success: true, distribution };
+        return { success: true, distribution, unassigned };
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed in distributeAfisha', rbErr));
         throw err;
@@ -688,7 +700,9 @@ router.get('/:date', async (req, res) => {
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
         // v8.3: Ensure recurring templates are applied before returning results
         try { await ensureRecurringAfishaForDate(date); } catch (e) { log.warn(`Recurring afisha setup failed for ${date}`, e.message); }
-        const result = await pool.query('SELECT * FROM afisha WHERE date = $1 ORDER BY time', [date]);
+        const result = await pool.query(`SELECT ${afishaReadColumns}
+            FROM afisha a LEFT JOIN timeline_promotions p ON p.id = a.promotion_id
+            WHERE a.date = $1 ORDER BY a.time`, [date]);
         res.json(result.rows);
     } catch (err) {
         log.error('Get by date error', err);
@@ -733,7 +747,7 @@ router.put('/:id', async (req, res) => {
         if (!date || !time || !title) return res.status(400).json({ error: 'date, time, title required' });
         client = await pool.connect();
         await client.query('BEGIN');
-        const existing = await client.query('SELECT promotion_id FROM afisha WHERE id = $1 FOR UPDATE', [id]);
+        const existing = await client.query('SELECT promotion_id, date, time, duration, line_id, second_line_id FROM afisha WHERE id = $1 FOR UPDATE', [id]);
         if (!existing.rows.length) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Not found' });
@@ -749,6 +763,11 @@ router.put('/:id', async (req, res) => {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ error: 'Спочатку відв’яжіть захід від акції або змініть дати акції' });
             }
+        }
+        const current = existing.rows[0];
+        if (date === current.date && (time !== current.time || Number(duration || 60) !== Number(current.duration || 60))) {
+            await assertAfishaLinesFree(client, { date, time, duration: Number(duration || 60),
+                lineIds: [current.line_id, current.second_line_id].filter(Boolean), excludeId: Number(id) });
         }
         const validTypes = ['event', 'birthday', 'regular'];
         const eventType = validTypes.includes(type) ? type : undefined;
@@ -778,8 +797,8 @@ router.put('/:id', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         if (client) await client.query('ROLLBACK').catch(() => {});
-        log.error('Update error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        if (!err.statusCode) log.error('Update error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
     } finally { client?.release(); }
 });
 
@@ -841,6 +860,16 @@ router.patch('/:id/time', async (req, res) => {
 
         const ev = event.rows[0];
         const originalTime = ev.original_time || ev.time;
+        if (ev.type !== 'birthday') {
+            try {
+                await moveAfishaSchedule(pool, id, { date: ev.date, time,
+                    expectedDate: ev.date, expectedTime: ev.time }, req.user?.username || 'system', DEFAULT_TIMELINE_CONTEXT);
+                return res.json({ success: true, time, originalTime });
+            } catch (error) {
+                if (!error.statusCode) log.error('Move error', error);
+                return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Internal server error' });
+            }
+        }
         const maxDelta = ev.template_id ? 90 : 120;
 
         const newMin = timeToMinutes(time);
@@ -878,8 +907,27 @@ router.patch('/:id/line', async (req, res) => {
 
         // Allow null to unassign from line
         const newLineId = line_id != null ? parseInt(line_id) : null;
+        if (line_id != null && (!Number.isSafeInteger(newLineId) || String(newLineId) !== String(line_id))) {
+            return res.status(400).json({ error: 'Некоректна лінія' });
+        }
+        if (ev.type !== 'birthday') {
+            const current = [ev.line_id, ev.second_line_id].filter(Boolean).map(String);
+            const next = newLineId == null ? [] : [String(newLineId), ...current.filter(id => id !== String(ev.line_id) && id !== String(newLineId))];
+            try {
+                const item = await updateTimelineAfisha(pool, id, {
+                    expectedLineIds: current, lineIds: next,
+                    expectedPromotionId: ev.promotion_id ?? null, promotionId: ev.promotion_id ?? null
+                }, req.user?.username || 'system');
+                return res.json({ success: true, lineId: item.line_id, lineIds: [item.line_id, item.second_line_id].filter(Boolean) });
+            } catch (error) {
+                if (!error.statusCode) log.error('Move line error', error);
+                return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося змінити лінію' });
+            }
+        }
 
-        await pool.query('UPDATE afisha SET line_id = $1, second_line_id = NULL WHERE id = $2', [newLineId, id]);
+        await pool.query(`UPDATE afisha SET line_id = $1,
+            second_line_id = CASE WHEN $1::text IS NULL OR second_line_id = $1::text THEN NULL ELSE second_line_id END
+            WHERE id = $2`, [newLineId, id]);
 
         const username = req.user?.username || 'system';
         await insertHistory(pool, {

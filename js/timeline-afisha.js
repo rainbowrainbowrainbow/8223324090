@@ -103,10 +103,14 @@
         const business = M.context();
         const availableLines = typeof isRoomTimelineView === 'function' && isRoomTimelineView() ? [] : linesFor(event.date);
         const availablePromotions = promotionsFor(event.date);
+        const animatorNames = [[event.line_id, event.line_name], [event.second_line_id, event.second_line_name]]
+            .filter(([id]) => id).map(([id, name]) => name || `Лінія ${id}`);
         const currentPromotion = event.promotion_id && !availablePromotions.some(item => item.id === event.promotion_id)
-            ? `<option value="${Number(event.promotion_id)}" selected>Архівована або поза видимим періодом</option>` : '';
+            ? `<option value="${Number(event.promotion_id)}" selected>${M.esc(event.promotion_title || `Акція #${event.promotion_id}`)}${event.promotion_active === false ? ' · архівована' : ' · поза видимим періодом'}</option>` : '';
         const modal = M.dialog(event.title, `<p>${M.esc(event.date)} · ${M.esc(event.time)} · ${Number(event.duration || 60)} хв</p>
             <p class="timeline-marketing-description">${M.esc(event.description || 'Без опису')}</p>
+            ${event.promotion_id ? `<p>${event.promotion_active === false ? 'Архівована акція' : 'Акція'}: ${M.esc(event.promotion_title || `#${event.promotion_id}`)}</p>` : ''}
+            <p>${animatorNames.length ? `Аніматори: ${animatorNames.map(M.esc).join(', ')}` : 'Аніматорів не призначено'}</p>
             <div class="timeline-marketing-actions"><a class="btn-secondary" href="/afisha?event=${encodeURIComponent(event.id)}&date=${encodeURIComponent(event.date)}">Відкрити в афіші</a>
             ${canMove(event) ? '<button type="button" class="btn-primary" data-move>Перенести</button>' : ''}</div>
             <form data-move-form hidden class="timeline-marketing-form">
@@ -159,10 +163,11 @@
         });
     }
 
-    function quickCreate(dates, trigger) {
+    function quickCreate(dates, trigger, options = {}) {
         if (M.context() !== 'event_genix' || !M.writable('edit_booking')) return;
         const business = M.context();
-        const initialDate = dates.includes(formatDate(AppState.selectedDate)) ? formatDate(AppState.selectedDate) : dates[0];
+        const initialDate = dates.includes(options.date) ? options.date
+            : (dates.includes(formatDate(AppState.selectedDate)) ? formatDate(AppState.selectedDate) : dates[0]);
         const modal = M.dialog('Додати афішний захід', `<form data-create-form class="timeline-marketing-form">
             <label>Назва<input name="title" maxlength="180" required autofocus></label>
             <div class="timeline-marketing-date-pair"><label>Дата<input name="date" type="date" min="${dates[0]}" max="${dates[dates.length - 1]}" value="${initialDate}" required></label>
@@ -184,6 +189,9 @@
                 `<label><input type="checkbox" value="${M.esc(line.id)}">${M.esc(line.name || line.id)}</label>`).join('');
         }
         updateChoices();
+        if (options.promotionId && [...form.elements.promotion.options].some(option => option.value === String(options.promotionId))) {
+            form.elements.promotion.value = String(options.promotionId);
+        }
         form.elements.date.addEventListener('change', updateChoices);
         form.addEventListener('submit', async e => {
             e.preventDefault();

@@ -1,7 +1,8 @@
 'use strict';
 
-const { validateDate, validateTime } = require('./booking');
+const { validateDate, validateTime, lockBookingConflictResources } = require('./booking');
 const { insertHistory } = require('./historyLog');
+const { assertAfishaLinesFree } = require('./afishaConflicts');
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
 function lineIdsOf(event) {
@@ -25,10 +26,11 @@ function normalizePromotionId(value) {
 
 async function validateTargets(client, date, lineIds, promotionId, retainedPromotionId = null) {
     if (lineIds.length) {
+        await lockBookingConflictResources(client, lineIds.map(lineId => ({ date, lineId })));
         const result = await client.query(
             `SELECT line_id FROM lines_by_date WHERE date = $1
              AND COALESCE(business_context, 'event_genix') = 'event_genix' AND line_id = ANY($2::text[])
-             FOR KEY SHARE`,
+             ORDER BY line_id FOR UPDATE`,
             [date, lineIds]
         );
         if (result.rows.length !== lineIds.length) throw fail(400, 'Аніматор недоступний на обрану дату');
@@ -63,6 +65,7 @@ async function createTimelineAfisha(pool, input, actor) {
     try {
         await client.query('BEGIN');
         await validateTargets(client, date, lineIds, promotionId);
+        await assertAfishaLinesFree(client, { date, time, duration, lineIds });
         const result = await client.query(
             `INSERT INTO afisha (date, time, title, duration, type, description, original_time,
                 line_id, second_line_id, promotion_id)
@@ -98,6 +101,8 @@ async function updateTimelineAfisha(pool, id, input, actor) {
             throw fail(409, 'Захід уже змінено. Оновіть таймлайн і повторіть дію.');
         }
         await validateTargets(client, event.date, lineIds, promotionId, event.promotion_id);
+        await assertAfishaLinesFree(client, { date: event.date, time: event.time, duration: event.duration || 60,
+            lineIds: lineIds.filter(lineId => !lineIdsOf(event).includes(lineId)), excludeId: event.id });
         const result = await client.query(
             `UPDATE afisha SET line_id = $2, second_line_id = $3, promotion_id = $4
              WHERE id = $1 RETURNING *`, [id, lineIds[0] || null, lineIds[1] || null, promotionId]

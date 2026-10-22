@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const { validateSchedule } = require('../services/afishaSchedule');
 const { validatePromotion } = require('../services/timelinePromotions');
 const { createTimelineAfisha, updateTimelineAfisha, normalizeLineIds } = require('../services/afishaTimeline');
+const { assertAfishaLinesFree } = require('../services/afishaConflicts');
+const { checkServerConflicts } = require('../services/booking');
 const { addDays, daysBetween, weekOf, esc } = require('../js/timeline-marketing');
 
 const event = { date: '2026-10-24', time: '14:00', original_time: '14:00', type: 'event', duration: 60, line_id: 12 };
@@ -94,4 +96,55 @@ test('timeline Afisha update rejects stale assignment sets before writing', asyn
     }, 'fixture'), { statusCode: 409 });
     assert.ok(queries.includes('ROLLBACK'));
     assert.equal(queries.some(sql => sql.startsWith('UPDATE afisha')), false);
+});
+
+test('animator conflict checks cover bookings and either Afisha assignment with adjacent slots allowed', async () => {
+    const rows = {
+        bookings: [{ line_id: '1', time: '14:00', duration: 60, title: 'Бронювання' }],
+        afisha: [{ id: 8, line_id: '2', second_line_id: '3', time: '16:00', duration: 45, title: 'Концерт' }]
+    };
+    const queries = [];
+    const client = { async query(sql, params) {
+        queries.push({ sql, params });
+        if (sql.includes('FROM bookings')) return { rows: rows.bookings };
+        if (sql.includes('FROM afisha')) return { rows: rows.afisha };
+        return { rows: [] };
+    } };
+    const base = { date: '2026-10-19', duration: 60 };
+    await assert.rejects(assertAfishaLinesFree(client, { ...base, time: '14:30', lineIds: ['1'] }),
+        { statusCode: 409, code: 'AFISHA_LINE_CONFLICT' });
+    assert.match(queries[0].sql, /pg_advisory_xact_lock/);
+    assert.equal(queries[0].params[1], 'line:event_genix:2026-10-19:1');
+    assert.match(queries[1].sql, /FROM lines_by_date/);
+    await assert.rejects(assertAfishaLinesFree(client, { ...base, time: '16:15', lineIds: ['3'] }),
+        { statusCode: 409, code: 'AFISHA_LINE_CONFLICT' });
+    await assert.doesNotReject(assertAfishaLinesFree(client, { ...base, time: '15:00', lineIds: ['1'] }));
+});
+
+test('Park booking conflicts include both assigned Afisha animators but not unassigned events', async () => {
+    const calls = [];
+    const client = { async query(sql, params) {
+        calls.push({ sql, params });
+        if (sql.includes('FROM afisha')) return { rows: [{ id: 8, time: '14:00', duration: 60, title: 'Вистава' }] };
+        return { rows: [] };
+    } };
+    for (const lineId of ['1', '2']) {
+        const result = await checkServerConflicts(client, '2026-10-19', lineId, '14:30', 30);
+        assert.equal(result.overlap, true);
+        assert.equal(result.conflictWith.label, 'Афіша: Вистава');
+        assert.deepEqual(calls.find(call => call.sql.includes('FROM afisha')).params, ['2026-10-19', lineId]);
+        calls.length = 0;
+    }
+    const adjacent = await checkServerConflicts(client, '2026-10-19', '1', '15:00', 30);
+    assert.equal(adjacent.overlap, false);
+    calls.length = 0;
+    const otherBusiness = await checkServerConflicts(client, '2026-10-19', '1', '14:30', 30, null, 'dar');
+    assert.equal(otherBusiness.overlap, false);
+    assert.equal(calls.some(call => call.sql.includes('FROM afisha')), false);
+
+    const unassigned = { async query(sql) {
+        if (sql.includes('FROM afisha')) return { rows: [] };
+        return { rows: [] };
+    } };
+    assert.equal((await checkServerConflicts(unassigned, '2026-10-19', '1', '14:30', 30)).overlap, false);
 });

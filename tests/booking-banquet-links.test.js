@@ -853,6 +853,9 @@ function makeDb(rows, links = [], options = {}) {
             );
             return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
+        if (/SELECT id, time, duration, title FROM afisha/i.test(sql)) {
+            return { rows: [], rowCount: 0 };
+        }
         if (/SELECT bgb\.booking_id, bgb\.role, b\.\*\s+FROM banquet_group_bookings bgb\s+JOIN bookings b ON b\.id = bgb\.booking_id/i.test(sql)) {
             const [groupId, businessContext] = params;
             if (options.addConcurrentActiveMemberOnCancellationPreflight

@@ -6249,3 +6249,28 @@ body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-select
     visibility: hidden;
     pointer-events: none;
 }
+
+/* Park timeline uses the page's vertical scroll; keep horizontal time navigation. */
+body.timeline-dashboard-page.timeline-mode-park.timeline-view-animators .timeline-container,
+body.timeline-dashboard-page.timeline-mode-park.timeline-view-animators.timeline-compact-mode .timeline-container,
+body.timeline-dashboard-page.timeline-mode-park.timeline-view-animators .timeline-container[data-timeline-height-ready="true"],
+html[data-theme="dark"] body.timeline-dashboard-page.timeline-mode-park.timeline-view-animators .timeline-container {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+body.timeline-dashboard-page.timeline-mode-park.timeline-view-animators .timeline-scroll,
+body.timeline-dashboard-page.timeline-mode-park.timeline-view-animators .timeline-container[data-fit-screen="scroll"] .timeline-scroll {
+    flex: none !important;
+    height: auto !important;
+    max-height: none !important;
+    background: transparent !important;
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+    scrollbar-gutter: auto !important;
+}

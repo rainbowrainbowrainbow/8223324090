@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { createFixture } = require('../helpers/timeline-marketing-fixture');
+const { checkServerConflicts } = require('../../services/booking');
 
 test('timeline marketing: real PostgreSQL routes with authenticated fixture principals', {
     skip: !process.env.TIMELINE_MARKETING_TEST_DATABASE_URL, timeout: 120000
@@ -53,7 +54,7 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
             assert.equal(created.body.item.line_id, '1');
             assert.equal(created.body.item.second_line_id, '2');
             assert.equal(created.body.item.promotion_id, id);
-            const unlinked = await request('POST', '/api/afisha/timeline', { ...base, promotionId: null, lineIds: [] });
+            const unlinked = await request('POST', '/api/afisha/timeline', { ...base, time: '16:00', promotionId: null, lineIds: [] });
             assert.equal(unlinked.status, 201);
             assert.equal(unlinked.body.item.line_id, null);
             const assigned = await request('PATCH', `/api/afisha/${unlinked.body.item.id}/timeline`, {
@@ -61,7 +62,7 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
             });
             assert.equal(assigned.status, 200);
             const moved = await request('PATCH', `/api/afisha/${unlinked.body.item.id}/schedule`, {
-                date: '2026-10-20', time: '15:00', expectedDate: '2026-10-19', expectedTime: '15:00'
+                date: '2026-10-20', time: '16:00', expectedDate: '2026-10-19', expectedTime: '16:00'
             });
             assert.equal(moved.status, 200);
             assert.equal(moved.body.item.line_id, null);
@@ -92,6 +93,72 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
             const legacyRow = (await pool.query('SELECT date, line_id, second_line_id FROM afisha WHERE id=$1', [unlinked.body.item.id])).rows[0];
             assert.deepEqual(legacyRow, { date: '2026-10-21', line_id: null, second_line_id: null });
         });
+        await t.test('manual Afisha assignment rejects occupied booking and Afisha slots', async () => {
+            await pool.query(`INSERT INTO bookings (date, time, duration, line_id, status, business_context, label)
+                VALUES ('2026-10-20', '17:00', 60, '1', 'confirmed', 'event_genix', 'Зайняте бронювання')`);
+            const input = { title: 'Перевірка зайнятості', date: '2026-10-20', time: '17:00',
+                duration: 60, type: 'event', description: '', promotionId: null };
+            const occupiedBooking = await request('POST', '/api/afisha/timeline', { ...input, lineIds: ['1'] });
+            assert.equal(occupiedBooking.status, 409);
+            assert.match(occupiedBooking.body.error, /Зайняте бронювання/);
+            const first = await request('POST', '/api/afisha/timeline', { ...input, lineIds: ['2'] });
+            assert.equal(first.status, 201, JSON.stringify(first.body));
+            const occupiedEvent = await request('POST', '/api/afisha/timeline', { ...input, time: '17:30', lineIds: ['2'] });
+            assert.equal(occupiedEvent.status, 409);
+            assert.match(occupiedEvent.body.error, /Перевірка зайнятості/);
+            const adjacent = await request('POST', '/api/afisha/timeline', { ...input, time: '18:00', lineIds: ['2'] });
+            assert.equal(adjacent.status, 201, JSON.stringify(adjacent.body));
+            assert.equal((await request('PATCH', `/api/afisha/${first.body.item.id}/time`, { time: '18:00' })).status, 409);
+            assert.equal((await request('PUT', `/api/afisha/${first.body.item.id}`, {
+                date: input.date, time: '18:00', title: input.title, duration: 60, type: 'event', description: ''
+            })).status, 409);
+        });
+        await t.test('booking checks respect both Afisha lines and ignore unassigned events', async () => {
+            const created = await request('POST', '/api/afisha/timeline', { title: 'Сцена',
+                date: '2026-10-20', time: '10:00', duration: 60, type: 'event', description: '',
+                promotionId: null, lineIds: ['1', '2'] });
+            assert.equal(created.status, 201, JSON.stringify(created.body));
+            for (const lineId of ['1', '2']) {
+                const conflict = await checkServerConflicts(pool, '2026-10-20', lineId, '10:30', 30);
+                assert.equal(conflict.overlap, true);
+                assert.match(conflict.conflictWith.label, /Афіша: Сцена/);
+            }
+            const unassigned = await request('POST', '/api/afisha/timeline', { title: 'Без призначення',
+                date: '2026-10-20', time: '11:00', duration: 60, type: 'event', description: '',
+                promotionId: null, lineIds: [] });
+            assert.equal(unassigned.status, 201, JSON.stringify(unassigned.body));
+            const available = await checkServerConflicts(pool, '2026-10-20', '1', '11:30', 30);
+            assert.equal(Boolean(available.conflictWith?.label?.startsWith('Афіша:')), false);
+        });
+        await t.test('legacy line movement preserves the other animator and event reads resolve both names', async () => {
+            await pool.query(`INSERT INTO lines_by_date (date, line_id, name, business_context)
+                VALUES ('2026-10-20', '3', 'Аніматор 3', 'event_genix')`);
+            const created = await request('POST', '/api/afisha/timeline', { title: 'Три лінії',
+                date: '2026-10-20', time: '19:00', duration: 60, type: 'event', description: '',
+                promotionId: null, lineIds: ['1', '2'] });
+            assert.equal(created.status, 201, JSON.stringify(created.body));
+            const moved = await request('PATCH', `/api/afisha/${created.body.item.id}/line`, { line_id: 3 });
+            assert.equal(moved.status, 200, JSON.stringify(moved.body));
+            assert.deepEqual(moved.body.lineIds, ['3', '2']);
+            const listed = (await request('GET', '/api/afisha/2026-10-20')).body.find(item => item.id === created.body.item.id);
+            assert.equal(listed.line_name, 'Аніматор 3');
+            assert.equal(listed.second_line_name, 'Аніматор 2');
+        });
+        await t.test('automatic distribution leaves events unassigned when every animator is busy', async () => {
+            await pool.query(`INSERT INTO bookings (date, time, duration, line_id, status, business_context)
+                VALUES ('2026-10-21', '12:00', 480, '1', 'confirmed', 'event_genix'),
+                       ('2026-10-21', '12:00', 480, '2', 'confirmed', 'event_genix')`);
+            const created = await request('POST', '/api/afisha/timeline', { title: 'Без вільного аніматора',
+                date: '2026-10-21', time: '14:00', duration: 60, type: 'event', description: '',
+                promotionId: null, lineIds: [] });
+            assert.equal(created.status, 201);
+            const result = await request('POST', '/api/afisha/distribute/2026-10-21');
+            assert.equal(result.status, 200);
+            assert.ok(result.body.unassigned >= 1);
+            const row = (await pool.query('SELECT line_id, second_line_id FROM afisha WHERE id=$1', [created.body.item.id])).rows[0];
+            assert.equal(row.line_id, null);
+            assert.equal(row.second_line_id, null);
+        });
         await t.test('read and mutation isolation, existing capabilities and aggregate read-only scope', async () => {
             assert.equal((await request('GET', '/api/timeline/promotions?from=2026-10-19&to=2026-10-25&businessContext=dar')).body.promotions.length, 0);
             assert.equal((await request('PATCH', `/api/timeline/promotions/${id}?businessContext=dar`, { title: 'Other', version: 1 })).status, 404);
@@ -108,6 +175,9 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
             assert.equal((await request('GET', '/api/timeline/promotions?from=2026-10-19&to=2026-10-25')).body.promotions.length, 0);
             assert.equal((await pool.query('SELECT count(*)::int AS n FROM timeline_promotions WHERE id=$1', [id])).rows[0].n, 1);
             assert.equal((await pool.query('SELECT promotion_id FROM afisha WHERE id=$1', [linkedAfishaId])).rows[0].promotion_id, id);
+            const visibleEvent = (await request('GET', '/api/afisha/2026-10-19')).body.find(item => item.id === linkedAfishaId);
+            assert.ok(['First', 'Second'].includes(visibleEvent.promotion_title));
+            assert.equal(visibleEvent.promotion_active, false);
             const current = (await pool.query('SELECT * FROM afisha WHERE id=$1', [linkedAfishaId])).rows[0];
             const kept = await request('PATCH', `/api/afisha/${linkedAfishaId}/timeline`, {
                 expectedLineIds: [current.line_id], lineIds: [], expectedPromotionId: id, promotionId: id

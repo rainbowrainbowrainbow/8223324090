@@ -272,4 +272,4 @@ async function main() {
         assert.match(evidence.childDateOracle.ui,/14\.05\.2020/,'Visible child birthday must match entered and SQL date');
     });
 }
-main().catch(error=>{evidence.fatal=error.message;process.exitCode=1;}).finally(async()=>{requestTracker?.dispose();await context?.close();await browser?.close();await pool.end();evidence.exitCode=results.exitCode();flush();if(evidence.exitCode)process.exitCode=1;});
+main().catch(error=>{evidence.fatal=error.message;process.exitCode=1;}).finally(async()=>{evidence.navigationRetiredReads=requestTracker?.retiredReads()||[];requestTracker?.dispose();await context?.close();await browser?.close();await pool.end();evidence.exitCode=results.exitCode();flush();if(evidence.exitCode)process.exitCode=1;});

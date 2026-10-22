@@ -28,9 +28,31 @@ async function waitForStableLayout(page, selectors = ['.main-content', '#sidebar
 function trackRequests(context, origin) {
     const pending = new Set();
     const changed = new Set();
+    const pageListeners = new Map();
+    const retired = [];
     const notify = () => { for (const listener of changed) listener(); };
     const started = request => { if (new URL(request.url()).origin === origin) { pending.add(request); notify(); } };
     const finished = request => { if (pending.delete(request)) notify(); };
+    const watchPage = page => {
+        const navigated = frame => {
+            if (frame !== page.mainFrame()) return;
+            // Chromium/WebKit can leave a cancelled old-document read without a
+            // matching requestfinished event. It cannot block the new document.
+            for (const request of pending) {
+                let owner;
+                try { owner = request.frame?.(); } catch { continue; }
+                if (owner !== frame || request.isNavigationRequest?.()
+                    || !['GET', 'HEAD'].includes(request.method())) continue;
+                pending.delete(request);
+                retired.push({ method: request.method(), path: new URL(request.url()).pathname.replace(/\d+/g, ':id'), reason: 'previous_document_navigation' });
+            }
+            notify();
+        };
+        page.on('framenavigated', navigated);
+        pageListeners.set(page, navigated);
+    };
+    context.on('page', watchPage);
+    for (const page of context.pages?.() || []) watchPage(page);
     context.on('request', started);
     context.on('requestfinished', finished);
     context.on('requestfailed', finished);
@@ -52,7 +74,11 @@ function trackRequests(context, origin) {
                 update();
             });
         },
+        retiredReads() { return retired.slice(); },
         dispose() {
+            context.off('page', watchPage);
+            for (const [page, listener] of pageListeners) page.off('framenavigated', listener);
+            pageListeners.clear();
             context.off('request', started);
             context.off('requestfinished', finished);
             context.off('requestfailed', finished);

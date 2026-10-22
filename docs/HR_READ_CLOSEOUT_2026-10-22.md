@@ -13,7 +13,7 @@ Observed failures retained in the original proof:
 - Omni used two animation frames before responsive geometry measurements; that is not evidence that transitions or ResizeObserver-driven layout have settled.
 - Education journey treated a momentarily empty request set as safe navigation. Its timeout reported no outstanding routes. Teacher/hrLink pages had runtime/network-idle checks but no common request quiet-window barrier for their final navigation boundary.
 
-Test-only changes observe geometry stability and finite animations without disabling motion or removing overflow assertions. The common request tracker requires a 500 ms quiet interval, resets on every same-origin request event, retains a 15-second hard timeout and reports only method/redacted pathname/type for stuck requests. No requests or page errors are ignored. A permanent request still fails; no unlimited retries were added.
+Test-only changes observe geometry stability and finite animations without disabling motion or removing overflow assertions. The common request tracker requires a 500 ms quiet interval, resets on every same-origin request event, retains a 15-second hard timeout and reports only method/redacted pathname/type for stuck requests. Current-document requests and all page errors remain strict. Cancelled GET/HEAD reads of a previous committed document are retired from that document's pending set and recorded in navigationRetiredReads; writes are never retired. A permanent request still fails; no unlimited retries were added.
 
 Focused unit tests cover a new request beginning during the initial empty interval, failed requests draining, foreign traffic not affecting the app boundary, stuck-request failure with redacted diagnostics and listener cleanup. A browser regression verifies waiting for finite motion while retaining deliberate overflow. Existing Task Center and Omni assertions are unchanged. These changes address identified synchronization gaps; they do not claim the whole CI is proven flake-free after one successful run.
 
@@ -36,3 +36,5 @@ Only these test helpers/regressions, package test commands and redacted docs are
 ## Current live recheck
 
 The existing isolated Park test account passed the same six GETs, Dar context denials, private-field masks, closed payroll/account paths, workspace/onboarding 403/500/offline Retry, Team and Today detail, and Schedule GET/render on v0.82.108 / af8c42a31f5fb7af71155943e76f4209d589b835. Evidence is in HR_READ_CLOSEOUT_LIVE_QA_2026-10-22.json. All product mutations were blocked; one unrelated daily-login reward POST was blocked before reaching the server. No membership was activated.
+
+CI diagnostics identified old-document timeline reads remaining in the pending set after committed navigation. The tracker now binds that lifecycle explicitly, records every retired read and retains the no-page-errors assertion. Unit coverage proves that unfinished writes and new-document reads still block.

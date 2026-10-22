@@ -61,7 +61,7 @@ async function pageFor(action, business='dar', width=1440) {
         evidence.failureDiagnostics ||= [];
         evidence.failureDiagnostics.push(await page.evaluate(()=>({url:location.pathname+location.search,invalid:[...document.querySelectorAll('#bookingForm input,#bookingForm select')].filter(el=>!el.validity.valid).map(el=>({id:el.id,value:el.value,message:el.validationMessage})),submit:{disabled:document.getElementById('bookingSubmitBtn')?.disabled,text:document.getElementById('bookingSubmitBtn')?.textContent},messages:[...document.querySelectorAll('[role="alert"],.notification')].map(el=>el.textContent)})).catch(()=>({unavailable:true})));
         flush();throw error;
-    } finally {requestTrackers.get(context)?.dispose();await context.close();}
+    } finally {const tracker=requestTrackers.get(context);(evidence.navigationRetiredReads ||= []).push(...(tracker?.retiredReads()||[]));tracker?.dispose();await context.close();}
 }
 async function shot(page,name) {await page.screenshot({path:path.join(out,`${name}.png`)});evidence.screenshots.push(`${name}.png`);}
 async function measureContrast(page,label){

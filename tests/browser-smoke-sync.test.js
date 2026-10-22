@@ -35,3 +35,19 @@ test('a stuck request fails closed with redacted route diagnostics, then a retry
     t.mock.timers.tick(50); await rejected;
     context.emit('requestfinished', r); const retry = tracker.idle({ quietMs: 10 }); t.mock.timers.tick(10); await retry; tracker.dispose();
 });
+
+test('committed navigation retires only old-document reads, keeping writes and current reads strict', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const context = new EventEmitter(), tracker = trackRequests(context, origin);
+    const frame = {}, page = new EventEmitter(); page.mainFrame = () => frame; context.emit('page', page);
+    const old = { ...request('/api/lines/123'), frame: () => frame };
+    const write = { ...request('/api/tasks/123'), frame: () => frame, method: () => 'POST' };
+    context.emit('request', old); context.emit('request', write); page.emit('framenavigated', frame);
+    assert.deepEqual(tracker.retiredReads(), [{ method: 'GET', path: '/api/lines/:id', reason: 'previous_document_navigation' }]);
+    const current = { ...request('/api/education/groups'), frame: () => frame }; context.emit('request', current);
+    let ready = false; const idle = tracker.idle({ quietMs: 10 }).then(() => { ready = true; });
+    t.mock.timers.tick(20); await Promise.resolve(); assert.equal(ready, false);
+    context.emit('requestfinished', write); t.mock.timers.tick(20); await Promise.resolve(); assert.equal(ready, false);
+    context.emit('requestfinished', current); t.mock.timers.tick(10); await idle;
+    tracker.dispose(); assert.equal(page.listenerCount('framenavigated'), 0); assert.equal(context.listenerCount('page'), 0);
+});

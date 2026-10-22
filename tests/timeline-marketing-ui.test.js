@@ -197,6 +197,76 @@ test('upper panel shows Afisha independently and repeats linked events inside th
     } finally { f.close(); }
 });
 
+test('day Afisha lane shows an all-day promotion above timed events', async () => {
+    const f = fixture();
+    try {
+        const grid = f.w.document.querySelector('.line-grid');
+        grid.classList.add('afisha-line-grid');
+        grid.dataset.lineId = 'afisha';
+        const flag = f.w.TimelineAfisha.create(event, 12, grid);
+        grid.appendChild(flag);
+        f.w.apiFetchWithAuthRetry = async () => response({ promotions: [{ id: 7, title: 'Осіння акція', description: '',
+            color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-20', version: 1 }] });
+        f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1,
+            [{ ...event, promotion_id: 7 }]);
+        await flush();
+        const card = grid.querySelector('.afisha-all-day-card');
+        assert.ok(card);
+        assert.match(card.textContent, /Весь день.*Осіння акція/);
+        assert.equal(grid.dataset.afishaAllDayCount, '1');
+        assert.equal(flag.style.top, '45px');
+        assert.equal(grid.style.minHeight, '84px');
+        assert.match(f.w.document.querySelector('.timeline-afisha-summary-event').textContent, /Акція: Осіння акція/);
+        grid.style.setProperty('--afisha-all-day-step', '48px');
+        f.w.TimelineAfisha.layout(grid);
+        assert.equal(flag.style.top, '57px');
+        assert.equal(grid.style.minHeight, '96px');
+        card.click();
+        assert.equal(f.w.document.querySelector('.timeline-marketing-modal input[name="title"]').value, 'Осіння акція');
+    } finally { f.close(); }
+});
+
+test('all-day promotion keeps birthday greetings below its band', async () => {
+    const f = fixture();
+    try {
+        const grid = f.w.document.querySelector('.line-grid');
+        grid.classList.add('afisha-line-grid');
+        grid.dataset.lineId = 'afisha';
+        const birthday = f.w.document.createElement('div');
+        birthday.className = 'booking-block afisha-type-birthday';
+        birthday.getBoundingClientRect = () => ({ top: 0, bottom: 28, height: 28 });
+        grid.appendChild(birthday);
+        const flag = f.w.TimelineAfisha.create(event, 12, grid);
+        grid.appendChild(flag);
+        f.w.apiFetchWithAuthRetry = async () => response({ promotions: [{ id: 7, title: 'Акція', color_key: 'amber',
+            starts_on: '2026-10-19', ends_on: '2026-10-19' }] });
+        f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1);
+        await flush();
+        assert.equal(birthday.style.getPropertyValue('--afisha-neighbor-top'), '45px');
+        assert.equal(flag.style.top, '78px');
+        assert.equal(grid.style.minHeight, '117px');
+    } finally { f.close(); }
+});
+
+test('week Afisha lanes show each active day and stack overlapping promotions', async () => {
+    const f = fixture();
+    try {
+        const container = f.w.document.getElementById('timelineLines');
+        container.innerHTML = ['19', '20', '21'].map(day => `<section class="day-section" data-date="2026-10-${day}">
+            <div class="mini-timeline-line"><div class="mini-line-grid" data-line-id="afisha"></div></div></section>`).join('');
+        f.w.apiFetchWithAuthRetry = async () => response({ promotions: [
+            { id: 7, title: 'Осіння акція', color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-20' },
+            { id: 8, title: 'Друга акція', color_key: 'blue', starts_on: '2026-10-20', ends_on: '2026-10-20' }
+        ] });
+        f.w.TimelinePromotions.mount(container, ['2026-10-19', '2026-10-20', '2026-10-21'], 1);
+        await flush();
+        const grids = [...container.querySelectorAll('.mini-line-grid')];
+        assert.deepEqual(grids.map(grid => grid.querySelectorAll('.afisha-all-day-card').length), [1, 2, 0]);
+        assert.equal(grids[1].style.minHeight, '86px');
+        assert.equal(grids[2].closest('.mini-timeline-line').classList.contains('has-afisha-all-day'), false);
+    } finally { f.close(); }
+});
+
 test('quick create sends one Afisha event with optional promotion and two animator IDs', async () => {
     const f = fixture();
     try {

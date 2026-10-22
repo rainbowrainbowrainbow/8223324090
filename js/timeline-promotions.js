@@ -37,6 +37,7 @@
     function renderAfishaSection() {
         if (!showAfisha()) return;
         const events = (view.afishaEvents || []).filter(item => item.type !== 'birthday');
+        const promotions = new Map((view.items || []).map(item => [Number(item.id), item]));
         const section = document.createElement('section');
         section.className = 'timeline-afisha-summary';
         section.setAttribute('aria-label', 'Афіша');
@@ -44,7 +45,8 @@
             ${M.writable('edit_booking') ? '<button type="button" class="btn-secondary" data-add-afisha>Додати захід</button>' : ''}</div>
             <div class="timeline-afisha-summary-list">${events.map(item => `<button type="button" class="timeline-afisha-summary-event"
                 data-afisha-id="${Number(item.id)}" aria-label="${M.esc(`${item.title}, ${String(item.date).slice(0, 10)}, ${item.time}`)}">
-                <span>${M.esc(String(item.date).slice(5, 10))} · ${M.esc(String(item.time).slice(0, 5))}</span><strong>${M.esc(item.title)}</strong>
+                <span class="timeline-afisha-summary-time">${M.esc(String(item.date).slice(5, 10))} · ${M.esc(String(item.time).slice(0, 5))}</span><strong>${M.esc(item.title)}</strong>
+                ${promotions.has(Number(item.promotion_id)) ? `<small class="timeline-afisha-promotion-name">Акція: ${M.esc(promotions.get(Number(item.promotion_id)).title)}</small>` : ''}
                 ${item.line_id || item.second_line_id ? `<small>${[item.line_id, item.second_line_id].filter(Boolean).length} ан.</small>` : ''}</button>`).join('')}</div>`;
         panel.appendChild(section);
         section.querySelector('[data-add-afisha]')?.addEventListener('click', e => window.TimelineAfisha?.quickCreate(view.dates, e.currentTarget));
@@ -136,6 +138,37 @@
         }
     }
 
+    function renderAllDayLanes(items) {
+        if (!showAfisha()) return;
+        for (const date of view.dates) {
+            const grid = view.dates.length === 1
+                ? view.container.querySelector('.afisha-line-grid[data-line-id="afisha"]')
+                : view.container.querySelector(`.day-section[data-date="${date}"] .mini-line-grid[data-line-id="afisha"]`);
+            if (!grid) continue;
+            grid.querySelector('.afisha-all-day-track')?.remove();
+            const active = items.filter(item => item.starts_on <= date && item.ends_on >= date);
+            grid.dataset.afishaAllDayCount = String(active.length);
+            grid.closest('.timeline-line, .mini-timeline-line')?.classList.toggle('has-afisha-all-day', active.length > 0);
+            if (active.length) {
+                const track = document.createElement('div');
+                track.className = 'afisha-all-day-track';
+                track.setAttribute('aria-label', `Акції на весь день, ${date}`);
+                for (const item of active) {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'afisha-all-day-card';
+                    button.dataset.color = item.color_key;
+                    button.setAttribute('aria-label', `Акція ${item.title}, весь день ${date}, ${item.starts_on}–${item.ends_on}`);
+                    button.innerHTML = `<span class="afisha-all-day-caption">Весь день</span><strong>${M.esc(item.title)}</strong>`;
+                    button.addEventListener('click', () => edit(item, item.starts_on, item.ends_on, button));
+                    track.appendChild(button);
+                }
+                grid.appendChild(track);
+            }
+            window.TimelineAfisha?.layout(grid);
+        }
+    }
+
     function render(items) {
         const { dates } = view;
         const writable = canWrite();
@@ -194,7 +227,7 @@
             const linked = (view.afishaEvents || []).filter(event => Number(event.promotion_id) === Number(item.id));
             row.innerHTML = `<div class="timeline-promotion-band" data-color="${M.esc(item.color_key)}" style="grid-column:${first + 1}/${last + 2}">
                 ${writable && dates.length > 1 && item.starts_on >= dates[0] ? '<button type="button" class="promotion-handle" data-edge="start" aria-label="Змінити початок акції">⋮</button>' : ''}
-                <button type="button" class="promotion-label" aria-label="${M.esc(`${item.title}, ${item.starts_on}–${item.ends_on}`)}">${M.esc(item.title)}<span>${M.esc(item.starts_on)}–${M.esc(item.ends_on)}</span></button>
+                <button type="button" class="promotion-label" aria-label="${M.esc(`${item.title}, ${item.starts_on}–${item.ends_on}, весь день`)}"><strong>${M.esc(item.title)}</strong><span>${M.esc(item.starts_on)}–${M.esc(item.ends_on)}</span><em>Весь день</em></button>
                 ${linked.length ? `<span class="promotion-afisha-links">${linked.map(event => `<button type="button" data-linked-afisha="${Number(event.id)}">⚑ ${M.esc(event.title)}</button>`).join('')}</span>` : ''}
                 ${writable && dates.length > 1 && item.ends_on <= dates[dates.length - 1] ? '<button type="button" class="promotion-handle" data-edge="end" aria-label="Змінити кінець акції">⋮</button>' : ''}</div>`;
             panel.querySelector('.timeline-promotion-bands').appendChild(row);
@@ -260,6 +293,7 @@
             });
         }
         shade(items);
+        renderAllDayLanes(items);
         renderAfishaSection();
     }
 

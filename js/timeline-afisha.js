@@ -33,13 +33,17 @@
 
     function layout(grid) {
         const flags = [...grid.querySelectorAll('.afisha-flag')].sort((a, b) => parseFloat(a.style.left) - parseFloat(b.style.left));
-        if (!flags.length) return;
+        const allDayCount = Number(grid.dataset.afishaAllDayCount || 0);
+        if (!flags.length && !allDayCount) return;
         const rect = grid.getBoundingClientRect();
-        let baseline = 5;
+        const allDayStep = Number.parseFloat(getComputedStyle(grid).getPropertyValue('--afisha-all-day-step')) || 36;
+        const allDayHeight = allDayCount ? allDayCount * allDayStep + 4 : 0;
+        const eventBaseline = 5 + allDayHeight;
+        let baseline = eventBaseline;
         grid.querySelectorAll('.booking-block:not(.afisha-flag), .mini-booking-block').forEach(block => {
             const bookingRect = block.getBoundingClientRect();
             const birthday = block.classList.contains('afisha-type-birthday');
-            const top = birthday ? 5 : bookingRect.top - rect.top - grid.clientTop;
+            const top = birthday ? eventBaseline : bookingRect.top - rect.top - grid.clientTop;
             baseline = Math.max(baseline, birthday ? top + bookingRect.height + 5 : bookingRect.bottom - rect.top + 5);
             // Preserve the existing booking height while adding annotation lanes below it.
             block.style.setProperty('--afisha-neighbor-height', `${bookingRect.height}px`);

@@ -38,3 +38,11 @@ Only these test helpers/regressions, package test commands and redacted docs are
 The existing isolated Park test account passed the same six GETs, Dar context denials, private-field masks, closed payroll/account paths, workspace/onboarding 403/500/offline Retry, Team and Today detail, and Schedule GET/render on v0.82.108 / af8c42a31f5fb7af71155943e76f4209d589b835. Evidence is in HR_READ_CLOSEOUT_LIVE_QA_2026-10-22.json. All product mutations were blocked; one unrelated daily-login reward POST was blocked before reaching the server. No membership was activated.
 
 CI diagnostics identified old-document timeline reads remaining in the pending set after committed navigation. The tracker now binds that lifecycle explicitly, records every retired read and retains the no-page-errors assertion. Unit coverage proves that unfinished writes and new-document reads still block.
+
+## Production drift reconciliation
+
+During verification, an independent Afisha release advanced live and remote to v0.82.109 / b579f683bf02446f1348978cfe583c3a55717578. The two commits changed Afisha/timeline and responsive CSS plus release markers; HR authorization and the six read implementations were unchanged. A normal merge retained all upstream history. No new release markers were invented for this test/docs branch.
+
+The existing isolated Park test account passed the full read-only browser/API matrix again on v0.82.109. The latest JSON supersedes the earlier v0.82.108 snapshot. Its authoritative business profile reports exactly one available business, Park default, single scope and canSwitchBusiness=false. Thus no ready two-business fixture exists for this account; no membership activation or grant was performed.
+
+Before the merge, affected CI gates passed: Omni; Education hrLink Chromium/WebKit; Education journey Chromium; baseline; HR/payroll PostgreSQL; HR Team and responsive tests. The superseded workflow was cancelled while external browser installation/job finalization remained pending. It is not represented as a complete 23/23 run. A final exact-SHA CI is required on the merged candidate.

@@ -1,6 +1,6 @@
 {
-  "sha": "af8c42a31f5fb7af71155943e76f4209d589b835",
-  "version": "0.82.108",
+  "sha": "b579f683bf02446f1348978cfe583c3a55717578",
+  "version": "0.82.109",
   "checks": [
     "six GETs, Dar denials, private-field masking and closed account/payroll paths",
     "dashboard loaded",

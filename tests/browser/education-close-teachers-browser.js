@@ -61,7 +61,7 @@ async function pageFor(action, business='dar', width=1440) {
         evidence.failureDiagnostics ||= [];
         evidence.failureDiagnostics.push(await page.evaluate(()=>({url:location.pathname+location.search,invalid:[...document.querySelectorAll('#bookingForm input,#bookingForm select')].filter(el=>!el.validity.valid).map(el=>({id:el.id,value:el.value,message:el.validationMessage})),submit:{disabled:document.getElementById('bookingSubmitBtn')?.disabled,text:document.getElementById('bookingSubmitBtn')?.textContent},messages:[...document.querySelectorAll('[role="alert"],.notification')].map(el=>el.textContent)})).catch(()=>({unavailable:true})));
         flush();throw error;
-    } finally {await context.close();}
+    } finally {requestTrackers.get(context)?.dispose();await context.close();}
 }
 async function shot(page,name) {await page.screenshot({path:path.join(out,`${name}.png`)});evidence.screenshots.push(`${name}.png`);}
 async function measureContrast(page,label){
@@ -494,6 +494,7 @@ async function closeChecks(){
         }
         evidence.proofs.hrSourcePrerequisite={organizationId:org,actorId,syntheticMemberships:['event_genix','dar','maysternya_doli'],ownershipInferred:false};
 
+        await waitTeacherRuntimeReads(page);
         await Promise.all([page.waitForURL(url=>url.pathname==='/'&&(url.searchParams.get('businessContext')||'event_genix')==='event_genix'&&!url.searchParams.has('educationSchedule'),{waitUntil:'domcontentloaded'}),page.locator('#sidebarBusinessContextSelect').selectOption('event_genix')]);await page.waitForFunction(()=>window.CrmBusinessContext?.current?.()==='event_genix'&&window.TimelineBusinessContext?.current?.().apiValue==='event_genix'&&!document.getElementById('sidebarBusinessContextSelect')?.disabled&&window.__crmBusinessNavigationPending!==true);await waitTeacherRuntimeReads(page);
         evidence.proofs.hrRequests=[]; page.on('request',r=>{const u=new URL(r.url());if(u.pathname.startsWith('/api/hr/staff/'))evidence.proofs.hrRequests.push({path:u.pathname+u.search,context:r.headers()['x-business-context'],scope:r.headers()['x-business-scope']});});
         await waitTeacherRuntimeReads(page);await page.goto(base+'/hr.html?businessContext=event_genix&employee='+candidate,{waitUntil:'domcontentloaded'});
@@ -573,6 +574,7 @@ async function closeChecks(){
         for(const theme of ['light','dark']) {
             await page.locator('#editCloseTop').click();await page.locator('#staffEditModal').waitFor({state:'hidden'});await page.setViewportSize({width:390,height:844});
             if(await page.evaluate(()=>document.documentElement.dataset.theme)!==theme)await page.locator('#headerThemeToggle').click();await page.waitForFunction(theme=>document.documentElement.dataset.theme===theme,theme);
+            await waitTeacherRuntimeReads(page);
             await page.goto(base+'/hr.html?businessContext=event_genix&employee='+candidate,{waitUntil:'domcontentloaded'});await page.locator('#staffEducationAssignment').waitFor({state:'visible'});await page.waitForFunction(()=>!document.getElementById('staffEducationBusiness').disabled);await page.locator('#staffEducationBusiness').selectOption('dar');
             await page.locator('#staffEducationAssignment').scrollIntoViewIfNeeded();await measureContrast(page,'hr-education-phone-'+theme);
             const audit=evidence.audits.at(-1);assert.ok(audit.contrast.length>0);assert.deepEqual(audit.contrast.filter(c=>!Number.isFinite(c.ratio)||c.ratio<c.minimum),[],'New HR education controls contrast');
@@ -581,6 +583,7 @@ async function closeChecks(){
         await page.setViewportSize({width:1440,height:1000});await shot(page,'existing-hr-staff-explicit-education-assignment');
         await page.locator('#editCloseTop').click();await page.locator('#staffEditModal').waitFor({state:'hidden'});
         // Leave the HR surface through its visible timeline launcher before changing timeline business.
+        await waitTeacherRuntimeReads(page);
         await page.locator('[data-sidebar-timeline-mode="animators"]').filter({visible:true}).first().click();
         await page.waitForURL(url=>url.pathname==='/',{waitUntil:'domcontentloaded'});
         await page.locator('#mainApp').waitFor({state:'visible'});

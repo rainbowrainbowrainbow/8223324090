@@ -11,7 +11,7 @@ const UNMIGRATED_MODULES = Object.freeze({
     chat: 'Чат', reports: 'Звіти', copilot: 'Copilot', staff: 'Працівники (legacy)',
     training: 'Навчання', checkin: 'Check-in', kitchen: 'Кухня',
     content: 'Контент', art: 'Art', sound: 'Звук',
-    afisha: 'Афіша', certificates: 'Сертифікати', kleshnya: 'Клешня',
+    certificates: 'Сертифікати', kleshnya: 'Клешня',
     guardian: 'Guardian', center: 'Центр', game: 'Гра', demo: 'Демо',
     payroll: 'Зарплата', telegram: 'Telegram', payments: 'Платежі'
 });
@@ -40,6 +40,12 @@ function businessModuleCatalog(contextKey) {
         reason: parkHrSupported
             ? 'HR доступний лише в Парку Закревського; для інших бізнесів потрібне окреме перенесення даних.'
             : 'HR для цього бізнесу ще не перенесений.' });
+    const parkAfishaSupported = contextKey === 'event_genix';
+    catalog.push({ key: 'afisha', label: 'Афіша', status: parkAfishaSupported ? 'limited' : 'not_migrated',
+        canEnable: parkAfishaSupported,
+        reason: parkAfishaSupported
+            ? 'Афіша прив’язана до даних Парку Закревського; для інших бізнесів потрібне окреме перенесення даних.'
+            : 'Афіша для цього бізнесу ще не перенесена.' });
     return catalog.concat(Object.entries(UNMIGRATED_MODULES).map(([key, label]) => ({
         key, label, status: 'not_migrated', canEnable: false,
         reason: 'Ще недоступний для окремих бізнесів.'

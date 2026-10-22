@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const registry = require('../services/businessModuleRegistry');
 const { buildMembershipAccess, applyMembershipAccess } = require('../services/businessMembership');
+const { businessCabinetForUser } = require('../services/businessCabinet');
 const { businessModulesForContext } = require('../services/businessContext');
 const { buildBusinessOperatingProfile, buildModuleMap } = require('../services/businessProfile');
 const { canUseTimelineAction } = require('../services/timelineContext');
@@ -55,6 +56,25 @@ test('HR module is configurable only for the Park and still requires explicit bu
         assert.equal(hr.canEnable, false);
         assert.throws(() => registry.validateBusinessModules(['hr'], { contextKey: context }), { code: 'business_module_not_supported' });
         assert.equal(registry.userBusinessModuleState(actor(['hr'], context), context, 'hr').available, false);
+    }
+});
+
+test('Afisha module is configurable only for the Park and still requires explicit business enablement', () => {
+    const parkAfisha = registry.businessModuleCatalog('event_genix').find(module => module.key === 'afisha');
+    assert.equal(parkAfisha.canEnable, true);
+    assert.equal(parkAfisha.status, 'limited');
+    assert.deepEqual(registry.validateBusinessModules(['afisha'], { contextKey: 'event_genix' }), ['afisha']);
+    assert.equal(registry.userBusinessModuleState(actor(['afisha'], 'event_genix'), 'event_genix', 'afisha').available, true);
+    assert.equal(registry.userBusinessModuleState(actor([], 'event_genix'), 'event_genix', 'afisha').available, false);
+    const cabinet = { context: 'event_genix', timeline: { enabledModules: { afisha: false } } };
+    assert.equal(businessCabinetForUser(cabinet, actor(['timeline', 'afisha'], 'event_genix')).timeline.enabledModules.afisha, true);
+    assert.equal(businessCabinetForUser(cabinet, actor(['timeline'], 'event_genix')).timeline.enabledModules.afisha, false);
+
+    for (const context of ['dar', 'fixture_studio']) {
+        const afisha = registry.businessModuleCatalog(context).find(module => module.key === 'afisha');
+        assert.equal(afisha.canEnable, false);
+        assert.throws(() => registry.validateBusinessModules(['afisha'], { contextKey: context }), { code: 'business_module_not_supported' });
+        assert.equal(registry.userBusinessModuleState(actor(['afisha'], context), context, 'afisha').available, false);
     }
 });
 

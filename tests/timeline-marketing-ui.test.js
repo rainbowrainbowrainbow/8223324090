@@ -117,11 +117,13 @@ test('a promotion failure preserves booking content and retries independently', 
         assert.ok(f.w.document.querySelector('.timeline-promotions [role="alert"]'));
         f.w.apiFetchWithAuthRetry = async () => response({ promotions: [] });
         f.w.document.querySelector('.timeline-promotions button').click(); await flush();
+        assert.ok(f.w.document.querySelector('[data-toggle-marketing]'));
+        f.w.document.querySelector('[data-toggle-marketing]').click();
         assert.ok(f.w.document.querySelector('[data-add]'));
     } finally { f.close(); }
 });
 
-test('promotion periods start collapsed and can be expanded, shortened and collapsed again', async () => {
+test('promotions and Afisha share one collapsed overview and one accessible toggle', async () => {
     const f = fixture();
     try {
         f.w.apiFetchWithAuthRetry = async () => response({ promotions: Array.from({ length: 5 }, (_, index) => ({
@@ -131,18 +133,23 @@ test('promotion periods start collapsed and can be expanded, shortened and colla
         f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), Array.from({ length: 7 }, (_, index) => `2026-10-${String(19 + index).padStart(2, '0')}`), 1);
         await flush();
         const panel = f.w.document.querySelector('.timeline-promotions');
-        assert.equal(panel.querySelector('[data-toggle-promotions]').getAttribute('aria-expanded'), 'false');
+        assert.equal(panel.querySelector('[data-toggle-marketing]').getAttribute('aria-expanded'), 'false');
+        assert.equal(panel.querySelector('[data-toggle-marketing]').getAttribute('aria-controls'), 'timelineMarketingDetails');
+        assert.equal(panel.querySelectorAll('.timeline-marketing-toggle').length, 1);
+        assert.equal(panel.querySelector('.timeline-marketing-body').hidden, true);
         assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 0);
-        panel.querySelector('[data-toggle-promotions]').click();
-        assert.equal(panel.querySelector('[data-toggle-promotions]').getAttribute('aria-expanded'), 'true');
+        panel.querySelector('[data-toggle-marketing]').click();
+        assert.equal(panel.querySelector('[data-toggle-marketing]').getAttribute('aria-expanded'), 'true');
+        assert.equal(panel.querySelector('.timeline-marketing-body').hidden, false);
         assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 2);
         assert.equal(panel.querySelector('[data-more]').textContent, 'Ще 3');
         panel.querySelector('[data-more]').click();
         assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 5);
         panel.querySelector('[data-less]').click();
         assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 2);
-        panel.querySelector('[data-toggle-promotions]').click();
+        panel.querySelector('[data-toggle-marketing]').click();
         assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 0);
+        assert.equal(panel.querySelector('.timeline-marketing-body').hidden, true);
     } finally { f.close(); }
 });
 
@@ -163,7 +170,7 @@ test('read-only viewers can open Afisha and promotions without mutation controls
             color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-19', version: 1 }] });
         f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1); await flush();
         assert.equal(f.w.document.querySelector('[data-add]'), null);
-        f.w.document.querySelector('[data-toggle-promotions]').click();
+        f.w.document.querySelector('[data-toggle-marketing]').click();
         f.w.document.querySelector('.promotion-label').click();
         assert.equal(f.w.document.querySelector('.timeline-marketing-modal input[name="title"]').readOnly, true);
         assert.equal(f.w.document.querySelector('.timeline-marketing-modal button[type="submit"]'), null);
@@ -180,7 +187,7 @@ test('promotion conflict retains a draft and offers the fresh server version', a
                 color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-19', version }] });
         };
         f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1); await flush();
-        f.w.document.querySelector('[data-toggle-promotions]').click();
+        f.w.document.querySelector('[data-toggle-marketing]').click();
         f.w.document.querySelector('.promotion-label').click();
         const form = f.w.document.querySelector('.timeline-marketing-form');
         form.elements.title.value = 'My draft';
@@ -192,7 +199,7 @@ test('promotion conflict retains a draft and offers the fresh server version', a
     } finally { f.close(); }
 });
 
-test('upper panel shows Afisha independently and repeats linked events inside their promotion', async () => {
+test('one toggle reveals Afisha and promotions together, with linked events inside their promotion', async () => {
     const f = fixture();
     try {
         f.w.apiFetchWithAuthRetry = async () => response({ promotions: [{ id: 7, title: 'Акція', description: '',
@@ -203,13 +210,15 @@ test('upper panel shows Afisha independently and repeats linked events inside th
         const panel = f.w.document.querySelector('.timeline-promotions');
         assert.match(panel.textContent, /Акції/);
         assert.match(panel.textContent, /Афіша/);
-        assert.equal(panel.querySelector('[data-toggle-afisha]').getAttribute('aria-expanded'), 'false');
+        assert.equal(panel.querySelector('[data-toggle-marketing]').getAttribute('aria-expanded'), 'false');
+        assert.match(panel.querySelector('.timeline-marketing-counts').textContent, /Акції 1.*Афіша 2/);
         assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event').length, 0);
-        panel.querySelector('[data-toggle-promotions]').click();
-        panel.querySelector('[data-toggle-afisha]').click();
+        panel.querySelector('[data-toggle-marketing]').click();
         assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event').length, 2);
         assert.equal(panel.querySelectorAll('[data-linked-afisha]').length, 1);
         assert.equal(panel.querySelector('[data-linked-afisha]').textContent.includes('Окрема подія'), false);
+        panel.querySelector('[data-toggle-marketing]').click();
+        assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event, .timeline-promotion-row').length, 0);
     } finally { f.close(); }
 });
 
@@ -226,8 +235,7 @@ test('a promotion starts a linked event and archived links remain visible in a c
         await flush();
         const panel = f.w.document.querySelector('.timeline-promotions');
         assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event').length, 0);
-        panel.querySelector('[data-toggle-promotions]').click();
-        panel.querySelector('[data-toggle-afisha]').click();
+        panel.querySelector('[data-toggle-marketing]').click();
         assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event').length, 3);
         assert.match(panel.querySelector('.timeline-afisha-summary').textContent, /Архівована акція: Минула акція/);
         panel.querySelector('[data-more-afisha]').click();
@@ -264,9 +272,9 @@ test('day Afisha lane shows an all-day promotion above timed events', async () =
         assert.equal(grid.dataset.afishaAllDayCount, '1');
         assert.equal(flag.style.top, '45px');
         assert.equal(grid.style.minHeight, '84px');
-        f.w.document.querySelector('[data-toggle-afisha]').click();
+        f.w.document.querySelector('[data-toggle-marketing]').click();
         assert.match(f.w.document.querySelector('.timeline-afisha-summary-event').textContent, /Акція: Осіння акція/);
-        f.w.document.querySelector('[data-toggle-afisha]').click();
+        f.w.document.querySelector('[data-toggle-marketing]').click();
         assert.ok(grid.querySelector('.afisha-all-day-card'), 'collapsing the summary keeps the all-day timeline band');
         grid.style.setProperty('--afisha-all-day-step', '48px');
         f.w.TimelineAfisha.layout(grid);
@@ -330,6 +338,7 @@ test('quick create sends one Afisha event with optional promotion and two animat
         };
         f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1, []);
         await flush();
+        f.w.document.querySelector('[data-toggle-marketing]').click();
         f.w.document.querySelector('[data-add-afisha]').click();
         const form = f.w.document.querySelector('[data-create-form]');
         form.elements.title.value = 'Новий захід';

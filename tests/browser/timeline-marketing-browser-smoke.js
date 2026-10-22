@@ -65,7 +65,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
                 if (window.TimelineView?.set) await window.TimelineView.set('animators', { render: false });
                 await renderTimeline();
             }, multi);
-            await page.locator('.timeline-promotions [data-add]').waitFor();
+            await page.locator('.timeline-promotions [data-toggle-marketing]').waitFor();
         }
         async function verifyFlagGeometry() {
             const overlaps = await page.evaluate(() => {
@@ -99,8 +99,13 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
             assert.deepEqual(overlaps, [], 'flags must not overlap each other or booking cards');
         }
         await display();
-        assert.equal(await page.locator('[data-toggle-promotions]').getAttribute('aria-expanded'), 'false');
-        assert.equal(await page.locator('[data-toggle-afisha]').getAttribute('aria-expanded'), 'false');
+        assert.equal(await page.locator('[data-toggle-marketing]').getAttribute('aria-expanded'), 'false');
+        assert.equal(await page.locator('.timeline-marketing-body').isHidden(), true);
+        await page.locator('[data-toggle-marketing]').focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await page.locator('[data-toggle-marketing]').getAttribute('aria-expanded'), 'true');
+        await page.keyboard.press('Enter');
+        assert.equal(await page.locator('.timeline-marketing-body').isHidden(), true);
         const pageFlow = await page.evaluate(() => {
             const shell = document.querySelector('.timeline-container');
             const scroll = document.getElementById('timelineScroll');
@@ -144,19 +149,19 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         assert.equal(await page.locator('.timeline-marketing-modal').count(), 0, 'drag must not open details');
         assert.notEqual((await fixture.pool.query('SELECT time FROM afisha WHERE id=1')).rows[0].time, '14:15',
             JSON.stringify(dragResponse.request().postDataJSON()));
+        await page.locator('[data-toggle-marketing]').click();
         await page.locator('[data-add]').click();
         await page.locator('input[name="title"]').fill('Осінні канікули <тест>');
         await page.locator('textarea[name="description"]').fill('Інформаційна акція — ціни не змінюються');
         await page.locator('[data-week]').click();
         await page.locator('.timeline-marketing-modal button[type="submit"]').click();
-        await page.locator('[data-toggle-promotions]').click();
         await page.locator('.promotion-label').waitFor();
         assert.equal((await fixture.pool.query('SELECT ends_on::text FROM timeline_promotions')).rows[0].ends_on, '2026-10-25');
         assert.ok(await page.locator('.line-grid[data-promotion-color="amber"]').count());
         await verifyFlagGeometry();
         await page.screenshot({ path: path.join(output, 'timeline-marketing-day.png'), fullPage: true });
         await display(true);
-        await page.locator('[data-toggle-promotions]').click();
+        await page.locator('[data-toggle-marketing]').click();
         await verifyFlagGeometry();
         assert.equal(await page.locator('.day-section').count(), 7);
         const weekAfishaFlag = '.mini-line-grid[data-line-id="afisha"] .afisha-flag[data-afisha-id="1"]';
@@ -209,7 +214,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => window.AppState && window.__crmBusinessNavigationPending !== true && !document.getElementById('mainApp').classList.contains('hidden'));
         await display(true);
-        await page.locator('[data-toggle-promotions]').click();
+        await page.locator('[data-toggle-marketing]').click();
         assert.equal(await page.locator('.promotion-label').count(), 2, 'server persistence survives reload');
         await page.setViewportSize({ width: 390, height: 844 });
         await page.locator('.promotion-label').first().click();

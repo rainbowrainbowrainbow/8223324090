@@ -9,9 +9,8 @@
     let selecting = false;
     let keyStart = null;
     let sequence = 0;
-    let promotionsOpen = false;
+    let marketingOpen = false;
     let expanded = false;
-    let afishaOpen = false;
     let afishaExpanded = false;
     const pending = new Set();
 
@@ -24,14 +23,14 @@
         gesture = null;
         panel?.querySelectorAll('.promotion-preview').forEach(el => el.classList.remove('promotion-preview'));
         if (panel && view) {
-            const status = panel.querySelector(':scope > .timeline-promotions-toolbar .timeline-promotions-status');
-            if (status) status.textContent = `${Array.isArray(view.items) ? view.items.length : 0} у видимому періоді`;
+            const status = panel.querySelector('.timeline-promotion-section .timeline-promotions-status');
+            if (status) status.textContent = '';
         }
         return active;
     }
     function beginRender() {
         cancel(); sequence++; view = null; selecting = false; keyStart = null;
-        promotionsOpen = false; expanded = false; afishaOpen = false; afishaExpanded = false;
+        marketingOpen = false; expanded = false; afishaExpanded = false;
         panel?.remove(); panel = null; clearShading();
     }
     function canWrite() { return M.writable('manage_settings'); }
@@ -39,30 +38,25 @@
         && (typeof timelineShouldRenderAfisha !== 'function' || timelineShouldRenderAfisha()); }
 
     function renderAfishaSection() {
-        if (!showAfisha()) return;
+        if (!showAfisha() || !marketingOpen) return;
         panel.querySelector('.timeline-afisha-summary')?.remove();
         const events = (view.afishaEvents || []).filter(item => item.type !== 'birthday');
         const promotions = new Map((view.items || []).map(item => [Number(item.id), item]));
-        const visible = afishaOpen ? (afishaExpanded ? events : events.slice(0, 3)) : [];
-        const hiddenCount = afishaOpen ? events.length - visible.length : 0;
+        const visible = afishaExpanded ? events : events.slice(0, 3);
+        const hiddenCount = events.length - visible.length;
         const section = document.createElement('section');
         section.className = 'timeline-afisha-summary';
         section.setAttribute('aria-label', 'Афіша');
-        section.innerHTML = `<div class="timeline-promotions-toolbar"><strong>Афіша</strong><span class="timeline-promotions-status">${events.length} у видимому періоді</span>
-            <button type="button" class="btn-secondary timeline-marketing-toggle" data-toggle-afisha aria-expanded="${afishaOpen}" aria-controls="timelineAfishaSummaryList">${afishaOpen ? 'Згорнути' : 'Розгорнути'}</button>
+        section.innerHTML = `<div class="timeline-promotions-toolbar"><strong>Афіша</strong><span class="timeline-promotions-status"></span>
             ${hiddenCount ? `<button type="button" class="btn-secondary" data-more-afisha aria-expanded="false">Ще ${hiddenCount}</button>` : ''}
-            ${afishaOpen && afishaExpanded && events.length > 3 ? '<button type="button" class="btn-secondary" data-less-afisha aria-expanded="true">Показати менше</button>' : ''}
+            ${afishaExpanded && events.length > 3 ? '<button type="button" class="btn-secondary" data-less-afisha aria-expanded="true">Показати менше</button>' : ''}
             ${M.writable('edit_booking') ? '<button type="button" class="btn-secondary" data-add-afisha>Додати захід</button>' : ''}</div>
-            ${afishaOpen ? `<div class="timeline-afisha-summary-list" id="timelineAfishaSummaryList">${visible.map(item => `<button type="button" class="timeline-afisha-summary-event"
+            <div class="timeline-afisha-summary-list" id="timelineAfishaSummaryList">${visible.map(item => `<button type="button" class="timeline-afisha-summary-event"
                 data-afisha-id="${Number(item.id)}" aria-label="${M.esc(`${item.title}, ${String(item.date).slice(0, 10)}, ${item.time}`)}">
                 <span class="timeline-afisha-summary-time">${M.esc(String(item.date).slice(5, 10))} · ${M.esc(String(item.time).slice(0, 5))}</span><strong>${M.esc(item.title)}</strong>
                 ${item.promotion_id ? `<small class="timeline-afisha-promotion-name">${item.promotion_active === false ? 'Архівована акція' : 'Акція'}: ${M.esc(item.promotion_title || promotions.get(Number(item.promotion_id))?.title || `#${item.promotion_id}`)}</small>` : ''}
-                ${item.line_id || item.second_line_id ? `<small>${[item.line_id, item.second_line_id].filter(Boolean).length} ан.</small>` : ''}</button>`).join('')}</div>` : '<div id="timelineAfishaSummaryList" hidden></div>'}`;
-        panel.appendChild(section);
-        section.querySelector('[data-toggle-afisha]')?.addEventListener('click', () => {
-            afishaOpen = !afishaOpen; afishaExpanded = false; renderAfishaSection();
-            panel.querySelector('[data-toggle-afisha]')?.focus();
-        });
+                ${item.line_id || item.second_line_id ? `<small>${[item.line_id, item.second_line_id].filter(Boolean).length} ан.</small>` : ''}</button>`).join('')}</div>`;
+        panel.querySelector('.timeline-marketing-body').appendChild(section);
         section.querySelector('[data-more-afisha]')?.addEventListener('click', () => { afishaExpanded = true; renderAfishaSection(); panel.querySelector('[data-less-afisha]')?.focus(); });
         section.querySelector('[data-less-afisha]')?.addEventListener('click', () => { afishaExpanded = false; renderAfishaSection(); panel.querySelector('[data-more-afisha]')?.focus(); });
         section.querySelector('[data-add-afisha]')?.addEventListener('click', e => window.TimelineAfisha?.quickCreate(view.dates, e.currentTarget));
@@ -195,16 +189,21 @@
     function render(items) {
         const { dates } = view;
         const writable = canWrite();
-        const visibleItems = promotionsOpen ? (expanded ? items : items.slice(0, 2)) : [];
-        const moreCount = promotionsOpen ? items.length - visibleItems.length : 0;
+        const visibleItems = marketingOpen ? (expanded ? items : items.slice(0, 2)) : [];
+        const moreCount = marketingOpen ? items.length - visibleItems.length : 0;
+        const afishaCount = (view.afishaEvents || []).filter(item => item.type !== 'birthday').length;
+        const hasAfisha = showAfisha();
         panel.dataset.visibleFrom = dates[0];
         panel.dataset.visibleTo = dates[dates.length - 1];
-        panel.innerHTML = `<div class="timeline-promotions-toolbar"><strong>Акції</strong><span class="timeline-promotions-status" aria-live="polite">${items.length ? `${items.length} у видимому періоді` : 'Немає акцій'}</span><button type="button" class="btn-secondary timeline-marketing-toggle" data-toggle-promotions aria-expanded="${promotionsOpen}" aria-controls="timelinePromotionDetails">${promotionsOpen ? 'Згорнути' : 'Розгорнути'}</button>${moreCount > 0 ? `<button type="button" class="btn-secondary" data-more aria-expanded="false">Ще ${moreCount}</button>` : ''}${promotionsOpen && expanded && items.length > 2 ? '<button type="button" class="btn-secondary" data-less aria-expanded="true">Показати менше</button>' : ''}${writable ? '<button type="button" class="btn-secondary" data-add>Додати акцію</button>' : ''}${writable && promotionsOpen && dates.length > 1 ? '<button type="button" class="btn-secondary" data-select aria-pressed="false">Виділити дати</button>' : ''}</div>
-            ${promotionsOpen ? `<div class="timeline-promotion-scroll" id="timelinePromotionDetails">${dates.length > 1 ? `<div class="timeline-promotion-dates" style="--promotion-days:${dates.length}">${dates.map((date, index) => `<button type="button" class="timeline-promotion-date" data-date-index="${index}" aria-label="${date}">${date.slice(8)}.${date.slice(5, 7)}</button>`).join('')}</div>` : ''}
-            <div class="timeline-promotion-bands"></div></div>` : '<div id="timelinePromotionDetails" hidden></div>'}`;
-        panel.querySelector('[data-toggle-promotions]')?.addEventListener('click', () => {
-            promotionsOpen = !promotionsOpen; expanded = false; selecting = false; keyStart = null;
-            render(items); panel.querySelector('[data-toggle-promotions]')?.focus();
+        panel.innerHTML = `<div class="timeline-marketing-overview">
+            <div class="timeline-marketing-intro"><strong>${hasAfisha ? 'Акції та афіша' : 'Акції'}</strong><span>У видимому періоді</span></div>
+            <div class="timeline-marketing-counts"><span class="timeline-marketing-count timeline-marketing-count-promotions">Акції <strong>${items.length}</strong></span>${hasAfisha ? `<span class="timeline-marketing-count timeline-marketing-count-afisha">Афіша <strong>${afishaCount}</strong></span>` : ''}</div>
+            <button type="button" class="btn-secondary timeline-marketing-toggle" data-toggle-marketing aria-expanded="${marketingOpen}" aria-controls="timelineMarketingDetails">${marketingOpen ? 'Згорнути' : 'Розгорнути'}<span aria-hidden="true" class="timeline-marketing-chevron"></span></button></div>
+            <div class="timeline-marketing-body" id="timelineMarketingDetails" ${marketingOpen ? '' : 'hidden'}>${marketingOpen ? `<section class="timeline-promotion-section" aria-label="Акції"><div class="timeline-promotions-toolbar"><strong>Акції</strong><span class="timeline-promotions-status" aria-live="polite"></span>${moreCount > 0 ? `<button type="button" class="btn-secondary" data-more aria-expanded="false">Ще ${moreCount}</button>` : ''}${expanded && items.length > 2 ? '<button type="button" class="btn-secondary" data-less aria-expanded="true">Показати менше</button>' : ''}${writable ? '<button type="button" class="btn-secondary" data-add>Додати акцію</button>' : ''}${writable && dates.length > 1 ? '<button type="button" class="btn-secondary" data-select aria-pressed="false">Виділити дати</button>' : ''}</div>
+            <div class="timeline-promotion-scroll" id="timelinePromotionDetails">${dates.length > 1 ? `<div class="timeline-promotion-dates" style="--promotion-days:${dates.length}">${dates.map((date, index) => `<button type="button" class="timeline-promotion-date" data-date-index="${index}" aria-label="${date}">${date.slice(8)}.${date.slice(5, 7)}</button>`).join('')}</div>` : ''}<div class="timeline-promotion-bands"></div></div></section>` : ''}</div>`;
+        panel.querySelector('[data-toggle-marketing]')?.addEventListener('click', () => {
+            marketingOpen = !marketingOpen; expanded = false; afishaExpanded = false; selecting = false; keyStart = null;
+            render(items); panel.querySelector('[data-toggle-marketing]')?.focus();
         });
         panel.querySelector('[data-add]')?.addEventListener('click', e => edit(null, dates[0], dates[dates.length - 1], e.currentTarget));
         panel.querySelector('[data-more]')?.addEventListener('click', () => { expanded = true; render(items); panel.querySelector('[data-less]')?.focus(); });
@@ -212,7 +211,7 @@
         panel.querySelector('[data-select]')?.addEventListener('click', e => {
             selecting = !selecting; keyStart = null;
             e.currentTarget.setAttribute('aria-pressed', String(selecting));
-            panel.querySelector('.timeline-promotions-status').textContent = selecting ? 'Виділіть дати або натисніть початок і кінець' : `${items.length} у видимому періоді`;
+            panel.querySelector('.timeline-promotion-section .timeline-promotions-status').textContent = selecting ? 'Виділіть дати або натисніть початок і кінець' : '';
         });
         const header = panel.querySelector('.timeline-promotion-dates');
         function choose(from, to, trigger) {
@@ -302,7 +301,7 @@
                     gesture.moved = gesture.moved || Math.abs(e.clientX - gesture.x) > 6;
                     const start = gesture.edge === 'end' ? item.starts_on : M.addDays(item.starts_on, gesture.delta);
                     const end = gesture.edge === 'start' ? item.ends_on : M.addDays(item.ends_on, gesture.delta);
-                    panel.querySelector('.timeline-promotions-status').textContent = `${start}–${end}`;
+                    panel.querySelector('.timeline-promotion-section .timeline-promotions-status').textContent = `${start}–${end}`;
                     if (end >= start) {
                         const from = Math.max(0, Math.min(dates.length - 1, M.daysBetween(dates[0], start)));
                         const to = Math.max(from, Math.min(dates.length - 1, M.daysBetween(dates[0], end)));
@@ -343,7 +342,7 @@
         } catch (error) {
             if (sequence !== requestSequence || view !== current || !timelineRequestTokenIsCurrent(current.token)) return;
             clearShading();
-            panel.innerHTML = `<div class="timeline-promotions-toolbar"><span role="alert">Не вдалося завантажити акції</span><button type="button" class="btn-secondary">Повторити</button></div>`;
+            panel.innerHTML = `<div class="timeline-promotions-toolbar"><span role="alert">Не вдалося завантажити акції</span><button type="button" class="btn-secondary">Повторити</button></div><div class="timeline-marketing-body"></div>`;
             panel.querySelector('button').addEventListener('click', refresh);
             renderAfishaSection();
         } finally { if (view === current) panel?.removeAttribute('aria-busy'); }
@@ -354,7 +353,7 @@
         panel?.remove();
         panel = document.createElement('section');
         panel.className = 'timeline-promotions';
-        panel.setAttribute('aria-label', 'Акційні періоди');
+        panel.setAttribute('aria-label', 'Акції та афіша');
         panel.innerHTML = '<div class="timeline-promotions-toolbar" role="status">Завантаження акцій…</div>';
         const scroll = document.getElementById('timelineScroll');
         scroll.insertBefore(panel, document.getElementById('timeScale'));

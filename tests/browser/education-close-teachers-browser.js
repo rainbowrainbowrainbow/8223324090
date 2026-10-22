@@ -7,6 +7,7 @@ const { Pool } = require('pg');
 const engine = process.env.EDU_MOBILE_ENGINE || 'chromium';
 const browserType = require(process.env.EDU_QA_PLAYWRIGHT)[engine];
 const { DATABASES, assertLocalTarget, seedDataset, preflight } = require('../../scripts/lib/education-ready-dataset');
+const { trackRequests } = require('../helpers/browser-smoke-sync');
 const { createResults } = require('../helpers/education-ready-results');
 assertLocalTarget('fixed');
 const base = process.env.TEST_URL;
@@ -22,6 +23,7 @@ evidence.harnessHash=crypto.createHash('sha256').update(fs.readFileSync(__filena
 const pool = new Pool({ host: process.env.PGHOST || '127.0.0.1', port: Number(process.env.PGPORT || 55469), user: process.env.PGUSER || 'postgres', password: process.env.PGPASSWORD, database: process.env.PGDATABASE || DATABASES.fixed, ssl: false });
 let token, manifest, browser, candidate, newTeacher, foreignTeacher, groupId, lessonId;
 let reader;
+const requestTrackers = new WeakMap();
 function flush() {
     let text=JSON.stringify(evidence,null,2);
     for(const secret of [token,process.env.TEST_USER,process.env.TEST_PASS,reader?.token,reader?.username,reader?.password].filter(Boolean)) text=text.split(secret).join('[REDACTED]');
@@ -41,10 +43,12 @@ async function waitTeacherRuntimeReads(page) {
     });
     evidence.runtimeReadSettles ||= [];const settled=await snapshot.jsonValue();assert.equal(settled.educationError,null,'Education workspace must complete without error before navigation');evidence.runtimeReadSettles.push(settled);await snapshot.dispose();
     await page.waitForLoadState('networkidle');
+    await requestTrackers.get(page.context()).idle();
 }
 async function pageFor(action, business='dar', width=1440) {
     const context=await browser.newContext({viewport:{width,height:width===390?844:1000},hasTouch:width===390,isMobile:width===390,serviceWorkers:'block',timezoneId:'Europe/Kyiv'});
     await context.route('**/*',route=>new URL(route.request().url()).origin===base?route.continue():route.abort());
+    requestTrackers.set(context,trackRequests(context,base));
     const page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',e=>evidence.pageErrors.push({name:e.name,message:e.message,stack:e.stack}));page.on('requestfailed',request=>{const url=new URL(request.url());evidence.failedRequests ||= [];evidence.failedRequests.push({path:url.pathname,business:url.searchParams.get('businessContext'),error:request.failure()?.errorText});});
     try {
         await page.goto(base,{waitUntil:'domcontentloaded'});await page.locator('#username').fill(process.env.TEST_USER);await page.locator('#password').fill(process.env.TEST_PASS);

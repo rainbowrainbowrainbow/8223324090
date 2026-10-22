@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { waitForStableLayout } = require('../helpers/browser-smoke-sync');
 
 const VIEWPORTS = [[1366,768],[1024,600],[390,844],[320,640],[390,420]];
 const LONG_DRAFT = [
@@ -13,7 +14,7 @@ const LONG_DRAFT = [
 ].join('\n');
 
 async function waitForLayout(page) {
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await waitForStableLayout(page);
 }
 
 async function waitForVisualReady(page) {

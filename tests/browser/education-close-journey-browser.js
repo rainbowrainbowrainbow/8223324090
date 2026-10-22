@@ -7,6 +7,7 @@ const playwright = require(process.env.EDU_QA_PLAYWRIGHT);
 const engine = process.env.EDU_MOBILE_ENGINE || 'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 const { DATABASES, assertLocalTarget, seedDataset } = require('../../scripts/lib/education-ready-dataset');
+const { trackRequests } = require('../helpers/browser-smoke-sync');
 const { createResults } = require('../helpers/education-ready-results');
 assertLocalTarget('fixed');
 assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
@@ -15,7 +16,7 @@ const out = path.resolve(process.env.EDU_READY_OUTPUT, `attempt-${new Date().toI
 fs.mkdirSync(out, { recursive: true });
 const pool = new Pool({ host: process.env.PGHOST || '127.0.0.1', port: Number(process.env.PGPORT || 55469), user: process.env.PGUSER || 'postgres', password: process.env.PGPASSWORD, database: process.env.PGDATABASE || DATABASES.fixed, ssl: false });
 const results = createResults(), evidence = { attemptId: process.env.EDU_CLOSE_ATTEMPT_ID, suite: process.env.EDU_CLOSE_SUITE, classification:'ONE_CONTINUOUS_VISIBLE_UI_JOURNEY', engine, checks:results.results, steps:[], screenshots:[], pageErrors:[] };
-const pendingRequests=new Set();let token, manifest, browser, context, page, teacher, group, lesson, previous, parentId, childId, second, date = '2030-01-10';
+let requestTracker;let token, manifest, browser, context, page, teacher, group, lesson, previous, parentId, childId, second, date = '2030-01-10';
 function flush() { let text = JSON.stringify(evidence,null,2); for (const value of [token,process.env.TEST_USER,process.env.TEST_PASS,second?.password].filter(Boolean)) text=text.split(value).join('[REDACTED]'); fs.writeFileSync(path.join(out,'verification.json'),text); }
 async function step(id, action) {
     await results.check(id,id,action,{dependsOn:previous?[previous]:[]}); previous=id;
@@ -42,7 +43,7 @@ async function settle() {
  await waitRuntimeReads();
  await page.waitForFunction(()=>!window.EducationScheduleWorkspace?.state.loading&&!window.EducationAttendance?.state.journalLoading&&!window.EducationAttendance?.state.reportLoading
     && (typeof bookingTimePreflightState!=='function'||bookingTimePreflightState().status!=='checking'));
- await new Promise((resolve,reject)=>{if(!pendingRequests.size)return resolve();const deadline=setTimeout(()=>{context.off('requestfinished',finish);context.off('requestfailed',finish);reject(new Error('Requests did not settle before navigation'));},15000);function finish(){if(pendingRequests.size)return;clearTimeout(deadline);context.off('requestfinished',finish);context.off('requestfailed',finish);resolve();}context.on('requestfinished',finish);context.on('requestfailed',finish);finish();});
+ await requestTracker.idle();
 }
 async function row() { return (await pool.query('SELECT id,date::text,time,duration,room,status,extra_data,business_context FROM bookings WHERE id=$1',[lesson])).rows[0]; }
 async function shot(name) { await page.screenshot({path:path.join(out,`${name}.png`)}); evidence.screenshots.push(`${name}.png`); }
@@ -59,7 +60,7 @@ async function main() {
         second={username:'edu_close_journey_operator',password:require('node:crypto').randomBytes(24).toString('base64url')};
         await api('/api/users','POST',{...second,name:'Операторка Марія',role:'creator',businessContexts:['dar'],defaultBusinessContext:'dar'});
         browser=await playwright[engine].launch({headless:true}); context=await browser.newContext({serviceWorkers:'block',timezoneId:'Europe/Kyiv',viewport:{width:1440,height:1000}});
-        context.on('request',r=>{if(new URL(r.url()).origin===base)pendingRequests.add(r);});context.on('requestfinished',r=>pendingRequests.delete(r));context.on('requestfailed',r=>{pendingRequests.delete(r);evidence.failedRequests ||= [];evidence.failedRequests.push({url:r.url(),method:r.method(),failure:r.failure()?.errorText});});await context.addInitScript(()=>{window.__finalToastObservations=[];document.addEventListener('DOMContentLoaded',()=>new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)if(node instanceof HTMLElement&&node.matches('#toastContainer .toast'))window.__finalToastObservations.push(node.textContent);}).observe(document.body,{childList:true,subtree:true}));});
+        requestTracker=trackRequests(context,base);context.on('requestfailed',r=>{evidence.failedRequests ||= [];evidence.failedRequests.push({url:r.url(),method:r.method(),failure:r.failure()?.errorText});});await context.addInitScript(()=>{window.__finalToastObservations=[];document.addEventListener('DOMContentLoaded',()=>new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)if(node instanceof HTMLElement&&node.matches('#toastContainer .toast'))window.__finalToastObservations.push(node.textContent);}).observe(document.body,{childList:true,subtree:true}));});
         await context.route('**/*',route=>new URL(route.request().url()).origin===base?route.continue():route.abort());
         evidence.optionalReadTrace=[];
         await context.exposeBinding('__qaOptionalReadTrace',(_,entry)=>{evidence.optionalReadTrace.push(entry);});

@@ -786,6 +786,22 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
         }
     }
 
+    if (context === DEFAULT_TIMELINE_CONTEXT) {
+        const events = await client.query(
+            `SELECT id, time, duration, title FROM afisha
+             WHERE date = $1 AND (line_id = $2 OR second_line_id = $2)`,
+            [date, String(lineId)]
+        );
+        for (const event of events.rows) {
+            const start = timeToMinutes(event.time);
+            if (newStart < start + (Number(event.duration) || 60) && newEnd > start) {
+                return { overlap: true, noPause: false, conflictWith: {
+                    id: event.id, time: event.time, label: `Афіша: ${event.title}`, program_code: null
+                } };
+            }
+        }
+    }
+
     const staffId = Number(lineId);
     if (Number.isInteger(staffId) && staffId > 0 && String(staffId) === String(lineId)) {
         const availability = await client.query(

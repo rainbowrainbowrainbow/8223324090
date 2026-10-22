@@ -5488,6 +5488,8 @@ body.timeline-constructor-active::after {
 .promotion-label em { flex: 0 0 auto; margin-left: auto; padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--promotion-color) 24%, var(--gray-50)); font-size: 10px; font-style: normal; font-weight: 700; }
 .promotion-afisha-links { display: flex; gap: 3px; align-items: center; max-width: 40%; overflow-x: auto; }
 .promotion-afisha-links button { border: 0; border-radius: 4px; padding: 3px 6px; background: color-mix(in srgb, #8b5cf6 16%, var(--gray-50)); color: var(--gray-800); font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; }
+.promotion-add-afisha { flex: 0 0 auto; align-self: center; margin-right: 5px; padding: 3px 7px; border: 1px solid color-mix(in srgb, #8b5cf6 40%, var(--gray-300)); border-radius: 5px; background: color-mix(in srgb, #8b5cf6 10%, var(--gray-50)); color: var(--gray-800); font: inherit; font-size: 11px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.promotion-add-afisha:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .promotion-handle { flex: 0 0 20px; border: 0; border-radius: 4px; background: transparent; color: var(--gray-700); cursor: ew-resize; touch-action: pan-y; }
 .promotion-preview { outline: 2px solid var(--primary); outline-offset: -2px; }
 .afisha-line-grid, .mini-line-grid[data-line-id="afisha"] { --afisha-all-day-step: 36px; }
@@ -5507,6 +5509,8 @@ body.timeline-constructor-active::after {
     .timeline-marketing-dialog { padding: 14px; }
     .timeline-afisha-summary-event { max-width: min(340px, 82vw); }
     .promotion-label { gap: 5px; }
+    .promotion-add-afisha { width: 28px; padding: 3px 0; font-size: 0; }
+    .promotion-add-afisha::before { content: '+'; font-size: 16px; }
     .promotion-label em { display: none; }
 }
 @media (pointer: coarse) {

@@ -5529,7 +5529,7 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
                 } else {
                     showNotification(isUndo
                         ? `Розподіл скинуто (${data.reset} подій)`
-                        : `Розподілено ${data.distribution?.length || 0} подій по ведучих`
+                        : `Розподілено ${data.distribution?.length || 0} подій по ведучих${data.unassigned ? `; ${data.unassigned} залишено без аніматора через зайнятий час` : ''}`
                     );
                     invalidateTimelineDateCache(dateStr);
                     await renderTimeline();

@@ -229,6 +229,7 @@ test('new booking must fit one availability window while the gap is rejected', a
     const client = {
         async query(sql) {
             if (sql.includes('FROM bookings WHERE')) return { rows: [] };
+            if (sql.includes('FROM afisha')) return { rows: [] };
             if (sql.includes('FROM staff s')) {
                 availabilitySql = sql;
                 return { rows: [{ staff_id: 7, status: 'working', availability_windows: windows }] };
@@ -252,6 +253,7 @@ test('overnight animator window accepts its after-midnight continuation', async 
     const client = {
         async query(sql) {
             if (sql.includes('FROM bookings WHERE')) return { rows: [] };
+            if (sql.includes('FROM afisha')) return { rows: [] };
             if (sql.includes('FROM staff s')) return { rows: [{ staff_id: 17, status: 'working', availability_windows: windows }] };
             throw new Error(`Unexpected query: ${sql}`);
         }

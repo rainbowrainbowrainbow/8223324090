@@ -121,7 +121,7 @@ test('a promotion failure preserves booking content and retries independently', 
     } finally { f.close(); }
 });
 
-test('promotion periods stay compact and can be expanded and collapsed', async () => {
+test('promotion periods start collapsed and can be expanded, shortened and collapsed again', async () => {
     const f = fixture();
     try {
         f.w.apiFetchWithAuthRetry = async () => response({ promotions: Array.from({ length: 5 }, (_, index) => ({
@@ -131,12 +131,18 @@ test('promotion periods stay compact and can be expanded and collapsed', async (
         f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), Array.from({ length: 7 }, (_, index) => `2026-10-${String(19 + index).padStart(2, '0')}`), 1);
         await flush();
         const panel = f.w.document.querySelector('.timeline-promotions');
+        assert.equal(panel.querySelector('[data-toggle-promotions]').getAttribute('aria-expanded'), 'false');
+        assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 0);
+        panel.querySelector('[data-toggle-promotions]').click();
+        assert.equal(panel.querySelector('[data-toggle-promotions]').getAttribute('aria-expanded'), 'true');
         assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 2);
         assert.equal(panel.querySelector('[data-more]').textContent, 'Ще 3');
         panel.querySelector('[data-more]').click();
         assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 5);
         panel.querySelector('[data-less]').click();
         assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 2);
+        panel.querySelector('[data-toggle-promotions]').click();
+        assert.equal(panel.querySelectorAll('.timeline-promotion-row').length, 0);
     } finally { f.close(); }
 });
 
@@ -145,14 +151,19 @@ test('read-only viewers can open Afisha and promotions without mutation controls
     try {
         f.w.canAccess = () => false;
         const grid = f.w.document.querySelector('.line-grid');
-        const flag = f.w.TimelineAfisha.create(event, 12, grid); grid.appendChild(flag); flag.click();
+        const flag = f.w.TimelineAfisha.create({ ...event, promotion_id: 7, promotion_title: 'Осіння акція',
+            promotion_active: false, line_id: '1', line_name: 'Олена', second_line_id: '2', second_line_name: 'Ірина' }, 12, grid);
+        grid.appendChild(flag); flag.click();
         assert.ok(f.w.document.querySelector('.timeline-marketing-modal a'));
+        assert.match(f.w.document.querySelector('.timeline-marketing-modal').textContent, /Архівована акція: Осіння акція/);
+        assert.match(f.w.document.querySelector('.timeline-marketing-modal').textContent, /Аніматори: Олена, Ірина/);
         assert.equal(f.w.document.querySelector('[data-move]'), null);
         f.w.closeModal(f.w.document.querySelector('.timeline-marketing-modal'));
         f.w.apiFetchWithAuthRetry = async () => response({ promotions: [{ id: 1, title: 'Read me', description: '',
             color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-19', version: 1 }] });
         f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1); await flush();
         assert.equal(f.w.document.querySelector('[data-add]'), null);
+        f.w.document.querySelector('[data-toggle-promotions]').click();
         f.w.document.querySelector('.promotion-label').click();
         assert.equal(f.w.document.querySelector('.timeline-marketing-modal input[name="title"]').readOnly, true);
         assert.equal(f.w.document.querySelector('.timeline-marketing-modal button[type="submit"]'), null);
@@ -169,6 +180,7 @@ test('promotion conflict retains a draft and offers the fresh server version', a
                 color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-19', version }] });
         };
         f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1); await flush();
+        f.w.document.querySelector('[data-toggle-promotions]').click();
         f.w.document.querySelector('.promotion-label').click();
         const form = f.w.document.querySelector('.timeline-marketing-form');
         form.elements.title.value = 'My draft';
@@ -191,9 +203,45 @@ test('upper panel shows Afisha independently and repeats linked events inside th
         const panel = f.w.document.querySelector('.timeline-promotions');
         assert.match(panel.textContent, /Акції/);
         assert.match(panel.textContent, /Афіша/);
+        assert.equal(panel.querySelector('[data-toggle-afisha]').getAttribute('aria-expanded'), 'false');
+        assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event').length, 0);
+        panel.querySelector('[data-toggle-promotions]').click();
+        panel.querySelector('[data-toggle-afisha]').click();
         assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event').length, 2);
         assert.equal(panel.querySelectorAll('[data-linked-afisha]').length, 1);
         assert.equal(panel.querySelector('[data-linked-afisha]').textContent.includes('Окрема подія'), false);
+    } finally { f.close(); }
+});
+
+test('a promotion starts a linked event and archived links remain visible in a compact Afisha summary', async () => {
+    const f = fixture();
+    try {
+        f.w.apiFetchWithAuthRetry = async () => response({ promotions: [{ id: 7, title: 'Акція', description: '',
+            color_key: 'amber', starts_on: '2026-10-19', ends_on: '2026-10-20', version: 1 }] });
+        const events = [
+            { ...event, id: 1, promotion_id: 9, promotion_title: 'Минула акція', promotion_active: false },
+            ...[2, 3, 4].map(id => ({ ...event, id, title: `Подія ${id}` }))
+        ];
+        f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19', '2026-10-20'], 1, events);
+        await flush();
+        const panel = f.w.document.querySelector('.timeline-promotions');
+        assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event').length, 0);
+        panel.querySelector('[data-toggle-promotions]').click();
+        panel.querySelector('[data-toggle-afisha]').click();
+        assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event').length, 3);
+        assert.match(panel.querySelector('.timeline-afisha-summary').textContent, /Архівована акція: Минула акція/);
+        panel.querySelector('[data-more-afisha]').click();
+        assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event').length, 4);
+        panel.querySelector('[data-less-afisha]').click();
+        assert.equal(panel.querySelectorAll('.timeline-afisha-summary-event').length, 3);
+        panel.querySelector('[data-add-linked-afisha]').click();
+        const form = f.w.document.querySelector('[data-create-form]');
+        assert.equal(form.elements.promotion.value, '7');
+        assert.equal(form.elements.date.value, '2026-10-19');
+        f.w.closeModal(f.w.document.querySelector('.timeline-marketing-modal'));
+        panel.querySelector('.promotion-label').click();
+        f.w.document.querySelector('[data-add-linked-from-dialog]').click();
+        assert.equal(f.w.document.querySelector('[data-create-form]').elements.promotion.value, '7');
     } finally { f.close(); }
 });
 
@@ -216,7 +264,10 @@ test('day Afisha lane shows an all-day promotion above timed events', async () =
         assert.equal(grid.dataset.afishaAllDayCount, '1');
         assert.equal(flag.style.top, '45px');
         assert.equal(grid.style.minHeight, '84px');
+        f.w.document.querySelector('[data-toggle-afisha]').click();
         assert.match(f.w.document.querySelector('.timeline-afisha-summary-event').textContent, /Акція: Осіння акція/);
+        f.w.document.querySelector('[data-toggle-afisha]').click();
+        assert.ok(grid.querySelector('.afisha-all-day-card'), 'collapsing the summary keeps the all-day timeline band');
         grid.style.setProperty('--afisha-all-day-step', '48px');
         f.w.TimelineAfisha.layout(grid);
         assert.equal(flag.style.top, '57px');

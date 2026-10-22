@@ -42,7 +42,7 @@ async function createFixture() {
                 type VARCHAR(20), description TEXT, template_id INT, original_time VARCHAR(10), line_id VARCHAR(100));
             CREATE TABLE lines_by_date (id SERIAL PRIMARY KEY, date VARCHAR(10), line_id VARCHAR(100), name TEXT, business_context TEXT);
             CREATE TABLE bookings (id SERIAL PRIMARY KEY, date VARCHAR(10), time VARCHAR(10), duration INT,
-                line_id VARCHAR(100), status TEXT, business_context TEXT);
+                line_id VARCHAR(100), status TEXT, business_context TEXT, label TEXT, program_name TEXT, program_code TEXT);
             INSERT INTO lines_by_date (date,line_id,name,business_context) VALUES
                 ('2026-10-19','1','Аніматор 1','event_genix'), ('2026-10-19','2','Аніматор 2','event_genix'),
                 ('2026-10-20','1','Аніматор 1','event_genix'), ('2026-10-20','2','Аніматор 2','event_genix'),

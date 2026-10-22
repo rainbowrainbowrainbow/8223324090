@@ -2,6 +2,7 @@
 
 const { validateDate, validateTime, timeToMinutes } = require('./booking');
 const { insertHistory } = require('./historyLog');
+const { assertAfishaLinesFree } = require('./afishaConflicts');
 
 function scheduleError(statusCode, message) {
     return Object.assign(new Error(message), { statusCode });
@@ -50,6 +51,11 @@ async function moveAfishaSchedule(pool, id, input, actor, businessContext) {
                 || input.date > String(promotion.ends_on).slice(0, 10))) {
                 throw scheduleError(400, 'Спочатку відв’яжіть захід від акції або змініть дати акції');
             }
+        }
+        if (input.date === event.date && input.time !== event.time) {
+            await assertAfishaLinesFree(client, { date: event.date, time: input.time,
+                duration: event.duration || 60, lineIds: [event.line_id, event.second_line_id].filter(Boolean),
+                excludeId: event.id });
         }
         const result = await client.query(
             `UPDATE afisha SET date = $2::text, time = $3,

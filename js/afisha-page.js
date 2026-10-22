@@ -141,7 +141,12 @@
             duration: Number(item.duration || 60),
             type: TYPE_META[item.type] ? item.type : 'event',
             description: item.description || '',
-            lineId: item.line_id || null,
+            lineIds: [item.line_id, item.second_line_id].filter(Boolean).map(String),
+            animatorNames: [[item.line_id, item.line_name], [item.second_line_id, item.second_line_name]]
+                .filter(([id]) => id).map(([id, name]) => name || `Лінія ${id}`),
+            promotionId: item.promotion_id || null,
+            promotionTitle: item.promotion_title || '',
+            promotionActive: item.promotion_active,
             templateId: item.template_id || null
         };
     }
@@ -254,7 +259,8 @@
                             <h3>${esc(item.title)}</h3>
                             ${item.description ? `<p>${esc(item.description)}</p>` : ''}
                             <div class="afisha-item-meta">
-                                ${item.lineId ? `<span>Лінійка: ${esc(item.lineId)}</span>` : '<span>Без лінійки</span>'}
+                                <span>${item.animatorNames.length ? `Аніматори: ${item.animatorNames.map(esc).join(', ')}` : 'Без аніматора'}</span>
+                                ${item.promotionId ? `<span>${item.promotionActive === false ? 'Архівована акція' : 'Акція'}: ${esc(item.promotionTitle || `#${item.promotionId}`)}</span>` : ''}
                                 <span>Папка: ${materials ? esc(materials.length) : '...'}</span>
                                 ${item.templateId ? `<span>Шаблон #${esc(item.templateId)}</span>` : ''}
                             </div>
@@ -321,11 +327,13 @@
                     ${item.description ? `<p>${esc(item.description)}</p>` : '<p>Опис для команди ще не додано.</p>'}
                     <div class="afisha-event-facts">
                         <span>Папка матеріалів: ${String(state.loadingMaterialsId || '') === String(item.id) ? 'оновлюється' : materials.length}</span>
-                        <span>${item.lineId ? `Лінійка: ${esc(item.lineId)}` : 'Лінійку не призначено'}</span>
+                        <span>${item.animatorNames.length ? `Аніматори: ${item.animatorNames.map(esc).join(', ')}` : 'Аніматорів не призначено'}</span>
+                        ${item.promotionId ? `<span>${item.promotionActive === false ? 'Архівована акція' : 'Акція'}: ${esc(item.promotionTitle || `#${item.promotionId}`)}</span>` : ''}
                         ${item.templateId ? `<span>Recurring шаблон #${esc(item.templateId)}</span>` : '<span>Manual event</span>'}
                     </div>
                 </div>
                 <div class="afisha-event-actions">
+                    <a class="btn-page-secondary" href="/?timelineView=animators&amp;date=${encodeURIComponent(item.date)}">Відкрити на таймлайні</a>
                     <button type="button" class="btn-page-secondary" data-afisha-action="tasks" data-id="${esc(item.id)}">Згенерувати задачі</button>
                     <button type="button" class="btn-page-secondary" data-afisha-action="edit" data-id="${esc(item.id)}">Редагувати</button>
                     <button type="button" class="btn-page-secondary" data-afisha-action="delete" data-id="${esc(item.id)}">Видалити</button>
@@ -562,7 +570,8 @@
         try {
             const path = reset ? `/afisha/undistribute/${encodeURIComponent(date)}` : `/afisha/distribute/${encodeURIComponent(date)}`;
             const result = await api('POST', path);
-            notify(reset ? `Розподіл скинуто: ${result?.reset || 0}` : `Розподіл виконано: ${result?.distribution?.length || 0}`, 'success');
+            notify(reset ? `Розподіл скинуто: ${result?.reset || 0}`
+                : `Розподіл виконано: ${result?.distribution?.length || 0}${result?.unassigned ? `; ${result.unassigned} залишено без аніматора через зайнятий час` : ''}`, 'success');
             await loadData();
         } catch (err) {
             notify(`Розподіл не виконано: ${err.message}`, 'error');

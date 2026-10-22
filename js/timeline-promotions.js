@@ -9,7 +9,10 @@
     let selecting = false;
     let keyStart = null;
     let sequence = 0;
+    let promotionsOpen = false;
     let expanded = false;
+    let afishaOpen = false;
+    let afishaExpanded = false;
     const pending = new Set();
 
     function clearShading() {
@@ -27,7 +30,8 @@
         return active;
     }
     function beginRender() {
-        cancel(); sequence++; view = null; selecting = false; keyStart = null; expanded = false;
+        cancel(); sequence++; view = null; selecting = false; keyStart = null;
+        promotionsOpen = false; expanded = false; afishaOpen = false; afishaExpanded = false;
         panel?.remove(); panel = null; clearShading();
     }
     function canWrite() { return M.writable('manage_settings'); }
@@ -36,19 +40,31 @@
 
     function renderAfishaSection() {
         if (!showAfisha()) return;
+        panel.querySelector('.timeline-afisha-summary')?.remove();
         const events = (view.afishaEvents || []).filter(item => item.type !== 'birthday');
         const promotions = new Map((view.items || []).map(item => [Number(item.id), item]));
+        const visible = afishaOpen ? (afishaExpanded ? events : events.slice(0, 3)) : [];
+        const hiddenCount = afishaOpen ? events.length - visible.length : 0;
         const section = document.createElement('section');
         section.className = 'timeline-afisha-summary';
         section.setAttribute('aria-label', 'Афіша');
         section.innerHTML = `<div class="timeline-promotions-toolbar"><strong>Афіша</strong><span class="timeline-promotions-status">${events.length} у видимому періоді</span>
+            <button type="button" class="btn-secondary timeline-marketing-toggle" data-toggle-afisha aria-expanded="${afishaOpen}" aria-controls="timelineAfishaSummaryList">${afishaOpen ? 'Згорнути' : 'Розгорнути'}</button>
+            ${hiddenCount ? `<button type="button" class="btn-secondary" data-more-afisha aria-expanded="false">Ще ${hiddenCount}</button>` : ''}
+            ${afishaOpen && afishaExpanded && events.length > 3 ? '<button type="button" class="btn-secondary" data-less-afisha aria-expanded="true">Показати менше</button>' : ''}
             ${M.writable('edit_booking') ? '<button type="button" class="btn-secondary" data-add-afisha>Додати захід</button>' : ''}</div>
-            <div class="timeline-afisha-summary-list">${events.map(item => `<button type="button" class="timeline-afisha-summary-event"
+            ${afishaOpen ? `<div class="timeline-afisha-summary-list" id="timelineAfishaSummaryList">${visible.map(item => `<button type="button" class="timeline-afisha-summary-event"
                 data-afisha-id="${Number(item.id)}" aria-label="${M.esc(`${item.title}, ${String(item.date).slice(0, 10)}, ${item.time}`)}">
                 <span class="timeline-afisha-summary-time">${M.esc(String(item.date).slice(5, 10))} · ${M.esc(String(item.time).slice(0, 5))}</span><strong>${M.esc(item.title)}</strong>
-                ${promotions.has(Number(item.promotion_id)) ? `<small class="timeline-afisha-promotion-name">Акція: ${M.esc(promotions.get(Number(item.promotion_id)).title)}</small>` : ''}
-                ${item.line_id || item.second_line_id ? `<small>${[item.line_id, item.second_line_id].filter(Boolean).length} ан.</small>` : ''}</button>`).join('')}</div>`;
+                ${item.promotion_id ? `<small class="timeline-afisha-promotion-name">${item.promotion_active === false ? 'Архівована акція' : 'Акція'}: ${M.esc(item.promotion_title || promotions.get(Number(item.promotion_id))?.title || `#${item.promotion_id}`)}</small>` : ''}
+                ${item.line_id || item.second_line_id ? `<small>${[item.line_id, item.second_line_id].filter(Boolean).length} ан.</small>` : ''}</button>`).join('')}</div>` : '<div id="timelineAfishaSummaryList" hidden></div>'}`;
         panel.appendChild(section);
+        section.querySelector('[data-toggle-afisha]')?.addEventListener('click', () => {
+            afishaOpen = !afishaOpen; afishaExpanded = false; renderAfishaSection();
+            panel.querySelector('[data-toggle-afisha]')?.focus();
+        });
+        section.querySelector('[data-more-afisha]')?.addEventListener('click', () => { afishaExpanded = true; renderAfishaSection(); panel.querySelector('[data-less-afisha]')?.focus(); });
+        section.querySelector('[data-less-afisha]')?.addEventListener('click', () => { afishaExpanded = false; renderAfishaSection(); panel.querySelector('[data-more-afisha]')?.focus(); });
         section.querySelector('[data-add-afisha]')?.addEventListener('click', e => window.TimelineAfisha?.quickCreate(view.dates, e.currentTarget));
         section.querySelectorAll('[data-afisha-id]').forEach(button => button.addEventListener('click', () => {
             const item = events.find(event => Number(event.id) === Number(button.dataset.afishaId));
@@ -80,8 +96,15 @@
             <label>Колір<select name="color_key" ${readOnly ? 'disabled' : ''}>${Object.entries(colors).map(([key, label]) => `<option value="${key}" ${value.color_key === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
             <div role="alert" data-error></div>
             ${readOnly ? '' : `<div class="timeline-marketing-actions"><button type="button" class="btn-secondary" data-week>Увесь тиждень</button><button type="submit" class="btn-primary">Зберегти</button>${item ? '<button type="button" class="btn-secondary" data-archive>Архівувати</button>' : ''}</div>`}
+            ${item && showAfisha() && M.writable('edit_booking') ? '<button type="button" class="btn-secondary" data-add-linked-from-dialog>Додати захід до акції</button>' : ''}
         </form>`, trigger);
         const form = modal.querySelector('form');
+        modal.querySelector('[data-add-linked-from-dialog]')?.addEventListener('click', () => {
+            const dates = view?.dates || [];
+            const date = dates.find(value => value >= item.starts_on && value <= item.ends_on);
+            closeModal(modal);
+            if (date) window.TimelineAfisha?.quickCreate(dates, trigger, { date, promotionId: item.id });
+        });
         modal.querySelector('[data-week]')?.addEventListener('click', () => {
             if (!form.elements.starts_on.value) return;
             const week = M.weekOf(form.elements.starts_on.value);
@@ -172,13 +195,17 @@
     function render(items) {
         const { dates } = view;
         const writable = canWrite();
-        const visibleItems = expanded ? items : items.slice(0, 2);
-        const moreCount = items.length - visibleItems.length;
+        const visibleItems = promotionsOpen ? (expanded ? items : items.slice(0, 2)) : [];
+        const moreCount = promotionsOpen ? items.length - visibleItems.length : 0;
         panel.dataset.visibleFrom = dates[0];
         panel.dataset.visibleTo = dates[dates.length - 1];
-        panel.innerHTML = `<div class="timeline-promotions-toolbar"><strong>Акції</strong><span class="timeline-promotions-status" aria-live="polite">${items.length ? `${items.length} у видимому періоді` : 'Немає акцій'}</span>${moreCount > 0 ? `<button type="button" class="btn-secondary" data-more aria-expanded="false">Ще ${moreCount}</button>` : ''}${expanded && items.length > 2 ? '<button type="button" class="btn-secondary" data-less aria-expanded="true">Згорнути</button>' : ''}${writable ? '<button type="button" class="btn-secondary" data-add>Додати акцію</button>' : ''}${writable && dates.length > 1 ? '<button type="button" class="btn-secondary" data-select aria-pressed="false">Виділити дати</button>' : ''}</div>
-            <div class="timeline-promotion-scroll">${dates.length > 1 ? `<div class="timeline-promotion-dates" style="--promotion-days:${dates.length}">${dates.map((date, index) => `<button type="button" class="timeline-promotion-date" data-date-index="${index}" aria-label="${date}">${date.slice(8)}.${date.slice(5, 7)}</button>`).join('')}</div>` : ''}
-            <div class="timeline-promotion-bands"></div></div>`;
+        panel.innerHTML = `<div class="timeline-promotions-toolbar"><strong>Акції</strong><span class="timeline-promotions-status" aria-live="polite">${items.length ? `${items.length} у видимому періоді` : 'Немає акцій'}</span><button type="button" class="btn-secondary timeline-marketing-toggle" data-toggle-promotions aria-expanded="${promotionsOpen}" aria-controls="timelinePromotionDetails">${promotionsOpen ? 'Згорнути' : 'Розгорнути'}</button>${moreCount > 0 ? `<button type="button" class="btn-secondary" data-more aria-expanded="false">Ще ${moreCount}</button>` : ''}${promotionsOpen && expanded && items.length > 2 ? '<button type="button" class="btn-secondary" data-less aria-expanded="true">Показати менше</button>' : ''}${writable ? '<button type="button" class="btn-secondary" data-add>Додати акцію</button>' : ''}${writable && promotionsOpen && dates.length > 1 ? '<button type="button" class="btn-secondary" data-select aria-pressed="false">Виділити дати</button>' : ''}</div>
+            ${promotionsOpen ? `<div class="timeline-promotion-scroll" id="timelinePromotionDetails">${dates.length > 1 ? `<div class="timeline-promotion-dates" style="--promotion-days:${dates.length}">${dates.map((date, index) => `<button type="button" class="timeline-promotion-date" data-date-index="${index}" aria-label="${date}">${date.slice(8)}.${date.slice(5, 7)}</button>`).join('')}</div>` : ''}
+            <div class="timeline-promotion-bands"></div></div>` : '<div id="timelinePromotionDetails" hidden></div>'}`;
+        panel.querySelector('[data-toggle-promotions]')?.addEventListener('click', () => {
+            promotionsOpen = !promotionsOpen; expanded = false; selecting = false; keyStart = null;
+            render(items); panel.querySelector('[data-toggle-promotions]')?.focus();
+        });
         panel.querySelector('[data-add]')?.addEventListener('click', e => edit(null, dates[0], dates[dates.length - 1], e.currentTarget));
         panel.querySelector('[data-more]')?.addEventListener('click', () => { expanded = true; render(items); panel.querySelector('[data-less]')?.focus(); });
         panel.querySelector('[data-less]')?.addEventListener('click', () => { expanded = false; render(items); panel.querySelector('[data-more]')?.focus(); });
@@ -229,12 +256,17 @@
                 ${writable && dates.length > 1 && item.starts_on >= dates[0] ? '<button type="button" class="promotion-handle" data-edge="start" aria-label="Змінити початок акції">⋮</button>' : ''}
                 <button type="button" class="promotion-label" aria-label="${M.esc(`${item.title}, ${item.starts_on}–${item.ends_on}, весь день`)}"><strong>${M.esc(item.title)}</strong><span>${M.esc(item.starts_on)}–${M.esc(item.ends_on)}</span><em>Весь день</em></button>
                 ${linked.length ? `<span class="promotion-afisha-links">${linked.map(event => `<button type="button" data-linked-afisha="${Number(event.id)}">⚑ ${M.esc(event.title)}</button>`).join('')}</span>` : ''}
+                ${showAfisha() && M.writable('edit_booking') ? '<button type="button" class="promotion-add-afisha" data-add-linked-afisha aria-label="Додати захід до акції">+ Захід</button>' : ''}
                 ${writable && dates.length > 1 && item.ends_on <= dates[dates.length - 1] ? '<button type="button" class="promotion-handle" data-edge="end" aria-label="Змінити кінець акції">⋮</button>' : ''}</div>`;
             panel.querySelector('.timeline-promotion-bands').appendChild(row);
             row.querySelectorAll('[data-linked-afisha]').forEach(button => button.addEventListener('click', () => {
                 const event = linked.find(value => Number(value.id) === Number(button.dataset.linkedAfisha));
                 if (event) window.TimelineAfisha?.details(event, button);
             }));
+            row.querySelector('[data-add-linked-afisha]')?.addEventListener('click', e => {
+                const date = dates.find(value => value >= item.starts_on && value <= item.ends_on);
+                window.TimelineAfisha?.quickCreate(dates, e.currentTarget, { date, promotionId: item.id });
+            });
             const label = row.querySelector('.promotion-label');
             let suppress = false;
             label.addEventListener('click', () => { if (!suppress) edit(item, item.starts_on, item.ends_on, label); suppress = false; });

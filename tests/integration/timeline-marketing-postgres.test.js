@@ -271,6 +271,19 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
             assert.ok(!distributed.body.distribution.some(item => item.eventId === linkedAfishaId));
         });
         await t.test('approved greeting conversion checks identity, records exact IDs and is idempotent', async () => {
+            const sql = require('node:fs').readFileSync(require('node:path').join(__dirname,
+                '../../db/migrations/386_park_birthday_greeting_type.sql'), 'utf8');
+            await assert.rejects(pool.query(sql), /approved inventory/);
+            const emptyClient = await pool.connect();
+            try {
+                await emptyClient.query('BEGIN');
+                await emptyClient.query('DELETE FROM afisha');
+                await emptyClient.query(sql);
+                assert.equal((await emptyClient.query("SELECT count(*)::int AS n FROM history WHERE action='afisha_greeting_type_386'")).rows[0].n, 0);
+            } finally {
+                await emptyClient.query('ROLLBACK');
+                emptyClient.release();
+            }
             await pool.query(`INSERT INTO afisha_templates (id, title, time, duration, type, recurrence_pattern, is_active)
                 VALUES (6, 'Іменинники', '14:00', 15, 'event', 'daily', true),
                        (7, 'Іменинники', '18:00', 15, 'event', 'daily', true)`);
@@ -278,8 +291,6 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
                 VALUES ('2026-10-22', '14:00', '14:00', 'Іменинники', 15, 'event', 6),
                        ('2027-01-18', '14:00', '14:00', 'Іменинники', 15, 'event', 6),
                        ('2027-01-18', '18:00', '18:00', 'Іменинники', 15, 'event', 7)`);
-            const sql = require('node:fs').readFileSync(require('node:path').join(__dirname,
-                '../../db/migrations/386_park_birthday_greeting_type.sql'), 'utf8');
             await pool.query("UPDATE afisha_templates SET duration = 30 WHERE id = 6");
             await assert.rejects(pool.query(sql), /approved inventory/);
             await pool.query("UPDATE afisha_templates SET duration = 15 WHERE id = 6");

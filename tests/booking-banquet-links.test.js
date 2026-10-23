@@ -853,7 +853,7 @@ function makeDb(rows, links = [], options = {}) {
             );
             return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
-        if (/SELECT id, time, duration, title FROM afisha/i.test(sql)) {
+        if (/SELECT id, date, time, original_time, duration, title, type, line_id, second_line_id FROM afisha/i.test(sql)) {
             return { rows: [], rowCount: 0 };
         }
         if (/SELECT bgb\.booking_id, bgb\.role, b\.\*\s+FROM banquet_group_bookings bgb\s+JOIN bookings b ON b\.id = bgb\.booking_id/i.test(sql)) {

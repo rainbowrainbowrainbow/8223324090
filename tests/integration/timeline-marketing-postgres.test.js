@@ -10,6 +10,75 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
     const fixture = await createFixture();
     const { pool, request } = fixture;
     try {
+        await t.test('birthday slots follow Afisha events, retain manual time and reject stale updates', async () => {
+            const created = await request('POST', '/api/afisha', {
+                date: '2026-10-22', time: '14:00', title: 'Іменинники', type: 'birthday', duration: 90
+            });
+            assert.equal(created.status, 200, JSON.stringify(created.body));
+            const birthdayId = created.body.item.id;
+            const byDate = () => request('GET', '/api/afisha/2026-10-22');
+            let birthday = (await byDate()).body.find(item => item.id === birthdayId);
+            assert.deepEqual(birthday.birthday_slots.map(slot => slot.time), ['14:00', '18:00']);
+            const event = await request('POST', '/api/afisha/timeline', {
+                date: '2026-10-22', time: '14:00', duration: 90, title: 'Сцена', type: 'event',
+                description: '', promotionId: null, lineIds: []
+            });
+            assert.equal(event.status, 201, JSON.stringify(event.body));
+            birthday = (await byDate()).body.find(item => item.id === birthdayId);
+            assert.equal(birthday.birthday_slots[0].time, '15:30');
+            const manual = await request('PATCH', `/api/afisha/${birthdayId}/birthday-slots/first`, {
+                mode: 'manual', time: '15:45', expectedMode: 'auto', expectedTime: '15:30'
+            });
+            assert.equal(manual.status, 200, JSON.stringify(manual.body));
+            assert.deepEqual(manual.body.slots.map(slot => [slot.time, slot.mode]),
+                [['15:45', 'manual'], ['18:00', 'auto']]);
+            const stale = await request('PATCH', `/api/afisha/${birthdayId}/birthday-slots/first`, {
+                mode: 'manual', time: '16:00', expectedMode: 'auto', expectedTime: '15:30'
+            });
+            assert.equal(stale.status, 409);
+            assert.equal((await pool.query('SELECT mode, time FROM afisha_birthday_slots WHERE afisha_id=$1 AND slot_key=$2',
+                [birthdayId, 'first'])).rows[0].time, '15:45');
+            const occupied = await request('POST', '/api/afisha/timeline', {
+                date: '2026-10-22', time: '15:45', duration: 15, title: 'Новий захід', type: 'event',
+                description: '', promotionId: null, lineIds: []
+            });
+            assert.equal(occupied.status, 201);
+            birthday = (await byDate()).body.find(item => item.id === birthdayId);
+            assert.equal(birthday.birthday_slots[0].time, '15:45');
+            assert.equal(birthday.birthday_slots[0].conflict, true);
+            const reset = await request('PATCH', `/api/afisha/${birthdayId}/birthday-slots/first`, {
+                mode: 'auto', expectedMode: 'manual', expectedTime: '15:45'
+            });
+            assert.equal(reset.status, 200, JSON.stringify(reset.body));
+            assert.equal(reset.body.slots[0].mode, 'auto');
+            assert.equal(reset.body.slots[0].time, '15:30');
+        });
+        await t.test('two ordinary recurring-style Іменинники records show independent auto and manual times', async () => {
+            const greeting = async time => request('POST', '/api/afisha/timeline', {
+                date: '2026-10-23', time, duration: 15, title: 'Іменинники', type: 'greeting',
+                description: '', promotionId: null, lineIds: []
+            });
+            const first = await greeting('14:00');
+            const second = await greeting('18:00');
+            assert.equal(first.status, 201, JSON.stringify(first.body));
+            assert.equal(second.status, 201, JSON.stringify(second.body));
+            const blocker = await request('POST', '/api/afisha/timeline', {
+                date: '2026-10-23', time: '14:00', duration: 90, title: 'Шоу', type: 'event',
+                description: '', promotionId: null, lineIds: []
+            });
+            assert.equal(blocker.status, 201, JSON.stringify(blocker.body));
+            const read = async () => (await request('GET', '/api/afisha/2026-10-23')).body;
+            let listed = await read();
+            assert.deepEqual([first.body.item.id, second.body.item.id].map(id =>
+                listed.find(row => row.id === id).birthday_slots[0].time), ['15:30', '18:00']);
+            const manual = await request('PATCH', `/api/afisha/${first.body.item.id}/birthday-slots/single`, {
+                mode: 'manual', time: '13:30', expectedMode: 'auto', expectedTime: '15:30'
+            });
+            assert.equal(manual.status, 200, JSON.stringify(manual.body));
+            listed = await read();
+            assert.equal(listed.find(row => row.id === first.body.item.id).birthday_slots[0].mode, 'manual');
+            assert.equal(listed.find(row => row.id === second.body.item.id).birthday_slots[0].mode, 'auto');
+        });
         const input = { date: '2026-10-20', time: '14:00', expectedDate: '2026-10-19', expectedTime: '14:00' };
         await t.test('one concurrent schedule update wins and retains unrelated fields', async () => {
             const results = await Promise.all([request('PATCH', '/api/afisha/1/schedule', input), request('PATCH', '/api/afisha/1/schedule', { ...input, date: '2026-10-21' })]);
@@ -200,6 +269,39 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
             const row = (await pool.query('SELECT line_id, second_line_id, time FROM afisha WHERE id=$1', [linkedAfishaId])).rows[0];
             assert.deepEqual(row, { line_id: '1', second_line_id: '2', time: '15:00' });
             assert.ok(!distributed.body.distribution.some(item => item.eventId === linkedAfishaId));
+        });
+        await t.test('approved greeting conversion checks identity, records exact IDs and is idempotent', async () => {
+            const sql = require('node:fs').readFileSync(require('node:path').join(__dirname,
+                '../../db/migrations/386_park_birthday_greeting_type.sql'), 'utf8');
+            await assert.rejects(pool.query(sql), /approved inventory/);
+            const emptyClient = await pool.connect();
+            try {
+                await emptyClient.query('BEGIN');
+                await emptyClient.query('DELETE FROM afisha');
+                await emptyClient.query(sql);
+                assert.equal((await emptyClient.query("SELECT count(*)::int AS n FROM history WHERE action='afisha_greeting_type_386'")).rows[0].n, 0);
+            } finally {
+                await emptyClient.query('ROLLBACK');
+                emptyClient.release();
+            }
+            await pool.query(`INSERT INTO afisha_templates (id, title, time, duration, type, recurrence_pattern, is_active)
+                VALUES (6, 'Іменинники', '14:00', 15, 'event', 'daily', true),
+                       (7, 'Іменинники', '18:00', 15, 'event', 'daily', true)`);
+            await pool.query(`INSERT INTO afisha (date, time, original_time, title, duration, type, template_id)
+                VALUES ('2026-10-22', '14:00', '14:00', 'Іменинники', 15, 'event', 6),
+                       ('2027-01-18', '14:00', '14:00', 'Іменинники', 15, 'event', 6),
+                       ('2027-01-18', '18:00', '18:00', 'Іменинники', 15, 'event', 7)`);
+            await pool.query("UPDATE afisha_templates SET duration = 30 WHERE id = 6");
+            await assert.rejects(pool.query(sql), /approved inventory/);
+            await pool.query("UPDATE afisha_templates SET duration = 15 WHERE id = 6");
+            await pool.query(sql);
+            assert.deepEqual((await pool.query('SELECT id, type FROM afisha_templates WHERE id IN (6,7) ORDER BY id')).rows,
+                [{ id: 6, type: 'greeting' }, { id: 7, type: 'greeting' }]);
+            assert.deepEqual((await pool.query('SELECT date, type FROM afisha WHERE template_id = 6 ORDER BY date')).rows,
+                [{ date: '2026-10-22', type: 'event' }, { date: '2027-01-18', type: 'greeting' }]);
+            assert.equal((await pool.query("SELECT count(*)::int AS n FROM history WHERE action='afisha_greeting_type_386'")).rows[0].n, 4);
+            await pool.query(sql);
+            assert.equal((await pool.query("SELECT count(*)::int AS n FROM history WHERE action='afisha_greeting_type_386'")).rows[0].n, 4);
         });
     } finally { await fixture.close(); }
 });

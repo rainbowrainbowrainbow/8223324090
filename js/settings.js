@@ -2612,6 +2612,7 @@ async function editAfishaItem(id) {
     if (!item) return;
 
     const isBirthday = item.type === 'birthday';
+    const hasGreetingSlot = Boolean(item.birthday_slots?.length);
     const modal = document.getElementById('afishaEditModal');
     const titleEl = document.getElementById('afishaEditTitle');
     titleEl.textContent = isBirthday ? "🎂 Редагувати іменинника" : "✏️ Редагувати подію";
@@ -2621,12 +2622,17 @@ async function editAfishaItem(id) {
     document.getElementById('afishaEditName').value = item.title;
     document.getElementById('afishaEditDate').value = item.date;
     document.getElementById('afishaEditTime').value = item.time;
+    document.getElementById('afishaEditTime').disabled = hasGreetingSlot;
+    document.getElementById('afishaEditBirthdayHint').hidden = !hasGreetingSlot;
+    document.getElementById('afishaEditBirthdayHint').textContent = isBirthday
+        ? 'Час двох вітань змінюється окремо на таймлайні.'
+        : 'Час цього вітання змінюється на таймлайні: вручну або автоматично.';
     document.getElementById('afishaEditDuration').value = item.duration || 60;
     document.getElementById('afishaEditDescription').value = item.description || '';
 
     // Hide duration for birthday
     const durGroup = document.getElementById('afishaEditDurationGroup');
-    if (durGroup) durGroup.style.display = isBirthday ? 'none' : '';
+    if (durGroup) durGroup.style.display = isBirthday || hasGreetingSlot ? 'none' : '';
 
     modal.classList.remove('hidden');
     document.getElementById('afishaEditName')?.focus();
@@ -2640,7 +2646,7 @@ async function handleAfishaEditSubmit(e) {
     const title = document.getElementById('afishaEditName')?.value.trim();
     const date = document.getElementById('afishaEditDate')?.value;
     const time = document.getElementById('afishaEditTime')?.value;
-    const duration = type === 'birthday' ? 15 : (parseInt(document.getElementById('afishaEditDuration')?.value) || 60);
+    const duration = type === 'birthday' || type === 'greeting' ? 15 : (parseInt(document.getElementById('afishaEditDuration')?.value) || 60);
     const description = document.getElementById('afishaEditDescription')?.value.trim() || '';
 
     if (!title || !date || !time) {
@@ -2683,24 +2689,27 @@ async function renderAfishaList() {
         container.innerHTML = '<p class="no-data">Немає подій. Додайте першу!</p>';
         return;
     }
-    const typeIcons = { event: '🎪', birthday: '🎂', regular: '🔄' };
+    const typeIcons = { event: '🎪', birthday: '🎂', greeting: '🎉', regular: '🔄' };
     container.innerHTML = items.map(item => {
         const icon = typeIcons[item.type] || '🎪';
-        const durationText = item.type === 'birthday' ? ' (14:00 + 18:00, 15хв)' : ` (${item.duration} хв)`;
+        const durationText = item.type === 'birthday' ? ' (по 15 хв)' : ` (${item.duration} хв)`;
         const descText = item.description ? `<span class="afisha-desc">${escapeHtml(item.description)}</span>` : '';
         return `
         <div class="afisha-item" data-id="${item.id}" data-type="${item.type || 'event'}">
             <div class="afisha-item-info">
                 <strong>${icon} ${escapeHtml(item.title)}</strong>
-                <span class="afisha-date">${escapeHtml(item.date)} ${escapeHtml(item.time)}${durationText}</span>
+                <span class="afisha-date">${escapeHtml(item.date)} ${item.birthday_slots?.length
+                    ? (item.birthday_slots || []).map(slot => `${escapeHtml(slot.time)} · ${slot.mode === 'manual' ? 'Вручну' : 'Авто'}`).join(' / ') || '14:00 / 18:00'
+                    : escapeHtml(item.time)}${durationText}</span>
                 ${descText}
             </div>
             <div class="afisha-item-actions">
                 <button class="btn-shift btn-sm" onclick="generateTasksForAfisha(${item.id})" title="Створити задачі">📝</button>
+                ${item.birthday_slots?.length ? `<a class="btn-shift btn-sm" href="/?timelineView=animators&amp;date=${encodeURIComponent(item.date)}" title="Змінити час вітань на таймлайні">Таймлайн</a>` : `
                 <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, -60)" title="−1 год">⏪</button>
                 <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, -15)" title="−15 хв">◀</button>
                 <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, +15)" title="+15 хв">▶</button>
-                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, +60)" title="+1 год">⏩</button>
+                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, +60)" title="+1 год">⏩</button>`}
                 <button class="btn-edit btn-sm" onclick="editAfishaItem(${item.id})" title="Редагувати">✏️</button>
                 <button class="btn-danger btn-sm" onclick="deleteAfishaItem(${item.id})" title="Видалити">✕</button>
             </div>
@@ -2720,7 +2729,7 @@ async function addAfishaItem() {
     const date = dateInput.value;
     const time = timeInput.value;
     const title = titleInput.value.trim();
-    const duration = type === 'birthday' ? 15 : (parseInt(durationInput?.value) || 60);
+    const duration = type === 'birthday' || type === 'greeting' ? 15 : (parseInt(durationInput?.value) || 60);
     const descriptionInput = document.getElementById('afishaDescription');
     const description = descriptionInput?.value.trim() || '';
 
@@ -2730,7 +2739,7 @@ async function addAfishaItem() {
     }
 
     // F4: Basic time conflict check (skip for birthdays — they don't block timeline)
-    if (type !== 'birthday') {
+    if (type !== 'birthday' && type !== 'greeting') {
         const existingBookings = await getBookingsForDate(new Date(date));
         const newStart = timeToMinutes(time);
         const newEnd = newStart + duration;
@@ -2969,7 +2978,8 @@ async function renderAfishaTemplates() {
 async function addAfishaTemplate() {
     const title = document.getElementById('afishaTplTitle')?.value.trim();
     const time = document.getElementById('afishaTplTime')?.value;
-    const duration = parseInt(document.getElementById('afishaTplDuration')?.value) || 60;
+    const type = document.getElementById('afishaTplType')?.value || 'event';
+    const duration = type === 'greeting' ? 15 : (parseInt(document.getElementById('afishaTplDuration')?.value) || 60);
     const pattern = document.getElementById('afishaTplPattern')?.value || 'weekly';
     const days = document.getElementById('afishaTplDays')?.value.trim() || null;
     const description = document.getElementById('afishaTplDesc')?.value.trim() || '';
@@ -2983,7 +2993,7 @@ async function addAfishaTemplate() {
         const response = await fetch(`${API_BASE}/afisha/templates`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify({ title, time, duration, type: 'event', description, recurrence_pattern: pattern, recurrence_days: days })
+            body: JSON.stringify({ title, time, duration, type, description, recurrence_pattern: pattern, recurrence_days: days })
         });
         const data = await response.json();
         if (data.success) {

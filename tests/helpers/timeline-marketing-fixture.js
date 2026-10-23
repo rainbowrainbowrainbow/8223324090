@@ -59,6 +59,9 @@ async function createFixture() {
         const afishaMigration = fs.readFileSync(path.join(__dirname, '../../db/migrations/384_afisha_promotion_and_second_line.sql'), 'utf8');
         await pool.query(afishaMigration);
         await pool.query(afishaMigration);
+        const birthdayMigration = fs.readFileSync(path.join(__dirname, '../../db/migrations/385_afisha_birthday_slots.sql'), 'utf8');
+        await pool.query(birthdayMigration);
+        await pool.query(birthdayMigration);
         require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { pool } };
         auth = require('../../middleware/auth');
         originalAuthenticate = auth.authenticateToken;

@@ -115,7 +115,18 @@ async function run() {
         const context=await browserContext(browser,auth);
         page=await context.newPage(); page.setDefaultTimeout(30000);
         const errors=[];page.on('pageerror',error=>errors.push(error.message));
-        await openPage(page,date,next);await openCell(page,staffId,date);
+        await openPage(page,date,next);
+        const assertIsolatedVisibleScope=async({expandReception=false}={})=>{
+            assert.equal(await page.locator('#scheduleStaffSearch').inputValue(),'Synthetic pay '+stamp);
+            assert.equal(await page.locator('#deptFilter [data-dept="reception"]').getAttribute('aria-pressed'),'true');
+            const receptionToggle=page.locator('[data-schedule-group-toggle="reception"]');
+            await receptionToggle.waitFor();
+            if(expandReception&&await receptionToggle.getAttribute('aria-expanded')!=='true')await receptionToggle.click();
+            assert.equal(await receptionToggle.getAttribute('aria-expanded'),'true','synthetic staff group remains expanded in the schedule');
+            const visibleIds=await page.locator('.sch-cell[data-staff]').evaluateAll(cells=>[...new Set(cells.map(cell=>Number(cell.dataset.staff)))].sort((a,b)=>a-b));
+            assert.deepEqual(visibleIds,[staffId],'supported UI filter and search retain only the synthetic staff fixture');
+        };
+        await openCell(page,staffId,date);
         const card=()=>page.locator('#schSegmentsList .sch-segment-card').first();
         const panel=()=>card().locator('[data-day-pay-panel][data-pay-purpose="base_replacement"]');
         await card().locator('[data-segment-field="start"]').fill('10:00');
@@ -175,11 +186,89 @@ async function run() {
         const nextMonday=new Date(monday);nextMonday.setUTCDate(nextMonday.getUTCDate()+7);
         const copiedDate=new Date(date+'T12:00:00Z');copiedDate.setUTCDate(copiedDate.getUTCDate()+7);
         const copiedDay=copiedDate.toISOString().slice(0,10);
-        const copied=await request('/api/staff/schedule/copy-week',token,{fromMonday:monday.toISOString().slice(0,10),toMonday:nextMonday.toISOString().slice(0,10),staffIds:[staffId]},'POST');
-        assert.equal(copied.status,200);assert.equal(copied.body.success,true);
+        await page.locator('#todayWeekBtn').click();
+        await page.waitForFunction(()=>document.querySelector('#scheduleDataRegion')?.dataset.scheduleState==='ready');
+        await page.locator('#deptFilter [data-dept="reception"]').click();
+        await page.locator('#scheduleStaffSearch').fill('Synthetic pay '+stamp);
+        await page.waitForFunction(()=>document.querySelector('#scheduleStaffFilterInfo')?.textContent?.startsWith('Показано 1 з '));
+        await assertIsolatedVisibleScope({expandReception:true});
+        const copyButton=page.locator('#copyWeekBtn');
+        await copyButton.waitFor({state:'visible'});
+        assert.equal(await copyButton.isDisabled(),false,'weekly copy action is available on a canonical week');
+        const copyApiTrace=[];
+        const copyApiPath='/api/staff/schedule/copy-week';
+        page.on('request',request=>{
+            if(new URL(request.url()).pathname!==copyApiPath||request.method()!=='POST')return;
+            const body=request.postDataJSON()||{};
+            copyApiTrace.push({event:'request',dryRun:body.dryRun===true,rejectConflicts:body.rejectConflicts===true});
+        });
+        page.on('response',response=>{
+            if(new URL(response.url()).pathname===copyApiPath)copyApiTrace.push({event:'response',status:response.status()});
+        });
+        page.on('requestfailed',request=>{
+            if(new URL(request.url()).pathname===copyApiPath)copyApiTrace.push({event:'requestfailed'});
+        });
+        const copyPreview=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/staff/schedule/copy-week'
+            && r.request().method()==='POST' && r.request().postDataJSON()?.dryRun===true);
+        await copyButton.click();
+        const previewResponse=await copyPreview;
+        assert.equal(previewResponse.status(),200,`copy-week preview returned HTTP ${previewResponse.status()}`);
+        const previewBody=await previewResponse.json();
+        assert.equal(previewBody.success,true,`copy-week preview reported success=${previewBody.success}`);
+        assert.equal(previewBody.conflicts,0,`copy-week preview reported ${previewBody.conflicts} target conflicts`);
+        assert.ok(previewBody.count>0,'copy-week preview contains source entries');
+        assert.equal(previewBody.copyMode,'explicit_staff_ids');
+        assert.equal(previewBody.staffCount,1,'preview reports one staff member in the exact UI-selected scope');
+        const previewRequest=previewResponse.request().postDataJSON();
+        assert.equal(previewRequest.displayGroup,'reception');
+        assert.equal(previewRequest.staffIds.length,1,'copy-week uses only the staff row retained by the UI search');
+        assert.equal(Number(previewRequest.staffIds[0]),staffId);
+        const copyConfirm=page.locator('.confirm-overlay[data-confirm-kind="confirm"]');
+        await copyConfirm.waitFor({state:'visible'});
+        assert.match(await copyConfirm.innerText(),/Разова ставка не копіюється\. Для нової дати застосовуються чинні умови оплати\./);
+        assert.doesNotMatch(await copyConfirm.innerText(),/staffIds|raw department|copyMode|department:/i);
+        const copyWrite=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/staff/schedule/copy-week'
+            && r.request().method()==='POST' && r.request().postDataJSON()?.dryRun!==true);
+        let copiedResponse;
+        try {
+            [copiedResponse]=await Promise.all([copyWrite,copyConfirm.locator('.confirm-ok').click()]);
+        } catch(error) {
+            throw new Error(`${error.message}; copy API trace=${JSON.stringify(copyApiTrace)}`);
+        }
+        assert.equal(copiedResponse.status(),200,`confirmed copy-week returned HTTP ${copiedResponse.status()}`);
+        const copiedBody=await copiedResponse.json();assert.equal(copiedBody.success,true);assert.ok(copiedBody.count>0);
+        assert.equal(copiedBody.copyMode,'explicit_staff_ids');
+        assert.equal(copiedBody.staffCount,1,'write result reports one staff member in the reviewed scope');
+        const writeRequest=copiedResponse.request().postDataJSON();
+        assert.deepEqual(writeRequest.staffIds,[staffId],'confirmed copy keeps the exact reviewed UI scope');
+        assert.equal(writeRequest.rejectConflicts,true,'write rejects targets that changed after preview');
+        await page.waitForFunction(expectedStart=>{
+            const region=document.querySelector('#scheduleDataRegion');
+            return document.querySelector('#scheduleDateFrom')?.value===expectedStart
+                && region?.dataset.hasCommittedRange==='true'
+                && region?.dataset.scheduleState==='ready';
+        },writeRequest.toMonday);
+        const desktopCopyBox=await copyButton.boundingBox();
+        assert.ok(desktopCopyBox&&desktopCopyBox.width>=34&&desktopCopyBox.height>=34,'copy action keeps a usable desktop target');
+        await page.setViewportSize({width:390,height:844});
+        const mobileCopyBox=await copyButton.boundingBox();
+        assert.ok(mobileCopyBox&&mobileCopyBox.width>=34&&mobileCopyBox.height>=34,'copy action keeps a usable mobile target');
+        await page.setViewportSize({width:1440,height:1000});
         assert.equal((await db.query('SELECT id FROM payroll_day_exceptions WHERE staff_id=$1 AND work_date=$2',[staffId,copiedDay])).rows.length,0);
+        assert.ok((await db.query('SELECT id FROM hr_shifts WHERE staff_id=$1 AND shift_date=$2',[staffId,copiedDay])).rows.length>0,'copied schedule has a canonical HR shift');
         const copiedPay=(await request('/api/hr/staff/'+staffId+'/payroll-conditions?professionKey=animator&date='+copiedDay,token)).body.data;
         assert.equal(copiedPay.conditions.rate,100);assert.equal(copiedPay.conditions.exception,null);
+        const targetPlanCount=Number((await db.query('SELECT COUNT(*)::int AS count FROM hr_shifts WHERE staff_id=$1 AND shift_date=$2',[staffId,copiedDay])).rows[0].count);
+        await db.query('DELETE FROM staff_schedule WHERE staff_id=$1 AND date=$2',[staffId,copiedDay]);
+        const missingMirrorConflict=await request('/api/staff/schedule/copy-week',token,{fromMonday:monday.toISOString().slice(0,10),toMonday:nextMonday.toISOString().slice(0,10),staffIds:[staffId],rejectConflicts:true},'POST');
+        assert.equal(missingMirrorConflict.status,409);assert.equal(missingMirrorConflict.body.code,'SCHEDULE_COPY_WEEK_TARGET_CONFLICT');
+        assert.equal(Number((await db.query('SELECT COUNT(*)::int AS count FROM hr_shifts WHERE staff_id=$1 AND shift_date=$2',[staffId,copiedDay])).rows[0].count),targetPlanCount,'canonical target plan is preserved when its legacy mirror is absent');
+        assert.equal((await db.query('SELECT id FROM staff_schedule WHERE staff_id=$1 AND date=$2',[staffId,copiedDay])).rows.length,0,'conflict guard does not recreate the missing mirror');
+        const returnToSource=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/staff/schedule'&&r.request().method()==='GET');
+        await page.locator('#todayWeekBtn').click();assert.equal((await returnToSource).status(),200);
+        await page.waitForFunction(()=>document.querySelector('#scheduleDataRegion')?.dataset.scheduleState==='ready');
+        await page.locator('#deptFilter [data-dept="animators"]').click();
+        await page.locator('#scheduleStaffSearch').fill('');
         await openCell(page,staffId,date);assert.match(await panel().innerText(),/260 грн/);
         // Keep a stale modal while a second authorized editor changes the same journal revision.
         const applied=(await request(`/api/hr/staff/${staffId}/payroll-conditions?professionKey=animator&date=${date}`,token)).body.data;
@@ -247,7 +336,7 @@ async function run() {
         await page.locator('[data-day-pay-slot]').first().scrollIntoViewIfNeeded();
         await page.screenshot({path:path.join(output,'restricted-mobile.png')});
         await restricted.close();assert.deepEqual(errors,[]);
-        evidence.stages.schedule={status:'PASS',dateReload:true,exceptionConflict:true,draftReturn:true,salaryRestricted:true,copyApi:true,copyButton:'NOT_VISIBLE'};
+        evidence.stages.schedule={status:'PASS',dateReload:true,exceptionConflict:true,draftReturn:true,salaryRestricted:true,copyApi:true,copyButton:'VISIBLE_AND_CONFIRMED',missingMirrorConflict:true};
         // Continue through actual HR controls and real API/database writes. No response stubs.
         const attendanceContext=await browserContext(browser,auth);
         page=await attendanceContext.newPage();page.setDefaultTimeout(30000);

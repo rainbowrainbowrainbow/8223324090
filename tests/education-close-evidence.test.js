@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { isCancelledWebkitLifecycleFetch } = require('./helpers/education-navigation-errors');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -8,6 +9,19 @@ const { spawnSync } = require('node:child_process');
 const { inventory, hash, validateAttempt, validateMatrix, requiredMatrix, parseTap } = require('./helpers/education-close-evidence');
 const { createResults, FixtureBlocked } = require('./helpers/education-ready-results');
 const contract = { suite: 'journey', requiredIds: ['child-visible-ui', 'save-visible-ui'], classification: 'ONE_CONTINUOUS_VISIBLE_UI_JOURNEY' };
+test('WebKit navigation or teardown abort requires a local fetch error and a cancelled request', () => {
+    const input = {
+        engine: 'webkit', base: 'http://127.0.0.1:45225', at: 10000,
+        error: { name: 'Fetch API cannot load http', message: '/127.0.0.1:45225/api/lines/2026-10-23 due to access control checks.' },
+        transitions: [9800], failures: [{ error: 'Load request cancelled', at: 10100 }]
+    };
+    assert.equal(isCancelledWebkitLifecycleFetch(input), true);
+    assert.equal(isCancelledWebkitLifecycleFetch({ ...input, engine: 'chromium' }), false);
+    assert.equal(isCancelledWebkitLifecycleFetch({ ...input, transitions: [] }), false);
+    assert.equal(isCancelledWebkitLifecycleFetch({ ...input, failures: [] }), false);
+    assert.equal(isCancelledWebkitLifecycleFetch({ ...input, error: { ...input.error, message: '/127.0.0.1:45225/api/lines/2026-10-23 returned 403' } }), false);
+    assert.equal(isCancelledWebkitLifecycleFetch({ ...input, error: { ...input.error, message: '/example.com/api/lines due to access control checks.' } }), false);
+});
 function fixture(t) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'education-evidence-'));
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));

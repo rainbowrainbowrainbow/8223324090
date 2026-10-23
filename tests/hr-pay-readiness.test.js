@@ -91,6 +91,7 @@ test('database reader forces and verifies read-only, selects only whitelisted ta
     assert.equal(statements.at(-1),'ROLLBACK');
     assert.ok(statements.slice(1,-1).every(sql=>sql.trim().startsWith('SELECT')));
     assert.doesNotMatch(statements.join('\n'),/SELECT \*|SELECT[^;]*\b(?:phone|address|password|created_by)\b/);
+    assert.match(statements.join('\n'),/hr_pool_status = 'reserve'/);
     assert.equal(result.exceptionsAvailable,false);assert.deepEqual(result.sourceErrors,[{source:'payroll_day_exceptions',status:'schema_missing'}]);
 });
 test('database reader fails closed and rolls back on wrong transaction or failed SELECT', async () => {

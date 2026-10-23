@@ -65,7 +65,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
                 if (window.TimelineView?.set) await window.TimelineView.set('animators', { render: false });
                 await renderTimeline();
             }, multi);
-            await page.locator('.timeline-promotions [data-add]').waitFor();
+            await page.locator('.timeline-promotions [data-toggle-marketing]').waitFor();
         }
         async function verifyFlagGeometry() {
             const overlaps = await page.evaluate(() => {
@@ -99,8 +99,13 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
             assert.deepEqual(overlaps, [], 'flags must not overlap each other or booking cards');
         }
         await display();
-        assert.equal(await page.locator('[data-toggle-promotions]').getAttribute('aria-expanded'), 'false');
-        assert.equal(await page.locator('[data-toggle-afisha]').getAttribute('aria-expanded'), 'false');
+        assert.equal(await page.locator('[data-toggle-marketing]').getAttribute('aria-expanded'), 'false');
+        assert.equal(await page.locator('.timeline-marketing-body').isHidden(), true);
+        await page.locator('[data-toggle-marketing]').focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await page.locator('[data-toggle-marketing]').getAttribute('aria-expanded'), 'true');
+        await page.keyboard.press('Enter');
+        assert.equal(await page.locator('.timeline-marketing-body').isHidden(), true);
         const pageFlow = await page.evaluate(() => {
             const shell = document.querySelector('.timeline-container');
             const scroll = document.getElementById('timelineScroll');
@@ -112,16 +117,35 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         assert.equal(pageFlow.maxHeight, 'none', 'Park timeline has no viewport height cap');
         assert.ok(pageFlow.shellHeight >= pageFlow.contentHeight, 'timeline grows with its content');
         assert.ok(pageFlow.verticalOverflow < 20, 'page owns vertical scrolling');
-        await fixture.pool.query("INSERT INTO afisha (date,time,title,duration,type,description,original_time) VALUES ('2026-10-19','14:00','Іменинники',15,'birthday','','14:00')");
+        await fixture.pool.query(`INSERT INTO afisha (date,time,title,duration,type,description,original_time,template_id)
+            VALUES ('2026-10-19','14:00','Іменинники',15,'greeting','','14:00',6),
+                   ('2026-10-19','18:00','Іменинники',15,'greeting','','18:00',7)`);
         await display();
-        assert.equal(await page.locator('.afisha-type-birthday').count(), 2, 'synthetic birthday times are preserved');
+        assert.equal(await page.locator('.afisha-line-grid .afisha-type-birthday').count(), 2,
+            'two recurring Іменинники events remain independently visible');
         await verifyFlagGeometry();
-        await page.locator('.afisha-type-birthday').first().click();
-        assert.equal(await page.locator('[data-move]').count(), 0, 'birthday cannot be moved');
+        const greetingId = (await fixture.pool.query("SELECT id FROM afisha WHERE title='Іменинники' AND time='14:00' AND date='2026-10-19'")).rows[0].id;
+        const greeting = `.afisha-line-grid .afisha-type-birthday[data-afisha-id="${greetingId}"][data-birthday-slot="single"]`;
+        assert.match(await page.locator(greeting).getAttribute('title'), /15:00–15:15 · Авто/);
+        await page.locator(greeting).click();
+        assert.equal(await page.locator('[data-birthday-form]').count(), 1, 'birthday has an independent time editor');
         await page.waitForFunction(() => !!document.activeElement.closest('.timeline-marketing-modal'));
         await page.keyboard.press('Escape');
         await page.locator('.timeline-marketing-modal').waitFor({ state: 'detached' });
         assert.equal(await page.evaluate(() => document.activeElement.classList.contains('afisha-type-birthday')), true);
+        await page.locator(greeting).click();
+        await page.locator('[data-birthday-form] input[name="time"]').fill('15:20');
+        await page.getByRole('button', { name: 'Зберегти вручну' }).click();
+        await page.locator('.timeline-marketing-modal').waitFor({ state: 'detached' });
+        assert.deepEqual((await fixture.pool.query('SELECT time, mode FROM afisha_birthday_slots WHERE afisha_id=$1 AND slot_key=$2',
+            [greetingId, 'single'])).rows[0], { time: '15:20', mode: 'manual' });
+        assert.equal(await page.locator('.afisha-line-grid .afisha-type-birthday[data-birthday-slot="single"]:not([data-afisha-id="' + greetingId + '"])').getAttribute('title'),
+            '18:00–18:15 · Авто');
+        await page.locator(greeting).click();
+        await page.getByRole('button', { name: 'Повернути автоматичний розклад' }).click();
+        await page.locator('.timeline-marketing-modal').waitFor({ state: 'detached' });
+        assert.equal((await fixture.pool.query('SELECT mode FROM afisha_birthday_slots WHERE afisha_id=$1 AND slot_key=$2',
+            [greetingId, 'single'])).rows[0].mode, 'auto');
         const afishaFlag = '.afisha-line-grid .afisha-flag[data-afisha-id="1"]';
         await page.locator(afishaFlag).waitFor();
         assert.equal(await page.locator(afishaFlag).count(), 1);
@@ -144,19 +168,19 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         assert.equal(await page.locator('.timeline-marketing-modal').count(), 0, 'drag must not open details');
         assert.notEqual((await fixture.pool.query('SELECT time FROM afisha WHERE id=1')).rows[0].time, '14:15',
             JSON.stringify(dragResponse.request().postDataJSON()));
+        await page.locator('[data-toggle-marketing]').click();
         await page.locator('[data-add]').click();
         await page.locator('input[name="title"]').fill('Осінні канікули <тест>');
         await page.locator('textarea[name="description"]').fill('Інформаційна акція — ціни не змінюються');
         await page.locator('[data-week]').click();
         await page.locator('.timeline-marketing-modal button[type="submit"]').click();
-        await page.locator('[data-toggle-promotions]').click();
         await page.locator('.promotion-label').waitFor();
         assert.equal((await fixture.pool.query('SELECT ends_on::text FROM timeline_promotions')).rows[0].ends_on, '2026-10-25');
         assert.ok(await page.locator('.line-grid[data-promotion-color="amber"]').count());
         await verifyFlagGeometry();
         await page.screenshot({ path: path.join(output, 'timeline-marketing-day.png'), fullPage: true });
         await display(true);
-        await page.locator('[data-toggle-promotions]').click();
+        await page.locator('[data-toggle-marketing]').click();
         await verifyFlagGeometry();
         assert.equal(await page.locator('.day-section').count(), 7);
         const weekAfishaFlag = '.mini-line-grid[data-line-id="afisha"] .afisha-flag[data-afisha-id="1"]';
@@ -209,7 +233,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => window.AppState && window.__crmBusinessNavigationPending !== true && !document.getElementById('mainApp').classList.contains('hidden'));
         await display(true);
-        await page.locator('[data-toggle-promotions]').click();
+        await page.locator('[data-toggle-marketing]').click();
         assert.equal(await page.locator('.promotion-label').count(), 2, 'server persistence survives reload');
         await page.setViewportSize({ width: 390, height: 844 });
         await page.locator('.promotion-label').first().click();

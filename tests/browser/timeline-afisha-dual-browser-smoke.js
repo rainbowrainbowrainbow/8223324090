@@ -68,6 +68,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
             if (window.TimelineView?.set) await window.TimelineView.set('animators', { render: false });
             await renderTimeline();
         });
+        await page.locator('[data-toggle-marketing]').click();
         await page.locator('.timeline-afisha-summary-event').waitFor();
         assert.equal(await page.locator('.line-grid[data-line-id="afisha"] .afisha-flag[data-afisha-id="1"]').count(), 1);
         assert.equal(await page.locator('.line-grid[data-line-id="1"] .afisha-flag[data-afisha-id="1"]').count(), 1);
@@ -82,6 +83,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
         await page.locator('.line-grid[data-line-id="afisha"] .afisha-flag[data-afisha-id="2"]').waitFor();
         assert.equal(await page.locator('.line-grid[data-line-id="1"] .afisha-flag[data-afisha-id="2"]').count(), 1);
         assert.equal(await page.locator('.line-grid[data-line-id="2"] .afisha-flag[data-afisha-id="2"]').count(), 1);
+        await page.locator('[data-toggle-marketing]').click();
         const output = path.join(__dirname, '../../output/playwright');
         fs.mkdirSync(output, { recursive: true });
         await page.screenshot({ path: path.join(output, 'timeline-afisha-dual-desktop.png') });

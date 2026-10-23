@@ -1519,6 +1519,7 @@ router.post('/schedule/copy-week', requireAction('hr.schedule.manage'), async (r
         const department = requestedDepartment === 'all' ? '' : requestedDepartment;
         const displayGroup = String(req.body.displayGroup || req.body.display_group || department || 'all').trim();
         const dryRun = req.body.dryRun === true || req.body.dry_run === true;
+        const rejectConflicts = req.body.rejectConflicts === true || req.body.reject_conflicts === true;
         const staffIds = normalizeCopyWeekStaffIds(req.body.staffIds || req.body.staff_ids);
         if (!fromMonday || !toMonday) {
             return res.status(400).json({ success: false, error: 'Потрібні fromMonday та toMonday' });
@@ -1579,9 +1580,15 @@ router.post('/schedule/copy-week', requireAction('hr.schedule.manage'), async (r
         if (sourceStaffIds.length) {
             const conflictResult = await pool.query(
                 `SELECT COUNT(*)::int AS count
-                 FROM staff_schedule
-                 WHERE date >= $1 AND date <= $2
-                   AND staff_id = ANY($3::int[])`,
+                 FROM (
+                    SELECT staff_id, date::text AS target_date
+                    FROM staff_schedule
+                    WHERE date >= $1::text AND date <= $2::text AND staff_id = ANY($3::int[])
+                    UNION
+                    SELECT staff_id, shift_date::text AS target_date
+                    FROM hr_shifts
+                    WHERE shift_date >= $1::date AND shift_date <= $2::date AND staff_id = ANY($3::int[])
+                 ) occupied_targets`,
                 [toDates[0], toDates[6], sourceStaffIds]
             );
             conflicts = Number(conflictResult.rows[0]?.count || 0);
@@ -1628,12 +1635,26 @@ router.post('/schedule/copy-week', requireAction('hr.schedule.manage'), async (r
             if (sourceStaffIds.length) {
                 const conflictResult = await client.query(
                     `SELECT COUNT(*)::int AS count
-                     FROM staff_schedule
-                     WHERE date >= $1 AND date <= $2
-                       AND staff_id = ANY($3::int[])`,
+                     FROM (
+                        SELECT staff_id, date::text AS target_date
+                        FROM staff_schedule
+                        WHERE date >= $1::text AND date <= $2::text AND staff_id = ANY($3::int[])
+                        UNION
+                        SELECT staff_id, shift_date::text AS target_date
+                        FROM hr_shifts
+                        WHERE shift_date >= $1::date AND shift_date <= $2::date AND staff_id = ANY($3::int[])
+                     ) occupied_targets`,
                     [toDates[0], toDates[6], sourceStaffIds]
                 );
                 conflicts = Number(conflictResult.rows[0]?.count || 0);
+            }
+            if (rejectConflicts && conflicts > 0) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    code: 'SCHEDULE_COPY_WEEK_TARGET_CONFLICT',
+                    error: 'Цільовий тиждень уже містить записи. Копіювання не виконано; очистіть потрібні дати окремо або виберіть інший вихідний тиждень.'
+                });
             }
             const sourcePlans = await loadHrShiftDayPlansForStaffDates(client, freshSourceRows);
             const paidRoleValidationContext = [...sourcePlans.values()]

@@ -2708,8 +2708,9 @@ function scheduleCopyWeekVisibleStaffIds() {
 }
 
 function scheduleCopyWeekPayload(fromMonday, toMonday, options = {}) {
-    const department = StaffState.activeDept || 'all';
-    const mode = scheduleCopyWeekModeForDepartment(department);
+    const scope = options.scope || {};
+    const department = scope.department || StaffState.activeDept || 'all';
+    const mode = scope.mode || scheduleCopyWeekModeForDepartment(department);
     const body = {
         fromMonday,
         toMonday,
@@ -2719,7 +2720,7 @@ function scheduleCopyWeekPayload(fromMonday, toMonday, options = {}) {
     if (mode === 'raw_department') {
         body.department = department;
     } else if (mode === 'explicit_staff_ids') {
-        body.staffIds = scheduleCopyWeekVisibleStaffIds();
+        body.staffIds = Array.isArray(scope.staffIds) ? [...scope.staffIds] : scheduleCopyWeekVisibleStaffIds();
         if (!body.staffIds.length) {
             return {
                 error: 'Немає видимих працівників для копіювання цієї категорії.',
@@ -2728,6 +2729,7 @@ function scheduleCopyWeekPayload(fromMonday, toMonday, options = {}) {
             };
         }
     }
+    if (options.rejectConflicts) body.rejectConflicts = true;
     return { body, mode };
 }
 
@@ -3138,7 +3140,7 @@ function syncScheduleRangeActionAvailability() {
     ['fillWeekBtn', 'copyWeekBtn'].forEach(id => {
         const button = document.getElementById(id);
         if (!button) return;
-        const enabled = ready && StaffState.canManageSchedule;
+        const enabled = ready && StaffState.canManageSchedule && !(id === 'copyWeekBtn' && staffCopyWeekPending);
         button.disabled = !enabled;
         button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
     });
@@ -3271,13 +3273,13 @@ function syncScheduleBulkActionLabels() {
     const copyBtn = document.getElementById('copyWeekBtn');
     if (copyBtn) {
         const allowed = canCopyWeekInCurrentRange();
-        copyBtn.textContent = 'Копія тижня';
+        copyBtn.textContent = 'Копіювати тиждень';
         copyBtn.classList.toggle('is-disabled', !allowed);
         copyBtn.dataset.scheduleCopyUnavailable = allowed ? 'false' : 'true';
-        copyBtn.setAttribute('aria-label', allowed ? 'Копія тижня' : `Копія тижня недоступна для періоду ${rangeLabel}. Натисніть, щоб побачити пояснення.`);
+        copyBtn.setAttribute('aria-label', allowed ? 'Копіювати тиждень' : `Копіювання тижня недоступне для періоду ${rangeLabel}. Натисніть, щоб побачити пояснення.`);
         copyBtn.title = allowed
             ? 'Копіює тільки канонічний 7-денний тиждень у наступний тиждень'
-            : `Копія тижня вимкнена для довільного періоду ${rangeLabel}, щоб не копіювати 15-31 день випадково`;
+            : `Копіювання вимкнене для довільного періоду ${rangeLabel}, щоб не копіювати 15-31 день випадково`;
     }
 }
 
@@ -7626,7 +7628,10 @@ async function handleFillWeekSave() {
 // COPY WEEK
 // ==========================================
 
+let staffCopyWeekPending = false;
+
 async function handleCopyWeek() {
+    if (staffCopyWeekPending) return;
     if (!scheduleRangeDataReady()) {
         showNotification('Копіювання доступне після успішного завантаження періоду', 'error');
         return;
@@ -7634,7 +7639,7 @@ async function handleCopyWeek() {
     if (!canCopyWeekInCurrentRange()) {
         const rangeLabel = scheduleCurrentRangeLabel();
         const message = [
-            `Копія тижня недоступна для довільного періоду ${rangeLabel}.`,
+            `Копіювання тижня недоступне для довільного періоду ${rangeLabel}.`,
             '',
             'Ця дія копіює тільки канонічний 7-денний тижневий шаблон у наступний тиждень.',
             'Щоб уникнути випадкового копіювання 15-31 днів, спочатку поверніться до режиму "Сьогодні".'
@@ -7657,37 +7662,58 @@ async function handleCopyWeek() {
     const deptLabel = StaffState.activeDept === 'all'
         ? 'всіх відділів'
         : scheduleDisplayDepartmentLabel(StaffState.activeDept);
-    const copyMode = scheduleCopyWeekModeForDepartment(StaffState.activeDept);
+    const scope = {
+        department: StaffState.activeDept || 'all',
+        mode: scheduleCopyWeekModeForDepartment(StaffState.activeDept || 'all'),
+        staffIds: scheduleCopyWeekVisibleStaffIds()
+    };
 
-    const preview = await copyWeekSchedule(fromMonday, toMonday, { dryRun: true });
-    if (!preview.success) {
-        showNotification(scheduleableStaffErrorMessage(preview, 'Не вдалося підготувати preview копіювання тижня'), 'error');
-        return;
+    staffCopyWeekPending = true;
+    const copyBtn = document.getElementById('copyWeekBtn');
+    if (copyBtn) {
+        copyBtn.disabled = true;
+        copyBtn.setAttribute('aria-disabled', 'true');
     }
+    try {
+        const preview = await copyWeekSchedule(fromMonday, toMonday, { dryRun: true, scope });
+        if (!preview.success) {
+            showNotification(scheduleableStaffErrorMessage(preview, 'Не вдалося підготувати копіювання тижня'), 'error');
+            return;
+        }
+        if (preview.conflicts > 0) {
+            showNotification(`У цільовому тижні вже є ${preview.conflicts} записів. Їх не змінено; оберіть інший тиждень.`, 'error');
+            return;
+        }
 
-    const previewLines = [
-        `Скопіювати графік ${deptLabel} з тижня ${fromMonday} на тиждень ${toMonday}?`,
-        '',
-        `Діапазон копіювання: ${fromMonday} - ${sourceEnd} -> ${toMonday} - ${targetEnd}`,
-        'Довільний visible range не копіюється цією дією.',
-        'Разова ставка не копіюється. Для нової дати застосовано її чинні умови.',
-        '',
-        `Режим: ${copyMode === 'explicit_staff_ids' ? 'visible staffIds[]' : (copyMode === 'raw_department' ? 'raw department' : 'all staff')}`,
-        `Працівників: ${preview.staffCount || 0}`,
-        `Змін буде створено/оновлено: ${preview.count || 0}`,
-        `Конфліктів із цільовим тижнем: ${preview.conflicts || 0}`,
-        '',
-        'Існуючі записи в цільовому тижні будуть перезаписані після підтвердження.'
-    ];
-    if (!await confirmModal(previewLines.join('\n'), { type: 'warning', okText: 'Копіювати' })) return;
+        const previewLines = [
+            `Скопіювати графік для ${deptLabel} з тижня ${fromMonday} на тиждень ${toMonday}?`,
+            '',
+            `Діапазон: ${fromMonday} - ${sourceEnd} → ${toMonday} - ${targetEnd}`,
+            `Працівників: ${preview.staffCount || 0}`,
+            `Записів для копіювання: ${preview.count || 0}`,
+            '',
+            'Разова ставка не копіюється. Для нової дати застосовуються чинні умови оплати.',
+            'У цільовому тижні не має бути записів. Якщо вони з’являться до підтвердження, копіювання буде зупинено.'
+        ];
+        if (!await confirmModal(previewLines.join('\n'), { type: 'warning', okText: 'Копіювати тиждень' })) return;
 
-    const result = await copyWeekSchedule(fromMonday, toMonday);
-    if (result.success) {
-        showNotification(`Скопійовано ${result.count} записів на наступний тиждень`);
-        // Jump to the target week to see the result
-        await goToWeek(nextMon);
-    } else {
-        showNotification(scheduleableStaffErrorMessage(result, 'Помилка копіювання'), 'error');
+        const result = await copyWeekSchedule(fromMonday, toMonday, { scope, rejectConflicts: true });
+        if (result.success) {
+            showNotification(`Скопійовано ${result.count} записів на наступний тиждень`);
+            await goToWeek(nextMon);
+        } else if (result.code === 'SCHEDULE_COPY_WEEK_TARGET_CONFLICT') {
+            showNotification('Цільовий тиждень змінився після перевірки. Копіювання зупинено; оновіть графік і повторіть дію.', 'error');
+        } else {
+            showNotification(scheduleableStaffErrorMessage(result, 'Помилка копіювання'), 'error');
+        }
+    } catch (error) {
+        showNotification('Не вдалося скопіювати тиждень. Перевірте з’єднання та повторіть спробу.', 'error');
+    } finally {
+        staffCopyWeekPending = false;
+        if (copyBtn) {
+            copyBtn.disabled = !scheduleRangeDataReady() || !StaffState.canManageSchedule;
+            copyBtn.setAttribute('aria-disabled', copyBtn.disabled ? 'true' : 'false');
+        }
     }
 }
 

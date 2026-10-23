@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.82.109",
+  "version": "0.82.114",
   "eventGenix": {
-    "releaseLabel": "Афіша: зручний таймлайн Парку"
+    "releaseLabel": "Афіша: вітання на таймлайні"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

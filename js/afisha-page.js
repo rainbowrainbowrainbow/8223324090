@@ -18,6 +18,7 @@
     const TYPE_META = {
         event: { label: 'Подія', tone: 'event', icon: '🎭' },
         birthday: { label: 'День народження', tone: 'birthday', icon: '🎂' },
+        greeting: { label: 'Вітання іменинників', tone: 'birthday', icon: '🎉' },
         regular: { label: 'Постійна', tone: 'regular', icon: '🔁' }
     };
 
@@ -140,6 +141,7 @@
             title: item.title || '',
             duration: Number(item.duration || 60),
             type: TYPE_META[item.type] ? item.type : 'event',
+            birthdaySlots: Array.isArray(item.birthday_slots) ? item.birthday_slots : [],
             description: item.description || '',
             lineIds: [item.line_id, item.second_line_id].filter(Boolean).map(String),
             animatorNames: [[item.line_id, item.line_name], [item.second_line_id, item.second_line_name]]
@@ -173,7 +175,8 @@
             if (state.filterDate && item.date !== state.filterDate) return false;
             if (state.filterType && item.type !== state.filterType) return false;
             return true;
-        }).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+        }).sort((a, b) => `${a.date} ${a.birthdaySlots[0]?.time || a.time}`
+            .localeCompare(`${b.date} ${b.birthdaySlots[0]?.time || b.time}`));
     }
 
     function selectedItem() {
@@ -206,6 +209,18 @@
     function formatDuration(item) {
         if (item.type === 'birthday') return '15 хв';
         return `${Number(item.duration || 60)} хв`;
+    }
+
+    function birthdaySchedule(item) {
+        if (!item.birthdaySlots.length && item.type !== 'birthday') return `${esc(item.time)} · ${esc(formatDuration(item))}`;
+        const slots = item.birthdaySlots.length ? item.birthdaySlots : [
+            { time: '14:00', mode: 'auto' }, { time: '18:00', mode: 'auto' }
+        ];
+        return slots.map(slot => {
+            const end = Number(slot.time.slice(0, 2)) * 60 + Number(slot.time.slice(3, 5)) + 15;
+            const endTime = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
+            return `${esc(slot.time)}–${esc(endTime)} · ${slot.mode === 'manual' ? 'Вручну' : 'Авто'}${slot.conflict ? ' · Конфлікт' : ''}`;
+        }).join(' / ');
     }
 
     function formatFileSize(size) {
@@ -254,7 +269,7 @@
                         <div class="afisha-item-main">
                             <div class="afisha-item-topline">
                                 ${typeBadge(item.type)}
-                                <span>${esc(item.date)} · ${esc(item.time)} · ${esc(formatDuration(item))}</span>
+                                <span>${esc(item.date)} · ${birthdaySchedule(item)}</span>
                             </div>
                             <h3>${esc(item.title)}</h3>
                             ${item.description ? `<p>${esc(item.description)}</p>` : ''}
@@ -321,7 +336,7 @@
                 <div class="afisha-event-hero-main">
                     <div class="afisha-item-topline">
                         ${typeBadge(item.type)}
-                        <span>${esc(item.date)} · ${esc(item.time)} · ${esc(formatDuration(item))}</span>
+                        <span>${esc(item.date)} · ${birthdaySchedule(item)}</span>
                     </div>
                     <h2>${esc(item.title)}</h2>
                     ${item.description ? `<p>${esc(item.description)}</p>` : '<p>Опис для команди ще не додано.</p>'}
@@ -463,7 +478,7 @@
 
     function collectFormPayload() {
         const type = $('afishaPageType').value || 'event';
-        const duration = type === 'birthday' ? 15 : Number($('afishaPageDuration').value || 60);
+        const duration = type === 'birthday' || type === 'greeting' ? 15 : Number($('afishaPageDuration').value || 60);
         return {
             type,
             date: $('afishaPageDate').value,
@@ -638,10 +653,10 @@
         const payload = {
             title: $('afishaTplTitle').value.trim(),
             time: $('afishaTplTime').value,
-            duration: Number($('afishaTplDuration').value || 60),
+            duration: $('afishaTplType').value === 'greeting' ? 15 : Number($('afishaTplDuration').value || 60),
             recurrence_pattern: $('afishaTplPattern').value || 'weekly',
             recurrence_days: $('afishaTplDays').value.trim() || null,
-            type: 'event'
+            type: $('afishaTplType').value
         };
         if (!payload.title || !payload.time) return notify('Заповніть назву і час шаблону', 'error');
         try {
@@ -649,6 +664,7 @@
             $('afishaTemplateForm').reset();
             $('afishaTplTime').value = '12:00';
             $('afishaTplDuration').value = '60';
+            $('afishaTplDuration').disabled = false;
             $('afishaTplDays').classList.add('hidden');
             notify('Шаблон додано', 'success');
             await loadData();
@@ -673,8 +689,19 @@
 
     function syncTypeUi() {
         const isBirthday = $('afishaPageType').value === 'birthday';
-        $('afishaPageDuration').disabled = isBirthday;
-        if (isBirthday) $('afishaPageDuration').value = '15';
+        const isGreeting = $('afishaPageType').value === 'greeting';
+        const existingGreeting = state.editingId && state.items.find(item => String(item.id) === String(state.editingId))?.birthdaySlots.length;
+        $('afishaPageDuration').disabled = isBirthday || isGreeting;
+        if (isBirthday || isGreeting) $('afishaPageDuration').value = '15';
+        $('afishaPageTime').disabled = isBirthday || Boolean(existingGreeting);
+        if (isBirthday && !state.editingId) $('afishaPageTime').value = '14:00';
+        const hint = $('afishaBirthdayTimeHint');
+        if (hint) {
+            hint.classList.toggle('hidden', !isBirthday && !isGreeting && !existingGreeting);
+            hint.textContent = isGreeting || (existingGreeting && !isBirthday)
+                ? 'Час цього 15-хвилинного вітання змінюється на таймлайні: вручну або автоматично.'
+                : 'Обидва 15-хвилинні вітання мають окремий час. Змінюйте їх на таймлайні.';
+        }
         $('afishaPageTitle').placeholder = isBirthday ? "Ім'я іменинника" : 'Назва події';
     }
 
@@ -767,6 +794,11 @@
         $('afishaTemplateList')?.addEventListener('click', handleTemplateClick);
         $('afishaTplPattern')?.addEventListener('change', event => {
             $('afishaTplDays')?.classList.toggle('hidden', event.target.value !== 'custom');
+        });
+        $('afishaTplType')?.addEventListener('change', event => {
+            const duration = $('afishaTplDuration');
+            duration.disabled = event.target.value === 'greeting';
+            if (duration.disabled) duration.value = '15';
         });
         $('afishaMaterialKind')?.addEventListener('change', syncMaterialMode);
         $('afishaMaterialForm')?.addEventListener('submit', submitMaterial);

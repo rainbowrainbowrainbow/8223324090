@@ -15,6 +15,7 @@ const { pushDefaultTimelineBusinessContext } = require('../services/timelineBusi
 const { insertHistory } = require('../services/historyLog');
 const { moveAfishaSchedule } = require('../services/afishaSchedule');
 const { createTimelineAfisha, updateTimelineAfisha } = require('../services/afishaTimeline');
+const { birthdaySlotsForEvents, isGreetingEvent, setBirthdaySlot } = require('../services/afishaBirthdaySlots');
 const { DEFAULT_TIMELINE_CONTEXT, timelineContextFromRequest, requireTimelineAction } = require('../services/timelineContext');
 const { resolveCapability } = require('../services/accountAccessPolicy');
 const { businessScopeWriteGuard } = require('../middleware/businessScopeGuard');
@@ -57,6 +58,17 @@ router.patch('/:id/timeline', businessScopeWriteGuard, async (req, res) => {
     } catch (error) {
         if (!error.statusCode) log.error('Timeline Afisha update error', error);
         res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося змінити захід' });
+    }
+});
+
+router.patch('/:id/birthday-slots/:slotKey', businessScopeWriteGuard, async (req, res) => {
+    if (!requireAfishaTimelineEdit(req, res)) return;
+    try {
+        const slots = await setBirthdaySlot(pool, req.params.id, req.params.slotKey, req.body || {}, req.user.username);
+        res.json({ success: true, slots });
+    } catch (error) {
+        if (!error.statusCode) log.error('Birthday slot update error', error);
+        res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося змінити час вітання' });
     }
 });
 
@@ -197,17 +209,24 @@ const afishaReadColumns = `a.*, p.title AS promotion_title, p.is_active AS promo
 router.get('/', async (req, res) => {
     try {
         const { type } = req.query;
-        const validTypes = ['event', 'birthday', 'regular'];
+        const validTypes = ['event', 'birthday', 'greeting', 'regular'];
         if (type && validTypes.includes(type)) {
             const result = await pool.query(`SELECT ${afishaReadColumns}
                 FROM afisha a LEFT JOIN timeline_promotions p ON p.id = a.promotion_id
                 WHERE a.type = $1 ORDER BY a.date, a.time LIMIT 1000`, [type]);
-            return res.json(result.rows);
+            const dates = [...new Set(result.rows.filter(isGreetingEvent).map(row => row.date))];
+            if (!dates.length) return res.json(result.rows);
+            const day = await pool.query(`SELECT id, date, time, original_time, duration, title, type, line_id, second_line_id
+                FROM afisha WHERE date = ANY($1::text[])`, [dates]);
+            const projected = await birthdaySlotsForEvents(pool, day.rows);
+            const byId = new Map(projected.map(row => [Number(row.id), row.birthday_slots]));
+            return res.json(result.rows.map(row => byId.has(Number(row.id))
+                ? { ...row, birthday_slots: byId.get(Number(row.id)) } : row));
         }
         const result = await pool.query(`SELECT ${afishaReadColumns}
             FROM afisha a LEFT JOIN timeline_promotions p ON p.id = a.promotion_id
             ORDER BY a.date, a.time LIMIT 1000`);
-        res.json(result.rows);
+        res.json(await birthdaySlotsForEvents(pool, result.rows));
     } catch (err) {
         log.error('Get error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -230,6 +249,7 @@ router.post('/templates', async (req, res) => {
     try {
         const { title, time, duration, type, description, recurrence_pattern, recurrence_days, date_from, date_to } = req.body;
         if (!title || !time) return res.status(400).json({ error: 'title and time required' });
+        if (type === 'greeting' && Number(duration) !== 15) return res.status(400).json({ error: 'Вітання триває 15 хвилин' });
         const validPatterns = ['daily', 'weekdays', 'weekends', 'weekly', 'custom'];
         const pattern = validPatterns.includes(recurrence_pattern) ? recurrence_pattern : 'weekly';
         const result = await pool.query(
@@ -273,6 +293,7 @@ router.put('/templates/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { title, time, duration, type, description, recurrence_pattern, recurrence_days, date_from, date_to, is_active } = req.body;
+        if (type === 'greeting' && Number(duration) !== 15) return res.status(400).json({ error: 'Вітання триває 15 хвилин' });
         await pool.query(
             `UPDATE afisha_templates SET title=$1, time=$2, duration=$3, type=$4, description=$5,
              recurrence_pattern=$6, recurrence_days=$7, date_from=$8, date_to=$9, is_active=$10 WHERE id=$11`,
@@ -703,7 +724,7 @@ router.get('/:date', async (req, res) => {
         const result = await pool.query(`SELECT ${afishaReadColumns}
             FROM afisha a LEFT JOIN timeline_promotions p ON p.id = a.promotion_id
             WHERE a.date = $1 ORDER BY a.time`, [date]);
-        res.json(result.rows);
+        res.json(await birthdaySlotsForEvents(pool, result.rows));
     } catch (err) {
         log.error('Get by date error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -717,9 +738,9 @@ router.post('/', async (req, res) => {
         if (!validateDate(date) || !validateTime(time)) return res.status(400).json({ error: 'Invalid date or time' });
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
         if (!validateTime(time)) return res.status(400).json({ error: 'Invalid time' });
-        const validTypes = ['event', 'birthday', 'regular'];
+        const validTypes = ['event', 'birthday', 'greeting', 'regular'];
         const eventType = validTypes.includes(type) ? type : 'event';
-        const eventDuration = eventType === 'birthday' ? 15 : (duration || 60);
+        const eventDuration = eventType === 'birthday' || eventType === 'greeting' ? 15 : (duration || 60);
         const result = await pool.query(
             'INSERT INTO afisha (date, time, title, duration, type, description, original_time) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
             [date, time, title, eventDuration, eventType, description || null, time]
@@ -747,7 +768,7 @@ router.put('/:id', async (req, res) => {
         if (!date || !time || !title) return res.status(400).json({ error: 'date, time, title required' });
         client = await pool.connect();
         await client.query('BEGIN');
-        const existing = await client.query('SELECT promotion_id, date, time, duration, line_id, second_line_id FROM afisha WHERE id = $1 FOR UPDATE', [id]);
+        const existing = await client.query('SELECT promotion_id, date, time, duration, type, line_id, second_line_id FROM afisha WHERE id = $1 FOR UPDATE', [id]);
         if (!existing.rows.length) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Not found' });
@@ -765,11 +786,17 @@ router.put('/:id', async (req, res) => {
             }
         }
         const current = existing.rows[0];
+        if ((current.type === 'greeting' || type === 'greeting') && (date !== current.date || time !== current.time)) {
+            throw Object.assign(new Error('Час вітання змінюється окремо на таймлайні'), { statusCode: 400 });
+        }
+        if ((current.type === 'greeting' || type === 'greeting') && Number(duration) !== 15) {
+            throw Object.assign(new Error('Вітання триває 15 хвилин'), { statusCode: 400 });
+        }
         if (date === current.date && (time !== current.time || Number(duration || 60) !== Number(current.duration || 60))) {
             await assertAfishaLinesFree(client, { date, time, duration: Number(duration || 60),
                 lineIds: [current.line_id, current.second_line_id].filter(Boolean), excludeId: Number(id) });
         }
-        const validTypes = ['event', 'birthday', 'regular'];
+        const validTypes = ['event', 'birthday', 'greeting', 'regular'];
         const eventType = validTypes.includes(type) ? type : undefined;
         if (eventType) {
             await client.query(

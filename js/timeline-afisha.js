@@ -4,6 +4,7 @@
     const M = window.TimelineMarketing;
     const pending = new Set();
     let activeDrag = null;
+    let activeBirthdayDrag = null;
     const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
     const timeString = value => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
     const canMove = event => event.type !== 'birthday' && M.context() === 'event_genix' && M.writable('edit_booking');
@@ -74,6 +75,10 @@
     }
 
     async function save(event, date, time, business) {
+        if (event.birthdaySlot) {
+            if (date !== event.date) throw new Error('Повторюване вітання можна рухати лише в межах дня');
+            return saveBirthdaySlot(event, 'manual', time, business);
+        }
         if (pending.has(String(event.id))) throw new Error('Збереження цієї події ще триває');
         if (business !== M.context()) throw new Error('Бізнес-контекст змінився. Повторіть дію.');
         pending.add(String(event.id));
@@ -96,6 +101,176 @@
             pending.delete(String(event.id));
             document.querySelectorAll(`[data-afisha-id="${Number(event.id)}"]`).forEach(el => { el.disabled = false; });
         }
+    }
+
+    async function saveBirthdaySlot(event, mode, time, business = M.context()) {
+        const slot = event.birthdaySlot;
+        if (!slot || pending.has(String(event.id))) throw new Error('Збереження вітання ще триває');
+        if (business !== M.context()) throw new Error('Бізнес-контекст змінився. Повторіть дію.');
+        pending.add(String(event.id));
+        try {
+            const result = await M.request(`/afisha/${encodeURIComponent(event.id)}/birthday-slots/${slot.key}`, 'PATCH', {
+                mode, time, expectedMode: slot.mode, expectedTime: slot.time
+            }, business);
+            event.birthdaySlot = result.slots.find(item => item.key === slot.key);
+            invalidateTimelineDateCache(event.date, { businessContext: business });
+            return event.birthdaySlot;
+        } finally { pending.delete(String(event.id)); }
+    }
+
+    function birthdayDetails(event, trigger) {
+        const slot = event.birthdaySlot;
+        if (!slot) return;
+        hideTooltip();
+        const business = M.context();
+        const editable = business === 'event_genix' && M.writable('edit_booking');
+        const assignable = editable && event.type !== 'birthday';
+        const availableLines = assignable ? linesFor(event.date) : [];
+        const availablePromotions = assignable ? promotionsFor(event.date) : [];
+        const currentPromotion = event.promotion_id && !availablePromotions.some(item => item.id === event.promotion_id)
+            ? `<option value="${Number(event.promotion_id)}" selected>${M.esc(event.promotion_title || `Акція #${event.promotion_id}`)} · архівована</option>` : '';
+        const base = minutes(slot.base_time);
+        const minimum = timeString(base - 90);
+        const maximum = timeString(base + 90);
+        const changedAt = slot.updated_at ? new Date(slot.updated_at).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '';
+        const modal = M.dialog('Вітання іменинників', `<p>${M.esc(event.date)} · ${M.esc(event.title)} · 15 хв</p>
+            <p><strong>${M.esc(slot.time)}–${M.esc(timeString(minutes(slot.time) + 15))}</strong> · ${slot.mode === 'manual' ? 'Вручну' : 'Автоматично'}</p>
+            ${slot.reason ? `<p class="timeline-marketing-description" role="status">${M.esc(slot.reason)}</p>` : ''}
+            ${slot.mode === 'manual' && slot.updated_by ? `<p class="timeline-marketing-description">Змінив: ${M.esc(slot.updated_by)}${changedAt ? ` · ${M.esc(changedAt)}` : ''}</p>` : ''}
+            ${slot.conflict ? '<p class="afisha-birthday-warning" role="alert">Конфлікт часу: оберіть інший час або змініть захід.</p>' : ''}
+            <p><a href="/afisha?event=${encodeURIComponent(event.id)}&date=${encodeURIComponent(event.date)}">Відкрити подію в афіші</a></p>
+            ${editable ? `<form data-birthday-form class="timeline-marketing-form">
+                <label>Час вітання<input name="time" type="time" value="${M.esc(slot.time)}" min="${minimum}" max="${maximum}" step="300" required></label>
+                <p>Перенесення вручну зафіксує лише це вітання${slot.key === 'single' ? ' на вибрану дату' : '. Друге залишиться в своєму режимі'}.</p>
+                <div role="alert" data-error></div>
+                <div class="timeline-marketing-actions"><button type="submit" class="btn-primary">Зберегти вручну</button>
+                ${slot.mode === 'manual' ? '<button type="button" class="btn-secondary" data-birthday-auto>Повернути автоматичний розклад</button>' : ''}</div>
+            </form>` : ''}
+            ${assignable ? `<form data-assign-form class="timeline-marketing-form">
+                <strong>Акція та аніматори</strong>
+                <label>Акція<select name="promotion"><option value="">Без акції</option>${currentPromotion}${availablePromotions.map(item =>
+                    `<option value="${item.id}" ${event.promotion_id === item.id ? 'selected' : ''}>${M.esc(item.title)}</option>`).join('')}</select></label>
+                <div class="afisha-assignment-options">${availableLines.map(line => `<label><input type="checkbox" value="${M.esc(line.id)}"
+                    ${lineIds(event).includes(String(line.id)) ? 'checked' : ''}>${M.esc(line.name || line.id)}</label>`).join('')}</div>
+                <div role="alert" data-assign-error></div><button type="submit" class="btn-primary">Зберегти призначення</button>
+            </form>` : ''}`, trigger);
+        async function apply(mode, time, button) {
+            button.disabled = true;
+            try {
+                await saveBirthdaySlot(event, mode, time, business);
+                closeModal(modal);
+                if (business === M.context()) await renderTimeline();
+                showNotification(mode === 'manual' ? 'Час вітання зафіксовано вручну' : 'Автоматичний розклад відновлено');
+            } catch (error) {
+                modal.querySelector('[data-error]').textContent = error.message;
+                if (error.status === 409 && business === M.context()) invalidateTimelineDateCache(event.date);
+            } finally { button.disabled = false; }
+        }
+        modal.querySelector('[data-birthday-form]')?.addEventListener('submit', e => {
+            e.preventDefault();
+            const form = e.currentTarget;
+            apply('manual', form.elements.time.value, form.querySelector('[type="submit"]'));
+        });
+        modal.querySelector('[data-birthday-auto]')?.addEventListener('click', e => {
+            apply('auto', slot.base_time, e.currentTarget);
+        });
+        modal.querySelector('[data-assign-form]')?.addEventListener('submit', async e => {
+            e.preventDefault();
+            const form = e.currentTarget;
+            const ids = [...form.querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value);
+            if (ids.length > 2) { form.querySelector('[data-assign-error]').textContent = 'Оберіть не більше двох аніматорів'; return; }
+            const submit = form.querySelector('[type="submit"]');
+            submit.disabled = true;
+            try {
+                await savePlacement(event, ids, form.elements.promotion.value ? Number(form.elements.promotion.value) : null, business);
+                closeModal(modal);
+                if (business === M.context()) await renderTimeline();
+            } catch (error) { form.querySelector('[data-assign-error]').textContent = error.message; }
+            finally { submit.disabled = false; }
+        });
+    }
+
+    function cancelBirthdayDrag() {
+        if (!activeBirthdayDrag) return false;
+        const { block, left, label } = activeBirthdayDrag;
+        block.style.left = left;
+        block.querySelector('.afisha-birthday-label').textContent = label;
+        block.classList.remove('dragging');
+        activeBirthdayDrag = null;
+        return true;
+    }
+
+    function initBirthdayDrag(block, event, startHour) {
+        if (M.context() !== 'event_genix' || !M.writable('edit_booking')) return;
+        block.style.touchAction = 'none';
+        block.addEventListener('pointerdown', e => {
+            if (e.button !== 0 || pending.has(String(event.id))) return;
+            const grid = block.closest('.line-grid');
+            if (!grid) return;
+            activeBirthdayDrag = { block, event, grid, startHour, x: e.clientX, y: e.clientY,
+                left: block.style.left, label: block.querySelector('.afisha-birthday-label').textContent,
+                time: event.time, moved: false, business: M.context(),
+                sourceLineId: grid.dataset.lineId, targetLineId: grid.dataset.lineId };
+            block.setPointerCapture(e.pointerId);
+        });
+        block.addEventListener('pointermove', e => {
+            const state = activeBirthdayDrag;
+            if (!state || state.block !== block) return;
+            if (!state.moved && Math.hypot(e.clientX - state.x, e.clientY - state.y) < 8) return;
+            state.moved = true;
+            block.classList.add('dragging');
+            hideTooltip();
+            const targetGrid = document.elementFromPoint(e.clientX, e.clientY)?.closest('.line-grid');
+            state.targetLineId = targetGrid?.dataset.lineId || state.sourceLineId;
+            if (event.type !== 'birthday' && state.targetLineId !== state.sourceLineId) {
+                block.querySelector('.afisha-birthday-label').textContent = state.targetLineId === 'afisha'
+                    ? 'Зняти аніматора' : 'Призначити аніматора';
+                return;
+            }
+            const base = minutes(event.birthdaySlot.base_time);
+            const next = Math.round((minutes(event.time) + (e.clientX - state.x) / ratio(state.grid)) / 5) * 5;
+            const value = Math.max(Math.max(base - 90, startHour * 60), Math.min(Math.min(base + 90, 1185), next));
+            state.time = timeString(value);
+            block.style.left = `${(value - startHour * 60) * ratio(state.grid)}px`;
+            block.querySelector('.afisha-birthday-label').textContent = `${state.time} · Вручну`;
+        });
+        block.addEventListener('pointerup', async () => {
+            const state = activeBirthdayDrag;
+            if (!state || state.block !== block) return;
+            const moved = state.moved;
+            const nextTime = state.time;
+            const business = state.business;
+            const from = String(state.sourceLineId);
+            const to = String(state.targetLineId);
+            cancelBirthdayDrag();
+            if (!moved) return;
+            block.dataset.suppressBirthdayClick = 'true';
+            if (event.type !== 'birthday' && from !== to) {
+                const current = lineIds(event);
+                const next = from === 'afisha' ? [...current] : current.filter(id => id !== from);
+                if (to !== 'afisha' && !next.includes(to)) next.push(to);
+                if (next.length > 2) return showNotification('У заході вже два аніматори', 'error');
+                try {
+                    await savePlacement(event, next, event.promotion_id ?? null, business);
+                    if (business === M.context()) await renderTimeline();
+                    showNotification('Призначення вітання збережено');
+                } catch (error) { showNotification(error.message, 'error'); }
+                return;
+            }
+            if (nextTime === event.time) return;
+            try {
+                await saveBirthdaySlot(event, 'manual', nextTime, business);
+                if (business === M.context()) await renderTimeline();
+                showNotification('Час вітання зафіксовано вручну');
+            } catch (error) {
+                showNotification(error.message, 'error');
+                if (error.status === 409 && business === M.context()) {
+                    invalidateTimelineDateCache(event.date);
+                    await renderTimeline();
+                }
+            }
+        });
+        block.addEventListener('pointercancel', cancelBirthdayDrag);
     }
 
     function details(event, trigger) {
@@ -174,13 +349,18 @@
             <label>Час<input name="time" type="time" value="14:00" step="300" required></label></div>
             <div class="timeline-marketing-date-pair"><label>Тривалість, хв<select name="duration">${[15, 30, 45, 60, 90, 120, 180, 240].map(n =>
                 `<option value="${n}" ${n === 60 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-            <label>Тип<select name="type"><option value="event">Захід</option><option value="regular">Регулярний</option></select></label></div>
+            <label>Тип<select name="type"><option value="event">Захід</option><option value="greeting">Вітання іменинників</option><option value="regular">Регулярний</option></select></label></div>
             <label>Опис<textarea name="description" maxlength="4000" rows="2"></textarea></label>
             <label>Акція<select name="promotion"></select></label>
             <strong>Аніматори (до двох)</strong><div class="afisha-assignment-options" data-lines></div>
             <div role="alert" data-error></div><button type="submit" class="btn-primary">Додати захід</button>
         </form>`, trigger);
         const form = modal.querySelector('[data-create-form]');
+        form.elements.type.addEventListener('change', () => {
+            const greeting = form.elements.type.value === 'greeting';
+            form.elements.duration.disabled = greeting;
+            if (greeting) form.elements.duration.value = '15';
+        });
         function updateChoices() {
             const date = form.elements.date.value;
             form.elements.promotion.innerHTML = `<option value="">Без акції</option>${promotionsFor(date).map(item =>
@@ -221,20 +401,24 @@
         if (start < 0) return null;
         const block = document.createElement('button');
         block.type = 'button';
-        block.className = `afisha-flag afisha-type-${item.type === 'regular' ? 'regular' : 'event'}`;
+        block.className = `afisha-flag afisha-type-${item.type === 'regular' ? 'regular' : (item.birthdaySlot ? 'birthday' : 'event')}`;
         block.dataset.afishaId = item.id;
         block.dataset.eventTime = item.time;
         block.dataset.eventDate = item.date;
         block.style.left = `${start * ratio(grid)}px`;
-        block.innerHTML = `<span aria-hidden="true">${item.type === 'regular' ? '↻' : '⚑'}</span><span class="afisha-flag-time">${M.esc(item.time)}</span><span class="afisha-flag-title">${M.esc(item.title)}</span>`;
-        block.setAttribute('aria-label', `${item.title}, ${item.date}, ${item.time}. Відкрити афішу`);
+        block.innerHTML = `<span aria-hidden="true">${item.birthdaySlot ? 'ІМ' : (item.type === 'regular' ? '↻' : '⚑')}</span><span class="afisha-flag-time">${M.esc(item.time)}</span><span class="afisha-flag-title">${M.esc(item.birthdaySlot ? (item.birthdaySlot.mode === 'manual' ? 'Вручну' : 'Авто') : item.title)}</span>`;
+        block.setAttribute('aria-label', item.birthdaySlot
+            ? `Вітання іменинників, ${item.date}, ${item.time}, 15 хв, ${item.birthdaySlot?.mode === 'manual' ? 'вручну' : 'автоматично'}. Відкрити розклад`
+            : `${item.title}, ${item.date}, ${item.time}. Відкрити афішу`);
         block.disabled = pending.has(String(item.id));
         let suppressClick = false;
-        block.addEventListener('click', e => { e.stopPropagation(); if (!suppressClick) details(item, block); suppressClick = false; });
+        block.addEventListener('click', e => { e.stopPropagation(); if (!suppressClick) {
+            if (item.birthdaySlot) birthdayDetails(item, block); else details(item, block);
+        } suppressClick = false; });
         block.addEventListener('contextmenu', e => {
             if (!canMove(item)) return;
             e.preventDefault();
-            details(item, block);
+            if (item.birthdaySlot) birthdayDetails(item, block); else details(item, block);
         });
         block.addEventListener('pointerdown', e => {
             if (e.button !== 0 || !canMove(item) || pending.has(String(item.id))) return;
@@ -344,7 +528,11 @@
                 const assigned = isRoomTimelineView() ? [] : [event.line_id, event.second_line_id]
                     .filter(Boolean).map(id => [...body.querySelectorAll('.mini-line-grid')]
                         .find(el => el.dataset.lineId === String(id))).filter(Boolean);
-                const events = event.type === 'birthday' ? ['14:00', '18:00'].map(time => ({ ...event, time, duration: 15 })) : [event];
+                const events = event.birthday_slots?.length
+                    ? (event.birthday_slots || [{ key: 'first', time: '14:00', base_time: '14:00', mode: 'auto' },
+                        { key: 'second', time: '18:00', base_time: '18:00', mode: 'auto' }])
+                        .map(slot => ({ ...event, time: slot.time, duration: 15, birthdaySlot: slot }))
+                    : [event];
                 events.forEach(value => {
                     for (const grid of [general, ...assigned]) {
                         const flag = create({ ...value, date: dateStr }, start, grid);
@@ -359,11 +547,13 @@
         })));
     }
 
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') cancel(); });
-    window.addEventListener('blur', cancel);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { cancel(); cancelBirthdayDrag(); } });
+    window.addEventListener('blur', () => { cancel(); cancelBirthdayDrag(); });
     window.addEventListener('timeline:business-context-changed', () => {
         cancel();
+        cancelBirthdayDrag();
         document.querySelectorAll('.timeline-marketing-modal').forEach(modal => closeModal(modal));
     });
-    window.TimelineAfisha = { create, layout, details, save, savePlacement, quickCreate, mountWeek, cancel, dragging: () => Boolean(activeDrag) };
+    window.TimelineAfisha = { create, layout, details, birthdayDetails, initBirthdayDrag, save, savePlacement,
+        quickCreate, mountWeek, cancel, dragging: () => Boolean(activeDrag || activeBirthdayDrag) };
 })();

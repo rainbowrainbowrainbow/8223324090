@@ -3929,6 +3929,9 @@ async function runDesktopFlow(browser, base) {
         await assertFittedScheduleLayout(page, 'desktop first-half', 15);
         assert.match(await page.locator('#weekLabel').innerText(), /1 .+15 .+20\d{2}/, 'visible label reflects 1-15 range');
         assert.equal(await page.locator('.staff-schedule-command-bar .schedule-toolbar').count(), 0, 'legacy visible toolbar is removed from schedule shell');
+        await page.locator('.staff-schedule-header-actions #copyWeekBtn').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#copyWeekBtn').isDisabled(), false, 'custom-range explanation remains reachable');
+        assert.equal(await page.locator('#copyWeekBtn').evaluate(button => button.classList.contains('is-disabled')), true, 'copy-week is visibly unavailable for a custom date range');
         await page.locator('.staff-schedule-header-actions #exportExcelBtn').waitFor({ state: 'visible' });
         await page.locator('.staff-schedule-header-actions #printBtn').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#scheduleViewSwitch').count(), 0, 'visible view switch is removed from schedule shell');
@@ -3946,14 +3949,14 @@ async function runDesktopFlow(browser, base) {
                 printHeight: printButton?.height || 0
             };
         });
-        assert.ok(actionMetrics.headerWidth > 0 && actionMetrics.headerWidth <= 240, 'export/print header action group stays compact');
+        assert.ok(actionMetrics.headerWidth > 0 && actionMetrics.headerWidth <= 420, 'weekly action group stays compact');
         assert.ok(actionMetrics.exportHeight >= 34, 'export keeps a usable touch target');
         assert.ok(actionMetrics.printHeight >= 34, 'print keeps a usable touch target');
 
-        for (const removedId of ['scheduleActionsDropdown', 'scheduleActionsMenuBtn', 'scheduleActionsMenu', 'addStaffBtn', 'fillWeekBtn', 'copyWeekBtn', 'importExcelBtn', 'bulkCreateBtn']) {
+        for (const removedId of ['scheduleActionsDropdown', 'scheduleActionsMenuBtn', 'scheduleActionsMenu', 'addStaffBtn', 'fillWeekBtn', 'importExcelBtn', 'bulkCreateBtn']) {
             assert.equal(await page.locator(`#${removedId}`).count(), 0, `${removedId} is not visible shell UI`);
         }
-        assert.equal(apiCalls.copyWeekBodies.length, 0, 'hidden copy-week UI does not call backend copy route');
+        assert.equal(apiCalls.copyWeekBodies.length, 0, 'copy-week does not call the backend before an explicit confirmation');
         assert.equal(apiCalls.bulkBodies.length, 0, 'hidden fill UI does not run bulk fill');
 
         const hoursCallsBefore = apiCalls.hoursRanges.length;
@@ -4059,6 +4062,31 @@ async function runDesktopFlow(browser, base) {
         });
         await applyManualRange(page, currentMonth.from, currentMonth.to);
         await assertDetailedMonthLayout(page, 'desktop current month', dateRangeDays(currentMonth.from, currentMonth.to), 150);
+
+        await page.locator('#todayWeekBtn').click();
+        await waitForDayColumns(page, 9);
+        const copyButton = page.locator('#copyWeekBtn');
+        assert.equal(await copyButton.isDisabled(), false, 'canonical rolling week enables copy-week');
+        const copyPreview = page.waitForResponse(response => new URL(response.url()).pathname === '/api/staff/schedule/copy-week'
+            && response.request().method() === 'POST' && response.request().postDataJSON()?.dryRun === true);
+        await copyButton.click();
+        const copyPreviewResponse = await copyPreview;
+        assert.equal(copyPreviewResponse.status(), 200);
+        const copyPreviewBody = await copyPreviewResponse.json();
+        assert.equal(copyPreviewBody.success, true);
+        assert.equal(copyPreviewBody.conflicts, 0);
+        const copyConfirm = page.locator('.confirm-overlay[data-confirm-kind="confirm"]');
+        await copyConfirm.waitFor({ state: 'visible' });
+        assert.match(await copyConfirm.innerText(), /Разова ставка не копіюється\. Для нової дати застосовуються чинні умови оплати\./);
+        const copyWrite = page.waitForResponse(response => new URL(response.url()).pathname === '/api/staff/schedule/copy-week'
+            && response.request().method() === 'POST' && response.request().postDataJSON()?.dryRun !== true);
+        const [copyWriteResponse] = await Promise.all([copyWrite, copyConfirm.locator('.confirm-ok').click()]);
+        assert.equal(copyWriteResponse.status(), 200);
+        const copyBodies = apiCalls.copyWeekBodies;
+        assert.equal(copyBodies.length, 2, 'copy-week previews first and writes only after confirmation');
+        assert.equal(copyBodies[0].dryRun, true);
+        assert.equal(copyBodies[1].dryRun, false);
+        assert.equal(copyBodies[1].rejectConflicts, true, 'confirmed UI write uses the server conflict guard');
 
         await page.locator('#todayWeekBtn').click();
         await waitForDayColumns(page, 9);

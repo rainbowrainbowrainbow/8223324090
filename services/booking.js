@@ -788,16 +788,22 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
 
     if (context === DEFAULT_TIMELINE_CONTEXT) {
         const events = await client.query(
-            `SELECT id, time, duration, title FROM afisha
-             WHERE date = $1 AND (line_id = $2 OR second_line_id = $2)`,
-            [date, String(lineId)]
+            `SELECT id, date, time, original_time, duration, title, type, line_id, second_line_id FROM afisha
+             WHERE date = $1`, [date]
         );
-        for (const event of events.rows) {
-            const start = timeToMinutes(event.time);
-            if (newStart < start + (Number(event.duration) || 60) && newEnd > start) {
-                return { overlap: true, noPause: false, conflictWith: {
-                    id: event.id, time: event.time, label: `Афіша: ${event.title}`, program_code: null
-                } };
+        const { birthdaySlotsForEvents } = require('./afishaBirthdaySlots');
+        const projected = await birthdaySlotsForEvents(client, events.rows, { excludeBookingIds: excludeIds });
+        for (const event of projected.filter(item => [item.line_id, item.second_line_id].map(String).includes(String(lineId)))) {
+            const occurrences = event.birthday_slots?.length
+                ? event.birthday_slots.map(slot => ({ time: slot.time, duration: 15 }))
+                : [{ time: event.time, duration: Number(event.duration) || 60 }];
+            for (const occurrence of occurrences) {
+                const start = timeToMinutes(occurrence.time);
+                if (newStart < start + occurrence.duration && newEnd > start) {
+                    return { overlap: true, noPause: false, conflictWith: {
+                        id: event.id, time: occurrence.time, label: `Афіша: ${event.title}`, program_code: null
+                    } };
+                }
             }
         }
     }

@@ -4403,11 +4403,21 @@ async function renderTimeline() {
         // v8.6: Render assigned afisha events on this animator's line
         const lineAfisha = assignedAfishaMap[line.id] || [];
         lineAfisha.forEach(ev => {
-            const block = createAfishaBlock(ev, start, lineGrid);
-            if (block) {
-                block.classList.add('afisha-on-line');
-                lineGrid.appendChild(block);
+            if (!ev.birthday_slots?.length) {
+                const block = createAfishaBlock(ev, start, lineGrid);
+                if (block) {
+                    block.classList.add('afisha-on-line');
+                    lineGrid.appendChild(block);
+                }
+                return;
             }
+            ev.birthday_slots.forEach(slot => {
+                const block = createAfishaBlock({ ...ev, time: slot.time, duration: 15, birthdaySlot: slot }, start, lineGrid);
+                if (block) {
+                    block.classList.add('afisha-on-line');
+                    lineGrid.appendChild(block);
+                }
+            });
         });
 
         const lineHeader = lineEl.querySelector('.line-header');
@@ -5472,7 +5482,6 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
     const lineEl = document.createElement('div');
     lineEl.className = 'timeline-line afisha-timeline-line';
 
-    const birthdays = events.filter(ev => ev.type === 'birthday');
     const afishaEventLabel = formatAfishaEventCount(events.length);
 
     // v8.6: Distribute/undistribute buttons
@@ -5494,12 +5503,15 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
     container.appendChild(lineEl);
 
     events.forEach(ev => {
-        if (ev.type === 'birthday') {
-            // Birthday greetings: show at 14:00 and 18:00, 15 min each
-            const block14 = createAfishaBlock({ ...ev, time: '14:00', duration: 15 }, startHour, grid);
-            const block18 = createAfishaBlock({ ...ev, time: '18:00', duration: 15 }, startHour, grid);
-            if (block14) grid.appendChild(block14);
-            if (block18) grid.appendChild(block18);
+        if (ev.birthday_slots?.length) {
+            const slots = ev.birthday_slots || [
+                { key: 'first', time: '14:00', base_time: '14:00', duration: 15, mode: 'auto' },
+                { key: 'second', time: '18:00', base_time: '18:00', duration: 15, mode: 'auto' }
+            ];
+            slots.forEach(slot => {
+                const block = createAfishaBlock({ ...ev, time: slot.time, duration: 15, birthdaySlot: slot }, startHour, grid);
+                if (block) grid.appendChild(block);
+            });
         } else {
             const block = createAfishaBlock(ev, startHour, grid);
             if (block) grid.appendChild(block);
@@ -5545,7 +5557,7 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
 }
 
 function createAfishaBlock(event, startHour, anchor) {
-    if (window.TimelineAfisha && event.type !== 'birthday') {
+    if (window.TimelineAfisha && !event.birthdaySlot) {
         return window.TimelineAfisha.create(event, startHour, anchor);
     }
     const startMin = timeToMinutes(event.time) - startHour * 60;
@@ -5556,9 +5568,9 @@ function createAfishaBlock(event, startHour, anchor) {
     const duration = event.duration || (event.type === 'birthday' ? 15 : 60);
     const width = timelineDurationWidth(duration, anchor);
 
-    const typeClass = event.type || 'event';
-    const isBirthday = event.type === 'birthday';
-    const displayWidth = Math.max(width, isBirthday ? 72 : 40);
+    const isBirthday = Boolean(event.birthdaySlot);
+    const typeClass = isBirthday ? 'birthday' : (event.type || 'event');
+    const displayWidth = isBirthday ? width : Math.max(width, 40);
 
     block.className = `booking-block afisha-block afisha-type-${typeClass}`;
     block.style.left = `${left}px`;
@@ -5573,15 +5585,14 @@ function createAfishaBlock(event, startHour, anchor) {
     block.dataset.templateId = event.template_id || '';
 
     if (isBirthday) {
-        const birthdayMode = displayWidth < 52 ? 'micro' : (displayWidth < 84 ? 'tiny' : 'short');
-        block.classList.add(`afisha-birthday--${birthdayMode}`);
-        block.setAttribute('aria-label', ['Вітання іменинників', event.title, event.time].filter(Boolean).join(' '));
-        block.setAttribute('title', ['Вітання іменинників', event.title, event.time].filter(Boolean).join(' '));
-        block.innerHTML = birthdayMode === 'micro'
-            ? `<span class="afisha-birthday-badge">ІМ</span>`
-            : (birthdayMode === 'tiny'
-                ? `<span class="afisha-birthday-time">${escapeHtml(event.time)}</span><span class="afisha-birthday-badge">ІМ</span>`
-                : `<span class="afisha-birthday-badge">ІМ</span><span class="afisha-birthday-text">Вітання</span>`);
+        const slot = event.birthdaySlot || { mode: 'auto', key: 'first' };
+        const source = slot.mode === 'manual' ? 'Вручну' : 'Авто';
+        block.classList.add('afisha-birthday--micro', `afisha-birthday--${slot.mode}`);
+        if (slot.conflict) block.classList.add('afisha-birthday--conflict');
+        block.dataset.birthdaySlot = slot.key;
+        block.setAttribute('aria-label', `Вітання іменинників ${event.title || ''}, ${event.time}–${minutesToTime(timeToMinutes(event.time) + 15)}, 15 хв, ${source}${slot.conflict ? ', конфлікт часу' : ''}`);
+        block.setAttribute('title', `${event.time}–${minutesToTime(timeToMinutes(event.time) + 15)} · ${source}${slot.reason ? ` · ${slot.reason}` : ''}`);
+        block.innerHTML = `<span class="afisha-birthday-badge">ІМ</span><span class="afisha-birthday-label">${escapeHtml(event.time)} · ${source}${slot.conflict ? ' · Конфлікт' : ''}</span>`;
     } else {
         block.innerHTML = `
             <div class="title">${escapeHtml(event.title)}</div>
@@ -5589,21 +5600,27 @@ function createAfishaBlock(event, startHour, anchor) {
         `;
     }
 
-    // Drag-to-move for non-birthday blocks (birthday has synthetic 14:00/18:00 blocks)
-    if (!isViewer() && event.type !== 'birthday') {
+    // Birthday occurrences have independent server-backed times and a separate move action.
+    if (!isViewer() && !event.birthdaySlot) {
         initAfishaDrag(block, event, startHour);
     } else {
         block.setAttribute('role', 'button');
         block.tabIndex = 0;
-        const openAfisha = () => window.TimelineAfisha?.details(event, block);
-        block.addEventListener('click', openAfisha);
+        const openAfisha = () => isBirthday
+            ? window.TimelineAfisha?.birthdayDetails(event, block)
+            : window.TimelineAfisha?.details(event, block);
+        block.addEventListener('click', () => {
+            if (block.dataset.suppressBirthdayClick === 'true') { block.dataset.suppressBirthdayClick = ''; return; }
+            openAfisha();
+        });
         block.addEventListener('keydown', e => {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAfisha(); }
         });
+        if (isBirthday && !isViewer()) window.TimelineAfisha?.initBirthdayDrag(block, event, startHour);
     }
 
     // v20.8.0: Context menu for moving afisha between lines
-    if (!isViewer()) {
+    if (!isViewer() && !isBirthday) {
         block.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             _showAfishaLineMenu(e, event);
@@ -5632,7 +5649,7 @@ function createAfishaBlock(event, startHour, anchor) {
 function showAfishaTooltip(e, event) {
     const typeLabels = { event: 'Подія', regular: 'Регулярна', birthday: 'Вітання іменинників' };
     const typeIcons = { event: '🎭', regular: '🔄', birthday: 'ІМ' };
-    const duration = event.duration || 60;
+    const duration = event.birthdaySlot ? 15 : (event.duration || 60);
     const endTime = minutesToTime(timeToMinutes(event.time) + duration);
 
     if (timelineTooltipSuppressed()) {
@@ -5646,9 +5663,10 @@ function showAfishaTooltip(e, event) {
     tooltip._lastBookingId = `afisha:${event.id || event.title || event.time}`;
     tooltip._lastStatus = 'afisha';
     tooltip.innerHTML = `
-        <strong>${typeIcons[event.type] || '🎭'} ${escapeHtml(event.title)}</strong><br>
-        ${typeLabels[event.type] || 'Подія'}<br>
+        <strong>${event.birthdaySlot ? 'ІМ' : (typeIcons[event.type] || '🎭')} ${escapeHtml(event.title)}</strong><br>
+        ${event.birthdaySlot ? 'Вітання іменинників' : (typeLabels[event.type] || 'Подія')}<br>
         🕐 ${event.time} - ${endTime} (${duration} хв)
+        ${event.birthdaySlot ? `<br>${event.birthdaySlot.mode === 'manual' ? 'Вручну' : 'Автоматично'}${event.birthdaySlot.reason ? ` · ${escapeHtml(event.birthdaySlot.reason)}` : ''}` : ''}
     `;
     tooltip.style.display = '';
     tooltip.hidden = false;

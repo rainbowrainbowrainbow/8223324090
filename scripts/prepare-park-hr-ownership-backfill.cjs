@@ -52,10 +52,17 @@ function preparePlan(inventory, input) {
 async function freezeInventory(db) {
     const inventory = { atUtc: new Date().toISOString(), tables: {} };
     for (const table of TABLES) {
+        const primaryKey = (await db.query(`SELECT a.attname AS column_name FROM pg_catalog.pg_index i
+            JOIN pg_catalog.pg_class t ON t.oid=i.indrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace
+            JOIN LATERAL unnest(i.indkey) WITH ORDINALITY k(attnum,ord) ON true
+            JOIN pg_catalog.pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.attnum
+            WHERE n.nspname='public' AND t.relname=$1 AND i.indisprimary ORDER BY k.ord`, [table])).rows.map(row => row.column_name);
+        if (JSON.stringify(primaryKey) !== '["id"]') throw new Error('HR_OWNER_PRIMARY_KEY_DRIFT');
         const available = (await db.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=$1", [table])).rows.map(row => row.column_name);
         const columns = ['id', ...['key', 'profession_id', 'profession_key', 'staff_id', 'checklist_item_id', 'template_id', 'structure_node_id', 'is_active'].filter(key => available.includes(key))];
         const rows = (await db.query('SELECT ' + columns.map(identifier).join(',') + ' FROM public.' + identifier(table) + ' ORDER BY id')).rows;
-        inventory.tables[table] = { primaryKey: ['id'], columns, count: rows.length, fingerprint: digest(rows), rows };
+        inventory.tables[table] = { primaryKey, columns, count: rows.length, fingerprint: digest(rows), rows };
     }
     return inventory;
 }

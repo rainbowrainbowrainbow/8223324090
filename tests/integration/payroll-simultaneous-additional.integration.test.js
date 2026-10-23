@@ -89,9 +89,9 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
         additionalProfessionKey = `pay_add_${suffix}`.slice(0, 30);
 
         await pool.query(
-            `INSERT INTO hr_professions (key, title, department)
-             VALUES ($1, 'Payroll Primary QA', 'QA'),
-                    ($2, 'Payroll Additional QA', 'QA')`,
+            `INSERT INTO hr_professions (business_id, organization_id, key, title, department)
+             VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, 'Payroll Primary QA', 'QA'),
+                    (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $2, 'Payroll Additional QA', 'QA')`,
             [primaryProfessionKey, additionalProfessionKey]
         );
 
@@ -107,10 +107,10 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
 
         await pool.query(
             `INSERT INTO staff_role_assignments
-                (staff_id, profession_key, is_primary, status, admission_status, internship_status, hourly_rate, created_by, updated_by)
+                (business_id, organization_id, staff_id, profession_key, is_primary, status, admission_status, internship_status, hourly_rate, created_by, updated_by)
              VALUES
-                ($1, $2, true, 'active', 'approved', 'none', 100, 'integration_test', 'integration_test'),
-                ($1, $3, false, 'active', 'approved', 'none', 200, 'integration_test', 'integration_test')`,
+                (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, $2, true, 'active', 'approved', 'none', 100, 'integration_test', 'integration_test'),
+                (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, $3, false, 'active', 'approved', 'none', 200, 'integration_test', 'integration_test')`,
             [staffId, primaryProfessionKey, additionalProfessionKey]
         );
         await pool.query(
@@ -791,8 +791,8 @@ describe('simultaneous additional payroll on isolated PostgreSQL', { skip: !enab
         await deleteDraftPayrollArtifacts(pool, MONTH, staffId);
         const onboarding = await pool.query(
             `INSERT INTO onboarding_progress
-                (staff_id, items, completed_items, total_items, status, started_at)
-             VALUES ($1, '[]'::jsonb, 1, 2, 'in_progress', '2026-03-01')
+                (business_id, organization_id, staff_id, items, completed_items, total_items, status, started_at)
+             VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, '[]'::jsonb, 1, 2, 'in_progress', '2026-03-01')
              RETURNING id`,
             [staffId]
         );

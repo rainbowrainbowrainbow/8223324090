@@ -210,8 +210,8 @@ describe('payroll full-stack settlement on isolated PostgreSQL', { skip: !enable
         );
 
         await pool.query(
-            `INSERT INTO hr_professions (key, title, department)
-             VALUES ('codex_qa_payroll_202608', $1, 'QA')`,
+            `INSERT INTO hr_professions (business_id, organization_id, key, title, department)
+             VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), 'codex_qa_payroll_202608', $1, 'QA')`,
             [MARKER]
         );
 
@@ -229,10 +229,10 @@ describe('payroll full-stack settlement on isolated PostgreSQL', { skip: !enable
 
         await pool.query(
             `INSERT INTO staff_role_assignments
-                (staff_id, profession_key, is_primary, status, admission_status,
+                (business_id, organization_id, staff_id, profession_key, is_primary, status, admission_status,
                  internship_status, hourly_rate, created_by, updated_by)
              VALUES
-                ($1, 'codex_qa_payroll_202608', true, 'active', 'approved',
+                (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, 'codex_qa_payroll_202608', true, 'active', 'approved',
                  'none', 100, 'integration_test', 'integration_test')`,
             [staffId]
         );

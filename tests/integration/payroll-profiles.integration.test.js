@@ -162,10 +162,10 @@ describe('payroll profile migration 297 on isolated PostgreSQL', { skip: !enable
         serviceProfessionKey = `payroll_service_${suffix}`.slice(0, 64);
 
         await pool.query(
-            `INSERT INTO hr_professions (key, title, department)
-             VALUES ($1, 'Payroll Profile Test', 'QA'),
-                    ($2, 'Payroll Foreign Profession', 'QA'),
-                    ($3, 'Payroll Service Profession', 'QA')`,
+            `INSERT INTO hr_professions (business_id, organization_id, key, title, department)
+             VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, 'Payroll Profile Test', 'QA'),
+                    (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $2, 'Payroll Foreign Profession', 'QA'),
+                    (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $3, 'Payroll Service Profession', 'QA')`,
             [professionKey, foreignProfessionKey, serviceProfessionKey]
         );
 
@@ -183,10 +183,10 @@ describe('payroll profile migration 297 on isolated PostgreSQL', { skip: !enable
 
         await pool.query(
             `INSERT INTO staff_role_assignments
-                (staff_id, profession_key, is_primary, status, admission_status, internship_status, created_by, updated_by)
+                (business_id, organization_id, staff_id, profession_key, is_primary, status, admission_status, internship_status, created_by, updated_by)
              VALUES
-                ($1, $2, true, 'active', 'approved', 'none', 'integration_test', 'integration_test'),
-                ($3, $2, true, 'active', 'approved', 'none', 'integration_test', 'integration_test')`,
+                (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, $2, true, 'active', 'approved', 'none', 'integration_test', 'integration_test'),
+                (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $3, $2, true, 'active', 'approved', 'none', 'integration_test', 'integration_test')`,
             [ownerStaffId, serviceProfessionKey, otherStaffId]
         );
 

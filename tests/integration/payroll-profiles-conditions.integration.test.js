@@ -19,12 +19,12 @@ describe('HR PAY dated conditions on disposable PostgreSQL', { skip: !enabled, c
         db = new Pool({ connectionString: target.url.toString(), ssl: target.isLocal ? false : { rejectUnauthorized: false }, max: 5 });
         const suffix = `${process.pid}_${Date.now()}`;
         profession = `pay_base_${suffix}`.slice(0, 30); extraProfession = `pay_extra_${suffix}`.slice(0, 30);
-        await db.query(`INSERT INTO hr_professions (key,title,department) VALUES ($1,'Synthetic base','QA'),($2,'Synthetic extra','QA')`, [profession, extraProfession]);
+        await db.query(`INSERT INTO hr_professions (business_id, organization_id, key,title,department) VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1,'Synthetic base','QA'),(public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $2,'Synthetic extra','QA')`, [profession, extraProfession]);
         staffId = Number((await db.query(`INSERT INTO staff (name,department,position,role_type,hourly_rate,rate_unit,is_active)
             VALUES ('Synthetic HR PAY','qa','Synthetic',$1,100,'hour',true) RETURNING id`, [profession])).rows[0].id);
-        await db.query(`INSERT INTO staff_role_assignments (staff_id,profession_key,is_primary,status,admission_status,internship_status,created_by,updated_by)
-            VALUES ($1,$2,true,'active','approved','none','isolated_hr_pay','isolated_hr_pay'),
-            ($1,$3,false,'active','approved','none','isolated_hr_pay','isolated_hr_pay')`, [staffId, profession, extraProfession]);
+        await db.query(`INSERT INTO staff_role_assignments (business_id, organization_id, staff_id,profession_key,is_primary,status,admission_status,internship_status,created_by,updated_by)
+            VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1,$2,true,'active','approved','none','isolated_hr_pay','isolated_hr_pay'),
+            (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1,$3,false,'active','approved','none','isolated_hr_pay','isolated_hr_pay')`, [staffId, profession, extraProfession]);
         profileId = Number((await db.query(`INSERT INTO payroll_profiles (title,profession_key,profile_kind,is_default_for_profession,status,created_by)
             VALUES ('Synthetic daily extra',$1,'shared',true,'active','isolated_hr_pay') RETURNING id`, [extraProfession])).rows[0].id);
         await db.query(`INSERT INTO payroll_profile_versions (profile_id,version_number,rate_unit,default_rate,effective_from,created_by)

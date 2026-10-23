@@ -52,3 +52,11 @@ The tests exposed and fixed the view GROUP BY incompatibility; test fixture omis
 A later read-only check at 2026-10-23T19:04:35Z reconfirmed live v0.82.114 / 49dc3ebb8a6bd08cd46143e1514d7f937d7b5520, exact restored membership fingerprint, inactive Dar, Park default and Park-only single scope. Both registry businesses use membership mode. The missing return selector's cause remains unproven; no product/auth fix or repeated membership activation was performed.
 
 Additional privileged consumers outside this change still read legacy base tables: auth/users/training, payroll/attendance/shift services and staff display groups. They receive no new access here. This candidate does not claim those domains are tenant-isolated; review them before any future second-business namespace enablement. Startup legacy seeds and old binaries remain part of the separately approved writer-handoff gate.
+
+### Candidate integration and diagnostic distinction
+
+Product implementation commit: 48fd0cc31. Ordinary merge of production Git 63c1aef75888122e46af6913e62d49a202d90610: b765a01d9. Only the unit test file list conflicted; both ownership and browser synchronization tests were retained. Production release markers remain v0.82.115. This feature must not be promoted before the separately approved schema/backfill/writer handoff.
+
+A disposable actual-app browser diagnostic with a synthetic two-business account completed Dar to Park successfully. This is not live QA and does not establish the cause of the live selector timeout. The live finding remains an incomplete scenario, not a proven shared auth defect. No new production fixture was activated.
+
+Full local baseline was restarted after merge resolution so an intermediate conflicted manifest is not treated as a test result. Exact final CI evidence is delivered in the accompanying handoff; no production deploy is included.

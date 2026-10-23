@@ -37,11 +37,11 @@ function projectBirthdaySlots(events, savedSlots = [], bookings = []) {
             const start = timeToMinutes(event.time);
             return { start, end: start + Number(event.duration || 60), label: `Захід «${event.title}»`, kind: 'event' };
         });
-        const assignedBookings = bookings.filter(row => (row.date instanceof Date
+        const animatorBookings = bookings.filter(row => (row.date instanceof Date
             ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10)) === date).map(row => {
             const start = timeToMinutes(row.time);
             return { start, end: start + Number(row.duration || 0), lineId: String(row.line_id),
-                label: 'Бронювання призначеного аніматора', kind: 'booking' };
+                label: 'Бронювання аніматора', kind: 'booking' };
         });
         const occupied = [];
         const slots = [];
@@ -69,7 +69,7 @@ function projectBirthdaySlots(events, savedSlots = [], bookings = []) {
             const lineIds = [event.line_id, event.second_line_id].filter(Boolean).map(String);
             return [
                 ...eventsOccupied,
-                ...assignedBookings.filter(item => lineIds.includes(item.lineId)),
+                ...animatorBookings.filter(item => !lineIds.length || lineIds.includes(item.lineId)),
                 ...occupied.filter(item => !(item.eventId === event.id && item.key === slot.key))
             ];
         }
@@ -118,20 +118,18 @@ async function birthdaySlotsForEvents(queryable, events, options = {}) {
         && row.slot_key === options.override.slot_key));
     if (options.override) slotRows.push(options.override);
     const lineIds = [...new Set(birthdayEvents.flatMap(event => [event.line_id, event.second_line_id].filter(Boolean).map(String)))];
-    let bookings = [];
-    if (lineIds.length) {
-        const dates = [...new Set(birthdayEvents.map(event => event.date))];
-        const result = await queryable.query(
-            `SELECT date, line_id, time, duration FROM bookings
-             WHERE date = ANY($1::text[]) AND line_id = ANY($2::text[])
-               AND COALESCE(business_context, 'event_genix') = 'event_genix'
-               AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'confirmed')) != 'cancelled'
-               AND id::text <> ALL($3::text[])`,
-            [dates, lineIds, (options.excludeBookingIds || []).map(String)]
-        );
-        bookings = result.rows;
-    }
-    return projectBirthdaySlots(events, slotRows, bookings);
+    const hasUnassignedGreeting = birthdayEvents.some(event => !event.line_id && !event.second_line_id);
+    const dates = [...new Set(birthdayEvents.map(event => event.date))];
+    const result = await queryable.query(
+        `SELECT date, line_id, time, duration FROM bookings
+         WHERE date = ANY($1::text[]) AND line_id IS NOT NULL
+           AND ($2::text[] IS NULL OR line_id = ANY($2::text[]))
+           AND COALESCE(business_context, 'event_genix') = 'event_genix'
+           AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'confirmed')) != 'cancelled'
+           AND id::text <> ALL($3::text[])`,
+        [dates, hasUnassignedGreeting ? null : lineIds, (options.excludeBookingIds || []).map(String)]
+    );
+    return projectBirthdaySlots(events, slotRows, result.rows);
 }
 
 async function setBirthdaySlot(pool, id, key, input, actor) {

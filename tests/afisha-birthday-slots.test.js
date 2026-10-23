@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { projectBirthdaySlots } = require('../services/afishaBirthdaySlots');
+const { projectBirthdaySlots, birthdaySlotsForEvents } = require('../services/afishaBirthdaySlots');
 
 const date = '2026-10-26';
 const birthday = (id = 1) => ({ id, date, time: '12:00', title: 'Іменинники', type: 'birthday' });
@@ -44,6 +44,38 @@ test('only an assigned animator booking affects a greeting', () => {
     const booking = { date, line_id: 'animator-2', time: '14:00', duration: 30 };
     assert.equal(slots([greeting], [], [booking])[0].time, '14:00');
     assert.equal(slots([greeting], [], [{ ...booking, line_id: 'animator-1' }])[0].time, '14:30');
+});
+
+test('an unassigned auto greeting moves around an animator booking', () => {
+    const greeting = { id: 6, date, time: '14:00', original_time: '14:00', title: 'Іменинники',
+        duration: 15, type: 'greeting' };
+    const booking = { date, line_id: 'animator-1', time: '14:00', duration: 60 };
+    const [slot] = slots([greeting], [], [booking]);
+    assert.equal(slot.time, '15:00');
+    assert.equal(slot.mode, 'auto');
+    assert.match(slot.reason, /Бронювання/);
+    const [manual] = slots([greeting], [
+        { afisha_id: 6, slot_key: 'single', time: '14:00', mode: 'manual', updated_by: 'owner' }
+    ], [booking]);
+    assert.equal(manual.time, '14:00');
+    assert.equal(manual.mode, 'manual');
+    assert.equal(manual.conflict, true);
+});
+
+test('unassigned greeting loads animator bookings when projecting database events', async () => {
+    const greeting = { id: 6, date, time: '14:00', original_time: '14:00', title: 'Іменинники',
+        duration: 15, type: 'greeting' };
+    const queries = [];
+    const queryable = { query: async (sql, params) => {
+        queries.push({ sql, params });
+        return { rows: sql.includes('FROM bookings')
+            ? [{ date, line_id: 'animator-1', time: '14:00', duration: 60 }]
+            : [] };
+    } };
+    const projected = await birthdaySlotsForEvents(queryable, [greeting]);
+    assert.equal(queries.length, 2);
+    assert.equal(queries[1].params[1], null);
+    assert.equal(projected[0].birthday_slots[0].time, '15:00');
 });
 
 test('multiple birthdays do not occupy the same fifteen minutes', () => {

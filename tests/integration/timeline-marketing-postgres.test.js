@@ -79,6 +79,24 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
             assert.equal(listed.find(row => row.id === first.body.item.id).birthday_slots[0].mode, 'manual');
             assert.equal(listed.find(row => row.id === second.body.item.id).birthday_slots[0].mode, 'auto');
         });
+        await t.test('an unassigned greeting follows an active animator booking on the timeline', async () => {
+            const created = await request('POST', '/api/afisha/timeline', {
+                date: '2026-10-24', time: '14:00', duration: 15, title: 'Іменинники', type: 'greeting',
+                description: '', promotionId: null, lineIds: []
+            });
+            assert.equal(created.status, 201, JSON.stringify(created.body));
+            const readSlot = async () => (await request('GET', '/api/afisha/2026-10-24')).body
+                .find(row => row.id === created.body.item.id).birthday_slots[0];
+            assert.equal((await readSlot()).time, '14:00');
+            const booking = await pool.query(`INSERT INTO bookings (date, time, duration, line_id, status, business_context)
+                VALUES ('2026-10-24', '14:00', 60, '1', 'confirmed', 'event_genix') RETURNING id`);
+            const moved = await readSlot();
+            assert.equal(moved.time, '15:00');
+            assert.equal(moved.mode, 'auto');
+            assert.match(moved.reason, /Бронювання/);
+            await pool.query('UPDATE bookings SET status = $1 WHERE id = $2', ['cancelled', booking.rows[0].id]);
+            assert.equal((await readSlot()).time, '14:00');
+        });
         const input = { date: '2026-10-20', time: '14:00', expectedDate: '2026-10-19', expectedTime: '14:00' };
         await t.test('one concurrent schedule update wins and retains unrelated fields', async () => {
             const results = await Promise.all([request('PATCH', '/api/afisha/1/schedule', input), request('PATCH', '/api/afisha/1/schedule', { ...input, date: '2026-10-21' })]);

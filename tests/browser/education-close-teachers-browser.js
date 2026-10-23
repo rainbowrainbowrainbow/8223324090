@@ -8,6 +8,7 @@ const engine = process.env.EDU_MOBILE_ENGINE || 'chromium';
 const browserType = require(process.env.EDU_QA_PLAYWRIGHT)[engine];
 const { DATABASES, assertLocalTarget, seedDataset, preflight } = require('../../scripts/lib/education-ready-dataset');
 const { createResults } = require('../helpers/education-ready-results');
+const { isCancelledWebkitLifecycleFetch } = require('../helpers/education-navigation-errors');
 assertLocalTarget('fixed');
 const base = process.env.TEST_URL;
 assert.match(base, /^http:\/\/127\.0\.0\.1:\d+$/);
@@ -45,7 +46,11 @@ async function waitTeacherRuntimeReads(page) {
 async function pageFor(action, business='dar', width=1440) {
     const context=await browser.newContext({viewport:{width,height:width===390?844:1000},hasTouch:width===390,isMobile:width===390,serviceWorkers:'block',timezoneId:'Europe/Kyiv'});
     await context.route('**/*',route=>new URL(route.request().url()).origin===base?route.continue():route.abort());
-    const page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',e=>evidence.pageErrors.push({name:e.name,message:e.message,stack:e.stack}));page.on('requestfailed',request=>{const url=new URL(request.url());evidence.failedRequests ||= [];evidence.failedRequests.push({path:url.pathname,business:url.searchParams.get('businessContext'),error:request.failure()?.errorText});});
+    const page=await context.newPage();page.setDefaultTimeout(12000);
+    const pageErrors=[],failedRequests=[],transitions=[];
+    page.on('request',request=>{if(request.isNavigationRequest())transitions.push(Date.now());});
+    page.on('pageerror',error=>pageErrors.push({error:{name:error.name,message:error.message,stack:error.stack},at:Date.now()}));
+    page.on('requestfailed',request=>{const url=new URL(request.url()),failure={path:url.pathname,business:url.searchParams.get('businessContext'),error:request.failure()?.errorText,at:Date.now()};failedRequests.push(failure);evidence.failedRequests ||= [];evidence.failedRequests.push({path:failure.path,business:failure.business,error:failure.error});});
     try {
         await page.goto(base,{waitUntil:'domcontentloaded'});await page.locator('#username').fill(process.env.TEST_USER);await page.locator('#password').fill(process.env.TEST_PASS);
         await page.locator('#loginForm button[type="submit"]').click();await page.locator('#mainApp').waitFor({state:'visible',timeout:45000});await waitTeacherRuntimeReads(page);
@@ -57,7 +62,15 @@ async function pageFor(action, business='dar', width=1440) {
         evidence.failureDiagnostics ||= [];
         evidence.failureDiagnostics.push(await page.evaluate(()=>({url:location.pathname+location.search,invalid:[...document.querySelectorAll('#bookingForm input,#bookingForm select')].filter(el=>!el.validity.valid).map(el=>({id:el.id,value:el.value,message:el.validationMessage})),submit:{disabled:document.getElementById('bookingSubmitBtn')?.disabled,text:document.getElementById('bookingSubmitBtn')?.textContent},messages:[...document.querySelectorAll('[role="alert"],.notification')].map(el=>el.textContent)})).catch(()=>({unavailable:true})));
         flush();throw error;
-    } finally {await context.close();}
+    } finally {
+        transitions.push(Date.now());
+        await context.close();
+        for(const entry of pageErrors){
+            const destination=isCancelledWebkitLifecycleFetch({engine,base,...entry,transitions,failures:failedRequests})?'navigationAbortPageErrors':'pageErrors';
+            evidence[destination] ||= [];
+            evidence[destination].push(entry.error);
+        }
+    }
 }
 async function shot(page,name) {await page.screenshot({path:path.join(out,`${name}.png`)});evidence.screenshots.push(`${name}.png`);}
 async function measureContrast(page,label){

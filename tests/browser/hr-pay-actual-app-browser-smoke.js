@@ -242,7 +242,12 @@ async function run() {
         const writeRequest=copiedResponse.request().postDataJSON();
         assert.deepEqual(writeRequest.staffIds,[staffId],'confirmed copy keeps the exact reviewed UI scope');
         assert.equal(writeRequest.rejectConflicts,true,'write rejects targets that changed after preview');
-        await page.waitForFunction(()=>document.querySelector('#scheduleDataRegion')?.dataset.scheduleState==='ready');
+        await page.waitForFunction(expectedStart=>{
+            const region=document.querySelector('#scheduleDataRegion');
+            return document.querySelector('#scheduleDateFrom')?.value===expectedStart
+                && region?.dataset.hasCommittedRange==='true'
+                && region?.dataset.scheduleState==='ready';
+        },writeRequest.toMonday);
         const desktopCopyBox=await copyButton.boundingBox();
         assert.ok(desktopCopyBox&&desktopCopyBox.width>=34&&desktopCopyBox.height>=34,'copy action keeps a usable desktop target');
         await page.setViewportSize({width:390,height:844});

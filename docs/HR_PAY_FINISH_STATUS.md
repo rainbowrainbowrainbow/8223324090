@@ -37,9 +37,23 @@ The API count (46 staff) and direct database count (56 core plus reserve) differ
 - Existing resolver behavior remains: the target date is resolved fresh, target-date terms apply, and `payroll_day_exceptions` are not copied. The day plan continues to copy time segments, breaks, professions/additional roles, and notes without changing payroll formulas or multiplying simultaneous roles into physical hours.
 - HR deep links use `/hr?businessContext=park&employee=<id>&profileTab=payroll&profession=<key>&payDate=<date>#team`.
 
+The schedule uses a 9-day rolling window. The copy action identifies and previews the explicit 7-day source period at the start of that window, then targets the next 7-day period. It does not copy the full 9-day display window.
+
+## HR-PAY-16 manual entry status
+
+The private sanitized manual review list is ready for the owner, but entry is `BLOCKED` until the authoritative rate source, effective dates, and owner-approved values are supplied. This is a data-entry blocker only; no rates, norms, or admission decisions were invented or written. The core/reserve distinction and optional historical reserve pool remain explicit in the private list.
+
+## HR-PAY-17 exact-SHA verification
+
+Candidate feature SHA `cac8f4d935396edd5cb9457de4c9cfcdf6e6a794` passed the exact GitHub Actions HR/PostgreSQL integration job and Fast baseline in run [39946315481](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/39946315481). The HR actual-app browser evidence is synthetic-only (`productionWrites: 0`) and is saved as CI artifact [hr-pay-actual-app-browser](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/39946315481/artifacts/12498916601). Its journey evidence reports `PASS` for the HR profile card, schedule copy preview/write, exception conflict, draft return, salary restriction, missing-mirror conflict, attendance, salary breakdown, and membership/security boundaries. The browser measured 330 physical minutes with a 30-minute break, then 5.5 physical hours and one additional-profession pay line. The exact actual-app copy response is checked through the Park projection's permitted fields (`copyMode`, `staffCount`); exact `staffIds` are asserted on the request and against the UI-visible synthetic fixture, while the target is checked in isolated PostgreSQL.
+
+The HR job also runs `tests/integration/payroll-profiles-conditions.integration.test.js`, covering idempotency and concurrency, frozen clock-in snapshots, future-plan voiding, monthly plus day top-ups, one monthly group payment, absence handling, and closed-period snapshots. The actual-app browser test covers hourly, daily, and monthly conditions, additional profession pay without multiplying physical hours, date-specific exception behavior, and restricted salary access. The current whole-workflow run is still pending while unrelated browser jobs finish; no result is claimed for those unfinished jobs. A final status commit adds a target-range readiness barrier after copy confirmation so follow-up assertions wait for the target's committed range. A release/version commit and its own exact-SHA green CI are still required before preparing a fresh production manifest.
+
+The initial copy-week actual-app failure at preview reported 371 target conflicts because the test accidentally used the raw `animators` department scope; those were real existing target records and the conflict guard correctly refused the operation. The fixture now uses the supported `reception` explicit-staff category and UI search, and asserts the sole visible synthetic staff ID and exact request scope. A later test assertion expected `staffIds` in the response, but the Park projection intentionally masks that field; the test now checks the allowed `staffCount` response and keeps exact-ID assertions on the request and isolated database. No projection or access mask was changed.
+
 ## Reproduction and exact audit command
 
-Open `/staff`, load a canonical seven-day week, and use `Копіювати тиждень`. The review path previews the next week, requires confirmation, and rejects any existing target schedule or canonical HR plan. A race after preview is rechecked under staff locks and returns 409 without writing.
+Open `/staff`, load the current 9-day rolling schedule, and use `Копіювати тиждень`. The action previews the explicitly shown 7-day source period, requires confirmation, and rejects any existing target schedule or canonical HR plan. A race after preview is rechecked under staff locks and returns 409 without writing.
 
 Live API read-only audit:
 
@@ -59,6 +73,6 @@ $env:NODE_PATH='C:\Users\Plotva\OneDrive\Документи\EventGenix\node_modu
 node scripts/audit-hr-pay-readiness.js --date 2026-10-23 --source database --output output/hr-pay/hr-pay-14-readiness-2026-10-23-database.json
 ```
 
-Local checks on Node 22.23.1/npm 10.9.8 passed: four targeted Node test files and `tests/ui-check.js` (1327 passed, 0 failed). Logs are in `output/hr-pay/hr-pay-runtime-2026-10-23.log`, `hr-pay-targeted-tests-2026-10-23.log`, and `hr-pay-ui-check-2026-10-23.log`. The actual Express/PostgreSQL browser suite has not run locally: the isolated runner requires `TEST_DATABASE_URL`, and Docker Desktop's Linux engine is unavailable. The runner did not fall back to `DATABASE_URL`. Its blocker output is recorded at `output/hr-pay/hr-pay-15-17-isolated-fullstack-2026-10-23.log`; CI is the remaining disposable database/browser proof.
+Local checks on Node 22.23.1/npm 10.9.8 passed: four targeted Node test files, `npm run test:ui` (1327 static checks, 4 code-splitting tests, 16 timeline-settings tests), and the mocked schedule browser smoke. Logs are in `output/hr-pay/hr-pay-runtime-2026-10-23.log`, `hr-pay-targeted-tests-2026-10-23.log`, and `hr-pay-ui-check-2026-10-23.log`. The actual Express/PostgreSQL browser suite could not run locally because the isolated runner requires `TEST_DATABASE_URL` and Docker Desktop's Linux engine is unavailable; it did not fall back to `DATABASE_URL`. The same actual-app suite passed on the disposable PostgreSQL CI runner above.
 
 No production release has been prepared or uploaded. A new version/cache/changelog commit and exact release manifest remain gated by successful exact-SHA CI and an actual new human confirmation phrase. No production branch push or Railway deploy is authorized until that confirmation is supplied.

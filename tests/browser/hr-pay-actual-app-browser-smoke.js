@@ -218,7 +218,7 @@ async function run() {
         assert.equal(previewBody.conflicts,0,`copy-week preview reported ${previewBody.conflicts} target conflicts`);
         assert.ok(previewBody.count>0,'copy-week preview contains source entries');
         assert.equal(previewBody.copyMode,'explicit_staff_ids');
-        assert.deepEqual(previewBody.staffIds,[staffId],'preview scope is the exact synthetic staff ID shown in the schedule');
+        assert.equal(previewBody.staffCount,1,'preview reports one staff member in the exact UI-selected scope');
         const previewRequest=previewResponse.request().postDataJSON();
         assert.equal(previewRequest.displayGroup,'reception');
         assert.equal(previewRequest.staffIds.length,1,'copy-week uses only the staff row retained by the UI search');

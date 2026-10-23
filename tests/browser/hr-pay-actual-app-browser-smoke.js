@@ -211,6 +211,9 @@ async function run() {
         assert.equal(missingMirrorConflict.status,409);assert.equal(missingMirrorConflict.body.code,'SCHEDULE_COPY_WEEK_TARGET_CONFLICT');
         assert.equal(Number((await db.query('SELECT COUNT(*)::int AS count FROM hr_shifts WHERE staff_id=$1 AND shift_date=$2',[staffId,copiedDay])).rows[0].count),targetPlanCount,'canonical target plan is preserved when its legacy mirror is absent');
         assert.equal((await db.query('SELECT id FROM staff_schedule WHERE staff_id=$1 AND date=$2',[staffId,copiedDay])).rows.length,0,'conflict guard does not recreate the missing mirror');
+        const returnToSource=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/staff/schedule'&&r.request().method()==='GET');
+        await page.locator('#todayWeekBtn').click();assert.equal((await returnToSource).status(),200);
+        await page.waitForFunction(()=>document.querySelector('#scheduleDataRegion')?.dataset.scheduleState==='ready');
         await openCell(page,staffId,date);assert.match(await panel().innerText(),/260 грн/);
         // Keep a stale modal while a second authorized editor changes the same journal revision.
         const applied=(await request(`/api/hr/staff/${staffId}/payroll-conditions?professionKey=animator&date=${date}`,token)).body.data;

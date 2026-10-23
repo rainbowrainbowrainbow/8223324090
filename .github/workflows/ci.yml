@@ -616,6 +616,17 @@ jobs:
         run: npm install -g npm@10.9.8
       - name: Install dependencies
         run: npm ci
+      - name: Use Ubuntu archive mirror for WebKit dependencies
+        if: matrix.engine == 'webkit'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sources=/etc/apt/sources.list.d/ubuntu.sources
+          test -f "$sources"
+          if grep -q 'azure.archive.ubuntu.com' "$sources"; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g;s|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$sources"
+          fi
+          ! grep -q 'azure.archive.ubuntu.com' "$sources"
       - name: Install required browser through existing ephemeral Playwright pattern
         if: matrix.suite != 'attendance' && matrix.suite != 'series'
         run: npm exec --yes --package=playwright -c "playwright install --with-deps ${{ matrix.engine }}"

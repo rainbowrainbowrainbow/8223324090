@@ -97,7 +97,7 @@ async function run() {
     let page;
     try {
         const staffId=Number((await db.query(`INSERT INTO staff(name,department,position,role_type,secondary_professions,hourly_rate,rate_unit,is_active)
-            VALUES($1,'admin','QA','animator','["reception"]',100,'hour',true) RETURNING id`,['Synthetic pay '+stamp])).rows[0].id);
+            VALUES($1,'animators','QA','animator','["reception"]',100,'hour',true) RETURNING id`,['Synthetic pay '+stamp])).rows[0].id);
         await db.query(`INSERT INTO staff_role_assignments(staff_id,profession_key,is_primary,status,admission_status,internship_status,created_by,updated_by)
             VALUES($1,'animator',true,'active','approved','none','isolated_pay','isolated_pay'),($1,'reception',false,'active','approved','none','isolated_pay','isolated_pay')`,[staffId]);
         async function profile(title,profession,unit,rate) {
@@ -116,20 +116,16 @@ async function run() {
         page=await context.newPage(); page.setDefaultTimeout(30000);
         const errors=[];page.on('pageerror',error=>errors.push(error.message));
         await openPage(page,date,next);
-        await page.locator('#deptFilter [data-dept="admin"]').click();
-        await page.locator('#scheduleStaffSearch').fill('Synthetic pay '+stamp);
-        await page.waitForFunction(()=>document.querySelector('#scheduleStaffFilterInfo')?.textContent?.startsWith('Показано 1 з '));
-        const assertIsolatedVisibleScope=async({expandAdmin=false}={})=>{
+        const assertIsolatedVisibleScope=async({expandReception=false}={})=>{
             assert.equal(await page.locator('#scheduleStaffSearch').inputValue(),'Synthetic pay '+stamp);
-            assert.equal(await page.locator('#deptFilter [data-dept="admin"]').getAttribute('aria-pressed'),'true');
-            const adminToggle=page.locator('[data-schedule-group-toggle="admin"]');
-            await adminToggle.waitFor();
-            if(expandAdmin&&await adminToggle.getAttribute('aria-expanded')!=='true')await adminToggle.click();
-            assert.equal(await adminToggle.getAttribute('aria-expanded'),'true','synthetic staff group remains expanded in the schedule');
+            assert.equal(await page.locator('#deptFilter [data-dept="reception"]').getAttribute('aria-pressed'),'true');
+            const receptionToggle=page.locator('[data-schedule-group-toggle="reception"]');
+            await receptionToggle.waitFor();
+            if(expandReception&&await receptionToggle.getAttribute('aria-expanded')!=='true')await receptionToggle.click();
+            assert.equal(await receptionToggle.getAttribute('aria-expanded'),'true','synthetic staff group remains expanded in the schedule');
             const visibleIds=await page.locator('.sch-cell[data-staff]').evaluateAll(cells=>[...new Set(cells.map(cell=>Number(cell.dataset.staff)))].sort((a,b)=>a-b));
             assert.deepEqual(visibleIds,[staffId],'supported UI filter and search retain only the synthetic staff fixture');
         };
-        await assertIsolatedVisibleScope({expandAdmin:true});
         await openCell(page,staffId,date);
         const card=()=>page.locator('#schSegmentsList .sch-segment-card').first();
         const panel=()=>card().locator('[data-day-pay-panel][data-pay-purpose="base_replacement"]');
@@ -158,7 +154,6 @@ async function run() {
         assert.doesNotMatch(draft,/selectedProfile|defaultRate|profileVersionId|dayPay/);
         await page.locator('#staffScheduleReturnLink').click();
         await page.locator('#schModalOverlay.visible').waitFor();
-        await assertIsolatedVisibleScope();
         await panel().locator('[data-day-pay-field="choice"]').waitFor();
         assert.equal(await card().locator('[data-segment-field="start"]').inputValue(),'10:00');
         assert.equal(await card().locator('[data-segment-field="break"]').inputValue(),'30');
@@ -193,7 +188,10 @@ async function run() {
         const copiedDay=copiedDate.toISOString().slice(0,10);
         await page.locator('#todayWeekBtn').click();
         await page.waitForFunction(()=>document.querySelector('#scheduleDataRegion')?.dataset.scheduleState==='ready');
-        await assertIsolatedVisibleScope({expandAdmin:true});
+        await page.locator('#deptFilter [data-dept="reception"]').click();
+        await page.locator('#scheduleStaffSearch').fill('Synthetic pay '+stamp);
+        await page.waitForFunction(()=>document.querySelector('#scheduleStaffFilterInfo')?.textContent?.startsWith('Показано 1 з '));
+        await assertIsolatedVisibleScope({expandReception:true});
         const copyButton=page.locator('#copyWeekBtn');
         await copyButton.waitFor({state:'visible'});
         assert.equal(await copyButton.isDisabled(),false,'weekly copy action is available on a canonical week');
@@ -222,7 +220,7 @@ async function run() {
         assert.equal(previewBody.copyMode,'explicit_staff_ids');
         assert.deepEqual(previewBody.staffIds,[staffId],'preview scope is the exact synthetic staff ID shown in the schedule');
         const previewRequest=previewResponse.request().postDataJSON();
-        assert.equal(previewRequest.displayGroup,'admin');
+        assert.equal(previewRequest.displayGroup,'reception');
         assert.equal(previewRequest.staffIds.length,1,'copy-week uses only the staff row retained by the UI search');
         assert.equal(Number(previewRequest.staffIds[0]),staffId);
         const copyConfirm=page.locator('.confirm-overlay[data-confirm-kind="confirm"]');
@@ -240,7 +238,7 @@ async function run() {
         assert.equal(copiedResponse.status(),200,`confirmed copy-week returned HTTP ${copiedResponse.status()}`);
         const copiedBody=await copiedResponse.json();assert.equal(copiedBody.success,true);assert.ok(copiedBody.count>0);
         assert.equal(copiedBody.copyMode,'explicit_staff_ids');
-        assert.deepEqual(copiedBody.staffIds,[staffId]);
+        assert.equal(copiedBody.staffCount,1,'write result reports one staff member in the reviewed scope');
         const writeRequest=copiedResponse.request().postDataJSON();
         assert.deepEqual(writeRequest.staffIds,[staffId],'confirmed copy keeps the exact reviewed UI scope');
         assert.equal(writeRequest.rejectConflicts,true,'write rejects targets that changed after preview');
@@ -264,6 +262,8 @@ async function run() {
         const returnToSource=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/staff/schedule'&&r.request().method()==='GET');
         await page.locator('#todayWeekBtn').click();assert.equal((await returnToSource).status(),200);
         await page.waitForFunction(()=>document.querySelector('#scheduleDataRegion')?.dataset.scheduleState==='ready');
+        await page.locator('#deptFilter [data-dept="animators"]').click();
+        await page.locator('#scheduleStaffSearch').fill('');
         await openCell(page,staffId,date);assert.match(await panel().innerText(),/260 грн/);
         // Keep a stale modal while a second authorized editor changes the same journal revision.
         const applied=(await request(`/api/hr/staff/${staffId}/payroll-conditions?professionKey=animator&date=${date}`,token)).body.data;

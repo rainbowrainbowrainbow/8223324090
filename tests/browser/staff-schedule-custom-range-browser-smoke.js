@@ -4065,6 +4065,31 @@ async function runDesktopFlow(browser, base) {
 
         await page.locator('#todayWeekBtn').click();
         await waitForDayColumns(page, 9);
+        const copyButton = page.locator('#copyWeekBtn');
+        assert.equal(await copyButton.isDisabled(), false, 'canonical rolling week enables copy-week');
+        const copyPreview = page.waitForResponse(response => new URL(response.url()).pathname === '/api/staff/schedule/copy-week'
+            && response.request().method() === 'POST' && response.request().postDataJSON()?.dryRun === true);
+        await copyButton.click();
+        const copyPreviewResponse = await copyPreview;
+        assert.equal(copyPreviewResponse.status(), 200);
+        const copyPreviewBody = await copyPreviewResponse.json();
+        assert.equal(copyPreviewBody.success, true);
+        assert.equal(copyPreviewBody.conflicts, 0);
+        const copyConfirm = page.locator('.confirm-overlay[data-confirm-kind="confirm"]');
+        await copyConfirm.waitFor({ state: 'visible' });
+        assert.match(await copyConfirm.innerText(), /Разова ставка не копіюється\. Для нової дати застосовуються чинні умови оплати\./);
+        const copyWrite = page.waitForResponse(response => new URL(response.url()).pathname === '/api/staff/schedule/copy-week'
+            && response.request().method() === 'POST' && response.request().postDataJSON()?.dryRun !== true);
+        const [copyWriteResponse] = await Promise.all([copyWrite, copyConfirm.locator('.confirm-ok').click()]);
+        assert.equal(copyWriteResponse.status(), 200);
+        const copyBodies = apiCalls.copyWeekBodies;
+        assert.equal(copyBodies.length, 2, 'copy-week previews first and writes only after confirmation');
+        assert.equal(copyBodies[0].dryRun, true);
+        assert.equal(copyBodies[1].dryRun, false);
+        assert.equal(copyBodies[1].rejectConflicts, true, 'confirmed UI write uses the server conflict guard');
+
+        await page.locator('#todayWeekBtn').click();
+        await waitForDayColumns(page, 9);
     } finally {
         await context.close();
     }

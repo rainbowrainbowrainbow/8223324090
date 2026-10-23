@@ -180,19 +180,41 @@ async function run() {
         const copyButton=page.locator('#copyWeekBtn');
         await copyButton.waitFor({state:'visible'});
         assert.equal(await copyButton.isDisabled(),false,'weekly copy action is available on a canonical week');
-        const copyWrite=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/staff/schedule/copy-week'
-            && r.request().method()==='POST' && r.request().postDataJSON()?.dryRun!==true);
+        const copyApiTrace=[];
+        const copyApiPath='/api/staff/schedule/copy-week';
+        page.on('request',request=>{
+            if(new URL(request.url()).pathname!==copyApiPath||request.method()!=='POST')return;
+            const body=request.postDataJSON()||{};
+            copyApiTrace.push({event:'request',dryRun:body.dryRun===true,rejectConflicts:body.rejectConflicts===true});
+        });
+        page.on('response',response=>{
+            if(new URL(response.url()).pathname===copyApiPath)copyApiTrace.push({event:'response',status:response.status()});
+        });
+        page.on('requestfailed',request=>{
+            if(new URL(request.url()).pathname===copyApiPath)copyApiTrace.push({event:'requestfailed'});
+        });
         const copyPreview=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/staff/schedule/copy-week'
             && r.request().method()==='POST' && r.request().postDataJSON()?.dryRun===true);
         await copyButton.click();
+        const previewResponse=await copyPreview;
+        assert.equal(previewResponse.status(),200,`copy-week preview returned HTTP ${previewResponse.status()}`);
+        const previewBody=await previewResponse.json();
+        assert.equal(previewBody.success,true,`copy-week preview reported success=${previewBody.success}`);
+        assert.equal(previewBody.conflicts,0,`copy-week preview reported ${previewBody.conflicts} target conflicts`);
+        assert.ok(previewBody.count>0,'copy-week preview contains source entries');
         const copyConfirm=page.locator('.confirm-overlay[data-confirm-kind="confirm"]');
         await copyConfirm.waitFor({state:'visible'});
         assert.match(await copyConfirm.innerText(),/Разова ставка не копіюється\. Для нової дати застосовуються чинні умови оплати\./);
         assert.doesNotMatch(await copyConfirm.innerText(),/staffIds|raw department|copyMode|department:/i);
-        assert.equal((await copyPreview).status(),200);
-        await copyConfirm.locator('.confirm-ok').click();
-        const copiedResponse=await copyWrite;
-        assert.equal(copiedResponse.status(),200);
+        const copyWrite=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/staff/schedule/copy-week'
+            && r.request().method()==='POST' && r.request().postDataJSON()?.dryRun!==true);
+        let copiedResponse;
+        try {
+            [copiedResponse]=await Promise.all([copyWrite,copyConfirm.locator('.confirm-ok').click()]);
+        } catch(error) {
+            throw new Error(`${error.message}; copy API trace=${JSON.stringify(copyApiTrace)}`);
+        }
+        assert.equal(copiedResponse.status(),200,`confirmed copy-week returned HTTP ${copiedResponse.status()}`);
         const copiedBody=await copiedResponse.json();assert.equal(copiedBody.success,true);assert.ok(copiedBody.count>0);
         await page.waitForFunction(()=>document.querySelector('#scheduleDataRegion')?.dataset.scheduleState==='ready');
         const desktopCopyBox=await copyButton.boundingBox();

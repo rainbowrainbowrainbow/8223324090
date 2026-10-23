@@ -119,16 +119,17 @@ async function run() {
         await page.locator('#deptFilter [data-dept="admin"]').click();
         await page.locator('#scheduleStaffSearch').fill('Synthetic pay '+stamp);
         await page.waitForFunction(()=>document.querySelector('#scheduleStaffFilterInfo')?.textContent?.startsWith('Показано 1 з '));
-        const assertIsolatedVisibleScope=async()=>{
+        const assertIsolatedVisibleScope=async({expandAdmin=false}={})=>{
             assert.equal(await page.locator('#scheduleStaffSearch').inputValue(),'Synthetic pay '+stamp);
             assert.equal(await page.locator('#deptFilter [data-dept="admin"]').getAttribute('aria-pressed'),'true');
             const adminToggle=page.locator('[data-schedule-group-toggle="admin"]');
             await adminToggle.waitFor();
-            if(await adminToggle.getAttribute('aria-expanded')!=='true')await adminToggle.click();
+            if(expandAdmin&&await adminToggle.getAttribute('aria-expanded')!=='true')await adminToggle.click();
+            assert.equal(await adminToggle.getAttribute('aria-expanded'),'true','synthetic staff group remains expanded in the schedule');
             const visibleIds=await page.locator('.sch-cell[data-staff]').evaluateAll(cells=>[...new Set(cells.map(cell=>Number(cell.dataset.staff)))].sort((a,b)=>a-b));
             assert.deepEqual(visibleIds,[staffId],'supported UI filter and search retain only the synthetic staff fixture');
         };
-        await assertIsolatedVisibleScope();
+        await assertIsolatedVisibleScope({expandAdmin:true});
         await openCell(page,staffId,date);
         const card=()=>page.locator('#schSegmentsList .sch-segment-card').first();
         const panel=()=>card().locator('[data-day-pay-panel][data-pay-purpose="base_replacement"]');
@@ -192,7 +193,7 @@ async function run() {
         const copiedDay=copiedDate.toISOString().slice(0,10);
         await page.locator('#todayWeekBtn').click();
         await page.waitForFunction(()=>document.querySelector('#scheduleDataRegion')?.dataset.scheduleState==='ready');
-        await assertIsolatedVisibleScope();
+        await assertIsolatedVisibleScope({expandAdmin:true});
         const copyButton=page.locator('#copyWeekBtn');
         await copyButton.waitFor({state:'visible'});
         assert.equal(await copyButton.isDisabled(),false,'weekly copy action is available on a canonical week');
@@ -220,7 +221,7 @@ async function run() {
         assert.ok(previewBody.count>0,'copy-week preview contains source entries');
         assert.equal(previewBody.copyMode,'explicit_staff_ids');
         assert.deepEqual(previewBody.staffIds,[staffId],'preview scope is the exact synthetic staff ID shown in the schedule');
-        const previewRequest=copyPreview.request().postDataJSON();
+        const previewRequest=previewResponse.request().postDataJSON();
         assert.equal(previewRequest.displayGroup,'admin');
         assert.equal(previewRequest.staffIds.length,1,'copy-week uses only the staff row retained by the UI search');
         assert.equal(Number(previewRequest.staffIds[0]),staffId);

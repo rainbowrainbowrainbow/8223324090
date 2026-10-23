@@ -1,0 +1,33 @@
+{
+  "sha": "b579f683bf02446f1348978cfe583c3a55717578",
+  "version": "0.82.109",
+  "checks": [
+    "six GETs, Dar denials, private-field masking and closed account/payroll paths",
+    "dashboard loaded",
+    "workspace read-only",
+    "workspace write actions hidden",
+    "workspace 403 state",
+    "workspace 403 retry",
+    "workspace 500 state",
+    "workspace 500 retry",
+    "workspace offline state",
+    "workspace offline retry",
+    "staff onboarding read-only",
+    "onboarding 403 state",
+    "onboarding 403 retry",
+    "onboarding 500 state",
+    "onboarding 500 retry",
+    "onboarding offline state",
+    "onboarding offline retry",
+    "Team opens basic detail",
+    "Today opens basic detail",
+    "Schedule GET 200",
+    "Schedule shell visible",
+    "no HR writes attempted; daily-login reward blocked"
+  ],
+  "blockedWrites": 1,
+  "blockedPaths": [
+    "POST /api/wallet/daily-login"
+  ],
+  "status": "PASS"
+}

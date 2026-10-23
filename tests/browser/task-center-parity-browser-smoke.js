@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const { waitForStableLayout } = require('../helpers/browser-smoke-sync');
 const { buildCapabilitySnapshot } = require('../../services/accountAccessPolicy');
 
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -394,6 +395,7 @@ async function openPage(page, baseUrl, query = '') {
 }
 
 async function assertNoHorizontalOverflow(page, label) {
+    await waitForStableLayout(page);
     const result = await page.evaluate(() => ({
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
@@ -851,11 +853,11 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl, state) {
     await openPage(page, baseUrl, '?mode=overview');
     await assertComposerFitsViewport(page, '1440x900 dark normal-motion resize start');
     await page.setViewportSize({ width: 320, height: 700 });
-    await page.waitForTimeout(75);
+    await waitForStableLayout(page);
     await assertComposerFitsViewport(page, '320x700 dark normal-motion resized');
     await assertNoHorizontalOverflow(page, '320x700 dark normal-motion resized');
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.waitForTimeout(75);
+    await waitForStableLayout(page);
     await assertComposerFitsViewport(page, '1440x900 dark normal-motion resize end');
     const viewports = [
         { width: 320, height: 700 },

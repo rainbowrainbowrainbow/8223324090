@@ -7,6 +7,7 @@ const { Pool } = require('pg');
 const engine = process.env.EDU_MOBILE_ENGINE || 'chromium';
 const browserType = require(process.env.EDU_QA_PLAYWRIGHT)[engine];
 const { DATABASES, assertLocalTarget, seedDataset, preflight } = require('../../scripts/lib/education-ready-dataset');
+const { trackRequests } = require('../helpers/browser-smoke-sync');
 const { createResults } = require('../helpers/education-ready-results');
 const { isCancelledWebkitLifecycleFetch } = require('../helpers/education-navigation-errors');
 assertLocalTarget('fixed');
@@ -23,6 +24,7 @@ evidence.harnessHash=crypto.createHash('sha256').update(fs.readFileSync(__filena
 const pool = new Pool({ host: process.env.PGHOST || '127.0.0.1', port: Number(process.env.PGPORT || 55469), user: process.env.PGUSER || 'postgres', password: process.env.PGPASSWORD, database: process.env.PGDATABASE || DATABASES.fixed, ssl: false });
 let token, manifest, browser, candidate, newTeacher, foreignTeacher, groupId, lessonId;
 let reader;
+const requestTrackers = new WeakMap();
 function flush() {
     let text=JSON.stringify(evidence,null,2);
     for(const secret of [token,process.env.TEST_USER,process.env.TEST_PASS,reader?.token,reader?.username,reader?.password].filter(Boolean)) text=text.split(secret).join('[REDACTED]');
@@ -42,10 +44,12 @@ async function waitTeacherRuntimeReads(page) {
     });
     evidence.runtimeReadSettles ||= [];const settled=await snapshot.jsonValue();assert.equal(settled.educationError,null,'Education workspace must complete without error before navigation');evidence.runtimeReadSettles.push(settled);await snapshot.dispose();
     await page.waitForLoadState('networkidle');
+    await requestTrackers.get(page.context()).idle();
 }
 async function pageFor(action, business='dar', width=1440) {
     const context=await browser.newContext({viewport:{width,height:width===390?844:1000},hasTouch:width===390,isMobile:width===390,serviceWorkers:'block',timezoneId:'Europe/Kyiv'});
     await context.route('**/*',route=>new URL(route.request().url()).origin===base?route.continue():route.abort());
+    requestTrackers.set(context,trackRequests(context,base));
     const page=await context.newPage();page.setDefaultTimeout(12000);
     const pageErrors=[],failedRequests=[],transitions=[];
     page.on('request',request=>{if(request.isNavigationRequest())transitions.push(Date.now());});
@@ -63,6 +67,9 @@ async function pageFor(action, business='dar', width=1440) {
         evidence.failureDiagnostics.push(await page.evaluate(()=>({url:location.pathname+location.search,invalid:[...document.querySelectorAll('#bookingForm input,#bookingForm select')].filter(el=>!el.validity.valid).map(el=>({id:el.id,value:el.value,message:el.validationMessage})),submit:{disabled:document.getElementById('bookingSubmitBtn')?.disabled,text:document.getElementById('bookingSubmitBtn')?.textContent},messages:[...document.querySelectorAll('[role="alert"],.notification')].map(el=>el.textContent)})).catch(()=>({unavailable:true})));
         flush();throw error;
     } finally {
+        const tracker=requestTrackers.get(context);
+        (evidence.navigationRetiredReads ||= []).push(...(tracker?.retiredReads()||[]));
+        tracker?.dispose();
         transitions.push(Date.now());
         await context.close();
         for(const entry of pageErrors){
@@ -503,6 +510,7 @@ async function closeChecks(){
         }
         evidence.proofs.hrSourcePrerequisite={organizationId:org,actorId,syntheticMemberships:['event_genix','dar','maysternya_doli'],ownershipInferred:false};
 
+        await waitTeacherRuntimeReads(page);
         await Promise.all([page.waitForURL(url=>url.pathname==='/'&&(url.searchParams.get('businessContext')||'event_genix')==='event_genix'&&!url.searchParams.has('educationSchedule'),{waitUntil:'domcontentloaded'}),page.locator('#sidebarBusinessContextSelect').selectOption('event_genix')]);await page.waitForFunction(()=>window.CrmBusinessContext?.current?.()==='event_genix'&&window.TimelineBusinessContext?.current?.().apiValue==='event_genix'&&!document.getElementById('sidebarBusinessContextSelect')?.disabled&&window.__crmBusinessNavigationPending!==true);await waitTeacherRuntimeReads(page);
         evidence.proofs.hrRequests=[]; page.on('request',r=>{const u=new URL(r.url());if(u.pathname.startsWith('/api/hr/staff/'))evidence.proofs.hrRequests.push({path:u.pathname+u.search,context:r.headers()['x-business-context'],scope:r.headers()['x-business-scope']});});
         await waitTeacherRuntimeReads(page);await page.goto(base+'/hr.html?businessContext=event_genix&employee='+candidate,{waitUntil:'domcontentloaded'});
@@ -582,6 +590,7 @@ async function closeChecks(){
         for(const theme of ['light','dark']) {
             await page.locator('#editCloseTop').click();await page.locator('#staffEditModal').waitFor({state:'hidden'});await page.setViewportSize({width:390,height:844});
             if(await page.evaluate(()=>document.documentElement.dataset.theme)!==theme)await page.locator('#headerThemeToggle').click();await page.waitForFunction(theme=>document.documentElement.dataset.theme===theme,theme);
+            await waitTeacherRuntimeReads(page);
             await page.goto(base+'/hr.html?businessContext=event_genix&employee='+candidate,{waitUntil:'domcontentloaded'});await page.locator('#staffEducationAssignment').waitFor({state:'visible'});await page.waitForFunction(()=>!document.getElementById('staffEducationBusiness').disabled);await page.locator('#staffEducationBusiness').selectOption('dar');
             await page.locator('#staffEducationAssignment').scrollIntoViewIfNeeded();await measureContrast(page,'hr-education-phone-'+theme);
             const audit=evidence.audits.at(-1);assert.ok(audit.contrast.length>0);assert.deepEqual(audit.contrast.filter(c=>!Number.isFinite(c.ratio)||c.ratio<c.minimum),[],'New HR education controls contrast');
@@ -590,6 +599,7 @@ async function closeChecks(){
         await page.setViewportSize({width:1440,height:1000});await shot(page,'existing-hr-staff-explicit-education-assignment');
         await page.locator('#editCloseTop').click();await page.locator('#staffEditModal').waitFor({state:'hidden'});
         // Leave the HR surface through its visible timeline launcher before changing timeline business.
+        await waitTeacherRuntimeReads(page);
         await page.locator('[data-sidebar-timeline-mode="animators"]').filter({visible:true}).first().click();
         await page.waitForURL(url=>url.pathname==='/',{waitUntil:'domcontentloaded'});
         await page.locator('#mainApp').waitFor({state:'visible'});

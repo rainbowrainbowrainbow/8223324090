@@ -104,10 +104,12 @@ async function readDatabaseInputs(client, date) {
             }
             return (await client.query(sql, params)).rows;
         }
-        const staff = await select('staff', `SELECT id, role_type, secondary_professions, is_active, hourly_rate, rate_unit
-            FROM staff WHERE is_active = true ORDER BY id`);
+        const staff = await select('staff', `SELECT id, role_type, secondary_professions, is_active, hr_pool_status, hourly_rate, rate_unit
+            FROM staff WHERE is_active = true OR hr_pool_status = 'reserve' ORDER BY id`);
         if (!access.get('staff')?.readable) throw new Error('READ_ONLY_HR_TABLE_ACCESS_REQUIRED');
         const ids = staff.map(row => Number(row.id));
+        const reserveStaff = staff.filter(row => row.hr_pool_status === 'reserve');
+        const coreStaff = staff.filter(row => row.is_active === true && row.hr_pool_status !== 'reserve');
         const roleAssignments = await select('staff_role_assignments', `SELECT staff_id, profession_key, status, admission_status
             FROM staff_role_assignments WHERE staff_id = ANY($1::int[])`, [ids]);
         const rates = await select('staff_profession_rates', `SELECT staff_id, profession_key, hourly_rate
@@ -132,7 +134,7 @@ async function readDatabaseInputs(client, date) {
             workDate: row.work_date, purpose: row.purpose, version: Number(row.version), state: row.state,
             rate: row.rate == null ? null : Number(row.rate), rateUnit: row.rate_unit }));
         const readable = table => access.get(table)?.readable === true;
-        return { source: 'database', date, staff, roleAssignments, rates, profiles, assignments, schemes, exceptions, sourceErrors,
+        return { source: 'database', date, staff: coreStaff, reserveStaff, roleAssignments, rates, profiles, assignments, schemes, exceptions, sourceErrors,
             payrollAmountsAvailable: true, legacyRatesAvailable: readable('staff_profession_rates'),
             rolesAvailable: readable('staff_role_assignments'),
             profilesAvailable: ['payroll_profiles', 'payroll_profile_versions', 'payroll_profile_day_rates'].every(readable),
@@ -150,7 +152,11 @@ async function runReadOnlyDatabaseAudit(args, env = process.env) {
         application_name: 'hr-pay-readiness-readonly' });
     try {
         await client.connect();
-        const report = buildHrPayReadiness(await readDatabaseInputs(client, args.date));
+        const inputs = await readDatabaseInputs(client, args.date);
+        const report = buildHrPayReadiness(inputs);
+        const reserveReport = buildHrPayReadiness({ ...inputs,
+            staff: inputs.reserveStaff.map(person => ({ ...person, is_active: true })) });
+        report.reserve = { coverage: reserveReport.coverage, counts: reserveReport.counts, rows: reserveReport.rows };
         report.checkedAt = new Date().toISOString();
         report.databaseProof = { transaction: 'REPEATABLE READ READ ONLY', rolledBack: true,
             source: 'TRUSTED_QA_OPERATOR_DATABASE_URL', productionWrites: 0 };

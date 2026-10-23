@@ -3929,6 +3929,9 @@ async function runDesktopFlow(browser, base) {
         await assertFittedScheduleLayout(page, 'desktop first-half', 15);
         assert.match(await page.locator('#weekLabel').innerText(), /1 .+15 .+20\d{2}/, 'visible label reflects 1-15 range');
         assert.equal(await page.locator('.staff-schedule-command-bar .schedule-toolbar').count(), 0, 'legacy visible toolbar is removed from schedule shell');
+        await page.locator('.staff-schedule-header-actions #copyWeekBtn').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#copyWeekBtn').isDisabled(), false, 'custom-range explanation remains reachable');
+        assert.equal(await page.locator('#copyWeekBtn').evaluate(button => button.classList.contains('is-disabled')), true, 'copy-week is visibly unavailable for a custom date range');
         await page.locator('.staff-schedule-header-actions #exportExcelBtn').waitFor({ state: 'visible' });
         await page.locator('.staff-schedule-header-actions #printBtn').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#scheduleViewSwitch').count(), 0, 'visible view switch is removed from schedule shell');
@@ -3946,14 +3949,14 @@ async function runDesktopFlow(browser, base) {
                 printHeight: printButton?.height || 0
             };
         });
-        assert.ok(actionMetrics.headerWidth > 0 && actionMetrics.headerWidth <= 240, 'export/print header action group stays compact');
+        assert.ok(actionMetrics.headerWidth > 0 && actionMetrics.headerWidth <= 420, 'weekly action group stays compact');
         assert.ok(actionMetrics.exportHeight >= 34, 'export keeps a usable touch target');
         assert.ok(actionMetrics.printHeight >= 34, 'print keeps a usable touch target');
 
-        for (const removedId of ['scheduleActionsDropdown', 'scheduleActionsMenuBtn', 'scheduleActionsMenu', 'addStaffBtn', 'fillWeekBtn', 'copyWeekBtn', 'importExcelBtn', 'bulkCreateBtn']) {
+        for (const removedId of ['scheduleActionsDropdown', 'scheduleActionsMenuBtn', 'scheduleActionsMenu', 'addStaffBtn', 'fillWeekBtn', 'importExcelBtn', 'bulkCreateBtn']) {
             assert.equal(await page.locator(`#${removedId}`).count(), 0, `${removedId} is not visible shell UI`);
         }
-        assert.equal(apiCalls.copyWeekBodies.length, 0, 'hidden copy-week UI does not call backend copy route');
+        assert.equal(apiCalls.copyWeekBodies.length, 0, 'copy-week does not call the backend before an explicit confirmation');
         assert.equal(apiCalls.bulkBodies.length, 0, 'hidden fill UI does not run bulk fill');
 
         const hoursCallsBefore = apiCalls.hoursRanges.length;

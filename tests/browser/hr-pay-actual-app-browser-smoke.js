@@ -175,11 +175,42 @@ async function run() {
         const nextMonday=new Date(monday);nextMonday.setUTCDate(nextMonday.getUTCDate()+7);
         const copiedDate=new Date(date+'T12:00:00Z');copiedDate.setUTCDate(copiedDate.getUTCDate()+7);
         const copiedDay=copiedDate.toISOString().slice(0,10);
-        const copied=await request('/api/staff/schedule/copy-week',token,{fromMonday:monday.toISOString().slice(0,10),toMonday:nextMonday.toISOString().slice(0,10),staffIds:[staffId]},'POST');
-        assert.equal(copied.status,200);assert.equal(copied.body.success,true);
+        await page.locator('#todayWeekBtn').click();
+        await page.waitForFunction(()=>document.querySelector('#scheduleDataRegion')?.dataset.scheduleState==='ready');
+        const copyButton=page.locator('#copyWeekBtn');
+        await copyButton.waitFor({state:'visible'});
+        assert.equal(await copyButton.isDisabled(),false,'weekly copy action is available on a canonical week');
+        const copyWrite=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/staff/schedule/copy-week'
+            && r.request().method()==='POST' && r.request().postDataJSON()?.dryRun!==true);
+        const copyPreview=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/staff/schedule/copy-week'
+            && r.request().method()==='POST' && r.request().postDataJSON()?.dryRun===true);
+        await copyButton.click();
+        const copyConfirm=page.locator('.confirm-overlay[data-confirm-kind="confirm"]');
+        await copyConfirm.waitFor({state:'visible'});
+        assert.match(await copyConfirm.innerText(),/Разова ставка не копіюється\. Для нової дати застосовуються чинні умови оплати\./);
+        assert.doesNotMatch(await copyConfirm.innerText(),/staffIds|raw department|copyMode|department:/i);
+        assert.equal((await copyPreview).status(),200);
+        await copyConfirm.locator('.confirm-ok').click();
+        const copiedResponse=await copyWrite;
+        assert.equal(copiedResponse.status(),200);
+        const copiedBody=await copiedResponse.json();assert.equal(copiedBody.success,true);assert.ok(copiedBody.count>0);
+        await page.waitForFunction(()=>document.querySelector('#scheduleDataRegion')?.dataset.scheduleState==='ready');
+        const desktopCopyBox=await copyButton.boundingBox();
+        assert.ok(desktopCopyBox&&desktopCopyBox.width>=34&&desktopCopyBox.height>=34,'copy action keeps a usable desktop target');
+        await page.setViewportSize({width:390,height:844});
+        const mobileCopyBox=await copyButton.boundingBox();
+        assert.ok(mobileCopyBox&&mobileCopyBox.width>=34&&mobileCopyBox.height>=34,'copy action keeps a usable mobile target');
+        await page.setViewportSize({width:1440,height:1000});
         assert.equal((await db.query('SELECT id FROM payroll_day_exceptions WHERE staff_id=$1 AND work_date=$2',[staffId,copiedDay])).rows.length,0);
+        assert.ok((await db.query('SELECT id FROM hr_shifts WHERE staff_id=$1 AND shift_date=$2',[staffId,copiedDay])).rows.length>0,'copied schedule has a canonical HR shift');
         const copiedPay=(await request('/api/hr/staff/'+staffId+'/payroll-conditions?professionKey=animator&date='+copiedDay,token)).body.data;
         assert.equal(copiedPay.conditions.rate,100);assert.equal(copiedPay.conditions.exception,null);
+        const targetPlanCount=Number((await db.query('SELECT COUNT(*)::int AS count FROM hr_shifts WHERE staff_id=$1 AND shift_date=$2',[staffId,copiedDay])).rows[0].count);
+        await db.query('DELETE FROM staff_schedule WHERE staff_id=$1 AND date=$2',[staffId,copiedDay]);
+        const missingMirrorConflict=await request('/api/staff/schedule/copy-week',token,{fromMonday:monday.toISOString().slice(0,10),toMonday:nextMonday.toISOString().slice(0,10),staffIds:[staffId],rejectConflicts:true},'POST');
+        assert.equal(missingMirrorConflict.status,409);assert.equal(missingMirrorConflict.body.code,'SCHEDULE_COPY_WEEK_TARGET_CONFLICT');
+        assert.equal(Number((await db.query('SELECT COUNT(*)::int AS count FROM hr_shifts WHERE staff_id=$1 AND shift_date=$2',[staffId,copiedDay])).rows[0].count),targetPlanCount,'canonical target plan is preserved when its legacy mirror is absent');
+        assert.equal((await db.query('SELECT id FROM staff_schedule WHERE staff_id=$1 AND date=$2',[staffId,copiedDay])).rows.length,0,'conflict guard does not recreate the missing mirror');
         await openCell(page,staffId,date);assert.match(await panel().innerText(),/260 грн/);
         // Keep a stale modal while a second authorized editor changes the same journal revision.
         const applied=(await request(`/api/hr/staff/${staffId}/payroll-conditions?professionKey=animator&date=${date}`,token)).body.data;

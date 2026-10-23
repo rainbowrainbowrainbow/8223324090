@@ -1638,12 +1638,13 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /function scheduleCopyWeekVisibleStaffIds/);
         assert.match(staffPage, /function scheduleCopyWeekPayload/);
         assert.match(staffPage, /body\.department = department/);
-        assert.match(staffPage, /body\.staffIds = scheduleCopyWeekVisibleStaffIds\(\)/);
+        assert.match(staffPage, /body\.staffIds = Array\.isArray\(scope\.staffIds\) \? \[\.\.\.scope\.staffIds\] : scheduleCopyWeekVisibleStaffIds\(\)/);
         assert.match(staffPage, /function canCopyWeekInCurrentRange\(\) \{[\s\S]*scheduleRangeDayCount\(range\.start, range\.end\) === STAFF_SCHEDULE_WINDOW_DAYS/);
-        assert.match(staffPage, /if \(!canCopyWeekInCurrentRange\(\)\) \{[\s\S]*Копія тижня недоступна для довільного періоду/);
-        assert.match(staffPage, /Довільний visible range не копіюється цією дією/);
-        assert.match(staffPage, /copyWeekSchedule\(fromMonday, toMonday, \{ dryRun: true \}\)/);
-        assert.match(staffPage, /visible staffIds\[\]/);
+        assert.match(staffPage, /if \(!canCopyWeekInCurrentRange\(\)\) \{[\s\S]*Копіювання тижня недоступне для довільного періоду/);
+        assert.match(staffPage, /Копіювати тиждень/);
+        assert.match(staffPage, /copyWeekSchedule\(fromMonday, toMonday, \{ dryRun: true, scope \}\)/);
+        assert.match(staffPage, /rejectConflicts: true/);
+        assert.match(staffPage, /Разова ставка не копіюється\. Для нової дати застосовуються чинні умови оплати\./);
     });
 
     it('renders membership-complete staff in All while selected sections stay unique', () => {

@@ -125,7 +125,8 @@ function buildHrPayReadiness({ staff = [], professions = [], profiles = [], assi
                     isPrimary ? 'base_replacement' : 'additional', { ignoreException: true });
                 if (inherited && isPrimary && inherited.rateUnit !== resolution.rateUnit) findings.push('rate_unit_conflict');
             }
-            rows.push({ staffId, professionKey, use: isPrimary ? 'primary' : 'potential_additional',
+            rows.push({ staffId, professionKey, poolStatus: person.hr_pool_status || null,
+                use: isPrimary ? 'primary' : 'potential_additional',
                 findings: [...new Set(findings)], unverified: [...new Set(unverified)], effectiveSource, effectiveUnit });
         }
     }

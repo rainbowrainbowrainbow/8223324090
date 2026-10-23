@@ -270,6 +270,16 @@ test('copy-week write paths refresh source rows after ordered staff locks', () =
     assert.match(staffRoute, /router\.post\('\/schedule\/copy-week'[^]*?lockScheduleStaffRows\(client, sourceStaffIds\)[^]*?const freshSource = await client\.query[^]*?lockedStaffIds[^]*?freshSource\.rows\.some[^]*?for \(const row of freshSourceRows\)/);
 });
 
+test('UI copy-week rejects mirror or canonical target conflicts after locking source staff', () => {
+    const copyWeek = staffRoute.slice(
+        staffRoute.indexOf("router.post('/schedule/copy-week'"),
+        staffRoute.indexOf("router.get('/schedule/hours'")
+    );
+    assert.match(copyWeek, /rejectConflicts = req\.body\.rejectConflicts === true/);
+    assert.match(copyWeek, /SELECT staff_id, date::text AS target_date[\s\S]*UNION[\s\S]*SELECT staff_id, shift_date::text AS target_date[\s\S]*FROM hr_shifts/);
+    assert.match(copyWeek, /lockScheduleStaffRows\(client, sourceStaffIds\)[\s\S]*if \(rejectConflicts && conflicts > 0\)[\s\S]*SCHEDULE_COPY_WEEK_TARGET_CONFLICT[\s\S]*ROLLBACK/);
+});
+
 test('HR mirrors preserve the PostgreSQL calendar date in Europe/Kyiv', () => {
     const helper = hrRoute.match(/function toDateOnly\(value\) \{[^]*?\n\}/)?.[0] || '';
     assert.match(helper, /value\.getFullYear\(\)/);

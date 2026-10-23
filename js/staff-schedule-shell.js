@@ -50,6 +50,7 @@
                         </div>
                     </div>
                     <div class="staff-schedule-header-actions" aria-label="Дії з графіком">
+                        <button type="button" id="copyWeekBtn" class="btn-page-toolbar staff-schedule-action-button" title="Копіювати тиждень у наступний тиждень" disabled aria-disabled="true">Копіювати тиждень</button>
                         <button type="button" id="exportExcelBtn" class="btn-page-toolbar staff-schedule-action-button" title="Експорт графіку в Excel" hidden disabled aria-disabled="true">Експорт</button>
                         <button type="button" id="printBtn" class="btn-page-toolbar staff-schedule-action-button" title="Друк Excel-таблиці графіку" disabled aria-disabled="true">Друк</button>
                     </div>

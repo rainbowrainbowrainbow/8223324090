@@ -3,6 +3,7 @@
 const { validateDate, validateTime, lockBookingConflictResources } = require('./booking');
 const { insertHistory } = require('./historyLog');
 const { assertAfishaLinesFree } = require('./afishaConflicts');
+const { isGreetingEvent, birthdaySlotsForEvents } = require('./afishaBirthdaySlots');
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
 function lineIdsOf(event) {
@@ -50,22 +51,36 @@ async function validateTargets(client, date, lineIds, promotionId, retainedPromo
     }
 }
 
+async function greetingPlacement(client, event) {
+    const day = await client.query('SELECT * FROM afisha WHERE date = $1', [event.date]);
+    const events = day.rows.some(row => Number(row.id) === Number(event.id))
+        ? day.rows.map(row => Number(row.id) === Number(event.id) ? event : row)
+        : [...day.rows, event];
+    const projected = await birthdaySlotsForEvents(client, events);
+    const slot = projected.find(row => Number(row.id) === Number(event.id))?.birthday_slots?.[0];
+    if (!slot || slot.conflict) throw fail(409, slot?.reason || 'Немає вільного часу для вітання');
+    return slot.time;
+}
+
 async function createTimelineAfisha(pool, input, actor) {
     const { date, time, title, description = '', type = 'event', duration = 60 } = input;
     if (!validateDate(date) || !validateTime(time)) throw fail(400, 'Некоректна дата або час');
     if (typeof title !== 'string' || !title.trim() || title.trim().length > 180) throw fail(400, 'Назва має містити від 1 до 180 символів');
     if (typeof description !== 'string' || description.length > 4000) throw fail(400, 'Опис: максимум 4000 символів');
-    if (!['event', 'regular'].includes(type)) throw fail(400, 'Некоректний тип заходу');
+    if (!['event', 'regular', 'greeting'].includes(type)) throw fail(400, 'Некоректний тип заходу');
     if (!Number.isInteger(duration) || duration < 15 || duration > 480 || duration % 15 !== 0) {
         throw fail(400, 'Тривалість має бути від 15 до 480 хвилин із кроком 15 хвилин');
     }
+    if (type === 'greeting' && duration !== 15) throw fail(400, 'Вітання триває 15 хвилин');
     const lineIds = normalizeLineIds(input.lineIds || []);
     const promotionId = normalizePromotionId(input.promotionId ?? null);
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         await validateTargets(client, date, lineIds, promotionId);
-        await assertAfishaLinesFree(client, { date, time, duration, lineIds });
+        if (!isGreetingEvent({ title, type, duration })) {
+            await assertAfishaLinesFree(client, { date, time, duration, lineIds });
+        }
         const result = await client.query(
             `INSERT INTO afisha (date, time, title, duration, type, description, original_time,
                 line_id, second_line_id, promotion_id)
@@ -73,6 +88,10 @@ async function createTimelineAfisha(pool, input, actor) {
             [date, time, title.trim(), duration, type, description, lineIds[0] || null, lineIds[1] || null, promotionId]
         );
         const item = result.rows[0];
+        if (isGreetingEvent(item) && lineIds.length) {
+            const effectiveTime = await greetingPlacement(client, item);
+            await assertAfishaLinesFree(client, { date, time: effectiveTime, duration, lineIds, excludeId: item.id });
+        }
         await insertHistory(client, { businessContext: 'event_genix', action: 'afisha_create', username: actor,
             data: { id: item.id, date, time, lineIds, promotionId } });
         await client.query('COMMIT');
@@ -101,8 +120,14 @@ async function updateTimelineAfisha(pool, id, input, actor) {
             throw fail(409, 'Захід уже змінено. Оновіть таймлайн і повторіть дію.');
         }
         await validateTargets(client, event.date, lineIds, promotionId, event.promotion_id);
-        await assertAfishaLinesFree(client, { date: event.date, time: event.time, duration: event.duration || 60,
-            lineIds: lineIds.filter(lineId => !lineIdsOf(event).includes(lineId)), excludeId: event.id });
+        const newLineIds = lineIds.filter(lineId => !lineIdsOf(event).includes(lineId));
+        if (newLineIds.length) {
+            const effectiveTime = isGreetingEvent(event)
+                ? await greetingPlacement(client, { ...event, line_id: lineIds[0] || null, second_line_id: lineIds[1] || null })
+                : event.time;
+            await assertAfishaLinesFree(client, { date: event.date, time: effectiveTime, duration: event.duration || 60,
+                lineIds: newLineIds, excludeId: event.id });
+        }
         const result = await client.query(
             `UPDATE afisha SET line_id = $2, second_line_id = $3, promotion_id = $4
              WHERE id = $1 RETURNING *`, [id, lineIds[0] || null, lineIds[1] || null, promotionId]

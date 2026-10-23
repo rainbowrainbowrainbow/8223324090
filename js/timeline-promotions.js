@@ -36,6 +36,10 @@
     function canWrite() { return M.writable('manage_settings'); }
     function showAfisha() { return view?.business === 'event_genix'
         && (typeof timelineShouldRenderAfisha !== 'function' || timelineShouldRenderAfisha()); }
+    function occurrence(event) {
+        const slot = event.birthday_slots?.[0];
+        return slot ? { ...event, time: slot.time, duration: 15, birthdaySlot: slot } : event;
+    }
 
     function renderAfishaSection() {
         if (!showAfisha() || !marketingOpen) return;
@@ -52,8 +56,9 @@
             ${afishaExpanded && events.length > 3 ? '<button type="button" class="btn-secondary" data-less-afisha aria-expanded="true">Показати менше</button>' : ''}
             ${M.writable('edit_booking') ? '<button type="button" class="btn-secondary" data-add-afisha>Додати захід</button>' : ''}</div>
             <div class="timeline-afisha-summary-list" id="timelineAfishaSummaryList">${visible.map(item => `<button type="button" class="timeline-afisha-summary-event"
-                data-afisha-id="${Number(item.id)}" aria-label="${M.esc(`${item.title}, ${String(item.date).slice(0, 10)}, ${item.time}`)}">
-                <span class="timeline-afisha-summary-time">${M.esc(String(item.date).slice(5, 10))} · ${M.esc(String(item.time).slice(0, 5))}</span><strong>${M.esc(item.title)}</strong>
+                data-afisha-id="${Number(item.id)}" aria-label="${M.esc(`${item.title}, ${String(item.date).slice(0, 10)}, ${occurrence(item).time}${item.birthday_slots?.length ? `, ${item.birthday_slots[0].mode === 'manual' ? 'вручну' : 'автоматично'}` : ''}`)}">
+                <span class="timeline-afisha-summary-time">${M.esc(String(item.date).slice(5, 10))} · ${M.esc(String(occurrence(item).time).slice(0, 5))}</span><strong>${M.esc(item.title)}</strong>
+                ${item.birthday_slots?.length ? `<small>${item.birthday_slots[0].mode === 'manual' ? 'Вручну' : 'Авто'}</small>` : ''}
                 ${item.promotion_id ? `<small class="timeline-afisha-promotion-name">${item.promotion_active === false ? 'Архівована акція' : 'Акція'}: ${M.esc(item.promotion_title || promotions.get(Number(item.promotion_id))?.title || `#${item.promotion_id}`)}</small>` : ''}
                 ${item.line_id || item.second_line_id ? `<small>${[item.line_id, item.second_line_id].filter(Boolean).length} ан.</small>` : ''}</button>`).join('')}</div>`;
         panel.querySelector('.timeline-marketing-body').appendChild(section);
@@ -62,7 +67,11 @@
         section.querySelector('[data-add-afisha]')?.addEventListener('click', e => window.TimelineAfisha?.quickCreate(view.dates, e.currentTarget));
         section.querySelectorAll('[data-afisha-id]').forEach(button => button.addEventListener('click', () => {
             const item = events.find(event => Number(event.id) === Number(button.dataset.afishaId));
-            if (item) window.TimelineAfisha?.details(item, button);
+            if (item) {
+                const shown = occurrence(item);
+                if (shown.birthdaySlot) window.TimelineAfisha?.birthdayDetails(shown, button);
+                else window.TimelineAfisha?.details(shown, button);
+            }
         }));
     }
 
@@ -260,7 +269,11 @@
             panel.querySelector('.timeline-promotion-bands').appendChild(row);
             row.querySelectorAll('[data-linked-afisha]').forEach(button => button.addEventListener('click', () => {
                 const event = linked.find(value => Number(value.id) === Number(button.dataset.linkedAfisha));
-                if (event) window.TimelineAfisha?.details(event, button);
+                if (event) {
+                    const shown = occurrence(event);
+                    if (shown.birthdaySlot) window.TimelineAfisha?.birthdayDetails(shown, button);
+                    else window.TimelineAfisha?.details(shown, button);
+                }
             }));
             row.querySelector('[data-add-linked-afisha]')?.addEventListener('click', e => {
                 const date = dates.find(value => value >= item.starts_on && value <= item.ends_on);

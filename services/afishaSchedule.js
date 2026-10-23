@@ -3,6 +3,7 @@
 const { validateDate, validateTime, timeToMinutes } = require('./booking');
 const { insertHistory } = require('./historyLog');
 const { assertAfishaLinesFree } = require('./afishaConflicts');
+const { isGreetingEvent } = require('./afishaBirthdaySlots');
 
 function scheduleError(statusCode, message) {
     return Object.assign(new Error(message), { statusCode });
@@ -17,6 +18,7 @@ function validateSchedule(event, input) {
         throw scheduleError(409, 'Подію вже змінено. Оновіть розклад і повторіть дію.');
     }
     if (event.type === 'birthday') throw scheduleError(400, 'Вітання іменинників не можна переносити');
+    if (isGreetingEvent(event)) throw scheduleError(400, 'Змініть час вітання через його картку на таймлайні');
     if (!['event', 'regular'].includes(event.type)) throw scheduleError(400, 'Непідтримуваний тип події');
     if (input.date !== input.expectedDate && (event.template_id || event.type === 'regular')) {
         throw scheduleError(400, 'Регулярну подію можна рухати лише в межах дня');

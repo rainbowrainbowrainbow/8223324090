@@ -845,7 +845,32 @@ body.timeline-dashboard-page .afisha-undist-btn {
     color: #FFFBEB;
     z-index: 15;
     transform: translateY(-50%);
+    overflow: visible;
+    cursor: grab;
 }
+
+.booking-block.afisha-block.afisha-type-birthday.dragging { cursor: grabbing; z-index: 30; }
+.booking-block.afisha-block.afisha-birthday--manual { border-color: #93c5fd; border-left-color: #60a5fa; }
+.booking-block.afisha-block.afisha-birthday--conflict { outline: 2px solid #ef4444; outline-offset: 2px; }
+.booking-block.afisha-block.afisha-type-birthday .afisha-birthday-label {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 3px);
+    width: max-content;
+    max-width: 170px;
+    padding: 2px 5px;
+    border: 1px solid rgba(245, 158, 11, .65);
+    border-radius: 5px;
+    background: #292524;
+    color: #fff7ed;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.2;
+    white-space: nowrap;
+    pointer-events: none;
+}
+.afisha-birthday-warning { color: #b91c1c; font-weight: 700; }
+.afisha-flag.afisha-type-birthday { border-left-color: #f59e0b; background: #78350f; color: #fff7ed; cursor: pointer; }
 
 .booking-block.afisha-block.afisha-type-birthday:hover,
 .booking-block.afisha-block.afisha-type-birthday:focus-visible {

@@ -37,6 +37,70 @@ function fixture() {
 }
 const event = { id: 1, title: '<img src=x onerror=alert(1)>', date: '2026-10-19', time: '14:00', duration: 60, type: 'event', original_time: '14:00' };
 
+test('birthday slot editor labels the source and saves only the selected occurrence', async () => {
+    const f = fixture();
+    try {
+        const slot = { key: 'first', base_time: '14:00', time: '15:30', mode: 'auto',
+            reason: 'Перенесено з 14:00 через захід', duration: 15 };
+        const item = { ...event, type: 'birthday', time: slot.time, birthdaySlot: slot };
+        const trigger = f.w.document.createElement('button');
+        f.w.document.body.appendChild(trigger);
+        let payload;
+        f.w.apiFetchWithAuthRetry = async (_url, options) => {
+            payload = JSON.parse(options.body);
+            return response({ slots: [{ ...slot, time: '15:45', mode: 'manual' }] });
+        };
+        f.w.TimelineAfisha.birthdayDetails(item, trigger);
+        const modal = f.w.document.querySelector('.timeline-marketing-modal');
+        assert.match(modal.textContent, /Автоматично/);
+        assert.match(modal.textContent, /Перенесено з 14:00/);
+        modal.querySelector('input[name="time"]').value = '15:45';
+        modal.querySelector('[data-birthday-form]').dispatchEvent(new f.w.Event('submit', { bubbles: true, cancelable: true }));
+        await flush(); await flush();
+        assert.deepEqual(payload, { mode: 'manual', time: '15:45', expectedMode: 'auto', expectedTime: '15:30' });
+        assert.equal(f.state.renders, 1);
+        assert.equal(item.birthdaySlot.mode, 'manual');
+    } finally { f.close(); }
+});
+
+test('ordinary fifteen-minute Іменинники event uses its own slot editor', async () => {
+    const f = fixture();
+    try {
+        const slot = { key: 'single', base_time: '14:00', time: '15:30', mode: 'auto',
+            reason: 'Перенесено з 14:00: Захід', duration: 15 };
+        const item = { ...event, title: 'Іменинники', type: 'greeting', duration: 15, template_id: 6,
+            time: slot.time, birthdaySlot: slot };
+        const grid = f.w.document.querySelector('.line-grid');
+        const flag = f.w.TimelineAfisha.create(item, 12, grid);
+        grid.appendChild(flag);
+        flag.click();
+        const modal = f.w.document.querySelector('.timeline-marketing-modal');
+        assert.match(modal.textContent, /15:30–15:45/);
+        assert.match(modal.textContent, /Автоматично/);
+        assert.ok(modal.querySelector('[data-birthday-form]'));
+        assert.ok(modal.querySelector('[data-assign-form]'));
+        assert.match(flag.getAttribute('aria-label'), /15 хв, автоматично/);
+    } finally { f.close(); }
+});
+
+test('collapsed overview opens a recurring greeting at its effective time and shows its source', async () => {
+    const f = fixture();
+    try {
+        f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), ['2026-10-19'], 1, [{
+            ...event, title: 'Іменинники', type: 'greeting', duration: 15, birthday_slots: [{ key: 'single',
+                time: '15:30', base_time: '14:00', mode: 'auto', duration: 15 }]
+        }]);
+        await flush();
+        f.w.document.querySelector('[data-toggle-marketing]').click();
+        const button = f.w.document.querySelector('.timeline-afisha-summary-event');
+        assert.match(button.textContent, /10-19 · 15:30/);
+        assert.match(button.textContent, /Авто/);
+        assert.match(button.getAttribute('aria-label'), /15:30, автоматично/);
+        button.click();
+        assert.match(f.w.document.querySelector('.timeline-marketing-modal').textContent, /15:30–15:45/);
+    } finally { f.close(); }
+});
+
 test('overlapping flags receive distinct lanes below bookings and text cannot inject HTML', () => {
     const f = fixture();
     try {

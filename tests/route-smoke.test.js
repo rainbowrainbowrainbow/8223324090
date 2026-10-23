@@ -1623,7 +1623,7 @@ function createFakePool() {
                 );
                 return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
             }
-            if (/SELECT id, time, duration, title FROM afisha/i.test(text)) {
+            if (/SELECT id, date, time, original_time, duration, title, type, line_id, second_line_id FROM afisha/i.test(text)) {
                 return { rows: [], rowCount: 0 };
             }
             if (/SELECT id, category, time, duration FROM bookings WHERE date = \$1 AND program_id = \$2/i.test(text)) {

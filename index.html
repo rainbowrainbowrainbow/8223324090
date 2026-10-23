@@ -6781,6 +6781,7 @@
                     <select id="afishaType" class="afisha-input afisha-type-select" title="Тип події">
                         <option value="event">🎪 Подія</option>
                         <option value="birthday">🎂 Іменинник</option>
+                        <option value="greeting">🎉 Вітання іменинників</option>
                         <option value="regular">🔄 Регулярна</option>
                     </select>
                     <input type="date" id="afishaDate" class="afisha-input">
@@ -6808,6 +6809,7 @@
                 <h4 style="margin:0 0 8px">🔄 Повторювані події</h4>
                 <div class="afisha-form-row" style="flex-wrap:wrap;gap:6px">
                     <input type="text" id="afishaTplTitle" class="afisha-input" placeholder="Назва" style="flex:2">
+                    <select id="afishaTplType" class="afisha-input afisha-type-select" title="Тип шаблону"><option value="event">Подія</option><option value="greeting">Вітання іменинників</option></select>
                     <input type="time" id="afishaTplTime" class="afisha-input" value="12:00">
                     <input type="number" id="afishaTplDuration" class="afisha-input" value="60" min="15" step="15" title="Хвилини">
                     <select id="afishaTplPattern" class="afisha-input afisha-type-select" title="Повторення">
@@ -6845,6 +6847,7 @@
                 <div class="form-group">
                     <label for="afishaEditTime">Час</label>
                     <input type="time" id="afishaEditTime" class="form-input" required>
+                    <small id="afishaEditBirthdayHint" hidden>Час двох вітань змінюється окремо на таймлайні.</small>
                 </div>
                 <div class="form-group" id="afishaEditDurationGroup">
                     <label for="afishaEditDuration">Тривалість (хв)</label>

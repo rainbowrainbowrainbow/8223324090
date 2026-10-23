@@ -117,16 +117,35 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         assert.equal(pageFlow.maxHeight, 'none', 'Park timeline has no viewport height cap');
         assert.ok(pageFlow.shellHeight >= pageFlow.contentHeight, 'timeline grows with its content');
         assert.ok(pageFlow.verticalOverflow < 20, 'page owns vertical scrolling');
-        await fixture.pool.query("INSERT INTO afisha (date,time,title,duration,type,description,original_time) VALUES ('2026-10-19','14:00','Іменинники',15,'birthday','','14:00')");
+        await fixture.pool.query(`INSERT INTO afisha (date,time,title,duration,type,description,original_time,template_id)
+            VALUES ('2026-10-19','14:00','Іменинники',15,'greeting','','14:00',6),
+                   ('2026-10-19','18:00','Іменинники',15,'greeting','','18:00',7)`);
         await display();
-        assert.equal(await page.locator('.afisha-type-birthday').count(), 2, 'synthetic birthday times are preserved');
+        assert.equal(await page.locator('.afisha-line-grid .afisha-type-birthday').count(), 2,
+            'two recurring Іменинники events remain independently visible');
         await verifyFlagGeometry();
-        await page.locator('.afisha-type-birthday').first().click();
-        assert.equal(await page.locator('[data-move]').count(), 0, 'birthday cannot be moved');
+        const greetingId = (await fixture.pool.query("SELECT id FROM afisha WHERE title='Іменинники' AND time='14:00' AND date='2026-10-19'")).rows[0].id;
+        const greeting = `.afisha-line-grid .afisha-type-birthday[data-afisha-id="${greetingId}"][data-birthday-slot="single"]`;
+        assert.match(await page.locator(greeting).getAttribute('title'), /15:00–15:15 · Авто/);
+        await page.locator(greeting).click();
+        assert.equal(await page.locator('[data-birthday-form]').count(), 1, 'birthday has an independent time editor');
         await page.waitForFunction(() => !!document.activeElement.closest('.timeline-marketing-modal'));
         await page.keyboard.press('Escape');
         await page.locator('.timeline-marketing-modal').waitFor({ state: 'detached' });
         assert.equal(await page.evaluate(() => document.activeElement.classList.contains('afisha-type-birthday')), true);
+        await page.locator(greeting).click();
+        await page.locator('[data-birthday-form] input[name="time"]').fill('15:20');
+        await page.getByRole('button', { name: 'Зберегти вручну' }).click();
+        await page.locator('.timeline-marketing-modal').waitFor({ state: 'detached' });
+        assert.deepEqual((await fixture.pool.query('SELECT time, mode FROM afisha_birthday_slots WHERE afisha_id=$1 AND slot_key=$2',
+            [greetingId, 'single'])).rows[0], { time: '15:20', mode: 'manual' });
+        assert.equal(await page.locator('.afisha-line-grid .afisha-type-birthday[data-birthday-slot="single"]:not([data-afisha-id="' + greetingId + '"])').getAttribute('title'),
+            '18:00–18:15 · Авто');
+        await page.locator(greeting).click();
+        await page.getByRole('button', { name: 'Повернути автоматичний розклад' }).click();
+        await page.locator('.timeline-marketing-modal').waitFor({ state: 'detached' });
+        assert.equal((await fixture.pool.query('SELECT mode FROM afisha_birthday_slots WHERE afisha_id=$1 AND slot_key=$2',
+            [greetingId, 'single'])).rows[0].mode, 'auto');
         const afishaFlag = '.afisha-line-grid .afisha-flag[data-afisha-id="1"]';
         await page.locator(afishaFlag).waitFor();
         assert.equal(await page.locator(afishaFlag).count(), 1);

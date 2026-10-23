@@ -90,6 +90,7 @@
                                 <option value="">Усі типи</option>
                                 <option value="event">Події</option>
                                 <option value="birthday">Дні народження</option>
+                                <option value="greeting">Вітання іменинників</option>
                                 <option value="regular">Постійні</option>
                             </select>
                         </div>
@@ -160,6 +161,7 @@
                                     <select id="afishaPageType">
                                         <option value="event">Подія</option>
                                         <option value="birthday">День народження</option>
+                                        <option value="greeting">Вітання іменинників</option>
                                         <option value="regular">Постійна активність</option>
                                     </select>
                                 </label>
@@ -170,6 +172,7 @@
                                 <label class="form-field">
                                     <span>Час</span>
                                     <input type="time" id="afishaPageTime" required>
+                                    <small id="afishaBirthdayTimeHint" class="hidden">Обидва 15-хвилинні вітання мають окремий час. Змінюйте їх на таймлайні.</small>
                                 </label>
                                 <label class="form-field">
                                     <span>Тривалість, хв</span>
@@ -212,6 +215,7 @@
                             </div>
                             <form id="afishaTemplateForm" class="afisha-template-form">
                                 <input type="text" id="afishaTplTitle" placeholder="Назва шаблону" required>
+                                <select id="afishaTplType" aria-label="Тип шаблону"><option value="event">Подія</option><option value="greeting">Вітання іменинників</option></select>
                                 <input type="time" id="afishaTplTime" value="12:00" required>
                                 <input type="number" id="afishaTplDuration" min="15" step="15" value="60" title="Тривалість">
                                 <select id="afishaTplPattern">

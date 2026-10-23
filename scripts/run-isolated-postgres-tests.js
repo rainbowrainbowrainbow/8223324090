@@ -813,7 +813,8 @@ async function runSuite(testDb, testFile, suiteMode) {
         }
         await launchServerOnce();
         // Fresh synthetic legacy HR rows receive explicit Park ownership only in this verified disposable runner.
-        if (suiteMode !== 'permissions' && !testFile.includes('education')) {
+        if (suiteMode !== 'permissions' && !testFile.includes('education')
+            && testFile !== 'tests/browser/hr-pay-actual-app-browser-smoke.js') {
             await require('../tests/helpers/park-hr-ownership-fixture').prepareParkHrOwnershipFixture(testDb.url.toString(), testEnv);
         }
 

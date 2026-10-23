@@ -80,6 +80,8 @@ async function run() {
         businessIds[context]=Number((await db.query(`INSERT INTO businesses(organization_id,context_key,label,short_label,access_mode)
             VALUES($1,$2,$2,$2,'membership') RETURNING id`,[organization,context])).rows[0].id);
     }
+    // This suite creates its own authoritative registry before attributing synthetic HR rows.
+    await require('../helpers/park-hr-ownership-fixture').prepareParkHrOwnershipFixture(target.url.toString(), process.env);
     async function member(userId,role,deny=[]) {
         await db.query("INSERT INTO organization_memberships(organization_id,user_id,role) VALUES($1,$2,'owner')",[organization,userId]);
         for(const context of ['event_genix','dar']) await db.query(`INSERT INTO business_memberships
@@ -98,8 +100,8 @@ async function run() {
     try {
         const staffId=Number((await db.query(`INSERT INTO staff(name,department,position,role_type,secondary_professions,hourly_rate,rate_unit,is_active)
             VALUES($1,'animators','QA','animator','["reception"]',100,'hour',true) RETURNING id`,['Synthetic pay '+stamp])).rows[0].id);
-        await db.query(`INSERT INTO staff_role_assignments(staff_id,profession_key,is_primary,status,admission_status,internship_status,created_by,updated_by)
-            VALUES($1,'animator',true,'active','approved','none','isolated_pay','isolated_pay'),($1,'reception',false,'active','approved','none','isolated_pay','isolated_pay')`,[staffId]);
+        await db.query(`INSERT INTO staff_role_assignments(business_id,organization_id,staff_id,profession_key,is_primary,status,admission_status,internship_status,created_by,updated_by)
+            VALUES(public.eventgenix_hr_park_business_id(),public.eventgenix_hr_park_organization_id(),$1,'animator',true,'active','approved','none','isolated_pay','isolated_pay'),(public.eventgenix_hr_park_business_id(),public.eventgenix_hr_park_organization_id(),$1,'reception',false,'active','approved','none','isolated_pay','isolated_pay')`,[staffId]);
         async function profile(title,profession,unit,rate) {
             const id=Number((await db.query(`INSERT INTO payroll_profiles(title,profession_key,profile_kind,owner_staff_id,status,created_by)
                 VALUES($1,$2,'personal',$3,'active','isolated_pay') RETURNING id`,[title,profession,staffId])).rows[0].id);

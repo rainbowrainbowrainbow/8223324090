@@ -504,13 +504,13 @@ async function resolveProfession(db, identity, options = {}) {
     const result = normalized.id
         ? await db.query(
             `SELECT id, key, title, department, is_active
-             FROM hr_professions
+             FROM hr_owned.hr_professions
              WHERE id = $1${lock}`,
             [normalized.id]
         )
         : await db.query(
             `SELECT id, key, title, department, is_active
-             FROM hr_professions
+             FROM hr_owned.hr_professions
              WHERE key = $1${lock}`,
             [normalized.key]
         );
@@ -534,7 +534,7 @@ async function loadProfessionChecklistTemplates(db, options = {}) {
     const includeArchivedItems = options.includeArchivedItems === true || options.includeArchived === true;
     const professionResult = await db.query(
         `SELECT id, key, title, department, is_active
-         FROM hr_professions
+         FROM hr_owned.hr_professions
          WHERE ($1::integer[] IS NULL OR id = ANY($1::integer[]))
            AND ($2::text[] IS NULL OR key = ANY($2::text[]))
            AND ($3::boolean OR is_active = true)
@@ -547,7 +547,7 @@ async function loadProfessionChecklistTemplates(db, options = {}) {
     const itemResult = await db.query(
         `SELECT id, profession_id, item_key, title, sort_order, is_active, legacy_position,
                 created_by, updated_by, created_at, updated_at
-         FROM hr_profession_checklist_items
+         FROM hr_owned.hr_profession_checklist_items
          WHERE profession_id = ANY($1::integer[])
            AND ($2::boolean OR is_active = true)
          ORDER BY profession_id, is_active DESC, sort_order, id`,
@@ -593,7 +593,7 @@ async function lockProfessionItems(client, professionId, options = {}) {
     const result = await client.query(
         `SELECT id, profession_id, item_key, title, sort_order, is_active, legacy_position,
                 created_by, updated_by, created_at, updated_at
-         FROM hr_profession_checklist_items
+         FROM hr_owned.hr_profession_checklist_items
          WHERE profession_id = $1
            AND ($2::boolean OR is_active = true)
          ORDER BY is_active DESC, sort_order, id
@@ -608,7 +608,7 @@ async function loadLockedChecklistItem(client, professionId, itemKey) {
     const result = await client.query(
         `SELECT id, profession_id, item_key, title, sort_order, is_active, legacy_position,
                 created_by, updated_by, created_at, updated_at
-         FROM hr_profession_checklist_items
+         FROM hr_owned.hr_profession_checklist_items
          WHERE profession_id = $1
            AND item_key = $2
          FOR UPDATE`,
@@ -630,7 +630,7 @@ async function applyChecklistItemOrder(client, professionId, itemKeys, actor) {
     if (!itemKeys.length) return [];
     const sortOrders = itemKeys.map((unused, index) => (index + 1) * 10);
     const result = await client.query(
-        `UPDATE hr_profession_checklist_items item
+        `UPDATE hr_owned.hr_profession_checklist_items item
          SET sort_order = ordering.sort_order,
              updated_by = $4,
              updated_at = NOW()
@@ -663,10 +663,10 @@ async function syncProfessionChecklistCompatibilityMirror(client, identity) {
         ? { ...identity, id: Number(identity.id) }
         : await resolveProfession(client, identity, { forUpdate: true });
     const result = await client.query(
-        `UPDATE hr_professions profession
+        `UPDATE hr_owned.hr_professions profession
          SET checklist = COALESCE((
                  SELECT jsonb_agg(item.title ORDER BY item.sort_order, item.id)
-                 FROM hr_profession_checklist_items item
+                 FROM hr_owned.hr_profession_checklist_items item
                  WHERE item.profession_id = profession.id
                    AND item.is_active = true
              ), '[]'::jsonb),
@@ -697,7 +697,7 @@ async function syncProfessionChecklistTrainingSeed(client, identity) {
     const countsResult = await client.query(
         `SELECT COUNT(*)::integer AS total_count,
                 COUNT(*) FILTER (WHERE is_active = true)::integer AS active_count
-         FROM hr_profession_checklist_items
+         FROM hr_owned.hr_profession_checklist_items
          WHERE profession_id = $1`,
         [profession.id]
     );
@@ -770,7 +770,7 @@ async function syncProfessionChecklistTrainingSeed(client, identity) {
                 item.item_key,
                 item.title,
                 item.id
-         FROM hr_profession_checklist_items item
+         FROM hr_owned.hr_profession_checklist_items item
          WHERE item.profession_id = $4
          ON CONFLICT (checklist_item_id)
              WHERE checklist_item_id IS NOT NULL
@@ -795,7 +795,7 @@ async function syncProfessionChecklistTrainingSeed(client, identity) {
                lecture.checklist_item_id IS NULL
                OR NOT EXISTS (
                    SELECT 1
-                   FROM hr_profession_checklist_items item
+                   FROM hr_owned.hr_profession_checklist_items item
                    WHERE item.id = lecture.checklist_item_id
                      AND item.profession_id = $2
                )
@@ -871,9 +871,8 @@ async function createProfessionChecklistItem(client, identity, payload = {}, opt
     const itemKey = normalizeChecklistItemKey(generatedKey);
     const maxSortOrder = activeItems.reduce((max, item) => Math.max(max, item.sortOrder), 0);
     const insertedResult = await client.query(
-        `INSERT INTO hr_profession_checklist_items
-            (profession_id, item_key, title, sort_order, is_active, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, true, $5, $5)
+        `INSERT INTO public.hr_profession_checklist_items (business_id, organization_id, profession_id, item_key, title, sort_order, is_active, created_by, updated_by)
+         VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, $2, $3, $4, true, $5, $5)
          RETURNING id, profession_id, item_key, title, sort_order, is_active, legacy_position,
                    created_by, updated_by, created_at, updated_at`,
         [profession.id, itemKey, title, maxSortOrder + 10, actor]
@@ -912,7 +911,7 @@ async function renameProfessionChecklistItem(client, identity, itemKey, payload 
     const changed = current.title !== title;
     if (changed) {
         const result = await client.query(
-            `UPDATE hr_profession_checklist_items
+            `UPDATE hr_owned.hr_profession_checklist_items
              SET title = $3,
                  updated_by = $4,
                  updated_at = NOW()
@@ -978,7 +977,7 @@ async function archiveProfessionChecklistItem(client, identity, itemKey, options
         `SELECT COUNT(*)::integer AS progress_records,
                 COUNT(*) FILTER (WHERE completed_at IS NOT NULL)::integer AS completed_records,
                 COUNT(DISTINCT staff_id)::integer AS affected_staff
-         FROM hr_staff_profession_checklist_progress
+         FROM hr_owned.hr_staff_profession_checklist_progress
          WHERE checklist_item_id = $1`,
         [current.id]
     );
@@ -993,7 +992,7 @@ async function archiveProfessionChecklistItem(client, identity, itemKey, options
     const changed = current.isActive !== false;
     if (changed) {
         const result = await client.query(
-            `UPDATE hr_profession_checklist_items
+            `UPDATE hr_owned.hr_profession_checklist_items
              SET is_active = false,
                  updated_by = $3,
                  updated_at = NOW()
@@ -1039,7 +1038,7 @@ async function validateStaffProfessionChecklistTarget(client, params = {}, optio
         const itemResult = await client.query(
             `SELECT id, profession_id, item_key, title, sort_order, is_active, legacy_position,
                     created_by, updated_by, created_at, updated_at
-             FROM hr_profession_checklist_items
+             FROM hr_owned.hr_profession_checklist_items
              WHERE profession_id = $1
                AND item_key = $2${forWrite ? ' FOR UPDATE' : ''}`,
             [profession.id, key]
@@ -1052,7 +1051,7 @@ async function validateStaffProfessionChecklistTarget(client, params = {}, optio
                 const legacyResult = await client.query(
                     `SELECT id, profession_id, item_key, title, sort_order, is_active, legacy_position,
                             created_by, updated_by, created_at, updated_at
-                     FROM hr_profession_checklist_items
+                     FROM hr_owned.hr_profession_checklist_items
                      WHERE profession_id = $1
                        AND LOWER(BTRIM(title)) = LOWER(BTRIM($2))
                      ORDER BY id${forWrite ? ' FOR UPDATE' : ''}`,
@@ -1111,7 +1110,7 @@ async function validateStaffProfessionChecklistTarget(client, params = {}, optio
 
     const assignmentResult = await client.query(
         `SELECT id, staff_id, profession_key, is_primary, status, admission_status, internship_status
-         FROM staff_role_assignments
+         FROM hr_owned.staff_role_assignments
          WHERE staff_id = $1
            AND profession_key = $2${forWrite ? ' FOR SHARE' : ''}`,
         [staffId, profession.key]
@@ -1180,7 +1179,7 @@ async function toggleStaffProfessionChecklistProgress(client, params = {}, optio
                 checklist_key AS progress_checklist_key,
                 legacy_checklist_key, title AS progress_title, completed_at, completed_by,
                 notes, created_at AS progress_created_at, updated_at AS progress_updated_at
-         FROM hr_staff_profession_checklist_progress
+         FROM hr_owned.hr_staff_profession_checklist_progress
          WHERE staff_id = $1
            AND checklist_item_id = $2
          FOR UPDATE`,
@@ -1188,10 +1187,9 @@ async function toggleStaffProfessionChecklistProgress(client, params = {}, optio
     );
     const before = normalizeChecklistProgressRow(safeRows(beforeResult)[0]);
     const result = await client.query(
-        `INSERT INTO hr_staff_profession_checklist_progress
-            (staff_id, profession_key, checklist_key, checklist_item_id, title,
+        `INSERT INTO public.hr_staff_profession_checklist_progress (business_id, organization_id, staff_id, profession_key, checklist_key, checklist_item_id, title,
              completed_at, completed_by, notes, updated_at)
-         VALUES ($1, $2, $3, $4, $5,
+         VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, $2, $3, $4, $5,
                  CASE WHEN $6 THEN NOW() ELSE NULL END,
                  CASE WHEN $6 THEN $7 ELSE NULL END,
                  $8,
@@ -1209,6 +1207,8 @@ async function toggleStaffProfessionChecklistProgress(client, params = {}, optio
             completed_by = CASE WHEN $6 THEN $7 ELSE NULL END,
             notes = CASE WHEN $9 THEN EXCLUDED.notes ELSE hr_staff_profession_checklist_progress.notes END,
             updated_at = NOW()
+             WHERE hr_staff_profession_checklist_progress.business_id = EXCLUDED.business_id
+               AND hr_staff_profession_checklist_progress.organization_id = EXCLUDED.organization_id
          RETURNING id AS progress_id, staff_id, profession_key,
                    checklist_item_id AS progress_checklist_item_id,
                    checklist_key AS progress_checklist_key,
@@ -1226,6 +1226,7 @@ async function toggleStaffProfessionChecklistProgress(client, params = {}, optio
             hasNotes
         ]
     );
+    if (!safeRows(result)[0]) throw professionChecklistError('Належність прогресу не підтверджена', 409, 'HR_OWNERSHIP_CONFLICT');
     const after = normalizeChecklistProgressRow(safeRows(result)[0]);
     return {
         context,
@@ -1307,9 +1308,9 @@ async function loadProfessionChecklistProgressBatch(db, assignments, options = {
                 progress.created_at AS progress_created_at,
                 progress.updated_at AS progress_updated_at
          FROM requested
-         JOIN hr_professions profession ON profession.key = requested.profession_key
-         JOIN hr_profession_checklist_items item ON item.profession_id = profession.id
-         LEFT JOIN hr_staff_profession_checklist_progress progress
+         JOIN hr_owned.hr_professions profession ON profession.key = requested.profession_key
+         JOIN hr_owned.hr_profession_checklist_items item ON item.profession_id = profession.id
+         LEFT JOIN hr_owned.hr_staff_profession_checklist_progress progress
            ON progress.staff_id = requested.staff_id
           AND progress.checklist_item_id = item.id
          WHERE ($2::boolean OR item.is_active = true)
@@ -1353,15 +1354,15 @@ async function loadProfessionChecklistProgressBatch(db, assignments, options = {
                     issue.reason AS issue_reason,
                     issue.candidate_item_keys
              FROM requested
-             JOIN hr_staff_profession_checklist_progress progress
+             JOIN hr_owned.hr_staff_profession_checklist_progress progress
                ON progress.staff_id = requested.staff_id
               AND progress.profession_key = requested.profession_key
-             LEFT JOIN hr_profession_checklist_items item
+             LEFT JOIN hr_owned.hr_profession_checklist_items item
                ON item.id = progress.checklist_item_id
              LEFT JOIN hr_profession_checklist_migration_issues issue
                ON issue.progress_id = progress.id
               AND issue.resolved_at IS NULL
-             LEFT JOIN hr_professions profession
+             LEFT JOIN hr_owned.hr_professions profession
                ON profession.key = progress.profession_key
              WHERE progress.checklist_item_id IS NULL
                 OR item.id IS NULL
@@ -1434,12 +1435,12 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
              SELECT profession_id,
                     COUNT(*) FILTER (WHERE is_active = true)::integer AS active_items,
                     COUNT(*) FILTER (WHERE is_active = false)::integer AS archived_items
-             FROM hr_profession_checklist_items
+             FROM hr_owned.hr_profession_checklist_items
              GROUP BY profession_id
          ), assignment_counts AS (
              SELECT assignment.profession_key,
                     COUNT(*)::integer AS assigned_staff
-             FROM staff_role_assignments assignment
+             FROM hr_owned.staff_role_assignments assignment
              JOIN staff member ON member.id = assignment.staff_id
              WHERE ($3::integer[] IS NULL OR member.id = ANY($3::integer[]))
                AND ($5::boolean OR (${scheduleableStaffWhere('member')}))
@@ -1448,7 +1449,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
          ), orphan_counts AS (
              SELECT progress.profession_key,
                     COUNT(*)::integer AS orphaned_progress
-             FROM hr_staff_profession_checklist_progress progress
+             FROM hr_owned.hr_staff_profession_checklist_progress progress
              JOIN staff member ON member.id = progress.staff_id
              WHERE progress.checklist_item_id IS NULL
                AND ($3::integer[] IS NULL OR member.id = ANY($3::integer[]))
@@ -1464,7 +1465,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                 COALESCE(item_counts.archived_items, 0)::integer AS archived_items,
                 COALESCE(assignment_counts.assigned_staff, 0)::integer AS assigned_staff,
                 COALESCE(orphan_counts.orphaned_progress, 0)::integer AS orphaned_progress
-         FROM hr_professions profession
+         FROM hr_owned.hr_professions profession
          LEFT JOIN item_counts ON item_counts.profession_id = profession.id
          LEFT JOIN assignment_counts ON assignment_counts.profession_key = profession.key
          LEFT JOIN orphan_counts ON orphan_counts.profession_key = profession.key
@@ -1482,7 +1483,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                OR COALESCE(profession.department, '') ILIKE $7
                OR EXISTS (
                    SELECT 1
-                   FROM staff_role_assignments search_assignment
+                   FROM hr_owned.staff_role_assignments search_assignment
                    JOIN staff search_member ON search_member.id = search_assignment.staff_id
                    WHERE search_assignment.profession_key = profession.key
                      AND search_member.name ILIKE $7
@@ -1517,13 +1518,13 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                     profession.department,
                     COUNT(DISTINCT item.id)::integer AS total_items,
                     COUNT(DISTINCT item.id) FILTER (WHERE progress.completed_at IS NOT NULL)::integer AS completed_items
-             FROM staff_role_assignments assignment
+             FROM hr_owned.staff_role_assignments assignment
              JOIN staff member ON member.id = assignment.staff_id
-             JOIN hr_professions profession ON profession.key = assignment.profession_key
-             LEFT JOIN hr_profession_checklist_items item
+             JOIN hr_owned.hr_professions profession ON profession.key = assignment.profession_key
+             LEFT JOIN hr_owned.hr_profession_checklist_items item
                ON item.profession_id = profession.id
               AND item.is_active = true
-             LEFT JOIN hr_staff_profession_checklist_progress progress
+             LEFT JOIN hr_owned.hr_staff_profession_checklist_progress progress
                ON progress.staff_id = assignment.staff_id
               AND progress.checklist_item_id = item.id
              WHERE ($1::text[] IS NULL OR profession.key = ANY($1::text[]))
@@ -1539,7 +1540,9 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                    OR COALESCE(profession.department, '') ILIKE $7
                    OR member.name ILIKE $7
                )
-             GROUP BY assignment.id, member.id, profession.id
+             GROUP BY assignment.id, assignment.staff_id, assignment.status, assignment.is_primary,
+                      assignment.admission_status, assignment.internship_status, member.id,
+                      profession.id, profession.key, profession.title, profession.department
          ), with_status AS (
              SELECT classified.*,
                     CASE
@@ -1614,13 +1617,13 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                     item.item_key,
                     item.title AS item_title,
                     COUNT(*) OVER()::integer AS filtered_total
-             FROM hr_staff_profession_checklist_progress progress
-             JOIN hr_profession_checklist_items item
+             FROM hr_owned.hr_staff_profession_checklist_progress progress
+             JOIN hr_owned.hr_profession_checklist_items item
                ON item.id = progress.checklist_item_id
               AND item.is_active = false
-             JOIN hr_professions profession ON profession.id = item.profession_id
+             JOIN hr_owned.hr_professions profession ON profession.id = item.profession_id
              JOIN staff member ON member.id = progress.staff_id
-             LEFT JOIN staff_role_assignments assignment
+             LEFT JOIN hr_owned.staff_role_assignments assignment
                ON assignment.staff_id = progress.staff_id
               AND assignment.profession_key = profession.key
              WHERE ($1::text[] IS NULL OR profession.key = ANY($1::text[]))
@@ -1656,13 +1659,13 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
     }));
     const archivedCountResult = await db.query(
         `SELECT COUNT(*)::integer AS filtered_total
-         FROM hr_staff_profession_checklist_progress progress
-         JOIN hr_profession_checklist_items item
+         FROM hr_owned.hr_staff_profession_checklist_progress progress
+         JOIN hr_owned.hr_profession_checklist_items item
            ON item.id = progress.checklist_item_id
           AND item.is_active = false
-         JOIN hr_professions profession ON profession.id = item.profession_id
+         JOIN hr_owned.hr_professions profession ON profession.id = item.profession_id
          JOIN staff member ON member.id = progress.staff_id
-         LEFT JOIN staff_role_assignments assignment
+         LEFT JOIN hr_owned.staff_role_assignments assignment
            ON assignment.staff_id = progress.staff_id
           AND assignment.profession_key = profession.key
          WHERE ($1::text[] IS NULL OR profession.key = ANY($1::text[]))
@@ -1704,11 +1707,11 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                     issue.reason AS issue_reason,
                     issue.candidate_item_keys,
                     COUNT(*) OVER()::integer AS filtered_total
-             FROM hr_staff_profession_checklist_progress progress
+             FROM hr_owned.hr_staff_profession_checklist_progress progress
              JOIN staff member ON member.id = progress.staff_id
-             LEFT JOIN hr_professions profession ON profession.key = progress.profession_key
-             LEFT JOIN hr_profession_checklist_items item ON item.id = progress.checklist_item_id
-             LEFT JOIN staff_role_assignments assignment
+             LEFT JOIN hr_owned.hr_professions profession ON profession.key = progress.profession_key
+             LEFT JOIN hr_owned.hr_profession_checklist_items item ON item.id = progress.checklist_item_id
+             LEFT JOIN hr_owned.staff_role_assignments assignment
                ON assignment.staff_id = progress.staff_id
               AND assignment.profession_key = progress.profession_key
              LEFT JOIN hr_profession_checklist_migration_issues issue
@@ -1750,11 +1753,11 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
     }));
     const orphanedCountResult = await db.query(
         `SELECT COUNT(*)::integer AS filtered_total
-         FROM hr_staff_profession_checklist_progress progress
+         FROM hr_owned.hr_staff_profession_checklist_progress progress
          JOIN staff member ON member.id = progress.staff_id
-         LEFT JOIN hr_professions profession ON profession.key = progress.profession_key
-         LEFT JOIN hr_profession_checklist_items item ON item.id = progress.checklist_item_id
-         LEFT JOIN staff_role_assignments assignment
+         LEFT JOIN hr_owned.hr_professions profession ON profession.key = progress.profession_key
+         LEFT JOIN hr_owned.hr_profession_checklist_items item ON item.id = progress.checklist_item_id
+         LEFT JOIN hr_owned.staff_role_assignments assignment
            ON assignment.staff_id = progress.staff_id
           AND assignment.profession_key = progress.profession_key
          LEFT JOIN hr_profession_checklist_migration_issues issue

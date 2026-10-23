@@ -36,7 +36,7 @@ function createPoolFixture() {
     const pool = {
         async connect() { sideEffects.push('connect'); throw new Error('Unexpected write connection'); },
         async query(sql, params = []) {
-            const normalized = String(sql).replace(/\s+/g, ' ').trim();
+            const normalized = String(sql).replace(/\b(?:hr_owned|public)\.(?=(?:hr_professions|hr_profession_checklist_items|hr_staff_profession_checklist_progress|staff_role_assignments|onboarding_templates|onboarding_progress)\b)/g, '').replace(/\s+/g, ' ').trim();
             calls.push({ sql: normalized, params });
             assert.match(normalized, /^(SELECT|WITH)\b/i, 'schedule recovery may only read');
             let rows;

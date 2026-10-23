@@ -1698,8 +1698,8 @@ test('HR onboarding assignment keeps routes thin and owns task sync in service',
         "source_module: 'hr_onboarding'",
         'TASK_ACTION_TYPES.OWNER_REASSIGNED',
         'emitTaskAssignedToOwner(updatedTask, actor',
-        'INSERT INTO onboarding_progress',
-        'UPDATE onboarding_progress',
+        'INSERT INTO public.onboarding_progress',
+        'UPDATE hr_owned.onboarding_progress',
         'INSERT INTO hr_audit_log'
     ]) {
         assert.ok(HR_ONBOARDING_SERVICE.includes(token), `missing HR onboarding service token ${token}`);

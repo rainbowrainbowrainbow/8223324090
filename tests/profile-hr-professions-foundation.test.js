@@ -166,6 +166,7 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
     it('builds one aggregated profession workspace for zero, one, and multiple staff', async () => {
         const db = {
             async query(sql) {
+                sql = String(sql).replace(/\b(?:hr_owned|public)\.(?=(?:hr_professions|hr_profession_checklist_items|hr_staff_profession_checklist_progress|staff_role_assignments|onboarding_templates|onboarding_progress)\b)/g, '');
                 if (/FROM hr_professions\s+ORDER BY/i.test(sql)) {
                     return { rows: [
                         { id: 1, key: 'empty_role', title: 'Без команди', checklist: [], is_active: true, sort_order: 1 },

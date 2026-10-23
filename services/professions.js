@@ -291,7 +291,7 @@ async function loadAssignedStaffProfessionKeys(db, staff = {}) {
     if (!db || typeof db.query !== 'function' || !Number.isInteger(staffId) || staffId <= 0) return keys;
     const result = await db.query(
         `SELECT profession_key
-         FROM staff_role_assignments
+         FROM hr_owned.staff_role_assignments
          WHERE staff_id = $1
          ORDER BY is_primary DESC, profession_key`,
         [staffId]
@@ -363,7 +363,7 @@ async function loadPrimaryStaffShiftPreference(db, staffId, dayType) {
         `SELECT s.id, s.role_type, COALESCE(s.is_active, true) AS is_active,
                 (
                     SELECT sra.profession_key
-                    FROM staff_role_assignments sra
+                    FROM hr_owned.staff_role_assignments sra
                     WHERE sra.staff_id = s.id
                       AND COALESCE(sra.is_primary, false) = true
                       AND COALESCE(sra.status, 'active') = 'active'
@@ -492,7 +492,7 @@ async function loadStaffProfessionCondition(db, staffId, professionKey, options 
 
     const professionResult = await db.query(
         `SELECT id, key, title, is_active
-         FROM hr_professions
+         FROM hr_owned.hr_professions
          WHERE key = $1${options.forUpdate ? ' FOR UPDATE' : ''}`,
         [key]
     );
@@ -513,7 +513,7 @@ async function loadStaffProfessionCondition(db, staffId, professionKey, options 
 
     const assignmentResult = await db.query(
         `SELECT id, is_primary, status, admission_status, internship_status
-         FROM staff_role_assignments
+         FROM hr_owned.staff_role_assignments
          WHERE staff_id = $1 AND profession_key = $2${options.forUpdate ? ' FOR UPDATE' : ''}`,
         [id, key]
     );
@@ -600,7 +600,7 @@ async function saveStaffProfessionCondition(db, staffId, professionKey, payload 
     }
     if (normalized.rateChanged) {
         await db.query(
-            `UPDATE staff_role_assignments
+            `UPDATE hr_owned.staff_role_assignments
              SET hourly_rate = $3, updated_by = $4, updated_at = NOW()
              WHERE staff_id = $1 AND profession_key = $2`,
             [before.staffId, before.professionKey, normalized.explicitRate, actor]
@@ -644,7 +644,7 @@ async function loadProfessionWorkspaceCatalog(db, options = {}) {
         db.query(
             `SELECT id, key, title, department, short_info, responsibilities, checklist,
                     color, structure_node_id, sort_order, is_active, created_at, updated_at
-             FROM hr_professions
+             FROM hr_owned.hr_professions
              ORDER BY is_active DESC, sort_order ASC, title ASC`
         ),
         db.query(
@@ -658,7 +658,7 @@ async function loadProfessionWorkspaceCatalog(db, options = {}) {
                 CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(s.secondary_professions, '[]'::jsonb)) secondary(value)
                 UNION
                 SELECT sra.staff_id, sra.profession_key, COALESCE(sra.is_primary, false) AS is_primary
-                FROM staff_role_assignments sra
+                FROM hr_owned.staff_role_assignments sra
              )
              SELECT DISTINCT ON (pa.profession_key, s.id)
                     pa.profession_key, s.id AS staff_id, s.name AS staff_name, s.department,
@@ -675,7 +675,7 @@ async function loadProfessionWorkspaceCatalog(db, options = {}) {
              JOIN staff s ON s.id = pa.staff_id
              LEFT JOIN staff_profession_rates spr
                     ON spr.staff_id = s.id AND spr.profession_key = pa.profession_key
-             LEFT JOIN staff_role_assignments sra
+             LEFT JOIN hr_owned.staff_role_assignments sra
                     ON sra.staff_id = s.id AND sra.profession_key = pa.profession_key
              ${peopleWhereClause}
              ORDER BY pa.profession_key, s.id, pa.is_primary DESC`
@@ -695,9 +695,9 @@ async function loadProfessionWorkspaceCatalog(db, options = {}) {
                     COUNT(*) FILTER (WHERE progress.completed_at IS NOT NULL)::int AS historical_completed_records,
                     COUNT(*) FILTER (WHERE item.id IS NOT NULL AND item.is_active = false)::int AS archived_progress_records,
                     COUNT(*) FILTER (WHERE item.id IS NULL)::int AS orphaned_progress_records
-             FROM hr_staff_profession_checklist_progress progress
-             LEFT JOIN hr_professions profession ON profession.key = progress.profession_key
-             LEFT JOIN hr_profession_checklist_items item
+             FROM hr_owned.hr_staff_profession_checklist_progress progress
+             LEFT JOIN hr_owned.hr_professions profession ON profession.key = progress.profession_key
+             LEFT JOIN hr_owned.hr_profession_checklist_items item
                ON item.id = progress.checklist_item_id
               AND item.profession_id = profession.id
              GROUP BY progress.profession_key`
@@ -705,7 +705,7 @@ async function loadProfessionWorkspaceCatalog(db, options = {}) {
         db.query(
             `SELECT id, profession_id, item_key, title, sort_order, is_active, legacy_position,
                     created_by, updated_by, created_at, updated_at
-             FROM hr_profession_checklist_items
+             FROM hr_owned.hr_profession_checklist_items
              ORDER BY profession_id, is_active DESC, sort_order, id`
         ),
         db.query(

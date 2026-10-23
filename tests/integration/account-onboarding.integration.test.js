@@ -466,11 +466,11 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
         const staffId = Number(insertedStaff.rows[0].id);
         await pool.query(
             `INSERT INTO staff_role_assignments
-                (staff_id, profession_key, is_primary, status, admission_status,
+                (business_id, organization_id, staff_id, profession_key, is_primary, status, admission_status,
                  internship_status, hourly_rate, notes, created_by, updated_by)
              VALUES
-                ($1, 'barista', true, 'active', 'approved', 'none', 321, $2, 'integration', 'integration'),
-                ($1, 'technician', false, 'inactive', 'approved', 'none', NULL, 'historical-inactive-assignment', 'integration', 'integration')`,
+                (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, 'barista', true, 'active', 'approved', 'none', 321, $2, 'integration', 'integration'),
+                (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, 'technician', false, 'inactive', 'approved', 'none', NULL, 'historical-inactive-assignment', 'integration', 'integration')`,
             [staffId, 'preserve-existing-assignment']
         );
 

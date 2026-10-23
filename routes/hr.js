@@ -737,8 +737,8 @@ async function loadStaffRoleAssignments(staffId, db = pool) {
                 hp.title AS profession_title,
                 ps.title AS payroll_scheme_title,
                 ps.scheme_type AS payroll_scheme_type
-         FROM staff_role_assignments sra
-         LEFT JOIN hr_professions hp ON hp.key = sra.profession_key
+         FROM hr_owned.staff_role_assignments sra
+         LEFT JOIN hr_owned.hr_professions hp ON hp.key = sra.profession_key
          LEFT JOIN payroll_schemes ps ON ps.id = sra.payroll_scheme_id
          WHERE sra.staff_id = $1
          ORDER BY sra.is_primary DESC, hp.sort_order ASC NULLS LAST, sra.profession_key`,
@@ -1496,14 +1496,13 @@ function normalizeRoleAssignmentInputRows(rows = [], primaryRole = '') {
 async function replaceStaffRoleAssignments(db, staffId, rows = [], actor = null) {
     const id = Number(staffId);
     if (!Number.isFinite(id) || id <= 0) return [];
-    await db.query('DELETE FROM staff_role_assignments WHERE staff_id = $1', [id]);
+    await db.query('DELETE FROM hr_owned.staff_role_assignments WHERE staff_id = $1', [id]);
     const saved = [];
     for (const row of rows) {
         const result = await db.query(
-            `INSERT INTO staff_role_assignments
-                (staff_id, profession_key, is_primary, status, admission_status, internship_status,
+            `INSERT INTO public.staff_role_assignments (business_id, organization_id, staff_id, profession_key, is_primary, status, admission_status, internship_status,
                  hourly_rate, payroll_scheme_id, notes, created_by, updated_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
+             VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
              RETURNING *`,
             [
                 id,
@@ -1526,7 +1525,7 @@ async function replaceStaffRoleAssignments(db, staffId, rows = [], actor = null)
 async function syncStaffRoleAssignmentsFromStaff(db, staffId, staffRow = {}, professionRates = [], actor = null) {
     const existing = await db.query(
         `SELECT profession_key, status, admission_status, internship_status, payroll_scheme_id, notes
-         FROM staff_role_assignments
+         FROM hr_owned.staff_role_assignments
          WHERE staff_id = $1`,
         [staffId]
     ).catch(() => ({ rows: [] }));
@@ -2008,7 +2007,7 @@ async function loadLiveQaFinancialProof(db, staffId) {
         retainedRoleAssignments: await liveQaCountOrUnknown(
             db,
             'retainedRoleAssignments',
-            'SELECT COUNT(*)::int AS count FROM staff_role_assignments WHERE staff_id = $1',
+            'SELECT COUNT(*)::int AS count FROM hr_owned.staff_role_assignments WHERE staff_id = $1',
             [staffId],
             verificationErrors
         ),
@@ -2122,7 +2121,7 @@ async function loadLiveQaFixtureStatus(db, staffId, runId) {
     };
 }
 async function activeProfessionKeySet(db = pool) {
-    const result = await db.query('SELECT key, title, department, short_info, responsibilities, checklist, color, structure_node_id, sort_order, is_active FROM hr_professions');
+    const result = await db.query('SELECT key, title, department, short_info, responsibilities, checklist, color, structure_node_id, sort_order, is_active FROM hr_owned.hr_professions');
     return professionCatalogActiveKeySet(result.rows);
 }
 
@@ -2179,7 +2178,7 @@ async function attachTrainingReadiness(staffRows = []) {
     }
     const assignmentResult = await pool.query(
         `SELECT staff_id, profession_key
-         FROM staff_role_assignments
+         FROM hr_owned.staff_role_assignments
          WHERE staff_id = ANY($1::int[])
          ORDER BY staff_id, is_primary DESC, profession_key`,
         [staffIds]
@@ -2204,7 +2203,7 @@ async function attachTrainingReadiness(staffRows = []) {
     const [professionRows, courseRows, enrollmentRows, checklistProgress] = await Promise.all([
         pool.query(
             `SELECT key, title
-             FROM hr_professions
+             FROM hr_owned.hr_professions
              WHERE key = ANY($1::text[]) AND is_active = true`,
             [professionKeys]
         ),
@@ -2388,6 +2387,8 @@ async function replaceStaffProfessionRates(db, staffId, rates = []) {
              ON CONFLICT (staff_id, profession_key) DO UPDATE SET
                 hourly_rate = EXCLUDED.hourly_rate,
                 updated_at = NOW()
+             WHERE staff_role_assignments.business_id = EXCLUDED.business_id
+               AND staff_role_assignments.organization_id = EXCLUDED.organization_id
              RETURNING profession_key, hourly_rate`,
             [id, row.profession_key, row.hourly_rate]
         );
@@ -2997,7 +2998,7 @@ async function loadKpiSnapshot(monthValue, db = pool) {
                    COUNT(*) FILTER (WHERE op.status <> 'completed')::int AS onboarding_active,
                    COALESCE(SUM(op.total_items), 0)::int AS onboarding_total_items,
                    COALESCE(SUM(op.completed_items), 0)::int AS onboarding_completed_items
-            FROM onboarding_progress op
+            FROM hr_owned.onboarding_progress op
             JOIN params p ON op.started_at::date <= p.date_to
                 AND (op.completed_at IS NULL OR op.completed_at::date >= p.date_from)
             GROUP BY op.staff_id
@@ -3393,8 +3394,8 @@ router.post('/professions', requireHrManage, async (req, res) => {
             });
         }
         const result = await pool.query(
-            `INSERT INTO hr_professions (key, title, department, short_info, responsibilities, checklist, color, structure_node_id, sort_order, is_active)
-             VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10)
+            `INSERT INTO public.hr_professions (business_id, organization_id, key, title, department, short_info, responsibilities, checklist, color, structure_node_id, sort_order, is_active)
+             VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10)
              RETURNING *`,
             [
                 payload.key,
@@ -3422,7 +3423,7 @@ router.post('/professions', requireHrManage, async (req, res) => {
 
 router.put('/professions/:id', requireHrManage, async (req, res) => {
     try {
-        const current = await pool.query('SELECT * FROM hr_professions WHERE id = $1', [req.params.id]);
+        const current = await pool.query('SELECT * FROM hr_owned.hr_professions WHERE id = $1', [req.params.id]);
         if (!current.rows.length) return res.status(404).json({ success: false, error: 'Професію не знайдено' });
         const payload = normalizeProfessionPayload(req.body, current.rows[0]);
         if (!payload.key || !payload.title) {
@@ -3436,7 +3437,7 @@ router.put('/professions/:id', requireHrManage, async (req, res) => {
             });
         }
         const result = await pool.query(
-            `UPDATE hr_professions SET
+            `UPDATE hr_owned.hr_professions SET
                 title = $1,
                 department = $2,
                 short_info = $3,
@@ -4427,7 +4428,7 @@ router.get('/role-assignments/report', async (req, res) => {
                 COUNT(*) FILTER (WHERE sra.admission_status = 'blocked')::int AS blocked_admissions,
                 COUNT(*) FILTER (WHERE sra.internship_status = 'in_progress')::int AS internships_in_progress,
                 COUNT(*) FILTER (WHERE sra.internship_status = 'completed')::int AS internships_completed
-             FROM staff_role_assignments sra
+             FROM hr_owned.staff_role_assignments sra
              JOIN staff s ON s.id = sra.staff_id
              ${whereSql}`
         );
@@ -4436,9 +4437,9 @@ router.get('/role-assignments/report', async (req, res) => {
                     sra.profession_key, COALESCE(hp.title, sra.profession_key) AS profession_title,
                     sra.is_primary, sra.status, sra.admission_status, sra.internship_status,
                     sra.updated_at
-             FROM staff_role_assignments sra
+             FROM hr_owned.staff_role_assignments sra
              JOIN staff s ON s.id = sra.staff_id
-             LEFT JOIN hr_professions hp ON hp.key = sra.profession_key
+             LEFT JOIN hr_owned.hr_professions hp ON hp.key = sra.profession_key
              ${whereSql}
              ORDER BY
                 CASE
@@ -5263,7 +5264,7 @@ router.put('/company-structure', requireHrManage, async (req, res) => {
             [nodeIds]
         );
         const professionCleanup = await client.query(
-            `UPDATE hr_professions
+            `UPDATE hr_owned.hr_professions
              SET structure_node_id = NULL, updated_at = NOW()
              WHERE structure_node_id IS NOT NULL
                AND NOT (structure_node_id = ANY($1::text[]))`,
@@ -7539,12 +7540,12 @@ router.get('/onboarding/templates', async (req, res) => {
     try {
         const result = req.parkHrOnboardingRead
             ? await pool.query(`SELECT ot.id, ot.name, ot.department
-                FROM onboarding_templates ot
-                WHERE EXISTS (SELECT 1 FROM onboarding_progress op
+                FROM hr_owned.onboarding_templates ot
+                WHERE EXISTS (SELECT 1 FROM hr_owned.onboarding_progress op
                     JOIN staff s ON s.id = op.staff_id
                     WHERE op.template_id = ot.id AND op.profession_key IS NULL)
                 ORDER BY ot.name`)
-            : await pool.query('SELECT * FROM onboarding_templates ORDER BY name');
+            : await pool.query('SELECT * FROM hr_owned.onboarding_templates ORDER BY name');
         res.json({ success: true, data: result.rows });
     } catch (err) {
         log.error('GET /hr/onboarding/templates error', err);
@@ -7558,7 +7559,7 @@ router.post('/onboarding/templates', requireHrManage, async (req, res) => {
         const { name, department, items } = req.body;
         if (!name || !items) return res.status(400).json({ success: false, error: 'Потрібні name та items' });
         const result = await pool.query(
-            'INSERT INTO onboarding_templates (name, department, items) VALUES ($1, $2, $3) RETURNING *',
+            'INSERT INTO public.onboarding_templates (business_id, organization_id, name, department, items) VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, $2, $3) RETURNING *',
             [name, department, JSON.stringify(items)]
         );
         res.json({ success: true, data: result.rows[0] });
@@ -7638,7 +7639,7 @@ router.post('/onboarding/start', requireHrManage, async (req, res) => {
         }
 
         if (!professionKey) {
-            const tpl = await pool.query('SELECT * FROM onboarding_templates WHERE id = $1', [template_id]);
+            const tpl = await pool.query('SELECT * FROM hr_owned.onboarding_templates WHERE id = $1', [template_id]);
             if (tpl.rows.length === 0) return res.status(404).json({ success: false, error: 'Шаблон не знайдено' });
         }
 
@@ -7686,14 +7687,10 @@ router.get('/onboarding', async (req, res) => {
                     CASE WHEN u.id IS NOT NULL THEN op.responsible_user_id ELSE NULL END AS responsible_user_id,
                     u.name AS responsible_name,
                     (op.responsible_user_id IS NOT NULL AND u.id IS NULL) AS responsible_restricted,
-                    COUNT(t.id)::int AS generated_task_count,
-                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN
-                        ('done','completed','archived','cancelled'))::int AS active_task_count,
-                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN
-                        ('done','completed'))::int AS completed_task_count
-                FROM onboarding_progress op
+                    task_counts.generated_task_count, task_counts.active_task_count, task_counts.completed_task_count
+                FROM hr_owned.onboarding_progress op
                 JOIN staff s ON s.id = op.staff_id
-                LEFT JOIN onboarding_templates ot ON ot.id = op.template_id
+                LEFT JOIN hr_owned.onboarding_templates ot ON ot.id = op.template_id
                 LEFT JOIN users u ON u.id = op.responsible_user_id AND u.is_active IS TRUE
                     AND EXISTS (SELECT 1 FROM business_memberships bm
                         JOIN businesses b ON b.id = bm.business_id
@@ -7705,10 +7702,12 @@ router.get('/onboarding', async (req, res) => {
                             AND om.user_id = bm.user_id AND om.is_active IS TRUE
                         WHERE bm.user_id = u.id AND bm.business_id = $2
                             AND bm.organization_id = $3 AND bm.is_active IS TRUE)
-                LEFT JOIN tasks t ON t.source_type = $1
-                    AND t.source_id LIKE op.id::text || ':%' AND t.business_context = 'event_genix'
+                LEFT JOIN LATERAL (SELECT COUNT(t.id)::int AS generated_task_count,
+                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','archived','cancelled'))::int AS active_task_count,
+                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed'))::int AS completed_task_count
+                FROM tasks t WHERE t.source_type = $1 AND t.source_id LIKE op.id::text || ':%' AND t.business_context = 'event_genix') task_counts ON TRUE
                 WHERE ${conditions.join(' AND ')}
-                GROUP BY op.id, s.name, s.department, ot.name, u.id, u.name
+
                 ORDER BY op.started_at DESC`, params);
             return res.json({ success: true, data: result.rows.map(row => ({
                 ...onboardingProgressMeta(row), responsible_restricted: row.responsible_restricted
@@ -7716,14 +7715,15 @@ router.get('/onboarding', async (req, res) => {
         }
         let sql = `SELECT op.*, s.name AS staff_name, s.department, ot.name AS template_name,
                           u.name AS responsible_name, u.username AS responsible_username, u.role AS responsible_role,
-                          COUNT(t.id)::int AS generated_task_count,
-                          COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','archived','cancelled'))::int AS active_task_count,
-                          COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed'))::int AS completed_task_count
-                   FROM onboarding_progress op
+                          task_counts.generated_task_count, task_counts.active_task_count, task_counts.completed_task_count
+                   FROM hr_owned.onboarding_progress op
                    JOIN staff s ON s.id = op.staff_id
-                   LEFT JOIN onboarding_templates ot ON ot.id = op.template_id
+                   LEFT JOIN hr_owned.onboarding_templates ot ON ot.id = op.template_id
                    LEFT JOIN users u ON u.id = op.responsible_user_id
-                   LEFT JOIN tasks t ON t.source_type = $1 AND t.source_id LIKE op.id::text || ':%'`;
+                   LEFT JOIN LATERAL (SELECT COUNT(t.id)::int AS generated_task_count,
+                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','archived','cancelled'))::int AS active_task_count,
+                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed'))::int AS completed_task_count
+                FROM tasks t WHERE t.source_type = $1 AND t.source_id LIKE op.id::text || ':%') task_counts ON TRUE`;
         const params = [ONBOARDING_TASK_SOURCE_TYPE];
         const conds = [];
         if (staff_id) { params.push(parseInt(staff_id)); conds.push(`op.staff_id = $${params.length}`); }
@@ -7732,7 +7732,6 @@ router.get('/onboarding', async (req, res) => {
         else if (scope === 'general') conds.push('op.profession_key IS NULL');
         else if (scope === 'profession') conds.push('op.profession_key IS NOT NULL');
         if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
-        sql += ' GROUP BY op.id, s.name, s.department, ot.name, u.name, u.username, u.role';
         sql += ' ORDER BY op.started_at DESC';
         const result = await pool.query(sql, params);
         await attachProfessionOnboardingContext(result.rows, pool);
@@ -7747,7 +7746,7 @@ router.get('/onboarding', async (req, res) => {
 router.put('/onboarding/:id/check', requireHrManage, async (req, res) => {
     try {
         const { item_id, done } = req.body;
-        const prog = await pool.query('SELECT * FROM onboarding_progress WHERE id = $1', [req.params.id]);
+        const prog = await pool.query('SELECT * FROM hr_owned.onboarding_progress WHERE id = $1', [req.params.id]);
         if (prog.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         if (normalizeProfessionKey(prog.rows[0].profession_key)) {
             return res.status(409).json({
@@ -7768,7 +7767,7 @@ router.put('/onboarding/:id/check', requireHrManage, async (req, res) => {
         const nextTrainingStatus = isComplete ? 'completed' : (completedItems > 0 ? 'in_progress' : 'not_started');
 
         const result = await pool.query(
-            `UPDATE onboarding_progress SET items = $1, completed_items = $2,
+            `UPDATE hr_owned.onboarding_progress SET items = $1, completed_items = $2,
              status = $3, completed_at = $4, training_status = $6 WHERE id = $5 RETURNING *`,
             [JSON.stringify(items), completedItems, isComplete ? 'completed' : 'in_progress',
              isComplete ? new Date().toISOString() : null, req.params.id, nextTrainingStatus]
@@ -9205,7 +9204,7 @@ router.post('/applications/:id/hire', requireHrManage, async (req, res) => {
             });
         }
         const professionKey = normalizeProfessionKey(a.role_type);
-        const profession = await client.query('SELECT key, title FROM hr_professions WHERE key = $1 AND is_active = true LIMIT 1', [professionKey]);
+        const profession = await client.query('SELECT key, title FROM hr_owned.hr_professions WHERE key = $1 AND is_active = true LIMIT 1', [professionKey]);
         if (!profession.rows.length) {
             throw Object.assign(new Error('Професія вакансії відсутня або неактивна'), { statusCode: 409, code: 'VACANCY_PROFESSION_INACTIVE' });
         }

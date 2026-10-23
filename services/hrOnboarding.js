@@ -244,7 +244,7 @@ function onboardingProgressMeta(row = {}) {
 async function ensureResponsibleOnboardingTemplate(db = pool) {
     const existing = await db.query(
         `SELECT id, name, items
-         FROM onboarding_templates
+         FROM hr_owned.onboarding_templates
          WHERE name = $1
          ORDER BY id ASC
          LIMIT 1`,
@@ -252,8 +252,8 @@ async function ensureResponsibleOnboardingTemplate(db = pool) {
     );
     if (existing.rows[0]) return existing.rows[0];
     const inserted = await db.query(
-        `INSERT INTO onboarding_templates (name, department, items)
-         VALUES ($1, NULL, $2::jsonb)
+        `INSERT INTO public.onboarding_templates (business_id, organization_id, name, department, items)
+         VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, NULL, $2::jsonb)
          RETURNING id, name, items`,
         [RESPONSIBLE_ONBOARDING_TEMPLATE_NAME, JSON.stringify(ONBOARDING_DEFAULT_ITEMS)]
     );
@@ -271,8 +271,8 @@ async function loadProfessionOnboardingContext(staffId, professionKey, db = pool
                 sra.status AS assignment_status,
                 sra.admission_status,
                 sra.internship_status
-         FROM hr_professions hp
-         LEFT JOIN staff_role_assignments sra
+         FROM hr_owned.hr_professions hp
+         LEFT JOIN hr_owned.staff_role_assignments sra
            ON sra.staff_id = $1
           AND sra.profession_key = hp.key
          WHERE hp.key = $2
@@ -379,8 +379,8 @@ async function attachProfessionOnboardingContext(rows = [], db = pool) {
                     sra.admission_status,
                     sra.internship_status
              FROM requested
-             LEFT JOIN hr_professions hp ON hp.key = requested.profession_key
-             LEFT JOIN staff_role_assignments sra
+             LEFT JOIN hr_owned.hr_professions hp ON hp.key = requested.profession_key
+             LEFT JOIN hr_owned.staff_role_assignments sra
                ON sra.staff_id = requested.staff_id
               AND sra.profession_key = requested.profession_key`,
             [requestedJson]
@@ -432,7 +432,7 @@ async function loadActiveOnboardingProgressRecord(staffId, db = pool, { lock = f
     const params = key ? [staffId, key] : [staffId];
     const result = await db.query(
         `SELECT *
-         FROM onboarding_progress
+         FROM hr_owned.onboarding_progress
          WHERE staff_id = $1
            AND ${scopeSql}
            AND status <> 'completed'
@@ -452,17 +452,18 @@ async function loadActiveOnboardingProgress(staffId, db = pool, { professionKey 
     const result = await db.query(
         `SELECT op.*, ot.name AS template_name,
                 u.name AS responsible_name, u.username AS responsible_username, u.role AS responsible_role,
-                COUNT(t.id)::int AS generated_task_count,
-                COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','archived','cancelled'))::int AS active_task_count,
-                COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed'))::int AS completed_task_count
-         FROM onboarding_progress op
-         LEFT JOIN onboarding_templates ot ON ot.id = op.template_id
+                task_counts.generated_task_count, task_counts.active_task_count, task_counts.completed_task_count
+         FROM hr_owned.onboarding_progress op
+         LEFT JOIN hr_owned.onboarding_templates ot ON ot.id = op.template_id
          LEFT JOIN users u ON u.id = op.responsible_user_id
-         LEFT JOIN tasks t ON t.source_type = $2 AND t.source_id LIKE op.id::text || ':%'
+         LEFT JOIN LATERAL (SELECT COUNT(t.id)::int AS generated_task_count,
+                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','archived','cancelled'))::int AS active_task_count,
+                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed'))::int AS completed_task_count
+                FROM tasks t WHERE t.source_type = $2 AND t.source_id LIKE op.id::text || ':%') task_counts ON TRUE
          WHERE op.staff_id = $1
            AND ${scopeSql}
            AND op.status <> 'completed'
-         GROUP BY op.id, ot.name, u.name, u.username, u.role
+
          ORDER BY op.started_at DESC, op.id DESC
          LIMIT 1`,
         params
@@ -475,15 +476,16 @@ async function loadOnboardingProcessesForStaff(staffId, db = pool) {
     const result = await db.query(
         `SELECT op.*, ot.name AS template_name,
                 u.name AS responsible_name, u.username AS responsible_username, u.role AS responsible_role,
-                COUNT(t.id)::int AS generated_task_count,
-                COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','archived','cancelled'))::int AS active_task_count,
-                COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed'))::int AS completed_task_count
-         FROM onboarding_progress op
-         LEFT JOIN onboarding_templates ot ON ot.id = op.template_id
+                task_counts.generated_task_count, task_counts.active_task_count, task_counts.completed_task_count
+         FROM hr_owned.onboarding_progress op
+         LEFT JOIN hr_owned.onboarding_templates ot ON ot.id = op.template_id
          LEFT JOIN users u ON u.id = op.responsible_user_id
-         LEFT JOIN tasks t ON t.source_type = $2 AND t.source_id LIKE op.id::text || ':%'
+         LEFT JOIN LATERAL (SELECT COUNT(t.id)::int AS generated_task_count,
+                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','archived','cancelled'))::int AS active_task_count,
+                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed'))::int AS completed_task_count
+                FROM tasks t WHERE t.source_type = $2 AND t.source_id LIKE op.id::text || ':%') task_counts ON TRUE
          WHERE op.staff_id = $1
-         GROUP BY op.id, ot.name, u.name, u.username, u.role
+
          ORDER BY op.profession_key NULLS FIRST, op.started_at DESC, op.id DESC`,
         [staffId, ONBOARDING_TASK_SOURCE_TYPE]
     );
@@ -506,8 +508,8 @@ async function attachOnboardingAssignments(staffRows = []) {
             SELECT DISTINCT ON (op.staff_id)
                    op.*, ot.name AS template_name,
                    u.name AS responsible_name, u.username AS responsible_username, u.role AS responsible_role
-            FROM onboarding_progress op
-            LEFT JOIN onboarding_templates ot ON ot.id = op.template_id
+            FROM hr_owned.onboarding_progress op
+            LEFT JOIN hr_owned.onboarding_templates ot ON ot.id = op.template_id
             LEFT JOIN users u ON u.id = op.responsible_user_id
             WHERE op.staff_id = ANY($1::int[])
               AND op.profession_key IS NULL
@@ -532,7 +534,7 @@ async function attachOnboardingAssignments(staffRows = []) {
         pool.query(
             `SELECT op.staff_id,
                     COUNT(*) FILTER (WHERE op.status <> 'completed')::int AS active_count
-             FROM onboarding_progress op
+             FROM hr_owned.onboarding_progress op
              WHERE op.staff_id = ANY($1::int[])
                AND op.profession_key IS NOT NULL
              GROUP BY op.staff_id`,
@@ -721,7 +723,7 @@ async function syncOnboardingTasks(progress, staff, responsible, actor, options 
         if (task.duplicateSkipped) reused.push(task);
         else created.push(task);
     }
-    await db.query('UPDATE onboarding_progress SET last_task_sync_at = NOW() WHERE id = $1', [progress.id]);
+    await db.query('UPDATE hr_owned.onboarding_progress SET last_task_sync_at = NOW() WHERE id = $1', [progress.id]);
     return {
         created,
         updated,
@@ -746,7 +748,7 @@ async function loadLatestProfessionOnboardingProgressRecord(staffId, professionK
     if (!key) return null;
     const result = await db.query(
         `SELECT *
-         FROM onboarding_progress
+         FROM hr_owned.onboarding_progress
          WHERE staff_id = $1
            AND profession_key = $2
          ORDER BY started_at DESC, id DESC
@@ -784,7 +786,7 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
         const template = professionKey
             ? null
             : (options.templateId
-                ? (await db.query('SELECT id, name, items FROM onboarding_templates WHERE id = $1', [options.templateId])).rows[0]
+                ? (await db.query('SELECT id, name, items FROM hr_owned.onboarding_templates WHERE id = $1', [options.templateId])).rows[0]
                 : await ensureResponsibleOnboardingTemplate(db));
         if (!professionKey && !template) {
             throw professionOnboardingError('Шаблон onboarding не знайдено', 404, 'ONBOARDING_TEMPLATE_NOT_FOUND');
@@ -807,11 +809,10 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
                 ? deriveProfessionOnboardingState({}, professionReadiness)
                 : null;
             const inserted = await db.query(
-                `INSERT INTO onboarding_progress
-                    (staff_id, template_id, profession_key, items, total_items, completed_items, status,
+                `INSERT INTO public.onboarding_progress (business_id, organization_id, staff_id, template_id, profession_key, items, total_items, completed_items, status,
                      responsible_user_id, assigned_by_user_id, assigned_by_username, assigned_at,
                      training_status, assignment_history, checklist_template_key)
-                 VALUES ($1, $2, $3, $4::jsonb, $5, $11, $12,
+                 VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, $2, $3, $4::jsonb, $5, $11, $12,
                          $6, $7, $8, NOW(), $13, $9::jsonb, $10)
                  RETURNING *`,
                 [
@@ -872,7 +873,7 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
                     ? 'completed'
                     : normalizeOnboardingStatus(current.status, nextTrainingStatus));
             const updated = await db.query(
-                `UPDATE onboarding_progress
+                `UPDATE hr_owned.onboarding_progress
                  SET responsible_user_id = $2,
                      assigned_by_user_id = $3,
                      assigned_by_username = $4,
@@ -973,7 +974,7 @@ async function syncProfessionOnboardingProgress(staffId, professionKey, actor, o
     const nextStatus = nextState.status;
     const nextTrainingStatus = nextState.trainingStatus;
     const result = await db.query(
-        `UPDATE onboarding_progress
+        `UPDATE hr_owned.onboarding_progress
          SET status = $2::text,
              training_status = $3::text,
              total_items = $4::integer,
@@ -1057,12 +1058,12 @@ async function syncProfessionOnboardingProgressForProfession(professionKey, acto
         const latestResult = await db.query(
             `WITH latest AS (
                  SELECT DISTINCT ON (staff_id) id
-                 FROM onboarding_progress
+                 FROM hr_owned.onboarding_progress
                  WHERE profession_key = $1
                  ORDER BY staff_id, started_at DESC, id DESC
              )
              SELECT progress.*
-             FROM onboarding_progress progress
+             FROM hr_owned.onboarding_progress progress
              JOIN latest ON latest.id = progress.id
              ORDER BY progress.staff_id, progress.id
              FOR UPDATE OF progress`,
@@ -1114,7 +1115,7 @@ async function syncProfessionOnboardingProgressForProfession(professionKey, acto
                          completed_items integer
                      )
                  )
-                 UPDATE onboarding_progress progress
+                 UPDATE hr_owned.onboarding_progress progress
                  SET status = requested.status,
                      training_status = requested.training_status,
                      total_items = requested.total_items,

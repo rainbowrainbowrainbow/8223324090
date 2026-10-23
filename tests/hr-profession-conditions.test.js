@@ -94,7 +94,7 @@ function createConditionsDb() {
     return {
         state,
         async query(sql, params = []) {
-            const text = String(sql).replace(/\s+/g, ' ').trim();
+            const text = String(sql).replace(/\b(?:hr_owned|public)\.(?=(?:hr_professions|hr_profession_checklist_items|hr_staff_profession_checklist_progress|staff_role_assignments|onboarding_templates|onboarding_progress)\b)/g, '').replace(/\s+/g, ' ').trim();
             state.queries.push({ text, params });
 
             if (/^SELECT id, name, role_type, COALESCE\(secondary_professions/.test(text)) {

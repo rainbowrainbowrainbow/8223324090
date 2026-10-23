@@ -559,7 +559,7 @@ async function lockAndValidateProfessions(client, normalized) {
     const keys = normalized.professions.map(item => item.key);
     const result = await client.query(
         `SELECT id, key, title, is_active
-         FROM hr_professions
+         FROM hr_owned.hr_professions
          WHERE key = ANY($1::text[])
          ORDER BY key
          FOR UPDATE`,
@@ -688,7 +688,7 @@ async function loadExistingRoleAssignments(client, staffId) {
     const result = await client.query(
         `SELECT profession_key, status, admission_status, internship_status,
                 hourly_rate, payroll_scheme_id, notes
-         FROM staff_role_assignments
+         FROM hr_owned.staff_role_assignments
          WHERE staff_id = $1
          FOR UPDATE`,
         [staffId]
@@ -750,13 +750,13 @@ async function replaceAuthoritativeAssignments(client, staffId, assignments, act
     const keys = assignments.map(item => item.key);
 
     await client.query(
-        `UPDATE staff_role_assignments
+        `UPDATE hr_owned.staff_role_assignments
          SET is_primary = false, updated_by = $2, updated_at = NOW()
          WHERE staff_id = $1 AND is_primary = true`,
         [staffId, actorUsername]
     );
     await client.query(
-        'DELETE FROM staff_role_assignments WHERE staff_id = $1 AND NOT (profession_key = ANY($2::text[]))',
+        'DELETE FROM hr_owned.staff_role_assignments WHERE staff_id = $1 AND NOT (profession_key = ANY($2::text[]))',
         [staffId, keys]
     );
 
@@ -771,10 +771,9 @@ async function replaceAuthoritativeAssignments(client, staffId, assignments, act
             ? assignment.internshipStatus
             : (existing.internship_status || (assignment.key === 'intern' ? 'in_progress' : 'none'));
         const result = await client.query(
-            `INSERT INTO staff_role_assignments
-                (staff_id, profession_key, is_primary, status, admission_status, internship_status,
+            `INSERT INTO public.staff_role_assignments (business_id, organization_id, staff_id, profession_key, is_primary, status, admission_status, internship_status,
                  hourly_rate, payroll_scheme_id, notes, created_by, updated_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+             VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
              ON CONFLICT (staff_id, profession_key) DO UPDATE SET
                 is_primary = EXCLUDED.is_primary,
                 status = EXCLUDED.status,
@@ -785,6 +784,8 @@ async function replaceAuthoritativeAssignments(client, staffId, assignments, act
                 notes = EXCLUDED.notes,
                 updated_by = EXCLUDED.updated_by,
                 updated_at = NOW()
+             WHERE staff_role_assignments.business_id = EXCLUDED.business_id
+               AND staff_role_assignments.organization_id = EXCLUDED.organization_id
              RETURNING id, profession_key, is_primary, status, admission_status, internship_status`,
             [
                 staffId,
@@ -799,6 +800,7 @@ async function replaceAuthoritativeAssignments(client, staffId, assignments, act
                 actorUsername
             ]
         );
+        if (!result.rows[0]) throw onboardingError('Належність рольового призначення не підтверджена', 409, 'HR_OWNERSHIP_CONFLICT');
         saved.push(result.rows[0]);
     }
     return saved;

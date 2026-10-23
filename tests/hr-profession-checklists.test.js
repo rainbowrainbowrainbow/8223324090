@@ -20,7 +20,7 @@ const {
 } = require('../services/professionChecklists');
 
 function compactSql(sql) {
-    return String(sql).replace(/\s+/g, ' ').trim();
+    return String(sql).replace(/\bhr_owned\./g, '').replace(/\bpublic\.(?=(?:hr_professions|hr_profession_checklist_items|hr_staff_profession_checklist_progress|staff_role_assignments|onboarding_templates|onboarding_progress)\b)/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function clone(value) {

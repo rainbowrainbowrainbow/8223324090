@@ -1085,7 +1085,7 @@ function createFakePool() {
             };
         },
         query: async (sql, params = []) => {
-            const text = String(sql).replace(/\s+/g, ' ').trim();
+            const text = String(sql).replace(/\b(?:hr_owned|public)\.(?=(?:hr_professions|hr_profession_checklist_items|hr_staff_profession_checklist_progress|staff_role_assignments|onboarding_templates|onboarding_progress)\b)/g, '').replace(/\s+/g, ' ').trim();
             queries.push({ text, params });
 
             if (/^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT\s+\w+|RELEASE SAVEPOINT\s+\w+|ROLLBACK TO SAVEPOINT\s+\w+)$/i.test(text)) {
@@ -2488,7 +2488,7 @@ function createFakePool() {
                 const template = Array.from(hrState.onboardingTemplates.values()).find(row => row.name === params[0]);
                 return { rows: template ? [template] : [] };
             }
-            if (/INSERT INTO onboarding_templates \(name, department, items\)/i.test(text)) {
+            if (/INSERT INTO onboarding_templates \(business_id, organization_id, name, department, items\)/i.test(text)) {
                 const id = hrState.nextOnboardingTemplateId++;
                 const template = {
                     id,
@@ -2499,7 +2499,7 @@ function createFakePool() {
                 hrState.onboardingTemplates.set(id, template);
                 return { rows: [template], rowCount: 1 };
             }
-            if (/FROM onboarding_progress op LEFT JOIN onboarding_templates ot ON ot\.id = op\.template_id LEFT JOIN users u ON u\.id = op\.responsible_user_id LEFT JOIN tasks t ON t\.source_type = \$2/i.test(text) && /WHERE op\.staff_id = \$1/i.test(text) && /LIMIT 1/i.test(text)) {
+            if (/FROM onboarding_progress op LEFT JOIN onboarding_templates ot ON ot\.id = op\.template_id LEFT JOIN users u ON u\.id = op\.responsible_user_id LEFT JOIN LATERAL \(SELECT COUNT\(t\.id\)::int AS generated_task_count[\s\S]+FROM tasks t WHERE t\.source_type = \$2/i.test(text) && /WHERE op\.staff_id = \$1/i.test(text) && /LIMIT 1/i.test(text)) {
                 const professionKey = /op\.profession_key = \$3/i.test(text) ? String(params[2]) : null;
                 const progress = Array.from(hrState.onboardingProgress.values())
                     .filter(row => Number(row.staff_id) === Number(params[0])
@@ -2594,7 +2594,7 @@ function createFakePool() {
             if (/SELECT op\.\*, s\.name AS staff_name, s\.department, ot\.name AS template_name/i.test(text) && /FROM onboarding_progress op JOIN staff s ON s\.id = op\.staff_id/i.test(text)) {
                 return { rows: Array.from(hrState.onboardingProgress.values()).map(onboardingRow) };
             }
-            if (/FROM onboarding_progress op LEFT JOIN onboarding_templates ot ON ot\.id = op\.template_id LEFT JOIN users u ON u\.id = op\.responsible_user_id LEFT JOIN tasks t ON t\.source_type = \$2/i.test(text) && /WHERE op\.staff_id = \$1/i.test(text)) {
+            if (/FROM onboarding_progress op LEFT JOIN onboarding_templates ot ON ot\.id = op\.template_id LEFT JOIN users u ON u\.id = op\.responsible_user_id LEFT JOIN LATERAL \(SELECT COUNT\(t\.id\)::int AS generated_task_count[\s\S]+FROM tasks t WHERE t\.source_type = \$2/i.test(text) && /WHERE op\.staff_id = \$1/i.test(text)) {
                 return { rows: Array.from(hrState.onboardingProgress.values())
                     .filter(row => Number(row.staff_id) === Number(params[0]))
                     .map(onboardingRow) };

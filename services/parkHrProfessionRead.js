@@ -26,35 +26,35 @@ const access = { readOnly: true, partial: true, excluded: ['payroll', 'condition
 function missing() { return Object.assign(new Error('Запис не знайдено'), { status: 404 }); }
 
 async function loadCatalog(db, { key = null, identity = null, staffId = null, kind = null } = {}) {
-    const professions = (await db.query(`SELECT id, key, title, department, is_active FROM hr_professions
+    const professions = (await db.query(`SELECT id, key, title, department, is_active FROM hr_owned.hr_professions
         WHERE ($1::text IS NULL OR key = $1)
           AND ($2::text IS NULL OR key = $2 OR id::text = $2)
-          AND ($3::int IS NULL OR EXISTS (SELECT 1 FROM staff_role_assignments a
+          AND ($3::int IS NULL OR EXISTS (SELECT 1 FROM hr_owned.staff_role_assignments a
             WHERE a.profession_key = hr_professions.key AND a.staff_id = $3))
         ORDER BY title`, [key, identity, staffId])).rows
         .map(row => ({ ...pick(row, ['id', 'key', 'title', 'department', 'is_active']), isReadonly: true, source: 'db' }));
     if ((key || identity) && !professions.length) throw missing();
     const keys = professions.map(row => row.key);
     const items = (await db.query(`SELECT i.id, i.profession_id, i.item_key, i.title, i.sort_order, i.is_active
-        FROM hr_profession_checklist_items i JOIN hr_professions p ON p.id = i.profession_id
+        FROM hr_owned.hr_profession_checklist_items i JOIN hr_owned.hr_professions p ON p.id = i.profession_id
         WHERE p.key = ANY($1::text[]) ORDER BY i.sort_order, i.id`, [keys])).rows
         .map(row => ({ ...pick(row, ['id', 'profession_id', 'item_key', 'title', 'sort_order', 'is_active']),
             itemKey: row.item_key, isActive: row.is_active }));
     if (kind === 'template') return { professions, items, assignments: [], progress: [] };
     const assignments = (await db.query(`SELECT a.id, a.staff_id, a.profession_key, a.status, a.is_primary,
         a.admission_status, a.internship_status, s.name, s.is_active, p.title AS profession_title, p.department
-        FROM staff_role_assignments a JOIN staff s ON s.id = a.staff_id
-        JOIN hr_professions p ON p.key = a.profession_key
+        FROM hr_owned.staff_role_assignments a JOIN staff s ON s.id = a.staff_id
+        JOIN hr_owned.hr_professions p ON p.key = a.profession_key
         WHERE a.profession_key = ANY($1::text[]) AND ($2::int IS NULL OR s.id = $2)
         ORDER BY s.name, a.id`, [keys, staffId])).rows.map(row => pick(row,
         ['id', 'staff_id', 'profession_key', 'status', 'is_primary', 'admission_status', 'internship_status', 'name', 'is_active', 'profession_title', 'department']));
     const progress = (await db.query(`SELECT x.staff_id, x.profession_key, x.checklist_item_id, x.completed_at
-        FROM hr_staff_profession_checklist_progress x
-        JOIN hr_professions p ON p.key = x.profession_key
-        JOIN hr_profession_checklist_items i ON i.id = x.checklist_item_id AND i.profession_id = p.id
+        FROM hr_owned.hr_staff_profession_checklist_progress x
+        JOIN hr_owned.hr_professions p ON p.key = x.profession_key
+        JOIN hr_owned.hr_profession_checklist_items i ON i.id = x.checklist_item_id AND i.profession_id = p.id
         JOIN staff s ON s.id = x.staff_id
         WHERE x.profession_key = ANY($1::text[]) AND ($2::int IS NULL OR x.staff_id = $2)
-          AND EXISTS (SELECT 1 FROM staff_role_assignments a
+          AND EXISTS (SELECT 1 FROM hr_owned.staff_role_assignments a
             WHERE a.staff_id = x.staff_id AND a.profession_key = x.profession_key)`, [keys, staffId])).rows
         .map(row => pick(row, ['staff_id', 'profession_key', 'checklist_item_id', 'completed_at']));
     return { professions, items, assignments, progress };
@@ -109,7 +109,9 @@ function dashboard(catalog, query) {
         access: { ...access, excluded: [...access.excluded, 'archived_history', 'orphaned_history'] } };
 }
 async function loadOnboarding(db, route, query) {
-    const staff = (await db.query('SELECT id, name, department FROM staff WHERE id = $1', [route.staffId])).rows[0];
+    const staff = (await db.query(`SELECT id, name, department FROM staff WHERE id = $1
+        AND (EXISTS (SELECT 1 FROM hr_owned.staff_role_assignments a WHERE a.staff_id=staff.id)
+          OR EXISTS (SELECT 1 FROM hr_owned.onboarding_progress o WHERE o.staff_id=staff.id))`, [route.staffId])).rows[0];
     if (!staff) throw missing();
     const catalog = await loadCatalog(db, { staffId: route.staffId });
     const assignments = catalog.assignments.map(a => pick(a,
@@ -124,9 +126,9 @@ async function loadOnboarding(db, route, query) {
         (SELECT count(*)::int FROM tasks x WHERE x.source_type = 'onboarding'
             AND x.source_id LIKE o.id::text || ':%' AND x.business_context = 'event_genix'
             AND COALESCE(x.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')) AS task_active
-        FROM onboarding_progress o LEFT JOIN onboarding_templates t ON t.id = o.template_id
+        FROM hr_owned.onboarding_progress o LEFT JOIN hr_owned.onboarding_templates t ON t.id = o.template_id
         WHERE o.staff_id = $1 AND (o.profession_key IS NULL OR EXISTS (
-            SELECT 1 FROM staff_role_assignments a JOIN hr_professions p ON p.key = a.profession_key
+            SELECT 1 FROM hr_owned.staff_role_assignments a JOIN hr_owned.hr_professions p ON p.key = a.profession_key
             WHERE a.staff_id = o.staff_id AND a.profession_key = o.profession_key))
         ORDER BY o.started_at DESC, o.id DESC`, [route.staffId])).rows;
     const processes = rows.map(row => {

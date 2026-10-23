@@ -149,7 +149,8 @@ const MODES = {
     onboarding: [
         'tests/integration/fresh-db-startup.integration.test.js',
         'tests/integration/hr-onboarding-hire.integration.test.js',
-        'tests/integration/account-onboarding.integration.test.js'
+        'tests/integration/account-onboarding.integration.test.js',
+        'tests/integration/hr-tenant-ownership.integration.test.js'
     ],
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
     'upload-backfill': ['tests/integration/legacy-upload-backfill.integration.test.js'],
@@ -811,6 +812,8 @@ async function runSuite(testDb, testFile, suiteMode) {
             await resetPublicSchema(testDb);
         }
         await launchServerOnce();
+        // Fresh synthetic legacy HR rows receive explicit Park ownership only in this verified disposable runner.
+        await require('../tests/helpers/park-hr-ownership-fixture').prepareParkHrOwnershipFixture(testDb.url.toString(), testEnv);
 
         const verifyInitializedDatabaseRestart = testFile.includes('fresh-db-startup')
             || testFile.includes('payroll-installments.integration');

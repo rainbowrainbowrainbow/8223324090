@@ -60,3 +60,11 @@ Product implementation commit: 48fd0cc31. Ordinary merge of production Git 63c1a
 A disposable actual-app browser diagnostic with a synthetic two-business account completed Dar to Park successfully. This is not live QA and does not establish the cause of the live selector timeout. The live finding remains an incomplete scenario, not a proven shared auth defect. No new production fixture was activated.
 
 Full local baseline was restarted after merge resolution so an intermediate conflicted manifest is not treated as a test result. Exact final CI evidence is delivered in the accompanying handoff; no production deploy is included.
+
+### CI integration corrections
+
+The first feature CI exposed two integration issues: synthetic Park registry setup altered unrelated Education/permission prerequisites, and the staff-list onboarding CTE selected new owner columns without grouping them. Setup now excludes Education and permission suites; production auth/membership guards were not changed. The CTE groups owner IDs explicitly.
+
+Checklist scale fixtures now explicitly attribute their 201 synthetic assignments. Legacy unbound checklist items remain a privileged reconciliation state for a known same-owner profession; the same-owner profession FK still rejects foreign linkage, while the six minimal recovery GETs exclude unbound items. No unknown real owner is inferred or backfilled.
+
+Executed after these corrections: permission integration 11/11; ownership integration 5/5 (including foreign legacy-parent rejection); actual checklist browser/API/PostgreSQL PASS with four role cases, both themes, 201-row pagination, history and Training synchronization. Existing assertions remain. Full local npm test passed on the merged candidate before the final integration corrections; final exact-SHA CI is still required. The source-bound Education diagnostic could not run on this Windows host because its portable target requires loopback 5432, which Docker could not bind; it is not reported as a passing local test. A concurrent local schema-reset run also hit shared lock memory; the sequential rerun completed with verified cleanup. Neither limitation led to changing CI settings or assertions.

@@ -40,8 +40,8 @@ module.exports = async function auditChecklistScale({ api, db, evidence, page, b
             FROM generate_series(1, 201) AS sequence
             RETURNING id
         )
-        INSERT INTO staff_role_assignments (staff_id, profession_key, is_primary, status)
-        SELECT id, $1, true, 'active' FROM new_staff
+        INSERT INTO staff_role_assignments (business_id, organization_id, staff_id, profession_key, is_primary, status)
+        SELECT public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), id, $1, true, 'active' FROM new_staff
         RETURNING staff_id`, [professionKey, department, suffix]);
     assert.equal(staff.rowCount, 201);
 
@@ -118,8 +118,8 @@ module.exports = async function auditChecklistScale({ api, db, evidence, page, b
         archivePreservesCompletionAndNote: 'PASS'
     };
     await db.query(`INSERT INTO hr_staff_profession_checklist_progress
-        (staff_id, profession_key, checklist_key, title, notes)
-        VALUES ($1, $2, $3, 'QA Orphan History', 'QA orphan note')`, [firstStaffId, professionKey, `qa_orphan_${suffix}`]);
+        (business_id, organization_id, staff_id, profession_key, checklist_key, title, notes)
+        VALUES (public.eventgenix_hr_park_business_id(), public.eventgenix_hr_park_organization_id(), $1, $2, $3, 'QA Orphan History', 'QA orphan note')`, [firstStaffId, professionKey, `qa_orphan_${suffix}`]);
     const orphanFilter = await dashboard({ professionKey, department, status: 'orphaned' });
     const orphanSearch = await dashboard({ professionKey, search: department, status: 'orphaned' });
     assert.equal(orphanFilter.orphaned.length, 1);

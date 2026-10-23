@@ -71,6 +71,9 @@ BEGIN
         RAISE EXCEPTION USING ERRCODE='23514', MESSAGE='HR business and organization ownership does not match an active registry record';
     END IF;
     IF TG_TABLE_NAME='hr_staff_profession_checklist_progress' THEN
+        -- Legacy unbound items remain an explicit privileged reconciliation state.
+        -- The same-owner profession FK still applies; recovery reads exclude these rows.
+        IF NEW.checklist_item_id IS NULL THEN RETURN NEW; END IF;
         IF NOT EXISTS (SELECT 1 FROM public.hr_profession_checklist_items i
             JOIN public.hr_professions p ON p.id=i.profession_id
             WHERE i.id=NEW.checklist_item_id AND p.key=NEW.profession_key

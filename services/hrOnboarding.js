@@ -522,7 +522,7 @@ async function attachOnboardingAssignments(staffRows = []) {
                 COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed'))::int AS completed_task_count
          FROM active
          LEFT JOIN tasks t ON t.source_type = $2 AND t.source_id LIKE active.id::text || ':%'
-         GROUP BY active.id, active.staff_id, active.template_id, active.items, active.completed_items,
+         GROUP BY active.business_id, active.organization_id, active.id, active.staff_id, active.template_id, active.items, active.completed_items,
                   active.total_items, active.status, active.started_at, active.completed_at,
                   active.profession_key,
                   active.responsible_user_id, active.assigned_by_user_id, active.assigned_by_username,

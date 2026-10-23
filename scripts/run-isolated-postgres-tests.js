@@ -813,7 +813,9 @@ async function runSuite(testDb, testFile, suiteMode) {
         }
         await launchServerOnce();
         // Fresh synthetic legacy HR rows receive explicit Park ownership only in this verified disposable runner.
-        await require('../tests/helpers/park-hr-ownership-fixture').prepareParkHrOwnershipFixture(testDb.url.toString(), testEnv);
+        if (suiteMode !== 'permissions' && !testFile.includes('education')) {
+            await require('../tests/helpers/park-hr-ownership-fixture').prepareParkHrOwnershipFixture(testDb.url.toString(), testEnv);
+        }
 
         const verifyInitializedDatabaseRestart = testFile.includes('fresh-db-startup')
             || testFile.includes('payroll-installments.integration');

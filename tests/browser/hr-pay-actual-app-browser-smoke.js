@@ -281,7 +281,7 @@ async function run() {
         await page.locator('[data-day-pay-slot]').first().scrollIntoViewIfNeeded();
         await page.screenshot({path:path.join(output,'restricted-mobile.png')});
         await restricted.close();assert.deepEqual(errors,[]);
-        evidence.stages.schedule={status:'PASS',dateReload:true,exceptionConflict:true,draftReturn:true,salaryRestricted:true,copyApi:true,copyButton:'NOT_VISIBLE'};
+        evidence.stages.schedule={status:'PASS',dateReload:true,exceptionConflict:true,draftReturn:true,salaryRestricted:true,copyApi:true,copyButton:'VISIBLE_AND_CONFIRMED',missingMirrorConflict:true};
         // Continue through actual HR controls and real API/database writes. No response stubs.
         const attendanceContext=await browserContext(browser,auth);
         page=await attendanceContext.newPage();page.setDefaultTimeout(30000);

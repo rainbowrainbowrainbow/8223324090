@@ -277,6 +277,8 @@ test('UI copy-week rejects mirror or canonical target conflicts after locking so
     );
     assert.match(copyWeek, /rejectConflicts = req\.body\.rejectConflicts === true/);
     assert.match(copyWeek, /SELECT staff_id, date::text AS target_date[\s\S]*UNION[\s\S]*SELECT staff_id, shift_date::text AS target_date[\s\S]*FROM hr_shifts/);
+    assert.equal((copyWeek.match(/date >= \$1::text AND date <= \$2::text/g) || []).length, 2);
+    assert.equal((copyWeek.match(/shift_date >= \$1::date AND shift_date <= \$2::date/g) || []).length, 2);
     assert.match(copyWeek, /lockScheduleStaffRows\(client, sourceStaffIds\)[\s\S]*if \(rejectConflicts && conflicts > 0\)[\s\S]*SCHEDULE_COPY_WEEK_TARGET_CONFLICT[\s\S]*ROLLBACK/);
 });
 

@@ -1583,11 +1583,11 @@ router.post('/schedule/copy-week', requireAction('hr.schedule.manage'), async (r
                  FROM (
                     SELECT staff_id, date::text AS target_date
                     FROM staff_schedule
-                    WHERE date >= $1 AND date <= $2 AND staff_id = ANY($3::int[])
+                    WHERE date >= $1::text AND date <= $2::text AND staff_id = ANY($3::int[])
                     UNION
                     SELECT staff_id, shift_date::text AS target_date
                     FROM hr_shifts
-                    WHERE shift_date >= $1 AND shift_date <= $2 AND staff_id = ANY($3::int[])
+                    WHERE shift_date >= $1::date AND shift_date <= $2::date AND staff_id = ANY($3::int[])
                  ) occupied_targets`,
                 [toDates[0], toDates[6], sourceStaffIds]
             );
@@ -1638,11 +1638,11 @@ router.post('/schedule/copy-week', requireAction('hr.schedule.manage'), async (r
                      FROM (
                         SELECT staff_id, date::text AS target_date
                         FROM staff_schedule
-                        WHERE date >= $1 AND date <= $2 AND staff_id = ANY($3::int[])
+                        WHERE date >= $1::text AND date <= $2::text AND staff_id = ANY($3::int[])
                         UNION
                         SELECT staff_id, shift_date::text AS target_date
                         FROM hr_shifts
-                        WHERE shift_date >= $1 AND shift_date <= $2 AND staff_id = ANY($3::int[])
+                        WHERE shift_date >= $1::date AND shift_date <= $2::date AND staff_id = ANY($3::int[])
                      ) occupied_targets`,
                     [toDates[0], toDates[6], sourceStaffIds]
                 );

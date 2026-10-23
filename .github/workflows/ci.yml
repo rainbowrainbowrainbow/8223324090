@@ -622,11 +622,16 @@ jobs:
         run: |
           set -euo pipefail
           sources=/etc/apt/sources.list.d/ubuntu.sources
+          mirrorlist=/etc/apt/apt-mirrors.txt
           test -f "$sources"
-          if grep -q 'azure.archive.ubuntu.com' "$sources"; then
-            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g;s|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$sources"
+          source_files=("$sources")
+          if test -f "$mirrorlist"; then
+            source_files+=("$mirrorlist")
           fi
-          ! grep -q 'azure.archive.ubuntu.com' "$sources"
+          for source_file in "${source_files[@]}"; do
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g;s|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source_file"
+          done
+          ! grep -q 'azure.archive.ubuntu.com' "${source_files[@]}"
       - name: Install required browser through existing ephemeral Playwright pattern
         if: matrix.suite != 'attendance' && matrix.suite != 'series'
         run: npm exec --yes --package=playwright -c "playwright install --with-deps ${{ matrix.engine }}"

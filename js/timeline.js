@@ -5587,12 +5587,16 @@ function createAfishaBlock(event, startHour, anchor) {
     if (isBirthday) {
         const slot = event.birthdaySlot || { mode: 'auto', key: 'first' };
         const source = slot.mode === 'manual' ? 'Вручну' : 'Авто';
+        const status = slot.conflict
+            ? (slot.conflict_kind === 'no_available_slot' ? 'Немає вільного часу' : 'Конфлікт часу')
+            : (slot.mode === 'auto' && slot.base_time && slot.base_time !== event.time
+                ? `${slot.base_time} → ${event.time} · Авто` : `${event.time} · ${source}`);
         block.classList.add('afisha-birthday--micro', `afisha-birthday--${slot.mode}`);
         if (slot.conflict) block.classList.add('afisha-birthday--conflict');
         block.dataset.birthdaySlot = slot.key;
-        block.setAttribute('aria-label', `Вітання іменинників ${event.title || ''}, ${event.time}–${minutesToTime(timeToMinutes(event.time) + 15)}, 15 хв, ${source}${slot.conflict ? ', конфлікт часу' : ''}`);
+        block.setAttribute('aria-label', `Вітання іменинників ${event.title || ''}, ${event.time}–${minutesToTime(timeToMinutes(event.time) + 15)}, 15 хв, ${status}${slot.reason ? `, ${slot.reason}` : ''}`);
         block.setAttribute('title', `${event.time}–${minutesToTime(timeToMinutes(event.time) + 15)} · ${source}${slot.reason ? ` · ${slot.reason}` : ''}`);
-        block.innerHTML = `<span class="afisha-birthday-badge">ІМ</span><span class="afisha-birthday-label">${escapeHtml(event.time)} · ${source}${slot.conflict ? ' · Конфлікт' : ''}</span>`;
+        block.innerHTML = `<span class="afisha-birthday-badge">ІМ</span><span class="afisha-birthday-label">${escapeHtml(status)}</span>`;
     } else {
         block.innerHTML = `
             <div class="title">${escapeHtml(event.title)}</div>

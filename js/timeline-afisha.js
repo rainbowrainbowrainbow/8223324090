@@ -133,17 +133,19 @@
         const minimum = timeString(base - 90);
         const maximum = timeString(base + 90);
         const changedAt = slot.updated_at ? new Date(slot.updated_at).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '';
+        const unavailable = slot.conflict && slot.conflict_kind === 'no_available_slot';
         const modal = M.dialog('Вітання іменинників', `<p>${M.esc(event.date)} · ${M.esc(event.title)} · 15 хв</p>
-            <p><strong>${M.esc(slot.time)}–${M.esc(timeString(minutes(slot.time) + 15))}</strong> · ${slot.mode === 'manual' ? 'Вручну' : 'Автоматично'}</p>
+            <p><strong>${M.esc(slot.time)}–${M.esc(timeString(minutes(slot.time) + 15))}</strong> · ${slot.mode === 'manual' ? 'Вручну' : 'Автоматично'}${slot.mode === 'auto' && slot.time !== slot.base_time ? ` · Було ${M.esc(slot.base_time)}` : ''}</p>
             ${slot.reason ? `<p class="timeline-marketing-description" role="status">${M.esc(slot.reason)}</p>` : ''}
+            ${slot.mode === 'auto' && !lineIds(event).length ? '<p class="timeline-marketing-description">Аніматора не призначено. Автоматичний час враховує бронювання всіх аніматорів.</p>' : ''}
             ${slot.mode === 'manual' && slot.updated_by ? `<p class="timeline-marketing-description">Змінив: ${M.esc(slot.updated_by)}${changedAt ? ` · ${M.esc(changedAt)}` : ''}</p>` : ''}
-            ${slot.conflict ? '<p class="afisha-birthday-warning" role="alert">Конфлікт часу: оберіть інший час або змініть захід.</p>' : ''}
+            ${slot.conflict ? `<p class="afisha-birthday-warning" role="alert">${unavailable ? 'Немає вільних 15 хвилин у межах ±90 хв. Змініть час іншого заходу або встановіть час вручну після звільнення місця.' : 'Конфлікт часу: оберіть інший час або змініть захід.'}</p>` : ''}
             <p><a href="/afisha?event=${encodeURIComponent(event.id)}&date=${encodeURIComponent(event.date)}">Відкрити подію в афіші</a></p>
             ${editable ? `<form data-birthday-form class="timeline-marketing-form">
                 <label>Час вітання<input name="time" type="time" value="${M.esc(slot.time)}" min="${minimum}" max="${maximum}" step="300" required></label>
                 <p>Перенесення вручну зафіксує лише це вітання${slot.key === 'single' ? ' на вибрану дату' : '. Друге залишиться в своєму режимі'}.</p>
                 <div role="alert" data-error></div>
-                <div class="timeline-marketing-actions"><button type="submit" class="btn-primary">Зберегти вручну</button>
+                <div class="timeline-marketing-actions"><button type="submit" class="btn-primary">Зберегти час вручну</button>
                 ${slot.mode === 'manual' ? '<button type="button" class="btn-secondary" data-birthday-auto>Повернути автоматичний розклад</button>' : ''}</div>
             </form>` : ''}
             ${assignable ? `<form data-assign-form class="timeline-marketing-form">
@@ -152,7 +154,7 @@
                     `<option value="${item.id}" ${event.promotion_id === item.id ? 'selected' : ''}>${M.esc(item.title)}</option>`).join('')}</select></label>
                 <div class="afisha-assignment-options">${availableLines.map(line => `<label><input type="checkbox" value="${M.esc(line.id)}"
                     ${lineIds(event).includes(String(line.id)) ? 'checked' : ''}>${M.esc(line.name || line.id)}</label>`).join('')}</div>
-                <div role="alert" data-assign-error></div><button type="submit" class="btn-primary">Зберегти призначення</button>
+                <div role="alert" data-assign-error></div><button type="submit" class="btn-secondary">Зберегти акцію й аніматорів</button>
             </form>` : ''}`, trigger);
         async function apply(mode, time, button) {
             button.disabled = true;
@@ -397,18 +399,23 @@
 
     function create(event, startHour, grid) {
         const item = { ...event, date: String(event.date || formatDate(AppState.selectedDate)).slice(0, 10), time: String(event.time).slice(0, 5) };
+        const slot = item.birthdaySlot;
+        const status = slot?.conflict
+            ? (slot.conflict_kind === 'no_available_slot' ? 'Немає вільного часу' : 'Конфлікт часу')
+            : (slot?.mode === 'auto' && slot.base_time && slot.base_time !== item.time
+                ? `${slot.base_time} → ${item.time} · Авто` : (slot?.mode === 'manual' ? 'Вручну' : 'Авто'));
         const start = minutes(item.time) - startHour * 60;
         if (start < 0) return null;
         const block = document.createElement('button');
         block.type = 'button';
-        block.className = `afisha-flag afisha-type-${item.type === 'regular' ? 'regular' : (item.birthdaySlot ? 'birthday' : 'event')}`;
+        block.className = `afisha-flag afisha-type-${item.type === 'regular' ? 'regular' : (slot ? 'birthday' : 'event')}${slot?.conflict ? ' afisha-birthday--conflict' : ''}`;
         block.dataset.afishaId = item.id;
         block.dataset.eventTime = item.time;
         block.dataset.eventDate = item.date;
         block.style.left = `${start * ratio(grid)}px`;
-        block.innerHTML = `<span aria-hidden="true">${item.birthdaySlot ? 'ІМ' : (item.type === 'regular' ? '↻' : '⚑')}</span><span class="afisha-flag-time">${M.esc(item.time)}</span><span class="afisha-flag-title">${M.esc(item.birthdaySlot ? (item.birthdaySlot.mode === 'manual' ? 'Вручну' : 'Авто') : item.title)}</span>`;
-        block.setAttribute('aria-label', item.birthdaySlot
-            ? `Вітання іменинників, ${item.date}, ${item.time}, 15 хв, ${item.birthdaySlot?.mode === 'manual' ? 'вручну' : 'автоматично'}. Відкрити розклад`
+        block.innerHTML = `<span aria-hidden="true">${slot ? 'ІМ' : (item.type === 'regular' ? '↻' : '⚑')}</span><span class="afisha-flag-time">${M.esc(item.time)}</span><span class="afisha-flag-title">${M.esc(slot ? status : item.title)}</span>`;
+        block.setAttribute('aria-label', slot
+            ? `Вітання іменинників, ${item.date}, ${item.time}, 15 хв, ${slot.mode === 'manual' ? 'вручну' : 'автоматично'}, ${status}${slot.reason ? `, ${slot.reason}` : ''}. Відкрити розклад`
             : `${item.title}, ${item.date}, ${item.time}. Відкрити афішу`);
         block.disabled = pending.has(String(item.id));
         let suppressClick = false;

@@ -83,6 +83,43 @@ test('ordinary fifteen-minute Іменинники event uses its own slot edito
     } finally { f.close(); }
 });
 
+test('unavailable greeting is red and visibly calls for attention in both timeline and overview', async () => {
+    const f = fixture();
+    try {
+        const slot = { key: 'single', base_time: '14:00', time: '14:00', mode: 'auto',
+            duration: 15, conflict: true, conflict_kind: 'no_available_slot',
+            reason: 'Немає вільних 15 хвилин у межах ±90 хв' };
+        const item = { ...event, type: 'greeting', title: 'Іменинники', duration: 15,
+            birthday_slots: [slot], birthdaySlot: slot };
+        const flag = f.w.TimelineAfisha.create(item, 12, f.w.document.querySelector('.line-grid'));
+        assert.ok(flag.classList.contains('afisha-birthday--conflict'));
+        assert.match(flag.textContent, /Немає вільного часу/);
+        assert.match(flag.getAttribute('aria-label'), /Немає вільних 15 хвилин/);
+        f.w.TimelinePromotions.mount(f.w.document.getElementById('timelineLines'), [item.date], 1, [item]);
+        await flush();
+        assert.match(f.w.document.querySelector('.timeline-marketing-count--conflict').textContent, /Потрібна увага 1/);
+        f.w.document.querySelector('[data-toggle-marketing]').click();
+        const summary = f.w.document.querySelector('.timeline-afisha-summary-event--conflict');
+        assert.match(summary.textContent, /Немає вільного часу/);
+        flag.click();
+        assert.match(f.w.document.querySelector('.afisha-birthday-warning').textContent, /Немає вільних 15 хвилин/);
+    } finally { f.close(); }
+});
+
+test('expanded marketing overview survives a timeline redraw in the same business', async () => {
+    const f = fixture();
+    try {
+        const lines = f.w.document.getElementById('timelineLines');
+        f.w.TimelinePromotions.mount(lines, ['2026-10-19'], 1);
+        await flush();
+        f.w.document.querySelector('[data-toggle-marketing]').click();
+        f.w.TimelinePromotions.beginRender();
+        f.w.TimelinePromotions.mount(lines, ['2026-10-20'], 1);
+        await flush();
+        assert.equal(f.w.document.querySelector('[data-toggle-marketing]').getAttribute('aria-expanded'), 'true');
+    } finally { f.close(); }
+});
+
 test('collapsed overview opens a recurring greeting at its effective time and shows its source', async () => {
     const f = fixture();
     try {

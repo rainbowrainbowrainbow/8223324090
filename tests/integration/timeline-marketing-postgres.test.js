@@ -25,15 +25,15 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
             });
             assert.equal(event.status, 201, JSON.stringify(event.body));
             birthday = (await byDate()).body.find(item => item.id === birthdayId);
-            assert.equal(birthday.birthday_slots[0].time, '15:30');
+            assert.equal(birthday.birthday_slots[0].time, '13:45');
             const manual = await request('PATCH', `/api/afisha/${birthdayId}/birthday-slots/first`, {
-                mode: 'manual', time: '15:45', expectedMode: 'auto', expectedTime: '15:30'
+                mode: 'manual', time: '15:45', expectedMode: 'auto', expectedTime: '13:45'
             });
             assert.equal(manual.status, 200, JSON.stringify(manual.body));
             assert.deepEqual(manual.body.slots.map(slot => [slot.time, slot.mode]),
                 [['15:45', 'manual'], ['18:00', 'auto']]);
             const stale = await request('PATCH', `/api/afisha/${birthdayId}/birthday-slots/first`, {
-                mode: 'manual', time: '16:00', expectedMode: 'auto', expectedTime: '15:30'
+                mode: 'manual', time: '16:00', expectedMode: 'auto', expectedTime: '13:45'
             });
             assert.equal(stale.status, 409);
             assert.equal((await pool.query('SELECT mode, time FROM afisha_birthday_slots WHERE afisha_id=$1 AND slot_key=$2',
@@ -51,7 +51,7 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
             });
             assert.equal(reset.status, 200, JSON.stringify(reset.body));
             assert.equal(reset.body.slots[0].mode, 'auto');
-            assert.equal(reset.body.slots[0].time, '15:30');
+            assert.equal(reset.body.slots[0].time, '13:45');
         });
         await t.test('two ordinary recurring-style Іменинники records show independent auto and manual times', async () => {
             const greeting = async time => request('POST', '/api/afisha/timeline', {
@@ -70,9 +70,9 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
             const read = async () => (await request('GET', '/api/afisha/2026-10-23')).body;
             let listed = await read();
             assert.deepEqual([first.body.item.id, second.body.item.id].map(id =>
-                listed.find(row => row.id === id).birthday_slots[0].time), ['15:30', '18:00']);
+                listed.find(row => row.id === id).birthday_slots[0].time), ['13:45', '18:00']);
             const manual = await request('PATCH', `/api/afisha/${first.body.item.id}/birthday-slots/single`, {
-                mode: 'manual', time: '13:30', expectedMode: 'auto', expectedTime: '15:30'
+                mode: 'manual', time: '13:30', expectedMode: 'auto', expectedTime: '13:45'
             });
             assert.equal(manual.status, 200, JSON.stringify(manual.body));
             listed = await read();
@@ -91,7 +91,7 @@ test('timeline marketing: real PostgreSQL routes with authenticated fixture prin
             const booking = await pool.query(`INSERT INTO bookings (date, time, duration, line_id, status, business_context)
                 VALUES ('2026-10-24', '14:00', 60, '1', 'confirmed', 'event_genix') RETURNING id`);
             const moved = await readSlot();
-            assert.equal(moved.time, '15:00');
+            assert.equal(moved.time, '13:45');
             assert.equal(moved.mode, 'auto');
             assert.match(moved.reason, /Бронювання/);
             await pool.query('UPDATE bookings SET status = $1 WHERE id = $2', ['cancelled', booking.rows[0].id]);

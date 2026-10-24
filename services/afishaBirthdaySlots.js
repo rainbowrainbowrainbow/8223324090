@@ -53,7 +53,7 @@ function projectBirthdaySlots(events, savedSlots = [], bookings = []) {
                 const mode = row?.mode === 'manual' || legacyManual ? 'manual' : 'auto';
                 const slot = { key: definition.key, base_time: definition.baseTime,
                     time: mode === 'manual' ? (row?.time || event.time) : definition.baseTime, duration: DURATION, mode,
-                    reason: null, conflict: false, updated_by: row?.updated_by || null,
+                    reason: null, conflict: false, conflict_kind: null, updated_by: row?.updated_by || null,
                     updated_at: row?.updated_at || null };
                 event.birthday_slots.push(slot);
                 slots.push({ event, slot });
@@ -79,6 +79,7 @@ function projectBirthdaySlots(events, savedSlots = [], bookings = []) {
             if (slot.mode === 'manual') {
                 const conflict = obstacles(event, slot).find(item => overlaps(slotRange(slot.time), item));
                 slot.conflict = Boolean(conflict);
+                slot.conflict_kind = conflict ? 'occupied' : null;
                 slot.reason = conflict ? `Конфлікт: ${conflict.label}` : 'Час встановлено вручну';
                 continue;
             }
@@ -86,12 +87,12 @@ function projectBirthdaySlots(events, savedSlots = [], bookings = []) {
             const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
             const dayStart = (dayOfWeek === 0 || dayOfWeek === 6) ? 600 : 720;
             const choices = [base];
-            for (let delta = 5; delta <= MAX_SHIFT; delta += 5) choices.push(base + delta);
-            for (let delta = 5; delta <= MAX_SHIFT; delta += 5) choices.push(base - delta);
+            for (let delta = 5; delta <= MAX_SHIFT; delta += 5) choices.push(base + delta, base - delta);
             const chosen = choices.find(start => start >= dayStart && start + DURATION <= 1200
                 && !obstacles(event, slot).some(item => overlaps({ start, end: start + DURATION }, item)));
             if (chosen == null) {
                 slot.conflict = true;
+                slot.conflict_kind = 'no_available_slot';
                 slot.reason = 'Немає вільних 15 хвилин у межах ±90 хв';
             } else {
                 slot.time = minutesToTime(chosen);
@@ -129,7 +130,7 @@ async function birthdaySlotsForEvents(queryable, events, options = {}) {
            AND id::text <> ALL($3::text[])`,
         [dates, hasUnassignedGreeting ? null : lineIds, (options.excludeBookingIds || []).map(String)]
     );
-    return projectBirthdaySlots(events, slotRows, result.rows);
+    return projectBirthdaySlots(events, slotRows, [...result.rows, ...(options.additionalBookings || [])]);
 }
 
 async function setBirthdaySlot(pool, id, key, input, actor) {

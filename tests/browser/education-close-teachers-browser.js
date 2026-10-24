@@ -64,7 +64,7 @@ async function pageFor(action, business='dar', width=1440) {
         const result=await action(page);await waitTeacherRuntimeReads(page);return result;
     } catch(error) {
         evidence.failureDiagnostics ||= [];
-        evidence.failureDiagnostics.push(await page.evaluate(()=>({url:location.pathname+location.search,invalid:[...document.querySelectorAll('#bookingForm input,#bookingForm select')].filter(el=>!el.validity.valid).map(el=>({id:el.id,value:el.value,message:el.validationMessage})),submit:{disabled:document.getElementById('bookingSubmitBtn')?.disabled,text:document.getElementById('bookingSubmitBtn')?.textContent},messages:[...document.querySelectorAll('[role="alert"],.notification')].map(el=>el.textContent)})).catch(()=>({unavailable:true})));
+        evidence.failureDiagnostics.push(await page.evaluate(()=>({url:location.pathname+location.search,invalid:[...document.querySelectorAll('#bookingForm input,#bookingForm select')].filter(el=>!el.validity.valid).map(el=>({id:el.id,value:el.value,message:el.validationMessage})),submit:{disabled:document.getElementById('bookingSubmitBtn')?.disabled,text:document.getElementById('bookingSubmitBtn')?.textContent},messages:[...document.querySelectorAll('[role="alert"],.notification')].map(el=>el.textContent),education:{date:window.EducationScheduleWorkspace?.state.date,loading:window.EducationScheduleWorkspace?.state.loading,error:window.EducationScheduleWorkspace?.state.error?.message||null,visible:document.getElementById('mainApp')?.getClientRects().length>0,teacherOptions:[...document.querySelectorAll('#educationScheduleTeacherFilter option')].map(option=>option.value),cardCount:document.querySelectorAll('#educationTodayList [data-education-booking-id]').length}})).catch(()=>({unavailable:true})));
         flush();throw error;
     } finally {
         const tracker=requestTrackers.get(context);
@@ -446,8 +446,15 @@ async function closeChecks(){
     }));
     await check('astra-today-same-name-teacher-filter-visible-choice',()=>pageFor(async page=>{
         await page.goto(base+'/?businessContext=dar&educationSchedule=today&date=2036-01-11',{waitUntil:'domcontentloaded'});
-        await page.waitForFunction(()=>window.EducationScheduleWorkspace?.state.activeView==='today'&&!window.EducationScheduleWorkspace.state.loading&&document.querySelectorAll('[data-education-booking-id]').length>=2);
         const ids=[String(closeTeacherA),String(closeTeacherB)];
+        await page.locator('#mainApp').waitFor({state:'visible'});
+        await page.waitForFunction(({date,ids})=>{
+            const workspace=window.EducationScheduleWorkspace;
+            const options=[...document.querySelectorAll('#educationScheduleTeacherFilter option')];
+            return workspace?.state.activeView==='today'&&workspace.state.date===date&&!workspace.state.loading&&!workspace.state.error
+                &&document.querySelectorAll('#educationTodayList [data-education-booking-id]').length>=2
+                &&ids.every(id=>options.some(option=>option.value===id));
+        },{date:'2036-01-11',ids},{timeout:20000});
         const options=await page.locator('#educationScheduleTeacherFilter option').evaluateAll((nodes,ids)=>nodes.filter(n=>ids.includes(n.value)).map(n=>({id:n.value,label:n.textContent})),ids);
         evidence.proofs.astraTodayTeacherLabels=options; await shot(page,'astra-today-teachers');
         assert.equal(options.length,2); assert.equal(new Set(options.map(o=>o.label)).size,2,'Today teacher filter must distinguish same-name people');

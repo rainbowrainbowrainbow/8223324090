@@ -176,10 +176,10 @@ test('Park booking conflict uses the effective birthday slots instead of the leg
     } };
     assert.equal((await checkServerConflicts(client, '2026-10-19', '1', '12:00', 15)).overlap, false);
     assert.equal((await checkServerConflicts(client, '2026-10-19', '1', '14:20', 15)).overlap, true);
-    assert.equal((await checkServerConflicts(client, '2026-10-19', '1', '18:00', 15)).overlap, true);
+    assert.equal((await checkServerConflicts(client, '2026-10-19', '1', '18:00', 15)).overlap, false);
 });
 
-test('Park booking conflict follows the shifted recurring Іменинники event', async () => {
+test('Park booking can shift an already moved automatic greeting again', async () => {
     const events = [
         { id: 10, date: '2026-10-19', time: '14:00', original_time: '14:00', duration: 15,
             title: 'Іменинники', type: 'greeting', line_id: '1', second_line_id: null },
@@ -191,7 +191,57 @@ test('Park booking conflict follows the shifted recurring Іменинники e
         return { rows: [] };
     } };
     assert.equal((await checkServerConflicts(client, '2026-10-19', '1', '14:00', 15)).overlap, false);
-    const occupied = await checkServerConflicts(client, '2026-10-19', '1', '15:30', 15);
-    assert.equal(occupied.overlap, true);
-    assert.equal(occupied.conflictWith.time, '15:30');
+    const occupied = await checkServerConflicts(client, '2026-10-19', '1', '13:45', 15);
+    assert.equal(occupied.overlap, false);
+});
+
+test('a new booking moves an assigned automatic greeting on either animator line', async () => {
+    const greeting = { id: 20, date: '2026-10-19', time: '14:00', original_time: '14:00',
+        duration: 15, title: 'Іменинники', type: 'greeting', line_id: '1', second_line_id: '2' };
+    const client = { async query(sql) {
+        if (sql.includes('FROM afisha')) return { rows: [greeting] };
+        return { rows: [] };
+    } };
+    for (const line of ['1', '2']) {
+        const result = await checkServerConflicts(client, '2026-10-19', line, '14:00', 30);
+        assert.equal(result.overlap, false, `auto greeting should move for line ${line}`);
+    }
+});
+
+test('moving an existing booking excludes its old position and projects its new position', async () => {
+    const greeting = { id: 22, date: '2026-10-19', time: '14:00', original_time: '14:00',
+        duration: 15, title: 'Іменинники', type: 'greeting', line_id: '1', second_line_id: null };
+    const bookingQueries = [];
+    const client = { async query(sql, params) {
+        if (sql.includes('FROM afisha')) return { rows: [greeting] };
+        if (sql.includes('FROM bookings')) { bookingQueries.push(params); return { rows: [] }; }
+        return { rows: [] };
+    } };
+    const result = await checkServerConflicts(client, '2026-10-19', '1', '14:00', 30, 'move-1');
+    assert.equal(result.overlap, false);
+    assert.equal(bookingQueries.length, 2);
+    assert.equal(bookingQueries[0][3], 'move-1');
+    assert.deepEqual(bookingQueries[1][2], ['move-1']);
+});
+
+test('a booking still conflicts with a manual greeting or an auto greeting with no free slot', async () => {
+    const greeting = { id: 21, date: '2026-10-19', time: '14:00', original_time: '14:00',
+        duration: 15, title: 'Іменинники', type: 'greeting', line_id: '1', second_line_id: null };
+    let saved = [{ afisha_id: 21, slot_key: 'single', time: '14:00', mode: 'manual' }];
+    let bookings = [];
+    const client = { async query(sql) {
+        if (sql.includes('FROM afisha_birthday_slots')) return { rows: saved };
+        if (sql.includes('FROM afisha')) return { rows: [greeting] };
+        if (sql.includes('FROM bookings')) return { rows: bookings };
+        return { rows: [] };
+    } };
+    assert.equal((await checkServerConflicts(client, '2026-10-19', '1', '14:00', 15)).overlap, true);
+    saved = [];
+    bookings = [
+        { id: 'before', date: greeting.date, line_id: '1', time: '12:30', duration: 90 },
+        { id: 'after', date: greeting.date, line_id: '1', time: '14:15', duration: 90 }
+    ];
+    const unavailable = await checkServerConflicts(client, '2026-10-19', '1', '14:00', 15);
+    assert.equal(unavailable.overlap, true);
+    assert.match(unavailable.conflictWith.label, /немає вільних 15 хвилин/);
 });

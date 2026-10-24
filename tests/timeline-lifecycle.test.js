@@ -217,6 +217,7 @@ function createHarness(options = {}) {
             timelineActivityPresentation,
             timelineBookingBlockDensity,
             createBookingBlock,
+            createAfishaBlock,
             ensureTimelineBookingTooltip,
             showAfishaTooltip,
             timelineTooltipSuppressed,
@@ -398,6 +399,28 @@ test('timeline activity presentation renders category plus product code in anima
     assert.doesNotMatch(masterclass.textContent, /МК\s*МК/u);
     assert.equal(wideAnimation.querySelector('.timeline-activity-identity')?.textContent, 'АН 120: Анімація');
     assert.equal(wideAnimation.querySelector('.timeline-activity-title > .duration-badge')?.textContent, '120хв');
+});
+
+test('day greeting block shows a red unavailable state and the auto shift inline', () => {
+    const { dom, window, api } = createHarness();
+    try {
+        const grid = window.document.createElement('div');
+        grid.className = 'line-grid';
+        window.document.body.appendChild(grid);
+        const event = { id: 1, date: '2026-10-26', time: '14:00', original_time: '14:00',
+            title: 'Іменинники', duration: 15, type: 'greeting' };
+        const unavailable = api.createAfishaBlock({ ...event, birthdaySlot: {
+            key: 'single', time: '14:00', base_time: '14:00', mode: 'auto', conflict: true,
+            conflict_kind: 'no_available_slot', reason: 'Немає вільних 15 хвилин у межах ±90 хв'
+        } }, 12, grid);
+        assert.ok(unavailable.classList.contains('afisha-birthday--conflict'));
+        assert.match(unavailable.querySelector('.afisha-birthday-label').textContent, /Немає вільного часу/);
+        assert.match(unavailable.getAttribute('aria-label'), /Немає вільних 15 хвилин/);
+        const moved = api.createAfishaBlock({ ...event, time: '13:45', birthdaySlot: {
+            key: 'single', time: '13:45', base_time: '14:00', mode: 'auto', conflict: false
+        } }, 12, grid);
+        assert.match(moved.querySelector('.afisha-birthday-label').textContent, /14:00 → 13:45 · Авто/);
+    } finally { dom.window.close(); }
 });
 
 test('timelineView deep link is bootstrap-only and user switches replace the URL', async () => {

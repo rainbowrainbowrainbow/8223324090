@@ -413,6 +413,14 @@ body.timeline-dashboard-page {
     min-height: inherit;
 }
 
+.timeline-line > .line-header {
+    position: sticky;
+    left: var(--timeline-scroll-pad, 20px);
+    z-index: 35;
+    background-color: var(--white);
+    box-shadow: 5px 0 10px rgba(15, 23, 42, .12);
+}
+
 .timeline-line:nth-child(even) {
     background: var(--gray-50);
 }
@@ -851,7 +859,15 @@ body.timeline-dashboard-page .afisha-undist-btn {
 
 .booking-block.afisha-block.afisha-type-birthday.dragging { cursor: grabbing; z-index: 30; }
 .booking-block.afisha-block.afisha-birthday--manual { border-color: #93c5fd; border-left-color: #60a5fa; }
-.booking-block.afisha-block.afisha-birthday--conflict { outline: 2px solid #ef4444; outline-offset: 2px; }
+.booking-block.afisha-block.afisha-birthday--conflict {
+    border-color: #fecaca !important;
+    border-left-color: #ef4444 !important;
+    background: #991b1b !important;
+    color: #fff7f7 !important;
+    outline: 2px solid #ef4444;
+    outline-offset: 2px;
+    box-shadow: 0 8px 18px rgba(153, 27, 27, .35);
+}
 .booking-block.afisha-block.afisha-type-birthday .afisha-birthday-label {
     position: absolute;
     left: 0;
@@ -868,6 +884,11 @@ body.timeline-dashboard-page .afisha-undist-btn {
     line-height: 1.2;
     white-space: nowrap;
     pointer-events: none;
+}
+.booking-block.afisha-block.afisha-type-birthday.afisha-birthday--conflict .afisha-birthday-label {
+    border-color: #ef4444;
+    background: #7f1d1d;
+    color: #fff7f7;
 }
 .afisha-birthday-warning { color: #b91c1c; font-weight: 700; }
 .afisha-flag.afisha-type-birthday { border-left-color: #f59e0b; background: #78350f; color: #fff7ed; cursor: pointer; }
@@ -5455,6 +5476,10 @@ body.timeline-constructor-active::after {
     border-color: #f59e0b !important;
     transition: none !important;
 }
+.has-afisha-flags .afisha-neighbor-booking.afisha-birthday--conflict {
+    background: #991b1b !important;
+    border-color: #ef4444 !important;
+}
 .timeline-marketing-dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow-y: auto; padding: 18px; }
 .timeline-marketing-heading, .timeline-marketing-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .timeline-marketing-heading h3 { margin: 0; }
@@ -5482,7 +5507,7 @@ body.timeline-constructor-active::after {
 }
 .timeline-marketing-form [role="alert"] { color: var(--danger, #dc2626); }
 .timeline-marketing-date-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.timeline-promotions { padding: 8px 12px; border-bottom: 1px solid var(--gray-200); color: var(--gray-800); background: color-mix(in srgb, var(--gray-50) 96%, #8b5cf6 4%); }
+.timeline-promotions { position: sticky; left: var(--timeline-scroll-pad, 20px); z-index: 36; box-sizing: border-box; width: 100%; padding: 8px 12px; border-bottom: 1px solid var(--gray-200); color: var(--gray-800); background: color-mix(in srgb, var(--gray-50) 96%, #8b5cf6 4%); }
 .timeline-marketing-overview { display: flex; align-items: center; gap: 12px; min-height: 40px; }
 .timeline-marketing-intro { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .timeline-marketing-intro strong { font-size: 13px; white-space: nowrap; }
@@ -5492,6 +5517,12 @@ body.timeline-constructor-active::after {
 .timeline-marketing-count strong { color: var(--gray-800); font-variant-numeric: tabular-nums; }
 .timeline-marketing-count-promotions { border-color: color-mix(in srgb, #d59b28 35%, var(--gray-300)); background: color-mix(in srgb, #d59b28 10%, var(--gray-50)); }
 .timeline-marketing-count-afisha { border-color: color-mix(in srgb, #8b5cf6 35%, var(--gray-300)); background: color-mix(in srgb, #8b5cf6 10%, var(--gray-50)); }
+.timeline-marketing-count--conflict { border-color: #ef4444; background: color-mix(in srgb, #ef4444 16%, var(--gray-50)); color: #b91c1c; font-weight: 700; }
+.timeline-marketing-count--conflict strong { color: #b91c1c; }
+body.dark-mode .timeline-marketing-count--conflict,
+body.dark-mode .timeline-marketing-count--conflict strong,
+html[data-theme="dark"] .timeline-marketing-count--conflict,
+html[data-theme="dark"] .timeline-marketing-count--conflict strong { color: #fecaca; }
 .timeline-promotions .timeline-marketing-toggle { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .timeline-marketing-chevron { width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-2px); transition: transform .15s ease; }
 .timeline-marketing-toggle[aria-expanded="true"] .timeline-marketing-chevron { transform: rotate(225deg) translate(-2px, -1px); }
@@ -5505,6 +5536,11 @@ body.timeline-constructor-active::after {
 .timeline-afisha-summary-event { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; max-width: 340px; padding: 6px 9px; border: 1px solid color-mix(in srgb, #8b5cf6 35%, var(--gray-300)); border-left: 3px solid #8b5cf6; border-radius: 8px; background: color-mix(in srgb, #8b5cf6 8%, var(--gray-50)); color: var(--gray-800); cursor: pointer; font: inherit; font-size: 12px; }
 .timeline-afisha-summary-event strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .timeline-afisha-summary-event small { white-space: nowrap; color: var(--gray-600); }
+.timeline-afisha-summary-event--conflict { border-color: #ef4444; border-left-color: #ef4444; background: color-mix(in srgb, #ef4444 18%, var(--gray-50)); }
+.timeline-afisha-summary-event--conflict small { color: #b91c1c; font-weight: 800; }
+body.dark-mode .timeline-afisha-summary-event--conflict small,
+html[data-theme="dark"] .timeline-afisha-summary-event--conflict small { color: #fecaca; }
+.afisha-flag.afisha-type-birthday.afisha-birthday--conflict { border-color: #ef4444; border-left-color: #ef4444; background: #991b1b; color: #fff7f7; }
 .timeline-afisha-summary-time { color: var(--gray-600); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .timeline-afisha-summary-event .timeline-afisha-promotion-name { max-width: 100px; overflow: hidden; text-overflow: ellipsis; padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, #d59b28 22%, var(--gray-50)); color: var(--gray-800); }
 .afisha-assignment-options { display: flex; flex-wrap: wrap; gap: 6px 14px; max-height: 130px; overflow-y: auto; }

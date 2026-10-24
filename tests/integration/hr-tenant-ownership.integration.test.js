@@ -177,4 +177,92 @@ describe('Park HR ownership on disposable PostgreSQL', { skip: !enabled, concurr
             finally { await pool.query('DELETE FROM hr_professions WHERE id=$1', [drift.id]); }
         } finally { await pool.query('DELETE FROM hr_professions WHERE id=$1', [row.id]); }
     });
+
+    it('proves a queued legacy writer outlives a backfill lock and invalidates the frozen plan', { timeout: 20000 }, async () => {
+        const key = 'qa_cutover_' + suffix();
+        const owner = (await pool.query("SELECT id,organization_id FROM businesses WHERE context_key='event_genix'")).rows[0];
+        const before = (await pool.query('INSERT INTO hr_professions(key,title) VALUES ($1,$1) RETURNING id', [key])).rows[0];
+        const inventory = await freezeInventory(pool);
+        const plan = preparePlan(inventory, { businessId: owner.id, organizationId: owner.organization_id });
+        const holder = await pool.connect();
+        const legacy = await pool.connect();
+        let pending;
+        try {
+            await holder.query('BEGIN');
+            await holder.query("SET LOCAL statement_timeout='10s'");
+            await holder.query('LOCK TABLE public.hr_professions IN SHARE ROW EXCLUSIVE MODE');
+            const pid = (await legacy.query('SELECT pg_backend_pid() pid')).rows[0].pid;
+            await legacy.query("SET statement_timeout='10s'");
+            pending = legacy.query('INSERT INTO public.hr_professions(key,title) VALUES ($1,$1) RETURNING id', [key + '_late']);
+            // Attach a rejection handler immediately; cleanup still observes the original result.
+            pending.catch(() => {});
+            let waiting = false;
+            for (let attempt = 0; attempt < 100; attempt++) {
+                const state = (await pool.query('SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1', [pid])).rows[0];
+                if (state?.wait_event_type === 'Lock') { waiting = true; break; }
+                await new Promise(resolve => setTimeout(resolve, 20));
+            }
+            assert.equal(waiting, true, 'observe PostgreSQL lock wait, not an assumed timer ordering');
+            assert.equal((await holder.query('SELECT id FROM public.hr_professions WHERE key=$1', [key + '_late'])).rowCount, 0);
+            await holder.query('UPDATE public.hr_professions SET business_id=$1,organization_id=$2 WHERE id=$3', [owner.id, owner.organization_id, before.id]);
+            await holder.query('COMMIT');
+            const late = (await pending).rows[0];
+            const row = (await pool.query('SELECT business_id,organization_id FROM public.hr_professions WHERE id=$1', [late.id])).rows[0];
+            assert.equal(row.business_id, null);
+            assert.equal(row.organization_id, null);
+            assert.equal((await pool.query('SELECT id FROM hr_owned.hr_professions WHERE id=$1', [before.id])).rowCount, 1);
+            assert.equal((await pool.query('SELECT id FROM hr_owned.hr_professions WHERE id=$1', [late.id])).rowCount, 0);
+            await assert.rejects(applyDisposablePlan(pool, plan, process.env), /HR_OWNER_INVENTORY_DRIFT/);
+            assert.equal((await pool.query('SELECT business_id FROM public.hr_professions WHERE id=$1', [late.id])).rows[0].business_id, null, 'a late legacy row is never silently adopted');
+        } finally {
+            await holder.query('ROLLBACK').catch(() => {});
+            if (pending) await pending.catch(() => {});
+            holder.release(); legacy.release();
+            await pool.query('DELETE FROM public.hr_professions WHERE key=ANY($1::text[])', [[key, key + '_late']]);
+        }
+    });
+
+    it('preserves new owned writes and refuses stale rollback after cutover', async () => {
+        const key = 'qa_cutover_rollback_' + suffix();
+        const owner = (await pool.query("SELECT id,organization_id FROM businesses WHERE context_key='event_genix'")).rows[0];
+        const row = (await pool.query('INSERT INTO hr_professions(key,title) VALUES ($1,$1) RETURNING id', [key])).rows[0];
+        let late;
+        try {
+            const plan = preparePlan(await freezeInventory(pool), { businessId: owner.id, organizationId: owner.organization_id });
+            const receipt = await applyDisposablePlan(pool, plan, process.env);
+            // Mirror the scoped new writer; no legacy NULL-owner insert is allowed in the handoff.
+            late = (await pool.query('INSERT INTO public.hr_professions(key,title,business_id,organization_id) VALUES ($1,$1,public.eventgenix_hr_park_business_id(),public.eventgenix_hr_park_organization_id()) RETURNING id', [key + '_new'])).rows[0];
+            assert.equal((await pool.query('SELECT id FROM hr_owned.hr_professions WHERE id=ANY($1::bigint[])', [[row.id, late.id]])).rowCount, 2);
+            await assert.rejects(rollbackDisposablePlan(pool, receipt, process.env), /HR_OWNER_INVENTORY_DRIFT/);
+            assert.equal((await pool.query('SELECT id FROM hr_owned.hr_professions WHERE id=ANY($1::bigint[])', [[row.id, late.id]])).rowCount, 2, 'refused rollback preserves both approved and post-cutover owned rows');
+            await pool.query('DELETE FROM public.hr_professions WHERE id=$1', [late.id]);
+            late = null;
+            await rollbackDisposablePlan(pool, receipt, process.env);
+            assert.equal((await pool.query('SELECT business_id FROM public.hr_professions WHERE id=$1', [row.id])).rows[0].business_id, null, 'exact rollback succeeds only after the separate synthetic delta has been removed');
+        } finally {
+            await pool.query('DELETE FROM public.hr_professions WHERE key=ANY($1::text[])', [[key, key + '_new']]);
+        }
+    });
+
+
+    it('rehearses exact private review SQL without persisting owner metadata', async () => {
+        const { renderReviewSql } = require('../../scripts/render-park-hr-ownership-review.cjs');
+        const key = "qa_review_'_$hr_review$_" + suffix();
+        const row = (await pool.query('INSERT INTO public.hr_professions(key,title) VALUES ($1,$1) RETURNING id', [key])).rows[0];
+        const db = await pool.connect();
+        try {
+            const owner = (await db.query("SELECT id,organization_id FROM businesses WHERE context_key='event_genix'")).rows[0];
+            const plan = preparePlan(await freezeInventory(db), { businessId: owner.id, organizationId: owner.organization_id });
+            await db.query(renderReviewSql(plan));
+            assert.equal((await db.query('SELECT business_id FROM public.hr_professions WHERE id=$1', [row.id])).rows[0].business_id, null);
+            await db.query('UPDATE public.hr_professions SET is_active=false WHERE id=$1', [row.id]);
+            await assert.rejects(db.query(renderReviewSql(plan)), /HR_OWNER_INVENTORY_DRIFT/);
+            await db.query('ROLLBACK');
+            assert.equal((await db.query('SELECT business_id FROM public.hr_professions WHERE id=$1', [row.id])).rows[0].business_id, null);
+        } finally {
+            await db.query('ROLLBACK'); db.release();
+            await pool.query('DELETE FROM public.hr_professions WHERE id=$1', [row.id]);
+        }
+    });
+
 });

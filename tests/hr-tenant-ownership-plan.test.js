@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const {spawnSync}=require('node:child_process');
 const {TABLES,REQUIRED_COLUMNS,digest,preparePlan,applyDisposablePlan}=require('../scripts/prepare-park-hr-ownership-backfill.cjs');
 const root=path.resolve(__dirname,'..');
-function inventory(){return {atUtc:'2026-10-23T00:00:00Z',tables:Object.fromEntries(TABLES.map(table=>{const columns=REQUIRED_COLUMNS[table];const rows=[Object.fromEntries(columns.map(column=>[column,column==='id'?'1':null]))];return [table,{primaryKey:['id'],columns,count:1,rows,fingerprint:digest(rows)}]}))}}
+function inventory(){return {atUtc:'2026-10-23T00:00:00Z',tables:Object.fromEntries(TABLES.map(table=>{const columns=[...REQUIRED_COLUMNS[table]];const rows=[Object.fromEntries(columns.map(column=>[column,column==='id'?'1':null]))];return [table,{primaryKey:['id'],columns,count:1,rows,fingerprint:digest(rows)}]}))}}
 test('HR ownership plan binds the exact six tables, keys and fingerprints',()=>{
  const plan=preparePlan(inventory(),{businessId:2,organizationId:3});assert.deepEqual(Object.keys(plan.tables),TABLES);assert.deepEqual(plan.owner,{businessId:2,organizationId:3});
  for(const table of TABLES)assert.deepEqual(plan.tables[table].ids,['1']);
@@ -49,4 +49,40 @@ test('CLI creates a private plan outside Git and exposes no apply-production com
  assert.equal(result.status,0,result.stderr);assert.equal(JSON.parse(result.stdout).status,'PREPARED_NOT_APPLIED');assert.ok(!result.stdout.includes('businessId'));
  assert.equal(JSON.parse(fs.readFileSync(output,'utf8')).owner.businessId,2);
  const denied=spawnSync(process.execPath,[script,'--apply-production'],{encoding:'utf8'});assert.notEqual(denied.status,0);assert.match(denied.stderr,/CLI_SUPPORTS_PRIVATE_PLAN_ONLY/);
+});
+
+
+test('private review SQL binds inventory, rejects nonstructural fields and always rolls back', () => {
+ const {renderReviewSql}=require('../scripts/render-park-hr-ownership-review.cjs');
+ const data=inventory();
+ data.tables.hr_professions.rows[0].key="quoted_'_$hr_review$_key";
+ data.tables.hr_professions.fingerprint=digest(data.tables.hr_professions.rows);
+ const plan=preparePlan(data,{businessId:2,organizationId:3});
+ const sql=renderReviewSql(plan);
+ assert.match(sql,/^BEGIN;/m);assert.match(sql,/ROLLBACK;\s*$/);
+ assert.doesNotMatch(sql,/^\s*COMMIT\b/m);
+ assert.match(sql,/jsonb_populate_recordset/);assert.match(sql,/HR_OWNER_INVENTORY_DRIFT/);
+ assert.match(sql,/HR_OWNER_FOREIGN_OR_AMBIGUOUS_ROW/);assert.match(sql,/HR_OWNER_UPDATE_COUNT_MISMATCH/);
+ assert.match(sql,/SET LOCAL lock_timeout='5s'/);
+ for(const table of TABLES)assert.ok(sql.includes('UPDATE public."'+table+'"'));
+ const changed=inventory();changed.tables.hr_professions.columns.push('notes');changed.tables.hr_professions.rows[0].notes='private';changed.tables.hr_professions.fingerprint=digest(changed.tables.hr_professions.rows);
+ assert.throws(()=>renderReviewSql(preparePlan(changed,{businessId:2,organizationId:3})),/REVIEW_STRUCTURAL_COLUMNS_ONLY/);
+});
+
+
+test('review renderer CLI cannot connect or apply and refuses in-repository output', t => {
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'eg-hr-review-sql-'));
+ t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const script=path.join(root,'scripts/render-park-hr-ownership-review.cjs');
+ assert.doesNotMatch(fs.readFileSync(script,'utf8'),/require\(['"]pg['"]\)|new (?:Pool|Client)\(/);
+ const plan=path.join(dir,'plan.json'),out=path.join(dir,'review.sql');
+ fs.writeFileSync(plan,JSON.stringify(preparePlan(inventory(),{businessId:2,organizationId:3})));
+ const result=spawnSync(process.execPath,[script,'--plan',plan,'--out',out],{encoding:'utf8'});
+ assert.equal(result.status,0,result.stderr);assert.equal(JSON.parse(result.stdout).status,'PRIVATE_SQL_REVIEW_PREPARED_NOT_APPLIED');
+ assert.doesNotMatch(result.stdout,/businessId|organizationId|changedIds/);
+ assert.match(fs.readFileSync(out,'utf8'),/ROLLBACK;\s*$/);
+ const inside=spawnSync(process.execPath,[script,'--plan',plan,'--out',path.join(root,'review-must-not-exist.sql')],{encoding:'utf8'});
+ assert.notEqual(inside.status,0);assert.match(inside.stderr,/PRIVATE_REVIEW_MUST_STAY_OUTSIDE_GIT/);
+ const denied=spawnSync(process.execPath,[script,'--apply-production'],{encoding:'utf8'});assert.notEqual(denied.status,0);
+ const existing=spawnSync(process.execPath,[script,'--plan',plan,'--out',out],{encoding:'utf8'});assert.notEqual(existing.status,0);
 });

@@ -26,3 +26,9 @@ The production-base CI https://github.com/rainbowrainbowrainbow/8223324090/actio
 Read `HR_OWNERSHIP_MAINTENANCE_LOCAL_HANDOFF_2026-10-25.md` and the historical candidate preflight. A fresh ownership/inventory audit and new exact authorization are required for any registry lease, schema/attribution, writer stop/restart, production integration/deploy and reviewed recovery. Retired leases cannot be reused. Unknown upload/image or receipt-storage recovery must be covered before shutdown. Real Dar -> Park live QA is still separate from synthetic evidence. No membership fixture is authorized here.
 
 Feature commits/push and CI only. Main checkout and other worktrees remain untouched.
+
+## Acceptance fixture follow-up
+
+Refreshed run https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/40203638953 reproduced the quota upload failures and the same Education acceptance timeout. The test clicked static tab HTML before page init had awaited auth/business-profile hydration and bound its click listener. It now waits for the existing mode editor to be attached before the real tab click, asserts aria-selected, and retains the visible control, Creator/reader affordance, unchanged cabinet and reader PUT-403 assertions. No product Timeline code, protected surface or permission boundary changes. Focused timeline-settings tests passed 16/16; protected-surface check passed. Actual browser acceptance is to be verified on the new feature SHA; upload quotas are not bypassed.
+
+A private SHA-256-verified backup/cleanup plan for 20 superseded artifacts from old feature run 40147099708 was prepared outside Git. Nothing was deleted; its separate approval would exclude all current/latest-green and production artifacts, workflow logs, settings and billing.

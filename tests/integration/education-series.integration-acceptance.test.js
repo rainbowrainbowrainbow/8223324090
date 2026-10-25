@@ -385,8 +385,13 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
           continue;
         }
         assert.equal(documentResponse.status(), 200);
-        await page.locator('[data-timeline-settings-tab="system"]').click();
         const mode = page.locator('[data-timeline-settings-display="mode"]');
+        // Static tab HTML is visible before init finishes auth/profile hydration
+        // and binds clicks. A rendered editor proves those listeners are ready.
+        await mode.waitFor({ state: 'attached', timeout: 20000 });
+        const systemTab = page.locator('[data-timeline-settings-tab="system"]');
+        await systemTab.click();
+        assert.equal(await systemTab.getAttribute('aria-selected'), 'true', 'the real system tab action completed');
         await mode.waitFor({ state: 'visible', timeout: 20000 });
         const current = await mode.inputValue();
         await mode.selectOption(current === 'education' ? 'simple' : 'education');

@@ -113,12 +113,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: omni-browser-${{ github.sha }}
           path: |
             output/playwright/omni-completion
             output/playwright/omni-lead-links
           if-no-files-found: warn
-          retention-days: 14
 
   hr-team-browser:
     name: HR Team browser smoke
@@ -183,6 +183,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: hr-checklists-browser
           path: |
             output/playwright/hr-checklists/after-shell
@@ -264,6 +265,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: hr-checklists-postgres
           path: |
             output/playwright/hr-checklists/postgres
@@ -281,6 +283,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: wallet-ledger-postgres
           path: output/wallet-ledger
 
@@ -349,10 +352,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: certificate-regression-${{ github.sha }}
           path: output/playwright/certificate-check
           if-no-files-found: warn
-          retention-days: 14
 
   hr-payroll-postgres:
     name: HR and payroll PostgreSQL integration
@@ -451,6 +454,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: hr-pay-actual-app-browser
           path: output/playwright/hr-pay-actual-app
           if-no-files-found: ignore
@@ -645,6 +649,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: education-${{ matrix.suite }}-${{ matrix.engine }}-${{ github.sha }}
           path: output/education-ready/close04/ci-*
           if-no-files-found: error

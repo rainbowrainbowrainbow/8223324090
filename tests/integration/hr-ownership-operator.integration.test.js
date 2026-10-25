@@ -65,19 +65,39 @@ describe('HR ownership operator on disposable PostgreSQL', { skip: !enabled, con
             else { const proof = await invoke(); assert.equal(proof.state, 'VERIFIED_NOT_COMMITTED'); assert.equal(proof.operation, 'READ_ONLY_RECOVERY'); assert.equal((await db.query("SELECT current_setting('transaction_read_only') AS value")).rows[0].value, 'on'); }
         } finally { await db.query('ROLLBACK').catch(() => {}); await db.end(); }
     });
-    it('detects a real idle writable connection and refreshes session statistics after it closes', async () => {
+    it('detects a real idle writable connection and refreshes session statistics after it closes', async t => {
         const source = { repo: null, image: null };
         const deployment = { id: 'synthetic-maintenance', status: 'REMOVED', deploymentStopped: true, meta: { imageDigest: 'sha256:' + 'd'.repeat(64) } };
         const snapshot = { id: 'bc28b46c-d4bc-491c-893a-d8401c633668', name: 'fortunate-appreciation', environments: { edges: [{ node: { id: 'd9f9b984-d54d-4620-a8bf-c48882ad5158', name: 'production', serviceInstances: { edges: [{ node: { serviceId: '3fb62d4c-2dc2-4701-8e2b-09ce16e188ee', serviceName: '8223324090', environmentId: 'd9f9b984-d54d-4620-a8bf-c48882ad5158', source, activeDeployments: [], latestDeployment: deployment } }] } } }] } };
         const sourceFingerprint = crypto.createHash('sha256').update(JSON.stringify({ ...source, branch: null, imageDigest: deployment.meta.imageDigest })).digest('hex');
         const verify = createRailwayStoppedVerifier({ deploymentId: deployment.id, liveSha: 'a'.repeat(40), sourceBranch: 'codex/eventgenix-production', sourceFingerprint }, { fetchStatus: async () => snapshot });
-        const reader = await pool.connect(); const writer = new Client({ connectionString: target.url.toString(), ssl: false });
+        // The isolated runner keeps a real Express pool connected to its DB.
+        // Prove zero-writer success in a dedicated database; never exempt runner
+        // sessions or weaken the production guard to manufacture quiescence.
+        const databaseName = 'eg_hr_writer_probe_' + crypto.randomBytes(6).toString('hex') + '_test';
+        assert.match(databaseName, /^eg_hr_writer_probe_[a-f0-9]{12}_test$/);
+        const probeUrl = new URL(target.url); probeUrl.pathname = '/' + databaseName;
+        const probe = assertSafeTestDatabaseUrl(probeUrl.toString(), process.env);
+        assert.equal(probe.isLocal, true); assert.notEqual(probe.databaseName, target.databaseName);
+        await pool.query('CREATE DATABASE "' + databaseName + '"');
+        const clients = [];
+        t.after(async () => {
+            for (const client of clients) await client.end().catch(() => {});
+            assert.equal(probe.databaseName, databaseName);
+            await pool.query('DROP DATABASE "' + databaseName + '"');
+        });
+        const reader = new Client({ connectionString: probe.url.toString(), ssl: false });
+        const writer = new Client({ connectionString: probe.url.toString(), ssl: false });
+        clients.push(reader, writer);
+        await reader.connect();
+        for (const name of TABLES) await reader.query('CREATE TABLE public."' + name + '" (id integer)');
         try {
             await reader.query('BEGIN'); await writer.connect();
             await assert.rejects(verify(reader), /OTHER_OWNERSHIP_WRITERS_CONNECTED/);
             await writer.end();
             assert.equal((await verify(reader)).otherWritableSessions, 0);
-        } finally { await writer.end().catch(() => {}); await reader.query('ROLLBACK'); reader.release(); }
+            assert.equal((await pool.query('SELECT current_database() AS name')).rows[0].name, target.databaseName);
+        } finally { await reader.query('ROLLBACK'); }
     });
     it('atomically installs only the approved foundation, applies owners and rolls back exact changed rows', async t => {
         const f = await fixture(t);

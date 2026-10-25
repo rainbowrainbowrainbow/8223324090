@@ -34,3 +34,7 @@ All jobs of the exact-SHA CI workflow must succeed, including Fast baseline, Omn
 6. After a separately authorized release, verify exact live SHA/version/branch and safe test-account GET QA, including payroll masking, errors/retry, Team/Today/Schedule, checklist/onboarding isolation and business cache/races. Real Dar -> Park live evidence remains separate from synthetic coverage; no fixture activation is authorized here.
 
 Current feature task allows scoped feature commits/push and CI only. No production branch push, service stop/deploy, DB grants/DML/DDL or membership mutation occurs in this stage.
+
+## CI fixture correction
+
+The first v0.82.118 feature run, https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/40147099708, correctly rejected the writer-probe fixture because the isolated runner's Express pool remained connected to the same database. The positive zero-writer case now uses its own guarded loopback disposable database with exact cleanup. It still rejects the real idle writer, refreshes statistics after closure and requires zero other writers. The production verifier and its assertions were not weakened. Final candidate SHA/CI are reported after the follow-up feature push.

@@ -93,12 +93,8 @@ validateEnv();
 async function telegramInboxOwnsGlobalBotToken() {
     if (!TELEGRAM_BOT_TOKEN) return false;
     try {
-        const {
-            hasActiveTelegramInboxConnection,
-            isTelegramInboxConnectionUsingToken,
-        } = require('./services/omni-accounts');
-        return await isTelegramInboxConnectionUsingToken(TELEGRAM_BOT_TOKEN)
-            || await hasActiveTelegramInboxConnection();
+        const { isTelegramInboxConnectionUsingToken } = require('./services/omni-accounts');
+        return await isTelegramInboxConnectionUsingToken(TELEGRAM_BOT_TOKEN);
     } catch (err) {
         log.warn('Could not check Omni Telegram inbox webhook ownership', { error: err.message });
         return false;

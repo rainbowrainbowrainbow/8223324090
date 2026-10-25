@@ -2,7 +2,7 @@
   "name": "event-genix",
   "version": "0.82.118",
   "eventGenix": {
-    "releaseLabel": "HR Парку: ізоляція професій та онбордингу"
+    "releaseLabel": "Відновлено підтвердження аніматора в Telegram"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

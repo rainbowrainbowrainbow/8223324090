@@ -217,6 +217,10 @@ async function runStartup({ flagValue, omniMode = 'owner-false' } = {}) {
                 return makeModule(moduleName, {
                     runTrustedQaCleanupWatchdog: record('runTrustedQaCleanupWatchdog'),
                 }, calls);
+            case './services/omni-health':
+                return makeModule(moduleName, {
+                    recheckActiveOmniConnections: record('recheckActiveOmniConnections'),
+                }, calls);
             case './middleware/auth':
                 return makeModule(moduleName, {
                     cleanupRefreshTokens: record('cleanupRefreshTokens'),
@@ -407,7 +411,7 @@ test('absent and false flags keep legacy startup bot configuration when Omni doe
         assert.equal(result.skipped, false);
         assert.ok(hasRequire(result, './services/omni-accounts'));
         assert.ok(hasCall(result, 'isTelegramInboxConnectionUsingToken'));
-        assert.ok(hasCall(result, 'hasActiveTelegramInboxConnection'));
+        assert.equal(hasCall(result, 'hasActiveTelegramInboxConnection'), false);
         assert.ok(hasCall(result, 'ensureWebhook'), 'legacy webhook setup should run');
         assert.ok(hasCall(result, 'registerBotCommands'), 'legacy bot command registration should run');
         assertNoUnexpectedWarningsOrErrors(result);
@@ -426,6 +430,17 @@ test('Omni ownership true keeps the existing no-legacy-webhook branch without sk
     assertNoUnexpectedWarningsOrErrors(result, [
         'Skipping legacy Telegram webhook auto-setup because the same bot token is bound as Omni Telegram inbox',
     ]);
+});
+
+test('a different active Omni inbox does not block the legacy bot webhook', async () => {
+    const result = await runStartup({ omniMode: 'owner-active' });
+
+    assert.equal(result.skipped, false);
+    assert.ok(hasCall(result, 'isTelegramInboxConnectionUsingToken'));
+    assert.equal(hasCall(result, 'hasActiveTelegramInboxConnection'), false);
+    assert.ok(hasCall(result, 'ensureWebhook'));
+    assert.ok(hasCall(result, 'registerBotCommands'));
+    assertNoUnexpectedWarningsOrErrors(result);
 });
 
 test('true flag skips ownership lookup, legacy webhook setup, and legacy bot commands', async () => {

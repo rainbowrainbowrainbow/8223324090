@@ -38,3 +38,9 @@ Current feature task allows scoped feature commits/push and CI only. No producti
 ## CI fixture correction
 
 The first v0.82.118 feature run, https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/40147099708, correctly rejected the writer-probe fixture because the isolated runner's Express pool remained connected to the same database. The positive zero-writer case now uses its own guarded loopback disposable database with exact cleanup. It still rejects the real idle writer, refreshes statistics after closure and requires zero other writers. The production verifier and its assertions were not weakened. Final candidate SHA/CI are reported after the follow-up feature push.
+
+## Production-base refresh — 2026-10-25
+
+A later production Git release occupied v0.82.118: `b8e842cf4053713c0006f9e96c56ab55cef317b6`, «Відновлено підтвердження аніматора в Telegram». The feature is being updated by ordinary merge, preserving its Telegram webhook fix and tests byte-for-byte. The earlier HR v0.82.118 / `a073f8331767a287b20661584ade1106d2b7d0be` remains historical feature evidence (CI 23/23), not the current production release.
+
+Active merge markers use production v0.82.118/Telegram; the HR candidate receives a separate next-free patch bump after merge. No published commit is rewritten. At refresh preflight, live still reported v0.82.117 / `34293c9b1e52ac1e3b4f9bde6262276e0bf0e19b`; the Git/live gap was the pending Telegram release, not an HR deployment. Recheck both identities and exact candidate CI before any future cutover. This task still grants no production integration/deploy or data mutation.

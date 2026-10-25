@@ -266,3 +266,6 @@ describe('Park HR ownership on disposable PostgreSQL', { skip: !enabled, concurr
     });
 
 });
+
+// Reuse the existing isolated HR ownership CI lane for operator failure/recovery coverage.
+require('./hr-ownership-operator.integration.test');

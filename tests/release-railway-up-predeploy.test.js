@@ -371,3 +371,6 @@ test('Railway release parser accepts explicit source branch migration proof with
 });
 
 require('./production-block-controller.test');
+
+// Keep maintenance failure/recovery guards in the existing release CI lane.
+require('./release-maintenance.test');

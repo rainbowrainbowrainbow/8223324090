@@ -6,6 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const pkg = require('../package.json');
+const maintenance = require('../services/releaseMaintenance');
+const { fetchRailwayStatus } = require('./park-hr-maintenance-proof.cjs');
 const {
     DEPLOYMENT_MANIFEST_FILENAME,
     writeDeploymentManifest,
@@ -223,6 +225,19 @@ function assertPreDeployLiveSafety({
     };
 }
 
+const MAINTENANCE_OPTIONS = Object.freeze({
+    '--maintenance-mode': 'maintenanceMode',
+    '--maintenance-manifest': 'maintenanceManifest',
+    '--maintenance-manifest-sha256': 'maintenanceManifestSha256',
+    '--maintenance-approval': 'maintenanceApproval',
+    '--maintenance-proofs': 'maintenanceProofs',
+    '--maintenance-proofs-sha256': 'maintenanceProofsSha256',
+    '--maintenance-receipt': 'maintenanceReceipt',
+    '--maintenance-receipt-sha256': 'maintenanceReceiptSha256',
+    '--maintenance-attempt': 'maintenanceAttempt',
+    '--maintenance-forward-attempt': 'maintenanceForwardAttempt',
+    '--maintenance-forward-attempt-sha256': 'maintenanceForwardAttemptSha256'
+});
 function parseArgs(argv) {
     const options = {
         project: process.env.RELEASE_RAILWAY_PROJECT || process.env.RAILWAY_PROJECT_ID || DEFAULT_PROJECT,
@@ -242,9 +257,13 @@ function parseArgs(argv) {
         migrateLiveSourceBranchCommit: process.env.RELEASE_MIGRATE_LIVE_SOURCE_BRANCH_COMMIT || process.env.npm_config_migrate_live_source_branch_commit || ''
     };
 
+    for (const key of Object.values(MAINTENANCE_OPTIONS)) options[key] = '';
+
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index];
-        if (arg === '--dry-run') {
+        if (Object.hasOwn(MAINTENANCE_OPTIONS, arg)) {
+            options[MAINTENANCE_OPTIONS[arg]] = requireValue(argv, index += 1, arg);
+        } else if (arg === '--dry-run') {
             options.dryRun = true;
         } else if (arg === '--parse-only') {
             options.parseOnly = true;
@@ -480,20 +499,20 @@ function assertSafeExportRoot(exportRoot) {
     return resolved;
 }
 
-function validateExport(sourceDir, head, branch) {
+function validateExport(sourceDir, head, branch, expectedVersion = pkg.version) {
     const packagePath = path.join(sourceDir, 'package.json');
     const indexPath = path.join(sourceDir, 'index.html');
     if (!fs.existsSync(packagePath)) fail('Clean export is missing package.json');
     if (!fs.existsSync(indexPath)) fail('Clean export is missing index.html');
     const exportedPkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
-    if (exportedPkg.version !== pkg.version) {
-        fail(`Clean export package.json version ${exportedPkg.version} does not match local ${pkg.version}`);
+    if (exportedPkg.version !== expectedVersion) {
+        fail(`Clean export package.json version ${exportedPkg.version} does not match expected ${expectedVersion}`);
     }
     const indexHtml = fs.readFileSync(indexPath, 'utf8');
-    if (!indexHtml.includes(`?v=${pkg.version}`) && !indexHtml.includes(`v${pkg.version}`)) {
-        fail(`Clean export index.html does not expose v${pkg.version}`);
+    if (!indexHtml.includes(`?v=${expectedVersion}`) && !indexHtml.includes(`v${expectedVersion}`)) {
+        fail(`Clean export index.html does not expose v${expectedVersion}`);
     }
-    const manifestResult = readDeploymentManifest({ rootDir: sourceDir, expectedVersion: pkg.version });
+    const manifestResult = readDeploymentManifest({ rootDir: sourceDir, expectedVersion });
     if (manifestResult.state !== 'valid'
         || manifestResult.manifest.commitSha !== head
         || manifestResult.manifest.sourceBranch !== branch) {
@@ -519,12 +538,13 @@ function createCleanExport(head, branch, options) {
     run('git', ['archive', '--format=tar', '--output', archivePath, head]);
     run('tar', ['-xf', archivePath, '-C', sourceDir]);
     fs.rmSync(archivePath, { force: true });
+    const exportVersion = options.expectedVersion || pkg.version;
     const manifestInfo = writeDeploymentManifest(sourceDir, {
-        applicationVersion: pkg.version,
+        applicationVersion: exportVersion,
         commitSha: head,
         sourceBranch: branch
     });
-    validateExport(sourceDir, head, branch);
+    validateExport(sourceDir, head, branch, exportVersion);
     return { sourceDir, exportBase, manifestPath: manifestInfo.filePath };
 }
 
@@ -537,11 +557,11 @@ function sleep(ms) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-function runPostDeploySmoke(liveUrl, head, branch) {
+function runPostDeploySmoke(liveUrl, head, branch, sourceDir = process.cwd()) {
     let lastOutput = '';
     for (let attempt = 1; attempt <= DEFAULT_POST_DEPLOY_SMOKE_ATTEMPTS; attempt += 1) {
-        const result = spawnSync(process.execPath, ['scripts/live-version-smoke.js', liveUrl], {
-            cwd: process.cwd(),
+        const result = spawnSync(process.execPath, [path.join(sourceDir, 'scripts/live-version-smoke.js'), liveUrl], {
+            cwd: sourceDir,
             encoding: 'utf8',
             shell: false,
             env: {
@@ -585,10 +605,73 @@ async function fetchLiveVersionSnapshot(liveUrl, options = {}) {
     }
 }
 
+async function fetchMaintenanceCi(remoteUrl, expectedSha, expectedBranch, options = {}) {
+    const repository = githubRepositoryFromRemote(remoteUrl);
+    if (repository !== maintenance.TARGET.repository) throw new Error('MAINTENANCE_REPOSITORY_MISMATCH');
+    const token = String(process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '').trim();
+    async function get(endpoint) {
+        const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'eventgenix-maintenance-release', 'X-GitHub-Api-Version': '2022-11-28' };
+        if (token) headers.Authorization = 'Bearer ' + token;
+        const response = await (options.fetchImpl || globalThis.fetch)('https://api.github.com/repos/' + repository + endpoint, { headers, signal: AbortSignal.timeout(15000) });
+        if (!response.ok) throw new Error('MAINTENANCE_CI_LOOKUP_FAILED_HTTP_' + response.status);
+        return response.json();
+    }
+    const payload = await get('/actions/workflows/ci.yml/runs?head_sha=' + expectedSha + '&event=push&per_page=100');
+    if (!Array.isArray(payload.workflow_runs) || payload.total_count > 100) throw new Error('MAINTENANCE_CI_RUN_LIST_INCOMPLETE');
+    const runs = payload.workflow_runs.filter(run => run.head_sha === expectedSha && run.head_branch === expectedBranch).sort((a,b) => b.id - a.id);
+    const run = runs[0];
+    if (!run) throw new Error('MAINTENANCE_CI_RUN_MISSING');
+    const jobs = await get('/actions/runs/' + run.id + '/attempts/' + run.run_attempt + '/jobs?per_page=100');
+    if (!Array.isArray(jobs.jobs) || jobs.total_count !== jobs.jobs.length || jobs.total_count > 100) throw new Error('MAINTENANCE_CI_JOB_LIST_INCOMPLETE');
+    return maintenance.assertWorkflowCi(run, jobs.jobs, expectedSha, expectedBranch);
+}
+function maintenanceRuntime(options, liveUrl) {
+    const originUrl = git(['remote', 'get-url', 'origin']);
+    return {
+        now: () => Date.now(),
+        head: () => git(['rev-parse', 'HEAD']),
+        remote: () => remoteBranchSha(options.branch),
+        localVersion: () => pkg.version,
+        packageAt: sha => JSON.parse(git(['show', sha + ':package.json'])),
+        live: () => fetchLiveVersionSnapshot(liveUrl, { signal: AbortSignal.timeout(5000) }),
+        async liveIsUnavailable() {
+            try {
+                const response = await fetch(liveUrl + '/api/version', { redirect: 'error', signal: AbortSignal.timeout(5000) });
+                return [404, 410, 502, 503].includes(response.status);
+            } catch (error) {
+                if (error.name === 'AbortError' || error.name === 'TimeoutError' || (error instanceof TypeError && error.message === 'fetch failed')) return true;
+                throw error;
+            }
+        },
+        status: () => fetchRailwayStatus(),
+        ci: sha => fetchMaintenanceCi(originUrl, sha, options.branch),
+        ancestor: (baseline, release) => assertReleaseDescendsFromLive(baseline, release),
+        assertForwardSafety: (live, head, remoteSha) => assertPreDeployLiveSafety({ live, localVersion: pkg.version, head, branch: options.branch, remoteSha }),
+        exportArtifact: (sha, version) => createCleanExport(sha, options.branch, { expectedVersion: version }),
+        cleanupArtifact: artifact => cleanupExport({ exportBase: path.dirname(artifact.sourceDir) }, {}),
+        validateArtifact: artifact => {
+            const atCommit = JSON.parse(git(['show', artifact.sha + ':package.json']));
+            if (atCommit.version !== artifact.version) throw new Error('MAINTENANCE_PACKAGE_VERSION_MISMATCH');
+            validateExport(artifact.sourceDir, artifact.sha, options.branch, artifact.version);
+        },
+        upload: (artifact, message) => runMaintenanceUpload(artifact, message, options),
+        smoke: artifact => runPostDeploySmoke(liveUrl, artifact.sha, options.branch, artifact.sourceDir)
+    };
+}
+function runMaintenanceUpload(artifact, message, options) {
+    // This is the same clean-archive CLI operation as the normal path. Unlike run(),
+    // errors are thrown so the maintenance caller can persist deployment evidence.
+    const result = spawnSync(resolveCommandExecutable('railway'), ['up', artifact.sourceDir, '--ci', '--path-as-root', '--project', options.project, '--service', options.service, '--environment', options.environment, '--message', message], {
+        encoding: 'utf8', shell: false, stdio: 'inherit', env: process.env
+    });
+    if (result.error || result.status !== 0) throw new Error('MAINTENANCE_UPLOAD_FAILED');
+}
+
 async function main() {
     const options = parseArgs(process.argv.slice(2));
     if (options.parseOnly) {
         console.log(JSON.stringify({
+            ...Object.fromEntries(Object.values(MAINTENANCE_OPTIONS).map(key => [key, options[key]])),
             branch: options.branch,
             commit: options.commit,
             liveUrl: options.liveUrl,
@@ -607,6 +690,16 @@ async function main() {
     assertSafeRailwayTarget(options);
     assertCleanWorktree();
     const liveUrl = normalizeLiveUrl(options.liveUrl);
+    const maintenanceRequested = Object.values(MAINTENANCE_OPTIONS).some(key => options[key]);
+    if (maintenanceRequested) {
+        maintenance.assertOptions(options);
+        const runtime = maintenanceRuntime(options, liveUrl);
+        const result = options.maintenanceMode === 'prepare'
+            ? await maintenance.prepare(options, runtime)
+            : await maintenance.execute(options, runtime);
+        console.log('[release:railway-up] ' + JSON.stringify(result));
+        return;
+    }
 
     const head = git(['rev-parse', 'HEAD']);
     const expectedCommit = options.commit || head;
@@ -692,6 +785,7 @@ if (require.main === module) {
 
 module.exports = {
     parseArgs,
+    fetchMaintenanceCi,
     assertSafeRailwayTarget,
     compareVersions,
     assertPreDeployLiveSafety,

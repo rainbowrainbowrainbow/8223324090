@@ -1535,7 +1535,8 @@ describe('Communication Send Truth v1', () => {
         assert.match(accountsService, /purposeLabel/);
         const server = fs.readFileSync(path.join(repoRoot, 'server.js'), 'utf8');
         assert.match(server, /telegramInboxOwnsGlobalBotToken/);
-        assert.match(server, /hasActiveTelegramInboxConnection/);
+        assert.match(server, /return await isTelegramInboxConnectionUsingToken\(TELEGRAM_BOT_TOKEN\)/);
+        assert.doesNotMatch(server, /hasActiveTelegramInboxConnection/);
         assert.match(server, /Skipping legacy Telegram webhook auto-setup/);
         assert.match(omniRoute, /requireMinRole\('manager'\)/);
         assert.match(omniRoute, /\/accounts\/:channel\/test/);

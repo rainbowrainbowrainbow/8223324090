@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
-const { verifyAndExtract } = require('./ci-local-evidence.cjs');
+const { verifyAndExtract, flushFile } = require('./ci-local-evidence.cjs');
 const REPOSITORY = 'rainbowrainbowrainbow/8223324090';
 const BRANCH = 'codex/ci-local-runner-20261027';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -113,7 +113,7 @@ async function collect(config, runnerName) {
     const target = baseSSH.pop();
     command('scp.exe', [...baseSSH, `${target}:${remote}/evidence.jsonl.gz`, bundle]);
     const result = await verifyAndExtract(bundle, path.join(destination, 'original-files'), request);
-    const handle = fs.openSync(bundle, 'r'); try { fs.fsyncSync(handle); } finally { fs.closeSync(handle); }
+    flushFile(bundle);
     const payload = { metadata: m, githubJobId: job.id, runner: runnerName, bundleSHA256: request.bundleSHA256,
       manifestSHA256: request.manifestSHA256, files: result.files.length, bytes: result.bytes, archivedUtc: new Date().toISOString() };
     const signature = crypto.sign(null, Buffer.from(JSON.stringify(payload)), fs.readFileSync(path.join(config.root, 'keys', 'archive-signing-private.pem'))).toString('base64');
@@ -165,14 +165,38 @@ async function runOne(config, queuedJob) {
     check(job?.status === 'completed' && job.conclusion === 'success', 'CI job did not pass; stop before wider execution');
     console.log(JSON.stringify({ stage: 'JOB_PASSED', job: job.name, githubJobId: job.id }));
     return job;
+  } catch (error) {
+    console.error(`Original job failure: ${error.code || 'ERROR'}: ${error.message}`);
+    try {
+      writeJSON(path.join(config.root, `${runnerName}-failure.json`), { run: config.run, sha: config.sha,
+        message: error.message, code: error.code || null, timestampUtc: new Date().toISOString() });
+    } catch { console.error('Failure receipt could not be persisted; cancellation and retirement still required.'); }
+    if (runnerId && process) {
+      try {
+        const active = api(`actions/runs/${config.run}`);
+        assertRun(active, config);
+        check(active.run_attempt === config.attempt, 'Cancellation attempt identity mismatch');
+        if (active.status !== 'completed') api(`actions/runs/${config.run}/force-cancel`, {}, 'POST');
+        // Let the connected one-job listener acknowledge cancellation before
+        // powering it off; an offline busy registration cannot be deleted.
+        const end = Date.now() + 30000;
+        while (process.exitCode === null && process.signalCode === null && Date.now() < end) await sleep(1000);
+      } catch { console.error('Failed job cancellation requires retirement verification.'); }
+    }
+    throw error;
   } finally {
-    if (process && process.exitCode === null) process.kill();
+    if (process && process.exitCode === null && process.signalCode === null) process.kill();
     try { await control(config, 'stop'); } finally {
       if (runnerId) {
-        try { api(`actions/runners/${runnerId}`, null, 'DELETE'); } catch {
-          const remaining = api('actions/runners?per_page=100').runners;
-          check(!remaining.some(value => value.id === runnerId), 'Created runner registration cleanup not confirmed');
+        let retired = false;
+        for (let attempt = 0; attempt < 10; attempt++) {
+          try { api(`actions/runners/${runnerId}`, null, 'DELETE'); retired = true; break; } catch {
+            const remaining = api('actions/runners?per_page=100').runners;
+            if (!remaining.some(value => value.id === runnerId)) { retired = true; break; }
+          }
+          await sleep(2000);
         }
+        check(retired, 'Created runner registration cleanup not confirmed');
       }
     }
   }

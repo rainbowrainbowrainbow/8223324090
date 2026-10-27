@@ -89,6 +89,11 @@ async function fileHash(file) {
   for await (const chunk of fs.createReadStream(file)) digest.update(chunk);
   return digest.digest('hex');
 }
+function flushFile(file) {
+  // Windows FlushFileBuffers requires write access, even when no bytes change.
+  const handle = fs.openSync(file, 'r+');
+  try { fs.fsyncSync(handle); } finally { fs.closeSync(handle); }
+}
 async function verifyAndExtract(bundle, destination, expected) {
   check(await fileHash(bundle) === expected.bundleSHA256, 'Bundle SHA-256 mismatch');
   await fs.promises.mkdir(destination, { recursive: false, mode: 0o700 });
@@ -142,6 +147,7 @@ async function verifyAndExtract(bundle, destination, expected) {
     if (streamError) throw streamError;
     check(header && ended && !current, 'Truncated evidence bundle');
     await fs.promises.writeFile(path.join(destination, 'verified-manifest.json'), json({ ...expected, files, bytes: total }), { flag: 'wx', mode: 0o600 });
+    flushFile(path.join(destination, 'verified-manifest.json'));
     return { files, bytes: total };
   } finally { if (handle) await handle.close(); lines.close(); input.destroy(); decoder.destroy(); }
 }
@@ -179,5 +185,5 @@ async function preserve() {
   }
   throw new Error('Independent host archival receipt timed out');
 }
-module.exports = { safePath, collectFiles, createBundle, verifyAndExtract, verifyAcknowledgement, fileHash };
+module.exports = { safePath, collectFiles, createBundle, verifyAndExtract, verifyAcknowledgement, fileHash, flushFile };
 if (require.main === module) preserve().catch(error => { console.error(error.message); process.exitCode = 1; });

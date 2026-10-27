@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { createBundle, verifyAndExtract, collectFiles, safePath, verifyAcknowledgement } = require('../scripts/ci-local-evidence.cjs');
+const { createBundle, verifyAndExtract, collectFiles, safePath, verifyAcknowledgement, flushFile } = require('../scripts/ci-local-evidence.cjs');
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'eventgenix-evidence-test-'));
@@ -38,6 +38,14 @@ test('required missing evidence fails; explicit existing warn/ignore policies re
   assert.deepEqual(await collectFiles(root, ['output/missing'], 'warn'), []);
   assert.deepEqual(await collectFiles(root, ['output/missing'], 'ignore'), []);
   await assert.rejects(collectFiles(root, ['output/**/private']), /wildcard/);
+});
+
+test('flushes completed binary evidence on Windows without changing its bytes', async t => {
+  const root = await fixture(t);
+  const file = path.join(root, 'output', 'ci-example', 'screenshot.png');
+  const before = await fs.readFile(file);
+  assert.doesNotThrow(() => flushFile(file));
+  assert.deepEqual(await fs.readFile(file), before);
 });
 
 test('corrupted bundle, manifest or source identity cannot produce a verified archive', async t => {

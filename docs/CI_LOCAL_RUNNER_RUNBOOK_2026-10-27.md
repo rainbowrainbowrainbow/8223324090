@@ -42,6 +42,8 @@ Private paths, SSH keys, signing keys, JIT configuration, account credentials an
 
 The controller is operator-run, not an automatically installed Windows startup service. Power loss, sleep or shutdown interrupts CI; it does not stop the existing live CRM. Do not silently change the owner's power plan. Disk use must be checked before each run; do not delete evidence automatically when space runs low.
 
+Transient GitHub GET transport/server failures receive at most three retries with bounded backoff. Authentication, identity and permanent errors fail immediately. JIT registration and other mutation requests are never automatically retried; reconcile their exact server state before recovery.
+
 ## Verification commands
 
 ```text

@@ -18,17 +18,33 @@ function writeJSON(file, value) {
   try { fs.writeFileSync(handle, JSON.stringify(value)); fs.fsyncSync(handle); } finally { fs.closeSync(handle); }
   fs.renameSync(temporary, file);
 }
-function command(program, args, input) {
-  const result = spawnSync(program, args, { input, encoding: 'utf8', windowsHide: true, maxBuffer: 8 * 1024 ** 2, timeout: 120000 });
+function command(program, args, input, timeout = 120000) {
+  const result = spawnSync(program, args, { input, encoding: 'utf8', windowsHide: true, maxBuffer: 8 * 1024 ** 2, timeout });
   // Do not echo command arguments, stdin or captured API bodies on failure.
-  check(result.status === 0 && !result.error, `${path.basename(program)} operation failed`);
+  if (result.status !== 0 || result.error) {
+    const error = new Error(`${path.basename(program)} operation failed`);
+    error.transientRead = result.error?.code === 'ETIMEDOUT'
+      || /error connecting to api\.github\.com|TLS handshake timeout|connection reset|temporary failure|i\/o timeout|HTTP 50[234]/i.test(result.stderr || '');
+    throw error;
+  }
   return result.stdout;
+}
+function retryRead(operation, wait = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)) {
+  for (let attempt = 0; ; attempt++) {
+    try { return operation(); } catch (error) {
+      if (!error.transientRead || attempt === 3) throw error;
+      wait(2000 * 2 ** attempt);
+    }
+  }
 }
 function api(endpoint, body, method) {
   const args = ['api', `repos/${REPOSITORY}/${endpoint}`];
   if (method) args.push('--method', method);
   if (body) args.push('--input', '-');
-  const response = command('gh', args, body ? JSON.stringify(body) : undefined);
+  // Only idempotent reads may retry. An ambiguous JIT registration or other
+  // mutation must be reconciled rather than issued again automatically.
+  const request = () => command('gh', args, body ? JSON.stringify(body) : undefined, 20000);
+  const response = !method && !body ? retryRead(request) : request();
   return response.trim() ? JSON.parse(response) : null;
 }
 function assertRun(run, config) {
@@ -251,5 +267,5 @@ async function main(file) {
   }
   console.log(JSON.stringify({ stage: 'ALL_REQUIRED_JOBS_PASSED', run: config.run, sha: config.sha }));
 }
-module.exports = { assertRun, assertAcceptsJobs, assertDiskSpace, assertWindow, labelForJob, findRegisteredJob };
+module.exports = { assertRun, assertAcceptsJobs, assertDiskSpace, assertWindow, labelForJob, findRegisteredJob, retryRead };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error.message); process.exitCode = 1; });

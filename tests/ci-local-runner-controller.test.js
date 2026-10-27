@@ -3,7 +3,22 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { assertRun, assertAcceptsJobs, assertDiskSpace, assertWindow, labelForJob, findRegisteredJob } = require('../scripts/ci-local-runner-controller.cjs');
+const { assertRun, assertAcceptsJobs, assertDiskSpace, assertWindow, labelForJob, findRegisteredJob, retryRead } = require('../scripts/ci-local-runner-controller.cjs');
+
+test('transient read failures retry with bounded backoff; permanent failures stop immediately', () => {
+  const transient = Object.assign(new Error('temporary connection failure'), { transientRead: true });
+  const waits = [];
+  let attempts = 0;
+  assert.equal(retryRead(() => { if (++attempts < 3) throw transient; return 'verified response'; }, ms => waits.push(ms)), 'verified response');
+  assert.equal(attempts, 3);
+  assert.deepEqual(waits, [2000, 4000]);
+  attempts = 0;
+  assert.throws(() => retryRead(() => { attempts++; throw transient; }, () => {}), error => error === transient);
+  assert.equal(attempts, 4);
+  attempts = 0;
+  assert.throws(() => retryRead(() => { attempts++; throw new Error('identity or authorization failure'); }, () => assert.fail('Permanent error must not wait')), /identity or authorization/);
+  assert.equal(attempts, 1);
+});
 
 test('cancelled or superseded workflow attempts cannot register another idle worker', () => {
   const sha = 'a'.repeat(40), config = { sha, attempt: 1 };

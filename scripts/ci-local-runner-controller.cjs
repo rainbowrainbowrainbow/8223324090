@@ -35,6 +35,10 @@ function assertRun(run, config) {
   check(run.head_sha === config.sha && run.head_branch === BRANCH && run.event === 'push'
     && run.path === '.github/workflows/ci.yml' && run.repository?.full_name === REPOSITORY, 'GitHub run source identity mismatch');
 }
+function assertDiskSpace(stats) {
+  check(Number.isFinite(stats.bavail * stats.bsize) && stats.bavail * stats.bsize >= 10 * 1024 ** 3,
+    'Less than 10 GiB available for disposable job and verified archives');
+}
 function labelForJob(name) {
   const names = {
     'Fast baseline': 'fast-baseline',
@@ -116,13 +120,14 @@ async function collect(config, runnerName) {
 }
 async function runOne(config, queuedJob) {
   const label = labelForJob(queuedJob.name);
-  await control(config, 'reset');
-  await waitGuest(config);
-  const allowed = { sha: config.sha, ref: `refs/heads/${BRANCH}`, repository: REPOSITORY, workflowRef: `${REPOSITORY}/.github/workflows/ci.yml@refs/heads/${BRANCH}`, run: config.run, attempt: config.attempt };
-  ssh(config, 'sudo tee /opt/eventgenix-ci/allowed.json >/dev/null', JSON.stringify(allowed));
   const runnerName = `EventGenix-CI-${config.run}-${queuedJob.id}`;
   let runnerId, process;
   try {
+    assertDiskSpace(fs.statfsSync(config.archiveRoot));
+    await control(config, 'reset');
+    await waitGuest(config);
+    const allowed = { sha: config.sha, ref: `refs/heads/${BRANCH}`, repository: REPOSITORY, workflowRef: `${REPOSITORY}/.github/workflows/ci.yml@refs/heads/${BRANCH}`, run: config.run, attempt: config.attempt };
+    ssh(config, 'sudo tee /opt/eventgenix-ci/allowed.json >/dev/null', JSON.stringify(allowed));
     const registration = api('actions/runners/generate-jitconfig', { name: runnerName, runner_group_id: 1, labels: ['self-hosted', 'linux', 'x64', 'eventgenix-ci', label], work_folder: '_work' }, 'POST');
     runnerId = registration.runner.id;
     writeJSON(path.join(config.root, 'active-runner.json'), { runnerId, runnerName, run: config.run, sha: config.sha });
@@ -193,5 +198,5 @@ async function main(file) {
   }
   console.log(JSON.stringify({ stage: 'ALL_REQUIRED_JOBS_PASSED', run: config.run, sha: config.sha }));
 }
-module.exports = { assertRun, labelForJob };
+module.exports = { assertRun, assertDiskSpace, labelForJob };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error.message); process.exitCode = 1; });

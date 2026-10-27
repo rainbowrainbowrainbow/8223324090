@@ -3,7 +3,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { assertRun, labelForJob } = require('../scripts/ci-local-runner-controller.cjs');
+const { assertRun, assertDiskSpace, labelForJob } = require('../scripts/ci-local-runner-controller.cjs');
+
+test('stops before a new disposable job when host archive storage is insufficient or unknown', () => {
+  assert.doesNotThrow(() => assertDiskSpace({ bsize: 4096, bavail: 10 * 1024 ** 3 / 4096 }));
+  assert.throws(() => assertDiskSpace({ bsize: 4096, bavail: 1000 }), /10 GiB/);
+  assert.throws(() => assertDiskSpace({}), /10 GiB/);
+});
 
 test('accepts only exact-SHA pushes from the approved repository, branch and workflow', () => {
   const sha = 'a'.repeat(40);

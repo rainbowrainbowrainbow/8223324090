@@ -35,6 +35,11 @@ function assertRun(run, config) {
   check(run.head_sha === config.sha && run.head_branch === BRANCH && run.event === 'push'
     && run.path === '.github/workflows/ci.yml' && run.repository?.full_name === REPOSITORY, 'GitHub run source identity mismatch');
 }
+function assertAcceptsJobs(run, config) {
+  assertRun(run, config);
+  check(run.run_attempt === config.attempt && ['queued', 'in_progress'].includes(run.status)
+    && !run.conclusion, 'Workflow no longer accepts this attempt');
+}
 function assertDiskSpace(stats) {
   check(Number.isFinite(stats.bavail * stats.bsize) && stats.bavail * stats.bsize >= 10 * 1024 ** 3,
     'Less than 10 GiB available for disposable job and verified archives');
@@ -57,6 +62,10 @@ function labelForJob(name) {
   if (/^Education [a-zA-Z]+ \((chromium|webkit)\)$/.test(name)) return 'education-regressions';
   check(names[name], `Unrecognized CI job name: ${name}`);
   return names[name];
+}
+function findRegisteredJob(jobs, runnerId, runnerName, status) {
+  return jobs.find(job => job.runner_id === runnerId && job.runner_name === runnerName
+    && (!status || job.status === status));
 }
 async function control(config, operation) {
   if (!['stop', 'status'].includes(operation)) assertWindow(config);
@@ -90,7 +99,7 @@ async function waitGuest(config) {
   }
   throw new Error('Disposable guest did not become ready');
 }
-async function collect(config, runnerName) {
+async function collect(config, runnerName, runnerId) {
   const ready = ssh(config, "find /var/lib/eventgenix-ci-evidence -mindepth 2 -maxdepth 2 -name ready -type f -printf '%h\\n'").trim().split(/\r?\n/).filter(Boolean);
   for (const remote of ready) {
     check(/^\/var\/lib\/eventgenix-ci-evidence\/[a-f0-9-]{36}$/.test(remote), 'Invalid evidence request directory');
@@ -105,7 +114,7 @@ async function collect(config, runnerName) {
     check(/^[\w.-]{1,249}$/.test(m.artifact) && /^[a-f0-9]{64}$/.test(request.bundleSHA256)
       && /^[a-f0-9]{64}$/.test(request.manifestSHA256), 'Invalid archive request');
     const jobs = api(`actions/runs/${config.run}/jobs?filter=latest&per_page=100`).jobs;
-    const job = jobs.find(value => value.runner_name === runnerName && value.status === 'in_progress');
+    const job = findRegisteredJob(jobs, runnerId, runnerName, 'in_progress');
     check(job && labelForJob(job.name) === m.job, 'Evidence does not belong to the active GitHub job');
     fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
     const bundle = path.join(destination, 'evidence.jsonl.gz');
@@ -129,10 +138,12 @@ async function runOne(config, queuedJob) {
   const runnerName = `EventGenix-CI-${config.run}-${queuedJob.id}`;
   let runnerId, process;
   try {
+    assertAcceptsJobs(api(`actions/runs/${config.run}`), config);
     assertDiskSpace(fs.statfsSync(config.archiveRoot));
     await control(config, 'reset');
     await waitGuest(config);
     assertWindow(config);
+    assertAcceptsJobs(api(`actions/runs/${config.run}`), config);
     const allowed = { sha: config.sha, ref: `refs/heads/${BRANCH}`, repository: REPOSITORY, workflowRef: `${REPOSITORY}/.github/workflows/ci.yml@refs/heads/${BRANCH}`, run: config.run, attempt: config.attempt };
     ssh(config, 'sudo tee /opt/eventgenix-ci/allowed.json >/dev/null', JSON.stringify(allowed));
     assertWindow(config);
@@ -150,15 +161,23 @@ async function runOne(config, queuedJob) {
     process.on('error', error => { processError = error; done = true; });
     process.stdin.end(registration.encoded_jit_config);
     console.log(JSON.stringify({ stage: 'JOB_STARTED', label, runner: runnerName }));
+    let nextRunCheck = 0;
     while (!done) {
       assertWindow(config);
-      await collect(config, runnerName);
+      if (Date.now() >= nextRunCheck) {
+        const current = api(`actions/runs/${config.run}`);
+        assertRun(current, config);
+        check(current.run_attempt === config.attempt && (!current.conclusion || current.conclusion === 'success'),
+          'Workflow cancelled, failed or superseded during execution');
+        nextRunCheck = Date.now() + 15000;
+      }
+      await collect(config, runnerName, runnerId);
       await sleep(3000);
     }
     check(!processError, 'Runner transport failed');
     let job;
     for (let attempt = 0; attempt < 10; attempt++) {
-      job = api(`actions/runs/${config.run}/jobs?filter=latest&per_page=100`).jobs.find(value => value.runner_name === runnerName);
+      job = findRegisteredJob(api(`actions/runs/${config.run}/jobs?filter=latest&per_page=100`).jobs, runnerId, runnerName);
       if (job?.status === 'completed') break;
       await sleep(2000);
     }
@@ -227,9 +246,10 @@ async function main(file) {
     check(!all.some(job => job.status === 'completed' && job.conclusion !== 'success'), 'A required job failed');
     const queued = all.find(job => job.status === 'queued');
     if (!queued) { check(all.length === 23 && all.every(job => job.conclusion === 'success'), 'Required CI job inventory incomplete'); break; }
+    assertAcceptsJobs(latest, config);
     await runOne(config, queued);
   }
   console.log(JSON.stringify({ stage: 'ALL_REQUIRED_JOBS_PASSED', run: config.run, sha: config.sha }));
 }
-module.exports = { assertRun, assertDiskSpace, assertWindow, labelForJob };
+module.exports = { assertRun, assertAcceptsJobs, assertDiskSpace, assertWindow, labelForJob, findRegisteredJob };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error.message); process.exitCode = 1; });

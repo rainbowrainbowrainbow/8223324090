@@ -3,7 +3,26 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { assertRun, assertDiskSpace, assertWindow, labelForJob } = require('../scripts/ci-local-runner-controller.cjs');
+const { assertRun, assertAcceptsJobs, assertDiskSpace, assertWindow, labelForJob, findRegisteredJob } = require('../scripts/ci-local-runner-controller.cjs');
+
+test('cancelled or superseded workflow attempts cannot register another idle worker', () => {
+  const sha = 'a'.repeat(40), config = { sha, attempt: 1 };
+  const run = { head_sha: sha, head_branch: 'codex/ci-local-runner-20261027', event: 'push', path: '.github/workflows/ci.yml', repository: { full_name: 'rainbowrainbowrainbow/8223324090' }, run_attempt: 1, status: 'queued', conclusion: null };
+  assert.doesNotThrow(() => assertAcceptsJobs(run, config));
+  assert.doesNotThrow(() => assertAcceptsJobs({ ...run, status: 'in_progress' }, config));
+  for (const change of [{ status: 'completed', conclusion: 'cancelled' }, { status: 'completed', conclusion: 'success' }, { run_attempt: 2 }]) {
+    assert.throws(() => assertAcceptsJobs({ ...run, ...change }, config), /no longer accepts/);
+  }
+});
+
+test('reused matrix runner names cannot substitute an earlier successful registration', () => {
+  const name = 'EventGenix-CI-same-matrix-slot';
+  const earlier = { id: 101, runner_id: 30, runner_name: name, status: 'completed', conclusion: 'success' };
+  const current = { id: 102, runner_id: 31, runner_name: name, status: 'completed', conclusion: 'failure' };
+  assert.equal(findRegisteredJob([earlier, current], 31, name), current);
+  assert.equal(findRegisteredJob([earlier, { ...current, status: 'in_progress' }], 31, name, 'in_progress').id, 102);
+  assert.equal(findRegisteredJob([earlier], 31, name), undefined);
+});
 
 test('UTC deadline is enforced after waits and does not gain the local timezone offset', () => {
   const now = Date.parse('2026-10-27T20:01:00Z');

@@ -39,6 +39,10 @@ function assertDiskSpace(stats) {
   check(Number.isFinite(stats.bavail * stats.bsize) && stats.bavail * stats.bsize >= 10 * 1024 ** 3,
     'Less than 10 GiB available for disposable job and verified archives');
 }
+function assertWindow(config, now = Date.now()) {
+  const deadline = Date.parse(config.deadlineUtc);
+  check(Number.isFinite(deadline) && now < deadline, 'Authorization window expired');
+}
 function labelForJob(name) {
   const names = {
     'Fast baseline': 'fast-baseline',
@@ -55,6 +59,7 @@ function labelForJob(name) {
   return names[name];
 }
 async function control(config, operation) {
+  if (!['stop', 'status'].includes(operation)) assertWindow(config);
   const id = crypto.randomUUID();
   writeJSON(path.join(config.root, 'control', 'request.json'), { id, operation });
   const deadline = Date.now() + 120000;
@@ -114,6 +119,7 @@ async function collect(config, runnerName) {
     const signature = crypto.sign(null, Buffer.from(JSON.stringify(payload)), fs.readFileSync(path.join(config.root, 'keys', 'archive-signing-private.pem'))).toString('base64');
     const receipt = { payload, signature };
     writeJSON(receiptPath, receipt);
+    assertWindow(config);
     ssh(config, `cat > ${remote}/host-receipt.tmp && mv ${remote}/host-receipt.tmp ${remote}/host-receipt.json`, JSON.stringify(receipt));
     console.log(JSON.stringify({ stage: 'ARCHIVE_VERIFIED', job: job.name, files: result.files.length, bytes: result.bytes }));
   }
@@ -126,11 +132,14 @@ async function runOne(config, queuedJob) {
     assertDiskSpace(fs.statfsSync(config.archiveRoot));
     await control(config, 'reset');
     await waitGuest(config);
+    assertWindow(config);
     const allowed = { sha: config.sha, ref: `refs/heads/${BRANCH}`, repository: REPOSITORY, workflowRef: `${REPOSITORY}/.github/workflows/ci.yml@refs/heads/${BRANCH}`, run: config.run, attempt: config.attempt };
     ssh(config, 'sudo tee /opt/eventgenix-ci/allowed.json >/dev/null', JSON.stringify(allowed));
+    assertWindow(config);
     const registration = api('actions/runners/generate-jitconfig', { name: runnerName, runner_group_id: 1, labels: ['self-hosted', 'linux', 'x64', 'eventgenix-ci', label], work_folder: '_work' }, 'POST');
     runnerId = registration.runner.id;
     writeJSON(path.join(config.root, 'active-runner.json'), { runnerId, runnerName, run: config.run, sha: config.sha });
+    assertWindow(config);
     const log = fs.openSync(path.join(config.root, `${runnerName}.log`), 'a', 0o600);
     try {
       process = spawn('ssh.exe', [...sshArgs(config), 'cd /opt/actions-runner && export ACTIONS_RUNNER_HOOK_JOB_STARTED=/opt/eventgenix-ci/job-started.sh && export ACTIONS_RUNNER_INPUT_JITCONFIG="$(cat)" && exec ./run.sh'], { stdio: ['pipe', log, log], windowsHide: true });
@@ -142,7 +151,7 @@ async function runOne(config, queuedJob) {
     process.stdin.end(registration.encoded_jit_config);
     console.log(JSON.stringify({ stage: 'JOB_STARTED', label, runner: runnerName }));
     while (!done) {
-      check(Date.now() < Date.parse(config.deadlineUtc), 'Authorization window expired');
+      assertWindow(config);
       await collect(config, runnerName);
       await sleep(3000);
     }
@@ -171,7 +180,7 @@ async function runOne(config, queuedJob) {
 async function main(file) {
   const config = readJSON(file);
   check(config.branch === BRANCH && /^[a-f0-9]{40}$/.test(config.sha) && /^\d+$/.test(String(config.run)), 'Invalid approved source configuration');
-  check(Date.now() < Date.parse(config.deadlineUtc), 'Authorization window expired');
+  assertWindow(config);
   const run = api(`actions/runs/${config.run}`); assertRun(run, config);
   config.attempt = run.run_attempt;
   fs.mkdirSync(config.archiveRoot, { recursive: true, mode: 0o700 });
@@ -188,7 +197,7 @@ async function main(file) {
   }
   if (config.pilotOnly !== false) return;
   while (true) {
-    check(Date.now() < Date.parse(config.deadlineUtc), 'Authorization window expired');
+    assertWindow(config);
     const latest = api(`actions/runs/${config.run}`); assertRun(latest, config);
     const all = api(`actions/runs/${config.run}/jobs?filter=latest&per_page=100`).jobs;
     check(!all.some(job => job.status === 'completed' && job.conclusion !== 'success'), 'A required job failed');
@@ -198,5 +207,5 @@ async function main(file) {
   }
   console.log(JSON.stringify({ stage: 'ALL_REQUIRED_JOBS_PASSED', run: config.run, sha: config.sha }));
 }
-module.exports = { assertRun, assertDiskSpace, labelForJob };
+module.exports = { assertRun, assertDiskSpace, assertWindow, labelForJob };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error.message); process.exitCode = 1; });

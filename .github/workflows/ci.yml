@@ -14,7 +14,7 @@ concurrency:
 jobs:
   fast-baseline:
     name: Fast baseline
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","fast-baseline"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
 
     steps:
@@ -47,12 +47,15 @@ jobs:
       - name: Run Railway pre-deploy collision guard tests
         run: node --test tests/release-railway-up-predeploy.test.js
 
+      - name: Test lossless local evidence transport
+        run: node --test tests/ci-local-evidence.test.js tests/ci-local-runner-controller.test.js
+
       - name: Run fast verification baseline
         run: npm test
 
   omni-browser:
     name: Omni browser regression
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","omni-browser"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     services:
@@ -111,7 +114,7 @@ jobs:
 
       - name: Upload Omni browser diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/preserve-ci-evidence
         with:
           retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: omni-browser-${{ github.sha }}
@@ -122,7 +125,7 @@ jobs:
 
   hr-team-browser:
     name: HR Team browser smoke
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","hr-team-browser"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
 
     steps:
@@ -181,7 +184,7 @@ jobs:
 
       - name: Upload HR Checklists browser evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/preserve-ci-evidence
         with:
           retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: hr-checklists-browser
@@ -203,7 +206,7 @@ jobs:
 
   my-day-browser:
     name: My Day browser interactions
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","my-day-browser"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     services:
@@ -263,7 +266,7 @@ jobs:
 
       - name: Upload HR Checklists database evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/preserve-ci-evidence
         with:
           retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: hr-checklists-postgres
@@ -281,7 +284,7 @@ jobs:
 
       - name: Upload Wallet PostgreSQL evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/preserve-ci-evidence
         with:
           retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: wallet-ledger-postgres
@@ -289,7 +292,7 @@ jobs:
 
   certificate-regression:
     name: Certificate redemption regression
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","certificate-regression"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     services:
@@ -350,7 +353,7 @@ jobs:
 
       - name: Upload certificate browser evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/preserve-ci-evidence
         with:
           retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: certificate-regression-${{ github.sha }}
@@ -359,7 +362,7 @@ jobs:
 
   hr-payroll-postgres:
     name: HR and payroll PostgreSQL integration
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","hr-payroll-postgres"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     services:
@@ -452,7 +455,7 @@ jobs:
 
       - name: Upload isolated HR pay browser evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/preserve-ci-evidence
         with:
           retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: hr-pay-actual-app-browser
@@ -461,7 +464,7 @@ jobs:
 
   my-day-postgres:
     name: My Day PostgreSQL integration
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","my-day-postgres"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
 
     services:
@@ -503,7 +506,7 @@ jobs:
 
   checkbox-park-postgres:
     name: Checkbox park PostgreSQL mock integration
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","checkbox-park-postgres"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
 
     services:
@@ -575,7 +578,7 @@ jobs:
 
   education-regressions:
     name: Education ${{ matrix.suite }} (${{ matrix.engine }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","education-regressions"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -647,7 +650,7 @@ jobs:
         run: npm exec --yes --package=playwright -c "node tests/integration/run-education-close-ci.js ${{ matrix.suite }} ${{ matrix.engine }}"
       - name: Preserve exact attempt evidence even on failure
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/preserve-ci-evidence
         with:
           retention-days: ${{ github.ref == 'refs/heads/codex/eventgenix-production' && 14 || 7 }}
           name: education-${{ matrix.suite }}-${{ matrix.engine }}-${{ github.sha }}

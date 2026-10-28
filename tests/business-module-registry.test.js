@@ -78,6 +78,20 @@ test('Afisha module is configurable only for the Park and still requires explici
     }
 });
 
+test('scoped chat requires explicit business enablement and Guardian review stays manager-only', () => {
+    for (const context of ['event_genix', 'dar', 'fixture_studio']) {
+        const chat = registry.businessModuleCatalog(context).find(module => module.key === 'chat');
+        assert.equal(chat.status, 'limited');
+        assert.equal(chat.canEnable, true);
+        assert.deepEqual(registry.validateBusinessModules(['chat'], { contextKey: context }), ['chat']);
+        assert.equal(registry.userBusinessModuleState(actor(['chat'], context), context, 'chat').available, true);
+        assert.equal(registry.userBusinessModuleState(actor([], context), context, 'chat').available, false);
+        assert.equal(registry.canReviewBusinessGuardian(actor(['chat'], context, 'director'), context), true);
+        assert.equal(registry.canReviewBusinessGuardian(actor(['chat'], context, 'animator'), context), false);
+        assert.equal(registry.canReviewBusinessGuardian(actor([], context, 'director'), context), false);
+    }
+});
+
 test('module capability does not grant an employee settings permission or bypass revoked membership', () => {
     const user = actor(['timeline'], 'fixture_studio', 'animator');
     assert.equal(registry.userBusinessModuleState(user, 'fixture_studio', 'timeline').available, true);

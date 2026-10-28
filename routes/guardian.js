@@ -37,6 +37,22 @@ const log = createLogger('GuardianRoute');
 
 // All guardian routes require authentication
 router.use(authenticateToken);
+router.use(async (req, res, next) => {
+    try {
+        const pathChannelId = /^(?:\/health\/|\/mood\/channel\/|\/analytics\/heatmap\/|\/toggle\/)(\d+)$/.exec(req.path)?.[1];
+        for (const value of [pathChannelId, req.query?.channelId, req.body?.channelId]) {
+            if (value === undefined || value === null || value === '') continue;
+            const id = Number(value);
+            if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid channel ID' });
+            const owner = await pool.query('SELECT business_context FROM chat_channels WHERE id = $1', [id]);
+            if (owner.rows[0]?.business_context) return res.status(404).json({ error: 'Channel not found' });
+        }
+        next();
+    } catch (error) {
+        log.error('Guardian channel ownership guard failed', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 const GUARDIAN_ADMIN_ROLES = ['creator', 'director', 'admin'];
 const GUARDIAN_OPS_ROLES = ['creator', 'director', 'admin', 'security'];
@@ -194,7 +210,7 @@ router.get('/reports', async (req, res) => {
         let query = `
             SELECT gr.*, cc.name AS channel_name, cc.slug AS channel_slug
             FROM guardian_reports gr
-            LEFT JOIN chat_channels cc ON cc.id = gr.channel_id
+            JOIN chat_channels cc ON cc.id = gr.channel_id AND cc.business_context IS NULL
         `;
         const params = [];
         if (channelId) {
@@ -257,7 +273,7 @@ router.get('/actions', requireGuardianAdmin, async (req, res) => {
             FROM guardian_actions ga
             LEFT JOIN users u ON u.id = ga.target_user_id
             LEFT JOIN chat_channels cc ON cc.id = ga.channel_id
-            WHERE 1=1
+            WHERE (ga.channel_id IS NULL OR cc.business_context IS NULL)
         `;
         const params = [];
 
@@ -303,7 +319,7 @@ router.get('/mutes/active', async (req, res) => {
             FROM chat_mutes cm
             JOIN users u ON u.id = cm.user_id
             LEFT JOIN chat_channels cc ON cc.id = cm.channel_id
-            WHERE cm.muted_until > NOW()
+            WHERE cm.muted_until > NOW() AND cc.business_context IS NULL
         `;
         if (!hasExactRole(req, GUARDIAN_ADMIN_ROLES)) {
             params.push(getCurrentUserId(req));
@@ -470,7 +486,7 @@ router.get('/ops/reliability', requireGuardianOps, async (req, res) => {
                 FROM chat_mutes cm
                 JOIN users u ON u.id = cm.user_id
                 LEFT JOIN chat_channels cc ON cc.id = cm.channel_id
-                WHERE cm.muted_until > NOW()
+                WHERE cm.muted_until > NOW() AND cc.business_context IS NULL
                 ORDER BY cm.muted_until ASC
                 LIMIT $1
             `, [limit]),
@@ -481,6 +497,7 @@ router.get('/ops/reliability', requireGuardianOps, async (req, res) => {
                 FROM guardian_actions ga
                 LEFT JOIN users u ON u.id = ga.target_user_id
                 LEFT JOIN chat_channels cc ON cc.id = ga.channel_id
+                WHERE ga.channel_id IS NULL OR cc.business_context IS NULL
                 ORDER BY ga.created_at DESC
                 LIMIT $1
             `, [limit]),
@@ -492,6 +509,7 @@ router.get('/ops/reliability', requireGuardianOps, async (req, res) => {
                 FROM guardian_moderation_counters gmc
                 LEFT JOIN users u ON u.id = gmc.user_id
                 LEFT JOIN chat_channels cc ON cc.id = gmc.last_channel_id
+                WHERE gmc.last_channel_id IS NULL OR cc.business_context IS NULL
                 ORDER BY gmc.updated_at DESC
                 LIMIT $1
             `, [limit])
@@ -1157,7 +1175,7 @@ router.get('/health', async (req, res) => {
             SELECT DISTINCT ON (gch.channel_id)
                 gch.channel_id, cc.name AS channel_name, gch.score, gch.level
             FROM guardian_channel_health gch
-            LEFT JOIN chat_channels cc ON cc.id = gch.channel_id
+            JOIN chat_channels cc ON cc.id = gch.channel_id AND cc.business_context IS NULL
             ORDER BY gch.channel_id, gch.calculated_at DESC
         `);
         res.json(result.rows.map(r => ({
@@ -1293,7 +1311,7 @@ router.get('/mood/team', requireGuardianAdmin, async (req, res) => {
             pool.query(`
                 SELECT gmt.channel_id, cc.name, AVG(gmt.score) AS avg_score
                 FROM guardian_mood_tracking gmt
-                LEFT JOIN chat_channels cc ON cc.id = gmt.channel_id
+                JOIN chat_channels cc ON cc.id = gmt.channel_id AND cc.business_context IS NULL
                 WHERE gmt.analyzed_at > NOW() - $1::interval AND gmt.channel_id IS NOT NULL
                 GROUP BY gmt.channel_id, cc.name
                 ORDER BY avg_score ASC
@@ -1550,11 +1568,11 @@ router.get('/analytics/overview', requireGuardianAdmin, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT
-                (SELECT COUNT(*) FROM chat_messages) AS total_messages,
+                (SELECT COUNT(*) FROM chat_messages cm JOIN chat_channels cc ON cc.id = cm.channel_id WHERE cc.business_context IS NULL) AS total_messages,
                 (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'mute') AS total_mutes,
                 (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'mask') AS total_masks,
                 (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'conflict') AS total_conflicts,
-                (SELECT COUNT(DISTINCT channel_id) FROM chat_messages WHERE created_at > NOW() - INTERVAL '24 hours') AS active_channels,
+                (SELECT COUNT(DISTINCT cm.channel_id) FROM chat_messages cm JOIN chat_channels cc ON cc.id = cm.channel_id WHERE cc.business_context IS NULL AND cm.created_at > NOW() - INTERVAL '24 hours') AS active_channels,
                 (SELECT AVG(score) FROM guardian_channel_health WHERE calculated_at > NOW() - INTERVAL '24 hours') AS health_avg,
                 (SELECT AVG(score) FROM guardian_mood_tracking WHERE analyzed_at > NOW() - INTERVAL '24 hours') AS mood_avg
         `);

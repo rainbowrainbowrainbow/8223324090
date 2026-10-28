@@ -102,6 +102,10 @@ function createFakePool() {
             /UPDATE users SET last_seen_at/i.test(text)) {
             return { rows: [], rowCount: 0 };
         }
+        if (/^SELECT c\.business_context FROM chat_messages m JOIN chat_channels c ON c\.id = m\.channel_id WHERE m\.id = \$1$/i.test(text)) {
+            const msg = state.messages.get(Number(params[0]));
+            return { rows: msg ? [{ business_context: null }] : [], rowCount: msg ? 1 : 0 };
+        }
 
         if (/SELECT id, channel_id, content FROM chat_messages WHERE id = \$1/i.test(text)) {
             const msg = state.messages.get(Number(params[0]));

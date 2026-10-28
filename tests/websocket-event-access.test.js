@@ -23,6 +23,7 @@ function fixture(t) {
             organization_id: 7, context_key: context, access_mode: 'membership', business_status: 'active', organization_status: 'active' })),
         tasks: [{ id: 51, business_context: 'event_genix' }], taskVisible: true,
         channels: [{ id: 4, type: 'general', is_archived: false }], channelMember: true,
+        guardianActions: [{ id: 81, channel_id: 4, business_context: 'event_genix' }],
         bookings: [{ id: 'BK-TEST-1', business_context: 'event_genix', created_by: 'other_fixture' }],
         sharedOrganization: true, organizations: [{ id: 7 }], attendance: [{ id: 61, business_context: 'event_genix' }],
         fail: null, membershipFail: null
@@ -47,6 +48,10 @@ function fixture(t) {
             assert.equal(params[1], user.id);
             assert.match(text, /COALESCE\(c.is_archived, false\) = false/);
             return { rows: state.channelMember ? state.channels.filter(row => row.id === params[0] && !row.is_archived) : [] };
+        }
+        if (text.includes('FROM guardian_business_actions')) {
+            return { rows: state.guardianActions.filter(row => row.id === params[0]
+                && row.channel_id === params[1] && row.business_context === params[2]) };
         }
         if (text.startsWith('SELECT b.* FROM bookings b')) return { rows: state.bookings.filter(row => row.id === params[0]) };
         if (text.includes('FROM organization_memberships recipient')) {
@@ -167,6 +172,37 @@ test('general/room/DM channels preserve pre-cutover Park membership compatibilit
     f.state.channelMember = false;
     assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), false);
     assert.equal(await f.canReceiveEvent(f.user, 'chat:mention', { channelId: 4 }, { delivery: 'user' }), false);
+});
+
+test('owned chat delivery requires current membership, enabled module and matching context', async t => {
+    const f = fixture(t);
+    f.state.channels[0].business_context = 'event_genix';
+    f.state.memberships[0].business_modules = ['chat'];
+    assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), true);
+    assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4, businessContext: 'dar' }), false);
+    f.state.memberships[0].business_modules = [];
+    assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), false);
+    f.state.memberships[0].business_modules = ['chat'];
+    f.state.memberships.shift();
+    assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), false);
+    preCutoverPark(f);
+    assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), false);
+});
+
+test('business Guardian alerts reach only current managers of the owning business', async t => {
+    const f = fixture(t);
+    f.state.memberships[0].business_modules = ['chat'];
+    const alert = { actionId: 81, channelId: 4, businessContext: 'event_genix', reason: 'Synthetic block' };
+    assert.equal(await f.canReceiveEvent(f.user, 'guardian:business-alert', alert, { delivery: 'user' }), true);
+    assert.equal(await f.canReceiveEvent(f.user, 'guardian:business-alert',
+        { ...alert, businessContext: 'dar' }, { delivery: 'user' }), false);
+    f.state.memberships[0].role = 'animator';
+    assert.equal(await f.canReceiveEvent(f.user, 'guardian:business-alert', alert, { delivery: 'user' }), false);
+    f.state.memberships[0].role = 'director';
+    f.state.memberships[0].business_modules = [];
+    assert.equal(await f.canReceiveEvent(f.user, 'guardian:business-alert', alert, { delivery: 'user' }), false);
+    f.state.memberships.shift();
+    assert.equal(await f.canReceiveEvent(f.user, 'guardian:business-alert', alert, { delivery: 'user' }), false);
 });
 
 test('channel IDs and archived channels fail closed for messages, mentions and invitations', async t => {

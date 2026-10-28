@@ -1374,7 +1374,7 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
         try {
             const newUserId = result.rows[0].id;
             const defaultChannels = await pool.query(
-                'SELECT id FROM chat_channels WHERE is_default = true'
+                'SELECT id FROM chat_channels WHERE is_default = true AND business_context IS NULL'
             );
             for (const ch of defaultChannels.rows) {
                 await pool.query(

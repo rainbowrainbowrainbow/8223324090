@@ -1114,8 +1114,11 @@ function getLegacyBusinessSurfaceAvailability(surface = 'catalogs') {
         && profile.activeBusinessId === scope.activeContext);
     const recovered = ['certificates', 'art'].includes(key)
         && profile?.activeProfile?.legacySurfaces?.[key]?.available === true;
-    const available = ready && (profile.membershipMode === 'compatibility' || recovered)
-        && scope.mode === CRM_BUSINESS_SCOPE_SINGLE && scope.activeContext === CRM_BUSINESS_DEFAULT_CONTEXT;
+    const scopedChat = key === 'chat' && profile?.membershipMode === 'membership'
+        && profile?.activeProfile?.modules?.enabled?.chat === true;
+    const available = ready && scope.mode === CRM_BUSINESS_SCOPE_SINGLE
+        && ((scopedChat || recovered) || (profile.membershipMode === 'compatibility'
+            && scope.activeContext === CRM_BUSINESS_DEFAULT_CONTEXT));
     return {
         available,
         code: available ? null : `${key}_not_migrated`,

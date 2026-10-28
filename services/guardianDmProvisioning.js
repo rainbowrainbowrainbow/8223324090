@@ -40,6 +40,7 @@ async function provisionGuardianDirectorDm({ pool, guardianId, directorId }) {
             SELECT *
             FROM chat_channels
             WHERE slug = $1
+              AND business_context IS NULL
               AND COALESCE(is_archived, false) = false
             ORDER BY id ASC
             LIMIT 1
@@ -58,6 +59,7 @@ async function provisionGuardianDirectorDm({ pool, guardianId, directorId }) {
                 JOIN chat_channel_members m1 ON m1.channel_id = c.id AND m1.user_id = $1
                 JOIN chat_channel_members m2 ON m2.channel_id = c.id AND m2.user_id = $2
                 WHERE c.is_dm = true
+                  AND c.business_context IS NULL
                   AND COALESCE(c.is_archived, false) = false
                 ORDER BY c.id ASC
                 LIMIT 1

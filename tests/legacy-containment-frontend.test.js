@@ -127,7 +127,7 @@ async function chatActionsSetup() {
     const calls = [];
     w._headers = () => ({});
     w._esc = value => String(value ?? '');
-    for (const name of ['_closeChatTransientPanels', '_renderChannels', '_rememberPendingDialogOpen', '_showDialogLoadingState', '_renderDialogEmptyState', '_chatBootStep']) w[name] = () => {};
+    for (const name of ['_closeChatTransientPanels', '_renderChannels', '_rememberPendingDialogOpen', '_showDialogLoadingState', '_hideDialogTransientStates', '_renderDialogEmptyState', '_chatBootStep']) w[name] = () => {};
     w._selectChannel = async () => {};
     w._ensureAssistantDialogChannelFromBridge = async () => null;
     w._resolveInitialChannelTarget = () => null;
@@ -143,6 +143,42 @@ async function chatActionsSetup() {
     return h;
 }
 
+test('chat denial replaces the loading spinner with an unavailable state', async () => {
+    const h = await setup(read('chat.html'));
+    try {
+        const w = h.w;
+        w._esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+        w.eval('var _chatActionError = null; var _currentChannel = null;');
+        w.eval(fragment('js/chat-page.js', '    function _setChatActionError(', '    function _toPositiveId('));
+        w.eval(fragment('js/chat-page.js', '    function _setChatComposerEnabled(', '    function _setOmniMode('));
+
+        w._showDialogLoadingState();
+        assert.ok(w.document.querySelector('.chat-dialog-spinner'));
+        w._handleChatInitError({ code: 'chat_not_migrated', message: 'Спільний чат недоступний до розмежування даних.' });
+
+        const state = w.document.getElementById('chatDialogState');
+        assert.equal(state.className, 'chat-dialog-state visible empty');
+        assert.equal(state.getAttribute('role'), 'alert');
+        assert.doesNotMatch(state.innerHTML, /chat-dialog-spinner|data-omni-action/);
+        assert.match(state.textContent, /Спільний чат недоступний до розмежування даних/);
+        assert.equal(w.document.getElementById('chatNewDm').disabled, true);
+        assert.equal(w.document.getElementById('chatNewChannel').disabled, true);
+        assert.equal(w.document.getElementById('chatChannelsList').textContent, 'Чат недоступний у цьому кабінеті');
+
+        w._showDialogLoadingState();
+        w._handleChatInitError({ code: 'business_module_disabled', message: 'Чат вимкнено у цьому бізнесі.' });
+        assert.equal(state.className, 'chat-dialog-state visible empty');
+        assert.match(state.textContent, /Чат вимкнено у цьому бізнесі/);
+        assert.equal(w.document.getElementById('chatNewDm').disabled, true);
+
+        w._showDialogLoadingState();
+        assert.equal(state.hasAttribute('role'), false);
+        w._handleChatInitError(new Error('Synthetic runtime failure'));
+        assert.equal(state.className, 'chat-dialog-state hidden');
+        assert.match(w.document.getElementById('chatMessages').textContent, /Synthetic runtime failure/);
+    } finally { h.close(); }
+});
+
 test('fatal chat initialization disables creation and retry restores the valid create flow', async () => {
     const h = await chatActionsSetup();
     try {
@@ -154,6 +190,8 @@ test('fatal chat initialization disables creation and retry restores the valid c
         assert.equal(h.calls.length, 0);
         await w._init();
         assert.equal(w.document.getElementById('chatNewChannel').disabled, false);
+        assert.equal(w.document.getElementById('chatNewDm').disabled, false);
+        assert.equal(w.document.getElementById('chatNewDm').title, 'Особисте повідомлення');
         w.document.getElementById('chatNewChannel').click();
         await settle();
         w.document.getElementById('chatNewChannelName').value = 'Synthetic channel';
@@ -178,6 +216,17 @@ test('chat namespace denial keeps create disabled but a per-channel mute does no
         assert.equal(w.document.getElementById('chatNewChannelCreate').disabled, true);
         assert.equal(w.document.getElementById('chatNewChannel').disabled, true);
         assert.equal(w.document.getElementById('chatNewChannelName').value, 'Retained draft');
+    } finally { h.close(); }
+});
+
+test('chat refresh keeps a business denial visible without offering another retry', async () => {
+    const h = await chatActionsSetup();
+    try {
+        h.w.fetch = async () => response(403, { error: 'Shared chat unavailable', code: 'chat_not_migrated' });
+        await h.w._loadChannels();
+        assert.equal(h.w.document.getElementById('chatChannelsList').textContent, 'Чат недоступний у цьому кабінеті');
+        assert.equal(h.w.document.getElementById('chatNewDm').disabled, true);
+        assert.equal(h.w.document.getElementById('chatNewChannel').disabled, true);
     } finally { h.close(); }
 });
 

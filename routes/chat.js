@@ -20,7 +20,9 @@ const { callUnifiedChatCompletion } = require('../services/ai-config');
 const { emitTaskCreatedNotificationOutboxEvent } = require('../services/notificationOutbox');
 
 const { authenticateToken, requireRole, ROLE_HIERARCHY } = require('../middleware/auth');
-const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurface');
+const { resolveBusinessScope, BUSINESS_SCOPE_SINGLE } = require('../services/businessContext');
+const { userBusinessModuleState, canReviewBusinessGuardian } = require('../services/businessModuleRegistry');
 
 const log = createLogger('ChatAPI');
 
@@ -29,7 +31,85 @@ const CHAT_ACCESS_ROLES = ROLE_HIERARCHY.filter(role => role !== 'waiter');
 // All chat routes require authentication and /chat page-level access.
 router.use(authenticateToken);
 router.use(requireRole(...CHAT_ACCESS_ROLES));
-router.use(requireLegacyBusinessSurface('chat'));
+
+function isScopedChatRoute(method, path) {
+    if (method === 'GET' && ['/channels', '/unread', '/users', '/guardian/actions'].includes(path)) return true;
+    if (method === 'POST' && ['/channels', '/dm'].includes(path)) return true;
+    if (/^\/channels\/\d+\/messages$/.test(path)) return ['GET', 'POST'].includes(method);
+    if (/^\/channels\/\d+\/messages\/after\/\d+$/.test(path)) return method === 'GET';
+    if (/^\/channels\/\d+\/members$/.test(path)) return ['GET', 'POST'].includes(method);
+    if (/^\/channels\/\d+\/read$/.test(path)) return method === 'PUT';
+    if (/^\/channels\/\d+\/pinned$/.test(path)) return method === 'GET';
+    return false;
+}
+
+async function legacyChatOwnerMatches(req) {
+    const path = req.path;
+    const pool = require('../db').pool;
+    const channelMatch = /^\/channels\/(\d+)(?:\/|$)/.exec(path);
+    const messageMatch = /^\/messages\/(\d+)(?:\/|$)/.exec(path);
+    const pollMatch = /^\/polls\/(\d+)(?:\/|$)/.exec(path);
+    const references = [
+        channelMatch && ['SELECT business_context FROM chat_channels WHERE id = $1', Number(channelMatch[1])],
+        messageMatch && ['SELECT c.business_context FROM chat_messages m JOIN chat_channels c ON c.id = m.channel_id WHERE m.id = $1', Number(messageMatch[1])],
+        pollMatch && ['SELECT c.business_context FROM chat_polls p JOIN chat_channels c ON c.id = p.channel_id WHERE p.id = $1', Number(pollMatch[1])],
+        req.body?.channelId && ['SELECT business_context FROM chat_channels WHERE id = $1', Number(req.body.channelId)],
+        req.body?.messageId && ['SELECT c.business_context FROM chat_messages m JOIN chat_channels c ON c.id = m.channel_id WHERE m.id = $1', Number(req.body.messageId)],
+        req.query?.channel_id && ['SELECT business_context FROM chat_channels WHERE id = $1', Number(req.query.channel_id)]
+    ].filter(Boolean);
+    for (const [sql, id] of references) {
+        if (!Number.isSafeInteger(id) || id < 1) return false;
+        const result = await pool.query(sql, [id]);
+        if (result.rows[0]?.business_context) return false;
+    }
+    return true;
+}
+
+router.use(async function chatBusinessScopeGuard(req, res, next) {
+    try {
+        const legacy = legacyBusinessSurfaceAccess(req, 'chat');
+        if (legacy.available) {
+            req.chatBusinessContext = null;
+            if (!await legacyChatOwnerMatches(req)) {
+                return res.status(404).json({ error: 'Chat resource not found' });
+            }
+            return next();
+        }
+        const scope = resolveBusinessScope(req);
+        if (scope.invalid || scope.mode !== BUSINESS_SCOPE_SINGLE || !req.user.businessMembershipAccess?.membershipEnabled) {
+            return res.status(legacy.status).json({ success: false, code: legacy.code, error: legacy.message });
+        }
+        const module = userBusinessModuleState(req.user, scope.activeContext, 'chat');
+        if (!module.available) {
+            return res.status(403).json({ success: false, code: module.code, error: module.message });
+        }
+        const method = req.method.toUpperCase();
+        const path = req.path.replace(/\/$/, '') || '/';
+        if (!isScopedChatRoute(method, path)) {
+            return res.status(403).json({ success: false, code: 'chat_feature_not_migrated',
+                error: 'Ця функція чату ще недоступна в бізнесовому кабінеті.' });
+        }
+        req.chatBusinessContext = scope.activeContext;
+        const channel = /^\/channels\/(\d+)(?:\/|$)/.exec(path);
+        if (channel) {
+            const result = await require('../db').pool.query(
+                'SELECT business_context FROM chat_channels WHERE id = $1', [Number(channel[1])]);
+            if (result.rows[0]?.business_context !== scope.activeContext) {
+                return res.status(404).json({ error: 'Channel not found' });
+            }
+            if (method === 'POST' && /^\/channels\/\d+\/messages$/.test(path) && req.body?.replyTo) {
+                const reply = await require('../db').pool.query(
+                    'SELECT 1 FROM chat_messages WHERE id = $1 AND channel_id = $2',
+                    [Number(req.body.replyTo), Number(channel[1])]);
+                if (!reply.rows.length) return res.status(400).json({ error: 'Invalid reply target' });
+            }
+        }
+        next();
+    } catch (error) {
+        log.error('Chat business scope guard failed', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 // Chat message rate limiter: max 1 msg per 500ms per user, 60 msgs/min per channel
 const _chatRateLimits = new Map(); // userId → { lastSent, channelCounts: Map<channelId, {count, resetAt}> }
@@ -437,8 +517,9 @@ async function provisionRoomChatChannel({ pool, lineId, userId }) {
 router.get('/channels', async (req, res) => {
     try {
         const userId = getCurrentUserId(req);
-        await chat.ensureDefaultMemberships(userId);
-        const channels = await chat.getChannels(userId);
+        await chat.ensureDefaultMemberships(userId, req.chatBusinessContext);
+        const channels = (await chat.getChannels(userId))
+            .filter(channel => channel.businessContext === req.chatBusinessContext);
         res.json(channels);
     } catch (err) {
         log.error('Error fetching channels', err);
@@ -505,8 +586,10 @@ router.post('/channels/:id/messages', async (req, res) => {
 
         // Guardian: pre-check BEFORE saving (mute + keyword + LLM profanity)
         const username = req.user.username || req.user.name || 'unknown';
-        const preCheck = await guardian.preCheckMessage({
+        const preCheck = await (req.chatBusinessContext
+            ? guardian.preCheckBusinessMessage : guardian.preCheckMessage)({
             channelId,
+            businessContext: req.chatBusinessContext,
             userId,
             username,
             content: content.trim()
@@ -520,12 +603,15 @@ router.post('/channels/:id/messages', async (req, res) => {
             content: content.trim(),
             replyTo: replyTo || null,
             clientMessageId: clientMessageId || null,
-            metadata: metadata || null
+            metadata: req.chatBusinessContext ? null : (metadata || null),
+            businessContext: req.chatBusinessContext
         });
 
         // Track activity stats (fire-and-forget)
-        chat.updateActivityStats(userId, 'messages_sent').catch(() => {});
-        if (replyTo) chat.updateActivityStats(userId, 'replies_sent').catch(() => {});
+        if (!req.chatBusinessContext) {
+            chat.updateActivityStats(userId, 'messages_sent').catch(() => {});
+            if (replyTo) chat.updateActivityStats(userId, 'replies_sent').catch(() => {});
+        }
 
         // Broadcast to channel members via WebSocket (fire-and-forget after commit)
         broadcastToChannel(channelId, 'chat:message', {
@@ -535,7 +621,7 @@ router.post('/channels/:id/messages', async (req, res) => {
 
         // v33.7.0: BK preview — fire-and-forget
         const _bkMatch = content.match(/\bBK-\d{4}-\d{4,}\b/i);
-        if (_bkMatch) {
+        if (_bkMatch && !req.chatBusinessContext) {
             const _bkId = _bkMatch[0].toUpperCase();
             const _msgId = message.id;
             setImmediate(async () => {
@@ -577,20 +663,20 @@ router.post('/channels/:id/messages', async (req, res) => {
         }
 
         // Push notifications for offline users (fire-and-forget)
-        sendPushToChannel(channelId, userId, message.displayName || message.username, message.content);
+        if (!req.chatBusinessContext) sendPushToChannel(channelId, userId, message.displayName || message.username, message.content);
 
         // Bot processing (fire-and-forget — don't block response)
-        processBotMessage(message).catch(err => {
+        if (!req.chatBusinessContext) processBotMessage(message).catch(err => {
             log.error('Bot processing error', err);
         });
 
         // Guardian background processing (mask sensitive data, detect conflicts)
-        guardian.processMessage(message).catch(err => {
+        if (!req.chatBusinessContext) guardian.processMessage(message).catch(err => {
             log.error('Guardian processing error', err);
         });
 
         // Link preview processing (fire-and-forget — sends WS update when ready)
-        linkPreview.processMessageLinks(message.id, content).then(ogData => {
+        if (!req.chatBusinessContext) linkPreview.processMessageLinks(message.id, content).then(ogData => {
             if (ogData) {
                 broadcastToChannel(channelId, 'chat:link-preview', {
                     channelId,
@@ -605,7 +691,7 @@ router.post('/channels/:id/messages', async (req, res) => {
         res.status(201).json(message);
     } catch (err) {
         log.error('Error sending message', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({ error: err.statusCode === 403 ? 'Chat access revoked' : 'Internal server error' });
     }
 });
 
@@ -772,8 +858,8 @@ router.delete('/messages/:id/reactions/:emoji', async (req, res) => {
 router.get('/unread', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
-        await chat.ensureDefaultMemberships(userId);
-        const counts = await chat.getUnreadCounts(userId);
+        await chat.ensureDefaultMemberships(userId, req.chatBusinessContext);
+        const counts = await chat.getUnreadCounts(userId, req.chatBusinessContext);
         res.json(counts);
     } catch (err) {
         log.error('Error fetching unread counts', err);
@@ -784,10 +870,23 @@ router.get('/unread', async (req, res) => {
 // GET /api/chat/users — user list for @mention autocomplete
 router.get('/users', async (req, res) => {
     try {
-        const users = await chat.getChatUsers();
+        const users = await chat.getChatUsers(req.chatBusinessContext);
         res.json(users);
     } catch (err) {
         log.error('Error fetching chat users', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/guardian/actions', async (req, res) => {
+    if (!req.chatBusinessContext || !canReviewBusinessGuardian(req.user, req.chatBusinessContext)) {
+        return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    try {
+        const actions = await guardian.getBusinessGuardianActions(req.chatBusinessContext, req.query.limit);
+        res.json(actions);
+    } catch (error) {
+        log.error('Error fetching business Guardian actions', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -801,7 +900,8 @@ router.post('/channels', async (req, res) => {
             return res.status(400).json({ error: 'Channel name is required' });
         }
         const slug = name.trim().toLowerCase().replace(/[^a-zа-яіїєґ0-9]/gi, '-').replace(/-+/g, '-');
-        const channel = await chat.createChannel(slug, '#' + name.trim(), description || '', userId);
+        const channel = await chat.createChannel(slug, '#' + name.trim(), description || '', userId,
+            req.chatBusinessContext);
         res.status(201).json(channel);
     } catch (err) {
         if (err.code === '23505') {
@@ -1090,10 +1190,14 @@ router.post('/dm', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
         const { targetUserId } = req.body;
-        if (!targetUserId || targetUserId === userId) {
+        const parsedTargetId = parseId(targetUserId);
+        if (!parsedTargetId || parsedTargetId === userId) {
             return res.status(400).json({ error: 'Invalid target user' });
         }
-        const channel = await chat.getOrCreateDM(userId, parseInt(targetUserId, 10));
+        if (req.chatBusinessContext && !await chat.isUserInBusiness(parsedTargetId, req.chatBusinessContext)) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        const channel = await chat.getOrCreateDM(userId, parsedTargetId, req.chatBusinessContext);
         res.json(channel);
     } catch (err) {
         log.error('Error creating DM', err);
@@ -1113,6 +1217,9 @@ router.post('/channels/:id/members', requireChannelMember, async (req, res) => {
         }
         if (isNaN(channelId) || !targetUserId) {
             return res.status(400).json({ error: 'Invalid channel or user ID' });
+        }
+        if (req.chatBusinessContext && !await chat.isUserInBusiness(parseId(targetUserId), req.chatBusinessContext)) {
+            return res.status(404).json({ error: 'User not found' });
         }
         await chat.addMember(channelId, parseInt(targetUserId, 10));
 

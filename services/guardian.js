@@ -1037,7 +1037,7 @@ function quickToxicityCheck(content) {
 const _llmCache = new Map(); // simple cache to avoid duplicate calls
 const LLM_CACHE_TTL = 60000; // 1 min
 
-async function llmProfanityCheck(content) {
+async function llmProfanityCheck(content, { logResult = true } = {}) {
     if (!AI_ENABLED) return null;
     // Skip very short or very long messages
     if (content.length < 3 || content.length > 500) return null;
@@ -1090,7 +1090,7 @@ async function llmProfanityCheck(content) {
 
         _llmCache.set(cacheKey, { ts: Date.now(), result: res });
 
-        if (res.toxic) {
+        if (res.toxic && logResult) {
             log.info(`LLM detected profanity: "${content}" → ${res.reason} [${res.words.join(', ')}]`);
         }
 
@@ -1563,7 +1563,7 @@ async function runDailyReports() {
             SELECT c.id, c.name, c.slug
             FROM chat_channels c
             JOIN chat_channel_members m ON m.channel_id = c.id AND m.user_id = $1
-            WHERE c.is_dm = false OR c.is_dm IS NULL
+            WHERE c.business_context IS NULL AND (c.is_dm = false OR c.is_dm IS NULL)
         `, [guardianId]);
 
         const allReports = [];
@@ -1861,6 +1861,128 @@ async function preCheckMessage({ channelId, userId, username, content }) {
     return { blocked: false };
 }
 
+async function preCheckBusinessMessage({ channelId, businessContext, userId, username, content }) {
+    if (!content) return { blocked: false };
+    const membershipSql = `
+        SELECT c.id FROM chat_channels c
+        JOIN businesses b ON b.context_key = c.business_context AND b.status = 'active'
+        JOIN organizations o ON o.id = b.organization_id AND o.status = 'active'
+        JOIN business_memberships bm ON bm.business_id = b.id AND bm.user_id = $3 AND bm.is_active IS TRUE
+        JOIN organization_memberships om ON om.organization_id = o.id AND om.user_id = $3 AND om.is_active IS TRUE
+        JOIN chat_channel_members cm ON cm.channel_id = c.id AND cm.user_id = $3
+        WHERE c.id = $1 AND c.business_context = $2 AND COALESCE(c.is_archived, false) = false`;
+    const access = await pool.query(membershipSql, [channelId, businessContext, userId]);
+    if (!access.rows.length) throw new Error('Business chat moderation access denied');
+
+    const activeMute = await pool.query(`
+        SELECT muted_until FROM guardian_business_actions
+        WHERE channel_id = $1 AND user_id = $2 AND business_context = $3
+          AND action_type = 'block_precheck' AND muted_until > NOW()
+        ORDER BY muted_until DESC LIMIT 1
+    `, [channelId, userId, businessContext]);
+    if (activeMute.rows.length) {
+        return { blocked: true, reason: 'muted', message: '🛡️ Ви заблоковані в цьому чаті. Зачекайте завершення блокування.' };
+    }
+
+    // Use the same keyword, sensitive-data and LLM checks as legacy Guardian.
+    const words = quickToxicityCheck(content);
+    const llmResult = !words && AI_ENABLED && content.length >= 3
+        ? await llmProfanityCheck(content, { logResult: false }) : null;
+    if (!words && !llmResult?.toxic) return { blocked: false };
+    const blockedWords = words || llmResult.words || [];
+    const isRussian = blockedWords.some(word => String(word).includes('російська'));
+    const isSensitive = blockedWords.some(_isSensitiveGuardianToken);
+    const publicReason = isRussian ? GUARDIAN_RUSSIAN_PUBLIC_REASON
+        : (isSensitive ? GUARDIAN_SENSITIVE_PUBLIC_REASON : GUARDIAN_PROFANITY_PUBLIC_REASON);
+    const source = words ? (isRussian ? 'language' : (isSensitive ? 'sensitive' : 'keyword')) : 'llm';
+    const response = buildGuardianBlockedResponse({ publicReason, words: blockedWords, source,
+        ownerReason: llmResult?.reason ? `${publicReason} AI: ${llmResult.reason}` : '' });
+    const client = await pool.connect();
+    let action;
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`guardian-business:${channelId}:${userId}`]);
+        const currentAccess = await client.query(`${membershipSql} FOR SHARE OF c, b, o, bm, om, cm`,
+            [channelId, businessContext, userId]);
+        if (!currentAccess.rows.length) throw new Error('Business chat moderation access revoked');
+        const currentMute = await client.query(`
+            SELECT muted_until FROM guardian_business_actions
+            WHERE channel_id = $1 AND user_id = $2 AND business_context = $3
+              AND action_type = 'block_precheck' AND muted_until > NOW()
+            ORDER BY muted_until DESC LIMIT 1
+        `, [channelId, userId, businessContext]);
+        if (currentMute.rows.length) {
+            await client.query('COMMIT');
+            return { blocked: true, reason: 'muted', message: '🛡️ Ви заблоковані в цьому чаті. Зачекайте завершення блокування.' };
+        }
+        const incidents = await client.query(`
+            SELECT COUNT(*)::int AS count FROM guardian_business_actions
+            WHERE business_context = $1 AND user_id = $2 AND action_type = 'block_precheck'
+              AND created_at >= NOW() - INTERVAL '24 hours'
+        `, [businessContext, userId]);
+        const levels = await client.query(`
+            SELECT level, threshold, mute_duration_minutes FROM guardian_escalation_config ORDER BY level ASC
+        `);
+        const count = Number(incidents.rows[0]?.count || 0);
+        let minutes = 1;
+        for (const level of levels.rows) {
+            if (count >= Number(level.threshold)) minutes = Math.max(minutes, Number(level.mute_duration_minutes) || 1);
+        }
+        const mutedUntil = new Date(Date.now() + minutes * 60 * 1000);
+        const inserted = await client.query(`
+            INSERT INTO guardian_business_actions
+                (business_context, channel_id, user_id, action_type, reason, source, details, muted_until)
+            VALUES ($1, $2, $3, 'block_precheck', $4, $5, $6::jsonb, $7)
+            RETURNING id, muted_until
+        `, [businessContext, channelId, userId, publicReason, source,
+            JSON.stringify({ words: blockedWords.slice(0, 10), ownerReason: response.ownerMessage }), mutedUntil]);
+        action = inserted.rows[0];
+        await client.query('COMMIT');
+    } catch (error) {
+        try { await client.query('ROLLBACK'); } catch {}
+        throw error;
+    } finally {
+        client.release();
+    }
+
+    broadcastToChannel(channelId, 'chat:user-muted', {
+        channelId, userId, username, mutedUntil: action.muted_until, reason: publicReason
+    }).catch(error => log.error('Business mute broadcast failed', error));
+    notifyBusinessGuardianAdmins({ businessContext, channelId, userId, username,
+        actionId: action.id, reason: publicReason, mutedUntil: action.muted_until })
+        .catch(error => log.error('Business Guardian notification failed', error));
+    return response;
+}
+
+async function notifyBusinessGuardianAdmins(alert) {
+    const recipients = await pool.query(`
+        SELECT DISTINCT bm.user_id FROM business_memberships bm
+        JOIN businesses b ON b.id = bm.business_id AND b.context_key = $1 AND b.status = 'active'
+        JOIN organization_memberships om ON om.organization_id = b.organization_id
+            AND om.user_id = bm.user_id AND om.is_active IS TRUE
+        JOIN organizations o ON o.id = b.organization_id AND o.status = 'active'
+        JOIN users u ON u.id = bm.user_id AND u.is_active IS TRUE
+        WHERE bm.is_active IS TRUE
+          AND (bm.role IN ('creator', 'director', 'admin') OR om.role IN ('owner', 'admin'))
+    `, [alert.businessContext]);
+    await Promise.allSettled(recipients.rows.map(row =>
+        sendToUser(String(row.user_id), 'guardian:business-alert', alert)));
+}
+
+async function getBusinessGuardianActions(businessContext, limit = 50) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+    const result = await pool.query(`
+        SELECT a.id, a.channel_id, c.name AS channel_name, a.user_id, u.username,
+            a.action_type, a.reason, a.source, a.details, a.muted_until, a.created_at
+        FROM guardian_business_actions a
+        JOIN chat_channels c ON c.id = a.channel_id AND c.business_context = a.business_context
+        JOIN users u ON u.id = a.user_id
+        WHERE a.business_context = $1
+        ORDER BY a.created_at DESC, a.id DESC LIMIT $2
+    `, [businessContext, safeLimit]);
+    return result.rows;
+}
+
 /**
  * Process an already-saved message (background tasks).
  * Called from chat route AFTER message is saved and sent to client.
@@ -1945,7 +2067,7 @@ async function ensureGuardianMemberships() {
 
         await pool.query(`
             INSERT INTO chat_channel_members (channel_id, user_id)
-            SELECT c.id, $1 FROM chat_channels c WHERE c.is_default = true
+            SELECT c.id, $1 FROM chat_channels c WHERE c.is_default = true AND c.business_context IS NULL
             ON CONFLICT (channel_id, user_id) DO NOTHING
         `, [guardianId]);
 
@@ -2884,7 +3006,7 @@ async function updateAllChannelHealth() {
         const channels = await pool.query(`
             SELECT c.id FROM chat_channels c
             JOIN chat_channel_members m ON m.channel_id = c.id AND m.user_id = $1
-            WHERE c.is_dm = false OR c.is_dm IS NULL
+            WHERE c.business_context IS NULL AND (c.is_dm = false OR c.is_dm IS NULL)
         `, [guardianId]);
 
         for (const ch of channels.rows) {
@@ -3129,7 +3251,7 @@ async function generateWeeklyReport() {
         // Stats for current week
         const statsRes = await pool.query(`
             SELECT
-                (SELECT COUNT(*) FROM chat_messages WHERE created_at::date BETWEEN $1 AND $2 AND deleted_at IS NULL AND is_bot = false) AS total_messages,
+                (SELECT COUNT(*) FROM chat_messages cm JOIN chat_channels c ON c.id = cm.channel_id WHERE c.business_context IS NULL AND cm.created_at::date BETWEEN $1 AND $2 AND cm.deleted_at IS NULL AND cm.is_bot = false) AS total_messages,
                 (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'mute' AND created_at::date BETWEEN $1 AND $2) AS conflicts,
                 (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'mask' AND created_at::date BETWEEN $1 AND $2) AS masks,
                 (SELECT COUNT(*) FROM guardian_toxic_words WHERE created_at::date BETWEEN $1 AND $2) AS new_toxic_words
@@ -3151,7 +3273,7 @@ async function generateWeeklyReport() {
         // Stats for previous week (comparison)
         const prevStatsRes = await pool.query(`
             SELECT
-                (SELECT COUNT(*) FROM chat_messages WHERE created_at::date BETWEEN $1 AND $2 AND deleted_at IS NULL AND is_bot = false) AS total_messages,
+                (SELECT COUNT(*) FROM chat_messages cm JOIN chat_channels c ON c.id = cm.channel_id WHERE c.business_context IS NULL AND cm.created_at::date BETWEEN $1 AND $2 AND cm.deleted_at IS NULL AND cm.is_bot = false) AS total_messages,
                 (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'mute' AND created_at::date BETWEEN $1 AND $2) AS conflicts,
                 (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'mask' AND created_at::date BETWEEN $1 AND $2) AS masks
         `, [prevStart, prevEnd]);
@@ -3170,7 +3292,7 @@ async function generateWeeklyReport() {
                 (SELECT COUNT(*) FROM chat_messages cm WHERE cm.channel_id = c.id AND cm.created_at::date BETWEEN $1 AND $2 AND cm.deleted_at IS NULL AND cm.is_bot = false) AS msg_count,
                 (SELECT COUNT(*) FROM guardian_actions ga WHERE ga.channel_id = c.id AND ga.action_type = 'mute' AND ga.created_at::date BETWEEN $1 AND $2) AS mute_count
             FROM chat_channels c
-            WHERE (c.is_dm = false OR c.is_dm IS NULL)
+            WHERE c.business_context IS NULL AND (c.is_dm = false OR c.is_dm IS NULL)
             ORDER BY msg_count DESC
         `, [periodStart, periodEnd]);
 
@@ -3606,6 +3728,8 @@ module.exports = {
     alertDirectorTelegram,
     flushLearnBatch,
     preCheckMessage,
+    preCheckBusinessMessage,
+    getBusinessGuardianActions,
     canSeeBlockedWordDetails,
     handleGuardianCommand,
     GUARDIAN_USERNAME,

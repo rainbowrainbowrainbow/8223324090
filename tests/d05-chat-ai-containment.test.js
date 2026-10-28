@@ -43,9 +43,15 @@ function load(relative, mocks, state) {
 }
 
 function fixture() {
-    const state = { mode: 'membership', revoked: false, user: null, queries: [], serviceCalls: [], providerCalls: 0, authCalls: 0 };
+    const state = { mode: 'membership', revoked: false, user: null, channelOwner: undefined,
+        queries: [], serviceCalls: [], providerCalls: 0, authCalls: 0 };
     const serviceCall = name => async () => { state.serviceCalls.push(name); return []; };
-    const pool = { async query(sql) { state.queries.push(sql); return { rows: [] }; } };
+    const pool = { async query(sql) {
+        state.queries.push(sql);
+        if (String(sql).includes('SELECT business_context FROM chat_channels WHERE id = $1')
+            && state.channelOwner !== undefined) return { rows: [{ business_context: state.channelOwner }] };
+        return { rows: [] };
+    } };
     const noop = () => {};
     const mocks = {
         '../db': { pool },
@@ -60,12 +66,16 @@ function fixture() {
         '../services/chatService': {
             ensureDefaultMemberships: serviceCall('ensureDefaultMemberships'), getChannels: serviceCall('getChannels'),
             isMember: async () => { state.serviceCalls.push('isMember'); return true; },
-            getChannelMessages: serviceCall('getChannelMessages'), importAssistantTranscript: serviceCall('importAssistantTranscript')
+            getChannelMessages: serviceCall('getChannelMessages'), importAssistantTranscript: serviceCall('importAssistantTranscript'),
+            sendMessage: async () => { state.serviceCalls.push('sendMessage'); return {
+                message: { id: 81, username: 'synthetic_chat_actor', content: 'Fixture text' }, mentionedUserIds: [] }; }
         },
         '../services/websocket': { broadcastToChannel: serviceCall('broadcast'), sendToUser: serviceCall('sendToUser'), sendToUsername: serviceCall('sendToUsername') },
         '../services/chatUploadStorage': { prepareChatUploadBlob: serviceCall('upload'), validateChatUploadFile: noop },
         '../services/chat-bot': { processMessage: serviceCall('bot') },
-        '../services/guardian': {}, '../services/linkPreview': {},
+        '../services/guardian': { preCheckBusinessMessage: async () => { state.serviceCalls.push('preCheckBusinessMessage');
+            return { blocked: false }; }, preCheckMessage: async () => { state.serviceCalls.push('preCheckMessage');
+            return { blocked: false }; } }, '../services/linkPreview': {},
         '../services/dashboardAssistant': {},
         '../services/notificationOutbox': { emitTaskCreatedNotificationOutboxEvent: serviceCall('outbox') },
         'web-push': { setVapidDetails: noop, sendNotification: serviceCall('webpush') },
@@ -106,6 +116,56 @@ function assertNoWork(state) {
     assert.equal(state.providerCalls, 0, 'No AI/provider invocation');
 }
 
+test('chat ownership guard opens enabled scoped core routes and rejects owned legacy IDs without network', async () => {
+    const f = fixture();
+    const guard = f.chat.stack.find(layer => layer.handle.name === 'chatBusinessScopeGuard')?.handle;
+    assert.equal(typeof guard, 'function');
+    const user = actor('dar');
+    const dar = user.businessMembershipAccess.memberships.find(item => item.businessContext === 'dar');
+    const check = async (path, method = 'GET') => {
+        const outcome = {};
+        await guard({ path, method, user, headers: { 'x-business-context': 'dar' }, query: {}, body: {} }, {
+            status(value) { outcome.status = value; return this; },
+            json(value) { outcome.body = value; }
+        }, () => { outcome.next = true; });
+        return outcome;
+    };
+    assert.equal((await check('/channels')).body.code, 'business_module_disabled');
+    dar.businessModules = [...dar.businessModules, 'chat'];
+    assert.equal((await check('/channels')).next, true);
+    assert.equal((await check('/assistant/reply', 'POST')).body.code, 'chat_feature_not_migrated');
+    assert.equal((await check('/channels/73/messages')).status, 404);
+    assert.equal(f.state.queries.length, 1);
+    f.state.channelOwner = 'dar';
+    assert.equal((await check('/channels/73/messages')).next, true);
+    f.state.channelOwner = 'event_genix';
+    assert.equal((await check('/channels/73/messages')).status, 404);
+    const legacy = actor('event_genix', 'compatibility');
+    const legacyOutcome = {};
+    await guard({ path: '/channels/73/messages', method: 'GET', user: legacy,
+        headers: { 'x-business-context': 'event_genix' }, query: {}, body: {} }, {
+        status(value) { legacyOutcome.status = value; return this; },
+        json(value) { legacyOutcome.body = value; }
+    }, () => { legacyOutcome.next = true; });
+    assert.equal(legacyOutcome.status, 404);
+});
+
+test('scoped send keeps Guardian checks and avoids legacy outbound processors', async () => {
+    const f = fixture();
+    const handler = f.chat.stack.find(layer => layer.route?.path === '/channels/:id/messages'
+        && layer.route.methods.post)?.route.stack[0].handle;
+    assert.equal(typeof handler, 'function');
+    const outcome = {};
+    await handler({ chatBusinessContext: 'dar', params: { id: '73' },
+        user: actor('dar'), body: { content: 'Fixture text' }, query: {} }, {
+        status(value) { outcome.status = value; return this; },
+        json(value) { outcome.body = value; }
+    });
+    assert.equal(outcome.status, 201);
+    assert.deepEqual(f.state.serviceCalls, ['isMember', 'preCheckBusinessMessage', 'sendMessage', 'broadcast']);
+    assert.equal(f.state.providerCalls, 0);
+});
+
 test('actual chat router denies membership and non-Park compatibility before defaults, reads, transcripts or upload', async () => {
     const f = fixture();
     await withHttp(f, async request => {
@@ -118,7 +178,8 @@ test('actual chat router denies membership and non-Park compatibility before def
             ]) {
                 const result = await request('/api/chat' + route, { context, method, body });
                 assert.equal(result.status, 403, context + ':' + route);
-                assert.equal(result.body.code, 'chat_not_migrated');
+                assert.equal(result.body.code,
+                    ['crm', 'maysternya_doli'].includes(context) ? 'chat_not_migrated' : 'business_module_disabled');
                 assertNoWork(f.state);
             }
         }

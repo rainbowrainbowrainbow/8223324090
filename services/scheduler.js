@@ -2176,7 +2176,7 @@ async function checkChatDailyDigest() {
                 AND cm.created_at >= $1::date
                 AND cm.deleted_at IS NULL
                 AND (cm.is_bot IS NULL OR cm.is_bot = false)
-            WHERE (cc.is_archived IS NULL OR cc.is_archived = false)
+            WHERE cc.business_context IS NULL AND (cc.is_archived IS NULL OR cc.is_archived = false)
             GROUP BY cc.id, cc.name
             HAVING COUNT(cm.id) > 0
             ORDER BY msg_count DESC`, [today]);

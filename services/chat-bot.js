@@ -201,7 +201,7 @@ async function ensureBotMemberships() {
         const botId = await getBotUserId();
         await pool.query(`
             INSERT INTO chat_channel_members (channel_id, user_id)
-            SELECT c.id, $1 FROM chat_channels c WHERE c.is_default = true
+            SELECT c.id, $1 FROM chat_channels c WHERE c.is_default = true AND c.business_context IS NULL
             ON CONFLICT (channel_id, user_id) DO NOTHING
         `, [botId]);
         log.info(`Bot memberships ensured for user ${BOT_USERNAME} (id: ${botId})`);

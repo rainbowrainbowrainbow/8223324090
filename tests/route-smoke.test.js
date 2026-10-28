@@ -4134,7 +4134,7 @@ describe('route-level API safety smoke', () => {
         });
         installMock('../services/chatService', {
             ensureDefaultMemberships: async () => {},
-            getChannels: async () => [{ id: 1, name: 'General', unread: 0 }]
+            getChannels: async () => [{ id: 1, name: 'General', unread: 0, businessContext: null }]
         });
         installMock('../services/websocket', {
             broadcast: () => {},

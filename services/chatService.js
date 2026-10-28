@@ -52,6 +52,7 @@ function mapMessageRow(row) {
 function mapChannelRow(row) {
     return {
         id: row.id,
+        businessContext: row.business_context || null,
         slug: row.slug,
         name: row.name,
         description: row.description,
@@ -178,10 +179,28 @@ async function getChannelMessages(channelId, userId, { before, limit = 50 } = {}
 /**
  * Send a message in a channel. Uses transaction for seq atomicity.
  */
-async function sendMessage(channelId, userId, { content, replyTo, clientMessageId, metadata }) {
+async function sendMessage(channelId, userId, { content, replyTo, clientMessageId, metadata, businessContext = null }) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+
+        if (businessContext) {
+            const access = await client.query(`
+                SELECT c.id FROM chat_channels c
+                JOIN chat_channel_members cm ON cm.channel_id = c.id AND cm.user_id = $2
+                JOIN businesses b ON b.context_key = c.business_context AND b.status = 'active'
+                JOIN organizations o ON o.id = b.organization_id AND o.status = 'active'
+                JOIN business_memberships bm ON bm.business_id = b.id AND bm.user_id = $2 AND bm.is_active IS TRUE
+                JOIN organization_memberships om ON om.organization_id = o.id AND om.user_id = $2 AND om.is_active IS TRUE
+                WHERE c.id = $1 AND c.business_context = $3 AND COALESCE(c.is_archived, false) = false
+                FOR SHARE OF c, cm, b, o, bm, om
+            `, [channelId, userId, businessContext]);
+            if (!access.rows.length) {
+                const error = new Error('Business chat access revoked');
+                error.statusCode = 403;
+                throw error;
+            }
+        }
 
         // Deduplication: check client_message_id
         if (clientMessageId) {
@@ -223,10 +242,16 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
         const mentionedUserIds = [];
         if (mentionMatches) {
             const usernames = mentionMatches.map(m => m.slice(1));
-            const usersResult = await client.query(
-                'SELECT id, username FROM users WHERE username = ANY($1)',
-                [usernames]
-            );
+            const usersResult = businessContext
+                ? await client.query(`
+                    SELECT u.id, u.username FROM users u
+                    JOIN business_memberships bm ON bm.user_id = u.id AND bm.is_active IS TRUE
+                    JOIN businesses b ON b.id = bm.business_id AND b.context_key = $2 AND b.status = 'active'
+                    JOIN organization_memberships om ON om.user_id = u.id AND om.organization_id = b.organization_id AND om.is_active IS TRUE
+                    JOIN organizations o ON o.id = b.organization_id AND o.status = 'active'
+                    WHERE u.username = ANY($1) AND u.is_active IS TRUE
+                `, [usernames, businessContext])
+                : await client.query('SELECT id, username FROM users WHERE username = ANY($1)', [usernames]);
             for (const u of usersResult.rows) {
                 if (u.id !== userId) { // Don't mention yourself
                     await client.query(
@@ -269,7 +294,7 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
         // Retry once on unique violation (seq race condition)
         if (err.code === '23505' && err.constraint === 'chat_messages_channel_id_seq_key') {
             log.warn('Seq collision, retrying sendMessage');
-            return sendMessage(channelId, userId, { content, replyTo, clientMessageId });
+            return sendMessage(channelId, userId, { content, replyTo, clientMessageId, metadata, businessContext });
         }
         throw err;
     } finally {
@@ -467,11 +492,30 @@ async function getMessageReactions(messageId) {
 /**
  * Get unread counts across all channels for a user.
  */
-async function getUnreadCounts(userId) {
+async function getUnreadCounts(userId, businessContext = null) {
+    if (businessContext) {
+        const result = await pool.query(`
+            SELECT m.channel_id,
+                GREATEST(COALESCE((SELECT MAX(seq) FROM chat_messages WHERE channel_id = m.channel_id), 0)
+                    - COALESCE(m.last_read_seq, 0), 0) AS unread_count
+            FROM chat_channel_members m
+            JOIN chat_channels c ON c.id = m.channel_id AND c.business_context = $2
+            WHERE m.user_id = $1
+        `, [userId, businessContext]);
+        const channels = {};
+        let total = 0;
+        for (const row of result.rows) {
+            const count = Number(row.unread_count) || 0;
+            channels[row.channel_id] = count;
+            total += count;
+        }
+        return { channels, total };
+    }
     const result = await pool.query(`
         SELECT m.channel_id,
             GREATEST(COALESCE((SELECT MAX(seq) FROM chat_messages WHERE channel_id = m.channel_id), 0) - COALESCE(m.last_read_seq, 0), 0) AS unread_count
         FROM chat_channel_members m
+        JOIN chat_channels c ON c.id = m.channel_id AND c.business_context IS NULL
         WHERE m.user_id = $1
     `, [userId]);
     const counts = {};
@@ -487,10 +531,34 @@ async function getUnreadCounts(userId) {
 /**
  * Auto-join user to all default channels.
  */
-async function ensureDefaultMemberships(userId) {
+async function ensureDefaultMemberships(userId, businessContext = null) {
+    if (businessContext) {
+        const names = [
+            ['team', '#команда', 'Загальний чат команди'],
+            ['bookings', '#бронювання', 'Обговорення бронювань'],
+            ['cash', '#каса', 'Каса та фінанси'],
+            ['technical', '#технічний', 'Технічні питання']
+        ];
+        for (const [key, name, description] of names) {
+            const slug = scopedSlug(businessContext, key);
+            await pool.query(`
+                INSERT INTO chat_channels (slug, name, description, is_default, business_context)
+                VALUES ($1, $2, $3, true, $4)
+                ON CONFLICT (slug) DO NOTHING
+            `, [slug, name, description, businessContext]);
+        }
+        await pool.query(`
+            INSERT INTO chat_channel_members (channel_id, user_id)
+            SELECT id, $1 FROM chat_channels
+            WHERE is_default IS TRUE AND business_context = $2
+            ON CONFLICT (channel_id, user_id) DO NOTHING
+        `, [userId, businessContext]);
+        invalidateChannelsCache(userId);
+        return;
+    }
     await pool.query(`
         INSERT INTO chat_channel_members (channel_id, user_id)
-        SELECT c.id, $1 FROM chat_channels c WHERE c.is_default = true
+        SELECT c.id, $1 FROM chat_channels c WHERE c.is_default = true AND c.business_context IS NULL
         ON CONFLICT (channel_id, user_id) DO NOTHING
     `, [userId]);
 }
@@ -498,7 +566,26 @@ async function ensureDefaultMemberships(userId) {
 /**
  * Get users list for @mention autocomplete.
  */
-async function getChatUsers() {
+async function getChatUsers(businessContext = null) {
+    if (businessContext) {
+        const result = await pool.query(`
+            SELECT u.id, u.username, u.name AS display_name, u.role,
+                CASE WHEN u.chat_status_until IS NOT NULL AND u.chat_status_until < NOW()
+                    THEN NULL ELSE u.chat_status END AS chat_status,
+                CASE WHEN u.chat_status_until IS NOT NULL AND u.chat_status_until < NOW()
+                    THEN NULL ELSE u.chat_status_emoji END AS chat_status_emoji
+            FROM users u
+            JOIN business_memberships bm ON bm.user_id = u.id AND bm.is_active IS TRUE
+            JOIN businesses b ON b.id = bm.business_id AND b.context_key = $1 AND b.status = 'active'
+            JOIN organization_memberships om ON om.user_id = u.id AND om.organization_id = b.organization_id AND om.is_active IS TRUE
+            JOIN organizations o ON o.id = b.organization_id AND o.status = 'active'
+            WHERE u.is_active IS TRUE ORDER BY u.username
+        `, [businessContext]);
+        return result.rows.map(r => ({
+            id: r.id, username: r.username, displayName: r.display_name || r.username,
+            role: r.role, chatStatus: r.chat_status || null, chatStatusEmoji: r.chat_status_emoji || null
+        }));
+    }
     const result = await pool.query(
         `SELECT id, username, name AS display_name, role,
                 CASE WHEN chat_status_until IS NOT NULL AND chat_status_until < NOW()
@@ -515,6 +602,26 @@ async function getChatUsers() {
         chatStatus: r.chat_status || null,
         chatStatusEmoji: r.chat_status_emoji || null
     }));
+}
+
+async function isUserInBusiness(userId, businessContext) {
+    const result = await pool.query(`
+        SELECT 1 FROM users u
+        JOIN business_memberships bm ON bm.user_id = u.id AND bm.is_active IS TRUE
+        JOIN businesses b ON b.id = bm.business_id AND b.context_key = $2 AND b.status = 'active'
+        JOIN organization_memberships om ON om.user_id = u.id AND om.organization_id = b.organization_id AND om.is_active IS TRUE
+        JOIN organizations o ON o.id = b.organization_id AND o.status = 'active'
+        WHERE u.id = $1 AND u.is_active IS TRUE
+        LIMIT 1
+    `, [userId, businessContext]);
+    return result.rows.length > 0;
+}
+
+function scopedSlug(businessContext, name) {
+    const namespace = crypto.createHash('sha256').update(businessContext).digest('hex').slice(0, 16);
+    const slug = String(name);
+    const digest = crypto.createHash('sha256').update(slug).digest('hex').slice(0, 10);
+    return `ctx-${namespace}-${slug.slice(0, 17)}-${digest}`;
 }
 
 /**
@@ -547,7 +654,21 @@ async function getMessageById(messageId) {
 /**
  * Create a new channel.
  */
-async function createChannel(slug, name, description, createdBy) {
+async function createChannel(slug, name, description, createdBy, businessContext = null) {
+    if (businessContext) {
+        const result = await pool.query(`
+            INSERT INTO chat_channels (slug, name, description, is_default, created_by, business_context)
+            VALUES ($1, $2, $3, false, $4, $5)
+            RETURNING *
+        `, [scopedSlug(businessContext, slug), name, description || '', createdBy, businessContext]);
+        const channel = result.rows[0];
+        await pool.query(
+            'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [channel.id, createdBy]
+        );
+        invalidateChannelsCache(createdBy);
+        return mapChannelRow({ ...channel, unread_count: '0' });
+    }
     const result = await pool.query(`
         INSERT INTO chat_channels (slug, name, description, is_default, created_by)
         VALUES ($1, $2, $3, false, $4)
@@ -836,11 +957,43 @@ async function joinChannel(channelId, userId) {
 /**
  * Get or create a DM channel between two users.
  */
-async function getOrCreateDM(userId1, userId2) {
+async function getOrCreateDM(userId1, userId2, businessContext = null) {
+    if (businessContext) {
+        const ids = [Math.min(userId1, userId2), Math.max(userId1, userId2)];
+        const slug = scopedSlug(businessContext, `dm-${ids[0]}-${ids[1]}`);
+        const result = await pool.query(`
+            INSERT INTO chat_channels (slug, name, description, is_default, is_dm, dm_user_ids, created_by, business_context)
+            VALUES ($1, 'DM', '', false, true, $2, $3, $4)
+            ON CONFLICT (slug) DO NOTHING
+            RETURNING *
+        `, [slug, ids, userId1, businessContext]);
+        const channel = result.rows[0] || (await pool.query(
+            'SELECT * FROM chat_channels WHERE slug = $1 AND business_context = $2 AND is_dm IS TRUE AND dm_user_ids = $3',
+            [slug, businessContext, ids]
+        )).rows[0];
+        if (!channel) throw new Error('Scoped DM slug collision');
+        await pool.query(
+            'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2), ($1, $3) ON CONFLICT DO NOTHING',
+            [channel.id, ids[0], ids[1]]
+        );
+        invalidateChannelsCache(ids[0]);
+        invalidateChannelsCache(ids[1]);
+        const otherId = ids[0] === userId1 ? ids[1] : ids[0];
+        const user = await pool.query('SELECT id, username, name FROM users WHERE id = $1', [otherId]);
+        const mapped = mapChannelRow({ ...channel, unread_count: '0' });
+        mapped.isDm = true;
+        mapped.dmUserIds = channel.dm_user_ids;
+        mapped.dmOtherUserId = otherId;
+        if (user.rows[0]) {
+            mapped.name = user.rows[0].name || user.rows[0].username;
+            mapped.dmOtherUsername = user.rows[0].username;
+        }
+        return mapped;
+    }
     const ids = [Math.min(userId1, userId2), Math.max(userId1, userId2)];
     // Check if DM already exists
     const existing = await pool.query(
-        `SELECT * FROM chat_channels WHERE is_dm = true AND dm_user_ids = $1`,
+        `SELECT * FROM chat_channels WHERE is_dm = true AND dm_user_ids = $1 AND business_context IS NULL`,
         [ids]
     );
     let ch;
@@ -997,7 +1150,7 @@ async function searchMessages(userId, query, channelId, filters = {}) {
         JOIN users u ON u.id = cm.user_id
         JOIN chat_channels c ON c.id = cm.channel_id
         JOIN chat_channel_members ccm ON ccm.channel_id = cm.channel_id AND ccm.user_id = $1
-        WHERE cm.deleted_at IS NULL AND cm.content ILIKE $2${extraFilters}
+        WHERE c.business_context IS NULL AND cm.deleted_at IS NULL AND cm.content ILIKE $2${extraFilters}
         ORDER BY cm.created_at DESC
         LIMIT 50
     `, params);
@@ -1217,6 +1370,7 @@ module.exports = {
     getUnreadCounts,
     ensureDefaultMemberships,
     getChatUsers,
+    isUserInBusiness,
     getChannelById,
     isMember,
     getMessageById,

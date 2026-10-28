@@ -54,6 +54,33 @@ test('membership chat unread is unavailable without sending a forbidden request'
     } finally { h.close(); }
 });
 
+test('enabled membership chat fetches only the selected business unread count', async () => {
+    const h = harness('membership');
+    try {
+        h.w.profile.activeProfile = { modules: { enabled: { chat: true } } };
+        h.auth(); await settle();
+        assert.equal(h.w.getLegacyBusinessSurfaceAvailability('chat').available, true);
+        assert.equal(h.state.calls.length, 1);
+        assert.equal(h.state.calls[0].options.headers['X-Business-Context'], 'event_genix');
+        assert.equal(h.badge.textContent, '3');
+    } finally { h.close(); }
+});
+
+test('authorized business Guardian alert is surfaced in the client', async () => {
+    const h = harness('membership');
+    try {
+        let detail = null;
+        let notification = null;
+        h.w.showNotification = value => { notification = value; };
+        h.w.addEventListener('ws:guardian-business-alert', event => { detail = event.detail; });
+        h.receive({ type: 'guardian:business-alert', payload: {
+            businessContext: 'event_genix', actionId: 81, channelId: 4,
+            reason: 'Повідомлення заблоковано' } });
+        assert.equal(detail.actionId, 81);
+        assert.match(notification, /Повідомлення заблоковано/);
+    } finally { h.close(); }
+});
+
 test('unread waits for profile readiness and uses current scoped headers once ready', async () => {
     const h = harness();
     try {

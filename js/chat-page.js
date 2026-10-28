@@ -198,7 +198,7 @@
             var errData = await resp.json().catch(function () { return {}; });
             var denied = new Error(errData.error || 'Доступ заборонено');
             denied.code = errData.code;
-            if (denied.code === 'chat_not_migrated') _setChatActionError(denied.message);
+            if (_isChatUnavailableError(denied)) _setChatActionError(denied.message);
             throw denied;
         }
         if (!resp.ok) {
@@ -357,18 +357,38 @@
 
     function _setChatActionError(message) {
         _chatActionError = message || null;
-        ['chatNewChannel', 'chatNewChannelCreate'].forEach(function (id) {
+        ['chatNewDm', 'chatNewChannel', 'chatNewChannelCreate'].forEach(function (id) {
             var button = document.getElementById(id);
             if (button) {
+                if (button.dataset.chatActionTitle === undefined) button.dataset.chatActionTitle = button.title || '';
                 button.disabled = Boolean(_chatActionError);
-                button.title = _chatActionError || '';
+                button.title = _chatActionError || button.dataset.chatActionTitle;
             }
         });
         if (_chatActionError) _setChatComposerEnabled(false);
     }
 
+    function _isChatUnavailableError(err) {
+        return err && ['chat_not_migrated', 'business_module_disabled', 'business_module_not_migrated']
+            .includes(err.code);
+    }
+
     function _renderChatFatalError(err) {
         _setChatActionError(err && err.message || 'Чат тимчасово недоступний. Оновіть сторінку.');
+        if (_isChatUnavailableError(err)) {
+            _renderDialogEmptyState({
+                title: 'Чат недоступний у цьому кабінеті',
+                hint: err.message,
+                primary: null,
+                secondary: null
+            });
+            var unavailableState = document.getElementById('chatDialogState');
+            if (unavailableState) unavailableState.setAttribute('role', 'alert');
+            var unavailableList = document.getElementById('chatChannelsList');
+            if (unavailableList) unavailableList.innerHTML = '<div class="chat-empty">Чат недоступний у цьому кабінеті</div>';
+            return;
+        }
+        _hideDialogTransientStates();
         if (typeof renderStandaloneFatalError === 'function') {
             renderStandaloneFatalError({
                 moduleName: 'chat',
@@ -388,6 +408,10 @@
     }
 
     function _handleChatInitError(err) {
+        if (_isChatUnavailableError(err)) {
+            _renderChatFatalError(err);
+            return;
+        }
         if (typeof handleStandaloneInitError === 'function') {
             handleStandaloneInitError('chat', err, _renderChatFatalError);
             return;
@@ -477,6 +501,7 @@
         var list = document.getElementById('chatMessages');
         if (state) {
             state.className = 'chat-dialog-state visible loading';
+            state.removeAttribute('role');
             state.innerHTML =
                 '<div class="chat-dialog-state-card">' +
                     '<div class="chat-dialog-spinner" aria-hidden="true"></div>' +
@@ -507,8 +532,8 @@
                 kicker: opts && opts.kicker ? opts.kicker : 'Inbox',
                 title: title,
                 text: hint,
-                primary: opts && opts.primary ? opts.primary : { label: 'Оновити', action: 'refresh-channels' },
-                secondary: opts && opts.secondary ? opts.secondary : { label: 'Канали', action: 'open-channels' }
+                primary: opts && Object.prototype.hasOwnProperty.call(opts, 'primary') ? opts.primary : { label: 'Оновити', action: 'refresh-channels' },
+                secondary: opts && Object.prototype.hasOwnProperty.call(opts, 'secondary') ? opts.secondary : { label: 'Канали', action: 'open-channels' }
             });
         }
         var headerName = document.getElementById('chatHeaderName');
@@ -526,6 +551,7 @@
         var state = document.getElementById('chatDialogState');
         if (state) {
             state.className = 'chat-dialog-state hidden';
+            state.removeAttribute('role');
             state.innerHTML = '';
         }
     }
@@ -3963,6 +3989,10 @@
             }
         } catch (err) {
             console.error('[Chat] Load channels error:', err);
+            if (_isChatUnavailableError(err)) {
+                _renderChatFatalError(err);
+                return;
+            }
             _renderDialogEmptyState({
                 title: 'Не вдалося відкрити діалог',
                 hint: err && err.message ? err.message : 'Помилка завантаження каналів'
@@ -4167,6 +4197,10 @@
             }
         } catch (err) {
             console.error('[Chat] Load messages error:', err);
+            if (_isChatUnavailableError(err)) {
+                _renderChatFatalError(err);
+                return;
+            }
             _renderDialogEmptyState({
                 title: 'Не вдалося відкрити діалог',
                 hint: err && err.message ? err.message : 'Помилка завантаження повідомлень'

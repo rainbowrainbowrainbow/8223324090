@@ -8,7 +8,7 @@ const CORE_MODULES = Object.freeze({
     programs: 'Продукти', warehouse: 'Склад', settings: 'Налаштування'
 });
 const UNMIGRATED_MODULES = Object.freeze({
-    chat: 'Чат', reports: 'Звіти', copilot: 'Copilot', staff: 'Працівники (legacy)',
+    reports: 'Звіти', copilot: 'Copilot', staff: 'Працівники (legacy)',
     training: 'Навчання', checkin: 'Check-in', kitchen: 'Кухня',
     content: 'Контент', art: 'Art', sound: 'Звук',
     certificates: 'Сертифікати', kleshnya: 'Клешня',
@@ -22,6 +22,8 @@ function businessModuleCatalog(contextKey) {
     }));
     catalog.push({ key: 'omni', label: 'Omni', status: 'limited', canEnable: true,
         reason: 'Робота з чатами бізнесу. Підключення каналів і надсилання потребують окремого налаштування.' });
+    catalog.push({ key: 'chat', label: 'Чат', status: 'limited', canEnable: true,
+        reason: 'Бізнесові канали, повідомлення та окремий журнал модерації. Додаткові функції чату недоступні.' });
     const graduationSupported = ['event_genix', 'dar'].includes(contextKey);
     catalog.push({ key: 'graduation', label: 'Конструктор випускного',
         status: graduationSupported ? 'limited' : 'not_migrated', canEnable: graduationSupported,
@@ -104,6 +106,14 @@ function userBusinessModuleState(user, context, moduleId) {
         : { available: false, code: 'business_module_disabled', message: 'Модуль недоступний у цьому бізнесі.' };
 }
 
+function canReviewBusinessGuardian(user, context) {
+    const membership = user?.businessMembershipAccess?.memberships?.find(item =>
+        item.businessContext === context && item.accessMode === 'membership');
+    if (!membership || !userBusinessModuleState(user, context, 'chat').available) return false;
+    return ['creator', 'director', 'admin'].includes(membership.role)
+        || ['owner', 'admin'].includes(membership.organizationRole);
+}
+
 // Managed operational routers only. Account recovery/lifecycle, provider ingress
 // and unmigrated domains keep their separate authority/containment contracts.
 const OPERATIONAL_API_MODULES = Object.freeze({
@@ -140,4 +150,5 @@ function requireRequestBusinessModule(req, res, scope) {
 }
 
 module.exports = { businessModuleCatalog, validateBusinessModules, configuredBusinessModuleEnabled,
-    userBusinessModuleState, userBusinessRegistryEntry, requestBusinessModule, requireRequestBusinessModule };
+    userBusinessModuleState, userBusinessRegistryEntry, canReviewBusinessGuardian,
+    requestBusinessModule, requireRequestBusinessModule };

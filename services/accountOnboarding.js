@@ -880,7 +880,7 @@ async function resolveAccountBusinessAccess(dbPool, userId, businessContext) {
 }
 
 async function addDefaultChatMemberships(dbPool, userId) {
-    const channels = await dbPool.query('SELECT id FROM chat_channels WHERE is_default = true ORDER BY id');
+    const channels = await dbPool.query('SELECT id FROM chat_channels WHERE is_default = true AND business_context IS NULL ORDER BY id');
     for (const channel of channels.rows) {
         await dbPool.query(
             'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',

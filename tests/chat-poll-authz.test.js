@@ -133,6 +133,13 @@ function fakePool() {
                 /UPDATE users SET last_seen_at/i.test(text)) {
                 return { rows: [], rowCount: 0 };
             }
+            if (/^SELECT business_context FROM chat_channels WHERE id = \$1$/i.test(text)) {
+                return { rows: [{ business_context: null }], rowCount: 1 };
+            }
+            if (/^SELECT c\.business_context FROM chat_polls p JOIN chat_channels c ON c\.id = p\.channel_id WHERE p\.id = \$1$/i.test(text)) {
+                const poll = state.polls.get(Number(params[0]));
+                return { rows: poll ? [{ business_context: null }] : [], rowCount: poll ? 1 : 0 };
+            }
 
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') {
                 state.tx.push(text);

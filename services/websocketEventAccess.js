@@ -7,6 +7,7 @@ const { resolveCapability } = require('./accountAccessPolicy');
 const { canViewBooking } = require('./bookingVisibility');
 const { buildTaskVisibilityScope } = require('./taskPolicy');
 const { legacyBusinessSurfaceAccess } = require('./legacyBusinessSurface');
+const { userBusinessModuleState, userBusinessRegistryEntry, canReviewBusinessGuardian } = require('./businessModuleRegistry');
 const { recordCompatibilityTelemetrySafe } = require('./businessCutover');
 const { createLogger } = require('../utils/logger');
 
@@ -137,6 +138,16 @@ async function canReceiveChannel(freshUser, data, options) {
     for (const preview of previews) {
         if (!await canReceiveBooking(freshUser, preview?.id)) return false;
     }
+    if (channel.business_context !== null && channel.business_context !== undefined) {
+        const businessContext = explicitContext(channel.business_context);
+        const declared = [options.businessContext, options.business_context, data.businessContext, data.business_context]
+            .filter(value => value !== undefined && value !== null);
+        if (!businessContext || declared.some(value => explicitContext(value) !== businessContext)) return false;
+        const user = await loadBusinessEventUser(freshUser, businessContext);
+        return Boolean(user && userBusinessRegistryEntry(user, businessContext)?.accessMode === 'membership'
+            && userBusinessModuleState(user, businessContext, 'chat').available
+            && resolveCapability(user, '/chat', { type: 'page' }).allowed);
+    }
     // Unowned channels share the REST containment policy. A validated booking
     // link keeps its existing business/visibility contract above.
     return bookingLinks.length > 0 || canReceiveLegacyAccountSurface(freshUser, 'chat');
@@ -184,6 +195,20 @@ async function canReceiveEventDecision(freshUser, eventType, data = {}, options 
     if (eventType === 'alert:updated') return Object.keys(data).every(key => ['alerts', 'count'].includes(key))
         && Array.isArray(data.alerts) && data.alerts.length === 0 && data.count === 0;
     if (eventType === 'guardian:event' || eventType === 'guardian:health') return canReceiveChannel(freshUser, data, options);
+    if (eventType === 'guardian:business-alert') {
+        const context = matchingContexts([data.businessContext, options.businessContext]);
+        const actionId = positiveId(data.actionId);
+        const channelId = positiveId(data.channelId);
+        if (!context || !actionId || !channelId) return false;
+        const action = await pool.query(`
+            SELECT id FROM guardian_business_actions
+            WHERE id = $1 AND channel_id = $2 AND business_context = $3
+        `, [actionId, channelId, context]);
+        if (!action.rows.length) return false;
+        const user = await loadBusinessEventUser(freshUser, context);
+        return Boolean(user && canReviewBusinessGuardian(user, context)
+            && resolveCapability(user, '/chat', { type: 'page' }).allowed);
+    }
     if (eventType === 'hr:attendance-updated') return canReceiveAttendance(freshUser, data, options);
     if (ACCOUNT_TRANSCRIPT_EVENTS.has(eventType)) {
         return options.delivery === 'username' && canReceiveLegacyAccountSurface(freshUser, 'kleshnya');

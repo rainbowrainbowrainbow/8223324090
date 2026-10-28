@@ -534,7 +534,7 @@ async function run({ baseUrl, fixture, request, db, record }) {
     const containment = [
         ['/api/catalogs', 'catalogs_not_migrated'], ['/api/booking-templates', 'booking_templates_not_migrated'],
         ['/api/recurring', 'recurring_not_migrated'], ['/api/warehouse/photo-intake/status', 'warehouse_photo_intake_not_migrated'],
-        ['/api/warehouse/photo-intake', 'warehouse_photo_intake_not_migrated'], ['/api/chat/channels', 'chat_not_migrated'],
+        ['/api/warehouse/photo-intake', 'warehouse_photo_intake_not_migrated'], ['/api/chat/channels', 'business_module_disabled'],
         ['/api/kleshnya/sessions', 'kleshnya_not_migrated'], ['/api/finance/report/salary', 'finance_salary_not_migrated']
     ];
     for (const [context, actor] of scopes) {

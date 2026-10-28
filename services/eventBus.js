@@ -422,7 +422,7 @@ async function executeAction(action, payload, event) {
         case 'chat_message': {
             const channelId = action.channel_id
                 || (action.channel_name
-                    ? (await pool.query(`SELECT id FROM chat_channels WHERE name ILIKE $1 LIMIT 1`,
+                    ? (await pool.query(`SELECT id FROM chat_channels WHERE name ILIKE $1 AND business_context IS NULL LIMIT 1`,
                                         [`%${action.channel_name}%`])).rows[0]?.id
                     : null);
             if (!channelId) { log.warn('chat_message: channel not found'); break; }
@@ -434,7 +434,8 @@ async function executeAction(action, payload, event) {
             const client = await pool.connect();
             try {
                 await client.query('BEGIN');
-                await client.query('SELECT id FROM chat_channels WHERE id = $1 FOR UPDATE', [channelId]);
+                const owned = await client.query('SELECT id FROM chat_channels WHERE id = $1 AND business_context IS NULL FOR UPDATE', [channelId]);
+                if (!owned.rows.length) throw new Error('Legacy chat action cannot target a business-owned channel');
                 const seqRes = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
                 const seq    = seqRes.rows[0].seq;
                 await client.query(

@@ -429,6 +429,12 @@ var ParkWS = (function () {
                     detail: { eventType: message.type, payload: message.payload }
                 }));
                 break;
+            case 'guardian:business-alert':
+                window.dispatchEvent(new CustomEvent('ws:guardian-business-alert', { detail: message.payload }));
+                if (typeof showNotification === 'function') {
+                    showNotification('🛡️ Guardian: ' + (message.payload?.reason || 'Повідомлення заблоковано'));
+                }
+                break;
 
             // Chat inline events (edits, mutes, deletes)
             case 'chat:message-edited':

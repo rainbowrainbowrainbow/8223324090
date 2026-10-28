@@ -108,7 +108,7 @@ async function getChannelMessages(channelId, hoursBack) {
  */
 async function getActiveChannels() {
     const { rows } = await pool.query(
-        `SELECT id, name FROM chat_channels WHERE archived_at IS NULL ORDER BY id`
+        `SELECT id, name FROM chat_channels WHERE archived_at IS NULL AND business_context IS NULL ORDER BY id`
     );
     return rows;
 }
@@ -117,6 +117,8 @@ async function getActiveChannels() {
  * Generate summary for a specific channel
  */
 async function summarizeChannel(channelId, hoursBack, requestedBy) {
+    const channel = await pool.query('SELECT id FROM chat_channels WHERE id = $1 AND business_context IS NULL', [channelId]);
+    if (!channel.rows.length) return { summary: 'Канал недоступний.', tokens: 0, cost: 0 };
     const messages = await getChannelMessages(channelId, hoursBack || 24);
     if (!messages.length) return { summary: 'Немає повідомлень за цей період.', tokens: 0, cost: 0 };
 

@@ -715,7 +715,7 @@ async function runBrowserAcceptance({ baseUrl, fixture, outputDir, playwrightMod
             if (item.actor === 'owner' && item.context === 'crm'
                 && /^\/api\/bookings\//.test(item.path)) return 'CRM registry intentionally disables the timeline module';
             if (item.actor === 'multiOrg' && item.context === fixture.contexts.other
-                && item.path === '/api/chat/unread' && item.denialCode === 'chat_not_migrated') return 'Selected membership context correctly receives legacy chat containment';
+                && item.path === '/api/chat/unread' && item.denialCode === 'business_module_disabled') return 'Selected membership context correctly receives disabled scoped chat';
             return null;
         }
         const classifiedDenials = errorResponses.map(item => ({ ...item, reason: expectedDenial(item) }));

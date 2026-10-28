@@ -14,7 +14,7 @@ concurrency:
 jobs:
   fast-baseline:
     name: Fast baseline
-    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","fast-baseline"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/hr-tenant-ownership-20261023' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","fast-baseline"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
 
     steps:
@@ -55,7 +55,7 @@ jobs:
 
   omni-browser:
     name: Omni browser regression
-    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","omni-browser"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/hr-tenant-ownership-20261023' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","omni-browser"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     services:
@@ -125,7 +125,7 @@ jobs:
 
   hr-team-browser:
     name: HR Team browser smoke
-    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","hr-team-browser"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/hr-tenant-ownership-20261023' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","hr-team-browser"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
 
     steps:
@@ -206,7 +206,7 @@ jobs:
 
   my-day-browser:
     name: My Day browser interactions
-    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","my-day-browser"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/hr-tenant-ownership-20261023' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","my-day-browser"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     services:
@@ -292,7 +292,7 @@ jobs:
 
   certificate-regression:
     name: Certificate redemption regression
-    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","certificate-regression"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/hr-tenant-ownership-20261023' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","certificate-regression"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     services:
@@ -362,7 +362,7 @@ jobs:
 
   hr-payroll-postgres:
     name: HR and payroll PostgreSQL integration
-    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","hr-payroll-postgres"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/hr-tenant-ownership-20261023' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","hr-payroll-postgres"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     services:
@@ -464,7 +464,7 @@ jobs:
 
   my-day-postgres:
     name: My Day PostgreSQL integration
-    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","my-day-postgres"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/hr-tenant-ownership-20261023' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","my-day-postgres"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
 
     services:
@@ -506,7 +506,7 @@ jobs:
 
   checkbox-park-postgres:
     name: Checkbox park PostgreSQL mock integration
-    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","checkbox-park-postgres"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/hr-tenant-ownership-20261023' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","checkbox-park-postgres"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
 
     services:
@@ -578,7 +578,7 @@ jobs:
 
   education-regressions:
     name: Education ${{ matrix.suite }} (${{ matrix.engine }})
-    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/ci-local-runner-20261027' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","education-regressions"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/hr-tenant-ownership-20261023' && fromJSON('["self-hosted","linux","x64","eventgenix-ci","education-regressions"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
     strategy:
       fail-fast: false

@@ -22,7 +22,7 @@ test('transient read failures retry with bounded backoff; permanent failures sto
 
 test('cancelled or superseded workflow attempts cannot register another idle worker', () => {
   const sha = 'a'.repeat(40), config = { sha, attempt: 1 };
-  const run = { head_sha: sha, head_branch: 'codex/ci-local-runner-20261027', event: 'push', path: '.github/workflows/ci.yml', repository: { full_name: 'rainbowrainbowrainbow/8223324090' }, run_attempt: 1, status: 'queued', conclusion: null };
+  const run = { head_sha: sha, head_branch: 'codex/hr-tenant-ownership-20261023', event: 'push', path: '.github/workflows/ci.yml', repository: { full_name: 'rainbowrainbowrainbow/8223324090' }, run_attempt: 1, status: 'queued', conclusion: null };
   assert.doesNotThrow(() => assertAcceptsJobs(run, config));
   assert.doesNotThrow(() => assertAcceptsJobs({ ...run, status: 'in_progress' }, config));
   for (const change of [{ status: 'completed', conclusion: 'cancelled' }, { status: 'completed', conclusion: 'success' }, { run_attempt: 2 }]) {
@@ -56,7 +56,7 @@ test('stops before a new disposable job when host archive storage is insufficien
 
 test('accepts only exact-SHA pushes from the approved repository, branch and workflow', () => {
   const sha = 'a'.repeat(40);
-  const run = { head_sha: sha, head_branch: 'codex/ci-local-runner-20261027', event: 'push', path: '.github/workflows/ci.yml', repository: { full_name: 'rainbowrainbowrainbow/8223324090' } };
+  const run = { head_sha: sha, head_branch: 'codex/hr-tenant-ownership-20261023', event: 'push', path: '.github/workflows/ci.yml', repository: { full_name: 'rainbowrainbowrainbow/8223324090' } };
   assert.doesNotThrow(() => assertRun(run, { sha }));
   for (const changed of [
     { head_sha: 'b'.repeat(40) }, { head_branch: 'codex/eventgenix-production' },

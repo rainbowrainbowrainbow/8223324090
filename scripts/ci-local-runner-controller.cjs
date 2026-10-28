@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 const { verifyAndExtract, flushFile } = require('./ci-local-evidence.cjs');
 const REPOSITORY = 'rainbowrainbowrainbow/8223324090';
-const BRANCH = 'codex/ci-local-runner-20261027';
+const BRANCH = 'codex/hr-tenant-ownership-20261023';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 function check(value, message) { if (!value) throw new Error(message); }
 function readJSON(file) { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); }

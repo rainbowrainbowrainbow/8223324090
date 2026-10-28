@@ -1,12 +1,12 @@
 # Isolated local CI worker — 2026-10-27
 
-Status: implementation under verification; a prepared script is not a passing CI run.
+Status: setup SHA c11f5947d passed all 23 CI jobs on 2026-10-28. Activation for the HR feature below is proposed and still requires its own exact-SHA CI.
 
 ## Purpose and delivery boundary
 
 Run the existing Linux/Docker checks without GitHub-hosted compute or new GitHub artifact storage. The repository remains private. This setup does not change Railway, release guards, billing, application code, database ownership or memberships.
 
-The initial routing is deliberately limited to trusted pushes on `codex/ci-local-runner-20261027`. Other refs retain hosted routing. Moving this policy to another candidate or production requires a reviewed routing change; this feature's green run must not be misreported as green CI for another SHA/ref.
+The initial routing is deliberately limited to trusted pushes on `codex/hr-tenant-ownership-20261023`. Other refs retain hosted routing. Moving this policy to another candidate or production requires a reviewed routing change; this feature's green run must not be misreported as green CI for another SHA/ref.
 
 ## Host and guest
 

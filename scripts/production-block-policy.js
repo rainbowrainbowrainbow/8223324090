@@ -20,6 +20,7 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover',
     CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
     CERTIFICATE_CI_GATE: 'certificate-ci-gate',
+    CHAT_LOCAL_CI_GATE: 'chat-local-ci-gate',
     LEAD_UI_CI_GATE: 'lead-ui-ci-gate',
     HR_PAYROLL: 'hr-payroll',
     FINANCE_MANUAL_QA: 'finance-manual-qa'
@@ -27,6 +28,44 @@ const PROTECTED_WORKFLOWS = Object.freeze({
 const CERTIFICATE_QA_RED_PATHS = Object.freeze(['routes/auth.js', 'routes/finance.js']);
 const CERTIFICATE_QA_MIGRATION = 'db/migrations/371_trusted_qa_certificate_lookup.sql';
 const CERTIFICATE_CI_RED_PATHS = Object.freeze(['.github/workflows/ci.yml']);
+const CHAT_LOCAL_CI_RED_PATHS = Object.freeze(['.github/workflows/ci.yml']);
+const CHAT_LOCAL_CI_MIGRATIONS = Object.freeze([
+    'db/migrations/387_chat_business_ownership.sql',
+    'db/migrations/388_guardian_business_moderation.sql'
+]);
+const CHAT_LOCAL_CI_REQUIRED_PATHS = Object.freeze([
+    '.github/actions/preserve-ci-evidence/action.yml',
+    '.github/workflows/ci.yml',
+    ...CHAT_LOCAL_CI_MIGRATIONS,
+    'scripts/ci-local-evidence.cjs',
+    'scripts/ci-local-runner-controller.cjs',
+    'tests/ci-local-evidence.test.js',
+    'tests/ci-local-runner-controller.test.js'
+]);
+const CHAT_LOCAL_CI_CHANGED_PATHS = Object.freeze([
+    ...CHAT_LOCAL_CI_REQUIRED_PATHS,
+    'docs/CHAT_BUSINESS_OWNERSHIP_RELEASE_NOTES.json',
+    'js/api.js', 'js/chat-page.js', 'js/ws.js', 'package.json',
+    'routes/chat.js', 'routes/guardian.js', 'routes/users.js',
+    'scripts/production-block-policy.js', 'scripts/run-isolated-postgres-tests.js',
+    'services/accountOnboarding.js', 'services/businessModuleRegistry.js',
+    'services/chat-bot.js', 'services/chatService.js', 'services/eventBus.js',
+    'services/guardian.js', 'services/guardianDmProvisioning.js',
+    'services/scheduler.js', 'services/summary-agent.js',
+    'services/websocketEventAccess.js',
+    'tests/acceptance/sys-mb-browser-scenarios.cjs',
+    'tests/acceptance/sys-mb-domain-scenarios.cjs',
+    'tests/business-module-registry.test.js', 'tests/chat-business-ownership.test.js',
+    'tests/chat-membership-guards.test.js', 'tests/chat-poll-authz.test.js',
+    'tests/chat-reminders.test.js', 'tests/chat-unread-availability.test.js',
+    'tests/d05-chat-ai-containment.test.js',
+    'tests/guardian-business-moderation.test.js',
+    'tests/integration/chat-business-ownership-postgres.test.js',
+    'tests/integration/education-series.integration-acceptance.test.js',
+    'tests/legacy-containment-frontend.test.js',
+    'tests/production-block-controller.test.js', 'tests/route-smoke.test.js',
+    'tests/websocket-event-access.test.js'
+]);
 const CERTIFICATE_CI_CHANGED_PATHS = Object.freeze([
     '.github/workflows/ci.yml',
     'config/schedulerSurface.js',
@@ -408,6 +447,16 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.CHAT_LOCAL_CI_GATE) {
+        const changed = normalizePathList(changedPaths);
+        fail(JSON.stringify(redPaths) === JSON.stringify(CHAT_LOCAL_CI_RED_PATHS),
+            'Chat local CI permits only its reviewed workflow Red path', 'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
+        fail(changed.every(file => CHAT_LOCAL_CI_CHANGED_PATHS.includes(file))
+            && CHAT_LOCAL_CI_REQUIRED_PATHS.every(file => changed.includes(file)),
+        'Chat local CI requires the reviewed ownership, evidence and controller paths only',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: [...CHAT_LOCAL_CI_RED_PATHS] };
+    }
     if (workflow === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         const changed = normalizePathList(changedPaths);
         fail(redPaths.includes('routes/finance.js') && redPaths.every(file => FINANCE_MANUAL_RED_PATHS.includes(file)),
@@ -586,6 +635,13 @@ function buildManifest(facts, options = {}) {
             'Certificate CI release cannot include migrations or QA records',
             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
     }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.CHAT_LOCAL_CI_GATE) {
+        fail(qaScope.enabled === false
+            && JSON.stringify(migrations.map(item => item.file).sort()) === JSON.stringify(CHAT_LOCAL_CI_MIGRATIONS)
+            && migrations.every(item => item.kind === 'schema' && item.red === false),
+        'Chat local CI permits only the two additive ownership migrations and no production QA records',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.LEAD_UI_CI_GATE) {
         fail(qaScope.enabled === false && migrations.length === 0,
             'Lead UI CI release cannot include migrations or production QA records',
@@ -703,6 +759,13 @@ function validateManifest(manifest, options = {}) {
             && manifest.migrationClassifications.length === 0,
             'Certificate CI release cannot include migrations or QA records',
             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.CHAT_LOCAL_CI_GATE) {
+        fail(qaScope.enabled === false
+            && JSON.stringify(manifest.allowedMigrationFiles) === JSON.stringify(CHAT_LOCAL_CI_MIGRATIONS)
+            && manifest.migrationClassifications.every(item => item.kind === 'schema' && item.red === false),
+        'Chat local CI migration and QA scope drifted',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
     }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.LEAD_UI_CI_GATE) {
         fail(qaScope.enabled === false && manifest.allowedMigrationFiles.length === 0

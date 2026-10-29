@@ -336,6 +336,43 @@ test('certificate CI protected workflow signs only the expiry and booking preche
     } }, { changedPaths }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
 });
 
+test('chat local CI workflow permits only the reviewed chat candidate and additive migrations', () => {
+    const changedPaths = [
+        '.github/actions/preserve-ci-evidence/action.yml', '.github/workflows/ci.yml',
+        'db/migrations/387_chat_business_ownership.sql',
+        'db/migrations/388_guardian_business_moderation.sql',
+        'scripts/ci-local-evidence.cjs', 'scripts/ci-local-runner-controller.cjs',
+        'scripts/production-block-policy.js',
+        'tests/ci-local-evidence.test.js', 'tests/ci-local-runner-controller.test.js',
+        'tests/production-block-controller.test.js'
+    ];
+    const migrations = changedPaths.filter(file => file.startsWith('db/migrations/')).map(file => ({
+        file, sql: fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
+    }));
+    const options = { protectedWorkflow: 'chat-local-ci-gate' };
+    const value = manifest(options, { changedPaths, migrations });
+    assert.deepEqual(value.allowedProtectedWorkflow, {
+        enabled: true, kind: 'chat-local-ci-gate', protectedChangedPaths: ['.github/workflows/ci.yml']
+    });
+    assert.deepEqual(value.allowedMigrationFiles, changedPaths.filter(file => file.startsWith('db/migrations/')));
+    assert.deepEqual(value.allowedQaScope, { enabled: false });
+    assert.doesNotThrow(() => validateManifest(value));
+    assert.equal(parseOptions(['prepare', '--protected-workflow', 'chat-local-ci-gate']).protectedWorkflow,
+        'chat-local-ci-gate');
+    assert.throws(() => manifest({}, { changedPaths, migrations }), error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    assert.throws(() => manifest(options, { changedPaths: [...changedPaths, 'routes/hr.js'], migrations }),
+        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    assert.throws(() => manifest(options, { changedPaths: [...changedPaths, 'middleware/auth.js'], migrations }),
+        error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    assert.throws(() => manifest(options, { changedPaths, migrations: migrations.slice(0, 1) }),
+        error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    assert.throws(() => manifest({ ...options, qaScope: {
+        enabled: true, kind: 'canary', date: '2026-10-29', ttlMinutes: 15,
+        animators: '1', fixtureLimit: 1
+    } },
+        { changedPaths, migrations }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+});
+
 test('lead UI CI protected workflow signs only the reviewed unified-card release', () => {
     const changedPaths = [
         '.github/workflows/ci.yml', 'js/leads-page.js', 'leads.html',

@@ -176,6 +176,7 @@
     "test:integration:hr-resources": "node --test tests/integration/hr-staff-resources.integration.test.js",
     "test:integration:hr-disposable:isolated": "node scripts/run-isolated-postgres-tests.js hr",
     "test:integration:permissions:isolated": "node scripts/run-isolated-postgres-tests.js permissions",
+    "test:integration:chat:isolated": "node scripts/run-isolated-postgres-tests.js chat",
     "test:integration:finance:isolated": "node scripts/run-isolated-postgres-tests.js finance",
     "test:integration:payroll-profiles:isolated": "node scripts/run-isolated-postgres-tests.js payroll",
     "test:integration:payroll-fullstack:isolated": "node scripts/run-isolated-postgres-tests.js payroll-fullstack",

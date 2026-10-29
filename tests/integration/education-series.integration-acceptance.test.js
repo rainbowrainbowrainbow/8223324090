@@ -385,8 +385,9 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
           continue;
         }
         assert.equal(documentResponse.status(), 200);
-        await page.locator('[data-timeline-settings-tab="system"]').click();
         const mode = page.locator('[data-timeline-settings-display="mode"]');
+        await mode.waitFor({ state: 'attached', timeout: 20000 });
+        await page.locator('[data-timeline-settings-tab="system"]').click();
         await mode.waitFor({ state: 'visible', timeout: 20000 });
         const current = await mode.inputValue();
         await mode.selectOption(current === 'education' ? 'simple' : 'education');

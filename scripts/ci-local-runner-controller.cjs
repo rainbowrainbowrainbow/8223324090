@@ -21,15 +21,42 @@ function writeJSON(file, value) {
   try { fs.writeFileSync(handle, JSON.stringify(value)); fs.fsyncSync(handle); } finally { fs.closeSync(handle); }
   fs.renameSync(temporary, file);
 }
+function commandFailure(program, result) {
+  const name = path.basename(program);
+  if (name !== 'gh' && name !== 'gh.exe') return new Error(`${name} operation failed`);
+  const stderr = result.stderr || '';
+  const httpStatus = /\bHTTP\s+(\d{3})\b/i.exec(stderr)?.[1];
+  const processCode = result.error?.code;
+  let code, transientRead;
+  if (httpStatus) {
+    code = `GH_HTTP_${httpStatus}`;
+    transientRead = httpStatus === '408' || httpStatus === '429' || Number(httpStatus) >= 500;
+  } else if (processCode === 'ENOENT') {
+    code = 'GH_NOT_FOUND';
+    transientRead = false;
+  } else if (['ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', 'ENOTFOUND', 'ECONNREFUSED'].includes(processCode)) {
+    code = `GH_${processCode}`;
+    transientRead = true;
+  } else if (/authentication required|not logged in|bad credentials|invalid token|could not authenticate/i.test(stderr)) {
+    code = 'GH_AUTH';
+    transientRead = false;
+  } else if (/error connecting to api\.github\.com|TLS handshake timeout|connection reset|temporary failure|i\/o timeout|connection refused|network is unreachable|no such host/i.test(stderr)) {
+    code = 'GH_NETWORK';
+    transientRead = true;
+  } else {
+    // An unclassified CLI exit may be a brief API failure. Only GET calls retry it.
+    code = 'GH_EXIT';
+    transientRead = true;
+  }
+  const error = new Error(`gh operation failed (${code})`);
+  error.code = code;
+  error.transientRead = transientRead;
+  return error;
+}
 function command(program, args, input, timeout = 120000) {
   const result = spawnSync(program, args, { input, encoding: 'utf8', windowsHide: true, maxBuffer: 8 * 1024 ** 2, timeout });
   // Do not echo command arguments, stdin or captured API bodies on failure.
-  if (result.status !== 0 || result.error) {
-    const error = new Error(`${path.basename(program)} operation failed`);
-    error.transientRead = result.error?.code === 'ETIMEDOUT'
-      || /error connecting to api\.github\.com|TLS handshake timeout|connection reset|temporary failure|i\/o timeout|HTTP 50[234]/i.test(result.stderr || '');
-    throw error;
-  }
+  if (result.status !== 0 || result.error) throw commandFailure(program, result);
   return result.stdout;
 }
 function retryRead(operation, wait = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)) {
@@ -272,5 +299,5 @@ async function main(file) {
   }
   console.log(JSON.stringify({ stage: 'ALL_REQUIRED_JOBS_PASSED', run: config.run, sha: config.sha }));
 }
-module.exports = { assertRun, assertAcceptsJobs, assertDiskSpace, assertWindow, labelForJob, findRegisteredJob, retryRead };
+module.exports = { assertRun, assertAcceptsJobs, assertDiskSpace, assertWindow, labelForJob, findRegisteredJob, retryRead, commandFailure };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error.message); process.exitCode = 1; });

@@ -3,7 +3,32 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { assertRun, assertAcceptsJobs, assertDiskSpace, assertWindow, labelForJob, findRegisteredJob, retryRead } = require('../scripts/ci-local-runner-controller.cjs');
+const { assertRun, assertAcceptsJobs, assertDiskSpace, assertWindow, labelForJob, findRegisteredJob, retryRead, commandFailure } = require('../scripts/ci-local-runner-controller.cjs');
+
+test('unknown GitHub read failures retry without leaking CLI output; permanent HTTP failures stop', () => {
+  const secret = 'never-log-this-token';
+  const unknown = commandFailure('gh', { status: 1, stderr: `unexpected CLI error ${secret}` });
+  assert.equal(unknown.code, 'GH_EXIT');
+  assert.equal(unknown.transientRead, true);
+  assert.equal(unknown.message.includes(secret), false);
+  let attempts = 0;
+  assert.equal(retryRead(() => { if (++attempts === 1) throw unknown; return 'verified response'; }, () => {}), 'verified response');
+  assert.equal(attempts, 2);
+
+  for (const status of [401, 403, 404]) {
+    const error = commandFailure('gh', { status: 1, stderr: `gh: denied (HTTP ${status}) ${secret}` });
+    assert.equal(error.code, `GH_HTTP_${status}`);
+    assert.equal(error.transientRead, false);
+    assert.equal(error.message.includes(secret), false);
+  }
+  for (const status of [408, 429, 500, 503]) {
+    const error = commandFailure('gh', { status: 1, stderr: `gh: temporary (HTTP ${status}) ${secret}` });
+    assert.equal(error.transientRead, true);
+    assert.equal(error.message.includes(secret), false);
+  }
+  assert.equal(commandFailure('gh', { error: { code: 'ENOENT' } }).transientRead, false);
+  assert.equal(commandFailure('ssh.exe', { status: 255, stderr: secret }).message.includes(secret), false);
+});
 
 test('transient read failures retry with bounded backoff; permanent failures stop immediately', () => {
   const transient = Object.assign(new Error('temporary connection failure'), { transientRead: true });

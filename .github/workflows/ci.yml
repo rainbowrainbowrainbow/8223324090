@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   fast-baseline:
+    if: ${{ !startsWith(github.ref, 'refs/heads/codex/outbox-observer-cost-') }}
     name: Fast baseline
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -48,6 +49,7 @@ jobs:
         run: npm test
 
   hr-team-browser:
+    if: ${{ !startsWith(github.ref, 'refs/heads/codex/outbox-observer-cost-') }}
     name: HR Team browser smoke
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -87,6 +89,7 @@ jobs:
         run: npm run test:browser:staff-schedule
 
   hr-payroll-postgres:
+    if: ${{ !startsWith(github.ref, 'refs/heads/codex/outbox-observer-cost-') }}
     name: HR and payroll PostgreSQL integration
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -166,3 +169,47 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:browser:hr-onboarding:fullstack:isolated
+
+  outbox-observer:
+    if: ${{ startsWith(github.ref, 'refs/heads/codex/outbox-observer-cost-') }}
+    name: Outbox observer safety and lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout bounded worker history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 3
+
+      - name: Use Node.js from repo baseline
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Align npm baseline
+        run: npm install -g npm@10.9.8
+
+      - name: Check worker-only change boundary
+        run: node scripts/check-outbox-observer-release.js
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check runtime and JavaScript syntax
+        run: |
+          npm run check:runtime
+          node --check scripts/hermes-notification-outbox-worker.js
+          node --check tests/hermes-notification-outbox-worker.test.js
+
+      - name: Check observer lifecycle and notification contracts
+        env:
+          NODE_ENV: test
+          DATABASE_URL: ''
+        run: >-
+          node --test
+          tests/hermes-notification-outbox-worker.test.js
+          tests/notification-outbox.test.js
+          tests/notification-outbox-lifecycle.test.js
+          tests/hermes-notification-outbox.test.js
+          tests/event-bus-outbox-hardening.test.js

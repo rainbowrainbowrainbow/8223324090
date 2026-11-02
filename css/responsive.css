@@ -5660,6 +5660,7 @@ body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn,
 
 body.timeline-dashboard-page .timeline-view-panel-actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-start;
     align-items: flex-end;
     gap: 8px;
@@ -5979,22 +5980,14 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--ac
     margin-left: 0 !important;
 }
 
-/* v0.80.39: print/image export actions live in the date row without wrapping over the timeline. */
+/* Keep date navigation visible; exports live in the expandable panel. */
 body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > :where(button, .date-button-shell) {
     flex: 0 0 auto !important;
 }
 
-body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > :where(#exportPdfBtn, #exportTimelineBtn, #timelineViewPanelToggle) {
+body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #timelineViewPanelToggle {
     min-width: max-content !important;
     white-space: nowrap !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #exportPdfBtn {
-    min-width: 64px !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #exportTimelineBtn {
-    min-width: 86px !important;
 }
 
 body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #timelineViewPanelToggle {
@@ -6006,14 +5999,6 @@ body.timeline-dashboard-page .schedule-command-center .action-buttons:not(:has(>
 }
 
 @media (max-width: 430px) {
-    body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #exportPdfBtn {
-        min-width: 58px !important;
-    }
-
-    body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #exportTimelineBtn {
-        min-width: 76px !important;
-    }
-
     body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #timelineViewPanelToggle {
         min-width: 92px !important;
     }
@@ -6141,16 +6126,16 @@ body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeli
         width: 100% !important;
         flex-wrap: nowrap !important;
         gap: 6px !important;
-        overflow-x: auto !important;
+        overflow-x: visible !important;
         overflow-y: visible !important;
         overscroll-behavior-x: contain;
         scrollbar-width: thin;
     }
 
     body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility .date-navigation-cluster {
-        width: max-content !important;
-        max-width: none !important;
-        flex-wrap: nowrap !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        flex-wrap: wrap !important;
         overflow-x: visible !important;
     }
 

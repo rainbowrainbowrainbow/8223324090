@@ -129,10 +129,8 @@
                                 <span class="date-button-calendar" aria-hidden="true">📅</span>
                                 <input type="date" id="timelineDate" aria-label="Дата графіка">
                             </label>
-                            <button type="button" id="todayBtn" class="btn-today toolbarButton toolbarGhostButton" title="Перейти на сьогодні" aria-label="Перейти на сьогодні">Зараз</button>
                             <button type="button" id="nextDay" class="btn-nav toolbarIconButton toolbarGhostButton" title="Наступний день" aria-label="Наступний день">›</button>
-                            <button type="button" id="exportPdfBtn" class="btn-export timeline-header-print-btn toolbarButton toolbarGhostButton" title="Друк / Зберегти як PDF" aria-label="Друк розкладу таймлайну">Друк</button>
-                            <button type="button" id="exportTimelineBtn" class="btn-export toolbarButton toolbarGhostButton" title="Експортувати таймлайн як картинку" aria-label="Експортувати таймлайн як картинку">Експорт</button>
+                            <button type="button" id="todayBtn" class="btn-today toolbarButton toolbarGhostButton" title="Перейти на сьогодні" aria-label="Перейти на сьогодні">Сьогодні</button>
                             <button type="button" id="timelineViewPanelToggle" class="timeline-header-view-btn toolbarButton toolbarGhostButton" title="Відкрити фільтри таймлайну" aria-label="Відкрити фільтри таймлайну" aria-controls="timelineViewPanel" aria-expanded="false"><span class="timeline-control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/><path d="M8 5v4"/><path d="M15 10v4"/><path d="M11 15v4"/></svg></span><span class="timeline-filter-label">Фільтри</span><span class="timeline-filter-badge" id="timelineViewPanelBadge" data-filter-badge aria-hidden="true"></span></button>
                         </div>
                     </div>
@@ -164,6 +162,8 @@
                         </div>
                     </div>
                     <div class="timeline-view-panel-actions" aria-label="Додаткові дії таймлайну">
+                        <button type="button" id="exportPdfBtn" class="btn-export timeline-header-print-btn toolbarButton toolbarGhostButton" title="Друк / Зберегти як PDF" aria-label="Друк розкладу таймлайну">Друк</button>
+                        <button type="button" id="exportTimelineBtn" class="btn-export toolbarButton toolbarGhostButton" title="Експортувати таймлайн як картинку" aria-label="Експортувати таймлайн як картинку">Експорт</button>
                         <button type="button" id="historyBtn" class="btn-history timeline-header-history-btn timeline-view-panel-history-btn toolbarButton toolbarGhostButton hidden" title="Історія змін бронювань" aria-label="Відкрити історію змін"><span class="timeline-control-icon" aria-hidden="true">📋</span><span class="toolbar-label-full">Історія змін</span><span class="toolbar-label-short" aria-hidden="true">Історія</span></button>
                     </div>
                 </div>

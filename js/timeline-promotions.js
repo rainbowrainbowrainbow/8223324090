@@ -209,10 +209,11 @@
         const afishaCount = (view.afishaEvents || []).filter(item => item.type !== 'birthday').length;
         const attentionCount = (view.afishaEvents || []).reduce((count, item) => count + (item.birthday_slots || []).filter(slot => slot.conflict).length, 0);
         const hasAfisha = showAfisha();
+        panel.dataset.empty = String(items.length === 0 && (!hasAfisha || afishaCount === 0));
         panel.dataset.visibleFrom = dates[0];
         panel.dataset.visibleTo = dates[dates.length - 1];
         panel.innerHTML = `<div class="timeline-marketing-overview">
-            <div class="timeline-marketing-intro"><strong>${hasAfisha ? 'Акції та афіша' : 'Акції'}</strong><span>У видимому періоді</span></div>
+            <div class="timeline-marketing-intro"><strong>${hasAfisha ? 'Акції та афіша' : 'Акції'}</strong></div>
             <div class="timeline-marketing-counts"><span class="timeline-marketing-count timeline-marketing-count-promotions">Акції <strong>${items.length}</strong></span>${hasAfisha ? `<span class="timeline-marketing-count timeline-marketing-count-afisha">Афіша <strong>${afishaCount}</strong></span>${attentionCount ? `<span class="timeline-marketing-count timeline-marketing-count--conflict" role="status">Потрібна увага <strong>${attentionCount}</strong></span>` : ''}` : ''}</div>
             <button type="button" class="btn-secondary timeline-marketing-toggle" data-toggle-marketing aria-expanded="${marketingOpen}" aria-controls="timelineMarketingDetails">${marketingOpen ? 'Згорнути' : 'Розгорнути'}<span aria-hidden="true" class="timeline-marketing-chevron"></span></button></div>
             <div class="timeline-marketing-body" id="timelineMarketingDetails" ${marketingOpen ? '' : 'hidden'}>${marketingOpen ? `<section class="timeline-promotion-section" aria-label="Акції"><div class="timeline-promotions-toolbar"><strong>Акції</strong><span class="timeline-promotions-status" aria-live="polite"></span>${moreCount > 0 ? `<button type="button" class="btn-secondary" data-more aria-expanded="false">Ще ${moreCount}</button>` : ''}${expanded && items.length > 2 ? '<button type="button" class="btn-secondary" data-less aria-expanded="true">Показати менше</button>' : ''}${writable ? '<button type="button" class="btn-secondary" data-add>Додати акцію</button>' : ''}${writable && dates.length > 1 ? '<button type="button" class="btn-secondary" data-select aria-pressed="false">Виділити дати</button>' : ''}</div>
@@ -269,9 +270,9 @@
             const linked = (view.afishaEvents || []).filter(event => Number(event.promotion_id) === Number(item.id));
             row.innerHTML = `<div class="timeline-promotion-band" data-color="${M.esc(item.color_key)}" style="grid-column:${first + 1}/${last + 2}">
                 ${writable && dates.length > 1 && item.starts_on >= dates[0] ? '<button type="button" class="promotion-handle" data-edge="start" aria-label="Змінити початок акції">⋮</button>' : ''}
-                <button type="button" class="promotion-label" aria-label="${M.esc(`${item.title}, ${item.starts_on}–${item.ends_on}, весь день`)}"><strong>${M.esc(item.title)}</strong><span>${M.esc(item.starts_on)}–${M.esc(item.ends_on)}</span><em>Весь день</em></button>
-                ${linked.length ? `<span class="promotion-afisha-links">${linked.map(event => `<button type="button" data-linked-afisha="${Number(event.id)}">⚑ ${M.esc(event.title)}</button>`).join('')}</span>` : ''}
-                ${showAfisha() && M.writable('edit_booking') ? '<button type="button" class="promotion-add-afisha" data-add-linked-afisha aria-label="Додати захід до акції">+ Захід</button>' : ''}
+                <button type="button" class="promotion-label" title="${M.esc(`${item.title}, ${item.starts_on}–${item.ends_on}, весь день`)}" aria-label="${M.esc(`${item.title}, ${item.starts_on}–${item.ends_on}, весь день`)}"><strong>${M.esc(item.title)}</strong><span>${M.esc(item.starts_on)}–${M.esc(item.ends_on)}</span><em>Весь день</em></button>
+                ${linked.length ? `<span class="promotion-afisha-links">${linked.map(event => `<button type="button" data-linked-afisha="${Number(event.id)}" title="${M.esc(event.title)}">⚑ ${M.esc(event.title)}</button>`).join('')}</span>` : ''}
+                ${showAfisha() && M.writable('edit_booking') ? '<button type="button" class="promotion-add-afisha" data-add-linked-afisha title="Додати захід до акції" aria-label="Додати захід до акції"><span aria-hidden="true">+</span><span class="promotion-add-afisha-text">Захід</span></button>' : ''}
                 ${writable && dates.length > 1 && item.ends_on <= dates[dates.length - 1] ? '<button type="button" class="promotion-handle" data-edge="end" aria-label="Змінити кінець акції">⋮</button>' : ''}</div>`;
             panel.querySelector('.timeline-promotion-bands').appendChild(row);
             row.querySelectorAll('[data-linked-afisha]').forEach(button => button.addEventListener('click', () => {

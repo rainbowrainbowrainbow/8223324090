@@ -921,17 +921,44 @@ async function runLoop(options = {}) {
     const intervalMs = Math.max(1, config.ok ? config.loopIntervalSeconds : DEFAULT_LOOP_INTERVAL_SECONDS) * 1000;
     const results = [];
     let stopping = false;
-    const stop = () => { stopping = true; };
+    let timer = null;
+    let wake = null;
+    const stop = () => {
+        stopping = true;
+        if (timer !== null) {
+            clearTimeout(timer);
+            timer = null;
+        }
+        if (wake) {
+            const resolve = wake;
+            wake = null;
+            resolve();
+        }
+    };
     process.once('SIGTERM', stop);
     process.once('SIGINT', stop);
-    while (!stopping) {
-        const result = await runOnce({ env, cliArgs, config, deps, includeStats: options.includeStats, includePreview: options.includePreview });
-        results.push(result);
-        process.stdout.write(`${JSON.stringify(result)}\n`);
-        if (options.once) break;
-        await new Promise(resolve => setTimeout(resolve, intervalMs));
+    try {
+        while (!stopping) {
+            const result = await runOnce({ env, cliArgs, config, deps, includeStats: options.includeStats, includePreview: options.includePreview });
+            // Stdout is the diagnostic history; retain only the latest result in memory.
+            results[0] = result;
+            process.stdout.write(`${JSON.stringify(result)}\n`);
+            if (options.once || stopping) break;
+            await new Promise(resolve => {
+                wake = resolve;
+                timer = setTimeout(() => {
+                    timer = null;
+                    wake = null;
+                    resolve();
+                }, intervalMs);
+            });
+        }
+        return results;
+    } finally {
+        if (timer !== null) clearTimeout(timer);
+        process.removeListener('SIGTERM', stop);
+        process.removeListener('SIGINT', stop);
     }
-    return results;
 }
 
 async function main(argv = process.argv.slice(2), env = process.env) {

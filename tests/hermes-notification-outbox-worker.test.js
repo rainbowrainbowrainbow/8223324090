@@ -272,6 +272,79 @@ test('runLoop defaults to read-only instead of live when no mode is explicit', a
     assert.deepEqual(calls.map(call => call[0]), ['list']);
 });
 
+test('runLoop retains one result while emitting every read-only iteration', async t => {
+    const before = ['SIGTERM', 'SIGINT'].map(signal => process.listenerCount(signal));
+    const calls = [];
+    let logs = 0;
+    const handles = new Set();
+    t.mock.method(global, 'setTimeout', callback => {
+        const handle = {};
+        handles.add(handle);
+        queueMicrotask(() => { if (handles.delete(handle)) callback(); });
+        return handle;
+    });
+    t.mock.method(global, 'clearTimeout', handle => handles.delete(handle));
+    t.mock.method(process.stdout, 'write', () => {
+        logs += 1;
+        if (logs === 200) process.emit('SIGTERM');
+        return true;
+    });
+    let results;
+    try {
+        results = await worker.runLoop({ env: targetEnv(), deps: depsFor([event(4, 1)], calls) });
+    } finally {
+        t.mock.restoreAll();
+    }
+    assert.equal(logs, 200);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].status, 'READ_ONLY_PLAN');
+    assert.equal(results[0].send_attempted, false);
+    assert.equal(results[0].crm_mutation_attempted, false);
+    assert.equal(calls.length, 200);
+    assert.ok(calls.every(call => call[0] === 'list'));
+    assert.deepEqual(['SIGTERM', 'SIGINT'].map(signal => process.listenerCount(signal)), before);
+});
+
+test('runLoop wakes its minute-long wait on SIGTERM and clears listeners', { timeout: 2000 }, async t => {
+    const before = ['SIGTERM', 'SIGINT'].map(signal => process.listenerCount(signal));
+    const calls = [];
+    const handle = {};
+    let cleared = 0;
+    let requestedDelay;
+    t.mock.method(global, 'setTimeout', (callback, milliseconds) => {
+        requestedDelay = milliseconds;
+        // The timeout never fires: termination must wake the loop independently.
+        queueMicrotask(() => process.emit('SIGTERM'));
+        return handle;
+    });
+    t.mock.method(global, 'clearTimeout', actual => {
+        assert.equal(actual, handle);
+        cleared += 1;
+    });
+    t.mock.method(process.stdout, 'write', () => true);
+    try {
+        await worker.runLoop({ env: targetEnv(), deps: depsFor([], calls) });
+    } finally {
+        t.mock.restoreAll();
+    }
+    assert.equal(requestedDelay, 60000);
+    assert.equal(cleared, 1);
+    assert.deepEqual(calls.map(call => call[0]), ['list']);
+    assert.deepEqual(['SIGTERM', 'SIGINT'].map(signal => process.listenerCount(signal)), before);
+});
+
+test('runLoop removes signal listeners when diagnostic output fails', async t => {
+    const before = ['SIGTERM', 'SIGINT'].map(signal => process.listenerCount(signal));
+    const error = new Error('Synthetic diagnostic output failure');
+    t.mock.method(process.stdout, 'write', () => { throw error; });
+    try {
+        await assert.rejects(worker.runLoop({ env: targetEnv(), deps: depsFor([]) }), actual => actual === error);
+    } finally {
+        t.mock.restoreAll();
+    }
+    assert.deepEqual(['SIGTERM', 'SIGINT'].map(signal => process.listenerCount(signal)), before);
+});
+
 test('live_once processes only ready approved owners and leaves owner16 blocked', async () => {
     const calls = [];
     const env = targetEnv({

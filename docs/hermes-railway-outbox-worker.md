@@ -1,16 +1,16 @@
 # Hermes Railway notification_outbox worker
 
-Status: safe-local implementation scaffold. Do not deploy or enable this worker without a separate cutover approval.
+Status: the deployed observer uses read-only mode. Local lifecycle improvements described below have not been deployed. Do not enable delivery without a separate cutover approval.
 
 ## Purpose
 
-This worker is the future server-side replacement for the local Hermes cron job:
+This worker was designed as a server-side replacement for a historical local Hermes cron job:
 
 ```text
 6cd93e92f156 — event_genix_hermes_notification_outbox_live_cron.py
 ```
 
-The local cron remains the canonical live poller until a server worker target is deployed in read-only mode, smoke-tested, and the local cron is paused first.
+This historical identifier is not evidence of a currently running sender. The Hermes computer is unavailable and its current processes have not been verified. The Railway service `eg-tasker-outbox-readonly` is a diagnostic observer; its current read-only configuration does not claim, send, acknowledge, or fail events. Delivery ownership and consumers of the observer logs remain unknown. Retiring Hermes must preserve the separate CRM Telegram and WebSocket paths.
 
 ## Entry points
 
@@ -75,6 +75,14 @@ HERMES_OUTBOX_SEND_BUTTONS=0
 ```
 
 Live gate failures return before stats/list/source reads, so a misconfigured live run does not touch CRM/outbox read APIs before the gate verdict. Programmatic `runLoop()` defaults to `read_only_loop`; it is not live unless an explicit live loop mode is supplied.
+
+## Loop memory and shutdown
+
+The local optimization candidate keeps only the latest result in the array returned by `runLoop()`. Every iteration is still emitted to stdout; logs remain the diagnostic history. `once: true` continues to return one result. Callers must not use the return array as an unbounded historical archive.
+
+SIGTERM and SIGINT wake the interval wait immediately. An in-flight iteration finishes before the loop returns; `main()` then closes its dependencies in its existing `finally` block. Loop signal listeners are removed on normal return and errors. The polling interval, JSON log format, recipient rules, batching, duplicate guard, and live gates are unchanged.
+
+This is an isolated worker candidate based on deployed source `bac980a44c2013cc3169b04df04efed05ddf6372`, not a CRM release branch. Do not merge its old repository tree into the current CRM production branch. A future worker-only release needs an exact source commit, CI, a reviewed target-specific deployment path, and runtime memory/shutdown verification. No deployment, cadence change, sender activation, or queue replay is authorized by this local patch.
 
 ## Batch policy
 

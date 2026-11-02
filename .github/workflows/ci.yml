@@ -183,6 +183,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          retention-days: 14
           name: hr-checklists-browser
           path: |
             output/playwright/hr-checklists/after-shell
@@ -264,6 +265,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          retention-days: 14
           name: hr-checklists-postgres
           path: |
             output/playwright/hr-checklists/postgres
@@ -281,6 +283,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          retention-days: 14
           name: wallet-ledger-postgres
           path: output/wallet-ledger
 
@@ -451,6 +454,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          retention-days: 14
           name: hr-pay-actual-app-browser
           path: output/playwright/hr-pay-actual-app
           if-no-files-found: ignore
@@ -570,28 +574,18 @@ jobs:
         run: npm run test:integration:checkbox-ui-real:isolated
 
   education-regressions:
-    name: Education ${{ matrix.suite }} (${{ matrix.engine }})
+    name: Education shard ${{ matrix.shard }} (${{ matrix.engine }})
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 95
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { suite: teachers, engine: chromium }
-          - { suite: hrLink, engine: chromium }
-          - { suite: hrLink, engine: webkit }
-          - { suite: groups, engine: chromium }
-          - { suite: lifecycle, engine: chromium }
-          - { suite: date, engine: chromium }
-          - { suite: async, engine: chromium }
-          - { suite: journal, engine: chromium }
-          - { suite: attendance, engine: chromium }
-          - { suite: series, engine: chromium }
-          - { suite: acceptance, engine: chromium }
-          - { suite: journey, engine: chromium }
-          - { suite: journey, engine: webkit }
-          - { suite: responsive, engine: chromium }
-          - { suite: responsive, engine: webkit }
+          - { shard: chromium-core, engine: chromium }
+          - { shard: chromium-lifecycle, engine: chromium }
+          - { shard: chromium-journey, engine: chromium }
+          - { shard: webkit-flow, engine: webkit }
+          - { shard: webkit-responsive, engine: webkit }
     services:
       postgres:
         image: postgres:16
@@ -633,18 +627,17 @@ jobs:
           done
           ! grep -q 'azure.archive.ubuntu.com' "${source_files[@]}"
       - name: Install required browser through existing ephemeral Playwright pattern
-        if: matrix.suite != 'attendance' && matrix.suite != 'series'
         run: npm exec --yes --package=playwright -c "playwright install --with-deps ${{ matrix.engine }}"
-      - name: Run source-bound actual-app education suite
+      - name: Run serial source-bound actual-app education shard
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_education_ready_fixture_test
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
-          EDU_CLOSE_OUTPUT: output/education-ready/close04/ci-${{ matrix.suite }}-${{ matrix.engine }}
-        run: npm exec --yes --package=playwright -c "node tests/integration/run-education-close-ci.js ${{ matrix.suite }} ${{ matrix.engine }}"
+        run: npm exec --yes --package=playwright -c "node scripts/run-education-ci-shard.js ${{ matrix.shard }}"
       - name: Preserve exact attempt evidence even on failure
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: education-${{ matrix.suite }}-${{ matrix.engine }}-${{ github.sha }}
-          path: output/education-ready/close04/ci-*
+          retention-days: 14
+          name: education-${{ matrix.shard }}-${{ matrix.engine }}-${{ github.sha }}
+          path: output/education-ready/close04/shard-*
           if-no-files-found: error

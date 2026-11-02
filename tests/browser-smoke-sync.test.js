@@ -72,7 +72,9 @@ function mirrorBootstrapFixture(t, source, mirrorlist) {
     assert.ok(block, 'Read the actual workflow bootstrap, not a copied implementation');
     const shellPath = value => value.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, drive) => '/' + drive.toLowerCase());
     const body = block[1].split('\n').map(line => line.slice(10)).join('\n').replaceAll('/etc/apt', shellPath(apt));
-    const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : '/bin/bash';
+    const bash = process.platform === 'win32'
+        ? (process.env.GIT_BASH_PATH || 'C:\\Program Files\\Git\\bin\\bash.exe')
+        : '/bin/bash';
     const run = () => spawnSync(bash, ['-c', 'PATH="' + shellPath(path.join(root, 'bin')) + ':$PATH"\n' + body], { encoding: 'utf8' });
     return { run, readSources: () => fs.readFileSync(sources, 'utf8'), readMirror: () => fs.readFileSync(mirror, 'utf8'), readVendor: () => fs.readFileSync(vendor, 'utf8') };
 }

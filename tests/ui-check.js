@@ -417,7 +417,7 @@ checkPage('index.html', (doc, html) => {
         && !timelineActionMenu?.querySelector('a[href="/programs"]')
         && !timelineActionMenu?.querySelector('a[href="/tasks"]'));
     check('Timeline print action is restored through existing print flow',
-        doc.querySelector('.schedule-command-row--utility .date-controls > #exportPdfBtn.toolbarButton.toolbarGhostButton[type="button"]')
+        doc.querySelector('#timelineViewPanel .timeline-view-panel-actions > #exportPdfBtn.toolbarButton.toolbarGhostButton[type="button"]')
         && doc.getElementById('exportPdfBtn')?.textContent.trim() === 'Друк'
         && !doc.getElementById('exportPdfBtn')?.hasAttribute('role')
         && htmlContains('js/app.js', "document.getElementById('exportPdfBtn')")
@@ -485,9 +485,9 @@ checkPage('index.html', (doc, html) => {
         && !doc.querySelector('.timeline-header-filters #logoutBtn')
         && !doc.querySelector('.timeline-header-filters #timelineHolidaysToggle')
         && !!doc.querySelector('.schedule-command-row--utility.toolbarRow .schedule-command-zone--date.toolbarZone .date-controls.toolbarGroup')
-        && !!doc.querySelector('.schedule-command-row--utility .date-controls > #exportPdfBtn.toolbarButton.toolbarGhostButton[type="button"]')
-        && !!doc.querySelector('.schedule-command-row--utility .date-controls > #exportTimelineBtn.toolbarButton.toolbarGhostButton[type="button"]')
-        && Array.from(doc.querySelectorAll('.schedule-command-row--utility .date-controls button, .schedule-command-row--utility .date-controls input')).map(el => el.id).join('|') === 'prevDay|timelineDate|todayBtn|nextDay|exportPdfBtn|exportTimelineBtn|timelineViewPanelToggle'
+        && !!doc.querySelector('#timelineViewPanel .timeline-view-panel-actions > #exportPdfBtn.toolbarButton.toolbarGhostButton[type="button"]')
+        && !!doc.querySelector('#timelineViewPanel .timeline-view-panel-actions > #exportTimelineBtn.toolbarButton.toolbarGhostButton[type="button"]')
+        && Array.from(doc.querySelectorAll('.schedule-command-row--utility .date-controls button, .schedule-command-row--utility .date-controls input')).map(el => el.id).join('|') === 'prevDay|timelineDate|nextDay|todayBtn|timelineViewPanelToggle'
         && !doc.querySelector('.schedule-command-row--utility.toolbarRow .schedule-command-zone--actions')
         && !doc.querySelector('.schedule-command-row--utility #historyBtn')
         && !doc.querySelector('.schedule-command-row--utility #digestBtn')
@@ -862,7 +862,7 @@ checkPage('index.html', (doc, html) => {
         && timelineBrowserSmokeCode.includes('metrics.historyInTopbar, false')
         && timelineBrowserSmokeCode.includes('metrics.historyInViewPanel, true')
         && timelineBrowserSmokeCode.includes('await waitForLegacyTimelineTypeSwitchRemoved(page')
-        && timelineBrowserSmokeCode.includes("metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay|exportPdfBtn|exportTimelineBtn|timelineViewPanelToggle'")
+        && timelineBrowserSmokeCode.includes("metrics.dateInteractiveIds, 'prevDay|timelineDate|nextDay|todayBtn|timelineViewPanelToggle'")
         && timelineBrowserSmokeCode.includes('metrics.utilityRowHeight <= 52')
         && timelineBrowserSmokeCode.includes('metrics.commandCenterHeight <= 96')
         && timelineBrowserSmokeCode.includes('metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 64')
@@ -1082,12 +1082,12 @@ checkPage('index.html', (doc, html) => {
         && timelineCompactCommandCss.includes('z-index: 70 !important')
         && timelineInlineViewPanelRule.includes('z-index: auto !important')
         && !timelineInlineViewPanelRule.includes('z-index: 140'));
-    check('Timeline date navigation cluster keeps date primary with export actions and the view trigger outside topbar',
+    check('Timeline date navigation keeps date primary and groups exports in the expandable panel',
         !!doc.querySelector('.schedule-command-row--utility .schedule-command-zone--date .date-controls.date-navigation-cluster')
-        && Array.from(doc.querySelectorAll('.schedule-command-row--utility .date-controls button, .schedule-command-row--utility .date-controls input')).map(el => el.id).join('|') === 'prevDay|timelineDate|todayBtn|nextDay|exportPdfBtn|exportTimelineBtn|timelineViewPanelToggle'
+        && Array.from(doc.querySelectorAll('.schedule-command-row--utility .date-controls button, .schedule-command-row--utility .date-controls input')).map(el => el.id).join('|') === 'prevDay|timelineDate|nextDay|todayBtn|timelineViewPanelToggle'
         && !!doc.querySelector('.date-navigation-cluster .date-button-shell > #timelineDate[type="date"]')
-        && !!doc.querySelector('.date-navigation-cluster > #exportPdfBtn[type="button"].toolbarButton.toolbarGhostButton')
-        && !!doc.querySelector('.date-navigation-cluster > #exportTimelineBtn[type="button"].toolbarButton.toolbarGhostButton')
+        && !!doc.querySelector('#timelineViewPanel .timeline-view-panel-actions > #exportPdfBtn[type="button"].toolbarButton.toolbarGhostButton')
+        && !!doc.querySelector('#timelineViewPanel .timeline-view-panel-actions > #exportTimelineBtn[type="button"].toolbarButton.toolbarGhostButton')
         && !!doc.querySelector('.date-navigation-cluster > #timelineViewPanelToggle[aria-controls="timelineViewPanel"]')
         && doc.querySelector('.date-navigation-cluster > #timelineViewPanelToggle')?.textContent.trim() === 'Фільтри'
         && !doc.querySelector('.header .timeline-header-actions #timelineViewPanelToggle')
@@ -1098,7 +1098,7 @@ checkPage('index.html', (doc, html) => {
         && !doc.querySelector('.date-navigation-cluster .day-info')
         && !doc.querySelector('#dayOfWeekLabel')
         && !doc.querySelector('#workingHours')
-        && doc.querySelector('.date-navigation-cluster #todayBtn')?.textContent.trim() === 'Зараз'
+        && doc.querySelector('.date-navigation-cluster #todayBtn')?.textContent.trim() === 'Сьогодні'
         && htmlContains('css/responsive.css', '.date-navigation-cluster')
         && htmlContains('css/responsive.css', '.date-button-shell')
         && htmlContains('css/responsive.css', 'v0.77.79: compact date command line removes the empty full-width card shell.')
@@ -1107,7 +1107,7 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'padding: 0 !important;')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility .date-navigation-cluster')
         && htmlContains('css/responsive.css', 'min-height: 40px !important;')
-        && htmlContains('css/responsive.css', 'v0.80.39: print/image export actions live in the date row without wrapping over the timeline.')
+        && htmlContains('css/responsive.css', 'Keep date navigation visible; exports live in the expandable panel.')
         && htmlContains('css/responsive.css', 'flex-wrap: nowrap !important;')
         && htmlContains('css/responsive.css', '.btn-today.is-today')
         && htmlContains('css/responsive.css', 'overflow-x: auto')

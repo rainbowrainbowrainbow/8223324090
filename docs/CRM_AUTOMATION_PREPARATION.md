@@ -321,3 +321,15 @@ current pricing and spend authorization remain separate activation gates.
 The former image default `gpt-image-1-mini` is scheduled for retirement on
 2026-12-01; select and validate a supported replacement before enabling new
 production execution rather than silently relying on that default.
+
+### Explicit creative image-model gate
+
+Before claiming a queued creative job for a real provider call, CRM now requires
+`OPENAI_MENU_IMAGE_MODEL` or `OPENAI_IMAGE_MODEL` to be explicitly configured and
+rejects the retired or scheduled-for-retirement legacy image models. A missing or
+legacy model returns `CRM_CREATIVE_MODEL_NOT_READY` without claiming the job;
+previously completed drafts remain available for review/replay. This does not
+change the native menu-photo workflow or select a replacement model. Operator
+access, quality, pricing and exact model selection still require a paid pilot
+and separate production settings authorization. The gate rejects known legacy
+models but does not prove that an arbitrary other model is available or valid.

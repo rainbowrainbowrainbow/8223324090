@@ -293,3 +293,20 @@ test('definite delivery rejection uses canonical retry handling without ack', as
     assert.deepEqual(f.calls, ['claim', 'fail']);
     assert.ok(f.pool.calls.some(([sql, params]) => sql.includes('pg_try_advisory_lock') && params[0] === 'crm_task_delivery'));
 });
+
+test('creative paid execution requires an explicit non-retired image model before claiming a job', async () => {
+    const { requireCreativeImageModel } = require('../services/crmCreativeExecution');
+    for (const env of [{}, { OPENAI_IMAGE_MODEL: 'gpt-image-1-mini' },
+        { OPENAI_MENU_IMAGE_MODEL: 'openai/gpt-image-1.5' }, { OPENAI_IMAGE_MODEL: 'chatgpt-image-latest' }]) {
+        assert.throws(() => requireCreativeImageModel(env), { code: 'CRM_CREATIVE_MODEL_NOT_READY' });
+    }
+    assert.equal(requireCreativeImageModel({ OPENAI_IMAGE_MODEL: 'openai/gpt-image-2.5-flare' }), 'gpt-image-2.5-flare');
+    let claimed = false, status = 'queued';
+    const execute = createCreativeExecutor({ env: { CRM_CREATIVE_EXECUTION_ENABLED: 'true' }, pool: poolFixture(),
+        jobs: { async getHermesJobDetail() { return { businessContext:'event_genix', jobType:'creative_material_job', status }; },
+            async claimHermesJob() { claimed = true; } } });
+    await assert.rejects(execute({ ...base, jobId: 1 }), { code: 'CRM_CREATIVE_MODEL_NOT_READY' });
+    assert.equal(claimed, false);
+    status = 'ready_for_review';
+    assert.equal((await execute({ ...base, jobId: 1 })).replayed, true, 'reviewed results remain available without a configured model');
+});

@@ -15,6 +15,16 @@ function creativePrompt(job) {
     return [prompt, ...(payload.materialTypes || []), ...(payload.formats || [])].join('\n').slice(0, 5000);
 }
 
+// Do not send a paid request with the retired legacy default. Selection is
+// an explicit operator decision after quality and access validation.
+function requireCreativeImageModel(env) {
+    const configured = String(env.OPENAI_MENU_IMAGE_MODEL || env.OPENAI_IMAGE_MODEL || '').trim().replace(/^openai\//i, '');
+    if (!configured || /^(?:gpt-image-1(?:-mini)?|gpt-image-1\.5(?:-2025-12-16)?|chatgpt-image-latest)$/i.test(configured)) {
+        throw executionError('CRM_CREATIVE_MODEL_NOT_READY', 503);
+    }
+    return configured;
+}
+
 function createCreativeExecutor(options = {}) {
     const env = options.env || process.env;
     return async function executeCreative({ jobId, businessContext, actor, confirmed }) {
@@ -32,6 +42,7 @@ function createCreativeExecutor(options = {}) {
                 return { job: current, replayed: true, providerCalled: false };
             }
             if (current.status !== 'queued') throw executionError('CRM_CREATIVE_JOB_REQUIRES_REVIEW');
+            if (!options.generate) requireCreativeImageModel(env);
             const prompt = creativePrompt(current);
             const context = { businessContext, actor, workerId: 'crm-creative', claimToken: randomUUID() };
             await transaction(client, () => jobs.claimHermesJob(client, jobId, context));
@@ -68,4 +79,4 @@ function createCreativeExecutor(options = {}) {
     };
 }
 
-module.exports = { createCreativeExecutor, creativePrompt };
+module.exports = { createCreativeExecutor, creativePrompt, requireCreativeImageModel };

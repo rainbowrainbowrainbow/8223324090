@@ -504,6 +504,8 @@
             const code = error.data?.code || error.code;
             if (code === 'CRM_EXECUTION_DISABLED') {
                 status.textContent = 'Генерація в CRM ще не активована. Збережений бриф доступний для перегляду.';
+            } else if (code === 'CRM_CREATIVE_MODEL_NOT_READY') {
+                status.textContent = 'Модель генерації ще не налаштована або потребує оновлення. Зверніться до адміністратора.';
             } else if (code === 'CRM_PROVIDER_BUSY') {
                 status.textContent = 'Інша генерація вже виконується. Дочекайтеся її завершення.';
             } else if (code === 'CRM_CREATIVE_REFERENCES_REQUIRE_REVIEW') {

@@ -54,6 +54,7 @@ async function studio(browser, base, viewport, mobile) {
             calls++;
             assert.equal(body.confirmed, true);
             if (mode === 'disabled') return route.fulfill({ status: 503, json: { success: false, code: 'CRM_EXECUTION_DISABLED' } });
+            if (mode === 'model') return route.fulfill({ status: 503, json: { success: false, code: 'CRM_CREATIVE_MODEL_NOT_READY' } });
             if (mode === 'unknown') return route.abort('failed');
             await new Promise(resolve => { release = resolve; });
             job = { ...job, status: 'ready_for_review', assets: [{ assetType: 'preview', role: 'preview', mimeType: 'image/png', url: '/synthetic-creative.png' }] };
@@ -96,11 +97,14 @@ async function studio(browser, base, viewport, mobile) {
             await page.locator('#hermesStudioRefreshBtn').click();
             await execute.click(); await page.locator('.confirm-ok').click();
             await page.waitForFunction(() => document.querySelector('#hermesStudioExecutionStatus').textContent.includes('ще не активована'));
+            mode = 'model';
+            await execute.click(); await page.locator('.confirm-ok').click();
+            await page.waitForFunction(() => document.querySelector('#hermesStudioExecutionStatus').textContent.includes('Модель генерації ще не налаштована'));
             mode = 'unknown';
             await execute.click(); await page.locator('.confirm-ok').click();
             await page.waitForFunction(() => document.querySelector('#hermesStudioExecutionStatus').textContent.includes('потребує перевірки'));
             assert.equal(await execute.isDisabled(), true);
-            assert.equal(calls, 3);
+            assert.equal(calls, 4);
         }
         assert.deepEqual(errors, []);
         results.push({ scenario: `studio-${mobile ? 'mobile' : 'desktop'}`, passed: true, calls, decisions });

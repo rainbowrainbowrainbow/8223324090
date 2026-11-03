@@ -34,6 +34,7 @@ test('saving a business burger blueprint feeds one reference to Kie without chan
     };
     const settings = new Map();
     pool.query = async (sql, params) => {
+        if (sql.includes("to_regclass('menu_image_guard_activation')")) return { rows: [{ name: null }] };
         if (sql.includes('WHERE p.id = $1')) return { rows: [{ ...product }], rowCount: 1 };
         if (sql.startsWith('SELECT value FROM settings')) {
             return { rows: settings.has(params[0]) ? [{ value: settings.get(params[0]) }] : [] };
@@ -100,6 +101,7 @@ test('Kie product route creates one task, persists its ID, and status polling ne
         ai_card_draft: {}
     };
     pool.query = async (sql, params) => {
+        if (sql.includes("to_regclass('menu_image_guard_activation')")) return { rows: [{ name: null }] };
         if (sql.includes('SELECT value FROM settings WHERE key = $1')) return { rows: [] };
         if (sql.includes('WHERE p.id = $1')) return { rows: [{ ...product }], rowCount: 1 };
         if (sql.includes('jsonb_set(')) {
@@ -156,6 +158,7 @@ test('failed Kie task keeps safe provider code and ID for diagnosis without chan
         name: 'QA burger', icon_url: '/uploads/current.jpg', is_active: true, ai_card_draft: {}
     };
     pool.query = async (sql, params) => {
+        if (sql.includes("to_regclass('menu_image_guard_activation')")) return { rows: [{ name: null }] };
         if (sql.includes('SELECT value FROM settings WHERE key = $1')) return { rows: [] };
         if (sql.includes('WHERE p.id = $1')) return { rows: [{ ...product }], rowCount: 1 };
         if (sql.includes('jsonb_set(')) {

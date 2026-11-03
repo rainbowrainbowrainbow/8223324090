@@ -17,6 +17,7 @@ for (const outcome of ['success', 'failure']) for (const changed of [false, true
         kitchen_type: 'menu', name: 'Synthetic pasta', icon_url: '/current.png', is_active: true,
         ai_card_draft: {} };
     pool.query = async (sql, params) => {
+        if (sql.includes("to_regclass('menu_image_guard_activation')")) return { rows: [{ name: null }] };
         if (sql.includes('WHERE p.id = $1')) return { rows: [{ ...product }], rowCount: 1 };
         if (sql.includes('jsonb_set(')) {
             if (sql.includes("'{imageStudio,preparedAt}' = $6")) {

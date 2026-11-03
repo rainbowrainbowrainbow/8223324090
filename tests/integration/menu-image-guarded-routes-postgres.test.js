@@ -122,6 +122,10 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         assert.equal(detached.body.operation.provider, 'openai');
         assert.equal(detached.body.operation.operationId, uncertain.body.product.aiCardDraft.imageStudio.operationId);
         assert.equal(openaiCalls, 2);
+        const disabled = await invoke('/:id/menu-image/draft', 'post', { generator: 'openai' });
+        assert.equal(disabled.statusCode, 503);
+        assert.equal(disabled.body.code, 'MENU_PAID_GUARD_DISABLED');
+        assert.equal(openaiCalls, 2);
         await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture'", [JSON.stringify(savedDraft)]);
         process.env.CRM_MENU_PAID_GUARD_ENABLED = 'true';
         const retry = await invoke('/:id/menu-image/draft', 'post', { generator: 'openai' });

@@ -1369,6 +1369,9 @@ function menuImageGenerationMessage(state) {
     if (state.feedback.code === 'menu_image_tracking_changed') return 'Завдання змінилося. Запізнілий результат не застосовано; перевірте актуальну генерацію ще раз.';
 
     const code = state.feedback.code;
+    if (code === 'MENU_PAID_GUARD_DISABLED') {
+        return 'Генерацію тимчасово зупинено для безпеки попередніх операцій. Зверніться до адміністратора. Фото можна завантажити вручну.';
+    }
     if (code === 'MENU_PAID_OPERATION_REQUIRES_REVIEW') {
         return 'Результат попередньої генерації потребує перевірки. Не запускайте її повторно: провайдер міг списати кошти. Зверніться до адміністратора або завантажте фото вручну.';
     }

@@ -1,6 +1,11 @@
 -- MIGRATION_KIND: schema
 -- SAFETY: Additive, idempotent table and indexes; no existing rows are changed or backfilled.
--- ROLLBACK: Disable the new executor and retain this table for reconciliation; removal requires a separate approved archival plan.
+-- ROLLBACK: Disable guarded submissions and retain both tables; the activation marker intentionally keeps legacy generation blocked. Removal requires a separately approved reconciliation and archival plan.
+
+CREATE TABLE IF NOT EXISTS menu_image_guard_activation (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS menu_image_paid_operations (
     operation_id UUID PRIMARY KEY,

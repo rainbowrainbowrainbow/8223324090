@@ -267,6 +267,7 @@ test('quota and unknown failures explain the next action without disabling manua
     for (const [code, expected] of [
         ['menu_image_generation_quota_exceeded', /Зверніться до адміністратора/],
         ['menu_image_generation_provider_rejected', /Причина не підтверджена/],
+        ['MENU_PAID_GUARD_DISABLED', /Генерацію тимчасово зупинено/],
         ['menu_image_generation_failed', /Причина невідома/]
     ]) {
         const app = createPageHarness();

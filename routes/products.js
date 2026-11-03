@@ -10,7 +10,7 @@ const { createWriteRateLimiter } = require('../middleware/rateLimit');
 const { createLogger } = require('../utils/logger');
 const { executeMenuImagePaid, pollMenuImagePaid } = require('../services/menuImagePaidExecutor');
 const { withLegacyMenuGuard, activateMenuGuard } = require('../services/menuImageGuardGate');
-const { withProviderExecution } = require('../services/crmProviderExecution');
+const { withProviderExecution, assertPaidCapacity } = require('../services/crmProviderExecution');
 const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurface');
 const { userBusinessModuleState } = require('../services/businessModuleRegistry');
 const {
@@ -1785,7 +1785,9 @@ async function handleGuardedMenuImageDraft(req, res) {
         const prompt = buildMenuImagePrompt(product, { size, style, blueprint });
         const preparedAt = new Date().toISOString();
         let generating;
-        const execution = await withProviderExecution(pool, () => executeMenuImagePaid({ pool, businessContext: context, productId: id,
+        const execution = await withProviderExecution(pool, async client => {
+            await assertPaidCapacity(client);
+            return executeMenuImagePaid({ pool, businessContext: context, productId: id,
             provider: generator.provider, actor: req.user.username,
             start: async operationId => {
                 generating = normalizeMenuImageStudio({ ...current.imageStudio, status: 'generating',
@@ -1801,7 +1803,8 @@ async function handleGuardedMenuImageDraft(req, res) {
             },
             saveDraft: async image => persistKieMenuImageResultIfCurrent(id, context, req.user.username, null,
                 preparedAt, normalizeMenuImageStudio({ ...generating, ...image, status: 'ready', operationId: generating.operationId }), generating.operationId)
-        }));
+            });
+        });
         if (execution.status === 'provider_pending') {
             const pending = normalizeMenuImageStudio({ ...generating, taskId: execution.taskId });
             if (!await persistKieMenuImageResultIfCurrent(id, context, req.user.username, null, preparedAt, pending, generating.operationId)) {

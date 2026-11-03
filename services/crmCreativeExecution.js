@@ -1,7 +1,7 @@
 'use strict';
 
 const { randomUUID } = require('node:crypto');
-const { executionError, requireExecutionEnabled, transaction, withProviderExecution } = require('./crmProviderExecution');
+const { executionError, requireExecutionEnabled, transaction, withProviderExecution, assertPaidCapacity } = require('./crmProviderExecution');
 
 function creativePrompt(job) {
     const payload = job.sourcePayload || job.payload || {};
@@ -42,6 +42,7 @@ function createCreativeExecutor(options = {}) {
                 return { job: current, replayed: true, providerCalled: false };
             }
             if (current.status !== 'queued') throw executionError('CRM_CREATIVE_JOB_REQUIRES_REVIEW');
+            await assertPaidCapacity(client);
             if (!options.generate) requireCreativeImageModel(env);
             const prompt = creativePrompt(current);
             const context = { businessContext, actor, workerId: 'crm-creative', claimToken: randomUUID() };

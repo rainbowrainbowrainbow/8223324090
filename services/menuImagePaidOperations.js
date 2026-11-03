@@ -66,4 +66,4 @@ async function transitionMenuImageOperation(queryable, { id, businessContext, fr
     return result.rows[0];
 }
 
-module.exports = { reserveMenuImageOperation, transitionMenuImageOperation };
+module.exports = { reserveMenuImageOperation, transitionMenuImageOperation, MAX_OUTSTANDING };

@@ -1,11 +1,23 @@
 'use strict';
 
+const { MAX_OUTSTANDING } = require('./menuImagePaidOperations');
+
 function executionError(code, statusCode = 409) {
     return Object.assign(new Error(code), { code, statusCode });
 }
 
 function requireExecutionEnabled(env, flag) {
     if (env[flag] !== 'true') throw executionError('CRM_EXECUTION_DISABLED', 503);
+}
+
+// Call only immediately before reserving new paid work while holding the shared
+// execution lock. Read-only replays remain available when the budget is full.
+async function assertPaidCapacity(client) {
+    const table = await client.query("SELECT to_regclass('menu_image_paid_operations') AS name");
+    if (!table.rows[0]?.name) return;
+    const active = await client.query(`SELECT count(*)::integer AS count FROM menu_image_paid_operations
+        WHERE status IN ('reserved', 'provider_pending', 'unknown')`);
+    if (active.rows[0].count >= MAX_OUTSTANDING) throw executionError('CRM_PROVIDER_BUSY', 429);
 }
 
 async function transaction(client, work) {
@@ -47,4 +59,4 @@ async function withProviderExecution(pool, work, lockName = 'crm_paid_provider_e
     }
 }
 
-module.exports = { executionError, requireExecutionEnabled, transaction, withProviderExecution };
+module.exports = { executionError, requireExecutionEnabled, transaction, withProviderExecution, assertPaidCapacity };

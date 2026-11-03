@@ -96,6 +96,41 @@ test('concurrency contention rejects immediately without starting provider', asy
     assert.equal(pool.calls.at(-1)[0], 'release');
 });
 
+test('full paid budget blocks a new creative but still returns an existing review draft', async () => {
+    const pool = poolFixture({ query(sql) {
+        if (sql.includes('to_regclass')) return { rows: [{ name: 'menu_image_paid_operations' }] };
+        if (sql.includes('count(*)')) return { rows: [{ count: 2 }] };
+    } });
+    const job = { businessContext: 'event_genix', jobType: 'creative_material_job', status: 'ready_for_review' };
+    let claims = 0, calls = 0;
+    const jobs = { getHermesJobDetail: async () => job, claimHermesJob: async () => { claims++; } };
+    const run = createCreativeExecutor({ env: { CRM_CREATIVE_EXECUTION_ENABLED: 'true' }, pool, jobs,
+        generate: async () => { calls++; } });
+    const replay = await run({ ...base, jobId: 1 });
+    assert.equal(replay.replayed, true);
+    job.status = 'queued';
+    await assert.rejects(run({ ...base, jobId: 1 }), { code: 'CRM_PROVIDER_BUSY' });
+    assert.equal(claims, 0);
+    assert.equal(calls, 0);
+});
+
+test('full paid budget rolls back a new OCR reservation before provider execution', async () => {
+    const pool = poolFixture({ query(sql) {
+        if (sql.includes('to_regclass')) return { rows: [{ name: 'menu_image_paid_operations' }] };
+        if (sql.includes('count(*)')) return { rows: [{ count: 2 }] };
+    } });
+    const schedule = {
+        normalizeHermesSchedulePreviewPayload: value => value,
+        createHermesScheduleImport: async () => ({ created: true, import: { public_id: 'fixture', status: 'draft' } })
+    };
+    let calls = 0;
+    const service = createScheduleOcr({ env: { CRM_SCHEDULE_OCR_ENABLED: 'true' }, pool, schedule,
+        recognize: async () => { calls++; return []; } });
+    await assert.rejects(service.preview({ ...base, file, documentDate: '2026-11-01' }), { code: 'CRM_PROVIDER_BUSY' });
+    assert.ok(pool.calls.some(([sql]) => sql === 'ROLLBACK'));
+    assert.equal(calls, 0);
+});
+
 test('creative confirmation and unsupported references are checked before claim', async () => {
     const f = creativeFixture();
     await assert.rejects(f.run({ ...base, jobId: 1, confirmed: false }), { code: 'CRM_EXECUTION_CONFIRMATION_REQUIRED' });

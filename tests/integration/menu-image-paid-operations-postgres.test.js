@@ -10,6 +10,7 @@ const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { reserveMenuImageOperation: reserve, transitionMenuImageOperation: transition } = require('../../services/menuImagePaidOperations');
 const { executeMenuImagePaid, pollMenuImagePaid } = require('../../services/menuImagePaidExecutor');
+const { withProviderExecution, assertPaidCapacity } = require('../../services/crmProviderExecution');
 const { pollMenuImageWithKie } = require('../../services/menuPhotoGeneration');
 
 test('paid menu operations survive a pool restart and serialize concurrent budget claims', {
@@ -35,6 +36,10 @@ test('paid menu operations survive a pool restart and serialize concurrent budge
         const accepted = attempts.filter(r => r.status === 'fulfilled').map(r => r.value);
         assert.equal(accepted.length, 2);
         assert.equal(attempts.filter(r => r.status === 'rejected' && r.reason.code === 'MENU_PAID_OPERATION_BUDGET_FULL').length, 6);
+        let otherCalls = 0;
+        await assert.rejects(withProviderExecution(pool, async client => { await assertPaidCapacity(client); otherCalls++; }), { code: 'CRM_PROVIDER_BUSY' });
+        assert.equal(otherCalls, 0);
+        assert.equal(await withProviderExecution(pool, async () => 'delivery allowed', 'crm_task_delivery'), 'delivery allowed');
         const existing = await pool.query('SELECT product_id FROM menu_image_paid_operations WHERE operation_id=$1', [accepted[0]]);
         await assert.rejects(claim(existing.rows[0].product_id), { code: 'MENU_PAID_OPERATION_REQUIRES_REVIEW' });
         await transition(pool, { id: accepted[0], businessContext: 'fixture', from: 'reserved', to: 'unknown' });
@@ -49,6 +54,7 @@ test('paid menu operations survive a pool restart and serialize concurrent budge
         await assert.rejects(transition(pool, { id: accepted[1], businessContext: 'fixture', from: 'provider_pending',
             to: 'succeeded', providerTaskId: 'different-task' }), { code: 'MENU_PAID_OPERATION_CHANGED' });
         await transition(pool, { id: accepted[1], businessContext: 'fixture', from: 'provider_pending', to: 'succeeded' });
+        assert.equal(await withProviderExecution(pool, async client => { await assertPaidCapacity(client); return 'one slot free'; }), 'one slot free');
         const newId = await claim('new-item');
         assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations WHERE operation_id=$1', [accepted[0]])).rows[0].status, 'unknown');
         await transition(pool, { id: newId, businessContext: 'fixture', from: 'reserved', to: 'failed' });

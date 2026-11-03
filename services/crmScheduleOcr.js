@@ -1,7 +1,7 @@
 'use strict';
 
 const { createHash } = require('node:crypto');
-const { executionError, requireExecutionEnabled, transaction, withProviderExecution } = require('./crmProviderExecution');
+const { executionError, requireExecutionEnabled, transaction, withProviderExecution, assertPaidCapacity } = require('./crmProviderExecution');
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 function validateScheduleImage(file) {
@@ -78,11 +78,15 @@ function createScheduleOcr(options = {}) {
             return withProviderExecution(pool, async client => {
                 // Reserve before spending. A process crash never automatically
                 // reissues the same image/date/actor/model provider request.
-                const reserved = await transaction(client, () => canonical.createHermesScheduleImport(client, {
-                    source: 'crm_schedule_ocr_execution', sourceReference: reference,
-                    businessContext: input.businessContext, documentDate: input.documentDate,
-                    status: 'draft', createdByUserId: input.actor.id
-                }));
+                const reserved = await transaction(client, async () => {
+                    const entry = await canonical.createHermesScheduleImport(client, {
+                        source: 'crm_schedule_ocr_execution', sourceReference: reference,
+                        businessContext: input.businessContext, documentDate: input.documentDate,
+                        status: 'draft', createdByUserId: input.actor.id
+                    });
+                    if (entry.created) await assertPaidCapacity(client);
+                    return entry;
+                });
                 let rows = reserved.import.extracted_rows;
                 if (typeof rows === 'string') rows = JSON.parse(rows);
                 if (!reserved.created && (reserved.import.status !== 'needs_review' || !Array.isArray(rows))) {

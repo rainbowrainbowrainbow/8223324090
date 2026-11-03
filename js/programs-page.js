@@ -2016,7 +2016,7 @@ async function inspectKitchenMenuPaidOperation(productId, trigger) {
             review.type = 'button'; review.className = 'btn-page-secondary';
             review.dataset.menuImageAction = 'review-paid-operation';
             review.textContent = 'Зафіксувати звірку';
-            review.addEventListener('click', () => reconcileKitchenMenuPaidOperation(productId, result.operation.operationId));
+            review.addEventListener('click', () => reconcileKitchenMenuPaidOperation(productId, result.operation.operationId, review));
             output.append(' ', review);
         }
     } catch {
@@ -2026,12 +2026,19 @@ async function inspectKitchenMenuPaidOperation(productId, trigger) {
     } finally { if (trigger.isConnected) trigger.disabled = false; }
 }
 
-async function reconcileKitchenMenuPaidOperation(productId, operationId) {
+async function reconcileKitchenMenuPaidOperation(productId, operationId, trigger) {
     const businessContext = getProductApiBusinessContext();
     if (!guardProductWrite('звірити генерацію фото меню') || typeof apiReconcileProductMenuImageOperation !== 'function') return;
-    const note = window.prompt('Опишіть, як перевірили операцію у провайдера (щонайменше 20 символів). Не вказуйте ключі чи паролі.');
+    if (typeof promptModal !== 'function' || typeof confirmModal !== 'function') {
+        showNotification('Діалог звірки недоступний. Нову генерацію не запущено.', 'error');
+        return;
+    }
+    const container = trigger?.closest?.('dialog[open]') || document.body;
+    const note = await promptModal('Опишіть, як перевірили операцію у провайдера (щонайменше 20 символів). Не вказуйте ключі чи паролі.',
+        { okText: 'Продовжити', cancelText: 'Скасувати', container });
     if (!note || note.trim().length < 20) return;
-    if (!window.confirm('Підтверджуєте, що перевірили операцію у провайдера і розумієте: кошти могли бути списані? Це лише фіксує звірку; нову генерацію не буде запущено.')) return;
+    if (!await confirmModal('Підтверджуєте, що перевірили операцію у провайдера і розумієте: кошти могли бути списані? Це лише фіксує звірку; нову генерацію не буде запущено.',
+        { type: 'warning', okText: 'Підтвердити звірку', cancelText: 'Скасувати', container })) return;
     const result = await apiReconcileProductMenuImageOperation(productId, { businessContext, operationId,
         reviewNote: note.trim(), providerReviewed: true, acceptsPossibleCharge: true });
     if (businessContext !== getProductApiBusinessContext()) return;

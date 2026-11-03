@@ -151,9 +151,25 @@ test('browser generates one guarded menu draft and applies only after confirmati
                 providerReviewed: true, acceptsPossibleCharge: true }) })).status, operationId);
         assert.equal(denied, 403);
         assert.equal((await pool.query('SELECT count(*)::int AS count FROM menu_image_paid_operation_reviews')).rows[0].count, 0);
-        page.on('dialog', dialog => dialog.type() === 'prompt'
-            ? dialog.accept('Checked provider account and reviewed the uncertain charge') : dialog.accept());
-        await page.locator('[data-menu-image-action="review-paid-operation"]').click();
+        const reviewButton = page.locator('[data-menu-image-action="review-paid-operation"]');
+        await reviewButton.click();
+        await page.locator('.prompt-input').fill('Checked provider account and reviewed the uncertain charge');
+        await page.locator('.confirm-overlay:has(.prompt-input) .confirm-cancel').click();
+        await page.locator('.prompt-input').waitFor({ state: 'detached' });
+        assert.equal((await pool.query('SELECT count(*)::int AS count FROM menu_image_paid_operation_reviews')).rows[0].count, 0);
+        await reviewButton.click();
+        await page.locator('.prompt-input').fill('Checked provider account and reviewed the uncertain charge');
+        await page.locator('.confirm-overlay:has(.prompt-input) .confirm-ok').click();
+        await page.locator('.confirm-overlay[data-confirm-kind="confirm"] .confirm-cancel').click();
+        await page.locator('.confirm-overlay[data-confirm-kind="confirm"]').waitFor({ state: 'detached' });
+        assert.equal((await pool.query('SELECT count(*)::int AS count FROM menu_image_paid_operation_reviews')).rows[0].count, 0);
+        await reviewButton.click();
+        await page.locator('.prompt-input').fill('Checked provider account and reviewed the uncertain charge');
+        await page.screenshot({ path: path.join(evidence, 'mobile-review-note.png'), fullPage: true });
+        await page.locator('.confirm-overlay:has(.prompt-input) .confirm-ok').click();
+        await page.locator('.confirm-overlay[data-confirm-kind="confirm"] .confirm-ok').waitFor({ state: 'visible' });
+        await page.screenshot({ path: path.join(evidence, 'mobile-review-confirm.png'), fullPage: true });
+        await page.locator('.confirm-overlay[data-confirm-kind="confirm"] .confirm-ok').click();
         await page.waitForFunction(() => document.querySelector('[data-menu-image-action="generate"]')?.disabled === false, null, { timeout: 10000 });
         assert.equal((await pool.query('SELECT count(*)::int AS count FROM menu_image_paid_operation_reviews')).rows[0].count, 1);
         assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations WHERE operation_id=$1', [operationId])).rows[0].status, 'reviewed_unknown');

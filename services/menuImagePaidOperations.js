@@ -3,15 +3,16 @@
 const { randomUUID } = require('node:crypto');
 
 const ACTIVE_STATUSES = "('reserved', 'provider_pending', 'unknown')";
+// A single deployment-wide policy avoids one caller raising the shared budget.
+const MAX_OUTSTANDING = 2;
 function operationError(code, statusCode = 409) {
     return Object.assign(new Error(code), { code, statusCode });
 }
 
 // Use a single short transaction for budget check and reservation. Never hold a
 // transaction while waiting for a provider. Unknown outcomes count indefinitely.
-async function reserveMenuImageOperation(pool, { businessContext, productId, provider, actor, maxOutstanding = 2 }) {
-    if (!businessContext || !productId || !actor || !['openai', 'kie'].includes(provider)
-        || !Number.isInteger(maxOutstanding) || maxOutstanding < 1 || maxOutstanding > 20) {
+async function reserveMenuImageOperation(pool, { businessContext, productId, provider, actor }) {
+    if (!businessContext || !productId || !actor || !['openai', 'kie'].includes(provider)) {
         throw operationError('MENU_PAID_OPERATION_INVALID', 400);
     }
     const client = await pool.connect();
@@ -27,7 +28,7 @@ async function reserveMenuImageOperation(pool, { businessContext, productId, pro
         const count = await client.query(
             `SELECT count(*)::integer AS count FROM menu_image_paid_operations WHERE status IN ${ACTIVE_STATUSES}`
         );
-        if (count.rows[0].count >= maxOutstanding) throw operationError('MENU_PAID_OPERATION_BUDGET_FULL', 429);
+        if (count.rows[0].count >= MAX_OUTSTANDING) throw operationError('MENU_PAID_OPERATION_BUDGET_FULL', 429);
         const id = randomUUID();
         await client.query(
             `INSERT INTO menu_image_paid_operations
@@ -48,7 +49,7 @@ async function reserveMenuImageOperation(pool, { businessContext, productId, pro
 async function transitionMenuImageOperation(queryable, { id, businessContext, from, to, providerTaskId = null }) {
     const allowed = new Set(['reserved:provider_pending', 'reserved:unknown', 'reserved:succeeded',
         'reserved:failed', 'provider_pending:unknown', 'provider_pending:succeeded',
-        'provider_pending:failed', 'unknown:provider_pending', 'unknown:succeeded', 'unknown:failed']);
+        'provider_pending:failed', 'unknown:provider_pending']);
     if (!id || !businessContext || !allowed.has(`${from}:${to}`)
         || (providerTaskId !== null && !/^[A-Za-z0-9_-]{1,128}$/.test(providerTaskId))) {
         throw operationError('MENU_PAID_OPERATION_INVALID', 400);

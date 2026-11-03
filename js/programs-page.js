@@ -1432,14 +1432,16 @@ function syncKitchenMenuImageGenerationUi(key) {
         const button = panel.querySelector('[data-menu-image-action="generate"]');
         const status = panel.querySelector('[data-menu-image-generation-status]');
         const badge = panel.querySelector('.kitchen-menu-image-status');
+        const uncertain = state?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW';
         if (!otherActionBusy) panel.setAttribute('aria-busy', inFlight ? 'true' : 'false');
         if (button) {
             button.disabled = inFlight || cooldown || otherActionBusy;
-            button.textContent = inFlight ? 'Генеруємо чернетку...' : button.dataset.menuImageDefaultLabel;
+            button.textContent = state?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW'
+                ? 'Потрібна перевірка' : inFlight ? 'Генеруємо чернетку...' : button.dataset.menuImageDefaultLabel;
         }
         if (status) {
             status.textContent = menuImageGenerationMessage(state);
-            status.dataset.type = inFlight ? 'loading' : (state?.feedback ? 'error' : '');
+            status.dataset.type = uncertain ? 'error' : inFlight ? 'loading' : (state?.feedback ? 'error' : '');
         }
         const track = panel.querySelector('[data-menu-image-action="track"]');
         if (track) {
@@ -1447,9 +1449,9 @@ function syncKitchenMenuImageGenerationUi(key) {
             track.textContent = state?.tracking ? 'Перевіряємо завдання…' : 'Перевірити завдання ще раз';
         }
         if (badge && (inFlight || state?.feedback)) {
-            badge.textContent = inFlight ? 'Генерується' : 'Помилка';
-            badge.classList.toggle('generating', inFlight);
-            badge.classList.toggle('failed', !inFlight);
+            badge.textContent = uncertain ? 'Потрібна перевірка' : inFlight ? 'Генерується' : 'Помилка';
+            badge.classList.toggle('generating', inFlight && !uncertain);
+            badge.classList.toggle('failed', !inFlight || uncertain);
         }
     });
 }
@@ -1647,10 +1649,11 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
         ? { feedback: { code: 'menu_image_generation_failed',
             providerCode: draft.providerCode, providerTaskId: draft.taskId } }
         : generationState;
-    const status = generationBusy ? 'generating' : (displayState?.feedback ? 'failed' : draftStatus);
+    const uncertain = displayState?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW';
+    const status = generationBusy && !uncertain ? 'generating' : (displayState?.feedback ? 'failed' : draftStatus);
     const hasDraft = Boolean(draft.imageUrl || draft.prompt || draft.error || draft.generatedAt || draft.preparedAt);
     const hasDraftImage = Boolean(draft.imageUrl);
-    const statusLabel = menuImageDraftStatusLabel(status);
+    const statusLabel = uncertain ? 'Потрібна перевірка' : menuImageDraftStatusLabel(status);
     const statusClass = menuImageDraftStatusClass(status);
     const canApply = hasDraftImage && ['ready', 'approved'].includes(draftStatus);
     const canReject = hasDraft && !['generating', 'rejected', 'applied'].includes(draftStatus);
@@ -1693,7 +1696,7 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                 </label>
                 <div class="kitchen-menu-image-actions">
                     <button type="button" class="btn-page-secondary kitchen-menu-image-generate-btn" data-menu-image-action="generate" data-menu-image-default-label="${generateLabel}" onclick="generateKitchenMenuImage('${productId}', this)"${generationBusy || generationCoolingDown ? ' disabled' : ''}>
-                        ${generationBusy ? 'Генеруємо чернетку...' : generateLabel}
+                        ${generationState?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' ? 'Потрібна перевірка' : generationBusy ? 'Генеруємо чернетку...' : generateLabel}
                     </button>
                     <button type="button" class="btn-page-primary" data-menu-image-action="apply" onclick="applyKitchenMenuImageDraft('${productId}', this)"${canApply && !generationBusy ? '' : ' disabled'}>
                         Застосувати
@@ -1702,7 +1705,7 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                         Відхилити
                     </button>
                 </div>
-                <p class="kitchen-menu-image-generation-status" data-menu-image-generation-status data-type="${generationBusy ? 'loading' : (displayState?.feedback ? 'error' : '')}" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(menuImageGenerationMessage(displayState))}</p>
+                <p class="kitchen-menu-image-generation-status" data-menu-image-generation-status data-type="${uncertain ? 'error' : generationBusy ? 'loading' : (displayState?.feedback ? 'error' : '')}" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(menuImageGenerationMessage(displayState))}</p>
             </div>
             <div class="kitchen-menu-image-manual">
                 <strong>Додати власне фото як чернетку</strong>
@@ -1758,7 +1761,8 @@ function setKitchenMenuImageStudioBusy(panel, busy) {
     if (!panel) return;
     panel.setAttribute('aria-busy', busy ? 'true' : 'false');
     panel.querySelectorAll('button, select, input, textarea').forEach(control => {
-        if (control.hasAttribute('data-menu-image-close') || control.hasAttribute('data-menu-photo-url')) return;
+        if (control.hasAttribute('data-menu-image-close') || control.hasAttribute('data-menu-photo-url')
+            || ['inspect-paid-operation', 'check-paid-status'].includes(control.dataset.menuImageAction)) return;
         if (busy) {
             if (control.dataset.menuImageWasDisabled === undefined) control.dataset.menuImageWasDisabled = control.disabled ? '1' : '0';
             control.disabled = true;
@@ -1969,10 +1973,11 @@ function menuImageGenerationDisplayState(product) {
     const key = menuImageGenerationKey(getProductApiBusinessContext(), product.id);
     const state = menuImageGenerationState.get(key);
     const draft = getMenuImageStudioDraft(product);
-    if (state?.inFlight || state?.feedback) return state;
+    if (state?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW') return { ...state, inFlight: true };
     if (draft.status === 'generating' && draft.outcomeUncertain === true) {
-        return { inFlight: true, feedback: { code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' } };
+        return { ...state, inFlight: true, feedback: { code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' } };
     }
+    if (state?.inFlight || state?.feedback) return state;
     if (draft.status === 'generating') return { inFlight: true, provider: draft.provider, tracking: false };
     if (draft.status === 'failed') return { feedback: { code: 'menu_image_generation_failed',
         providerCode: draft.providerCode, providerTaskId: draft.taskId } };

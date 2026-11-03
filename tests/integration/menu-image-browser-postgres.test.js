@@ -38,9 +38,13 @@ test('browser generates one guarded menu draft and applies only after confirmati
         storage.uploadFromUrl = async () => '/images/menu-draft.svg';
         process.env.KIE_API_KEY = 'synthetic-test-key';
         process.env.CRM_MENU_PAID_GUARD_ENABLED = 'true';
-        let starts = 0, polls = 0;
+        let starts = 0, polls = 0, failStart = false;
         global.fetch = async (_url, options) => {
-            if (options.method === 'POST') { starts++; return new Response(JSON.stringify({ code: 200, data: { taskId: 'browser-fixture-task' } })); }
+            if (options.method === 'POST') {
+                starts++;
+                if (failStart) throw new Error('synthetic timeout');
+                return new Response(JSON.stringify({ code: 200, data: { taskId: 'browser-fixture-task' } }));
+            }
             polls++; return new Response(JSON.stringify({ code: 200, data: { state: 'success',
                 resultJson: JSON.stringify({ resultUrls: ['https://tempfileb.aiquickdraw.com/fixture.png'] }) } }));
         };
@@ -51,7 +55,7 @@ test('browser generates one guarded menu draft and applies only after confirmati
         const app = express(); app.use(express.json());
         app.use((req, _res, next) => { req.user = { id: 1, username: 'fixture', role: 'creator', defaultBusinessContext: 'event_genix' }; next(); });
         for (const [method, route] of [['post', '/:id/menu-image/draft'], ['get', '/:id/menu-image/status'],
-            ['get', '/:id/menu-image/operation'], ['post', '/:id/menu-image/apply']]) {
+            ['get', '/:id/menu-image/operation'], ['post', '/:id/menu-image/apply'], ['post', '/:id/menu-image/reject']]) {
             const layer = router.stack.find(x => x.route?.path === route && x.route.methods[method]).route;
             app[method](`/api/products${route}`, ...layer.stack.map(x => x.handle));
         }
@@ -68,6 +72,8 @@ test('browser generates one guarded menu draft and applies only after confirmati
             window.apiGenerateProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
             window.apiGetProductMenuImageStatus=async(id,options)=>await (await fetch('/api/products/'+id+'/menu-image/status?businessContext='+encodeURIComponent(options.businessContext))).json();
             window.apiApplyProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
+            window.apiRejectProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
+            window.apiGetProductMenuImageOperation=async(id,options)=>await (await fetch('/api/products/'+id+'/menu-image/operation?businessContext='+encodeURIComponent(options.businessContext))).json();
         `));
         for (const [name, color] of [['menu-fixture.svg', '#4c8a65'], ['menu-draft.svg', '#c57c36']]) {
             app.get(`/images/${name}`, (_req, res) => res.type('svg').send(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="${color}"/><circle cx="200" cy="150" r="100" fill="white"/></svg>`));
@@ -103,6 +109,35 @@ test('browser generates one guarded menu draft and applies only after confirmati
             await new Promise(resolve => setTimeout(resolve, 50));
         } while (Date.now() < deadline);
         assert.equal(row.icon_url, '/images/menu-draft.svg'); assert.equal(row.ai_card_draft.imageStudio.status, 'applied');
+        await page.setViewportSize({ width: 390, height: 844 });
+        const mobileGenerate = page.locator('[data-menu-image-action="generate"]');
+        await mobileGenerate.waitFor({ state: 'visible' });
+        await mobileGenerate.click();
+        await page.waitForFunction(() => document.querySelector('[data-menu-image-action="reject"]')?.disabled === false, null, { timeout: 20000 });
+        assert.equal(starts, 2); assert.equal(polls, 2);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2), true);
+        await page.screenshot({ path: path.join(evidence, 'mobile-before-reject.png'), fullPage: true });
+        await page.locator('[data-menu-image-action="reject"]').click();
+        const rejectDeadline = Date.now() + 10000;
+        do {
+            row = (await pool.query("SELECT icon_url, ai_card_draft FROM products WHERE id='fixture-menu-full'")).rows[0];
+            if (row.ai_card_draft.imageStudio.status === 'rejected') break;
+            await new Promise(resolve => setTimeout(resolve, 50));
+        } while (Date.now() < rejectDeadline);
+        assert.equal(row.ai_card_draft.imageStudio.status, 'rejected');
+        assert.equal(row.icon_url, '/images/menu-draft.svg');
+        failStart = true;
+        await page.locator('[data-menu-image-action="generate"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-menu-image-generation-status]')?.textContent.includes('Не запускайте її повторно'), null, { timeout: 10000 });
+        assert.equal(await page.locator('[data-menu-image-action="generate"]').isDisabled(), true);
+        assert.equal(await page.locator('[data-menu-image-action="inspect-paid-operation"]').isEnabled(), true);
+        await page.locator('[data-menu-image-action="inspect-paid-operation"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-menu-image-operation-status]')?.textContent.includes('незавершена генерація'));
+        assert.equal(starts, 3);
+        row = (await pool.query("SELECT icon_url, ai_card_draft FROM products WHERE id='fixture-menu-full'")).rows[0];
+        assert.equal(row.ai_card_draft.imageStudio.outcomeUncertain, true);
+        assert.equal(row.icon_url, '/images/menu-draft.svg');
+        await page.screenshot({ path: path.join(evidence, 'mobile-uncertain.png'), fullPage: true });
         assert.deepEqual(errors, []);
     } finally {
         if (browser) await browser.close();

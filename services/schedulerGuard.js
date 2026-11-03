@@ -19,6 +19,26 @@ function skipSchedulerTracking() {
 }
 const SUPPORTED_DEDUP = new Set(['daily', 'hourly', '5min', null]);
 const SCHEDULER_TIME_ZONE = 'Europe/Kyiv';
+// Only individually authorized fixed-time jobs may bypass a not-due DB claim.
+const OPT_IN_DUE_TIMES = Object.freeze({
+    checkStreakUpdates: '23:55',
+    checkBirthdayGreetings: '09:00',
+    checkBirthdayReminders: '09:30',
+    checkDormantCustomers: '10:00',
+    checkUpcomingBookings: '11:00',
+    checkTeamPulseReminder: '18:00',
+    checkChatDailyDigest: '20:00',
+    checkStaleCatalogImages: '03:00'
+});
+
+function skipUndueOptInJob(name, dedup, now) {
+    const due = Object.hasOwn(OPT_IN_DUE_TIMES, name) && OPT_IN_DUE_TIMES[name];
+    if (dedup !== 'daily' || !due) return false;
+    const enabled = String(process.env.CRM_SCHEDULER_DUE_JOBS || '').split(',').map(value => value.trim());
+    if (!enabled.includes(name)) return false;
+    const parts = getSchedulerDateParts(now);
+    return `${parts.hour}:${parts.minute}` !== due;
+}
 const SCHEDULER_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
     timeZone: SCHEDULER_TIME_ZONE,
     year: 'numeric',
@@ -277,7 +297,9 @@ function guardScheduler(name, fn, opts = {}) {
 
     return async function guardedScheduler() {
         const startMs = Date.now();
-        const currentKey = schedulerDedupKey(dedup);
+        const now = new Date(startMs);
+        if (skipUndueOptInJob(name, dedup, now)) return;
+        const currentKey = schedulerDedupKey(dedup, now);
         if (currentKey && completedKey === currentKey) return;
         if (startMs < nextDatabaseCheckAt) return;
         const token = `claim:${randomUUID()}`;

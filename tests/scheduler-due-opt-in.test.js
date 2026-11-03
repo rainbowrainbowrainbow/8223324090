@@ -21,9 +21,10 @@ function makeJob(name,enabled){let calls=0,reads=0;const helper=source.match(/fu
  vm.runInNewContext(helper[0],ctx);const fn=vm.runInNewContext('('+job[0]+')',ctx);return{run:async()=>{calls++;return fn()},counts:()=>({calls,reads})};}
 for(const [name,time] of cases){test(`${name}: per-job opt-in leaves day unclaimed until due`,async()=>{
   global.Date=class extends OriginalDate{constructor(...a){super(...(a.length?a:[now]))}static now(){return now}};
-  try {now=OriginalDate.parse('2026-11-02T22:01:00Z');const job=makeJob(name,name),db=fakeDb(),wrapped=guardScheduler(name,job.run,{dedup:'daily',dbPool:db});await wrapped();assert.equal(db.row.result,'skipped');assert.deepEqual(job.counts(),{calls:1,reads:0});
-   now=OriginalDate.parse('2026-11-03T'+time+':00+02:00');await wrapped();assert.deepEqual(job.counts(),{calls:2,reads:1});assert.equal(db.row.result,'success');await wrapped();assert.deepEqual(job.counts(),{calls:2,reads:1});
-  }finally{global.Date=OriginalDate}
+  const previous=process.env.CRM_SCHEDULER_DUE_JOBS; process.env.CRM_SCHEDULER_DUE_JOBS=name;
+  try {now=OriginalDate.parse('2026-11-02T22:01:00Z');const job=makeJob(name,name),db=fakeDb(),wrapped=guardScheduler(name,job.run,{dedup:'daily',dbPool:db});await wrapped();assert.equal(db.row,undefined);assert.deepEqual(job.counts(),{calls:0,reads:0});
+   now=OriginalDate.parse('2026-11-03T'+time+':00+02:00');await wrapped();assert.deepEqual(job.counts(),{calls:1,reads:1});assert.equal(db.row.result,'success');await wrapped();assert.deepEqual(job.counts(),{calls:1,reads:1});
+  }finally{global.Date=OriginalDate;if(previous===undefined) delete process.env.CRM_SCHEDULER_DUE_JOBS; else process.env.CRM_SCHEDULER_DUE_JOBS=previous}
  });
  test(`${name}: missing or unrelated opt-in preserves legacy behavior`,async()=>{
   global.Date=class extends OriginalDate{constructor(...a){super(...(a.length?a:[now]))}static now(){return now}};

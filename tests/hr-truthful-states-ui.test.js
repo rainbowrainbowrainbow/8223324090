@@ -81,7 +81,9 @@ function harness(markup, options = {}) {
     win.fetch = options.fetch || (async () => response(500, { success: false, error: 'Unexpected fetch' }));
     win.eval(`${hrPage}
 canManage = canUseHrCapability('hr.staff.manage');
-window.__hrTruthfulState = () => ({ reportState, professionCatalogAccess, professionCatalogLoadState, hrProfessions });`);
+window.__hrTruthfulState = () => ({ reportState, professionCatalogAccess, professionCatalogLoadState, hrProfessions });
+window.__setWorkspaceOpen = value => { professionWorkspaceState.open = value; };
+window.__isWorkspaceOpen = () => professionWorkspaceState.open;`);
     if (options.surfaceAvailable === true) win.getLegacyBusinessSurfaceAvailability = () => ({ available: true });
     return { dom, win };
 }
@@ -868,5 +870,62 @@ test('simultaneous Team and staff-card catalog readers share the same current-co
         await Promise.all([first, second]);
         assert.equal(win.__hrTruthfulState().professionCatalogLoadState, 'ready');
         assert.equal(win.__hrTruthfulState().hrProfessions.length, 1);
+    } finally { dom.window.close(); }
+});
+
+test('settled checklist context is not invalidated by a later notification of the same context', async () => {
+    let context = 'initial';
+    const { dom, win } = harness(elementOuterHtml('tab-checklists'), {
+        fetch: async url => url.includes('/professions')
+            ? response(200, { success: true, data: [{ id: 1, key: 'current', title: 'Current profession' }] })
+            : response(200, { success: true, data: { assignments: [{ staffId: 4, staffName: 'Current Staff', professionKey: 'current' }] } })
+    });
+    try {
+        win.getLegacyBusinessSurfaceContextKey = () => context;
+        await win.loadProfessionChecklists();
+        context = 'settled';
+        await win.loadProfessionChecklists();
+        assert.match(win.document.getElementById('professionChecklistList').textContent, /Current Staff/);
+        win.dispatchEvent(new win.Event('crmBusinessProfileChanged'));
+        assert.match(win.document.getElementById('professionChecklistList').textContent, /Current Staff/);
+        assert.doesNotMatch(win.document.getElementById('professionChecklistDashboardState').textContent, /Бізнес або доступ змінився/);
+    } finally { dom.window.close(); }
+});
+
+test('a real context change still closes a workspace even if the new catalog loaded before its event', async () => {
+    let context = 'initial';
+    const { dom, win } = harness(elementOuterHtml('tab-checklists'), {
+        fetch: async url => url.includes('/professions')
+            ? response(200, { success: true, data: [{ id: 1, key: 'current', title: 'Current profession' }] })
+            : response(200, { success: true, data: { assignments: [{ staffId: 4, staffName: 'Current Staff', professionKey: 'current' }] } })
+    });
+    try {
+        win.getLegacyBusinessSurfaceContextKey = () => context;
+        await win.loadProfessionChecklists();
+        win.__setWorkspaceOpen(true);
+        context = 'settled';
+        await win.loadProfessionChecklists();
+        win.dispatchEvent(new win.Event('crmBusinessProfileChanged'));
+        assert.equal(win.__isWorkspaceOpen(), false, 'old-context workspace must not survive');
+    } finally { dom.window.close(); }
+});
+
+test('checklist pagination never combines feeds from different business contexts', async () => {
+    let context = 'old';
+    const { dom, win } = harness(elementOuterHtml('tab-checklists'), {
+        fetch: async url => url.includes('/professions')
+            ? response(200, { success:true, data:[] })
+            : response(200, { success:true, data: { assignments: [{ staffId:context === 'old' ? 1 : 2,
+                staffName:context === 'old' ? 'Old Staff' : 'New Staff', professionKey:'current' }], archived: [], orphaned: [] } })
+    });
+    try {
+        win.getLegacyBusinessSurfaceContextKey = () => context;
+        await win.loadProfessionChecklists();
+        assert.match(win.document.getElementById('professionChecklistList').textContent, /Old Staff/);
+        context = 'new';
+        await win.loadProfessionChecklists({ feed:'archived', offset:200 });
+        const content = win.document.getElementById('professionChecklistList').textContent;
+        assert.match(content, /New Staff/);
+        assert.doesNotMatch(content, /Old Staff/);
     } finally { dom.window.close(); }
 });

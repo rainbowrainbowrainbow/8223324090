@@ -10,6 +10,7 @@ const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { reserveMenuImageOperation, transitionMenuImageOperation } = require('../../services/menuImagePaidOperations');
 const { saveRecoveryRequest, recoverDetachedMenuImage } = require('../../services/menuImageDetachedRecovery');
 const { pollMenuImagePaid } = require('../../services/menuImagePaidExecutor');
+const { storeCatalogImageBlob } = require('../../services/imageStorage');
 
 test('detached KIE result remains reviewable without modifying manual draft or resubmission', {
     skip: process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER !== 'true', timeout: 30000
@@ -26,6 +27,8 @@ test('detached KIE result remains reviewable without modifying manual draft or r
             await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations', migration), 'utf8'));
         }
         await pool.query('CREATE TABLE products (id text PRIMARY KEY, ai_card_draft jsonb)');
+        await pool.query(`CREATE TABLE catalog_image_blobs (filename text PRIMARY KEY, content_type text, data bytea,
+            size_bytes integer, source_url text, metadata jsonb, updated_at timestamptz DEFAULT now())`);
         const manual = { imageStudio: { status: 'ready', imageUrl: '/manual.png' } };
         await pool.query('INSERT INTO products VALUES ($1,$2::jsonb)', ['dish', JSON.stringify(manual)]);
         const base = { businessContext: 'fixture', productId: 'dish' };
@@ -86,10 +89,11 @@ test('detached KIE result remains reviewable without modifying manual draft or r
             from: 'reserved', to: 'provider_pending', providerTaskId: 'single-task' });
         const singleResult = await recoverDetachedMenuImage({ pool, ...single, operationId: singleId,
             poll: async () => ({ status: 'ready' }), store: async (_outcome, _request, client) => {
-                assert.equal((await client.query('SELECT 1 AS value')).rows[0].value, 1);
-                return { status: 'ready', imageUrl: '/single.png' };
+                const stored = await storeCatalogImageBlob(client, { filename: 'single.png', contentType: 'image/png', data: Buffer.from([1, 2, 3]) });
+                return { status: 'ready', imageUrl: stored.publicUrl };
             } });
-        assert.equal(singleResult.studio.imageUrl, '/single.png');
+        assert.equal(singleResult.studio.imageUrl, '/uploads/catalog-images/items/single.png');
+        assert.equal((await pool.query('SELECT count(*)::int AS count FROM catalog_image_blobs')).rows[0].count, 1);
         const current = { businessContext: 'fixture', productId: 'current-connection' };
         const currentId = await reserveMenuImageOperation(pool, { ...current, provider: 'kie', actor: 'fixture' });
         await transitionMenuImageOperation(pool, { id: currentId, businessContext: current.businessContext,

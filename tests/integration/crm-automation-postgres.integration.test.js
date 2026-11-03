@@ -378,8 +378,10 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
         const { createScheduleOcrHandlers } = require('../../services/crmScheduleOcrHttp');
         const { requireAction } = require('../../middleware/auth');
         const env = { CRM_SCHEDULE_OCR_ENABLED: 'true' }; let providerCalls = 0;
+        // The capacity/replay test uses the same PNG on June 1; a different
+        // date ensures this browser flow creates and exercises its own request.
         const schedule = createScheduleOcr({ pool, env, recognize: async () => { providerCalls++;
-            return [{ employeeName: staff.name, date: '2099-06-01', status: 'dayoff', confidence: 0.99, issues: [] }]; } });
+            return [{ employeeName: staff.name, date: '2099-07-01', status: 'dayoff', confidence: 0.99, issues: [] }]; } });
         const handlers = createScheduleOcrHandlers({ env, schedule });
         const app = express(); app.use(express.json()); app.use((req,res,next) => { req.user = { ...actor, role: 'creator' }; next(); });
         app.post('/preview', requireAction('hr.schedule.manage'), handlers.preview);
@@ -401,16 +403,16 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
             } });
             context = opened.context; const page = opened.page;
             await page.locator('#scheduleOcrPanel summary').click();
-            await page.locator('#scheduleOcrDate').fill('2099-06-01');
+            await page.locator('#scheduleOcrDate').fill('2099-07-01');
             await page.locator('#scheduleOcrFile').setInputFiles({name:'synthetic.png',mimeType:'image/png',buffer:png});
             await page.locator('#scheduleOcrPaidConfirm').check(); await page.locator('#scheduleOcrPreviewBtn').click();
             await page.locator('#scheduleOcrReview').waitFor({state:'visible'});
             assert.equal(providerCalls,1);
-            assert.equal((await pool.query('SELECT count(*)::int AS count FROM staff_schedule WHERE staff_id=$1 AND date=$2',[staff.id,'2099-06-01'])).rows[0].count,0);
+            assert.equal((await pool.query('SELECT count(*)::int AS count FROM staff_schedule WHERE staff_id=$1 AND date=$2',[staff.id,'2099-07-01'])).rows[0].count,0);
             await page.locator('[data-ocr-row="0"]').check(); await page.locator('#scheduleOcrApplyConfirm').check();
             await page.locator('#scheduleOcrApplyBtn').click();
             await page.waitForFunction(() => document.querySelector('#scheduleOcrStatus').textContent.includes('застосовано'));
-            assert.equal((await pool.query('SELECT status FROM staff_schedule WHERE staff_id=$1 AND date=$2',[staff.id,'2099-06-01'])).rows[0].status,'dayoff');
+            assert.equal((await pool.query('SELECT status FROM staff_schedule WHERE staff_id=$1 AND date=$2',[staff.id,'2099-07-01'])).rows[0].status,'dayoff');
             assert.equal(providerCalls,1);
         } finally {
             if(context) await context.close(); await browser.close();

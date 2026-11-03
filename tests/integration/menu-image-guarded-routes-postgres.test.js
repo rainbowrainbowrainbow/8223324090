@@ -116,6 +116,22 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         const duplicate = await invoke('/:id/menu-image/draft', 'post', { generator: 'kie/nano-banana-2' });
         assert.equal(duplicate.statusCode, 409);
         assert.equal(starts, 1);
+        // A manually replaced draft must not hide the outstanding paid job from
+        // the operation ledger. The draft-oriented status endpoint cannot poll
+        // that detached KIE job; keep this limitation visible until recovery is
+        // implemented independently of the current draft.
+        const pendingDraft = (await pool.query("SELECT ai_card_draft FROM products WHERE id='fixture'")).rows[0].ai_card_draft;
+        await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture'",
+            [JSON.stringify({ imageStudio: { status: 'ready', provider: 'manual', imageUrl: '/manual.png' } })]);
+        const detachedKie = await invoke('/:id/menu-image/operation', 'get');
+        assert.equal(detachedKie.body.operation.taskId, 'fixture-task');
+        assert.equal(detachedKie.body.operation.status, 'provider_pending');
+        await invoke('/:id/menu-image/status', 'get');
+        assert.equal(polls, 0, 'draft status cannot poll a detached paid operation');
+        const duplicateDetached = await invoke('/:id/menu-image/draft', 'post', { generator: 'kie/nano-banana-2' });
+        assert.equal(duplicateDetached.statusCode, 409);
+        assert.equal(starts, 1, 'detaching the draft must not start a second paid job');
+        await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture'", [JSON.stringify(pendingDraft)]);
         replaceOperationDuringUpload = true;
         const changed = await invoke('/:id/menu-image/status', 'get');
         assert.equal(changed.statusCode, 502);

@@ -32,7 +32,13 @@ test('browser generates one guarded menu draft and applies only after confirmati
         await pool.query(`INSERT INTO products VALUES ('fixture-menu-full','event_genix','kitchen','menu',
             'Тестова страва','/images/menu-fixture.svg',true,'{}',now(),'fixture')`);
         db.pool.connect = (...args) => pool.connect(...args);
+        let injectConcurrentDraft = false;
         db.pool.query = async (sql, params) => {
+            if (injectConcurrentDraft && sql.includes('ai_card_draft IS NOT DISTINCT FROM $7::jsonb')) {
+                injectConcurrentDraft = false;
+                await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture-menu-full'",
+                    [JSON.stringify({ imageStudio: { status: 'ready', imageUrl: '/images/menu-fixture.svg' } })]);
+            }
             if (sql.includes('WHERE p.id = $1')) return pool.query('SELECT * FROM products WHERE id=$1 AND business_context=$2', params.slice(0, 2));
             return pool.query(sql, params);
         };
@@ -131,6 +137,12 @@ test('browser generates one guarded menu draft and applies only after confirmati
         } while (Date.now() < rejectDeadline);
         assert.equal(row.ai_card_draft.imageStudio.status, 'rejected');
         assert.equal(row.icon_url, '/images/menu-draft.svg');
+        injectConcurrentDraft = true;
+        await page.locator('[data-menu-image-action="generate"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-menu-image-generation-status]')?.textContent.includes('Генерацію не запущено'));
+        assert.equal(starts, 2, 'stale draft must not trigger a provider request');
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2), true);
+        await page.screenshot({ path: path.join(evidence, 'mobile-draft-conflict.png'), fullPage: true });
         failStart = true;
         await page.locator('[data-menu-image-action="generate"]').click();
         await page.waitForFunction(() => document.querySelector('[data-menu-image-generation-status]')?.textContent.includes('Не запускайте її повторно'), null, { timeout: 10000 });

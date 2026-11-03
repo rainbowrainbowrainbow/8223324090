@@ -1369,6 +1369,9 @@ function menuImageGenerationMessage(state) {
     if (state.feedback.code === 'menu_image_tracking_changed') return 'Завдання змінилося. Запізнілий результат не застосовано; перевірте актуальну генерацію ще раз.';
 
     const code = state.feedback.code;
+    if (code === 'MENU_PAID_DRAFT_CHANGED') {
+        return 'Чернетка змінилася під час підготовки. Генерацію не запущено. Оновіть сторінку та перевірте актуальне фото.';
+    }
     if (['MENU_PAID_GUARD_DISABLED', 'MENU_PAID_GUARD_TRANSITION', 'MENU_PAID_LEGACY_BUSY', 'MENU_PAID_LEGACY_PENDING'].includes(code)) {
         return 'Генерацію тимчасово зупинено для безпеки попередніх операцій. Зверніться до адміністратора. Фото можна завантажити вручну.';
     }

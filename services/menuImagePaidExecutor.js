@@ -1,6 +1,12 @@
 'use strict';
 
 const { reserveMenuImageOperation, transitionMenuImageOperation } = require('./menuImagePaidOperations');
+const DRAFT_CHANGED_BEFORE_SUBMISSION = Symbol('draft changed before provider submission');
+
+function draftChangedBeforeSubmission() {
+    return Object.assign(new Error('Product draft changed before provider invocation'),
+        { [DRAFT_CHANGED_BEFORE_SUBMISSION]: true });
+}
 
 // Guarded menu routes use this executor only when their feature flag is enabled.
 // A reservation is committed before any provider call, so a crash never makes
@@ -26,7 +32,17 @@ async function executeMenuImagePaid({ pool, businessContext, productId, provider
         if (await saveDraft(result, id) !== true) throw new Error('Draft persistence was not confirmed');
         await transitionMenuImageOperation(pool, { id, businessContext, from: 'reserved', to: 'succeeded' });
         return { operationId: id, status: 'succeeded', result };
-    } catch {
+    } catch (error) {
+        if (error?.[DRAFT_CHANGED_BEFORE_SUBMISSION]) {
+            let confirmed = false;
+            try {
+                await transitionMenuImageOperation(pool, { id, businessContext, from: 'reserved', to: 'failed' });
+                confirmed = true;
+            } catch { /* preserve a blocking reservation if the transition cannot be confirmed */ }
+            if (confirmed) throw Object.assign(new Error('Product draft changed before provider invocation'), {
+                code: 'MENU_PAID_DRAFT_CHANGED', operationId: id, retryable: false
+            });
+        }
         // If persistence itself is unavailable, leave the committed reservation
         // in place; do not mask uncertainty with a retryable provider error.
         try { await transitionMenuImageOperation(pool, { id, businessContext, from: 'reserved', to: 'unknown' }); }
@@ -85,4 +101,4 @@ async function pollMenuImagePaid({ pool, operationId, businessContext, productId
     }
 }
 
-module.exports = { executeMenuImagePaid, pollMenuImagePaid };
+module.exports = { executeMenuImagePaid, pollMenuImagePaid, draftChangedBeforeSubmission };

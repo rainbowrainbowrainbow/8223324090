@@ -268,6 +268,7 @@ test('quota and unknown failures explain the next action without disabling manua
         ['menu_image_generation_quota_exceeded', /Зверніться до адміністратора/],
         ['menu_image_generation_provider_rejected', /Причина не підтверджена/],
         ['MENU_PAID_GUARD_DISABLED', /Генерацію тимчасово зупинено/],
+        ['MENU_PAID_DRAFT_CHANGED', /Генерацію не запущено/],
         ['CRM_PROVIDER_BUSY', /інша AI-операція/],
         ['menu_image_generation_failed', /Причина невідома/]
     ]) {

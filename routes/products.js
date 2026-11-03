@@ -8,7 +8,7 @@ const { requireRole, authenticateToken } = require('../middleware/auth');
 const { requireAction } = require('../middleware/auth');
 const { createWriteRateLimiter } = require('../middleware/rateLimit');
 const { createLogger } = require('../utils/logger');
-const { executeMenuImagePaid, pollMenuImagePaid } = require('../services/menuImagePaidExecutor');
+const { executeMenuImagePaid, pollMenuImagePaid, draftChangedBeforeSubmission } = require('../services/menuImagePaidExecutor');
 const { withLegacyMenuGuard, activateMenuGuard } = require('../services/menuImageGuardGate');
 const { withProviderExecution, assertPaidCapacity } = require('../services/crmProviderExecution');
 const { reconcileMenuImagePaid } = require('../services/menuImagePaidReconciliation');
@@ -1627,7 +1627,7 @@ function menuImageExternalDraftPublicError(err) {
     return null;
 }
 
-async function reserveProductMenuImageGeneration(productId, businessContext, username, imageStudio) {
+async function reserveProductMenuImageGeneration(productId, businessContext, username, imageStudio, expectedDraft) {
     const result = await pool.query(
         `UPDATE products
          SET ai_card_draft = jsonb_set(COALESCE(ai_card_draft, '{}'::jsonb), '{imageStudio}', $1::jsonb, true),
@@ -1637,10 +1637,12 @@ async function reserveProductMenuImageGeneration(productId, businessContext, use
            AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
            AND (ai_card_draft #>> '{imageStudio,status}' IS DISTINCT FROM 'generating'
                 OR COALESCE(ai_card_draft #>> '{imageStudio,preparedAt}', '') <
-                    CASE WHEN ai_card_draft #>> '{imageStudio,provider}' = 'kie' THEN $5 ELSE $6 END)`,
+                    CASE WHEN ai_card_draft #>> '{imageStudio,provider}' = 'kie' THEN $5 ELSE $6 END)
+           ${expectedDraft === undefined ? '' : 'AND ai_card_draft IS NOT DISTINCT FROM $7::jsonb'}`,
         [JSON.stringify(imageStudio), username, productId, businessContext,
             new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-            new Date(Date.now() - 60 * 1000).toISOString()]
+            new Date(Date.now() - 60 * 1000).toISOString(),
+            ...(expectedDraft === undefined ? [] : [expectedDraft === null ? null : JSON.stringify(expectedDraft)])]
     );
     return result.rowCount > 0;
 }
@@ -1688,12 +1690,16 @@ async function handleExternalMenuImageDraftRequest(req, res) {
             uploadOptions: { query: pool },
             currentDraft
         });
-        await persistMenuImageDraft(pool, {
+        const persisted = await persistMenuImageDraft(pool, {
             productId: id,
             businessContext,
             username: req.user?.username,
-            draft: result.draft
+            draft: result.draft,
+            expectedDraft: product.ai_card_draft ?? null
         });
+        if (!persisted) return res.status(409).json({ success: false,
+            code: 'MENU_IMAGE_DRAFT_CHANGED',
+            error: 'Чернетка змінилася під час завантаження. Оновіть сторінку та перевірте її перед повтором.' });
 
         const fresh = await getProductWithPriceRule(pool, id, businessContext);
         res.json({
@@ -1796,8 +1802,8 @@ async function handleGuardedMenuImageDraft(req, res) {
                     imageUrl: null, generatedAt: null, taskId: null, provider: generator.provider,
                     model: generator.model, referenceImageUrl: blueprint?.imageUrl || null,
                     previousImageUrl: product.icon_url || null, error: null, outcomeUncertain: false });
-                if (!await reserveProductMenuImageGeneration(id, context, req.user.username, generating)) {
-                    throw new Error('Product draft changed before provider invocation');
+                if (!await reserveProductMenuImageGeneration(id, context, req.user.username, generating, product.ai_card_draft ?? null)) {
+                    throw draftChangedBeforeSubmission();
                 }
                 if (generator.provider === 'kie') return startMenuImageWithKie({ prompt, size, model: generator.model, referenceImageUrl });
                 return generateAndStoreMenuPhotoDraft(product, { size, style, prompt, uploadOptions: { query: pool } });
@@ -1830,7 +1836,9 @@ async function handleGuardedMenuImageDraft(req, res) {
             fresh = await getProductWithPriceRule(pool, id, context).catch(() => fresh);
         }
         return res.status(status).json({ success: false, code: err?.code || 'MENU_PAID_OPERATION_REQUIRES_REVIEW',
-            error: 'Menu image operation requires review before another attempt', retryable: false,
+            error: err?.code === 'MENU_PAID_DRAFT_CHANGED'
+                ? 'Чернетка змінилася. Оновіть сторінку та перевірте її перед повтором.'
+                : 'Menu image operation requires review before another attempt', retryable: false,
             ...(fresh ? { draft: currentMenuAiDraftForProduct(fresh), product: mapProductRow(fresh) } : {}) });
     }
 }

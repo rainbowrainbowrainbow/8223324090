@@ -31,15 +31,22 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         const base = { id: 'fixture', business_context: 'event_genix', domain: 'kitchen', kitchen_type: 'menu',
             name: 'Synthetic pasta', icon_url: '/current.png', is_active: true };
         db.pool.connect = (...args) => pool.connect(...args);
+        let injectConcurrentDraft = false;
         db.pool.query = async (sql, params) => {
+            if (injectConcurrentDraft && sql.includes('ai_card_draft IS NOT DISTINCT FROM $7::jsonb')) {
+                injectConcurrentDraft = false;
+                await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture'",
+                    [JSON.stringify({ imageStudio: { status: 'ready', imageUrl: '/manual-newer.png' } })]);
+            }
             if (sql.includes('WHERE p.id = $1')) {
                 const row = await pool.query('SELECT ai_card_draft FROM products WHERE id=$1', [params[0]]);
                 return { rows: row.rowCount ? [{ ...base, ...row.rows[0] }] : [], rowCount: row.rowCount };
             }
             return pool.query(sql, params);
         };
-        let replaceOperationDuringUpload = false;
+        let replaceOperationDuringUpload = false, holdManualUpload = null;
         imageStorage.uploadFromUrl = async () => {
+            if (holdManualUpload) await holdManualUpload();
             if (replaceOperationDuringUpload) await pool.query(
                 `UPDATE products SET ai_card_draft=jsonb_set(ai_card_draft,'{imageStudio,operationId}',to_jsonb($1::text)) WHERE id='fixture'`,
                 ['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa']);
@@ -70,6 +77,24 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
                 body, headers: {}, user: { username: 'fixture', role: 'admin' } }, response);
             return response;
         };
+        let releaseManual, signalManual;
+        const manualStarted = new Promise(resolve => { signalManual = resolve; });
+        holdManualUpload = () => { signalManual(); return new Promise(resolve => { releaseManual = resolve; }); };
+        const manualRequest = invoke('/:id/menu-image/external-draft', 'post', { imageUrl: 'https://example.com/manual.png' });
+        await manualStarted;
+        const concurrentDraft = { imageStudio: { status: 'ready', imageUrl: '/newer.png' }, other: 'preserved' };
+        await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture'", [JSON.stringify(concurrentDraft)]);
+        releaseManual();
+        const conflict = await manualRequest;
+        assert.equal(conflict.statusCode, 409);
+        assert.equal(conflict.body.code, 'MENU_IMAGE_DRAFT_CHANGED');
+        assert.deepEqual((await pool.query("SELECT ai_card_draft FROM products WHERE id='fixture'")).rows[0].ai_card_draft, concurrentDraft);
+        holdManualUpload = null;
+        const manualSuccess = await invoke('/:id/menu-image/external-draft', 'post', { imageUrl: 'https://example.com/manual.png' });
+        assert.equal(manualSuccess.statusCode, 200);
+        assert.equal(manualSuccess.body.product.iconUrl, '/current.png');
+        assert.equal(manualSuccess.body.product.aiCardDraft.imageStudio.imageUrl, '/generated.png');
+        await pool.query("UPDATE products SET ai_card_draft='{}'::jsonb WHERE id='fixture'");
         let releaseLegacy, signalLegacy;
         const legacyStarted = new Promise(resolve => { signalLegacy = resolve; });
         holdLegacy = () => { signalLegacy(); return new Promise(resolve => { releaseLegacy = resolve; }); };
@@ -187,6 +212,14 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         const retry = await invoke('/:id/menu-image/draft', 'post', { generator: 'openai' });
         assert.equal(retry.statusCode, 409);
         assert.equal(openaiCalls, 2);
+        await pool.query('DELETE FROM menu_image_paid_operations');
+        await pool.query("UPDATE products SET ai_card_draft='{}'::jsonb WHERE id='fixture'");
+        injectConcurrentDraft = true;
+        const racingGeneration = await invoke('/:id/menu-image/draft', 'post', { generator: 'kie/nano-banana-2' });
+        assert.equal(racingGeneration.body.code, 'MENU_PAID_DRAFT_CHANGED');
+        assert.equal(starts, 1, 'stale generation must not invoke the provider');
+        assert.equal((await pool.query("SELECT ai_card_draft #>> '{imageStudio,imageUrl}' AS image FROM products WHERE id='fixture'")).rows[0].image, '/manual-newer.png');
+        assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations')).rows[0].status, 'failed');
     } finally {
         db.pool.query = originalQuery; db.pool.connect = originalConnect; global.fetch = originalFetch;
         imageStorage.uploadFromUrl = originalUpload;

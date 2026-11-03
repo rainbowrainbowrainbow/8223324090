@@ -6262,3 +6262,33 @@ body.timeline-dashboard-page.timeline-mode-park.timeline-view-animators .timelin
     overflow-y: auto !important;
     scrollbar-gutter: auto !important;
 }
+
+/* Park on phones: one outer gutter, readable resource labels in both periods.
+   Keep the same measured header variable for labels, time scales and grid math. */
+@media (max-width: 768px) {
+    body.timeline-dashboard-page.timeline-mode-park {
+        --timeline-line-header-w: 96px;
+        --mini-line-header-w: 96px;
+    }
+
+    body.timeline-dashboard-page.timeline-mode-park .timeline-scroll {
+        --timeline-scroll-pad: 0px;
+    }
+
+    body.timeline-dashboard-page.timeline-mode-park .day-section-content {
+        padding: 8px 0 !important;
+    }
+
+    body.timeline-dashboard-page.timeline-mode-park .line-name,
+    body.timeline-dashboard-page.timeline-mode-park .mini-line-header {
+        font-size: 12px !important;
+        line-height: 1.25 !important;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: normal;
+    }
+
+    body.timeline-dashboard-page.timeline-mode-park .timeline-promotions-status:empty {
+        min-width: 0;
+    }
+}

@@ -421,6 +421,25 @@ body.timeline-dashboard-page {
     box-shadow: 5px 0 10px rgba(15, 23, 42, .12);
 }
 
+/* Sticky insets are measured from the scrollport padding edge. Adding the
+   scroll padding again shifts labels over the first time cell. */
+body.timeline-mode-park .timeline-line > .line-header,
+body.timeline-mode-park .timeline-promotions {
+    left: 0;
+}
+
+body.timeline-mode-park .mini-line-header {
+    position: sticky;
+    left: 0;
+    z-index: 35;
+    flex-shrink: 0;
+    background: var(--eg-panel-bg, var(--white));
+}
+
+body.timeline-mode-park #timeScale:empty {
+    display: none;
+}
+
 .timeline-line:nth-child(even) {
     background: var(--gray-50);
 }

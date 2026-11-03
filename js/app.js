@@ -669,7 +669,11 @@ function initTimelineListeners() {
     document.getElementById('prevDay')?.addEventListener('click', () => changeDate(-1));
     document.getElementById('nextDay')?.addEventListener('click', () => changeDate(1));
     document.getElementById('timelineDate')?.addEventListener('change', async (e) => {
-        const newDate = new Date(e.target.value);
+        const newDate = parseTimelineCalendarDate(e.target.value);
+        if (!newDate) {
+            e.target.value = formatDate(AppState.selectedDate);
+            return;
+        }
         // Skip if date hasn't actually changed (prevents double-render from programmatic .value set)
         if (formatDate(newDate) === formatDate(AppState.selectedDate)) return;
         if (!await closeBookingPanel(false)) {

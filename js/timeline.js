@@ -1748,12 +1748,22 @@ async function maybeAutoOpenLeadConversionBooking() {
     return opened;
 }
 
+function parseTimelineCalendarDate(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const [year, month, day] = value.split('-').map(Number);
+    if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+    // Date-only input represents a local calendar day, not midnight UTC.
+    const parsed = new Date(0);
+    parsed.setFullYear(year, month - 1, day);
+    parsed.setHours(0, 0, 0, 0);
+    return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day
+        ? parsed
+        : null;
+}
+
 function getTimelineDateFromUrl() {
     const params = new URLSearchParams(window.location.search);
-    const date = params.get('date');
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-    const parsed = new Date(date + 'T00:00:00');
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    return parseTimelineCalendarDate(params.get('date'));
 }
 
 function setTimelineDateInUrl(date) {
@@ -1774,6 +1784,7 @@ function initializeTimeline() {
     enforceLeadConversionTimelineViewFromUrl(AppState.leadConversionContext);
     AppState.selectedDate = getTimelineDateFromUrl() || new Date();
     const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
+    if (new URLSearchParams(window.location.search).has('date')) setTimelineDateInUrl(AppState.selectedDate);
     updateTimelineViewControls();
     completeTimelineViewUrlBootstrap();
     Promise.resolve(renderTimeline())

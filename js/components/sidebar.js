@@ -1793,6 +1793,13 @@ const Sidebar = (() => {
             const origin = window.location?.origin || 'http://localhost';
             const url = new URL(baseHref, origin);
             url.searchParams.set('timelineView', mode);
+            // Copied/new-tab links must open the day shown by this launcher's counts.
+            const targetContext = url.searchParams.get('businessContext');
+            if (_sidebarTimelineIsTimelineSurface()
+                && _sidebarTimelinePath(url.pathname) === _sidebarTimelinePath(window.location?.pathname)
+                && (!targetContext || targetContext === _sidebarTimelineContextValue())) {
+                url.searchParams.set('date', _sidebarTimelineCurrentDate());
+            }
             return `${url.pathname}${url.search}${url.hash}`;
         } catch {
             const [pathAndSearch, hash = ''] = String(baseHref || '/').split('#', 2);
@@ -2435,7 +2442,10 @@ const Sidebar = (() => {
             if (el.textContent !== text) el.textContent = text;
             el.dataset.sidebarTimelineCountStatus = status;
             const link = el.closest?.('[data-sidebar-timeline-mode]');
-            if (link) link.setAttribute('aria-label', _sidebarTimelineModeAriaLabel({ key: mode, label: _sidebarTimelineModeLabel(mode) }, model));
+            if (link) {
+                link.setAttribute('aria-label', _sidebarTimelineModeAriaLabel({ key: mode, label: _sidebarTimelineModeLabel(mode) }, model));
+                link.setAttribute('href', _sidebarTimelineViewHref(link.getAttribute('href'), mode));
+            }
         });
     }
 

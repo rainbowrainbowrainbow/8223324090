@@ -2,7 +2,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const PDFDocument = require('pdfkit');
 const { CONTRACT_VERSION, MONTH_GRID_NUMERIC_LEGEND } = require('./hrAttendanceDocuments');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -565,6 +564,7 @@ async function buildHrAttendanceDocumentPdfBuffer(snapshot) {
     }
     const pages = paginateHrAttendanceDocument(snapshot);
     const deterministicMetadataDate = new Date(`${snapshot.rosterDate}T00:00:00.000Z`);
+    const PDFDocument = require('pdfkit');
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({
             autoFirstPage: false,

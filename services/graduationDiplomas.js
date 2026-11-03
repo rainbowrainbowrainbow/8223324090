@@ -1,7 +1,6 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const PDFDocument = require('pdfkit');
 
 const VALID_GENDERS = new Set(['boy', 'girl', 'neutral', 'unspecified']);
 const VALID_GENDER_SOURCES = new Set(['manual', 'suggested', 'imported', 'unknown']);
@@ -636,6 +635,8 @@ function buildDiplomaPdfBuffer(children, template, quote = {}) {
         err.statusCode = 400;
         throw err;
     }
+
+    const PDFDocument = require('pdfkit');
 
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({

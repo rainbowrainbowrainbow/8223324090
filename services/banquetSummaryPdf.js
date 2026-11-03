@@ -2,7 +2,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const PDFDocument = require('pdfkit');
 const {
     BANQUET_SUMMARY_MODE_LABELS: MODE_LABELS,
     normalizeBanquetSummaryMode,
@@ -1401,6 +1400,7 @@ async function buildBanquetSummaryPdfBuffer(summary = {}, options = {}) {
     const validation = validateBanquetSummaryPdf(summary, mode);
     if (!validation.valid) throw pdfValidationError(validation);
     const view = buildBanquetSummaryPdfView(summary, mode, { validation });
+    const PDFDocument = require('pdfkit');
 
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({

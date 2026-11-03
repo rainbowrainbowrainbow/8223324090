@@ -8,7 +8,7 @@ const { test } = require('node:test');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { reserveMenuImageOperation: reserve, transitionMenuImageOperation: transition } = require('../../services/menuImagePaidOperations');
-const { executeMenuImagePaid } = require('../../services/menuImagePaidExecutor');
+const { executeMenuImagePaid, pollMenuImagePaid } = require('../../services/menuImagePaidExecutor');
 
 test('paid menu operations survive a pool restart and serialize concurrent budget claims', {
     skip: process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER !== 'true', timeout: 30000
@@ -54,13 +54,37 @@ test('paid menu operations survive a pool restart and serialize concurrent budge
         const opts = { pool, businessContext: 'fixture', productId: 'execution', actor: 'fixture' };
         const successful = await executeMenuImagePaid({ ...opts, provider: 'openai',
             start: async () => { calls++; return { image: 'fixture' }; },
-            saveDraft: async value => { assert.equal(value.image, 'fixture'); } });
+            saveDraft: async value => { assert.equal(value.image, 'fixture'); return true; } });
         assert.equal(successful.status, 'succeeded');
         const kie = await executeMenuImagePaid({ ...opts, productId: 'kie-execution', provider: 'kie',
             start: async () => { calls++; return { taskId: 'fixture-kie-task' }; } });
         assert.equal(kie.status, 'provider_pending');
         await assert.rejects(claim('while-kie-pending'), { code: 'MENU_PAID_OPERATION_BUDGET_FULL' });
-        await transition(pool, { id: kie.operationId, businessContext: 'fixture', from: 'provider_pending', to: 'succeeded' });
+        const read = { pool, operationId: kie.operationId, businessContext: 'fixture', productId: 'kie-execution',
+            poll: async () => ({ status: 'ready' }), saveDraft: async () => true };
+        await assert.rejects(pollMenuImagePaid({ ...read, businessContext: 'other' }), { code: 'MENU_PAID_OPERATION_NOT_FOUND' });
+        await assert.rejects(pollMenuImagePaid({ ...read, poll: async () => ({ status: 'failed' }) }), { code: 'MENU_PAID_RESULT_UNCERTAIN' });
+        await assert.rejects(pollMenuImagePaid({ ...read, saveDraft: async () => { throw new Error('synthetic storage failure'); } }));
+        assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations WHERE operation_id=$1', [kie.operationId])).rows[0].status, 'provider_pending');
+        let finishPoll;
+        let signalStarted;
+        const started = new Promise(resolve => { signalStarted = resolve; });
+        const inFlight = pollMenuImagePaid({ ...read, poll: async taskId => {
+            assert.equal(taskId, 'fixture-kie-task');
+            signalStarted();
+            return new Promise(resolve => { finishPoll = resolve; });
+        } });
+        await started;
+        await assert.rejects(pollMenuImagePaid(read), { code: 'MENU_PAID_POLL_BUSY' });
+        finishPoll({ status: 'ready' });
+        assert.equal((await inFlight).status, 'succeeded');
+        assert.equal((await pollMenuImagePaid(read)).providerCalled, false);
+        const failedKie = await executeMenuImagePaid({ ...opts, productId: 'kie-failed', provider: 'kie',
+            start: async () => ({ taskId: 'fixture-failed-task' }) });
+        const failedRead = { ...read, operationId: failedKie.operationId, productId: 'kie-failed',
+            poll: async () => ({ status: 'failed', confirmedTerminalFailure: true }) };
+        assert.equal((await pollMenuImagePaid(failedRead)).status, 'failed');
+        assert.equal((await pollMenuImagePaid(failedRead)).providerCalled, false);
         await assert.rejects(executeMenuImagePaid({ ...opts, productId: 'uncertain', provider: 'openai',
             start: async () => { calls++; throw new Error('synthetic timeout'); }, saveDraft: async () => {} }),
             { code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW', retryable: false });
@@ -99,7 +123,7 @@ for (const failure of ['image-storage', 'database-after-provider']) test(`paid p
         let calls = 0;
         const request = { pool: failingPool, businessContext: 'fixture', productId: 'dish', provider: 'openai', actor: 'fixture',
             start: async () => { calls++; return { image: 'fixture' }; },
-            saveDraft: async () => { if (failure === 'image-storage') throw new Error('synthetic storage failure'); } };
+            saveDraft: async () => { if (failure === 'image-storage') throw new Error('synthetic storage failure'); return true; } };
         await assert.rejects(executeMenuImagePaid(request), { code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW', retryable: false });
         const record = (await pool.query('SELECT status FROM menu_image_paid_operations WHERE product_id=$1', ['dish'])).rows[0];
         assert.equal(record.status, failure === 'image-storage' ? 'unknown' : 'reserved');

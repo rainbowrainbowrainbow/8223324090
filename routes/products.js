@@ -1621,18 +1621,6 @@ function menuImageExternalDraftPublicError(err) {
     return null;
 }
 
-async function persistProductMenuImageDraft(productId, businessContext, username, draft) {
-    await pool.query(
-        `UPDATE products
-         SET ai_card_draft = $1::jsonb,
-             updated_at = NOW(),
-             updated_by = $2
-         WHERE id = $3
-           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
-        [JSON.stringify(draft), username, productId, businessContext]
-    );
-}
-
 async function reserveProductMenuImageGeneration(productId, businessContext, username, imageStudio) {
     const result = await pool.query(
         `UPDATE products
@@ -1887,14 +1875,15 @@ async function handleMenuImageDraftRequest(req, res) {
                 error: publicError.error
             });
             const failedDraft = buildProductMenuImageDraft(product, failedStudio, { currentDraft });
-            if (generator.provider === 'kie') {
-                await persistKieMenuImageResultIfCurrent(
-                    id, businessContext, req.user.username, null, preparedAt, failedStudio
-                );
-            } else {
-                await persistProductMenuImageDraft(id, businessContext, req.user.username, failedDraft);
-            }
+            const failureSaved = await persistKieMenuImageResultIfCurrent(
+                id, businessContext, req.user.username, null, preparedAt, failedStudio
+            );
             const fresh = await getProductWithPriceRule(pool, id, businessContext).catch(() => null);
+            if (!failureSaved) {
+                return res.status(409).json({ success: false, code: 'menu_image_draft_changed',
+                    error: 'Menu image draft changed while generation was running',
+                    product: fresh ? mapProductRow(fresh) : null });
+            }
             if (publicError.retryable && publicError.retryAfterSeconds) {
                 res.setHeader('Retry-After', String(publicError.retryAfterSeconds));
             }
@@ -1919,9 +1908,15 @@ async function handleMenuImageDraftRequest(req, res) {
             error: null
         });
         const readyDraft = buildProductMenuImageDraft(product, readyStudio, { currentDraft });
-        await persistProductMenuImageDraft(id, businessContext, req.user.username, readyDraft);
+        const readySaved = await persistKieMenuImageResultIfCurrent(
+            id, businessContext, req.user.username, null, preparedAt, readyStudio
+        );
 
         const fresh = await getProductWithPriceRule(pool, id, businessContext);
+        if (!readySaved) {
+            return res.status(409).json({ success: false, code: 'menu_image_draft_changed',
+                error: 'Menu image draft changed while generation was running', product: mapProductRow(fresh) });
+        }
         res.json({
             success: true,
             status: 'ready',

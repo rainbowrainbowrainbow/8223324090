@@ -336,6 +336,31 @@ test('operation inspection finds a detached job without starting generation', as
     assert.equal(calls, 0);
 });
 
+test('detached result needs confirmation to become a draft and never applies the photo', async () => {
+    const app = createPageHarness(); let submits = 0, confirmed = false, confirmations = 0;
+    app.context.confirmModal = async () => { confirmations++; return confirmed; };
+    app.context.apiGetProductMenuImageOperation = async () => ({ success: true, recoveryEnabled: true, operation: null });
+    app.context.apiGetRecoveredMenuImages = async () => ({ success: true, draftRevision: 'a'.repeat(32),
+        results: [{ operationId: '12345678-1234-1234-1234-123456789abc', studio: { imageUrl: '/generated.png' } }] });
+    app.context.apiChangeRecoveredMenuImage = async (id, _op, action, payload) => {
+        assert.equal(action, 'use-recovered'); assert.equal(payload.confirmed, true); submits++;
+        return { success: true, product: menuProduct(id, 'event_genix', { status: 'ready', imageUrl: '/generated.png' }) };
+    };
+    await app.context.inspectKitchenMenuPaidOperation('dish-1', app.panel().querySelector('[data-menu-image-action="inspect-paid-operation"]'));
+    const show = app.panel().querySelector('[data-menu-image-action="show-recovered"]');
+    assert.equal(show.hidden, false);
+    await app.context.showRecoveredMenuImages('dish-1', show);
+    const choose = app.panel().querySelector('[data-menu-image-action="use-recovered"]');
+    assert.ok(choose);
+    choose.click(); choose.click(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(confirmations, 1);
+    assert.equal(submits, 0);
+    confirmed = true; choose.click(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(submits, 1);
+    assert.equal(app.context.allProducts[0].iconUrl, '/uploads/current-photo.jpg');
+    assert.equal(app.context.allProducts[0].aiCardDraft.imageStudio.imageUrl, '/generated.png');
+});
+
 test('failed Kie polling shows the safe task ID without triggering another generation', async () => {
     const app = createPageHarness();
     let generationCalls = 0;

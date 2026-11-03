@@ -21,12 +21,14 @@ test('real JWT middleware and fresh role protect menu reconciliation', {
     const db = require('../../db');
     const originalQuery = db.pool.query, originalConnect = db.pool.connect;
     const originalFlag = process.env.CRM_MENU_RECONCILIATION_ENABLED;
+    const originalRecoveryFlag = process.env.CRM_MENU_RECOVERY_ENABLED;
     let pool, server, created = false;
     const userIds = [];
     try {
         await admin.query(`CREATE SCHEMA ${schema}`); created = true;
         pool = new Pool({ ...common, options: `-c search_path=${schema},public`, max: 10 });
         await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/387_menu_image_paid_operations.sql'), 'utf8'));
+        await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/388_menu_image_recovery_results.sql'), 'utf8'));
         await pool.query(`CREATE TABLE products (id text PRIMARY KEY, business_context text, domain text, kitchen_type text,
             name text, icon_url text, is_active boolean, ai_card_draft jsonb, updated_at timestamptz, updated_by text)`);
         const id = randomUUID();
@@ -36,7 +38,7 @@ test('real JWT middleware and fresh role protect menu reconciliation', {
         await pool.query(`INSERT INTO menu_image_paid_operations (operation_id,business_context,product_id,provider,status,created_by,created_at)
             VALUES ($1,'event_genix','fixture','openai','unknown','fixture',now()-interval '11 minutes')`, [id]);
         const suffix = randomBytes(6).toString('hex');
-        for (const role of ['creator', 'manager']) {
+        for (const role of ['creator', 'manager', 'animator']) {
             const row = await admin.query(`INSERT INTO public.users (username,password_hash,role,name)
                 VALUES ($1,'synthetic-no-login',$2,'Synthetic menu auth test') RETURNING id,username,role`, [`menu_auth_${role}_${suffix}`, role]);
             userIds.push(row.rows[0]);
@@ -47,8 +49,9 @@ test('real JWT middleware and fresh role protect menu reconciliation', {
             return pool.query(sql, params);
         };
         process.env.CRM_MENU_RECONCILIATION_ENABLED = 'true';
+        process.env.CRM_MENU_RECOVERY_ENABLED = 'true';
         const router = require('../../routes/products');
-        const app = express(); app.use(express.json()); app.use('/api/products', router);
+        const app = express(); app.set('trust proxy', true); app.use(express.json()); app.use('/api/products', router);
         server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
         const url = `http://127.0.0.1:${server.address().port}/api/products/fixture/menu-image/operation/reconcile`;
         const body = { businessContext: 'event_genix', operationId: id, reviewNote: 'Checked provider account and reviewed the uncertain charge',
@@ -76,10 +79,35 @@ test('real JWT middleware and fresh role protect menu reconciliation', {
         assert.equal(audit.reviewed_by, creator.username);
         assert.equal((await post(token)).status, 409);
         assert.equal((await pool.query('SELECT count(*)::int AS count FROM menu_image_paid_operation_reviews')).rows[0].count, 1);
+        const recoveredId = randomUUID();
+        await pool.query(`INSERT INTO menu_image_paid_operations (operation_id,business_context,product_id,provider,status,created_by)
+            VALUES ($1,'event_genix','fixture','kie','succeeded','fixture')`, [recoveredId]);
+        await pool.query(`INSERT INTO menu_image_paid_recovery (operation_id,request_studio,result_studio)
+            VALUES ($1,'{}'::jsonb,$2::jsonb)`, [recoveredId, JSON.stringify({ status: 'ready', imageUrl: '/generated.png' })]);
+        const recoveredUrl = `http://127.0.0.1:${server.address().port}/api/products/fixture/menu-image/recovered?businessContext=event_genix`;
+        const get = tokenValue => fetch(recoveredUrl, { headers: tokenValue ? { Authorization: `Bearer ${tokenValue}` } : {} });
+        assert.equal((await get(null)).status, 401);
+        const animator = userIds.find(x => x.role === 'animator');
+        const animatorToken = jwt.sign({ id: animator.id, username: animator.username }, process.env.JWT_SECRET);
+        assert.equal((await get(animatorToken)).status, 403);
+        const managerToken = jwt.sign({ id: manager.id, username: manager.username }, process.env.JWT_SECRET);
+        const recovered = await get(managerToken); assert.equal(recovered.status, 200);
+        const recoveredBody = await recovered.json(); assert.equal(recoveredBody.results[0].operationId, recoveredId);
+        const useUrl = `http://127.0.0.1:${server.address().port}/api/products/fixture/menu-image/operation/${recoveredId}/use-recovered`;
+        const use = tokenValue => fetch(useUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '127.0.0.2',
+            ...(tokenValue ? { Authorization: `Bearer ${tokenValue}` } : {}) }, body: JSON.stringify({
+                businessContext: 'event_genix', confirmed: true, draftRevision: recoveredBody.draftRevision }) });
+        assert.equal((await use(null)).status, 401);
+        assert.equal((await use(animatorToken)).status, 403);
+        assert.equal((await use(managerToken)).status, 200);
+        const finalProduct = (await pool.query("SELECT icon_url, ai_card_draft FROM products WHERE id='fixture'")).rows[0];
+        assert.equal(finalProduct.icon_url, '/current.png');
+        assert.equal(finalProduct.ai_card_draft.imageStudio.imageUrl, '/generated.png');
     } finally {
         if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
         db.pool.query = originalQuery; db.pool.connect = originalConnect;
         if (originalFlag === undefined) delete process.env.CRM_MENU_RECONCILIATION_ENABLED; else process.env.CRM_MENU_RECONCILIATION_ENABLED = originalFlag;
+        if (originalRecoveryFlag === undefined) delete process.env.CRM_MENU_RECOVERY_ENABLED; else process.env.CRM_MENU_RECOVERY_ENABLED = originalRecoveryFlag;
         if (pool) await pool.end();
         if (userIds.length) await admin.query('DELETE FROM public.users WHERE id=ANY($1::int[])', [userIds.map(x => x.id)]);
         if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`);

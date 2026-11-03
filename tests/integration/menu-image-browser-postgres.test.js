@@ -21,12 +21,14 @@ test('browser generates one guarded menu draft and applies only after confirmati
     const originalQuery = db.pool.query, originalConnect = db.pool.connect, originalFetch = global.fetch;
     const originalKey = process.env.KIE_API_KEY, originalFlag = process.env.CRM_MENU_PAID_GUARD_ENABLED;
     const originalReviewFlag = process.env.CRM_MENU_RECONCILIATION_ENABLED;
+    const originalRecoveryFlag = process.env.CRM_MENU_RECOVERY_ENABLED;
     const storage = require('../../services/imageStorage'), originalUpload = storage.uploadFromUrl;
     let pool, server, browser, created = false;
     try {
         await admin.query(`CREATE SCHEMA ${schema}`); created = true;
         pool = new Pool({ ...common, options: `-c search_path=${schema}`, max: 10 });
         await pool.query(fs.readFileSync(path.join(root, 'db/migrations/387_menu_image_paid_operations.sql'), 'utf8'));
+        await pool.query(fs.readFileSync(path.join(root, 'db/migrations/388_menu_image_recovery_results.sql'), 'utf8'));
         await pool.query(`CREATE TABLE products (id text PRIMARY KEY, business_context text, domain text, kitchen_type text,
             name text, icon_url text, is_active boolean, ai_card_draft jsonb, updated_at timestamptz, updated_by text)`);
         await pool.query(`INSERT INTO products VALUES ('fixture-menu-full','event_genix','kitchen','menu',
@@ -54,14 +56,16 @@ test('browser generates one guarded menu draft and applies only after confirmati
         process.env.KIE_API_KEY = 'synthetic-test-key';
         process.env.CRM_MENU_PAID_GUARD_ENABLED = 'true';
         process.env.CRM_MENU_RECONCILIATION_ENABLED = 'true';
-        let starts = 0, polls = 0, failStart = false;
+        process.env.CRM_MENU_RECOVERY_ENABLED = 'true';
+        let starts = 0, polls = 0, failStart = false, pollHold = false;
         global.fetch = async (_url, options) => {
             if (options.method === 'POST') {
                 starts++;
                 if (failStart) throw new Error('synthetic timeout');
                 return new Response(JSON.stringify({ code: 200, data: { taskId: 'browser-fixture-task' } }));
             }
-            polls++; return new Response(JSON.stringify({ code: 200, data: { state: 'success',
+            polls++; if (pollHold) return new Response(JSON.stringify({ code: 200, data: { state: 'waiting' } }));
+            return new Response(JSON.stringify({ code: 200, data: { state: 'success',
                 resultJson: JSON.stringify({ resultUrls: ['https://tempfileb.aiquickdraw.com/fixture.png'] }) } }));
         };
         const router = require('../../routes/products');
@@ -73,6 +77,8 @@ test('browser generates one guarded menu draft and applies only after confirmati
             req.user = { id: 1, username: 'fixture', role, platformRole: role, defaultBusinessContext: 'event_genix' }; next(); });
         for (const [method, route] of [['post', '/:id/menu-image/draft'], ['post', '/:id/menu-image/external-draft'], ['get', '/:id/menu-image/status'],
             ['get', '/:id/menu-image/operation'], ['post', '/:id/menu-image/operation/reconcile'],
+            ['get', '/:id/menu-image/recovered'], ['post', '/:id/menu-image/operation/:operationId/recover'],
+            ['post', '/:id/menu-image/operation/:operationId/use-recovered'],
             ['post', '/:id/menu-image/apply'], ['post', '/:id/menu-image/reject']]) {
             const layer = router.stack.find(x => x.route?.path === route && x.route.methods[method]).route;
             app[method](`/api/products${route}`, ...layer.stack.map(x => x.handle));
@@ -87,7 +93,7 @@ test('browser generates one guarded menu draft and applies only after confirmati
         app.get('/fixture-bootstrap.js', (_req, res) => res.type('js').send(fixture.bootstrap()));
         app.get('/fixture-real-api.js', (_req, res) => res.type('js').send(`
             window.apiGetProducts=async()=>await (await fetch('/fixture/products')).json();
-            window.apiGenerateProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
+            window.apiGenerateProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/draft',{method:'POST',headers:{'Content-Type':'application/json',...(window.fixtureRequestIp?{'X-Forwarded-For':window.fixtureRequestIp}:{})},body:JSON.stringify(payload)})).json();
             // Separate synthetic IP prevents this extra manual-race scenario from
             // consuming the four-request shared review budget of the later flow.
             window.apiCreateProductMenuExternalDraft=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/external-draft',{method:'POST',headers:{'Content-Type':'application/json','X-Forwarded-For':'127.0.0.2'},body:JSON.stringify(payload)})).json();
@@ -95,6 +101,8 @@ test('browser generates one guarded menu draft and applies only after confirmati
             window.apiApplyProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
             window.apiRejectProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
             window.apiGetProductMenuImageOperation=async(id,options)=>await (await fetch('/api/products/'+id+'/menu-image/operation?businessContext='+encodeURIComponent(options.businessContext))).json();
+            window.apiGetRecoveredMenuImages=async(id,options)=>await (await fetch('/api/products/'+id+'/menu-image/recovered?businessContext='+encodeURIComponent(options.businessContext))).json();
+            window.apiChangeRecoveredMenuImage=async(id,op,action,payload)=>await (await fetch('/api/products/'+id+'/menu-image/operation/'+op+'/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-Forwarded-For':'127.0.0.3'},body:JSON.stringify(payload)})).json();
             window.apiReconcileProductMenuImageOperation=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/operation/reconcile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
         `));
         for (const [name, color] of [['menu-fixture.svg', '#4c8a65'], ['menu-draft.svg', '#c57c36']]) {
@@ -220,6 +228,49 @@ test('browser generates one guarded menu draft and applies only after confirmati
         assert.equal((await pool.query('SELECT count(*)::int AS count FROM menu_image_paid_operation_reviews')).rows[0].count, 1);
         assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations WHERE operation_id=$1', [operationId])).rows[0].status, 'reviewed_unknown');
         assert.equal(starts, 3, 'manual reconciliation must not call provider');
+        failStart = false; pollHold = true;
+        await page.evaluate(() => { window.fixtureRequestIp = '127.0.0.3'; });
+        await page.locator('[data-menu-image-action="generate"]').click();
+        await page.waitForFunction(() => document.querySelector('.kitchen-menu-image-studio')?.getAttribute('aria-busy') === 'true');
+        const pendingDeadline = Date.now() + 10000;
+        do { row = (await pool.query("SELECT icon_url, ai_card_draft FROM products WHERE id='fixture-menu-full'")).rows[0];
+            if (row.ai_card_draft.imageStudio?.taskId) break;
+            await new Promise(resolve => setTimeout(resolve, 50));
+        } while (Date.now() < pendingDeadline);
+        assert.ok(row.ai_card_draft.imageStudio.taskId); assert.equal(starts, 4);
+        await pool.query("UPDATE products SET icon_url='/images/menu-fixture.svg', ai_card_draft=$1::jsonb WHERE id='fixture-menu-full'",
+            [JSON.stringify({ imageStudio: { status: 'ready', imageUrl: '/images/menu-fixture.svg' } })]);
+        await page.reload(); await page.locator('[data-id="fixture-menu-full"] [data-menu-image-open]').click();
+        await page.locator('[data-menu-image-action="inspect-paid-operation"]').click();
+        await page.locator('[data-menu-image-action="recover-paid"]').waitFor({ state: 'visible' });
+        pollHold = false;
+        await page.locator('[data-menu-image-action="recover-paid"]').click();
+        await page.locator('[data-menu-image-action="use-recovered"]').waitFor({ state: 'visible' });
+        await page.screenshot({ path: path.join(evidence, 'mobile-recovered-debug.png'), fullPage: true });
+        const recoveredPosition = await page.locator('[data-menu-image-action="use-recovered"]').evaluate(el => {
+            const box = el.getBoundingClientRect(), dialogBox = el.closest('dialog').getBoundingClientRect();
+            return { top: box.top, bottom: box.bottom, dialogTop: dialogBox.top, dialogBottom: dialogBox.bottom, height: innerHeight };
+        });
+        assert.ok(recoveredPosition.top >= recoveredPosition.dialogTop && recoveredPosition.bottom <= recoveredPosition.dialogBottom
+            && recoveredPosition.bottom <= recoveredPosition.height, JSON.stringify(recoveredPosition));
+        row = (await pool.query("SELECT icon_url, ai_card_draft FROM products WHERE id='fixture-menu-full'")).rows[0];
+        assert.equal(row.ai_card_draft.imageStudio.imageUrl, '/images/menu-fixture.svg');
+        await page.screenshot({ path: path.join(evidence, 'mobile-recovered-result.png'), fullPage: true });
+        await page.locator('[data-menu-image-action="use-recovered"]').click();
+        await page.locator('.confirm-overlay[data-confirm-kind="confirm"] .confirm-cancel').click();
+        assert.equal((await pool.query("SELECT ai_card_draft #>> '{imageStudio,imageUrl}' AS image FROM products WHERE id='fixture-menu-full'")).rows[0].image, '/images/menu-fixture.svg');
+        await page.locator('[data-menu-image-action="use-recovered"]').click();
+        await page.locator('.confirm-overlay[data-confirm-kind="confirm"] .confirm-ok').click();
+        await page.waitForFunction(() => document.querySelector('[data-menu-image-action="apply"]')?.disabled === false);
+        row = (await pool.query("SELECT icon_url, ai_card_draft FROM products WHERE id='fixture-menu-full'")).rows[0];
+        assert.equal(row.ai_card_draft.imageStudio.imageUrl, '/images/menu-draft.svg');
+        assert.equal(row.icon_url, '/images/menu-fixture.svg');
+        assert.equal(starts, 4, 'recovery and selection do not generate again');
+        await page.reload(); await page.locator('[data-id="fixture-menu-full"] [data-menu-image-open]').click();
+        await page.locator('[data-menu-image-action="inspect-paid-operation"]').click();
+        await page.locator('[data-menu-image-action="show-recovered"]').click();
+        await page.locator('.kitchen-menu-recovered-card img').waitFor({ state: 'visible' });
+        assert.equal(starts, 4, 'reload and recovered result listing do not generate again');
         assert.deepEqual(errors, []);
     } finally {
         if (browser) await browser.close();
@@ -228,6 +279,7 @@ test('browser generates one guarded menu draft and applies only after confirmati
         if (originalKey === undefined) delete process.env.KIE_API_KEY; else process.env.KIE_API_KEY = originalKey;
         if (originalFlag === undefined) delete process.env.CRM_MENU_PAID_GUARD_ENABLED; else process.env.CRM_MENU_PAID_GUARD_ENABLED = originalFlag;
         if (originalReviewFlag === undefined) delete process.env.CRM_MENU_RECONCILIATION_ENABLED; else process.env.CRM_MENU_RECONCILIATION_ENABLED = originalReviewFlag;
+        if (originalRecoveryFlag === undefined) delete process.env.CRM_MENU_RECOVERY_ENABLED; else process.env.CRM_MENU_RECOVERY_ENABLED = originalRecoveryFlag;
         if (pool) await pool.end(); if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); await db.pool.end();
     }
 });

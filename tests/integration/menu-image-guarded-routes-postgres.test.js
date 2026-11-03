@@ -18,6 +18,7 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
     const db = require('../../db');
     const originalQuery = db.pool.query, originalConnect = db.pool.connect, originalFetch = global.fetch;
     const originalKey = process.env.KIE_API_KEY, originalFlag = process.env.CRM_MENU_PAID_GUARD_ENABLED;
+    const originalRecoveryFlag = process.env.CRM_MENU_RECOVERY_ENABLED;
     const imageStorage = require('../../services/imageStorage');
     const originalUpload = imageStorage.uploadFromUrl;
     let imageProvider, originalOpenAI;
@@ -26,6 +27,7 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         await admin.query(`CREATE SCHEMA ${schema}`); created = true;
         pool = new Pool({ ...common, options: `-c search_path=${schema}`, max: 10 });
         await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/387_menu_image_paid_operations.sql'), 'utf8'));
+        await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/388_menu_image_recovery_results.sql'), 'utf8'));
         await pool.query('CREATE TABLE products (id text PRIMARY KEY, business_context text, ai_card_draft jsonb, updated_at timestamptz, updated_by text)');
         await pool.query("INSERT INTO products VALUES ('fixture','event_genix','{}',now(),'fixture')");
         const base = { id: 'fixture', business_context: 'event_genix', domain: 'kitchen', kitchen_type: 'menu',
@@ -63,6 +65,7 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         };
         process.env.KIE_API_KEY = 'synthetic-test-key';
         process.env.CRM_MENU_PAID_GUARD_ENABLED = 'true';
+        process.env.CRM_MENU_RECOVERY_ENABLED = 'false';
         let starts = 0, polls = 0;
         global.fetch = async (_url, options) => {
             if (options.method === 'POST') { starts++; return new Response(JSON.stringify({ code: 200, data: { taskId: 'fixture-task' } })); }
@@ -70,10 +73,10 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
                 resultJson: JSON.stringify({ resultUrls: ['https://tempfileb.aiquickdraw.com/fixture.png'] }) } }));
         };
         const router = require('../../routes/products');
-        const invoke = async (route, method, body = {}) => {
+        const invoke = async (route, method, body = {}, params = {}) => {
             const handler = router.stack.find(x => x.route?.path === route && x.route.methods[method]).route.stack.at(-1).handle;
             const response = { statusCode: 200, status(n) { this.statusCode = n; return this; }, json(value) { this.body = value; return this; }, setHeader() {} };
-            await handler({ method: method.toUpperCase(), params: { id: 'fixture' }, query: { businessContext: 'event_genix' },
+            await handler({ method: method.toUpperCase(), params: { id: 'fixture', ...params }, query: { businessContext: 'event_genix' },
                 body, headers: {}, user: { username: 'fixture', role: 'admin' } }, response);
             return response;
         };
@@ -221,12 +224,53 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         assert.equal(starts, 1, 'stale generation must not invoke the provider');
         assert.equal((await pool.query("SELECT ai_card_draft #>> '{imageStudio,imageUrl}' AS image FROM products WHERE id='fixture'")).rows[0].image, '/manual-newer.png');
         assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations')).rows[0].status, 'failed');
+        const recoveryRoute = '/:id/menu-image/operation/:operationId/recover';
+        const listRoute = '/:id/menu-image/recovered';
+        process.env.CRM_MENU_RECOVERY_ENABLED = 'false';
+        assert.equal((await invoke(listRoute, 'get')).body.code, 'MENU_RECOVERY_DISABLED');
+        process.env.CRM_MENU_RECOVERY_ENABLED = 'true';
+        await pool.query("UPDATE products SET ai_card_draft='{}'::jsonb WHERE id='fixture'");
+        const generated = await invoke('/:id/menu-image/draft', 'post', { generator: 'kie/nano-banana-2' });
+        assert.equal(generated.statusCode, 202);
+        const op = generated.body.draft.imageStudio.operationId;
+        assert.equal((await invoke(recoveryRoute, 'post', {}, { operationId: op })).body.code, 'MENU_RECOVERY_USE_DRAFT_STATUS');
+        const manual = { imageStudio: { status: 'ready', imageUrl: '/manual.png' } };
+        await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture'", [JSON.stringify(manual)]);
+        const recovered = await invoke(recoveryRoute, 'post', {}, { operationId: op });
+        assert.equal(recovered.body.status, 'succeeded');
+        assert.equal(recovered.body.studio.imageUrl, '/generated.png');
+        assert.deepEqual((await pool.query("SELECT ai_card_draft FROM products WHERE id='fixture'")).rows[0].ai_card_draft, manual);
+        const beforeReplay = polls;
+        assert.equal((await invoke(recoveryRoute, 'post', {}, { operationId: op })).body.providerCalled, false);
+        assert.equal(polls, beforeReplay);
+        const listed = await invoke(listRoute, 'get');
+        assert.equal(listed.body.results.length, 1);
+        assert.equal(listed.body.results[0].operationId, op);
+        const useRoute = '/:id/menu-image/operation/:operationId/use-recovered';
+        assert.equal((await invoke(useRoute, 'post', { draftRevision: listed.body.draftRevision }, { operationId: op })).statusCode, 400);
+        await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture'",
+            [JSON.stringify({ imageStudio: { status: 'generating', provider: 'kie', taskId: 'legacy-task' } })]);
+        const legacyDraft = await invoke(listRoute, 'get');
+        assert.equal((await invoke(useRoute, 'post', { confirmed: true, draftRevision: legacyDraft.body.draftRevision }, { operationId: op })).body.code,
+            'MENU_RECOVERY_DRAFT_CHANGED');
+        await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture'", [JSON.stringify(manual)]);
+        await pool.query("UPDATE products SET ai_card_draft=jsonb_set(ai_card_draft, '{other}', '\"newer\"'::jsonb) WHERE id='fixture'");
+        const staleUse = await invoke(useRoute, 'post', { confirmed: true, draftRevision: listed.body.draftRevision }, { operationId: op });
+        assert.equal(staleUse.body.code, 'MENU_RECOVERY_DRAFT_CHANGED');
+        const latest = await invoke(listRoute, 'get');
+        const use = await invoke(useRoute, 'post', { confirmed: true, draftRevision: latest.body.draftRevision }, { operationId: op });
+        assert.equal(use.statusCode, 200);
+        assert.equal(use.body.product.iconUrl, '/current.png');
+        assert.equal(use.body.product.aiCardDraft.imageStudio.imageUrl, '/generated.png');
+        assert.equal((await pool.query("SELECT ai_card_draft ->> 'other' AS extra FROM products WHERE id='fixture'")).rows[0].extra, 'newer');
+        assert.equal(starts, 2, 'recovery never submits another paid job');
     } finally {
         db.pool.query = originalQuery; db.pool.connect = originalConnect; global.fetch = originalFetch;
         imageStorage.uploadFromUrl = originalUpload;
         if (imageProvider) imageProvider.generateAndStoreMenuPhotoDraft = originalOpenAI;
         if (originalKey === undefined) delete process.env.KIE_API_KEY; else process.env.KIE_API_KEY = originalKey;
         if (originalFlag === undefined) delete process.env.CRM_MENU_PAID_GUARD_ENABLED; else process.env.CRM_MENU_PAID_GUARD_ENABLED = originalFlag;
+        if (originalRecoveryFlag === undefined) delete process.env.CRM_MENU_RECOVERY_ENABLED; else process.env.CRM_MENU_RECOVERY_ENABLED = originalRecoveryFlag;
         if (pool) await pool.end();
         if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`);
         await admin.end(); await db.pool.end();

@@ -3808,6 +3808,29 @@ async function apiReconcileProductMenuImageOperation(id, payload = {}) {
     } catch { return { success: false }; }
 }
 
+async function apiGetRecoveredMenuImages(id, options = {}) {
+    try {
+        const params = new URLSearchParams();
+        addProductBusinessContextParam(params, getProductBusinessContextValue(options));
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/recovered?${params}`,
+            { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        return response.ok ? body : { success: false, code: body.code || null };
+    } catch { return { success: false }; }
+}
+
+async function apiChangeRecoveredMenuImage(id, operationId, action, payload = {}) {
+    if (!['recover', 'use-recovered'].includes(action) || !guardCrmBusinessWrite('працювати з результатом фото меню')) return { success: false };
+    try {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/operation/${encodeURIComponent(operationId)}/${action}`,
+            { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(payload) });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        return response.ok ? body : { success: false, code: body.code || null };
+    } catch { return { success: false }; }
+}
+
 async function apiGenerateProductMenuImage(id, payload = {}) {
     try {
         if (!guardCrmBusinessWrite('генерувати фото меню')) {

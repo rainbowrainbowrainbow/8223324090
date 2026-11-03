@@ -1714,6 +1714,8 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                 <strong>Додати власне фото як чернетку</strong>
                 <button type="button" class="btn-page-secondary" data-menu-image-action="inspect-paid-operation" onclick="inspectKitchenMenuPaidOperation('${productId}', this)">Перевірити попередню генерацію</button>
                 <p data-menu-image-operation-status role="status" aria-live="polite"></p>
+                <button type="button" class="btn-page-secondary" data-menu-image-action="show-recovered" onclick="showRecoveredMenuImages('${productId}', this)" hidden>Показати збережені результати</button>
+                <div class="kitchen-menu-recovered" data-menu-image-recovered aria-live="polite"></div>
                 <p>AI-результат зберігається автоматично. Файл збережеться після вибору, URL — після виходу з поля або Enter. Чинне фото зміниться тільки після «Застосувати».</p>
                 <label>
                     <span>Файл</span>
@@ -1765,7 +1767,7 @@ function setKitchenMenuImageStudioBusy(panel, busy) {
     panel.setAttribute('aria-busy', busy ? 'true' : 'false');
     panel.querySelectorAll('button, select, input, textarea').forEach(control => {
         if (control.hasAttribute('data-menu-image-close') || control.hasAttribute('data-menu-photo-url')
-            || ['inspect-paid-operation', 'check-paid-status'].includes(control.dataset.menuImageAction)) return;
+            || ['inspect-paid-operation', 'check-paid-status', 'show-recovered', 'recover-paid'].includes(control.dataset.menuImageAction)) return;
         if (busy) {
             if (control.dataset.menuImageWasDisabled === undefined) control.dataset.menuImageWasDisabled = control.disabled ? '1' : '0';
             control.disabled = true;
@@ -2025,9 +2027,21 @@ async function inspectKitchenMenuPaidOperation(productId, trigger) {
         const result = await apiGetProductMenuImageOperation(productId, { businessContext });
         if (!panel.isConnected || businessContext !== getProductApiBusinessContext()) return;
         if (!result?.success) { output.textContent = 'Не вдалося перевірити стан. Нову генерацію не запущено.'; return; }
+        const showRecovered = panel.querySelector('[data-menu-image-action="show-recovered"]');
+        if (showRecovered) showRecovered.hidden = result.recoveryEnabled !== true;
         if (!result.operation) { output.textContent = 'Незавершених захищених генерацій для цієї страви не знайдено.'; return; }
         const task = result.operation.taskId ? ` ID завдання: ${result.operation.taskId}.` : '';
         output.textContent = `Є незавершена генерація (${result.operation.provider}).${task} Не запускайте нову без перевірки; зверніться до адміністратора.`;
+        const current = allProducts.find(item => String(item.id) === String(productId));
+        if (result.recoveryEnabled === true && result.operation.provider === 'kie' && result.operation.taskId
+            && getMenuImageStudioDraft(current).operationId !== result.operation.operationId) {
+            const recover = document.createElement('button');
+            recover.type = 'button'; recover.className = 'btn-page-secondary';
+            recover.dataset.menuImageAction = 'recover-paid';
+            recover.textContent = 'Перевірити збережене завдання';
+            recover.addEventListener('click', () => recoverDetachedMenuImageUi(productId, result.operation.operationId, recover));
+            output.append(' ', recover);
+        }
         if (typeof getUserRole === 'function' && getUserRole() === 'creator' && !result.operation.taskId
             && ['reserved', 'unknown'].includes(result.operation.status)) {
             const review = document.createElement('button');
@@ -2042,6 +2056,74 @@ async function inspectKitchenMenuPaidOperation(productId, trigger) {
             output.textContent = 'Не вдалося перевірити стан. Нову генерацію не запущено.';
         }
     } finally { if (trigger.isConnected) trigger.disabled = false; }
+}
+
+async function recoverDetachedMenuImageUi(productId, operationId, trigger) {
+    const context = getProductApiBusinessContext();
+    if (!guardProductWrite('перевіряти завдання фото') || typeof apiChangeRecoveredMenuImage !== 'function') return;
+    const panel = trigger?.closest?.('.kitchen-menu-image-studio');
+    const output = panel?.querySelector('[data-menu-image-operation-status]');
+    if (!output) return;
+    trigger.disabled = true;
+    try {
+        const result = await apiChangeRecoveredMenuImage(productId, operationId, 'recover', { businessContext: context });
+        if (!panel.isConnected || context !== getProductApiBusinessContext()) return;
+        if (!result?.success) {
+            output.textContent = 'Не вдалося перевірити завдання. Нову генерацію не запущено; зверніться до адміністратора.';
+        } else if (result.status === 'provider_pending') {
+            output.textContent = 'Завдання ще виконується. Можна перевірити пізніше без нової генерації.';
+        } else if (result.status === 'failed') {
+            output.textContent = 'Провайдер підтвердив помилку завдання. Нова генерація не запускалася.';
+        } else {
+            output.textContent = 'Результат збережено окремо. Перегляньте його перед вибором.';
+            await showRecoveredMenuImages(productId, panel.querySelector('[data-menu-image-action="show-recovered"]'));
+        }
+    } catch { if (panel.isConnected) output.textContent = 'Стан завдання невідомий. Нова генерація не запускалася.'; }
+    finally { if (trigger.isConnected) trigger.disabled = false; }
+}
+
+async function showRecoveredMenuImages(productId, trigger) {
+    const context = getProductApiBusinessContext();
+    if (!guardProductWrite('переглядати результати фото') || typeof apiGetRecoveredMenuImages !== 'function') return;
+    const panel = trigger?.closest?.('.kitchen-menu-image-studio');
+    const output = panel?.querySelector('[data-menu-image-recovered]');
+    if (!output) return;
+    trigger.disabled = true;
+    try {
+        const result = await apiGetRecoveredMenuImages(productId, { businessContext: context });
+        if (!panel.isConnected || context !== getProductApiBusinessContext()) return;
+        output.replaceChildren();
+        if (!result?.success) { output.textContent = 'Збережені результати зараз недоступні.'; return; }
+        if (!result.results?.length) { output.textContent = 'Збережених окремо результатів немає.'; return; }
+        for (const item of result.results) {
+            const url = productMenuSafeImageUrl(item.studio?.imageUrl);
+            if (!url || !item.operationId) continue;
+            const card = document.createElement('div'); card.className = 'kitchen-menu-recovered-card';
+            const image = document.createElement('img'); image.src = url; image.alt = 'Збережений результат генерації';
+            const choose = document.createElement('button'); choose.type = 'button'; choose.className = 'btn-page-secondary';
+            choose.dataset.menuImageAction = 'use-recovered'; choose.textContent = 'Обрати як чернетку';
+            choose.addEventListener('click', async () => {
+                if (typeof confirmModal !== 'function' || choose.disabled) return;
+                choose.disabled = true;
+                const confirmed = await confirmModal('Замінити поточну чернетку цим результатом? Чинне фото страви не зміниться, доки ви окремо не натиснете «Застосувати».',
+                    { type: 'warning', okText: 'Обрати чернетку', cancelText: 'Скасувати', container: panel.closest('dialog[open]') || document.body });
+                if (!confirmed || context !== getProductApiBusinessContext()) { choose.disabled = false; return; }
+                const chosen = await apiChangeRecoveredMenuImage(productId, item.operationId, 'use-recovered',
+                    { businessContext: context, draftRevision: result.draftRevision, confirmed: true });
+                if (!panel.isConnected || context !== getProductApiBusinessContext()) return;
+                if (!chosen?.success || !chosen.product) {
+                    output.textContent = 'Чернетка змінилася або є незавершене завдання. Перевірте стан і відкрийте результати знову.';
+                    return;
+                }
+                updateProductInState(chosen.product); clearMenuImageGenerationFeedback(context, productId);
+                refreshProductCard(productId, context);
+                showNotification('Результат обрано як чернетку. Перевірте її перед застосуванням.', 'success');
+            });
+            card.append(image, choose); output.append(card);
+        }
+        output.querySelector('[data-menu-image-action="use-recovered"]')?.scrollIntoView?.({ block: 'nearest' });
+    } catch { if (panel.isConnected) output.textContent = 'Не вдалося завантажити результати.'; }
+    finally { if (trigger.isConnected) trigger.disabled = false; }
 }
 
 async function reconcileKitchenMenuPaidOperation(productId, operationId, trigger) {

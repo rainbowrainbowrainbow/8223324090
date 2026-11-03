@@ -252,7 +252,7 @@ async function pollMenuImageWithKie(taskId) {
             });
         err.providerCode = providerCode;
         err.providerTaskId = taskId;
-        return { status: 'failed', error: err };
+        return { status: 'failed', confirmedTerminalFailure: true, error: err };
     }
     if (data.state !== 'success') return { status: 'generating' };
     let result;

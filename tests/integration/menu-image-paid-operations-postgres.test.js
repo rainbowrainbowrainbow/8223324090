@@ -9,6 +9,7 @@ const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { reserveMenuImageOperation: reserve, transitionMenuImageOperation: transition } = require('../../services/menuImagePaidOperations');
 const { executeMenuImagePaid, pollMenuImagePaid } = require('../../services/menuImagePaidExecutor');
+const { pollMenuImageWithKie } = require('../../services/menuPhotoGeneration');
 
 test('paid menu operations survive a pool restart and serialize concurrent budget claims', {
     skip: process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER !== 'true', timeout: 30000
@@ -81,10 +82,23 @@ test('paid menu operations survive a pool restart and serialize concurrent budge
         assert.equal((await pollMenuImagePaid(read)).providerCalled, false);
         const failedKie = await executeMenuImagePaid({ ...opts, productId: 'kie-failed', provider: 'kie',
             start: async () => ({ taskId: 'fixture-failed-task' }) });
-        const failedRead = { ...read, operationId: failedKie.operationId, productId: 'kie-failed',
-            poll: async () => ({ status: 'failed', confirmedTerminalFailure: true }) };
-        assert.equal((await pollMenuImagePaid(failedRead)).status, 'failed');
-        assert.equal((await pollMenuImagePaid(failedRead)).providerCalled, false);
+        const failedRead = { ...read, operationId: failedKie.operationId, productId: 'kie-failed', poll: pollMenuImageWithKie };
+        const originalFetch = global.fetch;
+        const originalKey = process.env.KIE_API_KEY;
+        try {
+            process.env.KIE_API_KEY = 'synthetic-test-key';
+            global.fetch = async () => new Response(JSON.stringify({ code: 200,
+                data: { state: 'success', resultJson: 'malformed' } }), { status: 200 });
+            await assert.rejects(pollMenuImagePaid(failedRead), { code: 'MENU_PAID_RESULT_UNCERTAIN' });
+            global.fetch = async () => new Response(JSON.stringify({ code: 200,
+                data: { state: 'fail', failCode: 'INPUT_IMAGE_FAILED' } }), { status: 200 });
+            assert.equal((await pollMenuImagePaid(failedRead)).status, 'failed');
+            assert.equal((await pollMenuImagePaid(failedRead)).providerCalled, false);
+        } finally {
+            global.fetch = originalFetch;
+            if (originalKey === undefined) delete process.env.KIE_API_KEY;
+            else process.env.KIE_API_KEY = originalKey;
+        }
         await assert.rejects(executeMenuImagePaid({ ...opts, productId: 'uncertain', provider: 'openai',
             start: async () => { calls++; throw new Error('synthetic timeout'); }, saveDraft: async () => {} }),
             { code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW', retryable: false });

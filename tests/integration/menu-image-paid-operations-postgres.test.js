@@ -74,3 +74,40 @@ test('paid menu operations survive a pool restart and serialize concurrent budge
         await admin.end();
     }
 });
+
+for (const failure of ['image-storage', 'database-after-provider']) test(`paid provider ${failure} failure cannot cause a second charge`, {
+    skip: process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER !== 'true', timeout: 30000
+}, async () => {
+    const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
+    assert.equal(target.isLocal, true);
+    const schema = `menu_paid_test_${randomBytes(8).toString('hex')}`;
+    const common = { connectionString: target.url.toString(), ssl: false };
+    const admin = new Pool(common);
+    let pool;
+    let created = false;
+    try {
+        await admin.query(`CREATE SCHEMA ${schema}`);
+        created = true;
+        pool = new Pool({ ...common, options: `-c search_path=${schema}`, max: 5 });
+        await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/387_menu_image_paid_operations.sql'), 'utf8'));
+        // Reservations still use the real pool; simulate loss of DB access only
+        // for status updates after the provider has already returned.
+        const failingPool = failure === 'database-after-provider' ? {
+            connect: (...args) => pool.connect(...args),
+            query: async () => { throw new Error('synthetic database outage'); }
+        } : pool;
+        let calls = 0;
+        const request = { pool: failingPool, businessContext: 'fixture', productId: 'dish', provider: 'openai', actor: 'fixture',
+            start: async () => { calls++; return { image: 'fixture' }; },
+            saveDraft: async () => { if (failure === 'image-storage') throw new Error('synthetic storage failure'); } };
+        await assert.rejects(executeMenuImagePaid(request), { code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW', retryable: false });
+        const record = (await pool.query('SELECT status FROM menu_image_paid_operations WHERE product_id=$1', ['dish'])).rows[0];
+        assert.equal(record.status, failure === 'image-storage' ? 'unknown' : 'reserved');
+        await assert.rejects(executeMenuImagePaid({ ...request, pool }), { code: 'MENU_PAID_OPERATION_REQUIRES_REVIEW' });
+        assert.equal(calls, 1);
+    } finally {
+        if (pool) await pool.end();
+        if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`);
+        await admin.end();
+    }
+});

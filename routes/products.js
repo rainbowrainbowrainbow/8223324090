@@ -10,6 +10,7 @@ const { createWriteRateLimiter } = require('../middleware/rateLimit');
 const { createLogger } = require('../utils/logger');
 const { executeMenuImagePaid, pollMenuImagePaid } = require('../services/menuImagePaidExecutor');
 const { withLegacyMenuGuard, activateMenuGuard } = require('../services/menuImageGuardGate');
+const { withProviderExecution } = require('../services/crmProviderExecution');
 const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurface');
 const { userBusinessModuleState } = require('../services/businessModuleRegistry');
 const {
@@ -1784,7 +1785,7 @@ async function handleGuardedMenuImageDraft(req, res) {
         const prompt = buildMenuImagePrompt(product, { size, style, blueprint });
         const preparedAt = new Date().toISOString();
         let generating;
-        const execution = await executeMenuImagePaid({ pool, businessContext: context, productId: id,
+        const execution = await withProviderExecution(pool, () => executeMenuImagePaid({ pool, businessContext: context, productId: id,
             provider: generator.provider, actor: req.user.username,
             start: async operationId => {
                 generating = normalizeMenuImageStudio({ ...current.imageStudio, status: 'generating',
@@ -1800,7 +1801,7 @@ async function handleGuardedMenuImageDraft(req, res) {
             },
             saveDraft: async image => persistKieMenuImageResultIfCurrent(id, context, req.user.username, null,
                 preparedAt, normalizeMenuImageStudio({ ...generating, ...image, status: 'ready', operationId: generating.operationId }), generating.operationId)
-        });
+        }));
         if (execution.status === 'provider_pending') {
             const pending = normalizeMenuImageStudio({ ...generating, taskId: execution.taskId });
             if (!await persistKieMenuImageResultIfCurrent(id, context, req.user.username, null, preparedAt, pending, generating.operationId)) {
@@ -1813,7 +1814,7 @@ async function handleGuardedMenuImageDraft(req, res) {
             status: execution.status === 'provider_pending' ? 'generating' : 'ready',
             draft, imageUrl: draft.imageStudio?.imageUrl || null, product: mapProductRow(fresh) });
     } catch (err) {
-        const status = err?.code === 'MENU_PAID_OPERATION_BUDGET_FULL' ? 429
+        const status = ['MENU_PAID_OPERATION_BUDGET_FULL', 'CRM_PROVIDER_BUSY'].includes(err?.code) ? 429
             : err?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' ? 502
                 : err?.code === 'menu_image_generator_invalid' ? 400 : 409;
         let fresh = context ? await getProductWithPriceRule(pool, id, context).catch(() => null) : null;

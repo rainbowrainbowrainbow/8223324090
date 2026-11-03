@@ -97,6 +97,18 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         assert.equal(oldCompleted.body.status, 'ready');
         starts = 0;
         polls = 0;
+        const otherFeature = await pool.connect();
+        try {
+            await otherFeature.query("SELECT pg_advisory_lock(hashtext('crm_paid_provider_execution'))");
+            const busy = await invoke('/:id/menu-image/draft', 'post', { generator: 'kie/nano-banana-2' });
+            assert.equal(busy.statusCode, 429);
+            assert.equal(busy.body.code, 'CRM_PROVIDER_BUSY');
+            assert.equal(starts, 0);
+            assert.equal((await pool.query('SELECT count(*)::int AS count FROM menu_image_paid_operations')).rows[0].count, 0);
+        } finally {
+            await otherFeature.query("SELECT pg_advisory_unlock(hashtext('crm_paid_provider_execution'))");
+            otherFeature.release();
+        }
         const first = await invoke('/:id/menu-image/draft', 'post', { generator: 'kie/nano-banana-2' });
         assert.equal(first.statusCode, 202);
         assert.equal(first.body.status, 'generating');

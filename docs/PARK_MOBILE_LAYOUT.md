@@ -25,3 +25,14 @@ gutters, readable phone labels, page containment, actual movement of the intende
 time scroller, weekly viewport bounds, and sticky-label opacity/hit ownership.
 Screenshots still require visual review; numerical assertions alone do not certify
 the whole mobile experience. The test runs in the existing sidebar/timeline CI job.
+
+## CI response-phase synchronization
+
+The release gate exposed a separate race in the Education Today A-B-A fixture.
+Its route handler captured the request phase after `route.fetch()` and released
+only responses already present in a snapshot of the row array. A late current
+response could remain held by the test itself. Capture the phase before fetching
+and use latched old/current phase gates instead. Keep the date, four-card,
+no-retry and independent SQL identity assertions unchanged. The source-bound
+`education-response-phase-gates.test.js` exercises the actual interception code
+with independently delayed old and current responses for success/error cases.

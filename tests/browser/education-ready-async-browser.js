@@ -376,23 +376,27 @@ async function main() {
     for(const lateError of [false,true])await check(`today-A-B-A-late-${lateError?'error':'success'}`,()=>pageFor(async page=>{
         await go(page,'today');await page.waitForFunction(()=>!window.EducationScheduleWorkspace.state.loading&&document.querySelectorAll('[data-education-booking-id]').length===4);
         const rows=[], first=deferred(), newest=deferred();let stage='old';
+        const phaseGates={old:deferred(),new:deferred()};
         await page.route('**/api/bookings/2026-10-02?*',async route=>{
-            const entry={route,response:await route.fetch(),stage,release:deferred(),done:deferred()};rows.push(entry);first.resolve();if(stage==='new')newest.resolve();
-            await entry.release.promise;
+            // Capture request identity before fetch can cross a navigation boundary.
+            const entry={route,stage,done:deferred()};entry.response=await route.fetch();
+            rows.push(entry);first.resolve();if(entry.stage==='new')newest.resolve();
+            // A released phase also releases responses which arrive afterwards.
+            await phaseGates[entry.stage].promise;
             try{await route.fulfill(entry.stage==='old'&&lateError?{status:503,contentType:'application/json',body:JSON.stringify({error:'Controlled old date failure'})}:{response:entry.response});}finally{entry.done.resolve();}
         });
         try{
             await page.locator('#prevDay').click();await bounded(first.promise,'First date A response');
             await page.locator('#nextDay').click();await page.waitForFunction(()=>window.EducationScheduleWorkspace.state.date==='2026-10-03'&&!window.EducationScheduleWorkspace.state.loading);
             stage='new';await page.locator('#prevDay').click();await bounded(newest.promise,'Latest date A response');
-            for(const row of rows.filter(row=>row.stage==='new'))row.release.resolve();
+            phaseGates.new.resolve();
             await page.waitForFunction(()=>window.EducationScheduleWorkspace.state.date==='2026-10-02'&&!window.EducationScheduleWorkspace.state.loading&&document.querySelectorAll('[data-education-booking-id]').length===4);
-            for(const row of rows)row.release.resolve();await bounded(Promise.all(rows.map(row=>row.done.promise)),'All date responses released');
+            phaseGates.old.resolve();await bounded(Promise.all(rows.map(row=>row.done.promise)),'All date responses released');
             assert.equal(await page.locator('[data-education-retry]').count(),0);
             const actual=await page.locator('[data-education-booking-id]').evaluateAll(cards=>cards.map(card=>card.dataset.educationBookingId).sort());
             const expected=(await pool.query("SELECT id FROM bookings WHERE business_context='dar' AND date='2026-10-02' ORDER BY id")).rows.map(row=>row.id);assert.deepEqual(actual,expected);
             evidence.proofs[`todayABA${lateError?'Error':'Success'}`]={actual,expected,heldOld:rows.filter(row=>row.stage==='old').length,heldCurrent:rows.filter(row=>row.stage==='new').length};
-        }finally{for(const row of rows)row.release.resolve();}
+        }finally{phaseGates.old.resolve();phaseGates.new.resolve();}
     }));
     await check('today-current-error-retry-empty',()=>pageFor(async page=>{
         let fail=true;await page.route('**/api/bookings/2026-10-01?*',route=>fail?route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Controlled current date failure'})}):route.continue());

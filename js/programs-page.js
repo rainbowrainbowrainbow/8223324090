@@ -1354,6 +1354,9 @@ function menuImageGenerationKey(businessContext, productId) {
 }
 
 function menuImageGenerationMessage(state) {
+    if (state?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW') {
+        return 'Результат попередньої генерації потребує перевірки. Не запускайте її повторно: провайдер міг списати кошти. Зверніться до адміністратора.';
+    }
     if (state?.inFlight && state.feedback?.code?.startsWith('menu_image_tracking_')) return menuImageGenerationMessage({ feedback: state.feedback });
     if (state?.inFlight && state.provider === 'kie' && state.tracking === false) return 'Kie обробляє фото. Перевірка автоматично продовжиться, коли сторінка знову стане активною.';
     if (state?.inFlight) return state.provider === 'kie'
@@ -1366,7 +1369,7 @@ function menuImageGenerationMessage(state) {
     if (state.feedback.code === 'menu_image_tracking_changed') return 'Завдання змінилося. Запізнілий результат не застосовано; перевірте актуальну генерацію ще раз.';
 
     const code = state.feedback.code;
-    if (code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' || code === 'MENU_PAID_OPERATION_REQUIRES_REVIEW') {
+    if (code === 'MENU_PAID_OPERATION_REQUIRES_REVIEW') {
         return 'Результат попередньої генерації потребує перевірки. Не запускайте її повторно: провайдер міг списати кошти. Зверніться до адміністратора або завантажте фото вручну.';
     }
     if (code === 'MENU_PAID_OPERATION_BUDGET_FULL') {
@@ -1959,6 +1962,9 @@ function menuImageGenerationDisplayState(product) {
     const state = menuImageGenerationState.get(key);
     const draft = getMenuImageStudioDraft(product);
     if (state?.inFlight || state?.feedback) return state;
+    if (draft.status === 'generating' && draft.outcomeUncertain === true) {
+        return { inFlight: true, feedback: { code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' } };
+    }
     if (draft.status === 'generating') return { inFlight: true, provider: draft.provider, tracking: false };
     if (draft.status === 'failed') return { feedback: { code: 'menu_image_generation_failed',
         providerCode: draft.providerCode, providerTaskId: draft.taskId } };

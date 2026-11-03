@@ -290,6 +290,17 @@ test('uncertain paid generation warns against another charge and keeps manual up
     assert.equal(app.panel().querySelector('[data-menu-image-file]').disabled, false);
 });
 
+test('persisted uncertain generation stays visible and blocks generation after a reload', () => {
+    const app = createPageHarness();
+    app.context.allProducts = [menuProduct('dish-1', 'event_genix', {
+        status: 'generating', provider: 'openai', outcomeUncertain: true,
+        operationId: '12345678-1234-1234-1234-123456789abc'
+    })];
+    app.context.renderProducts();
+    assert.match(app.message(), /Не запускайте її повторно/);
+    assert.equal(app.button().disabled, true);
+});
+
 test('failed Kie polling shows the safe task ID without triggering another generation', async () => {
     const app = createPageHarness();
     let generationCalls = 0;

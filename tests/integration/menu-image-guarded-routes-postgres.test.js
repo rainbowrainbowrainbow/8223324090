@@ -38,7 +38,13 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
             }
             return pool.query(sql, params);
         };
-        imageStorage.uploadFromUrl = async () => '/generated.png';
+        let replaceOperationDuringUpload = false;
+        imageStorage.uploadFromUrl = async () => {
+            if (replaceOperationDuringUpload) await pool.query(
+                `UPDATE products SET ai_card_draft=jsonb_set(ai_card_draft,'{imageStudio,operationId}',to_jsonb($1::text)) WHERE id='fixture'`,
+                ['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa']);
+            return '/generated.png';
+        };
         imageProvider = require('../../services/menuPhotoGeneration');
         originalOpenAI = imageProvider.generateAndStoreMenuPhotoDraft;
         let openaiCalls = 0, failOpenAI = false;
@@ -70,12 +76,19 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         const duplicate = await invoke('/:id/menu-image/draft', 'post', { generator: 'kie/nano-banana-2' });
         assert.equal(duplicate.statusCode, 409);
         assert.equal(starts, 1);
+        replaceOperationDuringUpload = true;
+        const changed = await invoke('/:id/menu-image/status', 'get');
+        assert.equal(changed.statusCode, 502);
+        assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations')).rows[0].status, 'provider_pending');
+        replaceOperationDuringUpload = false;
+        await pool.query(`UPDATE products SET ai_card_draft=jsonb_set(ai_card_draft,'{imageStudio,operationId}',to_jsonb($1::text)) WHERE id='fixture'`,
+            [first.body.draft.imageStudio.operationId]);
         const finished = await invoke('/:id/menu-image/status', 'get');
         assert.equal(finished.body.status, 'ready');
         assert.equal(finished.body.draft.imageStudio.status, 'ready');
         assert.equal(finished.body.draft.imageStudio.imageUrl, '/generated.png');
         assert.equal(finished.body.product.iconUrl, '/current.png');
-        assert.equal(polls, 1);
+        assert.equal(polls, 2);
         const record = await pool.query('SELECT status, provider_task_id FROM menu_image_paid_operations');
         assert.equal(record.rows[0].status, 'succeeded');
         assert.equal(record.rows[0].provider_task_id, 'fixture-task');
@@ -89,6 +102,7 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         assert.equal(uncertain.statusCode, 502);
         assert.equal(uncertain.body.code, 'MENU_PAID_OUTCOME_REQUIRES_REVIEW');
         assert.equal(uncertain.body.product.aiCardDraft.imageStudio.status, 'generating');
+        assert.equal(uncertain.body.product.aiCardDraft.imageStudio.outcomeUncertain, true);
         const retry = await invoke('/:id/menu-image/draft', 'post', { generator: 'openai' });
         assert.equal(retry.statusCode, 409);
         assert.equal(openaiCalls, 2);

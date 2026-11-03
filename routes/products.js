@@ -589,6 +589,7 @@ function normalizeMenuImageStudio(value = {}) {
         referenceImageUrl: cleanNullableString(raw.referenceImageUrl, 2000),
         taskId: cleanNullableString(raw.taskId, 128),
         operationId: /^[0-9a-f-]{36}$/i.test(String(raw.operationId || '')) ? String(raw.operationId) : null,
+        outcomeUncertain: raw.outcomeUncertain === true,
         providerCode: /^[A-Za-z0-9_-]{1,64}$/.test(String(raw.providerCode || ''))
             ? String(raw.providerCode) : null,
         storage: safeJsonObject(raw.storage || {}),
@@ -1641,7 +1642,7 @@ async function reserveProductMenuImageGeneration(productId, businessContext, use
     return result.rowCount > 0;
 }
 
-async function persistKieMenuImageResultIfCurrent(productId, businessContext, username, taskId, preparedAt, imageStudio) {
+async function persistKieMenuImageResultIfCurrent(productId, businessContext, username, taskId, preparedAt, imageStudio, operationId = null) {
     const result = await pool.query(
         `UPDATE products
          SET ai_card_draft = jsonb_set(COALESCE(ai_card_draft, '{}'::jsonb), '{imageStudio}', $1::jsonb, true),
@@ -1651,8 +1652,9 @@ async function persistKieMenuImageResultIfCurrent(productId, businessContext, us
            AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
            AND ai_card_draft #>> '{imageStudio,taskId}' IS NOT DISTINCT FROM $5
            AND ai_card_draft #>> '{imageStudio,preparedAt}' = $6
+           AND ($7::text IS NULL OR ai_card_draft #>> '{imageStudio,operationId}' = $7)
            AND ai_card_draft #>> '{imageStudio,status}' = 'generating'`,
-        [JSON.stringify(imageStudio), username, productId, businessContext, taskId, preparedAt]
+        [JSON.stringify(imageStudio), username, productId, businessContext, taskId, preparedAt, operationId]
     );
     return result.rowCount > 0;
 }
@@ -1785,7 +1787,7 @@ async function handleGuardedMenuImageDraft(req, res) {
                     source: generator.provider, size, style, prompt, preparedAt, operationId,
                     imageUrl: null, generatedAt: null, taskId: null, provider: generator.provider,
                     model: generator.model, referenceImageUrl: blueprint?.imageUrl || null,
-                    previousImageUrl: product.icon_url || null, error: null });
+                    previousImageUrl: product.icon_url || null, error: null, outcomeUncertain: false });
                 if (!await reserveProductMenuImageGeneration(id, context, req.user.username, generating)) {
                     throw new Error('Product draft changed before provider invocation');
                 }
@@ -1793,11 +1795,11 @@ async function handleGuardedMenuImageDraft(req, res) {
                 return generateAndStoreMenuPhotoDraft(product, { size, style, prompt, uploadOptions: { query: pool } });
             },
             saveDraft: async image => persistKieMenuImageResultIfCurrent(id, context, req.user.username, null,
-                preparedAt, normalizeMenuImageStudio({ ...generating, ...image, status: 'ready', operationId: generating.operationId }))
+                preparedAt, normalizeMenuImageStudio({ ...generating, ...image, status: 'ready', operationId: generating.operationId }), generating.operationId)
         });
         if (execution.status === 'provider_pending') {
             const pending = normalizeMenuImageStudio({ ...generating, taskId: execution.taskId });
-            if (!await persistKieMenuImageResultIfCurrent(id, context, req.user.username, null, preparedAt, pending)) {
+            if (!await persistKieMenuImageResultIfCurrent(id, context, req.user.username, null, preparedAt, pending, generating.operationId)) {
                 return res.status(409).json({ success: false, code: 'MENU_PAID_OPERATION_REQUIRES_REVIEW', retryable: false });
             }
         }
@@ -1810,7 +1812,14 @@ async function handleGuardedMenuImageDraft(req, res) {
         const status = err?.code === 'MENU_PAID_OPERATION_BUDGET_FULL' ? 429
             : err?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' ? 502
                 : err?.code === 'menu_image_generator_invalid' ? 400 : 409;
-        const fresh = context ? await getProductWithPriceRule(pool, id, context).catch(() => null) : null;
+        let fresh = context ? await getProductWithPriceRule(pool, id, context).catch(() => null) : null;
+        const studio = fresh ? currentMenuAiDraftForProduct(fresh).imageStudio : null;
+        if (err?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' && studio?.status === 'generating'
+            && studio.operationId === err.operationId) {
+            await persistKieMenuImageResultIfCurrent(id, context, req.user.username, studio.taskId || null,
+                studio.preparedAt, normalizeMenuImageStudio({ ...studio, outcomeUncertain: true }), studio.operationId).catch(() => false);
+            fresh = await getProductWithPriceRule(pool, id, context).catch(() => fresh);
+        }
         return res.status(status).json({ success: false, code: err?.code || 'MENU_PAID_OPERATION_REQUIRES_REVIEW',
             error: 'Menu image operation requires review before another attempt', retryable: false,
             ...(fresh ? { draft: currentMenuAiDraftForProduct(fresh), product: mapProductRow(fresh) } : {}) });
@@ -2059,12 +2068,12 @@ router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), asy
                             size: studio.size, style: studio.style, uploadOptions: { query: pool } });
                         return persistKieMenuImageResultIfCurrent(id, businessContext, req.user.username,
                             studio.taskId || null, studio.preparedAt,
-                            normalizeMenuImageStudio({ ...studio, ...saved, taskId: null }));
+                            normalizeMenuImageStudio({ ...studio, ...saved, taskId: null }), studio.operationId);
                     } });
                 if (result.status === 'failed') {
                     await persistKieMenuImageResultIfCurrent(id, businessContext, req.user.username,
                         studio.taskId || null, studio.preparedAt,
-                        normalizeMenuImageStudio({ ...studio, status: 'failed', error: 'Provider reported task failure' }));
+                        normalizeMenuImageStudio({ ...studio, status: 'failed', error: 'Provider reported task failure' }), studio.operationId);
                 }
                 const fresh = await getProductWithPriceRule(pool, id, businessContext);
                 const freshDraft = currentMenuAiDraftForProduct(fresh);

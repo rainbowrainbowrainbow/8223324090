@@ -6163,6 +6163,15 @@
         window.addEventListener('resize', syncOmniViewport);
         window.visualViewport?.addEventListener('resize', syncOmniViewport);
         window.visualViewport?.addEventListener('scroll', syncOmniViewport);
+        // The shared shell's entrance transform changes visual coordinates but
+        // not layout size, so ResizeObserver does not report its final frame.
+        // Reconcile any height measured during that animation when it settles.
+        const workspaceMain = $('mainContent');
+        const reconcileWorkspaceAnimation = event => {
+            if (event.target === workspaceMain) syncOmniViewportSize();
+        };
+        workspaceMain.addEventListener('animationend', reconcileWorkspaceAnimation);
+        workspaceMain.addEventListener('animationcancel', reconcileWorkspaceAnimation);
         setInterval(() => {
             const conv = currentConversation();
             if (conv?.channel === 'whatsapp') {

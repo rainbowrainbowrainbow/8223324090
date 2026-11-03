@@ -766,6 +766,7 @@ module.exports = async function checkLayout(page, artifacts) {
   await testPrimaryFlow(page, artifacts);
   const whatsappTemplates = await testWhatsappTemplateFlow(page, artifacts);
   const matrix = await testResponsiveMatrix(page, artifacts);
+  const viewportAnimation = await require('./omni-viewport-animation-fixture')(page, artifacts);
   const breakpoints = await testBreakpointEdges(page);
   await testMobileNavigation(page);
   const visualAcceptance = await captureVisualAcceptance(page, artifacts);
@@ -777,7 +778,7 @@ module.exports = async function checkLayout(page, artifacts) {
     filters:true, loadingEmptyError:true, attachments:true, deliveryErrors:true,
     conversationRefresh:true, navigation:true, drafts:true,
     historyAndListScroll:true, focusRestoration:true,
-    breakpointEdges:breakpoints, whatsappTemplates, visualAcceptance, faultInjection,
+    breakpointEdges:breakpoints, whatsappTemplates, visualAcceptance, faultInjection, viewportAnimation,
     telephony,
     viewports:matrix.map(result => [result.width,result.height]),
     browserZoom:'not measured', realWrites:0

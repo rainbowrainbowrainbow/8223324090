@@ -387,7 +387,9 @@ function playwright() {
     }
     if (layoutOnly) {
       const checks = require('./omni-layout.checks.cjs');
-      runReport.scenarios = process.env.OMNI_META_STATUS_ONLY === '1'
+      runReport.scenarios = process.env.OMNI_VIEWPORT_ANIMATION_ONLY === '1'
+        ? { viewportAnimation: await require('./omni-viewport-animation-fixture')(page, artifactDir) }
+        : process.env.OMNI_META_STATUS_ONLY === '1'
         ? await require('./omni-meta-status.checks.cjs')(page, artifactDir)
         : process.env.OMNI_TELEPHONY_ONLY === '1'
         ? { telephony: await checks.telephony(page, artifactDir) }

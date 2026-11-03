@@ -115,6 +115,10 @@ async function checkOmniWorkspaceNavigation({ page, pool, targetUrl, runId, time
             await waitForConversation(page, records.closed, 'closed message 80', timeoutMs);
             await page.waitForFunction(() => !document.getElementById('omniInput').disabled);
             snapshots.push(await inspectConversationLayout(page, `${width}x${height}`));
+            if (width === 320) {
+                await require('./omni-viewport-animation-fixture')(page, outputDir);
+                await inspectConversationLayout(page, '320x640 after entrance replay');
+            }
             assert.equal(await page.locator('#omniCloseConv').getAttribute('title'), 'Відкрити діалог', 'opening closed conversation does not reopen it');
             const draft = `Unsaved fixture draft ${width}x${height}\nSecond line retained across modes`;
             await page.locator('#omniInput').fill(draft);

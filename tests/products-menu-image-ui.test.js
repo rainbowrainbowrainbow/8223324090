@@ -280,6 +280,16 @@ test('quota and unknown failures explain the next action without disabling manua
     }
 });
 
+test('uncertain paid generation warns against another charge and keeps manual upload available', async () => {
+    const app = createPageHarness();
+    app.context.apiGenerateProductMenuImage = async () => ({ success: false,
+        code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW', retryable: false });
+    await app.context.generateKitchenMenuImage('dish-1', app.button());
+    assert.match(app.message(), /Не запускайте її повторно/);
+    assert.match(app.message(), /міг списати кошти/);
+    assert.equal(app.panel().querySelector('[data-menu-image-file]').disabled, false);
+});
+
 test('failed Kie polling shows the safe task ID without triggering another generation', async () => {
     const app = createPageHarness();
     let generationCalls = 0;

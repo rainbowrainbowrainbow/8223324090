@@ -1757,8 +1757,9 @@ router.post('/menu-image/burger-blueprint', productMenuImageReviewRateLimit,
 async function handleGuardedMenuImageDraft(req, res) {
     const { id } = req.params;
     if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+    let context;
     try {
-        const context = requireProductBusinessContext(req, res);
+        context = requireProductBusinessContext(req, res);
         if (!context) return;
         const product = await getProductWithPriceRule(pool, id, context);
         const check = requireMenuImageProduct(product);
@@ -1809,8 +1810,10 @@ async function handleGuardedMenuImageDraft(req, res) {
         const status = err?.code === 'MENU_PAID_OPERATION_BUDGET_FULL' ? 429
             : err?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' ? 502
                 : err?.code === 'menu_image_generator_invalid' ? 400 : 409;
+        const fresh = context ? await getProductWithPriceRule(pool, id, context).catch(() => null) : null;
         return res.status(status).json({ success: false, code: err?.code || 'MENU_PAID_OPERATION_REQUIRES_REVIEW',
-            error: 'Menu image operation requires review before another attempt', retryable: false });
+            error: 'Menu image operation requires review before another attempt', retryable: false,
+            ...(fresh ? { draft: currentMenuAiDraftForProduct(fresh), product: mapProductRow(fresh) } : {}) });
     }
 }
 

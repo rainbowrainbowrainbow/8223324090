@@ -41,9 +41,11 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         imageStorage.uploadFromUrl = async () => '/generated.png';
         imageProvider = require('../../services/menuPhotoGeneration');
         originalOpenAI = imageProvider.generateAndStoreMenuPhotoDraft;
-        let openaiCalls = 0;
+        let openaiCalls = 0, failOpenAI = false;
         imageProvider.generateAndStoreMenuPhotoDraft = async () => {
-            openaiCalls++; return { status: 'ready', imageUrl: '/openai-generated.png', provider: 'openai' };
+            openaiCalls++;
+            if (failOpenAI) throw new Error('synthetic timeout');
+            return { status: 'ready', imageUrl: '/openai-generated.png', provider: 'openai' };
         };
         process.env.KIE_API_KEY = 'synthetic-test-key';
         process.env.CRM_MENU_PAID_GUARD_ENABLED = 'true';
@@ -82,6 +84,14 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         assert.equal(openai.body.status, 'ready');
         assert.equal(openai.body.draft.imageStudio.imageUrl, '/openai-generated.png');
         assert.equal(openaiCalls, 1);
+        failOpenAI = true;
+        const uncertain = await invoke('/:id/menu-image/draft', 'post', { generator: 'openai' });
+        assert.equal(uncertain.statusCode, 502);
+        assert.equal(uncertain.body.code, 'MENU_PAID_OUTCOME_REQUIRES_REVIEW');
+        assert.equal(uncertain.body.product.aiCardDraft.imageStudio.status, 'generating');
+        const retry = await invoke('/:id/menu-image/draft', 'post', { generator: 'openai' });
+        assert.equal(retry.statusCode, 409);
+        assert.equal(openaiCalls, 2);
     } finally {
         db.pool.query = originalQuery; db.pool.connect = originalConnect; global.fetch = originalFetch;
         imageStorage.uploadFromUrl = originalUpload;

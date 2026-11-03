@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.1",
+  "version": "0.83.2",
   "eventGenix": {
-    "releaseLabel": "Оптимізація формування PDF"
+    "releaseLabel": "CRM: надійний таймлайн і мобільна робота"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

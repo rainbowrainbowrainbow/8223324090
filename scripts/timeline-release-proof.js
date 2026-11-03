@@ -9,6 +9,7 @@
 
 const pkg = require('../package.json');
 const { assertDeploymentMetadata } = require('./live-version-smoke');
+const { TARGET } = require('./production-block-policy');
 
 const TIMELINE_CONTEXTS = [
     { key: 'event_genix', path: '/', label: 'Event Genix timeline' },
@@ -54,11 +55,11 @@ const TIMELINE_ASSETS = [
     }
 ];
 
-function configuredDeployBranch() {
-    return process.env.RELEASE_DEPLOY_BRANCH
-        || process.env.RAILWAY_DEPLOY_BRANCH
-        || process.env.DEPLOY_BRANCH
-        || 'codex/production';
+function configuredDeployBranch(env = process.env) {
+    return env.RELEASE_DEPLOY_BRANCH
+        || env.RAILWAY_DEPLOY_BRANCH
+        || env.DEPLOY_BRANCH
+        || TARGET.branch;
 }
 
 function fail(message) {

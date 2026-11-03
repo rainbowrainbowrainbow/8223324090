@@ -25,22 +25,25 @@
 npm run release:timeline-proof -- https://8223324090-production.up.railway.app
 ```
 
-Fallback release-proof скрипта синхронізований з останньою перевіреною
-production-гілкою станом на 20.07.2026 — `codex/production`. Перед
-кожним release все одно підтвердь активну Railway source branch read-only
-перевіркою і передай її явно, тому що Railway attachment може змінитися:
+The default branch comes from `TARGET.branch` in the production block policy:
+`codex/eventgenix-production`. No environment override is required for the
+canonical production target. Verify live metadata before every release; explicit
+overrides retain this precedence: `RELEASE_DEPLOY_BRANCH`,
+`RAILWAY_DEPLOY_BRANCH`, `DEPLOY_BRANCH`, then the policy default.
 
 ```bash
-RELEASE_DEPLOY_BRANCH=codex/production npm run release:timeline-proof -- <live-url>
+RELEASE_DEPLOY_BRANCH=codex/eventgenix-production npm run release:timeline-proof -- <live-url>
 ```
 
-Manual Railway deploys must also expose commit evidence in `/api/version`.
-For release gates, provide either Railway git metadata or explicit runtime
-metadata:
+Manual Railway deployments use `npm run release:railway-up`. Its clean Git
+archive includes a validated deployment manifest, which provides commit/branch
+evidence in `/api/version`. Railway Git metadata is also valid. Environment
+variables alone are not deployment identity. For the operator's proof process,
+these values select the expected target:
 
 ```bash
 RELEASE_DEPLOY_COMMIT=<exact-release-sha>
-RELEASE_DEPLOY_BRANCH=codex/production
+RELEASE_DEPLOY_BRANCH=codex/eventgenix-production
 ```
 
 `npm run version:smoke` and `npm run release:timeline-proof` must fail when
@@ -81,7 +84,7 @@ npm run release:timeline-proof -- <live-url>
 1. Зафіксувати live branch target:
 
 ```bash
-RELEASE_DEPLOY_BRANCH=codex/production
+RELEASE_DEPLOY_BRANCH=codex/eventgenix-production
 git ls-remote origin "$RELEASE_DEPLOY_BRANCH"
 ```
 

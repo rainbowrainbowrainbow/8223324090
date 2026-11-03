@@ -5,7 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const pkg = require('../package.json');
-const { runTimelineReleaseProof } = require('../scripts/timeline-release-proof');
+const { configuredDeployBranch, runTimelineReleaseProof } = require('../scripts/timeline-release-proof');
+const { TARGET } = require('../scripts/production-block-policy');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -38,7 +39,7 @@ function createProofServer(options = {}) {
             };
             if (!options.omitDeploymentMetadata) {
                 payload.commitSha = 'abcdef0123456789abcdef0123456789abcdef01';
-                payload.sourceBranch = 'codex/production';
+                payload.sourceBranch = options.sourceBranch || TARGET.branch;
                 payload.deploymentMetadata = {
                     status: 'railway',
                     complete: true,
@@ -103,13 +104,33 @@ test('timeline release proof validates both shared contexts, assets, and service
         assert.ok(report.assets.some(item => item.path === 'js/booking-banquet-selector.js'));
         assert.ok(report.assets.some(item => item.path === 'js/booking-save-path.js'));
         assert.equal(report.serviceWorker.cacheName, `event-genix-v${pkg.version}`);
-        assert.equal(report.rollback.deployBranch, 'codex/production');
-        assert.match(report.rollback.identifyLiveCommit, /codex\/production/);
+        assert.equal(report.rollback.deployBranch, TARGET.branch);
+        assert.ok(report.rollback.identifyLiveCommit.includes(TARGET.branch));
         assert.match(report.rollback.fallback, /git revert/);
         assert.doesNotMatch(report.rollback.fallback, /HEAD:deployed/);
     } finally {
         await app.close();
     }
+});
+
+test('timeline proof uses the canonical policy branch and preserves explicit override precedence', () => {
+    assert.equal(configuredDeployBranch({}), TARGET.branch);
+    assert.equal(configuredDeployBranch({ DEPLOY_BRANCH: 'codex/deploy-override' }), 'codex/deploy-override');
+    assert.equal(configuredDeployBranch({ RAILWAY_DEPLOY_BRANCH: 'codex/railway-override', DEPLOY_BRANCH: 'codex/deploy-override' }), 'codex/railway-override');
+    assert.equal(configuredDeployBranch({ RELEASE_DEPLOY_BRANCH: 'codex/release-override', RAILWAY_DEPLOY_BRANCH: 'codex/railway-override', DEPLOY_BRANCH: 'codex/deploy-override' }), 'codex/release-override');
+});
+
+test('timeline proof still rejects a different deployed branch and an incorrect exact SHA', async () => {
+    const wrongBranch = await createProofServer({ sourceBranch: 'codex/unexpected' });
+    try {
+        await assert.rejects(() => runTimelineReleaseProof(wrongBranch.baseUrl), /sourceBranch.*expected/);
+        const override = await runTimelineReleaseProof(wrongBranch.baseUrl, { deployBranch: 'codex/unexpected' });
+        assert.equal(override.rollback.deployBranch, 'codex/unexpected');
+    } finally { await wrongBranch.close(); }
+    const wrongCommit = await createProofServer();
+    try {
+        await assert.rejects(() => runTimelineReleaseProof(wrongCommit.baseUrl, { expectedCommit: '1234567890123456789012345678901234567890' }), /commitSha.*expected/);
+    } finally { await wrongCommit.close(); }
 });
 
 test('timeline release proof rejects stale timeline asset tags in Maysternya Doli', async () => {
@@ -163,7 +184,7 @@ test('timeline release guardrails are documented and exposed as a repo command',
     assert.equal(packageJson.scripts['release:timeline-proof'], 'node scripts/timeline-release-proof.js');
     assert.match(readme, /release:timeline-proof/);
     assert.match(docs, /npm run release:timeline-proof -- <live-url>/);
-    assert.match(docs, /RELEASE_DEPLOY_BRANCH=codex\/production/);
+    assert.match(docs, /RELEASE_DEPLOY_BRANCH=codex\/eventgenix-production/);
     assert.match(docs, /git revert <bad-release-commit>/);
     assert.doesNotMatch(docs, /HEAD:deployed/);
 });

@@ -1,3 +1,34 @@
+/* Schedule OCR stays within the shared /staff and HR workspace. */
+.schedule-ocr-panel {
+    margin: 16px 0;
+    padding: 16px;
+    border: 1px solid var(--border, #d9dee8);
+    border-radius: 12px;
+    background: var(--surface, var(--white, #ffffff));
+    overflow-wrap: anywhere;
+}
+.schedule-ocr-panel[hidden] { display: none; }
+.schedule-ocr-panel summary { cursor: pointer; font-weight: 800; padding: 8px 0; }
+.schedule-ocr-panel p { line-height: 1.5; margin: 10px 0; }
+.schedule-ocr-form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 14px; }
+.schedule-ocr-form > label { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.schedule-ocr-form input { max-width: 100%; min-width: 0; }
+.schedule-ocr-form input[type="date"] { min-height: 44px; }
+.schedule-ocr-panel .schedule-ocr-check { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; line-height: 1.5; }
+.schedule-ocr-check input { flex: 0 0 auto; margin-top: 4px; }
+.schedule-ocr-form > .schedule-ocr-check { grid-column: 1 / -1; }
+.schedule-ocr-panel button { min-height: 44px; white-space: normal; }
+.schedule-ocr-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.schedule-ocr-row { border: 1px solid var(--border, #d9dee8); border-radius: 10px; padding: 12px; min-width: 0; }
+.schedule-ocr-row[data-action="conflict"], .schedule-ocr-row[data-action="invalid"] { border-style: dashed; }
+.schedule-ocr-issues { font-weight: 600; }
+#scheduleOcrReview > .schedule-ocr-check { margin: 16px 0; }
+@media (max-width: 650px) {
+    .schedule-ocr-form, .schedule-ocr-rows { grid-template-columns: minmax(0, 1fr); }
+    .schedule-ocr-panel { padding: 12px; }
+    .schedule-ocr-panel button { width: 100%; }
+}
+
 /* v0.73.45: HR payroll/KPI toolbar polish without growing inline HR styles. */
 .hr-kpi-actions {
     display: flex;

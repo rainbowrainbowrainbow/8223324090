@@ -267,6 +267,9 @@ test('quota and unknown failures explain the next action without disabling manua
     for (const [code, expected] of [
         ['menu_image_generation_quota_exceeded', /Зверніться до адміністратора/],
         ['menu_image_generation_provider_rejected', /Причина не підтверджена/],
+        ['MENU_PAID_GUARD_DISABLED', /Генерацію тимчасово зупинено/],
+        ['MENU_PAID_DRAFT_CHANGED', /Генерацію не запущено/],
+        ['CRM_PROVIDER_BUSY', /інша AI-операція/],
         ['menu_image_generation_failed', /Причина невідома/]
     ]) {
         const app = createPageHarness();
@@ -278,6 +281,84 @@ test('quota and unknown failures explain the next action without disabling manua
         assert.equal(app.panel().querySelector('[data-menu-image-action="external-draft"]').disabled, false, code);
         assert.equal(app.message().includes('temporarily rate limited'), false, code);
     }
+});
+
+test('uncertain paid generation warns against another charge and disables generation', async () => {
+    const app = createPageHarness();
+    app.context.apiGenerateProductMenuImage = async () => ({ success: false,
+        code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW', retryable: false });
+    await app.context.generateKitchenMenuImage('dish-1', app.button());
+    assert.match(app.message(), /Не запускайте її повторно/);
+    assert.match(app.message(), /міг списати кошти/);
+    assert.equal(app.button().disabled, true);
+});
+
+test('persisted uncertain generation stays visible and blocks generation after a reload', () => {
+    const app = createPageHarness();
+    app.context.allProducts = [menuProduct('dish-1', 'event_genix', {
+        status: 'generating', provider: 'openai', outcomeUncertain: true,
+        operationId: '12345678-1234-1234-1234-123456789abc'
+    })];
+    app.context.renderProducts();
+    assert.match(app.message(), /Не запускайте її повторно/);
+    assert.equal(app.button().disabled, true);
+});
+
+test('checking an interrupted OpenAI operation restores the warning without a generation request', async () => {
+    const app = createPageHarness();
+    const operationId = '12345678-1234-1234-1234-123456789abc';
+    app.context.allProducts = [menuProduct('dish-1', 'event_genix', { status: 'generating', provider: 'openai', operationId })];
+    app.context.renderProducts();
+    let checks = 0, generations = 0;
+    app.context.apiGetProductMenuImageStatus = async () => {
+        checks++;
+        return { success: true, status: 'unknown', product: menuProduct('dish-1', 'event_genix', {
+            status: 'generating', provider: 'openai', operationId, outcomeUncertain: true
+        }) };
+    };
+    app.context.apiGenerateProductMenuImage = async () => { generations++; };
+    assert.ok(app.panel().querySelector('[data-menu-image-action="check-paid-status"]'));
+    await app.context.checkKitchenMenuImagePaidStatus('dish-1');
+    assert.match(app.message(), /Не запускайте її повторно/);
+    assert.equal(checks, 1);
+    assert.equal(generations, 0);
+});
+
+test('operation inspection finds a detached job without starting generation', async () => {
+    const app = createPageHarness();
+    let calls = 0;
+    app.context.apiGetProductMenuImageOperation = async () => ({ success: true,
+        operation: { provider: 'kie', status: 'provider_pending', taskId: 'fixture-task' } });
+    app.context.apiGenerateProductMenuImage = async () => { calls++; };
+    const button = app.panel().querySelector('[data-menu-image-action="inspect-paid-operation"]');
+    await app.context.inspectKitchenMenuPaidOperation('dish-1', button);
+    assert.match(app.panel().querySelector('[data-menu-image-operation-status]').textContent, /fixture-task/);
+    assert.equal(calls, 0);
+});
+
+test('detached result needs confirmation to become a draft and never applies the photo', async () => {
+    const app = createPageHarness(); let submits = 0, confirmed = false, confirmations = 0;
+    app.context.confirmModal = async () => { confirmations++; return confirmed; };
+    app.context.apiGetProductMenuImageOperation = async () => ({ success: true, recoveryEnabled: true, operation: null });
+    app.context.apiGetRecoveredMenuImages = async () => ({ success: true, draftRevision: 'a'.repeat(32),
+        results: [{ operationId: '12345678-1234-1234-1234-123456789abc', studio: { imageUrl: '/generated.png' } }] });
+    app.context.apiChangeRecoveredMenuImage = async (id, _op, action, payload) => {
+        assert.equal(action, 'use-recovered'); assert.equal(payload.confirmed, true); submits++;
+        return { success: true, product: menuProduct(id, 'event_genix', { status: 'ready', imageUrl: '/generated.png' }) };
+    };
+    await app.context.inspectKitchenMenuPaidOperation('dish-1', app.panel().querySelector('[data-menu-image-action="inspect-paid-operation"]'));
+    const show = app.panel().querySelector('[data-menu-image-action="show-recovered"]');
+    assert.equal(show.hidden, false);
+    await app.context.showRecoveredMenuImages('dish-1', show);
+    const choose = app.panel().querySelector('[data-menu-image-action="use-recovered"]');
+    assert.ok(choose);
+    choose.click(); choose.click(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(confirmations, 1);
+    assert.equal(submits, 0);
+    confirmed = true; choose.click(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(submits, 1);
+    assert.equal(app.context.allProducts[0].iconUrl, '/uploads/current-photo.jpg');
+    assert.equal(app.context.allProducts[0].aiCardDraft.imageStudio.imageUrl, '/generated.png');
 });
 
 test('failed Kie polling shows the safe task ID without triggering another generation', async () => {
@@ -356,6 +437,23 @@ test('URL selection auto-saves one draft and never changes the current photo', a
     assert.equal(app.context.allProducts[0].iconUrl, '/uploads/current-photo.jpg');
     assert.equal(app.panel().querySelector('[data-menu-image-action="apply"]').disabled, false);
     assert.equal(app.panel().querySelector('[data-menu-image-url]').value, '');
+});
+
+test('concurrent manual draft conflict refreshes the newer draft and requires a new selection', async () => {
+    const app = createPageHarness();
+    const input = app.panel().querySelector('[data-menu-image-url]');
+    input.value = 'https://example.test/old-selection.jpg';
+    let calls = 0;
+    app.context.apiCreateProductMenuExternalDraft = async () => {
+        calls++;
+        return { success: false, code: 'MENU_IMAGE_DRAFT_CHANGED', error: 'Чернетка змінилася',
+            product: menuProduct('dish-1', 'event_genix', { status: 'ready', imageUrl: '/uploads/newer.jpg' }) };
+    };
+    await app.context.createKitchenMenuExternalDraft('dish-1', input, 'url');
+    assert.equal(calls, 1);
+    assert.equal(app.context.allProducts[0].aiCardDraft.imageStudio.imageUrl, '/uploads/newer.jpg');
+    assert.equal(app.panel().querySelector('[data-menu-image-url]').value, '');
+    assert.equal(app.panel().querySelector('[data-menu-image-action="external-draft"]').hidden, true);
 });
 
 test('a failed regeneration does not block review of an existing ready draft', async () => {

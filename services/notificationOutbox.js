@@ -684,9 +684,9 @@ async function claimNotificationOutboxEvent(eventId, input = {}, options = {}) {
          WHERE event_id = $1
            AND status IN ('pending', 'failed', 'claimed')
            AND (available_at IS NULL OR available_at <= NOW())
-           AND (status <> 'claimed' OR locked_until IS NULL OR locked_until <= NOW())
+           AND (status <> 'claimed' OR ($4::boolean AND (locked_until IS NULL OR locked_until <= NOW())))
          RETURNING *`,
-        [normalizedEventId, workerId, lockSeconds]
+        [normalizedEventId, workerId, lockSeconds, options.allowExpiredClaim !== false]
     );
     if (claimed.rows?.length) {
         return {

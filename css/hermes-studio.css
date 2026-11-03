@@ -2,6 +2,21 @@
     background: var(--bg);
 }
 
+.hermes-studio-execution {
+    padding: 16px;
+    border-top: 1px solid var(--border, #d9dee8);
+}
+
+.hermes-studio-execution p {
+    margin: 0 0 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.hermes-studio-execution [role="status"] {
+    margin: 12px 0 0;
+}
+
 .hermes-studio-shell {
     max-width: 1560px;
     padding-bottom: 40px;

@@ -62,6 +62,28 @@
                 </div>
             </div>
 
+            <details id="scheduleOcrPanel" class="schedule-ocr-panel" hidden>
+                <summary>Розпізнати графік із фото</summary>
+                <p>Завантажте плановий графік. Спочатку перевірте розпізнані рядки, потім виберіть зміни для застосування. Фактичні приходи не змінюються.</p>
+                <form id="scheduleOcrForm" class="schedule-ocr-form">
+                    <label>Фото графіка (PNG або JPEG, до 4 МБ)
+                        <input id="scheduleOcrFile" type="file" accept="image/png,image/jpeg" required>
+                    </label>
+                    <label>Дата документа
+                        <input id="scheduleOcrDate" type="date" required>
+                    </label>
+                    <label class="schedule-ocr-check"><input id="scheduleOcrPaidConfirm" type="checkbox" required> Підтверджую розпізнавання; операція може бути платною.</label>
+                    <button type="submit" id="scheduleOcrPreviewBtn" class="btn-page-primary">Розпізнати й перевірити</button>
+                </form>
+                <p id="scheduleOcrStatus" role="status" aria-live="polite"></p>
+                <section id="scheduleOcrReview" aria-label="Перевірка розпізнаного графіка" hidden>
+                    <p id="scheduleOcrReviewSummary"></p>
+                    <div id="scheduleOcrRows" class="schedule-ocr-rows"></div>
+                    <label class="schedule-ocr-check"><input id="scheduleOcrApplyConfirm" type="checkbox"> Я перевірив вибрані рядки й підтверджую зміни планового графіка.</label>
+                    <button type="button" id="scheduleOcrApplyBtn" class="btn-page-primary" disabled>Застосувати вибрані зміни</button>
+                </section>
+            </details>
+
             <section id="scheduleDataRegion" class="staff-schedule-data-region" data-schedule-state="idle" data-has-committed-range="false" aria-label="Дані графіка роботи" aria-busy="false">
                 <div id="scheduleSummary" class="schedule-summary"></div>
 

@@ -478,6 +478,9 @@ body.dark-mode .kitchen-menu-image-generation-status[data-type="error"] {
     border-top: 1px solid rgba(148, 163, 184, 0.24);
 }
 
+.kitchen-menu-recovered-card { display: grid; gap: 8px; margin: 12px 0; }
+.kitchen-menu-recovered-card img { display: block; width: min(100%, 240px); height: 180px; object-fit: contain; border-radius: 10px; }
+
 .kitchen-menu-image-manual > strong,
 .kitchen-menu-image-manual > p {
     grid-column: 1 / -1;

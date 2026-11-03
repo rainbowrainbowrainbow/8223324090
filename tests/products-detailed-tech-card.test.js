@@ -84,8 +84,13 @@ test('products API exposes detailed tech-card persistence and explicit warehouse
     const draftHandlerEnd = productsRoute.indexOf("// POST /api/products/:id/menu-image/draft", draftHandlerStart);
     assert.ok(draftHandlerStart >= 0 && draftHandlerEnd > draftHandlerStart, 'menu image draft handler should stay discoverable');
     const draftHandler = productsRoute.slice(draftHandlerStart, draftHandlerEnd);
-    assert.match(draftHandler, /persistProductMenuImageDraft/);
+    assert.match(draftHandler, /persistKieMenuImageResultIfCurrent/);
     assert.doesNotMatch(draftHandler, /SET\s+icon_url\s*=/, 'draft/generate handler must not immediately overwrite icon_url');
+    const guardedStart = productsRoute.indexOf('async function handleGuardedMenuImageDraft');
+    assert.ok(guardedStart >= 0 && guardedStart < draftHandlerStart, 'guarded draft handler should stay discoverable');
+    const guardedHandler = productsRoute.slice(guardedStart, draftHandlerStart);
+    assert.match(guardedHandler, /persistKieMenuImageResultIfCurrent/);
+    assert.doesNotMatch(guardedHandler, /SET\s+icon_url\s*=/, 'guarded generation must not immediately overwrite icon_url');
     const externalHandlerStart = productsRoute.indexOf('async function handleExternalMenuImageDraftRequest');
     const externalHandlerEnd = productsRoute.indexOf('async function handleMenuImageDraftRequest', externalHandlerStart);
     assert.ok(externalHandlerStart >= 0 && externalHandlerEnd > externalHandlerStart, 'external menu image draft handler should stay discoverable');

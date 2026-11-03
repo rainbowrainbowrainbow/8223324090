@@ -3003,4 +3003,11 @@ router.get('/payroll', requireAction('hr.payroll.view'), async (req, res) => {
     }
 });
 
+// Reuse canonical schedule permissions and roster notifications. No scheduler.
+const scheduleOcrHandlers = require('../services/crmScheduleOcrHttp').createScheduleOcrHandlers({
+    afterApply: result => broadcastAnimatorRosterDates(result.dates || [])
+});
+router.post('/schedule/ocr-preview', requireAction('hr.schedule.manage'), scheduleOcrHandlers.preview);
+router.post('/schedule/ocr-apply', requireAction('hr.schedule.manage'), scheduleOcrHandlers.apply);
+
 module.exports = router;

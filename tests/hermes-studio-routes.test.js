@@ -271,12 +271,13 @@ async function request(baseUrl, method, path, body, headers = {}) {
     return { status: res.status, data, text };
 }
 
-async function withStudioServer(fakePool, fn) {
+async function withStudioServer(fakePool, fn, options = {}) {
     const app = express();
     app.use(express.json());
     app.use('/api/hermes-studio', createHermesStudioRouter({
         authMiddleware: studioAuth,
-        pool: fakePool
+        pool: fakePool,
+        ...options
     }));
     const { server, baseUrl } = await listen(app);
     try {
@@ -402,4 +403,28 @@ test('Hermes Studio regenerate records revision history and creates a new queued
         assert.equal(fakePool.hermesJobEvents.filter(event => event.event_type === 'decision_recorded').length, 1);
         assert.equal(fakePool.hermesJobEvents.filter(event => event.event_type === 'job_created').length, 1);
     });
+});
+
+
+test('CRM creative execution preserves Studio decision role and business boundaries', async () => {
+    const calls = [];
+    await withStudioServer(createFakePool(), async ({ baseUrl }) => {
+        const denied = await request(baseUrl, 'POST', '/api/hermes-studio/jobs/1/execute', { confirmed: true });
+        assert.equal(denied.status, 403);
+        const wrongBusiness = await request(baseUrl, 'POST', '/api/hermes-studio/jobs/1/execute',
+            { confirmed: true, businessContext: 'maysternya_doli' }, { 'x-test-role': 'creator' });
+        assert.equal(wrongBusiness.status, 403);
+        assert.equal(calls.length, 0);
+        const allowed = await request(baseUrl, 'POST', '/api/hermes-studio/jobs/1/execute',
+            { confirmed: true }, { 'x-test-role': 'creator' });
+        assert.equal(allowed.status, 200);
+        assert.equal(allowed.data.job.status, 'ready_for_review');
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0].businessContext, 'event_genix');
+        assert.equal(calls[0].actor.id, 11);
+        assert.equal(calls[0].confirmed, true);
+    }, { executeCreative: async input => {
+        calls.push(input);
+        return { job: { id: '1', jobType: 'creative_material_job', status: 'ready_for_review' } };
+    } });
 });

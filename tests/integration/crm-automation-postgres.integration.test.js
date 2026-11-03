@@ -230,6 +230,33 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
         assert.deepEqual(rows, [{ status: 'draft' }]);
     });
 
+    it('reopens an OCR preview when AI slots are full and rolls back new OCR before spending', async () => {
+        let calls = 0;
+        const ocr = createScheduleOcr({ pool, env: { CRM_SCHEDULE_OCR_ENABLED: 'true' },
+            recognize: async ({ documentDate }) => {
+                calls++;
+                return [{ employeeName: staff.name, date: documentDate, status: 'dayoff', confidence: 0.99, issues: [] }];
+            } });
+        const first = await ocr.preview(ocrInput('2099-06-01'));
+        const ids = [randomUUID(), randomUUID()];
+        try {
+            for (let i = 0; i < ids.length; i++) await pool.query(
+                `INSERT INTO menu_image_paid_operations (operation_id, business_context, product_id, provider, status, created_by)
+                 VALUES ($1, 'event_genix', $2, 'kie', 'unknown', $3)`, [ids[i], `${runId}-${i}`, actor.username]);
+            const replay = await ocr.preview(ocrInput('2099-06-01'));
+            assert.equal(replay.importId, first.importId);
+            await assert.rejects(ocr.preview(ocrInput('2099-06-02')), { code: 'CRM_PROVIDER_BUSY' });
+            assert.equal(calls, 1);
+            const reserved = await pool.query(`SELECT count(*)::int AS count FROM hermes_schedule_imports
+                WHERE created_by_user_id=$1 AND document_date='2099-06-02'`, [actor.id]);
+            assert.equal(reserved.rows[0].count, 0);
+        } finally {
+            await pool.query('DELETE FROM menu_image_paid_operations WHERE operation_id = ANY($1::uuid[])', [ids]);
+        }
+        await ocr.preview(ocrInput('2099-06-02'));
+        assert.equal(calls, 2);
+    });
+
     it('rejects an OCR apply when the schedule changed after preview', async () => {
         const ocr = createScheduleOcr({ pool, env: { CRM_SCHEDULE_OCR_ENABLED: 'true' }, recognize: async () => [
             { employeeName: staff.name, date: '2099-04-01', status: 'dayoff', confidence: 0.99, issues: [] }

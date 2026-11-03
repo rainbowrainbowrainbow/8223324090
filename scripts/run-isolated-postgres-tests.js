@@ -116,6 +116,9 @@ const MODES = {
     'omni-links-browser': [
         'tests/browser/omni-lead-links-actual-app-browser-smoke.js'
     ],
+    'park-manager-browser': [
+        'tests/browser/park-manager-actual-app-browser-smoke.js'
+    ],
     'redirect-auth': [
         'tests/browser/redirect-auth-postgres-browser-smoke.js'
     ],
@@ -161,7 +164,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|finance-money|finance-money-browser|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|education-modal-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|finance-money|finance-money-browser|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|education-modal-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|park-manager-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
@@ -730,6 +733,10 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_MY_DAY_POSTGRES_INTEGRATION: testFile.includes('my-day-postgres.integration') ? 'true' : 'false',
         RUN_MY_DAY_ACTUAL_APP_BROWSER_SMOKE: testFile.includes('my-day-actual-app-browser-smoke') ? 'true' : 'false',
         RUN_OMNI_LEAD_LINKS_BROWSER: testFile.includes('omni-lead-links-actual-app-browser-smoke') ? 'true' : 'false',
+        RUN_PARK_MANAGER_BROWSER_SMOKE: testFile.includes('park-manager-actual-app-browser-smoke') ? 'true' : 'false',
+        PARK_MANAGER_BROWSER_DATABASE_URL: testFile.includes('park-manager-actual-app-browser-smoke')
+            ? testDb.url.toString()
+            : '',
         OMNI_LINKS_BROWSER_DATABASE_URL: testFile.includes('omni-lead-links-actual-app-browser-smoke')
             ? testDb.url.toString()
             : '',

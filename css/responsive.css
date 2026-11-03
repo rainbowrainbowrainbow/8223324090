@@ -965,6 +965,9 @@
     }
 
     .booking-panel-edge-close {
+        /* The sticky header already provides a reachable close action.
+           The desktop edge control covers form inputs on full-width phones. */
+        display: none;
         top: calc(74px + env(safe-area-inset-top, 0px));
         right: 12px;
         width: 44px;

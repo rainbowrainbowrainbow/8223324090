@@ -28,12 +28,14 @@ responsive breakpoints, composer sizing and message-position behavior.
   drafts, reading position, mode navigation, keyboard reopen, stale responses and
   history failure/retry. The first local run completed those checks but its
   disposable schema cleanup exhausted the local PostgreSQL lock table. The owned
-  fixture's lock capacity was corrected; a subsequent complete run exited zero.
+  fixture's lock capacity was corrected; two subsequent complete runs exited zero.
 - The broader responsive suite exposed a separate existing mobile sidebar
   defect: a late profile CSS override makes the sidebar 100vw at 320px, covering
   the entire dismissal backdrop. Its existing real-click assertion correctly
-  fails. That CSS correction belongs to the mobile-manager block and must be
-  integrated before claiming the full responsive suite passes.
+  fails. The mobile-manager correction restores the existing 92vw width cap.
+  After integration, the complete responsive suite exited zero. Reviewed 320px
+  and 390px chat screenshots retain the history, input and send action inside
+  the viewport; the actual backdrop-click assertion is unchanged.
 
 No provider connectivity is claimed. Database mutations occur only in an owned
 loopback disposable fixture. Production remains read-only during preparation.

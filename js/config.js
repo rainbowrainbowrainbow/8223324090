@@ -489,6 +489,14 @@ async function getProducts() {
     // Try to load from API
     if (typeof apiGetProducts === 'function') {
         const apiProducts = await apiGetProducts(true, { businessContext, priceDate });
+        // An older date/context request can finish after the new catalog has
+        // rendered. Do not replace its cache or return obsolete cards to a
+        // pending renderer: reuse/load the catalog for the current UI scope.
+        if (businessContext !== getTimelineProductsBusinessContext()
+            || priceDate !== getTimelineProductsPriceDate()
+            || !timelineDisplayUsesApiProducts()) {
+            return getProducts();
+        }
         if (Array.isArray(apiProducts)) {
             // Map API camelCase to match existing PROGRAMS format
             AppState.products = apiProducts.map(mapApiProductToTimelineProduct);

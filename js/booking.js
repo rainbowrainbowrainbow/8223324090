@@ -8181,6 +8181,9 @@ async function openBookingPanel(time, lineId, options = {}) {
         });
         document.getElementById('roomSelect').value = line.name;
     }
+    // The initial catalog may belong to a different timeline date. Refresh it
+    // before exposing cards whose click handlers use the date-scoped cache.
+    await renderProgramIcons();
     document.getElementById('selectedProgram').value = '';
     document.getElementById('bookingNotes').value = '';
     const groupInput = document.getElementById('bookingGroupName');

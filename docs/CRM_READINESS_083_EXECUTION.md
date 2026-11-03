@@ -49,3 +49,38 @@ Primary advisories checked on 2026-11-03:
 - https://github.com/archiverjs/node-archiver/releases/tag/8.0.0
 
 Status: dependency implementation and local baseline complete; not released. A parallel PDF candidate (0.83.1, a0d6072d) has reached the remote production branch while live remains 0.83.0. Do not push over that work or assume a stale origin tracking ref is current: this checkout fetches only main by default, so production must be fetched with an explicit destination ref or checked with ls-remote. Revalidate remote/live convergence before preparing this plan's release.
+
+## Integrated acceptance and release packaging
+
+The five blocks have separate functional commits. Their production acceptance is
+coupled: the unchanged Omni responsive gate also exposed the mobile sidebar
+backdrop defect, so the mobile correction must accompany the Omni fix. Prepare
+one combined next-free 0.83.x patch after the complete gate set instead of
+publishing intermediate candidates with a known failing responsive gate.
+
+- Timeline loading/source failures/retry: 273 focused regressions and eight
+  mobile day/week, animator/room browser cases passed. See
+  `CRM_TIMELINE_LOAD_STATES.md`.
+- Omni: three deterministic overshoot cycles pass, two complete real-app
+  PostgreSQL runs exited zero, and the full responsive suite passes with the
+  mobile sidebar correction. Reviewed 320px/390px chat screenshots retain input,
+  send and history. See `CRM_OMNI_VIEWPORT_RECONCILIATION.md`.
+- Release proof: canonical branch default and mismatch/override tests passed;
+  live 0.83.0 proof ran without a manual branch override. Repeat for the final
+  deployed candidate.
+- Manager journey: all four real-API, disposable PostgreSQL mobile journeys
+  passed, including room ticket quotes, explicit warnings, canonical details,
+  and exact return context. Long promotion titles/add-event buttons passed real
+  clicks and no-overlap checks. Reviewed phone form/detail screenshots. See
+  `CRM_MOBILE_MANAGER_JOURNEY.md`.
+- Combined primary units: 3894 passed. The first full baseline stopped at a
+  stale UI source assertion requiring the defective 100vw mobile sidebar. Its
+  expected width is updated to the corrected 92vw; the real-click assertion is
+  retained. A complete final candidate baseline remains required.
+- Both full and production-only dependency audits again report zero findings
+  (299 installed package nodes).
+
+Before release, retain the parallel PDF production commits and review its tested
+HR checklist response-context correction (`d13dc4cd`), which repairs the failed
+PDF candidate's CI gate. The unrelated in-progress Hermes branch is excluded.
+No production push or deployment has occurred for this plan at this checkpoint.

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.6",
+  "version": "0.83.7",
   "eventGenix": {
-    "releaseLabel": "CRM: контроль генерації та підготовка без Hermes"
+    "releaseLabel": "CRM: оновлення сайдбара за видимістю вкладки"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

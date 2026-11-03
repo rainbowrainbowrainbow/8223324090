@@ -16,12 +16,12 @@ function fixture(kind) {
         if(!values.has(id))values.set(id,{set textContent(value){writes.push({id,value});}});
         return values.get(id);
     }};
-    const state={taskWidgetTimer:null,timelineSummaryRequestSeq:0,timelineSummaryPromises:new Map(),timelineSummaryCache:new Map()};
+    const state={operationalPolls:new Map(),timelineSummaryRequestSeq:0,timelineSummaryPromises:new Map(),timelineSummaryCache:new Map()};
     const context=vm.createContext({document,_state:state,_commandState:{},window:{location:{pathname:'/'},CrmBusinessContext:{apiUrl:url=>url}},localStorage:{getItem:()=> 'synthetic'},
         fetch:(url,options)=>{const read=deferred();reads.push({url,options,...read});return read.promise;},
         _isAuthenticatedSidebarRuntimeReady:()=>true,_sidebarRequestScopeKey:()=>scope,
         _sidebarNormalizeTimelineMode:mode=>mode,_sidebarTimelineBuildSummary:record=>record,
-        _sidebarTimelineSummaryCacheKey:()=> 'summary',SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL:60000,
+        _sidebarTimelineSummaryCacheKey:()=> 'summary',SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL:60000,SIDEBAR_OPERATIONAL_POLL_MS:300000,
         _setSidebarTimelineSummary:record=>{writes.push(record);return record;},_sidebarTimelineSummaryModeUrl:()=>'/api/bookings/2026-10-03',_sidebarAuthHeaders:()=>({}),_sidebarTimelineCountBookings:rows=>rows.length,
         _canSeeSidebarTaskSurface:()=>true,getAuthHeaders:()=>({}),_coalesceSidebarRequest:(_kind,_url,request)=>request(),
         _getCurrentSidebarUser:()=>({id:1,username:'synthetic'}),_sidebarTaskQuickCountsFromCabinet:()=>({completed:1,open:2,overdue:0}),
@@ -30,7 +30,14 @@ function fixture(kind) {
         setTimeout:()=>{timers.push('timer');return 1;},clearTimeout:()=>{},console:{warn:(...args)=>warnings.push(args)},Date,Map,Number,Set,Promise});
     const start=source.indexOf(kind==='summary'?'    async function _fetchSidebarTimelineSummaryMode(':'    async function _refreshTaskMiniWidget(');
     const end=source.indexOf(kind==='summary'?'    async function _fetchSidebarTimelineSummary(':'    async function _refreshFunnelWidget(',start);
-    assert.ok(start>=0&&end>start);vm.runInContext(source.slice(start,end),context);
+    assert.ok(start>=0&&end>start);
+    if(kind==='tasks'){
+        const pollStart=source.indexOf('    function _cancelOperationalPoll(');
+        const pollEnd=source.indexOf('    function _resumeOperationalPolls(',pollStart);
+        assert.ok(pollStart>=0&&pollEnd>pollStart);
+        vm.runInContext(source.slice(pollStart,pollEnd),context);
+    }
+    vm.runInContext(source.slice(start,end),context);
     return {context,state,document,reads,writes,timers,warnings,setScope:value=>{scope=value;},exit:()=>{exiting=true;},
         start:()=>kind==='summary'?context._fetchSidebarTimelineSummaryMode({date:'2026-10-03',businessContext:'dar'},'rooms'):context._refreshTaskMiniWidget(),
         answer:(index,value)=>reads[index].resolve({ok:true,json:async()=>value})};

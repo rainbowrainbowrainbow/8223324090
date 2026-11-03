@@ -91,7 +91,8 @@ function instrumentSidebarSource() {
     window.__sidebarRequestBudget = {
         fetchLiveBadges: _fetchLiveBadges,
         fetchBusinessLiveCounters: _fetchBusinessLiveCounters,
-        refreshTaskMiniWidget: _refreshTaskMiniWidget
+        refreshTaskMiniWidget: _refreshTaskMiniWidget,
+        refreshOperationalWidgets: _refreshSidebarOperationalWidgets
     };
 
     return {
@@ -104,6 +105,7 @@ function loadSidebarHarness() {
         <a data-badge-type="leads_new"></a>
         <section id="focusChipAlerts"><span id="focusChipAlertsValue"></span><span id="focusChipAlertsMeta"></span></section>
         <section id="focusChipTasks"><span id="focusChipTasksDoneValue"></span><span id="focusChipTasksValue"></span><span id="focusChipTasksMeta"></span></section>
+        <a id="focusChipFunnel"><span id="focusChipFunnelValue"></span><span id="focusChipFunnelMeta"></span></a>
     </body>`, { url: 'http://localhost/dashboard', runScripts: 'outside-only' });
     const requests = [];
     let role = 'manager';
@@ -122,8 +124,18 @@ function loadSidebarHarness() {
     };
     dom.window.localStorage.setItem('pzp_token', 'test-token');
     dom.window.localStorage.setItem('pzp_auth_session_generation', 'session-41');
-    dom.window.setTimeout = () => 0;
-    dom.window.clearTimeout = () => {};
+    let clock = Date.now();
+    let nextTimer = 0;
+    let visibility = 'visible';
+    const timers = new Map();
+    dom.window.Date.now = () => clock;
+    Object.defineProperty(dom.window.document, 'visibilityState', { get: () => visibility });
+    dom.window.setTimeout = (callback, delay) => {
+        const id = ++nextTimer;
+        timers.set(id, { callback, due: clock + delay });
+        return id;
+    };
+    dom.window.clearTimeout = id => timers.delete(id);
     dom.window.fetch = async url => {
         const value = String(url);
         requests.push(value);
@@ -158,6 +170,16 @@ function loadSidebarHarness() {
         dom,
         api: dom.window.__sidebarRequestBudget,
         requests,
+        async advancePoll() {
+            clock += 5 * 60 * 1000;
+            const due = [...timers].filter(([, timer]) => timer.due <= clock);
+            for (const [id] of due) timers.delete(id);
+            await Promise.all(due.map(([, timer]) => timer.callback()));
+        },
+        setVisibility(value) {
+            visibility = value;
+            dom.window.document.dispatchEvent(new dom.window.Event('visibilitychange'));
+        },
         setRole(value) { role = value; },
         setBusiness(value) { business = value; }
     };
@@ -263,6 +285,41 @@ test('sidebar shared GETs coalesce in flight, reuse a short fulfilled result, an
     assert.equal(count('/api/tasks/my-cabinet'), 4, 'manual task refresh bypasses fulfilled TTL');
     assert.equal(count('/api/business/live-counters'), 4, 'manual counters refresh bypasses fulfilled TTL');
     harness.dom.window.close();
+});
+
+test('sidebar defers overdue polls in a hidden tab and refreshes once when visible', async () => {
+    const harness = loadSidebarHarness();
+    const { api, dom, requests } = harness;
+    try {
+        await api.refreshOperationalWidgets();
+        assert.equal(requests.length, 3, 'initial requests are coalesced by endpoint');
+        await harness.advancePoll();
+        assert.equal(requests.length, 6, 'visible polling keeps its cadence');
+
+        harness.setVisibility('hidden');
+        for (let tick = 0; tick < 6; tick++) await harness.advancePoll();
+        assert.equal(requests.length, 6, 'no scheduled GETs during 30 hidden minutes');
+
+        harness.setBusiness('maysternya_doli');
+        harness.setVisibility('visible');
+        dom.window.dispatchEvent(new dom.window.Event('pageshow'));
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(requests.length, 9, 'resume makes one coalesced refresh');
+        assert.ok(requests.slice(6).every(url => url.endsWith('businessContext=maysternya_doli')));
+        await harness.advancePoll();
+        assert.equal(requests.length, 12, 'normal polling resumes');
+
+        harness.setVisibility('hidden');
+        await harness.advancePoll();
+        dom.window.dispatchEvent(new dom.window.Event('crm:tasks-updated'));
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(requests.length, 13, 'explicit task invalidation still refreshes while hidden');
+        harness.setVisibility('visible');
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(requests.length, 15, 'resume does not repeat the explicit task refresh');
+    } finally {
+        dom.window.close();
+    }
 });
 
 test('dashboard initial render requests every widget endpoint once', async () => {

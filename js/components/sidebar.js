@@ -7,9 +7,7 @@ const Sidebar = (() => {
         transitionsBound: false,
         scrollRestored: false,
         userRetryStarted: false,
-        badgeTimer: null,
-        taskWidgetTimer: null,
-        funnelWidgetTimer: null,
+        operationalPolls: new Map(),
         identityMetaTimer: null,
         identityMetaLoading: false,
         identityMetaLoadedAt: 0,
@@ -121,6 +119,7 @@ const Sidebar = (() => {
     ]);
     const SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL = 60 * 1000;
     const SIDEBAR_OPERATIONAL_REQUEST_TTL = 5 * 1000;
+    const SIDEBAR_OPERATIONAL_POLL_MS = 5 * 60 * 1000;
     const SIDEBAR_TIMELINE_COUNT_PLACEHOLDER = '–';
     const SIDEBAR_TIMELINE_MONTHS_SHORT = Object.freeze(['січ.', 'лют.', 'бер.', 'квіт.', 'трав.', 'черв.', 'лип.', 'серп.', 'вер.', 'жовт.', 'лист.', 'груд.']);
     const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
@@ -1491,6 +1490,32 @@ const Sidebar = (() => {
             _refreshTaskMiniWidget(options),
             _refreshFunnelWidget(options)
         ]);
+    }
+
+    function _cancelOperationalPoll(refresh) {
+        clearTimeout(_state.operationalPolls.get(refresh));
+        _state.operationalPolls.delete(refresh);
+    }
+
+    function _scheduleOperationalPoll(refresh) {
+        _cancelOperationalPoll(refresh);
+        _state.operationalPolls.set(refresh, setTimeout(() => {
+            if (document.visibilityState === 'hidden') {
+                _state.operationalPolls.set(refresh, null);
+                return;
+            }
+            _state.operationalPolls.delete(refresh);
+            return refresh();
+        }, SIDEBAR_OPERATIONAL_POLL_MS));
+    }
+
+    function _resumeOperationalPolls() {
+        if (document.visibilityState === 'hidden') return;
+        for (const [refresh, timer] of _state.operationalPolls) {
+            if (timer !== null) continue;
+            _state.operationalPolls.delete(refresh);
+            void refresh();
+        }
     }
 
     function _markShellReady() {
@@ -3034,10 +3059,7 @@ const Sidebar = (() => {
 
     async function _fetchLiveBadges(options = {}) {
         if (!_isAuthenticatedSidebarRuntimeReady()) return;
-        if (_state.badgeTimer) {
-            clearTimeout(_state.badgeTimer);
-            _state.badgeTimer = null;
-        }
+        _cancelOperationalPoll(_fetchLiveBadges);
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         const requestScope = _sidebarRequestScopeKey('operational-badges');
@@ -3065,7 +3087,7 @@ const Sidebar = (() => {
         const chatUnread = typeof ChatState !== 'undefined' ? (ChatState.totalUnread || 0) : 0;
         _setBadge('unread', chatUnread > 0 ? chatUnread : null);
         _syncNavStatusLabels();
-        _state.badgeTimer = setTimeout(_fetchLiveBadges, 300000);
+        _scheduleOperationalPoll(_fetchLiveBadges);
     }
 
     function _setBadge(type, value, accessibleLabel = '') {
@@ -4027,10 +4049,7 @@ const Sidebar = (() => {
 
     async function _refreshTaskMiniWidget(options = {}) {
         if (!_isAuthenticatedSidebarRuntimeReady()) return;
-        if (_state.taskWidgetTimer) {
-            clearTimeout(_state.taskWidgetTimer);
-            _state.taskWidgetTimer = null;
-        }
+        _cancelOperationalPoll(_refreshTaskMiniWidget);
         const widget = document.getElementById('focusChipTasks');
         if (!widget) return;
         if (!_canSeeSidebarTaskSurface()) {
@@ -4045,7 +4064,7 @@ const Sidebar = (() => {
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         if (window.location?.pathname === '/profile' || window.location?.pathname === '/profile.html') {
-            _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
+            _scheduleOperationalPoll(_refreshTaskMiniWidget);
             return;
         }
         const requestScope = _sidebarRequestScopeKey('task-widget');
@@ -4109,15 +4128,12 @@ const Sidebar = (() => {
             widget.classList.toggle('has-overdue', overdueCount > 0);
             _setFocusChipOperationalState(widget, activeCount, { kind: 'tasks', critical: overdueCount > 0 });
         } catch {}
-        if (isCurrentRead()) _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
+        if (isCurrentRead()) _scheduleOperationalPoll(_refreshTaskMiniWidget);
     }
 
     async function _refreshFunnelWidget(options = {}) {
         if (!_isAuthenticatedSidebarRuntimeReady()) return;
-        if (_state.funnelWidgetTimer) {
-            clearTimeout(_state.funnelWidgetTimer);
-            _state.funnelWidgetTimer = null;
-        }
+        _cancelOperationalPoll(_refreshFunnelWidget);
         const widget = document.getElementById('focusChipFunnel');
         if (!widget) return;
         const user = _getCurrentSidebarUser();
@@ -4163,7 +4179,7 @@ const Sidebar = (() => {
             _setFocusChipOperationalState(widget, displayCount, { kind: 'leads', hot: actionCount > 0 });
             widget.href = '/sales-funnel';
         } catch {}
-        _state.funnelWidgetTimer = setTimeout(_refreshFunnelWidget, 300000);
+        _scheduleOperationalPoll(_refreshFunnelWidget);
     }
 
     function _getCurrentSidebarUser() {
@@ -4895,6 +4911,8 @@ const Sidebar = (() => {
         } catch {}
     }
 
+    document.addEventListener('visibilitychange', _resumeOperationalPolls);
+    window.addEventListener('pageshow', _resumeOperationalPolls);
     window.addEventListener('roleSwitched', (event) => {
         if (event.detail?.shellApplied) return;
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');

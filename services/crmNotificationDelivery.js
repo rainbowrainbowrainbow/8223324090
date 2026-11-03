@@ -35,7 +35,10 @@ function createNotificationDelivery(options = {}) {
                 throw executionError('CRM_DELIVERY_PERSONAL_ROUTE_REQUIRED', 422);
             }
             const workerId = 'crm-task-delivery';
-            await outbox.claimNotificationOutboxEvent(eventId, { workerId, lockSeconds: 120 }, { pool: client });
+            // A process can die after the remote send but before the ack. An
+            // expired claim is therefore ambiguous, not permission to resend.
+            await outbox.claimNotificationOutboxEvent(eventId, { workerId, lockSeconds: 120 },
+                { pool: client, allowExpiredClaim: false });
             let response;
             try {
                 // The adapter must honor the timeout and must not retry an

@@ -458,6 +458,40 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
         await assert.rejects(uncertain({ ...base, eventId: ambiguous.event_id }));
         assert.equal(sends, 1);
 
+        const expiredClaim = await notification();
+        await pool.query(`UPDATE notification_outbox SET status='claimed', claimed_by='old-synthetic-sender',
+            locked_until=NOW()-INTERVAL '1 minute' WHERE event_id=$1`, [expiredClaim.event_id]);
+        let expiredSends = 0;
+        const blocked = delivery(expiredClaim, async () => { expiredSends++; return { accepted: true }; });
+        await assert.rejects(blocked({ ...base, eventId: expiredClaim.event_id }), { code: 'OUTBOX_EVENT_ALREADY_CLAIMED' });
+        assert.equal(expiredSends, 0);
+        const stillClaimed = await outbox.findNotificationOutboxEventByEventId(expiredClaim.event_id, { pool });
+        assert.equal(stillClaimed.status, 'claimed');
+        assert.equal(stillClaimed.claimed_by, 'old-synthetic-sender');
+
+        const raced = await notification();
+        let racedSends = 0;
+        const racedDelivery = createNotificationDelivery({ pool,
+            env: { CRM_TASK_DELIVERY_ENABLED: 'true', CRM_TASK_DELIVERY_CUTOVER_CONFIRMED: 'true',
+                CRM_TASK_DELIVERY_NOT_BEFORE: new Date(Date.now() - 60000).toISOString(),
+                CRM_TASK_DELIVERY_APPROVED_EVENT_IDS: raced.event_id },
+            resolveRecipient: async () => {
+                await pool.query(`UPDATE notification_outbox SET status='claimed', claimed_by='other-synthetic-sender',
+                    locked_until=NOW()-INTERVAL '1 minute' WHERE event_id=$1`, [raced.event_id]);
+                return { ownerUserId: actor.id, chatId: '123456789' };
+            },
+            transport: async () => { racedSends++; return { accepted: true }; }
+        });
+        await assert.rejects(racedDelivery({ ...base, eventId: raced.event_id }), { code: 'OUTBOX_EVENT_ALREADY_CLAIMED' });
+        assert.equal(racedSends, 0, 'claim must remain fenced after a concurrent state change');
+
+        const legacyClaim = await notification();
+        await pool.query(`UPDATE notification_outbox SET status='claimed', claimed_by='old-synthetic-sender',
+            locked_until=NOW()-INTERVAL '1 minute' WHERE event_id=$1`, [legacyClaim.event_id]);
+        const legacyResult = await outbox.claimNotificationOutboxEvent(legacyClaim.event_id,
+            { workerId: 'legacy-synthetic-sender' }, { pool });
+        assert.equal(legacyResult.claimed, true, 'existing callers retain their prior reclaim behavior');
+
         const group = await notification();
         await assert.rejects(delivery(group, () => assert.fail('Group transport must not run'), { ownerUserId: actor.id, chatId: '-123' })({ ...base, eventId: group.event_id }),
             { code: 'CRM_DELIVERY_PERSONAL_ROUTE_REQUIRED' });

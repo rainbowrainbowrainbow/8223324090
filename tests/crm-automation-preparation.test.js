@@ -224,7 +224,9 @@ function deliveryFixture(overrides = {}) {
     const calls = [];
     const outbox = {
         findNotificationOutboxEventByEventId: async () => event,
-        claimNotificationOutboxEvent: async () => { calls.push('claim'); event.status = 'claimed'; },
+        claimNotificationOutboxEvent: async (_id, _input, options) => {
+            assert.equal(options.allowExpiredClaim, false); calls.push('claim'); event.status = 'claimed';
+        },
         ackNotificationOutboxEvent: async () => { calls.push('ack'); event.status = 'sent'; },
         failNotificationOutboxEvent: async () => { calls.push('fail'); event.status = 'failed'; }
     };

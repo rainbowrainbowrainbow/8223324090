@@ -194,6 +194,7 @@ test('Kie task failure code 402 is a quota failure without an automatic retry', 
         data: { state: 'fail', failCode: '402', failMsg: 'PRIVATE_PROVIDER_MESSAGE' }
     }), { status: 200 });
     const result = await pollMenuImageWithKie('task_credits');
+    assert.equal(result.confirmedTerminalFailure, true);
     assert.equal(result.status, 'failed');
     assert.equal(result.error.providerCode, '402');
     assert.equal(result.error.providerTaskId, 'task_credits');
@@ -201,6 +202,17 @@ test('Kie task failure code 402 is a quota failure without an automatic retry', 
     assert.equal(publicError.code, 'menu_image_generation_quota_exceeded');
     assert.equal(publicError.retryable, false);
     assert.equal(JSON.stringify(publicError).includes('PRIVATE_PROVIDER_MESSAGE'), false);
+});
+
+test('Kie success without a valid result is not confirmed terminal failure', async () => {
+    process.env.KIE_API_KEY = 'synthetic-test-key';
+    for (const resultJson of ['not-json', JSON.stringify({ resultUrls: [] })]) {
+        global.fetch = async () => new Response(JSON.stringify({ code: 200,
+            data: { state: 'success', resultJson } }), { status: 200 });
+        const result = await pollMenuImageWithKie('task_incomplete');
+        assert.equal(result.status, 'failed');
+        assert.notEqual(result.confirmedTerminalFailure, true);
+    }
 });
 
 test('Kie task failures retain only a bounded code and task ID, never the provider message', async () => {

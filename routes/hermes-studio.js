@@ -318,6 +318,7 @@ function createHermesStudioRouter(options = {}) {
     const authMiddleware = options.authMiddleware || authenticateToken;
     const accessGuard = options.accessGuard || requireRole(...STUDIO_ACCESS_ROLES);
     const decisionGuard = options.decisionGuard || requireStudioDecisionRole;
+    const executeCreative = options.executeCreative || require('../services/crmCreativeExecution').createCreativeExecutor({ pool: query });
 
     router.use(authMiddleware);
     router.use(accessGuard);
@@ -406,6 +407,19 @@ function createHermesStudioRouter(options = {}) {
         } catch (err) {
             sendError(res, err);
         }
+    });
+
+    // Existing Studio authorization; execution is additionally off by default.
+    // Stored jobs, assets and approval decisions remain on their canonical path.
+    router.post('/jobs/:id/execute', decisionGuard, async (req, res) => {
+        try {
+            assertPlainObject(req.body || {}, 'CRM_CREATIVE_REQUEST_INVALID', 'Request body must be a JSON object');
+            assertAllowedFields(req.body, new Set(['businessContext', 'business_context', 'confirmed']), 'CRM_CREATIVE_UNSUPPORTED_FIELD');
+            const businessContext = resolveStudioBusinessContext(req);
+            const result = await executeCreative({ jobId: req.params.id, businessContext,
+                actor: req.user, confirmed: req.body.confirmed });
+            res.json({ success: true, ...result, job: decorateStudioJob(result.job, req) });
+        } catch (err) { sendError(res, err); }
     });
 
     router.post('/jobs/:id/regenerate', decisionGuard, async (req, res) => {

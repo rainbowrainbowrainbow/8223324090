@@ -8,6 +8,11 @@ const { requireRole, authenticateToken } = require('../middleware/auth');
 const { requireAction } = require('../middleware/auth');
 const { createWriteRateLimiter } = require('../middleware/rateLimit');
 const { createLogger } = require('../utils/logger');
+const { executeMenuImagePaid, pollMenuImagePaid, draftChangedBeforeSubmission } = require('../services/menuImagePaidExecutor');
+const { withLegacyMenuGuard, activateMenuGuard } = require('../services/menuImageGuardGate');
+const { withProviderExecution, assertPaidCapacity } = require('../services/crmProviderExecution');
+const { reconcileMenuImagePaid } = require('../services/menuImagePaidReconciliation');
+const { saveRecoveryRequest, recoverDetachedMenuImage } = require('../services/menuImageDetachedRecovery');
 const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurface');
 const { userBusinessModuleState } = require('../services/businessModuleRegistry');
 const {
@@ -587,6 +592,8 @@ function normalizeMenuImageStudio(value = {}) {
         model: cleanNullableString(raw.model, 100),
         referenceImageUrl: cleanNullableString(raw.referenceImageUrl, 2000),
         taskId: cleanNullableString(raw.taskId, 128),
+        operationId: /^[0-9a-f-]{36}$/i.test(String(raw.operationId || '')) ? String(raw.operationId) : null,
+        outcomeUncertain: raw.outcomeUncertain === true,
         providerCode: /^[A-Za-z0-9_-]{1,64}$/.test(String(raw.providerCode || ''))
             ? String(raw.providerCode) : null,
         storage: safeJsonObject(raw.storage || {}),
@@ -1593,6 +1600,12 @@ function menuImageDraftLockKey(businessContext, productId) {
     return ['products.menu-image-draft', businessContext || DEFAULT_BUSINESS_CONTEXT, productId].join('|');
 }
 
+function menuImageReviewMatches(reviewed, studio) {
+    if (!reviewed || typeof reviewed !== 'object' || Array.isArray(reviewed)) return false;
+    return ['imageUrl', 'status', 'preparedAt', 'generatedAt', 'operationId', 'taskId']
+        .every(key => (reviewed[key] ?? null) === (studio[key] ?? null));
+}
+
 function menuImageExternalDraftPublicError(err) {
     const code = String(err?.code || '');
     const clientErrorCodes = new Set([
@@ -1621,19 +1634,7 @@ function menuImageExternalDraftPublicError(err) {
     return null;
 }
 
-async function persistProductMenuImageDraft(productId, businessContext, username, draft) {
-    await pool.query(
-        `UPDATE products
-         SET ai_card_draft = $1::jsonb,
-             updated_at = NOW(),
-             updated_by = $2
-         WHERE id = $3
-           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
-        [JSON.stringify(draft), username, productId, businessContext]
-    );
-}
-
-async function reserveProductMenuImageGeneration(productId, businessContext, username, imageStudio) {
+async function reserveProductMenuImageGeneration(productId, businessContext, username, imageStudio, expectedDraft) {
     const result = await pool.query(
         `UPDATE products
          SET ai_card_draft = jsonb_set(COALESCE(ai_card_draft, '{}'::jsonb), '{imageStudio}', $1::jsonb, true),
@@ -1643,16 +1644,18 @@ async function reserveProductMenuImageGeneration(productId, businessContext, use
            AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
            AND (ai_card_draft #>> '{imageStudio,status}' IS DISTINCT FROM 'generating'
                 OR COALESCE(ai_card_draft #>> '{imageStudio,preparedAt}', '') <
-                    CASE WHEN ai_card_draft #>> '{imageStudio,provider}' = 'kie' THEN $5 ELSE $6 END)`,
+                    CASE WHEN ai_card_draft #>> '{imageStudio,provider}' = 'kie' THEN $5 ELSE $6 END)
+           ${expectedDraft === undefined ? '' : 'AND ai_card_draft IS NOT DISTINCT FROM $7::jsonb'}`,
         [JSON.stringify(imageStudio), username, productId, businessContext,
             new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-            new Date(Date.now() - 60 * 1000).toISOString()]
+            new Date(Date.now() - 60 * 1000).toISOString(),
+            ...(expectedDraft === undefined ? [] : [expectedDraft === null ? null : JSON.stringify(expectedDraft)])]
     );
     return result.rowCount > 0;
 }
 
-async function persistKieMenuImageResultIfCurrent(productId, businessContext, username, taskId, preparedAt, imageStudio) {
-    const result = await pool.query(
+async function persistKieMenuImageResultIfCurrent(productId, businessContext, username, taskId, preparedAt, imageStudio, operationId = null, queryable = pool) {
+    const result = await queryable.query(
         `UPDATE products
          SET ai_card_draft = jsonb_set(COALESCE(ai_card_draft, '{}'::jsonb), '{imageStudio}', $1::jsonb, true),
              updated_at = NOW(),
@@ -1661,8 +1664,9 @@ async function persistKieMenuImageResultIfCurrent(productId, businessContext, us
            AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
            AND ai_card_draft #>> '{imageStudio,taskId}' IS NOT DISTINCT FROM $5
            AND ai_card_draft #>> '{imageStudio,preparedAt}' = $6
+           AND ($7::text IS NULL OR ai_card_draft #>> '{imageStudio,operationId}' = $7)
            AND ai_card_draft #>> '{imageStudio,status}' = 'generating'`,
-        [JSON.stringify(imageStudio), username, productId, businessContext, taskId, preparedAt]
+        [JSON.stringify(imageStudio), username, productId, businessContext, taskId, preparedAt, operationId]
     );
     return result.rowCount > 0;
 }
@@ -1693,12 +1697,20 @@ async function handleExternalMenuImageDraftRequest(req, res) {
             uploadOptions: { query: pool },
             currentDraft
         });
-        await persistMenuImageDraft(pool, {
+        const persisted = await persistMenuImageDraft(pool, {
             productId: id,
             businessContext,
             username: req.user?.username,
-            draft: result.draft
+            draft: result.draft,
+            expectedDraft: product.ai_card_draft ?? null
         });
+        if (!persisted) {
+            const fresh = await getProductWithPriceRule(pool, id, businessContext);
+            return res.status(409).json({ success: false, code: 'MENU_IMAGE_DRAFT_CHANGED',
+                error: fresh ? 'Чернетка змінилася під час завантаження. Перевірте актуальне фото та оберіть фото повторно.'
+                    : 'Чернетка змінилася під час завантаження. Оновіть сторінку перед повтором.',
+                ...(fresh ? { product: mapProductRow(fresh) } : {}) });
+        }
 
         const fresh = await getProductWithPriceRule(pool, id, businessContext);
         res.json({
@@ -1764,7 +1776,97 @@ router.post('/menu-image/burger-blueprint', productMenuImageReviewRateLimit,
         }
     });
 
+async function handleGuardedMenuImageDraft(req, res) {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+    let context;
+    try {
+        context = requireProductBusinessContext(req, res);
+        if (!context) return;
+        const product = await getProductWithPriceRule(pool, id, context);
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+        // Once enabled, the marker prevents an environment-flag rollback from
+        // silently falling back to the older unguarded paid path.
+        await activateMenuGuard(pool);
+        const current = currentMenuAiDraftForProduct(product);
+        // Legacy or interrupted jobs are never automatically reclaimed by age.
+        if (current.imageStudio?.status === 'generating') {
+            return res.status(409).json({ success: false, code: 'MENU_PAID_OPERATION_REQUIRES_REVIEW', retryable: false });
+        }
+        const settings = safeJsonObject(req.body?.settings || req.body || {});
+        const generator = resolveMenuImageGenerator(settings.generator);
+        const size = normalizeMenuImageSize(settings.size || current.imageStudio?.size);
+        const style = normalizeMenuImageStyle(settings.style || current.imageStudio?.style);
+        const blueprint = isBurgerMenuProduct(product) ? await readBurgerBlueprint(context) : null;
+        const referenceImageUrl = generator.provider === 'kie' && blueprint ? publicBurgerBlueprintUrl(blueprint) : null;
+        const prompt = buildMenuImagePrompt(product, { size, style, blueprint });
+        const preparedAt = new Date().toISOString();
+        let generating;
+        const execution = await withProviderExecution(pool, async client => {
+            await assertPaidCapacity(client);
+            return executeMenuImagePaid({ pool, businessContext: context, productId: id,
+            provider: generator.provider, actor: req.user.username,
+            start: async operationId => {
+                generating = normalizeMenuImageStudio({ ...current.imageStudio, status: 'generating',
+                    source: generator.provider, size, style, prompt, preparedAt, operationId,
+                    imageUrl: null, generatedAt: null, taskId: null, provider: generator.provider,
+                    model: generator.model, referenceImageUrl: blueprint?.imageUrl || null,
+                    previousImageUrl: product.icon_url || null, error: null, outcomeUncertain: false });
+                if (!await reserveProductMenuImageGeneration(id, context, req.user.username, generating, product.ai_card_draft ?? null)) {
+                    throw draftChangedBeforeSubmission();
+                }
+                if (generator.provider === 'kie' && process.env.CRM_MENU_RECOVERY_ENABLED === 'true') {
+                    await saveRecoveryRequest(pool, { operationId, businessContext: context, productId: id, studio: generating });
+                }
+                if (generator.provider === 'kie') return startMenuImageWithKie({ prompt, size, model: generator.model, referenceImageUrl });
+                return generateAndStoreMenuPhotoDraft(product, { size, style, prompt, uploadOptions: { query: pool } });
+            },
+            saveDraft: async image => persistKieMenuImageResultIfCurrent(id, context, req.user.username, null,
+                preparedAt, normalizeMenuImageStudio({ ...generating, ...image, status: 'ready', operationId: generating.operationId }), generating.operationId)
+            });
+        });
+        if (execution.status === 'provider_pending') {
+            const pending = normalizeMenuImageStudio({ ...generating, taskId: execution.taskId });
+            if (!await persistKieMenuImageResultIfCurrent(id, context, req.user.username, null, preparedAt, pending, generating.operationId)) {
+                return res.status(409).json({ success: false, code: 'MENU_PAID_OPERATION_REQUIRES_REVIEW', retryable: false });
+            }
+        }
+        const fresh = await getProductWithPriceRule(pool, id, context);
+        const draft = currentMenuAiDraftForProduct(fresh);
+        return res.status(execution.status === 'provider_pending' ? 202 : 200).json({ success: true,
+            status: execution.status === 'provider_pending' ? 'generating' : 'ready',
+            draft, imageUrl: draft.imageStudio?.imageUrl || null, product: mapProductRow(fresh) });
+    } catch (err) {
+        const status = ['MENU_PAID_OPERATION_BUDGET_FULL', 'CRM_PROVIDER_BUSY'].includes(err?.code) ? 429
+            : err?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' ? 502
+                : err?.code === 'menu_image_generator_invalid' ? 400 : 409;
+        let fresh = context ? await getProductWithPriceRule(pool, id, context).catch(() => null) : null;
+        const studio = fresh ? currentMenuAiDraftForProduct(fresh).imageStudio : null;
+        if (err?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' && studio?.status === 'generating'
+            && studio.operationId === err.operationId) {
+            await persistKieMenuImageResultIfCurrent(id, context, req.user.username, studio.taskId || null,
+                studio.preparedAt, normalizeMenuImageStudio({ ...studio, outcomeUncertain: true }), studio.operationId).catch(() => false);
+            fresh = await getProductWithPriceRule(pool, id, context).catch(() => fresh);
+        }
+        return res.status(status).json({ success: false, code: err?.code || 'MENU_PAID_OPERATION_REQUIRES_REVIEW',
+            error: err?.code === 'MENU_PAID_DRAFT_CHANGED'
+                ? 'Чернетка змінилася. Оновіть сторінку та перевірте її перед повтором.'
+                : 'Menu image operation requires review before another attempt', retryable: false,
+            ...(fresh ? { draft: currentMenuAiDraftForProduct(fresh), product: mapProductRow(fresh) } : {}) });
+    }
+}
+
 async function handleMenuImageDraftRequest(req, res) {
+    if (process.env.CRM_MENU_PAID_GUARD_ENABLED === 'true') return handleGuardedMenuImageDraft(req, res);
+    try { return await withLegacyMenuGuard(pool, () => handleLegacyMenuImageDraft(req, res)); }
+    catch (err) {
+        return res.status(503).json({ success: false, code: err?.code || 'MENU_PAID_GUARD_DISABLED',
+            retryable: false, error: 'Menu generation is temporarily unavailable' });
+    }
+}
+
+async function handleLegacyMenuImageDraft(req, res) {
     const { id } = req.params;
     if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
 
@@ -1887,14 +1989,15 @@ async function handleMenuImageDraftRequest(req, res) {
                 error: publicError.error
             });
             const failedDraft = buildProductMenuImageDraft(product, failedStudio, { currentDraft });
-            if (generator.provider === 'kie') {
-                await persistKieMenuImageResultIfCurrent(
-                    id, businessContext, req.user.username, null, preparedAt, failedStudio
-                );
-            } else {
-                await persistProductMenuImageDraft(id, businessContext, req.user.username, failedDraft);
-            }
+            const failureSaved = await persistKieMenuImageResultIfCurrent(
+                id, businessContext, req.user.username, null, preparedAt, failedStudio
+            );
             const fresh = await getProductWithPriceRule(pool, id, businessContext).catch(() => null);
+            if (!failureSaved) {
+                return res.status(409).json({ success: false, code: 'menu_image_draft_changed',
+                    error: 'Menu image draft changed while generation was running',
+                    product: fresh ? mapProductRow(fresh) : null });
+            }
             if (publicError.retryable && publicError.retryAfterSeconds) {
                 res.setHeader('Retry-After', String(publicError.retryAfterSeconds));
             }
@@ -1919,9 +2022,15 @@ async function handleMenuImageDraftRequest(req, res) {
             error: null
         });
         const readyDraft = buildProductMenuImageDraft(product, readyStudio, { currentDraft });
-        await persistProductMenuImageDraft(id, businessContext, req.user.username, readyDraft);
+        const readySaved = await persistKieMenuImageResultIfCurrent(
+            id, businessContext, req.user.username, null, preparedAt, readyStudio
+        );
 
         const fresh = await getProductWithPriceRule(pool, id, businessContext);
+        if (!readySaved) {
+            return res.status(409).json({ success: false, code: 'menu_image_draft_changed',
+                error: 'Menu image draft changed while generation was running', product: mapProductRow(fresh) });
+        }
         res.json({
             success: true,
             status: 'ready',
@@ -1977,6 +2086,158 @@ router.get('/:id/menu-image/context', requireRole(...PRODUCT_MUTATION_ROLES), as
     }
 });
 
+// Read-only recovery view: the paid operation outlives any particular draft.
+router.get('/:id/menu-image/operation', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+    try {
+        const context = requireProductBusinessContext(req, res);
+        if (!context) return;
+        const product = await getProductWithPriceRule(pool, id, context);
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+        const table = await pool.query("SELECT to_regclass('menu_image_paid_operations') AS name");
+        if (!table.rows[0]?.name) return res.json({ success: true, operation: null, recoveryEnabled: false });
+        const result = await pool.query(
+            `SELECT operation_id, provider, status, provider_task_id, created_at, updated_at
+             FROM menu_image_paid_operations WHERE business_context=$1 AND product_id=$2
+               AND status IN ('reserved', 'provider_pending', 'unknown') LIMIT 1`, [context, id]
+        );
+        const op = result.rows[0];
+        return res.json({ success: true, recoveryEnabled: process.env.CRM_MENU_RECOVERY_ENABLED === 'true',
+            operation: op ? { operationId: op.operation_id,
+            provider: op.provider, status: op.status, taskId: op.provider_task_id,
+            createdAt: op.created_at, updatedAt: op.updated_at } : null });
+    } catch (err) {
+        log.error('Read menu paid operation error', err);
+        return res.status(503).json({ success: false, code: 'MENU_PAID_STATUS_UNAVAILABLE',
+            error: 'Menu paid operation status is unavailable' });
+    }
+});
+
+// Detached results remain separate from the active draft. This list and the
+// explicit poll endpoint never submit a generation or apply a product image.
+router.get('/:id/menu-image/recovered', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    if (process.env.CRM_MENU_RECOVERY_ENABLED !== 'true') return res.status(503).json({ success: false, code: 'MENU_RECOVERY_DISABLED' });
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+    try {
+        const context = requireProductBusinessContext(req, res);
+        if (!context) return;
+        const product = await getProductWithPriceRule(pool, id, context);
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+        const revision = await pool.query(`SELECT md5(COALESCE(ai_card_draft::text, 'null')) AS revision
+            FROM products WHERE id=$1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}')=$2`, [id, context]);
+        const result = await pool.query(`SELECT o.operation_id, o.updated_at, r.result_studio
+            FROM menu_image_paid_operations o JOIN menu_image_paid_recovery r USING (operation_id)
+            WHERE o.business_context=$1 AND o.product_id=$2 AND o.status='succeeded'
+              AND r.result_studio IS NOT NULL ORDER BY o.updated_at DESC LIMIT 20`, [context, id]);
+        return res.json({ success: true, draftRevision: revision.rows[0]?.revision || null,
+            results: result.rows.map(row => ({ operationId: row.operation_id,
+            updatedAt: row.updated_at, studio: row.result_studio })) });
+    } catch (error) {
+        log.error('Read recovered menu images error', error);
+        return res.status(503).json({ success: false, code: 'MENU_RECOVERY_UNAVAILABLE' });
+    }
+});
+
+router.post('/:id/menu-image/operation/:operationId/recover', productMenuImageReviewRateLimit,
+    requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+        if (process.env.CRM_MENU_RECOVERY_ENABLED !== 'true') return res.status(503).json({ success: false, code: 'MENU_RECOVERY_DISABLED' });
+        const { id, operationId } = req.params;
+        if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+        try {
+            const context = requireProductBusinessContext(req, res);
+            if (!context) return;
+            const product = await getProductWithPriceRule(pool, id, context);
+            const check = requireMenuImageProduct(product);
+            if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+            const studio = currentMenuAiDraftForProduct(product).imageStudio || {};
+            if (studio.status === 'generating' && studio.operationId === operationId) {
+                return res.status(409).json({ success: false, code: 'MENU_RECOVERY_USE_DRAFT_STATUS' });
+            }
+            const result = await recoverDetachedMenuImage({ pool, operationId, businessContext: context, productId: id,
+                poll: pollMenuImageWithKie,
+                store: async (outcome, requestStudio, client) => normalizeMenuImageStudio({ ...requestStudio,
+                    ...await storeMenuImageWithKie(product, outcome, { model: requestStudio.model,
+                        size: requestStudio.size, style: requestStudio.style, uploadOptions: { query: client } }),
+                    operationId, taskId: null, outcomeUncertain: false }) });
+            return res.json({ success: true, ...result });
+        } catch (error) {
+            const code = String(error?.code || 'MENU_RECOVERY_UNAVAILABLE');
+            const known = new Set(['MENU_RECOVERY_INVALID', 'MENU_RECOVERY_NOT_FOUND', 'MENU_RECOVERY_NOT_READY',
+                'MENU_PAID_POLL_BUSY', 'MENU_PAID_RESULT_UNCERTAIN']);
+            return res.status(code === 'MENU_RECOVERY_INVALID' ? 400 : code === 'MENU_RECOVERY_NOT_FOUND' ? 404 : 409)
+                .json({ success: false, code: known.has(code) ? code : 'MENU_RECOVERY_UNAVAILABLE',
+                    error: 'Не вдалося перевірити збережене завдання. Нова генерація не запускалася.' });
+        }
+    });
+
+// Explicitly select a recovered result as a draft, using the revision seen by
+// the reviewer. The active product photo still changes only via /apply.
+router.post('/:id/menu-image/operation/:operationId/use-recovered', productMenuImageReviewRateLimit,
+    requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+        if (process.env.CRM_MENU_RECOVERY_ENABLED !== 'true') return res.status(503).json({ success: false, code: 'MENU_RECOVERY_DISABLED' });
+        const { id, operationId } = req.params;
+        if (!id || id.length > 80 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(operationId || ''))
+            || !/^[0-9a-f]{32}$/.test(String(req.body?.draftRevision || '')) || req.body?.confirmed !== true) {
+            return res.status(400).json({ success: false, code: 'MENU_RECOVERY_CONFIRMATION_REQUIRED' });
+        }
+        try {
+            const context = requireProductBusinessContext(req, res);
+            if (!context) return;
+            const product = await getProductWithPriceRule(pool, id, context);
+            const check = requireMenuImageProduct(product);
+            if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+            const updated = await pool.query(`UPDATE products p SET
+                ai_card_draft=jsonb_set(COALESCE(p.ai_card_draft,'{}'::jsonb), '{imageStudio}', r.result_studio, true),
+                updated_at=NOW(), updated_by=$5
+                FROM menu_image_paid_recovery r JOIN menu_image_paid_operations o USING (operation_id)
+                WHERE p.id=$1 AND COALESCE(p.business_context,'${DEFAULT_BUSINESS_CONTEXT}')=$2
+                  AND o.business_context=$2 AND o.product_id=$1 AND o.operation_id=$3
+                  AND o.status='succeeded' AND r.result_studio IS NOT NULL
+                  AND p.ai_card_draft #>> '{imageStudio,status}' IS DISTINCT FROM 'generating'
+                  AND NOT EXISTS (SELECT 1 FROM menu_image_paid_operations pending
+                      WHERE pending.business_context=$2 AND pending.product_id=$1
+                        AND pending.status IN ('reserved','provider_pending','unknown'))
+                  AND md5(COALESCE(p.ai_card_draft::text, 'null'))=$4 RETURNING p.id`,
+            [id, context, operationId, req.body.draftRevision, req.user.username]);
+            if (!updated.rowCount) return res.status(409).json({ success: false, code: 'MENU_RECOVERY_DRAFT_CHANGED' });
+            return res.json({ success: true, product: mapProductRow(await getProductWithPriceRule(pool, id, context)) });
+        } catch (error) {
+            log.error('Select recovered menu image error', error);
+            return res.status(503).json({ success: false, code: 'MENU_RECOVERY_UNAVAILABLE' });
+        }
+    });
+
+router.post('/:id/menu-image/operation/reconcile', productMenuImageReviewRateLimit, requireRole('creator'), async (req, res) => {
+    // Platform authority must come from the freshly loaded account, not a
+    // supplementary business role or a role asserted in an old token.
+    if (req.user?.platformRole !== 'creator') return res.status(403).json({ success: false, error: 'Insufficient permissions' });
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, code: 'MENU_PAID_REVIEW_CONFIRMATION_REQUIRED' });
+    try {
+        const context = requireProductBusinessContext(req, res);
+        if (!context) return;
+        const product = await getProductWithPriceRule(pool, id, context);
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+        const result = await reconcileMenuImagePaid({ pool, operationId: req.body?.operationId,
+            businessContext: context, productId: id, actor: req.user?.username,
+            reviewNote: req.body?.reviewNote, providerReviewed: req.body?.providerReviewed,
+            acceptsPossibleCharge: req.body?.acceptsPossibleCharge });
+        const fresh = await getProductWithPriceRule(pool, id, context);
+        return res.json({ success: true, operation: result, product: mapProductRow(fresh) });
+    } catch (err) {
+        const allowed = new Set(['MENU_PAID_RECONCILIATION_DISABLED', 'MENU_PAID_REVIEW_CONFIRMATION_REQUIRED',
+            'MENU_PAID_OPERATION_NOT_FOUND', 'MENU_PAID_RECONCILIATION_NOT_READY', 'CRM_PROVIDER_BUSY']);
+        const code = allowed.has(err?.code) ? err.code : 'MENU_PAID_RECONCILIATION_FAILED';
+        return res.status(allowed.has(code) ? (err.statusCode || 409) : 500).json({ success: false, code,
+            error: 'Menu operation could not be reconciled' });
+    }
+});
+
 router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
     const { id } = req.params;
     if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
@@ -1989,6 +2250,50 @@ router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), asy
         if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
         const draft = currentMenuAiDraftForProduct(product);
         const studio = draft.imageStudio || {};
+        if (studio.operationId && studio.provider === 'openai' && studio.status === 'generating') {
+            const found = await pool.query(
+                `SELECT status, created_at FROM menu_image_paid_operations
+                 WHERE operation_id=$1 AND business_context=$2 AND product_id=$3 AND provider='openai'`,
+                [studio.operationId, businessContext, id]
+            );
+            if (!found.rowCount) return res.status(409).json({ success: false, code: 'MENU_PAID_OPERATION_NOT_FOUND' });
+            const operation = found.rows[0];
+            const unresolved = operation.status !== 'reserved'
+                || Date.now() - new Date(operation.created_at).getTime() > 120000;
+            const mapped = mapProductRow(product);
+            if (unresolved) mapped.aiCardDraft = { ...mapped.aiCardDraft,
+                imageStudio: { ...mapped.aiCardDraft.imageStudio, outcomeUncertain: true } };
+            return res.json({ success: true, status: unresolved ? 'unknown' : 'generating',
+                product: mapped, draft: mapped.aiCardDraft });
+        }
+        if (studio.operationId && studio.provider === 'kie' && studio.status === 'generating') {
+            try {
+                const result = await pollMenuImagePaid({ pool, operationId: studio.operationId,
+                    businessContext, productId: id, poll: pollMenuImageWithKie,
+                    saveDraft: async (job, _operationId, client) => {
+                        const saved = await storeMenuImageWithKie(product, job, { model: studio.model,
+                            size: studio.size, style: studio.style, uploadOptions: { query: client } });
+                        return persistKieMenuImageResultIfCurrent(id, businessContext, req.user.username,
+                            studio.taskId || null, studio.preparedAt,
+                            normalizeMenuImageStudio({ ...studio, ...saved, taskId: null }), studio.operationId, client);
+                    } });
+                if (result.status === 'failed') {
+                    await persistKieMenuImageResultIfCurrent(id, businessContext, req.user.username,
+                        studio.taskId || null, studio.preparedAt,
+                        normalizeMenuImageStudio({ ...studio, status: 'failed', error: 'Provider reported task failure' }), studio.operationId);
+                }
+                const fresh = await getProductWithPriceRule(pool, id, businessContext);
+                const freshDraft = currentMenuAiDraftForProduct(fresh);
+                return res.json({ success: result.status !== 'failed',
+                    status: result.status === 'provider_pending' ? 'generating'
+                        : result.status === 'succeeded' ? 'ready' : result.status,
+                    draft: freshDraft, imageUrl: freshDraft.imageStudio?.imageUrl || null, product: mapProductRow(fresh) });
+            } catch (err) {
+                return res.status(err?.code === 'MENU_PAID_POLL_BUSY' ? 409 : 502).json({ success: false,
+                    status: 'generating', code: err?.code || 'MENU_PAID_RESULT_UNCERTAIN', retryable: false,
+                    error: 'Menu image result requires review', draft, product: mapProductRow(product) });
+            }
+        }
         if (studio.status === 'generating' && studio.provider === 'kie') {
             const age = Date.now() - Date.parse(studio.preparedAt || 0);
             if (!studio.taskId && age < 60000) {
@@ -2100,6 +2405,11 @@ router.post('/:id/menu-image/apply', productMenuImageReviewRateLimit, requireRol
 
         const currentDraft = currentMenuAiDraftForProduct(product);
         const imageStudio = currentDraft.imageStudio || {};
+        if (req.body?.reviewedDraft !== undefined && !menuImageReviewMatches(req.body.reviewedDraft, imageStudio)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, code: 'menu_image_review_changed',
+                error: 'Чернетка змінилася. Оновіть сторінку та перегляньте актуальне фото.' });
+        }
         if (!imageStudio.imageUrl) {
             await client.query('ROLLBACK');
             return res.status(409).json({
@@ -2186,6 +2496,11 @@ router.post('/:id/menu-image/reject', productMenuImageReviewRateLimit, requireRo
 
         const currentDraft = currentMenuAiDraftForProduct(product);
         const imageStudio = currentDraft.imageStudio || {};
+        if (req.body?.reviewedDraft !== undefined && !menuImageReviewMatches(req.body.reviewedDraft, imageStudio)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, code: 'menu_image_review_changed',
+                error: 'Чернетка змінилася. Оновіть сторінку та перегляньте актуальне фото.' });
+        }
         if (!Object.keys(imageStudio).length) {
             await client.query('ROLLBACK');
             return res.status(409).json({

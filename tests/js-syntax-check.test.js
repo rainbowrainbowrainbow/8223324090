@@ -50,3 +50,27 @@ test('syntax gate ignores root QA archives and still rejects actual and nested o
         }
     }
 });
+
+test('syntax gate reports every failing file in sorted order and succeeds after fixes', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'eventgenix-syntax-parallel-'));
+    const scripts = path.join(directory, 'scripts'), source = path.join(directory, 'source');
+    try {
+        fs.mkdirSync(scripts); fs.mkdirSync(source);
+        fs.copyFileSync(path.join(__dirname, '../scripts/check-js-syntax.js'), path.join(scripts, 'check-js-syntax.js'));
+        for (const name of ['z.js', 'a space.js', 'm.js']) fs.writeFileSync(path.join(source, name), 'const = invalid;\n');
+        const run = () => spawnSync(process.execPath, [path.join(scripts, 'check-js-syntax.js')],
+            { encoding: 'utf8', cwd: directory, windowsHide: true, timeout: 30000 });
+        let child = run(); assert.ifError(child.error); assert.equal(child.status, 1);
+        assert.deepEqual(child.stderr.split(/\r?\n/).filter(line => line.startsWith('FAIL ')),
+            ['FAIL source/a space.js', 'FAIL source/m.js', 'FAIL source/z.js']);
+        for (const name of ['z.js', 'a space.js', 'm.js']) fs.writeFileSync(path.join(source, name), 'const valid = 1;\n');
+        child = run(); assert.ifError(child.error); assert.equal(child.status, 0);
+        assert.match(child.stdout, /syntax check passed: 4 files/);
+    } finally {
+        assert.equal(path.dirname(path.resolve(directory)), path.resolve(os.tmpdir()));
+        assert.ok(path.basename(directory).startsWith('eventgenix-syntax-parallel-'));
+        for (const file of ['z.js', 'a space.js', 'm.js']) fs.unlinkSync(path.join(source, file));
+        fs.unlinkSync(path.join(scripts, 'check-js-syntax.js'));
+        fs.rmdirSync(source); fs.rmdirSync(scripts); fs.rmdirSync(directory);
+    }
+});

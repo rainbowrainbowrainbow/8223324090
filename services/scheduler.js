@@ -13,6 +13,12 @@ const { sendTelegramMessage, getConfiguredChatId, telegramRequest, scheduleAutoD
 const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr, timeToMinutes, minutesToTime } = require('./booking');
 const { sendBackupToTelegram } = require('./backup');
 const { skipSchedulerTracking } = require('./schedulerGuard');
+
+// Activation is explicitly per job; an unset or unknown name preserves legacy behavior.
+function skipNotDueIfEnabled(jobName) {
+    const enabled = String(process.env.CRM_SCHEDULER_DUE_JOBS || '').split(',').map(value => value.trim());
+    return enabled.includes(jobName) ? skipSchedulerTracking() : undefined;
+}
 const { formatAfishaBlock } = require('./templates');
 const { CLIENT_PINATA_FILLER_LABEL, isClientOwnedPinataFiller } = require('./pinataMode');
 const { createLogger } = require('../utils/logger');
@@ -1037,7 +1043,7 @@ async function checkStreakUpdates() {
         if (streaksUpdatedToday === todayStr) return;
 
         const nowTime = getKyivTimeStr();
-        if (nowTime !== '23:55') return;
+        if (nowTime !== '23:55') return skipNotDueIfEnabled('checkStreakUpdates');
 
         const dbLast = await getLastSent('streak_update');
         if (dbLast === todayStr) { streaksUpdatedToday = todayStr; return; }
@@ -1181,7 +1187,7 @@ async function checkBirthdayGreetings() {
         if (birthdaySentToday === todayStr) return;
 
         const nowTime = getKyivTimeStr();
-        if (nowTime !== '09:00') return;
+        if (nowTime !== '09:00') return skipNotDueIfEnabled('checkBirthdayGreetings');
 
         const dbLast = await getLastSent('birthday_greeting');
         if (dbLast === todayStr) { birthdaySentToday = todayStr; return; }
@@ -1241,7 +1247,7 @@ async function checkBirthdayReminders() {
         if (birthdayReminderSentToday === todayStr) return;
 
         const nowTime = getKyivTimeStr();
-        if (nowTime !== '09:30') return;
+        if (nowTime !== '09:30') return skipNotDueIfEnabled('checkBirthdayReminders');
 
         const dbLast = await getLastSent('birthday_reminder_7d');
         if (dbLast === todayStr) { birthdayReminderSentToday = todayStr; return; }
@@ -1290,7 +1296,7 @@ async function checkDormantCustomers() {
         if (dormantSentToday === todayStr) return;
 
         const nowTime = getKyivTimeStr();
-        if (nowTime !== '10:00') return;
+        if (nowTime !== '10:00') return skipNotDueIfEnabled('checkDormantCustomers');
 
         const dbLast = await getLastSent('dormant_customers');
         if (dbLast === todayStr) { dormantSentToday = todayStr; return; }
@@ -1341,7 +1347,7 @@ async function checkUpcomingBookings() {
         if (upcomingSentToday === todayStr) return;
 
         const nowTime = getKyivTimeStr();
-        if (nowTime !== '11:00') return;
+        if (nowTime !== '11:00') return skipNotDueIfEnabled('checkUpcomingBookings');
 
         const dbLast = await getLastSent('upcoming_bookings');
         if (dbLast === todayStr) { upcomingSentToday = todayStr; return; }
@@ -2051,7 +2057,7 @@ async function checkTeamPulseReminder() {
         const now = getKyivTimeStr();
         const pulseTime = '18:00'; // Could be configurable via settings
 
-        if (now !== pulseTime) return;
+        if (now !== pulseTime) return skipNotDueIfEnabled('checkTeamPulseReminder');
 
         const todayKey = `pulse_sent_${getKyivDateStr()}`;
         const sent = await getLastSent(todayKey);
@@ -2091,7 +2097,7 @@ async function checkTeamPulseReminder() {
 async function checkStaleCatalogImages() {
     try {
         const nowTime = getKyivTimeStr();
-        if (nowTime !== '03:00') return;
+        if (nowTime !== '03:00') return skipNotDueIfEnabled('checkStaleCatalogImages');
         const last = await getLastSent('stale_catalog_images');
         const today = getKyivDateStr();
         if (last === today) return;
@@ -2159,7 +2165,7 @@ async function checkStaleCatalogImages() {
 async function checkChatDailyDigest() {
     try {
         const nowTime = getKyivTimeStr();
-        if (nowTime !== '20:00') return;
+        if (nowTime !== '20:00') return skipNotDueIfEnabled('checkChatDailyDigest');
         const today = getKyivDateStr();
         const last = await getLastSent('chat_daily_digest');
         if (last === today) return;

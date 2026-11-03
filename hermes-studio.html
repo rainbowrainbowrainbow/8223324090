@@ -177,6 +177,11 @@
                         <div id="hermesStudioDetailBody" class="hermes-studio-detail-body">
                             <div class="empty-state">Оберіть job у черзі</div>
                         </div>
+                        <section class="hermes-studio-execution" aria-label="Генерація креативу" aria-busy="false">
+                            <p>Генерація створить квадратну чернетку для перегляду. Перед погодженням перевірте текст і потрібний формат.</p>
+                            <button type="button" id="hermesStudioExecuteBtn" class="btn-page-primary" disabled>Згенерувати чернетку</button>
+                            <p id="hermesStudioExecutionStatus" role="status" aria-live="polite"></p>
+                        </section>
                         <div class="hermes-studio-decision-box">
                             <textarea id="hermesStudioDecisionNotes" rows="3" maxlength="4000" placeholder="Коментар до рішення"></textarea>
                             <div class="hermes-studio-decision-actions">

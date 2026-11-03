@@ -1,6 +1,6 @@
 # Hermes Railway notification_outbox worker
 
-Status: the deployed observer uses read-only mode. Local lifecycle improvements described below have not been deployed. Do not enable delivery without a separate cutover approval.
+Status: the read-only observer lifecycle fix was deployed at `d9c0b7c81fb81b69ed7d084ff78896a0f58d6843` (deployment `7ebb9633-7b4b-4403-9b72-d4709b39d72f`). Configuration migration is prepared separately in [OUTBOX_WORKER_CONFIG_MIGRATION.md](OUTBOX_WORKER_CONFIG_MIGRATION.md) and is not active yet. Do not enable delivery without a separate cutover approval.
 
 ## Purpose
 
@@ -78,7 +78,7 @@ Live gate failures return before stats/list/source reads, so a misconfigured liv
 
 ## Loop memory and shutdown
 
-The local optimization candidate keeps only the latest result in the array returned by `runLoop()`. Every iteration is still emitted to stdout; logs remain the diagnostic history. `once: true` continues to return one result. Callers must not use the return array as an unbounded historical archive.
+The deployed optimization keeps only the latest result in the array returned by `runLoop()`. Every iteration is still emitted to stdout; logs remain the diagnostic history. `once: true` continues to return one result. Callers must not use the return array as an unbounded historical archive.
 
 SIGTERM and SIGINT wake the interval wait immediately. An in-flight iteration finishes before the loop returns; `main()` then closes its dependencies in its existing `finally` block. Loop signal listeners are removed on normal return and errors. The polling interval, JSON log format, recipient rules, batching, duplicate guard, and live gates are unchanged.
 

@@ -110,6 +110,13 @@ async function run() {
                                 (period === 'day' ? document.getElementById('timelineScroll') : document.querySelector('.day-section-content')).scrollLeft = 240;
                             }, period);
                             await waitForStableLayout(page, ['.line-header', '.mini-line-header']);
+                            const scrolled = await page.evaluate(period => {
+                                const outer = document.getElementById('timelineScroll');
+                                const el = period === 'day' ? outer : document.querySelector('.day-section-content');
+                                return { left: el.scrollLeft, width: el.clientWidth, outerWidth: outer.clientWidth };
+                            }, period);
+                            assert.ok(scrolled.left > 0, `${label}/${period}: intended time scroller did not move`);
+                            if (period === 'week') assert.ok(scrolled.width <= scrolled.outerWidth, `${label}: weekly viewport inherited daily content width`);
                             const pinned = await page.evaluate(period => {
                                 const el = document.querySelector(period === 'day' ? '.line-header' : '.mini-line-header');
                                 const r = el.getBoundingClientRect();

@@ -440,6 +440,13 @@ body.timeline-mode-park #timeScale:empty {
     display: none;
 }
 
+/* Weekly sections own their time scrollers. Do not inherit the pixel width
+   measured for yesterday's daily grid through --timeline-content-width. */
+body.timeline-dashboard-page.timeline-mode-park[data-current-schedule-view-mode="week"] #timelineLines {
+    width: 100% !important;
+    min-width: 0 !important;
+}
+
 .timeline-line:nth-child(even) {
     background: var(--gray-50);
 }

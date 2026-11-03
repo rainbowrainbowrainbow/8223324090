@@ -13,7 +13,7 @@ async function executeMenuImagePaid({ pool, businessContext, productId, provider
     const id = await reserveMenuImageOperation(pool, { businessContext, productId, provider, actor });
     let result;
     try {
-        result = await start();
+        result = await start(id);
         if (provider === 'kie') {
             if (!/^[A-Za-z0-9_-]{1,128}$/.test(String(result?.taskId || ''))) {
                 throw new Error('Provider task identity unavailable');

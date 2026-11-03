@@ -8,6 +8,7 @@ const { requireRole, authenticateToken } = require('../middleware/auth');
 const { requireAction } = require('../middleware/auth');
 const { createWriteRateLimiter } = require('../middleware/rateLimit');
 const { createLogger } = require('../utils/logger');
+const { executeMenuImagePaid, pollMenuImagePaid } = require('../services/menuImagePaidExecutor');
 const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurface');
 const { userBusinessModuleState } = require('../services/businessModuleRegistry');
 const {
@@ -587,6 +588,7 @@ function normalizeMenuImageStudio(value = {}) {
         model: cleanNullableString(raw.model, 100),
         referenceImageUrl: cleanNullableString(raw.referenceImageUrl, 2000),
         taskId: cleanNullableString(raw.taskId, 128),
+        operationId: /^[0-9a-f-]{36}$/i.test(String(raw.operationId || '')) ? String(raw.operationId) : null,
         providerCode: /^[A-Za-z0-9_-]{1,64}$/.test(String(raw.providerCode || ''))
             ? String(raw.providerCode) : null,
         storage: safeJsonObject(raw.storage || {}),
@@ -1752,7 +1754,68 @@ router.post('/menu-image/burger-blueprint', productMenuImageReviewRateLimit,
         }
     });
 
+async function handleGuardedMenuImageDraft(req, res) {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+    try {
+        const context = requireProductBusinessContext(req, res);
+        if (!context) return;
+        const product = await getProductWithPriceRule(pool, id, context);
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+        const current = currentMenuAiDraftForProduct(product);
+        // Legacy or interrupted jobs are never automatically reclaimed by age.
+        if (current.imageStudio?.status === 'generating') {
+            return res.status(409).json({ success: false, code: 'MENU_PAID_OPERATION_REQUIRES_REVIEW', retryable: false });
+        }
+        const settings = safeJsonObject(req.body?.settings || req.body || {});
+        const generator = resolveMenuImageGenerator(settings.generator);
+        const size = normalizeMenuImageSize(settings.size || current.imageStudio?.size);
+        const style = normalizeMenuImageStyle(settings.style || current.imageStudio?.style);
+        const blueprint = isBurgerMenuProduct(product) ? await readBurgerBlueprint(context) : null;
+        const referenceImageUrl = generator.provider === 'kie' && blueprint ? publicBurgerBlueprintUrl(blueprint) : null;
+        const prompt = buildMenuImagePrompt(product, { size, style, blueprint });
+        const preparedAt = new Date().toISOString();
+        let generating;
+        const execution = await executeMenuImagePaid({ pool, businessContext: context, productId: id,
+            provider: generator.provider, actor: req.user.username,
+            start: async operationId => {
+                generating = normalizeMenuImageStudio({ ...current.imageStudio, status: 'generating',
+                    source: generator.provider, size, style, prompt, preparedAt, operationId,
+                    imageUrl: null, generatedAt: null, taskId: null, provider: generator.provider,
+                    model: generator.model, referenceImageUrl: blueprint?.imageUrl || null,
+                    previousImageUrl: product.icon_url || null, error: null });
+                if (!await reserveProductMenuImageGeneration(id, context, req.user.username, generating)) {
+                    throw new Error('Product draft changed before provider invocation');
+                }
+                if (generator.provider === 'kie') return startMenuImageWithKie({ prompt, size, model: generator.model, referenceImageUrl });
+                return generateAndStoreMenuPhotoDraft(product, { size, style, prompt, uploadOptions: { query: pool } });
+            },
+            saveDraft: async image => persistKieMenuImageResultIfCurrent(id, context, req.user.username, null,
+                preparedAt, normalizeMenuImageStudio({ ...generating, ...image, status: 'ready', operationId: generating.operationId }))
+        });
+        if (execution.status === 'provider_pending') {
+            const pending = normalizeMenuImageStudio({ ...generating, taskId: execution.taskId });
+            if (!await persistKieMenuImageResultIfCurrent(id, context, req.user.username, null, preparedAt, pending)) {
+                return res.status(409).json({ success: false, code: 'MENU_PAID_OPERATION_REQUIRES_REVIEW', retryable: false });
+            }
+        }
+        const fresh = await getProductWithPriceRule(pool, id, context);
+        const draft = currentMenuAiDraftForProduct(fresh);
+        return res.status(execution.status === 'provider_pending' ? 202 : 200).json({ success: true,
+            status: execution.status === 'provider_pending' ? 'generating' : 'ready',
+            draft, imageUrl: draft.imageStudio?.imageUrl || null, product: mapProductRow(fresh) });
+    } catch (err) {
+        const status = err?.code === 'MENU_PAID_OPERATION_BUDGET_FULL' ? 429
+            : err?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' ? 502
+                : err?.code === 'menu_image_generator_invalid' ? 400 : 409;
+        return res.status(status).json({ success: false, code: err?.code || 'MENU_PAID_OPERATION_REQUIRES_REVIEW',
+            error: 'Menu image operation requires review before another attempt', retryable: false });
+    }
+}
+
 async function handleMenuImageDraftRequest(req, res) {
+    if (process.env.CRM_MENU_PAID_GUARD_ENABLED === 'true') return handleGuardedMenuImageDraft(req, res);
     const { id } = req.params;
     if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
 
@@ -1984,6 +2047,34 @@ router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), asy
         if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
         const draft = currentMenuAiDraftForProduct(product);
         const studio = draft.imageStudio || {};
+        if (studio.operationId && studio.provider === 'kie' && studio.status === 'generating') {
+            try {
+                const result = await pollMenuImagePaid({ pool, operationId: studio.operationId,
+                    businessContext, productId: id, poll: pollMenuImageWithKie,
+                    saveDraft: async job => {
+                        const saved = await storeMenuImageWithKie(product, job, { model: studio.model,
+                            size: studio.size, style: studio.style, uploadOptions: { query: pool } });
+                        return persistKieMenuImageResultIfCurrent(id, businessContext, req.user.username,
+                            studio.taskId || null, studio.preparedAt,
+                            normalizeMenuImageStudio({ ...studio, ...saved, taskId: null }));
+                    } });
+                if (result.status === 'failed') {
+                    await persistKieMenuImageResultIfCurrent(id, businessContext, req.user.username,
+                        studio.taskId || null, studio.preparedAt,
+                        normalizeMenuImageStudio({ ...studio, status: 'failed', error: 'Provider reported task failure' }));
+                }
+                const fresh = await getProductWithPriceRule(pool, id, businessContext);
+                const freshDraft = currentMenuAiDraftForProduct(fresh);
+                return res.json({ success: result.status !== 'failed',
+                    status: result.status === 'provider_pending' ? 'generating'
+                        : result.status === 'succeeded' ? 'ready' : result.status,
+                    draft: freshDraft, imageUrl: freshDraft.imageStudio?.imageUrl || null, product: mapProductRow(fresh) });
+            } catch (err) {
+                return res.status(err?.code === 'MENU_PAID_POLL_BUSY' ? 409 : 502).json({ success: false,
+                    status: 'generating', code: err?.code || 'MENU_PAID_RESULT_UNCERTAIN', retryable: false,
+                    error: 'Menu image result requires review', draft, product: mapProductRow(product) });
+            }
+        }
         if (studio.status === 'generating' && studio.provider === 'kie') {
             const age = Date.now() - Date.parse(studio.preparedAt || 0);
             if (!studio.taskId && age < 60000) {

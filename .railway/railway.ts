@@ -19,7 +19,8 @@ export default defineRailway((ctx) => {
             build: { builder: "NIXPACKS" },
             deploy: {
                 startCommand: "npm run hermes:outbox:worker -- --mode=read_only_loop --include-stats=1 --batch-enabled=1 --batch-owner-ids=4 --active-owner-ids=4",
-                restartPolicyType: "ON_FAILURE",
+                // ON_FAILURE is Railway's existing default; its serialized
+                // config omits that value. Keep the default and explicit cap.
                 restartPolicyMaxRetries: 3,
             },
         })],

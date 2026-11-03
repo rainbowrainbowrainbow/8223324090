@@ -16,6 +16,10 @@ const CONFIG_FILES = new Set([
     'docs/OUTBOX_WORKER_CONFIG_MIGRATION.md'
 ]);
 const CONFIG_SHA256 = '2b827430bf38645024fb01385c2807f0a63e195cf7df6056f72e6ebbfd416f3c';
+const NORMALIZATION_PARENT = '24cf9503549c40d58672506801f9828f5c94ff28';
+const NORMALIZATION_BRANCH = 'codex/outbox-observer-cost-config-normalize-20261103';
+const NORMALIZATION_SHA256 = 'd62586a676c62319850b80ac90203781e831c1119303a57b9d7d859b6772012d';
+const NORMALIZATION_FILES = new Set(['.railway/railway.ts', 'scripts/check-outbox-observer-release.js']);
 const ALLOWED_FILES = new Set([
     '.github/workflows/ci.yml',
     'docs/hermes-railway-outbox-worker.md',
@@ -38,6 +42,25 @@ function assertConfigScope(files) {
     for (const file of files) assert(CONFIG_FILES.has(file), `Outside config migration scope: ${file}`);
 }
 
+function assertNormalizationScope(files) {
+    assert(files.length > 0, 'Normalization candidate has no changes');
+    for (const file of files) assert(NORMALIZATION_FILES.has(file), `Outside config normalization scope: ${file}`);
+}
+
+function checkNormalization({ worktree }) {
+    git('cat-file', '-e', `${NORMALIZATION_PARENT}^{commit}`);
+    const tracked = git('diff', '--name-only', NORMALIZATION_PARENT, ...(worktree ? [] : ['HEAD']));
+    const files = [...new Set((tracked + (worktree ? git('ls-files', '--others', '--exclude-standard') : '')).split(/\r?\n/).filter(Boolean))];
+    assertNormalizationScope(files);
+    assert.equal(fs.existsSync(path.join(ROOT, 'railway.json')), false);
+    const digest = require('node:crypto').createHash('sha256').update(read('.railway/railway.ts')).digest('hex');
+    assert.equal(digest, NORMALIZATION_SHA256, 'Unreviewed normalization configuration');
+    for (const file of ['scripts/hermes-notification-outbox-worker.js', 'package.json', 'package-lock.json', '.github/workflows/ci.yml']) {
+        assert.equal(read(file), git('show', `${NORMALIZATION_PARENT}:${file}`).replace(/\r\n/g, '\n'), `Frozen worker/CI file changed: ${file}`);
+    }
+    return { base: NORMALIZATION_PARENT, files, normalization: true, runtimeAndWorkflowUnchanged: true, configSha256: digest };
+}
+
 function checkConfigMigration({ worktree }) {
     git('cat-file', '-e', `${CONFIG_PARENT}^{commit}`);
     const tracked = git('diff', '--name-only', CONFIG_PARENT, ...(worktree ? [] : ['HEAD']));
@@ -55,6 +78,7 @@ function checkConfigMigration({ worktree }) {
 function check({ worktree = false } = {}) {
     const branch = process.env.GITHUB_REF || git('branch', '--show-current').trim();
     assert(/^(refs\/heads\/)?codex\/outbox-observer-cost-/.test(branch), 'Not an isolated observer release branch');
+    if (branch.replace(/^refs\/heads\//, '') === NORMALIZATION_BRANCH) return checkNormalization({ worktree });
     if (branch.replace(/^refs\/heads\//, '') === CONFIG_BRANCH) return checkConfigMigration({ worktree });
     git('cat-file', '-e', `${BASE}^{commit}`);
     const tracked = git('diff', '--name-only', BASE, ...(worktree ? [] : ['HEAD']));
@@ -92,4 +116,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { assertScope, assertConfigScope, check };
+module.exports = { assertScope, assertConfigScope, assertNormalizationScope, check };

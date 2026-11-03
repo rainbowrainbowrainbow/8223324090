@@ -141,7 +141,8 @@
    stay readable instead of being cut by the historical compact layers above. */
 @media (max-width: 768px) {
   :root {
-    --eg-sidebar-mobile-w: min(100vw, 336px);
+    /* Preserve a visible backdrop so narrow-phone navigation can be dismissed. */
+    --eg-sidebar-mobile-w: min(92vw, 336px);
   }
 
   .sidebar-nav,

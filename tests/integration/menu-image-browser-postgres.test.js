@@ -55,7 +55,8 @@ test('browser generates one guarded menu draft and applies only after confirmati
         const fixtureSource = source.slice(source.indexOf("const fs ="), source.indexOf('let server, baseUrl;'));
         const fixture = new Function('require', '__dirname', `${fixtureSource}\nreturn { fixtureHtml, bootstrap };`)(require, path.join(root, 'tests/browser'));
         const app = express(); app.use(express.json());
-        app.use((req, _res, next) => { req.user = { id: 1, username: 'fixture', role: req.get('x-fixture-role') || 'creator', defaultBusinessContext: 'event_genix' }; next(); });
+        app.use((req, _res, next) => { const role = req.get('x-fixture-role') || 'creator';
+            req.user = { id: 1, username: 'fixture', role, platformRole: role, defaultBusinessContext: 'event_genix' }; next(); });
         for (const [method, route] of [['post', '/:id/menu-image/draft'], ['get', '/:id/menu-image/status'],
             ['get', '/:id/menu-image/operation'], ['post', '/:id/menu-image/operation/reconcile'],
             ['post', '/:id/menu-image/apply'], ['post', '/:id/menu-image/reject']]) {

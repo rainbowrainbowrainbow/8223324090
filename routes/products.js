@@ -2093,6 +2093,9 @@ router.get('/:id/menu-image/operation', requireRole(...PRODUCT_MUTATION_ROLES), 
 });
 
 router.post('/:id/menu-image/operation/reconcile', productMenuImageReviewRateLimit, requireRole('creator'), async (req, res) => {
+    // Platform authority must come from the freshly loaded account, not a
+    // supplementary business role or a role asserted in an old token.
+    if (req.user?.platformRole !== 'creator') return res.status(403).json({ success: false, error: 'Insufficient permissions' });
     const { id } = req.params;
     if (!id || id.length > 80) return res.status(400).json({ success: false, code: 'MENU_PAID_REVIEW_CONFIRMATION_REQUIRED' });
     try {

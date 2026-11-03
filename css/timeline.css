@@ -657,7 +657,7 @@ body.timeline-dashboard-page .afisha-timeline-line {
 }
 
 body.timeline-dashboard-page .afisha-timeline-line .afisha-line-header {
-    background: rgba(139, 92, 246, 0.07) !important;
+    background: var(--timeline-sticky-header-bg, rgba(139, 92, 246, 0.07)) !important;
     border-left-color: rgba(139, 92, 246, 0.48) !important;
     cursor: default;
 }

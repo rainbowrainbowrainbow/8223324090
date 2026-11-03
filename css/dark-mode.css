@@ -5232,11 +5232,11 @@ html[data-theme="dark"] body.timeline-dashboard-page .timeline-line:nth-child(ev
 
 body.timeline-dashboard-page .line-header,
 body.timeline-dashboard-page .timeline-line:nth-child(even) .line-header {
-    background: rgba(241, 245, 249, 0.86) !important;
+    background: var(--timeline-sticky-header-bg, rgba(241, 245, 249, 0.86)) !important;
 }
 
 body.timeline-dashboard-page .line-header:hover {
-    background: rgba(226, 232, 240, 0.88) !important;
+    background: var(--timeline-sticky-header-bg, rgba(226, 232, 240, 0.88)) !important;
 }
 
 body.timeline-dashboard-page.dark-mode .line-header,
@@ -5245,13 +5245,18 @@ html[data-theme="dark"] body.timeline-dashboard-page .line-header,
 body.timeline-dashboard-page.dark-mode .timeline-line:nth-child(even) .line-header,
 body.dark-mode.timeline-dashboard-page .timeline-line:nth-child(even) .line-header,
 html[data-theme="dark"] body.timeline-dashboard-page .timeline-line:nth-child(even) .line-header {
-    background: rgba(30, 41, 59, 0.62) !important;
+    background: var(--timeline-sticky-header-bg, rgba(30, 41, 59, 0.62)) !important;
 }
 
 body.timeline-dashboard-page.dark-mode .line-header:hover,
 body.dark-mode.timeline-dashboard-page .line-header:hover,
 html[data-theme="dark"] body.timeline-dashboard-page .line-header:hover {
-    background: rgba(51, 65, 85, 0.72) !important;
+    background: var(--timeline-sticky-header-bg, rgba(51, 65, 85, 0.72)) !important;
+}
+
+/* Scrolling Park events must not show through their pinned resource labels. */
+body.timeline-dashboard-page.timeline-mode-park {
+    --timeline-sticky-header-bg: var(--eg-panel-bg, var(--white));
 }
 
 body.timeline-dashboard-page .grid-cell:hover {

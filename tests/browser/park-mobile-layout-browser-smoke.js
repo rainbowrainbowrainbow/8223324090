@@ -113,9 +113,12 @@ async function run() {
                             const pinned = await page.evaluate(period => {
                                 const el = document.querySelector(period === 'day' ? '.line-header' : '.mini-line-header');
                                 const r = el.getBoundingClientRect();
-                                return r.x >= 0 && el.contains(document.elementFromPoint(r.x + r.width - 8, r.y + r.height / 2));
+                                const style = getComputedStyle(el);
+                                const alpha = style.backgroundColor.startsWith('rgba(') ? Number(style.backgroundColor.split(',').at(-1).replace(')', '')) : 1;
+                                return r.x >= 0 && alpha === 1 && style.backgroundColor !== 'transparent'
+                                    && el.contains(document.elementFromPoint(r.x + r.width - 8, r.y + r.height / 2));
                             }, period);
-                            assert.ok(pinned, `${label}/${period}: resource label is lost beneath scrolled events`);
+                            assert.ok(pinned, `${label}/${period}: resource label is lost or translucent over scrolled events`);
                             await page.screenshot({ path: path.join(output, `${label}-${period}-scrolled.png`) });
                         }
                         assert.deepEqual(errors, []);

@@ -31,3 +31,30 @@ for(const [name,time] of cases){test(`${name}: per-job opt-in leaves day unclaim
   try {for(const enabled of ['', 'unrelatedJob']){now=OriginalDate.parse('2026-11-02T22:01:00Z');const job=makeJob(name,enabled),db=fakeDb(),wrapped=guardScheduler(name,job.run,{dedup:'daily',dbPool:db});await wrapped();assert.equal(db.row.result,'success');now=OriginalDate.parse('2026-11-03T'+time+':00+02:00');await wrapped();assert.deepEqual(job.counts(),{calls:1,reads:0})}}
   finally{global.Date=OriginalDate}
  });}
+
+test('Kyiv time gate handles seasonal offsets and repeated autumn hour without repeating the job', async () => {
+    const previous = process.env.CRM_SCHEDULER_DUE_JOBS;
+    process.env.CRM_SCHEDULER_DUE_JOBS = 'checkStaleCatalogImages';
+    global.Date = class extends OriginalDate { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } };
+    try {
+        let calls = 0;
+        const autumnDb = fakeDb();
+        const autumn = guardScheduler('checkStaleCatalogImages', async () => { calls++; }, { dedup: 'daily', dbPool: autumnDb });
+        now = OriginalDate.parse('2026-10-25T00:00:00Z'); await autumn();
+        now = OriginalDate.parse('2026-10-25T01:00:00Z'); await autumn();
+        assert.equal(calls, 1);
+        const springDb = fakeDb();
+        const spring = guardScheduler('checkStaleCatalogImages', async () => { calls++; }, { dedup: 'daily', dbPool: springDb });
+        now = OriginalDate.parse('2026-03-29T00:59:00Z'); await spring();
+        now = OriginalDate.parse('2026-03-29T01:00:00Z'); await spring();
+        assert.equal(calls, 1);
+        assert.equal(springDb.row, undefined, '03:00 Kyiv is absent on the spring clock change; no catch-up is implied');
+        const summerDb = fakeDb();
+        const summer = guardScheduler('checkStaleCatalogImages', async () => { calls++; }, { dedup: 'daily', dbPool: summerDb });
+        now = OriginalDate.parse('2026-07-01T00:00:00Z'); await summer();
+        assert.equal(calls, 2);
+    } finally {
+        global.Date = OriginalDate;
+        if (previous === undefined) delete process.env.CRM_SCHEDULER_DUE_JOBS; else process.env.CRM_SCHEDULER_DUE_JOBS = previous;
+    }
+});

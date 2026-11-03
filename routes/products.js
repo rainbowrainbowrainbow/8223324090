@@ -11,6 +11,7 @@ const { createLogger } = require('../utils/logger');
 const { executeMenuImagePaid, pollMenuImagePaid } = require('../services/menuImagePaidExecutor');
 const { withLegacyMenuGuard, activateMenuGuard } = require('../services/menuImageGuardGate');
 const { withProviderExecution, assertPaidCapacity } = require('../services/crmProviderExecution');
+const { reconcileMenuImagePaid } = require('../services/menuImagePaidReconciliation');
 const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurface');
 const { userBusinessModuleState } = require('../services/businessModuleRegistry');
 const {
@@ -2088,6 +2089,30 @@ router.get('/:id/menu-image/operation', requireRole(...PRODUCT_MUTATION_ROLES), 
         log.error('Read menu paid operation error', err);
         return res.status(503).json({ success: false, code: 'MENU_PAID_STATUS_UNAVAILABLE',
             error: 'Menu paid operation status is unavailable' });
+    }
+});
+
+router.post('/:id/menu-image/operation/reconcile', productMenuImageReviewRateLimit, requireRole('creator'), async (req, res) => {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, code: 'MENU_PAID_REVIEW_CONFIRMATION_REQUIRED' });
+    try {
+        const context = requireProductBusinessContext(req, res);
+        if (!context) return;
+        const product = await getProductWithPriceRule(pool, id, context);
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+        const result = await reconcileMenuImagePaid({ pool, operationId: req.body?.operationId,
+            businessContext: context, productId: id, actor: req.user?.username,
+            reviewNote: req.body?.reviewNote, providerReviewed: req.body?.providerReviewed,
+            acceptsPossibleCharge: req.body?.acceptsPossibleCharge });
+        const fresh = await getProductWithPriceRule(pool, id, context);
+        return res.json({ success: true, operation: result, product: mapProductRow(fresh) });
+    } catch (err) {
+        const allowed = new Set(['MENU_PAID_RECONCILIATION_DISABLED', 'MENU_PAID_REVIEW_CONFIRMATION_REQUIRED',
+            'MENU_PAID_OPERATION_NOT_FOUND', 'MENU_PAID_RECONCILIATION_NOT_READY', 'CRM_PROVIDER_BUSY']);
+        const code = allowed.has(err?.code) ? err.code : 'MENU_PAID_RECONCILIATION_FAILED';
+        return res.status(allowed.has(code) ? (err.statusCode || 409) : 500).json({ success: false, code,
+            error: 'Menu operation could not be reconciled' });
     }
 });
 

@@ -20,6 +20,7 @@ test('browser generates one guarded menu draft and applies only after confirmati
     const db = require('../../db');
     const originalQuery = db.pool.query, originalConnect = db.pool.connect, originalFetch = global.fetch;
     const originalKey = process.env.KIE_API_KEY, originalFlag = process.env.CRM_MENU_PAID_GUARD_ENABLED;
+    const originalReviewFlag = process.env.CRM_MENU_RECONCILIATION_ENABLED;
     const storage = require('../../services/imageStorage'), originalUpload = storage.uploadFromUrl;
     let pool, server, browser, created = false;
     try {
@@ -38,6 +39,7 @@ test('browser generates one guarded menu draft and applies only after confirmati
         storage.uploadFromUrl = async () => '/images/menu-draft.svg';
         process.env.KIE_API_KEY = 'synthetic-test-key';
         process.env.CRM_MENU_PAID_GUARD_ENABLED = 'true';
+        process.env.CRM_MENU_RECONCILIATION_ENABLED = 'true';
         let starts = 0, polls = 0, failStart = false;
         global.fetch = async (_url, options) => {
             if (options.method === 'POST') {
@@ -53,9 +55,10 @@ test('browser generates one guarded menu draft and applies only after confirmati
         const fixtureSource = source.slice(source.indexOf("const fs ="), source.indexOf('let server, baseUrl;'));
         const fixture = new Function('require', '__dirname', `${fixtureSource}\nreturn { fixtureHtml, bootstrap };`)(require, path.join(root, 'tests/browser'));
         const app = express(); app.use(express.json());
-        app.use((req, _res, next) => { req.user = { id: 1, username: 'fixture', role: 'creator', defaultBusinessContext: 'event_genix' }; next(); });
+        app.use((req, _res, next) => { req.user = { id: 1, username: 'fixture', role: req.get('x-fixture-role') || 'creator', defaultBusinessContext: 'event_genix' }; next(); });
         for (const [method, route] of [['post', '/:id/menu-image/draft'], ['get', '/:id/menu-image/status'],
-            ['get', '/:id/menu-image/operation'], ['post', '/:id/menu-image/apply'], ['post', '/:id/menu-image/reject']]) {
+            ['get', '/:id/menu-image/operation'], ['post', '/:id/menu-image/operation/reconcile'],
+            ['post', '/:id/menu-image/apply'], ['post', '/:id/menu-image/reject']]) {
             const layer = router.stack.find(x => x.route?.path === route && x.route.methods[method]).route;
             app[method](`/api/products${route}`, ...layer.stack.map(x => x.handle));
         }
@@ -74,6 +77,7 @@ test('browser generates one guarded menu draft and applies only after confirmati
             window.apiApplyProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
             window.apiRejectProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
             window.apiGetProductMenuImageOperation=async(id,options)=>await (await fetch('/api/products/'+id+'/menu-image/operation?businessContext='+encodeURIComponent(options.businessContext))).json();
+            window.apiReconcileProductMenuImageOperation=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/operation/reconcile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
         `));
         for (const [name, color] of [['menu-fixture.svg', '#4c8a65'], ['menu-draft.svg', '#c57c36']]) {
             app.get(`/images/${name}`, (_req, res) => res.type('svg').send(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="${color}"/><circle cx="200" cy="150" r="100" fill="white"/></svg>`));
@@ -138,6 +142,21 @@ test('browser generates one guarded menu draft and applies only after confirmati
         assert.equal(row.ai_card_draft.imageStudio.outcomeUncertain, true);
         assert.equal(row.icon_url, '/images/menu-draft.svg');
         await page.screenshot({ path: path.join(evidence, 'mobile-uncertain.png'), fullPage: true });
+        const operationId = row.ai_card_draft.imageStudio.operationId;
+        await pool.query("UPDATE menu_image_paid_operations SET created_at=now()-interval '11 minutes' WHERE operation_id=$1", [operationId]);
+        const denied = await page.evaluate(async operationId => (await fetch('/api/products/fixture-menu-full/menu-image/operation/reconcile', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-fixture-role': 'manager' },
+            body: JSON.stringify({ businessContext: 'event_genix', operationId, reviewNote: 'Checked provider account and reviewed the uncertain charge',
+                providerReviewed: true, acceptsPossibleCharge: true }) })).status, operationId);
+        assert.equal(denied, 403);
+        assert.equal((await pool.query('SELECT count(*)::int AS count FROM menu_image_paid_operation_reviews')).rows[0].count, 0);
+        page.on('dialog', dialog => dialog.type() === 'prompt'
+            ? dialog.accept('Checked provider account and reviewed the uncertain charge') : dialog.accept());
+        await page.locator('[data-menu-image-action="review-paid-operation"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-menu-image-action="generate"]')?.disabled === false, null, { timeout: 10000 });
+        assert.equal((await pool.query('SELECT count(*)::int AS count FROM menu_image_paid_operation_reviews')).rows[0].count, 1);
+        assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations WHERE operation_id=$1', [operationId])).rows[0].status, 'reviewed_unknown');
+        assert.equal(starts, 3, 'manual reconciliation must not call provider');
         assert.deepEqual(errors, []);
     } finally {
         if (browser) await browser.close();
@@ -145,6 +164,7 @@ test('browser generates one guarded menu draft and applies only after confirmati
         db.pool.query = originalQuery; db.pool.connect = originalConnect; global.fetch = originalFetch; storage.uploadFromUrl = originalUpload;
         if (originalKey === undefined) delete process.env.KIE_API_KEY; else process.env.KIE_API_KEY = originalKey;
         if (originalFlag === undefined) delete process.env.CRM_MENU_PAID_GUARD_ENABLED; else process.env.CRM_MENU_PAID_GUARD_ENABLED = originalFlag;
+        if (originalReviewFlag === undefined) delete process.env.CRM_MENU_RECONCILIATION_ENABLED; else process.env.CRM_MENU_RECONCILIATION_ENABLED = originalReviewFlag;
         if (pool) await pool.end(); if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); await db.pool.end();
     }
 });

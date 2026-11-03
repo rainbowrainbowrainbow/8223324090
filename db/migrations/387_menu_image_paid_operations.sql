@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS menu_image_paid_operations (
     business_context TEXT NOT NULL,
     product_id TEXT NOT NULL,
     provider TEXT NOT NULL CHECK (provider IN ('openai', 'kie')),
-    status TEXT NOT NULL CHECK (status IN ('reserved', 'provider_pending', 'unknown', 'succeeded', 'failed')),
+    status TEXT NOT NULL CHECK (status IN ('reserved', 'provider_pending', 'unknown', 'succeeded', 'failed', 'reviewed_unknown')),
     provider_task_id TEXT,
     created_by TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -31,3 +31,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS menu_image_paid_operations_active_product
 CREATE INDEX IF NOT EXISTS menu_image_paid_operations_active_budget
     ON menu_image_paid_operations (status)
     WHERE status IN ('reserved', 'provider_pending', 'unknown');
+
+CREATE TABLE IF NOT EXISTS menu_image_paid_operation_reviews (
+    operation_id UUID PRIMARY KEY REFERENCES menu_image_paid_operations(operation_id),
+    reviewed_by TEXT NOT NULL CHECK (length(reviewed_by) BETWEEN 1 AND 100),
+    review_note TEXT NOT NULL CHECK (length(review_note) BETWEEN 20 AND 500),
+    previous_status TEXT NOT NULL CHECK (previous_status IN ('reserved', 'unknown')),
+    reviewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

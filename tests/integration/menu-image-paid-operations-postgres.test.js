@@ -11,6 +11,7 @@ const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { reserveMenuImageOperation: reserve, transitionMenuImageOperation: transition } = require('../../services/menuImagePaidOperations');
 const { executeMenuImagePaid, pollMenuImagePaid } = require('../../services/menuImagePaidExecutor');
 const { withProviderExecution, assertPaidCapacity } = require('../../services/crmProviderExecution');
+const { reconcileMenuImagePaid } = require('../../services/menuImagePaidReconciliation');
 const { pollMenuImageWithKie } = require('../../services/menuPhotoGeneration');
 
 test('paid menu operations survive a pool restart and serialize concurrent budget claims', {
@@ -195,5 +196,56 @@ test('process killed after provider start leaves reservation blocking another pa
         if (pool) await pool.end();
         if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`);
         await admin.end();
+    }
+});
+
+test('explicit reviewed reconciliation is atomic, scoped and never submits a provider request', {
+    skip: process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER !== 'true', timeout: 30000
+}, async () => {
+    const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
+    assert.equal(target.isLocal, true);
+    const schema = `menu_paid_test_${randomBytes(8).toString('hex')}`;
+    const common = { connectionString: target.url.toString(), ssl: false };
+    const admin = new Pool(common);
+    let pool, created = false;
+    try {
+        await admin.query(`CREATE SCHEMA ${schema}`); created = true;
+        pool = new Pool({ ...common, options: `-c search_path=${schema}`, max: 5 });
+        await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/387_menu_image_paid_operations.sql'), 'utf8'));
+        await pool.query('CREATE TABLE products (id text PRIMARY KEY, business_context text, ai_card_draft jsonb, updated_at timestamptz, updated_by text)');
+        const id = await reserve(pool, { businessContext: 'fixture', productId: 'dish', provider: 'openai', actor: 'fixture' });
+        await pool.query('INSERT INTO products VALUES ($1,$2,$3,now(),$4)', ['dish', 'fixture',
+            JSON.stringify({ imageStudio: { status: 'generating', operationId: id, outcomeUncertain: true } }), 'fixture']);
+        const input = { pool, env: { CRM_MENU_RECONCILIATION_ENABLED: 'true' }, operationId: id,
+            businessContext: 'fixture', productId: 'dish', actor: 'reviewer',
+            reviewNote: 'Checked provider account and reviewed the uncertain charge', providerReviewed: true, acceptsPossibleCharge: true };
+        await assert.rejects(reconcileMenuImagePaid({ ...input, env: {} }), { code: 'MENU_PAID_RECONCILIATION_DISABLED' });
+        await assert.rejects(reconcileMenuImagePaid({ ...input, acceptsPossibleCharge: false }), { code: 'MENU_PAID_REVIEW_CONFIRMATION_REQUIRED' });
+        await assert.rejects(reconcileMenuImagePaid({ ...input, businessContext: 'other' }), { code: 'MENU_PAID_OPERATION_NOT_FOUND' });
+        await assert.rejects(reconcileMenuImagePaid(input), { code: 'MENU_PAID_RECONCILIATION_NOT_READY' });
+        await pool.query("UPDATE menu_image_paid_operations SET created_at=now()-interval '11 minutes' WHERE operation_id=$1", [id]);
+        const decisions = await Promise.allSettled([reconcileMenuImagePaid(input), reconcileMenuImagePaid(input)]);
+        assert.equal(decisions.filter(x => x.status === 'fulfilled').length, 1);
+        assert.equal(decisions.filter(x => x.status === 'rejected').length, 1);
+        assert.equal((await pool.query('SELECT count(*)::int AS count FROM menu_image_paid_operation_reviews')).rows[0].count, 1);
+        const audit = (await pool.query('SELECT reviewed_by, review_note, previous_status FROM menu_image_paid_operation_reviews WHERE operation_id=$1', [id])).rows[0];
+        assert.equal(audit.reviewed_by, 'reviewer');
+        assert.equal(audit.review_note, input.reviewNote);
+        assert.equal(audit.previous_status, 'reserved');
+        assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations WHERE operation_id=$1', [id])).rows[0].status, 'reviewed_unknown');
+        assert.equal((await pool.query("SELECT ai_card_draft #>> '{imageStudio,status}' AS status FROM products WHERE id='dish'")).rows[0].status, 'failed');
+        const second = await reserve(pool, { businessContext: 'fixture', productId: 'dish', provider: 'kie', actor: 'fixture' });
+        await transition(pool, { id: second, businessContext: 'fixture', from: 'reserved', to: 'provider_pending', providerTaskId: 'known-task' });
+        await pool.query("UPDATE menu_image_paid_operations SET created_at=now()-interval '11 minutes' WHERE operation_id=$1", [second]);
+        await assert.rejects(reconcileMenuImagePaid({ ...input, operationId: second }), { code: 'MENU_PAID_RECONCILIATION_NOT_READY' });
+        const detached = await reserve(pool, { businessContext: 'fixture', productId: 'manual-dish', provider: 'openai', actor: 'fixture' });
+        await pool.query('INSERT INTO products VALUES ($1,$2,$3,now(),$4)', ['manual-dish', 'fixture',
+            JSON.stringify({ imageStudio: { status: 'ready', imageUrl: '/manual.png' } }), 'fixture']);
+        await pool.query("UPDATE menu_image_paid_operations SET created_at=now()-interval '11 minutes' WHERE operation_id=$1", [detached]);
+        const reviewed = await reconcileMenuImagePaid({ ...input, productId: 'manual-dish', operationId: detached });
+        assert.equal(reviewed.draftUpdated, false);
+        assert.equal((await pool.query("SELECT ai_card_draft #>> '{imageStudio,imageUrl}' AS image FROM products WHERE id='manual-dish'")).rows[0].image, '/manual.png');
+    } finally {
+        if (pool) await pool.end(); if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end();
     }
 });

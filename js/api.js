@@ -3785,6 +3785,18 @@ async function apiGetProductMenuImageOperation(id, options = {}) {
     } catch { return { success: false }; }
 }
 
+async function apiReconcileProductMenuImageOperation(id, payload = {}) {
+    try {
+        if (!guardCrmBusinessWrite('звірити генерацію фото меню')) return { success: false };
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/operation/reconcile`, {
+            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(payload)
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        return response.ok ? body : { success: false, code: body.code || null };
+    } catch { return { success: false }; }
+}
+
 async function apiGenerateProductMenuImage(id, payload = {}) {
     try {
         if (!guardCrmBusinessWrite('генерувати фото меню')) {

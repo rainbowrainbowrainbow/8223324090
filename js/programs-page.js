@@ -2010,11 +2010,39 @@ async function inspectKitchenMenuPaidOperation(productId, trigger) {
         if (!result.operation) { output.textContent = 'Незавершених захищених генерацій для цієї страви не знайдено.'; return; }
         const task = result.operation.taskId ? ` ID завдання: ${result.operation.taskId}.` : '';
         output.textContent = `Є незавершена генерація (${result.operation.provider}).${task} Не запускайте нову без перевірки; зверніться до адміністратора.`;
+        if (typeof getUserRole === 'function' && getUserRole() === 'creator' && !result.operation.taskId
+            && ['reserved', 'unknown'].includes(result.operation.status)) {
+            const review = document.createElement('button');
+            review.type = 'button'; review.className = 'btn-page-secondary';
+            review.dataset.menuImageAction = 'review-paid-operation';
+            review.textContent = 'Зафіксувати звірку';
+            review.addEventListener('click', () => reconcileKitchenMenuPaidOperation(productId, result.operation.operationId));
+            output.append(' ', review);
+        }
     } catch {
         if (panel.isConnected && businessContext === getProductApiBusinessContext()) {
             output.textContent = 'Не вдалося перевірити стан. Нову генерацію не запущено.';
         }
     } finally { if (trigger.isConnected) trigger.disabled = false; }
+}
+
+async function reconcileKitchenMenuPaidOperation(productId, operationId) {
+    const businessContext = getProductApiBusinessContext();
+    if (!guardProductWrite('звірити генерацію фото меню') || typeof apiReconcileProductMenuImageOperation !== 'function') return;
+    const note = window.prompt('Опишіть, як перевірили операцію у провайдера (щонайменше 20 символів). Не вказуйте ключі чи паролі.');
+    if (!note || note.trim().length < 20) return;
+    if (!window.confirm('Підтверджуєте, що перевірили операцію у провайдера і розумієте: кошти могли бути списані? Це лише фіксує звірку; нову генерацію не буде запущено.')) return;
+    const result = await apiReconcileProductMenuImageOperation(productId, { businessContext, operationId,
+        reviewNote: note.trim(), providerReviewed: true, acceptsPossibleCharge: true });
+    if (businessContext !== getProductApiBusinessContext()) return;
+    if (!result?.success) {
+        showNotification('Не вдалося зафіксувати звірку. Перевірте доступ і стан операції; нову генерацію не запущено.', 'error');
+        return;
+    }
+    if (result.product && String(result.product.id) === String(productId)) updateProductInState(result.product);
+    clearMenuImageGenerationFeedback(businessContext, productId);
+    refreshProductCard(productId, businessContext);
+    showNotification('Звірку записано. Нову генерацію не запущено.', 'success');
 }
 
 async function checkKitchenMenuImagePaidStatus(productId) {

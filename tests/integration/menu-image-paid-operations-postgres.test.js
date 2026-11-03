@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { randomBytes } = require('node:crypto');
+const { fork } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
@@ -144,6 +145,47 @@ for (const failure of ['image-storage', 'database-after-provider']) test(`paid p
         await assert.rejects(executeMenuImagePaid({ ...request, pool }), { code: 'MENU_PAID_OPERATION_REQUIRES_REVIEW' });
         assert.equal(calls, 1);
     } finally {
+        if (pool) await pool.end();
+        if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`);
+        await admin.end();
+    }
+});
+
+test('process killed after provider start leaves reservation blocking another paid request', {
+    skip: process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER !== 'true', timeout: 30000
+}, async () => {
+    const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
+    assert.equal(target.isLocal, true);
+    const schema = `menu_paid_test_${randomBytes(8).toString('hex')}`;
+    const common = { connectionString: target.url.toString(), ssl: false };
+    const admin = new Pool(common);
+    let pool, worker, created = false;
+    try {
+        await admin.query(`CREATE SCHEMA ${schema}`); created = true;
+        pool = new Pool({ ...common, options: `-c search_path=${schema}` });
+        await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/387_menu_image_paid_operations.sql'), 'utf8'));
+        worker = fork(path.join(__dirname, '../fixtures/menu-paid-kill-worker.cjs'), [], {
+            env: { ...process.env, MENU_PAID_FIXTURE_SCHEMA: schema }, stdio: ['ignore', 'ignore', 'pipe', 'ipc']
+        });
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Synthetic provider was not started')), 10000);
+            worker.once('message', msg => { clearTimeout(timeout); msg?.state === 'provider-started' ? resolve() : reject(new Error('Unexpected worker message')); });
+            worker.once('error', err => { clearTimeout(timeout); reject(err); });
+            worker.once('exit', () => { clearTimeout(timeout); reject(new Error('Worker exited before provider start')); });
+        });
+        const exited = new Promise(resolve => worker.once('exit', resolve));
+        worker.kill();
+        await exited;
+        worker = null;
+        const record = await pool.query('SELECT status FROM menu_image_paid_operations WHERE product_id=$1', ['interrupted']);
+        assert.equal(record.rows[0].status, 'reserved');
+        let duplicateCalls = 0;
+        await assert.rejects(executeMenuImagePaid({ pool, businessContext: 'fixture', productId: 'interrupted', provider: 'openai',
+            actor: 'fixture', start: async () => { duplicateCalls++; }, saveDraft: async () => true }),
+        { code: 'MENU_PAID_OPERATION_REQUIRES_REVIEW' });
+        assert.equal(duplicateCalls, 0);
+    } finally {
+        if (worker && worker.exitCode === null) worker.kill();
         if (pool) await pool.end();
         if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`);
         await admin.end();

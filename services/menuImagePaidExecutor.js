@@ -2,8 +2,9 @@
 
 const { reserveMenuImageOperation, transitionMenuImageOperation } = require('./menuImagePaidOperations');
 
-// This executor is not yet wired to the menu routes. A reservation is committed
-// before any provider call, so a crash never makes an uncertain call retryable.
+// Guarded menu routes use this executor only when their feature flag is enabled.
+// A reservation is committed before any provider call, so a crash never makes
+// an uncertain call retryable.
 // For OpenAI, saveDraft must durably save the result before the slot is released.
 // KIE returns a durable task ID and retains its slot until a later status check.
 async function executeMenuImagePaid({ pool, businessContext, productId, provider, actor, start, saveDraft }) {

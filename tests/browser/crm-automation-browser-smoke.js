@@ -24,7 +24,7 @@ async function waitForFixture(predicate) {
 async function screenshot(page, name, locator) {
     const target = locator ? page.locator(locator) : page;
     await target.screenshot({ path: path.join(output, `${name}.png`), ...(locator
-        ? { style: '.hermes-studio-page .header { visibility: hidden !important; }' } : { fullPage: true }) });
+        ? { style: '.hermes-studio-page .header, .toast-container { visibility: hidden !important; }' } : { fullPage: true }) });
 }
 
 async function localOnly(context, base) {
@@ -100,6 +100,7 @@ async function studio(browser, base, viewport, mobile) {
             mode = 'model';
             await execute.click(); await page.locator('.confirm-ok').click();
             await page.waitForFunction(() => document.querySelector('#hermesStudioExecutionStatus').textContent.includes('Модель генерації ще не налаштована'));
+            await screenshot(page, 'studio-model-guard', '.hermes-studio-detail');
             mode = 'unknown';
             await execute.click(); await page.locator('.confirm-ok').click();
             await page.waitForFunction(() => document.querySelector('#hermesStudioExecutionStatus').textContent.includes('потребує перевірки'));

@@ -8,6 +8,7 @@ const { test } = require('node:test');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { reserveMenuImageOperation: reserve, transitionMenuImageOperation: transition } = require('../../services/menuImagePaidOperations');
+const { executeMenuImagePaid } = require('../../services/menuImagePaidExecutor');
 
 test('paid menu operations survive a pool restart and serialize concurrent budget claims', {
     skip: process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER !== 'true', timeout: 30000
@@ -46,8 +47,27 @@ test('paid menu operations survive a pool restart and serialize concurrent budge
         await assert.rejects(transition(pool, { id: accepted[1], businessContext: 'fixture', from: 'provider_pending',
             to: 'succeeded', providerTaskId: 'different-task' }), { code: 'MENU_PAID_OPERATION_CHANGED' });
         await transition(pool, { id: accepted[1], businessContext: 'fixture', from: 'provider_pending', to: 'succeeded' });
-        await claim('new-item');
+        const newId = await claim('new-item');
         assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations WHERE operation_id=$1', [accepted[0]])).rows[0].status, 'unknown');
+        await transition(pool, { id: newId, businessContext: 'fixture', from: 'reserved', to: 'failed' });
+        let calls = 0;
+        const opts = { pool, businessContext: 'fixture', productId: 'execution', actor: 'fixture' };
+        const successful = await executeMenuImagePaid({ ...opts, provider: 'openai',
+            start: async () => { calls++; return { image: 'fixture' }; },
+            saveDraft: async value => { assert.equal(value.image, 'fixture'); } });
+        assert.equal(successful.status, 'succeeded');
+        const kie = await executeMenuImagePaid({ ...opts, productId: 'kie-execution', provider: 'kie',
+            start: async () => { calls++; return { taskId: 'fixture-kie-task' }; } });
+        assert.equal(kie.status, 'provider_pending');
+        await assert.rejects(claim('while-kie-pending'), { code: 'MENU_PAID_OPERATION_BUDGET_FULL' });
+        await transition(pool, { id: kie.operationId, businessContext: 'fixture', from: 'provider_pending', to: 'succeeded' });
+        await assert.rejects(executeMenuImagePaid({ ...opts, productId: 'uncertain', provider: 'openai',
+            start: async () => { calls++; throw new Error('synthetic timeout'); }, saveDraft: async () => {} }),
+            { code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW', retryable: false });
+        await assert.rejects(executeMenuImagePaid({ ...opts, productId: 'uncertain', provider: 'openai',
+            start: async () => { calls++; }, saveDraft: async () => {} }),
+            { code: 'MENU_PAID_OPERATION_REQUIRES_REVIEW' });
+        assert.equal(calls, 3, 'duplicate request must not call a paid provider');
     } finally {
         if (pool) await pool.end();
         if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`);

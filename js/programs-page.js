@@ -1909,7 +1909,19 @@ async function createKitchenMenuExternalDraft(productId, trigger = null, source 
         }
 
         const result = await apiCreateProductMenuExternalDraft(productId, payload);
-        if (!result?.success) throw new Error(result?.error || 'Не вдалося зберегти manual draft фото меню');
+        if (!result?.success) {
+            if (result?.code === 'MENU_IMAGE_DRAFT_CHANGED') {
+                if (result.product && String(result.product.id) === String(productId)
+                    && businessContext === getProductApiBusinessContext()
+                    && getProductApiBusinessContext(result.product.businessContext || result.product.business_context || businessContext) === businessContext) {
+                    updateProductInState(result.product);
+                    refreshProductCard(productId, businessContext);
+                }
+                if (fileInput) fileInput.value = '';
+                if (urlInput) urlInput.value = '';
+            }
+            throw Object.assign(new Error(result?.error || 'Не вдалося зберегти manual draft фото меню'), { code: result?.code });
+        }
         clearMenuImageGenerationFeedback(businessContext, productId);
         if (result.product && businessContext === getProductApiBusinessContext()) updateProductInState(result.product);
         if (fileInput) fileInput.value = '';
@@ -1920,7 +1932,10 @@ async function createKitchenMenuExternalDraft(productId, trigger = null, source 
     } catch (err) {
         const message = err.message || 'Не вдалося зберегти manual draft фото меню';
         setKitchenMenuImageManualStatus(panel, message, 'error');
-        if (retry) retry.hidden = false;
+        if (err.code === 'MENU_IMAGE_DRAFT_CHANGED') {
+            panel.querySelector('[data-menu-image-manual-status]')?.scrollIntoView?.({ block: 'nearest' });
+        }
+        if (retry) retry.hidden = err.code === 'MENU_IMAGE_DRAFT_CHANGED';
         showNotification(message, 'error');
     } finally {
         menuImageManualDraftInFlight.delete(key);

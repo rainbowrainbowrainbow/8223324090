@@ -88,6 +88,7 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         const conflict = await manualRequest;
         assert.equal(conflict.statusCode, 409);
         assert.equal(conflict.body.code, 'MENU_IMAGE_DRAFT_CHANGED');
+        assert.equal(conflict.body.product.aiCardDraft.imageStudio.imageUrl, '/newer.png');
         assert.deepEqual((await pool.query("SELECT ai_card_draft FROM products WHERE id='fixture'")).rows[0].ai_card_draft, concurrentDraft);
         holdManualUpload = null;
         const manualSuccess = await invoke('/:id/menu-image/external-draft', 'post', { imageUrl: 'https://example.com/manual.png' });

@@ -1697,9 +1697,13 @@ async function handleExternalMenuImageDraftRequest(req, res) {
             draft: result.draft,
             expectedDraft: product.ai_card_draft ?? null
         });
-        if (!persisted) return res.status(409).json({ success: false,
-            code: 'MENU_IMAGE_DRAFT_CHANGED',
-            error: 'Чернетка змінилася під час завантаження. Оновіть сторінку та перевірте її перед повтором.' });
+        if (!persisted) {
+            const fresh = await getProductWithPriceRule(pool, id, businessContext);
+            return res.status(409).json({ success: false, code: 'MENU_IMAGE_DRAFT_CHANGED',
+                error: fresh ? 'Чернетка змінилася під час завантаження. Перевірте актуальне фото та оберіть фото повторно.'
+                    : 'Чернетка змінилася під час завантаження. Оновіть сторінку перед повтором.',
+                ...(fresh ? { product: mapProductRow(fresh) } : {}) });
+        }
 
         const fresh = await getProductWithPriceRule(pool, id, businessContext);
         res.json({

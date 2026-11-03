@@ -414,6 +414,23 @@ test('URL selection auto-saves one draft and never changes the current photo', a
     assert.equal(app.panel().querySelector('[data-menu-image-url]').value, '');
 });
 
+test('concurrent manual draft conflict refreshes the newer draft and requires a new selection', async () => {
+    const app = createPageHarness();
+    const input = app.panel().querySelector('[data-menu-image-url]');
+    input.value = 'https://example.test/old-selection.jpg';
+    let calls = 0;
+    app.context.apiCreateProductMenuExternalDraft = async () => {
+        calls++;
+        return { success: false, code: 'MENU_IMAGE_DRAFT_CHANGED', error: 'Чернетка змінилася',
+            product: menuProduct('dish-1', 'event_genix', { status: 'ready', imageUrl: '/uploads/newer.jpg' }) };
+    };
+    await app.context.createKitchenMenuExternalDraft('dish-1', input, 'url');
+    assert.equal(calls, 1);
+    assert.equal(app.context.allProducts[0].aiCardDraft.imageStudio.imageUrl, '/uploads/newer.jpg');
+    assert.equal(app.panel().querySelector('[data-menu-image-url]').value, '');
+    assert.equal(app.panel().querySelector('[data-menu-image-action="external-draft"]').hidden, true);
+});
+
 test('a failed regeneration does not block review of an existing ready draft', async () => {
     const app = createPageHarness();
     app.context.allProducts = [menuProduct('dish-1', 'event_genix', {

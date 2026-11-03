@@ -3885,7 +3885,7 @@ async function apiCreateProductMenuExternalDraft(id, payload = {}) {
         if (handleAuthError(response)) return { success: false };
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-            return { success: false, error: body.error || 'API error', code: body.code };
+            return { success: false, error: body.error || 'API error', code: body.code, product: body.product };
         }
         return body;
     } catch (err) {

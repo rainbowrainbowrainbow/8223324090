@@ -37,12 +37,20 @@ test('browser generates one guarded menu draft and applies only after confirmati
             if (injectConcurrentDraft && sql.includes('ai_card_draft IS NOT DISTINCT FROM $7::jsonb')) {
                 injectConcurrentDraft = false;
                 await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture-menu-full'",
-                    [JSON.stringify({ imageStudio: { status: 'ready', imageUrl: '/images/menu-fixture.svg' } })]);
+                    [JSON.stringify({ imageStudio: { status: 'ready', imageUrl: '/images/menu-fixture.svg' }, testMarker: 'concurrent' })]);
             }
             if (sql.includes('WHERE p.id = $1')) return pool.query('SELECT * FROM products WHERE id=$1 AND business_context=$2', params.slice(0, 2));
             return pool.query(sql, params);
         };
-        storage.uploadFromUrl = async () => '/images/menu-draft.svg';
+        let injectConcurrentManual = false;
+        storage.uploadFromUrl = async () => {
+            if (injectConcurrentManual) {
+                injectConcurrentManual = false;
+                await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture-menu-full'",
+                    [JSON.stringify({ imageStudio: { status: 'ready', imageUrl: '/images/menu-fixture.svg' } })]);
+            }
+            return '/images/menu-draft.svg';
+        };
         process.env.KIE_API_KEY = 'synthetic-test-key';
         process.env.CRM_MENU_PAID_GUARD_ENABLED = 'true';
         process.env.CRM_MENU_RECONCILIATION_ENABLED = 'true';
@@ -60,10 +68,10 @@ test('browser generates one guarded menu draft and applies only after confirmati
         const source = fs.readFileSync(path.join(root, 'tests/browser/products-demo.spec.js'), 'utf8');
         const fixtureSource = source.slice(source.indexOf("const fs ="), source.indexOf('let server, baseUrl;'));
         const fixture = new Function('require', '__dirname', `${fixtureSource}\nreturn { fixtureHtml, bootstrap };`)(require, path.join(root, 'tests/browser'));
-        const app = express(); app.use(express.json());
+        const app = express(); app.set('trust proxy', true); app.use(express.json());
         app.use((req, _res, next) => { const role = req.get('x-fixture-role') || 'creator';
             req.user = { id: 1, username: 'fixture', role, platformRole: role, defaultBusinessContext: 'event_genix' }; next(); });
-        for (const [method, route] of [['post', '/:id/menu-image/draft'], ['get', '/:id/menu-image/status'],
+        for (const [method, route] of [['post', '/:id/menu-image/draft'], ['post', '/:id/menu-image/external-draft'], ['get', '/:id/menu-image/status'],
             ['get', '/:id/menu-image/operation'], ['post', '/:id/menu-image/operation/reconcile'],
             ['post', '/:id/menu-image/apply'], ['post', '/:id/menu-image/reject']]) {
             const layer = router.stack.find(x => x.route?.path === route && x.route.methods[method]).route;
@@ -80,6 +88,9 @@ test('browser generates one guarded menu draft and applies only after confirmati
         app.get('/fixture-real-api.js', (_req, res) => res.type('js').send(`
             window.apiGetProducts=async()=>await (await fetch('/fixture/products')).json();
             window.apiGenerateProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
+            // Separate synthetic IP prevents this extra manual-race scenario from
+            // consuming the four-request shared review budget of the later flow.
+            window.apiCreateProductMenuExternalDraft=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/external-draft',{method:'POST',headers:{'Content-Type':'application/json','X-Forwarded-For':'127.0.0.2'},body:JSON.stringify(payload)})).json();
             window.apiGetProductMenuImageStatus=async(id,options)=>await (await fetch('/api/products/'+id+'/menu-image/status?businessContext='+encodeURIComponent(options.businessContext))).json();
             window.apiApplyProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
             window.apiRejectProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
@@ -137,6 +148,19 @@ test('browser generates one guarded menu draft and applies only after confirmati
         } while (Date.now() < rejectDeadline);
         assert.equal(row.ai_card_draft.imageStudio.status, 'rejected');
         assert.equal(row.icon_url, '/images/menu-draft.svg');
+        injectConcurrentManual = true;
+        await page.locator('[data-menu-image-url]').fill('https://example.com/manual.png');
+        await page.locator('[data-menu-image-url]').blur();
+        await page.waitForFunction(() => document.querySelector('[data-menu-image-manual-status]')?.textContent.includes('Чернетка змінилася'));
+        assert.equal(await page.locator('[data-menu-image-manual-status]').isVisible(), true);
+        assert.equal(await page.locator('[data-menu-image-manual-status]').evaluate(el => {
+            const box = el.getBoundingClientRect(), dialogBox = el.closest('dialog').getBoundingClientRect();
+            return box.top >= dialogBox.top && box.bottom <= dialogBox.bottom && box.bottom <= innerHeight;
+        }), true);
+        assert.equal(await page.locator('[data-menu-image-url]').inputValue(), '');
+        assert.equal(await page.locator('[data-menu-image-action="external-draft"]').isHidden(), true);
+        assert.equal(starts, 2);
+        await page.screenshot({ path: path.join(evidence, 'mobile-manual-conflict.png'), fullPage: true });
         injectConcurrentDraft = true;
         await page.locator('[data-menu-image-action="generate"]').click();
         await page.waitForFunction(() => document.querySelector('[data-menu-image-generation-status]')?.textContent.includes('Генерацію не запущено'));
@@ -182,7 +206,17 @@ test('browser generates one guarded menu draft and applies only after confirmati
         await page.locator('.confirm-overlay[data-confirm-kind="confirm"] .confirm-ok').waitFor({ state: 'visible' });
         await page.screenshot({ path: path.join(evidence, 'mobile-review-confirm.png'), fullPage: true });
         await page.locator('.confirm-overlay[data-confirm-kind="confirm"] .confirm-ok').click();
-        await page.waitForFunction(() => document.querySelector('[data-menu-image-action="generate"]')?.disabled === false, null, { timeout: 10000 });
+        try {
+            await page.waitForFunction(() => document.querySelector('[data-menu-image-action="generate"]')?.disabled === false, null, { timeout: 10000 });
+        } catch (error) {
+            await page.screenshot({ path: path.join(evidence, 'mobile-review-debug.png'), fullPage: true });
+            const debug = await page.locator('[data-menu-image-action="generate"]').evaluate(button => ({
+                disabled: button.disabled, savedDisabled: button.dataset.menuImageWasDisabled,
+                busy: button.closest('.kitchen-menu-image-studio')?.getAttribute('aria-busy'),
+                status: document.querySelector('[data-menu-image-generation-status]')?.textContent
+            }));
+            throw new Error(`${error.message}; synthetic UI state: ${JSON.stringify(debug)}`);
+        }
         assert.equal((await pool.query('SELECT count(*)::int AS count FROM menu_image_paid_operation_reviews')).rows[0].count, 1);
         assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations WHERE operation_id=$1', [operationId])).rows[0].status, 'reviewed_unknown');
         assert.equal(starts, 3, 'manual reconciliation must not call provider');

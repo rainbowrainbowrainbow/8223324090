@@ -38,7 +38,16 @@ async function activateMenuGuard(pool) {
         const lock = await client.query('SELECT pg_try_advisory_lock(hashtext($1)) AS locked', [LOCK]);
         locked = lock.rows[0]?.locked === true;
         if (!locked) throw gateError('MENU_PAID_GUARD_TRANSITION');
-        await client.query('INSERT INTO menu_image_guard_activation (singleton) VALUES (TRUE) ON CONFLICT DO NOTHING');
+        const marker = await client.query('SELECT 1 FROM menu_image_guard_activation WHERE singleton=TRUE');
+        if (!marker.rowCount) {
+            // A legacy KIE create call may have returned while its task continues.
+            // An age threshold is not evidence that the paid work is finished.
+            const pending = await client.query(`SELECT EXISTS (
+                SELECT 1 FROM products WHERE ai_card_draft #>> '{imageStudio,status}' = 'generating'
+            ) AS pending`);
+            if (pending.rows[0]?.pending === true) throw gateError('MENU_PAID_LEGACY_PENDING');
+            await client.query('INSERT INTO menu_image_guard_activation (singleton) VALUES (TRUE) ON CONFLICT DO NOTHING');
+        }
     } finally {
         try {
             if (locked) await client.query('SELECT pg_advisory_unlock(hashtext($1))', [LOCK]);

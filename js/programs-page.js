@@ -1700,6 +1700,8 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
             </div>
             <div class="kitchen-menu-image-manual">
                 <strong>Додати власне фото як чернетку</strong>
+                <button type="button" class="btn-page-secondary" data-menu-image-action="inspect-paid-operation" onclick="inspectKitchenMenuPaidOperation('${productId}', this)">Перевірити попередню генерацію</button>
+                <p data-menu-image-operation-status role="status" aria-live="polite"></p>
                 <p>AI-результат зберігається автоматично. Файл збережеться після вибору, URL — після виходу з поля або Enter. Чинне фото зміниться тільки після «Застосувати».</p>
                 <label>
                     <span>Файл</span>
@@ -1981,6 +1983,27 @@ function kitchenMenuImageTrackingButton(product) {
     if (draft.status !== 'generating' || draft.provider !== 'kie' || !state?.autoResumeBlocked) return '';
     return `<button type="button" class="btn-page-secondary" data-menu-image-action="track" onclick="resumeKitchenMenuImageTracking('${escapeJsString(product.id)}', this)">Перевірити завдання ще раз</button>
         <p>Це перевірить уже замовлену генерацію без нової оплати.</p>`;
+}
+
+async function inspectKitchenMenuPaidOperation(productId, trigger) {
+    const businessContext = getProductApiBusinessContext();
+    if (!guardProductWrite('перевіряти попередню генерацію фото')) return;
+    const panel = trigger?.closest?.('.kitchen-menu-image-studio');
+    const output = panel?.querySelector?.('[data-menu-image-operation-status]');
+    if (!output || typeof apiGetProductMenuImageOperation !== 'function') return;
+    trigger.disabled = true;
+    try {
+        const result = await apiGetProductMenuImageOperation(productId, { businessContext });
+        if (!panel.isConnected || businessContext !== getProductApiBusinessContext()) return;
+        if (!result?.success) { output.textContent = 'Не вдалося перевірити стан. Нову генерацію не запущено.'; return; }
+        if (!result.operation) { output.textContent = 'Незавершених захищених генерацій для цієї страви не знайдено.'; return; }
+        const task = result.operation.taskId ? ` ID завдання: ${result.operation.taskId}.` : '';
+        output.textContent = `Є незавершена генерація (${result.operation.provider}).${task} Не запускайте нову без перевірки; зверніться до адміністратора.`;
+    } catch {
+        if (panel.isConnected && businessContext === getProductApiBusinessContext()) {
+            output.textContent = 'Не вдалося перевірити стан. Нову генерацію не запущено.';
+        }
+    } finally { if (trigger.isConnected) trigger.disabled = false; }
 }
 
 async function checkKitchenMenuImagePaidStatus(productId) {

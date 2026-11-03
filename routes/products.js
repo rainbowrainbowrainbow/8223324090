@@ -2047,6 +2047,34 @@ router.get('/:id/menu-image/context', requireRole(...PRODUCT_MUTATION_ROLES), as
     }
 });
 
+// Read-only recovery view: the paid operation outlives any particular draft.
+router.get('/:id/menu-image/operation', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+    try {
+        const context = requireProductBusinessContext(req, res);
+        if (!context) return;
+        const product = await getProductWithPriceRule(pool, id, context);
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+        const table = await pool.query("SELECT to_regclass('menu_image_paid_operations') AS name");
+        if (!table.rows[0]?.name) return res.json({ success: true, operation: null });
+        const result = await pool.query(
+            `SELECT operation_id, provider, status, provider_task_id, created_at, updated_at
+             FROM menu_image_paid_operations WHERE business_context=$1 AND product_id=$2
+               AND status IN ('reserved', 'provider_pending', 'unknown') LIMIT 1`, [context, id]
+        );
+        const op = result.rows[0];
+        return res.json({ success: true, operation: op ? { operationId: op.operation_id,
+            provider: op.provider, status: op.status, taskId: op.provider_task_id,
+            createdAt: op.created_at, updatedAt: op.updated_at } : null });
+    } catch (err) {
+        log.error('Read menu paid operation error', err);
+        return res.status(503).json({ success: false, code: 'MENU_PAID_STATUS_UNAVAILABLE',
+            error: 'Menu paid operation status is unavailable' });
+    }
+});
+
 router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
     const { id } = req.params;
     if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });

@@ -3772,6 +3772,19 @@ async function apiGenerateProductMenuAiDraft(payload = {}) {
     }
 }
 
+async function apiGetProductMenuImageOperation(id, options = {}) {
+    try {
+        const params = new URLSearchParams();
+        addProductBusinessContextParam(params, getProductBusinessContextValue(options));
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/operation?${params}`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        return response.ok ? body : { success: false, code: body.code || null };
+    } catch { return { success: false }; }
+}
+
 async function apiGenerateProductMenuImage(id, payload = {}) {
     try {
         if (!guardCrmBusinessWrite('генерувати фото меню')) {

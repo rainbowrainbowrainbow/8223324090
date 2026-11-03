@@ -321,6 +321,18 @@ test('checking an interrupted OpenAI operation restores the warning without a ge
     assert.equal(generations, 0);
 });
 
+test('operation inspection finds a detached job without starting generation', async () => {
+    const app = createPageHarness();
+    let calls = 0;
+    app.context.apiGetProductMenuImageOperation = async () => ({ success: true,
+        operation: { provider: 'kie', status: 'provider_pending', taskId: 'fixture-task' } });
+    app.context.apiGenerateProductMenuImage = async () => { calls++; };
+    const button = app.panel().querySelector('[data-menu-image-action="inspect-paid-operation"]');
+    await app.context.inspectKitchenMenuPaidOperation('dish-1', button);
+    assert.match(app.panel().querySelector('[data-menu-image-operation-status]').textContent, /fixture-task/);
+    assert.equal(calls, 0);
+});
+
 test('failed Kie polling shows the safe task ID without triggering another generation', async () => {
     const app = createPageHarness();
     let generationCalls = 0;

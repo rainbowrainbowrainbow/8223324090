@@ -172,6 +172,7 @@ function createHarness(options = {}) {
             handleResizeEnd: _handleResizeEnd,
             validateDragDrop: _validateDragDrop,
             renderTimeline,
+            applyStatusFilter,
             getDeferredAuthReadyRenderPromise() { return _timelineAuthReadyRenderPromise; },
             renderDaySectionHtml,
             syncTimelineWebSocketDateSubscriptions,
@@ -1494,6 +1495,160 @@ test('renderTimeline force-closes transient toolbar action state around repaint'
     assert.equal(window.__timelineActionMenuRefreshes.length, 1);
     assert.equal(window.__timelineActionMenuRefreshes[0].forceClosed, true);
     assert.equal(window.__timelineActionMenuRefreshes[0].reason, 'render-actions');
+});
+
+for (const view of ['animators', 'rooms']) {
+    for (const week of [false, true]) {
+        for (const source of ['resources', 'bookings']) {
+            test(`${view} ${week ? 'week' : 'day'} reports ${source} failure and retries both sources`, { timeout: 5000 }, async () => {
+                const { window, api } = createHarness({ timelineContext: parkTimelineContext('load-states') });
+                try {
+                    await api.setTimelineView(view, { render: false });
+                    window.AppState.multiDayMode = week;
+                    window.AppState.daysToShow = week ? 7 : 1;
+                    const button = window.document.createElement('button');
+                    button.id = 'addLineBtn';
+                    window.document.body.append(button);
+                    const states = [];
+                    window.addEventListener('timeline:summary-changed', event => states.push(event.detail.status));
+                    let fail = true;
+                    let lineReads = 0;
+                    let bookingReads = 0;
+                    const line = { id: 'fixture-resource', resourceId: 'fixture-resource', resourceType: view === 'rooms' ? 'room' : 'animator', name: 'Synthetic resource', color: '#14b8a6' };
+                    const failure = () => Object.assign(new Error('Synthetic service unavailable'), { status: 503, requestId: 'synthetic-request' });
+                    window.apiGetLines = async () => { lineReads++; if (fail && source === 'resources') throw failure(); return [line]; };
+                    window.apiGetBookings = async () => { bookingReads++; if (fail && source === 'bookings') throw failure(); return []; };
+
+                    assert.equal(await api.renderTimeline(), false);
+                    const container = window.document.getElementById('timelineLines');
+                    assert.ok(container.querySelector('.timeline-data-error'));
+                    assert.match(container.textContent, /HTTP 503/);
+                    assert.match(container.textContent, /synthetic-request/);
+                    assert.equal(container.getAttribute('aria-busy'), 'false');
+                    assert.equal(button.style.display, 'none');
+                    assert.equal(states[0], 'loading');
+                    assert.equal(states.at(-1), 'error');
+                    assert.equal(states.includes('ready'), false);
+                    const previousReads = { lineReads, bookingReads };
+                    fail = false;
+                    const completed = new Promise(resolve => {
+                        window.addEventListener('timeline:summary-changed', function listener(event) {
+                            if (event.detail.status !== 'ready') return;
+                            window.removeEventListener('timeline:summary-changed', listener);
+                            resolve();
+                        });
+                    });
+                    container.querySelector('.timeline-data-error__retry').click();
+                    await completed;
+                    assert.equal(container.querySelector('.timeline-data-error'), null);
+                    assert.equal(container.getAttribute('aria-busy'), 'false');
+                    assert.match(container.textContent, /Synthetic resource/);
+                    assert.ok(lineReads > previousReads.lineReads);
+                    assert.ok(bookingReads > previousReads.bookingReads);
+                    if (week) assert.equal(container.querySelectorAll('.day-section').length, 7);
+                } finally { window.close(); }
+            });
+        }
+        test(`${view} ${week ? 'week' : 'day'} distinguishes no resources from a day without bookings`, async () => {
+            const { window, api } = createHarness({ timelineContext: parkTimelineContext('empty-states') });
+            try {
+                await api.setTimelineView(view, { render: false });
+                window.AppState.multiDayMode = week;
+                window.AppState.daysToShow = week ? 7 : 1;
+                window.apiGetLines = async () => [];
+                window.apiGetBookings = async () => [];
+                assert.equal(await api.renderTimeline(), true);
+                const container = window.document.getElementById('timelineLines');
+                assert.ok(container.querySelector('[data-empty-state="resources"]'));
+                assert.match(container.textContent, view === 'rooms' ? /немає кімнат/ : /немає аніматорів/);
+                assert.equal(window.AppState._linesRetryScheduled, undefined, 'a successful empty response must not schedule recurring polling');
+                window.AppState.cachedLines = {};
+                window.apiGetLines = async () => [{ id: 'fixture-resource', resourceId: 'fixture-resource', resourceType: view === 'rooms' ? 'room' : 'animator', name: 'Synthetic resource' }];
+                assert.equal(await api.renderTimeline(), true);
+                assert.ok(container.querySelector('[data-empty-state="bookings"]'));
+                assert.equal(container.querySelector('[data-empty-state="resources"]'), null);
+            } finally { window.close(); }
+        });
+    }
+}
+
+test('expired resource and booking snapshots cannot disguise null or malformed source responses', async () => {
+    const { window, api } = createHarness();
+    try {
+        const date = '2026-05-26';
+        for (const [source, read, cache] of [
+            ['apiGetLines', api.getLinesForDate, window.AppState.cachedLines],
+            ['apiGetBookings', api.getBookingsForDate, window.AppState.cachedBookings]
+        ]) {
+            for (const response of [null, { success: false }]) {
+                api.setTimelineCacheEntry(cache, date, [{ id: 'expired' }]);
+                api.getTimelineCacheEntry(cache, date).ts = 0;
+                window[source] = async () => response;
+                await assert.rejects(() => read(date));
+                assert.deepEqual(api.getTimelineCacheEntry(cache, date).data.map(row => row.id), ['expired']);
+            }
+        }
+    } finally { window.close(); }
+});
+
+for (const source of ['resources', 'bookings']) {
+    test(`a late week ${source} failure cannot replace a newer day or publish ready for the old view`, { timeout: 5000 }, async () => {
+        const { window, api } = createHarness({ timelineContext: parkTimelineContext('stale-week') });
+        try {
+            window.AppState.multiDayMode = true;
+            window.AppState.daysToShow = 7;
+            const pending = deferred();
+            const entered = deferred();
+            const states = [];
+            window.addEventListener('timeline:summary-changed', event => states.push(event.detail));
+            window.apiGetLines = async (_date, options) => {
+                if (options.timelineView === 'animators' && source === 'resources') {
+                    entered.resolve();
+                    return pending.promise;
+                }
+                return [{ id: 'current-resource', resourceId: 'current-resource', resourceType: options.timelineView === 'rooms' ? 'room' : 'animator', name: 'Current resource' }];
+            };
+            window.apiGetBookings = async (_date, options) => {
+                if (options.timelineView === 'animators' && source === 'bookings') {
+                    entered.resolve();
+                    return pending.promise;
+                }
+                return [];
+            };
+            const stale = api.renderTimeline();
+            await entered.promise;
+            await api.setTimelineView('rooms', { render: false });
+            window.AppState.multiDayMode = false;
+            window.AppState.daysToShow = 1;
+            assert.equal(await api.renderTimeline(), true);
+            const currentCount = states.length;
+            pending.reject(Object.assign(new Error('Old week unavailable'), { status: 503 }));
+            assert.equal(await stale, false);
+            assert.equal(states.length, currentCount);
+            assert.equal(states.at(-1).timelineView, 'rooms');
+            assert.equal(states.at(-1).status, 'ready');
+            assert.equal(window.document.querySelector('.timeline-data-error'), null);
+            assert.match(window.document.getElementById('timelineLines').textContent, /Current resource/);
+        } finally { window.close(); }
+    });
+}
+
+test('status filtering updates week blocks and explains when every booking is hidden', async () => {
+    const { window, api } = createHarness();
+    try {
+        const container = window.document.getElementById('timelineLines');
+        window.AppState.multiDayMode = true;
+        container.dataset.timelineState = 'ready';
+        container.innerHTML = '<div class="day-section"><div class="mini-timeline-lines" data-resource-count="1" data-booking-count="1"><div class="mini-booking-block preliminary" data-booking-id="synthetic"></div></div></div>';
+        window.AppState.statusFilter = 'confirmed';
+        api.applyStatusFilter();
+        assert.ok(container.querySelector('.mini-booking-block.status-hidden'));
+        assert.ok(container.querySelector('[data-empty-state="filtered"]'));
+        container.querySelector('.timeline-empty-state button').click();
+        assert.equal(window.AppState.statusFilter, 'all');
+        assert.equal(container.querySelector('.status-hidden'), null);
+        assert.equal(container.querySelector('.timeline-empty-state'), null);
+    } finally { window.close(); }
 });
 
 test('lostpointercapture cancels a pending booking drag instead of leaving state stuck', () => {

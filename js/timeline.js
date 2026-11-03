@@ -819,26 +819,22 @@ async function getLinesForDate(date, options = {}) {
     }
     const lines = await apiGetLines(dateStr, {
         fresh: options.force === true,
+        throwOnError: true,
         businessContext: requestToken.businessContext,
         timelineView: requestToken.timelineView,
         signal: requestToken.signal
+    }).catch(error => {
+        error.timelineSource = 'resources';
+        throw error;
     });
     if (!timelineRequestTokenIsCurrent(requestToken)) throw timelineStaleRequestError(requestToken);
-    // v7.0.1: If API errored (null), preserve cached data instead of caching empty
-    if (lines === null) {
-        if (cached) return cached.data;
-        return [];
-    }
-    // v12.6: Don't cache empty lines — server always returns defaults via ensureDefaultLines,
-    // so empty means transient error. Let next render try fresh API call.
     if (!Array.isArray(lines)) {
-        console.warn('[Timeline] Lines API returned a non-array payload; keeping timeline render safe');
-        if (cached && Array.isArray(cached.data)) return cached.data;
-        return [];
+        const error = new Error(lines === null ? 'API ресурсів не повернув дані' : 'API ресурсів повернув неочікуваний формат');
+        error.timelineSource = 'resources';
+        throw error;
     }
-    if (lines.length > 0) {
-        setTimelineCacheEntry(AppState.cachedLines, dateStr, lines, { scopeKey: requestToken.cacheScope });
-    }
+    // A successful empty roster is data; a failed read must never become one.
+    setTimelineCacheEntry(AppState.cachedLines, dateStr, lines, { scopeKey: requestToken.cacheScope });
     return lines;
 }
 
@@ -4090,20 +4086,70 @@ function timelineDataErrorText(error, fallback = 'Не вдалося заван
     return parts.join(' · ');
 }
 
+function renderTimelineLoading(container) {
+    if (!container) return;
+    container.dataset.timelineState = 'loading';
+    container.setAttribute('aria-busy', 'true');
+    container.innerHTML = '<div class="timeline-loading-state" role="status">Завантажуємо розклад…</div>';
+}
+
 function renderTimelineDataError(container, error, date) {
     if (!container) return;
     const safe = typeof escapeHtml === 'function' ? escapeHtml : value => String(value ?? '');
+    const source = error?.timelineSource === 'resources' ? 'ресурси'
+        : error?.timelineSource === 'bookings' ? 'бронювання' : 'розклад';
+    const requestToken = captureTimelineRequestToken(date);
+    const retryDates = AppState.multiDayMode ? buildMultiDayDates() : [date];
+    container.dataset.timelineState = 'error';
+    container.setAttribute('aria-busy', 'false');
+    const addLineBtn = document.getElementById('addLineBtn');
+    if (addLineBtn) addLineBtn.style.display = 'none';
     container.innerHTML = `
         <div class="timeline-data-error" role="alert">
-            <div class="timeline-data-error__title">Не вдалося завантажити бронювання</div>
-            <div class="timeline-data-error__body">${safe(timelineDataErrorText(error, 'API бронювань повернув помилку'))}</div>
+            <div class="timeline-data-error__title">Не вдалося завантажити ${source}</div>
+            <div class="timeline-data-error__body">Перевірте з’єднання та спробуйте ще раз.<br>${safe(timelineDataErrorText(error))}</div>
             <button type="button" class="timeline-data-error__retry">Повторити</button>
         </div>
     `;
     container.querySelector('.timeline-data-error__retry')?.addEventListener('click', () => {
-        invalidateTimelineDateCache(timelineDateKey(date), { lines: false, bookings: true });
+        if (!timelineRequestTokenIsCurrent(requestToken)) return;
+        retryDates.forEach(retryDate => invalidateTimelineDateCache(timelineDateKey(retryDate), {
+            lines: true, bookings: true, fresh: true, businessContext: requestToken.businessContext
+        }));
         renderTimeline();
     });
+}
+
+function updateTimelineEmptyStates() {
+    const container = document.getElementById('timelineLines');
+    if (!container || container.dataset.timelineState !== 'ready') return;
+    const scopes = AppState.multiDayMode ? container.querySelectorAll('.mini-timeline-lines') : [container];
+    for (const scope of scopes) {
+        scope.querySelectorAll('.timeline-empty-state').forEach(node => node.remove());
+        const blocks = [...scope.querySelectorAll('.booking-block, .mini-booking-block')];
+        const kind = Number(scope.dataset.resourceCount) === 0 ? 'resources'
+            : Number(scope.dataset.bookingCount) === 0 ? 'bookings'
+                : blocks.length && blocks.every(block => block.classList.contains('status-hidden')) ? 'filtered' : '';
+        scope.dataset.emptyState = kind;
+        if (!kind) continue;
+        const notice = document.createElement('div');
+        notice.className = 'timeline-empty-state';
+        notice.dataset.emptyState = kind;
+        notice.setAttribute('role', 'status');
+        notice.textContent = kind === 'resources'
+            ? (isRoomTimelineView() ? 'На цей день немає кімнат для розкладу.'
+                : isParkAnimatorTimelineView() ? 'На цей день немає аніматорів у розкладі.' : 'На цей день немає доступних ресурсів.')
+            : kind === 'bookings' ? 'Бронювань на цей день немає. Оберіть вільний час у розкладі, щоб додати бронювання.'
+                : 'Усі бронювання приховані поточним фільтром.';
+        if (kind === 'filtered') {
+            const reset = document.createElement('button');
+            reset.type = 'button';
+            reset.textContent = 'Показати всі';
+            reset.addEventListener('click', resetStatusFilter);
+            notice.appendChild(reset);
+        }
+        scope.appendChild(notice);
+    }
 }
 
 function queueTimelineRenderAfterAuthenticatedRuntimeReady() {
@@ -4154,6 +4200,7 @@ async function renderTimeline() {
     const selectedDate = new Date(AppState.selectedDate);
     const renderRequestToken = beginTimelineRenderRequest(selectedDate, thisGen);
     syncTimelineWebSocketDateSubscriptions(selectedDate);
+    dispatchTimelineSummaryChanged({ date: formatDate(selectedDate), status: 'loading' });
 
     try {
         if (hasActiveTimelineInteractionState()) {
@@ -4176,7 +4223,8 @@ async function renderTimeline() {
         cancelBanquetLinkDraft(false);
         clearTimelineBanquetRoomPreviews();
         document.getElementById('timelineBanquetLinkLayer')?.remove();
-        await renderMultiDayTimeline(renderRequestToken);
+        const multiDayRendered = await renderMultiDayTimeline(renderRequestToken);
+        if (!multiDayRendered || !timelineRequestTokenIsCurrent(renderRequestToken)) return false;
         if (typeof normalizeTimelineToolbarTransientState === 'function') {
             normalizeTimelineToolbarTransientState('render-complete');
         }
@@ -4188,6 +4236,7 @@ async function renderTimeline() {
 
     const timelineScroll = document.getElementById('timelineScroll');
     const horizontalScrollSnapshot = captureTimelineHorizontalScrollState(timelineScroll, selectedDate);
+    const verticalScrollSnapshot = timelineScroll?.scrollTop || 0;
 
     const container = document.getElementById('timelineLines');
     const showAfisha = timelineShouldRenderAfisha();
@@ -4196,10 +4245,12 @@ async function renderTimeline() {
         view: isRoomTimelineView() ? TIMELINE_VIEW_ROOMS : 'animators',
         phase: 'render'
     });
+    renderTimelineLoading(container);
 
     // v25.4.1: Robust data fetch — each source independently
     let lines = [], bookings = [], afishaEvents = [];
     let bookingFetchError = null;
+    let linesFetchError = null;
     let requestBecameStale = false;
     try {
         const [linesResult, bookingsResult, afishaResult] = await Promise.all([
@@ -4209,7 +4260,8 @@ async function renderTimeline() {
                     return null;
                 }
                 console.error('[Timeline] getLinesForDate error:', e);
-                return [];
+                linesFetchError = e;
+                return null;
             }),
             getBookingsForDate(selectedDate, { requestToken: renderRequestToken }).catch(e => {
                 if (isTimelineStaleRequestError(e) || !timelineRequestTokenIsCurrent(renderRequestToken)) {
@@ -4224,8 +4276,9 @@ async function renderTimeline() {
         ]);
         if (requestBecameStale || !timelineRequestTokenIsCurrent(renderRequestToken)) return false;
         lines = normalizeTimelineLinesForContext(Array.isArray(linesResult) ? linesResult : []);
-        if (bookingFetchError && !Array.isArray(bookingsResult)) {
-            renderTimelineDataError(container, bookingFetchError, selectedDate);
+        const fetchError = linesFetchError || bookingFetchError;
+        if (fetchError) {
+            renderTimelineDataError(container, fetchError, selectedDate);
             if (typeof normalizeTimelineToolbarTransientState === 'function') {
                 normalizeTimelineToolbarTransientState('render-error');
             }
@@ -4242,6 +4295,7 @@ async function renderTimeline() {
         AppState.linesByDate = AppState.linesByDate || {};
         AppState.linesByDate[formatDate(selectedDate)] = lines;
     } catch (err) {
+        if (isTimelineStaleRequestError(err) || !timelineRequestTokenIsCurrent(renderRequestToken)) return false;
         console.error('[Timeline] Critical fetch error:', err);
         renderTimelineDataError(container, err, selectedDate);
         if (typeof normalizeTimelineToolbarTransientState === 'function') {
@@ -4258,20 +4312,6 @@ async function renderTimeline() {
     // v7.0: If a newer render started while we were loading data, abort this stale render
     if (!timelineRequestTokenIsCurrent(renderRequestToken)) {
         return false;
-    }
-
-    // v12.6: If lines came back empty, retry once after 2s
-    if (lines.length === 0 && !AppState._linesRetryScheduled) {
-        AppState._linesRetryScheduled = true;
-        const retryDateStr = formatDate(selectedDate);
-        console.warn('[Timeline] Lines empty — scheduling retry in 2s');
-        setTimeout(() => {
-            AppState._linesRetryScheduled = false;
-            invalidateTimelineDateCache(retryDateStr, { bookings: false });
-            if (formatDate(AppState.selectedDate) === retryDateStr) {
-                renderTimeline();
-            }
-        }, 2000);
     }
 
     // The education axis uses the freshly loaded, scoped booking cache.
@@ -4297,6 +4337,8 @@ async function renderTimeline() {
 
     clearTimelineBanquetRoomPreviews();
     container.innerHTML = '';
+    container.dataset.resourceCount = String(lines.length);
+    container.dataset.bookingCount = String(bookings.length);
 
     // v0.61.56: contexts without Afisha must not render stale assigned Afisha blocks on staff lines.
     const allAfisha = showAfisha ? (afishaEvents || []) : [];
@@ -4460,8 +4502,11 @@ async function renderTimeline() {
     renderMinimap(selectedDate);
 
     restoreTimelineHorizontalScrollState(horizontalScrollSnapshot, timelineScroll, selectedDate);
+    if (timelineScroll) timelineScroll.scrollTop = verticalScrollSnapshot;
 
     // v5.15: Apply status filter after render
+    container.dataset.timelineState = 'ready';
+    container.setAttribute('aria-busy', 'false');
     applyStatusFilter();
     updateTodayButton();
     renderBanquetLinksOverlay();
@@ -4493,11 +4538,8 @@ async function renderTimeline() {
             viewMode: AppState.multiDayMode ? 'week' : 'day',
             status: 'error'
         });
-        // Show error to user so we can diagnose
         const container = document.getElementById('timelineLines');
-        if (container) {
-            container.innerHTML = '<div style="padding:20px;color:#ef4444;font-weight:600">⚠️ Помилка завантаження таймлайну</div>';
-        }
+        renderTimelineDataError(container, outerErr, selectedDate);
         return false;
     }
 }
@@ -4547,7 +4589,7 @@ function applyStatusFilter() {
     if (typeof syncTimelineStatusFilterButtons === 'function') {
         syncTimelineStatusFilterButtons();
     }
-    document.querySelectorAll('.booking-block').forEach(block => {
+    document.querySelectorAll('.booking-block, .mini-booking-block').forEach(block => {
         if (filter === 'all') {
             block.classList.remove('status-hidden');
         } else if (filter === 'confirmed') {
@@ -4557,6 +4599,7 @@ function applyStatusFilter() {
         }
     });
     updateFilterBanner();
+    updateTimelineEmptyStates();
     renderBanquetLinksOverlay();
 }
 
@@ -7601,7 +7644,7 @@ async function renderDaySectionHtml(date, options = {}) {
             </div>
             <div class="day-section-content">
                 ${timeScaleHtml}
-                <div class="mini-timeline-lines">
+                <div class="mini-timeline-lines" data-resource-count="${lines.length}" data-booking-count="${bookings.length}">
     `;
 
     const miniMatchedBookingIds = new Set();
@@ -7620,10 +7663,6 @@ async function renderDaySectionHtml(date, options = {}) {
             diagnostics: timelineBookingDiagnosticsStore().unmatched
                 .filter(item => miniUnmatchedBookings.some(booking => String(booking.id) === String(item.id)))
         });
-    }
-
-    if (lines.length === 0) {
-        html += '<div class="no-bookings">Немає аніматорів</div>';
     }
 
     html += '</div></div></div>';
@@ -7730,13 +7769,15 @@ function attachMultiDayListeners() {
 
 async function renderMultiDayTimeline(requestToken = captureTimelineRequestToken(AppState.selectedDate)) {
     const gen = requestToken.renderGeneration;
+    const timelineScroll = document.getElementById('timelineScroll');
+    const verticalScrollSnapshot = timelineScroll?.scrollTop || 0;
 
     const timeScaleEl = document.getElementById('timeScale');
     const linesContainer = document.getElementById('timelineLines');
     const addLineBtn = document.getElementById('addLineBtn');
 
     if (timeScaleEl) timeScaleEl.innerHTML = '';
-    if (linesContainer) linesContainer.innerHTML = '';
+    renderTimelineLoading(linesContainer);
     if (addLineBtn) addLineBtn.style.display = 'none';
 
     // v5.8: Hide quick stats in multi-day mode
@@ -7762,18 +7803,23 @@ async function renderMultiDayTimeline(requestToken = captureTimelineRequestToken
     let multiDayHtml = '<div class="multi-day-container">';
     for (const date of dates) {
         multiDayHtml += await renderDaySectionHtml(date, { requestToken });
-        if (gen !== _renderGen || !timelineRequestTokenIsCurrent(requestToken)) return;
+        if (gen !== _renderGen || !timelineRequestTokenIsCurrent(requestToken)) return false;
     }
     multiDayHtml += '</div>';
 
     linesContainer.innerHTML = multiDayHtml;
     attachMultiDayListeners();
     const weekAfisha = await window.TimelineAfisha?.mountWeek(linesContainer, dates, requestToken);
-    if (!timelineRequestTokenIsCurrent(requestToken)) return;
+    if (!timelineRequestTokenIsCurrent(requestToken)) return false;
     window.TimelinePromotions?.mount(linesContainer, dates, requestToken, weekAfisha || []);
+    linesContainer.dataset.timelineState = 'ready';
+    linesContainer.setAttribute('aria-busy', 'false');
+    applyStatusFilter();
+    if (timelineScroll) timelineScroll.scrollTop = verticalScrollSnapshot;
     if (typeof scheduleTimelineViewHeightSync === 'function') {
         scheduleTimelineViewHeightSync('multi-day-render');
     }
+    return true;
 }
 
 // ==========================================
@@ -7866,20 +7912,21 @@ async function getBookingsForDate(date, options = {}) {
         timelineView: requestToken.timelineView,
         signal: requestToken.signal,
         keepalive: options.keepalive === true
+    }).catch(error => {
+        error.timelineSource = 'bookings';
+        throw error;
     });
     if (!timelineRequestTokenIsCurrent(requestToken)) throw timelineStaleRequestError(requestToken);
-    // v7.0.1: If API errored (null), preserve cached data instead of caching empty
     if (bookings === null) {
-        if (cached) return cached.data;
         const error = new Error('API бронювань не повернув дані');
+        error.timelineSource = 'bookings';
         error.status = null;
         error.requestId = null;
         throw error;
     }
     if (!Array.isArray(bookings)) {
         const error = new Error('API бронювань повернув неочікуваний формат');
-        console.warn('[Timeline] Bookings API returned a non-array payload; keeping cached data if possible');
-        if (cached && Array.isArray(cached.data)) return cached.data;
+        error.timelineSource = 'bookings';
         throw error;
     }
     setTimelineCacheEntry(AppState.cachedBookings, dateStr, bookings, { scopeKey: requestToken.cacheScope });

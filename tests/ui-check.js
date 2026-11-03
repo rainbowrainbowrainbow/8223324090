@@ -3765,7 +3765,13 @@ check('Banquet groups schema stays isolated from bookings and legacy visual link
     && !htmlContains('db/index.js', 'CREATE TABLE IF NOT EXISTS banquet_group_bookings')
     && !htmlContains('db/migrations/265_banquet_groups.sql', 'ALTER TABLE bookings ADD COLUMN')
     && !htmlContains('db/index.js', 'banquet_group_id'));
-check('Timeline booking API failures render an explicit error state instead of an empty day', apiCode.includes('throwOnError') && timelineCode.includes('function renderTimelineDataError') && timelineCode.includes('Не вдалося завантажити бронювання') && !timelineCode.includes("getBookingsForDate(selectedDate).catch(e => { console.error('[Timeline] getBookingsForDate error:', e); return []; })"));
+check('Timeline resource and booking API failures render an explicit error state instead of an empty day',
+    apiCode.includes('throwOnError') && timelineCode.includes('function renderTimelineDataError')
+    && timelineCode.includes("error?.timelineSource === 'resources' ? 'ресурси'")
+    && timelineCode.includes("error?.timelineSource === 'bookings' ? 'бронювання'")
+    && timelineCode.includes('Не вдалося завантажити ${source}')
+    && timelineCode.includes('const fetchError = linesFetchError || bookingFetchError;')
+    && !timelineCode.includes("getBookingsForDate(selectedDate).catch(e => { console.error('[Timeline] getBookingsForDate error:', e); return []; })"));
 const timelineBookingLinkLayerZIndex = Number(timelineConstructorCss.match(/\.timeline-banquet-link-layer\s*\{[^}]*z-index:\s*(\d+);/s)?.[1]);
 const timelineBookingBlockZIndex = Number(timelineConstructorCss.match(/\.booking-block\s*\{[^}]*z-index:\s*(\d+);/s)?.[1]);
 const timelineBanquetOccupancyZIndex = Number(timelineConstructorCss.match(/\.booking-block\.is-timeline-banquet-occupancy-band\s*\{[^}]*z-index:\s*(\d+);/s)?.[1]);

@@ -3191,12 +3191,23 @@ async function apiGetLines(date, options = {}) {
             signal: options.signal
         });
         if (handleAuthError(response)) { console.warn('[apiGetLines] Auth error — returning null'); return null; }
-        if (!response.ok) throw new Error('API error ' + response.status);
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            const error = apiErrorFromPayload({ ...payload, status: response.status }, `Resources API error ${response.status}`);
+            error.url = `${API_BASE}${path}`;
+            throw error;
+        }
         const data = await response.json();
         return data;
     } catch (err) {
         if (err?.name === 'AbortError') throw err;
-        console.error('[apiGetLines] error:', err);
+        console.error('[apiGetLines] error:', {
+            message: err?.message,
+            status: err?.status || null,
+            requestId: err?.requestId || null,
+            url: err?.url || null
+        });
+        if (options.throwOnError) throw err;
         return null;
     }
 }

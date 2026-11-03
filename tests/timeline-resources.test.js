@@ -5461,9 +5461,10 @@ test('animator timeline keeps banquet teaser surfaces out of park animator view'
     assert.doesNotMatch(timeline, /data-banquet-service-marker/);
 });
 
-test('timeline summary exits loading state on booking fetch and render failures', () => {
+test('timeline summary exits loading state on resource, booking and render failures', () => {
     const timeline = read('js/timeline.js');
-    const bookingFailureStart = timeline.indexOf('if (bookingFetchError && !Array.isArray(bookingsResult))');
+    assert.match(timeline, /const fetchError = linesFetchError \|\| bookingFetchError;/);
+    const bookingFailureStart = timeline.indexOf('if (fetchError)');
     const criticalFetchStart = timeline.indexOf("console.error('[Timeline] Critical fetch error:', err)");
     const outerRenderStart = timeline.indexOf("console.error('[Timeline] CRITICAL renderTimeline error:', outerErr)");
     const bookingFailure = timeline.slice(bookingFailureStart, timeline.indexOf('bookings = normalizeTimelineBookingsForContext', bookingFailureStart));

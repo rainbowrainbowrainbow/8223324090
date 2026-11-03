@@ -38,7 +38,7 @@ the current `AGENTS.md` and `CODEX_PRODUCTION_AUTONOMY.md` policy to each step.
   maximum budget, disposable inputs and handling of ambiguous charges. Check
   handwritten OCR with a representative, suitably anonymized sample; do not
   infer its accuracy from synthetic printed fixtures.
-- After old senders/replicas and legacy KIE tasks are accounted for, obtain the
+- After old image-generating processes/replicas and legacy KIE tasks are accounted for, obtain the
   required permission for the precise flag change and turn on the guarded menu
   path and recovery in a coordinated rollout. Enabling recovery only after jobs
   were submitted cannot retroactively create their request metadata. A first

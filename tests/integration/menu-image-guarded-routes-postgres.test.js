@@ -47,9 +47,10 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         };
         imageProvider = require('../../services/menuPhotoGeneration');
         originalOpenAI = imageProvider.generateAndStoreMenuPhotoDraft;
-        let openaiCalls = 0, failOpenAI = false;
+        let openaiCalls = 0, failOpenAI = false, holdLegacy = null;
         imageProvider.generateAndStoreMenuPhotoDraft = async () => {
             openaiCalls++;
+            if (holdLegacy) return holdLegacy();
             if (failOpenAI) throw new Error('synthetic timeout');
             return { status: 'ready', imageUrl: '/openai-generated.png', provider: 'openai' };
         };
@@ -69,6 +70,20 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
                 body, headers: {}, user: { username: 'fixture', role: 'admin' } }, response);
             return response;
         };
+        let releaseLegacy, signalLegacy;
+        const legacyStarted = new Promise(resolve => { signalLegacy = resolve; });
+        holdLegacy = () => { signalLegacy(); return new Promise(resolve => { releaseLegacy = resolve; }); };
+        process.env.CRM_MENU_PAID_GUARD_ENABLED = 'false';
+        const legacyRequest = invoke('/:id/menu-image/draft', 'post', { generator: 'openai' });
+        await legacyStarted;
+        process.env.CRM_MENU_PAID_GUARD_ENABLED = 'true';
+        const transition = await invoke('/:id/menu-image/draft', 'post', { generator: 'kie/nano-banana-2' });
+        assert.equal(transition.body.code, 'MENU_PAID_GUARD_TRANSITION');
+        assert.equal(starts, 0);
+        releaseLegacy({ status: 'ready', imageUrl: '/legacy-fixture.png', provider: 'openai' });
+        assert.equal((await legacyRequest).statusCode, 200);
+        holdLegacy = null;
+        openaiCalls = 0;
         const first = await invoke('/:id/menu-image/draft', 'post', { generator: 'kie/nano-banana-2' });
         assert.equal(first.statusCode, 202);
         assert.equal(first.body.status, 'generating');

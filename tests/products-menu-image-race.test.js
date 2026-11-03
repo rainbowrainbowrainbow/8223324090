@@ -6,10 +6,15 @@ const { pool } = require('../db');
 const provider = require('../services/menuPhotoGeneration');
 const originalGenerate = provider.generateAndStoreMenuPhotoDraft;
 const originalQuery = pool.query;
+const originalConnect = pool.connect;
+pool.connect = async () => ({
+    query: async sql => sql.includes('to_regclass') ? { rows: [{ name: null }] } : { rows: [{ locked: true }] },
+    release() {}
+});
 let complete;
 provider.generateAndStoreMenuPhotoDraft = () => new Promise((resolve, reject) => { complete = { resolve, reject }; });
 const router = require('../routes/products');
-after(() => { provider.generateAndStoreMenuPhotoDraft = originalGenerate; pool.query = originalQuery; });
+after(() => { provider.generateAndStoreMenuPhotoDraft = originalGenerate; pool.query = originalQuery; pool.connect = originalConnect; });
 
 for (const outcome of ['success', 'failure']) for (const changed of [false, true]) test(`OpenAI ${outcome}, draft ${changed ? 'rejected' : 'unchanged'} during generation`, async () => {
     complete = null;

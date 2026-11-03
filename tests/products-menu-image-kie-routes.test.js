@@ -1,4 +1,4 @@
-const { test, afterEach } = require('node:test');
+const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { pool } = require('../db');
 const imageStorage = require('../services/imageStorage');
@@ -11,12 +11,18 @@ imageStorage.uploadFromUrl = async (sourceUrl, _filename, options) => {
 const router = require('../routes/products');
 
 const originalQuery = pool.query;
+const originalConnect = pool.connect;
 const originalFetch = global.fetch;
 const originalKey = process.env.KIE_API_KEY;
 const originalPublicBase = process.env.PUBLIC_BASE_URL;
 
+beforeEach(() => { pool.connect = async () => ({
+    query: async sql => sql.includes('to_regclass') ? { rows: [{ name: null }] } : { rows: [{ locked: true }] },
+    release() {}
+}); });
 afterEach(() => {
     pool.query = originalQuery;
+    pool.connect = originalConnect;
     global.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.KIE_API_KEY;
     else process.env.KIE_API_KEY = originalKey;

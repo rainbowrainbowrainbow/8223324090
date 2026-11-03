@@ -9,6 +9,7 @@ const { requireAction } = require('../middleware/auth');
 const { createWriteRateLimiter } = require('../middleware/rateLimit');
 const { createLogger } = require('../utils/logger');
 const { executeMenuImagePaid, pollMenuImagePaid } = require('../services/menuImagePaidExecutor');
+const { withLegacyMenuGuard, activateMenuGuard } = require('../services/menuImageGuardGate');
 const { legacyBusinessSurfaceAccess } = require('../services/legacyBusinessSurface');
 const { userBusinessModuleState } = require('../services/businessModuleRegistry');
 const {
@@ -1768,7 +1769,7 @@ async function handleGuardedMenuImageDraft(req, res) {
         if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
         // Once enabled, the marker prevents an environment-flag rollback from
         // silently falling back to the older unguarded paid path.
-        await pool.query('INSERT INTO menu_image_guard_activation (singleton) VALUES (TRUE) ON CONFLICT DO NOTHING');
+        await activateMenuGuard(pool);
         const current = currentMenuAiDraftForProduct(product);
         // Legacy or interrupted jobs are never automatically reclaimed by age.
         if (current.imageStudio?.status === 'generating') {
@@ -1831,6 +1832,14 @@ async function handleGuardedMenuImageDraft(req, res) {
 
 async function handleMenuImageDraftRequest(req, res) {
     if (process.env.CRM_MENU_PAID_GUARD_ENABLED === 'true') return handleGuardedMenuImageDraft(req, res);
+    try { return await withLegacyMenuGuard(pool, () => handleLegacyMenuImageDraft(req, res)); }
+    catch (err) {
+        return res.status(503).json({ success: false, code: err?.code || 'MENU_PAID_GUARD_DISABLED',
+            retryable: false, error: 'Menu generation is temporarily unavailable' });
+    }
+}
+
+async function handleLegacyMenuImageDraft(req, res) {
     const { id } = req.params;
     if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
 
@@ -1841,14 +1850,6 @@ async function handleMenuImageDraftRequest(req, res) {
         const product = await getProductWithPriceRule(pool, id, businessContext);
         const check = requireMenuImageProduct(product);
         if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
-
-        const markerTable = await pool.query("SELECT to_regclass('menu_image_guard_activation') AS name");
-        if (markerTable.rows[0]?.name) {
-            const marker = await pool.query('SELECT 1 FROM menu_image_guard_activation WHERE singleton=TRUE');
-            if (marker.rowCount) return res.status(503).json({ success: false,
-                code: 'MENU_PAID_GUARD_DISABLED', retryable: false,
-                error: 'Guarded generation is disabled; legacy generation is blocked' });
-        }
 
         const currentDraft = currentMenuAiDraftForProduct(product);
         const incomingSettings = safeJsonObject(req.body?.settings || req.body || {});

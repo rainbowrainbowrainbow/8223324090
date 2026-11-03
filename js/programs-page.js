@@ -1974,9 +1974,31 @@ function menuImageGenerationDisplayState(product) {
 function kitchenMenuImageTrackingButton(product) {
     const draft = getMenuImageStudioDraft(product);
     const state = menuImageGenerationState.get(menuImageGenerationKey(getProductApiBusinessContext(), product.id));
+    if (draft.status === 'generating' && draft.provider === 'openai' && draft.operationId) {
+        return `<button type="button" class="btn-page-secondary" data-menu-image-action="check-paid-status" onclick="checkKitchenMenuImagePaidStatus('${escapeJsString(product.id)}')">Перевірити стан</button>
+            <p>Це перевіряє стан без нової генерації.</p>`;
+    }
     if (draft.status !== 'generating' || draft.provider !== 'kie' || !state?.autoResumeBlocked) return '';
     return `<button type="button" class="btn-page-secondary" data-menu-image-action="track" onclick="resumeKitchenMenuImageTracking('${escapeJsString(product.id)}', this)">Перевірити завдання ще раз</button>
         <p>Це перевірить уже замовлену генерацію без нової оплати.</p>`;
+}
+
+async function checkKitchenMenuImagePaidStatus(productId) {
+    const businessContext = getProductApiBusinessContext();
+    if (!guardProductWrite('перевіряти стан фото меню')) return;
+    const product = allProducts.find(item => String(item.id) === String(productId));
+    const identity = getMenuImageStudioDraft(product).operationId;
+    if (!identity) return;
+    const result = await apiGetProductMenuImageStatus(productId, { businessContext });
+    const current = allProducts.find(item => String(item.id) === String(productId));
+    if (businessContext !== getProductApiBusinessContext() || getMenuImageStudioDraft(current).operationId !== identity) return;
+    if (result?.success && result.product && String(result.product.id) === String(productId)
+        && getProductApiBusinessContext(result.product.businessContext || result.product.business_context || businessContext) === businessContext
+        && getMenuImageStudioDraft(result.product).operationId === identity) {
+        updateProductInState(result.product);
+        menuImageGenerationState.delete(menuImageGenerationKey(businessContext, productId));
+        refreshProductCard(productId, businessContext);
+    } else showNotification('Не вдалося перевірити стан. Повторну генерацію не запущено.', 'error');
 }
 
 async function resumeKitchenMenuImageTracking(productId) {

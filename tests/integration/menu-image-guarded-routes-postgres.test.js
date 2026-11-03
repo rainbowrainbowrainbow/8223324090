@@ -103,6 +103,16 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
         assert.equal(uncertain.body.code, 'MENU_PAID_OUTCOME_REQUIRES_REVIEW');
         assert.equal(uncertain.body.product.aiCardDraft.imageStudio.status, 'generating');
         assert.equal(uncertain.body.product.aiCardDraft.imageStudio.outcomeUncertain, true);
+        await pool.query(`UPDATE products SET ai_card_draft=ai_card_draft #- '{imageStudio,outcomeUncertain}' WHERE id='fixture'`);
+        const checked = await invoke('/:id/menu-image/status', 'get');
+        assert.equal(checked.body.status, 'unknown');
+        assert.equal(checked.body.product.aiCardDraft.imageStudio.outcomeUncertain, true);
+        assert.equal((await pool.query("SELECT ai_card_draft #>> '{imageStudio,outcomeUncertain}' AS warning FROM products")).rows[0].warning, null);
+        await pool.query("UPDATE menu_image_paid_operations SET status='reserved', created_at=now()-interval '5 minutes' WHERE product_id='fixture' AND status='unknown'");
+        const interrupted = await invoke('/:id/menu-image/status', 'get');
+        assert.equal(interrupted.body.status, 'unknown');
+        assert.equal(interrupted.body.product.aiCardDraft.imageStudio.outcomeUncertain, true);
+        assert.equal((await pool.query("SELECT status FROM menu_image_paid_operations WHERE status='reserved'")).rowCount, 1);
         const retry = await invoke('/:id/menu-image/draft', 'post', { generator: 'openai' });
         assert.equal(retry.statusCode, 409);
         assert.equal(openaiCalls, 2);

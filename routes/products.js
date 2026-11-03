@@ -2059,6 +2059,22 @@ router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), asy
         if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
         const draft = currentMenuAiDraftForProduct(product);
         const studio = draft.imageStudio || {};
+        if (studio.operationId && studio.provider === 'openai' && studio.status === 'generating') {
+            const found = await pool.query(
+                `SELECT status, created_at FROM menu_image_paid_operations
+                 WHERE operation_id=$1 AND business_context=$2 AND product_id=$3 AND provider='openai'`,
+                [studio.operationId, businessContext, id]
+            );
+            if (!found.rowCount) return res.status(409).json({ success: false, code: 'MENU_PAID_OPERATION_NOT_FOUND' });
+            const operation = found.rows[0];
+            const unresolved = operation.status !== 'reserved'
+                || Date.now() - new Date(operation.created_at).getTime() > 120000;
+            const mapped = mapProductRow(product);
+            if (unresolved) mapped.aiCardDraft = { ...mapped.aiCardDraft,
+                imageStudio: { ...mapped.aiCardDraft.imageStudio, outcomeUncertain: true } };
+            return res.json({ success: true, status: unresolved ? 'unknown' : 'generating',
+                product: mapped, draft: mapped.aiCardDraft });
+        }
         if (studio.operationId && studio.provider === 'kie' && studio.status === 'generating') {
             try {
                 const result = await pollMenuImagePaid({ pool, operationId: studio.operationId,

@@ -301,6 +301,26 @@ test('persisted uncertain generation stays visible and blocks generation after a
     assert.equal(app.button().disabled, true);
 });
 
+test('checking an interrupted OpenAI operation restores the warning without a generation request', async () => {
+    const app = createPageHarness();
+    const operationId = '12345678-1234-1234-1234-123456789abc';
+    app.context.allProducts = [menuProduct('dish-1', 'event_genix', { status: 'generating', provider: 'openai', operationId })];
+    app.context.renderProducts();
+    let checks = 0, generations = 0;
+    app.context.apiGetProductMenuImageStatus = async () => {
+        checks++;
+        return { success: true, status: 'unknown', product: menuProduct('dish-1', 'event_genix', {
+            status: 'generating', provider: 'openai', operationId, outcomeUncertain: true
+        }) };
+    };
+    app.context.apiGenerateProductMenuImage = async () => { generations++; };
+    assert.ok(app.panel().querySelector('[data-menu-image-action="check-paid-status"]'));
+    await app.context.checkKitchenMenuImagePaidStatus('dish-1');
+    assert.match(app.message(), /Не запускайте її повторно/);
+    assert.equal(checks, 1);
+    assert.equal(generations, 0);
+});
+
 test('failed Kie polling shows the safe task ID without triggering another generation', async () => {
     const app = createPageHarness();
     let generationCalls = 0;

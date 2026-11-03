@@ -910,8 +910,8 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
         shell: { timelineEnabled: true }
     };
     assert.deepEqual(compact(api.availableModes(rootItem)), [
-        { key: 'animators', label: 'Свята', href: '/?timelineView=animators' },
-        { key: 'rooms', label: 'Кімнати', href: '/?timelineView=rooms' }
+        { key: 'animators', label: 'Свята', href: '/?timelineView=animators&date=2026-07-22' },
+        { key: 'rooms', label: 'Кімнати', href: '/?timelineView=rooms&date=2026-07-22' }
     ]);
     assert.equal(api.cardModel(rootItem).variant, 'launcher');
     assert.equal(api.cardModel(rootItem).href, '/');
@@ -919,8 +919,8 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
     assert.match(launcherHtml, /^<div class="sidebar-design-timeline-launcher active"/);
     assert.match(launcherHtml, /class="sidebar-design-timeline-main active" href="\/"/);
     assert.match(launcherHtml, /data-sidebar-timeline-active-mode="rooms"/);
-    assert.match(launcherHtml, /href="\/\?timelineView=animators" data-sidebar-timeline-mode="animators" aria-pressed="false"/);
-    assert.match(launcherHtml, /class="sidebar-design-timeline-segment active" href="\/\?timelineView=rooms" data-sidebar-timeline-mode="rooms" aria-pressed="true" aria-current="page"/);
+    assert.match(launcherHtml, /href="\/\?timelineView=animators&amp;date=2026-07-22" data-sidebar-timeline-mode="animators" aria-pressed="false"/);
+    assert.match(launcherHtml, /class="sidebar-design-timeline-segment active" href="\/\?timelineView=rooms&amp;date=2026-07-22" data-sidebar-timeline-mode="rooms" aria-pressed="true" aria-current="page"/);
     assert.equal((launcherHtml.match(/sidebar-design-timeline-segment-check/g) || []).length, 0);
     assert.equal((launcherHtml.match(/sidebar-design-timeline-segment-label/g) || []).length, 2);
     assert.equal((launcherHtml.match(/sidebar-design-timeline-segment-count/g) || []).length, 2);
@@ -1163,10 +1163,10 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
 
     state.profiles.event_genix.timeline.roomTimelineEnabled = false;
     assert.deepEqual(compact(api.availableModes(rootItem)), [
-        { key: 'animators', label: 'Свята', href: '/?timelineView=animators' }
+        { key: 'animators', label: 'Свята', href: '/?timelineView=animators&date=2026-07-22' }
     ]);
     assert.equal(api.cardModel(rootItem).variant, 'single');
-    assert.equal(api.cardModel(rootItem).href, '/?timelineView=animators');
+    assert.equal(api.cardModel(rootItem).href, '/?timelineView=animators&date=2026-07-22');
     const singleModeHtml = api.renderExtraLink(rootItem, '/', '');
     assert.doesNotMatch(singleModeHtml, /timeline-launcher|timeline-mode-count|data-sidebar-timeline-mode/);
     assert.equal((singleModeHtml.match(/<a\b/g) || []).length, 1);
@@ -1198,7 +1198,7 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
         modules: { enabled: { timeline: true } }
     };
     assert.deepEqual(compact(api.availableModes(rootItem)), [
-        { key: 'animators', label: 'Свята', href: '/?businessContext=dar&timelineView=animators' }
+        { key: 'animators', label: 'Свята', href: '/?businessContext=dar&timelineView=animators&date=2026-07-22' }
     ]);
 
     state.context = 'maysternya_doli';
@@ -1220,7 +1220,7 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
     state.context = 'event_genix';
     state.profiles.event_genix.timeline = { mode: 'disabled', timelineEnabled: false };
     assert.deepEqual(compact(api.availableModes(rootItem, { role: 'creator' })), [
-        { key: 'animators', label: 'Свята', href: '/?timelineView=animators' }
+        { key: 'animators', label: 'Свята', href: '/?timelineView=animators&date=2026-07-22' }
     ]);
 });
 

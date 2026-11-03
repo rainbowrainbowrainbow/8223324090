@@ -98,8 +98,8 @@ test('browser generates one guarded menu draft and applies only after confirmati
             // consuming the four-request shared review budget of the later flow.
             window.apiCreateProductMenuExternalDraft=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/external-draft',{method:'POST',headers:{'Content-Type':'application/json','X-Forwarded-For':'127.0.0.2'},body:JSON.stringify(payload)})).json();
             window.apiGetProductMenuImageStatus=async(id,options)=>await (await fetch('/api/products/'+id+'/menu-image/status?businessContext='+encodeURIComponent(options.businessContext))).json();
-            window.apiApplyProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
-            window.apiRejectProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
+            window.apiApplyProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/apply',{method:'POST',headers:{'Content-Type':'application/json',...(window.fixtureReviewIp?{'X-Forwarded-For':window.fixtureReviewIp}:{})},body:JSON.stringify(payload)})).json();
+            window.apiRejectProductMenuImage=async(id,payload)=>await (await fetch('/api/products/'+id+'/menu-image/reject',{method:'POST',headers:{'Content-Type':'application/json',...(window.fixtureReviewIp?{'X-Forwarded-For':window.fixtureReviewIp}:{})},body:JSON.stringify(payload)})).json();
             window.apiGetProductMenuImageOperation=async(id,options)=>await (await fetch('/api/products/'+id+'/menu-image/operation?businessContext='+encodeURIComponent(options.businessContext))).json();
             window.apiGetRecoveredMenuImages=async(id,options)=>await (await fetch('/api/products/'+id+'/menu-image/recovered?businessContext='+encodeURIComponent(options.businessContext))).json();
             window.apiChangeRecoveredMenuImage=async(id,op,action,payload)=>await (await fetch('/api/products/'+id+'/menu-image/operation/'+op+'/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-Forwarded-For':'127.0.0.3'},body:JSON.stringify(payload)})).json();
@@ -271,6 +271,23 @@ test('browser generates one guarded menu draft and applies only after confirmati
         await page.locator('[data-menu-image-action="show-recovered"]').click();
         await page.locator('.kitchen-menu-recovered-card img').waitFor({ state: 'visible' });
         assert.equal(starts, 4, 'reload and recovered result listing do not generate again');
+        // The visible draft is now stale: another actor replaces it before
+        // this user approves or rejects. Neither action may affect the new one.
+        await pool.query("UPDATE products SET ai_card_draft=$1::jsonb WHERE id='fixture-menu-full'",
+            [JSON.stringify({ imageStudio: { status: 'ready', imageUrl: '/images/menu-fixture.svg' } })]);
+        await page.evaluate(() => { window.fixtureReviewIp = '127.0.0.4'; });
+        const appliedResponse = page.waitForResponse(response => response.url().endsWith('/menu-image/apply'));
+        await page.locator('[data-menu-image-action="apply"]').click();
+        assert.equal((await appliedResponse).status(), 409);
+        assert.equal((await (await appliedResponse).json()).code, 'menu_image_review_changed');
+        const rejectedResponse = page.waitForResponse(response => response.url().endsWith('/menu-image/reject'));
+        await page.locator('[data-menu-image-action="reject"]').click();
+        assert.equal((await rejectedResponse).status(), 409);
+        assert.equal((await (await rejectedResponse).json()).code, 'menu_image_review_changed');
+        row = (await pool.query("SELECT icon_url, ai_card_draft FROM products WHERE id='fixture-menu-full'")).rows[0];
+        assert.equal(row.icon_url, '/images/menu-fixture.svg');
+        assert.equal(row.ai_card_draft.imageStudio.imageUrl, '/images/menu-fixture.svg');
+        assert.equal(row.ai_card_draft.imageStudio.status, 'ready');
         assert.deepEqual(errors, []);
     } finally {
         if (browser) await browser.close();

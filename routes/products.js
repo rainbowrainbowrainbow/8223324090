@@ -1600,6 +1600,12 @@ function menuImageDraftLockKey(businessContext, productId) {
     return ['products.menu-image-draft', businessContext || DEFAULT_BUSINESS_CONTEXT, productId].join('|');
 }
 
+function menuImageReviewMatches(reviewed, studio) {
+    if (!reviewed || typeof reviewed !== 'object' || Array.isArray(reviewed)) return false;
+    return ['imageUrl', 'status', 'preparedAt', 'generatedAt', 'operationId', 'taskId']
+        .every(key => (reviewed[key] ?? null) === (studio[key] ?? null));
+}
+
 function menuImageExternalDraftPublicError(err) {
     const code = String(err?.code || '');
     const clientErrorCodes = new Set([
@@ -2399,6 +2405,11 @@ router.post('/:id/menu-image/apply', productMenuImageReviewRateLimit, requireRol
 
         const currentDraft = currentMenuAiDraftForProduct(product);
         const imageStudio = currentDraft.imageStudio || {};
+        if (req.body?.reviewedDraft !== undefined && !menuImageReviewMatches(req.body.reviewedDraft, imageStudio)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, code: 'menu_image_review_changed',
+                error: 'Чернетка змінилася. Оновіть сторінку та перегляньте актуальне фото.' });
+        }
         if (!imageStudio.imageUrl) {
             await client.query('ROLLBACK');
             return res.status(409).json({
@@ -2485,6 +2496,11 @@ router.post('/:id/menu-image/reject', productMenuImageReviewRateLimit, requireRo
 
         const currentDraft = currentMenuAiDraftForProduct(product);
         const imageStudio = currentDraft.imageStudio || {};
+        if (req.body?.reviewedDraft !== undefined && !menuImageReviewMatches(req.body.reviewedDraft, imageStudio)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, code: 'menu_image_review_changed',
+                error: 'Чернетка змінилася. Оновіть сторінку та перегляньте актуальне фото.' });
+        }
         if (!Object.keys(imageStudio).length) {
             await client.query('ROLLBACK');
             return res.status(409).json({

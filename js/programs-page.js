@@ -1349,6 +1349,12 @@ function getMenuImageStudioDraft(product = {}) {
     return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 }
 
+function reviewedMenuImageIdentity(product) {
+    const studio = getMenuImageStudioDraft(product);
+    return Object.fromEntries(['imageUrl', 'status', 'preparedAt', 'generatedAt', 'operationId', 'taskId']
+        .map(key => [key, studio[key] ?? null]));
+}
+
 function menuImageGenerationKey(businessContext, productId) {
     return JSON.stringify([getProductApiBusinessContext(businessContext), String(productId || '')]);
 }
@@ -2426,7 +2432,7 @@ async function applyKitchenMenuImageDraft(productId, trigger = null) {
             throw new Error('Menu image apply API is not available');
         }
         const result = await apiApplyProductMenuImage(productId, {
-            businessContext
+            businessContext, reviewedDraft: reviewedMenuImageIdentity(product)
         });
         if (!result?.success) throw new Error(result?.error || 'Не вдалося застосувати фото меню');
         clearMenuImageGenerationFeedback(businessContext, productId);
@@ -2464,7 +2470,7 @@ async function rejectKitchenMenuImageDraft(productId, trigger = null) {
             throw new Error('Menu image reject API is not available');
         }
         const result = await apiRejectProductMenuImage(productId, {
-            businessContext
+            businessContext, reviewedDraft: reviewedMenuImageIdentity(product)
         });
         if (!result?.success) throw new Error(result?.error || 'Не вдалося відхилити фото меню');
         clearMenuImageGenerationFeedback(businessContext, productId);

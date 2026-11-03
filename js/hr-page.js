@@ -637,6 +637,7 @@ const professionCatalogFilters = {
     checklist: 'all'
 };
 let professionChecklistDashboardRequestSeq = 0;
+let professionChecklistDashboardContext = null;
 let professionChecklistDashboardSearchTimer = null;
 let professionChecklistDashboardState = {
     loadState: 'idle',
@@ -5013,12 +5014,13 @@ async function loadProfessionChecklists(options = {}) {
     clearTimeout(professionChecklistDashboardSearchTimer);
     professionChecklistDashboardSearchTimer = null;
     const requestSeq = ++professionChecklistDashboardRequestSeq;
-    const feed = ['assignments', 'archived', 'orphaned'].includes(options.feed) ? options.feed : null;
+    const catalogContext = salaryAccessContext();
+    const sameContext = professionChecklistDashboardContext === catalogContext;
+    const feed = sameContext && ['assignments', 'archived', 'orphaned'].includes(options.feed) ? options.feed : null;
     let offset = feed ? Math.max(0, Number(options.offset) || 0) : 0;
-    const previousData = professionChecklistDashboardState.data;
+    const previousData = sameContext ? professionChecklistDashboardState.data : null;
     bindProfessionWorkspaceControls();
     bindProfessionChecklistDashboardControls();
-    const catalogContext = salaryAccessContext();
     await ensureProfessionsLoaded({
         force: options.preserveCatalog !== true,
         silent: true
@@ -5068,6 +5070,7 @@ async function loadProfessionChecklists(options = {}) {
         [feed]: response.data?.[feed] || [],
         pagination: { ...previousData.pagination, [feed]: response.data?.pagination?.[feed] }
     } : response.data || {};
+    professionChecklistDashboardContext = context;
     professionChecklistDashboardState = { loadState: 'ready', data, error: '' };
     renderProfessionChecklistDashboardFilterOptions();
     renderProfessionChecklists();
@@ -5184,7 +5187,9 @@ for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged',
         if (document.getElementById('professionCatalogList')) renderProfessions();
         if (professionWorkspaceState.open) closeProfessionWorkspaceUi();
         if (staffOnboardingDialogState || document.getElementById('staffOnboardingScopeOverlay')) closeStaffOnboardingDialog();
-        if (professionChecklistDashboardState.loadState === 'idle') return;
+        if (professionChecklistDashboardState.loadState === 'idle'
+            || (professionChecklistDashboardState.loadState === 'ready' && professionChecklistDashboardContext === context)) return;
+        professionChecklistDashboardContext = null;
         professionChecklistDashboardRequestSeq += 1;
         professionChecklistDashboardState = {
             loadState: 'error', data: null, error: 'Бізнес або доступ змінився. Оновіть чеклісти.'

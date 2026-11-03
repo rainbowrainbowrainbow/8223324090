@@ -8,7 +8,58 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { inventory, hash, validateAttempt, validateMatrix, requiredMatrix, parseTap } = require('./helpers/education-close-evidence');
 const { createResults, FixtureBlocked } = require('./helpers/education-ready-results');
+const { createProgressProof } = require('./helpers/education-progress-proof');
 const contract = { suite: 'journey', requiredIds: ['child-visible-ui', 'save-visible-ui'], classification: 'ONE_CONTINUOUS_VISIBLE_UI_JOURNEY' };
+
+test('progress journal preserves every check and the canonical final proof without rewriting it per pass', t => {
+    const f = fixture(t);
+    const evidence = { ...f.proof, checks: [], status: 'NOT_RUN', detail: { text: 'Український синтетичний графік' } };
+    const writer = createProgressProof(f.directory, evidence);
+    writer.checkpoint();
+    const initial = fs.readFileSync(path.join(f.directory, 'verification.json'), 'utf8');
+    for (const row of f.proof.checks) {
+        evidence.checks.push(row); writer.recordCheck(row);
+    }
+    assert.equal(fs.readFileSync(path.join(f.directory, 'verification.json'), 'utf8'), initial);
+    assert.deepEqual(fs.readFileSync(path.join(f.directory, 'checks.ndjson'), 'utf8').trim().split('\n').map(JSON.parse), f.proof.checks);
+    evidence.status = 'PASS'; writer.checkpoint();
+    assert.equal(fs.readFileSync(path.join(f.directory, 'verification.json'), 'utf8'), JSON.stringify(evidence, null, 2));
+    assert.equal(writer.metrics().snapshots, 2);
+    assert.equal(writer.metrics().journalRows, contract.requiredIds.length);
+});
+
+test('a failed check immediately checkpoints diagnostic state and remains a failed canonical proof', t => {
+    const f = fixture(t), evidence = { ...f.proof, status: 'FAIL', checks: [{ id: 'child-visible-ui', status: 'FAIL', error: 'synthetic focus failure' }] };
+    const writer = createProgressProof(f.directory, evidence);
+    writer.recordCheck(evidence.checks[0]);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.directory, 'verification.json'), 'utf8')), evidence);
+    assert.equal(writer.metrics().snapshots, 1);
+    assert.throws(() => createProgressProof(f.directory, evidence), { code: 'EEXIST' });
+});
+
+test('partial check journals cannot make an interrupted attempt satisfy the evidence validator', t => {
+    const f = fixture(t), evidence = { ...f.proof, status: 'NOT_RUN', checks: [] };
+    const writer = createProgressProof(f.directory, evidence);
+    writer.checkpoint();
+    for (const row of f.proof.checks) { evidence.checks.push(row); writer.recordCheck(row); }
+    f.record.proofHash = hash(path.join(f.directory, f.record.proof));
+    fs.writeFileSync(path.join(f.directory, f.record.log), `EDUCATION_EVIDENCE_COMPLETE ${f.record.attemptId} journey ${f.record.proofHash}\n`);
+    f.record.logHash = hash(path.join(f.directory, f.record.log));
+    assert.throws(() => validateAttempt(f.record, f.directory, contract, f.root));
+});
+
+test('journal and checkpoint write failures propagate instead of becoming a successful check', t => {
+    const f = fixture(t), evidence = { ...f.proof, status: 'NOT_RUN' };
+    const diskError = Object.assign(new Error('synthetic disk full'), { code: 'ENOSPC' });
+    const writer = createProgressProof(f.directory, evidence, { ...fs, appendFileSync() { throw diskError; } });
+    assert.throws(() => writer.recordCheck(evidence.checks[0]), { code: 'ENOSPC' });
+    assert.equal(writer.metrics().journalRows, 0);
+    const other = path.join(f.directory, 'checkpoint-failure'); fs.mkdirSync(other);
+    let writes = 0;
+    const broken = createProgressProof(other, evidence, { ...fs, writeFileSync(...args) { if (++writes > 1) throw diskError; return fs.writeFileSync(...args); } });
+    assert.throws(() => broken.checkpoint(), { code: 'ENOSPC' });
+    assert.equal(broken.metrics().snapshots, 0);
+});
 test('WebKit navigation or teardown abort requires a local fetch error and a cancelled request', () => {
     const input = {
         engine: 'webkit', base: 'http://127.0.0.1:45225', at: 10000,

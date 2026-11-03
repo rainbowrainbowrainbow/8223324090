@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { Pool } = require('pg');
+const { createProgressProof } = require('../helpers/education-progress-proof');
 const playwright = require(process.env.EDU_QA_PLAYWRIGHT);
 const { DATABASES, OWNER_KEY, preflight, seedDataset, assertLocalTarget } = require('../../scripts/lib/education-ready-dataset');
 const base = process.env.TEST_URL || 'http://127.0.0.1:3012';
@@ -34,6 +35,7 @@ evidence.profiles = profiles;
 evidence.completedProfiles = [];
 evidence.completedProfileThemes = [];
 evidence.visibilityReads = [];
+const progressProof = createProgressProof(out, evidence);
 let browser, context, page;
 async function proof() {
     const manifest = JSON.parse((await pool.query('SELECT value FROM settings WHERE key=$1', [OWNER_KEY])).rows[0].value);
@@ -42,7 +44,7 @@ async function proof() {
 async function check(name, action) {
     try { const details = await action(); evidence.checks.push({ name, status: 'PASS', details }); }
     catch (error) { evidence.checks.push({ name, status: 'FAIL', error: error.message }); }
-    fs.writeFileSync(path.join(out, 'verification.json'), JSON.stringify(evidence, null, 2));
+    progressProof.recordCheck(evidence.checks.at(-1));
 }
 async function measureContrast(page,label){
     evidence.audits.push(await page.evaluate(label=>{
@@ -148,6 +150,7 @@ async function capture(name, rootSelector) {
     await check(name + ':touch-targets', () => assert.deepEqual(audit.controls.filter(c => c.width < (audit.touch ? 44 : 24) || c.height < (audit.touch ? 44 : 24)), [], 'Controls need44px touch /24px mouse targets'));
     await check(name + ':input-text', () => assert.deepEqual(audit.touch ? audit.tinyTextInputs : [], [], 'Touch text inputs need16px to avoid iOS focus zoom'));
     await check(name + ':input-boundaries', () => assert.deepEqual(audit.inputBoundaries.filter(c => c.ratio < 3), [], 'Input boundaries need contrast3:1 against their surface'));
+    progressProof.checkpoint();
     console.log(name + ' captured');
 }
 async function parkScreenshot(name) {
@@ -496,4 +499,6 @@ async function trap(selector, name) {
         bodyDark: document.body.classList.contains('dark-mode'), url: location.pathname + location.search })).catch(() => null);
     process.exitCode = 1; })
     .finally(async () => { await context?.close().catch(() => {}); await browser?.close(); await pool.end(); evidence.exitCode = process.exitCode || 0;
-        fs.writeFileSync(path.join(out, 'verification.json'), JSON.stringify(evidence, null, 2)); console.log(`${engine} mobile ${evidence.status}: ${out}`); });
+        progressProof.checkpoint();
+        if (process.env.EDU_EVIDENCE_WRITE_STATS === '1') console.log('EDUCATION_PROOF_WRITES ' + JSON.stringify(progressProof.metrics()));
+        console.log(`${engine} mobile ${evidence.status}: ${out}`); });

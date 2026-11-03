@@ -260,7 +260,11 @@ test('browser generates one guarded menu draft and applies only after confirmati
         await page.locator('.confirm-overlay[data-confirm-kind="confirm"] .confirm-cancel').click();
         assert.equal((await pool.query("SELECT ai_card_draft #>> '{imageStudio,imageUrl}' AS image FROM products WHERE id='fixture-menu-full'")).rows[0].image, '/images/menu-fixture.svg');
         await page.locator('[data-menu-image-action="use-recovered"]').click();
+        const selectedResponse = page.waitForResponse(response => response.url().endsWith('/use-recovered'));
         await page.locator('.confirm-overlay[data-confirm-kind="confirm"] .confirm-ok').click();
+        assert.equal((await selectedResponse).status(), 200);
+        await page.waitForFunction(() => [...document.querySelectorAll('.kitchen-menu-image-preview img')]
+            .some(image => image.getAttribute('src') === '/images/menu-draft.svg'));
         await page.waitForFunction(() => document.querySelector('[data-menu-image-action="apply"]')?.disabled === false);
         row = (await pool.query("SELECT icon_url, ai_card_draft FROM products WHERE id='fixture-menu-full'")).rows[0];
         assert.equal(row.ai_card_draft.imageStudio.imageUrl, '/images/menu-draft.svg');

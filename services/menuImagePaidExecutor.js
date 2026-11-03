@@ -89,7 +89,7 @@ async function pollMenuImagePaid({ pool, operationId, businessContext, productId
             throw Object.assign(new Error('Provider result requires review'), { code: 'MENU_PAID_RESULT_UNCERTAIN' });
         }
         // Only explicit confirmation may release an already-paid operation.
-        if (await saveDraft(outcome, operationId) !== true) throw new Error('Draft persistence was not confirmed');
+        if (await saveDraft(outcome, operationId, client) !== true) throw new Error('Draft persistence was not confirmed');
         await transitionMenuImageOperation(client, { id: operationId, businessContext, from: 'provider_pending',
             to: 'succeeded', providerTaskId: operation.provider_task_id });
         return { operationId, status: 'succeeded', providerCalled: true };

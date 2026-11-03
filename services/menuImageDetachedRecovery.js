@@ -55,7 +55,9 @@ async function recoverDetachedMenuImage({ pool, operationId, businessContext, pr
             return { status: 'failed', providerCalled: true };
         }
         if (outcome?.status !== 'ready') throw recoveryError('MENU_PAID_RESULT_UNCERTAIN');
-        const studio = await store(outcome, operation.request_studio);
+        // Reuse the lock-owning connection for DB-backed image storage. Taking
+        // another pool connection here can deadlock when all slots are polling.
+        const studio = await store(outcome, operation.request_studio, client);
         if (!studio || typeof studio !== 'object' || Array.isArray(studio) || !studio.imageUrl || studio.status !== 'ready') {
             throw recoveryError('MENU_RECOVERY_STORAGE_FAILED');
         }

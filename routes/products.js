@@ -1654,8 +1654,8 @@ async function reserveProductMenuImageGeneration(productId, businessContext, use
     return result.rowCount > 0;
 }
 
-async function persistKieMenuImageResultIfCurrent(productId, businessContext, username, taskId, preparedAt, imageStudio, operationId = null) {
-    const result = await pool.query(
+async function persistKieMenuImageResultIfCurrent(productId, businessContext, username, taskId, preparedAt, imageStudio, operationId = null, queryable = pool) {
+    const result = await queryable.query(
         `UPDATE products
          SET ai_card_draft = jsonb_set(COALESCE(ai_card_draft, '{}'::jsonb), '{imageStudio}', $1::jsonb, true),
              updated_at = NOW(),
@@ -2159,9 +2159,9 @@ router.post('/:id/menu-image/operation/:operationId/recover', productMenuImageRe
             }
             const result = await recoverDetachedMenuImage({ pool, operationId, businessContext: context, productId: id,
                 poll: pollMenuImageWithKie,
-                store: async (outcome, requestStudio) => normalizeMenuImageStudio({ ...requestStudio,
+                store: async (outcome, requestStudio, client) => normalizeMenuImageStudio({ ...requestStudio,
                     ...await storeMenuImageWithKie(product, outcome, { model: requestStudio.model,
-                        size: requestStudio.size, style: requestStudio.style, uploadOptions: { query: pool } }),
+                        size: requestStudio.size, style: requestStudio.style, uploadOptions: { query: client } }),
                     operationId, taskId: null, outcomeUncertain: false }) });
             return res.json({ success: true, ...result });
         } catch (error) {
@@ -2270,12 +2270,12 @@ router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), asy
             try {
                 const result = await pollMenuImagePaid({ pool, operationId: studio.operationId,
                     businessContext, productId: id, poll: pollMenuImageWithKie,
-                    saveDraft: async job => {
+                    saveDraft: async (job, _operationId, client) => {
                         const saved = await storeMenuImageWithKie(product, job, { model: studio.model,
-                            size: studio.size, style: studio.style, uploadOptions: { query: pool } });
+                            size: studio.size, style: studio.style, uploadOptions: { query: client } });
                         return persistKieMenuImageResultIfCurrent(id, businessContext, req.user.username,
                             studio.taskId || null, studio.preparedAt,
-                            normalizeMenuImageStudio({ ...studio, ...saved, taskId: null }), studio.operationId);
+                            normalizeMenuImageStudio({ ...studio, ...saved, taskId: null }), studio.operationId, client);
                     } });
                 if (result.status === 'failed') {
                     await persistKieMenuImageResultIfCurrent(id, businessContext, req.user.username,

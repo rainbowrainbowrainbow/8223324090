@@ -9,6 +9,7 @@ const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { reserveMenuImageOperation, transitionMenuImageOperation } = require('../../services/menuImagePaidOperations');
 const { saveRecoveryRequest, recoverDetachedMenuImage } = require('../../services/menuImageDetachedRecovery');
+const { pollMenuImagePaid } = require('../../services/menuImagePaidExecutor');
 
 test('detached KIE result remains reviewable without modifying manual draft or resubmission', {
     skip: process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER !== 'true', timeout: 30000
@@ -76,6 +77,28 @@ test('detached KIE result remains reviewable without modifying manual draft or r
         assert.equal(replay.studio.imageUrl, '/generated.png');
         assert.equal(polls, 3); assert.equal(stores, 2);
         assert.equal((await pool.query('SELECT status FROM menu_image_paid_operations WHERE operation_id=$1', [id])).rows[0].status, 'succeeded');
+        await pool.end();
+        pool = new Pool({ ...common, options: `-c search_path=${schema}`, max: 1, connectionTimeoutMillis: 1000 });
+        const single = { businessContext: 'fixture', productId: 'single-connection' };
+        const singleId = await reserveMenuImageOperation(pool, { ...single, provider: 'kie', actor: 'fixture' });
+        await saveRecoveryRequest(pool, { ...single, operationId: singleId, studio: { model: 'fake' } });
+        await transitionMenuImageOperation(pool, { id: singleId, businessContext: single.businessContext,
+            from: 'reserved', to: 'provider_pending', providerTaskId: 'single-task' });
+        const singleResult = await recoverDetachedMenuImage({ pool, ...single, operationId: singleId,
+            poll: async () => ({ status: 'ready' }), store: async (_outcome, _request, client) => {
+                assert.equal((await client.query('SELECT 1 AS value')).rows[0].value, 1);
+                return { status: 'ready', imageUrl: '/single.png' };
+            } });
+        assert.equal(singleResult.studio.imageUrl, '/single.png');
+        const current = { businessContext: 'fixture', productId: 'current-connection' };
+        const currentId = await reserveMenuImageOperation(pool, { ...current, provider: 'kie', actor: 'fixture' });
+        await transitionMenuImageOperation(pool, { id: currentId, businessContext: current.businessContext,
+            from: 'reserved', to: 'provider_pending', providerTaskId: 'current-task' });
+        const currentResult = await pollMenuImagePaid({ pool, ...current, operationId: currentId,
+            poll: async () => ({ status: 'ready' }), saveDraft: async (_outcome, _id, client) => {
+                assert.equal((await client.query('SELECT 1 AS value')).rows[0].value, 1); return true;
+            } });
+        assert.equal(currentResult.status, 'succeeded');
     } finally {
         if (pool) await pool.end();
         if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`);

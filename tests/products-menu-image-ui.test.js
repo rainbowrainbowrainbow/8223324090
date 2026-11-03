@@ -267,6 +267,9 @@ test('quota and unknown failures explain the next action without disabling manua
     for (const [code, expected] of [
         ['menu_image_generation_quota_exceeded', /Зверніться до адміністратора/],
         ['menu_image_generation_provider_rejected', /Причина не підтверджена/],
+        ['MENU_PAID_GUARD_DISABLED', /Генерацію тимчасово зупинено/],
+        ['MENU_PAID_DRAFT_CHANGED', /Генерацію не запущено/],
+        ['CRM_PROVIDER_BUSY', /інша AI-операція/],
         ['menu_image_generation_failed', /Причина невідома/]
     ]) {
         const app = createPageHarness();
@@ -278,6 +281,59 @@ test('quota and unknown failures explain the next action without disabling manua
         assert.equal(app.panel().querySelector('[data-menu-image-action="external-draft"]').disabled, false, code);
         assert.equal(app.message().includes('temporarily rate limited'), false, code);
     }
+});
+
+test('uncertain paid generation warns against another charge and disables generation', async () => {
+    const app = createPageHarness();
+    app.context.apiGenerateProductMenuImage = async () => ({ success: false,
+        code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW', retryable: false });
+    await app.context.generateKitchenMenuImage('dish-1', app.button());
+    assert.match(app.message(), /Не запускайте її повторно/);
+    assert.match(app.message(), /міг списати кошти/);
+    assert.equal(app.button().disabled, true);
+});
+
+test('persisted uncertain generation stays visible and blocks generation after a reload', () => {
+    const app = createPageHarness();
+    app.context.allProducts = [menuProduct('dish-1', 'event_genix', {
+        status: 'generating', provider: 'openai', outcomeUncertain: true,
+        operationId: '12345678-1234-1234-1234-123456789abc'
+    })];
+    app.context.renderProducts();
+    assert.match(app.message(), /Не запускайте її повторно/);
+    assert.equal(app.button().disabled, true);
+});
+
+test('checking an interrupted OpenAI operation restores the warning without a generation request', async () => {
+    const app = createPageHarness();
+    const operationId = '12345678-1234-1234-1234-123456789abc';
+    app.context.allProducts = [menuProduct('dish-1', 'event_genix', { status: 'generating', provider: 'openai', operationId })];
+    app.context.renderProducts();
+    let checks = 0, generations = 0;
+    app.context.apiGetProductMenuImageStatus = async () => {
+        checks++;
+        return { success: true, status: 'unknown', product: menuProduct('dish-1', 'event_genix', {
+            status: 'generating', provider: 'openai', operationId, outcomeUncertain: true
+        }) };
+    };
+    app.context.apiGenerateProductMenuImage = async () => { generations++; };
+    assert.ok(app.panel().querySelector('[data-menu-image-action="check-paid-status"]'));
+    await app.context.checkKitchenMenuImagePaidStatus('dish-1');
+    assert.match(app.message(), /Не запускайте її повторно/);
+    assert.equal(checks, 1);
+    assert.equal(generations, 0);
+});
+
+test('operation inspection finds a detached job without starting generation', async () => {
+    const app = createPageHarness();
+    let calls = 0;
+    app.context.apiGetProductMenuImageOperation = async () => ({ success: true,
+        operation: { provider: 'kie', status: 'provider_pending', taskId: 'fixture-task' } });
+    app.context.apiGenerateProductMenuImage = async () => { calls++; };
+    const button = app.panel().querySelector('[data-menu-image-action="inspect-paid-operation"]');
+    await app.context.inspectKitchenMenuPaidOperation('dish-1', button);
+    assert.match(app.panel().querySelector('[data-menu-image-operation-status]').textContent, /fixture-task/);
+    assert.equal(calls, 0);
 });
 
 test('failed Kie polling shows the safe task ID without triggering another generation', async () => {

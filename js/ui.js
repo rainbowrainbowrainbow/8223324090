@@ -1928,7 +1928,8 @@ function confirmModal(message, options = {}) {
         overlay.querySelector('.confirm-ok').addEventListener('click', () => close(true));
         overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
 
-        document.body.appendChild(overlay);
+        const container = options.container?.isConnected ? options.container : document.body;
+        container.appendChild(overlay);
         window.ModalLayer?.ensureTopLayer(overlay);
         openModal(overlay, document.activeElement, {
             initialFocus: '.confirm-ok',
@@ -1990,7 +1991,8 @@ function promptModal(message, options = {}) {
         const onKey = (e) => { if (e.key === 'Escape') close(null); };
         document.addEventListener('keydown', onKey);
 
-        document.body.appendChild(overlay);
+        const container = options.container?.isConnected ? options.container : document.body;
+        container.appendChild(overlay);
         requestAnimationFrame(() => { input.focus(); input.select(); });
     });
 }

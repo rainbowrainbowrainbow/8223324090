@@ -28,7 +28,9 @@
         jobs: [],
         selectedJobId: null,
         canDecide: false,
-        loading: false
+        loading: false,
+        executing: false,
+        blockedExecutions: new Set()
     };
 
     function $(id) {
@@ -200,6 +202,7 @@
         list.querySelectorAll('[data-job-id]').forEach(button => {
             button.addEventListener('click', () => {
                 state.selectedJobId = button.dataset.jobId;
+                if (!state.executing) $('hermesStudioExecutionStatus').textContent = '';
                 renderAll();
             });
         });
@@ -311,13 +314,19 @@
 
     function setDecisionButtonsState() {
         const job = selectedJob();
-        const canDecide = state.canDecide && !!job;
+        const canDecide = state.canDecide && !!job && !state.executing;
         document.querySelectorAll('[data-hermes-decision], #hermesStudioRegenerateBtn').forEach(button => {
             button.disabled = !canDecide;
             button.title = canDecide ? '' : 'Недостатньо прав або job не обрано';
         });
         const decisionBox = document.querySelector('.hermes-studio-decision-box');
         if (decisionBox) decisionBox.setAttribute('aria-disabled', canDecide ? 'false' : 'true');
+        const execute = $('hermesStudioExecuteBtn');
+        if (execute) {
+            execute.disabled = !canDecide || job.status !== 'queued' || state.blockedExecutions.has(String(job.id));
+            execute.textContent = state.executing ? 'Генерація…' : 'Згенерувати чернетку';
+        }
+        document.querySelector('.hermes-studio-execution')?.setAttribute('aria-busy', String(state.executing));
     }
 
     function renderAll() {
@@ -471,6 +480,46 @@
         }
     }
 
+    async function executeCreative() {
+        const job = selectedJob();
+        if (!job || !state.canDecide || state.executing || job.status !== 'queued'
+            || state.blockedExecutions.has(String(job.id))) return;
+        state.executing = true;
+        setDecisionButtonsState();
+        const status = $('hermesStudioExecutionStatus');
+        try {
+            const accepted = typeof confirmModal === 'function' && await confirmModal(
+                `Згенерувати чернетку «${job.title || 'Креатив'}»? Операція може бути платною. Результат потребуватиме вашого погодження.`,
+                { okText: 'Згенерувати', cancelText: 'Скасувати' });
+            if (!accepted) return;
+            status.textContent = `Генеруємо чернетку «${job.title || 'Креатив'}». Дочекайтеся результату перед наступним запуском.`;
+            const data = await studioFetch(`/jobs/${encodeURIComponent(job.id)}/execute`, {
+                method: 'POST', body: JSON.stringify({ businessContext: businessContextParam() || undefined, confirmed: true })
+            });
+            if (!data?.job) throw new Error('Missing generation result');
+            state.jobs = state.jobs.map(item => String(item.id) === String(job.id) ? data.job : item);
+            status.textContent = 'Чернетка готова. Перегляньте зображення, текст і формат, потім погодьте або відхиліть.';
+            renderAll();
+        } catch (error) {
+            const code = error.data?.code || error.code;
+            if (code === 'CRM_EXECUTION_DISABLED') {
+                status.textContent = 'Генерація в CRM ще не активована. Збережений бриф доступний для перегляду.';
+            } else if (code === 'CRM_CREATIVE_MODEL_NOT_READY') {
+                status.textContent = 'Модель генерації ще не налаштована або потребує оновлення. Зверніться до адміністратора.';
+            } else if (code === 'CRM_PROVIDER_BUSY') {
+                status.textContent = 'Інша генерація вже виконується. Дочекайтеся її завершення.';
+            } else if (code === 'CRM_CREATIVE_REFERENCES_REQUIRE_REVIEW') {
+                status.textContent = 'Цей бриф містить зразки для редагування. Такий запуск поки потребує окремої підготовки.';
+            } else {
+                state.blockedExecutions.add(String(job.id));
+                status.textContent = 'Результат запуску потребує перевірки. Оновіть список і перевірте стан завдання перед повторною генерацією.';
+            }
+        } finally {
+            state.executing = false;
+            setDecisionButtonsState();
+        }
+    }
+
     function bindUi() {
         $('hermesStudioRefreshBtn')?.addEventListener('click', () => loadJobs({ preserveSelection: true }));
         $('hermesStudioFocusFormBtn')?.addEventListener('click', () => $('hermesStudioTitle')?.focus());
@@ -480,6 +529,7 @@
             button.addEventListener('click', () => postDecision(button.dataset.hermesDecision));
         });
         $('hermesStudioRegenerateBtn')?.addEventListener('click', regenerateJob);
+        $('hermesStudioExecuteBtn')?.addEventListener('click', executeCreative);
     }
 
     async function initAuth() {

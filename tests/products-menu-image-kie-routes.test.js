@@ -1,4 +1,4 @@
-const { test, afterEach } = require('node:test');
+const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { pool } = require('../db');
 const imageStorage = require('../services/imageStorage');
@@ -11,12 +11,18 @@ imageStorage.uploadFromUrl = async (sourceUrl, _filename, options) => {
 const router = require('../routes/products');
 
 const originalQuery = pool.query;
+const originalConnect = pool.connect;
 const originalFetch = global.fetch;
 const originalKey = process.env.KIE_API_KEY;
 const originalPublicBase = process.env.PUBLIC_BASE_URL;
 
+beforeEach(() => { pool.connect = async () => ({
+    query: async sql => sql.includes('to_regclass') ? { rows: [{ name: null }] } : { rows: [{ locked: true }] },
+    release() {}
+}); });
 afterEach(() => {
     pool.query = originalQuery;
+    pool.connect = originalConnect;
     global.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.KIE_API_KEY;
     else process.env.KIE_API_KEY = originalKey;
@@ -34,6 +40,7 @@ test('saving a business burger blueprint feeds one reference to Kie without chan
     };
     const settings = new Map();
     pool.query = async (sql, params) => {
+        if (sql.includes("to_regclass('menu_image_guard_activation')")) return { rows: [{ name: null }] };
         if (sql.includes('WHERE p.id = $1')) return { rows: [{ ...product }], rowCount: 1 };
         if (sql.startsWith('SELECT value FROM settings')) {
             return { rows: settings.has(params[0]) ? [{ value: settings.get(params[0]) }] : [] };
@@ -100,6 +107,7 @@ test('Kie product route creates one task, persists its ID, and status polling ne
         ai_card_draft: {}
     };
     pool.query = async (sql, params) => {
+        if (sql.includes("to_regclass('menu_image_guard_activation')")) return { rows: [{ name: null }] };
         if (sql.includes('SELECT value FROM settings WHERE key = $1')) return { rows: [] };
         if (sql.includes('WHERE p.id = $1')) return { rows: [{ ...product }], rowCount: 1 };
         if (sql.includes('jsonb_set(')) {
@@ -156,6 +164,7 @@ test('failed Kie task keeps safe provider code and ID for diagnosis without chan
         name: 'QA burger', icon_url: '/uploads/current.jpg', is_active: true, ai_card_draft: {}
     };
     pool.query = async (sql, params) => {
+        if (sql.includes("to_regclass('menu_image_guard_activation')")) return { rows: [{ name: null }] };
         if (sql.includes('SELECT value FROM settings WHERE key = $1')) return { rows: [] };
         if (sql.includes('WHERE p.id = $1')) return { rows: [{ ...product }], rowCount: 1 };
         if (sql.includes('jsonb_set(')) {

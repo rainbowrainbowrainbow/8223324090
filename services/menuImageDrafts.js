@@ -441,7 +441,7 @@ async function createExternalMenuImageDraft({ product = {}, payload = {}, actor 
     };
 }
 
-async function persistMenuImageDraft(db, { productId, businessContext, username, draft, defaultBusinessContext = DEFAULT_BUSINESS_CONTEXT } = {}) {
+async function persistMenuImageDraft(db, { productId, businessContext, username, draft, expectedDraft, defaultBusinessContext = DEFAULT_BUSINESS_CONTEXT } = {}) {
     if (!db || typeof db.query !== 'function') {
         throw menuImageDraftError(500, 'menu_image_db_unavailable', 'Database query interface is required');
     }
@@ -457,13 +457,15 @@ async function persistMenuImageDraft(db, { productId, businessContext, username,
              updated_by = $2
          WHERE id = $3
            AND COALESCE(business_context, $5) = $4
+           ${expectedDraft === undefined ? '' : 'AND ai_card_draft IS NOT DISTINCT FROM $6::jsonb'}
          RETURNING *`,
         [
             JSON.stringify(safeJsonObject(draft)),
             cleanNullableString(username, 100) || 'system',
             id,
             context,
-            cleanNullableString(defaultBusinessContext, 80) || DEFAULT_BUSINESS_CONTEXT
+            cleanNullableString(defaultBusinessContext, 80) || DEFAULT_BUSINESS_CONTEXT,
+            ...(expectedDraft === undefined ? [] : [expectedDraft === null ? null : JSON.stringify(expectedDraft)])
         ]
     );
     return result.rows?.[0] || null;

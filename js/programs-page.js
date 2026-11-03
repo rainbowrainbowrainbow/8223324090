@@ -1354,6 +1354,9 @@ function menuImageGenerationKey(businessContext, productId) {
 }
 
 function menuImageGenerationMessage(state) {
+    if (state?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW') {
+        return 'Результат попередньої генерації потребує перевірки. Не запускайте її повторно: провайдер міг списати кошти. Зверніться до адміністратора.';
+    }
     if (state?.inFlight && state.feedback?.code?.startsWith('menu_image_tracking_')) return menuImageGenerationMessage({ feedback: state.feedback });
     if (state?.inFlight && state.provider === 'kie' && state.tracking === false) return 'Kie обробляє фото. Перевірка автоматично продовжиться, коли сторінка знову стане активною.';
     if (state?.inFlight) return state.provider === 'kie'
@@ -1366,6 +1369,21 @@ function menuImageGenerationMessage(state) {
     if (state.feedback.code === 'menu_image_tracking_changed') return 'Завдання змінилося. Запізнілий результат не застосовано; перевірте актуальну генерацію ще раз.';
 
     const code = state.feedback.code;
+    if (code === 'MENU_PAID_DRAFT_CHANGED') {
+        return 'Чернетка змінилася під час підготовки. Генерацію не запущено. Оновіть сторінку та перевірте актуальне фото.';
+    }
+    if (['MENU_PAID_GUARD_DISABLED', 'MENU_PAID_GUARD_TRANSITION', 'MENU_PAID_LEGACY_BUSY', 'MENU_PAID_LEGACY_PENDING'].includes(code)) {
+        return 'Генерацію тимчасово зупинено для безпеки попередніх операцій. Зверніться до адміністратора. Фото можна завантажити вручну.';
+    }
+    if (code === 'MENU_PAID_OPERATION_REQUIRES_REVIEW') {
+        return 'Результат попередньої генерації потребує перевірки. Не запускайте її повторно: провайдер міг списати кошти. Зверніться до адміністратора або завантажте фото вручну.';
+    }
+    if (code === 'CRM_PROVIDER_BUSY') {
+        return 'Зараз виконується інша AI-операція. Дочекайтеся її завершення та спробуйте вручну. Фото можна завантажити вручну.';
+    }
+    if (code === 'MENU_PAID_OPERATION_BUDGET_FULL') {
+        return 'Зараз є незавершені генерації фото. Дочекайтеся їх результату або зверніться до адміністратора. Фото можна завантажити вручну.';
+    }
     if (code === 'menu_image_generation_quota_exceeded') {
         return 'Квота, кредити або ліміт витрат AI вичерпані. Зверніться до адміністратора. Фото можна завантажити вручну.';
     }
@@ -1417,14 +1435,16 @@ function syncKitchenMenuImageGenerationUi(key) {
         const button = panel.querySelector('[data-menu-image-action="generate"]');
         const status = panel.querySelector('[data-menu-image-generation-status]');
         const badge = panel.querySelector('.kitchen-menu-image-status');
+        const uncertain = state?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW';
         if (!otherActionBusy) panel.setAttribute('aria-busy', inFlight ? 'true' : 'false');
         if (button) {
             button.disabled = inFlight || cooldown || otherActionBusy;
-            button.textContent = inFlight ? 'Генеруємо чернетку...' : button.dataset.menuImageDefaultLabel;
+            button.textContent = state?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW'
+                ? 'Потрібна перевірка' : inFlight ? 'Генеруємо чернетку...' : button.dataset.menuImageDefaultLabel;
         }
         if (status) {
             status.textContent = menuImageGenerationMessage(state);
-            status.dataset.type = inFlight ? 'loading' : (state?.feedback ? 'error' : '');
+            status.dataset.type = uncertain ? 'error' : inFlight ? 'loading' : (state?.feedback ? 'error' : '');
         }
         const track = panel.querySelector('[data-menu-image-action="track"]');
         if (track) {
@@ -1432,9 +1452,9 @@ function syncKitchenMenuImageGenerationUi(key) {
             track.textContent = state?.tracking ? 'Перевіряємо завдання…' : 'Перевірити завдання ще раз';
         }
         if (badge && (inFlight || state?.feedback)) {
-            badge.textContent = inFlight ? 'Генерується' : 'Помилка';
-            badge.classList.toggle('generating', inFlight);
-            badge.classList.toggle('failed', !inFlight);
+            badge.textContent = uncertain ? 'Потрібна перевірка' : inFlight ? 'Генерується' : 'Помилка';
+            badge.classList.toggle('generating', inFlight && !uncertain);
+            badge.classList.toggle('failed', !inFlight || uncertain);
         }
     });
 }
@@ -1632,10 +1652,11 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
         ? { feedback: { code: 'menu_image_generation_failed',
             providerCode: draft.providerCode, providerTaskId: draft.taskId } }
         : generationState;
-    const status = generationBusy ? 'generating' : (displayState?.feedback ? 'failed' : draftStatus);
+    const uncertain = displayState?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW';
+    const status = generationBusy && !uncertain ? 'generating' : (displayState?.feedback ? 'failed' : draftStatus);
     const hasDraft = Boolean(draft.imageUrl || draft.prompt || draft.error || draft.generatedAt || draft.preparedAt);
     const hasDraftImage = Boolean(draft.imageUrl);
-    const statusLabel = menuImageDraftStatusLabel(status);
+    const statusLabel = uncertain ? 'Потрібна перевірка' : menuImageDraftStatusLabel(status);
     const statusClass = menuImageDraftStatusClass(status);
     const canApply = hasDraftImage && ['ready', 'approved'].includes(draftStatus);
     const canReject = hasDraft && !['generating', 'rejected', 'applied'].includes(draftStatus);
@@ -1678,7 +1699,7 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                 </label>
                 <div class="kitchen-menu-image-actions">
                     <button type="button" class="btn-page-secondary kitchen-menu-image-generate-btn" data-menu-image-action="generate" data-menu-image-default-label="${generateLabel}" onclick="generateKitchenMenuImage('${productId}', this)"${generationBusy || generationCoolingDown ? ' disabled' : ''}>
-                        ${generationBusy ? 'Генеруємо чернетку...' : generateLabel}
+                        ${generationState?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' ? 'Потрібна перевірка' : generationBusy ? 'Генеруємо чернетку...' : generateLabel}
                     </button>
                     <button type="button" class="btn-page-primary" data-menu-image-action="apply" onclick="applyKitchenMenuImageDraft('${productId}', this)"${canApply && !generationBusy ? '' : ' disabled'}>
                         Застосувати
@@ -1687,10 +1708,12 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                         Відхилити
                     </button>
                 </div>
-                <p class="kitchen-menu-image-generation-status" data-menu-image-generation-status data-type="${generationBusy ? 'loading' : (displayState?.feedback ? 'error' : '')}" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(menuImageGenerationMessage(displayState))}</p>
+                <p class="kitchen-menu-image-generation-status" data-menu-image-generation-status data-type="${uncertain ? 'error' : generationBusy ? 'loading' : (displayState?.feedback ? 'error' : '')}" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(menuImageGenerationMessage(displayState))}</p>
             </div>
             <div class="kitchen-menu-image-manual">
                 <strong>Додати власне фото як чернетку</strong>
+                <button type="button" class="btn-page-secondary" data-menu-image-action="inspect-paid-operation" onclick="inspectKitchenMenuPaidOperation('${productId}', this)">Перевірити попередню генерацію</button>
+                <p data-menu-image-operation-status role="status" aria-live="polite"></p>
                 <p>AI-результат зберігається автоматично. Файл збережеться після вибору, URL — після виходу з поля або Enter. Чинне фото зміниться тільки після «Застосувати».</p>
                 <label>
                     <span>Файл</span>
@@ -1741,7 +1764,8 @@ function setKitchenMenuImageStudioBusy(panel, busy) {
     if (!panel) return;
     panel.setAttribute('aria-busy', busy ? 'true' : 'false');
     panel.querySelectorAll('button, select, input, textarea').forEach(control => {
-        if (control.hasAttribute('data-menu-image-close') || control.hasAttribute('data-menu-photo-url')) return;
+        if (control.hasAttribute('data-menu-image-close') || control.hasAttribute('data-menu-photo-url')
+            || ['inspect-paid-operation', 'check-paid-status'].includes(control.dataset.menuImageAction)) return;
         if (busy) {
             if (control.dataset.menuImageWasDisabled === undefined) control.dataset.menuImageWasDisabled = control.disabled ? '1' : '0';
             control.disabled = true;
@@ -1952,6 +1976,10 @@ function menuImageGenerationDisplayState(product) {
     const key = menuImageGenerationKey(getProductApiBusinessContext(), product.id);
     const state = menuImageGenerationState.get(key);
     const draft = getMenuImageStudioDraft(product);
+    if (state?.feedback?.code === 'MENU_PAID_OUTCOME_REQUIRES_REVIEW') return { ...state, inFlight: true };
+    if (draft.status === 'generating' && draft.outcomeUncertain === true) {
+        return { ...state, inFlight: true, feedback: { code: 'MENU_PAID_OUTCOME_REQUIRES_REVIEW' } };
+    }
     if (state?.inFlight || state?.feedback) return state;
     if (draft.status === 'generating') return { inFlight: true, provider: draft.provider, tracking: false };
     if (draft.status === 'failed') return { feedback: { code: 'menu_image_generation_failed',
@@ -1962,9 +1990,87 @@ function menuImageGenerationDisplayState(product) {
 function kitchenMenuImageTrackingButton(product) {
     const draft = getMenuImageStudioDraft(product);
     const state = menuImageGenerationState.get(menuImageGenerationKey(getProductApiBusinessContext(), product.id));
+    if (draft.status === 'generating' && draft.provider === 'openai' && draft.operationId) {
+        return `<button type="button" class="btn-page-secondary" data-menu-image-action="check-paid-status" onclick="checkKitchenMenuImagePaidStatus('${escapeJsString(product.id)}')">Перевірити стан</button>
+            <p>Це перевіряє стан без нової генерації.</p>`;
+    }
     if (draft.status !== 'generating' || draft.provider !== 'kie' || !state?.autoResumeBlocked) return '';
     return `<button type="button" class="btn-page-secondary" data-menu-image-action="track" onclick="resumeKitchenMenuImageTracking('${escapeJsString(product.id)}', this)">Перевірити завдання ще раз</button>
         <p>Це перевірить уже замовлену генерацію без нової оплати.</p>`;
+}
+
+async function inspectKitchenMenuPaidOperation(productId, trigger) {
+    const businessContext = getProductApiBusinessContext();
+    if (!guardProductWrite('перевіряти попередню генерацію фото')) return;
+    const panel = trigger?.closest?.('.kitchen-menu-image-studio');
+    const output = panel?.querySelector?.('[data-menu-image-operation-status]');
+    if (!output || typeof apiGetProductMenuImageOperation !== 'function') return;
+    trigger.disabled = true;
+    try {
+        const result = await apiGetProductMenuImageOperation(productId, { businessContext });
+        if (!panel.isConnected || businessContext !== getProductApiBusinessContext()) return;
+        if (!result?.success) { output.textContent = 'Не вдалося перевірити стан. Нову генерацію не запущено.'; return; }
+        if (!result.operation) { output.textContent = 'Незавершених захищених генерацій для цієї страви не знайдено.'; return; }
+        const task = result.operation.taskId ? ` ID завдання: ${result.operation.taskId}.` : '';
+        output.textContent = `Є незавершена генерація (${result.operation.provider}).${task} Не запускайте нову без перевірки; зверніться до адміністратора.`;
+        if (typeof getUserRole === 'function' && getUserRole() === 'creator' && !result.operation.taskId
+            && ['reserved', 'unknown'].includes(result.operation.status)) {
+            const review = document.createElement('button');
+            review.type = 'button'; review.className = 'btn-page-secondary';
+            review.dataset.menuImageAction = 'review-paid-operation';
+            review.textContent = 'Зафіксувати звірку';
+            review.addEventListener('click', () => reconcileKitchenMenuPaidOperation(productId, result.operation.operationId, review));
+            output.append(' ', review);
+        }
+    } catch {
+        if (panel.isConnected && businessContext === getProductApiBusinessContext()) {
+            output.textContent = 'Не вдалося перевірити стан. Нову генерацію не запущено.';
+        }
+    } finally { if (trigger.isConnected) trigger.disabled = false; }
+}
+
+async function reconcileKitchenMenuPaidOperation(productId, operationId, trigger) {
+    const businessContext = getProductApiBusinessContext();
+    if (!guardProductWrite('звірити генерацію фото меню') || typeof apiReconcileProductMenuImageOperation !== 'function') return;
+    if (typeof promptModal !== 'function' || typeof confirmModal !== 'function') {
+        showNotification('Діалог звірки недоступний. Нову генерацію не запущено.', 'error');
+        return;
+    }
+    const container = trigger?.closest?.('dialog[open]') || document.body;
+    const note = await promptModal('Опишіть, як перевірили операцію у провайдера (щонайменше 20 символів). Не вказуйте ключі чи паролі.',
+        { okText: 'Продовжити', cancelText: 'Скасувати', container });
+    if (!note || note.trim().length < 20) return;
+    if (!await confirmModal('Підтверджуєте, що перевірили операцію у провайдера і розумієте: кошти могли бути списані? Це лише фіксує звірку; нову генерацію не буде запущено.',
+        { type: 'warning', okText: 'Підтвердити звірку', cancelText: 'Скасувати', container })) return;
+    const result = await apiReconcileProductMenuImageOperation(productId, { businessContext, operationId,
+        reviewNote: note.trim(), providerReviewed: true, acceptsPossibleCharge: true });
+    if (businessContext !== getProductApiBusinessContext()) return;
+    if (!result?.success) {
+        showNotification('Не вдалося зафіксувати звірку. Перевірте доступ і стан операції; нову генерацію не запущено.', 'error');
+        return;
+    }
+    if (result.product && String(result.product.id) === String(productId)) updateProductInState(result.product);
+    clearMenuImageGenerationFeedback(businessContext, productId);
+    refreshProductCard(productId, businessContext);
+    showNotification('Звірку записано. Нову генерацію не запущено.', 'success');
+}
+
+async function checkKitchenMenuImagePaidStatus(productId) {
+    const businessContext = getProductApiBusinessContext();
+    if (!guardProductWrite('перевіряти стан фото меню')) return;
+    const product = allProducts.find(item => String(item.id) === String(productId));
+    const identity = getMenuImageStudioDraft(product).operationId;
+    if (!identity) return;
+    const result = await apiGetProductMenuImageStatus(productId, { businessContext });
+    const current = allProducts.find(item => String(item.id) === String(productId));
+    if (businessContext !== getProductApiBusinessContext() || getMenuImageStudioDraft(current).operationId !== identity) return;
+    if (result?.success && result.product && String(result.product.id) === String(productId)
+        && getProductApiBusinessContext(result.product.businessContext || result.product.business_context || businessContext) === businessContext
+        && getMenuImageStudioDraft(result.product).operationId === identity) {
+        updateProductInState(result.product);
+        menuImageGenerationState.delete(menuImageGenerationKey(businessContext, productId));
+        refreshProductCard(productId, businessContext);
+    } else showNotification('Не вдалося перевірити стан. Повторну генерацію не запущено.', 'error');
 }
 
 async function resumeKitchenMenuImageTracking(productId) {

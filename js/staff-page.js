@@ -7825,6 +7825,182 @@ function renderLoadView() {
 }
 
 // ==========================================
+// SCHEDULE PHOTO REVIEW
+// ==========================================
+
+const scheduleOcrState = { preview: null, busy: false, blocked: false };
+const OCR_ACTIONS = { create: 'Нова зміна', update: 'Оновлення', no_change: 'Без змін',
+    conflict: 'Конфлікт — перевірте заміну', invalid: 'Потрібне ручне виправлення',
+    staff_not_found: 'Працівника не знайдено', ambiguous_staff: 'Кілька збігів працівника' };
+const OCR_STATUSES = { working: 'Робочий день', remote: 'Віддалено', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний' };
+
+function scheduleOcrMessage(text) {
+    document.getElementById('scheduleOcrStatus').textContent = text;
+}
+
+function updateScheduleOcrButtons() {
+    const panel = document.getElementById('scheduleOcrPanel');
+    if (!panel) return;
+    panel.setAttribute('aria-busy', String(scheduleOcrState.busy));
+    document.querySelectorAll('#scheduleOcrForm input').forEach(input => { input.disabled = scheduleOcrState.busy; });
+    const previewButton = document.getElementById('scheduleOcrPreviewBtn');
+    previewButton.disabled = scheduleOcrState.busy || scheduleOcrState.blocked || !!scheduleOcrState.preview;
+    previewButton.textContent = scheduleOcrState.busy ? 'Зачекайте…' : 'Розпізнати й перевірити';
+    const selected = [...panel.querySelectorAll('[data-ocr-row]:checked')];
+    const conflictsConfirmed = selected.every(input => input.dataset.conflict !== 'true'
+        || panel.querySelector(`[data-ocr-conflict="${input.dataset.ocrRow}"]`)?.checked);
+    document.getElementById('scheduleOcrApplyBtn').disabled = scheduleOcrState.busy || scheduleOcrState.blocked
+        || !scheduleOcrState.preview || !selected.length || !conflictsConfirmed
+        || !document.getElementById('scheduleOcrApplyConfirm').checked;
+    panel.querySelectorAll('#scheduleOcrReview input').forEach(input => {
+        input.disabled = scheduleOcrState.busy || scheduleOcrState.blocked || input.dataset.blocked === 'true';
+    });
+}
+
+function scheduleOcrPlanText(plan) {
+    if (!plan) return 'Немає зміни';
+    return [OCR_STATUSES[plan.status] || plan.status, plan.startTime && plan.endTime
+        ? `${plan.startTime}–${plan.endTime}` : ''].filter(Boolean).join(' · ');
+}
+
+function renderScheduleOcrPreview(preview) {
+    document.getElementById('scheduleOcrReview').hidden = false;
+    document.getElementById('scheduleOcrReviewSummary').textContent = `${preview.rows.length} рядків. Виберіть перевірені зміни. Нерозпізнані рядки виправте у звичайному редакторі графіка.`;
+    document.getElementById('scheduleOcrRows').innerHTML = preview.rows.map((row, index) => {
+        const allowed = ['create', 'update', 'no_change', 'conflict'].includes(row.action);
+        const issues = [...(row.issues || []), ...(row.sourceIssues || [])]
+            .map(issue => typeof issue === 'string' ? issue : issue.message || '').filter(Boolean).join('; ');
+        return `<article class="schedule-ocr-row" data-action="${escapeHtml(row.action)}">
+            <label class="schedule-ocr-check"><input type="checkbox" data-ocr-row="${index}" data-conflict="${row.action === 'conflict'}" data-blocked="${!allowed}" ${allowed ? '' : 'disabled'}>
+                <strong>${escapeHtml(row.employeeName)} · ${escapeHtml(row.date)}</strong></label>
+            <p>${escapeHtml(OCR_ACTIONS[row.action] || 'Потрібна перевірка')}</p>
+            <p>Зараз: ${escapeHtml(allowed ? scheduleOcrPlanText(row.expectedCurrentState) : 'Не перевірено')}</p>
+            <p>Пропонується: ${escapeHtml(row.proposedState ? scheduleOcrPlanText(row.proposedState) : 'Потрібне уточнення')}</p>
+            ${row.matchedStaff ? `<p>Працівник: ${escapeHtml(row.matchedStaff.displayName || row.matchedStaff.name)}</p>` : ''}
+            ${issues ? `<p class="schedule-ocr-issues">${escapeHtml(issues)}</p>` : ''}
+            ${row.action === 'conflict' ? `<label class="schedule-ocr-check"><input type="checkbox" data-ocr-conflict="${index}"> Я перевірив поточну зміну та погоджую її заміну.</label>` : ''}
+        </article>`;
+    }).join('');
+    updateScheduleOcrButtons();
+}
+
+async function scheduleOcrRequest(path, body) {
+    const multipart = body instanceof FormData;
+    const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders(!multipart) : {};
+    if (!multipart) headers['Content-Type'] = 'application/json';
+    const response = await staffApiFetch(`/api/staff/schedule/${path}`, {
+        method: 'POST', headers, body: multipart ? body : JSON.stringify(body)
+    });
+    if (!response) throw new Error('Session could not be verified');
+    const result = await response.json();
+    if (!response.ok || result.success === false) {
+        const error = new Error('Schedule request failed');
+        error.code = result.code;
+        throw error;
+    }
+    return result;
+}
+
+async function previewScheduleOcr(event) {
+    event.preventDefault();
+    if (!StaffState.canManageSchedule || scheduleOcrState.busy || scheduleOcrState.blocked || scheduleOcrState.preview) return;
+    const form = document.getElementById('scheduleOcrForm');
+    if (!form.reportValidity()) return;
+    const file = document.getElementById('scheduleOcrFile').files[0];
+    if (!file || !['image/png', 'image/jpeg'].includes(file.type) || !file.size || file.size > 4 * 1024 * 1024) {
+        scheduleOcrMessage('Виберіть PNG або JPEG розміром до 4 МБ.');
+        return;
+    }
+    const body = new FormData();
+    body.append('file', file);
+    body.append('documentDate', document.getElementById('scheduleOcrDate').value);
+    body.append('confirmed', 'true');
+    body.append('businessContext', 'event_genix');
+    scheduleOcrState.busy = true;
+    updateScheduleOcrButtons();
+    scheduleOcrMessage('Розпізнаємо фото. Графік ще не змінюється.');
+    try {
+        const preview = await scheduleOcrRequest('ocr-preview', body);
+        if (!preview.importId || !Array.isArray(preview.rows)) throw new Error('Invalid preview');
+        scheduleOcrState.preview = preview;
+        renderScheduleOcrPreview(preview);
+        scheduleOcrMessage(preview.rows.length ? 'Розпізнавання завершено. Перевірте рядки перед застосуванням.' : 'На фото не знайдено рядків графіка.');
+    } catch (error) {
+        if (error.code === 'CRM_EXECUTION_DISABLED' || error.code === 'CRM_OCR_PROVIDER_NOT_CONFIGURED') {
+            scheduleOcrMessage('Розпізнавання фото в CRM ще не активоване. Можна скористатися звичайним редактором графіка.');
+        } else if (error.code === 'CRM_PROVIDER_BUSY') {
+            scheduleOcrMessage('Інша генерація виконується. Дочекайтеся її завершення перед наступним запуском.');
+        } else if (/^(?:LIMIT_|CRM_OCR_IMAGE_|HERMES_SCHEDULE_IMPORT_DATE_)/.test(error.code || '')) {
+            scheduleOcrMessage('Перевірте формат фото, його розмір і дату документа.');
+        } else {
+            scheduleOcrState.blocked = true;
+            scheduleOcrMessage('Результат розпізнавання потребує перевірки. Повторний запуск для цього фото заблоковано на цій сторінці; перевірте стан перед новою спробою.');
+        }
+    } finally {
+        scheduleOcrState.busy = false;
+        updateScheduleOcrButtons();
+    }
+}
+
+async function applyScheduleOcr() {
+    const button = document.getElementById('scheduleOcrApplyBtn');
+    if (button.disabled || !StaffState.canManageSchedule || scheduleOcrState.busy) return;
+    const preview = scheduleOcrState.preview;
+    const selected = [...document.querySelectorAll('#scheduleOcrRows [data-ocr-row]:checked')];
+    const selectedRowIds = selected.map(input => preview.rows[Number(input.dataset.ocrRow)].rowId);
+    const conflictConfirmed = selected.filter(input => input.dataset.conflict === 'true')
+        .map(input => preview.rows[Number(input.dataset.ocrRow)].rowId);
+    scheduleOcrState.busy = true;
+    updateScheduleOcrButtons();
+    scheduleOcrMessage('Застосовуємо вибрані зміни планового графіка…');
+    try {
+        await scheduleOcrRequest('ocr-apply', { previewId: preview.importId, selectedRowIds, conflictConfirmed, confirmed: true });
+        scheduleOcrState.blocked = true;
+        scheduleOcrMessage(`Вибрані зміни застосовано (${selectedRowIds.length}). Фактична відвідуваність не змінювалась.`);
+        try {
+            const range = scheduleCurrentRange();
+            const reloaded = await goToScheduleRange(range.start, range.end, StaffState.rangeMode || 'custom');
+            if (!reloaded) scheduleOcrMessage('Зміни застосовано. Оновіть графік, щоб побачити актуальні дані.');
+        } catch { scheduleOcrMessage('Зміни застосовано. Оновіть графік, щоб побачити актуальні дані.'); }
+    } catch (error) {
+        scheduleOcrState.blocked = true;
+        scheduleOcrMessage(/STALE|STATE_CHANGED|EXPIRED|ALREADY_APPLIED/.test(error.code || '')
+            ? 'Перегляд застарів або вже застосований. Оновіть графік і перевірте потрібні зміни у звичайному редакторі.'
+            : 'Результат застосування потребує перевірки. Оновіть графік перед подальшими змінами; автоматичного повтору немає.');
+    } finally {
+        scheduleOcrState.busy = false;
+        updateScheduleOcrButtons();
+    }
+}
+
+function initScheduleOcrUi() {
+    const panel = document.getElementById('scheduleOcrPanel');
+    if (!panel) return;
+    const scope = window.CrmBusinessContext?.scope?.() || {};
+    const context = scope.activeContext || window.CrmBusinessContext?.current?.() || 'event_genix';
+    panel.hidden = !StaffState.canManageSchedule || context !== 'event_genix'
+        || window.CrmBusinessContext?.isReadOnly?.(scope) === true;
+    if (panel.dataset.ocrReady === 'true') return;
+    panel.dataset.ocrReady = 'true';
+    const now = new Date();
+    document.getElementById('scheduleOcrDate').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    document.getElementById('scheduleOcrForm').addEventListener('submit', previewScheduleOcr);
+    panel.addEventListener('change', event => {
+        if (['scheduleOcrFile', 'scheduleOcrDate'].includes(event.target.id) && !scheduleOcrState.busy) {
+            scheduleOcrState.preview = null;
+            scheduleOcrState.blocked = false;
+            document.getElementById('scheduleOcrReview').hidden = true;
+            document.getElementById('scheduleOcrRows').replaceChildren();
+            document.getElementById('scheduleOcrApplyConfirm').checked = false;
+            scheduleOcrMessage('');
+        }
+        updateScheduleOcrButtons();
+    });
+    document.getElementById('scheduleOcrApplyBtn').addEventListener('click', applyScheduleOcr);
+    updateScheduleOcrButtons();
+}
+
+// ==========================================
 // ACCOUNT LINKING (v39.1)
 // ==========================================
 
@@ -8812,6 +8988,7 @@ async function initStaffSchedulePage(options = {}) {
         StaffState.canViewStaff = canUseStaffCapability('hr.staff.view');
         StaffState.canExportSchedule = StaffState.canViewSchedule && canUseStaffCapability('export_data');
         StaffState.canManageStaff = canUseStaffCapability('hr.staff.manage');
+        initScheduleOcrUi();
         const ADMIN_ROLES = ['creator', 'director'];
         const isAdmin = ADMIN_ROLES.includes(user.role);
         const addBtn = document.getElementById('addStaffBtn');

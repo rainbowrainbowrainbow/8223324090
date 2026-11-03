@@ -1125,7 +1125,7 @@ async function openStaffPage(browser, base, viewport, options = {}) {
     if (typeof options.preparePage === 'function') await options.preparePage(page);
     const search = String(options.search || '').trim();
     const normalizedSearch = search ? (search.startsWith('?') ? search : `?${search}`) : '';
-    await page.goto(`${base}/staff${normalizedSearch}`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${base}${options.path || '/staff'}${normalizedSearch}`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => Boolean(
         window.StaffSchedulePage
         && typeof window.StaffSchedulePage.isInitialized === 'function'
@@ -4432,7 +4432,7 @@ async function runPayConditionsDraftFlow(browser, base) {
     }
 }
 
-(async () => {
+if (require.main === module) (async () => {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     assertSingleScheduleEntryPerStaffDate(SCHEDULE_FIXTURE_ENTRIES);
     const { chromium } = requirePlaywright();
@@ -4497,3 +4497,5 @@ async function runPayConditionsDraftFlow(browser, base) {
         await new Promise(resolve => server.close(resolve));
     }
 })();
+
+module.exports = { createServer, openStaffPage, permissionsFor };

@@ -370,7 +370,7 @@ function buildMenuImagePrompt(product = {}, options = {}) {
     return lines.filter(Boolean).join('\n');
 }
 
-async function generateMenuImageWithOpenAI({ prompt, size, style } = {}) {
+async function generateMenuImageWithOpenAI({ prompt, size, style, timeoutMs = 60000 } = {}) {
     const apiKey = requireMenuImageOpenAIKey();
     const model = resolveMenuImageOpenAIModel();
     const normalizedSize = normalizeMenuImageSize(size);
@@ -392,6 +392,7 @@ async function generateMenuImageWithOpenAI({ prompt, size, style } = {}) {
 
     const response = await fetch(`${getOpenAIApiBase()}/images/generations`, {
         method: 'POST',
+        signal: AbortSignal.timeout(Math.min(120000, Math.max(1000, Number(timeoutMs) || 60000))),
         headers: {
             'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json'

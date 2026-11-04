@@ -73,12 +73,22 @@ need an appropriate supported model; the selected creative model is text-only.
 Handwritten OCR quality and external Hermes notification-sender fencing are
 independent unfinished tasks and are not enabled by this release.
 
-To stop new creative submissions, disable the execution flag under the approved
-settings envelope. Retain all job receipts, assets, decisions and unknown outcomes.
-If code is rolled back, keep a task-aware status/recovery path for already pending
-tasks; the prior synchronous executor cannot retrieve them. Do not clear claims
-or recreate queued jobs to recover an unknown paid result. Provider task failure
-needs explicit review before a new revision. Existing user decisions remain intact.
+To stop new creative submissions while retrieving paid pending results, set
+`CRM_CREATIVE_IMAGE_GENERATOR=disabled` and keep
+`CRM_CREATIVE_EXECUTION_ENABLED=true` under the approved settings envelope. New
+queued jobs fail before claiming/paying; saved KIE receipts still take their
+status-only recovery path. After all pending and unknown outcomes are reconciled,
+the execution flag can be disabled. Disabling that flag immediately also blocks
+status checks, so it is not the drain mode.
+
+Retain all receipts, assets and decisions. Before a code rollback, prove no
+unresolved KIE creative remains or retain the task-aware recovery implementation;
+the prior synchronous executor cannot retrieve pending KIE creatives. Do not
+clear claims or recreate queued jobs to recover an unknown paid result. Provider
+failure needs explicit review before a new revision. Keep menu guard/recovery
+enabled once activated; never delete the guard marker to return to the legacy
+paid path. Actual code rollback must pass the helper's version guard, normally
+through a reviewed forward repair release. Existing decisions remain intact.
 
 ## Provider contracts
 

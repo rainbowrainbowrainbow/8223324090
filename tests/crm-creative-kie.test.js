@@ -84,6 +84,14 @@ test('poll transport error keeps a resumable task and hides provider details', a
     assert.equal(JSON.stringify(result).includes('PRIVATE_PROVIDER_ERROR'), false);
     f.state.pollUnavailable = false; f.state.pollStatus = 'ready'; await f.run(); assert.equal(f.state.posts, 1);
 });
+test('drain mode blocks new submissions while retrieving an already paid result', async () => {
+    const f = fixture(); await f.run();
+    f.options.env.CRM_CREATIVE_IMAGE_GENERATOR = 'disabled'; f.state.pollStatus = 'ready';
+    const result = await f.run(); assert.equal(result.job.status, 'ready_for_review'); assert.equal(f.state.posts, 1);
+    const fresh = fixture(); fresh.options.env.CRM_CREATIVE_IMAGE_GENERATOR = 'disabled';
+    await assert.rejects(fresh.run(), { code: 'CRM_CREATIVE_MODEL_NOT_READY' });
+    assert.equal(fresh.state.posts, 0); assert.equal(fresh.job.status, 'queued');
+});
 test('CDN error does not lose receipt or repeat paid submission', async () => {
     const f = fixture(); f.state.pollStatus = 'ready'; f.state.downloadFails = true;
     await assert.rejects(f.run(), { code: 'CRM_CREATIVE_RESULT_DOWNLOAD_REQUIRES_REVIEW' });

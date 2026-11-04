@@ -76,7 +76,10 @@ Focused unit checks and local disposable PostgreSQL/browser checks use synthetic
 staff, dates, PNGs, and injected KIE responses. A real browser goes through the
 existing upload UI, HTTP handlers, PostgreSQL preview, selection, and confirmed
 apply. There are no real provider calls or production/business-data changes.
-The full repository suite and hosted exact-SHA CI have not run for this OCR candidate.
+Full `npm test` passed on functional commit `70e407a3`: 5,645 TAP executions
+across 39 sections, zero failures/skips, Node 22, about 452 seconds. These are
+executions, not unique business scenarios. Hosted exact-SHA CI has not run.
+This local result does not prove the real KIE or handwriting contracts above.
 
 Before a future release:
 

@@ -2,11 +2,11 @@
  * services/menuPhotoGeneration.js - menu/product photo prompt, OpenAI image generation,
  * and local CRM upload persistence.
  */
-const { catalogImageStorageDescriptor, uploadFromUrl, makeFilename } = require('./imageStorage');
+const { catalogImageStorageDescriptor, uploadFromUrl, makeFilename, downloadImageWithMetadata } = require('./imageStorage');
 const { isBurgerMenuProduct, BURGER_BLUEPRINT_INSTRUCTIONS } = require('./menuImageBlueprint');
 
 const MENU_IMAGE_DEFAULT_OPENAI_MODEL = 'gpt-image-1-mini';
-const MENU_IMAGE_KIE_MODELS = new Set(['nano-banana-2', 'nano-banana-pro']);
+const MENU_IMAGE_KIE_MODELS = new Set(['nano-banana-2', 'nano-banana-pro', 'nano-banana-2-1', 'gpt-image-2-5-flare-text-to-image']);
 const MENU_IMAGE_STUDIO_SIZES = new Set(['1536x1024', '1024x1024', '1024x1536']);
 const MENU_IMAGE_STUDIO_LEGACY_SIZE_MAP = {
     '1536x864': '1536x1024',
@@ -215,12 +215,19 @@ async function kieMenuImageRequest(path, options = {}) {
 
 async function startMenuImageWithKie({ prompt, size, model, referenceImageUrl = null }) {
     resolveMenuImageGenerator(`kie/${model}`);
+    const textOnly = model === 'gpt-image-2-5-flare-text-to-image';
+    if (textOnly && referenceImageUrl) {
+        throw Object.assign(new Error('This generator does not accept references'), {
+            code: 'menu_image_generator_reference_unsupported', status: 400
+        });
+    }
     const aspectRatio = { '1536x1024': '3:2', '1024x1024': '1:1', '1024x1536': '2:3' }[normalizeMenuImageSize(size)];
     const body = await kieMenuImageRequest('/api/v1/jobs/createTask', {
         body: {
             model,
-            input: { prompt, image_input: referenceImageUrl ? [referenceImageUrl] : [],
-                aspect_ratio: aspectRatio, resolution: '1K', output_format: 'png' }
+            input: { prompt, aspect_ratio: aspectRatio, resolution: '1K',
+                ...(textOnly ? { background: 'opaque' }
+                    : { image_input: referenceImageUrl ? [referenceImageUrl] : [], output_format: 'png' }) }
         }
     });
     const taskId = body?.data?.taskId;
@@ -451,18 +458,33 @@ function buildMenuImageFilename(product = {}) {
     return makeFilename('menu', label, 'png');
 }
 
+function validateKieImageUrl(imageUrl) {
+    const parsed = new URL(imageUrl);
+    const host = parsed.hostname.toLowerCase();
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || (parsed.port && parsed.port !== '443')
+        || !(['kie.ai', 'aiquickdraw.com'].includes(host)
+            || host.endsWith('.kie.ai') || host.endsWith('.aiquickdraw.com'))) {
+        throw new Error('Kie image result host is not allowed');
+    }
+}
+
+async function downloadKieCreativeImage(sourceUrl) {
+    const result = await downloadImageWithMetadata(sourceUrl, {
+        validateUrl: validateKieImageUrl, allowedMimeTypes: new Set(['image/png']), maxBytes: 12 * 1024 * 1024
+    });
+    const bytes = result.buffer;
+    if (bytes.length < 24 || !bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) {
+        throw new Error('Kie creative result must be PNG');
+    }
+    const width = bytes.readUInt32BE(16), height = bytes.readUInt32BE(20);
+    if (!width || width !== height || width > 4096) throw new Error('Kie creative result must be a bounded square');
+    return { sourceUrl: `data:image/png;base64,${bytes.toString('base64')}`, size: `${width}x${height}` };
+}
+
 async function storeMenuImageWithKie(product = {}, job = {}, options = {}) {
     const savedUrl = await uploadFromUrl(job.sourceUrl, buildMenuImageFilename(product), {
         ...options.uploadOptions,
-        validateUrl: imageUrl => {
-            const parsed = new URL(imageUrl);
-            const host = parsed.hostname.toLowerCase();
-            if (parsed.protocol !== 'https:'
-                || !(['kie.ai', 'aiquickdraw.com'].includes(host)
-                    || host.endsWith('.kie.ai') || host.endsWith('.aiquickdraw.com'))) {
-                throw new Error('Kie image result host is not allowed');
-            }
-        }
+        validateUrl: validateKieImageUrl
     });
     if (!savedUrl) {
         const err = new Error('Generated image could not be saved to CRM uploads');
@@ -537,6 +559,8 @@ module.exports = {
     resolveMenuImageGenerator,
     startMenuImageWithKie,
     pollMenuImageWithKie,
+    downloadKieCreativeImage,
+    validateKieImageUrl,
     storeMenuImageWithKie,
     resolveMenuImageOpenAIModel,
     menuImagePublicError,

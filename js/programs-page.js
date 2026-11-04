@@ -457,6 +457,7 @@ const MENU_IMAGE_STYLE_OPTIONS = [
 ];
 
 const MENU_IMAGE_GENERATOR_OPTIONS = [
+    { value: 'kie/nano-banana-2-1', label: 'Kie · Nano Banana 2.1' },
     { value: 'kie/nano-banana-2', label: 'Kie · Nano Banana 2' },
     { value: 'kie/nano-banana-pro', label: 'Kie · Nano Banana Pro' },
     { value: 'openai', label: 'OpenAI · GPT Image' }

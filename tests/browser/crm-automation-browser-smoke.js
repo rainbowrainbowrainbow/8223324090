@@ -56,6 +56,15 @@ async function studio(browser, base, viewport, mobile) {
             if (mode === 'disabled') return route.fulfill({ status: 503, json: { success: false, code: 'CRM_EXECUTION_DISABLED' } });
             if (mode === 'model') return route.fulfill({ status: 503, json: { success: false, code: 'CRM_CREATIVE_MODEL_NOT_READY' } });
             if (mode === 'unknown') return route.abort('failed');
+            if (mode === 'kie-pending') {
+                job = { ...job, status: 'in_progress', claimedBy: 'crm-creative-kie',
+                    resultPayload: { executor: 'crm', provider: 'kie', model: 'gpt-image-2-5-flare-text-to-image', providerTaskId: 'synthetic_kie_task' } };
+                return route.fulfill({ json: { success: true, pending: true, job } });
+            }
+            if (mode === 'kie-ready') {
+                job = { ...job, status: 'ready_for_review', assets: [{ assetType: 'preview', role: 'preview', mimeType: 'image/png', url: '/synthetic-creative.png' }] };
+                return route.fulfill({ json: { success: true, pending: false, providerCalled: false, job } });
+            }
             await new Promise(resolve => { release = resolve; });
             job = { ...job, status: 'ready_for_review', assets: [{ assetType: 'preview', role: 'preview', mimeType: 'image/png', url: '/synthetic-creative.png' }] };
             return route.fulfill({ json: { success: true, job } });
@@ -107,6 +116,19 @@ async function studio(browser, base, viewport, mobile) {
             assert.equal(await execute.isDisabled(), true);
             assert.equal(calls, 4);
         }
+        mode = 'kie-pending'; job = { ...job, id: 3, status: 'queued', claimedBy: null, resultPayload: null, assets: [] };
+        await page.locator('#hermesStudioRefreshBtn').click();
+        await execute.click(); await page.locator('.confirm-ok').click();
+        await page.waitForFunction(() => document.querySelector('#hermesStudioExecutionStatus').textContent.includes('ще готується'));
+        assert.equal(await execute.textContent(), 'Перевірити результат');
+        await screenshot(page, mobile ? 'studio-kie-mobile-pending' : 'studio-kie-desktop-pending', '.hermes-studio-detail');
+        await page.reload();
+        await page.waitForFunction(() => document.querySelector('#hermesStudioExecuteBtn').textContent === 'Перевірити результат');
+        mode = 'kie-ready';
+        await execute.click(); // Saved-task checks do not ask for another paid generation confirmation.
+        await page.waitForFunction(() => document.querySelector('#hermesStudioSelectedStatus').textContent === 'ready for review');
+        assert.equal(await page.locator('.confirm-ok').count(), 0);
+        assert.equal(decisions, 1, 'Fetching the KIE result must not auto-approve');
         assert.deepEqual(errors, []);
         results.push({ scenario: `studio-${mobile ? 'mobile' : 'desktop'}`, passed: true, calls, decisions });
     } finally { if (release) release(); await context.close(); }
@@ -230,15 +252,18 @@ async function readOnly(browser, base) {
     const browser = await chromium.launch({ headless: true, executablePath: process.env.CRM_AUTOMATION_CHROME_PATH });
     try {
         const hrOnly = process.argv.includes('--hr-only');
+        const studioOnly = process.argv.includes('--studio-only');
         if (!hrOnly) {
             for (const [viewport, mobile] of [[{ width: 1440, height: 1000 }, false], [{ width: 390, height: 844 }, true]]) {
                 await studio(browser, base, viewport, mobile);
-                await schedule(browser, base, viewport, mobile);
+                if (!studioOnly) await schedule(browser, base, viewport, mobile);
             }
-            await readOnly(browser, base);
+            if (!studioOnly) await readOnly(browser, base);
         }
-        await schedule(browser, base, { width: 1440, height: 1000 }, false, true);
-        await schedule(browser, base, { width: 390, height: 844 }, true, true, true);
+        if (!studioOnly) {
+            await schedule(browser, base, { width: 1440, height: 1000 }, false, true);
+            await schedule(browser, base, { width: 390, height: 844 }, true, true, true);
+        }
         fs.writeFileSync(path.join(output, hrOnly ? 'results-hr.json' : 'results.json'), JSON.stringify({ durationMs: Date.now() - started, results }, null, 2));
         console.log(JSON.stringify(results));
     } finally {

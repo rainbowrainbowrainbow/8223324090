@@ -7,7 +7,9 @@ const {
     resolveMenuImageGenerator,
     buildMenuImagePrompt,
     startMenuImageWithKie,
-    pollMenuImageWithKie
+    pollMenuImageWithKie,
+    downloadKieCreativeImage,
+    validateKieImageUrl
 } = require('../services/menuPhotoGeneration');
 const {
     isBurgerMenuProduct, readBurgerBlueprint, saveBurgerBlueprint, publicBurgerBlueprintUrl
@@ -92,6 +94,49 @@ test('Kie starts one asynchronous image task with the selected model and aspect 
     assert.equal(body.input.aspect_ratio, '3:2');
     assert.equal(body.input.output_format, 'png');
     assert.equal(body.input.prompt, 'A burger');
+});
+
+test('verified KIE models use their documented input contracts and refuse unsupported references before POST', async () => {
+    process.env.KIE_API_KEY = 'synthetic-test-key';
+    const requests = [];
+    global.fetch = async (_url, options) => {
+        requests.push(JSON.parse(options.body));
+        return new Response(JSON.stringify({ code: 200, data: { taskId: 'task_new_123' } }), { status: 200 });
+    };
+    await startMenuImageWithKie({ prompt: 'Food', size: '1536x1024', model: 'nano-banana-2-1' });
+    assert.deepEqual(requests[0], { model: 'nano-banana-2-1', input: { prompt: 'Food', aspect_ratio: '3:2', resolution: '1K', image_input: [], output_format: 'png' } });
+    await startMenuImageWithKie({ prompt: 'Square poster', size: '1024x1024', model: 'gpt-image-2-5-flare-text-to-image' });
+    assert.deepEqual(requests[1], { model: 'gpt-image-2-5-flare-text-to-image', input: { prompt: 'Square poster', aspect_ratio: '1:1', resolution: '1K', background: 'opaque' } });
+    await assert.rejects(startMenuImageWithKie({ prompt: 'Poster', model: 'gpt-image-2-5-flare-text-to-image', referenceImageUrl: 'https://crm.example.com/a.png' }), { code: 'menu_image_generator_reference_unsupported' });
+    assert.equal(requests.length, 2);
+});
+
+test('KIE creative download bounds hosts, redirects, PNG dimensions and keeps credentials off CDN requests', async t => {
+    const https = require('node:https');
+    const { EventEmitter } = require('node:events');
+    const { Readable } = require('node:stream');
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=', 'base64');
+    let bytes = png, redirect = false, calls = 0;
+    t.mock.method(https, 'get', (url, options, callback) => {
+        calls++; assert.equal(options.headers, undefined); assert.equal(url.hostname, 'tempfile.aiquickdraw.com');
+        const req = new EventEmitter(); req.setTimeout = () => req; req.destroy = error => req.emit('error', error);
+        process.nextTick(() => {
+            const response = Readable.from([bytes]);
+            response.statusCode = redirect ? 302 : 200;
+            response.headers = redirect ? { location: 'https://127.0.0.1/private' } : { 'content-type': 'image/png' };
+            callback(response);
+        });
+        return req;
+    });
+    const url = 'https://tempfile.aiquickdraw.com/synthetic.png';
+    const image = await downloadKieCreativeImage(url); assert.equal(image.size, '1x1');
+    bytes = Buffer.from(png); bytes.writeUInt32BE(2,16);
+    await assert.rejects(downloadKieCreativeImage(url), /bounded square/);
+    redirect = true; await assert.rejects(downloadKieCreativeImage(url), /host is not allowed/);
+    assert.equal(calls, 3, 'untrusted redirect must not issue another request');
+    for (const candidate of ['http://kie.ai/x','https://kie.ai.evil.test/x','https://u:p@kie.ai/x','https://kie.ai:444/x']) {
+        assert.throws(() => validateKieImageUrl(candidate));
+    }
 });
 
 test('Kie uses the saved burger reference once, while the product prompt changes the filling', async () => {

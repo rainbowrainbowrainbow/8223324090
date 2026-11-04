@@ -59,6 +59,7 @@ function createPageHarness() {
         MENU_IMAGE_SIZE_OPTIONS: [{ value: '1536x1024', label: 'wide' }],
         MENU_IMAGE_STYLE_OPTIONS: [{ value: 'catalog', label: 'Каталог' }],
         MENU_IMAGE_GENERATOR_OPTIONS: [
+            { value: 'kie/nano-banana-2-1', label: 'Kie · Nano Banana 2.1' },
             { value: 'kie/nano-banana-2', label: 'Kie · Nano Banana 2' },
             { value: 'kie/nano-banana-pro', label: 'Kie · Nano Banana Pro' },
             { value: 'openai', label: 'OpenAI · GPT Image' }
@@ -219,27 +220,27 @@ test('Kie selection creates one task and status polling survives a card rerender
     const app = createPageHarness();
     const selector = app.panel().querySelector('[data-menu-image-generator]');
     assert.equal(selector.value, 'kie/nano-banana-2');
-    selector.value = 'kie/nano-banana-pro';
+    selector.value = 'kie/nano-banana-2-1';
     let generationCalls = 0;
     let statusCalls = 0;
     app.context.apiGenerateProductMenuImage = async (id, payload) => {
         generationCalls++;
-        assert.equal(payload.generator, 'kie/nano-banana-pro');
+        assert.equal(payload.generator, 'kie/nano-banana-2-1');
         return { success: true, status: 'generating', product: menuProduct(id, 'event_genix', {
-            status: 'generating', provider: 'kie', model: 'nano-banana-pro', taskId: 'task_123'
+            status: 'generating', provider: 'kie', model: 'nano-banana-2-1', taskId: 'task_123'
         }) };
     };
     app.context.apiGetProductMenuImageStatus = async id => {
         statusCalls++;
         return statusCalls === 1
             ? { success: true, status: 'generating', product: menuProduct(id, 'event_genix', {
-                status: 'generating', provider: 'kie', model: 'nano-banana-pro', taskId: 'task_123'
+                status: 'generating', provider: 'kie', model: 'nano-banana-2-1', taskId: 'task_123'
             }) }
             : {
                 success: true, status: 'ready',
                 draft: { imageStudio: { provider: 'kie' } },
                 product: menuProduct(id, 'event_genix', {
-                    status: 'ready', provider: 'kie', model: 'nano-banana-pro', imageUrl: '/uploads/kie-draft.png'
+                    status: 'ready', provider: 'kie', model: 'nano-banana-2-1', imageUrl: '/uploads/kie-draft.png'
                 })
             };
     };

@@ -41,6 +41,14 @@ function createCreativeExecutor(options = {}) {
             if (current.status === 'ready_for_review' || current.status === 'approved') {
                 return { job: current, replayed: true, providerCalled: false };
             }
+            if (env.CRM_CREATIVE_IMAGE_GENERATOR?.startsWith('kie/')
+                || (current.resultPayload?.executor === 'crm' && current.resultPayload?.provider === 'kie')) {
+                return require('./crmCreativeKieExecution').executeKieCreative({ client, jobs, current, jobId,
+                    businessContext, actor, env, options, buildPrompt: creativePrompt });
+            }
+            if (env.CRM_CREATIVE_IMAGE_GENERATOR && env.CRM_CREATIVE_IMAGE_GENERATOR !== 'openai') {
+                throw executionError('CRM_CREATIVE_MODEL_NOT_READY', 503);
+            }
             if (current.status !== 'queued') throw executionError('CRM_CREATIVE_JOB_REQUIRES_REVIEW');
             await assertPaidCapacity(client);
             if (!options.generate) requireCreativeImageModel(env);

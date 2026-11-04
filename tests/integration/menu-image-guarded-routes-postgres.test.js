@@ -138,7 +138,7 @@ test('guarded menu routes submit once, poll KIE and preserve reviewable draft', 
             await otherFeature.query("SELECT pg_advisory_unlock(hashtext('crm_paid_provider_execution'))");
             otherFeature.release();
         }
-        const first = await invoke('/:id/menu-image/draft', 'post', { generator: 'kie/nano-banana-2' });
+        const first = await invoke('/:id/menu-image/draft', 'post', { generator: 'kie/nano-banana-2-1' });
         assert.equal(first.statusCode, 202);
         assert.equal(first.body.status, 'generating');
         assert.ok(first.body.draft.imageStudio.operationId);

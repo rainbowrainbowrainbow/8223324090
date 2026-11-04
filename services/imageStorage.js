@@ -370,6 +370,7 @@ module.exports = {
     CATALOG_IMAGE_STORAGE_BUCKET,
     CATALOG_IMAGE_STORAGE_PROVIDER,
     uploadFromUrl,
+    downloadImageWithMetadata,
     makeFilename,
     safeImageFilename,
     publicCatalogImageUrl,

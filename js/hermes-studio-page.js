@@ -323,8 +323,10 @@
         if (decisionBox) decisionBox.setAttribute('aria-disabled', canDecide ? 'false' : 'true');
         const execute = $('hermesStudioExecuteBtn');
         if (execute) {
-            execute.disabled = !canDecide || job.status !== 'queued' || state.blockedExecutions.has(String(job.id));
-            execute.textContent = state.executing ? 'Генерація…' : 'Згенерувати чернетку';
+            const pending = canCheckCreativeResult(job);
+            execute.disabled = !canDecide || (job.status !== 'queued' && !pending)
+                || (!pending && state.blockedExecutions.has(String(job.id)));
+            execute.textContent = state.executing ? 'Обробка…' : pending ? 'Перевірити результат' : 'Згенерувати чернетку';
         }
         document.querySelector('.hermes-studio-execution')?.setAttribute('aria-busy', String(state.executing));
     }
@@ -480,17 +482,24 @@
         }
     }
 
+    function canCheckCreativeResult(job) {
+        return job?.status === 'in_progress' && job.claimedBy === 'crm-creative-kie'
+            && job.resultPayload?.executor === 'crm' && job.resultPayload?.provider === 'kie'
+            && /^[A-Za-z0-9_-]{1,128}$/.test(job.resultPayload?.providerTaskId || '');
+    }
+
     async function executeCreative() {
         const job = selectedJob();
-        if (!job || !state.canDecide || state.executing || job.status !== 'queued'
-            || state.blockedExecutions.has(String(job.id))) return;
+        const checking = canCheckCreativeResult(job);
+        if (!job || !state.canDecide || state.executing || (job.status !== 'queued' && !checking)
+            || (!checking && state.blockedExecutions.has(String(job.id)))) return;
         state.executing = true;
         setDecisionButtonsState();
         const status = $('hermesStudioExecutionStatus');
         try {
-            const accepted = typeof confirmModal === 'function' && await confirmModal(
+            const accepted = checking || (typeof confirmModal === 'function' && await confirmModal(
                 `Згенерувати чернетку «${job.title || 'Креатив'}»? Операція може бути платною. Результат потребуватиме вашого погодження.`,
-                { okText: 'Згенерувати', cancelText: 'Скасувати' });
+                { okText: 'Згенерувати', cancelText: 'Скасувати' }));
             if (!accepted) return;
             status.textContent = `Генеруємо чернетку «${job.title || 'Креатив'}». Дочекайтеся результату перед наступним запуском.`;
             const data = await studioFetch(`/jobs/${encodeURIComponent(job.id)}/execute`, {
@@ -498,7 +507,10 @@
             });
             if (!data?.job) throw new Error('Missing generation result');
             state.jobs = state.jobs.map(item => String(item.id) === String(job.id) ? data.job : item);
-            status.textContent = 'Чернетка готова. Перегляньте зображення, текст і формат, потім погодьте або відхиліть.';
+            status.textContent = data.statusUnavailable
+                ? 'Не вдалося перевірити стан. Натисніть «Перевірити результат» пізніше; збережене завдання не запускається повторно.'
+                : data.pending ? 'Зображення ще готується. Натисніть «Перевірити результат» трохи пізніше — нова генерація не запускається.'
+                : 'Чернетка готова. Перегляньте зображення, текст і формат, потім погодьте або відхиліть.';
             renderAll();
         } catch (error) {
             const code = error.data?.code || error.code;

@@ -133,6 +133,46 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
         assert.equal(Number((await pool.query('SELECT count(*) FROM hermes_job_decisions WHERE job_id = $1', [jobId])).rows[0].count), 1);
     });
 
+    it('persists a KIE task across Node processes and keeps the review blob and approval history', async () => {
+        const jobId = await creative();
+        let posts = 0, polls = 0;
+        const env = { CRM_CREATIVE_EXECUTION_ENABLED: 'true', CRM_CREATIVE_IMAGE_GENERATOR: 'kie/gpt-image-2-5-flare-text-to-image' };
+        const submitter = createCreativeExecutor({ pool, env,
+            startKie: async () => { posts++; return { taskId: `synthetic_kie_${jobId}` }; },
+            pollKie: async () => ({ status: 'generating' }) });
+        const pending = await submitter({ ...base, jobId });
+        assert.equal(pending.pending, true);
+        const persisted = (await pool.query('SELECT status, result_payload FROM hermes_jobs WHERE id=$1', [jobId])).rows[0];
+        assert.equal(persisted.status, 'in_progress');
+        assert.equal(persisted.result_payload.providerTaskId, `synthetic_kie_${jobId}`);
+        const child = spawn(process.execPath, ['tests/fixtures/crm-creative-kie-resume.cjs'], {
+            cwd: path.join(__dirname, '../..'), windowsHide: true,
+            env: { ...process.env, KIE_TEST_JOB_ID: String(jobId), KIE_TEST_ACTOR_ID: String(actor.id), KIE_TEST_PNG: png.toString('base64') },
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
+        let childOutput = ''; child.stdout.on('data', value => { childOutput += value; });
+        child.stderr.resume();
+        const childExit = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
+        assert.equal(childExit, 0, 'Fresh Node process must recover the saved task');
+        assert.match(childOutput, /"providerCalled":false/);
+        const resumed = createCreativeExecutor({ pool, env,
+            startKie: async () => { posts++; throw Error('Must not resubmit'); },
+            pollKie: async task => { polls++; assert.equal(task, persisted.result_payload.providerTaskId); return { status: 'ready', sourceUrl: 'https://kie.ai/synthetic.png' }; },
+            downloadKie: async () => ({ ...imageResult(), size: '1254x1254' }) });
+        const result = await resumed({ ...base, jobId });
+        assert.equal(result.job.status, 'ready_for_review'); assert.equal(result.job.assets.length, 1);
+        assert.equal(result.job.resultPayload.generatedSize, '1254x1254');
+        blobNames.push(result.job.assets[0].storageKey);
+        const stored = (await pool.query('SELECT data FROM catalog_image_blobs WHERE filename=$1', [result.job.assets[0].storageKey])).rows[0];
+        assert.deepEqual(stored.data, png);
+        const client = await pool.connect();
+        try { await transaction(client, () => jobs.recordHermesJobDecision(client, jobId, { decision: 'approved', notes: 'Synthetic KIE review' }, base)); }
+        finally { client.release(); }
+        assert.equal((await resumed({ ...base, jobId })).job.status, 'approved');
+        assert.equal(posts, 1); assert.equal(polls, 0, 'parent only replays the child-persisted review result');
+        assert.equal(Number((await pool.query('SELECT count(*) FROM hermes_job_decisions WHERE job_id=$1', [jobId])).rows[0].count), 1);
+    });
+
     it('does not repeat a charge after provider failure or a rolled-back result write', async () => {
         for (const persistenceFailure of [false, true]) {
             const jobId = await creative();
@@ -338,14 +378,22 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
         } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
     });
 
-    it('runs browser Studio through the real HTTP router and PostgreSQL with a fake provider', { skip: process.env.RUN_CRM_AUTOMATION_BROWSER_POSTGRES !== 'true' }, async () => {
+    it('runs KIE browser Studio through the real HTTP router and PostgreSQL with a fake provider', {
+        skip: process.env.RUN_CRM_AUTOMATION_BROWSER_POSTGRES !== 'true' && process.env.RUN_CRM_AUTOMATION_KIE_BROWSER !== 'true'
+    }, async () => {
         const express = require('express'); const { WebSocketServer } = require('ws');
         const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH);
         const { createServer } = require('../browser/staff-schedule-custom-range-browser-smoke');
         const { createHermesStudioRouter } = require('../../routes/hermes-studio');
         const jobId = await creative(); let providerCalls = 0;
-        const executeCreative = createCreativeExecutor({pool,env:{CRM_CREATIVE_EXECUTION_ENABLED:'true'},generate:async()=>{providerCalls++;return imageResult()}});
+        let ready = false;
+        const executeCreative = createCreativeExecutor({pool,
+            env:{CRM_CREATIVE_EXECUTION_ENABLED:'true',CRM_CREATIVE_IMAGE_GENERATOR:'kie/gpt-image-2-5-flare-text-to-image'},
+            startKie:async()=>{providerCalls++;return {taskId:`synthetic_browser_${jobId}`}},
+            pollKie:async taskId=>{assert.equal(taskId,`synthetic_browser_${jobId}`);return ready?{status:'ready',sourceUrl:'https://kie.ai/synthetic.png'}:{status:'generating'}},
+            downloadKie:async()=>({...imageResult(),size:'1254x1254'})});
         const app = express(); app.use(express.json());
+        app.get('/uploads/catalog-images/items/:filename', require('../../services/imageStorage').buildCatalogImageBlobFallbackHandler(pool));
         app.use('/studio', createHermesStudioRouter({pool,executeCreative,authMiddleware:(req,res,next)=>{req.user={...actor,role:'creator',defaultBusinessContext:'event_genix'};next()},accessGuard:(req,res,next)=>next()}));
         const api = app.listen(0,'127.0.0.1'); await new Promise(resolve=>api.once('listening',resolve));
         const apiBase = 'http://127.0.0.1:' + api.address().port;
@@ -359,15 +407,45 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
             const page=await context.newPage(); const statuses=[]; await page.route('**/api/hermes-studio/**',async route=>{
                 const u=new URL(route.request().url());const response=await route.fetch({url:apiBase+'/studio'+u.pathname.substring('/api/hermes-studio'.length)+u.search});statuses.push({path:u.pathname,status:response.status()});await route.fulfill({response});
             });
+            await page.route('**/uploads/catalog-images/items/*',async route=>{
+                const u=new URL(route.request().url());
+                const response=await route.fetch({url:apiBase+u.pathname});
+                await route.fulfill({response});
+            });
             await page.goto(uiBase+'/hermes-studio.html'); const execute=page.locator('#hermesStudioExecuteBtn');
             try { await execute.waitFor({state:'visible',timeout:12000}); } catch { throw new Error('Studio execute unavailable; API statuses: '+JSON.stringify(statuses)); } await execute.click(); await page.locator('.confirm-ok').click();
+            await page.waitForFunction(()=>document.querySelector('#hermesStudioExecuteBtn').textContent==='Перевірити результат');
+            assert.equal((await jobs.getHermesJobDetail(pool,jobId,'event_genix')).status,'in_progress');
+            await page.reload();
+            await page.waitForFunction(()=>document.querySelector('#hermesStudioExecuteBtn').textContent==='Перевірити результат');
+            ready=true;await execute.click();
             await page.waitForFunction(()=>document.querySelector('#hermesStudioSelectedStatus').textContent==='ready for review');
             assert.equal(providerCalls,1); const detail=await jobs.getHermesJobDetail(pool,jobId,'event_genix');
             assert.equal(detail.status,'ready_for_review'); blobNames.push(detail.assets[0].storageKey);
+            assert.equal(await page.locator('.confirm-ok').count(),0);
+            await page.waitForFunction(()=>document.querySelector('.hermes-studio-detail img')?.naturalWidth>0);
+            if(process.env.CRM_KIE_BROWSER_OUTPUT)await page.screenshot({path:path.join(process.env.CRM_KIE_BROWSER_OUTPUT,'studio-kie-real-postgres.png'),fullPage:true});
             await page.locator('[data-hermes-decision="approved"]').click();
             await page.waitForFunction(()=>document.querySelector('#hermesStudioSelectedStatus').textContent==='approved');
             assert.equal((await jobs.getHermesJobDetail(pool,jobId,'event_genix')).status,'approved');assert.equal(providerCalls,1);
         } finally {await context.close();await browser.close();for(const client of ws.clients)client.terminate();await new Promise(resolve=>ws.close(resolve));await new Promise(resolve=>server.close(resolve));api.closeAllConnections();await new Promise(resolve=>api.close(resolve));}
+    });
+
+    it('retains the KIE outstanding slot after a user rejects a still-pending task', async () => {
+        const jobId = await creative(); let posts = 0;
+        const execute = createCreativeExecutor({ pool,
+            env: { CRM_CREATIVE_EXECUTION_ENABLED: 'true', CRM_CREATIVE_IMAGE_GENERATOR: 'kie/gpt-image-2-5-flare-text-to-image' },
+            startKie: async () => { posts++; return { taskId: 'synthetic_rejected_pending' }; },
+            pollKie: async () => ({ status: 'generating' }) });
+        await execute({ ...base, jobId });
+        const client = await pool.connect();
+        try { await transaction(client, () => jobs.recordHermesJobDecision(client, jobId, { decision: 'rejected', notes: 'Synthetic pending-task rejection' }, base)); }
+        finally { client.release(); }
+        const nextJobId = await creative();
+        await assert.rejects(execute({ ...base, jobId: nextJobId }), { code: 'CRM_PROVIDER_BUSY' });
+        assert.equal(posts, 1);
+        const detail = await jobs.getHermesJobDetail(pool, jobId, 'event_genix');
+        assert.equal(detail.status, 'rejected'); assert.equal(detail.resultPayload.outcome, 'pending');
     });
 
     it('runs browser OCR through the real HTTP handlers and PostgreSQL with a fake provider', { skip: process.env.RUN_CRM_AUTOMATION_BROWSER_POSTGRES !== 'true' }, async () => {

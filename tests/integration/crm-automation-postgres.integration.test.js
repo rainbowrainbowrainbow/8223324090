@@ -230,6 +230,35 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
         assert.equal(await withProviderExecution(pool, async () => 'released'), 'released');
     });
 
+    it('KIE OCR parses one chat response into PostgreSQL preview and preserves replay across providers', async () => {
+        let calls = 0, unknown = false;
+        const env = { NODE_ENV: 'test', CRM_SCHEDULE_OCR_ENABLED: 'true', CRM_SCHEDULE_OCR_PROVIDER: 'kie',
+            CRM_SCHEDULE_OCR_MODEL: 'gemini-3-8-flash-openai', KIE_API_KEY: 'synthetic-only' };
+        const ocr = createScheduleOcr({ pool, env, fetchImpl: async (url, options) => {
+            calls++; assert.equal(url, 'https://api.kie.ai/gemini-3-8-flash-openai/v1/chat/completions');
+            assert.match(JSON.parse(options.body).messages[1].content[1].image_url.url, /^data:image\/png;base64,/);
+            if (unknown) return Response.json({ code: 429, msg: 'synthetic unknown outcome' });
+            return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ rows: [
+                { employeeName: staff.name, date: '2099-09-01', status: 'dayoff', confidence: 0.99, issues: [], staffId: 999 },
+                { employeeName: staff.name, date: '2099-09-02', status: 'working', confidence: 0.1, issues: ['Unclear handwritten time'] }
+            ] }) } }] });
+        } });
+        const preview = await ocr.preview(ocrInput('2099-09-01'));
+        assert.deepEqual(preview.rows.map(row => row.action), ['create', 'invalid']);
+        assert.equal((await pool.query("SELECT count(*)::int AS n FROM staff_schedule WHERE staff_id=$1 AND date='2099-09-01'", [staff.id])).rows[0].n, 0);
+        env.CRM_SCHEDULE_OCR_PROVIDER = 'openai'; env.CRM_SCHEDULE_OCR_MODEL = 'other-model';
+        const replay = await ocr.preview(ocrInput('2099-09-01'));
+        assert.equal(replay.importId, preview.importId); assert.equal(calls, 1);
+        const imports = await pool.query("SELECT source_reference FROM hermes_schedule_imports WHERE source='crm_schedule_ocr_execution' AND created_by_user_id=$1 AND document_date='2099-09-01'", [actor.id]);
+        assert.equal(imports.rowCount, 1); assert.equal(imports.rows[0].source_reference.provider, 'kie');
+        assert.equal(JSON.stringify(imports.rows).includes(png.toString('base64')), false);
+        env.CRM_SCHEDULE_OCR_PROVIDER = 'kie'; env.CRM_SCHEDULE_OCR_MODEL = 'gemini-3-8-flash-openai'; unknown = true;
+        await assert.rejects(ocr.preview(ocrInput('2099-09-03')), { code: 'CRM_OCR_EXECUTION_REQUIRES_REVIEW' });
+        env.CRM_SCHEDULE_OCR_PROVIDER = 'openai'; env.CRM_SCHEDULE_OCR_MODEL = 'yet-another-model';
+        await assert.rejects(ocr.preview(ocrInput('2099-09-03')), { code: 'CRM_OCR_EXECUTION_REQUIRES_REVIEW' });
+        assert.equal(calls, 2);
+    });
+
     it('persists OCR once, blocks uncertain rows, applies only selected planned days and seals the preview', async () => {
         let calls = 0;
         const ocr = createScheduleOcr({ pool, env: { CRM_SCHEDULE_OCR_ENABLED: 'true' }, recognize: async () => {
@@ -448,18 +477,27 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
         assert.equal(detail.status, 'rejected'); assert.equal(detail.resultPayload.outcome, 'pending');
     });
 
-    it('runs browser OCR through the real HTTP handlers and PostgreSQL with a fake provider', { skip: process.env.RUN_CRM_AUTOMATION_BROWSER_POSTGRES !== 'true' }, async () => {
+    it('runs browser OCR through the real HTTP handlers and PostgreSQL with a fake KIE chat provider', {
+        skip: process.env.RUN_CRM_AUTOMATION_BROWSER_POSTGRES !== 'true' && process.env.RUN_CRM_SCHEDULE_OCR_KIE_BROWSER !== 'true'
+    }, async () => {
         const express = require('express');
         const { WebSocketServer } = require('ws');
         const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH);
         const { createServer, openStaffPage } = require('../browser/staff-schedule-custom-range-browser-smoke');
         const { createScheduleOcrHandlers } = require('../../services/crmScheduleOcrHttp');
         const { requireAction } = require('../../middleware/auth');
-        const env = { CRM_SCHEDULE_OCR_ENABLED: 'true' }; let providerCalls = 0;
+        const env = { NODE_ENV: 'test', CRM_SCHEDULE_OCR_ENABLED: 'true', CRM_SCHEDULE_OCR_PROVIDER: 'kie',
+            CRM_SCHEDULE_OCR_MODEL: 'gemini-3-8-flash-openai', KIE_API_KEY: 'synthetic-key' }; let providerCalls = 0;
         // The capacity/replay test uses the same PNG on June 1; a different
         // date ensures this browser flow creates and exercises its own request.
-        const schedule = createScheduleOcr({ pool, env, recognize: async () => { providerCalls++;
-            return [{ employeeName: staff.name, date: '2099-07-01', status: 'dayoff', confidence: 0.99, issues: [] }]; } });
+        const schedule = createScheduleOcr({ pool, env, fetchImpl: async (url, options) => {
+            providerCalls++;
+            assert.equal(url, 'https://api.kie.ai/gemini-3-8-flash-openai/v1/chat/completions');
+            assert.match(JSON.parse(options.body).messages[1].content[1].image_url.url, /^data:image\/png;base64,/);
+            return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ rows: [
+                { employeeName: staff.name, date: '2099-07-01', status: 'dayoff', confidence: 0.99, issues: [] }
+            ] }) } }] });
+        } });
         const handlers = createScheduleOcrHandlers({ env, schedule });
         const app = express(); app.use(express.json()); app.use((req,res,next) => { req.user = { ...actor, role: 'creator' }; next(); });
         app.post('/preview', requireAction('hr.schedule.manage'), handlers.preview);

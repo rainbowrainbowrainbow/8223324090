@@ -22,6 +22,12 @@ function parkHrPayrollCapabilities(req, routerId) {
         return null;
     }
     if (routerId !== 'hr') return null;
+    // Six exact OCR operations reuse attendance management; all membership,
+    // context, writable-scope and ownership guards below remain in force.
+    if ((method === 'GET' && (path === '/attendance/ocr/status'
+        || /^\/attendance\/ocr\/previews\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(path)))
+        || (method === 'POST' && (['/attendance/ocr/preview', '/attendance/ocr/recover', '/attendance/ocr/apply'].includes(path)
+        || /^\/attendance\/ocr\/previews\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/refresh$/.test(path)))) return ['hr.schedule.manage'];
     if (method === 'GET') {
         if (path === '/today') return ['hr.today.view'];
         if (['/salary', '/salary/reconciliation', '/payroll-profiles', '/payroll-profiles/diagnostics', '/payroll-profiles/forecast'].includes(path)

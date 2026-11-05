@@ -114,3 +114,27 @@ test('salary preview advertises read-only settlement controls', async () => {
     assert.equal(result.body.payroll_activation.readOnly, true);
     assert.equal(result.body.payroll_activation.calculateEndpoint, null);
 });
+
+test('actual attendance OCR uses exactly six methods with existing management and membership guards', async () => {
+    const id = '11111111-1111-1111-1111-111111111111';
+    const routes = [['GET', '/attendance/ocr/status'], ['GET', `/attendance/ocr/previews/${id}`],
+        ['POST', '/attendance/ocr/preview'], ['POST', '/attendance/ocr/recover'],
+        ['POST', '/attendance/ocr/apply'], ['POST', `/attendance/ocr/previews/${id}/refresh`]];
+    for (const [method, path] of routes) {
+        assert.deepEqual(parkHrPayrollCapabilities(request(path, method), 'hr'), ['hr.schedule.manage']);
+        assert.equal((await invoke(request(path, method))).passed, true);
+        for (const options of [{ context: 'dar' }, { context: 'all' }, { revoked: 'event_genix' }, { deny: ['hr.schedule.manage'] }]) {
+            const denied = await invoke(request(path, method, options));
+            assert.equal(denied.passed, false); assert.equal(denied.status, 403); assert.equal(denied.calls, 0);
+        }
+        assert.equal((await invoke(request(path, method), { conflict: true })).status, 409);
+        assert.equal((await invoke(request(path, method), { error: true })).status, 503);
+    }
+    for (const [method, path] of [['DELETE', '/attendance/ocr/apply'], ['PUT', '/attendance/ocr/preview'],
+        ['GET', '/attendance/ocr/preview'], ['POST', '/attendance/ocr/status'],
+        ['POST', '/attendance/ocr/anything'], ['GET', '/attendance/ocr/previews/not-a-uuid'],
+        ['POST', `/attendance/ocr/previews/${id}/anything`]]) {
+        assert.equal(parkHrPayrollCapabilities(request(path, method), 'hr'), null);
+        assert.equal((await invoke(request(path, method))).passed, false);
+    }
+});

@@ -4,9 +4,9 @@ Owner priority: recognize staff arrival/departure sheets first. Planned schedule
 remain a separate workflow. This candidate now includes **internal recognition,
 durable execution, immutable database preview and confirmed transactional apply**.
 HTTP upload/review/apply and the HR Today interface are prepared locally. They are
-not released. The compatibility-account journey passes; membership-account access
-still stops at the existing unlisted-route guard and needs a separately approved
-narrow authorization update before production use.
+not released. The owner-approved narrow membership mapping and the actual-app
+membership journey now pass. Production release/activation still need their own
+scopes; the completed local access block does not authorize them.
 
 `services/crmAttendanceOcr.js` uses the existing bounded KIE transport and image
 validation. No external Hermes process or OpenAI key is required. It has its own
@@ -69,8 +69,10 @@ use the existing authenticated attendance-management boundary; a client-supplied
 actor ID must never be trusted. HTTP handlers now supply the authenticated actor;
 all six routes additionally require the existing `hr.schedule.manage` capability
 before upload parsing, after the existing HR/business guards. No role, permission
-definition or sender is changed. The Park membership allowlist is deliberately
-unchanged pending separate exact approval.
+definition or sender is changed. Under the explicitly approved
+`EG-ATTENDANCE-OCR-ACCESS-20261105-398e6a04`, the Park allowlist now enumerates only
+these six exact methods/paths with `hr.schedule.manage`. Existing context,
+writable-scope, live membership, explicit-deny and ownership guards remain active.
 
 Apply takes the canonical payroll-period lock, then attendance maintenance/shared
 and staff/date locks in sorted order, and the execution lock. A serializable
@@ -127,9 +129,29 @@ an injected synthetic transport and real desktop/390px browser clicks were exerc
 The journey loses a committed recognition response, recovers it, reloads/refreshes,
 rejects another owner and a changed rate, then applies one pair and no blank rows.
 One mocked provider call remains one; real provider calls and production writes are
-zero. A separate read-only synthetic membership proof confirms all six new routes
-remain denied (`staff_not_migrated`) by the unmodified Park allowlist. Passing the
-compatibility-account journey must not be presented as membership readiness.
+zero. The subsequent owner-approved actual-app membership journey proves the
+working HR interface, foreign-owner rejection, explicit management deny, revoked
+token rejection, foreign/aggregate business rejection and ownership conflict hold.
+The fresh schema rejects NULL ownership via its NOT NULL constraint; empty/foreign
+ownership values are also held by the existing API guard. Unrelated period-close
+and bulk financial writes remain denied. Earlier unlisted-route denial evidence
+is retained as the before state, not a current blocker.
+
+## Real owner-photo pilot (completed, one request)
+
+The owner separately approved
+`EG-ATTENDANCE-HANDWRITING-PROBE-20261105-ec14e15e`, including original-photo
+disclosure and estimated-price uncertainty. The pinned `dccf8b55` recognition core
+correctly returned the owner-confirmed date, five names and arrival/departure pairs,
+20 visible row ordinals, page2/3 and15 unknown blank rows. The one-request ledger is
+complete; that spending scope is consumed and cannot authorize a repeat.
+
+Provider receipt:1269 input tokens,1367 output tokens,0 reasoning tokens,
+0.36credits; nominal USD0.0018 at USD0.005/credit (not a balance/invoice audit).
+One accepted photograph does not establish average price or general handwriting
+accuracy. No real staff/attendance/schedule/payroll record was applied. Native
+recognizer/transport fingerprints must remain identical when preparing the release.
+Private image/names were not copied into Git or the public comparison report.
 
 Commands: `npm run test:crm-automation`,
 `npm run test:browser:attendance-ocr:isolated` with a verified disposable database.
@@ -145,19 +167,15 @@ test HTTP block and whitelisted receipt metadata are preserved.
 
 ## Remaining implementation, in order
 
-1. Review the prepared narrow membership allowlist proposal under a fresh exact
-   Red block. Preserve all current membership, context, writable-scope and ownership
-   checks, then verify real membership/revocation/foreign-context behavior. The
-   browser test is included in the existing fullstack command and its existing HR
-   artifact directory; no workflow, CI job, token permission or role definition is
-   changed. Hosted CI must be run on
+1. Finish the release-candidate baseline and prepare one bounded production release
+   plus exact activation/rollback proposal. The browser test is included in the
+   existing fullstack command and its existing HR artifact directory; no workflow,
+   CI job, token permission or role definition is changed. Hosted CI must run on
    the final approved SHA; local proofs do not substitute for it.
-2. Only after a concrete reviewed executor exists, prepare a new bounded KIE test
-   on the owner-confirmed sample. The previous printed probe is consumed/expired.
-   Photo contains real employee names; identify exactly what leaves the CRM in that
-   scope. No real provider request or business apply is implied by sample upload.
-3. Prepare exact release/settings approvals and rollback after local checks and
-   actual handwriting acceptance. Keep production execution flags off meanwhile.
+2. Release and activate only within the fresh exact production scopes, keeping
+   planned-schedule OCR and notification sender configuration separate. Preserve
+   snapshots, receipt/unknown holds and required authenticated live QA evidence.
+   No further paid pilot or real business apply is authorized by the consumed scope.
 
 Rollback preparation: keep the flag off, or stop new requests if later activated;
 retain executions, receipts, previews and committed audit history. A code rollback

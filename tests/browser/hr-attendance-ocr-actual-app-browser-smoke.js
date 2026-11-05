@@ -26,14 +26,34 @@ async function run(){
  const browser=await chromium.launch({headless:true,...(process.env.CRM_AUTOMATION_CHROME_PATH?{executablePath:process.env.CRM_AUTOMATION_CHROME_PATH}:{})});
  let page;
  try{
+  const owner=(await db.query('SELECT id FROM users WHERE username=$1',[process.env.TEST_USER])).rows[0];assert.ok(owner);
+  const organization=(await db.query("INSERT INTO organizations(slug,name) VALUES('isolated-attendance-ocr','Synthetic attendance OCR') RETURNING id")).rows[0].id;
+  const businessIds={};
+  for(const context of ['event_genix','dar'])businessIds[context]=(await db.query(`INSERT INTO businesses(organization_id,context_key,label,short_label,access_mode)
+   VALUES($1,$2,$2,$2,'membership') RETURNING id`,[organization,context])).rows[0].id;
+  async function member(userId,role,deny=[]){
+   await db.query("INSERT INTO organization_memberships(organization_id,user_id,role) VALUES($1,$2,'owner')",[organization,userId]);
+   for(const context of ['event_genix','dar'])await db.query(`INSERT INTO business_memberships(business_id,organization_id,user_id,role,is_default,action_denylist)
+    VALUES($1,$2,$3,$4,$5,$6)`,[businessIds[context],organization,userId,role,context==='event_genix',deny]);
+  }
+  await member(owner.id,'creator');
   const auth=await login(process.env.TEST_USER,process.env.TEST_PASS),token=auth.accessToken || auth.token;
+  assert.equal(auth.user.membershipMode,'membership');
   const staff=(await db.query("INSERT INTO staff(name,display_name,department,position,role_type,hourly_rate,is_active,hr_pool_status,is_freelance) VALUES('Synthetic OCR Browser Employee','Synthetic OCR Browser Employee','Synthetic','Synthetic','wardrobe',100,true,'core',false) RETURNING id")).rows[0];
   assert.equal((await api('/api/hr/attendance/ocr/status')).status,401);
   assert.equal((await api('/api/hr/attendance/ocr/preview',token,{actor:{id:1},documentDate:'2026-11-04'},'dar')).status,403);
   const password='synthetic-'+randomUUID(),hash=await require('bcryptjs').hash(password,4),suffix=randomUUID().slice(0,8);
-  for(const role of ['waiter','creator'])await db.query('INSERT INTO users(username,password_hash,role,name) VALUES($1,$2,$3,$4)',[role+suffix,hash,role,'Synthetic OCR '+role]);
+  for(const role of ['waiter','creator','restricted']){
+   const actualRole=role==='restricted'?'creator':role;
+   const user=(await db.query('INSERT INTO users(username,password_hash,role,name) VALUES($1,$2,$3,$4) RETURNING id',[role+suffix,hash,actualRole,'Synthetic OCR '+role])).rows[0];
+   await member(user.id,actualRole,role==='restricted'?['hr.schedule.manage']:[]);
+  }
   const denied=await login('waiter'+suffix,password),deniedToken=denied.accessToken||denied.token;
   assert.equal((await api('/api/hr/attendance/ocr/status',deniedToken)).status,403);
+  const restricted=await login('restricted'+suffix,password),restrictedToken=restricted.accessToken||restricted.token;
+  assert.equal((await api('/api/hr/attendance/ocr/status',restrictedToken)).status,403);
+  assert.equal((await api('/api/hr/attendance/ocr/preview',restrictedToken,{})).status,403);
+  assert.equal((await api('/api/hr/attendance/ocr/status',token,undefined,'all')).status,403);
   const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block'});
   await context.addInitScript(value=>{
    localStorage.setItem('pzp_token',value.accessToken||value.token);localStorage.setItem('pzp_access_token',value.accessToken||value.token);
@@ -99,10 +119,23 @@ async function run(){
   assert.deepEqual(record,{total_worked_minutes:565,arrival:'10:50',departure:'20:15'});
   assert.equal((await db.query('SELECT count(*)::int AS n FROM staff_checkins WHERE staff_id=$1',[staff.id])).rows[0].n,1);
   assert.equal((await db.query('SELECT count(*)::int AS n FROM staff_schedule WHERE staff_id=$1',[staff.id])).rows[0].n,0);
+  await assert.rejects(db.query('UPDATE hr_time_records SET business_context=NULL WHERE staff_id=$1',[staff.id]),{code:'23502'});
+  for(const badContext of ['','dar']){
+   await db.query('UPDATE hr_time_records SET business_context=$2 WHERE staff_id=$1',[staff.id,badContext]);
+   const ownership=await api('/api/hr/attendance/ocr/status',token);
+   assert.equal(ownership.status,409);assert.equal(ownership.body.code,'PARK_HR_PAYROLL_OWNERSHIP_UNVERIFIED');
+  }
+  await db.query("UPDATE hr_time_records SET business_context='event_genix' WHERE staff_id=$1",[staff.id]);
+  await db.query('UPDATE business_memberships SET is_active=false WHERE business_id=$1 AND user_id=$2',[businessIds.event_genix,owner.id]);
+  assert.equal((await api('/api/hr/attendance/ocr/status',token)).status,403);
+  assert.equal((await api('/api/hr/attendance/ocr/apply',token,{previewId:new URL(page.url()).searchParams.get('attendancePreview'),confirmed:true})).status,403);
+  await db.query('UPDATE business_memberships SET is_active=true WHERE business_id=$1 AND user_id=$2',[businessIds.event_genix,owner.id]);
+  assert.equal((await api('/api/hr/attendance/ocr/status',token)).status,200);
+  for(const route of ['/api/payroll/period/close','/api/hr/payroll-profiles/bulk/apply'])assert.equal((await api(route,token,{})).status,403);
   const counter=JSON.parse(fs.readFileSync(path.join(output,'provider-counter.json')));assert.equal(counter.calls,1);
   await page.locator('#attendanceOcrPanel').screenshot({path:path.join(output,'mobile-applied.png')});
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(output,'journey-evidence.json'),JSON.stringify({status:'PASS',actualApp:true,actualPostgres:true,provider:'synthetic',providerCalls:1,paidCalls:0,productionWrites:0,attendancePairs:1,blankRowsApplied:0,staleRejected:true,ownerBoundary:true,permissionBoundary:true,lostResponseRecoveredWithoutNewProvider:true,reloadAndRefreshNoNewProvider:true,keyboardAndMobile:true},null,2));
+  fs.writeFileSync(path.join(output,'journey-evidence.json'),JSON.stringify({status:'PASS',actualApp:true,actualPostgres:true,membershipMode:true,explicitDenyChecked:true,revokedTokenDenied:true,foreignAndUnknownOwnershipDenied:true,unrelatedFinancialWritesDenied:true,provider:'synthetic',providerCalls:1,paidCalls:0,productionWrites:0,attendancePairs:1,blankRowsApplied:0,staleRejected:true,ownerBoundary:true,permissionBoundary:true,lostResponseRecoveredWithoutNewProvider:true,reloadAndRefreshNoNewProvider:true,keyboardAndMobile:true},null,2));
   console.log('Attendance OCR actual-app browser journey PASS; synthetic provider only.');
  }catch(error){await page?.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{});throw error;}
  finally{await browser.close();await db.end();}

@@ -10,6 +10,13 @@ const CSS_APP_SHELL_PRECACHE = [
 
 const CSS_SURFACE = [
     {
+        file: 'css/hr-attendance-ocr.css',
+        owner: 'hr',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Confirmed actual arrival/departure OCR upload and responsive review.'
+    },
+    {
         file: 'css/finance-money.css',
         owner: 'finance',
         category: 'page-scoped',

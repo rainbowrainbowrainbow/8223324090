@@ -3,7 +3,10 @@
 Owner priority: recognize staff arrival/departure sheets first. Planned schedules
 remain a separate workflow. This candidate now includes **internal recognition,
 durable execution, immutable database preview and confirmed transactional apply**.
-It has no HTTP/UI entrypoint and is not released.
+HTTP upload/review/apply and the HR Today interface are prepared locally. They are
+not released. The compatibility-account journey passes; membership-account access
+still stops at the existing unlisted-route guard and needs a separately approved
+narrow authorization update before production use.
 
 `services/crmAttendanceOcr.js` uses the existing bounded KIE transport and image
 validation. No external Hermes process or OpenAI key is required. It has its own
@@ -46,8 +49,10 @@ matches, schedule, attendance/check-in and canonical compensation-plan snapshots
 Existing attendance, nonworking schedules and compensation requiring manual
 review are held. Blank/uncertain/unmatched rows stay excluded. A
 `ready_for_confirmed_apply` classification is provisional: apply must still recheck
-the period, history, time and current state. Preview responses keep
-`applyAllowed: false` and `wholeDayComplete: false`.
+the period, history, time and current state. Internal preview responses keep
+`applyAllowed: false`; the authenticated HTTP presenter only enables provisional
+selection on a current unapplied preview with ready rows. This never bypasses the
+apply checks. `wholeDayComplete` remains false everywhere.
 
 `getPreview` only returns the exact actor/context's saved rows and public metadata,
 not internal attendance/payroll snapshots. `refreshPreview` loads reviewed data by
@@ -61,8 +66,11 @@ SQL partial unique index protects one apply marker per execution.
 `createAttendanceOcrApply` requires explicit confirmation, actor/context ownership,
 the exact preview ID/hash and unique selected source-row ordinals. Its caller must
 use the existing authenticated attendance-management boundary; a client-supplied
-actor ID must never be trusted. No new permission, endpoint or production sender is
-introduced by these internal modules.
+actor ID must never be trusted. HTTP handlers now supply the authenticated actor;
+all six routes additionally require the existing `hr.schedule.manage` capability
+before upload parsing, after the existing HR/business guards. No role, permission
+definition or sender is changed. The Park membership allowlist is deliberately
+unchanged pending separate exact approval.
 
 Apply takes the canonical payroll-period lock, then attendance maintenance/shared
 and staff/date locks in sorted order, and the execution lock. A serializable
@@ -87,8 +95,8 @@ and are never retried automatically.
 
 The local PostgreSQL checks exercise actual synthetic attendance writes and full
 rollback, in addition to the separate SQL metadata immutability/index assertions.
-They do not establish a live permission boundary, browser usability or handwriting
-quality. In particular, blank rows are never selected automatically and applying a
+They do not establish live authorization or handwriting quality. The local actual
+application/browser journey is documented below. Blank rows are never selected automatically and applying a
 partial page never creates absences or whole-day completion.
 
 History uses `ON DELETE RESTRICT`: physically deleting an owner/execution with
@@ -97,7 +105,38 @@ An unknown/reserved execution cannot simply be reset or deleted to clear capacit
 an explicit receipt/provider reconciliation and retention policy is required before
 production activation. Source image bytes are not stored in these tables, but
 reviewed names, times and internal snapshots are personal operational data and must
-follow existing access/retention rules when an API is added.
+follow existing access/retention rules. All new HTTP responses use no-store caching.
+
+## Local HTTP and HR Today interface
+
+`crmAttendanceOcrHttp` bounds multipart memory, rejects caller-supplied actor/context
+fields, resolves the server business context and hides raw errors. The HR interface
+requires paid-operation confirmation before upload and separate selected-row apply
+confirmation. Selection starts empty; unknown/blocked rows are disabled. Escaped
+text nodes render model names and times. The reviewed date is restored after reload.
+
+An owned preview ID in the page URL reopens it without photo storage. Source-hash
+recovery never starts paid work when no reservation exists. It can resume reviewed
+OCR even if a process stopped before creating a preview. An unknown provider result
+remains held. Lost HTTP responses therefore have an explicit recovery action rather
+than an automatic repeat. Refresh clears selections/confirmation, preserves the old
+revision and makes no provider request. UI never polls or starts paid work on load.
+
+The actual Node app, real login/permissions, PostgreSQL18, native KIE adapter with
+an injected synthetic transport and real desktop/390px browser clicks were exercised.
+The journey loses a committed recognition response, recovers it, reloads/refreshes,
+rejects another owner and a changed rate, then applies one pair and no blank rows.
+One mocked provider call remains one; real provider calls and production writes are
+zero. A separate read-only synthetic membership proof confirms all six new routes
+remain denied (`staff_not_migrated`) by the unmodified Park allowlist. Passing the
+compatibility-account journey must not be presented as membership readiness.
+
+Commands: `npm run test:crm-automation`,
+`npm run test:browser:attendance-ocr:isolated` with a verified disposable database.
+Do not point the isolated runner at a retained/production database; it resets the
+test schema. The dedicated test shim is guarded by test/isolated/loopback flags,
+injects only the adapter dependency and blocks non-loopback HTTP. Product code has
+no test-provider environment bypass.
 
 The shared KIE transport now exposes structured-document decoding; the existing
 planned-schedule wrapper still enforces its own document-type boundary. Fixed
@@ -106,10 +145,13 @@ test HTTP block and whitelisted receipt metadata are preserved.
 
 ## Remaining implementation, in order
 
-1. Wire the real upload/review UI using existing attendance management authorization
-   without inventing an alternate permission path. Confirm actor/context before
-   paid work and apply. Add real PostgreSQL/browser transactional, stale-state,
-   partial-page, duplicate and payroll-regression evidence before release.
+1. Review the prepared narrow membership allowlist proposal under a fresh exact
+   Red block. Preserve all current membership, context, writable-scope and ownership
+   checks, then verify real membership/revocation/foreign-context behavior. The
+   browser test is included in the existing fullstack command and its existing HR
+   artifact directory; no workflow, CI job, token permission or role definition is
+   changed. Hosted CI must be run on
+   the final approved SHA; local proofs do not substitute for it.
 2. Only after a concrete reviewed executor exists, prepare a new bounded KIE test
    on the owner-confirmed sample. The previous printed probe is consumed/expired.
    Photo contains real employee names; identify exactly what leaves the CRM in that
@@ -124,5 +166,5 @@ and never delete committed attendance as an automatic release rollback. Any real
 attendance correction needs its own controlled, explicitly authorized process.
 
 Current targeted verification and exact branch/commit are recorded in
-`D:/Codex/EventGenix/attendance-ocr-preview-20261105/REPORT.md`. No full-suite,
-actual-provider or production acceptance claim follows from these mocked checks.
+`D:/Codex/EventGenix/attendance-ocr-ui-20261105/REPORT.md`. Actual-provider,
+membership and production acceptance do not follow from compatibility/mock checks.

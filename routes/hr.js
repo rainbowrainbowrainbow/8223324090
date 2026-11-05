@@ -6498,6 +6498,18 @@ router.delete('/qa/multi-segment/:runId', requireRole('creator', 'director'), as
     }
 });
 
+// Actual arrival/departure OCR inherits the existing HR/business boundary and
+// requires the same attendance-management capability before any upload parsing.
+const attendanceOcr = require('../services/crmAttendanceOcrHttp').createAttendanceOcrHandlers({
+    pool, resolveContext: hrBusinessContextFromRequest
+});
+router.get('/attendance/ocr/status', requireAction('hr.schedule.manage'), attendanceOcr.status);
+router.post('/attendance/ocr/preview', requireAction('hr.schedule.manage'), attendanceOcr.preview);
+router.post('/attendance/ocr/recover', requireAction('hr.schedule.manage'), attendanceOcr.recover);
+router.get('/attendance/ocr/previews/:previewId', requireAction('hr.schedule.manage'), attendanceOcr.get);
+router.post('/attendance/ocr/previews/:previewId/refresh', requireAction('hr.schedule.manage'), attendanceOcr.refresh);
+router.post('/attendance/ocr/apply', requireAction('hr.schedule.manage'), attendanceOcr.apply);
+
 // POST /api/hr/clock-in
 router.post('/clock-in', requireHrManage, async (req, res) => {
     const staffId = Number(req.body?.staff_id);

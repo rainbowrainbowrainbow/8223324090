@@ -1,5 +1,5 @@
 'use strict';
-const {describe,it,before,after}=require('node:test'),assert=require('node:assert/strict'),{randomUUID}=require('node:crypto'),{Pool}=require('pg');
+const {describe,it,before,after}=require('node:test'),assert=require('node:assert/strict'),{randomUUID,createHash}=require('node:crypto'),{Pool}=require('pg');
 const {assertSafeTestDatabaseUrl}=require('../../scripts/test-db-safety');
 const {acquireIsolatedDatabaseLock}=require('../../scripts/run-isolated-postgres-tests');
 const {createAttendanceOcrPreview}=require('../../services/crmAttendanceOcrPreview');
@@ -142,6 +142,20 @@ describe('CRM actual attendance OCR durable preview',{skip:process.env.RUN_CRM_A
   await pool.query("UPDATE crm_attendance_ocr_previews SET applied_at=NOW(),apply_result='{}' WHERE id=$1",[first.previewId]);
   await assert.rejects(pool.query("UPDATE crm_attendance_ocr_previews SET applied_at=NOW(),apply_result='{}' WHERE id=$1",[next.previewId]),/idx_crm_attendance_ocr_applied_once/);
   await assert.rejects(service.refreshPreview({actor,businessContext:'event_genix',previewId:next.previewId}),{code:'CRM_ATTENDANCE_OCR_ALREADY_APPLIED'});
+  assert.equal((await service.getPreview({actor,businessContext:'event_genix',previewId:next.previewId})).applied,true);
+ });
+
+ it('OCR recovery cannot start paid work and resumes saved review even if no preview survived',async()=>{
+  const date='2099-10-27';let calls=0;
+  const service=createAttendanceOcrPreview({pool,env,recognize:async()=>{calls++;return review(date);}});
+  const source={actor,businessContext:'event_genix',documentDate:date,imageSha256:createHash('sha256').update(png).digest('hex')};
+  await assert.rejects(service.recoverPreview(source),{code:'CRM_ATTENDANCE_OCR_PREVIEW_NOT_FOUND'});assert.equal(calls,0);
+  const first=await service.preview(input(date));assert.equal((await service.recoverPreview(source)).previewId,first.previewId);
+  await assert.rejects(service.recoverPreview({...source,actor:other}),{code:'CRM_ATTENDANCE_OCR_PREVIEW_NOT_FOUND'});
+  await pool.query('DELETE FROM crm_attendance_ocr_previews WHERE id=$1',[first.previewId]);
+  const restarted=createAttendanceOcrPreview({pool,env:{CRM_ATTENDANCE_OCR_ENABLED:'true'},recognize:()=>assert.fail('recovery must not call provider')});
+  assert.notEqual((await restarted.recoverPreview(source)).previewId,first.previewId);assert.equal(calls,1);
+  await assert.rejects(service.recoverPreview({...source,documentDate:'2026-02-30'}),{code:'CRM_ATTENDANCE_OCR_APPLY_INVALID'});
  });
 
  it('OCR expired preview remains readable and refreshes from saved review without source image or provider',async()=>{

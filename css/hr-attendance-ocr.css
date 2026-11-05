@@ -1,0 +1,12 @@
+.attendance-ocr { margin: 16px 0; padding: 16px; border: 1px solid var(--border-color, #b5bdc8); border-radius: 12px; }
+.attendance-ocr summary { cursor: pointer; font-weight: 600; }
+.attendance-ocr form { display: grid; gap: 12px; margin-top: 16px; }
+.attendance-ocr label { display: block; overflow-wrap: anywhere; }
+.attendance-ocr input[type="date"], .attendance-ocr input[type="file"] { display: block; max-width: 100%; margin-top: 6px; }
+.attendance-ocr input[type="checkbox"] { margin-right: 6px; }
+.attendance-ocr-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.attendance-ocr-actions button { white-space: normal; min-height: 44px; }
+.attendance-ocr-row { padding: 12px 0; border-bottom: 1px solid var(--border-color, #b5bdc8); overflow-wrap: anywhere; }
+.attendance-ocr-row p { margin: 6px 0; }
+.attendance-ocr [role="status"] { margin: 12px 0 0; overflow-wrap: anywhere; }
+.attendance-ocr button:focus-visible, .attendance-ocr input:focus-visible, .attendance-ocr summary:focus-visible { outline: 3px solid var(--accent-color, #2563eb); outline-offset: 3px; }

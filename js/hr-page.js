@@ -2769,6 +2769,7 @@ async function initPage() {
     initContextMenu();
     initNewTabs();
     initHrPrintDocuments();
+    if (window.CrmAttendanceOcrUi) window.CrmAttendanceOcrUi.init({ canManage: canManageHrSchedule(), afterApply: () => loadToday() });
     const initialTab = getInitialHrTab();
     await activateHrTab(initialTab, { updateHash: false });
     await openStaffEditFromLocation();

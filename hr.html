@@ -26,6 +26,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/hr-page.css?v=0.83.8">
     <link rel="stylesheet" href="css/hr-today-print.css?v=0.83.8">
+    <link rel="stylesheet" href="css/hr-attendance-ocr.css?v=0.83.8">
     <link rel="stylesheet" href="css/account-access-editor.css?v=0.83.8">
 </head>
 <body data-page-group="hr">
@@ -131,6 +132,27 @@
                     </div>
                     <div id="todayDepartmentSegments" class="hr-today-segments" aria-label="Відділи"></div>
                 </div>
+                <details id="attendanceOcrPanel" class="attendance-ocr" hidden>
+                    <summary>Розпізнати лист приходу й виходу</summary>
+                    <p>Завантажте фото фактичної відвідуваності та перевірте кожен заповнений рядок перед записом.</p>
+                    <form id="attendanceOcrForm">
+                        <label>Дата на документі<input id="attendanceOcrDate" type="date" required></label>
+                        <label>Фото листа (PNG або JPEG, до 4 МБ)<input id="attendanceOcrFile" type="file" accept="image/png,image/jpeg" required></label>
+                        <label><input id="attendanceOcrPaidConfirm" type="checkbox" required>Погоджую розпізнавання через AI. Фото буде передано провайдеру KIE.</label>
+                        <div class="attendance-ocr-actions">
+                            <button id="attendanceOcrPreview" type="submit" class="btn-page-secondary" disabled>Розпізнати фото</button>
+                            <button id="attendanceOcrRecover" type="button" class="btn-page-secondary" disabled>Перевірити збережений результат</button>
+                        </div>
+                    </form>
+                    <section id="attendanceOcrReview" aria-label="Перевірка розпізнаної відвідуваності" hidden>
+                        <p id="attendanceOcrSummary"></p>
+                        <div id="attendanceOcrRows"></div>
+                        <div class="attendance-ocr-actions"><button id="attendanceOcrRefresh" type="button" class="btn-page-secondary" disabled>Оновити перегляд без розпізнавання</button></div>
+                        <label><input id="attendanceOcrApplyConfirm" type="checkbox" disabled>Я перевірив дату, працівників, приходи й виходи вибраних рядків та підтверджую запис відвідуваності.</label>
+                        <div class="attendance-ocr-actions"><button id="attendanceOcrApply" type="button" class="btn-page-secondary" disabled>Застосувати вибрані рядки</button></div>
+                    </section>
+                    <p id="attendanceOcrStatus" role="status" aria-live="polite"></p>
+                </details>
                 <div id="todaySummary" class="hr-summary"></div>
                 <div id="todayList" class="hr-staff-list"></div>
             </div>
@@ -1733,6 +1755,7 @@
     <script src="js/staff-schedule-loader.js?v=0.83.8"></script>
     <script src="js/hr-attendance-state.js?v=0.83.8"></script>
     <script src="js/account-access-editor.js?v=0.83.8"></script>
+    <script src="js/hr-attendance-ocr.js?v=0.83.8"></script>
     <script src="js/hr-page.js?v=0.83.8"></script>
     <script src="js/hr-today-print.js?v=0.83.8"></script>
     <script src="js/alerts.js?v=0.83.8"></script>

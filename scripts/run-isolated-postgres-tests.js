@@ -20,6 +20,7 @@ const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
 const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack']);
 const MODES = {
+    'attendance-ocr-browser': ['tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js'],
     api: ['tests/api.test.js'],
     finance: [
         'tests/integration/analytics-reporting-postgres.test.js',
@@ -156,7 +157,8 @@ const MODES = {
     ],
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
     'upload-backfill': ['tests/integration/legacy-upload-backfill.integration.test.js'],
-    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js', 'tests/browser/finance-money-actual-app-browser-smoke.js'],
+    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js',
+        'tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js', 'tests/browser/finance-money-actual-app-browser-smoke.js'],
     qa: [
         'tests/integration/live-multi-segment-qa.integration.test.js',
         'tests/integration/live-multi-segment-runner.integration.test.js'
@@ -164,7 +166,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|finance|finance-money|finance-money-browser|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|education-modal-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|park-manager-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance-ocr-browser|finance|finance-money|finance-money-browser|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|education-modal-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|park-manager-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
@@ -584,6 +586,15 @@ async function runSuite(testDb, testFile, suiteMode) {
         password: crypto.randomBytes(24).toString('base64url')
     };
     const serverEnv = buildServerEnvironment(testDb, port, credentials);
+    if (testFile.includes('hr-attendance-ocr-actual-app-browser-smoke')) {
+        assertLocalManualMoneyDatabase(testDb);
+        Object.assign(serverEnv, {
+            CRM_ATTENDANCE_OCR_ENABLED: 'true', CRM_ATTENDANCE_OCR_MODEL: 'gemini-3-8-flash-openai', KIE_API_KEY: 'synthetic-key',
+            RUN_CRM_ATTENDANCE_ACTUAL_APP: 'true', REQUIRE_ISOLATED_TEST_TARGET: 'true', ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true',
+            ...(suiteMode === 'fullstack' ? { CRM_ATTENDANCE_BROWSER_OUTPUT: path.join(ROOT, 'output/playwright/hr-pay-actual-app/attendance-ocr') } : {}),
+            NODE_OPTIONS: [serverEnv.NODE_OPTIONS || '', '--require=./tests/helpers/attendance-ocr-provider-shim.js'].join(' ').trim()
+        });
+    }
     const educationSeriesDirect = suiteMode === 'education-series'
         && ['tests/integration/education-series.integration.test.js',
             'tests/integration/education-series.integration-acceptance.test.js'].includes(testFile);

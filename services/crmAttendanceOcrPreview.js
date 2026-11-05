@@ -52,7 +52,7 @@ function createAttendanceOcrPreview(options = {}) {
     const validId = value => /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value || '');
     function publicPreview(row, date, reused = false) {
         return { previewId: row.id, previewHash: row.preview_hash, rows: row.preview_rows,
-            documentDate: date, expiresAt: row.expires_at, applied: !!row.applied_at,
+            documentDate: date, expiresAt: row.expires_at, applied: !!row.applied_at || row.execution_applied === true,
             applyAllowed: false, wholeDayComplete: false, reused };
     }
     async function savePreview(client, execution, refresh) {
@@ -75,6 +75,30 @@ function createAttendanceOcrPreview(options = {}) {
         return publicPreview(row, execution.document_date);
     }
     return {
+        async recoverPreview(input) {
+            // Lookup/resume only: absence of a reservation can never start paid work.
+            assertContext(input);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(input.documentDate || '') || !Number.isFinite(Date.parse(input.documentDate+'T00:00:00Z'))
+                || new Date(input.documentDate+'T00:00:00Z').toISOString().slice(0,10)!==input.documentDate
+                || !/^[a-f0-9]{64}$/.test(input.imageSha256 || '')) throw executionError('CRM_ATTENDANCE_OCR_APPLY_INVALID', 400);
+            const pool = options.pool || require('../db').pool, client = await pool.connect();
+            try {
+                return await transaction(client, async () => {
+                    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+                    const execution = (await client.query(`SELECT e.*,e.document_date::text AS document_date
+                        FROM crm_attendance_ocr_executions e WHERE business_context=$1 AND actor_user_id=$2
+                        AND document_date=$3::date AND image_sha256=$4`,
+                    [input.businessContext,input.actor.id,input.documentDate,input.imageSha256])).rows[0];
+                    if (!execution) throw executionError('CRM_ATTENDANCE_OCR_PREVIEW_NOT_FOUND', 404);
+                    if (execution.status !== 'reviewed') throw executionError('CRM_OCR_EXECUTION_REQUIRES_REVIEW');
+                    const prior = (await client.query(`SELECT p.*,expires_at>NOW() AS valid,
+                        EXISTS(SELECT 1 FROM crm_attendance_ocr_previews a WHERE a.execution_id=p.execution_id AND a.applied_at IS NOT NULL) AS execution_applied
+                        FROM crm_attendance_ocr_previews p WHERE execution_id=$1 ORDER BY revision DESC LIMIT 1`, [execution.id])).rows[0];
+                    if (prior) return { ...publicPreview(prior, execution.document_date, true), expired: !prior.valid };
+                    return savePreview(client, execution, false);
+                });
+            } finally { client.release(); }
+        },
         async refreshPreview(input) {
             assertContext(input);
             if (!validId(input.previewId)) throw executionError('CRM_ATTENDANCE_OCR_PREVIEW_NOT_FOUND', 404);
@@ -96,7 +120,8 @@ function createAttendanceOcrPreview(options = {}) {
             if (!validId(input.previewId)) throw executionError('CRM_ATTENDANCE_OCR_PREVIEW_NOT_FOUND', 404);
             const pool = options.pool || require('../db').pool;
             const row = (await pool.query(`SELECT p.id,p.preview_hash,p.preview_rows,p.expires_at,p.applied_at,
-                p.expires_at>NOW() AS valid,e.document_date::text AS document_date
+                p.expires_at>NOW() AS valid,e.document_date::text AS document_date,
+                EXISTS(SELECT 1 FROM crm_attendance_ocr_previews a WHERE a.execution_id=p.execution_id AND a.applied_at IS NOT NULL) AS execution_applied
                 FROM crm_attendance_ocr_previews p JOIN crm_attendance_ocr_executions e ON e.id=p.execution_id
                 WHERE p.id=$1 AND e.business_context=$2 AND e.actor_user_id=$3`,
             [input.previewId,input.businessContext,input.actor.id])).rows[0];

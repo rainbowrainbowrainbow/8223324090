@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.10",
+  "version": "0.83.11",
   "eventGenix": {
-    "releaseLabel": "Листи приходу й виходу від працівників"
+    "releaseLabel": "Листи відвідуваності: стабільний запуск"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

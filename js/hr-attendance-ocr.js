@@ -1,6 +1,6 @@
 (function () {
     'use strict';
-    const state = { busy:false, enabled:false, preview:null, source:null, paidBlocked:false, initialized:false };
+    const state = { busy:false, enabled:false, preview:null, source:null, paidBlocked:false, initialized:false, disposed:false };
     const el = name => document.getElementById('attendanceOcr'+name);
     const labels = {
         ready_for_confirmed_apply:'Готовий до підтвердження', empty_unknown:'Порожньо — даних немає',
@@ -10,8 +10,9 @@
         existing_attendance_requires_review:'Відвідуваність уже є — потрібна окрема перевірка', schedule_conflict:'Конфлікт із плановим графіком',
         compensation_requires_review:'Умови обліку часу потребують перевірки'
     };
-    function message(text) { el('Status').textContent=text; }
+    function message(text) { if(!state.disposed)el('Status').textContent=text; }
     function sync() {
+        if(state.disposed)return;
         const panel=el('Panel'); panel.setAttribute('aria-busy',String(state.busy));
         for(const input of el('Form').querySelectorAll('input')) input.disabled=state.busy || !state.enabled;
         el('Preview').disabled=state.busy || !state.enabled || state.paidBlocked || !!state.preview;
@@ -28,6 +29,7 @@
         history.replaceState(null,'',url.pathname+url.search+url.hash);
     }
     function show(preview) {
+        if(state.disposed)return;
         state.preview=preview; state.paidBlocked=true; el('Review').hidden=false; el('ApplyConfirm').checked=false;
         el('Date').value=preview.documentDate;
         el('Summary').textContent=`Дата ${preview.documentDate}. ${preview.rows.length} видимих рядків. Порожні клітинки не означають відсутність. Інші сторінки не враховано.`;
@@ -49,14 +51,17 @@
         const options=body===undefined?{}:{method:'POST',body:body instanceof FormData?body:JSON.stringify(body)};
         if(body!==undefined && !(body instanceof FormData))options.headers={'Content-Type':'application/json'};
         const response=await (typeof apiFetchWithAuthRetry==='function'?apiFetchWithAuthRetry('/api/hr/attendance/ocr/'+path,options):fetch('/api/hr/attendance/ocr/'+path,options));
+        if(!response)throw Object.assign(new Error('Session unavailable'),{code:'SESSION_UNAVAILABLE'});
         let value;try{value=await response.json();}catch{throw Object.assign(new Error('Invalid response'),{code:'NETWORK_UNKNOWN'});}
-        if(!response.ok || value.success===false)throw Object.assign(new Error('Attendance OCR request failed'),{code:value.code || 'NETWORK_UNKNOWN'});
+        if(!response.ok || value.success===false)throw Object.assign(new Error('Attendance OCR request failed'),{code:value.code || 'NETWORK_UNKNOWN',status:response.status});
         return value;
     }
     function failure(error) {
         const code=error.code || 'NETWORK_UNKNOWN';
         if(state.preview && /STALE|EXPIRED|PERIOD_CLOSED|HISTORY_LOCKED|ALREADY_APPLIED|ROWS_REQUIRE_REVIEW|TIME_REQUIRES_REVIEW|FUTURE_DATE/.test(code))state.preview.applyAllowed=false;
-        if(code==='CRM_EXECUTION_DISABLED'){state.enabled=false;message('Розпізнавання листів приходу/виходу ще не активоване.');}
+        if(error.status===401 || code==='SESSION_UNAVAILABLE' || /^auth_/.test(code)){state.enabled=false;message('Увійдіть у свій обліковий запис Event Genix і перевірте доступ ще раз. Якщо вже надсилали фото — перевірте збережений результат перед новим розпізнаванням.');}
+        else if(error.status===403){state.enabled=false;message('Немає доступу до керування відвідуваністю в цьому бізнесі.');}
+        else if(code==='CRM_EXECUTION_DISABLED'){state.enabled=false;message('Розпізнавання листів приходу/виходу ще не активоване.');}
         else if(/PERIOD_CLOSED|HISTORY_LOCKED/.test(code))message('Цей період або нарахування вже закрито чи погоджено. Застосування заблоковано.');
         else if(/STALE|EXPIRED/.test(code))message('Дані змінилися або термін перегляду минув. Оновіть перегляд і перевірте рядки ще раз.');
         else if(/ALREADY_APPLIED/.test(code))message('Для цього фото вже було застосування. Відкрийте збережений перегляд.');
@@ -81,6 +86,7 @@
         const panel=el('Panel');if(!panel)return;
         panel.hidden=options.canManage!==true;if(panel.hidden || state.initialized)return;state.initialized=true;
         el('Date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+        if(window.CrmAttendanceUploadLinks)void window.CrmAttendanceUploadLinks.init(panel);
         el('Form').addEventListener('submit',event=>{
             event.preventDefault();if(el('Preview').disabled || !el('Form').reportValidity())return;
             busy(async()=>{
@@ -113,5 +119,11 @@
             if(id){panel.open=true;show(await request('previews/'+encodeURIComponent(id)));}
         });
     }
-    window.CrmAttendanceOcrUi={init};
+    function dispose(){
+        state.disposed=true;state.enabled=false;
+        const panel=el('Panel');if(!panel)return;panel.hidden=true;
+        el('Rows').replaceChildren();el('Summary').textContent='';el('Status').textContent='';
+        for(const input of panel.querySelectorAll('input')){input.value='';input.checked=false;input.disabled=true;}
+    }
+    window.CrmAttendanceOcrUi={init,dispose};
 })();

@@ -1,0 +1,42 @@
+:root { color-scheme: light; --ink: #142a25; --muted: #51645e; --accent-color: #087b60; --border-color: #d4dfd9; --site-bg: #f4f6f1; --site-surface: #fff; --site-soft: #eef4ef; --site-input: #fafbf8; }
+:root[data-theme="dark"] { color-scheme: dark; --ink: #e0eee5; --muted: #b0c6ba; --accent-color: #79d6b2; --border-color: #3c5448; --site-bg: #101b16; --site-surface: #192a21; --site-soft: #263b2e; --site-input: #122219; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--site-bg); color: var(--ink); font: 16px/1.55 system-ui, sans-serif; }
+[hidden] { display: none !important; }
+a { color: var(--accent-color); text-underline-offset: 4px; }
+button, input { font: inherit; }
+button, a, input { -webkit-tap-highlight-color: transparent; }
+button { min-height: 44px; border: 1px solid var(--border-color); border-radius: 10px; padding: 11px 17px; background: var(--site-surface); color: var(--ink); cursor: pointer; }
+button.primary { background: #087b60; border-color: #087b60; color: white; font-weight: 650; }
+button:disabled { opacity: .5; cursor: default; }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--accent-color); outline-offset: 4px; }
+.site-header { max-width: 1000px; margin: auto; padding: 25px 24px; border-bottom: 1px solid var(--border-color); }
+.site-header a { display: inline-flex; flex-wrap: wrap; column-gap: 18px; align-items: baseline; text-decoration: none; font-size: 17px; font-weight: 800; letter-spacing: .07em; }
+.site-header span { color: var(--muted); letter-spacing: 0; font-size: 13px; font-weight: 400; }
+main { max-width: 780px; margin: auto; padding: 44px 24px; }
+.eyebrow { color: var(--accent-color); font-size: 13px; letter-spacing: .06em; font-weight: 700; margin: 0 0 14px; }
+h1 { font-size: clamp(35px, 7vw, 55px); line-height: 1.1; letter-spacing: -.035em; margin: 0; }
+.intro { max-width: 530px; color: var(--muted); font-size: 18px; margin: 22px 0 28px; }
+.access-note { border-left: 3px solid #7aab8c; padding: 0 0 0 16px; margin: 24px 0; }
+.access-note p { margin: 0; font-size: 14px; color: var(--muted); }
+.access-actions { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; margin-top: 8px; font-size: 14px; }
+.access-actions a { display: inline-flex; align-items: center; min-height: 44px; }
+.access-actions button { background: transparent; padding: 7px 12px; }
+.attendance-ocr { background: var(--site-surface); border-radius: 20px; padding: 28px; box-shadow: 0 5px 22px #183c2510; }
+.attendance-ocr h2 { margin: 0 0 10px; font-size: 22px; line-height: 1.25; }
+.attendance-ocr p { color: var(--muted); }
+.attendance-ocr form { gap: 17px; }
+.attendance-ocr input[type="date"], .attendance-ocr input[type="file"] { width: 100%; min-height: 48px; padding: 10px; border: 1px solid var(--border-color); border-radius: 9px; background: var(--site-input); color: var(--ink); }
+.attendance-ocr input[type="file"] { font-size: 14px; }
+.attendance-ocr input::file-selector-button { border: 0; border-radius: 6px; padding: 6px 9px; background: var(--site-soft); margin-right: 9px; color: var(--ink); font: inherit; }
+.attendance-ocr input[type="checkbox"] { flex-shrink: 0; width: 20px; height: 20px; accent-color: #087b60; margin: 3px 0 0; }
+.attendance-ocr .confirmation, .attendance-ocr-row label { display: flex; gap: 10px; padding: 6px 0; }
+.attendance-ocr .hint { margin: -9px 0 0; font-size: 13px; }
+.attendance-ocr #attendanceOcrStatus:not(:empty) { padding: 12px; background: var(--site-soft); border-radius: 9px; color: var(--ink); }
+#attendanceOcrReview { margin-top: 28px; border-top: 1px solid var(--border-color); padding-top: 24px; }
+.attendance-ocr-row p { font-size: 14px; padding-left: 30px; }
+footer { color: var(--muted); font-size: 13px; margin: 24px 4px 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.skip-link { position: absolute; left: 12px; top: -100px; background: white; padding: 10px; z-index: 1; }
+.skip-link:focus { top: 8px; }
+@media (max-width: 480px) { main { padding: 28px 16px; } .site-header { padding: 19px 16px; } .attendance-ocr { padding: 20px 16px; } .attendance-ocr-actions { flex-direction: column; } .attendance-ocr-actions button { width: 100%; } }

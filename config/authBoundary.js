@@ -1,4 +1,8 @@
 const INTEGRATION_AUTH_CONTRACTS = Object.freeze({
+    attendanceUploadGrant: { owner:'hr', authentication:'expiring upload-only 256-bit bearer grant and fresh reviewer guards',
+        guardFiles:[{file:'services/crmAttendanceUploadLinks.js',needles:['CRM_ATTENDANCE_UPLOAD_LINKS_ENABLED','token_hash=$1','expires_at>NOW()','await reviewer(link,pool)']},
+            {file:'services/crmAttendanceUploadHttp.js',needles:["req.headers['x-attendance-upload-key']","router.post('/photo',handlers.upload)"]}],
+        testFiles:['tests/crm-attendance-upload-links.test.js','tests/browser/attendance-upload-link-journey.js'] },
     omniAttachmentGrant: { owner: 'omnichannel', authentication: 'expiring single-file random grant', guardFiles: [{ file: 'routes/omnichannel.js', needles: ["router.get('/media/:grant/:filename'", 'grantedFile(req.params.grant)'] }, { file: 'services/omni-attachments.js', needles: ['g.expires_at > NOW()', 'token_hash = $1'] }], testFiles: ['tests/omni-completion.test.js'] },
     telegramWebhook: { owner: 'telegram', authentication: 'webhook secret header', guardFiles: [{ file: 'routes/telegram.js', needles: ["router.post('/webhook'", 'secretHeader !== WEBHOOK_SECRET'] }], testFiles: ['tests/auth-boundary.test.js', 'tests/route-smoke.test.js'] },
     omniWebhooks: { owner: 'omnichannel', authentication: 'provider secret or signature', guardFiles: [{ file: 'routes/omnichannel.js', needles: ['verifyViberSignature', 'verifyWebhookSecret', 'verifyMetaSignature', 'verifyWhatsAppSignature'] }], testFiles: ['tests/auth-boundary.test.js', 'tests/omni-provider-lifecycle.test.js'] },
@@ -16,6 +20,9 @@ const INTEGRATION_AUTH_CONTRACTS = Object.freeze({
 });
 
 const PUBLIC_API_ROUTES = [
+    {method:'GET',path:'/attendance-upload/status',owner:'hr',integrationContract:'attendanceUploadGrant',reason:'Upload-only link status; no staff or recognized rows are returned.'},
+    {method:'POST',path:'/attendance-upload/photo',owner:'hr',integrationContract:'attendanceUploadGrant',reason:'Bounded worker photo intake with expiring scoped bearer; no attendance apply.'},
+    {method:'POST',path:'/attendance-upload/recover',owner:'hr',integrationContract:'attendanceUploadGrant',reason:'Own-link receipt recovery only; cannot initiate paid recognition or read staff data.'},
     {
         method: 'GET', regex: /^\/omni\/media\/[a-f0-9]{64}\/[^/]+$/,
         label: 'GET /omni/media/:grant/:filename', examplePath: '/omni/media/' + 'a'.repeat(64) + '/fixture.jpg',

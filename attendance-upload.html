@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="referrer" content="no-referrer">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
+    <title>Лист приходу й виходу · Event Genix</title>
+    <script src="/js/attendance-upload-theme.js?v=0.83.9" data-theme-preference="pzp_dark_mode"></script>
+    <link rel="stylesheet" href="/css/base.css?v=0.83.9">
+    <link rel="stylesheet" href="/css/dark-mode.css?v=0.83.9">
+    <link rel="stylesheet" href="/css/responsive.css?v=0.83.9">
+    <link rel="stylesheet" href="/css/hr-attendance-ocr.css?v=0.83.9">
+    <link rel="stylesheet" href="/css/attendance-upload.css?v=0.83.9">
+    <script src="/js/config.js?v=0.83.9" defer></script>
+    <script src="/js/api.js?v=0.83.9" defer></script>
+    <script src="/js/hr-attendance-ocr.js?v=0.83.9" defer></script>
+    <script src="/js/attendance-upload-worker.js?v=0.83.9" defer></script>
+    <script src="/js/attendance-upload-links.js?v=0.83.9" defer></script>
+    <script src="/js/attendance-upload.js?v=0.83.9" defer></script>
+</head>
+<body>
+    <a class="skip-link" href="#upload">До завантаження</a>
+    <header class="site-header"><a href="/attendance-upload.html" aria-label="Event Genix, завантаження листа">EVENT GENIX<span>Облік присутності</span></a></header>
+    <main id="upload">
+        <p class="eyebrow">З фото — у перевірений облік</p>
+        <h1>Лист приходу<br>й виходу</h1>
+        <p class="intro">Завантажте фото, перевірте розпізнані години й підтвердьте потрібні рядки. Усе на одній сторінці.</p>
+        <aside class="access-note" aria-label="Доступ до завантаження">
+            <p>Потрібен чинний вхід Event Genix і доступ до керування відвідуваністю.</p>
+            <div class="access-actions">
+                <a href="/hr" target="_blank" rel="noopener">Увійти в іншій вкладці<span class="sr-only"> (відкриється нова вкладка)</span></a>
+                <button id="attendanceUploadRetry" type="button">Перевірити доступ</button>
+            </div>
+        </aside>
+        <section id="attendanceOcrPanel" class="attendance-ocr" aria-label="Завантаження та перевірка листа" hidden>
+            <h2>1. Завантажте фото</h2>
+            <p>Це лист фактичних приходів і виходів. Плановий графік тут не змінюється.</p>
+            <form id="attendanceOcrForm">
+                <label>Дата на документі<input id="attendanceOcrDate" type="date" required></label>
+                <label class="file-field">Фото листа<input id="attendanceOcrFile" type="file" accept="image/png,image/jpeg" required aria-describedby="fileHelp"></label>
+                <p id="fileHelp" class="hint">PNG або JPEG до 4 МБ. Сфотографуйте весь аркуш при доброму освітленні. Якщо сторінок кілька — завантажуйте по одній.</p>
+                <label class="confirmation"><input id="attendanceOcrPaidConfirm" type="checkbox" required><span>Погоджую розпізнавання через AI та передавання цього фото провайдеру KIE.</span></label>
+                <div class="attendance-ocr-actions">
+                    <button id="attendanceOcrPreview" type="submit" class="primary" disabled>Розпізнати фото</button>
+                    <button id="attendanceOcrRecover" type="button" disabled>Перевірити збережений результат</button>
+                </div>
+            </form>
+            <p id="attendanceOcrStatus" role="status" aria-live="polite"></p>
+            <section id="attendanceOcrReview" aria-label="Перевірка розпізнаної відвідуваності" hidden>
+                <h2>2. Перевірте рядки</h2>
+                <p id="attendanceOcrSummary"></p>
+                <div id="attendanceOcrRows"></div>
+                <div class="attendance-ocr-actions"><button id="attendanceOcrRefresh" type="button" disabled>Оновити перегляд без розпізнавання</button></div>
+                <label class="confirmation"><input id="attendanceOcrApplyConfirm" type="checkbox" disabled><span>Я перевірив дату, працівників, приходи й виходи вибраних рядків та підтверджую запис відвідуваності.</span></label>
+                <div class="attendance-ocr-actions"><button id="attendanceOcrApply" type="button" class="primary" disabled>Зберегти вибрані рядки</button></div>
+            </section>
+        </section>
+        <noscript><p class="access-note">Для завантаження й перевірки фото увімкніть JavaScript у браузері.</p></noscript>
+        <footer>Порожні клітинки залишаються невизначеними. Повторно відкрити результат можна за посиланням цієї сторінки після входу під тим самим обліковим записом.</footer>
+    </main>
+</body>
+</html>

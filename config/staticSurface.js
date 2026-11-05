@@ -1,5 +1,9 @@
 const ROOT_HTML_SURFACE = [
     {
+        file: 'attendance-upload.html', canonicalPath: '/attendance-upload.html', owner: 'hr',
+        status: 'public-page', aliases: [], purpose: 'Scoped worker attendance-sheet upload shell; no staff records without guarded API access.'
+    },
+    {
         file: 'data-deletion.html',
         canonicalPath: '/data-deletion.html',
         owner: 'legal',
@@ -400,7 +404,7 @@ const LEGACY_STATIC_REDIRECTS = [
 ];
 
 const STATIC_PAGE_EXPOSURE = {
-    publicRootFiles: ['data-deletion.html', 'invite.html', 'privacy-policy.html', 'terms-of-service.html'],
+    publicRootFiles: ['attendance-upload.html', 'data-deletion.html', 'invite.html', 'privacy-policy.html', 'terms-of-service.html'],
     rootShellFiles: ['index.html'],
     publicLandingFiles: ['landing/index.html', 'landing/manager-guide.html', 'landing/sales-deck.html'],
     embeddedAliases: ['/embed/designs', '/embed/programs', '/embed/graduation'],

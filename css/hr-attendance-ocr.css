@@ -10,3 +10,11 @@
 .attendance-ocr-row p { margin: 6px 0; }
 .attendance-ocr [role="status"] { margin: 12px 0 0; overflow-wrap: anywhere; }
 .attendance-ocr button:focus-visible, .attendance-ocr input:focus-visible, .attendance-ocr summary:focus-visible { outline: 3px solid var(--accent-color, #2563eb); outline-offset: 3px; }
+#attendanceUploadLinks { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color, #b5bdc8); }
+#attendanceUploadLinks input[type="text"] { display: block; width: 100%; min-width: 0; margin: 8px 0; padding: 10px; font: inherit; }
+#attendanceUploadLinks button { min-height: 44px; white-space: normal; }
+#attendanceUploadLinks .attendance-ocr-row p { padding-left: 0; }
+.attendance-upload-photo { width: min(94vw, 900px); max-height: 94dvh; border: 1px solid var(--border-color, #b5bdc8); border-radius: 12px; padding: 16px; }
+.attendance-upload-photo img { display: block; max-width: 100%; height: auto; margin: 12px auto 0; }
+.attendance-upload-photo button { min-height: 44px; }
+.attendance-upload-photo::backdrop { background: #0009; }

@@ -89,6 +89,11 @@ and focused tests in the same pack.
 
 ## Exposure Classification
 
+`attendance-upload.html` at `/attendance-upload.html` is a public HTML shell for
+worker upload links. It exposes no roster, attendance result or provider key.
+Scoped upload-token API authentication remains mandatory; ordinary HR operations
+still require the current JWT and capabilities. The upload feature is default-off.
+
 Static root files are not all equivalent:
 
 - Public root pages: `invite.html` at `/invite`, `privacy-policy.html` at

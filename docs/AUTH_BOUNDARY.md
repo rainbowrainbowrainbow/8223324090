@@ -18,8 +18,17 @@ focused tests.
 
 ## Public API Exceptions
 
+`attendanceUploadGrant` is implemented by `services/crmAttendanceUploadLinks.js`
+and `services/crmAttendanceUploadHttp.js`. Its default-off, bounded HTTP guard is
+tested in `tests/crm-attendance-upload-links.test.js`; actual PostgreSQL, worker,
+reviewer and revocation behavior is covered by
+`tests/browser/attendance-upload-link-journey.js` within the existing attendance gate.
+
 | Entry | Owner | Reason |
 | --- | --- | --- |
+| `GET /attendance-upload/status` | hr | `attendanceUploadGrant`: default-off, expiring upload-only random bearer, SHA-256 lookup, fresh reviewer rights; returns date/quota only. |
+| `POST /attendance-upload/photo` | hr | `attendanceUploadGrant`: 4 MiB JPEG/PNG, fixed date/reviewer, three-page quota, durable deduplication; no staff disclosure or attendance apply. |
+| `POST /attendance-upload/recover` | hr | `attendanceUploadGrant`: own-link safe receipt recovery; no new paid request. |
 | `GET /omni/media/:grant/:filename` | omnichannel | `omniAttachmentGrant`: 256-bit random grant, SHA-256 only in DB, expires after one hour, authorizes exactly one attachment. Guarded by `services/omni-attachments.js` and tested in `tests/omni-completion.test.js`. |
 | `ANY /auth/*` | auth | Authentication endpoints own their own login, refresh, logout, and credential guards. |
 | `GET /health` | settings | Public health endpoint for uptime checks and lightweight operational smoke. |

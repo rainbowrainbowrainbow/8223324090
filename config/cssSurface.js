@@ -9,6 +9,8 @@ const CSS_APP_SHELL_PRECACHE = [
 ];
 
 const CSS_SURFACE = [
+    { file:'css/attendance-upload.css', owner:'hr', category:'page-scoped', status:'active',
+        reason:'Standalone mobile worker upload shell and confirmed attendance review.' },
     {
         file: 'css/hr-attendance-ocr.css',
         owner: 'hr',

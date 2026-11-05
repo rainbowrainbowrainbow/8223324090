@@ -22,6 +22,7 @@ if(path.basename(process.argv[1] || '')==='server.js'){
         const date=body.messages[1].content[0].text.match(/Document date: (\d{4}-\d{2}-\d{2})/)[1];
         const output=process.env.CRM_ATTENDANCE_BROWSER_OUTPUT || path.resolve(__dirname,'../../output/playwright/attendance-ocr-actual-app');
         fs.mkdirSync(output,{recursive:true});fs.writeFileSync(path.join(output,'provider-counter.json'),JSON.stringify({syntheticOnly:true,calls:++calls}));
+        if(Buffer.from(body.messages[1].content[1].image_url.url.split(',')[1],'base64').at(-1)===5)throw Error('Synthetic provider timeout after dispatch');
         return Response.json({id:'chatcmpl_synthetic_'+calls,credits_consumed:0,choices:[{finish_reason:'stop',message:{content:JSON.stringify({
             documentType:'attendance_sheet',documentDate:date,dateConfidence:0.99,pageNumber:2,pageCount:3,rows:[
                 {sourceRowOrdinal:1,ocrName:'Synthetic OCR Browser Employee',arrivalTime:'10:50',departureTime:'20:15',confidence:0.99,issues:[]},

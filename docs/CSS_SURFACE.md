@@ -22,6 +22,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | File | Owner | Category | Status | Notes |
 | --- | --- | --- | --- | --- |
 | `css/hr-attendance-ocr.css` | hr | `page-scoped` | active | Confirmed actual arrival/departure OCR upload and responsive review. |
+| `css/attendance-upload.css` | hr | `page-scoped` | active | Standalone mobile worker upload shell and confirmed attendance review. |
 | `css/account-access-editor.css` | hr-account-access | `page-scoped` | active | Effective account access side-sheet workspace, responsive layout, sticky save state, and accessibility affordances. |
 | `css/achievements.css` | shop | `page-scoped` | active | Gamification achievements and shop presentation styles. |
 | `css/agents.css` | chat | `page-scoped` | active | Chat assistant and agent panel styles. |

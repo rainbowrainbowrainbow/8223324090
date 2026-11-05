@@ -6509,6 +6509,12 @@ router.post('/attendance/ocr/recover', requireAction('hr.schedule.manage'), atte
 router.get('/attendance/ocr/previews/:previewId', requireAction('hr.schedule.manage'), attendanceOcr.get);
 router.post('/attendance/ocr/previews/:previewId/refresh', requireAction('hr.schedule.manage'), attendanceOcr.refresh);
 router.post('/attendance/ocr/apply', requireAction('hr.schedule.manage'), attendanceOcr.apply);
+const attendanceUploads = require('../services/crmAttendanceUploadHttp').createAttendanceUploadHandlers({pool,resolveContext:hrBusinessContextFromRequest});
+router.post('/attendance/ocr/upload-links', requireAction('hr.schedule.manage'), attendanceUploads.create);
+router.get('/attendance/ocr/uploads', requireAction('hr.schedule.manage'), attendanceUploads.inbox);
+router.post('/attendance/ocr/upload-links/:linkId/revoke', requireAction('hr.schedule.manage'), attendanceUploads.revoke);
+router.post('/attendance/ocr/uploads/:submissionId/recover', requireAction('hr.schedule.manage'), attendanceUploads.recoverSubmission);
+router.get('/attendance/ocr/uploads/:submissionId/photo', requireAction('hr.schedule.manage'), attendanceUploads.photo);
 
 // POST /api/hr/clock-in
 router.post('/clock-in', requireHrManage, async (req, res) => {

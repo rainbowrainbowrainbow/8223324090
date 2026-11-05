@@ -251,6 +251,9 @@ app.use('/api/leads/landing', landingLeadLimiter);
 
 // Auth middleware: protect all API endpoints except public ones
 app.use('/api', apiAuthBoundary(authenticateToken));
+// Three exact exceptions are registered in config/authBoundary.js. The scoped
+// bearer guard remains mandatory and disabled unless explicitly activated.
+app.use('/api/attendance-upload', require('./services/crmAttendanceUploadHttp').createAttendanceUploadRouter());
 const backupRestorePreParserGuard = requireRole('creator', 'director');
 const backupRestorePreParserSettingsGuard = requireAction('manage_settings');
 app.use(
@@ -532,6 +535,9 @@ app.get('/content', (req, res) => {
 });
 app.get('/checkin', (req, res) => {
     res.sendFile(path.join(__dirname, 'checkin.html'));
+});
+app.get('/attendance-upload.html', (req,res) => {
+    res.sendFile(path.join(__dirname,'attendance-upload.html'));
 });
 app.get('/demo', (req, res) => {
     res.sendFile(path.join(__dirname, 'demo.html'));

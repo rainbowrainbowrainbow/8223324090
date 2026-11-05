@@ -589,7 +589,7 @@ async function runSuite(testDb, testFile, suiteMode) {
     if (testFile.includes('hr-attendance-ocr-actual-app-browser-smoke')) {
         assertLocalManualMoneyDatabase(testDb);
         Object.assign(serverEnv, {
-            CRM_ATTENDANCE_OCR_ENABLED: 'true', CRM_ATTENDANCE_OCR_MODEL: 'gemini-3-8-flash-openai', KIE_API_KEY: 'synthetic-key',
+            CRM_ATTENDANCE_OCR_ENABLED: 'true', CRM_ATTENDANCE_UPLOAD_LINKS_ENABLED:'true', CRM_ATTENDANCE_OCR_MODEL: 'gemini-3-8-flash-openai', KIE_API_KEY: 'synthetic-key',
             RUN_CRM_ATTENDANCE_ACTUAL_APP: 'true', REQUIRE_ISOLATED_TEST_TARGET: 'true', ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true',
             ...(suiteMode === 'fullstack' ? { CRM_ATTENDANCE_BROWSER_OUTPUT: path.join(ROOT, 'output/playwright/hr-pay-actual-app/attendance-ocr') } : {}),
             NODE_OPTIONS: [serverEnv.NODE_OPTIONS || '', '--require=./tests/helpers/attendance-ocr-provider-shim.js'].join(' ').trim()

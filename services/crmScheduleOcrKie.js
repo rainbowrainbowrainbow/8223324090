@@ -25,7 +25,7 @@ async function boundedJson(response) {
     catch { throw executionError('CRM_OCR_PROVIDER_FAILED', 502); }
 }
 
-async function recognizeScheduleWithKie({ image, documentDate, model, instructions, env, fetchImpl, onReceipt }) {
+async function recognizeDocumentWithKie({ image, documentDate, model, instructions, env, fetchImpl, onReceipt, attendance = false }) {
     assertKieOcrReady({ model, env, fetchImpl });
     if (!Buffer.isBuffer(image?.bytes) || !image.bytes.length || image.bytes.length > 4 * 1024 * 1024
         || !['image/png', 'image/jpeg'].includes(image.mimeType)) throw executionError('CRM_OCR_IMAGE_TYPE_INVALID', 400);
@@ -35,7 +35,7 @@ async function recognizeScheduleWithKie({ image, documentDate, model, instructio
         messages: [
             { role: 'system', content: instructions },
             { role: 'user', content: [
-                { type: 'text', text: `Document date: ${documentDate}. Extract only visible schedule data.` },
+                { type: 'text', text: `Document date: ${documentDate}. Extract only visible ${attendance ? 'arrival/departure' : 'schedule'} data.` },
                 { type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.bytes.toString('base64')}` } }
             ] }
         ]
@@ -73,7 +73,11 @@ async function recognizeScheduleWithKie({ image, documentDate, model, instructio
             reasoningTokens: count(payload.usage?.completion_tokens_details?.reasoning_tokens),
             creditsConsumed: Number.isFinite(credits) && credits >= 0 ? credits : null });
     }
-    return require('./crmScheduleOcrDocument').plannedScheduleRows(parsed);
+    return parsed;
 }
 
-module.exports = { KIE_OCR_MODEL, KIE_OCR_ENDPOINT, assertKieOcrReady, recognizeScheduleWithKie };
+async function recognizeScheduleWithKie(input) {
+    return require('./crmScheduleOcrDocument').plannedScheduleRows(await recognizeDocumentWithKie(input));
+}
+
+module.exports = { KIE_OCR_MODEL, KIE_OCR_ENDPOINT, assertKieOcrReady, recognizeScheduleWithKie, recognizeDocumentWithKie };

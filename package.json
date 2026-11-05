@@ -11,7 +11,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "npm run verify && npm run test:sys-mb && npm run test:timeline-marketing",
-    "test:crm-automation": "node --test tests/crm-automation-preparation.test.js tests/crm-creative-kie.test.js tests/crm-schedule-ocr-kie.test.js",
+    "test:crm-automation": "node --test tests/crm-automation-preparation.test.js tests/crm-creative-kie.test.js tests/crm-schedule-ocr-kie.test.js tests/crm-attendance-ocr.test.js",
     "test:browser:crm-automation": "node tests/browser/crm-automation-browser-smoke.js",
     "test:timeline-marketing": "node --test tests/timeline-marketing.test.js tests/timeline-marketing-ui.test.js",
     "test:integration:timeline-marketing": "node --test tests/integration/timeline-marketing-postgres.test.js",

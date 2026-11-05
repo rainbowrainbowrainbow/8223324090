@@ -8,7 +8,7 @@ const file = { buffer: bytes, mimetype: 'image/png' };
 const rows = [{ employeeName: 'Synthetic', date: '2026-11-04', status: 'working', startTime: '09:00', endTime: '17:00', confidence: 0.99, issues: [], staffId: 999 }];
 const base = { image: validateScheduleImage(file), documentDate: '2026-11-04', model: KIE_OCR_MODEL,
     env: { NODE_ENV: 'test', CRM_SCHEDULE_OCR_PROVIDER: 'kie', KIE_API_KEY: 'synthetic-key' } };
-const reply = (value = rows, extra = {}) => ({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ rows: value }) } }], ...extra });
+const reply = (value = rows, extra = {}) => ({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ documentType: 'planned_schedule', rows: value }) } }], ...extra });
 
 test('KIE OCR uses one fixed chat endpoint and inline image with no OpenAI credential or public upload', async () => {
     let calls = 0, receipt;
@@ -127,4 +127,28 @@ test('legacy OpenAI reservations retain their original reference when reopened t
 test('missing provider configuration fails before creating an empty paid reservation', async () => {
     const f = fixture(); delete f.env.KIE_API_KEY;
     await assert.rejects(f.run(), { code: 'CRM_OCR_PROVIDER_NOT_CONFIGURED' }); assert.equal(f.data.creates, 0); assert.equal(f.data.calls, 0);
+});
+
+test('both provider adapters reject attendance or unclassified documents before returning planned rows', async () => {
+    for (const documentType of ['attendance_sheet', 'unknown', undefined]) {
+        const document = { ...(documentType ? { documentType } : {}), rows };
+        await assert.rejects(recognizeSchedule({ ...base, fetchImpl: async () => Response.json({ choices: [
+            { finish_reason: 'stop', message: { content: JSON.stringify(document) } }
+        ] }) }), { code: 'CRM_OCR_DOCUMENT_TYPE_INVALID' });
+        await assert.rejects(recognizeSchedule({ ...base, env: { NODE_ENV: 'test', OPENAI_API_KEY: 'synthetic-key' },
+            fetchImpl: async () => Response.json({ output_text: JSON.stringify(document) }) }), { code: 'CRM_OCR_DOCUMENT_TYPE_INVALID' });
+    }
+});
+
+test('attendance classification preserves the paid receipt but cannot create a schedule preview or paid retry', async () => {
+    const f = fixture();
+    f.options.fetchImpl = async () => {
+        f.data.calls++;
+        return Response.json({ credits_consumed: 0.1, choices: [{ finish_reason: 'stop',
+            message: { content: JSON.stringify({ documentType: 'attendance_sheet', rows: [] }) } }] });
+    };
+    await assert.rejects(f.run(), { code: 'CRM_OCR_DOCUMENT_TYPE_INVALID' });
+    assert.equal(f.data.previews.length, 0); assert.equal(f.data.receipts[0].creditsConsumed, 0.1);
+    await assert.rejects(f.run(), { code: 'CRM_OCR_EXECUTION_REQUIRES_REVIEW' });
+    assert.equal(f.data.calls, 1);
 });

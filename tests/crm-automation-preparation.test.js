@@ -212,7 +212,7 @@ test('OCR Responses adapter sends only bounded image input and parses synthetic 
             assert.equal(body.store, false);
             assert.equal(body.input[0].content[1].type, 'input_image');
             assert.equal(body.max_output_tokens, 6000);
-            return { ok: true, json: async () => ({ output_text: '{"rows":[]}' }) };
+            return { ok: true, json: async () => ({ output_text: '{"documentType":"planned_schedule","rows":[]}' }) };
         } });
     assert.deepEqual(rows, []); assert.equal(calls, 1);
 });

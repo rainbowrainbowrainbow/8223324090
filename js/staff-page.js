@@ -7930,6 +7930,9 @@ async function previewScheduleOcr(event) {
             scheduleOcrMessage('Розпізнавання фото в CRM ще не активоване. Можна скористатися звичайним редактором графіка.');
         } else if (error.code === 'CRM_PROVIDER_BUSY') {
             scheduleOcrMessage('Інша генерація виконується. Дочекайтеся її завершення перед наступним запуском.');
+        } else if (error.code === 'CRM_OCR_DOCUMENT_TYPE_INVALID') {
+            scheduleOcrState.blocked = true;
+            scheduleOcrMessage('Це лист відвідуваності або невизначений документ. Його не можна застосувати як плановий графік. Повторне розпізнавання цього фото заблоковано.');
         } else if (/^(?:LIMIT_|CRM_OCR_IMAGE_|HERMES_SCHEDULE_IMPORT_DATE_)/.test(error.code || '')) {
             scheduleOcrMessage('Перевірте формат фото, його розмір і дату документа.');
         } else {

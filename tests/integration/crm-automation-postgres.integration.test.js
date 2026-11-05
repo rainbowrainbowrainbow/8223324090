@@ -238,7 +238,7 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
             calls++; assert.equal(url, 'https://api.kie.ai/gemini-3-8-flash-openai/v1/chat/completions');
             assert.match(JSON.parse(options.body).messages[1].content[1].image_url.url, /^data:image\/png;base64,/);
             if (unknown) return Response.json({ code: 429, msg: 'synthetic unknown outcome' });
-            return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ rows: [
+            return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ documentType: 'planned_schedule', rows: [
                 { employeeName: staff.name, date: '2099-09-01', status: 'dayoff', confidence: 0.99, issues: [], staffId: 999 },
                 { employeeName: staff.name, date: '2099-09-02', status: 'working', confidence: 0.1, issues: ['Unclear handwritten time'] }
             ] }) } }] });
@@ -257,6 +257,22 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
         env.CRM_SCHEDULE_OCR_PROVIDER = 'openai'; env.CRM_SCHEDULE_OCR_MODEL = 'yet-another-model';
         await assert.rejects(ocr.preview(ocrInput('2099-09-03')), { code: 'CRM_OCR_EXECUTION_REQUIRES_REVIEW' });
         assert.equal(calls, 2);
+    });
+
+    it('OCR attendance-sheet classification cannot create a planned preview or repeat a paid call', async () => {
+        let calls = 0, receipt;
+        const ocr = createScheduleOcr({ pool, env: { NODE_ENV: 'test', CRM_SCHEDULE_OCR_ENABLED: 'true',
+            CRM_SCHEDULE_OCR_PROVIDER: 'kie', CRM_SCHEDULE_OCR_MODEL: 'gemini-3-8-flash-openai', KIE_API_KEY: 'synthetic-only' },
+        onProviderReceipt: value => { receipt = value; }, fetchImpl: async () => {
+            calls++;
+            return Response.json({ credits_consumed: 0.1, choices: [{ finish_reason: 'stop',
+                message: { content: JSON.stringify({ documentType: 'attendance_sheet', rows: [] }) } }] });
+        } });
+        await assert.rejects(ocr.preview(ocrInput('2099-10-01')), { code: 'CRM_OCR_DOCUMENT_TYPE_INVALID' });
+        await assert.rejects(ocr.preview(ocrInput('2099-10-01')), { code: 'CRM_OCR_EXECUTION_REQUIRES_REVIEW' });
+        assert.equal(calls, 1); assert.equal(receipt.creditsConsumed, 0.1);
+        assert.equal((await pool.query("SELECT count(*)::int AS n FROM staff_schedule WHERE staff_id=$1 AND date='2099-10-01'", [staff.id])).rows[0].n, 0);
+        assert.equal((await pool.query("SELECT count(*)::int AS n FROM hermes_schedule_imports WHERE created_by_user_id=$1 AND document_date='2099-10-01' AND source <> 'crm_schedule_ocr_execution'", [actor.id])).rows[0].n, 0);
     });
 
     it('persists OCR once, blocks uncertain rows, applies only selected planned days and seals the preview', async () => {
@@ -494,7 +510,7 @@ describe('CRM automation on migrated disposable PostgreSQL', { skip: !enabled },
             providerCalls++;
             assert.equal(url, 'https://api.kie.ai/gemini-3-8-flash-openai/v1/chat/completions');
             assert.match(JSON.parse(options.body).messages[1].content[1].image_url.url, /^data:image\/png;base64,/);
-            return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ rows: [
+            return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ documentType: 'planned_schedule', rows: [
                 { employeeName: staff.name, date: '2099-07-01', status: 'dayoff', confidence: 0.99, issues: [] }
             ] }) } }] });
         } });

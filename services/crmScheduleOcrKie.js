@@ -73,7 +73,7 @@ async function recognizeScheduleWithKie({ image, documentDate, model, instructio
             reasoningTokens: count(payload.usage?.completion_tokens_details?.reasoning_tokens),
             creditsConsumed: Number.isFinite(credits) && credits >= 0 ? credits : null });
     }
-    return parsed.rows;
+    return require('./crmScheduleOcrDocument').plannedScheduleRows(parsed);
 }
 
 module.exports = { KIE_OCR_MODEL, KIE_OCR_ENDPOINT, assertKieOcrReady, recognizeScheduleWithKie };

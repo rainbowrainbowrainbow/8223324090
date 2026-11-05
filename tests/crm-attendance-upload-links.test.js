@@ -5,6 +5,8 @@ const {createAttendanceUploadRouter}=require('../services/crmAttendanceUploadHtt
 test('worker intake is default-off before database/provider use',async()=>{
     let queries=0;const service=createAttendanceUploadLinks({env:{},pool:{query(){queries++;throw Error('Must not query');}}});
     await assert.rejects(service.status({token:'a'.repeat(43)}),{code:'CRM_EXECUTION_DISABLED',statusCode:503});
+    assert.deepEqual(await service.inbox({actor:{id:7},businessContext:'event_genix'}),{enabled:false,items:[]});
+    await assert.rejects(service.inbox({actor:{id:7},businessContext:'dar'}),{code:'CRM_UPLOAD_LINK_FORBIDDEN',statusCode:403});
     assert.equal(queries,0);
 });
 test('worker HTTP boundary blocks foreign origins, actor injection and oversized files before paid execution',async()=>{

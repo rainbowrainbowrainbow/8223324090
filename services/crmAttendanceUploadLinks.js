@@ -13,7 +13,8 @@ function createAttendanceUploadLinks(options={}) {
     const ocr=options.ocr||require('./crmAttendanceOcrPreview').createAttendanceOcrPreview({...options,pool,env});
     const reviewer=options.resolveReviewer||require('./crmAttendanceUploadAccess').resolveUploadReviewer;
     function enabled(){requireExecutionEnabled(env,'CRM_ATTENDANCE_UPLOAD_LINKS_ENABLED');requireExecutionEnabled(env,'CRM_ATTENDANCE_OCR_ENABLED');}
-    function manager(input){enabled();if(input.businessContext!=='event_genix'||!Number.isInteger(input.actor?.id)||input.actor.id<1)throw executionError('CRM_UPLOAD_LINK_FORBIDDEN',403);}
+    function managerContext(input){if(input.businessContext!=='event_genix'||!Number.isInteger(input.actor?.id)||input.actor.id<1)throw executionError('CRM_UPLOAD_LINK_FORBIDDEN',403);}
+    function manager(input){managerContext(input);enabled();}
     async function load(token,db=pool,lock=false){
         enabled();if(typeof token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(token))throw executionError('CRM_UPLOAD_LINK_UNAVAILABLE',403);
         const row=(await db.query(`SELECT *,document_date::text AS document_date FROM crm_attendance_upload_links
@@ -58,6 +59,10 @@ function createAttendanceUploadLinks(options={}) {
             });}finally{client.release();}
         },
         async inbox(input){
+            managerContext(input);
+            // Feature discovery is a normal empty state, not a failed browser
+            // request. Do not query/expire stored data while intake is disabled.
+            if(env.CRM_ATTENDANCE_UPLOAD_LINKS_ENABLED!=='true'||env.CRM_ATTENDANCE_OCR_ENABLED!=='true')return {enabled:false,items:[]};
             manager(input);
             await expirePhotos(input.actor.id);
             const result=await pool.query(`SELECT l.id,l.document_date::text AS document_date,l.expires_at,l.revoked_at,
@@ -66,7 +71,7 @@ function createAttendanceUploadLinks(options={}) {
                 FROM crm_attendance_upload_links l LEFT JOIN crm_attendance_upload_submissions s ON s.link_id=l.id
                 WHERE l.reviewer_user_id=$1 AND l.business_context='event_genix'
                 ORDER BY l.created_at DESC,s.created_at LIMIT 150`,[input.actor.id]);
-            return {items:result.rows};
+            return {enabled:true,items:result.rows};
         },
         async photo(input){
             manager(input);if(!UUID.test(input.submissionId||''))throw executionError('CRM_UPLOAD_NOT_FOUND',404);

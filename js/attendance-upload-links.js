@@ -6,7 +6,8 @@
         async function request(path,body){const response=await apiFetchWithAuthRetry('/api/hr/attendance/ocr/'+path,
             body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
             if(!response)throw Error('Unavailable');const value=await response.json();if(!response.ok)throw Object.assign(Error('Unavailable'),{code:value.code});return value;}
-        let initial;try{initial=await request('uploads');}catch{return;} // Feature is default-off.
+        let initial;try{initial=await request('uploads');}catch{return;}
+        if(initial.enabled!==true)return;
         const section=document.createElement('section');section.id='attendanceUploadLinks';
         const title=document.createElement('h3');title.textContent='Додати лист через працівника';
         const help=document.createElement('p');help.textContent='Створіть захищене посилання за датою документа. Воно діє 24 години й дозволяє до 3 фото. Результат перевіряєте ви. Оригінал фото доступний вам 7 днів; розпізнані дані та історія зберігаються.';

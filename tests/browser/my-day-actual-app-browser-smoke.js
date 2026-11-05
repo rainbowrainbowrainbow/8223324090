@@ -7,6 +7,14 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
+const { trackRequests } = require('../helpers/browser-smoke-sync');
+const navigationTrackers = new WeakMap();
+async function navigateAfterReadsSettle(page, url, options) {
+    // Keep the critical-request failure guard intact: finish the old document's
+    // finite reads before deliberately navigating away, rather than ignoring aborts.
+    await navigationTrackers.get(page)?.idle();
+    return page.goto(url, options);
+}
 
 const TARGET_URL = String(process.env.TEST_URL || '').trim();
 const ENABLED = process.env.RUN_MY_DAY_ACTUAL_APP_BROWSER_SMOKE === 'true';
@@ -385,7 +393,7 @@ async function responseJson(response, label) {
 async function browserLogin(page, session) {
     assert.ok(session?.token, 'browser session seed requires access token');
     assert.ok(session?.user?.id, 'browser session seed requires user');
-    await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded' });
+    await navigateAfterReadsSettle(page, TARGET_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => Boolean(
         localStorage.getItem('pzp_token')
         && localStorage.getItem('pzp_current_user')
@@ -406,7 +414,7 @@ async function openMyDayProfile(page) {
         return response.request().method() === 'GET'
             && url.pathname === '/api/tasks/my-cabinet';
     }, { timeout: TIMEOUT_MS }).catch(() => null);
-    await page.goto(`${TARGET_URL}/profile?tab=myday`, { waitUntil: 'domcontentloaded' });
+    await navigateAfterReadsSettle(page, `${TARGET_URL}/profile?tab=myday`, { waitUntil: 'domcontentloaded' });
     assert.notEqual(new URL(page.url()).pathname, '/', 'authenticated profile navigation should not redirect to the root fallback');
     try {
         await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
@@ -606,7 +614,7 @@ async function openTasksPage(page) {
         return response.request().method() === 'GET'
             && url.pathname === '/api/tasks/permissions';
     }, { timeout: TIMEOUT_MS });
-    await page.goto(`${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
+    await navigateAfterReadsSettle(page, `${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
     assert.notEqual(new URL(page.url()).pathname, '/', 'authenticated tasks navigation should not redirect to the root fallback');
     try {
         await page.locator('#taskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
@@ -855,7 +863,9 @@ async function main() {
         if (!localStorage.getItem('pzp_dark_mode')) localStorage.setItem('pzp_dark_mode', 'false');
         window.__eventGenixLiveQaReadOnly = true;
     }, session);
+    const requests = trackRequests(context, new URL(TARGET_URL).origin);
     const page = await context.newPage();
+    navigationTrackers.set(page, requests);
     const consoleErrors = [];
     const apiFailures = [];
     const requestFailures = [];
@@ -1117,7 +1127,7 @@ async function main() {
         assert.ok(Number(tasksSimpleAiCommitBody.task?.id || tasksSimpleAiCommitBody.taskId || tasksSimpleAiCommitBody.task_id) > 0, 'Tasks AI simple commit returns task id');
 
         await api(TARGET_URL, '/api/my-day/timer/start', { method: 'POST', token: session.token, body: { taskId: manualTaskId } });
-        await page.goto(`${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
+        await navigateAfterReadsSettle(page, `${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
         await page.locator('[data-global-task-timer-elapsed]:visible').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('.global-task-timer__title, .global-task-timer-panel__title, .global-task-timer-chip').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         const secondarySession = await createDisposableUser(TARGET_URL, session.token);
@@ -1151,7 +1161,7 @@ async function main() {
             }
         });
         assert.ok(Number(decisionSeed.id) > 0, 'browser smoke creates one disposable pending decision');
-        await page.goto(`${TARGET_URL}/dashboard`, { waitUntil: 'domcontentloaded' });
+        await navigateAfterReadsSettle(page, `${TARGET_URL}/dashboard`, { waitUntil: 'domcontentloaded' });
         await page.locator('[data-global-task-timer-elapsed]:visible').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         const decisionOverlay = page.locator('#decisionScreen');
         await decisionOverlay.waitFor({ state: 'visible', timeout: TIMEOUT_MS });
@@ -1180,6 +1190,7 @@ async function main() {
         const overflow = await page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth));
         assert.ok(overflow <= 4, `mobile dark My Day should not horizontally overflow, got ${overflow}px`);
 
+        await requests.idle();
         await evaluateAfterNavigationSettles(page, () => {
             localStorage.removeItem('pzp_token');
             localStorage.removeItem('pzp_access_token');
@@ -1217,6 +1228,7 @@ async function main() {
         assert.deepEqual(expectedApiFailures, [], 'all expected API failures were observed');
         assert.deepEqual(expectedConsoleFailures, [], 'all expected browser resource failures were observed');
     } finally {
+        requests.dispose();
         await browser.close();
         await openAiMock.close();
     }

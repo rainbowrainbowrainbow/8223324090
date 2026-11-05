@@ -65,7 +65,7 @@ function matchAttendanceRows(review, candidates) {
     });
 }
 
-// Internal recognition/staging helper only. The future durable execution wrapper
+// Internal recognition/staging helper only. The durable execution wrapper
 // must reserve paid work before calling it; this module exposes no HTTP/apply path.
 async function recognizeAttendanceSheet({ file, documentDate, env = process.env, fetchImpl, onReceipt }) {
     requireExecutionEnabled(env, 'CRM_ATTENDANCE_OCR_ENABLED');

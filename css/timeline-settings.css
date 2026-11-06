@@ -607,6 +607,10 @@ body:not(.dark-mode) .timeline-settings-page {
     color: #0f172a;
 }
 
+body:not(.dark-mode) .timeline-settings-search {
+    color: #475569;
+}
+
 body:not(.dark-mode) .timeline-settings-hero h1,
 body:not(.dark-mode) .timeline-settings-panel-head h2,
 body:not(.dark-mode) .timeline-settings-editor-head h2,

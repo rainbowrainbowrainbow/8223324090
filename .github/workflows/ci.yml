@@ -141,6 +141,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Use Ubuntu archive mirror for Chromium dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sources=/etc/apt/sources.list.d/ubuntu.sources
+          mirrorlist=/etc/apt/apt-mirrors.txt
+          test -f "$sources"
+          source_files=("$sources")
+          if test -f "$mirrorlist"; then
+            source_files+=("$mirrorlist")
+          fi
+          for source_file in "${source_files[@]}"; do
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g;s|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source_file"
+          done
+          ! grep -q 'azure.archive.ubuntu.com' "${source_files[@]}"
       - name: Install Chromium
         run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium"
 

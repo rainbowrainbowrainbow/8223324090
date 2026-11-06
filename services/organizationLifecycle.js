@@ -1,7 +1,7 @@
 'use strict';
 
 const { canUseAction } = require('../middleware/auth');
-const { ROLE_HIERARCHY, NON_DELEGABLE_ACTIONS, normalizeActionOverrideList, normalizePageAllowlist, normalizePageDenylist } = require('./accountAccessPolicy');
+const { ROLE_HIERARCHY, NON_DELEGABLE_ACTIONS, normalizeActionOverrideList, normalizePageAllowlist, normalizePageDenylist, editableActionOverrides } = require('./accountAccessPolicy');
 const { ACTION_PERMISSIONS: ACTION_PERMISSION_ENTRIES, getPublicPagePermissionMetadata } = require('../config/permissionRegistry');
 const { normalizeBusinessContext, normalizeKnownBusinessContext, normalizeBusinessScopeMode, BUSINESS_SCOPE_SINGLE } = require('./businessContext');
 const { recordAccountSecurityEvent } = require('./accountSecurity');
@@ -117,6 +117,7 @@ async function updateBusinessMembership(db, actor, organizationId, targetUserId,
         const target = await targetState(client, userId, orgId, businessId);
         if (!target.account.is_active) throw failure(409, 'business_member_inactive', 'An active user account is required');
         const current = target.business || {};
+        const currentOverrides = editableActionOverrides(current);
         const organizationRole = has(input, 'organizationRole') ? input.organizationRole : target.organization?.role || 'member';
         authorizeTarget(manager, actor, target, organizationRole);
         if (target.organization?.is_active && target.organization.role === 'owner' && organizationRole !== 'owner') {
@@ -133,8 +134,8 @@ async function updateBusinessMembership(db, actor, organizationId, targetUserId,
             extraRoles: has(input, 'extraRoles') ? stringArray(input.extraRoles) : current.extra_roles || [],
             pageAllowlist: has(input, 'pageAllowlist') ? normalizePageAllowlist(input.pageAllowlist) : current.page_allowlist || [],
             pageDenylist: has(input, 'pageDenylist') ? normalizePageDenylist(input.pageDenylist) : current.page_denylist || [],
-            actionAllowlist: has(input, 'actionAllowlist') ? normalizeActionOverrideList(input.actionAllowlist) : current.action_allowlist || [],
-            actionDenylist: has(input, 'actionDenylist') ? normalizeActionOverrideList(input.actionDenylist) : current.action_denylist || [],
+            actionAllowlist: has(input, 'actionAllowlist') ? normalizeActionOverrideList(input.actionAllowlist) : currentOverrides.actionAllowlist,
+            actionDenylist: has(input, 'actionDenylist') ? normalizeActionOverrideList(input.actionDenylist) : currentOverrides.actionDenylist,
             isDefault: has(input, 'isDefault') ? input.isDefault : current.is_default === true
         };
         await client.query(
@@ -453,7 +454,7 @@ async function getMemberAccessProfile(db, actor, targetUserId) {
                     id: Number(row.id), contextKey: row.context_key, label: row.label, status: row.status, accessMode: row.access_mode,
                     membership: row.member_user_id == null ? null : {
                         role: row.role, extraRoles: row.extra_roles || [], pageAllowlist: row.page_allowlist || [], pageDenylist: row.page_denylist || [],
-                        actionAllowlist: row.action_allowlist || [], actionDenylist: row.action_denylist || [],
+                        ...editableActionOverrides(row),
                         isDefault: row.is_default === true, isActive: row.is_active === true,
                         organizationRole: organizationMembership?.role || 'member'
                     },

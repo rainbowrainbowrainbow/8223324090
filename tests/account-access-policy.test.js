@@ -264,3 +264,50 @@ test('page deny migration is additive, idempotent, and does not rewrite users', 
     assert.match(migration, /CREATE INDEX IF NOT EXISTS idx_users_page_denylist_gin/);
     assert.doesNotMatch(migration, /^\s*(UPDATE|INSERT|DELETE)\b/im);
 });
+
+{
+const { ACTION_PERMISSIONS, ROLE_HIERARCHY } = require('../config/permissionRegistry');
+const { editableActionOverrides, CAPABILITY_TYPES } = require('../services/accountAccessPolicy');
+require('../js/account-access-editor');
+test('editable stored overrides preserve every active capability across role presets', () => {
+    const legacy = ACTION_PERMISSIONS.filter(entry => entry.deprecated).map(entry => entry.key);
+    const cases = [
+        { action_denylist: legacy },
+        { action_allowlist: legacy },
+        { action_allowlist: ['hr.schedule.manage', 'manage_staff'], action_denylist: ['manage_staff'] },
+        { action_allowlist: ['manage_staff'], action_denylist: ['hr.schedule.manage'] },
+        { action_allowlist: ['manage_users'], action_denylist: ['manage_users'] }
+    ];
+    for (const role of ROLE_HIERARCHY) for (const stored of cases) {
+        const user = { role, ...stored };
+        const editable = editableActionOverrides(user);
+        const next = { role, ...editable };
+        for (const entry of ACTION_PERMISSIONS.filter(entry => !entry.deprecated)) {
+            assert.equal(resolveCapability(next, entry.key).allowed, resolveCapability(user, entry.key).allowed,
+                `${role}/${entry.key}/${JSON.stringify(stored)}`);
+        }
+        for (const [fieldName, values] of Object.entries(editable)) {
+            assert.doesNotThrow(() => normalizeCapabilityList(values, CAPABILITY_TYPES.ACTION, { strict: true, excludeDeprecated: true, fieldName }));
+        }
+        assert.deepEqual(editableActionOverrides(editable), editable);
+    }
+});
+
+test('an owner can independently allow schedule after loading a legacy staff deny', () => {
+    const actions = ACTION_PERMISSIONS.filter(entry => !entry.deprecated);
+    const stored = { role: 'admin', action_denylist: ['manage_staff'] };
+    const model = global.AccountAccessEditor.createModel({
+        initial: { role: stored.role, ...editableActionOverrides(stored) }, actions,
+        resolveCapability
+    });
+    assert.equal(model.isDirty(), false);
+    const schedule = model.config.capabilities.find(entry => entry.key === 'hr.schedule.manage');
+    assert.equal(model.decision(schedule).allowed, false);
+    model.setMode(schedule, 'allow');
+    assert.equal(model.decision(schedule).allowed, true);
+    assert.equal(resolveCapability(model.draft, 'hr.staff.manage').allowed, false);
+    assert.equal(model.draft.actionDenylist.includes('manage_staff'), false);
+    assert.equal(model.draft.actionAllowlist.includes('hr.schedule.manage'), true);
+});
+
+}

@@ -210,6 +210,29 @@ function normalizeActionOverrideList(value) {
     return normalizeCapabilityList(value, CAPABILITY_TYPES.ACTION).values;
 }
 
+// Project compatibility-only stored keys into editable capabilities. Preserve
+// effective deny precedence; never silently discard a legacy restriction.
+function editableActionOverrides(user = {}) {
+    const expand = (value, deny) => {
+        const result = [];
+        for (const key of normalizeActionOverrideList(value)) {
+            if (ACTION_PERMISSION_BY_KEY[key].deprecated !== true) {
+                result.push(key);
+                continue;
+            }
+            for (const entry of ACTIVE_ACTION_PERMISSION_ENTRIES) {
+                const legacy = [...entry.legacyKeys, ...(deny ? entry.legacyDenyKeys : [])];
+                if (legacy.includes(key)) result.push(entry.key);
+            }
+        }
+        return [...new Set(result)];
+    };
+    const actionDenylist = expand(user.action_denylist || user.actionDenylist, true);
+    const actionAllowlist = expand(user.action_allowlist || user.actionAllowlist, false)
+        .filter(key => !actionDenylist.includes(key));
+    return { actionAllowlist, actionDenylist };
+}
+
 function assertNoCapabilityConflicts(allowlist, denylist, type = CAPABILITY_TYPES.ACTION) {
     const allowed = normalizeCapabilityList(allowlist, type).values;
     const denied = normalizeCapabilityList(denylist, type).values;
@@ -355,6 +378,7 @@ module.exports = {
     normalizePageAllowlist,
     normalizePageDenylist,
     normalizeActionOverrideList,
+    editableActionOverrides,
     assertNoCapabilityConflicts,
     resolveCapability,
     buildCapabilityCatalog,

@@ -61,6 +61,7 @@ test('organization lifecycle HTTP transactions on an owned local PostgreSQL data
             CREATE TABLE employee_profiles (user_id INT REFERENCES users(id), staff_id INT,
                 is_active BOOLEAN DEFAULT true, last_activity_at TIMESTAMPTZ);
             CREATE TABLE refresh_tokens (id SERIAL PRIMARY KEY, user_id INT REFERENCES users(id), revoked_at TIMESTAMPTZ);
+            CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
         `);
         for (const migration of ['204_account_security_personal_cabinet.sql', '357_organizations_business_memberships.sql']) {
             await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations', migration), 'utf8'));
@@ -220,6 +221,32 @@ test('organization lifecycle HTTP transactions on an owned local PostgreSQL data
             assert.equal((await pool.query("SELECT count(*)::int AS n FROM organizations WHERE slug = 'concurrent-organization'")).rows[0].n, 1);
             assert.equal((await pool.query("SELECT count(*)::int AS n FROM organization_memberships om JOIN organizations o ON o.id = om.organization_id WHERE o.slug = 'concurrent-organization' AND om.role = 'owner'")).rows[0].n, 1);
             assert.equal(await eventCount(), 1);
+        });
+
+        await t.test('legacy staff restrictions are editable through the profile without hidden grants on partial save', async () => {
+            const { owner, worker } = await reset();
+            await pool.query("UPDATE business_memberships SET action_allowlist = '{manage_staff}', action_denylist = '{manage_staff}' WHERE user_id = $1", [worker.id]);
+            const profile = await request(owner, 'GET', `/api/organizations/members/${worker.id}/access-profile`);
+            assert.equal(profile.status, 200, JSON.stringify(profile.body));
+            const business = profile.body.accessProfile.organizations.flatMap(org => org.businesses).find(item => item.id === 1);
+            assert.deepEqual(business.membership.actionAllowlist, []);
+            assert.ok(business.membership.actionDenylist.includes('hr.schedule.manage'));
+            assert.ok(!business.membership.actionDenylist.includes('manage_staff'));
+            const updated = await request(owner, 'PUT', `/api/organizations/1/members/${worker.id}`, {
+                businessId: 1, actionDenylist: business.membership.actionDenylist.filter(key => key !== 'hr.schedule.manage')
+            });
+            assert.equal(updated.status, 200, JSON.stringify(updated.body));
+            const row = await membership(worker.id);
+            assert.deepEqual(row.action_allowlist, []);
+            const { resolveCapability } = require('../../services/accountAccessPolicy');
+            assert.equal(resolveCapability(row, 'hr.schedule.manage').allowed, false, 'animator inherits no schedule management');
+            const grant = await request(owner, 'PUT', `/api/organizations/1/members/${worker.id}`, {
+                businessId: 1, actionAllowlist: ['hr.schedule.manage']
+            });
+            assert.equal(grant.status, 200, JSON.stringify(grant.body));
+            const granted = await membership(worker.id);
+            assert.equal(resolveCapability(granted, 'hr.schedule.manage').allowed, true);
+            assert.equal(resolveCapability(granted, 'hr.staff.manage').allowed, false);
         });
 
         await t.test('partial membership updates preserve omitted arrays, default and organization ownership', async () => {

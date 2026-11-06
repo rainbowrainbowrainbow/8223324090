@@ -12,6 +12,37 @@ const TEST_JWT_SECRET = 'auth-account-lifecycle-secret';
 
 const originalJwtSecret = process.env.JWT_SECRET;
 
+test('legacy staff access can be read and manually saved without deprecated keys or hidden grants', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const created = await request(baseUrl, 'POST', '/api/users', {
+            username: 'legacy.access.fixture', name: 'Legacy access fixture', password: 'FixturePass789!', role: 'animator'
+        }, creatorToken());
+        assert.equal(created.status, 200, JSON.stringify(created.data));
+        const target = fakePool.state.users.find(user => user.id === created.data.user.id);
+        target.action_allowlist = ['manage_staff'];
+        target.action_denylist = ['manage_staff'];
+        const listed = await request(baseUrl, 'GET', '/api/users', undefined, creatorToken());
+        assert.equal(listed.status, 200);
+        const editable = listed.data.find(user => user.id === target.id);
+        assert.deepEqual(editable.actionAllowlist, []);
+        assert.ok(editable.actionDenylist.includes('hr.schedule.manage'));
+        assert.ok(!editable.actionDenylist.includes('manage_staff'));
+        const saved = await request(baseUrl, 'PATCH', `/api/users/${target.id}/access`, {
+            role: 'animator', actionDenylist: editable.actionDenylist.filter(key => key !== 'hr.schedule.manage')
+        }, creatorToken());
+        assert.equal(saved.status, 200, JSON.stringify(saved.data));
+        assert.deepEqual(target.action_allowlist, []);
+        const { resolveCapability } = require('../services/accountAccessPolicy');
+        assert.equal(resolveCapability(target, 'hr.schedule.manage').allowed, false);
+        const grant = await request(baseUrl, 'PATCH', `/api/users/${target.id}/access`, {
+            role: 'animator', actionAllowlist: ['hr.schedule.manage'], actionDenylist: saved.data.actionDenylist
+        }, creatorToken());
+        assert.equal(grant.status, 200, JSON.stringify(grant.data));
+        assert.equal(resolveCapability(target, 'hr.schedule.manage').allowed, true);
+        assert.equal(resolveCapability(target, 'hr.staff.manage').allowed, false);
+    });
+});
+
 function clearModules() {
     [
         '../db',
@@ -119,6 +150,9 @@ function createFakePool() {
         const originalText = normalizeSql(sql);
         const text = originalText.replace(/(session_revoked_at = (?:CASE WHEN \$1 = false THEN )?)GREATEST\(clock_timestamp\(\), session_revoked_at \+ INTERVAL '1 microsecond'\)/g, '$1clock_timestamp()');
         state.queryStatements.push(originalText);
+        if (text.startsWith('SELECT u.id, u.username, u.name, u.role,') && text.includes('LEFT JOIN LATERAL')) {
+            return { rows: state.users.map(user => ({ ...user })), rowCount: state.users.length };
+        }
         if (text === "SELECT context_key FROM businesses WHERE access_mode = 'membership'") {
             return { rows: [], rowCount: 0 };
         }

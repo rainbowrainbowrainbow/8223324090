@@ -25,6 +25,7 @@ const {
     CAPABILITY_TYPES,
     normalizeCapabilityList,
     normalizePageAllowlist,
+    editableActionOverrides,
     assertNoCapabilityConflicts
 } = require('../services/accountAccessPolicy');
 const { createLogger } = require('../utils/logger');
@@ -201,11 +202,11 @@ function accountPageDenylist(account = {}) {
 }
 
 function accountActionAllowlist(account = {}) {
-    return normalizeActionOverrideList(account.action_allowlist || account.actionAllowlist);
+    return editableActionOverrides(account).actionAllowlist;
 }
 
 function accountActionDenylist(account = {}) {
-    return normalizeActionOverrideList(account.action_denylist || account.actionDenylist);
+    return editableActionOverrides(account).actionDenylist;
 }
 
 function normalizePageDenylistInput(value, options = {}) {
@@ -873,10 +874,10 @@ async function updateAccountAccess(req, res) {
         const normalizedPageDenylist = pageDenylistInput !== undefined
             ? normalizePageDenylistInput(pageDenylistInput, { strict: true, fieldName: 'pageDenylist' }).slice(0, 50)
             : null;
-        const normalizedActionAllowlist = actionAllowlistInput !== undefined
+        let normalizedActionAllowlist = actionAllowlistInput !== undefined
             ? normalizeActionAllowlist(actionAllowlistInput, { strict: true, fieldName: 'actionAllowlist' })
             : null;
-        const normalizedActionDenylist = actionDenylistInput !== undefined
+        let normalizedActionDenylist = actionDenylistInput !== undefined
             ? normalizeActionOverrideList(actionDenylistInput, { strict: true, fieldName: 'actionDenylist', excludeDeprecated: true })
             : null;
 
@@ -913,6 +914,10 @@ async function updateAccountAccess(req, res) {
         assertNoNewExplicitAllowDisabledPages(normalizedPageAllowlist, oldPageAllowlist);
         const oldActionAllowlist = accountActionAllowlist(current);
         const oldActionDenylist = accountActionDenylist(current);
+        // Materialize both sides together: an omitted legacy allow must not
+        // reappear when the owner removes one of its expanded deny entries.
+        normalizedActionAllowlist ??= oldActionAllowlist;
+        normalizedActionDenylist ??= oldActionDenylist;
         const oldBusinessContexts = normalizeStoredArray(current.business_contexts);
         const oldDefaultBusinessContext = current.default_business_context
             || defaultBusinessContextForSelection(null, oldBusinessContexts, oldRole);

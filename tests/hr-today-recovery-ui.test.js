@@ -95,6 +95,17 @@ test('Today recovery sends only its business-scoped read and keeps counters, fil
     } finally { dom.window.close(); }
 });
 
+test('writable Park Today exposes manual attendance controls when the server permits them', async () => {
+    const writable = payload(true);
+    writable.todayAccess.readOnly = false;
+    const { dom, win } = harness({ payload: writable });
+    try {
+        await win.loadToday();
+        assert.ok(win.document.querySelectorAll('#todayList [onclick*="handleClock"]').length > 0);
+        assert.ok(win.document.querySelectorAll('#todayList [oncontextmenu]').length > 0);
+    } finally { dom.window.close(); }
+});
+
 test('recovery profile action stays on the HR card for a linked account and hides on revoked capability or business scope', async () => {
     const { dom, win, calls } = harness();
     try {

@@ -32,15 +32,20 @@ const segment = {
 function createPoolFixture() {
     const calls = [];
     const sideEffects = [];
-    const scenario = { failCheckins: false };
+    const scenario = { failCheckins: false, attendanceValidation: false };
     const pool = {
-        async connect() { sideEffects.push('connect'); throw new Error('Unexpected write connection'); },
+        async connect() {
+            if (scenario.attendanceValidation) return { async query() { throw new Error('Unexpected attendance validation SQL'); }, release() {} };
+            sideEffects.push('connect'); throw new Error('Unexpected write connection');
+        },
         async query(sql, params = []) {
             const normalized = String(sql).replace(/\s+/g, ' ').trim();
             calls.push({ sql: normalized, params });
             assert.match(normalized, /^(SELECT|WITH)\b/i, 'schedule recovery may only read');
             let rows;
-            if (normalized.includes('FROM staff_schedule ss')) {
+            if (normalized.startsWith('SELECT EXISTS ( SELECT 1 FROM hr_time_records WHERE business_context IS DISTINCT FROM $1')) {
+                rows = [{ ownership_conflict: false }];
+            } else if (normalized.includes('FROM staff_schedule ss')) {
                 assert.deepEqual(params, ['2026-09-13', '2026-09-21']);
                 const row = {
                     id: 9601, staff_id: STAFF_ID, date: '2026-09-14', status: 'working',
@@ -209,7 +214,25 @@ async function withActualRouters(run) {
 }
 
 test('Park schedule ownership through the actual Express staff and HR routers', async t => {
-    await withActualRouters(async ({ state, request, calls }) => {
+    await withActualRouters(async ({ state, scenario, request, calls }) => {
+        await t.test('manual HR attendance reaches canonical validation only with both grants in Park', async () => {
+            const routes = [['POST','/api/hr/clock-in'],['POST','/api/hr/clock-out'],['POST','/api/hr/mark-absent'],['PUT','/api/hr/records/12/correct']];
+            scenario.attendanceValidation = true;
+            try {
+                for (const [method, path] of routes) {
+                    state.actor = { role: 'animator', allow: ['hr.today.view','hr.schedule.manage'] };
+                    assert.equal((await request(path, { method, body: {} })).status, 400, path);
+                    for (const deny of ['hr.schedule.manage']) {
+                        state.actor = { role: 'admin', deny: [deny] };
+                        assert.equal((await request(path, { method, body: {} })).status, 403, deny + path);
+                    }
+                    state.actor = { role: 'admin' };
+                    for (const context of ['dar','crm','maysternya_doli']) {
+                        assert.equal((await request(path, { method, context, body: {} })).status, 403, context + path);
+                    }
+                }
+            } finally { scenario.attendanceValidation = false; }
+        });
         await t.test('all schedule GET dependencies load using real handlers and preserve operational values', async () => {
             state.actor = { deny: ['hr.payroll.view'] };
             const responses = new Map();

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createStaticServer, routeMockedApi, businessProfilePayload, SMOKE_USER, requirePlaywright } = require('./timeline-room-summary-browser-smoke');
+const { runMobileSidebarNavigation } = require('./mobile-sidebar-navigation-browser-smoke');
 
 const output = process.env.PARK_TIMELINE_NAVIGATION_OUTPUT || path.join(__dirname, '../../output/playwright/park-timeline-navigation');
 const selectedDate = '2026-10-25';
@@ -123,6 +124,7 @@ async function routeNavigationApi(page) {
         fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify(results, null, 2));
         const failures = results.filter(result => result.status === 'failed');
         assert.deepEqual(failures, [], 'Park timeline date navigation regressions');
+        await runMobileSidebarNavigation({ browser, baseUrl, output: path.join(output, 'mobile-sidebar') });
         console.log(`Park timeline navigation: ${results.length} timezone/viewport cases passed.`);
     } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -5,6 +5,8 @@
 const Sidebar = (() => {
     const _state = {
         transitionsBound: false,
+        navigationRecoveryTimer: null,
+        navigationAttempt: 0,
         scrollRestored: false,
         userRetryStarted: false,
         operationalPolls: new Map(),
@@ -120,6 +122,7 @@ const Sidebar = (() => {
     const SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL = 60 * 1000;
     const SIDEBAR_OPERATIONAL_REQUEST_TTL = 5 * 1000;
     const SIDEBAR_OPERATIONAL_POLL_MS = 5 * 60 * 1000;
+    const SHELL_NAVIGATION_RECOVERY_MS = 1800;
     const SIDEBAR_TIMELINE_COUNT_PLACEHOLDER = '–';
     const SIDEBAR_TIMELINE_MONTHS_SHORT = Object.freeze(['січ.', 'лют.', 'бер.', 'квіт.', 'трав.', 'черв.', 'лип.', 'серп.', 'вер.', 'жовт.', 'лист.', 'груд.']);
     const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
@@ -1519,6 +1522,8 @@ const Sidebar = (() => {
     }
 
     function _markShellReady() {
+        clearTimeout(_state.navigationRecoveryTimer);
+        _state.navigationRecoveryTimer = null;
         document.body.classList.remove('shell-baseline', 'page-exiting');
         document.body.classList.add('shell-ready');
         document.body.removeAttribute('aria-busy');
@@ -1563,8 +1568,11 @@ const Sidebar = (() => {
     function _restoreShellAfterPageLifecycle(event = {}) {
         const needsRecovery = document.body.classList.contains('page-exiting') || event.persisted === true;
         if (!needsRecovery || !_isAuthenticatedShellVisible()) return;
-        _recordRedirectDiagnostic('shell-lifecycle', {
-            lifecycle: event.persisted === true ? 'pageshow-persisted' : 'visibility-resume',
+        const stalledNavigation = event.type === 'navigation-watchdog';
+        _recordRedirectDiagnostic(stalledNavigation ? 'navigation-transition' : 'shell-lifecycle', {
+            ...(stalledNavigation ? { targetRoute: event.targetRoute } : {
+                lifecycle: event.persisted === true ? 'pageshow-persisted' : 'visibility-resume'
+            }),
             stage: 'recover-shell'
         });
         document.body.classList.remove('shell-baseline', 'page-exiting');
@@ -1581,6 +1589,10 @@ const Sidebar = (() => {
         if (_state.shellLifecycleRecoveryBound) return;
         _state.shellLifecycleRecoveryBound = true;
         window.addEventListener('pageshow', _restoreShellAfterPageLifecycle);
+        window.addEventListener('pagehide', () => {
+            clearTimeout(_state.navigationRecoveryTimer);
+            _state.navigationRecoveryTimer = null;
+        });
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') _restoreShellAfterPageLifecycle();
         });
@@ -4688,41 +4700,24 @@ const Sidebar = (() => {
         }
         if (toggle && sidebar && toggle.dataset.sidebarToggleBound !== 'true') {
             toggle.dataset.sidebarToggleBound = 'true';
-            let lastPointerToggleAt = 0;
             const toggleMobileSidebar = (event) => {
-                const isPointerOpen = event?.type === 'pointerup';
-                if (isPointerOpen && !isMobileSidebar()) return;
-                if (isPointerOpen) lastPointerToggleAt = Date.now();
-                else if (Date.now() - lastPointerToggleAt < 360) {
-                    event?.preventDefault?.();
-                    event?.stopPropagation?.();
-                    return;
-                }
                 event?.preventDefault?.();
                 event?.stopPropagation?.();
                 setMobileSidebarOpen(!sidebar.classList.contains('open'));
             };
-            toggle.addEventListener('pointerup', toggleMobileSidebar);
+            // Opening on pointerup changes the hit target before Android's
+            // native click: that click can hit the new overlay and close again.
             toggle.addEventListener('click', toggleMobileSidebar);
         }
         if (overlay && sidebar && overlay.dataset.sidebarOverlayBound !== 'true') {
             overlay.dataset.sidebarOverlayBound = 'true';
             overlay.setAttribute('aria-hidden', overlay.classList.contains('hidden') ? 'true' : 'false');
-            let lastOverlayPointerAt = 0;
             const closeMobileSidebar = (event) => {
-                const isPointerClose = event?.type === 'pointerup';
-                if (isPointerClose) lastOverlayPointerAt = Date.now();
-                else if (Date.now() - lastOverlayPointerAt < 360) {
-                    event?.preventDefault?.();
-                    event?.stopPropagation?.();
-                    return;
-                }
                 if (!sidebar.classList.contains('open')) return;
                 event?.preventDefault?.();
                 event?.stopPropagation?.();
                 setMobileSidebarOpen(false);
             };
-            overlay.addEventListener('pointerup', closeMobileSidebar);
             overlay.addEventListener('click', closeMobileSidebar);
         }
         if (sidebar && sidebar.dataset.sidebarMobileStateBound !== 'true') {
@@ -4862,8 +4857,18 @@ const Sidebar = (() => {
                 targetRoute: href
             });
             let navigationStarted = false;
+            const attempt = ++_state.navigationAttempt;
+            clearTimeout(_state.navigationRecoveryTimer);
+            _state.navigationRecoveryTimer = setTimeout(() => {
+                if (attempt !== _state.navigationAttempt) return;
+                _state.navigationRecoveryTimer = null;
+                // A cancelled/204 navigation may leave this document alive
+                // without pageshow or visibilitychange. Restore only its
+                // already authenticated, visible shell; never retry a request.
+                _restoreShellAfterPageLifecycle({ type: 'navigation-watchdog', targetRoute: href });
+            }, SHELL_NAVIGATION_RECOVERY_MS);
             const navigate = () => {
-                if (navigationStarted) return;
+                if (navigationStarted || attempt !== _state.navigationAttempt) return;
                 navigationStarted = true;
                 window.location.assign(href);
             };

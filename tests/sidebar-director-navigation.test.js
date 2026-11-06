@@ -33,7 +33,7 @@ function renderSidebar(t, role, options = {}) {
         timeline: { mode: options.education ? 'education' : (context === 'event_genix' ? 'park' : 'simple'), roomTimelineEnabled: true }
     } : null;
     const dom = new JSDOM(options.withShell
-        ? '<!doctype html><aside id="sidebarNav"><div id="sidebarLinks" class="sidebar-links"></div></aside>'
+        ? '<!doctype html><button id="sidebarToggle" type="button">Menu</button><aside id="sidebarNav"><div id="sidebarLinks" class="sidebar-links"></div></aside><div id="sidebarOverlay" class="hidden"></div>'
         : '<!doctype html><div id="sidebarLinks" class="sidebar-links"></div>', {
         url: options.url || 'https://sidebar.test/', runScripts: 'outside-only'
     });
@@ -42,6 +42,7 @@ function renderSidebar(t, role, options = {}) {
         dom.window.close();
     });
     const window = dom.window;
+    if (options.mobile) Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
     window.AppState = { currentUser: user };
     window.RolePreview = {
         getPreviewRole: () => options.previewRole || null,
@@ -70,6 +71,31 @@ function renderSidebar(t, role, options = {}) {
         user, profile, document: window.document, window
     };
 }
+
+test('mobile menu changes once per button activation and never on pointer release alone', t => {
+    const { window, document } = renderSidebar(t, 'creator', { withShell: true, mobile: true });
+    window.eval('Sidebar.initToggle(); Sidebar.initToggle();');
+    const toggle = document.getElementById('sidebarToggle');
+    const sidebar = document.getElementById('sidebarNav');
+    const overlay = document.getElementById('sidebarOverlay');
+    toggle.dispatchEvent(new window.Event('pointerup', { bubbles: true }));
+    assert.equal(sidebar.classList.contains('open'), false, 'opening before click can retarget the touch click to the overlay');
+    toggle.click();
+    assert.equal(sidebar.classList.contains('open'), true);
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+    assert.equal(overlay.classList.contains('hidden'), false);
+    assert.equal(document.body.classList.contains('sidebar-mobile-open'), true);
+    toggle.click();
+    assert.equal(sidebar.classList.contains('open'), false, 'keyboard/programmatic activation must not be swallowed after a touch');
+    toggle.click();
+    overlay.dispatchEvent(new window.Event('pointerup', { bubbles: true }));
+    assert.equal(sidebar.classList.contains('open'), true, 'overlay stays until the completed click');
+    overlay.click();
+    assert.equal(sidebar.classList.contains('open'), false);
+    assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+    assert.equal(overlay.getAttribute('aria-hidden'), 'true');
+    assert.equal(document.body.classList.contains('sidebar-mobile-open'), false);
+});
 
 test('education entry stays visible in default and saved menus only for an allowed education business', t => {
     for (const savedExtras of [null, [{ href: '/chat', label: 'Чат' }]]) {

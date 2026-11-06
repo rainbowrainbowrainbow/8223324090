@@ -1328,9 +1328,12 @@ router.get('/', async (req, res) => {
         const conditions = [];
         const params = [];
         let idx = 1;
+        let hasOnlyTerminalStatuses = false;
 
         if (status) {
             const statuses = String(status).split(',').map(s => s.trim()).filter(s => FILTERABLE_STATUSES.includes(s));
+            hasOnlyTerminalStatuses = statuses.length > 0
+                && statuses.every(value => ['done', 'archived', 'cancelled'].includes(value));
             if (statuses.length === 1) {
                 conditions.push(`t.status = $${idx++}`);
                 params.push(statuses[0]);
@@ -1509,7 +1512,12 @@ router.get('/', async (req, res) => {
         }
 
         const includeDuplicateRows = isTruthy(include_duplicates || includeDuplicates);
-        if (!includeDuplicateRows && view !== 'archive') {
+        // Terminal rows always pass canonical selection; avoid its unnecessary
+        // subplan when the requested statuses/view already guarantee that case.
+        const activeDuplicateFilterRequired = !includeDuplicateRows
+            && !['archive', 'done_today'].includes(view)
+            && !hasOnlyTerminalStatuses;
+        if (activeDuplicateFilterRequired) {
             conditions.push(activeDuplicateCanonicalFilterSql('t'));
         }
 
@@ -1627,8 +1635,47 @@ router.get('/', async (req, res) => {
         params.push(view || '');
         params.push(limit, offset);
 
+        // Compute child summaries once for active lists; terminal/explicit
+        // duplicate views retain planner inlining for their smaller result sets.
+        const materializeTaskAggregates = activeDuplicateFilterRequired;
+
         const result = await pool.query(
-            `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+            `WITH task_list_subtask_counts AS ${materializeTaskAggregates ? 'MATERIALIZED' : 'NOT MATERIALIZED'} (
+                SELECT task_id,
+                       COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE is_done = true)::int AS done
+                FROM task_subtasks
+                GROUP BY task_id
+             ),
+             task_list_subtask_rows AS ${materializeTaskAggregates ? 'MATERIALIZED' : 'NOT MATERIALIZED'} (
+                SELECT task_id,
+                       json_agg(json_build_object(
+                           'id', id,
+                           'task_id', task_id,
+                           'title', title,
+                           'is_done', is_done,
+                           'sort_order', sort_order,
+                           'source_type', COALESCE(source_type, 'manual'),
+                           'created_at', created_at,
+                           'completed_at', completed_at,
+                           'updated_at', updated_at
+                       ) ORDER BY sort_order ASC, id ASC) AS subtasks
+                FROM task_subtasks
+                GROUP BY task_id
+             ),
+             task_list_dependency_counts AS ${materializeTaskAggregates ? 'MATERIALIZED' : 'NOT MATERIALIZED'} (
+                SELECT d.task_id,
+                       COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled'))::int AS open,
+                       STRING_AGG(blocker.title, ', ' ORDER BY blocker.id)
+                           FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled')) AS blocked_by_titles
+                FROM task_dependencies d
+                JOIN tasks owner_task ON owner_task.id = d.task_id
+                JOIN tasks blocker ON blocker.id = d.depends_on_task_id
+                    AND COALESCE(blocker.business_context, 'event_genix') = COALESCE(owner_task.business_context, 'event_genix')
+                GROUP BY d.task_id
+             )
+             SELECT t.*, u.name AS owner_name, u.username AS owner_username,
                     COALESCE((SELECT COUNT(*) FROM task_observers tob WHERE tob.task_id = t.id), 0)::int AS observer_count,
                     EXISTS (
                         SELECT 1
@@ -1651,41 +1698,9 @@ router.get('/', async (req, res) => {
                     dep.blocked_by_titles
              FROM tasks t
              LEFT JOIN users u ON u.id = t.owner_user_id
-             LEFT JOIN (
-                SELECT task_id,
-                       COUNT(*)::int AS total,
-                       COUNT(*) FILTER (WHERE is_done = true)::int AS done
-                FROM task_subtasks
-                GROUP BY task_id
-             ) st ON st.task_id = t.id
-             LEFT JOIN (
-                SELECT task_id,
-                       json_agg(json_build_object(
-                           'id', id,
-                           'task_id', task_id,
-                           'title', title,
-                           'is_done', is_done,
-                           'sort_order', sort_order,
-                           'source_type', COALESCE(source_type, 'manual'),
-                           'created_at', created_at,
-                           'completed_at', completed_at,
-                           'updated_at', updated_at
-                       ) ORDER BY sort_order ASC, id ASC) AS subtasks
-                FROM task_subtasks
-                GROUP BY task_id
-             ) subtask_rows ON subtask_rows.task_id = t.id
-             LEFT JOIN (
-                SELECT d.task_id,
-                       COUNT(*)::int AS total,
-                       COUNT(*) FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled'))::int AS open,
-                       STRING_AGG(blocker.title, ', ' ORDER BY blocker.id)
-                           FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled')) AS blocked_by_titles
-                FROM task_dependencies d
-                JOIN tasks owner_task ON owner_task.id = d.task_id
-                JOIN tasks blocker ON blocker.id = d.depends_on_task_id
-                    AND COALESCE(blocker.business_context, 'event_genix') = COALESCE(owner_task.business_context, 'event_genix')
-                GROUP BY d.task_id
-             ) dep ON dep.task_id = t.id
+             LEFT JOIN task_list_subtask_counts st ON st.task_id = t.id
+             LEFT JOIN task_list_subtask_rows subtask_rows ON subtask_rows.task_id = t.id
+             LEFT JOIN task_list_dependency_counts dep ON dep.task_id = t.id
              ${where}
              ORDER BY
                  CASE WHEN $${orderViewParam} = 'done_today' THEN COALESCE(t.completed_at, t.updated_at, t.created_at) END DESC NULLS LAST,

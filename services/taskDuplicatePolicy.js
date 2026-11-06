@@ -129,14 +129,15 @@ function duplicateSignatureSql(alias = 't') {
 
 function activeDuplicateCanonicalFilterSql(alias = 't') {
     const duplicateAlias = 'task_duplicate_canonical';
+    // Keep the same lowest active ID per signature without comparing every
+    // candidate with all earlier tasks. Terminal rows remain independently visible.
     return `(
         COALESCE(${alias}.status, 'todo') IN ('done','archived','cancelled')
-        OR NOT EXISTS (
-            SELECT 1
+        OR ${alias}.id IN (
+            SELECT MIN(${duplicateAlias}.id)
             FROM tasks ${duplicateAlias}
-            WHERE ${duplicateAlias}.id < ${alias}.id
-              AND ${ACTIVE_TASK_STATUS_SQL.replaceAll('t.', `${duplicateAlias}.`)}
-              AND ${duplicateSignatureSql(duplicateAlias)} = ${duplicateSignatureSql(alias)}
+            WHERE ${ACTIVE_TASK_STATUS_SQL.replaceAll('t.', `${duplicateAlias}.`)}
+            GROUP BY ${duplicateSignatureSql(duplicateAlias)}
         )
     )`;
 }

@@ -430,3 +430,9 @@ test('customer and lead domains enforce business membership and related-record o
         } finally { await admin.end(); }
     }
 });
+
+// Reuse this existing isolated process instead of starting another CRM fixture.
+// Legacy standalone/socket invocations keep their existing selection unchanged.
+if (process.env.REQUIRE_ISOLATED_TEST_TARGET === 'true') {
+    require('./task-canonical-list-postgres.test');
+}

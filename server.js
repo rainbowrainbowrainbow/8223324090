@@ -31,7 +31,7 @@ const { buildCatalogImageBlobFallbackHandler } = require('./services/imageStorag
 const { buildChatUploadBlobFallbackHandler } = require('./services/chatUploadStorage');
 const { buildSoundUploadBlobFallbackHandler } = require('./services/audioStorage');
 const { recordCompatibilityTelemetrySafe } = require('./services/businessCutover');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkStaleCatalogImages, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks, checkGraduationOpsAutomation, checkAttendanceReviewTasks, checkHrAttendancePrintAutomations, checkBirthdayTagSync } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks, checkGraduationOpsAutomation, checkAttendanceReviewTasks, checkHrAttendancePrintAutomations, checkBirthdayTagSync } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
@@ -886,8 +886,6 @@ initializeDatabaseWithSchemaFence().catch(err => {
         // v30.7: HR push reminders (every minute) + cert expiry (daily)
         schedulerIntervals.push(setInterval(guardScheduler('checkBookingPushReminders', checkBookingPushReminders, { dedup: null }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkCertExpiryReminders', checkCertExpiryReminders, { dedup: 'daily' }), 60000));
-        // v33.5: Stale catalog images refresh (daily at 03:00 Kyiv)
-        schedulerIntervals.push(setInterval(guardScheduler('checkStaleCatalogImages', checkStaleCatalogImages, { dedup: 'daily' }), 60000));
         // v33.7: Chat daily digest (20:00 Kyiv)
         schedulerIntervals.push(setInterval(guardScheduler('checkChatDailyDigest', checkChatDailyDigest, { dedup: 'daily' }), 60000));
         // v33.15.0: Recurring announcements (every minute, no dedup)

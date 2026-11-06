@@ -2093,74 +2093,6 @@ async function checkTeamPulseReminder() {
     }
 }
 
-// v33.5: Refresh stale catalog images (daily at 03:00 Kyiv)
-async function checkStaleCatalogImages() {
-    try {
-        const nowTime = getKyivTimeStr();
-        if (nowTime !== '03:00') return skipNotDueIfEnabled('checkStaleCatalogImages');
-        const last = await getLastSent('stale_catalog_images');
-        const today = getKyivDateStr();
-        if (last === today) return;
-        await setLastSent('stale_catalog_images', today);
-        const stale = await pool.query(
-            `SELECT ci.id, ci.name, ci.subcategory, ci.catalog_id, cd.ai_style
-             FROM catalog_items ci
-             JOIN catalog_definitions cd ON cd.id = ci.catalog_id
-             WHERE ci.status = 'active'
-               AND ci.image_url IS NOT NULL
-               AND ci.updated_at < NOW() - INTERVAL '6 days'
-             LIMIT 10`
-        );
-        if (!stale.rowCount) return;
-        const https = require('https');
-        const KIE_KEY = process.env.KIE_API_KEY || '';
-        const DEFAULT_STYLE = 'colorful illustration, white background, no text';
-
-        function kieHttpRequest(method, path, postBody) {
-            return new Promise((resolve, reject) => {
-                const opts = {
-                    hostname: 'api.kie.ai', path, method,
-                    headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json' }
-                };
-                if (postBody) opts.headers['Content-Length'] = Buffer.byteLength(postBody);
-                const req = https.request(opts, res => {
-                    let d = '';
-                    res.on('data', c => d += c);
-                    res.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve(null); } });
-                });
-                req.on('error', reject);
-                req.setTimeout(30000, () => { req.destroy(); reject(new Error('timeout')); });
-                if (postBody) req.write(postBody);
-                req.end();
-            });
-        }
-
-        let refreshed = 0;
-        for (const item of stale.rows) {
-            try {
-                const style = item.ai_style || DEFAULT_STYLE;
-                const themeCtx = [item.name, item.subcategory].filter(Boolean).join(', ');
-                const prompt = `${style}. Product: "${themeCtx}". Ukrainian children's park.`;
-                const body = JSON.stringify({ model: 'google/nano-banana', input: { prompt, image_size: '1:1' } });
-                const taskData = await kieHttpRequest('POST', '/api/v1/jobs/createTask', body);
-                if (!taskData?.data?.taskId) continue;
-                await new Promise(r => setTimeout(r, 20000));
-                const pollData = await kieHttpRequest('GET', `/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskData.data.taskId)}`);
-                const rj = pollData?.data?.resultJson;
-                let url = null;
-                try { url = rj ? JSON.parse(typeof rj === 'string' ? rj : '{}')?.resultUrls?.[0] : null; } catch { /* ignore */ }
-                if (url) {
-                    await pool.query('UPDATE catalog_items SET image_url = $1, updated_at = NOW() WHERE id = $2', [url, item.id]);
-                    refreshed++;
-                }
-            } catch (e) { log.warn(`Stale refresh failed item ${item.id}: ${e.message}`); }
-        }
-        if (refreshed > 0) log.info(`Stale catalog images refreshed: ${refreshed}/${stale.rowCount}`);
-    } catch (err) {
-        if (!err.message?.includes('does not exist')) log.error('checkStaleCatalogImages error', err);
-    }
-}
-
 // v33.7.0: Daily chat digest (20:00 Kyiv)
 async function checkChatDailyDigest() {
     try {
@@ -2505,7 +2437,6 @@ module.exports = {
     checkAutoOrdering,
     checkBookingPushReminders,
     checkCertExpiryReminders,
-    checkStaleCatalogImages,
     checkChatDailyDigest,
     checkRecurringAnnouncements,
     checkEventPipeline,

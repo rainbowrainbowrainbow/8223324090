@@ -232,7 +232,6 @@ describe('static-only scheduler job behavior coverage', () => {
             'checkCustomerRetention',
             'checkHotLeads',
             'checkTeamPulseReminder',
-            'checkStaleCatalogImages',
             'checkChatDailyDigest'
         ]) {
             await scheduler[jobName]();

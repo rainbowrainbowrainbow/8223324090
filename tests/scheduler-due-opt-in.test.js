@@ -15,7 +15,7 @@ function fakeDb(){let row;return{get row(){return row},async query(sql,p){
   if(/last_run_date = NULL, result = 'skipped'/.test(sql)){row={last_run_date:null,result:'skipped'};return{rows:[{}],rowCount:1}}
   if(/last_run_date = \$3, result = 'success'/.test(sql)){row={last_run_date:p[2],result:'success'};return{rows:[{}],rowCount:1}}
   throw Error('unexpected synthetic guard query');}}}
-const cases=[['checkStreakUpdates','23:55'],['checkBirthdayGreetings','09:00'],['checkBirthdayReminders','09:30'],['checkDormantCustomers','10:00'],['checkUpcomingBookings','11:00'],['checkTeamPulseReminder','18:00'],['checkChatDailyDigest','20:00'],['checkStaleCatalogImages','03:00']];
+const cases=[['checkStreakUpdates','23:55'],['checkBirthdayGreetings','09:00'],['checkBirthdayReminders','09:30'],['checkDormantCustomers','10:00'],['checkUpcomingBookings','11:00'],['checkTeamPulseReminder','18:00'],['checkChatDailyDigest','20:00']];
 function makeJob(name,enabled){let calls=0,reads=0;const helper=source.match(/function skipNotDueIfEnabled\(jobName\) \{[\s\S]*?\n\}/);const job=source.match(new RegExp('async function '+name+'\\(\\) \\{[\\s\\S]*?\\n\\}'));assert.ok(helper&&job,name);
  const ctx={process:{env:{CRM_SCHEDULER_DUE_JOBS:enabled}},skipSchedulerTracking,getKyivTimeStr:()=>new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date()),getKyivDateStr:()=> '2026-11-03',getLastSent:async()=>{reads++;return '2026-11-03'},setLastSent:async()=>{throw Error('no writes allowed')},streaksUpdatedToday:null,birthdaySentToday:null,birthdayReminderSentToday:null,dormantSentToday:null,upcomingSentToday:null,pool:{query:async()=>{throw Error('no database allowed')}},require:()=>{throw Error('no provider allowed')},log:{warn:()=>{},info:()=>{},error:e=>{throw Error('unexpected '+e)}}};
  vm.runInNewContext(helper[0],ctx);const fn=vm.runInNewContext('('+job[0]+')',ctx);return{run:async()=>{calls++;return fn()},counts:()=>({calls,reads})};}
@@ -32,27 +32,32 @@ for(const [name,time] of cases){test(`${name}: per-job opt-in leaves day unclaim
   finally{global.Date=OriginalDate}
  });}
 
-test('Kyiv time gate handles seasonal offsets and repeated autumn hour without repeating the job', async () => {
+test('Kyiv morning gate survives seasonal offsets and repeated autumn hour without an early run', async () => {
     const previous = process.env.CRM_SCHEDULER_DUE_JOBS;
-    process.env.CRM_SCHEDULER_DUE_JOBS = 'checkStaleCatalogImages';
+    process.env.CRM_SCHEDULER_DUE_JOBS = 'checkBirthdayGreetings';
     global.Date = class extends OriginalDate { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } };
     try {
         let calls = 0;
         const autumnDb = fakeDb();
-        const autumn = guardScheduler('checkStaleCatalogImages', async () => { calls++; }, { dedup: 'daily', dbPool: autumnDb });
+        const autumn = guardScheduler('checkBirthdayGreetings', async () => { calls++; }, { dedup: 'daily', dbPool: autumnDb });
         now = OriginalDate.parse('2026-10-25T00:00:00Z'); await autumn();
         now = OriginalDate.parse('2026-10-25T01:00:00Z'); await autumn();
+        assert.equal(calls, 0, 'neither occurrence of03:00Kyiv claims the09:00job');
+        assert.equal(autumnDb.row, undefined);
+        now = OriginalDate.parse('2026-10-25T07:00:00Z'); await autumn(); await autumn();
         assert.equal(calls, 1);
         const springDb = fakeDb();
-        const spring = guardScheduler('checkStaleCatalogImages', async () => { calls++; }, { dedup: 'daily', dbPool: springDb });
+        const spring = guardScheduler('checkBirthdayGreetings', async () => { calls++; }, { dedup: 'daily', dbPool: springDb });
         now = OriginalDate.parse('2026-03-29T00:59:00Z'); await spring();
         now = OriginalDate.parse('2026-03-29T01:00:00Z'); await spring();
         assert.equal(calls, 1);
-        assert.equal(springDb.row, undefined, '03:00 Kyiv is absent on the spring clock change; no catch-up is implied');
+        assert.equal(springDb.row, undefined);
+        now = OriginalDate.parse('2026-03-29T06:00:00Z'); await spring(); await spring();
+        assert.equal(calls, 2, '09:00Kyiv after spring transition runs once');
         const summerDb = fakeDb();
-        const summer = guardScheduler('checkStaleCatalogImages', async () => { calls++; }, { dedup: 'daily', dbPool: summerDb });
-        now = OriginalDate.parse('2026-07-01T00:00:00Z'); await summer();
-        assert.equal(calls, 2);
+        const summer = guardScheduler('checkBirthdayGreetings', async () => { calls++; }, { dedup: 'daily', dbPool: summerDb });
+        now = OriginalDate.parse('2026-07-01T06:00:00Z'); await summer(); await summer();
+        assert.equal(calls, 3);
     } finally {
         global.Date = OriginalDate;
         if (previous === undefined) delete process.env.CRM_SCHEDULER_DUE_JOBS; else process.env.CRM_SCHEDULER_DUE_JOBS = previous;

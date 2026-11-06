@@ -63,7 +63,6 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkAutoOrdering` | `checkAutoOrdering` | `services/scheduler.js` | warehouse | `60000` | `hourly` |
 | `checkBookingPushReminders` | `checkBookingPushReminders` | `services/scheduler.js` | bookings | `60000` | none |
 | `checkCertExpiryReminders` | `checkCertExpiryReminders` | `services/scheduler.js` | staff | `60000` | `daily` |
-| `checkStaleCatalogImages` | `checkStaleCatalogImages` | `services/scheduler.js` | catalogs | `60000` | `daily` |
 | `checkChatDailyDigest` | `checkChatDailyDigest` | `services/scheduler.js` | chat | `60000` | `daily` |
 | `checkRecurringAnnouncements` | `checkRecurringAnnouncements` | `services/scheduler.js` | announcements | `60000` | none |
 | `checkEventPipeline` | `checkEventPipeline` | `services/scheduler.js` | events | `60000` | `5min` |
@@ -314,3 +313,12 @@ This pack is considered done when all of these remain true:
   `config/schedulerSurface.js`.
 - Any future scheduler behavior change has a direct test or an explicit
   cleanup-register note explaining the remaining gap.
+
+## Catalog Images Are On Demand
+
+The former nightly stale catalog image refresh is retired by owner decision.
+Catalog image generation starts only through an explicit authenticated manual
+request in `routes/catalogs.js`; polling and apply remain separate operations.
+No periodic catalog image job, provider catch-up, or regeneration on image age
+is registered. Existing images and historical settings/scheduler records are
+retained. See `docs/CATALOG_IMAGE_GENERATION.md`.

@@ -27,8 +27,7 @@ const OPT_IN_DUE_TIMES = Object.freeze({
     checkDormantCustomers: '10:00',
     checkUpcomingBookings: '11:00',
     checkTeamPulseReminder: '18:00',
-    checkChatDailyDigest: '20:00',
-    checkStaleCatalogImages: '03:00'
+    checkChatDailyDigest: '20:00'
 });
 
 function skipUndueOptInJob(name, dedup, now) {

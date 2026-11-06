@@ -284,7 +284,6 @@ async function runStartup({ flagValue, omniMode = 'owner-false' } = {}) {
         'checkAutoOrdering',
         'checkBookingPushReminders',
         'checkCertExpiryReminders',
-        'checkStaleCatalogImages',
         'checkChatDailyDigest',
         'checkRecurringAnnouncements',
         'checkEventPipeline',
@@ -500,6 +499,7 @@ test('skip keeps report bot, memberships, websocket, alert broadcaster, and back
 
     assert.ok(result.schedulerRegistrations.some(item => item.name === 'checkAutoDigest' && item.fnName === 'checkAutoDigest'));
     assert.ok(result.schedulerRegistrations.some(item => item.name === 'checkTaskReminders' && item.fnName === 'checkTaskReminders'));
+    assert.equal(result.schedulerRegistrations.some(item => item.name === 'checkStaleCatalogImages'), false, 'catalog images require an explicit manual request');
     assert.ok(result.schedulerRegistrations.some(item => item.name === 'runCheckboxReadinessProbeScheduler' && item.fnName === 'runCheckboxReadinessProbeScheduler'));
     assert.ok(result.schedulerRegistrations.some(item => item.name === 'processPaymentOutboxJobs' && item.fnName === 'processPaymentOutboxJobs'));
     assert.ok(result.schedulerRegistrations.some(item => item.name === 'runTrustedQaCleanupWatchdog' && item.fnName === 'runTrustedQaCleanupWatchdog'));

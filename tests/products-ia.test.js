@@ -290,7 +290,7 @@ test('products lifecycle uses active working lists, duplicate guards, and soft-d
     assert.ok(cleanupMarkers.every(marker => marker.length <= 50), 'cleanup migration updated_by markers must fit VARCHAR(50)');
 });
 
-test('catalog image jobs encode Kie task ids consistently', () => {
+test('manual catalog image jobs encode Kie task ids without an automatic refresh path', () => {
     const catalogsRoute = read('routes/catalogs.js');
     const scheduler = read('services/scheduler.js');
 
@@ -300,7 +300,7 @@ test('catalog image jobs encode Kie task ids consistently', () => {
     assert.equal((catalogsRoute.match(/uploadFromUrl\(kieUrl, filename, \{ query: pool \}\)/g) || []).length, 2);
     assert.doesNotMatch(catalogsRoute, /recordInfo\?taskId=\$\{taskId\}/);
     assert.doesNotMatch(catalogsRoute, /recordInfo\?taskId=\$\{normalizedTaskId\}/);
-    assert.match(scheduler, /recordInfo\?taskId=\$\{encodeURIComponent\(taskData\.data\.taskId\)\}/);
+    assert.doesNotMatch(scheduler, /checkStaleCatalogImages|stale_catalog_images/);
 });
 
 test('design catalog deep links remain backed by the existing designs viewer', () => {

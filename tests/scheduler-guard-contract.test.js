@@ -464,7 +464,8 @@ describe('scheduler execution policy', () => {
             schedulerExecutionPolicy
         } = require('../config/schedulerSurface');
 
-        assert.equal(GUARDED_SCHEDULER_JOBS.length, 54);
+        assert.equal(GUARDED_SCHEDULER_JOBS.length, 53);
+        assert.equal(GUARDED_SCHEDULER_JOBS.some(job => job.name === 'checkStaleCatalogImages'), false);
         assert.equal(Object.keys(OWNER_MANAGED_SCHEDULER_CLAIMS).length, 6);
         for (const job of GUARDED_SCHEDULER_JOBS) {
             const policy = schedulerExecutionPolicy(job.name);

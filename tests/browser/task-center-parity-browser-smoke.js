@@ -810,7 +810,9 @@ async function verifyStates(page, baseUrl, state) {
     await page.waitForSelector('.task-overview-more');
 
     state.overview = 'error';
-    await openPage(page, baseUrl, '?mode=overview');
+    // The expected fatal state must not pass through openPage's success-only
+    // readiness check: a fast error response can render before that check runs.
+    await page.goto(`${baseUrl}/tasks?mode=overview`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForSelector('.page-fatal-error[role=alert]');
     assert.equal(await page.locator('.page-fatal-error[role=alert]').isVisible(), true, 'initial overview error renders an accessible fatal state');
     state.overview = 'normal';

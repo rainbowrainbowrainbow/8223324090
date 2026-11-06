@@ -217,7 +217,7 @@ const roleReport = { success: true, summary: { staff_count: 1, role_count: 1 }, 
     { staff_id: 41, staff_name: 'Synthetic Staff', profession_title: 'Synthetic Role', status: 'active' }
 ] };
 
-test('writable Park Today and role report avoid legacy requests and show explicit unavailable states', async () => {
+test('writable Park Today uses HR cards without a false legacy warning while the unsupported role report stays explicit', async () => {
     const h = harness({ page: true, membership: true });
     try {
         h.state.transport = async url => {
@@ -228,8 +228,8 @@ test('writable Park Today and role report avoid legacy requests and show explici
         await h.w.loadRoleAssignmentsReport();
         assert.equal(h.state.calls.length, 1);
         assert.match(h.w.document.getElementById('todayList').textContent, /Synthetic Staff/);
-        assert.match(h.w.document.getElementById('todayStaffLinksStatus').textContent, /недоступн/);
-        assert.equal(h.w.document.getElementById('todayStaffLinksStatus').getAttribute('role'), 'status');
+        assert.equal(h.w.document.getElementById('todayStaffLinksStatus')?.textContent || '', '');
+        assert.match(h.w.document.querySelector('.hr-today-row-action--profile').getAttribute('onclick'), /openStaffEdit\(41\)/);
         assert.match(h.w.document.getElementById('roleReportSummary').textContent, /недоступн/);
         assert.equal(h.w.document.getElementById('roleReportBody').textContent, '');
     } finally { h.close(); }
@@ -240,7 +240,7 @@ test('compatible Today and role report retain requests and surface genuine adjun
     let fail = false;
     try {
         h.state.transport = async url => {
-            if (url === '/api/hr/today') return response(200, today);
+            if (url === '/api/hr/today') { const compatible = { ...today }; delete compatible.todayAccess; return response(200, compatible); }
             if (fail) return response(500, { success: false, error: 'Synthetic adjunct failure' });
             return response(200, url === '/api/staff/link-status' ? { success: true, data: links } : roleReport);
         };

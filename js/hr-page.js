@@ -3610,7 +3610,8 @@ function renderTodayStaffProfileAction(staffId, staffName) {
     const id = Number(staffId);
     if (!Number.isInteger(id) || id <= 0) return '';
     const recoveryReadOnly = isTodayRecoveryReadOnly();
-    if (recoveryReadOnly) {
+    const parkScoped = isTodayParkScoped();
+    if (recoveryReadOnly || parkScoped) {
         const user = getHrCurrentUser();
         const scope = typeof getCrmBusinessScope === 'function' ? getCrmBusinessScope(user) : null;
         const requestedScope = typeof crmBusinessScopeFromUrl === 'function' ? crmBusinessScopeFromUrl() : null;
@@ -3620,10 +3621,10 @@ function renderTodayStaffProfileAction(staffId, staffName) {
             || (user?.accessContext && user.accessContext.status !== 'ready')
             || todayData?.todayAccess?.businessContext !== 'event_genix') return '';
     }
-    const links = typeof getStaffLinksForCurrentContext === 'function' ? getStaffLinksForCurrentContext() : null;
+    const links = !parkScoped && typeof getStaffLinksForCurrentContext === 'function' ? getStaffLinksForCurrentContext() : null;
     const link = Array.isArray(links) ? links.find(item => Number(item.id) === Number(staffId)) : null;
     const userId = Number(link?.user_id);
-    if (!recoveryReadOnly && Number.isInteger(userId) && userId > 0 && typeof openStaffProfile === 'function') {
+    if (!parkScoped && !recoveryReadOnly && Number.isInteger(userId) && userId > 0 && typeof openStaffProfile === 'function') {
         const label = `Відкрити робочий профіль: ${staffName}`;
         return `<button type="button" class="hr-today-row-action hr-today-row-action--profile" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" onclick="event.stopPropagation();openStaffProfile(${userId})">${hrTodayActionIconSvg('profile')}</button>`;
     }
@@ -3632,7 +3633,7 @@ function renderTodayStaffProfileAction(staffId, staffName) {
 }
 
 function renderTodayStaffScheduleAction(staffId, staffName) {
-    if (isTodayRecoveryReadOnly() && !canUseHrCapability('hr.schedule.view')) return '';
+    if ((isTodayRecoveryReadOnly() || isTodayParkScoped()) && !canUseHrCapability('hr.schedule.view')) return '';
     const label = `Відкрити графік: ${staffName}`;
     const id = Number(staffId);
     if (!Number.isInteger(id) || id <= 0) return '';
@@ -3640,7 +3641,7 @@ function renderTodayStaffScheduleAction(staffId, staffName) {
 }
 
 async function openTodayStaffSchedule(staffId) {
-    if (isTodayRecoveryReadOnly() && !canUseHrCapability('hr.schedule.view')) return;
+    if ((isTodayRecoveryReadOnly() || isTodayParkScoped()) && !canUseHrCapability('hr.schedule.view')) return;
     const id = Number(staffId);
     if (!Number.isInteger(id) || id <= 0) return;
     await activateHrTab('schedule', { updateHash: true });
@@ -3651,6 +3652,10 @@ async function openTodayStaffSchedule(staffId) {
 
 function isTodayRecoveryReadOnly(data = todayData) {
     return data?.todayAccess?.readOnly === true;
+}
+
+function isTodayParkScoped(data = todayData) {
+    return data?.todayAccess?.businessContext === 'event_genix';
 }
 
 function renderTodayStaffLinksState(message = '', { error = false } = {}) {
@@ -3693,7 +3698,11 @@ async function loadToday() {
     }
     let staffLinksMessage = '';
     let staffLinksError = false;
-    if (!isTodayRecoveryReadOnly(data) && typeof _loadStaffLinks === 'function') {
+    // A writable Park attendance response still uses the scoped HR card, not
+    // the unsupported global account-link namespace from before the cutover.
+    if (isTodayParkScoped(data)) {
+        if (typeof clearStaffLinksCache === 'function') clearStaffLinksCache();
+    } else if (!isTodayRecoveryReadOnly(data) && typeof _loadStaffLinks === 'function') {
         const availability = typeof getLegacyBusinessSurfaceAvailability === 'function'
             ? getLegacyBusinessSurfaceAvailability('staff')
             : { available: false, message: 'Доступ до бізнесу ще не підтверджено. Дочекайтеся завантаження профілю або оновіть сторінку.' };

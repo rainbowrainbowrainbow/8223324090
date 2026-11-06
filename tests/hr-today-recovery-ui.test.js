@@ -103,6 +103,22 @@ test('writable Park Today exposes manual attendance controls when the server per
         await win.loadToday();
         assert.ok(win.document.querySelectorAll('#todayList [onclick*="handleClock"]').length > 0);
         assert.ok(win.document.querySelectorAll('#todayList [oncontextmenu]').length > 0);
+        assert.equal(win.document.getElementById('todayStaffLinksStatus')?.textContent || '', '');
+        assert.match(win.document.querySelector('[data-staff-id="9701"] .hr-today-row-action--profile').getAttribute('onclick'), /openStaffEdit\(9701\)/);
+    } finally { dom.window.close(); }
+});
+
+test('writable Park Today-only access exposes attendance without unavailable staff or schedule links', async () => {
+    const writable = payload(true);
+    writable.todayAccess.readOnly = false;
+    const { dom, win, calls } = harness({ payload: writable, todayOnly: true });
+    try {
+        await win.loadToday();
+        assert.deepEqual(calls.map(call => call.url), ['/api/hr/today']);
+        assert.equal(win.document.querySelectorAll('.hr-today-row-actions a, .hr-today-row-actions button').length, 0);
+        assert.equal(win.document.getElementById('todayStaffLinksStatus')?.textContent || '', '');
+        await win.openTodayStaffSchedule(9701);
+        assert.equal(calls.length, 1);
     } finally { dom.window.close(); }
 });
 

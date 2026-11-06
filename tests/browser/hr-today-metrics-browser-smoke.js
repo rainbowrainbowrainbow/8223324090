@@ -63,10 +63,10 @@ const CSS_BUNDLE = [
     readRepo('css', 'pages-hr-staff.css')
 ].join('\n');
 
-async function installHarness(page, { recovery = false, todayOnly = false } = {}) {
+async function installHarness(page, { recovery = false, todayOnly = false, parkWritable = false } = {}) {
     await page.exposeFunction('__projectTodayRecovery', payload => ({
         ...projectParkStaffSchedulePayload('hr', '/today', payload),
-        todayAccess: { readOnly: true, businessContext: 'event_genix' }
+        todayAccess: { readOnly: !parkWritable, businessContext: 'event_genix' }
     }));
     await page.setContent(`<!doctype html><html lang="uk"><head><meta charset="utf-8"><style>${CSS_BUNDLE}</style></head><body data-page-group="hr"></body></html>`);
     await page.evaluate(() => {
@@ -116,7 +116,7 @@ async function installHarness(page, { recovery = false, todayOnly = false } = {}
     });
     await page.addScriptTag({ content: HR_ATTENDANCE_STATE_CODE });
     await page.addScriptTag({ content: HR_CODE });
-    await page.evaluate(async ({ markup, contextMarkup, recovery, todayOnly }) => {
+    await page.evaluate(async ({ markup, contextMarkup, recovery, todayOnly, parkWritable }) => {
         document.addEventListener = window.__originalAddEventListener;
         document.body.innerHTML = [
             '<nav id="hrNav"><button type="button" class="hr-tab active" data-tab="today">Сьогодні</button></nav>',
@@ -186,7 +186,9 @@ async function installHarness(page, { recovery = false, todayOnly = false } = {}
         let mode = 'open';
         let denied = false;
         const requests = [];
-        window.canAccess = action => action === 'hr.today.view' || (!todayOnly && ['hr.staff.manage', 'hr.schedule.view'].includes(action));
+        window.canAccess = action => action === 'hr.today.view' || (!todayOnly && ['hr.staff.view', 'hr.staff.manage', 'hr.schedule.view'].includes(action));
+        Object.assign(AppState.currentUser, { activeBusinessContext: 'event_genix', accessContext: { status: 'ready' } });
+        window.getCrmBusinessScope = () => ({ mode: 'single', activeContext: 'event_genix' });
         window._loadStaffLinks = async () => {
             requests.push({ path: 'staff-link-helper', method: 'GET' });
             return [];
@@ -224,7 +226,7 @@ async function installHarness(page, { recovery = false, todayOnly = false } = {}
                 summary: summarizeTodayItems(rows),
                 displayGroups
             };
-            return recovery ? window.__projectTodayRecovery(payload) : payload;
+            return recovery || parkWritable ? window.__projectTodayRecovery(payload) : payload;
         };
 
         todayFilters = { query: '', department: 'all' };
@@ -279,7 +281,7 @@ async function installHarness(page, { recovery = false, todayOnly = false } = {}
                 return requests.filter(request => request.method !== 'GET').length;
             }
         };
-    }, { markup: TODAY_MARKUP, contextMarkup: CONTEXT_MARKUP, recovery, todayOnly });
+    }, { markup: TODAY_MARKUP, contextMarkup: CONTEXT_MARKUP, recovery, todayOnly, parkWritable });
 }
 
 async function metricPeople(page, metric) {
@@ -560,6 +562,36 @@ async function assertRecoveryReadOnly(page) {
     assert.equal(await page.evaluate(() => window.__hrTodayBrowserSmoke.mutationCount()), 0);
 }
 
+async function assertWritableParkToday(page) {
+    await installHarness(page, { parkWritable: true });
+    await page.evaluate(() => {
+        window.__openedHrCards = [];
+        window.openStaffEdit = id => window.__openedHrCards.push(id);
+    });
+    for (const theme of ['light', 'dark']) {
+        for (const width of [390, 1440]) {
+            await page.setViewportSize({ width, height: 900 });
+            await setThemeAndMode(page, theme, 'open');
+            assert.equal(await page.locator('#todayStaffLinksStatus').isVisible(), false, 'no obsolete migration warning');
+            const profile = page.locator('[data-staff-id="11"] .hr-today-row-action--profile');
+            await profile.click();
+            assert.equal(await page.evaluate(() => window.__openedHrCards.at(-1)), 11, 'tap opens the supported HR card');
+            assert.ok(await page.locator('#todayList [onclick*="handleClock"]').count() > 0, 'manual attendance remains writable');
+            assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+            fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+            await page.screenshot({ path: path.join(OUTPUT_DIR, `park-writable-${theme}-${width}.png`), fullPage: true });
+        }
+    }
+    assert.equal(await page.evaluate(() => window.__hrTodayBrowserSmoke.requests().some(request => request.path === 'staff-link-helper')), false, 'no unsupported account-link request');
+    await page.evaluate(async () => {
+        window.canAccess = action => action === 'hr.today.view';
+        await window.__hrTodayBrowserSmoke.refresh();
+    });
+    assert.equal(await page.locator('.hr-today-row-actions a, .hr-today-row-actions button').count(), 0, 'live permission refresh removes unavailable links');
+    assert.equal(await page.locator('#todayStaffLinksStatus').isVisible(), false);
+    assert.equal(await page.evaluate(() => window.__hrTodayBrowserSmoke.mutationCount()), 0);
+}
+
 async function run() {
     const playwright = requirePlaywright();
     const browser = await playwright.chromium.launch({ headless: HEADLESS });
@@ -582,6 +614,10 @@ async function run() {
         page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
         page.setDefaultTimeout(15000);
         await assertRecoveryReadOnly(page);
+        await page.close();
+        page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        page.setDefaultTimeout(15000);
+        await assertWritableParkToday(page);
         console.log('HR Today metrics browser smoke passed');
     } catch (err) {
         fs.mkdirSync(OUTPUT_DIR, { recursive: true });

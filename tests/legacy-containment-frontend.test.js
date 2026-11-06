@@ -204,6 +204,59 @@ test('legacy availability requires a fresh ready compatibility Park profile and 
     } finally { h.close(); }
 });
 
+test('enabled Park membership catalogs match the registry while other legacy namespaces remain unavailable', async () => {
+    const h = await setup();
+    try {
+        const w = h.w;
+        w.fixtureProfile.membershipMode = 'membership';
+        w.fixtureProfile.activeProfile = { modules: { source: 'business_registry', enabled: { catalogs: true } } };
+        assert.equal(w.getLegacyBusinessSurfaceAvailability('catalogs').available, true);
+        for (const surface of ['staff', 'chat', 'booking_templates', 'recurring', 'finance_salary', 'contractors_procurement']) {
+            assert.equal(w.getLegacyBusinessSurfaceAvailability(surface).available, false, surface);
+        }
+        w.fixtureProfile.activeProfile.modules.enabled.catalogs = false;
+        assert.equal(w.getLegacyBusinessSurfaceAvailability('catalogs').available, false);
+        w.fixtureProfile.activeProfile.modules.enabled.catalogs = true;
+        for (const mode of ['all', 'multi']) {
+            w.fixtureScope.mode = mode;
+            assert.equal(w.getLegacyBusinessSurfaceAvailability('catalogs').available, false);
+        }
+        w.fixtureScope.mode = 'single';
+        for (const context of ['dar', 'maysternya_doli', 'crm']) {
+            h.switch(context);
+            assert.equal(w.getLegacyBusinessSurfaceAvailability('catalogs').available, false, context);
+        }
+        h.switch('event_genix');
+        w.fixtureProfile.accessContext.status = 'loading';
+        assert.equal(w.getLegacyBusinessSurfaceAvailability('catalogs').available, false);
+        w.fixtureProfile.accessContext.status = 'ready';
+        w.AppState.currentUser.accessContext.status = 'unavailable';
+        assert.equal(w.getLegacyBusinessSurfaceAvailability('catalogs').available, false);
+    } finally { h.close(); }
+});
+
+test('module and recovery-flag refresh invalidates old denials and stale responses without changing other surface access', async () => {
+    const h = await setup();
+    try {
+        const w = h.w;
+        w.fixtureProfile.membershipMode = 'membership';
+        w.fixtureProfile.activeProfile = { modules: { source: 'business_registry', enabled: { catalogs: false } }, legacySurfaces: { art: { available: false } } };
+        const deniedContext = w.getLegacyBusinessSurfaceContextKey('catalogs');
+        w.noteLegacyBusinessSurfaceUnavailable('catalogs', { code: 'catalogs_not_migrated', message: 'Old disabled catalog' }, deniedContext);
+        assert.equal(w.getLegacyBusinessSurfaceAvailability('catalogs').available, false);
+        w.fixtureProfile.activeProfile.modules.enabled.catalogs = true;
+        assert.notEqual(w.getLegacyBusinessSurfaceContextKey('catalogs'), deniedContext);
+        assert.equal(w.getLegacyBusinessSurfaceAvailability('catalogs').available, true);
+        w.noteLegacyBusinessSurfaceUnavailable('catalogs', { code: 'catalogs_not_migrated', message: 'Stale denial' }, deniedContext);
+        assert.equal(w.getLegacyBusinessSurfaceAvailability('catalogs').available, true);
+        const oldArt = w.getLegacyBusinessSurfaceContextKey('art');
+        w.noteLegacyBusinessSurfaceUnavailable('art', { code: 'art_not_migrated' }, oldArt);
+        w.fixtureProfile.activeProfile.legacySurfaces.art.available = true;
+        assert.equal(w.getLegacyBusinessSurfaceAvailability('art').available, true);
+        assert.equal(w.getLegacyBusinessSurfaceAvailability('staff').available, false);
+    } finally { h.close(); }
+});
+
 test('server denial is remembered for its exact identity/scope and stale denial cannot contaminate another business', async () => {
     const h = await setup();
     try {

@@ -1105,7 +1105,9 @@ function getLegacyBusinessSurfaceAvailability(surface = 'catalogs') {
     };
     const key = Object.prototype.hasOwnProperty.call(labels, surface) ? surface : 'catalogs';
     const denied = legacyBusinessSurfaceDenials.get(key);
-    if (denied?.context === getLegacyBusinessSurfaceContextKey(key)) return { available: false, code: denied.code, message: denied.message };
+    const context = getLegacyBusinessSurfaceContextKey(key);
+    if (denied?.context === context) return { available: false, code: denied.code, message: denied.message };
+    if (denied) legacyBusinessSurfaceDenials.delete(key);
     const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
     const profile = getCrmBusinessOperatingProfile();
     const scope = getCrmBusinessScope(user);
@@ -1114,7 +1116,10 @@ function getLegacyBusinessSurfaceAvailability(surface = 'catalogs') {
         && profile.activeBusinessId === scope.activeContext);
     const recovered = ['certificates', 'art'].includes(key)
         && profile?.activeProfile?.legacySurfaces?.[key]?.available === true;
-    const available = ready && (profile.membershipMode === 'compatibility' || recovered)
+    const parkCatalogs = key === 'catalogs' && profile?.membershipMode === 'membership'
+        && profile?.activeProfile?.modules?.source === 'business_registry'
+        && profile.activeProfile.modules.enabled?.catalogs === true;
+    const available = ready && (profile.membershipMode === 'compatibility' || recovered || parkCatalogs)
         && scope.mode === CRM_BUSINESS_SCOPE_SINGLE && scope.activeContext === CRM_BUSINESS_DEFAULT_CONTEXT;
     return {
         available,
@@ -1132,7 +1137,10 @@ function getLegacyBusinessSurfaceContextKey(surface = 'catalogs') {
     return JSON.stringify([surface, user?.id || user?.username || null,
         apiAuthAuthorizationFingerprint(user || {}), profile?.activeBusinessId || null,
         profile?.membershipMode || null, profile?.accessContext || null,
-        scope.mode, scope.activeContext, scope.selectedContexts || []]);
+        scope.mode, scope.activeContext, scope.selectedContexts || [],
+        profile?.activeProfile?.modules?.source || null,
+        profile?.activeProfile?.modules?.enabled?.[surface] ?? null,
+        profile?.activeProfile?.legacySurfaces?.[surface] || null]);
 }
 
 function legacyBusinessSurfaceError(surface, availability = getLegacyBusinessSurfaceAvailability(surface)) {

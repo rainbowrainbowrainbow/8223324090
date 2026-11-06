@@ -68,7 +68,7 @@ function mirrorBootstrapFixture(t, source, mirrorlist) {
     const vendor = path.join(apt, 'sources.list.d', 'vendor.list');
     fs.writeFileSync(vendor, 'deb https://packages.microsoft.com/ubuntu/24.04/prod noble main\n');
     const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
-    const block = workflow.match(/- name: Use Ubuntu archive mirror for WebKit dependencies[\s\S]*?run: \|\r?\n((?: {10}[^\n]*(?:\n|$))+)/);
+    const block = workflow.match(/- name: Use Ubuntu archive mirror for (?:WebKit|browser) dependencies[\s\S]*?run: \|\r?\n((?: {10}[^\n]*(?:\n|$))+)/);
     assert.ok(block, 'Read the actual workflow bootstrap, not a copied implementation');
     const shellPath = value => value.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, drive) => '/' + drive.toLowerCase());
     const body = block[1].split('\n').map(line => line.slice(10)).join('\n').replaceAll('/etc/apt', shellPath(apt));

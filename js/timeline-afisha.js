@@ -206,6 +206,7 @@
         if (M.context() !== 'event_genix' || !M.writable('edit_booking')) return;
         block.style.touchAction = 'none';
         block.addEventListener('pointerdown', e => {
+            if (e.pointerType === 'touch' && window.isTimelinePhoneOverview?.()) return;
             if (e.button !== 0 || pending.has(String(event.id))) return;
             const grid = block.closest('.line-grid');
             if (!grid) return;
@@ -428,6 +429,7 @@
             if (item.birthdaySlot) birthdayDetails(item, block); else details(item, block);
         });
         block.addEventListener('pointerdown', e => {
+            if (e.pointerType === 'touch' && window.isTimelinePhoneOverview?.()) return;
             if (e.button !== 0 || !canMove(item) || pending.has(String(item.id))) return;
             e.stopPropagation();
             cancel();

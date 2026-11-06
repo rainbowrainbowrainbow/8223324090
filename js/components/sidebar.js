@@ -4663,7 +4663,8 @@ const Sidebar = (() => {
         if (sidebar) {
             _setSidebarCollapsed(localStorage.getItem('pzp_sidebar_collapsed') === 'true', false);
         }
-        const isMobileSidebar = () => window.matchMedia ? window.matchMedia('(max-width: 768px)').matches : window.innerWidth <= 768;
+        const isMobileSidebar = () => document.body.classList.contains('timeline-phone-layout')
+            || (window.matchMedia ? window.matchMedia('(max-width: 768px)').matches : window.innerWidth <= 768);
         const setMobileSidebarOpen = (open) => {
             if (!sidebar) return;
             const nextOpen = Boolean(open);

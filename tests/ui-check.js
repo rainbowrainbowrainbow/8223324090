@@ -3324,7 +3324,7 @@ const timelineReadableMinimums = (timelineResponsiveCellWidthBlock.match(/const 
     .slice(1)
     .map(Number);
 const timelineApplyResponsiveDensityBlock = sourceBlock(uiCode, 'function applyTimelineResponsiveDensity', 'function syncTimelineViewHeight');
-const timelineCompactLineHeights = (timelineApplyResponsiveDensityBlock.match(/const nextLineHeight\s*=\s*compact\s*\?\s*\(level\s*===\s*15\s*\?\s*(\d+)\s*:\s*level\s*===\s*30\s*\?\s*(\d+)\s*:\s*(\d+)\)/) || [])
+const timelineCompactLineHeights = (timelineApplyResponsiveDensityBlock.match(/const nextLineHeight\s*=\s*(?:isTimelinePhoneOverview\(\)\s*\?\s*64\s*:\s*)?compact\s*\?\s*\(level\s*===\s*15\s*\?\s*(\d+)\s*:\s*level\s*===\s*30\s*\?\s*(\d+)\s*:\s*(\d+)\)/) || [])
     .slice(1)
     .map(Number);
 const iphoneSafeDownloadFiles = [

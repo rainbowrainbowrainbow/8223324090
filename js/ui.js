@@ -2760,6 +2760,18 @@ function _timelineViewportHeight() {
     return Math.round(visualHeight || window.innerHeight || document.documentElement?.clientHeight || 900);
 }
 
+function isTimelinePhoneViewport() {
+    const width = _timelineViewportWidth();
+    const height = _timelineViewportHeight();
+    return window.matchMedia?.('(pointer: coarse)').matches === true
+        && Math.min(width, height) <= 600 && Math.max(width, height) <= 1024;
+}
+
+function isTimelinePhoneOverview() {
+    return document.body?.classList.contains('timeline-phone-layout')
+        && document.body.classList.contains('timeline-view-animators');
+}
+
 function syncTimelineViewportMetrics() {
     const width = _timelineViewportWidth();
     const height = _timelineViewportHeight();
@@ -2768,6 +2780,8 @@ function syncTimelineViewportMetrics() {
     document.documentElement.classList.toggle('timeline-dashboard-root', !!timelinePage);
     document.documentElement.classList.toggle('timeline-compact-mode', compactTimeline);
     document.body?.classList?.toggle('timeline-compact-mode', compactTimeline);
+    document.body?.classList.toggle('timeline-phone-layout', !!timelinePage
+        && document.body.classList.contains('timeline-mode-park') && isTimelinePhoneViewport());
     if (width > 0) document.documentElement.style.setProperty('--eg-viewport-width', `${width}px`);
     if (height > 0) document.documentElement.style.setProperty('--eg-viewport-height', `${height}px`);
 }
@@ -2830,6 +2844,11 @@ function _timelineFitCellWidth(level, headerWidth, scrollPadding) {
 function _timelineResponsiveCellWidth(level, compact, headerWidth, scrollPadding) {
     const base = _timelineBaseCellWidth(level, compact);
     const viewportWidth = _timelineViewportWidth();
+    // Keep the same time geometry when a phone rotates. Resize must not refetch
+    // bookings simply because the viewport crossed a desktop width breakpoint.
+    if (document.body?.classList.contains('timeline-phone-layout')) {
+        return level === 15 ? 44 : level === 30 ? 64 : 92;
+    }
     if (viewportWidth <= 768) {
         // v0.69.20: phones must scroll horizontally instead of crushing readable time cells.
         if (viewportWidth <= 360) return level === 15 ? 36 : level === 30 ? 50 : 76;
@@ -2850,6 +2869,7 @@ function _timelineResponsiveCellWidth(level, compact, headerWidth, scrollPadding
 }
 
 function _timelineResponsiveHeaderWidth() {
+    if (document.body?.classList.contains('timeline-phone-layout')) return 96;
     const viewportWidth = _timelineViewportWidth();
     if (viewportWidth <= 360) return 56;
     if (viewportWidth <= 390) return 62;
@@ -2891,7 +2911,8 @@ function applyTimelineResponsiveDensity() {
         : _timelineResponsiveHeaderWidth();
     const nextScrollPadding = compact ? (viewportWidth <= 768 ? 6 : 8) : (viewportWidth <= 1536 ? 14 : 20);
     const nextCellWidth = _timelineResponsiveCellWidth(level, compact, nextHeaderWidth, nextScrollPadding);
-    const nextLineHeight = compact ? (level === 15 ? 44 : level === 30 ? 40 : 46) : (level === 15 ? 64 : level === 30 ? 72 : 80);
+    const nextLineHeight = isTimelinePhoneOverview() ? 64
+        : compact ? (level === 15 ? 44 : level === 30 ? 40 : 46) : (level === 15 ? 64 : level === 30 ? 72 : 80);
     const changed = CONFIG.TIMELINE.CELL_WIDTH !== nextCellWidth;
 
     CONFIG.TIMELINE.CELL_WIDTH = nextCellWidth;

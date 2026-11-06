@@ -4,6 +4,34 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { JSDOM } = require('jsdom');
+
+test('Park phone time geometry stays stable across rotation and excludes desktop and education', () => {
+    const dom = new JSDOM('<body class="timeline-dashboard-page timeline-mode-park timeline-view-animators"></body>', { url: 'https://timeline.test/', runScripts: 'outside-only' });
+    try {
+        const w = dom.window; let coarse = true;
+        w.matchMedia = () => ({ matches: coarse });
+        w.CONFIG = { TIMELINE: { CELL_WIDTH: 50, CELL_MINUTES: 15 } };
+        w.AppState = { zoomLevel: 15, compactMode: false };
+        const source = fs.readFileSync(path.join(__dirname, '../js/ui.js'), 'utf8');
+        w.eval(source.slice(source.indexOf('function _timelineBaseCellWidth('), source.indexOf('function timelineOuterHeight(')));
+        function size(width, height) {
+            Object.defineProperty(w, 'innerWidth', { value: width, configurable: true });
+            Object.defineProperty(w, 'innerHeight', { value: height, configurable: true });
+            return w.applyTimelineResponsiveDensity();
+        }
+        size(390, 844);
+        assert.equal(w.CONFIG.TIMELINE.CELL_WIDTH, 44);
+        assert.equal(w.document.body.classList.contains('timeline-phone-layout'), true);
+        assert.equal(size(844, 390), false, 'rotation is geometry-only, so resize need not render/fetch');
+        assert.equal(w.CONFIG.TIMELINE.CELL_WIDTH, 44);
+        assert.equal(w.document.documentElement.style.getPropertyValue('--timeline-line-header-w'), '96px');
+        coarse = false; size(844, 390);
+        assert.equal(w.document.body.classList.contains('timeline-phone-layout'), false);
+        assert.equal(w.CONFIG.TIMELINE.CELL_WIDTH, 50);
+        coarse = true; w.document.body.classList.replace('timeline-mode-park', 'timeline-mode-education'); size(390, 844);
+        assert.equal(w.document.body.classList.contains('timeline-phone-layout'), false);
+    } finally { dom.window.close(); }
+});
 const {
     buildModuleMap,
     startPagePathForBusiness

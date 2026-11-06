@@ -1686,6 +1686,27 @@ test('interaction save lock blocks a second drag start', () => {
     assert.ok(api.getBookingDragState(), 'drag can start again once save lock is released');
 });
 
+test('phone overview touch cannot arm booking drag or resize while mouse behavior remains available', () => {
+    const { window, api } = createHarness();
+    try {
+        window.isTimelinePhoneOverview = () => true;
+        const block = window.document.createElement('div');
+        block.className = 'booking-block';
+        const handle = window.document.createElement('div');
+        handle.className = 'resize-handle'; block.appendChild(handle);
+        window.document.body.appendChild(block);
+        const booking = { id: 'phone-booking', lineId: 'line-1', time: '14:00', duration: 60 };
+        api.initBookingDrag(block, booking, 12); api.initBookingResize(handle, block, booking, 12);
+        block.dispatchEvent(pointerEvent(window, 'pointerdown', { pointerType: 'touch' }));
+        handle.dispatchEvent(pointerEvent(window, 'pointerdown', { pointerType: 'touch' }));
+        assert.equal(api.getBookingDragState(), null);
+        assert.equal(api.getResizeState(), null);
+        assert.equal(api.hasActiveTimelineInteractionState(), false);
+        block.dispatchEvent(pointerEvent(window, 'pointerdown', { pointerType: 'mouse' }));
+        assert.ok(api.getBookingDragState(), 'mouse drag contract is retained');
+    } finally { window.close(); }
+});
+
 test('booking drag reconciles final pointerup target line before saving', async () => {
     const { window, api } = createHarness();
     const booking = {

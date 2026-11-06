@@ -1789,6 +1789,7 @@ function initializeTimeline() {
 }
 
 function renderTimeScale(date) {
+    if (typeof applyTimelineResponsiveDensity === 'function') applyTimelineResponsiveDensity();
     const container = document.getElementById('timeScale');
     container.innerHTML = '';
 
@@ -4970,6 +4971,7 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
     block.setAttribute('aria-label', `${isMaysternyaSlotClosed ? closedSlotLabel : (renderBooking.label || renderBooking.category)} ${renderBooking.time} ${renderBooking.room || ''}${costumeLabel ? ` ${costumeLabel}` : ''}`);
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
+    block.dataset.phoneCompact = width < 180 ? 'true' : 'false';
 
     const userLetter = renderBooking.createdBy ? renderBooking.createdBy.charAt(0).toUpperCase() : '';
     const costumeText = costumeLabel ? `<div class="costume-text">${escapeHtml(costumeLabel)}</div>` : '';
@@ -5140,6 +5142,15 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
         ? roomActivityHtml
         : (isCompactActivityBlock ? (bookingBlockDensity === 'micro' ? microBookingHtml : compactBookingHtml) : defaultBookingHtml);
 
+    // An additional presentation of the same canonical label, not a separate
+    // booking record or details renderer. Desktop/room content stays available.
+    const phoneSummary = document.createElement('div');
+    phoneSummary.className = 'timeline-phone-booking-summary';
+    const phoneTime = `${renderBooking.time}–${minutesToTime(timeToMinutes(renderBooking.time) + effectiveDuration)}`;
+    const phoneStatus = { confirmed: 'Підтверджено', preliminary: 'Попереднє', cancelled: 'Скасовано' }[renderBooking.status] || renderBooking.status || '';
+    phoneSummary.innerHTML = `<span class="timeline-phone-booking-title">${escapeHtml(normalizedBookingTitleText)}</span><span class="timeline-phone-booking-meta"><span>${escapeHtml(phoneTime)}</span><span class="timeline-phone-booking-status">${escapeHtml(phoneStatus)}</span></span>`;
+    block.appendChild(phoneSummary);
+
     // v5.19: Linked bookings click → navigate to parent booking details
     // v30.3: Store booking ID on block for bulk operations
     if (!isViewer() && !isMaysternyaSlotClosed) {
@@ -5215,6 +5226,7 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
     });
     // v3.9: Touch events for mobile tooltip
     block.addEventListener('touchstart', (e) => {
+        if (typeof isTimelinePhoneOverview === 'function' && isTimelinePhoneOverview()) return;
         if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState || _banquetLinkDraft) return;
         if (e.target.closest('[data-banquet-link-handle]')) return;
         if (block._timelineBanquetSummary) return;
@@ -5898,6 +5910,7 @@ function _triggerHaptic(type) {
 // --- Initialize drag on a booking block ---
 function initBookingDrag(block, booking, startHour) {
     block.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'touch' && typeof isTimelinePhoneOverview === 'function' && isTimelinePhoneOverview()) return;
         // Only primary button (left click / single touch)
         if (e.button !== 0) return;
         // Guard: afisha drag in progress
@@ -6999,6 +7012,7 @@ window.addEventListener('blur', () => {
 
 function initBookingResize(handle, block, booking, startHour) {
     handle.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'touch' && typeof isTimelinePhoneOverview === 'function' && isTimelinePhoneOverview()) return;
         // Only primary button
         if (e.button !== 0) return;
         // Guard: drag in progress
@@ -7441,13 +7455,18 @@ function _beginAfishaDrag(block, event, startHour, clientX) {
 }
 
 function initAfishaDrag(block, event, startHour) {
+    block.addEventListener('click', () => {
+        if (typeof isTimelinePhoneOverview === 'function' && isTimelinePhoneOverview()) editAfishaItem(event.id);
+    });
     block.addEventListener('mousedown', (e) => {
+        if (typeof isTimelinePhoneOverview === 'function' && isTimelinePhoneOverview()) return;
         if (e.button !== 0) return;
         e.preventDefault();
         e.stopPropagation();
         _beginAfishaDrag(block, event, startHour, e.clientX);
     });
     block.addEventListener('touchstart', (e) => {
+        if (typeof isTimelinePhoneOverview === 'function' && isTimelinePhoneOverview()) return;
         if (e.touches.length !== 1) return;
         e.preventDefault();
         _beginAfishaDrag(block, event, startHour, e.touches[0].clientX);

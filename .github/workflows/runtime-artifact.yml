@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 10
           persist-credentials: false
       - uses: actions/setup-node@v5
         with:
@@ -50,10 +50,11 @@ jobs:
           test -f "$after/db/migrate.js"
           test -f "$after/eventgenix-release-deployment.json"
           builds=(after)
-          if git rev-parse --verify --quiet HEAD^ >/dev/null && ! git cat-file -e HEAD^:railpack.json 2>/dev/null; then
+          packaging_base="$(git log -1 --format='%H^' -- .gitattributes railpack.json)"
+          if git rev-parse --verify --quiet "$packaging_base" >/dev/null && ! git cat-file -e "$packaging_base:railpack.json" 2>/dev/null; then
             before="$work/before"
             mkdir "$before"
-            git archive --format=tar HEAD^ | tar -xf - -C "$before"
+            git archive --format=tar "$packaging_base" | tar -xf - -C "$before"
             test -d "$before/tests"
             builds=(before after)
           fi
@@ -103,13 +104,16 @@ jobs:
 
             pgdatabase="eventgenix_artifact_${label}_test"
             docker exec "$database" createdb -U postgres "$pgdatabase"
-            export BOOTSTRAP_CREATOR_PASSWORD="$(openssl rand -hex 24)"
-            export JD:/Codex/EventGenix/performance-release-08321-20261107/output/performance-remediation/worktree_SECRET="$(openssl rand -hex 48)"
+            BOOTSTRAP_CREATOR_PASSWORD="$(openssl rand -hex 24)"
+            JWT_SECRET="$(openssl rand -hex 48)"
+            echo "::add-mask::$BOOTSTRAP_CREATOR_PASSWORD"
+            echo "::add-mask::$JWT_SECRET"
+            export BOOTSTRAP_CREATOR_PASSWORD JWT_SECRET
             expected_commit=""
             if [[ "$label" == after ]]; then expected_commit="$GITHUB_SHA"; fi
             docker run --detach --name "$app" --network "$network" \
               -e "PGHOST=$database" -e PGUSER=postgres -e "PGDATABASE=$pgdatabase" -e PORT=3000 \
-              -e BOOTSTRAP_CREATOR_USERNAME=artifact_smoke -e BOOTSTRAP_CREATOR_PASSWORD -e JD:/Codex/EventGenix/performance-release-08321-20261107/output/performance-remediation/worktree_SECRET \
+              -e BOOTSTRAP_CREATOR_USERNAME=artifact_smoke -e BOOTSTRAP_CREATOR_PASSWORD -e JWT_SECRET \
               -e BACKUP_OUTBOUND_HOLD=true -e PAYMENT_OUTBOX_WAKEUP_DISABLED=true \
               -e SKIP_TELEGRAM_BOT_STARTUP_CONFIG=true "$tag"
             docker cp tests/fixtures/booking-summary-layout-compact.fixture.json "$app:/tmp/artifact-pdf-fixture.json"

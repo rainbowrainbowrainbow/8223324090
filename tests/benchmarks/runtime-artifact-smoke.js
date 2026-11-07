@@ -54,12 +54,12 @@ async function main() {
     const headers = { Authorization: `Bearer ${session.token || session.accessToken}`, 'Content-Type': 'application/json' };
     const name = 'Synthetic Artifact Customer';
     const created = await read('/api/customers?businessContext=event_genix', {
-        method: 'POST', headers, body: JSON.stringify({ name })
+        method: 'POST', headers, body: JSON.stringify({ name, phone: '+38 (097) 426-00-00' })
     });
     const customer = await created.json();
     const list = await read('/api/customers?limit=50&businessContext=event_genix', { headers });
     assert.ok(JSON.stringify(await list.json()).includes(name), 'Synthetic customer appears in the list');
-    for (const term of ['Synthetic Artifact Customer', 'Synthetic Artifact']) {
+    for (const term of ['Synthetic Artifact Customer', 'Synthetic Artifact', '38097 426']) {
         const search = await read('/api/customers/search?q=' + encodeURIComponent(term) + '&businessContext=event_genix', { headers });
         assert.ok((await search.json()).some(row => row.id === customer.id));
     }

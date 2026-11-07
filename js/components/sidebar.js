@@ -30,6 +30,7 @@ const Sidebar = (() => {
         timelineSummaryCache: new Map(),
         timelineSummaryCurrent: null,
         timelineSummaryRequestSeq: 0,
+        timelineScopeRefreshQueued: false,
         timelineSummaryPromises: new Map()
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
@@ -2621,6 +2622,17 @@ const Sidebar = (() => {
         void _fetchSidebarTimelineSummary(requested, options);
     }
 
+    function _queueSidebarTimelineScopeRefresh() {
+        if (_state.timelineScopeRefreshQueued) return;
+        _state.timelineScopeRefreshQueued = true;
+        // Shell readiness and business hydration can run in the same turn.
+        // Read the resulting scope once, while allowing later updates to invalidate it.
+        queueMicrotask(() => {
+            _state.timelineScopeRefreshQueued = false;
+            _refreshSidebarTimelineSummary({ clearCache: true, force: true });
+        });
+    }
+
     function _handleTimelineSummaryChanged(event) {
         const detail = event?.detail || {};
         const viewMode = detail.viewMode === 'week' ? 'week' : 'day';
@@ -4939,7 +4951,7 @@ const Sidebar = (() => {
     window.addEventListener('crm:authenticated-runtime-ready', () => {
         void _ensureSidebarBusinessProfile();
         _refreshSidebarOperationalWidgets();
-        _refreshSidebarTimelineSummary({ clearCache: true, force: true });
+        _queueSidebarTimelineScopeRefresh();
         void _loadSidebarIdentityMeta(true);
         initUserCard();
         _notifyGlobalTaskTimerShellChanged();
@@ -4949,7 +4961,7 @@ const Sidebar = (() => {
         if (c?.id) render('#' + c.id, { refreshOperational: false, refreshTimelineSummary: false });
         initUserCard();
         _refreshSidebarOperationalWidgets();
-        _refreshSidebarTimelineSummary({ clearCache: true, force: true });
+        _queueSidebarTimelineScopeRefresh();
     });
     window.addEventListener('crmBusinessContextHydrated', () => {
         _state.businessSwitching = false;
@@ -4957,13 +4969,13 @@ const Sidebar = (() => {
         if (c?.id) render('#' + c.id, { refreshOperational: false, refreshTimelineSummary: false });
         initUserCard();
         _refreshSidebarOperationalWidgets();
-        _refreshSidebarTimelineSummary({ clearCache: true, force: true });
+        _queueSidebarTimelineScopeRefresh();
     });
     window.addEventListener('crmBusinessProfileChanged', () => {
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
         if (c?.id) render('#' + c.id, { refreshTimelineSummary: false });
         initUserCard();
-        _refreshSidebarTimelineSummary({ clearCache: true, force: true });
+        _queueSidebarTimelineScopeRefresh();
     });
     window.addEventListener('timeline:view-changed', event => {
         _syncSidebarTimelineLauncherState(event?.detail?.view || '');

@@ -29,6 +29,15 @@ function harness() {
     return { dom, w, calls, scripts, context: v => { context = v; },
         deliver() { w.HrStructureModule = chunk; scripts().at(-1).dispatchEvent(new w.Event('load')); } };
 }
+test('inline HR startup on an unbased document does not resolve or request the structure module', () => {
+    const dom = new JSDOM('<!doctype html>', { runScripts: 'outside-only' });
+    try {
+        assert.equal(dom.window.location.href, 'about:blank');
+        assert.doesNotThrow(() => vm.runInContext(loader, dom.getInternalVMContext()));
+        assert.equal(dom.window.document.querySelectorAll('script').length, 0);
+    } finally { dom.window.close(); }
+});
+
 test('structure reads load one versioned chunk on demand and initialize once', async () => {
     const h = harness();
     try {

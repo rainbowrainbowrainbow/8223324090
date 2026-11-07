@@ -14740,13 +14740,8 @@ const COMPANY_ORG_HISTORY_LIMIT = 50;
 const COMPANY_ORG_ARCHIVE_FILTERS = new Set(['active', 'archived', 'all']);
 
 // HR_STRUCTURE_LOADER_START
-const hrStructureScriptSource = (() => {
-    const entry = document.currentScript?.src
-        || document.querySelector('script[src*="hr-page.js"]')?.src;
-    const url = new URL('hr-structure-page.js', entry || new URL('/js/hr-page.js', window.location.href));
-    if (entry) url.search = new URL(entry, window.location.href).search;
-    return url.href;
-})();
+const hrStructureEntryScript = document.currentScript?.src
+    || document.querySelector('script[src*="hr-page.js"]')?.src;
 let hrStructureModulePromise = null;
 
 function loadHrStructureModule() {
@@ -14754,7 +14749,14 @@ function loadHrStructureModule() {
     if (hrStructureModulePromise) return hrStructureModulePromise;
     const operation = new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = hrStructureScriptSource;
+        if (hrStructureEntryScript) {
+            const entry = new URL(hrStructureEntryScript);
+            const url = new URL('hr-structure-page.js', entry);
+            url.search = entry.search;
+            script.src = url.href;
+        } else {
+            script.src = '/js/hr-structure-page.js';
+        }
         script.async = true;
         let timeout;
         const finish = error => {

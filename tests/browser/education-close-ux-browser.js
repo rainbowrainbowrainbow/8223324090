@@ -37,14 +37,17 @@ evidence.completedProfileThemes = [];
 evidence.visibilityReads = [];
 const progressProof = createProgressProof(out, evidence);
 let browser, context, page;
+let phaseTimings;
 async function proof() {
     const manifest = JSON.parse((await pool.query('SELECT value FROM settings WHERE key=$1', [OWNER_KEY])).rows[0].value);
     return { manifest, preflight: await preflight(pool, manifest) };
 }
 async function check(name, action) {
+    const started = performance.now();
     try { const details = await action(); evidence.checks.push({ name, status: 'PASS', details }); }
     catch (error) { evidence.checks.push({ name, status: 'FAIL', error: error.message }); }
     progressProof.recordCheck(evidence.checks.at(-1));
+    if (phaseTimings) phaseTimings.checkMs += performance.now() - started;
 }
 async function measureContrast(page,label){
     evidence.audits.push(await page.evaluate(label=>{
@@ -87,7 +90,10 @@ async function capture(name, rootSelector) {
     }, username);
     let audit;
     try {
+        const screenshotStarted = performance.now();
         await page.screenshot({ path: path.join(out, name + '.png') });
+        phaseTimings.screenshotMs += performance.now() - screenshotStarted;
+        const auditStarted = performance.now();
         audit = await page.evaluate(rootSelector => {
             const visible = el => {
                 const closedDetails = el.closest('details:not([open])');
@@ -97,8 +103,18 @@ async function capture(name, rootSelector) {
             const roots = [...document.querySelectorAll(rootSelector)].filter(visible);
             const key = el => el.id ? '#' + el.id : el.className || el.tagName;
             const overflow = [], controls = [], missingNames = [], tinyTextInputs = [], inputBoundaries = [];
-            const canvas = document.createElement('canvas'), pixel = canvas.getContext('2d');
-            const rgb = color => { pixel.clearRect(0, 0, 1, 1); pixel.fillStyle = color; pixel.fillRect(0, 0, 1, 1); const c=[...pixel.getImageData(0, 0, 1, 1).data];return [c[0],c[1],c[2],c[3]/255]; };
+            const canvas = document.createElement('canvas'), pixel = canvas.getContext('2d', { willReadFrequently: true });
+            const colorCache = new Map();
+            const rgb = color => {
+                if (colorCache.has(color)) return colorCache.get(color);
+                pixel.clearRect(0, 0, 1, 1);
+                pixel.fillStyle = color;
+                pixel.fillRect(0, 0, 1, 1);
+                const [red, green, blue, alpha] = pixel.getImageData(0, 0, 1, 1).data;
+                const value = [red, green, blue, alpha / 255];
+                colorCache.set(color, value);
+                return value;
+            };
             const luminance = c => c.slice(0,3).map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }).reduce((s, v, i) => s + v * [.2126, .7152, .0722][i], 0);
             const mix=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*(fg[3]??1)+bg[i]*(1-(fg[3]??1)));
             const backgroundCache=new WeakMap();
@@ -139,9 +155,12 @@ async function capture(name, rootSelector) {
                 touch: matchMedia('(pointer: coarse)').matches, viewportMeta: document.querySelector('meta[name="viewport"]')?.content,
                 dialogs: [...document.querySelectorAll('[role="dialog"]')].filter(visible).map(el => ({ id: el.id, modal: el.getAttribute('aria-modal'), name: el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') })) };
         }, rootSelector);
+        phaseTimings.layoutAuditMs += performance.now() - auditStarted;
     } finally { await page.evaluate(() => { for (const [node, value] of window.__mobileRedactions || []) if (node.isConnected) node.nodeValue = value; delete window.__mobileRedactions; }); }
     evidence.screens.push({ name, file: name + '.png', audit });
+    const contrastStarted = performance.now();
     await measureContrast(page, name);
+    phaseTimings.contrastMs += performance.now() - contrastStarted;
     const contrast = evidence.audits.at(-1).contrast;
     await check(name + ':text-contrast', () => assert.deepEqual(contrast.filter(row => row.ratio == null || row.ratio < row.minimum), [], 'Text contrast below measured WCAG threshold'));
     await check(name + ':layout', () => { assert.ok(audit.documentWidth <= audit.width + 1, `Document overflow ${audit.documentWidth}/${audit.width}`); assert.deepEqual(audit.overflow, [], 'Visible content outside viewport'); });
@@ -202,6 +221,8 @@ async function trap(selector, name) {
     browser = await playwright[engine].launch({ headless: true });
     evidence.browserVersion = browser.version();
     for (const profile of profiles.flatMap(profile => ['light','dark'].map(theme => ({ ...profile, theme })))) {
+        const profileStarted = performance.now();
+        phaseTimings = { loginMs: 0, navigationMs: 0, idleMs: 0, screenshotMs: 0, layoutAuditMs: 0, contrastMs: 0, checkMs: 0 };
         const deviceName = profile.name.startsWith('tablet') ? (engine === 'webkit' ? 'iPad Pro 11' : 'Galaxy Tab S4') : (engine === 'webkit' ? 'iPhone 13' : 'Pixel 5');
         const userAgent = profile.touch ? playwright.devices[deviceName].userAgent : undefined;
         context = await browser.newContext({ viewport: { width: profile.width, height: profile.height }, hasTouch: profile.touch, isMobile: profile.touch,
@@ -217,6 +238,7 @@ async function trap(selector, name) {
         if (context.routeWebSocket) await context.routeWebSocket('**/*', socket => socket.close());
         // UI login is a fixture prerequisite. Exercise the section in a fresh
         // page sharing that real session, without racing the login redirect.
+        const loginStarted = performance.now();
         const loginPage = await context.newPage(); loginPage.setDefaultTimeout(45000);
         await loginPage.goto(`${base}/?businessContext=dar&educationSchedule=today&date=${m.anchorDate}`, { waitUntil: 'domcontentloaded' });
         await loginPage.locator('#username').fill(username); await loginPage.locator('#password').fill(password);
@@ -225,6 +247,7 @@ async function trap(selector, name) {
         await loginPage.waitForFunction(() => Boolean(document.getElementById('timelineDate')?.value && window.isAuthenticatedRuntimeReady?.()));
         await loginPage.waitForLoadState('networkidle');
         await loginPage.close();
+        phaseTimings.loginMs = performance.now() - loginStarted;
         page = await context.newPage(); page.setDefaultTimeout(15000);
         page.on('pageerror', error => {
             let message = error.message, stack = error.stack || '';
@@ -248,6 +271,7 @@ async function trap(selector, name) {
         await page.goto(`${base}/?businessContext=dar&educationSchedule=today&date=${m.anchorDate}`, { waitUntil: 'domcontentloaded' });
         await page.locator('#mainApp').waitFor({ state: 'visible', timeout: 45000 });
         await page.waitForFunction(date => document.getElementById('timelineDate')?.value === date && window.isAuthenticatedRuntimeReady?.()
+            && window.EducationScheduleWorkspace?.state.activeView === 'today'
             && document.querySelectorAll('[data-education-booking-id]').length === 4 && !window.EducationScheduleWorkspace.state.loading, m.anchorDate, { timeout: 45000 });
         const theme = profile.theme;
         if (await page.evaluate(() => document.documentElement.dataset.theme) !== theme) await page.locator('#headerThemeToggle').click();
@@ -257,13 +281,17 @@ async function trap(selector, name) {
         async function go(view, date = m.anchorDate, extra = '') {
             // Drain real reads before navigation: WebKit reports unload cancellations
             // as page errors, which must not masquerade as a product failure.
+            const idleStarted = performance.now();
             await page.waitForLoadState('networkidle');
+            phaseTimings.idleMs += performance.now() - idleStarted;
+            const navigationStarted = performance.now();
             await page.goto(`${base}/?businessContext=dar&educationSchedule=${view}&date=${date}${extra}`, { waitUntil: 'domcontentloaded' });
             await page.locator('#mainApp').waitFor({ state: 'visible', timeout: 45000 });
             await page.waitForFunction(view => window.EducationScheduleWorkspace?.state.activeView === view, view);
+            phaseTimings.navigationMs += performance.now() - navigationStarted;
         }
         const shell = '#educationScheduleWorkspace,.schedule-command-center';
-        await go('today'); await page.waitForFunction(() => document.querySelectorAll('[data-education-booking-id]').length === 4 && !window.EducationScheduleWorkspace.state.loading);
+        // The direct Today URL has already loaded and settled in the requested theme.
         await capture(label('today'), shell);
         await check(label('compact-five-tabs'), async () => {
             const tabs = page.locator('.education-schedule-tabs');
@@ -484,7 +512,12 @@ async function trap(selector, name) {
         await context.close();
         if (!evidence.completedProfiles.includes(profile.name)) evidence.completedProfiles.push(profile.name);
         evidence.completedProfileThemes.push(profile.name + '-' + theme);
+        console.log('EDUCATION_RESPONSIVE_TIMING ' + JSON.stringify({
+            engine, profile: profile.name, theme, totalMs: Math.round(performance.now() - profileStarted),
+            ...Object.fromEntries(Object.entries(phaseTimings).map(([phase, ms]) => [phase, Math.round(ms)]))
+        }));
     }
+    phaseTimings = null;
     assert.deepEqual(await proof(), before, 'Read-only test mutated retained dataset');
     evidence.datasetUnchanged = true; evidence.preflight = before.preflight;
     assert.deepEqual(hashes(), evidence.sourceHashes, 'Product edited during run');

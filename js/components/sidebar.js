@@ -1482,7 +1482,7 @@ const Sidebar = (() => {
         _initRipple();
         _initMagnetic();
         if (options.refreshOperational !== false) _refreshSidebarOperationalWidgets();
-        _refreshSidebarTimelineSummary();
+        if (options.refreshTimelineSummary !== false) _refreshSidebarTimelineSummary();
         _queueActiveIndicatorUpdate();
     }
 
@@ -4946,7 +4946,7 @@ const Sidebar = (() => {
     });
     window.addEventListener('crmBusinessContextChanged', () => {
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
-        if (c?.id) render('#' + c.id, { refreshOperational: false });
+        if (c?.id) render('#' + c.id, { refreshOperational: false, refreshTimelineSummary: false });
         initUserCard();
         _refreshSidebarOperationalWidgets();
         _refreshSidebarTimelineSummary({ clearCache: true, force: true });
@@ -4954,14 +4954,14 @@ const Sidebar = (() => {
     window.addEventListener('crmBusinessContextHydrated', () => {
         _state.businessSwitching = false;
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
-        if (c?.id) render('#' + c.id, { refreshOperational: false });
+        if (c?.id) render('#' + c.id, { refreshOperational: false, refreshTimelineSummary: false });
         initUserCard();
         _refreshSidebarOperationalWidgets();
         _refreshSidebarTimelineSummary({ clearCache: true, force: true });
     });
     window.addEventListener('crmBusinessProfileChanged', () => {
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
-        if (c?.id) render('#' + c.id);
+        if (c?.id) render('#' + c.id, { refreshTimelineSummary: false });
         initUserCard();
         _refreshSidebarTimelineSummary({ clearCache: true, force: true });
     });

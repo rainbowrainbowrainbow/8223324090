@@ -174,5 +174,14 @@ test('current booking metrics preserve arithmetic, dates, package ownership and 
         assert.equal(scoped.id, 102, 'an invisible newer booking cannot win the ranking');
         assert.equal(scoped.real_last_visit, '2025-02-01');
         assert.equal(Number(scoped.real_total_spent), 0);
+
+        await pool.query(`UPDATE customers SET phone = CASE id
+            WHEN 102 THEN '+38 (097) 426-00-00'
+            WHEN 103 THEN '+38 (097) 9-426-00-00' END
+            WHERE id IN (102, 103)`);
+        const phone = buildCustomerSearchQuery({ query: '38097 426', user: { role: 'creator' } });
+        const phoneMatches = await pool.query(phone.sql, phone.params);
+        assert.deepEqual(phoneMatches.rows.map(row => row.id), [102],
+            'Formatting is ignored, but the intervening extra digit prevents a match');
     });
 });

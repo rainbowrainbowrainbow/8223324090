@@ -36,9 +36,16 @@ function buildCustomerSearchQuery({
     const phoneDigits = q.replace(/\D/g, '');
     const instagramHandle = q.replace(/^@+/, '').trim();
     const params = [pattern];
-    const normalizedPhoneSql = phoneDigits.length >= 2
-        ? ` OR regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') ILIKE $${params.push(`%${phoneDigits}%`)}`
-        : '';
+    let normalizedPhoneSql = '';
+    if (phoneDigits.length >= 2) {
+        const normalizedPattern = params.push(`%${phoneDigits}%`);
+        const digitSubsequence = params.push(`%${phoneDigits.split('').join('%')}%`);
+        // A match must contain every digit in order. Keep the exact normalized
+        // check for rows that pass this cheaper, punctuation-tolerant filter.
+        normalizedPhoneSql = ` OR CASE WHEN c.phone LIKE $${digitSubsequence}
+            THEN regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') ILIKE $${normalizedPattern}
+            ELSE FALSE END`;
+    }
     const instagramHandleSql = instagramHandle && instagramHandle !== q
         ? ` OR c.instagram ILIKE $${params.push(`%${instagramHandle}%`)}`
         : '';

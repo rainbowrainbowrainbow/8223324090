@@ -37,8 +37,10 @@ test('customer search query includes normalized phone digit search only when use
 
     assert.ok(query);
     assert.match(query.sql, /regexp_replace\(COALESCE\(c\.phone, ''\), '\\D', '', 'g'\) ILIKE \$2/);
+    assert.match(query.sql, /CASE WHEN c\.phone LIKE \$3/);
     assert.doesNotMatch(query.sql, /social_identities/);
     assert.equal(query.params[1], '%38097426%');
+    assert.equal(query.params[2], '%3%8%0%9%7%4%2%6%');
 });
 
 test('customer search query returns null for route-level short searches', () => {

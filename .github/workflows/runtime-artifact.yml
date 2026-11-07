@@ -1,0 +1,121 @@
+name: Runtime artifact smoke
+
+on:
+  push:
+    paths:
+      - .gitattributes
+      - railpack.json
+      - package.json
+      - package-lock.json
+      - .github/workflows/runtime-artifact.yml
+      - tests/benchmarks/runtime-artifact-smoke.js
+  pull_request:
+    paths:
+      - .gitattributes
+      - railpack.json
+      - package.json
+      - package-lock.json
+      - .github/workflows/runtime-artifact.yml
+      - tests/benchmarks/runtime-artifact-smoke.js
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+      - name: Build and smoke-test clean release exports
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          archive="railpack-v0.43.0-x86_64-unknown-linux-musl.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/railwayapp/railpack/releases/download/v0.43.0/$archive" -o "$work/$archive"
+          echo "248a8f60f36854aabed6124113631078a802de3461660855fc4de9c26065c1fb  $work/$archive" | sha256sum -c
+          tar -xzf "$work/$archive" -C "$work" railpack
+          "$work/railpack" --version
+
+          after="$(node -e "console.log(require('./scripts/railway-release-up').createCleanExport(process.env.GITHUB_SHA, process.env.GITHUB_REF_NAME, {}).sourceDir)")"
+          test ! -e "$after/tests"
+          test -f "$after/db/migrate.js"
+          test -f "$after/eventgenix-release-deployment.json"
+          builds=(after)
+          if git rev-parse --verify --quiet HEAD^ >/dev/null && ! git cat-file -e HEAD^:railpack.json 2>/dev/null; then
+            before="$work/before"
+            mkdir "$before"
+            git archive --format=tar HEAD^ | tar -xf - -C "$before"
+            test -d "$before/tests"
+            builds=(before after)
+          fi
+
+          network="eventgenix-artifact-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          database="eventgenix-artifact-db-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          app="eventgenix-artifact-app-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cleanup() {
+            docker rm -f "$app" "$database" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker network create --internal "$network"
+          docker run --detach --name "$database" --network "$network" \
+            -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17
+          for attempt in {1..45}; do
+            if docker exec "$database" pg_isready -h 127.0.0.1 -U postgres; then break; fi
+            sleep 1
+          done
+
+          for label in "${builds[@]}"; do
+            source_dir="${!label}"
+            tag="eventgenix-artifact:$label"
+            plan="$work/$label-plan.json"
+            "$work/railpack" prepare --plan-out "$plan" --error-missing-start "$source_dir"
+            if [[ "$label" == after ]]; then
+              jq -e '.steps[] | select(.name == "install") | .variables.NPM_CONFIG_PRODUCTION == "true"' "$plan"
+            fi
+            echo "$label source file bytes: $(du -sb "$source_dir" | cut -f1)"
+            build_args=(--load --progress plain --tag "$tag"
+              --build-arg BUILDKIT_SYNTAX=ghcr.io/railwayapp/railpack-frontend:v0.43.0
+              --build-arg "cache-key=eventgenix-artifact-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$label"
+              --file "$plan" "$source_dir")
+            echo "$label first build"
+            time docker buildx build --no-cache "${build_args[@]}"
+            echo "$label warm build"
+            time docker buildx build "${build_args[@]}"
+            echo "$label image bytes: $(docker image inspect --format '{{.Size}}' "$tag")"
+            docker run --rm --network none --entrypoint sh "$tag" -ec '
+              du -sb /app
+              du -sb /app/node_modules
+              if [ "$1" = after ]; then
+                test ! -e /app/tests
+                test ! -e /app/node_modules/jsdom
+                test ! -e /app/node_modules/jsqr
+              fi' sh "$label"
+
+            pgdatabase="eventgenix_artifact_${label}_test"
+            docker exec "$database" createdb -U postgres "$pgdatabase"
+            export BOOTSTRAP_CREATOR_PASSWORD="$(openssl rand -hex 24)"
+            export JD:/Codex/EventGenix/performance-release-08321-20261107/output/performance-remediation/worktree_SECRET="$(openssl rand -hex 48)"
+            expected_commit=""
+            if [[ "$label" == after ]]; then expected_commit="$GITHUB_SHA"; fi
+            docker run --detach --name "$app" --network "$network" \
+              -e "PGHOST=$database" -e PGUSER=postgres -e "PGDATABASE=$pgdatabase" -e PORT=3000 \
+              -e BOOTSTRAP_CREATOR_USERNAME=artifact_smoke -e BOOTSTRAP_CREATOR_PASSWORD -e JD:/Codex/EventGenix/performance-release-08321-20261107/output/performance-remediation/worktree_SECRET \
+              -e BACKUP_OUTBOUND_HOLD=true -e PAYMENT_OUTBOX_WAKEUP_DISABLED=true \
+              -e SKIP_TELEGRAM_BOT_STARTUP_CONFIG=true "$tag"
+            docker cp tests/fixtures/booking-summary-layout-compact.fixture.json "$app:/tmp/artifact-pdf-fixture.json"
+            docker exec --interactive --workdir /app \
+              -e "EXPECTED_COMMIT=$expected_commit" -e "EXPECTED_BRANCH=$GITHUB_REF_NAME" \
+              "$app" node - < tests/benchmarks/runtime-artifact-smoke.js
+            docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' "$app" "$database"
+            docker rm -f "$app"
+          done

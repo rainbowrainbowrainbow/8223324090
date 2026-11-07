@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "steps": {
+    "install": {
+      "variables": {
+        "NPM_CONFIG_PRODUCTION": "true"
+      }
+    }
+  }
+}

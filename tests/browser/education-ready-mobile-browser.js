@@ -32,16 +32,20 @@ const profiles = [
 evidence.profiles = profiles;
 evidence.completedProfiles = [];
 let browser, context, page;
+let phaseTimings;
 async function proof() {
     const manifest = JSON.parse((await pool.query('SELECT value FROM settings WHERE key=$1', [OWNER_KEY])).rows[0].value);
     return { manifest, preflight: await preflight(pool, manifest) };
 }
 async function check(name, action) {
+    const started = performance.now();
     try { const details = await action(); evidence.checks.push({ name, status: 'PASS', details }); }
     catch (error) { evidence.checks.push({ name, status: 'FAIL', error: error.message }); }
     fs.writeFileSync(path.join(out, 'verification.json'), JSON.stringify(evidence, null, 2));
+    if (phaseTimings) phaseTimings.checkMs += performance.now() - started;
 }
 async function capture(name, rootSelector) {
+    const started = performance.now();
     await page.evaluate(() => document.fonts.ready);
     await page.evaluate(async selector => {
         document.querySelector(selector)?.getBoundingClientRect();
@@ -55,7 +59,9 @@ async function capture(name, rootSelector) {
     }, username);
     let audit;
     try {
+        const screenshotStarted = performance.now();
         await page.screenshot({ path: path.join(out, name + '.png') });
+        phaseTimings.screenshotMs += performance.now() - screenshotStarted;
         audit = await page.evaluate(rootSelector => {
             const visible = el => {
                 const closedDetails = el.closest('details:not([open])');
@@ -94,6 +100,7 @@ async function capture(name, rootSelector) {
                 dialogs: [...document.querySelectorAll('[role="dialog"]')].filter(visible).map(el => ({ id: el.id, modal: el.getAttribute('aria-modal'), name: el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') })) };
         }, rootSelector);
     } finally { await page.evaluate(() => { for (const [node, value] of window.__mobileRedactions || []) if (node.isConnected) node.nodeValue = value; delete window.__mobileRedactions; }); }
+    phaseTimings.captureMs += performance.now() - started;
     evidence.screens.push({ name, file: name + '.png', audit });
     await check(name + ':layout', () => { assert.ok(audit.documentWidth <= audit.width + 1, `Document overflow ${audit.documentWidth}/${audit.width}`); assert.deepEqual(audit.overflow, [], 'Visible content outside viewport'); });
     await check(name + ':names', () => assert.deepEqual(audit.missingNames, [], 'Unnamed controls'));
@@ -141,6 +148,8 @@ async function trap(selector, name) {
     browser = await playwright[engine].launch({ headless: true });
     evidence.browserVersion = browser.version();
     for (const profile of profiles) {
+        const profileStarted = performance.now();
+        phaseTimings = { loginMs: 0, navigationMs: 0, idleMs: 0, captureMs: 0, screenshotMs: 0, checkMs: 0 };
         const deviceName = profile.name.startsWith('tablet') ? (engine === 'webkit' ? 'iPad Pro 11' : 'Galaxy Tab S4') : (engine === 'webkit' ? 'iPhone 13' : 'Pixel 5');
         const userAgent = profile.touch ? playwright.devices[deviceName].userAgent : undefined;
         context = await browser.newContext({ viewport: { width: profile.width, height: profile.height }, hasTouch: profile.touch, isMobile: profile.touch,
@@ -156,6 +165,7 @@ async function trap(selector, name) {
         if (context.routeWebSocket) await context.routeWebSocket('**/*', socket => socket.close());
         // UI login is a fixture prerequisite. Exercise the section in a fresh
         // page sharing that real session, without racing the login redirect.
+        const loginStarted = performance.now();
         const loginPage = await context.newPage(); loginPage.setDefaultTimeout(45000);
         await loginPage.goto(`${base}/?businessContext=dar&educationSchedule=today&date=${m.anchorDate}`, { waitUntil: 'domcontentloaded' });
         await loginPage.locator('#username').fill(username); await loginPage.locator('#password').fill(password);
@@ -164,6 +174,7 @@ async function trap(selector, name) {
         await loginPage.waitForFunction(() => Boolean(document.getElementById('timelineDate')?.value && window.isAuthenticatedRuntimeReady?.()));
         await loginPage.waitForLoadState('networkidle');
         await loginPage.close();
+        phaseTimings.loginMs = performance.now() - loginStarted;
         page = await context.newPage(); page.setDefaultTimeout(15000);
         page.on('pageerror', error => {
             let message = error.message, stack = error.stack || '';
@@ -185,10 +196,14 @@ async function trap(selector, name) {
         async function go(view, date = m.anchorDate, extra = '') {
             // Drain real reads before navigation: WebKit reports unload cancellations
             // as page errors, which must not masquerade as a product failure.
+            const idleStarted = performance.now();
             await page.waitForLoadState('networkidle');
+            phaseTimings.idleMs += performance.now() - idleStarted;
+            const navigationStarted = performance.now();
             await page.goto(`${base}/?businessContext=dar&educationSchedule=${view}&date=${date}${extra}`, { waitUntil: 'domcontentloaded' });
             await page.locator('#mainApp').waitFor({ state: 'visible', timeout: 45000 });
             await page.waitForFunction(view => window.EducationScheduleWorkspace?.state.activeView === view, view);
+            phaseTimings.navigationMs += performance.now() - navigationStarted;
         }
         const shell = '#educationScheduleWorkspace,.schedule-command-center';
         await go('today'); await page.waitForFunction(() => document.querySelectorAll('[data-education-booking-id]').length === 4 && !window.EducationScheduleWorkspace.state.loading);
@@ -270,7 +285,12 @@ async function trap(selector, name) {
         await page.waitForLoadState('networkidle');
         await page.unrouteAll({ behavior: 'wait' }); await context.close();
         evidence.completedProfiles.push(profile.name);
+        console.log('EDUCATION_RESPONSIVE_TIMING ' + JSON.stringify({
+            engine, profile: profile.name, totalMs: Math.round(performance.now() - profileStarted),
+            ...Object.fromEntries(Object.entries(phaseTimings).map(([phase, ms]) => [phase, Math.round(ms)]))
+        }));
     }
+    phaseTimings = null;
     assert.deepEqual(await proof(), before, 'Read-only test mutated retained dataset');
     evidence.datasetUnchanged = true; evidence.preflight = before.preflight;
     assert.deepEqual(hashes(), evidence.sourceHashes, 'Product edited during run');

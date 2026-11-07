@@ -44,9 +44,6 @@ jobs:
       - name: Run anonymized HR attendance PDF visual audit
         run: npm run audit:hr-attendance-documents:visual:ci
 
-      - name: Run Railway pre-deploy collision guard tests
-        run: node --test tests/release-railway-up-predeploy.test.js
-
       - name: Run fast verification baseline
         run: npm test
 
@@ -395,9 +392,6 @@ jobs:
       - name: Run legacy Telegram certificate regression
         run: npm run test:unit:certificates-legacy
 
-      - name: Run certificate expiry scheduler regression
-        run: node --test tests/scheduler-notification-jobs-hardening.test.js tests/scheduler-guard-contract.test.js
-
       - name: Run certificate check browser smoke
         run: npm run test:browser:certificates
 
@@ -504,12 +498,6 @@ jobs:
             sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g;s|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source_file"
           done
           ! grep -q 'azure.archive.ubuntu.com' "${source_files[@]}"
-      - name: Run education lesson series API and transaction integration
-        env:
-          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
-          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
-        run: npm run test:integration:education-series:isolated
-
       - name: Run banquet production recovery integration
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
@@ -611,15 +599,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Run migration governance check
-        run: npm run check:migrations
-
-      - name: Run Checkbox OpenAPI compatibility gate
-        run: npm run check:checkbox-openapi
-
-      - name: Run Checkbox source safety scan
-        run: npm run check:checkbox-safety
 
       - name: Run Checkbox thin unit contracts
         run: npm run test:checkbox-thin

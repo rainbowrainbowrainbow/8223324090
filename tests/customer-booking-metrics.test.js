@@ -161,6 +161,7 @@ test('list handler aligns display, count/date filters and sorting to live aggreg
     assert.equal(result.body.customers[0].lastVisit, null);
     assert.equal(result.body.customers[0].ltv, undefined);
     const sql = h.calls[1].sql;
+    assert.match(h.calls[0].sql, /FROM bookings b/);
     assert.match(sql, /b_agg\.real_last_visit >= \$\d+::date/);
     assert.match(sql, /b_agg\.real_last_visit <= \$\d+::date/);
     assert.match(sql, /COALESCE\(b_agg\.booking_count, 0\) <=/);
@@ -168,7 +169,20 @@ test('list handler aligns display, count/date filters and sorting to live aggreg
     assert.doesNotMatch(sql, /c\.last_visit|c\.total_bookings/);
     h.calls.length = 0;
     assert.equal((await h.request('/', { sortBy: 'next_booking' })).status, 200);
+    assert.doesNotMatch(h.calls[0].sql, /FROM bookings b/);
     assert.match(h.calls[1].sql, /ORDER BY b_agg\.next_booking_date ASC NULLS LAST, c\.id ASC/);
+});
+
+test('customer-only pagination counts customers and reads booking metrics for the selected page', async () => {
+    const h = routeHarness([{ id: 1, name: 'Customer', real_total_bookings: '3' }]);
+    const { status, body } = await h.request('/', { sortBy: 'name', page: '2', limit: '1' });
+    assert.equal(status, 200);
+    assert.equal(body.customers[0].totalBookings, 3);
+    assert.doesNotMatch(h.calls[0].sql, /FROM bookings b/);
+    assert.deepEqual(Array.from(h.calls[0].params), ['event_genix']);
+    assert.match(h.calls[1].sql, /ORDER BY c\.name ASC, c\.id ASC LIMIT \$\d+ OFFSET \$\d+\) c\s+LEFT JOIN LATERAL/);
+    assert.match(h.calls[1].sql, /b\.customer_id = c\.id/);
+    assert.deepEqual(Array.from(h.calls[1].params.slice(-2)), [1, 1]);
 });
 
 test('RFM handler uses confirmed-history aliases rather than overall booking counts', async () => {

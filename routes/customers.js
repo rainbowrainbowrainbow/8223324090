@@ -2138,45 +2138,56 @@ router.get('/', async (req, res) => {
             params.push(normalizedSource);
             conditions.push(`${customerSourceSqlExpression('c.source')} = $${params.length}`);
         }
-        if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) { params.push(dateFrom); conditions.push(`b_agg.real_last_visit >= $${params.length}::date`); }
-        if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) { params.push(dateTo); conditions.push(`b_agg.real_last_visit <= $${params.length}::date`); }
+        const hasDateFrom = /^\d{4}-\d{2}-\d{2}$/.test(dateFrom);
+        const hasDateTo = /^\d{4}-\d{2}-\d{2}$/.test(dateTo);
+        if (hasDateFrom) { params.push(dateFrom); conditions.push(`b_agg.real_last_visit >= $${params.length}::date`); }
+        if (hasDateTo) { params.push(dateTo); conditions.push(`b_agg.real_last_visit <= $${params.length}::date`); }
         const birthdayFilter = customerBirthdayTagFilterSql(tag ? [tag] : [], params);
         if (birthdayFilter.condition) conditions.push(birthdayFilter.condition);
 
-        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessScope);
+        const bookingFilters = hasDateFrom || hasDateTo || minVisits !== null || maxVisits !== null;
         const visitCountExpr = 'COALESCE(b_agg.booking_count, 0)';
+        const bookingSorts = {
+            total_bookings: `${visitCountExpr} DESC`, total_spent: 'COALESCE(b_agg.booking_spent, 0) DESC',
+            last_visit: 'b_agg.real_last_visit DESC NULLS LAST', next_booking: 'b_agg.next_booking_date ASC NULLS LAST'
+        };
+        const pageBeforeMetrics = !bookingFilters && !Object.hasOwn(bookingSorts, sortBy);
+        const customerParams = [...params];
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessScope,
+            pageBeforeMetrics ? { customerAlias: 'c' } : undefined);
+        const bookingJoin = pageBeforeMetrics
+            ? `LEFT JOIN LATERAL (${bookingAgg.sql}) b_agg ON TRUE`
+            : `LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id`;
         if (minVisits !== null) { params.push(minVisits); conditions.push(`${visitCountExpr} >= $${params.length}`); }
         if (maxVisits !== null) { params.push(maxVisits); conditions.push(`${visitCountExpr} <= $${params.length}`); }
 
         const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
         const allowedSorts = {
             'updated_at': 'c.updated_at DESC', 'name': 'c.name ASC',
-            'total_bookings': `${visitCountExpr} DESC`, 'total_spent': 'COALESCE(b_agg.booking_spent, 0) DESC',
-            'last_visit': 'b_agg.real_last_visit DESC NULLS LAST',
-            'next_booking': 'b_agg.next_booking_date ASC NULLS LAST', 'created_at': 'c.created_at DESC'
+            'created_at': 'c.created_at DESC', ...bookingSorts
         };
-        const orderBy = allowedSorts[sortBy] || allowedSorts.updated_at;
+        const orderBy = Object.hasOwn(allowedSorts, sortBy) ? allowedSorts[sortBy] : allowedSorts.updated_at;
 
         const countResult = await pool.query(
             `SELECT COUNT(*)
                     ${birthdayFilter.selection ? ', COALESCE(SUM(birthday_segment.child_count), 0) AS birthday_children_count' : ''}
              FROM customers c
-             LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+             ${bookingFilters ? bookingJoin : ''}
              ${birthdayFilter.join}
              ${where}`,
-            params
+            bookingFilters ? params : customerParams
         );
         const total = parseInt(countResult.rows[0].count);
 
         const dataParams = [...params, limit, offset];
-        // Use current booking metrics, independent of legacy customer caches.
+        const pagination = `ORDER BY ${orderBy}, c.id ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        // Customer-only ordering can pick the page before reading any bookings.
+        const dataSource = pageBeforeMetrics
+            ? `FROM (SELECT c.* FROM customers c ${birthdayFilter.join} ${where} ${pagination}) c
+               ${bookingJoin} ORDER BY ${orderBy}, c.id ASC`
+            : `FROM customers c ${bookingJoin} ${birthdayFilter.join} ${where} ${pagination}`;
         const result = await pool.query(
-            `SELECT c.*, ${customerMetricsProjectionSql()}
-             FROM customers c
-             LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
-             ${birthdayFilter.join}
-             ${where}
-             ORDER BY ${orderBy}, c.id ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+            `SELECT c.*, ${customerMetricsProjectionSql()} ${dataSource}`,
             dataParams
         );
 

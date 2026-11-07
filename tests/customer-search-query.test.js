@@ -21,6 +21,9 @@ test('customer search query mirrors /api/customers/search matching rules', () =>
     assert.match(query.sql, /FROM customer_children cc_search/);
     assert.match(query.sql, /c\.social_identities::text ILIKE \$1/);
     assert.match(query.sql, /c\.instagram ILIKE \$2/);
+    assert.match(query.sql, /LEFT JOIN LATERAL/);
+    assert.match(query.sql, /b\.customer_id = c\.id/);
+    assert.match(query.sql, /ORDER BY v\.real_last_visit DESC NULLS LAST\s+LIMIT 20/);
     assert.deepEqual(query.params.slice(0, 2), ['%@Beli%', '%Beli%']);
 });
 

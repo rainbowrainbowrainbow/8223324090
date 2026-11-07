@@ -13,12 +13,30 @@ function buildScopedBookingAggregateSql(user, params, alias = 'b', businessScope
     const businessSql = pushBusinessScopeCondition(params, businessScope, alias);
     const visibility = getVisibleBookingScope(user, params, alias);
     const today = `$${params.push(options.asOf || customerMetricsDate())}::date`;
-    const customerSql = options.customerIds
-        ? `AND ${alias}.customer_id = ANY($${params.push(options.customerIds)}::int[])` : '';
+    let customerSql = '';
+    if (options.customerAlias) {
+        customerSql = `AND ${alias}.customer_id = ${options.customerAlias}.id`;
+    } else if (options.customerIds) {
+        customerSql = `AND ${alias}.customer_id = ANY($${params.push(options.customerIds)}::int[])`;
+    } else if (options.customerIdArraySql) {
+        customerSql = `AND ${alias}.customer_id = ANY(${options.customerIdArraySql})`;
+    }
     const status = `LOWER(BTRIM(${alias}.status))`;
     // The canonical bookings schema stores calendar dates as VARCHAR(20).
     const bookingDate = `NULLIF(BTRIM(${alias}.date::text), '')::date`;
     const past = `${bookingDate} < ${today}`;
+    const lastVisit = `MAX(${bookingDate}) FILTER (WHERE ${past})`;
+    const fromSql = `FROM bookings ${alias}
+        WHERE ${status} IN ('confirmed', 'preliminary')
+          AND NULLIF(BTRIM(${alias}.linked_to), '') IS NULL
+          AND ${businessSql} ${visibility.sql} ${customerSql}
+        GROUP BY ${alias}.customer_id`;
+    if (options.lastVisitOnly) {
+        return {
+            visibility,
+            sql: `SELECT ${alias}.customer_id, ${lastVisit} AS real_last_visit ${fromSql}`
+        };
+    }
     const confirmedPast = `${status} = 'confirmed' AND ${past}`;
     const canViewRevenue = resolveCapability(user, 'view_revenue', { type: 'action' }).allowed;
     const bookingValue = canViewRevenue ? `COALESCE(SUM(${alias}.price) FILTER (WHERE ${alias}.price >= 0), 0)` : '0';
@@ -35,18 +53,14 @@ function buildScopedBookingAggregateSql(user, params, alias = 'b', businessScope
             COUNT(*) FILTER (WHERE ${status} = 'preliminary') AS preliminary_bookings,
             ${unpricedCount} AS unpriced_bookings,
             MIN(${bookingDate}) FILTER (WHERE ${past}) AS real_first_visit,
-            MAX(${bookingDate}) FILTER (WHERE ${past}) AS real_last_visit,
+            ${lastVisit} AS real_last_visit,
             MIN(${bookingDate}) FILTER (WHERE ${bookingDate} >= ${today}) AS next_booking_date,
             COUNT(*) FILTER (WHERE ${confirmedPast}) AS rfm_frequency,
             ${rfmValue} AS rfm_monetary,
             MAX(${bookingDate}) FILTER (WHERE ${confirmedPast}) AS rfm_last_visit,
             ${today} - MAX(${bookingDate}) FILTER (WHERE ${confirmedPast}) AS recency_days,
             ${today} AS metrics_as_of
-        FROM bookings ${alias}
-        WHERE ${status} IN ('confirmed', 'preliminary')
-          AND NULLIF(BTRIM(${alias}.linked_to), '') IS NULL
-          AND ${businessSql} ${visibility.sql} ${customerSql}
-        GROUP BY ${alias}.customer_id`
+        ${fromSql}`
     };
 }
 

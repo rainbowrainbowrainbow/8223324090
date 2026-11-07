@@ -21,6 +21,9 @@ test('customer search query mirrors /api/customers/search matching rules', () =>
     assert.match(query.sql, /FROM customer_children cc_search/);
     assert.match(query.sql, /c\.social_identities::text ILIKE \$1/);
     assert.match(query.sql, /c\.instagram ILIKE \$2/);
+    assert.match(query.sql, /LEFT JOIN LATERAL/);
+    assert.match(query.sql, /b\.customer_id = c\.id/);
+    assert.match(query.sql, /ORDER BY v\.real_last_visit DESC NULLS LAST\s+LIMIT 20/);
     assert.deepEqual(query.params.slice(0, 2), ['%@Beli%', '%Beli%']);
 });
 
@@ -34,8 +37,10 @@ test('customer search query includes normalized phone digit search only when use
 
     assert.ok(query);
     assert.match(query.sql, /regexp_replace\(COALESCE\(c\.phone, ''\), '\\D', '', 'g'\) ILIKE \$2/);
+    assert.match(query.sql, /CASE WHEN c\.phone LIKE \$3/);
     assert.doesNotMatch(query.sql, /social_identities/);
     assert.equal(query.params[1], '%38097426%');
+    assert.equal(query.params[2], '%3%8%0%9%7%4%2%6%');
 });
 
 test('customer search query returns null for route-level short searches', () => {

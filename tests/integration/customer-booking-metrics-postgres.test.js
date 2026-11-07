@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
+const { buildCustomerSearchQuery } = require('../../services/customerSearchQuery');
 const { buildScopedBookingAggregateSql, customerMetricsProjectionSql,
     mapCustomerBookingMetrics, calculateRFMScores } = require('../../services/customerBookingMetrics');
 
@@ -126,4 +127,61 @@ test('current booking metrics preserve arithmetic, dates, package ownership and 
     const cached = await pool.query('SELECT total_bookings, total_spent, last_visit::text FROM customers WHERE id = 8');
     assert.equal(cached.rows[0].total_bookings, 99, 'reads do not rewrite legacy data');
     assert.equal(cached.rows[0].last_visit, '2030-01-01');
+
+    await t.test('autocomplete ranks every match by its last visible visit before taking the limit', async () => {
+        await pool.query(`
+            ALTER TABLE customers
+                ADD COLUMN name TEXT, ADD COLUMN phone TEXT, ADD COLUMN instagram TEXT,
+                ADD COLUMN child_name TEXT, ADD COLUMN child_birthday DATE, ADD COLUMN source TEXT,
+                ADD COLUMN notes TEXT, ADD COLUMN social_identities JSONB;
+            ALTER TABLE bookings ADD COLUMN created_by TEXT, ADD COLUMN second_animator TEXT;
+            CREATE TABLE customer_children (customer_id INT, business_context TEXT, name TEXT);
+            INSERT INTO customers (id, business_context, name, notes) VALUES
+                (101, 'event_genix', 'Search example first', NULL),
+                (102, 'event_genix', 'Search example second', NULL),
+                (103, 'event_genix', 'Parent matched through child', 'Selected notes'),
+                (104, 'dar', 'Search example outside business', NULL),
+                (105, 'event_genix', 'Unmatched customer', NULL);
+            INSERT INTO customer_children VALUES
+                (103, 'event_genix', 'Search example child'), (105, 'dar', 'Search example child');
+            INSERT INTO bookings (id, customer_id, business_context, status, date, price, linked_to, created_by) VALUES
+                ('search-old', 102, 'event_genix', 'confirmed', '2025-02-01', 100, NULL, 'fixture_actor'),
+                ('search-recent', 103, 'event_genix', 'preliminary', '2025-03-01', 250.50, NULL, 'other_actor'),
+                ('search-linked', 101, 'event_genix', 'confirmed', '2025-04-01', 500, 'search-old', 'fixture_actor'),
+                ('search-cancelled', 101, 'event_genix', 'cancelled', '2025-05-01', 500, NULL, 'fixture_actor'),
+                ('search-cross-booking', 101, 'dar', 'confirmed', '2025-06-01', 500, NULL, 'fixture_actor'),
+                ('search-cross-customer', 104, 'dar', 'confirmed', '2025-07-01', 500, NULL, 'fixture_actor'),
+                ('search-cross-child', 105, 'event_genix', 'confirmed', '2025-08-01', 500, NULL, 'fixture_actor'),
+                ('search-future', 101, 'event_genix', 'confirmed', '2099-01-01', 500, NULL, 'fixture_actor');
+        `);
+        async function search(user, limit) {
+            const { sql, params } = buildCustomerSearchQuery({ query: 'Search example', user, limit });
+            return (await pool.query(sql, params)).rows;
+        }
+
+        const all = await search({ role: 'creator' }, 3);
+        assert.deepEqual(all.map(row => [row.id, row.real_last_visit]), [
+            [103, '2025-03-01'], [102, '2025-02-01'], [101, null]
+        ]);
+        const [top] = await search({ role: 'creator' }, 1);
+        assert.equal(top.id, 103);
+        assert.equal(top.notes, 'Selected notes');
+        assert.equal(Number(top.real_total_spent), 250.50);
+        assert.equal(Number(top.preliminary_bookings), 1);
+        assert.equal(Number(all[2].planned_bookings), 1);
+
+        const [scoped] = await search({ role: 'animator', username: 'fixture_actor' }, 1);
+        assert.equal(scoped.id, 102, 'an invisible newer booking cannot win the ranking');
+        assert.equal(scoped.real_last_visit, '2025-02-01');
+        assert.equal(Number(scoped.real_total_spent), 0);
+
+        await pool.query(`UPDATE customers SET phone = CASE id
+            WHEN 102 THEN '+38 (097) 426-00-00'
+            WHEN 103 THEN '+38 (097) 9-426-00-00' END
+            WHERE id IN (102, 103)`);
+        const phone = buildCustomerSearchQuery({ query: '38097 426', user: { role: 'creator' } });
+        const phoneMatches = await pool.query(phone.sql, phone.params);
+        assert.deepEqual(phoneMatches.rows.map(row => row.id), [102],
+            'Formatting is ignored, but the intervening extra digit prevents a match');
+    });
 });

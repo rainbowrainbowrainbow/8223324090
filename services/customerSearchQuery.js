@@ -1,6 +1,10 @@
 'use strict';
 
-const { buildScopedBookingAggregateSql, customerMetricsProjectionSql } = require('./customerBookingMetrics');
+const {
+    buildScopedBookingAggregateSql,
+    customerMetricsDate,
+    customerMetricsProjectionSql
+} = require('./customerBookingMetrics');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     pushBusinessContextCondition
@@ -32,31 +36,54 @@ function buildCustomerSearchQuery({
     const phoneDigits = q.replace(/\D/g, '');
     const instagramHandle = q.replace(/^@+/, '').trim();
     const params = [pattern];
-    const normalizedPhoneSql = phoneDigits.length >= 2
-        ? ` OR regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') ILIKE $${params.push(`%${phoneDigits}%`)}`
-        : '';
+    let normalizedPhoneSql = '';
+    if (phoneDigits.length >= 2) {
+        const normalizedPattern = params.push(`%${phoneDigits}%`);
+        const digitSubsequence = params.push(`%${phoneDigits.split('').join('%')}%`);
+        // A match must contain every digit in order. Keep the exact normalized
+        // check for rows that pass this cheaper, punctuation-tolerant filter.
+        normalizedPhoneSql = ` OR CASE WHEN c.phone LIKE $${digitSubsequence}
+            THEN regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') ILIKE $${normalizedPattern}
+            ELSE FALSE END`;
+    }
     const instagramHandleSql = instagramHandle && instagramHandle !== q
         ? ` OR c.instagram ILIKE $${params.push(`%${instagramHandle}%`)}`
         : '';
-    const bookingAgg = buildScopedBookingAggregateSql(user, params, 'b', businessContext);
     const socialIdentitySearch = includeSocialIdentities
         ? ' OR c.social_identities::text ILIKE $1'
         : '';
     const childrenSearch = ` OR ${customerChildrenSearchSql('$1', 'c')}`;
     const contextSql = pushBusinessContextCondition(params, businessContext, 'c');
     const boundedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const asOf = customerMetricsDate();
+    // Batch the matching IDs so broad queries can visit each booking heap page once.
+    const visits = buildScopedBookingAggregateSql(user, params, 'b', businessContext, {
+        asOf, lastVisitOnly: true, customerIdArraySql: 'ARRAY(SELECT id FROM matched)'
+    });
+    const bookingAgg = buildScopedBookingAggregateSql(user, params, 'b', businessContext, {
+        asOf, customerAlias: 'c'
+    });
 
     return {
         q,
         params,
-        sql: `SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.child_birthday, c.business_context,
+        sql: `WITH matched AS MATERIALIZED (
+                 SELECT c.id FROM customers c
+                 WHERE ${contextSql}
+                   AND (c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1 OR c.child_name ILIKE $1${childrenSearch}${normalizedPhoneSql}${instagramHandleSql}${socialIdentitySearch})
+             ), visits AS MATERIALIZED (${visits.sql}), ranked AS MATERIALIZED (
+                 SELECT m.id, v.real_last_visit
+                 FROM matched m
+                 LEFT JOIN visits v ON v.customer_id = m.id
+                 ORDER BY v.real_last_visit DESC NULLS LAST
+                 LIMIT ${boundedLimit}
+             )
+             SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.child_birthday, c.business_context,
                     c.source, c.notes, ${customerMetricsProjectionSql()}
-             FROM customers c
-             LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
-             WHERE ${contextSql}
-               AND (c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1 OR c.child_name ILIKE $1${childrenSearch}${normalizedPhoneSql}${instagramHandleSql}${socialIdentitySearch})
-             ORDER BY b_agg.real_last_visit DESC NULLS LAST
-             LIMIT ${boundedLimit}`
+             FROM ranked r
+             JOIN customers c ON c.id = r.id
+             LEFT JOIN LATERAL (${bookingAgg.sql}) b_agg ON TRUE
+             ORDER BY r.real_last_visit DESC NULLS LAST`
     };
 }
 

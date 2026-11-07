@@ -69,6 +69,55 @@ test('sidebar stale failed summary neither warns nor renders an error for a new 
     const f=fixture('summary'),pending=f.start(),initial=f.writes.length;f.setScope('other-business');f.reads[0].reject(new Error('controlled failure'));
     assert.equal(await pending,null);assert.equal(f.warnings.length,0);assert.equal(f.writes.length,initial);
 });
+
+test('sidebar refreshes timeline counts once for each turn of authenticated business updates', async () => {
+    const listenerStart = source.indexOf("    window.addEventListener('crm:authenticated-runtime-ready'");
+    const listenerEnd = source.indexOf("    window.addEventListener('timeline:view-changed'", listenerStart);
+    const renderStart = source.indexOf('        if (options.refreshOperational !== false)');
+    const renderEnd = source.indexOf('        _queueActiveIndicatorUpdate();', renderStart);
+    const queueStart = source.indexOf('    function _queueSidebarTimelineScopeRefresh(');
+    const queueEnd = source.indexOf('    function _handleTimelineSummaryChanged(', queueStart);
+    assert.ok(listenerStart >= 0 && listenerEnd > listenerStart && renderStart >= 0 && renderEnd > renderStart);
+    assert.ok(queueStart >= 0 && queueEnd > queueStart);
+    const listeners = new Map();
+    const refreshes = [];
+    let scope = 'event_genix';
+    const sandbox = vm.createContext({
+        window: { addEventListener: (event, handler) => listeners.set(event, handler) },
+        document: { querySelector: () => ({ id: 'sidebarLinks' }) },
+        _state: { businessSwitching: true },
+        queueMicrotask,
+        initUserCard() {},
+        _ensureSidebarBusinessProfile() {},
+        _loadSidebarIdentityMeta() {},
+        _notifyGlobalTaskTimerShellChanged() {},
+        _refreshSidebarOperationalWidgets() {},
+        _refreshSidebarTimelineSummary: options => refreshes.push({ ...options, scope }),
+        render(_selector, options = {}) {
+            sandbox.options = options;
+            vm.runInContext(source.slice(renderStart, renderEnd), sandbox);
+        }
+    });
+    vm.runInContext(source.slice(queueStart, queueEnd), sandbox);
+    vm.runInContext(source.slice(listenerStart, listenerEnd), sandbox);
+    listeners.get('crm:authenticated-runtime-ready')();
+    scope = 'dar';
+    listeners.get('crmBusinessContextHydrated')();
+    assert.deepEqual(refreshes, []);
+    await Promise.resolve();
+    assert.deepEqual(refreshes, [{ clearCache: true, force: true, scope: 'dar' }]);
+    assert.equal(sandbox._state.businessSwitching, false);
+
+    scope = 'event_genix';
+    listeners.get('crmBusinessContextChanged')();
+    listeners.get('crmBusinessProfileChanged')();
+    await Promise.resolve();
+    assert.deepEqual(refreshes.slice(1), [{ clearCache: true, force: true, scope: 'event_genix' }]);
+
+    listeners.get('crmBusinessProfileChanged')();
+    await Promise.resolve();
+    assert.deepEqual(refreshes.slice(2), [{ clearCache: true, force: true, scope: 'event_genix' }]);
+});
 test('sidebar current task fallback retains normal counts and refresh timer',async()=>{
     const f=fixture('tasks'),{pending}=await reachFallback(f);f.answer(1,[{owner_user_id:1}]);await pending;
     assert.ok(f.writes.length>0);assert.equal(f.context._commandState.tasksActive,1);assert.equal(f.timers.length,1);
